@@ -2215,7 +2215,16 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
     if let Some(held) = brand_field(item_struct) {
         let value_field = brand_value_field(held, &type_parameters, args);
         let bounds = validate::brand_rules(&export_name, &value_field, args);
-        let mut rules = bounds.clone();
+        let mut rules = validate::own_repeat_rules(
+            &export_name,
+            &validate::Checked {
+                access: "value".to_owned(),
+                def: &value_field,
+                runs_both: false,
+                step: None,
+            },
+        );
+        rules.extend(bounds.iter().cloned());
         rules.extend(validate::own_checks(args.check));
         return value_wrapper_tokens(
             &item_struct.ident,
@@ -2507,6 +2516,7 @@ fn tuple_struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>)
         omits_value: false,
         #[cfg(any(feature = "zod", feature = "jsonschema"))]
         serde_default: None,
+        set_levels: Vec::new(),
         #[cfg(feature = "jsonschema")]
         type_span: proc_macro2::Span::call_site(),
     };
@@ -2740,6 +2750,7 @@ fn slots_payload(
         omits_value: false,
         #[cfg(any(feature = "zod", feature = "jsonschema"))]
         serde_default: None,
+        set_levels: Vec::new(),
         #[cfg(feature = "jsonschema")]
         type_span: proc_macro2::Span::call_site(),
     };

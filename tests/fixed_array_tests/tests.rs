@@ -110,18 +110,25 @@ fn test_a_fixed_array_describes_its_length_at_the_level_it_bounds() {
     for field in ["const_ids", "slice_ids"] {
         assert_eq!(properties[field], open_integers, "for: {field}");
     }
-    for field in ["ids_of_rows", "set_of_ids"] {
-        assert_eq!(
-            properties[field],
-            serde_json::json!({
-                "type": "array",
-                "items": open_integers,
-                "minItems": 2_u32,
-                "maxItems": 2_u32
-            }),
-            "for: {field}"
-        );
-    }
+    assert_eq!(
+        properties["ids_of_rows"],
+        serde_json::json!({
+            "type": "array",
+            "items": open_integers,
+            "minItems": 2_u32,
+            "maxItems": 2_u32
+        })
+    );
+    // Each set the array holds keeps its items distinct, and the array its length.
+    assert_eq!(
+        properties["set_of_ids"],
+        serde_json::json!({
+            "type": "array",
+            "items": { "type": "array", "items": { "type": "integer" }, "uniqueItems": true },
+            "minItems": 2_u32,
+            "maxItems": 2_u32
+        })
+    );
     assert_eq!(
         properties["rows_of_ids"],
         serde_json::json!({ "type": "array", "items": three_integers })
@@ -178,11 +185,22 @@ fn test_a_fixed_array_validates_its_length_in_zod() {
         "ids_of_rows: z.array(z.array(z.number().int())).length(2),",
         "optional_elements: z.array(z.nullable(z.number().int())).length(3),",
         "rows_of_ids: z.array(z.array(z.number().int()).length(3)),",
-        "set_of_ids: z.array(z.array(z.number().int())).length(2),",
         "slice_ids: z.array(z.number().int()),",
     ] {
         assert!(zod_schema.contains(spelling), "Got: {zod_schema}");
     }
+    // Each set the array holds refuses a repeat, and the array keeps its length.
+    assert!(
+        zod_schema.contains("set_of_ids: z.array(z.array(z.number().int()).check((ctx) => {"),
+        "Got: {zod_schema}"
+    );
+    assert!(
+        zod_schema.contains(
+            "message: \"repeats an item: a set holds each item once\", input: ctx.value, \
+             continue: true });\n      return;\n    }\n    seen.add(text);\n  }\n})).length(2),"
+        ),
+        "Got: {zod_schema}"
+    );
     // The field's own optionality wraps the bounded array rather than replacing its bound.
     assert!(
         zod_schema.contains(

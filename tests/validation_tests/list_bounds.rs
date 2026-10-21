@@ -506,6 +506,13 @@ mod a_key_on_a_list {
         let every = |member: &str, item: &str, pinned: &str| {
             format!("  {member}: z.array({item}){pinned}{},\n", short(2))
         };
+        // A set's array refuses a repeat after its count.
+        let every_set = |member: &str| {
+            format!(
+                "  {member}: z.array(z.string()){}.check((ctx) => {{",
+                short(2)
+            )
+        };
         for (schema, members) in [
             (
                 Document::zod_schema(),
@@ -537,10 +544,10 @@ mod a_key_on_a_list {
                 EveryList::zod_schema(),
                 vec![
                     every("deque", "z.string()", ""),
-                    every("hashed", "z.string()", ""),
+                    every_set("hashed"),
                     every("heap", "z.number().int()", ""),
                     every("listed", "z.string()", ""),
-                    every("ordered", "z.string()", ""),
+                    every_set("ordered"),
                     every("pair", "z.string()", ".length(2)"),
                     every("sliced", "z.string()", ""),
                 ],
@@ -610,10 +617,19 @@ mod a_key_on_a_list {
         );
 
         let every = EveryList::json_schema();
-        for member in ["deque", "hashed", "listed", "ordered", "sliced"] {
+        for member in ["deque", "listed", "sliced"] {
             assert_eq!(
                 every["properties"][member],
                 json!({ "type": "array", "items": string(), "minItems": 2_u32 }),
+                "for {member}"
+            );
+        }
+        for member in ["hashed", "ordered"] {
+            assert_eq!(
+                every["properties"][member],
+                json!({
+                    "type": "array", "items": string(), "uniqueItems": true, "minItems": 2_u32
+                }),
                 "for {member}"
             );
         }

@@ -1391,11 +1391,13 @@ fn test_untagged_wrapper_member_json_schema() {
     assert_eq!(any_of.len(), WRAPPED_MEMBERS.len(), "Got:\n{schema}");
 
     for (branch, member) in any_of.iter().zip(WRAPPED_MEMBERS) {
-        assert_eq!(
-            branch["properties"][member],
-            serde_json::json!({ "type": "array", "items": { "type": "string" } }),
-            "Got:\n{schema}"
-        );
+        // A set's array holds its items distinct; the queue's does not.
+        let expected = if member == "queued" {
+            serde_json::json!({ "type": "array", "items": { "type": "string" } })
+        } else {
+            serde_json::json!({ "type": "array", "items": { "type": "string" }, "uniqueItems": true })
+        };
+        assert_eq!(branch["properties"][member], expected, "Got:\n{schema}");
         assert_eq!(
             branch["properties"][member], fields["properties"][member],
             "the field-position twin must render the same member"
@@ -1439,10 +1441,15 @@ fn test_untagged_wrapper_member_typescript() {
 #[cfg(feature = "zod")]
 fn test_untagged_wrapper_member_zod() {
     let zod = WrappedUnion::zod_schema();
-    for member in WRAPPED_MEMBERS {
+    assert!(
+        zod.contains("z.strictObject({ queued: z.array(z.string()), })"),
+        "Got:\n{zod}"
+    );
+    // A set's array refuses a repeat.
+    for member in ["ids", "ordered"] {
         assert!(
             zod.contains(&format!(
-                "z.strictObject({{ {member}: z.array(z.string()), }})"
+                "z.strictObject({{ {member}: z.array(z.string()).check((ctx) => {{"
             )),
             "Got:\n{zod}"
         );
@@ -1546,8 +1553,17 @@ fn test_untagged_wrapper_of_string_describes_as_the_bare_string_array() {
         .iter()
         .zip(WRAPPED_MEMBERS)
     {
+        let mut described = branch["properties"][member].clone();
+        // A set's array holds its items distinct, which the bare `Vec<String>` does not say.
+        if member != "queued" {
+            assert_eq!(
+                described.as_object_mut().unwrap().remove("uniqueItems"),
+                Some(serde_json::json!(true)),
+                "{wrapped}"
+            );
+        }
         assert_eq!(
-            branch["properties"][member], arrayed["anyOf"][2]["properties"]["tags"],
+            described, arrayed["anyOf"][2]["properties"]["tags"],
             "`{member}` must describe as the bare `Vec<String>` member:\n{wrapped}"
         );
     }

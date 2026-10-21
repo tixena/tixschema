@@ -1463,7 +1463,7 @@ mod branded_composite_inner_tests {
     fn a_set_and_a_fixed_array_brand_describe_their_arrays() {
         assert_eq!(
             LabelSet::json_schema(),
-            serde_json::json!({ "type": "array", "items": { "type": "string" } })
+            serde_json::json!({ "type": "array", "items": { "type": "string" }, "uniqueItems": true })
         );
         assert!(
             LabelSet::zod_schema().contains("LabelSet$Schema: typeof LabelSet$RawSchema"),

@@ -370,13 +370,13 @@ fn the_json_schema_states_the_empty_collection_of_each_list_set_and_map() {
 #[cfg(feature = "zod")]
 #[test]
 fn the_zod_schema_parses_the_empty_collection_of_each_list_set_and_map() {
+    // A set's array refuses a repeat, with a check that ends on the line the default follows.
+    let set_of_links = "z.array(Link$SchemaFactory(idType)).check((ctx) => {";
     let held: &[(String, &[&str])] = &[
         (
             Fleet::<String>::zod_schema(),
             &[
                 "  binary_heap: z.array(Link$SchemaFactory(idType)).prefault([]),\n",
-                "  btree_set: z.array(Link$SchemaFactory(idType)).prefault([]),\n",
-                "  hash_set: z.array(Link$SchemaFactory(idType)).prefault([]),\n",
                 "  vec: z.array(Link$SchemaFactory(idType)).prefault([]),\n",
                 "  vec_deque: z.array(Link$SchemaFactory(idType)).prefault([]),\n",
             ],
@@ -390,11 +390,6 @@ fn the_zod_schema_parses_the_empty_collection_of_each_list_set_and_map() {
         ),
         #[cfg(feature = "indexmap")]
         (
-            IndexedFleet::<String>::zod_schema(),
-            &["  index_set: z.array(Link$SchemaFactory(idType)).prefault([]),\n"],
-        ),
-        #[cfg(feature = "indexmap")]
-        (
             IndexedLogbook::<String>::zod_schema(),
             &["  index_map: z.record(z.string(), Link$SchemaFactory(idType)).prefault({}),\n"],
         ),
@@ -403,6 +398,27 @@ fn the_zod_schema_parses_the_empty_collection_of_each_list_set_and_map() {
         for member in *members {
             assert!(schema.contains(member), "{schema}");
         }
+    }
+    let sets = [
+        (
+            Fleet::<String>::zod_schema(),
+            &["btree_set", "hash_set"][..],
+        ),
+        #[cfg(feature = "indexmap")]
+        (IndexedFleet::<String>::zod_schema(), &["index_set"][..]),
+    ];
+    for (schema, members) in sets {
+        for member in members {
+            assert!(
+                schema.contains(&format!("  {member}: {set_of_links}")),
+                "{schema}"
+            );
+        }
+        assert_eq!(
+            schema.matches("\n}).prefault([]),\n").count(),
+            members.len(),
+            "{schema}"
+        );
     }
 }
 

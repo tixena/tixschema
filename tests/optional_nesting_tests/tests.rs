@@ -3,12 +3,28 @@
 //!
 //! Every expectation here is read off what serde writes: a `None` the wrapper holds is a `null`
 //! among the array's items (items admit `null`, the array does not); a `None` around the wrapper
-//! replaces the whole array (the array admits `null`, its items do not).
+//! replaces the whole array (the array admits `null`, its items do not). A set's array holds its
+//! items distinct, which a `Vec`'s does not.
 
 use alloc::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tixschema::model_schema;
+
+/// The check Zod writes on the array of a set, which refuses an array that repeats an item.
+#[cfg(feature = "zod")]
+const REPEAT_CHECK: &str = ".check((ctx) => {
+  const seen = new Set<string>();
+  for (const item of ctx.value) {
+    const text = JSON.stringify(item);
+    if (seen.has(text)) {
+      ctx.issues.push({ code: \"custom\", message: \"repeats an item: a set holds each item \
+                            once\", input: ctx.value, continue: true });
+      return;
+    }
+    seen.add(text);
+  }
+})";
 
 /// The `Option` inside the wrapper. Serde always writes the array, so the key is always present and
 /// the `None` reaches the wire as a `null` among the items.
@@ -138,13 +154,47 @@ fn or_null(base: &serde_json::Value) -> serde_json::Value {
     serde_json::json!({ "anyOf": [base, { "type": "null" }] })
 }
 
+/// The array of a set, whose items are distinct.
+#[cfg(feature = "jsonschema")]
+fn set_of(items: &serde_json::Value) -> serde_json::Value {
+    serde_json::json!({ "type": "array", "items": items, "uniqueItems": true })
+}
+
+/// `schema` with the `uniqueItems` of each set taken out: what a set describes beside what its
+/// `Vec` twin describes.
+#[cfg(feature = "jsonschema")]
+fn without_unique_items(schema: &serde_json::Value) -> serde_json::Value {
+    match schema {
+        serde_json::Value::Object(members) => serde_json::Value::Object(
+            members
+                .iter()
+                .filter(|(key, _)| key.as_str() != "uniqueItems")
+                .map(|(key, member)| (key.clone(), without_unique_items(member)))
+                .collect(),
+        ),
+        serde_json::Value::Array(items) => {
+            serde_json::Value::Array(items.iter().map(without_unique_items).collect())
+        }
+        serde_json::Value::Null
+        | serde_json::Value::Bool(_)
+        | serde_json::Value::Number(_)
+        | serde_json::Value::String(_) => schema.clone(),
+    }
+}
+
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_an_element_null_field_describes_as_an_array_of_nullable_items() {
     let schema = ElementNullFields::json_schema();
-    let expected = array_of(&integer_or_null());
+    assert_eq!(
+        schema["properties"]["set_items"],
+        set_of(&integer_or_null())
+    );
+    assert_eq!(
+        schema["properties"]["vec_items"],
+        array_of(&integer_or_null())
+    );
     for field in ["set_items", "vec_items"] {
-        assert_eq!(schema["properties"][field], expected, "{field}");
         assert!(
             schema["required"]
                 .as_array()
@@ -159,10 +209,16 @@ fn test_an_element_null_field_describes_as_an_array_of_nullable_items() {
 #[cfg(feature = "jsonschema")]
 fn test_a_slot_null_field_describes_as_the_array_it_writes_when_present() {
     let schema = SlotNullFields::json_schema();
-    let array = array_of(&serde_json::json!({ "type": "integer" }));
-    let expected = or_null(&array);
+    let integer = serde_json::json!({ "type": "integer" });
+    assert_eq!(
+        schema["properties"]["set_items"],
+        or_null(&set_of(&integer))
+    );
+    assert_eq!(
+        schema["properties"]["vec_items"],
+        or_null(&array_of(&integer))
+    );
     for field in ["set_items", "vec_items"] {
-        assert_eq!(schema["properties"][field], expected, "{field}");
         assert!(
             !schema["required"]
                 .as_array()
@@ -177,40 +233,48 @@ fn test_a_slot_null_field_describes_as_the_array_it_writes_when_present() {
 #[cfg(feature = "jsonschema")]
 fn test_each_slot_describes_the_null_its_own_option_writes() {
     let properties = NullNestingSlots::json_schema()["properties"].clone();
-    let plain_array = array_of(&serde_json::json!({ "type": "integer" }));
+    let integer = serde_json::json!({ "type": "integer" });
+    let plain_array = array_of(&integer);
     let nullable_items = array_of(&integer_or_null());
+    let nullable_set = set_of(&integer_or_null());
 
-    for field in ["map_set_element", "map_vec_element"] {
-        assert_eq!(
-            properties[field]["additionalProperties"], nullable_items,
-            "{field}"
-        );
-    }
-    for field in ["map_set_slot", "map_vec_slot"] {
-        assert_eq!(
-            properties[field]["additionalProperties"],
-            or_null(&plain_array),
-            "{field}"
-        );
-    }
+    assert_eq!(
+        properties["map_set_element"]["additionalProperties"],
+        nullable_set
+    );
+    assert_eq!(
+        properties["map_vec_element"]["additionalProperties"],
+        nullable_items
+    );
+    assert_eq!(
+        properties["map_set_slot"]["additionalProperties"],
+        or_null(&set_of(&integer))
+    );
+    assert_eq!(
+        properties["map_vec_slot"]["additionalProperties"],
+        or_null(&plain_array)
+    );
     assert_eq!(
         properties["map_both"]["additionalProperties"],
         or_null(&nullable_items)
     );
 
-    for field in ["tuple_set_element", "tuple_vec_element"] {
-        assert_eq!(
-            properties[field]["prefixItems"][1], nullable_items,
-            "{field}"
-        );
-    }
-    for field in ["tuple_set_slot", "tuple_vec_slot"] {
-        assert_eq!(
-            properties[field]["prefixItems"][1],
-            or_null(&plain_array),
-            "{field}"
-        );
-    }
+    assert_eq!(
+        properties["tuple_set_element"]["prefixItems"][1],
+        nullable_set
+    );
+    assert_eq!(
+        properties["tuple_vec_element"]["prefixItems"][1],
+        nullable_items
+    );
+    assert_eq!(
+        properties["tuple_set_slot"]["prefixItems"][1],
+        or_null(&set_of(&integer))
+    );
+    assert_eq!(
+        properties["tuple_vec_slot"]["prefixItems"][1],
+        or_null(&plain_array)
+    );
     assert_eq!(
         properties["tuple_both"]["prefixItems"][1],
         or_null(&nullable_items)
@@ -220,7 +284,7 @@ fn test_each_slot_describes_the_null_its_own_option_writes() {
     // the inner array's items, then the inner array itself, both inside the outer array.
     assert_eq!(
         properties["map_wrapped"]["additionalProperties"],
-        array_of(&or_null(&nullable_items))
+        array_of(&or_null(&nullable_set))
     );
 }
 
@@ -264,35 +328,54 @@ fn test_the_typescript_surface_puts_the_null_at_the_level_it_was_written() {
 fn test_the_zod_surface_puts_the_nullable_at_the_level_it_was_written() {
     let element_null = ElementNullFields::zod_schema();
     for spelling in [
-        "set_items: z.array(z.nullable(z.number().int())),",
-        "vec_items: z.array(z.nullable(z.number().int())),",
+        format!("set_items: z.array(z.nullable(z.number().int())){REPEAT_CHECK},"),
+        "vec_items: z.array(z.nullable(z.number().int())),".to_owned(),
     ] {
-        assert!(element_null.contains(spelling), "Got: {element_null}");
+        assert!(element_null.contains(&spelling), "Got: {element_null}");
     }
     let slot_null = SlotNullFields::zod_schema();
     for spelling in [
-        "set_items: z.union([z.null().transform(() => undefined), z.array(z.number().int()), \
-         z.undefined()]).prefault(undefined),",
+        format!(
+            "set_items: z.union([z.null().transform(() => undefined), \
+             z.array(z.number().int()){REPEAT_CHECK}, z.undefined()]).prefault(undefined),"
+        ),
         "vec_items: z.union([z.null().transform(() => undefined), z.array(z.number().int()), \
-         z.undefined()]).prefault(undefined),",
+         z.undefined()]).prefault(undefined),"
+            .to_owned(),
     ] {
-        assert!(slot_null.contains(spelling), "Got: {slot_null}");
+        assert!(slot_null.contains(&spelling), "Got: {slot_null}");
     }
     let schema = NullNestingSlots::zod_schema();
     for spelling in [
-        "map_both: z.record(z.string(), z.nullable(z.array(z.nullable(z.number().int())))),",
-        "map_wrapped: z.record(z.string(), z.array(z.nullable(z.array(z.nullable(z.number().int()))))),",
-        "map_set_element: z.record(z.string(), z.array(z.nullable(z.number().int()))),",
-        "map_set_slot: z.record(z.string(), z.nullable(z.array(z.number().int()))),",
-        "map_vec_element: z.record(z.string(), z.array(z.nullable(z.number().int()))),",
-        "map_vec_slot: z.record(z.string(), z.nullable(z.array(z.number().int()))),",
-        "tuple_both: z.tuple([z.string(), z.nullable(z.array(z.nullable(z.number().int())))]),",
-        "tuple_set_element: z.tuple([z.string(), z.array(z.nullable(z.number().int()))]),",
-        "tuple_set_slot: z.tuple([z.string(), z.nullable(z.array(z.number().int()))]),",
-        "tuple_vec_element: z.tuple([z.string(), z.array(z.nullable(z.number().int()))]),",
-        "tuple_vec_slot: z.tuple([z.string(), z.nullable(z.array(z.number().int()))]),",
+        "map_both: z.record(z.string(), z.nullable(z.array(z.nullable(z.number().int())))),"
+            .to_owned(),
+        format!(
+            "map_wrapped: z.record(z.string(), \
+             z.array(z.nullable(z.array(z.nullable(z.number().int())){REPEAT_CHECK}))),"
+        ),
+        format!(
+            "map_set_element: z.record(z.string(), \
+             z.array(z.nullable(z.number().int())){REPEAT_CHECK}),"
+        ),
+        format!(
+            "map_set_slot: z.record(z.string(), z.nullable(z.array(z.number().int()){REPEAT_CHECK})),"
+        ),
+        "map_vec_element: z.record(z.string(), z.array(z.nullable(z.number().int()))),".to_owned(),
+        "map_vec_slot: z.record(z.string(), z.nullable(z.array(z.number().int()))),".to_owned(),
+        "tuple_both: z.tuple([z.string(), z.nullable(z.array(z.nullable(z.number().int())))]),"
+            .to_owned(),
+        format!(
+            "tuple_set_element: z.tuple([z.string(), \
+             z.array(z.nullable(z.number().int())){REPEAT_CHECK}]),"
+        ),
+        format!(
+            "tuple_set_slot: z.tuple([z.string(), z.nullable(z.array(z.number().int()){REPEAT_CHECK})]),"
+        ),
+        "tuple_vec_element: z.tuple([z.string(), z.array(z.nullable(z.number().int()))]),"
+            .to_owned(),
+        "tuple_vec_slot: z.tuple([z.string(), z.nullable(z.array(z.number().int()))]),".to_owned(),
     ] {
-        assert!(schema.contains(spelling), "Got: {schema}");
+        assert!(schema.contains(&spelling), "{spelling} in: {schema}");
     }
 }
 
@@ -307,12 +390,13 @@ fn test_a_set_nesting_describes_as_the_vec_nesting_it_writes() {
         ("tuple_set_slot", "tuple_vec_slot"),
     ] {
         assert_eq!(
-            properties[set_field], properties[vec_field],
+            without_unique_items(&properties[set_field]),
+            properties[vec_field],
             "{set_field} against {vec_field}"
         );
     }
     assert_eq!(
-        ElementNullFields::json_schema()["properties"]["set_items"],
+        without_unique_items(&ElementNullFields::json_schema()["properties"]["set_items"]),
         ElementNullFields::json_schema()["properties"]["vec_items"]
     );
 }

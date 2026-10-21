@@ -23,6 +23,21 @@ use tixschema::model_schema;
 #[cfg(any(feature = "typescript", feature = "zod"))]
 const SEQUENCE_WRAPPERS: [&str; 4] = ["BTreeSet", "BinaryHeap", "HashSet", "VecDeque"];
 
+/// The check Zod writes on the array of a set, which refuses an array that repeats an item.
+#[cfg(feature = "zod")]
+const REPEAT_CHECK: &str = ".check((ctx) => {
+  const seen = new Set<string>();
+  for (const item of ctx.value) {
+    const text = JSON.stringify(item);
+    if (seen.has(text)) {
+      ctx.issues.push({ code: \"custom\", message: \"repeats an item: a set holds each item \
+                            once\", input: ctx.value, continue: true });
+      return;
+    }
+    seen.add(text);
+  }
+})";
+
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ComprehensiveHashMapTest {
@@ -799,6 +814,30 @@ struct DocumentedSequenceFields {
 /// calls it, and it answers the payload as it is.
 const fn trim(payload: Value) -> Value {
     payload
+}
+
+/// `zod` with the repeat check of each set taken out: what a set writes beside what its `Vec`
+/// twin writes.
+#[cfg(feature = "zod")]
+fn without_repeat_checks(zod: &str) -> String {
+    zod.replace(REPEAT_CHECK, "")
+}
+
+/// `schema` with the `uniqueItems` of each set taken out: what a set describes beside what its
+/// `Vec` twin describes.
+#[cfg(feature = "jsonschema")]
+fn without_unique_items(schema: &Value) -> Value {
+    match schema {
+        Value::Object(members) => Value::Object(
+            members
+                .iter()
+                .filter(|(key, _)| key.as_str() != "uniqueItems")
+                .map(|(key, member)| (key.clone(), without_unique_items(member)))
+                .collect(),
+        ),
+        Value::Array(items) => Value::Array(items.iter().map(without_unique_items).collect()),
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => schema.clone(),
+    }
 }
 
 /// The member an `Option` field written with a `skip_serializing_if` renders as. The attribute
@@ -3339,7 +3378,7 @@ fn test_set_element_json_schema() {
 
     assert_eq!(
         properties["labels"],
-        serde_json::json!({ "type": "array", "items": { "type": "string" } })
+        serde_json::json!({ "type": "array", "items": { "type": "string" }, "uniqueItems": true })
     );
 
     // A length written on the field counts the array's items and reaches none of them, as it does
@@ -3349,6 +3388,7 @@ fn test_set_element_json_schema() {
         serde_json::json!({
             "type": "array",
             "items": { "type": "string" },
+            "uniqueItems": true,
             "minItems": 3_u32
         })
     );
@@ -3439,7 +3479,13 @@ fn test_set_elements_render_as_vec_elements() {
     let set_schema = SetElementFields::json_schema();
     let vec_schema = VecElementFields::json_schema();
 
-    assert_eq!(set_schema["properties"], vec_schema["properties"]);
+    for (field, described) in set_schema["properties"].as_object().unwrap() {
+        assert_eq!(described["uniqueItems"], true, "for: {field}");
+    }
+    assert_eq!(
+        without_unique_items(&set_schema["properties"]),
+        vec_schema["properties"]
+    );
     assert_eq!(set_schema["required"], vec_schema["required"]);
 }
 
@@ -3465,16 +3511,23 @@ fn test_set_element_typescript_generation() {
 fn test_set_element_zod_generation() {
     let zod_schema = SetElementFields::zod_schema();
     for spelling in [
-        "aliased_tags: z.array(MetricTagRefType$Schema),",
-        "big_ids: z.array(z.number().int()),",
-        "constrained_labels: z.array(z.string()).min(3, { error: (issue) => `too short: minimum length is 3, got ${Array.isArray(issue.input) ? issue.input.length : 0}` }),",
-        "labels: z.array(z.string()),",
+        format!("aliased_tags: z.array(MetricTagRefType$Schema){REPEAT_CHECK},"),
+        format!("big_ids: z.array(z.number().int()){REPEAT_CHECK},"),
+        format!(
+            "constrained_labels: z.array(z.string()).min(3, {{ error: (issue) => `too short: \
+             minimum length is 3, got ${{Array.isArray(issue.input) ? issue.input.length : 0}}` \
+             }}){REPEAT_CHECK},"
+        ),
+        format!("labels: z.array(z.string()){REPEAT_CHECK},"),
         // The preprocess wrap belongs once, outside the array — where the `Vec` spelling puts it.
-        "preprocessed_labels: z.preprocess(trim, z.array(z.string())),",
-        "sibling_tags: z.array(MetricTag$Schema),",
-        "small_ids: z.array(z.number().int()),",
+        format!("preprocessed_labels: z.preprocess(trim, z.array(z.string()){REPEAT_CHECK}),"),
+        format!("sibling_tags: z.array(MetricTag$Schema){REPEAT_CHECK},"),
+        format!("small_ids: z.array(z.number().int()){REPEAT_CHECK},"),
     ] {
-        assert!(zod_schema.contains(spelling), "Got: {zod_schema}");
+        assert!(
+            zod_schema.contains(&spelling),
+            "{spelling} in: {zod_schema}"
+        );
     }
 }
 
@@ -3496,7 +3549,8 @@ fn test_no_sequence_wrapper_name_survives_into_generated_output() {
 #[cfg(feature = "zod")]
 fn test_set_fields_validate_as_vec_fields() {
     assert_eq!(
-        SetElementFields::zod_schema().replace("SetElementFields", "VecElementFields"),
+        without_repeat_checks(&SetElementFields::zod_schema())
+            .replace("SetElementFields", "VecElementFields"),
         VecElementFields::zod_schema()
     );
 }
@@ -3529,10 +3583,12 @@ fn test_every_covered_wrapper_describes_as_the_vec_spelling() {
             VecDequeElementFields::json_schema(),
         ),
     ] {
-        assert_eq!(
-            schema["properties"], vec_schema["properties"],
-            "for: {wrapper}"
-        );
+        let described = if wrapper.contains("Set") {
+            without_unique_items(&schema["properties"])
+        } else {
+            schema["properties"].clone()
+        };
+        assert_eq!(described, vec_schema["properties"], "for: {wrapper}");
         assert_eq!(schema["required"], vec_schema["required"], "for: {wrapper}");
     }
 }
@@ -3578,8 +3634,13 @@ fn test_every_covered_wrapper_validates_as_the_vec_spelling() {
         ),
         ("VecDequeElementFields", VecDequeElementFields::zod_schema()),
     ] {
+        let validated = if wrapper.contains("Set") {
+            without_repeat_checks(&schema)
+        } else {
+            schema
+        };
         assert_eq!(
-            schema.replace(wrapper, "VecElementFields"),
+            validated.replace(wrapper, "VecElementFields"),
             vec_schema,
             "for: {wrapper}"
         );
@@ -3632,7 +3693,10 @@ fn test_a_sibling_slot_writes_the_object_its_value_writes() {
 fn test_set_slots_describe_as_the_vec_slot_twin() {
     let set_schema = SetSlotValues::json_schema();
     let vec_schema = VecSlotValues::json_schema();
-    assert_eq!(set_schema["properties"], vec_schema["properties"]);
+    assert_eq!(
+        without_unique_items(&set_schema["properties"]),
+        vec_schema["properties"]
+    );
     assert_eq!(set_schema["required"], vec_schema["required"]);
 }
 
@@ -3640,7 +3704,11 @@ fn test_set_slots_describe_as_the_vec_slot_twin() {
 #[cfg(feature = "jsonschema")]
 fn test_set_slots_describe_as_arrays_of_their_element() {
     let properties = SetSlotValues::json_schema()["properties"].clone();
-    let integer_array = serde_json::json!({ "type": "array", "items": { "type": "integer" } });
+    let integer_array = serde_json::json!({
+        "type": "array",
+        "items": { "type": "integer" },
+        "uniqueItems": true
+    });
     assert_eq!(
         properties["small_ids"]["additionalProperties"],
         integer_array
@@ -3648,7 +3716,7 @@ fn test_set_slots_describe_as_arrays_of_their_element() {
     assert_eq!(properties["tuple_ids"]["prefixItems"][1], integer_array);
     assert_eq!(
         properties["labels"]["additionalProperties"],
-        serde_json::json!({ "type": "array", "items": { "type": "string" } })
+        serde_json::json!({ "type": "array", "items": { "type": "string" }, "uniqueItems": true })
     );
     // A slot cannot be dropped, so a `None` there is `null` rather than an absent key.
     assert_eq!(
@@ -3659,7 +3727,8 @@ fn test_set_slots_describe_as_arrays_of_their_element() {
     // it lands among the items rather than in place of the slot.
     let nullable_integer_array = serde_json::json!({
         "type": "array",
-        "items": { "anyOf": [{ "type": "integer" }, { "type": "null" }] }
+        "items": { "anyOf": [{ "type": "integer" }, { "type": "null" }] },
+        "uniqueItems": true
     });
     assert_eq!(
         properties["optional_element_ids"]["additionalProperties"],
@@ -3690,12 +3759,15 @@ fn test_a_sibling_tuple_slot_describes_as_the_sibling_it_holds() {
 fn test_a_wrapped_sibling_tuple_slot_describes_as_the_array_of_that_sibling() {
     let properties = SiblingSlotValues::json_schema()["properties"].clone();
     let tag_array = serde_json::json!({ "type": "array", "items": MetricTag::json_schema() });
-    for field in ["setted", "vecced"] {
-        assert_eq!(
-            properties[field]["prefixItems"][1], tag_array,
-            "for: {field}"
-        );
-    }
+    assert_eq!(properties["vecced"]["prefixItems"][1], tag_array);
+    assert_eq!(
+        properties["setted"]["prefixItems"][1],
+        serde_json::json!({
+            "type": "array",
+            "items": MetricTag::json_schema(),
+            "uniqueItems": true
+        })
+    );
 }
 
 #[test]
@@ -3716,11 +3788,14 @@ fn test_sibling_tuple_slots_type_as_the_sibling_they_hold() {
 fn test_sibling_tuple_slots_validate_against_the_sibling_they_hold() {
     let zod_schema = SiblingSlotValues::zod_schema();
     for spelling in [
-        "bare: z.tuple([z.string(), MetricTag$Schema]),",
-        "setted: z.tuple([z.string(), z.array(MetricTag$Schema)]),",
-        "vecced: z.tuple([z.string(), z.array(MetricTag$Schema)]),",
+        "bare: z.tuple([z.string(), MetricTag$Schema]),".to_owned(),
+        format!("setted: z.tuple([z.string(), z.array(MetricTag$Schema){REPEAT_CHECK}]),"),
+        "vecced: z.tuple([z.string(), z.array(MetricTag$Schema)]),".to_owned(),
     ] {
-        assert!(zod_schema.contains(spelling), "Got: {zod_schema}");
+        assert!(
+            zod_schema.contains(&spelling),
+            "{spelling} in: {zod_schema}"
+        );
     }
 }
 
@@ -3751,18 +3826,31 @@ fn test_set_slots_type_as_the_vec_slot_twin() {
 fn test_set_slots_validate_as_the_vec_slot_twin() {
     let zod_schema = SetSlotValues::zod_schema();
     for spelling in [
-        "aliased_tags: z.record(z.string(), z.array(MetricTagRefType$Schema)),",
-        "enum_keyed_tags: z.partialRecord(MetricSlot$Schema, z.array(MetricTag$Schema)),",
-        "optional_element_ids: z.record(z.string(), z.array(z.nullable(z.number().int()))),",
-        "optional_ids: z.record(z.string(), z.nullable(z.array(z.number().int()))),",
-        "tuple_ids: z.tuple([z.string(), z.array(z.number().int())]),",
-        "tuple_labels: z.tuple([z.number().int(), z.array(z.string())]),",
-        "tuple_optional_ids: z.tuple([z.string(), z.array(z.nullable(z.number().int()))]),",
+        format!(
+            "aliased_tags: z.record(z.string(), z.array(MetricTagRefType$Schema){REPEAT_CHECK}),"
+        ),
+        format!(
+            "enum_keyed_tags: z.partialRecord(MetricSlot$Schema, z.array(MetricTag$Schema){REPEAT_CHECK}),"
+        ),
+        format!(
+            "optional_element_ids: z.record(z.string(), z.array(z.nullable(z.number().int())){REPEAT_CHECK}),"
+        ),
+        format!(
+            "optional_ids: z.record(z.string(), z.nullable(z.array(z.number().int()){REPEAT_CHECK})),"
+        ),
+        format!("tuple_ids: z.tuple([z.string(), z.array(z.number().int()){REPEAT_CHECK}]),"),
+        format!("tuple_labels: z.tuple([z.number().int(), z.array(z.string()){REPEAT_CHECK}]),"),
+        format!(
+            "tuple_optional_ids: z.tuple([z.string(), z.array(z.nullable(z.number().int())){REPEAT_CHECK}]),"
+        ),
     ] {
-        assert!(zod_schema.contains(spelling), "Got: {zod_schema}");
+        assert!(
+            zod_schema.contains(&spelling),
+            "{spelling} in: {zod_schema}"
+        );
     }
     assert_eq!(
-        zod_schema.replace("SetSlotValues", "VecSlotValues"),
+        without_repeat_checks(&zod_schema).replace("SetSlotValues", "VecSlotValues"),
         VecSlotValues::zod_schema()
     );
 }
@@ -3804,10 +3892,23 @@ fn test_nested_sequences_describe_at_the_depth_they_are_written() {
         "items": { "type": "array", "items": { "type": "integer" } }
     });
 
-    for field in ["set_of_rows", "small_ids"] {
-        assert_eq!(properties[field], integer_rows, "for: {field}");
-    }
-    assert_eq!(properties["vec_of_sets"], integer_rows);
+    assert_eq!(properties["small_ids"], integer_rows);
+    // The set is the level it was written at: the outer array of rows, and each row of a list.
+    assert_eq!(
+        properties["set_of_rows"],
+        serde_json::json!({
+            "type": "array",
+            "items": { "type": "array", "items": { "type": "integer" } },
+            "uniqueItems": true
+        })
+    );
+    assert_eq!(
+        properties["vec_of_sets"],
+        serde_json::json!({
+            "type": "array",
+            "items": { "type": "array", "items": { "type": "integer" }, "uniqueItems": true }
+        })
+    );
     // The field's own `Option` widens the key position with the null the outer wrap now admits, on
     // top of the array nesting every other field in this loop shares.
     assert_eq!(
@@ -3871,12 +3972,15 @@ fn test_nested_sequence_slots_describe_at_the_depth_they_are_written() {
         "items": { "type": "array", "items": { "type": "integer" } }
     });
 
-    for field in ["rows", "set_rows"] {
-        assert_eq!(
-            properties[field]["additionalProperties"], integer_rows,
-            "for: {field}"
-        );
-    }
+    assert_eq!(properties["rows"]["additionalProperties"], integer_rows);
+    assert_eq!(
+        properties["set_rows"]["additionalProperties"],
+        serde_json::json!({
+            "type": "array",
+            "items": { "type": "array", "items": { "type": "integer" } },
+            "uniqueItems": true
+        })
+    );
     assert_eq!(
         properties["optional_rows"]["additionalProperties"],
         serde_json::json!({ "anyOf": [integer_rows, { "type": "null" }] })
@@ -3939,12 +4043,19 @@ fn test_nested_sequences_validate_at_the_depth_they_are_written() {
         "deep_ids: z.array(z.array(z.array(z.number().int()))),",
         "fixed_grid: z.array(z.array(z.number().int()).length(2)).length(2),",
         "labels: z.array(z.array(z.string())),",
-        "set_of_rows: z.array(z.array(z.number().int())),",
         "sibling_rows: z.array(z.array(MetricTag$Schema)),",
         "small_ids: z.array(z.array(z.number().int())),",
-        "vec_of_sets: z.array(z.array(z.number().int())),",
     ] {
         assert!(zod_schema.contains(spelling), "Got: {zod_schema}");
+    }
+    for spelling in [
+        format!("set_of_rows: z.array(z.array(z.number().int())){REPEAT_CHECK},"),
+        format!("vec_of_sets: z.array(z.array(z.number().int()){REPEAT_CHECK}),"),
+    ] {
+        assert!(
+            zod_schema.contains(&spelling),
+            "{spelling} in: {zod_schema}"
+        );
     }
 
     let slot_schema = NestedSequenceSlots::zod_schema();
@@ -3952,12 +4063,18 @@ fn test_nested_sequences_validate_at_the_depth_they_are_written() {
         "enum_keyed_rows: z.partialRecord(MetricSlot$Schema, z.array(z.array(z.number().int()))),",
         "optional_rows: z.record(z.string(), z.nullable(z.array(z.array(z.number().int())))),",
         "rows: z.record(z.string(), z.array(z.array(z.number().int()))),",
-        "set_rows: z.record(z.string(), z.array(z.array(z.number().int()))),",
         "sibling_rows: z.record(z.string(), z.array(z.array(MetricTag$Schema))),",
         "tuple_rows: z.tuple([z.string(), z.array(z.array(z.number().int()))]),",
     ] {
         assert!(slot_schema.contains(spelling), "Got: {slot_schema}");
     }
+    let set_rows = format!(
+        "set_rows: z.record(z.string(), z.array(z.array(z.number().int())){REPEAT_CHECK}),"
+    );
+    assert!(
+        slot_schema.contains(&set_rows),
+        "{set_rows} in: {slot_schema}"
+    );
 }
 
 #[test]

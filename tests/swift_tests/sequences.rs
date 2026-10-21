@@ -1,7 +1,9 @@
 //! What the Swift backend writes for a std sequence other than `Vec`: the array serde writes for
 //! it, declared, read, written and walked by `validate()` as a `Vec` is. Each type is held to the
-//! text of its twin written with `Vec`, the twin's name read as its own. What a read answers is
-//! run under a Swift toolchain in `service_schema_emitted_client_tests/run_swift_sequences.rs`.
+//! text of its twin written with `Vec`, the twin's name read as its own. A set's `validate()`
+//! refuses a repeat besides, so a type that holds one is held to its twin beside `validate()`.
+//! What a read answers is run under a Swift toolchain in
+//! `service_schema_emitted_client_tests/run_swift_sequences.rs`.
 
 use alloc::collections::{BTreeSet, BinaryHeap, VecDeque};
 use std::collections::{HashMap, HashSet};
@@ -176,6 +178,53 @@ fn twins(sequences: (&str, &str), vectors: (&str, &str)) -> (String, String) {
     )
 }
 
+/// What `swift` writes beside what `validate()` runs: the text without each `validate()` and
+/// each function a statement of one calls.
+fn beside_validate(swift: &str) -> String {
+    let mut written = swift.to_owned();
+    for opening in [
+        "public func validate() -> [String] ",
+        "; private static func swiftSchema",
+    ] {
+        while let Some(start) = written.find(opening) {
+            let open = start + written[start..].find('{').unwrap();
+            let close = closing_brace(&written, open).unwrap();
+            written.replace_range(start..=close, "");
+        }
+    }
+    written
+}
+
+/// Where the brace that closes the one at `open` is in `text`.
+fn closing_brace(text: &str, open: usize) -> Option<usize> {
+    let mut depth = 0_usize;
+    for (at, letter) in text[open..].char_indices() {
+        match letter {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(open + at);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Holds the type written with sets to its twin written with `Vec` beside `validate()`, and its
+/// `validate()` to the repeat of each set `repeated` names.
+fn assert_set_twins(sequences: (&str, &str), vectors: (&str, &str), repeated: &[&str]) {
+    let (held, as_vec) = twins(sequences, vectors);
+    assert_eq!(beside_validate(&held), beside_validate(&as_vec));
+    for set in repeated {
+        let asked = format!(".swiftSchemaRepeats({set})");
+        assert!(held.contains(&asked), "{asked} in: {held}");
+    }
+    assert!(!as_vec.contains("swiftSchemaRepeats"), "{as_vec}");
+}
+
 /// The JSON serde writes for `held`, read back by serde as it was written.
 fn read_back<Held>(held: &Held) -> String
 where
@@ -315,11 +364,11 @@ fn each_sequence_is_declared_an_array() {
 
 #[test]
 fn each_sequence_is_written_as_a_vec_is() {
-    let (held, as_vec) = twins(
+    assert_set_twins(
         (&lone_swift::swift_definition(), "Lone"),
         (&lone_as_vec_swift::swift_definition(), "LoneAsVec"),
+        &["btreeSet", "hashSet"],
     );
-    assert_eq!(held, as_vec);
 }
 
 #[cfg(feature = "indexmap")]
@@ -327,14 +376,14 @@ fn each_sequence_is_written_as_a_vec_is() {
 fn an_index_set_is_written_as_a_vec_is() {
     let swift = indexed_lone_swift::swift_definition();
     assert!(swift.contains("public let indexSet: [String]"), "{swift}");
-    let (held, as_vec) = twins(
+    assert_set_twins(
         (&swift, "IndexedLone"),
         (
             &indexed_lone_as_vec_swift::swift_definition(),
             "IndexedLoneAsVec",
         ),
+        &["indexSet"],
     );
-    assert_eq!(held, as_vec);
 }
 
 #[test]
@@ -354,11 +403,11 @@ fn a_sequence_nested_optional_held_and_of_a_model_is_written_as_a_vec_is() {
     ] {
         assert!(swift.contains(declared), "{declared} in: {swift}");
     }
-    let (held, as_vec) = twins(
+    assert_set_twins(
         (&swift, "Bundled"),
         (&bundled_as_vec_swift::swift_definition(), "BundledAsVec"),
+        &["held", "layered", "listed"],
     );
-    assert_eq!(held, as_vec);
 }
 
 #[test]
@@ -377,19 +426,21 @@ fn a_sequence_of_a_model_filled_with_a_parameter_is_written_as_a_vec_is() {
 
 #[test]
 fn a_sequence_in_a_variant_a_slot_a_brand_and_an_alias_is_written_as_a_vec_is() {
+    assert_set_twins(
+        (&hauling_swift::swift_definition(), "Hauling"),
+        (&hauling_as_vec_swift::swift_definition(), "HaulingAsVec"),
+        &["members", "slot0"],
+    );
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    assert_set_twins(
+        (&crew_swift::swift_definition(), "Crew"),
+        (&crew_as_vec_swift::swift_definition(), "CrewAsVec"),
+        &["value"],
+    );
     let pairs = [
-        (
-            (hauling_swift::swift_definition(), "Hauling"),
-            (hauling_as_vec_swift::swift_definition(), "HaulingAsVec"),
-        ),
         (
             (queued_swift::swift_definition(), "Queued"),
             (queued_as_vec_swift::swift_definition(), "QueuedAsVec"),
-        ),
-        #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-        (
-            (crew_swift::swift_definition(), "Crew"),
-            (crew_as_vec_swift::swift_definition(), "CrewAsVec"),
         ),
         (
             (roster_swift::swift_definition(), "Roster"),
