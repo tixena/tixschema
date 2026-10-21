@@ -1704,6 +1704,15 @@ to keep.
   of the wrapper for the flattened member alone. `encode(to:)` writes each flattened member at
   its place, through its shape (`written_from`): a key two of them hold is written once, with the
   last value, where serde writes it twice.
+- **Every flattened member is handed the keys taken ahead of it.** `member_reads` hands each a
+  `Handed`: the `taken + [...]` of the holder's own keys and those each member flattened ahead
+  took, and `by_a_member`, whether a member ahead took any. A type that takes keys
+  (`preprocess::beside`) and a member that names a function read that expression, as a map does.
+  Where `by_a_member` holds, `present_statement` reads any other flattened member through
+  `corrected_field` with no function: `SwiftSchemaPayload(from:without:)`, then the type, a model
+  `validate()` walks through `SwiftSchemaRead{Member}`, unjudged. A struct that reads a key a
+  struct ahead took is then refused, as serde refuses it. A member flattened after no member that
+  took keys is written as it was.
 - **An untagged enum takes the variant serde takes.** `validate::bound_alone` is what chooses: a
   member's own bounds, and `held_walk` under `Walk::Bound`, which asks each brand the member
   holds for `swiftSchemaValidateBound()`, the member the wrapper of a bounded brand declares
@@ -1731,9 +1740,9 @@ to keep.
   `an_absent_key_and_a_null_are_read_as_they_were` passed on the emitter before a read was
   written. The `validate()` runs read a payload through the unjudged initializer, and build in
   code the three values no read hands back. `tests/swift_tests/flattened.rs` pins the read of a
-  flattened map at each place, over the models of `tests/swift_tests/flattened_models.rs`, which
-  also pin what serde reads of each, and `run_swift_flattened.rs` reads and writes each back
-  under the toolchain, against serde.
+  flattened map at each place, and of each other member flattened after a struct, over the
+  models of `tests/swift_tests/flattened_models.rs`, which also pin what serde reads of each, and
+  `run_swift_flattened.rs` reads and writes each back under the toolchain, against serde.
 
 ### 12. The Swift `preprocess`
 
@@ -1777,7 +1786,8 @@ change to the emitter has to keep.
   is the nested type, so `both` writes each member's type through `naming_its_owner`.
 - **A function is handed the keys no type around its own took**, as the Rust read hands them.
   `Source::Beside` is the decoder of a type that reads keys of its own beside the value: a
-  flattened member (`decode_statement`, with the wire names of the struct's own members), a
+  flattened member (`decode_statement`, with the wire names of the struct's own members and the
+  keys each struct flattened ahead of it took), a
   payload under a tag alone (the tag) and an untagged one. It holds the keys as a Swift
   expression, `taken + ["dock"]` (`taken_with`). A type whose statements name `taken`
   (`names_taken`) has its own read twice: `init(swiftSchemaUnjudged:swiftSchemaWithout:)`, and
@@ -1790,7 +1800,8 @@ change to the emitter has to keep.
   `preprocess::beside` is what a holder asks. A flattened member, the slot of a variant read
   from the enum's decoder and the value of a brand are read through that initializer where the
   type takes keys, and through the read they had everywhere else, so a type that names no
-  function and reads none is written as it was. A struct written for a variant's members
+  function and reads none is written as it was, a flattened member after a struct that took keys
+  apart. A struct written for a variant's members
   answers through `VariantPayload::takes_keys`. A type declared below its holder is not known
   to take keys, and is read from the holder's whole object.
 - **An untagged enum hands its readers the keys.** A `swiftSchemaRead{Variant}` whose statements
