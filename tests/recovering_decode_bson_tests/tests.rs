@@ -441,7 +441,7 @@ struct Assigned {
 }
 
 /// A `transparent` tuple struct beside whose value is a slot serde neither writes nor reads.
-#[model_schema(enable = ["decode_with", "mongodb"])]
+#[model_schema(enable = ["decode_with", "mongodb"], no_display)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Tags(Vec<String>, #[serde(skip)] u8);
@@ -453,7 +453,7 @@ struct Tags(Vec<String>, #[serde(skip)] u8);
 struct Keeper(#[serde(skip)] u8, ObjectId);
 
 /// A `transparent` tuple struct with a slot serde never reads, over a model type.
-#[model_schema(enable = ["decode_with", "mongodb"])]
+#[model_schema(enable = ["decode_with", "mongodb"], no_display)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Stamped(Version, #[serde(skip)] u8);

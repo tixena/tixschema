@@ -1406,7 +1406,7 @@ resort; this is what a change has to keep.
 
 ### 8. Branded Newtypes
 
-Single-field tuple structs with `#[serde(transparent)]` are treated as branded/opaque types, and so is a `#[serde(transparent)]` struct with named fields, over the one field serde reads it as: `brand_field` in `src/features/serde.rs` is the one seam every surface asks, the web three and Dart, Swift and Kotlin alike, and `transparent_field` beside it is serde's own rule for which named field that is (read, no `default`, not `PhantomData`). The brand publishes under its Rust ident unless `#[model_schema(name = "...")]` names another, and that name reaches the surface twice: as the exported type and as the brand tag the values carry.
+Single-field tuple structs with `#[serde(transparent)]` are treated as branded/opaque types, and so is any other `#[serde(transparent)]` struct, with named fields or with several slots, over the one field serde reads it as: `brand_field` in `src/features/serde.rs` is the one seam every surface asks, the web three and Dart, Swift and Kotlin alike, and `transparent_field` beside it is serde's own rule for which field that is (read, no `default`, not `PhantomData`). A tuple struct of one slot is a brand over that slot whatever its attributes say. `brand_slot` answers the field with its place among the struct's fields, and every reader of the value on the Rust side (`validate()`, `Display`, the text a bound on a holder's field measures) reaches a slot by that place, through `brand_member`, so `struct Tagged(#[serde(skip)] PhantomData<u8>, pub String)` is read at `self.1`. The brand publishes under its Rust ident unless `#[model_schema(name = "...")]` names another, and that name reaches the surface twice: as the exported type and as the brand tag the values carry.
 
 A non-generic brand publishes a `$RawSchema`/`$Schema` const pair:
 
@@ -1500,11 +1500,12 @@ Rules:
   combination — with the item re-emitted stripped of it. The three checks a brand does carry are
   written on the type: `#[model_schema(pattern = "...", minLength = N, maxLength = N)]`. Over a
   list the two lengths count its items and `pattern` is refused (section 7). The
-  field a `#[serde(transparent)]` struct with *named* fields is the value of is that slot, and is
-  held to the same. Every other field of such a struct, one serde neither reads nor writes (a
-  skipped one, a `PhantomData` marker), is refused a key as well, in every build and with the item
-  re-emitted without it, under a message of its own (`UNREAD_BRAND_FIELD_PROP_MESSAGE`):
-  `branded_slot_prop_errors` reads every field of a struct `brand_field` answers for
+  field a `#[serde(transparent)]` struct with *named* fields or several slots is the value of is
+  that slot, and is held to the same. Every other field of such a struct, one serde neither reads
+  nor writes (a skipped one, a `PhantomData` marker), is refused a key as well, in every build
+  and with the item re-emitted without it, under a message of its own
+  (`UNREAD_BRAND_FIELD_PROP_MESSAGE`): `branded_slot_prop_errors` reads every field of a struct
+  `brand_field` answers for
 - The three checks are type-level arguments on a brand and on an enum, which hands them to the
   fields it reaches (section 7) and publishes no check of its own. A struct that is no brand and a
   type alias are refused them at `process_item`, in every build (`string_check_refusal_output`,

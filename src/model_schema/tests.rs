@@ -11028,7 +11028,12 @@ fn display_assertion_is_skipped_when_the_inner_names_a_generic_param() {
 fn display_impl_delegates_from_the_inner_field_span() {
     let item: syn::ItemStruct = syn::parse_str("pub struct UserId(pub String);").unwrap();
     let field = item.fields.iter().next().unwrap();
-    let tokens = super::build_branded_display_impl(&item.generics, &item.ident, field);
+    let tokens = super::build_branded_display_impl(
+        &item.generics,
+        &item.ident,
+        field,
+        &super::brand_member(0, field),
+    );
     assert_eq!(
         tokens.to_string(),
         "impl :: std :: fmt :: Display for UserId where String : :: std :: fmt :: Display { fn fmt (& self , f : & mut :: std :: fmt :: Formatter < '_ >) -> :: std :: fmt :: Result { :: std :: fmt :: Display :: fmt (& self . 0 , f) } }"
@@ -11050,7 +11055,12 @@ fn generic_display_impl_bounds_every_type_parameter() {
     let item: syn::ItemStruct =
         syn::parse_str("pub struct DocumentId<IdType>(pub IdType);").unwrap();
     let field = item.fields.iter().next().unwrap();
-    let tokens = super::build_branded_display_impl(&item.generics, &item.ident, field);
+    let tokens = super::build_branded_display_impl(
+        &item.generics,
+        &item.ident,
+        field,
+        &super::brand_member(0, field),
+    );
     assert_eq!(
         tokens.to_string(),
         "impl < IdType > :: std :: fmt :: Display for DocumentId < IdType > where IdType : :: std :: fmt :: Display { fn fmt (& self , f : & mut :: std :: fmt :: Formatter < '_ >) -> :: std :: fmt :: Result { :: std :: fmt :: Display :: fmt (& self . 0 , f) } }"
@@ -11066,6 +11076,7 @@ fn display_tokens(source: &str, args: &proc_macro2::TokenStream) -> String {
         &item.generics,
         &item.ident,
         field,
+        &super::brand_member(0, field),
         &super::parse_model_schema_args(args.clone()),
     )
     .to_string()
@@ -11129,8 +11140,9 @@ fn the_display_block_carries_only_the_impl_once_the_impl_is_emitted() {
 fn constrained_brand_inner_spanned_tokens(source: &str, inner: &str) -> (usize, usize) {
     let item: syn::ItemStruct = syn::parse_str(source).unwrap();
     let args = super::parse_model_schema_args(quote::quote! { pattern = "^[a-z]+$" });
+    let field = item.fields.iter().next().unwrap();
     let validation =
-        super::build_branded_validation(&args, &[], item.fields.iter().next().unwrap()).unwrap();
+        super::build_branded_validation(&args, &[], field, &super::brand_member(0, field)).unwrap();
     let module_ident = syn::Ident::new("slug_id_schema", proc_macro2::Span::call_site());
     let bound = super::BrandBound::of(Some(&validation), &module_ident);
     let validate_method = super::with_branded_checks(bound.held.as_ref(), &[]);
@@ -11187,8 +11199,9 @@ fn brand_emission_under(
         pub struct Branded(pub #ty);
     );
     let args = super::parse_model_schema_args(written);
+    let field = item.fields.iter().next().unwrap();
     let validation =
-        super::build_branded_validation(&args, &[], item.fields.iter().next().unwrap()).unwrap();
+        super::build_branded_validation(&args, &[], field, &super::brand_member(0, field)).unwrap();
     let module_ident = syn::Ident::new(module, proc_macro2::Span::call_site());
     let bound = super::BrandBound::of(Some(&validation), &module_ident);
     let validate_method = super::with_branded_checks(bound.held.as_ref(), &[]);
@@ -16364,6 +16377,67 @@ fn a_prop_on_a_named_brand_field_earns_the_refusal() {
             Some(attribute)
         );
     }
+}
+
+#[test]
+fn a_prop_on_a_tuple_brand_earns_the_refusal_of_the_slot_it_is_written_on() {
+    let (read, marker) = (
+        (
+            BRANDED_SLOT_PROP_REFUSAL,
+            "[model_schema_prop(pattern = \"^a$\")]",
+        ),
+        (
+            UNREAD_BRAND_FIELD_PROP_REFUSAL,
+            "[model_schema_prop(minLength = 2)]",
+        ),
+    );
+    for (source, expected) in [
+        (
+            "#[serde(transparent)] pub struct Marked(#[model_schema_prop(pattern = \"^a$\")] \
+             pub String, #[serde(skip)] #[model_schema_prop(minLength = 2)] PhantomData<u8>);",
+            [read, marker],
+        ),
+        (
+            "#[serde(transparent)] pub struct Marked(#[serde(skip)] \
+             #[model_schema_prop(minLength = 2)] PhantomData<u8>, \
+             #[model_schema_prop(pattern = \"^a$\")] pub String);",
+            [marker, read],
+        ),
+    ] {
+        let refusals = branded_slot_refusals(source);
+        assert_eq!(refusals.len(), 2, "for {source}, got: {refusals:?}");
+        for (refusal, (message, attribute)) in refusals.iter().zip(expected) {
+            assert!(
+                literal_texts(refusal).contains(&format!("model_schema: type `Marked`: {message}")),
+                "for {source}, got: {refusal}"
+            );
+            assert_eq!(
+                located_source_texts(refusal).last().map(String::as_str),
+                Some(attribute),
+                "for {source}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_prop_on_a_tuple_brands_marker_is_refused_once() {
+    let tokens = expansion_over(
+        "#[derive(Debug, Deserialize, Serialize)] #[serde(transparent)] pub struct Label(\
+         #[model_schema_prop(maxLength = 9)] #[serde(skip)] PhantomData<u8>, pub String);",
+    );
+    let refusals = literal_texts(&tokens)
+        .into_iter()
+        .filter(|text| text.starts_with("model_schema: "))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        refusals,
+        vec![format!(
+            "model_schema: type `Label`: {UNREAD_BRAND_FIELD_PROP_REFUSAL}"
+        )],
+        "got: {tokens}"
+    );
+    assert!(!writes_a_prop_attribute(&tokens), "got: {tokens}");
 }
 
 #[test]
