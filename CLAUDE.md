@@ -1348,19 +1348,34 @@ consumer's view; this is what a change has to keep.
   function, and the README states the limit.
 - **Every flattened member is read at its place, in the order declared**, as serde reads it
   (`constructor_arguments`): from the object without the tag, the keys the holder's own members
-  take and those each member flattened ahead of it took. That is what a map, a JSON value, a
-  struct with a flattened member of its own and a function a member names are handed, and a
+  take and the entries each member flattened ahead of it took. That is what a map, a JSON value,
+  a struct with a flattened member of its own and a function a member names are handed, and a
   struct that reads a key a struct ahead of it took is refused, as serde refuses it. A map and a
   JSON value take no key, so two maps are handed the same keys. What a member takes is
-  `keys_taken_by`: the keys `struct_dart_tokens` records for its type in `DART_TAKEN_KEYS`,
-  serde's own list of the name and each alias of every member it reads
-  (`keys_taken_when_flattened` in `src/features/serde.rs`, which the Swift emitter reads too),
-  and none for a member that names a function. A struct that names a `preprocess` on itself is
-  read by serde as a value, and one with a flattened member of its own as a map: each records
-  none. A type the emitter has not written takes none, so a member after a struct declared below
-  its holder is handed the struct's keys, and the README states the limit. `toJson` writes each
-  flattened member at its place: a key two of them hold is written once, with the last value,
-  where serde writes it twice.
+  `taken_by`, the `Taken` recorded for its type in `DART_TAKEN_KEYS`, and nothing for a member
+  that names a function:
+  - `Taken::Keys` of a struct, which `struct_dart_tokens` records from
+    `keys_taken_when_flattened` in `src/features/serde.rs`, which the Swift emitter reads too:
+    serde's own list of the name and each alias of every member it reads. `without` removes them.
+  - `Taken::FirstOf` of an externally tagged enum, which `enum_dart_tokens` records from
+    `variant_names_when_flattened` in `src/features/serde.rs`: the name each variant serde reads
+    is read under and each alias, serde's `VARIANTS`. serde's
+    `FlatMapDeserializer::deserialize_enum` takes the first entry, in the object's order, under one
+    of them, and `without_first` removes that one entry from the object a `jsonDecode` answers in
+    the order written: a `switch` of one arm whose variable,
+    `rest`, calls no function. The entry depends on what is left to the enum, so the keys taken
+    ahead of it are removed first and the keys taken after it from what `without_first` answers
+    (`source`, `removed`); a holder with no flattened enum is written as it was.
+  - Nothing, for an enum under a tag key, an untagged one and one that names a function on
+    itself. serde reads an enum under a tag alone and an untagged one as a map, which takes no
+    key; it reads one under a tag and a content key as a struct of the two, which takes both,
+    and the README states the limit.
+
+  A struct that names a `preprocess` on itself is read by serde as a value, and one with a
+  flattened member of its own as a map: each records none. A type the emitter has not written
+  takes none, so a member after a struct declared below its holder is handed the struct's keys,
+  and the README states the limit. `toJson` writes each flattened member at its place: a key two
+  of them hold is written once, with the last value, where serde writes it twice.
 - **`fromJsonUnjudged` is a taken name of a plain enum** (`DART_ENUM_NAMES_TAKEN`), which holds
   it as a static function. It is not in `DART_FIELD_NAMES_TAKEN`: Dart takes a field and a
   constructor under one name, so such a field is emitted as it was.
@@ -1373,7 +1388,9 @@ consumer's view; this is what a change has to keep.
   serde takes, a reply that breaks a rule through both clients, and the README's section.
   `tests/dart_tests/flattened.rs` pins the read of a flattened member at each place, over the
   models of `tests/dart_tests/flattened_models.rs`, which also pin what serde reads of each, and
-  `run_dart_flattened.rs` reads and writes each back under the Dart SDK, against serde.
+  `run_dart_flattened.rs` reads and writes each back under the Dart SDK, against serde. A
+  variant's entry under its alias is the one payload it holds apart (`UNDER_AN_ALIAS`): the Dart
+  read of an enum reads no variant under an alias, and refuses it.
 
 #### A `preprocess` in the Dart read
 
@@ -1407,9 +1424,10 @@ resort; this is what a change has to keep.
 - **One read calls each function once.** A read that names its payload more than once, an
   optional and a tuple, holds the corrected payload under `corrected`, the variable of a `switch`
   of one arm; any other read is written around the call itself.
-- **A flattened member is read from the keys serde hands it** (`without`): the object without
-  the keys of the members beside it and of the structs flattened ahead of it, and without the
-  tag where the holder is a variant under a tag key (`constructor_arguments`' `tag_key`). A
+- **A flattened member is read from the keys serde hands it** (`without`, `without_first`): the
+  object without the keys of the members beside it and the entries the members flattened ahead
+  of it took, and without the tag where the holder is a variant under a tag key
+  (`constructor_arguments`' `tag_key`). A
   function the member names, and one the type it holds names, is handed those keys. A holder
   with no member of its own hands its first flattened member `json` as it was. A struct's own
   tag is not taken out: serde hands it on too. The slot of a variant under a

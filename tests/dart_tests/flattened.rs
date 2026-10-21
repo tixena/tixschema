@@ -1,12 +1,12 @@
 //! What the Dart emitter reads of a flattened member: the object at its place, without the keys
-//! the holder's own members take and those each member flattened ahead of it took, as serde hands
-//! it. `toJson` writes each flattened member at its place. The reads are run under the Dart SDK in
-//! `tests/service_schema_emitted_client_tests/run_dart_flattened.rs`.
+//! the holder's own members take and the entries each member flattened ahead of it took, as serde
+//! hands it. `toJson` writes each flattened member at its place. The reads are run under the Dart
+//! SDK in `tests/service_schema_emitted_client_tests/run_dart_flattened.rs`.
 
 use super::flattened_models::{
     belaying_dart, clamping_dart, coupling_dart, doubling_dart, fastening_dart, hoisting_dart,
-    lacing_dart, loosening_dart, pairing_dart, rigging_dart, stowing_dart, tethering_dart,
-    twin_dart,
+    kedging_dart, lacing_dart, loading_dart, loosening_dart, mousing_dart, pairing_dart,
+    rigging_dart, shoring_dart, stowing_dart, tethering_dart, trimming_dart, twin_dart,
 };
 
 /// The read of a map of `u8` values from the object `source` names.
@@ -22,6 +22,14 @@ fn values_from(source: &str) -> String {
     format!(
         "Map<String, dynamic>.fromEntries(({source} as Map<String, dynamic>).entries.map((e) => \
          MapEntry(e.key as String, e.value)))"
+    )
+}
+
+/// The object `source` names without its first entry under one of `names`, in the object's order.
+fn without_first(source: &str, names: &str) -> String {
+    format!(
+        "(switch ({{...{source}}}) {{ final rest => \
+         rest..remove(rest.keys.where(const [{names}].contains).firstOrNull) }})"
     )
 }
 
@@ -176,5 +184,61 @@ fn a_member_after_a_flattened_struct_is_read_without_the_keys_the_struct_took() 
         &doubling_dart::dart_definition(),
         "Doubling(marking: Marking.fromJsonUnjudged(json),twice: \
          Marking.fromJsonUnjudged(({...json}..remove('label'))),);",
+    );
+}
+
+/// A map flattened after an externally tagged enum is read without the first entry under the name
+/// of a variant serde reads, or an alias of one, each as serde reads it. The enum is read as it
+/// was.
+#[test]
+fn a_map_after_a_flattened_externally_tagged_enum_is_read_without_the_variants_entry() {
+    assert_written(
+        &loading_dart::dart_definition(),
+        &format!(
+            "Loading(hatching: Hatching.fromJsonUnjudged(json),rest: {},);",
+            values_from(&without_first("json", "'Bay', 'Dock', 'Quay'"))
+        ),
+    );
+    assert_written(
+        &kedging_dart::dart_definition(),
+        &format!(
+            "Kedging(kedge: Warping.fromJsonUnjudged(json),rest: {},);",
+            values_from(&without_first("json", "'pier', 'open_bay'"))
+        ),
+    );
+}
+
+/// A member flattened after an externally tagged enum is handed the object without the enum's
+/// entry, and a member after both is handed it without the keys the second took as well.
+#[test]
+fn a_member_after_a_flattened_externally_tagged_enum_is_read_without_the_variants_entry() {
+    let after_the_enum = without_first("json", "'Bay', 'Dock', 'Quay'");
+    assert_written(
+        &trimming_dart::dart_definition(),
+        &format!(
+            "Trimming(hatching: Hatching.fromJsonUnjudged(json),marking: \
+             Marking.fromJsonUnjudged({after_the_enum}),rest: {},);",
+            values_from(&format!("({{...{after_the_enum}}}..remove('label'))"))
+        ),
+    );
+}
+
+/// A map flattened after an enum under a tag key alone, or after an untagged one, is read as it
+/// was: from every key.
+#[test]
+fn a_map_after_an_enum_read_as_a_map_is_read_from_every_key() {
+    assert_written(
+        &mousing_dart::dart_definition(),
+        &format!(
+            "Mousing(frapping: Frapping.fromJsonUnjudged(json),rest: {},);",
+            values_from("json")
+        ),
+    );
+    assert_written(
+        &shoring_dart::dart_definition(),
+        &format!(
+            "Shoring(chocking: Chocking.fromJsonUnjudged(json),rest: {},);",
+            values_from("json")
+        ),
     );
 }

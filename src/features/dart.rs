@@ -14,7 +14,7 @@ use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{
     brand_field, has_serde_skip_serializing, keys_taken_when_flattened, parse_serde_key_omission,
-    struct_tag,
+    struct_tag, variant_names_when_flattened,
 };
 use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, classify_variant,
@@ -367,6 +367,17 @@ impl<'item> Corrects<'item> {
     }
 }
 
+/// What serde takes off a holder's object for a type flattened into it, which it hands no member
+/// flattened after it.
+#[derive(Clone)]
+enum Taken {
+    /// The first entry, in the object's order, under one of the names: the variant an externally
+    /// tagged enum is read from.
+    FirstOf(Vec<String>),
+    /// Every entry under one of the keys: a struct's members.
+    Keys(Vec<String>),
+}
+
 /// The unjudged read of a type: the name it takes its payload under, and its body.
 struct Unjudged {
     body: String,
@@ -386,9 +397,9 @@ thread_local! {
     /// client reading one member off a declared message needs to name it as the class does.
     static DART_FIELDS: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
 
-    /// The keys serde takes off its holder's object for each struct a class has been emitted for,
-    /// read flattened: what serde hands no member flattened after it.
-    static DART_TAKEN_KEYS: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
+    /// What serde takes off its holder's object for each struct and enum a class has been emitted
+    /// for, read flattened.
+    static DART_TAKEN_KEYS: RefCell<HashMap<String, Taken>> = RefCell::new(HashMap::new());
 
     /// The name of each function the reads of the item being emitted call: what its `preprocess`
     /// names, and that of each of its members.
@@ -644,25 +655,28 @@ pub fn record_dart_fields(rust_ident: &str, fields: Vec<String>) {
     });
 }
 
-/// Records `keys`, those serde takes for the struct `rust_ident` flattened into a holder, for a
+/// Records `taken`, what serde takes for the type `rust_ident` flattened into a holder, for a
 /// holder emitted after it.
-fn record_taken_keys(rust_ident: &str, keys: Vec<String>) {
+fn record_taken_keys(rust_ident: &str, taken: Taken) {
     DART_TAKEN_KEYS.with(|recorded| {
-        recorded.borrow_mut().insert(rust_ident.to_owned(), keys);
+        recorded.borrow_mut().insert(rust_ident.to_owned(), taken);
     });
 }
 
-/// The keys a member typed `def`, flattened into its holder, takes off the object serde hands it:
-/// those of a struct whose class was emitted above, and none for a member that names a function,
-/// which reads it as a value.
-fn keys_taken_by(def: &FieldDef) -> Vec<String> {
+/// What a member typed `def`, flattened into its holder, takes off the object serde hands it:
+/// what was recorded for a struct or an enum whose class was emitted above, and nothing for a
+/// member that names a function, which reads it as a value.
+fn taken_by(def: &FieldDef) -> Taken {
+    let none = Taken::Keys(Vec::new());
     if !member_functions(def).is_empty() {
-        return Vec::new();
+        return none;
     }
     let FieldDefType::SiblingType(name, _) = &def.field_type else {
-        return Vec::new();
+        return none;
     };
-    DART_TAKEN_KEYS.with(|recorded| recorded.borrow().get(name).cloned().unwrap_or_default())
+    DART_TAKEN_KEYS
+        .with(|recorded| recorded.borrow().get(name).cloned())
+        .unwrap_or(none)
 }
 
 /// `name` as a method or a parameter of an emitted client, moved off a reserved word and off
@@ -1340,6 +1354,20 @@ fn without(json: &str, taken: &[&str]) -> String {
         acc
     });
     format!("({{...{json}}}{removed})")
+}
+
+/// The object `json` names without its first entry, in the object's order, under one of `names`:
+/// what serde hands a member flattened after an externally tagged enum, which takes that entry.
+fn without_first(json: &str, names: &[String]) -> String {
+    let listed = names
+        .iter()
+        .map(|name| format!("'{name}'"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "(switch ({{...{json}}}) {{ final rest => \
+         rest..remove(rest.keys.where(const [{listed}].contains).firstOrNull) }})"
+    )
 }
 
 /// The expression that encodes `field`'s Dart value `expr` into a `jsonEncode`-safe value (`null`,
@@ -2353,8 +2381,8 @@ fn generic_codec(parameters: &[String]) -> GenericCodec {
 
 /// The arguments the constructor of a class is read with from the object `json` names: each
 /// member from its key, where the payload holds it for a member that names a function, and a
-/// flattened one at its place, from the keys neither `tag_key`, a member of the holder's own nor a
-/// member flattened ahead of it takes.
+/// flattened one at its place, from the entries neither `tag_key`, a member of the holder's own nor
+/// a member flattened ahead of it takes.
 fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>) -> String {
     let mut taken_ahead: Vec<String> = tag_key
         .into_iter()
@@ -2366,13 +2394,25 @@ fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>
         )
         .map(str::to_owned)
         .collect();
+    // The entry an enum takes depends on the entries left to it, so the keys taken ahead of one
+    // are removed first, into `source`, and the keys from `removed` on after it.
+    let mut source = json.to_owned();
+    let mut removed = 0;
     fields.iter().fold(String::new(), |mut acc, field| {
         let decode = if field.flatten {
-            let keys: Vec<&str> = taken_ahead.iter().map(String::as_str).collect();
-            let handed = without(json, &keys);
-            for key in keys_taken_by(&field.field_def) {
-                if !taken_ahead.contains(&key) {
-                    taken_ahead.push(key);
+            let keys: Vec<&str> = taken_ahead[removed..].iter().map(String::as_str).collect();
+            let handed = without(&source, &keys);
+            match taken_by(&field.field_def) {
+                Taken::Keys(taken) => {
+                    for key in taken {
+                        if !taken_ahead.contains(&key) {
+                            taken_ahead.push(key);
+                        }
+                    }
+                }
+                Taken::FirstOf(names) => {
+                    source = without_first(&handed, &names);
+                    removed = taken_ahead.len();
                 }
             }
             // A flattened member is walked whatever it writes.
@@ -2552,7 +2592,7 @@ fn struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -> Toke
     let rule = container_rename_rule(&item_struct.attrs);
     record_taken_keys(
         &rust_ident,
-        keys_taken_when_flattened(&item_struct.fields, rule, args.preprocess),
+        Taken::Keys(keys_taken_when_flattened(&item_struct.fields, rule, args.preprocess)),
     );
     let defaults = SerdeDefaults::of(item_struct);
     let fields = collect_dart_fields(
@@ -2740,6 +2780,15 @@ fn enum_dart_tokens(item_enum: &ItemEnum, args: &DartTypeArgs<'_>) -> TokenStrea
     let export_name = compute_item_export_name(&rust_ident, args.name_override);
     register_dart_name(&rust_ident, &export_name);
     let tag_attrs = enum_tag_attrs(&item_enum.attrs);
+    let names = variant_names_when_flattened(item_enum, args.preprocess);
+    record_taken_keys(
+        &rust_ident,
+        if names.is_empty() {
+            Taken::Keys(names)
+        } else {
+            Taken::FirstOf(names)
+        },
+    );
     let writes_bare_variant_names =
         tag_attrs.tag.is_none() && tag_attrs.content.is_none() && !tag_attrs.untagged;
     let defaults = SerdeDefaults::of_enum(item_enum);
