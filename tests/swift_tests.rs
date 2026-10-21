@@ -121,3 +121,15 @@ mod listed_maps_models;
 #[cfg(all(feature = "swift", feature = "serde"))]
 #[path = "swift_tests/listed_maps.rs"]
 mod listed_maps;
+
+/// A member serde reads and never writes, in a struct of its own and beside a flattened member.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "service_schema_emitted_client_tests/unwritten_models.rs"]
+mod unwritten_models;
+
+/// What the Swift emitter writes and reads of a member serde never writes.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "swift_tests/unwritten.rs"]
+mod unwritten;

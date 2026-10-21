@@ -894,6 +894,13 @@ the consumer's view; this is what a change has to keep.
   `kept_inline`), and their `{Type}Unjudged` delegates to `generatedSerializer()` (`generated`).
   The serializer the emitter writes for a struct with a flattened member, a tuple struct and an
   enum is the unjudged one, under `written_head`.
+- **A struct's member serde never writes is read and has no `put`.** `KotlinField::never_written`
+  is `has_serde_skip_serializing`: `skip_serializing`, never `skip_serializing_if`. The plugin
+  writes every property, so `struct_kotlin_tokens` hands a struct with such a member to
+  `flatten_merging_serializer`, as it hands one with a flattened member, and `own_field_plan`
+  answers no `serialize` statement for the member. A struct with neither keeps the plugin's
+  serializer and its text. A member under `skip_serializing_if` is written wherever it holds a
+  value: no client calls the Rust function, and the README states the limit.
 - **An enum under a tag alone is written by hand as well.** The plugin refuses
   `@KeepGeneratedSerializer` on a sealed interface, so `dispatched_tagged_enum_kotlin_source`
   writes all three taggings, `Tagging::Unwrapped` being the tag alone there: the tag is taken off
@@ -1334,6 +1341,11 @@ consumer's view; this is what a change has to keep.
   names one. Both carry `fromJsonUnjudged`, the name a holder reads every declared type by.
 - **`validate()` stays the last member of a class**: `validateBound()` and `_bounds()` are
   written ahead of it.
+- **A member serde never writes is read and has no entry in `toJson`.** `DartField::never_written`
+  is `has_serde_skip_serializing`: `skip_serializing`, never `skip_serializing_if`.
+  `class_body_parts` writes no entry for it, a variant with named members sharing it. A member
+  under `skip_serializing_if` is written wherever it holds a value: no client calls the Rust
+  function, and the README states the limit.
 - **`fromJsonUnjudged` is a taken name of a plain enum** (`DART_ENUM_NAMES_TAKEN`), which holds
   it as a static function. It is not in `DART_FIELD_NAMES_TAKEN`: Dart takes a field and a
   constructor under one name, so such a field is emitted as it was.
@@ -1626,6 +1638,14 @@ to keep.
   included: Swift synthesizes none beside a written `init(from:)`.
 - **`encode(to:)` does not move.** `struct_body_content` writes it where it wrote it before
   (`needs_encode`), and Swift synthesizes it everywhere else.
+- **A member serde never writes is read and encoded under no key.** `SwiftField::never_written`
+  is `has_serde_skip_serializing`: `skip_serializing`, never `skip_serializing_if`. Swift's own
+  `encode(to:)` encodes every property, so `needs_encode` holds for a struct with such a member,
+  a variant's payload sharing `struct_body_content`, and the written one encodes no statement for
+  it. Where no member is encoded under a key, it opens the object with
+  `_ = encoder.container(keyedBy: CodingKeys.self)`. A member under `skip_serializing_if` is
+  encoded wherever it holds a value: no client calls the Rust function, and the README states the
+  limit.
 - **Nothing is shared between two emitted types.** `SwiftSchemaAnyKey`, the key type a map is read
   entry by entry under, is private to each type whose read names it (`any_key`). `Locals` numbers
   what one initializer declares (`listed`, `items`, `keyed`, `entries`, `entry`, `number`), and a

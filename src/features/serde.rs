@@ -381,8 +381,14 @@ pub fn has_serde_read_hook(attrs: &[Attribute]) -> bool {
 }
 
 /// Whether serde never writes the field: it is under `skip` or `skip_serializing`. One under
-/// `skip_serializing_if` is written wherever its predicate lets it be.
-#[cfg(feature = "serde")]
+/// `skip_serializing_if` is written wherever its predicate lets it be. Read by each client in
+/// every build, as [`parse_serde_key_omission`] is.
+#[cfg(any(
+    feature = "serde",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
+))]
 pub fn has_serde_skip_serializing(attrs: &[Attribute]) -> bool {
     let mut found = false;
     for attr in attrs {

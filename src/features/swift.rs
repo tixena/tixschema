@@ -16,7 +16,9 @@ use syn::{Field, Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
 
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
-use crate::features::serde::{brand_field, parse_serde_key_omission, struct_tag};
+use crate::features::serde::{
+    brand_field, has_serde_skip_serializing, parse_serde_key_omission, struct_tag,
+};
 use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, classify_variant, get_field_def,
     is_plain_enum, is_sequence_wrapper,
@@ -97,6 +99,8 @@ struct SwiftField {
     flatten: bool,
     /// What the types written for the field are named from.
     hint: String,
+    /// Whether serde never writes the member: it is under `skip_serializing`.
+    never_written: bool,
     real_type: String,
     required: bool,
     shape: SwiftFieldShape,
@@ -1074,6 +1078,7 @@ fn range_shape(
                 field_def,
                 flatten: false,
                 hint: hint.clone(),
+                never_written: false,
                 real_type: real_type.clone(),
                 required: true,
                 shape: shape.clone(),
@@ -1998,6 +2003,7 @@ fn collect_swift_fields(
             field_def,
             flatten: field_is_flatten(&field.attrs),
             hint: field_hint,
+            never_written: has_serde_skip_serializing(&field.attrs),
             real_type,
             required: !omission.omits_key,
             shape,
@@ -2075,7 +2081,10 @@ fn struct_body_content(
         || fields.iter().any(|field| {
             field.flatten || !matches!(field.shape.leaf_conversion, LeafConversion::None)
         });
-    let needs_encode = unsynthesized || fields.iter().any(field_is_nullable_flag);
+    let needs_encode = unsynthesized
+        || fields
+            .iter()
+            .any(|field| field_is_nullable_flag(field) || field.never_written);
 
     let memberwise_init = memberwise_initializer(fields);
     let mut locals = read::Locals::default();
@@ -2117,13 +2126,20 @@ fn struct_body_content(
     let encode_method = if needs_encode {
         let statements = fields
             .iter()
+            .filter(|field| field.flatten || !field.never_written)
             .map(|field| encode_statement(field, "container"))
             .collect::<Vec<_>>()
             .join("; ");
+        let under_a_key = fields
+            .iter()
+            .any(|field| !field.flatten && !field.never_written);
         let container = if fields.is_empty() {
             ""
-        } else {
+        } else if under_a_key || !fields.iter().any(|field| field.never_written) {
             "var container = encoder.container(keyedBy: CodingKeys.self); "
+        } else {
+            // No member is written under a key: the object is opened all the same.
+            "_ = encoder.container(keyedBy: CodingKeys.self); "
         };
         let tag = own_tag.map_or_else(String::new, |(_, named)| {
             format!(

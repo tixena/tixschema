@@ -399,6 +399,27 @@ mod flattened_models;
 #[path = "service_schema_emitted_client_tests/run_kotlin_flattened.rs"]
 mod run_kotlin_flattened;
 
+/// A member serde reads and never writes, in a struct of its own and beside a flattened member.
+#[cfg(test)]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+#[path = "service_schema_emitted_client_tests/unwritten_models.rs"]
+mod unwritten_models;
+
+/// A member serde never writes, read and written back by the emitted Dart types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_unwritten.rs"]
+mod run_dart_unwritten;
+
+/// A member serde never writes, read and written back by the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_unwritten.rs"]
+mod run_swift_unwritten;
+
+/// A member serde never writes, read and written back by the emitted Kotlin types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_unwritten.rs"]
+mod run_kotlin_unwritten;
+
 // The transport's expansion reaches each service through `$crate`, which is this binary's root:
 // every trait and its schema module are named here for it to resolve.
 #[cfg(all(test, feature = "dart"))]

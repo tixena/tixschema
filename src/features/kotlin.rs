@@ -32,7 +32,9 @@ use self::preprocess::Plugin;
 use self::validate::{Member, Rules};
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
-use crate::features::serde::{brand_field, parse_serde_key_omission, struct_tag};
+use crate::features::serde::{
+    brand_field, has_serde_skip_serializing, parse_serde_key_omission, struct_tag,
+};
 use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, classify_variant, get_field_def,
     is_plain_enum, is_sequence_wrapper,
@@ -111,6 +113,8 @@ struct KotlinField {
     empty_default: bool,
     field_def: FieldDef,
     flatten: bool,
+    /// Whether serde never writes the member: it is under `skip_serializing`.
+    never_written: bool,
     rust_name: String,
     wire_name: String,
 }
@@ -147,9 +151,10 @@ enum Tagging<'tag> {
 }
 
 /// What [`flatten_plan`] builds from a struct's fields: one `serialize_stmts` entry per field
-/// (own or flattened), one `deserialize_stmts` entry per field (own reads and flattened-struct
-/// `descriptor`-key reads interleaved, in field order, the map field's own read appended last so
-/// it can name every other field's own keys), and the constructor argument list in field order.
+/// serde writes (own or flattened), one `deserialize_stmts` entry per field (own reads and
+/// flattened-struct `descriptor`-key reads interleaved, in field order, the map field's own read
+/// appended last so it can name every other field's own keys), and the constructor argument list
+/// in field order.
 struct FlattenPlan {
     ctor_args: Vec<String>,
     deserialize_stmts: Vec<String>,
@@ -458,6 +463,7 @@ fn collect_kotlin_fields(
             default_at: defaulted,
             field_def,
             flatten: field_is_flatten(&field.attrs),
+            never_written: has_serde_skip_serializing(&field.attrs),
             rust_name,
             wire_name,
         });
@@ -1265,17 +1271,24 @@ fn flatten_base_field(field_def: &FieldDef) -> FieldDef {
 /// One non-flattened field's own `serialize`/`deserialize` statements and constructor argument —
 /// the branch [`flatten_plan`] takes for every field that is not itself `#[serde(flatten)]`. The
 /// payload under the field's key is read as the field's own `preprocess` corrects it. An optional
-/// member's key is left out where it holds no value, as serde leaves it out, but under `nullable`.
-fn own_field_plan(field: &KotlinField, prop: &str, type_parameters: &[String]) -> (String, String) {
+/// member's key is left out where it holds no value, as serde leaves it out, but under `nullable`,
+/// and a member serde never writes has no `serialize` statement.
+fn own_field_plan(
+    field: &KotlinField,
+    prop: &str,
+    type_parameters: &[String],
+) -> (Option<String>, String) {
     let field_serializer = read::member_serializer(&field.field_def, type_parameters);
     let put = format!(
         "put(\"{}\", output.json.encodeToJsonElement({field_serializer}, value.{prop}))",
         field.wire_name
     );
-    let serialize = if field.field_def.is_optional() && !is_nullable_flag(&field.field_def) {
-        format!("if (value.{prop} != null) {put}")
+    let serialize = if field.never_written {
+        None
+    } else if field.field_def.is_optional() && !is_nullable_flag(&field.field_def) {
+        Some(format!("if (value.{prop} != null) {put}"))
     } else {
-        put
+        Some(put)
     };
     let functions = preprocess::of(&field.field_def);
     let decode_expr = if field.field_def.is_optional() {
@@ -1395,7 +1408,7 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
         let prop = kotlin_property_name(&field.rust_name);
         if !field.flatten {
             let (serialize, decode) = own_field_plan(field, &prop, type_parameters);
-            plan.serialize_stmts.push(serialize);
+            plan.serialize_stmts.extend(serialize);
             plan.deserialize_stmts.push(decode);
         } else if let FieldDefType::Map(_, map_value) = &field.field_def.field_type {
             let value_serializer =
@@ -1435,8 +1448,10 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
 
 /// The unjudged `KSerializer` a struct with one or more `#[serde(flatten)]` fields earns, since
 /// `kotlinx.serialization` has no annotation for flatten: it merges each flattened value's own
-/// keys into the enclosing object, tolerant of the other fields' own keys on decode. `own` is the
-/// type's `preprocess`, which corrects the object every member is read from.
+/// keys into the enclosing object, tolerant of the other fields' own keys on decode. A struct with
+/// a member serde never writes earns it too: `kotlinx.serialization` has no annotation for a
+/// member read and never written. `own` is the type's `preprocess`, which corrects the object
+/// every member is read from.
 fn flatten_merging_serializer(
     export_name: &str,
     generic_params: &str,
@@ -1501,8 +1516,8 @@ fn kept_unjudged(
 /// The Kotlin tokens a named-field struct earns: a `data class` with its `validate()` and its two
 /// serializers, plus a `typealias` under its own Rust ident when `name = "..."` moved its
 /// published name elsewhere. The plugin's serializer is the unjudged one, and a struct carrying
-/// one or more `#[serde(flatten)]` fields earns [a merging one](flatten_merging_serializer) in
-/// its place.
+/// one or more `#[serde(flatten)]` fields, or a member serde never writes and the plugin would,
+/// earns [a merging one](flatten_merging_serializer) in its place.
 fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> TokenStream {
     let type_parameters = type_parameters_in_scope(&item_struct.generics);
     if let Some(held) = brand_field(item_struct) {
@@ -1528,7 +1543,9 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
     );
     let generic_params = kotlin_generic_params(&item_struct.generics);
     let alias = ident_typealias(&rust_ident, &export_name, &generic_params);
-    let flattened = fields.iter().any(|field| field.flatten);
+    let written_by_hand = fields
+        .iter()
+        .any(|field| field.flatten || field.never_written);
     let handed_on = fields
         .iter()
         .any(|field| field.flatten && preprocess::takes_the_rest(&field.field_def));
@@ -1545,7 +1562,7 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
     } else {
         format!(
             "data class {export_name}{generic_params}({})",
-            data_class_params(&fields, (!flattened).then_some(&plugin))
+            data_class_params(&fields, (!written_by_hand).then_some(&plugin))
         )
     };
     let serializable = serialized_parameters(&item_struct.generics);
@@ -1554,7 +1571,7 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
     rules.own(args.check);
     let validated = rules.written("");
     let own_tag = struct_tag(item_struct);
-    let kotlin_source = if flattened {
+    let kotlin_source = if written_by_hand {
         let unjudged = flatten_merging_serializer(
             &export_name,
             &generic_params,
