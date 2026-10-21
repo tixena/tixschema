@@ -13,6 +13,7 @@ use alloc::borrow::ToOwned;
 use core::fmt::Write as _;
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use core::ops::Range;
+use core::ptr;
 
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -299,6 +300,13 @@ const BRANDED_SLOT_PROP_MESSAGE: &str = "`#[model_schema_prop]` is unread on the
      written onto it, so no key written here reaches any surface. The checks a brand does carry \
      are written on the type itself: #[model_schema(pattern = \"...\", minLength = N, maxLength = \
      N)]. Move the check there, or drop the attribute.";
+
+/// Why a `#[model_schema_prop]` on any other field of a brand is refused: serde neither reads nor
+/// writes that field.
+const UNREAD_BRAND_FIELD_PROP_MESSAGE: &str = "`#[model_schema_prop]` is unread on a field serde \
+     neither reads nor writes -- a `#[serde(transparent)]` struct is read and written as the value \
+     of one field alone, and a brand publishes that field's own schema with a `.brand()` written \
+     onto it, so no key written here reaches any surface. Drop the attribute.";
 
 /// The names the `indexmap` feature reads: each with what it is read as, and the fewest type
 /// arguments it is read with.
@@ -4298,21 +4306,32 @@ fn indexmap_feature_message(name: &str, read_as: &str) -> String {
     )
 }
 
-/// The `compile_error!` tokens an item earns for each `#[model_schema_prop]` written on the slot of
-/// a `#[serde(transparent)]` newtype, or none where nothing there carries one.
+/// The `compile_error!` tokens an item earns for each `#[model_schema_prop]` written on a field of
+/// a `#[serde(transparent)]` brand, its slot or any other, or none where no field carries one.
 fn branded_slot_prop_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
     let Item::Struct(item_struct) = item else {
         return Vec::new();
     };
-    brand_field(item_struct)
-        .into_iter()
-        .flat_map(|slot| &slot.attrs)
-        .filter(|attr| attr.path().is_ident("model_schema_prop"))
-        .map(|attr| {
-            attr_guard_error(
-                &syn::Error::new_spanned(attr, BRANDED_SLOT_PROP_MESSAGE),
-                &item_label(item),
-            )
+    let Some(slot) = brand_field(item_struct) else {
+        return Vec::new();
+    };
+    item_struct
+        .fields
+        .iter()
+        .flat_map(|field| {
+            let message = if ptr::eq(field, slot) {
+                BRANDED_SLOT_PROP_MESSAGE
+            } else {
+                UNREAD_BRAND_FIELD_PROP_MESSAGE
+            };
+            field
+                .attrs
+                .iter()
+                .filter(|attr| attr.path().is_ident("model_schema_prop"))
+                .map(move |attr| (attr, message))
+        })
+        .map(|(attr, message)| {
+            attr_guard_error(&syn::Error::new_spanned(attr, message), &item_label(item))
         })
         .collect()
 }

@@ -138,6 +138,18 @@ const BRANDED_SLOT_PROP_REFUSAL: &str = "`#[model_schema_prop]` is unread on the
      are written on the type itself: #[model_schema(pattern = \"...\", minLength = N, maxLength = \
      N)]. Move the check there, or drop the attribute.";
 
+/// The refusal a `#[model_schema_prop]` on any other field of a brand earns, less the prefix
+/// `item_label` supplies in front of it.
+const UNREAD_BRAND_FIELD_PROP_REFUSAL: &str = "`#[model_schema_prop]` is unread on a field serde \
+     neither reads nor writes -- a `#[serde(transparent)]` struct is read and written as the value \
+     of one field alone, and a brand publishes that field's own schema with a `.brand()` written \
+     onto it, so no key written here reaches any surface. Drop the attribute.";
+
+/// A brand with named fields whose skipped marker carries a key, as a consumer writes it.
+const UNREAD_BRAND_FIELD_SOURCE: &str = "#[derive(Debug, Deserialize, Serialize)] \
+     #[serde(transparent)] pub struct Label { pub text: String, \
+     #[model_schema_prop(maxLength = 9)] #[serde(skip)] marker: PhantomData<u8> }";
+
 /// Every key a slot can be written with, read and unread alike.
 const SLOT_PROP_KEYS: [&str; 9] = [
     "",
@@ -7677,7 +7689,7 @@ fn a_brand_refused_by_its_guards_is_re_emitted_without_its_members_keys() {
         "#[serde(transparent)] pub struct Label { pub text: Option<String>, \
          #[model_schema_prop(maxLength = 9)] #[serde(skip)] marker: \
          ::core::marker::PhantomData<u8> }",
-        "branded newtype `Label` wraps an `Option`, which has no representable schema",
+        "type `Label`: `#[model_schema_prop]` is unread on a field serde neither reads nor writes",
     );
 }
 
@@ -16233,6 +16245,34 @@ fn a_refused_brand_slot_keeps_no_prop_attribute_on_the_emitted_item() {
 }
 
 #[test]
+fn a_prop_on_a_brand_field_serde_does_not_read_is_refused_once() {
+    let tokens = expansion_over(UNREAD_BRAND_FIELD_SOURCE);
+    let refusals = literal_texts(&tokens)
+        .into_iter()
+        .filter(|text| text.starts_with("model_schema: "))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        refusals,
+        vec![format!(
+            "model_schema: type `Label`: {UNREAD_BRAND_FIELD_PROP_REFUSAL}"
+        )],
+        "got: {tokens}"
+    );
+    assert!(!writes_a_prop_attribute(&tokens), "got: {tokens}");
+}
+
+#[test]
+fn a_named_brand_with_no_prop_on_any_field_earns_no_refusal() {
+    let source = UNREAD_BRAND_FIELD_SOURCE.replace("#[model_schema_prop(maxLength = 9)] ", "");
+    assert!(branded_slot_refusals(&source).is_empty());
+    let tokens = expansion_over(&source);
+    assert!(
+        !tokens.to_string().contains("compile_error"),
+        "got: {tokens}"
+    );
+}
+
+#[test]
 fn each_prop_attribute_on_a_brand_slot_earns_its_own_refusal() {
     let refusals = branded_slot_refusals(
         "#[serde(transparent)] pub struct Branded(\
@@ -16266,13 +16306,26 @@ fn a_prop_on_a_named_brand_field_earns_the_refusal() {
         "#[serde(transparent)] pub struct Named { #[model_schema_prop(pattern = \"^a$\")] \
          pub inner: String, #[serde(skip)] #[model_schema_prop(minLength = 2)] pub note: String }",
     );
-    assert_eq!(refusals.len(), 1, "got: {refusals:?}");
-    assert_eq!(
-        located_source_texts(&refusals[0])
-            .last()
-            .map(String::as_str),
-        Some("[model_schema_prop(pattern = \"^a$\")]")
-    );
+    assert_eq!(refusals.len(), 2, "got: {refusals:?}");
+    for (refusal, (message, attribute)) in refusals.iter().zip([
+        (
+            BRANDED_SLOT_PROP_REFUSAL,
+            "[model_schema_prop(pattern = \"^a$\")]",
+        ),
+        (
+            UNREAD_BRAND_FIELD_PROP_REFUSAL,
+            "[model_schema_prop(minLength = 2)]",
+        ),
+    ]) {
+        assert!(
+            literal_texts(refusal).contains(&format!("model_schema: type `Named`: {message}")),
+            "got: {refusal}"
+        );
+        assert_eq!(
+            located_source_texts(refusal).last().map(String::as_str),
+            Some(attribute)
+        );
+    }
 }
 
 #[test]

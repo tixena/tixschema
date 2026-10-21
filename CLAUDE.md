@@ -1495,7 +1495,10 @@ Rules:
   written on the type: `#[model_schema(pattern = "...", minLength = N, maxLength = N)]`. Over a
   list the two lengths count its items and `pattern` is refused (section 7). The
   field a `#[serde(transparent)]` struct with *named* fields is the value of is that slot, and is
-  held to the same
+  held to the same. Every other field of such a struct, one serde neither reads nor writes (a
+  skipped one, a `PhantomData` marker), is refused a key as well, in every build and with the item
+  re-emitted without it, under a message of its own (`UNREAD_BRAND_FIELD_PROP_MESSAGE`):
+  `branded_slot_prop_errors` reads every field of a struct `brand_field` answers for
 - The three checks are type-level arguments on a brand and on an enum, which hands them to the
   fields it reaches (section 7) and publishes no check of its own. A struct that is no brand and a
   type alias are refused them at `process_item`, in every build (`string_check_refusal_output`,
