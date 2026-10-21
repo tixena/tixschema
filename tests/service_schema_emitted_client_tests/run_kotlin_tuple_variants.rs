@@ -19,10 +19,10 @@ use serde::de::DeserializeOwned;
 
 use super::runtime::ran_kotlin;
 use super::tuple_variants_models::{
-    Banding, Bundling, Crating, Palleting, Piling, Racking, Stacking, Strapping, Wrapping,
+    Banding, Bundling, Crating, Palleting, Piling, Racking, Ranking, Stacking, Strapping, Wrapping,
     banding_kotlin, bundling_kotlin, crating_kotlin, labelling_kotlin, palleting_kotlin,
-    piling_kotlin, racking_kotlin, stacking_kotlin, stencil_kotlin, strapping_kotlin,
-    wrapping_kotlin,
+    piling_kotlin, racking_kotlin, ranking_kotlin, stacking_kotlin, stencil_kotlin,
+    strapping_kotlin, wrapping_kotlin,
 };
 #[cfg(not(feature = "jsonschema"))]
 use super::tuple_variants_models::{Binning, Tallying, binning_kotlin, tallying_kotlin};
@@ -283,6 +283,35 @@ fn a_map_of_tuples_in_a_variant_reads_and_writes_in_kotlin_as_serde_does() {
         "{expected}"
     );
     let Some(printed) = printed(&rows, vec![tallying_kotlin::kotlin_definition()]) else {
+        return;
+    };
+    assert_eq!(printed, expected);
+}
+
+/// A `Result` holding a tuple in a variant's one slot, read from the payload serde writes for each
+/// arm and written back as serde writes it back.
+#[test]
+fn a_result_holding_a_tuple_in_a_variant_reads_and_writes_in_kotlin_as_serde_does() {
+    let rows = [
+        Row {
+            json: r#"{"kind":"Places","held":{"Ok":[1,2]}}"#,
+            name: "a tuple in the Ok arm of a Result under a tag and a content key",
+            read_as: "Ranking",
+            written: written_back::<Ranking>,
+        },
+        Row {
+            json: r#"{"kind":"Places","held":{"Err":"none"}}"#,
+            name: "the Err arm of a Result holding a tuple under a tag and a content key",
+            read_as: "Ranking",
+            written: written_back::<Ranking>,
+        },
+    ];
+    let expected = expected(&rows);
+    assert!(
+        expected.contains(r#"tag and a content key: {"kind":"Places","held":{"Ok":[1,2]}}"#),
+        "{expected}"
+    );
+    let Some(printed) = printed(&rows, vec![ranking_kotlin::kotlin_definition()]) else {
         return;
     };
     assert_eq!(printed, expected);

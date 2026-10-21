@@ -49,6 +49,16 @@ pub enum Tallying {
     Counts(HashMap<String, (u32, u8)>),
 }
 
+/// A `Result` whose arm holds a tuple in a variant's one slot, under a tag and a content key: a
+/// value that holds a tuple, read as a map of tuples is, in every build.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", content = "held")]
+pub enum Ranking {
+    Empty,
+    Places(Result<(u32, u8), String>),
+}
+
 /// A tuple read as its default where the payload leaves its key out.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
