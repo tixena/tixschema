@@ -3,6 +3,7 @@
 //! [`Invoice`] holds are declared here, above it, and each one's module is imported beside it.
 //! `nest` writes what is asked of one under the key the row holds it at.
 
+use core::marker::PhantomData;
 use std::collections::HashMap;
 
 #[cfg(feature = "indexmap")]
@@ -10,7 +11,7 @@ use indexmap::{IndexMap, IndexSet};
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-use super::{Address, Customer, Invoice, shown};
+use super::{Address, Customer, Invoice, shown, shown_value};
 
 /// Flattened into the row that holds it: its keys sit among that row's own.
 #[model_schema(enable = ["decode_with", "mongodb"])]
@@ -171,6 +172,16 @@ enum Movement {
 struct Transit {
     movement: Movement,
 }
+
+/// What [`Linked`] bounds its first slot by, naming the parameter no slot it reads names.
+pub trait Tr<B> {}
+
+impl Tr<u8> for String {}
+
+/// A tuple whose slots name `A` alone, under a bound written beside `A` that names `B`.
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(A = String, B = u8))]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Linked<A: Tr<B>, B>(pub A, #[serde(skip)] pub PhantomData<B>, pub u32);
 
 fn moca() -> Stop {
     Stop {
@@ -592,4 +603,22 @@ fn the_function_of_a_variant_named_as_an_ask_is_numbered() {
         shown(movement.is_card2().issuer().eq("bank".to_owned()).unwrap()),
         r#"{ "issuer": { "$eq": "bank" } }"#
     );
+}
+
+/// serde skips slot 1, so slot 2 is the second slot it writes, at the key `1`.
+#[test]
+fn a_bound_naming_a_parameter_no_slot_names_leaves_the_slots_paths_as_they_are() {
+    let linked = Linked::<String, u8>::MONGO_FIELDS;
+    assert_eq!(
+        shown(linked.0.eq("C-1".to_owned()).unwrap()),
+        r#"{ "0": { "$eq": "C-1" } }"#
+    );
+    assert_eq!(
+        shown(linked.2.gt(3_u32).unwrap()),
+        r#"{ "1": { "$gt": Int64(3) } }"#
+    );
+    let stored = Linked::<String, u8>("C-1".to_owned(), PhantomData, 3_u32)
+        .serialize(bson::Serializer::new())
+        .unwrap();
+    assert_eq!(shown_value(&stored), r#"["C-1", Int64(3)]"#);
 }
