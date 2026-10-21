@@ -11,7 +11,11 @@ use serde::{Deserialize, Serialize};
 
 use tixschema::model_schema;
 
+use super::flattened_models::{Knotting, Netting};
+#[cfg(feature = "serde")]
+use super::flattened_models::{knotting_kotlin, netting_kotlin};
 use super::read::{kept, serializers};
+use super::tuple_variants_models::Labelling;
 
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -775,6 +779,50 @@ fn test_flatten_map() {
     assert!(
         kotlin.contains("filterKeys") || kotlin.contains("filter {"),
         "a flattened map takes whatever keys are left over. got: {kotlin}"
+    );
+}
+
+/// The payload each struct of flattened members below writes and reads.
+#[test]
+fn every_flattened_fixture_is_written_as_serde_writes_it() {
+    let labelling = || Labelling {
+        label: "n".to_owned(),
+    };
+    let rest = || HashMap::from([("north".to_owned(), 2)]);
+    assert_eq!(
+        serde_json::to_string(&Netting {
+            labelling: labelling(),
+            rest: rest()
+        })
+        .unwrap(),
+        r#"{"label":"n","north":2}"#
+    );
+    assert_eq!(
+        serde_json::to_string(&Knotting {
+            labelling: labelling(),
+            note: "a".to_owned(),
+            rest: rest()
+        })
+        .unwrap(),
+        r#"{"label":"n","note":"a","north":2}"#
+    );
+}
+
+/// A struct whose members are all flattened takes no key of its own ahead of the map's: the empty
+/// set is written with its type, which Kotlin cannot infer from nothing. A struct with a member of
+/// its own writes its keys as it did.
+#[test]
+#[cfg(feature = "serde")]
+fn test_flatten_map_beside_no_member_of_its_own() {
+    let netting = netting_kotlin::kotlin_definition();
+    assert!(
+        netting.contains("val restConsumedKeys = setOf<String>() + labellingKeys;"),
+        "got: {netting}"
+    );
+    let knotting = knotting_kotlin::kotlin_definition();
+    assert!(
+        knotting.contains("val restConsumedKeys = setOf(\"note\") + labellingKeys;"),
+        "got: {knotting}"
     );
 }
 

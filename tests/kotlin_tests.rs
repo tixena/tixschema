@@ -35,3 +35,10 @@ mod tuple_variants_models;
 #[cfg(feature = "kotlin")]
 #[path = "kotlin_tests/tuple_variants.rs"]
 mod tuple_variants;
+
+/// A struct whose members are all flattened, one of them a map, and its twin with a member of its
+/// own. Declared after the module that declares the member both flatten.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "kotlin_tests/flattened_models.rs"]
+mod flattened_models;

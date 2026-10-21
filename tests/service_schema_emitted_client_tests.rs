@@ -386,6 +386,18 @@ mod tuple_variants_models;
 #[path = "service_schema_emitted_client_tests/run_kotlin_tuple_variants.rs"]
 mod run_kotlin_tuple_variants;
 
+/// A struct whose members are all flattened, one of them a map, and its twin with a member of its
+/// own. Declared after the module that declares the member both flatten.
+#[cfg(all(test, feature = "kotlin"))]
+#[path = "kotlin_tests/flattened_models.rs"]
+mod flattened_models;
+
+/// A struct whose members are all flattened, one of them a map, read and written by the emitted
+/// Kotlin types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_flattened.rs"]
+mod run_kotlin_flattened;
+
 // The transport's expansion reaches each service through `$crate`, which is this binary's root:
 // every trait and its schema module are named here for it to resolve.
 #[cfg(all(test, feature = "dart"))]
