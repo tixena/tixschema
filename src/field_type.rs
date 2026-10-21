@@ -1299,15 +1299,22 @@ impl FieldDef {
     }
 
     /// The kind of bound no surface reads beside this field, its own value being what the other
-    /// kind is measured on: a number has no length or pattern, a string no range, and a list
-    /// neither a pattern nor a range. The refusal and the docs are both written from it, as from
+    /// kind is measured on: a number has no length or pattern; a string, a boolean, a character
+    /// and a value this crate has no description for have no range; and a list has neither a
+    /// pattern nor a range. The refusal and the docs are both written from it, as from
     /// [`Self::constraints_reach_nothing`].
     pub fn unmeasured_bound(&self) -> Option<BoundKind> {
         if self.is_list() {
             Some(BoundKind::Scalar)
         } else if self.field_type.is_numeric() {
             Some(BoundKind::Text)
-        } else if matches!(self.field_type, FieldDefType::String) {
+        } else if matches!(
+            self.field_type,
+            FieldDefType::String
+                | FieldDefType::Boolean
+                | FieldDefType::Char
+                | FieldDefType::Unknown
+        ) {
             Some(BoundKind::Range)
         } else {
             None

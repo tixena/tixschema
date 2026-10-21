@@ -4290,6 +4290,68 @@ fn a_bound_of_the_wrong_kind_is_named_without_the_keys_beside_it() {
     );
 }
 
+#[test]
+fn a_range_on_a_bool_a_char_or_a_value_field_is_refused() {
+    for (constraint, field_type, refused, written) in [
+        (
+            quote::quote! { minimum = 5 },
+            quote::quote! { bool },
+            "`minimum` cannot apply to a `bool` field",
+            "writes a boolean",
+        ),
+        (
+            quote::quote! { minimum = 5 },
+            quote::quote! { Option<bool> },
+            "`minimum` cannot apply to a `Option<bool>` field",
+            "writes a boolean",
+        ),
+        (
+            quote::quote! { maximum = 5 },
+            quote::quote! { char },
+            "`maximum` cannot apply to a `char` field",
+            "writes one character",
+        ),
+        (
+            quote::quote! { maximum = 5 },
+            quote::quote! { Box<char> },
+            "`maximum` cannot apply to a `Box<char>` field",
+            "writes one character",
+        ),
+        (
+            quote::quote! { minimum = 1, maximum = 9 },
+            quote::quote! { serde_json::Value },
+            "`minimum`, `maximum` cannot apply to a `serde_json::Value` field",
+            "writes a value no range measures",
+        ),
+    ] {
+        let errors = field_prop_guard_errors(&syn::parse_quote! {
+            struct Report {
+                #[model_schema_prop(#constraint)]
+                held: #field_type,
+            }
+        });
+        assert_eq!(
+            errors.len(),
+            1,
+            "for {constraint} on {field_type}: {errors:?}"
+        );
+        for needle in [
+            "compile_error",
+            "field `held`",
+            refused,
+            "a range is measured on a number",
+            written,
+            "nor the generated validator. Drop it.",
+        ] {
+            assert!(
+                errors[0].contains(needle),
+                "{needle} missing for {constraint} on {field_type}: {}",
+                errors[0]
+            );
+        }
+    }
+}
+
 /// The README prints each refusal, held here to what the guard says.
 #[test]
 fn the_readme_shows_the_refusal_of_a_bound_of_the_wrong_kind() {
@@ -4755,6 +4817,9 @@ fn the_constraint_docs_are_silent_for_a_bound_of_the_wrong_kind() {
         quote::quote! { #[model_schema_prop(minimum = 5, maximum = 9)] name: String },
         quote::quote! { #[model_schema_prop(minimum = 5)] name: &'static str },
         quote::quote! { #[model_schema_prop(minimum = 5, maximum = 9)] counts: Vec<f64> },
+        quote::quote! { #[model_schema_prop(minimum = 5)] flag: bool },
+        quote::quote! { #[model_schema_prop(maximum = 5)] letter: char },
+        quote::quote! { #[model_schema_prop(minimum = 1, maximum = 9)] held: serde_json::Value },
     ] {
         let docs = field_docs_after_meta(&syn::parse_quote! {
             struct Report {

@@ -3500,12 +3500,13 @@ A length or a pattern is measured on a string, a range on a number, and a length
 |---|---|---|
 | `minLength`, `maxLength`, `pattern` | a number: `u8` to `u64`, `i8` to `i64`, `usize`, `isize`, `f32`, `f64` | Refused |
 | `minimum`, `maximum` | a string: `String`, `str`, `PathBuf`, `Path` | Refused |
+| `minimum`, `maximum` | a `bool`, a `char`, and a value every surface describes as unknown, `serde_json::Value` among them | Refused |
 | `pattern`, `minimum`, `maximum` | a list | Refused |
 | `minLength`, `maxLength`, `pattern` | a string, a borrowed `&'a str` included | Enforced by Zod, the JSON Schema and `validate()` |
 | `minimum`, `maximum` | a number | Enforced by Zod, the JSON Schema and `validate()` |
 | `minLength`, `maxLength` | a list | Enforced by Zod, the JSON Schema and `validate()`: they [count its items](#list-length-minlength-maxlength) |
 
-`Option` and a transparent wrapper do not change which kind a field is: `Option<u32>` and `Box<u32>` are numbers, and `Option<String>`, `Box<str>`, `Cow<'_, str>` and `&'a str` are strings. A list is a list whatever it holds: `Vec<u32>`, `[u32; 4]` and `Option<Vec<String>>` are lists.
+`Option` and a transparent wrapper do not change which kind a field is: `Option<u32>` and `Box<u32>` are numbers, `Option<String>`, `Box<str>`, `Cow<'_, str>` and `&'a str` are strings, and `Option<bool>` and `Box<char>` are refused a range as `bool` and `char` are. A list is a list whatever it holds: `Vec<u32>`, `[u32; 4]` and `Option<Vec<String>>` are lists.
 
 ```text
 error: model_schema: field `age_restriction`: `minLength` cannot apply to a `u32` field — a length or a pattern is measured on a string, and this field writes a number: the constraint would reach neither Zod, nor the JSON schema, nor the generated validator. Bound a number with `minimum` or `maximum`, or drop it.
