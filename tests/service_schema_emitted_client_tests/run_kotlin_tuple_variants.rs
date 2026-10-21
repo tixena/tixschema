@@ -19,13 +19,17 @@ use serde::de::DeserializeOwned;
 
 use super::runtime::ran_kotlin;
 use super::tuple_variants_models::{
-    Banding, Bundling, Crating, Palleting, Piling, Racking, Ranking, Stacking, Strapping, Wrapping,
-    banding_kotlin, bundling_kotlin, crating_kotlin, labelling_kotlin, palleting_kotlin,
-    piling_kotlin, racking_kotlin, ranking_kotlin, stacking_kotlin, stencil_kotlin,
-    strapping_kotlin, wrapping_kotlin,
+    Banding, Bundling, Crating, Grading, Palleting, Piling, Racking, Ranking, Slotting, Spooling,
+    Stacking, Strapping, Wrapping, banding_kotlin, bundling_kotlin, crating_kotlin, grading_kotlin,
+    labelling_kotlin, palleting_kotlin, piling_kotlin, racking_kotlin, ranking_kotlin,
+    slotting_kotlin, spooling_kotlin, stacking_kotlin, stencil_kotlin, strapping_kotlin,
+    wrapping_kotlin,
 };
 #[cfg(not(feature = "jsonschema"))]
-use super::tuple_variants_models::{Binning, Tallying, binning_kotlin, tallying_kotlin};
+use super::tuple_variants_models::{
+    Binning, Coiling, Heaping, Lashing, Tallying, binning_kotlin, coiling_kotlin, heaping_kotlin,
+    lashing_kotlin, tallying_kotlin,
+};
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use super::tuple_variants_models::{Labelling, Stencil};
 
@@ -152,6 +156,40 @@ const PAIR_REFUSED: &str = "'pair.0.code': too short: minimum length is 1, got 0
 #[cfg(not(feature = "jsonschema"))]
 const COUNT_REFUSED: &str = "'held.north.0.code': too short: minimum length is 1, got 0";
 
+/// What a tuple struct's `validate()` answers of a pair in its first slot whose model breaks its
+/// bound.
+const SLOT_REFUSED: &str = "'0.0.code': too short: minimum length is 1, got 0";
+
+/// What the holder's `validate()` answers of a pair in the `Ok` arm of a `Result`, in the first
+/// position of a pair, whose model breaks its bound.
+const ARM_REFUSED: &str = "'pair.0.Ok.0.code': too short: minimum length is 1, got 0";
+
+/// What the holder's `validate()` answers of a pair in an `Option` whose model breaks its bound.
+const OPTION_REFUSED: &str = "'maybe.0.code': too short: minimum length is 1, got 0";
+
+/// What the holder's `validate()` answers of the first pair of a list whose model breaks its
+/// bound.
+const LIST_REFUSED: &str = "'pairs.0.0.code': too short: minimum length is 1, got 0";
+
+/// What the holder's `validate()` answers of a map of pairs, in the first position of a pair,
+/// whose model breaks its bound under the key `north`.
+#[cfg(not(feature = "jsonschema"))]
+const KEYED_PAIR_REFUSED: &str = "'pair.0.north.0.code': too short: minimum length is 1, got 0";
+
+/// What the holder's `validate()` answers of a flattened map of pairs whose model breaks its
+/// bound under the key `north`.
+#[cfg(not(feature = "jsonschema"))]
+const FLATTENED_REFUSED: &str = "'north.0.code': too short: minimum length is 1, got 0";
+
+/// What the holder's `validate()` answers of a map of pairs, read through a function a
+/// `preprocess` names, whose model breaks its bound under the key `north`.
+#[cfg(not(feature = "jsonschema"))]
+const PREPROCESSED_REFUSED: &str = "'counts.north.0.code': too short: minimum length is 1, got 0";
+
+/// The function a `preprocess` names on [`Heaping`], in Kotlin: the payload as it was handed.
+#[cfg(not(feature = "jsonschema"))]
+const UNCHANGED: &str = "fun unchanged(payload: JsonElement): JsonElement = payload";
+
 /// What prints a row: the value read, written back with every member, as serde writes it, or
 /// what the type's own serializer refused it with.
 const TOLD: &str = r#"
@@ -221,6 +259,39 @@ fn refused_at_the_pair(_json: &str) -> String {
 #[cfg(not(feature = "jsonschema"))]
 fn refused_at_the_count(_json: &str) -> String {
     format!("refused: {COUNT_REFUSED}")
+}
+
+/// What a row refused with [`SLOT_REFUSED`] prints.
+fn refused_at_the_slot(_json: &str) -> String {
+    format!("refused: {SLOT_REFUSED}")
+}
+
+/// What a row refused with [`ARM_REFUSED`] prints.
+fn refused_at_the_arm(_json: &str) -> String {
+    format!("refused: {ARM_REFUSED}")
+}
+
+/// What a row refused with [`OPTION_REFUSED`] and [`LIST_REFUSED`] prints.
+fn refused_in_the_option_and_the_list(_json: &str) -> String {
+    format!("refused: {OPTION_REFUSED}; {LIST_REFUSED}")
+}
+
+/// What a row refused with [`KEYED_PAIR_REFUSED`] prints.
+#[cfg(not(feature = "jsonschema"))]
+fn refused_at_the_keyed_pair(_json: &str) -> String {
+    format!("refused: {KEYED_PAIR_REFUSED}")
+}
+
+/// What a row refused with [`FLATTENED_REFUSED`] prints.
+#[cfg(not(feature = "jsonschema"))]
+fn refused_at_the_flattened_key(_json: &str) -> String {
+    format!("refused: {FLATTENED_REFUSED}")
+}
+
+/// What a row refused with [`PREPROCESSED_REFUSED`] prints.
+#[cfg(not(feature = "jsonschema"))]
+fn refused_at_the_preprocessed_count(_json: &str) -> String {
+    format!("refused: {PREPROCESSED_REFUSED}")
 }
 
 /// Each variant of several slots, and the variant beside it, read from the payload serde writes
@@ -377,6 +448,225 @@ fn a_map_of_tuples_holding_a_model_in_a_variant_is_refused_at_the_variants_path_
     assert_eq!(printed, expected);
 }
 
+/// A tuple holding a model in a slot of a tuple struct, read and written back as serde does, and
+/// refused at the slot's path where the model breaks its bound.
+#[test]
+fn a_tuple_holding_a_model_in_a_slot_of_a_tuple_struct_is_refused_at_the_slots_path_in_kotlin() {
+    let rows = [
+        Row {
+            json: r#"[[{"code":"north"},2],3]"#,
+            name: "a tuple holding a model in a slot of a tuple struct",
+            read_as: "Slotting",
+            written: written_back::<Slotting>,
+        },
+        Row {
+            json: r#"[[{"code":""},2],3]"#,
+            name: "a tuple holding a broken model in a slot of a tuple struct",
+            read_as: "Slotting",
+            written: refused_at_the_slot,
+        },
+    ];
+    let expected = expected(&rows);
+    assert!(
+        expected.contains(
+            "a broken model in a slot of a tuple struct: refused: '0.0.code': too short: minimum \
+             length is 1, got 0"
+        ),
+        "{expected}"
+    );
+    let definitions = vec![
+        stencil_kotlin::kotlin_definition(),
+        slotting_kotlin::kotlin_definition(),
+    ];
+    let Some(printed) = printed(&rows, definitions) else {
+        return;
+    };
+    assert_eq!(printed, expected);
+}
+
+/// A tuple holding a model in the `Ok` arm of a `Result` in a position of a tuple, read and
+/// written back as serde does under each arm, and refused at the arm's path where the model breaks
+/// its bound.
+#[test]
+fn a_tuple_holding_a_model_in_a_result_in_a_tuple_is_refused_at_the_arms_path_in_kotlin() {
+    let rows = [
+        Row {
+            json: r#"{"pair":[{"Ok":[{"code":"north"},2]},3]}"#,
+            name: "a tuple holding a model in the Ok arm of a Result in a tuple",
+            read_as: "Grading",
+            written: written_back::<Grading>,
+        },
+        Row {
+            json: r#"{"pair":[{"Err":4},3]}"#,
+            name: "the Err arm of a Result holding a tuple in a tuple",
+            read_as: "Grading",
+            written: written_back::<Grading>,
+        },
+        Row {
+            json: r#"{"pair":[{"Ok":[{"code":""},2]},3]}"#,
+            name: "a tuple holding a broken model in the Ok arm of a Result in a tuple",
+            read_as: "Grading",
+            written: refused_at_the_arm,
+        },
+    ];
+    let expected = expected(&rows);
+    assert!(
+        expected.contains(
+            "Ok arm of a Result in a tuple: refused: 'pair.0.Ok.0.code': too short: minimum \
+             length is 1, got 0"
+        ),
+        "{expected}"
+    );
+    let definitions = vec![
+        stencil_kotlin::kotlin_definition(),
+        grading_kotlin::kotlin_definition(),
+    ];
+    let Some(printed) = printed(&rows, definitions) else {
+        return;
+    };
+    assert_eq!(printed, expected);
+}
+
+/// Tuples holding a model in an `Option` and in a list beside a flattened member, read and written
+/// back as serde does, and each refused at its own path where its model breaks its bound.
+#[test]
+fn tuples_holding_a_model_in_an_option_and_a_list_are_refused_at_their_paths_in_kotlin() {
+    let rows = [
+        Row {
+            json: r#"{"label":"north","maybe":[{"code":"north"},3],"pairs":[[{"code":"north"},2]]}"#,
+            name: "tuples holding a model in an Option and a list beside a flattened member",
+            read_as: "Spooling",
+            written: written_back::<Spooling>,
+        },
+        Row {
+            json: r#"{"label":"north","maybe":[{"code":""},3],"pairs":[[{"code":""},2]]}"#,
+            name: "tuples holding a broken model in an Option and a list beside a flattened member",
+            read_as: "Spooling",
+            written: refused_in_the_option_and_the_list,
+        },
+    ];
+    let expected = expected(&rows);
+    assert!(
+        expected.contains(
+            "beside a flattened member: refused: 'maybe.0.code': too short: minimum length is 1, \
+             got 0; 'pairs.0.0.code': too short: minimum length is 1, got 0"
+        ),
+        "{expected}"
+    );
+    let definitions = vec![
+        stencil_kotlin::kotlin_definition(),
+        labelling_kotlin::kotlin_definition(),
+        spooling_kotlin::kotlin_definition(),
+    ];
+    let Some(printed) = printed(&rows, definitions) else {
+        return;
+    };
+    assert_eq!(printed, expected);
+}
+
+/// A map of tuples holding a model in a position of a tuple, read and written back as serde does,
+/// and refused at the entry's path where the model breaks its bound.
+#[cfg(not(feature = "jsonschema"))]
+#[test]
+fn a_map_of_tuples_holding_a_model_in_a_tuple_is_refused_at_the_entrys_path_in_kotlin() {
+    let rows = [
+        Row {
+            json: r#"{"pair":[{"north":[{"code":"north"},2]},3]}"#,
+            name: "a map of tuples holding a model in a tuple",
+            read_as: "Coiling",
+            written: written_back::<Coiling>,
+        },
+        Row {
+            json: r#"{"pair":[{"north":[{"code":""},2]},3]}"#,
+            name: "a map of tuples holding a broken model in a tuple",
+            read_as: "Coiling",
+            written: refused_at_the_keyed_pair,
+        },
+    ];
+    let expected = expected(&rows);
+    assert!(
+        expected.contains(r#"a model in a tuple: {"pair":[{"north":[{"code":"north"},2]},3]}"#),
+        "{expected}"
+    );
+    let definitions = vec![
+        stencil_kotlin::kotlin_definition(),
+        coiling_kotlin::kotlin_definition(),
+    ];
+    let Some(printed) = printed(&rows, definitions) else {
+        return;
+    };
+    assert_eq!(printed, expected);
+}
+
+/// A flattened map of tuples holding a model beside a member of the holder's own, read and written
+/// back as serde does, and refused at the key's path where the model breaks its bound.
+#[cfg(not(feature = "jsonschema"))]
+#[test]
+fn a_flattened_map_of_tuples_holding_a_model_is_refused_at_the_keys_path_in_kotlin() {
+    let rows = [
+        Row {
+            json: r#"{"dock":"south","north":[{"code":"north"},2]}"#,
+            name: "a flattened map of tuples holding a model",
+            read_as: "Lashing",
+            written: written_back::<Lashing>,
+        },
+        Row {
+            json: r#"{"dock":"south","north":[{"code":""},2]}"#,
+            name: "a flattened map of tuples holding a broken model",
+            read_as: "Lashing",
+            written: refused_at_the_flattened_key,
+        },
+    ];
+    let expected = expected(&rows);
+    assert!(
+        expected.contains(r#"holding a model: {"dock":"south","north":[{"code":"north"},2]}"#),
+        "{expected}"
+    );
+    let definitions = vec![
+        stencil_kotlin::kotlin_definition(),
+        lashing_kotlin::kotlin_definition(),
+    ];
+    let Some(printed) = printed(&rows, definitions) else {
+        return;
+    };
+    assert_eq!(printed, expected);
+}
+
+/// A map of tuples holding a model, read through a function a `preprocess` names, read and written
+/// back as serde does, and refused at the entry's path where the model breaks its bound.
+#[cfg(not(feature = "jsonschema"))]
+#[test]
+fn a_preprocessed_map_of_tuples_holding_a_model_is_refused_at_the_entrys_path_in_kotlin() {
+    let rows = [
+        Row {
+            json: r#"{"counts":{"north":[{"code":"north"},2]}}"#,
+            name: "a preprocessed map of tuples holding a model",
+            read_as: "Heaping",
+            written: written_back::<Heaping>,
+        },
+        Row {
+            json: r#"{"counts":{"north":[{"code":""},2]}}"#,
+            name: "a preprocessed map of tuples holding a broken model",
+            read_as: "Heaping",
+            written: refused_at_the_preprocessed_count,
+        },
+    ];
+    let expected = expected(&rows);
+    assert!(
+        expected.contains(r#"holding a model: {"counts":{"north":[{"code":"north"},2]}}"#),
+        "{expected}"
+    );
+    let definitions = vec![
+        stencil_kotlin::kotlin_definition(),
+        heaping_kotlin::kotlin_definition(),
+        UNCHANGED.to_owned(),
+    ];
+    let Some(printed) = printed(&rows, definitions) else {
+        return;
+    };
+    assert_eq!(printed, expected);
+}
+
 /// The refusals the Kotlin rows above are held to are what the holder's `validate()` answers in
 /// Rust, the read of a payload that leaves the key out included.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
@@ -407,5 +697,52 @@ fn the_refusals_held_here_are_what_the_holders_validate_answers() {
     assert_eq!(
         Binning::Counts(HashMap::from([("north".to_owned(), broken())])).validate(),
         Err(vec![COUNT_REFUSED.to_owned()])
+    );
+    assert_eq!(
+        Slotting(broken(), 3).validate(),
+        Err(vec![SLOT_REFUSED.to_owned()])
+    );
+    assert_eq!(
+        Grading {
+            pair: (Ok(broken()), 3)
+        }
+        .validate(),
+        Err(vec![ARM_REFUSED.to_owned()])
+    );
+    assert_eq!(
+        Spooling {
+            labelling: Labelling {
+                label: "north".to_owned()
+            },
+            maybe: Some(broken()),
+            pairs: vec![broken()]
+        }
+        .validate(),
+        Err(vec![OPTION_REFUSED.to_owned(), LIST_REFUSED.to_owned()])
+    );
+    #[cfg(not(feature = "jsonschema"))]
+    assert_eq!(
+        Coiling {
+            pair: (HashMap::from([("north".to_owned(), broken())]), 3)
+        }
+        .validate(),
+        Err(vec![KEYED_PAIR_REFUSED.to_owned()])
+    );
+    #[cfg(not(feature = "jsonschema"))]
+    assert_eq!(
+        Lashing {
+            dock: "south".to_owned(),
+            extra: HashMap::from([("north".to_owned(), broken())])
+        }
+        .validate(),
+        Err(vec![FLATTENED_REFUSED.to_owned()])
+    );
+    #[cfg(not(feature = "jsonschema"))]
+    assert_eq!(
+        Heaping {
+            counts: HashMap::from([("north".to_owned(), broken())])
+        }
+        .validate(),
+        Err(vec![PREPROCESSED_REFUSED.to_owned()])
     );
 }

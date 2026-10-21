@@ -7,19 +7,22 @@
 #[cfg(not(feature = "jsonschema"))]
 use std::collections::HashMap;
 
-#[cfg(all(feature = "serde", not(feature = "jsonschema")))]
-use super::tuple_variants_models::binning_kotlin;
 use super::tuple_variants_models::{
-    Banding, Bundling, Crating, Labelling, Palleting, Piling, Racking, Ranking, Stacking, Stencil,
-    Strapping, Wrapping, crating_kotlin, palleting_kotlin, ranking_kotlin, stacking_kotlin,
+    Banding, Bundling, Crating, Grading, Labelling, Palleting, Piling, Racking, Ranking, Slotting,
+    Spooling, Stacking, Stencil, Strapping, Wrapping, crating_kotlin, grading_kotlin,
+    palleting_kotlin, ranking_kotlin, slotting_kotlin, stacking_kotlin,
 };
 #[cfg(not(feature = "jsonschema"))]
-use super::tuple_variants_models::{Binning, Tallying, tallying_kotlin};
+use super::tuple_variants_models::{
+    Binning, Coiling, Heaping, Lashing, Tallying, coiling_kotlin, heaping_kotlin, tallying_kotlin,
+};
 #[cfg(feature = "serde")]
 use super::tuple_variants_models::{
-    banding_kotlin, bundling_kotlin, piling_kotlin, racking_kotlin, strapping_kotlin,
-    wrapping_kotlin,
+    banding_kotlin, bundling_kotlin, piling_kotlin, racking_kotlin, spooling_kotlin,
+    strapping_kotlin, wrapping_kotlin,
 };
+#[cfg(all(feature = "serde", not(feature = "jsonschema")))]
+use super::tuple_variants_models::{binning_kotlin, lashing_kotlin};
 
 /// The payload each type below writes and reads.
 #[test]
@@ -97,6 +100,60 @@ fn every_fixture_is_written_as_serde_writes_it() {
         )])))
         .unwrap(),
         r#"{"kind":"Counts","held":{"north":[{"code":"north"},2]}}"#
+    );
+}
+
+/// The payload each holder of a tuple holding a model further in writes and reads: in a slot of a
+/// tuple struct, in a `Result` and in a map in a tuple, in an `Option` and a list, and in a map
+/// read flattened or through a function.
+#[test]
+fn every_fixture_holding_a_tuple_further_in_is_written_as_serde_writes_it() {
+    assert_eq!(
+        serde_json::to_string(&Slotting((north(), 2), 3)).unwrap(),
+        r#"[[{"code":"north"},2],3]"#
+    );
+    assert_eq!(
+        serde_json::to_string(&Grading {
+            pair: (Ok((north(), 2)), 3)
+        })
+        .unwrap(),
+        r#"{"pair":[{"Ok":[{"code":"north"},2]},3]}"#
+    );
+    assert_eq!(
+        serde_json::to_string(&Spooling {
+            labelling: Labelling {
+                label: "north".to_owned()
+            },
+            maybe: Some((north(), 3)),
+            pairs: vec![(north(), 2)]
+        })
+        .unwrap(),
+        r#"{"label":"north","maybe":[{"code":"north"},3],"pairs":[[{"code":"north"},2]]}"#
+    );
+    #[cfg(not(feature = "jsonschema"))]
+    assert_eq!(
+        serde_json::to_string(&Coiling {
+            pair: (HashMap::from([("north".to_owned(), (north(), 2))]), 3)
+        })
+        .unwrap(),
+        r#"{"pair":[{"north":[{"code":"north"},2]},3]}"#
+    );
+    #[cfg(not(feature = "jsonschema"))]
+    assert_eq!(
+        serde_json::to_string(&Lashing {
+            dock: "south".to_owned(),
+            extra: HashMap::from([("north".to_owned(), (north(), 2))])
+        })
+        .unwrap(),
+        r#"{"dock":"south","north":[{"code":"north"},2]}"#
+    );
+    #[cfg(not(feature = "jsonschema"))]
+    assert_eq!(
+        serde_json::to_string(&Heaping {
+            counts: HashMap::from([("north".to_owned(), (north(), 2))])
+        })
+        .unwrap(),
+        r#"{"counts":{"north":[{"code":"north"},2]}}"#
     );
 }
 
@@ -338,11 +395,9 @@ fn a_tuple_in_a_position_of_a_tuple_is_declared_and_read_by_one_wrapper() {
     }
 }
 
-/// The wrapper `definition` declares, after asserting it declares one, and that the wrapper reads
-/// the model of its first position unjudged.
-#[cfg(feature = "serde")]
-fn the_walked_wrapper(definition: &str) -> String {
-    let [wrapper] = declared_wrappers(definition).try_into().unwrap();
+/// Asserts that `wrapper`, declared in `definition`, reads the model of its first position
+/// unjudged.
+fn reads_the_model_unjudged(definition: &str, wrapper: &str) {
     for held in [
         format!("data class {wrapper}(val slot0: Stencil, val slot1: UByte)"),
         "add(output.json.encodeToJsonElement(StencilUnjudged, value.slot0))".to_owned(),
@@ -350,6 +405,13 @@ fn the_walked_wrapper(definition: &str) -> String {
     ] {
         assert!(definition.contains(&held), "no `{held}` in: {definition}");
     }
+}
+
+/// The wrapper `definition` declares, after asserting it declares one, and that the wrapper reads
+/// the model of its first position unjudged.
+fn the_walked_wrapper(definition: &str) -> String {
+    let [wrapper] = declared_wrappers(definition).try_into().unwrap();
+    reads_the_model_unjudged(definition, &wrapper);
     wrapper
 }
 
@@ -413,4 +475,151 @@ fn a_map_of_tuples_holding_a_model_in_a_variant_is_declared_and_read_by_one_wrap
         2,
         "got: {binning}"
     );
+}
+
+/// A tuple holding a model in a slot of a tuple struct: the slot is declared, and the struct's
+/// serializer writes and reads it, by the one wrapper that reads the model unjudged.
+#[test]
+fn a_tuple_holding_a_model_in_a_slot_of_a_tuple_struct_is_declared_and_read_by_one_wrapper() {
+    let slotting = slotting_kotlin::kotlin_definition();
+    let wrapper = the_walked_wrapper(&slotting);
+    for held in [
+        format!("data class Slotting(val slot0: {wrapper}, val slot1: UByte)"),
+        format!("add(output.json.encodeToJsonElement(serializer<{wrapper}>(), value.slot0))"),
+        format!("input.json.decodeFromJsonElement(serializer<{wrapper}>(), array[0])"),
+    ] {
+        assert!(slotting.contains(&held), "no `{held}` in: {slotting}");
+    }
+}
+
+/// A tuple holding a model in the `Ok` arm of a `Result` in a position of a tuple: the outer
+/// wrapper declares the arm, and writes and reads it, by the one wrapper that reads the model
+/// unjudged.
+#[test]
+fn a_tuple_holding_a_model_in_a_result_in_a_tuple_is_declared_and_read_by_one_wrapper() {
+    let grading = grading_kotlin::kotlin_definition();
+    let [inner, outer] = declared_wrappers(&grading).try_into().unwrap();
+    reads_the_model_unjudged(&grading, &inner);
+    assert!(
+        grading.contains(&format!("data class Grading(val pair: {outer})")),
+        "got: {grading}"
+    );
+    let opens = format!("data class {outer}(val slot0: ");
+    let at = grading.find(&opens).unwrap() + opens.len();
+    let declared = &grading[at..at + grading[at..].find(", val slot1: UByte)").unwrap()];
+    let arguments = format!("<{inner}, UByte>");
+    assert!(
+        declared.starts_with("KotlinResult") && declared.ends_with(&arguments),
+        "got: {grading}"
+    );
+    let result = declared.strip_suffix(&arguments).unwrap();
+    assert_eq!(
+        grading
+            .matches(&format!(
+                "{result}Serializer(serializer<{inner}>(), serializer<UByte>())"
+            ))
+            .count(),
+        2,
+        "got: {grading}"
+    );
+}
+
+/// Tuples holding a model in an `Option` and in a list, beside a flattened member: both
+/// properties are declared, and the holder's serializer writes and reads both, by the one wrapper
+/// that reads the model unjudged.
+#[cfg(feature = "serde")]
+#[test]
+fn tuples_holding_a_model_in_an_option_and_a_list_are_declared_and_read_by_one_wrapper() {
+    let spooling = spooling_kotlin::kotlin_definition();
+    let wrapper = the_walked_wrapper(&spooling);
+    for held in [
+        format!(
+            "data class Spooling(val labelling: Labelling, val maybe: {wrapper}? = null, \
+             val pairs: List<{wrapper}>)"
+        ),
+        format!(
+            "put(\"maybe\", output.json.encodeToJsonElement(serializer<{wrapper}>().nullable, \
+             value.maybe))"
+        ),
+        format!(
+            "put(\"pairs\", \
+             output.json.encodeToJsonElement(ListSerializer(serializer<{wrapper}>()), \
+             value.pairs))"
+        ),
+        format!(
+            "val maybe = obj[\"maybe\"]?.let {{ \
+             input.json.decodeFromJsonElement(serializer<{wrapper}>().nullable, it) }}"
+        ),
+        format!(
+            "val pairs = \
+             input.json.decodeFromJsonElement(ListSerializer(serializer<{wrapper}>()), \
+             obj.getValue(\"pairs\"))"
+        ),
+    ] {
+        assert!(spooling.contains(&held), "no `{held}` in: {spooling}");
+    }
+}
+
+/// A map of tuples holding a model in a position of a tuple: the outer wrapper declares the map,
+/// and writes and reads it, by the one wrapper that reads the model unjudged.
+#[cfg(not(feature = "jsonschema"))]
+#[test]
+fn a_map_of_tuples_holding_a_model_in_a_tuple_is_declared_and_read_by_one_wrapper() {
+    let coiling = coiling_kotlin::kotlin_definition();
+    let [inner, outer] = declared_wrappers(&coiling).try_into().unwrap();
+    reads_the_model_unjudged(&coiling, &inner);
+    for held in [
+        format!("data class Coiling(val pair: {outer})"),
+        format!("data class {outer}(val slot0: Map<String, {inner}>, val slot1: UByte)"),
+    ] {
+        assert!(coiling.contains(&held), "no `{held}` in: {coiling}");
+    }
+    assert_eq!(
+        coiling
+            .matches(&format!(
+                "MapSerializer(serializer<String>(), serializer<{inner}>())"
+            ))
+            .count(),
+        2,
+        "got: {coiling}"
+    );
+}
+
+/// A flattened map of tuples holding a model, beside a member of the holder's own: the property is
+/// declared, and the holder's serializer writes and reads each entry, by the one wrapper that
+/// reads the model unjudged.
+#[cfg(all(feature = "serde", not(feature = "jsonschema")))]
+#[test]
+fn a_flattened_map_of_tuples_holding_a_model_is_declared_and_read_by_one_wrapper() {
+    let lashing = lashing_kotlin::kotlin_definition();
+    let wrapper = the_walked_wrapper(&lashing);
+    for held in [
+        format!("data class Lashing(val dock: String, val extra: Map<String, {wrapper}>)"),
+        format!("put(k, output.json.encodeToJsonElement(serializer<{wrapper}>(), v))"),
+        format!("input.json.decodeFromJsonElement(serializer<{wrapper}>(), v)"),
+    ] {
+        assert!(lashing.contains(&held), "no `{held}` in: {lashing}");
+    }
+}
+
+/// A map of tuples holding a model, read through a function a `preprocess` names: the property is
+/// declared, and the serializer that corrects it reads it, by the one wrapper that reads the
+/// model unjudged.
+#[cfg(not(feature = "jsonschema"))]
+#[test]
+fn a_preprocessed_map_of_tuples_holding_a_model_is_declared_and_read_by_one_wrapper() {
+    let heaping = heaping_kotlin::kotlin_definition();
+    let wrapper = the_walked_wrapper(&heaping);
+    for held in [
+        format!(
+            "data class Heaping(@Serializable(with = HeapingCountsPreprocess::class) val counts: \
+             Map<String, {wrapper}>)"
+        ),
+        format!(
+            "object HeapingCountsPreprocess : JsonTransformingSerializer<Map<String, {wrapper}>>(\
+             MapSerializer(serializer<String>(), serializer<{wrapper}>()))"
+        ),
+    ] {
+        assert!(heaping.contains(&held), "no `{held}` in: {heaping}");
+    }
 }
