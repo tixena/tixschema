@@ -99,7 +99,7 @@ struct NonStringLiterals {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 struct CombinedTest {
-    #[model_schema_prop(as = String, literal = "fixed", minLength = 10)]
+    #[model_schema_prop(as = String, literal = "fixed")]
     pub fixed_field: String,
     #[model_schema_prop(as = String, minLength = 1)]
     pub normal_field: String,
@@ -220,6 +220,22 @@ enum TsOptionalVariant {
         #[model_schema_prop(ts_optional)]
         #[serde(skip_serializing_if = "Option::is_none")]
         filter: Option<Inner>,
+    },
+}
+
+/// The enum's own check holds `note` and leaves `word` alone: a literal takes no other rule.
+#[cfg(all(
+    test,
+    any(feature = "typescript", feature = "jsonschema", feature = "zod")
+))]
+#[model_schema(minLength = 2)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(tag = "kind")]
+enum LabelledLiteral {
+    Fixed {
+        #[model_schema_prop(literal = "x")]
+        word: String,
+        note: String,
     },
 }
 
@@ -378,6 +394,19 @@ fn test_ts_optional_variant_constructible() {
         variant,
         TsOptionalVariant::FilterPart { filter: _filter }
     ));
+}
+
+#[cfg(all(
+    test,
+    any(feature = "typescript", feature = "jsonschema", feature = "zod")
+))]
+#[test]
+fn test_labelled_literal_constructible() {
+    let LabelledLiteral::Fixed { word, note } = LabelledLiteral::Fixed {
+        word: "x".to_owned(),
+        note: String::new(),
+    };
+    assert_eq!((word.as_str(), note.as_str()), ("x", ""));
 }
 
 #[test]
@@ -663,6 +692,64 @@ fn test_combined_literal_minlength_json_schema() {
     assert_eq!(normal_prop["type"], "string");
     assert_eq!(normal_prop["minLength"], 1_i32);
     assert!(normal_prop.get("const").is_none());
+}
+
+#[test]
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "jsonschema", feature = "zod")
+))]
+fn an_enums_check_leaves_a_literal_field_alone_in_validate_and_the_read() {
+    let fixed = LabelledLiteral::Fixed {
+        word: "x".to_owned(),
+        note: "ab".to_owned(),
+    };
+    assert_eq!(fixed.validate(), Ok(()));
+    assert_eq!(
+        serde_json::from_str::<LabelledLiteral>(r#"{"kind":"Fixed","word":"x","note":"ab"}"#)
+            .map_err(|error| error.to_string()),
+        Ok(fixed)
+    );
+    let short = LabelledLiteral::Fixed {
+        word: "x".to_owned(),
+        note: "a".to_owned(),
+    };
+    assert_eq!(
+        short.validate(),
+        Err(vec![
+            "'note': too short: minimum length is 2, got 1".to_owned()
+        ])
+    );
+}
+
+#[test]
+#[cfg(feature = "zod")]
+fn an_enums_check_leaves_a_literal_field_alone_in_zod() {
+    let zod_schema = LabelledLiteral::zod_schema();
+
+    assert!(
+        zod_schema.contains("word: z.literal(\"x\")"),
+        "{zod_schema}"
+    );
+    assert!(zod_schema.contains("note: z.string().min(2, { error: (issue) => `too short: minimum length is 2, got ${String(issue.input).length}` })"), "{zod_schema}");
+}
+
+#[test]
+#[cfg(feature = "jsonschema")]
+fn an_enums_check_leaves_a_literal_field_alone_in_the_json_schema() {
+    let schema = LabelledLiteral::json_schema();
+    let properties = &schema["oneOf"][0]["properties"];
+
+    assert_eq!(
+        properties["word"],
+        serde_json::json!({ "type": "string", "const": "x" }),
+        "{schema}"
+    );
+    assert_eq!(
+        properties["note"],
+        serde_json::json!({ "type": "string", "minLength": 2_i32 }),
+        "{schema}"
+    );
 }
 
 #[test]

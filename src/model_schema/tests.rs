@@ -3866,6 +3866,14 @@ fn field_prop_guard_errors(item: &syn::ItemStruct) -> Vec<String> {
     field_prop_guard_errors_in_scope(item, &[])
 }
 
+/// The messages [`field_prop_guard_errors`] carries, read back unescaped.
+fn field_prop_guard_messages(item: &syn::ItemStruct) -> Vec<String> {
+    field_prop_guard_errors(item)
+        .iter()
+        .flat_map(|error| literal_texts(&error.parse().unwrap()))
+        .collect()
+}
+
 #[test]
 fn the_field_pattern_guard_follows_the_regex_crate() {
     for pattern in PROBE_PATTERNS {
@@ -4691,6 +4699,110 @@ fn a_literal_whose_kind_the_field_can_carry_is_left_alone() {
         quote::quote! { #[model_schema_prop(literal = 214)] flag: i32 },
         quote::quote! { #[model_schema_prop(literal = 3.5)] flag: f64 },
         quote::quote! { #[model_schema_prop(literal = true)] flag: Option<bool> },
+    ] {
+        let errors = field_prop_guard_errors(&syn::parse_quote! {
+            struct Report {
+                #field
+            }
+        });
+        assert!(errors.is_empty(), "for {field}: {errors:?}");
+    }
+}
+
+#[test]
+fn a_literal_beside_a_rule_is_refused() {
+    for (keys, field_type, written, rules) in [
+        (
+            quote::quote! { literal = "x", minLength = 3 },
+            quote::quote! { String },
+            "\"x\"",
+            "minLength",
+        ),
+        (
+            quote::quote! { literal = "x", maxLength = 9 },
+            quote::quote! { String },
+            "\"x\"",
+            "maxLength",
+        ),
+        (
+            quote::quote! { literal = "x", pattern = "^x$" },
+            quote::quote! { String },
+            "\"x\"",
+            "pattern",
+        ),
+        (
+            quote::quote! { literal = "x", check = ["exactly_x"] },
+            quote::quote! { String },
+            "\"x\"",
+            "check",
+        ),
+        (
+            quote::quote! { literal = 214, minimum = 5 },
+            quote::quote! { u32 },
+            "214",
+            "minimum",
+        ),
+        (
+            quote::quote! { literal = 214, maximum = 900 },
+            quote::quote! { u32 },
+            "214",
+            "maximum",
+        ),
+        (
+            quote::quote! { literal = true, check = ["fn_name"] },
+            quote::quote! { bool },
+            "true",
+            "check",
+        ),
+        (
+            quote::quote! { minLength = 1, literal = "x", pattern = "^x$", check = ["exactly_x"] },
+            quote::quote! { Option<String> },
+            "\"x\"",
+            "minLength`, `pattern`, `check",
+        ),
+    ] {
+        let messages = field_prop_guard_messages(&syn::parse_quote! {
+            struct Report {
+                #[model_schema_prop(#keys)]
+                flag: #field_type,
+            }
+        });
+        assert_eq!(
+            messages.len(),
+            1,
+            "for {keys} on {field_type}: {messages:?}"
+        );
+        assert_eq!(
+            messages[0],
+            format!(
+                "model_schema: field `flag`: `literal = {written}` takes no other rule, and \
+                 `{rules}` is written beside it — a literal admits one value, so the rule is \
+                 always met or never met. Drop `{rules}`, or drop the literal."
+            ),
+            "for {keys} on {field_type}"
+        );
+    }
+    let shown = field_prop_guard_messages(&syn::parse_quote! {
+        pub struct Envelope {
+            #[model_schema_prop(literal = "v1", minLength = 3)]
+            pub version: String,
+        }
+    });
+    assert_eq!(shown.len(), 1, "got: {shown:?}");
+    assert!(
+        include_str!("../../README.md").contains(&format!("error: {}\n", shown[0])),
+        "the README no longer shows the refusal: {}",
+        shown[0]
+    );
+}
+
+#[test]
+fn a_literal_beside_a_key_that_holds_the_value_to_no_rule_is_left_alone() {
+    for field in [
+        quote::quote! { #[model_schema_prop(as = String, literal = "x")] flag: String },
+        quote::quote! { #[model_schema_prop(literal = "x", preprocess = ["trimmed"])] flag: String },
+        quote::quote! { #[model_schema_prop(literal = "x", ts_optional)] flag: Option<String> },
+        quote::quote! { #[model_schema_prop(literal = "x", nullable)] flag: Option<String> },
     ] {
         let errors = field_prop_guard_errors(&syn::parse_quote! {
             struct Report {
@@ -7679,6 +7791,54 @@ fn a_member_is_held_to_its_own_lengths_and_its_enums() {
         let held = held_member(enum_check, source);
         assert_eq!(held.min_length, min_length, "for {source}");
         assert_eq!(held.max_length, max_length, "for {source}");
+    }
+}
+
+/// A literal takes no other rule, so an enum's check leaves a member that carries one alone.
+#[test]
+fn a_member_that_carries_a_literal_is_held_to_nothing_of_its_enums_check() {
+    for source in [
+        "#[model_schema_prop(literal = \"x\")] label: String",
+        "#[model_schema_prop(literal = \"x\")] label: Option<String>",
+    ] {
+        let held = held_member(
+            "minLength = 2, maxLength = 5, pattern = \"^[a-z]+$\"",
+            source,
+        );
+        assert_eq!(held.min_length, None, "for {source}");
+        assert_eq!(held.max_length, None, "for {source}");
+        assert_eq!(held.pattern, None, "for {source}");
+        #[cfg(any(
+            feature = "serde",
+            feature = "zod",
+            feature = "dart",
+            feature = "swift"
+        ))]
+        assert_eq!(held.patterns().count(), 0, "for {source}");
+    }
+}
+
+#[test]
+fn an_enums_check_beside_a_literal_field_builds_under_every_tagging() {
+    for args in ["minLength = 2", "maxLength = 9", "pattern = \"^[a-z]+$\""] {
+        for tagging in [
+            "",
+            "#[serde(tag = \"kind\")]",
+            "#[serde(tag = \"kind\", content = \"held\")]",
+            "#[serde(untagged)]",
+        ] {
+            let expanded = expansion_under(
+                args,
+                &format!(
+                    "{tagging} pub enum Label {{ Fixed {{ #[model_schema_prop(literal = \"x\")] \
+                     word: String, note: String }} }}"
+                ),
+            );
+            assert!(
+                !expanded.contains("compile_error"),
+                "for {args} under {tagging}: {expanded}"
+            );
+        }
     }
 }
 

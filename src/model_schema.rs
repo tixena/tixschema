@@ -15335,6 +15335,7 @@ fn model_schema_prop_guard_errors(
     let refusals = [
         check_fixed_shape_constraints(field, field_def, prop_meta, label).err(),
         check_literal_kind_match(field, field_def, prop_meta, label).err(),
+        check_literal_alone(field, prop_meta, label).err(),
         check_as_type_override(field, written_def, prop_meta, label).err(),
         check_as_preprocess_conflict(field, prop_meta, label).err(),
         flag_guard_error(
@@ -15655,6 +15656,35 @@ fn check_literal_kind_match(
     ))
 }
 
+/// Rejects a `literal` beside any rule: a literal admits one value, so a rule beside it is always
+/// met or never met.
+fn check_literal_alone(
+    field: &Field,
+    prop_meta: &ModelSchemaPropMeta,
+    label: &str,
+) -> Result<(), syn::Error> {
+    let Some(literal) = &prop_meta.literal else {
+        return Ok(());
+    };
+    let mut rules = written_constraint_keys(prop_meta);
+    if !prop_meta.check.is_empty() {
+        rules.push("check");
+    }
+    if rules.is_empty() {
+        return Ok(());
+    }
+    let written = literal_written(literal);
+    let keys = rules.join("`, `");
+    Err(syn::Error::new_spanned(
+        field,
+        format!(
+            "model_schema: {label}: `literal = {written}` takes no other rule, and `{keys}` is \
+             written beside it — a literal admits one value, so the rule is always met or never \
+             met. Drop `{keys}`, or drop the literal."
+        ),
+    ))
+}
+
 /// Rejects an `as = Type` naming anything but the type the field already renders.
 fn check_as_type_override(
     field: &Field,
@@ -15803,9 +15833,11 @@ fn written_as_text(ty: &syn::Type) -> bool {
 
 /// A member's own `model_schema_prop`, held to the string check of the enum around it where that
 /// check reaches the member: the longer `minLength`, the shorter `maxLength`, and both patterns.
+/// A member that carries a `literal` is not reached: a literal takes no other rule.
 fn member_prop_meta(field: &Field, enum_args: Option<&ModelSchemaArgs>) -> ModelSchemaPropMeta {
     let mut meta = parse_model_schema_prop_attributes(&field.attrs);
-    let Some(args) = enum_args.filter(|_| written_as_text(&field.ty)) else {
+    let Some(args) = enum_args.filter(|_| meta.literal.is_none() && written_as_text(&field.ty))
+    else {
         return meta;
     };
     meta.min_length = meta.min_length.max(args.min_length);

@@ -857,7 +857,7 @@ ContentKind::Other("a".repeat(21)).validate();
 The enum's check is the same check written in `#[model_schema_prop(...)]` on each field it reaches, and it is enforced exactly where that field's own check is, on every enum Serde writes: plain, externally, internally and adjacently tagged, and `#[serde(untagged)]`.
 
 - **Reached:** a field of any variant, a named member or a slot, written as a string or a path itself -- `String`, `&str`, `PathBuf` -- under `Option` and the transparent wrappers `Box`, `Rc`, `Arc` and `Cow`.
-- **Not reached:** the items of a list, so a field written `Vec<String>` is held to nothing; a field typed with a named type, a brand included, which carries its own check; a number, a `bool`, a map and a tuple; and a field typed with one of the enum's own type parameters.
+- **Not reached:** the items of a list, so a field written `Vec<String>` is held to nothing; a field typed with a named type, a brand included, which carries its own check; a number, a `bool`, a map and a tuple; a field typed with one of the enum's own type parameters; and a field that carries a [`literal`](#literal-values), which takes no other rule.
 - **A member of an untagged enum** is checked by the read, which is what chooses the variant, and by `validate()`, the Zod schema and the JSON Schema.
 - **A member of a tagged enum** is checked by `validate()`, which the enum's own read runs on the value it read, and by the Zod schema, the JSON Schema and the [recovering decode](#recovering-decode-decode_with). See [Where a constraint is checked](#where-a-constraint-is-checked).
 
@@ -5214,6 +5214,23 @@ export const AdminUser$Schema = z.strictObject({
   examples: []
 });
 ```
+
+A literal takes no other rule. `minLength`, `maxLength`, `pattern`, `minimum`, `maximum` or `check` written beside it is a compile error in every build, naming the field, the literal and each rule: a literal admits one value, so a rule beside it is always met or never met. `as`, `preprocess`, `ts_optional` and `nullable` hold the value to no rule, and are written beside a literal as on any field.
+
+```rust
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+pub struct Envelope {
+    #[model_schema_prop(literal = "v1", minLength = 3)]
+    pub version: String,
+}
+```
+
+```text
+error: model_schema: field `version`: `literal = "v1"` takes no other rule, and `minLength` is written beside it — a literal admits one value, so the rule is always met or never met. Drop `minLength`, or drop the literal.
+```
+
+An enum's own check does not reach a field that carries a literal ([A Check Written on the Enum](#a-check-written-on-the-enum)).
 
 **Recommended: Single-value enums over literal strings.** While `model_schema_prop(literal = ...)` works, a single-value enum provides type safety in Rust -- the field can only hold the correct value at compile time, whereas a `String` with a literal annotation can hold any string in Rust (the constraint only applies in the generated TypeScript/Zod output).
 
