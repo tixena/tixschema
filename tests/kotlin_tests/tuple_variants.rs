@@ -10,8 +10,8 @@ use std::collections::HashMap;
 #[cfg(all(feature = "serde", not(feature = "jsonschema")))]
 use super::tuple_variants_models::binning_kotlin;
 use super::tuple_variants_models::{
-    Banding, Bundling, Crating, Labelling, Palleting, Piling, Racking, Stacking, Stencil,
-    Strapping, Wrapping, crating_kotlin, palleting_kotlin, stacking_kotlin,
+    Banding, Bundling, Crating, Labelling, Palleting, Piling, Racking, Ranking, Stacking, Stencil,
+    Strapping, Wrapping, crating_kotlin, palleting_kotlin, ranking_kotlin, stacking_kotlin,
 };
 #[cfg(not(feature = "jsonschema"))]
 use super::tuple_variants_models::{Binning, Tallying, tallying_kotlin};
@@ -44,6 +44,14 @@ fn every_fixture_is_written_as_serde_writes_it() {
         )])))
         .unwrap(),
         r#"{"kind":"Counts","held":{"north":[1,2]}}"#
+    );
+    assert_eq!(
+        serde_json::to_string(&Ranking::Places(Ok((1, 2)))).unwrap(),
+        r#"{"kind":"Places","held":{"Ok":[1,2]}}"#
+    );
+    assert_eq!(
+        serde_json::to_string(&Ranking::Places(Err("none".to_owned()))).unwrap(),
+        r#"{"kind":"Places","held":{"Err":"none"}}"#
     );
     assert_eq!(
         serde_json::from_str::<Strapping>("{}").unwrap(),
@@ -238,6 +246,28 @@ fn a_map_of_tuples_in_a_variant_is_declared_and_read_by_one_wrapper() {
             .count(),
         2,
         "got: {tallying}"
+    );
+}
+
+/// A `Result` holding a tuple in a variant's one slot: the subclass declares it, and the enum's
+/// serializer writes and reads it, by one wrapper.
+#[test]
+fn a_result_holding_a_tuple_in_a_variant_is_declared_and_read_by_one_wrapper() {
+    let ranking = ranking_kotlin::kotlin_definition();
+    let [wrapper] = declared_wrappers(&ranking).try_into().unwrap();
+    let opens = "data class RankingPlaces(val value: ";
+    let at = ranking.find(opens).unwrap() + opens.len();
+    let declared = &ranking[at..at + ranking[at..].find(')').unwrap()];
+    assert!(
+        declared.starts_with("KotlinResult") && declared.ends_with(&format!("<{wrapper}, String>")),
+        "got: {ranking}"
+    );
+    assert_eq!(
+        ranking
+            .matches(&format!("serializer<{declared}>()"))
+            .count(),
+        2,
+        "got: {ranking}"
     );
 }
 
