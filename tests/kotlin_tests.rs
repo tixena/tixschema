@@ -45,3 +45,15 @@ mod tuple_variants;
 #[cfg(feature = "kotlin")]
 #[path = "kotlin_tests/flattened_models.rs"]
 mod flattened_models;
+
+/// A member serde reads and never writes, in a struct of its own and beside a flattened member.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/unwritten_models.rs"]
+mod unwritten_models;
+
+/// What the Kotlin emitter writes and reads of a member serde never writes.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "kotlin_tests/unwritten.rs"]
+mod unwritten;

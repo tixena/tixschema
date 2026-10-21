@@ -28,3 +28,15 @@ mod read;
 #[cfg(all(feature = "dart", feature = "serde"))]
 #[path = "dart_tests/preprocess.rs"]
 mod preprocess;
+
+/// A member serde reads and never writes, in a struct of its own and beside a flattened member.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/unwritten_models.rs"]
+mod unwritten_models;
+
+/// What the Dart emitter writes and reads of a member serde never writes.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "dart_tests/unwritten.rs"]
+mod unwritten;

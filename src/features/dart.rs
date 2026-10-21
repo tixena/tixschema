@@ -12,7 +12,9 @@ use syn::{Field, Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
 use crate::bound_message::{Bound, dart_repeated, dart_violation};
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
-use crate::features::serde::{brand_field, parse_serde_key_omission, struct_tag};
+use crate::features::serde::{
+    brand_field, has_serde_skip_serializing, parse_serde_key_omission, struct_tag,
+};
 use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, classify_variant,
     dart_from_json_argument, dart_lower_camel, dart_to_json_argument, get_field_def, is_plain_enum,
@@ -107,6 +109,8 @@ struct DartField {
     field_def: FieldDef,
     flatten: bool,
     member: String,
+    /// Whether serde never writes the member: it is under `skip_serializing`.
+    never_written: bool,
     required: bool,
     wire_name: String,
 }
@@ -730,6 +734,7 @@ fn collect_dart_fields(
             flatten: field_is_flatten(&field.attrs),
             field_def,
             member: dart_member(&rust_name, &DART_FIELD_NAMES_TAKEN, &written),
+            never_written: has_serde_skip_serializing(&field.attrs),
             wire_name,
         });
     }
@@ -2392,6 +2397,7 @@ fn class_body_parts(fields: &[DartField], extra_to_json: &[String]) -> ClassBody
     });
     let to_json_entries: String = fields
         .iter()
+        .filter(|field| field.flatten || !field.never_written)
         .map(|field| {
             let encode = dart_encode_expr(&field.field_def, &field.member, false);
             if field.flatten {
