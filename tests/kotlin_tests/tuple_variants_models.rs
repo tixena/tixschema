@@ -120,6 +120,29 @@ pub struct Banding {
     pub pair: (Stencil, u8),
 }
 
+/// A tuple holding a model, in a slot of a tuple struct.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Slotting(pub (Stencil, u8), pub u8);
+
+/// A tuple holding a model, in the `Ok` arm of a `Result` in a position of a tuple.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Grading {
+    pub pair: (Result<(Stencil, u8), u8>, u8),
+}
+
+/// Tuples holding a model, in an `Option` and in a list, beside a flattened member.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Spooling {
+    #[serde(flatten)]
+    pub labelling: Labelling,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maybe: Option<(Stencil, u8)>,
+    pub pairs: Vec<(Stencil, u8)>,
+}
+
 /// A map of tuples holding a model in a variant's one slot, under a tag and a content key. A JSON
 /// Schema refuses a tuple as a map value.
 #[cfg(not(feature = "jsonschema"))]
@@ -128,4 +151,40 @@ pub struct Banding {
 #[serde(tag = "kind", content = "held")]
 pub enum Binning {
     Counts(HashMap<String, (Stencil, u8)>),
+}
+
+/// A map of tuples holding a model, in a position of a tuple. A JSON Schema refuses a tuple as a
+/// map value.
+#[cfg(not(feature = "jsonschema"))]
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Coiling {
+    pub pair: (HashMap<String, (Stencil, u8)>, u8),
+}
+
+/// A flattened map of tuples holding a model, beside a member of the holder's own. A JSON Schema
+/// refuses a tuple as a map value.
+#[cfg(not(feature = "jsonschema"))]
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Lashing {
+    pub dock: String,
+    #[serde(flatten)]
+    pub extra: HashMap<String, (Stencil, u8)>,
+}
+
+/// A map of tuples holding a model, read through a function a `preprocess` names. A JSON Schema
+/// refuses a tuple as a map value.
+#[cfg(not(feature = "jsonschema"))]
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Heaping {
+    #[model_schema_prop(preprocess = ["unchanged"])]
+    pub counts: HashMap<String, (Stencil, u8)>,
+}
+
+/// The function [`Heaping`] names: the payload as it was handed.
+#[cfg(not(feature = "jsonschema"))]
+fn unchanged(payload: serde_json::Value) -> serde_json::Value {
+    payload
 }
