@@ -5508,7 +5508,8 @@ fn string_check_refusal_output(
 fn no_brand_string_check_refusal(check: &str) -> String {
     format!(
         "`{check}` is supported only on a branded newtype: a `#[serde(transparent)]` struct \
-         with a single unnamed field. On a field, write it in `#[model_schema_prop(...)]`."
+         serde writes as the value of one field. On a field, write it in \
+         `#[model_schema_prop(...)]`."
     )
 }
 

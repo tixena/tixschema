@@ -7721,7 +7721,9 @@ fn a_string_check_on_a_struct_that_is_no_brand_is_refused() {
         assert!(expanded.contains("compile_error"), "got: {expanded}");
         assert!(
             expanded.contains(&format!(
-                "type `Named`: `{check}` is supported only on a branded newtype"
+                "type `Named`: `{check}` is supported only on a branded newtype: a \
+                 `#[serde(transparent)]` struct serde writes as the value of one field. On a \
+                 field, write it in `#[model_schema_prop(...)]`."
             )),
             "got: {expanded}"
         );
