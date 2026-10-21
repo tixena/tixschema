@@ -208,7 +208,7 @@ pub fn corrected_reader(functions: &[FunctionName], read: &TokenStream) -> Token
 }
 
 /// How a refusal names the member at `index`: by its name, or by its place, behind its variant.
-fn member_label(variant: Option<&syn::Variant>, index: usize, field: &Field) -> String {
+pub fn member_label(variant: Option<&syn::Variant>, index: usize, field: &Field) -> String {
     let member = field.ident.as_ref().map_or_else(
         || format!("slot {index}"),
         |ident| format!("field `{}`", ident.unraw()),

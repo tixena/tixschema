@@ -19,6 +19,10 @@ mod marker_slot;
 mod named_field;
 
 #[cfg(test)]
+#[path = "branded_newtype_tests/one_derive.rs"]
+mod one_derive;
+
+#[cfg(test)]
 #[path = "branded_newtype_tests/read.rs"]
 mod read;
 

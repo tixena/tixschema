@@ -120,8 +120,8 @@ use crate::features::serde::{
     has_serde_read_hook, parse_read_renames, parse_written_renames, struct_tag,
 };
 use crate::features::serde::{
-    brand_field, has_serde_default, member_steps, parse_serde_key_omission, variant_steps,
-    written_and_read_by_the_author,
+    brand_field, has_serde_default, member_steps, parse_serde_key_omission,
+    transparent_fields_apart, variant_steps, written_and_read_by_the_author,
 };
 
 #[cfg(all(
@@ -1576,7 +1576,8 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
         return output;
     }
     // A list-form serde rename whose two directions name two keys is refused here, at the one seam
-    // a container, a variant and a member are all reachable from.
+    // a container, a variant and a member are all reachable from, and so is a transparent struct
+    // whose two derives take two different fields as its value.
     // A default of a variant's member that no target but Rust reads as serde does is refused
     // beside it, every such member of the item at once.
     if let Some(output) = refused_item_output(&item, &serde_attribute_guard_errors(&item)) {
@@ -3557,12 +3558,40 @@ const fn rename_direction_guard_errors(_item: &Item) -> Vec<proc_macro2::TokenSt
 }
 
 /// The `compile_error!` tokens of every serde attribute of `item` no target but Rust reads as serde
-/// does: a list-form rename whose two directions name two keys, and the `default` of a member of a
-/// variant whose JSON no target is handed.
+/// does: a list-form rename whose two directions name two keys, a `#[serde(transparent)]` struct
+/// written as the value of one field and read as the value of another, and the `default` of a
+/// member of a variant whose JSON no target is handed.
 fn serde_attribute_guard_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
     let mut refused = rename_direction_guard_errors(item);
+    refused.extend(transparent_direction_errors(item));
     refused.extend(variant_default_refusals(item));
     refused
+}
+
+/// The `compile_error!` tokens a `#[serde(transparent)]` struct earns where serde writes it as the
+/// value of one field and reads it as the value of another, in every build.
+fn transparent_direction_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
+    let Item::Struct(item_struct) = item else {
+        return Vec::new();
+    };
+    transparent_fields_apart(item_struct)
+        .map(|[(written_at, written), (read_at, read)]| {
+            let message = format!(
+                "`#[serde(transparent)]` writes the struct as the value of {} and reads it as the \
+                 value of {}, so the payload serde writes is not one serde reads. A schema and an \
+                 emitted client describe one value, so neither can be written for the pair. Make \
+                 one field the value in both directions, and write `#[serde(skip)]` on every \
+                 other field.",
+                preprocess::member_label(None, written_at, written),
+                preprocess::member_label(None, read_at, read),
+            );
+            attr_guard_error(
+                &syn::Error::new_spanned(&item_struct.ident, message),
+                &item_label(item),
+            )
+        })
+        .into_iter()
+        .collect()
 }
 
 /// The `compile_error!` tokens of every member of a variant of `item` under a `default` of its own
