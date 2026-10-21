@@ -118,6 +118,7 @@ use crate::features::serde::{
 };
 use crate::features::serde::{
     brand_field, has_serde_default, member_steps, parse_serde_key_omission, variant_steps,
+    written_and_read_by_the_author,
 };
 
 #[cfg(all(
@@ -3011,8 +3012,8 @@ fn mongodb_map_key_refusals(item: &Item) -> Vec<syn::Error> {
 }
 
 /// Each map a member of `item` holds whose key the `bson` library refuses, beside the member:
-/// every member serde writes or reads, of a struct and of each variant of an enum. A member that
-/// holds the item itself reaches no map the item's own members do not.
+/// every member serde writes or reads itself, of a struct and of each variant of an enum. A member
+/// that holds the item itself reaches no map the item's own members do not.
 fn bson_refused_maps(item: &Item) -> Vec<(Option<&syn::Ident>, usize, &Field, RefusedKey<'_>)> {
     let members: Vec<(Option<&syn::Ident>, &syn::Fields)> = if let Item::Struct(item_struct) = item
     {
@@ -3034,7 +3035,10 @@ fn bson_refused_maps(item: &Item) -> Vec<(Option<&syn::Ident>, usize, &Field, Re
             fields
                 .iter()
                 .enumerate()
-                .filter(|(_, field)| !parse_serde_key_omission(&field.attrs).absent_from_wire())
+                .filter(|(_, field)| {
+                    !parse_serde_key_omission(&field.attrs).absent_from_wire()
+                        && !written_and_read_by_the_author(&field.attrs)
+                })
                 .flat_map(move |(position, field)| {
                     bson_refused_keys(&field.ty)
                         .into_iter()

@@ -2334,7 +2334,10 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   - `bson_refused_keys` finds each map (`is_map_wrapper`) a member serde writes or reads holds,
     behind `Option`, a list, a tuple, a transparent wrapper and a map's value, and each model
     declared above that holds one (`RefusedKey::Held`). A member or a variant under `skip`
-    (`absent_from_wire`) is read past.
+    (`absent_from_wire`) is read past, and so is a member written and read by its author's
+    functions (`written_and_read_by_the_author`, in every build: `with`, or `serialize_with` with
+    `deserialize_with`), for a map and a held model alike. One under either of the two alone is
+    not.
   - A held model is looked into through `BSON_REFUSED_HOLDERS`, each struct and enum that holds
     such a map at any depth to a description of the first one. It is written in every build at
     `exec_model_schema` (`record_bson_refused_holder_item`), whatever the model's `enable` list,
@@ -2349,7 +2352,8 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
     another crate, is not refused.
   - `tests/foundation_refusals/number_keyed_map_with_mongodb.rs` holds the README's `Roster` to
     the error, `held_number_keyed_map_with_mongodb.rs` beside it a held model's, the unit tests
-    in `src/model_schema/tests.rs` each position, each key and each held model, and
+    in `src/model_schema/tests.rs` each position, each key, each held model and each member read
+    past, and
     `tests/mongodb_operation_tests/readme/operations.rs` the README's text: the declaration and
     the error, the keys stored as their text, and a type that lists `"decode_with"` alone.
 - **A path is under the name serde writes.** `parse_written_renames` reads `rename`, `rename_all`
