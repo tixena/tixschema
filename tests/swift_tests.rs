@@ -133,3 +133,17 @@ mod unwritten_models;
 #[cfg(feature = "swift")]
 #[path = "swift_tests/unwritten.rs"]
 mod unwritten;
+
+/// A map flattened after a struct, ahead of one, beside another map, after a member that takes
+/// none of the keys it reads, under a key Swift wraps, of models, of dates and naming a function.
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde"))]
+#[path = "swift_tests/flattened_models.rs"]
+mod flattened_models;
+
+/// What the Swift emitter reads and writes of a flattened map, at its place among the flattened
+/// members.
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde"))]
+#[path = "swift_tests/flattened.rs"]
+mod flattened;

@@ -411,6 +411,18 @@ mod dart_flattened_models;
 #[path = "service_schema_emitted_client_tests/run_dart_flattened.rs"]
 mod run_dart_flattened;
 
+/// A map flattened after a struct, ahead of one, beside another map, after a member that takes
+/// none of the keys it reads, under a key Swift wraps, of models, of dates and naming a function.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "swift_tests/flattened_models.rs"]
+mod swift_flattened_models;
+
+/// Those maps, read and written back by the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_flattened.rs"]
+mod run_swift_flattened;
+
 /// A member serde reads and never writes, in a struct of its own and beside a flattened member.
 #[cfg(test)]
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]

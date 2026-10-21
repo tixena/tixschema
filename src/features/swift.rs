@@ -17,7 +17,8 @@ use syn::{Field, Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{
-    brand_field, has_serde_skip_serializing, parse_serde_key_omission, struct_tag,
+    brand_field, has_serde_skip_serializing, keys_taken_when_flattened, parse_serde_key_omission,
+    struct_tag,
 };
 use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, classify_variant, get_field_def,
@@ -795,38 +796,22 @@ fn map_key_wrapper_struct(
     value: &Shaped,
     unjudged: Option<&str>,
 ) -> String {
-    let (decode_key, encode_key) = swift_map_key_codec(key);
-    let bound_key = decode_key.map_or_else(
-        || "let key = wireKey; ".to_owned(),
-        |parsed| {
-            format!(
-                "guard let key = {parsed} else {{ \
-                 throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, debugDescription: \"bad key \\(wireKey)\") }}; "
-            )
-        },
-    );
+    let (_, encode_key) = swift_map_key_codec(key);
+    let bound_key = wrapper_bound_key(key);
     let own_read = unjudged.map_or_else(String::new, |entry| {
         format!(
-            "{}{} {{ \
-             let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
-             var result: [{key_type}: {value_type}] = [:]; \
-             for codingKey in container.allKeys {{ \
-             let wireKey = codingKey.stringValue; \
-             {bound_key}{entry} }}; \
-             storage = result }}; ",
+            "{}{} {{ {} }}; ",
             read::any_key(entry),
             read::UNJUDGED,
+            wrapper_entries(key_type, value_type, &bound_key, entry, ""),
         )
     });
-    let entry = value.read(
+    let entries = wrapper_entries(
+        key_type,
         value_type,
-        "value",
-        &read::Source::Keyed {
-            container: "container".to_owned(),
-            key: "codingKey".to_owned(),
-            presence: read::Presence::Known,
-        },
-        &|held| format!("result[key] = {held}"),
+        &bound_key,
+        &wrapper_plain_entry(value, value_type),
+        "",
     );
     let written = value.written("value");
     // Static, as the read uses it before `storage` is set, and computed, as a generic type stores
@@ -848,13 +833,7 @@ fn map_key_wrapper_struct(
          var intValue: Int? {{ nil }}; init?(intValue: Int) {{ nil }} }}; \
          init(storage: [{key_type}: {value_type}]) {{ self.storage = storage }}; \
          {own_read}\
-         public init(from decoder: Decoder) throws {{ \
-         let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
-         var result: [{key_type}: {value_type}] = [:]; \
-         for codingKey in container.allKeys {{ \
-         let wireKey = codingKey.stringValue; \
-         {bound_key}{entry} }}; \
-         storage = result }}; \
+         public init(from decoder: Decoder) throws {{ {entries} }}; \
          public func encode(to encoder: Encoder) throws {{ \
          var container = encoder.container(keyedBy: DynamicCodingKey.self); \
          for (key, value) in storage {{ \
@@ -862,6 +841,107 @@ fn map_key_wrapper_struct(
          guard let codingKey = DynamicCodingKey(stringValue: wireKey) else {{ continue }}; \
          try container.encode({written}, forKey: codingKey) }} }} }};"
     )
+}
+
+/// What a map's wrapper binds the key of one entry with, read from `wireKey` as `key` is.
+fn wrapper_bound_key(key: &FieldDef) -> String {
+    swift_map_key_codec(key).0.map_or_else(
+        || "let key = wireKey; ".to_owned(),
+        |parsed| {
+            format!(
+                "guard let key = {parsed} else {{ \
+                 throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, debugDescription: \"bad key \\(wireKey)\") }}; "
+            )
+        },
+    )
+}
+
+/// Where a map's wrapper reads the value of one entry from.
+fn wrapper_entry_source() -> read::Source {
+    read::Source::Keyed {
+        container: "container".to_owned(),
+        key: "codingKey".to_owned(),
+        presence: read::Presence::Known,
+    }
+}
+
+/// The read of one entry's `value` by a map's wrapper, as the `value_type` it is declared as.
+fn wrapper_plain_entry(value: &Shaped, value_type: &str) -> String {
+    value.read(value_type, "value", &wrapper_entry_source(), &|held| {
+        format!("result[key] = {held}")
+    })
+}
+
+/// The read of one entry's value by a map's wrapper where `validate()` walks the `value` the map
+/// holds: unjudged, its types named from `value_hint`. `None` where the walk reaches nothing.
+fn wrapper_unjudged_entry(value: &FieldDef, value_hint: &str) -> Option<String> {
+    validate::reaches(value).then(|| {
+        read::unjudged(
+            value,
+            value_hint,
+            &wrapper_entry_source(),
+            &|held| format!("result[key] = {held}"),
+            &mut read::Locals::default(),
+        )
+    })
+}
+
+/// The statements a map's wrapper reads its entries into `storage` with: each key bound by
+/// `bound_key` and each value read by `entry`, under every key but those `skipped`, a `where`
+/// clause, leaves out.
+fn wrapper_entries(
+    key_type: &str,
+    value_type: &str,
+    bound_key: &str,
+    entry: &str,
+    skipped: &str,
+) -> String {
+    format!(
+        "let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
+         var result: [{key_type}: {value_type}] = [:]; \
+         for codingKey in container.allKeys{skipped} {{ \
+         let wireKey = codingKey.stringValue; \
+         {bound_key}{entry} }}; \
+         storage = result"
+    )
+}
+
+/// The read the wrapper of a map under a key Swift wraps is given where the member `def` describes
+/// holds the map flattened, the wrapper named from `hint`: an initializer, in an extension, that
+/// reads no entry under a key the types around it took. `None` for a member that holds no such
+/// map.
+fn flattened_wrapper_read(def: &FieldDef, hint: &str) -> Option<String> {
+    let held = held_map(def)?;
+    let FieldDefType::Map(key, value) = &held.field_type else {
+        return None;
+    };
+    if !matches!(map_keys(key), MapKeys::Wrapped) {
+        return None;
+    }
+    let value_hint = format!("{hint}Value");
+    let entry_def = arrayed((**value).clone());
+    let (value_type, shape) = swift_resolve(&entry_def, &value_hint, &mut Vec::new());
+    let entry = wrapper_unjudged_entry(value, &value_hint).unwrap_or_else(|| {
+        wrapper_plain_entry(
+            &Shaped {
+                def: entry_def,
+                shape,
+            },
+            &value_type,
+        )
+    });
+    let (wrapper, _) = keyed_map_wrapper(hint, key, value);
+    Some(format!(
+        "extension {wrapper} {{ {} {{ {} }} }};",
+        read::TAKING,
+        wrapper_entries(
+            &swift_map_key_scalar(key),
+            &value_type,
+            &wrapper_bound_key(key),
+            &entry,
+            " where !taken.contains(codingKey.stringValue)",
+        ),
+    ))
 }
 
 /// The Swift tuple-slot struct a `Tuple` field or a `TupleMultiple` variant payload earns: no
@@ -1418,20 +1498,7 @@ fn map_shape(
     }
     let key_type = swift_map_key_scalar(key);
     let (wrapper_name, generic_params) = keyed_map_wrapper(name_hint, key, value);
-    let unjudged = validate::reaches(value).then(|| {
-        let source = read::Source::Keyed {
-            container: "container".to_owned(),
-            key: "codingKey".to_owned(),
-            presence: read::Presence::Known,
-        };
-        read::unjudged(
-            value,
-            &value_hint,
-            &source,
-            &|held| format!("result[key] = {held}"),
-            &mut read::Locals::default(),
-        )
-    });
+    let unjudged = wrapper_unjudged_entry(value, &value_hint);
     aux.push(map_key_wrapper_struct(
         &wrapper_name,
         &generic_params,
@@ -1695,6 +1762,11 @@ fn present_statement(
     if !functions.is_empty() {
         return corrected_field(field, functions, walked, source, twins);
     }
+    if field.flatten
+        && let Some(read) = flattened_map(field, walked, source, locals)
+    {
+        return read;
+    }
     if walked || (field.flatten && preprocess::beside(&field.field_def)) {
         return read::unjudged(&field.field_def, &field.hint, source, &member, locals);
     }
@@ -1706,6 +1778,63 @@ fn present_statement(
         );
     }
     keyed_read(field, container, absent_is_nil)
+}
+
+/// The map a member `def` describes holds, read through an `Option`, or `None` for a member that
+/// holds no map.
+fn held_map(def: &FieldDef) -> Option<FieldDef> {
+    let held = if def.is_optional() {
+        validate::under_option(def)
+    } else {
+        def.clone()
+    };
+    (held.array_depth == 0 && matches!(held.field_type, FieldDefType::Map(..))).then_some(held)
+}
+
+/// The statements that read from `source` the map the flattened `field` holds, entry by entry and
+/// without the keys `source` names as taken, as serde hands it the keys no member ahead of it
+/// took: `None` for a field that holds no map. A map under a key Swift wraps is read by its
+/// wrapper, through the read [`flattened_wrapper_read`] gives it.
+fn flattened_map(
+    field: &SwiftField,
+    walked: bool,
+    source: &read::Source,
+    locals: &mut read::Locals,
+) -> Option<String> {
+    let read::Source::Beside(taken) = source else {
+        return None;
+    };
+    let def = held_map(&field.field_def)?;
+    let FieldDefType::Map(key, value) = &def.field_type else {
+        return None;
+    };
+    let member = |held: &str| format!("self.{} = {held}", field.swift_name);
+    if matches!(map_keys(key), MapKeys::Wrapped) {
+        let (wrapper, generic_params) = keyed_map_wrapper(&field.hint, key, value);
+        return read::beside(source, &held_at(&wrapper, &generic_params), &|read| {
+            member(&format!("{read}.storage"))
+        });
+    }
+    let value_hint = format!("{}Value", field.hint);
+    let held = arrayed((**value).clone());
+    let (value_type, shape) = swift_resolve(&held, &value_hint, &mut Vec::new());
+    let entry = Shaped { def: held, shape };
+    let stem = format!("{}Entry", swift_bare(&field.swift_name));
+    Some(read::read_entries(
+        key,
+        &swift_full_real_type(&def, &field.hint, &mut Vec::new()),
+        source,
+        Some(taken),
+        &|under, put, nested| {
+            if walked {
+                read::unjudged(value, &value_hint, under, put, nested)
+            } else {
+                entry.read(&value_type, &stem, under, put)
+            }
+        },
+        &member,
+        locals,
+    ))
 }
 
 /// The statements that read `field` from the JSON of its default, written at `at`: as it is read
@@ -1865,7 +1994,10 @@ fn keyed_read(field: &SwiftField, container: &str, absent_is_nil: bool) -> Strin
 /// The `try container.encode...` statement a field earns inside a hand-written `encode(to:)`.
 fn encode_statement(field: &SwiftField, container: &str) -> String {
     if field.flatten {
-        return format!("try {}.encode(to: encoder)", field.swift_name);
+        return format!(
+            "try {}.encode(to: encoder)",
+            written_from(&field.field_def, &field.shape, &field.swift_name)
+        );
     }
     let source = if matches!(field.shape.leaf_conversion, LeafConversion::None) {
         field.swift_name.clone()
@@ -1998,10 +2130,14 @@ fn collect_swift_fields(
         let swift_name = RenameRule::CamelCase.apply_to_field(&rust_name);
         let field_hint = format!("{name_hint}{}", swift_upper_camel(&swift_name));
         let (real_type, shape) = swift_resolve(&field_def, &field_hint, aux);
+        let flatten = field_is_flatten(&field.attrs);
+        if flatten {
+            aux.extend(flattened_wrapper_read(&field_def, &field_hint));
+        }
         collected.push(SwiftField {
             default_at: default_at(&rust_name),
             field_def,
-            flatten: field_is_flatten(&field.attrs),
+            flatten,
             hint: field_hint,
             never_written: has_serde_skip_serializing(&field.attrs),
             real_type,
@@ -2087,28 +2223,8 @@ fn struct_body_content(
             .any(|field| field_is_nullable_flag(field) || field.never_written);
 
     let memberwise_init = memberwise_initializer(fields);
-    let mut locals = read::Locals::default();
     let mut twins = Vec::new();
-    let taken = preprocess::taken_with(
-        fields
-            .iter()
-            .filter(|field| !field.flatten)
-            .map(|field| field.wire_name.as_str()),
-    );
-    let members = fields
-        .iter()
-        .map(|field| {
-            decode_statement(
-                field,
-                "container",
-                !unsynthesized,
-                &taken,
-                &mut locals,
-                &mut twins,
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("; ");
+    let members = member_reads(fields, !unsynthesized, &mut twins);
     let keyed = if fields.is_empty() {
         ""
     } else {
@@ -2160,6 +2276,40 @@ fn struct_body_content(
         )
     });
     format!("{props}{coding_keys} {tag_keys}{memberwise_init}{reads}{encode_method}{validate}")
+}
+
+/// The statements that read each of `fields` in the type's own read, in the order declared, a
+/// type written for one joining `twins`. `synthesized` says Swift wrote the read before the
+/// emitter did. A flattened member is read from the keys its holder's own members do not take,
+/// and a flattened map from those no member ahead of it took either, as serde hands them.
+fn member_reads(fields: &[SwiftField], synthesized: bool, twins: &mut Vec<String>) -> String {
+    let mut locals = read::Locals::default();
+    let own_keys: Vec<String> = fields
+        .iter()
+        .filter(|field| !field.flatten)
+        .map(|field| field.wire_name.clone())
+        .collect();
+    let taken = preprocess::taken_with(own_keys.iter().map(String::as_str));
+    let mut taken_ahead = own_keys;
+    fields
+        .iter()
+        .map(|field| {
+            let handed = if field.flatten && held_map(&field.field_def).is_some() {
+                preprocess::taken_with(taken_ahead.iter().map(String::as_str))
+            } else {
+                taken.clone()
+            };
+            if field.flatten {
+                for key in preprocess::keys_taken_by(&field.field_def) {
+                    if !taken_ahead.contains(&key) {
+                        taken_ahead.push(key);
+                    }
+                }
+            }
+            decode_statement(field, "container", synthesized, &handed, &mut locals, twins)
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 /// The explicit memberwise `public init(...)` a written `init(from:)` costs a struct — Swift
@@ -2262,6 +2412,10 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
     validate::note(&rust_ident, None, true);
 
     let rule = container_rename_rule(&item_struct.attrs);
+    preprocess::note_keys(
+        &rust_ident,
+        keys_taken_when_flattened(&item_struct.fields, rule, args.preprocess),
+    );
     let generic_params = swift_generic_params(&item_struct.generics);
     let mut aux = Vec::new();
     let defaults = SerdeDefaults::of(item_struct);

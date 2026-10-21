@@ -1,9 +1,11 @@
 //! `preprocess` in the Swift read: the functions a type and its members name, each called on a
 //! payload ahead of the value read from it. A type that names one on itself reads the keys the
-//! types around it did not take, and so does a type that reads one from its own decoder.
+//! types around it did not take, and so does a type that reads one from its own decoder. The keys
+//! a struct takes where it is flattened are noted here too: a map flattened after it is not handed
+//! them.
 
 use core::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use super::read::{Locals, Source, unjudged};
 use super::{swift_member, swift_upper_camel};
@@ -100,6 +102,10 @@ thread_local! {
     /// The Rust idents of the types the emitter has written with a read that takes the keys the
     /// types around them took.
     static TAKING: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+
+    /// The keys serde takes off its holder's object for each struct the emitter has written, read
+    /// flattened: what serde hands no map flattened after it.
+    static TAKEN_KEYS: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
 }
 
 /// Records whether the type `rust_ident` names reads the keys the types around it took.
@@ -117,6 +123,27 @@ pub(super) fn note(rust_ident: &str, takes: bool) {
 /// types around it took.
 pub(super) fn takes(rust_ident: &str) -> bool {
     TAKING.with(|names| names.borrow().contains(rust_ident))
+}
+
+/// Records `keys`, those serde takes for the struct `rust_ident` flattened into a holder, for a
+/// holder written after it.
+pub(super) fn note_keys(rust_ident: &str, keys: Vec<String>) {
+    TAKEN_KEYS.with(|recorded| {
+        recorded.borrow_mut().insert(rust_ident.to_owned(), keys);
+    });
+}
+
+/// The keys a member `def` describes, flattened into its holder, takes off the object serde hands
+/// it: those of a struct written above, and none for a member that names a function, which serde
+/// reads as a value.
+pub(super) fn keys_taken_by(def: &FieldDef) -> Vec<String> {
+    if !functions(def).is_empty() {
+        return Vec::new();
+    }
+    let FieldDefType::SiblingType(name, _) = &def.field_type else {
+        return Vec::new();
+    };
+    TAKEN_KEYS.with(|recorded| recorded.borrow().get(name).cloned().unwrap_or_default())
 }
 
 /// Whether `def` names such a type under no list: one a holder that reads it from its own decoder
