@@ -2361,8 +2361,12 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   - `is_bson_refused_key` answers for a key, read under `Box`, `Rc`, `Arc` and `Cow`: one of
     `BSON_REFUSED_KEY_TYPES`, or a name `BSON_REFUSED_KEYS` holds. That registry is written in
     every build at `exec_model_schema` (`record_bson_refused_key_item`), for a brand or an alias
-    over such a key, so a chain forwards its target's answer. A name declared below, or of
-    another crate, is not refused.
+    over such a key, so a chain forwards its target's answer. A brand or an alias whose value is
+    one of its own bare type parameters is written instead into `FORWARDED_KEY_PARAMETERS`, with
+    that parameter's position among its type parameters (`forwarded_parameter_position`), and a
+    key written with its name is answered for the argument at that position: `Ordinal<u32>` is
+    refused, `Ordinal<String>` and a bare `Ordinal` are not. A name declared below, or of another
+    crate, is not refused.
   - `tests/foundation_refusals/number_keyed_map_with_mongodb.rs` holds the README's `Roster` to
     the error, `held_number_keyed_map_with_mongodb.rs` beside it a held model's, the unit tests
     in `src/model_schema/tests.rs` each position, each key, each held model, each held alias and

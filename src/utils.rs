@@ -608,6 +608,10 @@ thread_local! {
     /// [`WIRE_SCALARS`]: a type that lists `"mongodb"` is refused a map keyed by one in every
     /// build.
     static BSON_REFUSED_KEYS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+    /// The names of brands and aliases whose value is one of their own bare type parameters, each
+    /// to that parameter's position among the item's type parameters. Kept out of [`ALIAS_INFO`]
+    /// for the same reason as [`BSON_REFUSED_KEYS`].
+    static FORWARDED_KEY_PARAMETERS: RefCell<HashMap<String, usize>> = RefCell::new(HashMap::new());
     /// The names of structs, enums and aliases that hold a map whose key the `bson` library
     /// refuses, each to a description of the first such map. Kept out of [`ALIAS_INFO`] for the
     /// same reason as [`BSON_REFUSED_KEYS`].
@@ -1074,6 +1078,20 @@ pub fn record_bson_refused_key(rust_ident: &str) {
 /// declared below the item asking.
 pub fn is_recorded_bson_refused_key(rust_ident: &str) -> bool {
     BSON_REFUSED_KEYS.with(|names| names.borrow().contains(rust_ident))
+}
+
+/// Records that `rust_ident` names a brand or an alias whose value is its type parameter at
+/// `position`.
+pub fn record_forwarded_key_parameter(rust_ident: &str, position: usize) {
+    FORWARDED_KEY_PARAMETERS.with(|names| {
+        names.borrow_mut().insert(rust_ident.to_owned(), position);
+    });
+}
+
+/// The position [`record_forwarded_key_parameter`] recorded for `rust_ident`. `None` for a name
+/// declared below the item asking.
+pub fn forwarded_key_parameter(rust_ident: &str) -> Option<usize> {
+    FORWARDED_KEY_PARAMETERS.with(|names| names.borrow().get(rust_ident).copied())
 }
 
 /// Records that `rust_ident` names a struct, an enum or an alias that holds a map whose key the
