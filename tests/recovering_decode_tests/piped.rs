@@ -216,9 +216,10 @@ fn a_broken_bound_is_handed_to_the_resolvers() {
     }
 }
 
+/// A value that breaks two bounds is handed to a resolver once, its reason both violations.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
-fn a_resolver_answers_both_issues_of_a_value_that_breaks_two_bounds() {
+fn a_resolver_is_handed_one_issue_for_a_value_that_breaks_two_bounds() {
     let stored = json!({
         "customer": { "name": "Acme", "openInvoices": 3_u32 },
         "number": "42",
@@ -235,23 +236,20 @@ fn a_resolver_answers_both_issues_of_a_value_that_breaks_two_bounds() {
     assert_eq!(read.unwrap().number, "INV-0042");
     assert_eq!(
         *handed.lock().unwrap(),
-        [
-            (
-                json!("42"),
-                bare_number("too short: minimum length is 8, got 2")
-            ),
-            (
-                json!("INV-0042"),
-                bare_number("does not match pattern '^INV-[0-9]+$'")
-            ),
-        ]
+        [(
+            json!("42"),
+            bare_number(
+                "too short: minimum length is 8, got 2; does not match pattern '^INV-[0-9]+$'"
+            )
+        )]
     );
 }
 
-/// The pipe counts issues, never paths.
+/// A value that breaks two bounds is one issue, so a resolver that repairs it once settles the
+/// read.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
-fn an_issue_left_not_touched_at_a_repaired_value_refuses_the_read() {
+fn a_value_repaired_once_settles_the_read() {
     let stored = json!({
         "customer": { "name": "Acme", "openInvoices": 3_u32 },
         "number": "42",
@@ -263,11 +261,8 @@ fn an_issue_left_not_touched_at_a_repaired_value_refuses_the_read() {
             Resolution::NotTouched
         }
     };
-    let refused = Invoice::from_value_piped(stored, &[&while_bare]).unwrap_err();
-    assert_eq!(
-        refused.issues,
-        [bare_number("does not match pattern '^INV-[0-9]+$'")]
-    );
+    let read = Invoice::from_value_piped(stored, &[&while_bare]);
+    assert_eq!(read.unwrap().number, "INV-0042");
 }
 
 /// Each resolver is handed only the issues every one before it left `NotTouched`, once each.
