@@ -9183,6 +9183,64 @@ fn a_map_keyed_by_a_generic_brand_or_an_alias_filled_at_a_number_is_refused() {
     }
 }
 
+/// A generic brand or alias declared above whose value reaches its own parameter under `Box`,
+/// `Rc`, `Arc` or `Cow`, or through a brand declared above, is refused where the parameter is
+/// filled at a number or a `bool`, and not where it is filled at a `String` or where the brand it
+/// reaches it through is declared below it.
+#[test]
+fn a_map_keyed_by_a_generic_brand_over_a_wrapper_or_a_brand_of_its_parameter_is_refused() {
+    record_declared_above(&[
+        "#[serde(transparent)] pub struct Ordinal<IdType>(pub IdType);",
+        "#[serde(transparent)] pub struct Boxed<T>(pub Box<T>);",
+        "pub type Held<T> = Box<T>;",
+        "#[serde(transparent)] pub struct Borrowed<'a, T>(pub Cow<'a, T>);",
+        "#[serde(transparent)] pub struct Rank<T>(pub Ordinal<T>);",
+        "pub type Placed<Row, Place> = Rc<Ordinal<Arc<Place>>>;",
+        "#[serde(transparent)] pub struct Grade<T>(pub Tier<T>);",
+        "#[serde(transparent)] pub struct Tier<IdType>(pub IdType);",
+        "pub struct Keyed<KeyType> { pub by_key: HashMap<Rank<KeyType>, String> }",
+    ]);
+    for (key, refused) in [
+        ("Boxed<u32>", true),
+        ("Boxed<String>", false),
+        ("Held<u32>", true),
+        ("Held<String>", false),
+        ("Borrowed<'static, i64>", true),
+        ("Borrowed<'static, String>", false),
+        ("Rank<u32>", true),
+        ("Rank<bool>", true),
+        ("Rank<String>", false),
+        ("Placed<String, u8>", true),
+        ("Placed<u8, String>", false),
+        ("Tier<u32>", true),
+        ("Grade<u32>", false),
+    ] {
+        let expected: Vec<String> = refused
+            .then(|| bson_refused_key_message("field `by_key`", key))
+            .into_iter()
+            .collect();
+        assert_eq!(
+            bson_refused_key_messages(&format!(
+                "pub struct Roster {{ pub by_key: HashMap<{key}, String> }}"
+            )),
+            expected,
+            "for {key}"
+        );
+    }
+    assert_eq!(
+        bson_refused_key_messages("pub struct Arena { pub keyed: Keyed<u32> }"),
+        [held_bson_refused_key_message(
+            "field `keyed`",
+            "Keyed<u32>",
+            "field `by_key`, a map keyed by `Rank<u32>`"
+        )]
+    );
+    assert_eq!(
+        bson_refused_key_messages("pub struct Arena { pub keyed: Keyed<String> }"),
+        Vec::<String>::new()
+    );
+}
+
 /// What a type that lists `"mongodb"` is refused for the member `named`, which holds `model`, a
 /// model declared above that holds the map `described` says.
 fn held_bson_refused_key_message(named: &str, model: &str, described: &str) -> String {
