@@ -727,17 +727,17 @@ enum UndescribableStd<'name> {
 
 /// Where a member reaches a map whose key the `bson` library refuses.
 enum RefusedKey<'key> {
-    /// A model declared above that holds such a map.
+    /// A model or an alias declared above that holds such a map.
     Held(HeldMap),
     /// A map the member's own type writes, under this key.
     Written(&'key syn::Type),
 }
 
-/// A model declared above that holds a map whose key the `bson` library refuses.
+/// A model or an alias declared above that holds a map whose key the `bson` library refuses.
 struct HeldMap {
-    /// The map, after the member of the model that holds it.
+    /// The map, after the member that holds it where a model holds it.
     described: String,
-    /// The model's name.
+    /// The model's or the alias's name.
     model: String,
 }
 
@@ -2963,7 +2963,7 @@ fn decode_with_guard_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_mac
 }
 
 /// One refusal per map a member of `item` holds whose key the `bson` library refuses, or per model
-/// declared above that holds one, spanned on the member.
+/// or alias declared above that holds one, spanned on the member.
 fn mongodb_map_key_refusals(item: &Item) -> Vec<syn::Error> {
     bson_refused_maps(item)
         .iter()
@@ -3055,7 +3055,8 @@ fn bson_refused_key_refusal(
 }
 
 /// The key of each map `ty` holds, behind `Option`, a list, a tuple, a transparent wrapper and a
-/// map's value, that the `bson` library refuses, and each model declared above that holds one.
+/// map's value, that the `bson` library refuses, and each model or alias declared above that
+/// holds one.
 fn bson_refused_keys(ty: &syn::Type) -> Vec<RefusedKey<'_>> {
     match written_type(ty) {
         syn::Type::Array(array) => bson_refused_keys(&array.elem),
@@ -5502,8 +5503,8 @@ fn alias_string_check_refusal_output(
 }
 
 /// Records what serde writes `item` as, for the expansions after it in every build: a bare wire
-/// scalar, an untagged enum, a map key the `bson` library refuses, and a model that holds a map
-/// under such a key.
+/// scalar, an untagged enum, a map key the `bson` library refuses, and a model or an alias that
+/// holds a map under such a key.
 fn record_wire_form(item: &Item) {
     record_wire_scalar_item(item);
     record_untagged_enum_item(item);
@@ -5550,24 +5551,28 @@ fn record_bson_refused_key_item(item: &Item) {
     }
 }
 
-/// Records `item` where it is a struct or an enum that holds a map whose key the `bson` library
-/// refuses, with the first such map, whatever its `enable` list: a holder that lists `"mongodb"`
-/// is the one refused.
+/// Records `item` where it is a struct, an enum or an alias that holds a map whose key the `bson`
+/// library refuses, with the first such map, whatever its `enable` list: a holder that lists
+/// `"mongodb"` is the one refused.
 fn record_bson_refused_holder_item(item: &Item) {
-    let (Some(ident), Some((variant, position, field, key))) = (
-        item_schema_ident(item),
-        bson_refused_maps(item).into_iter().next(),
-    ) else {
-        return;
+    let first_map = if let Item::Type(item_type) = item {
+        bson_refused_keys(&item_type.ty)
+            .first()
+            .map(RefusedKey::described)
+    } else {
+        bson_refused_maps(item)
+            .first()
+            .map(|(variant, position, field, key)| {
+                format!(
+                    "{}, {}",
+                    refused_member_named(*variant, *position, field),
+                    key.described()
+                )
+            })
     };
-    record_bson_refused_holder(
-        &ident.to_string(),
-        &format!(
-            "{}, {}",
-            refused_member_named(variant, position, field),
-            key.described()
-        ),
-    );
+    if let (Some(ident), Some(described)) = (item_schema_ident(item), first_map) {
+        record_bson_refused_holder(&ident.to_string(), &described);
+    }
 }
 
 /// The name and inner type of the two shapes that can publish a bare scalar under their own name.

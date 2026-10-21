@@ -9179,6 +9179,113 @@ fn a_held_model_with_no_refused_map_is_not_refused() {
     );
 }
 
+/// An alias declared above of a map keyed by a number is refused where it is held, as itself and
+/// behind an `Option`, a list and a map's value, and the expansion of a holder that lists
+/// `"mongodb"` fails naming the field, the alias and the map.
+#[test]
+fn an_alias_declared_above_of_a_map_keyed_by_a_number_is_refused_where_it_is_held() {
+    let seats = "pub type Seats = HashMap<u32, String>;";
+    let built = expansion_under("", seats);
+    assert!(!built.contains("compile_error"), "got: {built}");
+    for written in [
+        "Seats",
+        "Option<Seats>",
+        "Vec<Seats>",
+        "HashMap<String, Seats>",
+    ] {
+        assert_eq!(
+            bson_refused_key_messages(&format!("pub struct Arena {{ pub seats: {written} }}")),
+            [held_bson_refused_key_message(
+                "field `seats`",
+                "Seats",
+                "a map keyed by `u32`"
+            )],
+            "for {written}"
+        );
+    }
+    let refused = expansion_under(
+        "enable = [\"decode_with\", \"mongodb\"]",
+        "pub struct Arena { pub seats: Seats }",
+    );
+    assert!(
+        refused.contains(&format!(
+            "model_schema: type `Arena`: {}",
+            held_bson_refused_key_message("field `seats`", "Seats", "a map keyed by `u32`")
+                .replace('"', "\\\"")
+        )),
+        "got: {refused}"
+    );
+}
+
+/// An alias declared above of a model that holds a map keyed by a number is refused where it is
+/// held, naming the alias and the model's map.
+#[test]
+fn an_alias_declared_above_of_a_holder_model_is_refused_where_it_is_held() {
+    record_declared_above(&[
+        "pub struct Seating { pub by_number: HashMap<u32, String> }",
+        "pub type Main = Seating;",
+    ]);
+    assert_eq!(
+        bson_refused_key_messages("pub struct Arena { pub main: Option<Main> }"),
+        [held_bson_refused_key_message(
+            "field `main`",
+            "Main",
+            "which holds `Seating` with field `by_number`, a map keyed by `u32`"
+        )]
+    );
+}
+
+/// An alias declared above of such an alias is refused where it is held, naming the alias it is
+/// over.
+#[test]
+fn an_alias_declared_above_of_an_alias_of_a_map_keyed_by_a_number_is_refused_where_it_is_held() {
+    record_declared_above(&[
+        "pub type Seats = BTreeMap<bool, String>;",
+        "pub type Stands = Seats;",
+    ]);
+    assert_eq!(
+        bson_refused_key_messages("pub struct Arena { pub stands: Stands }"),
+        [held_bson_refused_key_message(
+            "field `stands`",
+            "Stands",
+            "which holds `Seats` with a map keyed by `bool`"
+        )]
+    );
+}
+
+/// An alias declared above of a map keyed by a `String` holds nothing the `bson` library refuses.
+#[test]
+fn an_alias_declared_above_of_a_map_keyed_by_a_string_is_not_refused() {
+    record_declared_above(&[
+        "pub type Benches = HashMap<String, String>;",
+        "pub type Stands = Vec<Benches>;",
+    ]);
+    for written in ["Benches", "Stands"] {
+        assert_eq!(
+            bson_refused_key_messages(&format!("pub struct Arena {{ pub held: {written} }}")),
+            Vec::<String>::new(),
+            "for {written}"
+        );
+    }
+}
+
+/// An alias of a map keyed by a number declared below the type that holds it has not expanded
+/// when the holder does, and is not refused there. Declared above, it is.
+#[test]
+fn an_alias_declared_below_of_a_map_keyed_by_a_number_is_not_refused() {
+    let arena = "pub struct Arena { pub terraces: Terraces }";
+    assert_eq!(bson_refused_key_messages(arena), Vec::<String>::new());
+    record_declared_above(&["pub type Terraces = HashMap<u32, String>;"]);
+    assert_eq!(
+        bson_refused_key_messages(arena),
+        [held_bson_refused_key_message(
+            "field `terraces`",
+            "Terraces",
+            "a map keyed by `u32`"
+        )]
+    );
+}
+
 /// A model is recorded as its expansion runs, whatever its `enable` list, and refused only in a
 /// holder that lists `"mongodb"`.
 #[test]
