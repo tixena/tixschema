@@ -9734,6 +9734,137 @@ fn a_holder_of_a_generic_model_filled_at_a_number_fails_where_it_lists_mongodb()
     assert!(!built.contains("compile_error"), "got: {built}");
 }
 
+/// An alias declared above that keys a map by its own type parameter is refused where it is held
+/// with a number or a `bool` in that place, as itself and behind an `Option` and a list, naming
+/// the alias as written and the map. Held with a `String` or a `char` there, it is not.
+#[test]
+fn an_alias_keyed_by_its_own_parameter_is_refused_where_it_is_held_filled_at_a_number() {
+    declare_above(&["pub type ByKey<KeyType> = HashMap<KeyType, String>;"]);
+    for (written, alias, key) in [
+        ("ByKey<u32>", "ByKey<u32>", "u32"),
+        ("ByKey<bool>", "ByKey<bool>", "bool"),
+        ("Option<Vec<ByKey<i64>>>", "ByKey<i64>", "i64"),
+        ("ByKey<Box<u8>>", "ByKey<Box<u8>>", "Box<u8>"),
+    ] {
+        assert_eq!(
+            bson_refused_key_messages(&format!("pub struct Arena {{ pub by_key: {written} }}")),
+            [held_bson_refused_key_message(
+                "field `by_key`",
+                alias,
+                &format!("a map keyed by `{key}`")
+            )],
+            "for {written}"
+        );
+    }
+    for written in ["ByKey<String>", "ByKey<char>"] {
+        assert_eq!(
+            bson_refused_key_messages(&format!("pub struct Arena {{ pub by_key: {written} }}")),
+            Vec::<String>::new(),
+            "for {written}"
+        );
+    }
+}
+
+/// An alias that hands its own parameter on to a model keyed by it is refused where a number
+/// fills it, naming the model's map at that number. One of two parameters keyed by the second is
+/// refused where the second is a number, and not where only the first is.
+#[test]
+fn an_alias_that_hands_its_parameter_on_to_a_keyed_model_is_refused_where_a_number_fills_it() {
+    declare_above(&[
+        "pub struct Keyed<KeyType> { pub by_key: HashMap<KeyType, String> }",
+        "pub type Rekeyed<K> = Keyed<K>;",
+        "pub type Second<A, B> = BTreeMap<B, A>;",
+    ]);
+    assert_eq!(
+        bson_refused_key_messages("pub struct Arena { pub rekeyed: Rekeyed<u32> }"),
+        [held_bson_refused_key_message(
+            "field `rekeyed`",
+            "Rekeyed<u32>",
+            "which holds `Keyed<u32>` with field `by_key`, a map keyed by `u32`"
+        )]
+    );
+    assert_eq!(
+        bson_refused_key_messages("pub struct Arena { pub second: Second<String, u32> }"),
+        [held_bson_refused_key_message(
+            "field `second`",
+            "Second<String, u32>",
+            "a map keyed by `u32`"
+        )]
+    );
+    assert_eq!(
+        bson_refused_key_messages(
+            "pub struct Arena { pub rekeyed: Rekeyed<String>, pub second: Second<u32, String> }"
+        ),
+        Vec::<String>::new()
+    );
+}
+
+/// An alias that keys a map by its own type parameter, declared below the type that holds it, has
+/// not expanded when the holder does, and is not refused there. Declared above, it is.
+#[test]
+fn an_alias_keyed_by_its_own_parameter_declared_below_is_not_refused() {
+    let arena = "pub struct Arena { pub by_key: ByKey<u32> }";
+    assert_eq!(bson_refused_key_messages(arena), Vec::<String>::new());
+    declare_above(&["pub type ByKey<KeyType> = HashMap<KeyType, String>;"]);
+    assert_eq!(
+        bson_refused_key_messages(arena),
+        [held_bson_refused_key_message(
+            "field `by_key`",
+            "ByKey<u32>",
+            "a map keyed by `u32`"
+        )]
+    );
+}
+
+/// An alias whose value is its own parameter is refused as a map key filled at a number, and not
+/// as a member. One whose value reaches its parameter through a brand keeps that reading where an
+/// argument it hands the brand holds a map keyed by its other parameter.
+#[test]
+fn an_alias_whose_value_is_its_own_parameter_is_read_as_a_key_and_holds_no_map() {
+    declare_above(&[
+        "pub type Slot<T> = T;",
+        "#[serde(transparent)] pub struct Seat<Row, Place> { pub place: Place, \
+         pub row: PhantomData<Row> }",
+        "pub type Seated<Row, Place> = Seat<HashMap<Row, String>, Place>;",
+    ]);
+    for key in ["Slot<u32>", "Seated<String, u8>"] {
+        assert_eq!(
+            bson_refused_key_messages(&format!(
+                "pub struct Roster {{ pub by_key: HashMap<{key}, String> }}"
+            )),
+            [bson_refused_key_message("field `by_key`", key)],
+            "for {key}"
+        );
+    }
+    assert_eq!(
+        bson_refused_key_messages("pub struct Roster { pub slot: Slot<u32> }"),
+        Vec::<String>::new()
+    );
+}
+
+/// A holder that lists `"mongodb"` fails naming the field, the alias as written and the map, and
+/// one that holds the alias filled at a `String` builds.
+#[test]
+fn a_holder_of_an_alias_keyed_by_its_parameter_filled_at_a_number_fails_where_it_lists_mongodb() {
+    let declared = expansion_under(
+        "default_types(KeyType = String)",
+        "pub type ByKey<KeyType> = HashMap<KeyType, String>;",
+    );
+    assert!(!declared.contains("compile_error"), "got: {declared}");
+    let stored = "enable = [\"decode_with\", \"mongodb\"]";
+    let refused = expansion_under(stored, "pub struct Arena { pub by_key: ByKey<u32> }");
+    assert!(
+        refused.contains(&format!(
+            "model_schema: type `Arena`: {}",
+            held_bson_refused_key_message("field `by_key`", "ByKey<u32>", "a map keyed by `u32`")
+                .replace('"', "\\\"")
+        )),
+        "got: {refused}"
+    );
+    let built = expansion_under(stored, "pub struct Stands { pub by_key: ByKey<String> }");
+    assert!(!built.contains("compile_error"), "got: {built}");
+}
+
 /// The refusal is spanned on the field, and raised only where the type lists `"mongodb"`.
 #[test]
 fn a_map_keyed_by_a_number_is_refused_only_where_mongodb_is_listed() {
