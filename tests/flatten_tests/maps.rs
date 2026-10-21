@@ -466,7 +466,7 @@ where
 }
 
 /// Whether serde reads `payload` as the type it is read as.
-fn serde_reads(payload: &Payload) -> bool {
+pub fn serde_reads(payload: &Payload) -> bool {
     let (_, read) = READS
         .iter()
         .find(|(model, _)| *model == payload.read_as)

@@ -28,8 +28,10 @@ fn test_json_schema_method_flatten_emits_merge() {
         &fields,
         &[MergedSource {
             label: "Base".to_owned(),
+            map: false,
             optional: false,
             value: quote::quote! { serde_json::json!({ "type": "object" }) },
+            withheld: Vec::new(),
         }],
         "Node",
         &[],
@@ -47,8 +49,10 @@ fn test_the_merge_wraps_branches_in_the_spelling_its_source_used() {
         &[],
         &[MergedSource {
             label: "Base".to_owned(),
+            map: false,
             optional: false,
             value: quote::quote! { serde_json::json!({ "type": "object" }) },
+            withheld: Vec::new(),
         }],
         "Node",
         &[],
@@ -80,8 +84,10 @@ fn test_an_optional_merged_source_carries_its_absence_into_the_merge() {
             &[],
             &[MergedSource {
                 label: "Base".to_owned(),
+                map: false,
                 optional,
                 value: quote::quote! { serde_json::json!({ "type": "object" }) },
+                withheld: Vec::new(),
             }],
             "Node",
             &[],
@@ -105,13 +111,45 @@ fn test_an_optional_merged_source_carries_its_absence_into_the_merge() {
 }
 
 #[test]
+fn test_a_merged_source_carries_the_keys_serde_hands_it_none_of() {
+    let merge = generate_struct_json_schema_method(
+        &[],
+        &[MergedSource {
+            label: "counts".to_owned(),
+            map: true,
+            optional: false,
+            value: quote::quote! { serde_json::json!({ "type": "object" }) },
+            withheld: vec!["note".to_owned(), "label".to_owned()],
+        }],
+        "Node",
+        &[],
+    )
+    .to_string();
+
+    assert!(
+        merge.contains("(\"counts\" , false , true , & [\"note\" , \"label\"] ,"),
+        "{merge}"
+    );
+    assert!(
+        merge.contains("described = described . multiplied (& offered , (* map , * withheld))"),
+        "{merge}"
+    );
+    assert!(
+        merge.contains("serde_json :: Value :: Object (handed_out (members , & handed))"),
+        "{merge}"
+    );
+}
+
+#[test]
 fn test_the_merge_expands_branches_to_a_fixed_point_under_a_path_terminator() {
     let merge = generate_struct_json_schema_method(
         &[],
         &[MergedSource {
             label: "Base".to_owned(),
+            map: false,
             optional: false,
             value: quote::quote! { serde_json::json!({ "type": "object" }) },
+            withheld: Vec::new(),
         }],
         "Node",
         &[],
@@ -140,8 +178,10 @@ fn test_the_merge_reads_a_tagged_unit_variant_at_the_edges_own_depth() {
         &[],
         &[MergedSource {
             label: "Base".to_owned(),
+            map: false,
             optional: false,
             value: quote::quote! { serde_json::json!({ "type": "object" }) },
+            withheld: Vec::new(),
         }],
         "Node",
         &[],

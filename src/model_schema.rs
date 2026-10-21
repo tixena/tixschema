@@ -220,10 +220,12 @@ use crate::utils::ident_reexport_zod;
 #[cfg(feature = "zod")]
 use crate::utils::record_zod_union_members;
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(all(feature = "serde", any(feature = "zod", feature = "jsonschema")))]
 use crate::features::serde::serde_conversion;
 #[cfg(all(feature = "serde", feature = "zod"))]
-use crate::utils::{ZodUnionMember, record_flatten_taken};
+use crate::utils::ZodUnionMember;
+#[cfg(all(feature = "serde", any(feature = "zod", feature = "jsonschema")))]
+use crate::utils::record_flatten_taken;
 
 #[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
 use crate::utils::{FlattenVariant, WireLeaf, record_flatten_variants, record_wire_leaves};
@@ -862,7 +864,7 @@ struct MergedOperand {
 #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
 struct Flattened<'fields> {
     fields: &'fields [FieldDef],
-    #[cfg(feature = "zod")]
+    #[cfg(any(feature = "zod", feature = "jsonschema"))]
     own_keys: Vec<String>,
 }
 
@@ -877,29 +879,29 @@ impl<'fields> Flattened<'fields> {
         own: &[FieldDef],
         fields: &'fields [FieldDef],
     ) -> Self {
-        #[cfg(not(feature = "zod"))]
+        #[cfg(not(any(feature = "zod", feature = "jsonschema")))]
         let _: &_ = &(item_struct, args, own);
         // serde hands a map flattened into a struct the struct's own tag.
-        #[cfg(all(feature = "serde", feature = "zod"))]
+        #[cfg(all(feature = "serde", any(feature = "zod", feature = "jsonschema")))]
         let tag = struct_tag(item_struct).map(|(key, _)| key);
-        #[cfg(all(feature = "zod", not(feature = "serde")))]
+        #[cfg(all(any(feature = "zod", feature = "jsonschema"), not(feature = "serde")))]
         let tag: Option<String> = {
             let _: &_ = &(item_struct, args);
             None
         };
-        #[cfg(feature = "zod")]
+        #[cfg(any(feature = "zod", feature = "jsonschema"))]
         let own_keys: Vec<String> = own
             .iter()
             .map(|fld| fld.name.clone())
             .filter(|key| tag.as_ref() != Some(key))
             .collect();
-        #[cfg(all(feature = "serde", feature = "zod"))]
+        #[cfg(all(feature = "serde", any(feature = "zod", feature = "jsonschema")))]
         if fields.is_empty() && read_by_its_derive(&item_struct.attrs, args) {
             record_flatten_taken(&item_struct.ident.to_string(), own_keys.clone());
         }
         Self {
             fields,
-            #[cfg(feature = "zod")]
+            #[cfg(any(feature = "zod", feature = "jsonschema"))]
             own_keys,
         }
     }
@@ -1931,8 +1933,8 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
     // An alias *is* its target, so a key written under its name renders in the target's wire form.
     record_key_wire(&rust_ident_str, alias_field_def.map_key_wire());
     // Flattened, it takes the keys its target takes.
-    #[cfg(all(feature = "serde", feature = "zod"))]
-    record_flatten_taken(&rust_ident_str, flattened_zod_taken(&alias_field_def));
+    #[cfg(all(feature = "serde", any(feature = "zod", feature = "jsonschema")))]
+    record_flatten_taken(&rust_ident_str, flattened_taken(&alias_field_def));
     // An alias's schema *is* its target's, so it publishes whatever the target publishes.
     Surface::written(&alias_field_def, &type_parameters_in_scope(&alias.generics))
         .record(&rust_ident_str);
@@ -2568,27 +2570,16 @@ fn compute_flatten_outputs(
     #[cfg(not(feature = "typescript"))]
     let ts_types = Vec::new();
 
-    // A flattened map is handed the keys no member ahead of it took, in the order declared.
     #[cfg(feature = "zod")]
-    let zod_schemas = {
-        let mut taken = own_keys.to_vec();
-        flattened_fields
-            .iter()
-            .map(|fld| {
-                let operand = MergedOperand {
-                    absence: SourceAbsence::written(fld),
-                    branches: flattened_zod_branches(fld),
-                    spelling: fld.zod_merged_schema(&taken),
-                };
-                for key in flattened_zod_taken(fld) {
-                    if !taken.contains(&key) {
-                        taken.push(key);
-                    }
-                }
-                operand
-            })
-            .collect()
-    };
+    let zod_schemas = flattened_fields
+        .iter()
+        .zip(withheld_keys(flattened_fields, own_keys))
+        .map(|(fld, withheld)| MergedOperand {
+            absence: SourceAbsence::written(fld),
+            branches: flattened_zod_branches(fld),
+            spelling: fld.zod_merged_schema(&withheld),
+        })
+        .collect();
     #[cfg(not(feature = "zod"))]
     let zod_schemas = Vec::new();
 
@@ -2615,10 +2606,29 @@ const fn flattened_name_offers_absence(_fld: &FieldDef) -> bool {
     false
 }
 
+/// The keys serde hands each flattened member none of, in the order declared: the object's own
+/// keys `own_keys`, and each key a member flattened ahead of it takes.
+#[cfg(any(feature = "zod", feature = "jsonschema"))]
+fn withheld_keys(flattened_fields: &[FieldDef], own_keys: &[String]) -> Vec<Vec<String>> {
+    let mut taken = own_keys.to_vec();
+    flattened_fields
+        .iter()
+        .map(|fld| {
+            let withheld = taken.clone();
+            for key in flattened_taken(fld) {
+                if !taken.contains(&key) {
+                    taken.push(key);
+                }
+            }
+            withheld
+        })
+        .collect()
+}
+
 /// The keys a flattened source takes from the object, as the item it names recorded them: none
 /// where the source names a `preprocess`, whose read takes the payload whole.
-#[cfg(all(feature = "serde", feature = "zod"))]
-fn flattened_zod_taken(fld: &FieldDef) -> Vec<String> {
+#[cfg(all(feature = "serde", any(feature = "zod", feature = "jsonschema")))]
+fn flattened_taken(fld: &FieldDef) -> Vec<String> {
     let corrected = fld
         .model_schema_prop_meta
         .as_ref()
@@ -2633,8 +2643,8 @@ fn flattened_zod_taken(fld: &FieldDef) -> Vec<String> {
 }
 
 /// No source takes a key where nothing reads `#[serde(flatten)]`.
-#[cfg(all(feature = "zod", not(feature = "serde")))]
-const fn flattened_zod_taken(_fld: &FieldDef) -> Vec<String> {
+#[cfg(all(any(feature = "zod", feature = "jsonschema"), not(feature = "serde")))]
+const fn flattened_taken(_fld: &FieldDef) -> Vec<String> {
     Vec::new()
 }
 
@@ -2740,7 +2750,7 @@ fn struct_schema_impl_items(
         #[cfg(feature = "jsonschema")]
         generate_json_schema_method(
             &bodies.2,
-            &flatten_merged_sources(flattened.fields),
+            &flatten_merged_sources(flattened.fields, &flattened.own_keys),
             item_name,
             &schema_parameters(generics, args),
         ),
@@ -6179,7 +6189,7 @@ fn struct_members(
 
 /// Whether serde reads an item through its own derive, with no `preprocess` and no type of its
 /// author's in between: such an item takes the keys it reads from an object it is flattened into.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(all(feature = "serde", any(feature = "zod", feature = "jsonschema")))]
 fn read_by_its_derive(attrs: &[syn::Attribute], args: &ModelSchemaArgs) -> bool {
     args.preprocess.is_empty() && serde_conversion(attrs).is_none_or(|(key, _)| key == "into")
 }
@@ -6187,7 +6197,7 @@ fn read_by_its_derive(attrs: &[syn::Attribute], args: &ModelSchemaArgs) -> bool 
 /// Records the keys an enum takes from an object it is flattened into, where serde reads it through
 /// its own derive: an externally tagged enum takes the entry a variant is written under, and an
 /// adjacently tagged one its tag and content.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(all(feature = "serde", any(feature = "zod", feature = "jsonschema")))]
 fn record_enum_flatten_taken(item_enum: &syn::ItemEnum, args: &ModelSchemaArgs, keys: Vec<String>) {
     if read_by_its_derive(&item_enum.attrs, args) {
         record_flatten_taken(&item_enum.ident.to_string(), keys);
@@ -6195,7 +6205,7 @@ fn record_enum_flatten_taken(item_enum: &syn::ItemEnum, args: &ModelSchemaArgs, 
 }
 
 /// The key each variant of an externally tagged enum is written under.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(all(feature = "serde", any(feature = "zod", feature = "jsonschema")))]
 fn variant_keys(variants: &[DiscriminatedVariant]) -> Vec<String> {
     variants
         .iter()
@@ -8716,13 +8726,13 @@ fn register_brand_with_questions(
         record_shape_question(question);
     }
     // serde reads a brand as the value it holds, which takes the keys it takes.
-    #[cfg(all(feature = "serde", feature = "zod"))]
+    #[cfg(all(feature = "serde", any(feature = "zod", feature = "jsonschema")))]
     if let Some(inner_field) = brand_field(item_struct)
         && read_by_its_derive(&item_struct.attrs, args)
     {
         record_flatten_taken(
             rust_ident,
-            flattened_zod_taken(&get_field_def("", &inner_field.ty, "")),
+            flattened_taken(&get_field_def("", &inner_field.ty, "")),
         );
     }
 }
@@ -10131,7 +10141,7 @@ fn process_discriminated_enum(
     let rendered = render_discriminated_variants(tag_name, content_name, item_name, &variants.0);
     #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
     let _: &_ = &(name, &rendered);
-    #[cfg(all(feature = "serde", feature = "zod"))]
+    #[cfg(all(feature = "serde", any(feature = "zod", feature = "jsonschema")))]
     record_enum_flatten_taken(
         &item_enum,
         args,
@@ -10230,11 +10240,12 @@ fn process_discriminated_enum(
 /// The object schema a struct variant's fields sit in when they are written under a key of their
 /// own rather than beside a discriminator, with the members of every `#[serde(flatten)]` source the
 /// variant carries merged beside them. Used by both the externally tagged form and the adjacently
-/// tagged form's own struct variant.
+/// tagged form's own struct variant. `own_keys` are the keys the variant's own fields take.
 #[cfg(feature = "jsonschema")]
 fn named_content_json_value(
     json_fields: &[proc_macro2::TokenStream],
     flattened_fields: &[FieldDef],
+    own_keys: &[String],
     self_type_name: &str,
     variant_name: &str,
 ) -> proc_macro2::TokenStream {
@@ -10251,15 +10262,23 @@ fn named_content_json_value(
             schema_obj
         }
     };
-    variant_merged_json_value(&object, flattened_fields, self_type_name, variant_name)
+    variant_merged_json_value(
+        &object,
+        flattened_fields,
+        own_keys,
+        self_type_name,
+        variant_name,
+    )
 }
 
 /// A variant's own object with the members of every `#[serde(flatten)]` source it carries merged
-/// beside them, and the object exactly as it stands where the variant flattens nothing.
+/// beside them, and the object exactly as it stands where the variant flattens nothing. `own_keys`
+/// are the keys the object's own members take, which serde hands no flattened member.
 #[cfg(feature = "jsonschema")]
 fn variant_merged_json_value(
     base: &proc_macro2::TokenStream,
     flattened_fields: &[FieldDef],
+    own_keys: &[String],
     self_type_name: &str,
     variant_name: &str,
 ) -> proc_macro2::TokenStream {
@@ -10268,7 +10287,7 @@ fn variant_merged_json_value(
     }
     merged_object_value(
         base,
-        &flatten_merged_sources(flattened_fields),
+        &flatten_merged_sources(flattened_fields, own_keys),
         &MergeDiagnostic {
             cycle_remedy: "write the field as a named member so the cycle defers through a reference",
             edge: &format!("`#[serde(flatten)]` in variant `{variant_name}` of"),
@@ -10375,6 +10394,7 @@ fn render_external_content(
             let json = named_content_json_value(
                 &parts.json_fields,
                 &variant.flattened_fields,
+                &member_keys(field_defs),
                 self_type_name,
                 discriminator_value,
             );
@@ -10482,20 +10502,36 @@ fn render_external_variant(
     )
 }
 
-/// Records what an object flattening an externally tagged enum joins for each of its variants, in
-/// the order the union writes them, and the keys the enum takes from that object.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
-fn record_external_flatten_operands(
+/// Records what an object flattening an externally tagged enum reads of it: the keys the enum takes
+/// from that object, and what the object joins for each variant.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn record_external_flatten(
     item_enum: &syn::ItemEnum,
     args: &ModelSchemaArgs,
     variants: &[DiscriminatedVariant],
     members: &[(String, String, proc_macro2::TokenStream)],
 ) {
-    let rust_ident = item_enum.ident.to_string();
-    #[cfg(feature = "zod")]
+    #[cfg(any(feature = "zod", feature = "jsonschema"))]
     record_enum_flatten_taken(item_enum, args, variant_keys(variants));
-    #[cfg(not(feature = "zod"))]
+    #[cfg(not(any(feature = "zod", feature = "jsonschema")))]
     let _: &ModelSchemaArgs = args;
+    #[cfg(any(feature = "typescript", feature = "zod"))]
+    record_external_flatten_operands(&item_enum.ident.to_string(), variants, members);
+    #[cfg(not(any(feature = "typescript", feature = "zod")))]
+    let _: &[(String, String, proc_macro2::TokenStream)] = members;
+}
+
+/// Records what an object flattening an externally tagged enum joins for each of its variants, in
+/// the order the union writes them.
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+fn record_external_flatten_operands(
+    rust_ident: &str,
+    variants: &[DiscriminatedVariant],
+    members: &[(String, String, proc_macro2::TokenStream)],
+) {
     #[cfg(feature = "typescript")]
     let exclusions = sibling_key_exclusions(
         &variants
@@ -10538,7 +10574,7 @@ fn record_external_flatten_operands(
             }
         })
         .collect();
-    record_flatten_variants(&rust_ident, &operands);
+    record_flatten_variants(rust_ident, &operands);
 }
 
 /// Which of a flattened choice's keys each member has to say it does not carry, one list per member
@@ -10679,8 +10715,8 @@ fn process_externally_tagged_enum(
 
     // Recorded once the variants have rendered, because the flatten-edge spelling of a data-carrying
     // one is the member's own and only this expansion holds it.
-    #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
-    record_external_flatten_operands(&item_enum, args, &variants.0, &members);
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    record_external_flatten(&item_enum, args, &variants.0, &members);
 
     let (main_schema_code, type_code, schema_code) = join_external_union(&members);
     #[cfg(not(feature = "jsonschema"))]
@@ -10925,21 +10961,24 @@ fn render_internal_variant(
         .flatten();
 
     let Some(inner) = flattened else {
+        // serde reads the tag before the variant, and hands its flattened members none of it.
+        #[cfg(any(feature = "zod", feature = "jsonschema"))]
+        let own_keys = [vec![tag_name.to_owned()], member_keys(&variant.field_defs)].concat();
         #[cfg(feature = "jsonschema")]
         let json = variant_merged_json_value(
             &tag_object,
             &variant.flattened_fields,
+            &own_keys,
             self_type_name,
             &variant.discriminator_value,
         );
         #[cfg(not(feature = "jsonschema"))]
         let json = quote! {};
 
-        // serde reads the tag before the variant, and hands its flattened members none of it.
         #[cfg(feature = "zod")]
         let zod = variant_flatten_zod(
             &format!("z.strictObject({})", parts.schema_code),
-            &[vec![tag_name.to_owned()], member_keys(&variant.field_defs)].concat(),
+            &own_keys,
             &variant.flattened_fields,
         );
         #[cfg(not(feature = "zod"))]
@@ -10964,7 +11003,7 @@ fn render_internal_variant(
             &tag_object,
             // The same reference a `#[serde(flatten)]` base contributes: both name a type whose
             // members join the object being written.
-            &[flatten_merged_source(inner)],
+            &[flatten_merged_source(inner, &[tag_name.to_owned()])],
             &MergeDiagnostic {
                 cycle_remedy: "name a `content` key so the content gets an object of its own",
                 edge: &format!("the content of variant `{variant_name}`,"),
@@ -11434,7 +11473,13 @@ fn untagged_named_json_value(
             object_schema
         }
     };
-    variant_merged_json_value(&object, flattened_fields, self_type_name, variant_name)
+    variant_merged_json_value(
+        &object,
+        flattened_fields,
+        &member_keys(field_defs),
+        self_type_name,
+        variant_name,
+    )
 }
 
 /// The `allOf` a string states two patterns in, where its enum's holds beside its own: one
@@ -12494,6 +12539,7 @@ fn push_named_content_json_field(
     let inner = named_content_json_value(
         inner_json_fields,
         &variant.flattened_fields,
+        &member_keys(&variant.field_defs),
         self_type_name,
         &variant.discriminator_value,
     );
@@ -17437,33 +17483,55 @@ fn generate_json_schema_method(
     )
 }
 
-/// What a struct's `#[serde(flatten)]` fields contribute to the object it writes.
+/// What a struct's `#[serde(flatten)]` fields contribute to the object it writes, whose own members
+/// take `own_keys`.
 #[cfg(feature = "jsonschema")]
-fn flatten_merged_sources(flattened_fields: &[FieldDef]) -> Vec<MergedSource> {
-    flattened_fields.iter().map(flatten_merged_source).collect()
+fn flatten_merged_sources(flattened_fields: &[FieldDef], own_keys: &[String]) -> Vec<MergedSource> {
+    flattened_fields
+        .iter()
+        .zip(withheld_keys(flattened_fields, own_keys))
+        .map(|(fld, withheld)| flatten_merged_source(fld, &withheld))
+        .collect()
 }
 
 /// What a value whose members join the object being written contributes to it, labelled with the
 /// name the author gave it: the type for a named one, the field otherwise — a shape with no name of
-/// its own is only ever pointed at through where it was written.
+/// its own is only ever pointed at through where it was written. serde hands it none of
+/// `withheld`.
 #[cfg(feature = "jsonschema")]
-fn flatten_merged_source(fld: &FieldDef) -> MergedSource {
+fn flatten_merged_source(fld: &FieldDef, withheld: &[String]) -> MergedSource {
     if let FieldDefType::SiblingType(name, arguments) = &fld.field_type {
         return MergedSource {
             label: name.clone(),
+            map: false,
             optional: fld.is_optional(),
             value: sibling_json_schema_value(name, arguments, fld.type_span),
+            withheld: withheld.to_vec(),
         };
     }
-    let value = if let FieldDefType::TypeParam(parameter) = &fld.field_type {
-        json_argument_value(parameter)
+    // A map joins as its own description where its key is read as a string or a plain enum, and
+    // as no key for every other key, whose description says nothing of the values.
+    let (value, map) = if let FieldDefType::TypeParam(parameter) = &fld.field_type {
+        (json_argument_value(parameter), false)
+    } else if let FieldDefType::Map(key, value) = &fld.field_type
+        && fld.array_depth == 0
+        && matches!(
+            map_key_path(key),
+            MapKeyPath::Open | MapKeyPath::Enumerated(_)
+        )
+    {
+        let described = map_json_schema_value(key, value)
+            .unwrap_or_else(|rejection| map_member_rejection_error(&fld.name, &rejection));
+        (described, true)
     } else {
-        quote! { serde_json::json!({ "type": "object" }) }
+        (quote! { serde_json::json!({ "type": "object" }) }, false)
     };
     MergedSource {
         label: fld.name.clone(),
+        map,
         optional: fld.is_optional(),
         value,
+        withheld: withheld.to_vec(),
     }
 }
 
@@ -17499,7 +17567,7 @@ fn variant_flatten_zod(own: &str, own_keys: &[String], flattened_fields: &[Field
 }
 
 /// The keys an object's own members are written under.
-#[cfg(feature = "zod")]
+#[cfg(any(feature = "zod", feature = "jsonschema"))]
 fn member_keys(field_defs: &[FieldDef]) -> Vec<String> {
     field_defs.iter().map(|fld| fld.name.clone()).collect()
 }

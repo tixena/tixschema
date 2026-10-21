@@ -16238,7 +16238,7 @@ fn a_flattened_type_parameter_is_merged_at_the_document_its_filling_binds() {
     let mut held = super::get_field_def("held", &ty, "");
     held.erase_type_parameters(&["HeldType".to_owned()]);
 
-    let source = super::flatten_merged_source(&held);
+    let source = super::flatten_merged_source(&held, &[]);
 
     assert_eq!(source.label, "held");
     assert_eq!(
@@ -16250,11 +16250,42 @@ fn a_flattened_type_parameter_is_merged_at_the_document_its_filling_binds() {
 
 #[cfg(feature = "jsonschema")]
 #[test]
+fn a_flattened_map_is_merged_as_a_map_handed_none_of_the_withheld_keys() {
+    let merged = |written: &str| {
+        let ty: syn::Type = syn::parse_str(written).unwrap();
+        super::flatten_merged_source(&super::get_field_def("rest", &ty, ""), &["note".to_owned()])
+    };
+
+    let by_name = merged("BTreeMap<String, u8>");
+    assert!(by_name.map);
+    assert_eq!(by_name.withheld, ["note"]);
+    assert!(
+        by_name
+            .value
+            .to_string()
+            .contains("\"additionalProperties\""),
+        "{}",
+        by_name.value
+    );
+
+    let by_number = merged("BTreeMap<u32, u8>");
+    assert!(
+        !by_number.map,
+        "serde reads no number key of a flattened map"
+    );
+    assert_eq!(
+        by_number.value.to_string(),
+        "serde_json :: json ! ({ \"type\" : \"object\" })"
+    );
+}
+
+#[cfg(feature = "jsonschema")]
+#[test]
 fn a_flatten_source_with_no_name_of_its_own_keeps_the_placeholder() {
     let ty: syn::Type = syn::parse_str("serde_json::Value").unwrap();
     let held = super::get_field_def("held", &ty, "");
 
-    let source = super::flatten_merged_source(&held);
+    let source = super::flatten_merged_source(&held, &[]);
 
     assert_eq!(source.label, "held");
     assert_eq!(

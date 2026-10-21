@@ -16,11 +16,16 @@ pub struct MergeDiagnostic<'msg> {
 
 /// One schema merged into a base, together with how the author named it. A merged schema is a
 /// `serde_json` expression by the time it reaches the merge and no longer carries the name it came
-/// from, so the label travels beside it — it is what a diagnostic points the author at.
+/// from, so the label travels beside it — it is what a diagnostic points the author at. `withheld`
+/// are the keys serde hands it none of: the base's own, and those each source ahead of it takes.
+/// `map` says serde hands it every other key, where its description closes it to some, as a map
+/// keyed by a plain enum's does.
 pub struct MergedSource {
     pub label: String,
+    pub map: bool,
     pub optional: bool,
     pub value: proc_macro2::TokenStream,
+    pub withheld: Vec<String>,
 }
 
 /// Check if we should generate JSON schema methods.
@@ -370,9 +375,103 @@ fn merge_readers() -> proc_macro2::TokenStream {
     }
 }
 
+/// How a merged object holds the keys serde hands each map merged into it, as the tokens that declare
+/// it: a key a member names is held to the map's values beside its own schema, and every other key
+/// to the values of every map.
+fn map_handing() -> proc_macro2::TokenStream {
+    quote::quote! {
+        // A map merged into an object: the schema of each value serde hands it, the keys serde
+        // hands it none of, and the keys named beside it in the source that holds it, which that
+        // source reads.
+        #[derive(Clone)]
+        struct Handed {
+            value: serde_json::Value,
+            withheld: &'static [&'static str],
+            own: ::std::vec::Vec<::std::string::String>,
+        }
+
+        // The maps merged so far, and `members` among them where it is a map or admits keys
+        // beyond its own: serde hands such a source every key no member takes.
+        fn handed_beside(
+            handed: &[Handed],
+            members: &serde_json::Map<::std::string::String, serde_json::Value>,
+            given: (bool, &'static [&'static str]),
+        ) -> ::std::vec::Vec<Handed> {
+            let (map, withheld) = given;
+            let mut maps = handed.to_vec();
+            if let ::core::option::Option::Some(value) = members
+                .get("additionalProperties")
+                .filter(|value| map || value.as_bool() != ::core::option::Option::Some(false))
+            {
+                maps.push(Handed {
+                    value: value.clone(),
+                    withheld,
+                    own: members
+                        .get("properties")
+                        .and_then(serde_json::Value::as_object)
+                        .map_or_else(::std::vec::Vec::new, |properties| {
+                            properties.keys().cloned().collect()
+                        }),
+                });
+            }
+            maps
+        }
+
+        fn handed_out(
+            mut members: serde_json::Map<::std::string::String, serde_json::Value>,
+            handed: &[Handed],
+        ) -> serde_json::Map<::std::string::String, serde_json::Value> {
+            let ::core::option::Option::Some(first) = handed.first() else {
+                return members;
+            };
+            if let ::core::option::Option::Some(serde_json::Value::Object(properties)) =
+                members.get_mut("properties")
+            {
+                for (key, described) in properties.iter_mut() {
+                    let mut held = vec![described.take()];
+                    held.extend(
+                        handed
+                            .iter()
+                            .filter(|map| {
+                                !map.withheld.contains(&key.as_str()) && !map.own.contains(key)
+                            })
+                            .filter(|map| holds_values(&map.value))
+                            .map(|map| map.value.clone()),
+                    );
+                    *described = all_of(held);
+                }
+            }
+            let rest: ::std::vec::Vec<serde_json::Value> = handed
+                .iter()
+                .filter(|map| holds_values(&map.value))
+                .map(|map| map.value.clone())
+                .collect();
+            let additional = if rest.is_empty() { first.value.clone() } else { all_of(rest) };
+            members.insert("additionalProperties".to_string(), additional);
+            members
+        }
+
+        // A schema that admits every value holds a key to nothing beside its own.
+        fn holds_values(schema: &serde_json::Value) -> bool {
+            schema.as_bool() != ::core::option::Option::Some(true)
+                && !schema.as_object().is_some_and(serde_json::Map::is_empty)
+        }
+
+        fn all_of(schemas: ::std::vec::Vec<serde_json::Value>) -> serde_json::Value {
+            if schemas.len() > 1 {
+                return serde_json::json!({ "allOf": schemas });
+            }
+            schemas.into_iter().next().unwrap_or(serde_json::Value::Bool(true))
+        }
+    }
+}
+
 /// What the merge holds while it multiplies, as the tokens that declare it.
 fn merged_tree() -> proc_macro2::TokenStream {
+    let handing = map_handing();
     quote::quote! {
+        #handing
+
         enum Branches<'defs> {
             // What a source contributes when it is not there, through an `Option` or an item whose
             // surface offers a `null`: no members.
@@ -385,21 +484,30 @@ fn merged_tree() -> proc_macro2::TokenStream {
         }
 
         enum Merged {
-            Object(serde_json::Map<::std::string::String, serde_json::Value>),
+            Object(serde_json::Map<::std::string::String, serde_json::Value>, ::std::vec::Vec<Handed>),
             Union(&'static str, ::std::vec::Vec<Merged>),
         }
 
         impl Branches<'_> {
             // What one base becomes once this source's choices are written into it: every leaf
             // contributes its members to a copy of the base.
-            fn merged_into(&self, base: &serde_json::Map<::std::string::String, serde_json::Value>) -> Merged {
+            fn merged_into(
+                &self,
+                base: &serde_json::Map<::std::string::String, serde_json::Value>,
+                handed: &[Handed],
+                given: (bool, &'static [&'static str]),
+            ) -> Merged {
                 match *self {
                     // Merged, not copied: an absent source contributes no members, and the branch
                     // keeps the base's keys in the base's order.
-                    Self::Absent => {
-                        Merged::Object(merge_object_schemas(base, &serde_json::Map::new()))
-                    }
-                    Self::Object(members) => Merged::Object(merge_object_schemas(base, members)),
+                    Self::Absent => Merged::Object(
+                        merge_object_schemas(base, &serde_json::Map::new()),
+                        handed.to_vec(),
+                    ),
+                    Self::Object(members) => Merged::Object(
+                        merge_object_schemas(base, members),
+                        handed_beside(handed, members, given),
+                    ),
                     Self::Tagged(name) => {
                         let mut properties = serde_json::Map::new();
                         properties
@@ -415,12 +523,12 @@ fn merged_tree() -> proc_macro2::TokenStream {
                                 name.to_string(),
                             )]),
                         );
-                        Merged::Object(merge_object_schemas(base, &written))
+                        Merged::Object(merge_object_schemas(base, &written), handed.to_vec())
                     }
                     Self::Union(spelling, ref branches) => {
                         let mut merged: ::std::vec::Vec<Merged> = branches
                             .iter()
-                            .map(|branch| branch.merged_into(base))
+                            .map(|branch| branch.merged_into(base, handed, given))
                             .collect();
                         // One key set is an object rather than a choice between objects, so a level
                         // offering a single branch writes no wrapper and its spelling goes unread.
@@ -443,22 +551,24 @@ fn merged_tree() -> proc_macro2::TokenStream {
         impl Merged {
             // Every leaf gains the members of one leaf of the source, so a source reaches the
             // branches an earlier source left behind rather than only the object it started from.
-            fn multiplied(self, source: &Branches<'_>) -> Self {
+            fn multiplied(self, source: &Branches<'_>, given: (bool, &'static [&'static str])) -> Self {
                 match self {
                     Self::Union(keyword, branches) => Self::Union(
                         keyword,
                         branches
                             .into_iter()
-                            .map(|branch| branch.multiplied(source))
+                            .map(|branch| branch.multiplied(source, given))
                             .collect(),
                     ),
-                    Self::Object(base) => source.merged_into(&base),
+                    Self::Object(base, handed) => source.merged_into(&base, &handed, given),
                 }
             }
 
             fn into_value(self) -> serde_json::Value {
                 match self {
-                    Self::Object(members) => serde_json::Value::Object(members),
+                    Self::Object(members, handed) => {
+                        serde_json::Value::Object(handed_out(members, &handed))
+                    }
                     Self::Union(keyword, branches) => {
                         let mut out = serde_json::Map::new();
                         out.insert(
@@ -626,6 +736,11 @@ pub fn merged_object_value(
     let expansion = branch_expansion();
     let labels = merged.iter().map(|source| source.label.as_str());
     let optionals = merged.iter().map(|source| source.optional);
+    let maps = merged.iter().map(|source| source.map);
+    let withheld = merged.iter().map(|source| {
+        let keys = &source.withheld;
+        quote::quote! { &[#(#keys),*] }
+    });
     let values = merged.iter().map(|source| &source.value);
     let readers = merge_readers();
     let tree = merged_tree();
@@ -636,11 +751,11 @@ pub fn merged_object_value(
             #refusals
             #expansion
 
-            let flattened: ::std::vec::Vec<(&'static str, bool, serde_json::Value)> =
-                vec![ #((#labels, #optionals, #values)),* ];
+            let flattened: ::std::vec::Vec<(&'static str, bool, bool, &'static [&'static str], serde_json::Value)> =
+                vec![ #((#labels, #optionals, #maps, #withheld, #values)),* ];
 
-            let mut described = Merged::Object(#base);
-            for (label, optional, fs) in &flattened {
+            let mut described = Merged::Object(#base, ::std::vec::Vec::new());
+            for (label, optional, map, withheld, fs) in &flattened {
                 let mut expanding: ::std::vec::Vec<&str> = ::std::vec::Vec::new();
                 let mut position: ::std::vec::Vec<usize> = ::std::vec::Vec::new();
                 if let ::core::option::Option::Some(source) =
@@ -649,7 +764,7 @@ pub fn merged_object_value(
                     // The absence is offered around whatever the source described as, so a union
                     // reached through an `Option` keeps its own spelling.
                     let offered = if *optional { source.or_absent() } else { source };
-                    described = described.multiplied(&offered);
+                    described = described.multiplied(&offered, (*map, *withheld));
                 }
             }
 
