@@ -11,9 +11,9 @@ use serde::{Deserialize, Serialize};
 
 use tixschema::model_schema;
 
-use super::flattened_models::{Knotting, Netting};
+use super::flattened_models::{Knotting, Netting, Seizing, Splicing};
 #[cfg(feature = "serde")]
-use super::flattened_models::{knotting_kotlin, netting_kotlin};
+use super::flattened_models::{knotting_kotlin, netting_kotlin, seizing_kotlin, splicing_kotlin};
 use super::read::{kept, serializers};
 use super::tuple_variants_models::Labelling;
 
@@ -782,7 +782,8 @@ fn test_flatten_map() {
     );
 }
 
-/// The payload each struct of flattened members below writes and reads.
+/// The payload each struct of flattened members below writes and reads, and each struct with an
+/// optional member beside a flattened one with that member absent.
 #[test]
 fn every_flattened_fixture_is_written_as_serde_writes_it() {
     let labelling = || Labelling {
@@ -806,6 +807,22 @@ fn every_flattened_fixture_is_written_as_serde_writes_it() {
         .unwrap(),
         r#"{"label":"n","note":"a","north":2}"#
     );
+    assert_eq!(
+        serde_json::to_string(&Splicing {
+            labelling: labelling(),
+            spare: None
+        })
+        .unwrap(),
+        r#"{"label":"n"}"#
+    );
+    assert_eq!(
+        serde_json::to_string(&Seizing {
+            labelling: labelling(),
+            spare: None
+        })
+        .unwrap(),
+        r#"{"label":"n","spare":null}"#
+    );
 }
 
 /// A struct whose members are all flattened takes no key of its own ahead of the map's: the empty
@@ -822,6 +839,40 @@ fn test_flatten_map_beside_no_member_of_its_own() {
     let knotting = knotting_kotlin::kotlin_definition();
     assert!(
         knotting.contains("val restConsumedKeys = setOf(\"note\") + labellingKeys;"),
+        "got: {knotting}"
+    );
+}
+
+/// An optional member beside a flattened one is written only where it holds a value, and one
+/// under `nullable` always. A member that is not optional is written as it was.
+#[test]
+#[cfg(feature = "serde")]
+fn an_optional_member_beside_a_flattened_one_is_written_only_where_it_holds_a_value() {
+    let splicing = splicing_kotlin::kotlin_definition();
+    assert!(
+        splicing.contains(
+            "{ output.json.encodeToJsonElement(LabellingUnjudged, value.labelling).jsonObject\
+             .forEach { (k, v) -> put(k, v) }; if (value.spare != null) put(\"spare\", \
+             output.json.encodeToJsonElement(serializer<UInt?>(), value.spare)) }"
+        ),
+        "got: {splicing}"
+    );
+    let seizing = seizing_kotlin::kotlin_definition();
+    assert!(
+        seizing.contains(
+            "{ output.json.encodeToJsonElement(LabellingUnjudged, value.labelling).jsonObject\
+             .forEach { (k, v) -> put(k, v) }; put(\"spare\", \
+             output.json.encodeToJsonElement(serializer<UInt?>(), value.spare)) }"
+        ),
+        "got: {seizing}"
+    );
+    let knotting = knotting_kotlin::kotlin_definition();
+    assert!(
+        knotting.contains(
+            "{ output.json.encodeToJsonElement(LabellingUnjudged, value.labelling).jsonObject\
+             .forEach { (k, v) -> put(k, v) }; put(\"note\", \
+             output.json.encodeToJsonElement(serializer<String>(), value.note)); "
+        ),
         "got: {knotting}"
     );
 }
