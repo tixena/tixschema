@@ -425,16 +425,23 @@ pub const fn struct_tag(_item_struct: &ItemStruct) -> Option<(String, String)> {
 }
 
 /// The field a brand is written and read as the value of, or `None` for a struct that is no
-/// brand: a `#[serde(transparent)]` tuple struct's one slot, and of a `#[serde(transparent)]`
-/// struct with named fields the one [`transparent_field`] finds.
+/// brand: a `#[serde(transparent)]` tuple struct's one slot, and of any other
+/// `#[serde(transparent)]` struct the one [`transparent_field`] finds.
 pub fn brand_field(item_struct: &ItemStruct) -> Option<&Field> {
+    brand_slot(item_struct).map(|(_, field)| field)
+}
+
+/// [`brand_field`] beside its place among the struct's fields.
+pub fn brand_slot(item_struct: &ItemStruct) -> Option<(usize, &Field)> {
     if !has_serde_transparent(&item_struct.attrs) {
         return None;
     }
     match &item_struct.fields {
-        Fields::Named(_) => transparent_field(&item_struct.fields),
-        Fields::Unnamed(slots) if slots.unnamed.len() == 1 => slots.unnamed.first(),
-        Fields::Unnamed(_) | Fields::Unit => None,
+        Fields::Unnamed(slots) if slots.unnamed.len() == 1 => {
+            slots.unnamed.first().map(|only| (0, only))
+        }
+        Fields::Named(_) | Fields::Unnamed(_) => transparent_slot(&item_struct.fields),
+        Fields::Unit => None,
     }
 }
 
@@ -534,7 +541,12 @@ pub fn variant_steps(_item_enum: &ItemEnum, variant: &Variant) -> Vec<String> {
 /// slot: the one it reads that has no `default` and is not written `PhantomData`. `None` for any
 /// other count, which that derive refuses.
 pub fn transparent_field(fields: &Fields) -> Option<&Field> {
-    let mut read = fields.iter().filter(|field| {
+    transparent_slot(fields).map(|(_, field)| field)
+}
+
+/// [`transparent_field`] beside its place among `fields`.
+fn transparent_slot(fields: &Fields) -> Option<(usize, &Field)> {
+    let mut read = fields.iter().enumerate().filter(|(_, field)| {
         let omission = parse_serde_key_omission(&field.attrs);
         let marker = matches!(
             written_type(&field.ty),

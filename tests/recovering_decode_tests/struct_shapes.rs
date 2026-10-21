@@ -190,7 +190,7 @@ struct Etched {
 }
 
 /// A `transparent` tuple struct beside whose value is a slot serde neither writes nor reads.
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(enable = ["decode_with"], no_display)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Tags(Vec<String>, #[serde(skip)] u8);
@@ -202,7 +202,7 @@ struct Tags(Vec<String>, #[serde(skip)] u8);
 struct Measured(#[serde(skip)] u8, String);
 
 /// A `transparent` tuple struct with a slot serde never reads, over a model type.
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(enable = ["decode_with"], no_display)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Stamped(Version, #[serde(skip)] u8);

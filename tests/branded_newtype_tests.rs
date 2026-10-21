@@ -11,6 +11,10 @@ mod field_bound;
 mod list_bound;
 
 #[cfg(test)]
+#[path = "branded_newtype_tests/marker_slot.rs"]
+mod marker_slot;
+
+#[cfg(test)]
 #[path = "branded_newtype_tests/named_field.rs"]
 mod named_field;
 

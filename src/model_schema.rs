@@ -98,6 +98,8 @@ use crate::utils::{
     trivial_pattern,
 };
 
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+use crate::features::serde::brand_slot;
 #[cfg(all(
     feature = "serde",
     any(
@@ -5631,11 +5633,12 @@ fn wire_scalar_candidate(item: &Item) -> Option<(&syn::Ident, &syn::Type)> {
     Some((&item_struct.ident, &brand_field(item_struct)?.ty))
 }
 
-/// How a brand's one field is reached on a value of the brand: by its name, or as slot `0`.
+/// How a brand's field is reached on a value of the brand: by its name, or as the slot at
+/// `position` among the struct's slots.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-fn brand_member(field: &Field) -> syn::Member {
+fn brand_member(position: usize, field: &Field) -> syn::Member {
     field.ident.clone().map_or_else(
-        || syn::Member::Unnamed(syn::Index::from(0)),
+        || syn::Member::Unnamed(syn::Index::from(position)),
         syn::Member::Named,
     )
 }
@@ -6907,12 +6910,12 @@ fn build_branded_validation(
     args: &ModelSchemaArgs,
     generic_params: &[String],
     inner_field: &Field,
+    held: &syn::Member,
 ) -> Option<BrandedValidation> {
     let inner_ty = &inner_field.ty;
-    let held = brand_member(inner_field);
     let is_generic = !generic_params.is_empty();
     if held_as_a_list(inner_ty) {
-        return branded_list_validation(args, inner_field);
+        return branded_list_validation(args, inner_field, held);
     }
     args.has_string_constraints().then(|| {
         let measures_path = branded_inner_measures_path(inner_ty);
@@ -7002,13 +7005,13 @@ fn build_branded_validation(
 fn branded_list_validation(
     args: &ModelSchemaArgs,
     inner_field: &Field,
+    held: &syn::Member,
 ) -> Option<BrandedValidation> {
     if args.min_length.is_none() && args.max_length.is_none() {
         return None;
     }
     let wraps = constrained_shape(&inner_field.ty)?.wraps;
     let validator = proc_macro2::Ident::new("validate_value", proc_macro2::Span::call_site());
-    let held = brand_member(inner_field);
     let through = wraps.iter().map(|_| quote! { * });
     Some(BrandedValidation {
         checked_inner: quote! { &#(#through)* self.#held },
@@ -8017,6 +8020,7 @@ fn build_branded_display_impl(
     generics: &syn::Generics,
     name: &Ident,
     inner_field: &Field,
+    held: &syn::Member,
 ) -> proc_macro2::TokenStream {
     let (_, type_generics, _) = generics.split_for_impl();
     let mut display_generics = generics.clone();
@@ -8032,13 +8036,13 @@ fn build_branded_display_impl(
     let (display_impl_generics, _, display_where_clause) = display_generics.split_for_impl();
     // Spanned whole on the field's type, the member with it, which is where a non-`Display`
     // inner is reported.
-    let mut held = brand_member(inner_field);
-    match &mut held {
+    let mut spanned = held.clone();
+    match &mut spanned {
         syn::Member::Named(field_name) => field_name.set_span(inner_field.ty.span()),
         syn::Member::Unnamed(slot) => slot.span = inner_field.ty.span(),
     }
     let delegate =
-        quote_spanned! {inner_field.ty.span()=> ::std::fmt::Display::fmt(&self.#held, f) };
+        quote_spanned! {inner_field.ty.span()=> ::std::fmt::Display::fmt(&self.#spanned, f) };
     quote! {
         impl #display_impl_generics ::std::fmt::Display for #name #type_generics #display_where_clause {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
@@ -8055,6 +8059,7 @@ fn build_branded_display_tokens(
     generics: &syn::Generics,
     name: &Ident,
     inner_field: &Field,
+    held: &syn::Member,
     args: &ModelSchemaArgs,
 ) -> proc_macro2::TokenStream {
     // Only the serde build emits the validation functions that call `to_string()`.
@@ -8074,7 +8079,7 @@ fn build_branded_display_tokens(
     }
     // The impl's own `where` clause performs this check, spanned on the field; a separate assertion
     // here would double the diagnostic.
-    build_branded_display_impl(generics, name, inner_field)
+    build_branded_display_impl(generics, name, inner_field, held)
 }
 
 /// Builds a static assertion that the branded newtype's inner type implements `Display`, spanned
@@ -8273,7 +8278,7 @@ fn branded_guard_failure_output(
     )
 }
 
-/// Processes a branded newtype — a `#[serde(transparent)]` struct holding exactly one unnamed
+/// Processes a branded newtype — a `#[serde(transparent)]` struct serde writes as the value of one
 /// field — into the parts [`assemble_branded_output`] joins: the struct itself, the `Display` impl
 /// it earns, its schema module, and the delegate impl forwarding to that module.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
@@ -8344,7 +8349,8 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
     #[cfg(any(feature = "typescript", feature = "zod", feature = "serde"))]
     let generic_params = type_parameters_in_scope(&item_struct.generics);
 
-    let inner_field = brand_field(&item_struct).unwrap();
+    let (position, inner_field) = brand_slot(&item_struct).unwrap();
+    let held = brand_member(position, inner_field);
     let inner_ty = &inner_field.ty;
 
     // `ts_pair`: (ts_inner_type, ts_generics).
@@ -8376,7 +8382,7 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
 
     #[cfg(feature = "serde")]
     let bound = BrandBound::of(
-        build_branded_validation(args, &generic_params, inner_field).as_ref(),
+        build_branded_validation(args, &generic_params, inner_field, &held).as_ref(),
         &module_ident,
     );
     #[cfg(not(feature = "serde"))]
@@ -8413,7 +8419,7 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
     let delegate_impl_items = build_branded_delegate_items(&module_ident, has_example);
 
     let display_tokens =
-        build_branded_display_tokens(&item_struct.generics, &name, inner_field, args);
+        build_branded_display_tokens(&item_struct.generics, &name, inner_field, &held, args);
 
     let validate_method = with_branded_checks(bound.held.as_ref(), &args.check);
 
@@ -8567,10 +8573,10 @@ fn brand_decode_with(
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
 ))]
 fn branded_bound_text_method(item_struct: &syn::ItemStruct) -> proc_macro2::TokenStream {
-    let Some(inner_field) = brand_field(item_struct) else {
+    let Some((position, inner_field)) = brand_slot(item_struct) else {
         return quote! {};
     };
-    let held = brand_member(inner_field);
+    let held = brand_member(position, inner_field);
     let Some(shape) = constrained_shape(&inner_field.ty) else {
         return quote! {};
     };
