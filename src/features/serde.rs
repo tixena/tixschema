@@ -129,6 +129,27 @@ pub struct DirectedRenames {
     pub rename_all_fields: Option<String>,
 }
 
+/// Which of serde's two derives picks the field a `#[serde(transparent)]` struct is the value of.
+#[derive(Clone, Copy)]
+pub enum Direction {
+    /// `Deserialize`: the field it reads that has no `default`.
+    Read,
+    /// `Serialize`: the field it writes.
+    Written,
+}
+
+impl Direction {
+    /// What a struct is described over: the field serde writes where it derives `Serialize` alone,
+    /// and the one it reads otherwise.
+    fn of_derives(attrs: &[Attribute]) -> Self {
+        if derives_serialize(attrs) && !derives_deserialize(attrs) {
+            Self::Written
+        } else {
+            Self::Read
+        }
+    }
+}
+
 /// Where serde's attributes put one member among those of its container.
 struct Placed {
     /// Whether the member's own members join its container's, under no key of its own.
@@ -381,14 +402,8 @@ pub fn has_serde_read_hook(attrs: &[Attribute]) -> bool {
 }
 
 /// Whether serde never writes the field: it is under `skip` or `skip_serializing`. One under
-/// `skip_serializing_if` is written wherever its predicate lets it be. Read by each client in
-/// every build, as [`parse_serde_key_omission`] is.
-#[cfg(any(
-    feature = "serde",
-    feature = "dart",
-    feature = "swift",
-    feature = "kotlin"
-))]
+/// `skip_serializing_if` is written wherever its predicate lets it be. Read in every build, as
+/// [`parse_serde_key_omission`] is: each client and the brand rule read it.
 pub fn has_serde_skip_serializing(attrs: &[Attribute]) -> bool {
     let mut found = false;
     for attr in attrs {
@@ -432,7 +447,8 @@ pub const fn struct_tag(_item_struct: &ItemStruct) -> Option<(String, String)> {
 
 /// The field a brand is written and read as the value of, or `None` for a struct that is no
 /// brand: a `#[serde(transparent)]` tuple struct's one slot, and of any other
-/// `#[serde(transparent)]` struct the one [`transparent_field`] finds.
+/// `#[serde(transparent)]` struct the one [`transparent_field`] finds in the [`Direction`] its
+/// derives pick by.
 pub fn brand_field(item_struct: &ItemStruct) -> Option<&Field> {
     brand_slot(item_struct).map(|(_, field)| field)
 }
@@ -446,9 +462,28 @@ pub fn brand_slot(item_struct: &ItemStruct) -> Option<(usize, &Field)> {
         Fields::Unnamed(slots) if slots.unnamed.len() == 1 => {
             slots.unnamed.first().map(|only| (0, only))
         }
-        Fields::Named(_) | Fields::Unnamed(_) => transparent_slot(&item_struct.fields),
+        Fields::Named(_) | Fields::Unnamed(_) => transparent_slot(
+            &item_struct.fields,
+            Direction::of_derives(&item_struct.attrs),
+        ),
         Fields::Unit => None,
     }
+}
+
+/// The field serde writes a `#[serde(transparent)]` struct that derives both `Serialize` and
+/// `Deserialize` as the value of, then the one it reads it as, each beside its place, where the two
+/// are not one field. `None` where they are, and where either derive finds no field, which that
+/// derive refuses itself.
+pub fn transparent_fields_apart(item_struct: &ItemStruct) -> Option<[(usize, &Field); 2]> {
+    if !has_serde_transparent(&item_struct.attrs)
+        || !derives_serialize(&item_struct.attrs)
+        || !derives_deserialize(&item_struct.attrs)
+    {
+        return None;
+    }
+    let written = transparent_slot(&item_struct.fields, Direction::Written)?;
+    let read = transparent_slot(&item_struct.fields, Direction::Read)?;
+    (written.0 != read.0).then_some([written, read])
 }
 
 /// Where serde's attributes put `field`, whose name `rename_all` cases where it has no `rename` of
@@ -543,25 +578,31 @@ pub fn variant_steps(_item_enum: &ItemEnum, variant: &Variant) -> Vec<String> {
     vec![variant.ident.unraw().to_string()]
 }
 
-/// The field serde's derive reads a `#[serde(transparent)]` struct as the value of, named or a
-/// slot: the one it reads that has no `default` and is not written `PhantomData`. `None` for any
-/// other count, which that derive refuses.
-pub fn transparent_field(fields: &Fields) -> Option<&Field> {
-    transparent_slot(fields).map(|(_, field)| field)
+/// The field serde's derive in `direction` takes a `#[serde(transparent)]` struct as the value of,
+/// named or a slot: the one that derive does not skip, that is not written `PhantomData` and, read,
+/// that has no `default`. `None` for any other count, which that derive refuses.
+pub fn transparent_field(fields: &Fields, direction: Direction) -> Option<&Field> {
+    transparent_slot(fields, direction).map(|(_, field)| field)
 }
 
 /// [`transparent_field`] beside its place among `fields`.
-fn transparent_slot(fields: &Fields) -> Option<(usize, &Field)> {
-    let mut read = fields.iter().enumerate().filter(|(_, field)| {
-        let omission = parse_serde_key_omission(&field.attrs);
+fn transparent_slot(fields: &Fields, direction: Direction) -> Option<(usize, &Field)> {
+    let mut taken = fields.iter().enumerate().filter(|(_, field)| {
         let marker = matches!(
             written_type(&field.ty),
             Type::Path(written)
                 if written.path.segments.last().is_some_and(|last| last.ident == "PhantomData")
         );
-        !omission.skips_deserializing && !omission.defaulted && !marker
+        !marker
+            && match direction {
+                Direction::Read => {
+                    let omission = parse_serde_key_omission(&field.attrs);
+                    !omission.skips_deserializing && !omission.defaulted
+                }
+                Direction::Written => !has_serde_skip_serializing(&field.attrs),
+            }
     });
-    if let (Some(only), None) = (read.next(), read.next()) {
+    if let (Some(only), None) = (taken.next(), taken.next()) {
         Some(only)
     } else {
         None

@@ -1528,6 +1528,12 @@ A `#[serde(transparent)]` struct with named fields is the same brand, over the o
 
 A `#[serde(transparent)]` tuple struct of several slots is the same brand, over the one slot serde reads it as, by the same rule, wherever that slot sits: serde writes `struct Slug(#[serde(skip)] PhantomData<u8>, String)` as the string alone, so it publishes what `struct Slug(String)` publishes, and its checks and its `Display` read the second slot.
 
+Which field that is follows what the struct derives. serde's `Deserialize` derive takes the field described above, and its `Serialize` derive takes the one that is not under `skip` or `skip_serializing` and not written `PhantomData`. A struct that derives `Serialize` alone is a brand over the field serde writes, and any other struct over the field serde reads. A struct that derives both, where serde writes one field and reads another, is refused at expansion with a message naming both, since no one schema describes both payloads:
+
+```text
+error: model_schema: type `Split`: `#[serde(transparent)]` writes the struct as the value of field `count` and reads it as the value of field `text`, so the payload serde writes is not one serde reads. A schema and an emitted client describe one value, so neither can be written for the pair. Make one field the value in both directions, and write `#[serde(skip)]` on every other field.
+```
+
 ```rust
 use tixschema::model_schema;
 use serde::{Deserialize, Serialize};

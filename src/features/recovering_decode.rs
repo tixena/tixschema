@@ -30,8 +30,8 @@ use self::aliases::Reach;
 use crate::features::model_schema_prop::FunctionName;
 use crate::features::serde::read_bounds::read_bounds;
 use crate::features::serde::{
-    NAMED_READ_HOOK_PREFIX, SerdeFieldHooks, Tagging, has_serde_default, has_serde_read_hook,
-    has_serde_skip_serializing, has_serde_transparent, parse_read_renames,
+    Direction, NAMED_READ_HOOK_PREFIX, SerdeFieldHooks, Tagging, has_serde_default,
+    has_serde_read_hook, has_serde_skip_serializing, has_serde_transparent, parse_read_renames,
     parse_serde_field_attributes, parse_serde_field_hooks, parse_serde_key_omission,
     parse_serde_type_attributes, parse_written_renames, transparent_field,
 };
@@ -482,7 +482,7 @@ enum Shape<'item> {
 impl<'item> Shape<'item> {
     fn of(item_struct: &'item ItemStruct, module_name: &str, parameters: &[String]) -> Self {
         if has_serde_transparent(&item_struct.attrs)
-            && let Some(only) = transparent_field(&item_struct.fields)
+            && let Some(only) = transparent_field(&item_struct.fields, Direction::Read)
         {
             // The slot of a brand names no function: a `preprocess` there is refused.
             return Self::Held(held_walk(only, module_name, parameters, &[]));
@@ -2385,7 +2385,7 @@ fn listed_from(item_struct: &ItemStruct, read: TokenStream, mongodb: bool) -> Re
 /// struct as, or the only slot of a tuple struct.
 pub fn value_slot(item_struct: &ItemStruct) -> Option<&Field> {
     let transparent = if has_serde_transparent(&item_struct.attrs) {
-        transparent_field(&item_struct.fields)
+        transparent_field(&item_struct.fields, Direction::Read)
     } else {
         None
     };

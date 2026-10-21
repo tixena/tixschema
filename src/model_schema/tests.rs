@@ -150,6 +150,23 @@ const UNREAD_BRAND_FIELD_SOURCE: &str = "#[derive(Debug, Deserialize, Serialize)
      #[serde(transparent)] pub struct Label { pub text: String, \
      #[model_schema_prop(maxLength = 9)] #[serde(skip)] marker: PhantomData<u8> }";
 
+/// A transparent struct whose two derives take `count` and `text` as its value, written with named
+/// fields and with slots.
+const SPLIT_TRANSPARENT_SOURCES: [(&str, &str, &str); 2] = [
+    (
+        "#[derive(Debug, Deserialize, Serialize)] #[serde(transparent)] pub struct Split { \
+         #[serde(default)] pub count: u32, #[serde(skip_serializing)] pub text: String }",
+        "field `count`",
+        "field `text`",
+    ),
+    (
+        "#[derive(Debug, Deserialize, Serialize)] #[serde(transparent)] pub struct Split(\
+         #[serde(default)] pub u32, #[serde(skip_serializing)] pub String);",
+        "slot 0",
+        "slot 1",
+    ),
+];
+
 /// Every key a slot can be written with, read and unread alike.
 const SLOT_PROP_KEYS: [&str; 9] = [
     "",
@@ -16533,6 +16550,78 @@ fn a_prop_outside_a_brand_slot_earns_no_refusal() {
         "pub type Alias = String;",
     ] {
         let refusals = branded_slot_refusals(source);
+        assert!(refusals.is_empty(), "for {source}, got: {refusals:?}");
+    }
+}
+
+/// The refusal a transparent struct written as `written` and read as `read` earns, less the prefix
+/// `item_label` supplies in front of it.
+fn transparent_direction_refusal(written: &str, read: &str) -> String {
+    format!(
+        "`#[serde(transparent)]` writes the struct as the value of {written} and reads it as the \
+         value of {read}, so the payload serde writes is not one serde reads. A schema and an \
+         emitted client describe one value, so neither can be written for the pair. Make one \
+         field the value in both directions, and write `#[serde(skip)]` on every other field."
+    )
+}
+
+#[test]
+fn a_transparent_struct_written_and_read_as_two_fields_is_refused_naming_both() {
+    for (source, written, read) in SPLIT_TRANSPARENT_SOURCES {
+        let tokens = expansion_over(source);
+        let refusals = literal_texts(&tokens)
+            .into_iter()
+            .filter(|text| text.starts_with("model_schema: "))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            refusals,
+            vec![format!(
+                "model_schema: type `Split`: {}",
+                transparent_direction_refusal(written, read)
+            )],
+            "for {source}, got: {tokens}"
+        );
+    }
+}
+
+#[test]
+fn the_readme_shows_the_transparent_direction_refusal() {
+    let shown = format!(
+        "error: model_schema: type `Split`: {}",
+        transparent_direction_refusal("field `count`", "field `text`")
+    );
+    assert!(include_str!("../../README.md").contains(&shown));
+}
+
+#[test]
+fn a_transparent_direction_refusal_is_spanned_on_the_struct_name() {
+    for (source, _, _) in SPLIT_TRANSPARENT_SOURCES {
+        let refusals = super::transparent_direction_errors(&syn::parse_str(source).unwrap());
+        assert_eq!(refusals.len(), 1, "for {source}, got: {refusals:?}");
+        let located = located_source_texts(&refusals[0]);
+        assert!(
+            !located.is_empty() && located.iter().all(|text| text == "Split"),
+            "for {source}, got: {located:?}"
+        );
+    }
+}
+
+#[test]
+fn a_transparent_struct_each_derive_takes_one_field_of_is_not_refused() {
+    let attributes = "#[serde(transparent)] pub struct Split { #[serde(default)] pub count: u32, \
+         #[serde(skip_serializing)] pub text: String }";
+    for source in [
+        format!("#[derive(Debug, Serialize)] {attributes}"),
+        format!("#[derive(Debug, Deserialize)] {attributes}"),
+        attributes.to_owned(),
+        UNREAD_BRAND_FIELD_SOURCE.replace("#[model_schema_prop(maxLength = 9)] ", ""),
+        "#[derive(Deserialize, Serialize)] #[serde(transparent)] pub struct Slug(pub String);"
+            .to_owned(),
+        "#[derive(Deserialize, Serialize)] pub struct Split { #[serde(default)] pub count: u32, \
+         #[serde(skip_serializing)] pub text: String }"
+            .to_owned(),
+    ] {
+        let refusals = super::transparent_direction_errors(&syn::parse_str(&source).unwrap());
         assert!(refusals.is_empty(), "for {source}, got: {refusals:?}");
     }
 }
