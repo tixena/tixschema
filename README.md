@@ -7685,6 +7685,29 @@ error: model_schema: type `Roster`: field `by_number`: a map keyed by `u32` cann
   ```
 
   Every argument is read as one the model writes into its row: a map an argument holds is refused even where the model holds that argument only in a `PhantomData`, or only in a member serde neither writes nor reads. A model or an alias declared below the type, or of another crate, is not read at its arguments.
+- **A type that lists `"mongodb"` and keys a map by its own type parameter builds, whatever fills the parameter.** The filling is written where the type is used, which no expansion sees, so nothing is refused:
+
+  ```rust
+  #[model_schema(enable = ["decode_with", "mongodb"], default_types(KeyType = String))]
+  #[derive(Debug, Deserialize, Serialize)]
+  pub struct Keyed<KeyType: Hash + Eq> {
+      pub by_key: HashMap<KeyType, String>,
+  }
+  ```
+
+  `Keyed<String>` is stored and read back: a value that maps `"8"` to `"eight"` is stored as `{ "by_key": { "8": "eight" } }`. `Keyed<u32>` builds as well, and so does a filling at any other integer type or at `bool`, and each fails at run time: every write of a value whose map holds an entry, `insert_one` among them, and every read of a row whose map holds one, `find_one` and `find` among them. A value whose map is empty is stored and read back. Under version 2 of the `bson` library, the write of a `Keyed<u32>` that maps `8` to `"eight"`, and then the read of the row above as `Keyed<u32>`:
+
+  ```text
+  a value could not be written as BSON: Invalid map key type: 8
+  the row without an _id does not read as expected: undescribed: invalid type: string "8", expected u32
+  ```
+
+  Under version 3:
+
+  ```text
+  a value could not be written as BSON: BSON error. Kind: A serialization error occurred. Message: invalid document key type: int64.
+  the row without an _id does not read as expected: undescribed: BSON error. Kind: A deserialization-related error occurred. Message: invalid type: string "8", expected u32.
+  ```
 - **A key serde writes as text is stored as that text and read back**: a `String`, a `char`, a `chrono` date or time, a plain enum, and a brand over a `String`. A key the expansion cannot see into, a type of another crate or a brand declared below the type, is not refused.
 - **A type that lists `"decode_with"` alone builds with such a map** and reads it from JSON. Its `from_bson_piped` refuses a stored row that holds the map, with one `Undescribed` issue.
 
