@@ -2,6 +2,7 @@
 //! under options, rows a resolver repairs, what each failure is told as, and a query run on the
 //! driver itself.
 
+use core::hash::Hash;
 use std::collections::HashMap;
 
 use bson::oid::ObjectId;
@@ -208,6 +209,14 @@ fn whole_number_as_text(raw: &mut Document, issue: &Issue<Bson>) -> Resolution {
     }
 }";
 
+/// The type the README declares with a map keyed by its own type parameter, character for
+/// character. It builds whatever fills the parameter.
+const DECLARED_KEYED: &str = r#"#[model_schema(enable = ["decode_with", "mongodb"], default_types(KeyType = String))]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Keyed<KeyType: Hash + Eq> {
+    pub by_key: HashMap<KeyType, String>,
+}"#;
+
 /// The type the README declares with a map whose keys are numbers, character for character. It
 /// does not build: the case of [`REFUSED_ROSTER`] declares it.
 const DECLARED_ROSTER: &str = r#"#[model_schema(enable = ["decode_with", "mongodb"])]
@@ -229,6 +238,18 @@ const SHOWN_OPENINGS: [&str; 3] = [
     "the row ",
     "a value could not be written as BSON: ",
 ];
+
+/// What the README shows a write of `Keyed<u32>` and a read of [`SHOWN_KEYED_STORED`] as
+/// `Keyed<u32>` told as, under version 2 of the `bson` library and under version 3.
+const SHOWN_KEYED_REFUSED: [&str; 2] = [
+    r#"a value could not be written as BSON: Invalid map key type: 8
+the row without an _id does not read as expected: undescribed: invalid type: string "8", expected u32"#,
+    r#"a value could not be written as BSON: BSON error. Kind: A serialization error occurred. Message: invalid document key type: int64.
+the row without an _id does not read as expected: undescribed: BSON error. Kind: A deserialization-related error occurred. Message: invalid type: string "8", expected u32."#,
+];
+
+/// What the README shows `Keyed<String>` storing for a value that maps `"8"` to `"eight"`.
+const SHOWN_KEYED_STORED: &str = r#"{ "by_key": { "8": "eight" } }"#;
 
 /// What the README says of a type that lists `"decode_with"` alone and holds a map keyed by a
 /// number.
@@ -277,6 +298,12 @@ pub struct DatedRoster {
     pub dates: HashMap<chrono::NaiveDate, String>,
     pub moments: HashMap<chrono::DateTime<chrono::Utc>, String>,
     pub times: HashMap<chrono::NaiveTime, String>,
+}
+
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(KeyType = String))]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Keyed<KeyType: Hash + Eq> {
+    pub by_key: HashMap<KeyType, String>,
 }
 
 /// The README's `Roster`, listing `"decode_with"` alone, which builds.
@@ -417,6 +444,14 @@ fn id_dropped(
     } else {
         Resolution::NotTouched
     }
+}
+
+/// `text` as the README writes a block of a list item: each line indented by two spaces.
+fn in_a_list_item(text: &str) -> String {
+    text.lines()
+        .map(|line| format!("  {line}"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// The largest unpaid invoices of one customer, largest first, and how many it has unpaid.
@@ -589,6 +624,42 @@ fn the_readme_shows_the_error_a_map_keyed_by_a_number_does_not_build_with() {
     let error = errors.lines().next().unwrap();
     assert!(error.starts_with("error: model_schema: "), "got: {error}");
     assert_documented(&format!("```text\n{error}\n```"));
+}
+
+/// The README's `Keyed` builds whatever fills its parameter: filled at a `String` its map is
+/// stored and read back, and filled at a `u32` a write and a read of an entry each fail.
+#[test]
+fn the_readme_shows_a_map_keyed_by_the_types_own_parameter_failing_at_run_time() {
+    assert_eq!(
+        include_str!("operations.rs")
+            .matches(DECLARED_KEYED)
+            .count(),
+        2,
+        "the README's `Keyed` is no longer declared here character for character"
+    );
+    assert_documented(&in_a_list_item(&format!("```rust\n{DECLARED_KEYED}\n```")));
+
+    let texted = Keyed::<String> {
+        by_key: HashMap::from([("8".to_owned(), "eight".to_owned())]),
+    };
+    let stored = texted.mongo_written_row().unwrap();
+    assert_eq!(stored.to_string(), SHOWN_KEYED_STORED);
+    let read = Keyed::<String>::mongo_read_row(stored.clone(), &[]).unwrap();
+    assert_eq!(read.by_key, texted.by_key);
+
+    let numbered = Keyed::<u32> {
+        by_key: HashMap::from([(8, "eight".to_owned())]),
+    };
+    let unwritable = numbered.mongo_written_row().unwrap_err();
+    let unreadable = Keyed::<u32>::mongo_read_row(stored, &[]).unwrap_err();
+    assert_eq!(
+        format!("{unwritable}\n{unreadable}"),
+        under_this_major(SHOWN_KEYED_REFUSED)
+    );
+    assert_documented(&format!("`{SHOWN_KEYED_STORED}`"));
+    for shown in SHOWN_KEYED_REFUSED {
+        assert_documented(&in_a_list_item(&format!("```text\n{shown}\n```")));
+    }
 }
 
 /// The README's `Roster` listing `"decode_with"` alone builds, reads its map from JSON, and is

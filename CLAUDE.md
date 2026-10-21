@@ -2400,7 +2400,9 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   stored as their text and read back, and are not refused. `mongodb_map_key_refusals`, which
   `decode_with_guard_errors` chains where `args.enable.mongodb` holds, raises one error per such
   map, in every build, spanned on the member's ident (a slot's type) and naming the member, behind
-  its variant in an enum, and the key as written.
+  its variant in an enum, and the key as written. A type that lists `"mongodb"` and keys a map by
+  its own type parameter is not refused, by decision: no expansion sees what fills the parameter,
+  and the README states the error a write and a read of such a row answer at run time.
   - `bson_refused_keys` finds each map (`is_map_wrapper`) a member serde writes or reads holds,
     behind `Option`, a list, a tuple, a transparent wrapper, a map's value, both arms of a std
     `Result` (`written_std_result`, the `Ok` first) and the bound of a std range
@@ -2460,7 +2462,8 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
     in `src/model_schema/tests.rs` each position, each key, each held model, each held alias,
     each generic model and alias read at its arguments and each member and variant read past, and
     `tests/mongodb_operation_tests/readme/operations.rs` the README's text: the declaration and
-    the error, the keys stored as their text, and a type that lists `"decode_with"` alone.
+    the error, the keys stored as their text, a type that lists `"decode_with"` alone, and a map
+    keyed by the type's own parameter, with the error each major answers at run time.
 - **A path is under the name serde writes.** `parse_written_renames` reads `rename`, `rename_all`
   and `rename_all_fields` for their `serialize` side in every build. A list whose two sides differ
   is refused by every build that describes the type, a mobile client included:
