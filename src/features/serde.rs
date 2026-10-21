@@ -17,8 +17,15 @@ pub mod read_bounds;
 ))]
 pub mod defaults;
 
+#[cfg(all(feature = "serde", any(feature = "dart", feature = "swift")))]
+use core::iter::once;
+
+#[cfg(any(feature = "dart", feature = "swift"))]
+use crate::features::model_schema_prop::FunctionName;
 #[cfg(feature = "serde")]
 use crate::field_type::is_plain_enum;
+#[cfg(any(feature = "dart", feature = "swift"))]
+use crate::rename_rule::RenameRule;
 #[cfg(feature = "serde")]
 use crate::rename_rule::resolve_rename_rule;
 use crate::utils::written_type;
@@ -576,6 +583,45 @@ pub fn variant_steps(item_enum: &ItemEnum, variant: &Variant) -> Vec<String> {
 #[cfg(not(feature = "serde"))]
 pub fn variant_steps(_item_enum: &ItemEnum, variant: &Variant) -> Vec<String> {
     vec![variant.ident.unraw().to_string()]
+}
+
+/// The keys serde takes off a holder's object for a struct of `fields`, cased by `rule`, flattened
+/// into it: the name each member it reads is read under, and each alias. A struct with a flattened
+/// member of its own is read as a map, and one that names a function on itself (`preprocess`) as a
+/// value: neither takes a key.
+#[cfg(all(feature = "serde", any(feature = "dart", feature = "swift")))]
+pub fn keys_taken_when_flattened(
+    fields: &Fields,
+    rule: RenameRule,
+    preprocess: &[FunctionName],
+) -> Vec<String> {
+    let members: Vec<_> = fields
+        .iter()
+        .map(|field| (field, parse_serde_field_attributes(&field.attrs)))
+        .collect();
+    if !preprocess.is_empty() || members.iter().any(|(_, meta)| meta.flatten) {
+        return Vec::new();
+    }
+    members
+        .into_iter()
+        .filter(|(field, _)| !parse_serde_key_omission(&field.attrs).skips_deserializing)
+        .filter_map(|(field, meta)| {
+            let name = field.ident.as_ref()?.unraw().to_string();
+            let read_as = meta.rename.unwrap_or_else(|| rule.apply_to_field(&name));
+            Some(once(read_as).chain(meta.aliases))
+        })
+        .flatten()
+        .collect()
+}
+
+/// Without `serde` no member is flattened, so none takes a key.
+#[cfg(all(not(feature = "serde"), any(feature = "dart", feature = "swift")))]
+pub const fn keys_taken_when_flattened(
+    _fields: &Fields,
+    _rule: RenameRule,
+    _preprocess: &[FunctionName],
+) -> Vec<String> {
+    Vec::new()
 }
 
 /// The field serde's derive in `direction` takes a `#[serde(transparent)]` struct as the value of,

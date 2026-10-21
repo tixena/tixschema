@@ -22,15 +22,25 @@ pub(super) const JUDGED: &str = "public init(from decoder: Decoder) throws { \
      if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(\
      codingPath: decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }";
 
-/// What names, in the statements of a read, the keys the types around the type took.
-const TAKEN: [&str; 2] = ["swiftSchemaWithout: taken", "without: taken"];
+/// What names, in the statements of a read, the keys the types around the type took: handed to
+/// what is read beside the type, or skipped by the read of a map's entries ([`read_entries`]).
+const TAKEN: [&str; 4] = [
+    "swiftSchemaWithout: taken",
+    "without: taken",
+    "!taken.contains(",
+    "!(taken + ",
+];
 
 /// What opens the type's own read, handed the keys the types around the type took.
-const TAKING: &str =
+pub(super) const TAKING: &str =
     "init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws";
 
 /// What opens the type's own read.
 pub(super) const UNJUDGED: &str = "init(swiftSchemaUnjudged decoder: Decoder) throws";
+
+/// What reads the value of one entry of a map from where it is, and hands it to the sink.
+pub(super) type EntryRead<'read> =
+    dyn Fn(&Source, &dyn Fn(&str) -> String, &mut Locals) -> String + 'read;
 
 /// The locals one initializer has written, from which the next are named.
 #[derive(Default)]
@@ -432,14 +442,37 @@ fn map_unjudged(
     sink: &dyn Fn(&str) -> String,
     locals: &mut Locals,
 ) -> String {
-    let keys = map_keys(key);
-    if matches!(keys, MapKeys::Wrapped) {
+    if matches!(map_keys(key), MapKeys::Wrapped) {
         let (wrapper, generic_params) = keyed_map_wrapper(hint, key, value);
         let read_as = held_at(&wrapper, &generic_params);
         return held(source, &read_as, &|read| sink(&format!("{read}.storage")));
     }
+    let value_hint = format!("{hint}Value");
+    read_entries(
+        key,
+        &written_type(def, hint),
+        source,
+        None,
+        &|under, put, nested| unjudged(value, &value_hint, under, put, nested),
+        sink,
+        locals,
+    )
+}
+
+/// The statements that read from `source` the entries of a map whose `key` Swift keys natively
+/// into a `written`, each value read under its key by `value`, and hand the map to `sink`. No
+/// entry is read under a key `skipping` holds, a Swift expression of the keys taken.
+pub(super) fn read_entries(
+    key: &FieldDef,
+    written: &str,
+    source: &Source,
+    skipping: Option<&str>,
+    value: &EntryRead<'_>,
+    sink: &dyn Fn(&str) -> String,
+    locals: &mut Locals,
+) -> String {
     let [keyed, entries, entry, number] = locals.next_map();
-    let (refusal, named) = if matches!(keys, MapKeys::Whole) {
+    let (refusal, named) = if matches!(map_keys(key), MapKeys::Whole) {
         (whole_key(&keyed, &entry, &number), number)
     } else {
         (String::new(), format!("{entry}.stringValue"))
@@ -449,20 +482,29 @@ fn map_unjudged(
         key: entry.clone(),
         presence: Presence::Known,
     };
-    let read = unjudged(
-        value,
-        &format!("{hint}Value"),
+    let read = value(
         &under,
         &|held| format!("{entries}[{named}] = {held}"),
         locals,
     );
+    let skipped = skipping.map_or_else(String::new, |taken| {
+        format!(" where !{}.contains({entry}.stringValue)", grouped(taken))
+    });
     format!(
-        "let {keyed} = try {}; var {entries}: {} = [:]; \
-         for {entry} in {keyed}.allKeys {{ {refusal}{read} }}; {}",
+        "let {keyed} = try {}; var {entries}: {written} = [:]; \
+         for {entry} in {keyed}.allKeys{skipped} {{ {refusal}{read} }}; {}",
         source.keyed(),
-        written_type(def, hint),
         sink(&entries)
     )
+}
+
+/// `keys`, a Swift expression of a list of keys, as the receiver of a call.
+fn grouped(keys: &str) -> String {
+    if keys.contains(' ') {
+        format!("({keys})")
+    } else {
+        keys.to_owned()
+    }
 }
 
 /// `stem`, then `stem1`, `stem2`: the name of the local of a kind written after `nth` others.

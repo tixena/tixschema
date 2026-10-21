@@ -1352,12 +1352,13 @@ consumer's view; this is what a change has to keep.
   struct with a flattened member of its own and a function a member names are handed, and a
   struct that reads a key a struct ahead of it took is refused, as serde refuses it. A map and a
   JSON value take no key, so two maps are handed the same keys. What a member takes is
-  `keys_taken_by`: the keys `struct_dart_tokens` records for its type in `DART_TAKEN_KEYS`
-  (`taken_keys`), serde's own list of the name and each alias of every member it reads, and none
-  for a member that names a function. A struct that names a `preprocess` on itself is read by
-  serde as a value, and one with a flattened member of its own as a map: each records none. A
-  type the emitter has not written takes none, so a member after a struct declared below its
-  holder is handed the struct's keys, and the README states the limit. `toJson` writes each
+  `keys_taken_by`: the keys `struct_dart_tokens` records for its type in `DART_TAKEN_KEYS`,
+  serde's own list of the name and each alias of every member it reads
+  (`keys_taken_when_flattened` in `src/features/serde.rs`, which the Swift emitter reads too),
+  and none for a member that names a function. A struct that names a `preprocess` on itself is
+  read by serde as a value, and one with a flattened member of its own as a map: each records
+  none. A type the emitter has not written takes none, so a member after a struct declared below
+  its holder is handed the struct's keys, and the README states the limit. `toJson` writes each
   flattened member at its place: a key two of them hold is written once, with the last value,
   where serde writes it twice.
 - **`fromJsonUnjudged` is a taken name of a plain enum** (`DART_ENUM_NAMES_TAKEN`), which holds
@@ -1670,6 +1671,21 @@ to keep.
   property is assigned through `self.` alone, so one named after a local is never read as it.
 - **A map under a key Swift reads through a wrapper** (`MapKeys::Wrapped`) is read by the wrapper,
   which gains an `init(swiftSchemaUnjudged:)` where its values are walked.
+- **A flattened map is read at its place, in the order declared**, as serde reads it
+  (`flattened_map`, from `member_reads`): entry by entry (`read::read_entries`), under no key the
+  holder's own members take, each member flattened ahead of it took or the types around the
+  holder took, a `where` clause over `taken + [...]` that `names_taken` counts, so the holder
+  takes those keys. It takes none itself, so two maps are handed the same keys, and a flattened
+  struct keeps its read. What one takes is `preprocess::keys_taken_by`: the keys
+  `struct_swift_tokens` records for its type (`preprocess::note_keys`), serde's own list from
+  `keys_taken_when_flattened`, and none for a member that names a function. A struct that names a
+  `preprocess` on itself is read by serde as a value, and one with a flattened member of its own
+  as a map: each records none. A type the emitter has not written takes none, and the README
+  states the limit. A map under a key Swift wraps is read by its wrapper, through the
+  `init(swiftSchemaUnjudged:swiftSchemaWithout:)` `flattened_wrapper_read` writes in an extension
+  of the wrapper for the flattened member alone. `encode(to:)` writes each flattened member at
+  its place, through its shape (`written_from`): a key two of them hold is written once, with the
+  last value, where serde writes it twice.
 - **An untagged enum takes the variant serde takes.** `validate::bound_alone` is what chooses: a
   member's own bounds, and `held_walk` under `Walk::Bound`, which asks each brand the member
   holds for `swiftSchemaValidateBound()`, the member the wrapper of a bounded brand declares
@@ -1696,7 +1712,10 @@ to keep.
   read of the payload, an untagged enum to the variant serde takes, and each client to its fault.
   `an_absent_key_and_a_null_are_read_as_they_were` passed on the emitter before a read was
   written. The `validate()` runs read a payload through the unjudged initializer, and build in
-  code the three values no read hands back.
+  code the three values no read hands back. `tests/swift_tests/flattened.rs` pins the read of a
+  flattened map at each place, over the models of `tests/swift_tests/flattened_models.rs`, which
+  also pin what serde reads of each, and `run_swift_flattened.rs` reads and writes each back
+  under the toolchain, against serde.
 
 ### 12. The Swift `preprocess`
 

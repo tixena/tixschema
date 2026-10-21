@@ -13,7 +13,8 @@ use crate::bound_message::{Bound, dart_repeated, dart_violation};
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{
-    brand_field, has_serde_skip_serializing, parse_serde_key_omission, struct_tag,
+    brand_field, has_serde_skip_serializing, keys_taken_when_flattened, parse_serde_key_omission,
+    struct_tag,
 };
 use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, classify_variant,
@@ -25,9 +26,6 @@ use crate::utils::{
     MapKeyWire, compute_alias_export_name, compute_item_export_name, to_snake_case,
     type_parameters_in_scope,
 };
-
-#[cfg(feature = "serde")]
-use core::iter::once;
 
 #[cfg(feature = "serde")]
 use crate::features::serde::{parse_serde_field_attributes, parse_serde_type_attributes};
@@ -652,40 +650,6 @@ fn record_taken_keys(rust_ident: &str, keys: Vec<String>) {
     DART_TAKEN_KEYS.with(|recorded| {
         recorded.borrow_mut().insert(rust_ident.to_owned(), keys);
     });
-}
-
-/// The keys serde takes off a holder's object for a struct of `fields` flattened into it: the
-/// name each member it reads is read under, and each alias. A struct with a flattened member of
-/// its own is read as a map, and one that names a function on itself as a value: neither takes a
-/// key.
-#[cfg(feature = "serde")]
-fn taken_keys(fields: &Fields, rule: RenameRule, preprocess: &[FunctionName]) -> Vec<String> {
-    let members: Vec<_> = fields
-        .iter()
-        .map(|field| (field, parse_serde_field_attributes(&field.attrs)))
-        .collect();
-    if !preprocess.is_empty() || members.iter().any(|(_, meta)| meta.flatten) {
-        return Vec::new();
-    }
-    members
-        .into_iter()
-        .filter(|(field, _)| !parse_serde_key_omission(&field.attrs).skips_deserializing)
-        .filter_map(|(field, meta)| {
-            let name = field.ident.as_ref()?.unraw().to_string();
-            let read_as = wire_field_name(&name, meta.rename.as_deref(), rule);
-            Some(once(read_as).chain(meta.aliases))
-        })
-        .flatten()
-        .collect()
-}
-
-#[cfg(not(feature = "serde"))]
-const fn taken_keys(
-    _fields: &Fields,
-    _rule: RenameRule,
-    _preprocess: &[FunctionName],
-) -> Vec<String> {
-    Vec::new()
 }
 
 /// The keys a member typed `def`, flattened into its holder, takes off the object serde hands it:
@@ -2588,7 +2552,7 @@ fn struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -> Toke
     let rule = container_rename_rule(&item_struct.attrs);
     record_taken_keys(
         &rust_ident,
-        taken_keys(&item_struct.fields, rule, args.preprocess),
+        keys_taken_when_flattened(&item_struct.fields, rule, args.preprocess),
     );
     let defaults = SerdeDefaults::of(item_struct);
     let fields = collect_dart_fields(
