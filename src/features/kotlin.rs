@@ -1335,9 +1335,9 @@ fn flatten_struct_field_plan(
     (serialize, format!("{key_read}; {decode}"), keys_ident)
 }
 
-/// The flattened map field's own statements, once every other field's own keys are known: the
-/// `serialize` merge and the `deserialize` read, over whatever keys `consumed_keys` leaves, as
-/// `functions`, the field's own `preprocess`, correct the object of them.
+/// One flattened map field's own statements, at its place among the members: the `serialize`
+/// merge and the `deserialize` read, over whatever keys `consumed_keys` leaves, the keys no member
+/// ahead of it took, as `functions`, the field's own `preprocess`, correct the object of them.
 fn flatten_map_field_plan(
     prop: &str,
     value_serializer: &str,
@@ -1387,8 +1387,9 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
     } else {
         format!(" - {own_literal}")
     };
-    let mut struct_key_idents = Vec::new();
-    let mut map_field: Option<(&KotlinField, String)> = None;
+    // What serde hands a flattened map at its place: the object without the keys the holder's own
+    // members take, and without those each member flattened ahead of it took.
+    let mut consumed = vec![own_literal];
 
     for field in fields {
         let prop = kotlin_property_name(&field.rust_name);
@@ -1397,9 +1398,16 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
             plan.serialize_stmts.push(serialize);
             plan.deserialize_stmts.push(decode);
         } else if let FieldDefType::Map(_, map_value) = &field.field_def.field_type {
-            let read_by = read::held_serializer(&field.field_def, map_value, type_parameters);
-            map_field = Some((field, read_by));
-            continue;
+            let value_serializer =
+                read::held_serializer(&field.field_def, map_value, type_parameters);
+            let (serialize, decode) = flatten_map_field_plan(
+                &prop,
+                &value_serializer,
+                &consumed.join(" + "),
+                preprocess::of(&field.field_def),
+            );
+            plan.serialize_stmts.push(serialize);
+            plan.deserialize_stmts.push(decode);
         } else {
             plan.needs_lenient = true;
             let takes_the_rest = preprocess::takes_the_rest(&field.field_def);
@@ -1415,25 +1423,10 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
             if !takes_the_rest {
                 let _ = write!(taken, " - {keys_ident}");
             }
-            struct_key_idents.push(keys_ident);
+            if !preprocess::takes_no_key(&field.field_def) {
+                consumed.push(keys_ident);
+            }
         }
-        plan.ctor_args.push(format!("{prop} = {prop}"));
-    }
-
-    if let Some((field, value_serializer)) = map_field {
-        let prop = kotlin_property_name(&field.rust_name);
-        let consumed_keys = once(own_literal)
-            .chain(struct_key_idents)
-            .collect::<Vec<_>>()
-            .join(" + ");
-        let (serialize, decode) = flatten_map_field_plan(
-            &prop,
-            &value_serializer,
-            &consumed_keys,
-            preprocess::of(&field.field_def),
-        );
-        plan.serialize_stmts.push(serialize);
-        plan.deserialize_stmts.push(decode);
         plan.ctor_args.push(format!("{prop} = {prop}"));
     }
 

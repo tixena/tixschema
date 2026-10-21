@@ -482,7 +482,8 @@ fn a_member_the_emitter_reads_is_corrected_in_place() {
 
 /// A flattened member is handed the keys its holder's own members do not take where a function
 /// reads them: one its type names, one the member names, and one of a type the emitter has not
-/// written. A type known to name none is handed the whole object, as before.
+/// written. A type known to name none is handed the whole object, as before. A member a function
+/// reads takes none of its keys from a map flattened after it.
 #[cfg(feature = "serde")]
 #[test]
 fn a_flattened_member_a_function_reads_is_handed_what_its_holder_does_not_take() {
@@ -546,6 +547,7 @@ fn a_flattened_member_a_function_reads_is_handed_what_its_holder_does_not_take()
     for held in [
         "val base = lenient.decodeFromJsonElement(BaseUnjudged, withItsKeys(JsonObject(obj - \
          setOf(\"dock\"))));",
+        "val restConsumedKeys = setOf(\"dock\"); ",
         "val rest = withItsKeys(JsonObject(obj.filterKeys { it !in restConsumedKeys \
          })).jsonObject.mapValues { (_, v) -> \
          input.json.decodeFromJsonElement(serializer<String>(), v) }",

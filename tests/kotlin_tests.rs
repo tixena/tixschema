@@ -1,5 +1,7 @@
 //! The test binary of `kotlin_tests/`.
 
+extern crate alloc;
+
 #[cfg(test)]
 #[cfg(feature = "kotlin")]
 #[path = "kotlin_tests/tests.rs"]
