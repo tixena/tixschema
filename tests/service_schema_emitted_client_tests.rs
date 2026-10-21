@@ -374,12 +374,14 @@ mod run_swift_sets;
 #[path = "service_schema_emitted_client_tests/run_kotlin_sets.rs"]
 mod run_kotlin_sets;
 
-/// The models an enum with a variant of several slots is written on, under each tagging.
+/// The models an enum with a variant of several slots is written on, under each tagging, and a
+/// tuple in each place a writer names its wrapper more than once.
 #[cfg(all(test, feature = "kotlin"))]
 #[path = "kotlin_tests/tuple_variants_models.rs"]
 mod tuple_variants_models;
 
-/// An enum with a variant of several slots, read and written by the emitted Kotlin types.
+/// An enum with a variant of several slots, and a tuple in each place a writer names its wrapper
+/// more than once, read and written by the emitted Kotlin types.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin_tuple_variants.rs"]
 mod run_kotlin_tuple_variants;

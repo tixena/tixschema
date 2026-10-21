@@ -238,7 +238,7 @@ pub fn kept_plain(export_name: &str) -> String {
 }
 
 /// [`member_serializer`] of a member already declared `declared`: a tuple is read by the wrapper
-/// that declaration names, each ask of a tuple's name queuing another wrapper.
+/// that declaration names, a walked and an unwalked wrapper of one tuple being two classes.
 pub fn declared_serializer(field: &FieldDef, declared: &str, type_parameters: &[String]) -> String {
     if matches!(field.field_type, FieldDefType::Tuple(_)) {
         format!("serializer<{declared}>()")

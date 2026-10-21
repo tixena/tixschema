@@ -190,6 +190,10 @@ thread_local! {
     /// it declares, so every range of one kind names one class. Cleared with
     /// [`KOTLIN_TUPLE_AUX`].
     static KOTLIN_RANGES: RefCell<Vec<(String, String)>> = const { RefCell::new(Vec::new()) };
+    /// The wrapper each shape of tuple the item being expanded writes is declared as, by the body
+    /// its class writes, so every ask of one shape names one wrapper. Cleared with
+    /// [`KOTLIN_TUPLE_AUX`].
+    static KOTLIN_TUPLES: RefCell<Vec<(String, String)>> = const { RefCell::new(Vec::new()) };
     /// The sealed interface each shape of `Result` the item being expanded writes is declared as,
     /// by which of its arms holds `()`, so every `Result` of one shape names one interface. Cleared
     /// with [`KOTLIN_TUPLE_AUX`].
@@ -704,17 +708,11 @@ fn kotlin_subclass_serializer_expr(subclass_name: &str, type_parameters: &[Strin
 }
 
 /// The Kotlin type name for a Tuple-shaped field: queues a wrapper `data class` plus the
-/// `KSerializer` that reads and writes it as a JSON array. Monotonically numbered so two fields
-/// named alike in two different items never collide. `walked` says the tuple is held where a
-/// `validate()` walks its positions, so a model in one is read unjudged.
+/// `KSerializer` that reads and writes it as a JSON array, once per shape in the item being
+/// expanded. Monotonically numbered so two fields named alike in two different items never
+/// collide. `walked` says the tuple is held where a `validate()` walks its positions, so a model
+/// in one is read unjudged, which makes it a shape of its own.
 fn tuple_wrapper_typename(elements: &[FieldDef], walked: bool) -> String {
-    let index = KOTLIN_TUPLE_COUNTER.with(|counter| {
-        let next = counter.get() + 1;
-        counter.set(next);
-        next
-    });
-    let wrapper_name = format!("KotlinTuple{index}");
-    let serializer_name = format!("{wrapper_name}Serializer");
     let params = elements
         .iter()
         .enumerate()
@@ -751,6 +749,23 @@ fn tuple_wrapper_typename(elements: &[FieldDef], walked: bool) -> String {
         })
         .collect::<Vec<_>>()
         .join(", ");
+    let shape = format!("{params}|{encode_entries}|{decode_entries}");
+    if let Some(named) = KOTLIN_TUPLES.with(|tuples| {
+        tuples
+            .borrow()
+            .iter()
+            .find(|(declared, _)| *declared == shape)
+            .map(|(_, named)| named.clone())
+    }) {
+        return named;
+    }
+    let index = KOTLIN_TUPLE_COUNTER.with(|counter| {
+        let next = counter.get() + 1;
+        counter.set(next);
+        next
+    });
+    let wrapper_name = format!("KotlinTuple{index}");
+    let serializer_name = format!("{wrapper_name}Serializer");
     let class_text = format!(
         "@Serializable(with = {serializer_name}::class) data class {wrapper_name}({params}) \
          object {serializer_name} : KSerializer<{wrapper_name}> {{ \
@@ -763,6 +778,9 @@ fn tuple_wrapper_typename(elements: &[FieldDef], walked: bool) -> String {
          return {wrapper_name}({decode_entries}) }} }}"
     );
     KOTLIN_TUPLE_AUX.with(|aux| aux.borrow_mut().push(class_text));
+    KOTLIN_TUPLES.with(|tuples| {
+        tuples.borrow_mut().push((shape, wrapper_name.clone()));
+    });
     wrapper_name
 }
 
@@ -992,6 +1010,7 @@ fn kotlin_module_tokens(
 ) -> TokenStream {
     KOTLIN_RANGES.with(|ranges| ranges.borrow_mut().clear());
     KOTLIN_RESULTS.with(|results| results.borrow_mut().clear());
+    KOTLIN_TUPLES.with(|tuples| tuples.borrow_mut().clear());
     let full_source = KOTLIN_TUPLE_AUX
         .with(RefCell::take)
         .into_iter()
@@ -1904,8 +1923,9 @@ fn variant_payload(
 /// `@JvmInline value class` for a scalar `Value` payload — the bare wire form an untagged member
 /// needs — while a tagged form wraps it in an ordinary `data class` property instead. The plugin
 /// writes the subclass's serializer, `plugin`, which reads a model the variant holds unjudged.
-/// Beside the declaration, the type a `Value` payload's property is declared with: each ask of a
-/// tuple's name queues another wrapper, so the enum's serializer reads the value by this one.
+/// Beside the declaration, the type a `Value` payload's property is declared with, which the
+/// enum's serializer reads the value by: a walked and an unwalked wrapper of one tuple are two
+/// classes.
 fn variant_subclass(
     export_name: &str,
     plugin: &Plugin<'_>,

@@ -858,8 +858,13 @@ section is the consumer's view; this is what a change has to keep.
 - **A map's key is `key_step`'s**: the key itself for a string, a number and a `Boolean`, the text
   its serializer writes for a declared type, and a type parameter's only where
   `serialized_parameters` finds `Serialize` declared for it, as Rust writes it.
-- **The walk never asks `kotlin_typename` of a tuple.** Each call queues another wrapper class
-  (`tuple_wrapper_typename`), so a position is read as `slot{N}` off the value.
+- **One wrapper is written per tuple shape per item.** `tuple_wrapper_typename` queues a wrapper
+  class the first time the item asks for a shape, and answers its name to every later ask of that
+  shape (`KOTLIN_TUPLES`, cleared with the queue in `kotlin_module_tokens`). A shape is the
+  class's body without its name: the type of each position and the serializer each is written
+  and read with, so a walked and an unwalked read are two shapes where a position holds a model
+  the walked one reads unjudged. The walk reads a position as `slot{N}` off the value, and names
+  no wrapper.
 - **A brand with a parameter** runs its bounds behind `if (value is {Default})`, the Kotlin type
   of the parameter's declared default (`declared_default`). A default written with arguments
   writes no bound: the JVM keeps no argument to tell the filling by.
@@ -907,7 +912,8 @@ the consumer's view; this is what a change has to keep.
   there, and `run_kotlin_read.rs` pins the Kotlin text.
 - **A tuple a `validate()` walks reads its positions unjudged.** `tuple_wrapper_typename` takes
   `walked`: `annotated_base` asks for the wrapper of a walked member, and `kotlin_base` for every
-  other. Each call still queues one wrapper, so `plugin_read` asks a type's name once where
+  other. One wrapper is written per tuple shape per item, and a walked and an unwalked read are
+  two shapes where a position holds a model, so `plugin_read` asks a type's name once where
   `property_declaration` asked it once. A serializer that reads a tuple its holder has declared
   names the wrapper of that declaration (`read::declared_serializer`): the lone value of a tagged
   variant, a variant of several slots among them, is read by the type `variant_subclass` declared
