@@ -3223,8 +3223,8 @@ fn held_model_maps(
     own.into_iter().chain(in_arguments).collect()
 }
 
-/// What a struct's or an enum's own type parameter at position `at` is spelled as while the maps
-/// it keys are recorded. [`filled_in`] writes the argument a holder fills it with in its place.
+/// What a struct's, an enum's or an alias's own type parameter at position `at` is spelled as
+/// while the maps it keys are recorded. [`filled_in`] writes the argument a holder fills it with in its place.
 fn parameter_placeholder(at: usize) -> String {
     format!("{PLACEHOLDER_OPENS}{at}{PLACEHOLDER_CLOSES}")
 }
@@ -5693,7 +5693,7 @@ fn alias_string_check_refusal_output(
 
 /// Records what serde writes `item` as, for the expansions after it in every build: a bare wire
 /// scalar, an untagged enum, a map key the `bson` library refuses, a model or an alias that holds
-/// a map under such a key, and a model that keys a map by its own type parameters.
+/// a map under such a key, and a model or an alias that keys a map by its own type parameters.
 fn record_wire_form(item: &Item) {
     record_wire_scalar_item(item);
     record_untagged_enum_item(item);
@@ -5775,19 +5775,27 @@ fn forwarded_parameter_position(item: &Item, inner: &syn::Type) -> Option<usize>
 /// library refuses, with the first such map, whatever its `enable` list: a holder that lists
 /// `"mongodb"` is the one refused.
 fn record_bson_refused_holder_item(item: &Item) {
-    let first_map = if let Item::Type(item_type) = item {
-        bson_refused_keys(&item_type.ty, KeyAsked::Refused)
-            .first()
-            .map(RefusedKey::described)
-    } else {
-        first_map_described(&bson_refused_maps(item, KeyAsked::Refused))
-    };
-    if let (Some(ident), Some(described)) = (item_schema_ident(item), first_map) {
+    if let (Some(ident), Some(described)) = (
+        item_schema_ident(item),
+        first_held_map(item, KeyAsked::Refused),
+    ) {
         record_bson_refused_holder(&ident.to_string(), &described);
     }
 }
 
-/// Records `item` where it is a struct or an enum that keys a map by one of its own type
+/// The first map `item` holds under the key `asked`: in an alias's value, and after the member
+/// that holds it in a struct or an enum.
+fn first_held_map(item: &Item, asked: KeyAsked) -> Option<String> {
+    if let Item::Type(item_type) = item {
+        bson_refused_keys(&item_type.ty, asked)
+            .first()
+            .map(RefusedKey::described)
+    } else {
+        first_map_described(&bson_refused_maps(item, asked))
+    }
+}
+
+/// Records `item` where it is a struct, an enum or an alias that keys a map by one of its own type
 /// parameters, with the position of each such parameter and the first map it keys, every
 /// parameter spelled as [`parameter_placeholder`] writes it.
 fn record_forwarded_key_maps_item(item: &Item) {
@@ -5798,14 +5806,18 @@ fn record_forwarded_key_maps_item(item: &Item) {
         .type_params()
         .map(|declared| &declared.ident)
         .collect();
-    if parameters.is_empty() {
+    // One name holds one record: a value that reaches a parameter keeps the one
+    // `record_bson_refused_key_item` writes.
+    if parameters.is_empty()
+        || wire_scalar_candidate(item)
+            .is_some_and(|(_, inner)| forwarded_parameter_position(item, inner).is_some())
+    {
         return;
     }
     let placed = with_parameters_placed(item, &parameters);
     let maps: Vec<(usize, String)> = (0..parameters.len())
         .filter_map(|at| {
-            first_map_described(&bson_refused_maps(&placed, KeyAsked::Parameter(at)))
-                .map(|described| (at, described))
+            first_held_map(&placed, KeyAsked::Parameter(at)).map(|described| (at, described))
         })
         .collect();
     if !maps.is_empty() {
@@ -5813,27 +5825,34 @@ fn record_forwarded_key_maps_item(item: &Item) {
     }
 }
 
-/// `item` with each of `parameters` its members' types write spelled as the
-/// [`parameter_placeholder`] of its position.
+/// `item` with each of `parameters` its members' types, or its alias's value, write spelled as
+/// the [`parameter_placeholder`] of its position.
 fn with_parameters_placed(item: &Item, parameters: &[&syn::Ident]) -> Item {
     let mut placed = item.clone();
-    let fields: Vec<&mut Field> = if let Item::Struct(item_struct) = &mut placed {
-        item_struct.fields.iter_mut().collect()
+    let types: Vec<&mut syn::Type> = if let Item::Struct(item_struct) = &mut placed {
+        item_struct
+            .fields
+            .iter_mut()
+            .map(|field| &mut field.ty)
+            .collect()
     } else if let Item::Enum(item_enum) = &mut placed {
         item_enum
             .variants
             .iter_mut()
             .flat_map(|variant| variant.fields.iter_mut())
+            .map(|field| &mut field.ty)
             .collect()
+    } else if let Item::Type(item_type) = &mut placed {
+        vec![&mut *item_type.ty]
     } else {
         Vec::new()
     };
-    for field in fields {
+    for ty in types {
         if let Ok(written) = syn::parse2(placed_tokens(
-            quote::ToTokens::to_token_stream(&field.ty),
+            quote::ToTokens::to_token_stream(&*ty),
             parameters,
         )) {
-            field.ty = written;
+            *ty = written;
         }
     }
     placed

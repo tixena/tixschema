@@ -609,9 +609,9 @@ thread_local! {
     /// build.
     static BSON_REFUSED_KEYS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
     /// The names of items whose own type parameters reach a map key, each to where they reach it:
-    /// a brand or an alias whose value reaches one of its type parameters, and a struct or an
-    /// enum that keys a map by its type parameters. Kept out of [`ALIAS_INFO`] for the same
-    /// reason as [`BSON_REFUSED_KEYS`].
+    /// a brand or an alias whose value reaches one of its type parameters, and a struct, an enum
+    /// or an alias that keys a map by its type parameters. Kept out of [`ALIAS_INFO`] for the
+    /// same reason as [`BSON_REFUSED_KEYS`].
     static FORWARDED_KEY_PARAMETERS: RefCell<HashMap<String, ForwardedKey>> =
         RefCell::new(HashMap::new());
     /// The names of structs, enums and aliases that hold a map whose key the `bson` library
@@ -622,8 +622,8 @@ thread_local! {
 
 /// Where an item's own type parameters reach a map key, as [`FORWARDED_KEY_PARAMETERS`] holds it.
 enum ForwardedKey {
-    /// A struct or an enum that keys a map by its type parameter at each position, beside a
-    /// description of the first such map.
+    /// A struct, an enum or an alias that keys a map by its type parameter at each position,
+    /// beside a description of the first such map.
     Maps(Vec<(usize, String)>),
     /// A brand or an alias whose value reaches its type parameter at this position.
     Value(usize),
@@ -1110,8 +1110,8 @@ pub fn forwarded_key_parameter(rust_ident: &str) -> Option<usize> {
     })
 }
 
-/// Records that `rust_ident` names a struct or an enum that keys a map by its type parameter at
-/// each position of `maps`, beside a description of the first such map.
+/// Records that `rust_ident` names a struct, an enum or an alias that keys a map by its type
+/// parameter at each position of `maps`, beside a description of the first such map.
 pub fn record_forwarded_key_maps(rust_ident: &str, maps: Vec<(usize, String)>) {
     FORWARDED_KEY_PARAMETERS.with(|names| {
         names
