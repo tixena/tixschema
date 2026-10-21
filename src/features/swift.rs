@@ -240,6 +240,15 @@ struct SwiftFieldShape {
     wire_leaf: String,
 }
 
+/// What a flattened member is handed of its holder's object.
+#[derive(Default)]
+struct Handed {
+    /// Whether a member flattened ahead of it took some of the keys.
+    by_a_member: bool,
+    /// The keys it is read without, as a Swift expression.
+    taken: String,
+}
+
 impl VariantPayload {
     /// The statements that read the payload and hand it to `sink`: a type written for the variant
     /// and a value `validate()` walks unjudged, a slot that names a function from what the
@@ -1181,7 +1190,16 @@ fn range_shape(
     let mut twins = Vec::new();
     let members = fields
         .iter()
-        .map(|field| decode_statement(field, "container", false, "", &mut locals, &mut twins))
+        .map(|field| {
+            decode_statement(
+                field,
+                "container",
+                false,
+                &Handed::default(),
+                &mut locals,
+                &mut twins,
+            )
+        })
         .collect::<Vec<_>>()
         .join("; ");
     let written = kind
@@ -1717,13 +1735,13 @@ fn decode_statement(
     field: &SwiftField,
     container: &str,
     synthesized: bool,
-    taken: &str,
+    handed: &Handed,
     locals: &mut read::Locals,
     twins: &mut Vec<String>,
 ) -> String {
     let absent_is_nil = field.field_def.is_optional() && (synthesized || !field.required);
     let source = if field.flatten {
-        read::Source::Beside(taken.to_owned())
+        read::Source::Beside(handed.taken.clone())
     } else {
         read::Source::Keyed {
             container: container.to_owned(),
@@ -1735,7 +1753,15 @@ fn decode_statement(
             },
         }
     };
-    let present = present_statement(field, &source, absent_is_nil, container, locals, twins);
+    let present = present_statement(
+        field,
+        &source,
+        handed.by_a_member,
+        absent_is_nil,
+        container,
+        locals,
+        twins,
+    );
     match &field.default_at {
         Some(at) => format!(
             "if {container}.contains(.{name}) {{ {present} }} else {{ {} }}",
@@ -1747,10 +1773,11 @@ fn decode_statement(
 }
 
 /// The statements that read `field` from `source`, where the payload holds its key or it has no
-/// default.
+/// default. `taken_ahead` says a member flattened ahead of `field` took keys off the object.
 fn present_statement(
     field: &SwiftField,
     source: &read::Source,
+    taken_ahead: bool,
     absent_is_nil: bool,
     container: &str,
     locals: &mut read::Locals,
@@ -1767,7 +1794,13 @@ fn present_statement(
     {
         return read;
     }
-    if walked || (field.flatten && preprocess::beside(&field.field_def)) {
+    let beside = field.flatten && preprocess::beside(&field.field_def);
+    if field.flatten && taken_ahead && !beside {
+        // A type that reads its holder's decoder sees every key, so it is read from the payload
+        // without the keys taken.
+        return corrected_field(field, &[], walked, source, twins);
+    }
+    if walked || beside {
         return read::unjudged(&field.field_def, &field.hint, source, &member, locals);
     }
     if field.flatten {
@@ -2280,24 +2313,22 @@ fn struct_body_content(
 
 /// The statements that read each of `fields` in the type's own read, in the order declared, a
 /// type written for one joining `twins`. `synthesized` says Swift wrote the read before the
-/// emitter did. A flattened member is read from the keys its holder's own members do not take,
-/// and a flattened map from those no member ahead of it took either, as serde hands them.
+/// emitter did. Each flattened member is handed the keys its holder's own members and the members
+/// flattened ahead of it took, as serde reads it without them.
 fn member_reads(fields: &[SwiftField], synthesized: bool, twins: &mut Vec<String>) -> String {
     let mut locals = read::Locals::default();
-    let own_keys: Vec<String> = fields
+    let mut taken_ahead: Vec<String> = fields
         .iter()
         .filter(|field| !field.flatten)
         .map(|field| field.wire_name.clone())
         .collect();
-    let taken = preprocess::taken_with(own_keys.iter().map(String::as_str));
-    let mut taken_ahead = own_keys;
+    let own_keys = taken_ahead.len();
     fields
         .iter()
         .map(|field| {
-            let handed = if field.flatten && held_map(&field.field_def).is_some() {
-                preprocess::taken_with(taken_ahead.iter().map(String::as_str))
-            } else {
-                taken.clone()
+            let handed = Handed {
+                taken: preprocess::taken_with(taken_ahead.iter().map(String::as_str)),
+                by_a_member: taken_ahead.len() > own_keys,
             };
             if field.flatten {
                 for key in preprocess::keys_taken_by(&field.field_def) {

@@ -1,15 +1,16 @@
-//! What the Swift emitter reads of a flattened map: the object at its place, entry by entry,
-//! without the keys the holder's own members take, those each member flattened ahead of it took
-//! and those the types around the holder took, as serde hands it. Each flattened member is written
-//! at its place. The reads are run under the Swift toolchain in
+//! What the Swift emitter reads of a flattened member: a map at its place, entry by entry, without
+//! the keys the holder's own members take, those each member flattened ahead of it took and those
+//! the types around the holder took, as serde hands it, and any other member after a struct
+//! without the keys the struct took. Each flattened member is written at its place. The reads are
+//! run under the Swift toolchain in
 //! `tests/service_schema_emitted_client_tests/run_swift_flattened.rs`.
 
 #[cfg(feature = "chrono")]
 use super::flattened_models::serving_swift;
 use super::flattened_models::{
-    bowsing_swift, clewing_swift, faking_swift, frapping_swift, kedging_swift, marling_swift,
-    mousing_swift, parceling_swift, snaking_swift, stopping_swift, toggling_swift, warping_swift,
-    worming_swift,
+    bowsing_swift, clewing_swift, faking_swift, frapping_swift, gripping_swift, kedging_swift,
+    marling_swift, mousing_swift, parceling_swift, plying_swift, snaking_swift, splaying_swift,
+    stopping_swift, toggling_swift, twinning_swift, warping_swift, worming_swift,
 };
 
 /// The read a holder takes the keys the types around it took with.
@@ -253,4 +254,60 @@ fn a_map_that_names_a_function_hands_it_the_keys_no_member_ahead_of_it_took() {
          \"label\"]).value; self.rest = try SwiftSchemaPayload.read([String: String].self, \
          from: asGiven(restPayload), at: decoder.codingPath)",
     );
+}
+
+/// A member flattened after a struct is handed the object without the keys the struct and its
+/// holder took: a struct with a flattened map through the read that takes those keys, and a member
+/// that names a function, a model with a rule and a struct that reads the same key from the
+/// payload without them, the model read unjudged. The struct flattened first is read as before.
+#[test]
+fn a_member_after_a_flattened_struct_is_read_without_the_keys_the_struct_took() {
+    let flag = "self.flag = try Pennant(from: decoder); ";
+    let note = "self.note = try container.decode(String.self, forKey: .note)";
+    let ahead = format!("{flag}{note}; ");
+    let without = "without: taken + [\"note\", \"label\"]).value";
+    let splaying = splaying_swift::swift_definition();
+    assert_written(
+        &splaying,
+        &format!(
+            "{flag}self.footing = try Footing(swiftSchemaUnjudged: decoder, \
+             swiftSchemaWithout: taken + [\"note\", \"label\"]); {note}"
+        ),
+    );
+    let twinning = twinning_swift::swift_definition();
+    assert_written(
+        &twinning,
+        &format!(
+            "{ahead}let tallyPayload = try SwiftSchemaPayload(from: decoder, {without}; \
+             self.tally = try SwiftSchemaPayload.read(Counting.self, \
+             from: withItsKeys(tallyPayload), at: decoder.codingPath)"
+        ),
+    );
+    let gripping = gripping_swift::swift_definition();
+    assert_written(
+        &gripping,
+        "private struct SwiftSchemaReadNotch: Decodable { let value: Notch; \
+         init(from decoder: Decoder) throws { self.value = try Notch(swiftSchemaUnjudged: decoder) } }",
+    );
+    assert_written(
+        &gripping,
+        &format!(
+            "{flag}let notchPayload = try SwiftSchemaPayload(from: decoder, {without}; \
+             self.notch = try SwiftSchemaPayload.read(SwiftSchemaReadNotch.self, \
+             from: notchPayload, at: decoder.codingPath).value; {note}"
+        ),
+    );
+    let plying = plying_swift::swift_definition();
+    assert_written(
+        &plying,
+        &format!(
+            "{ahead}let twicePayload = try SwiftSchemaPayload(from: decoder, {without}; \
+             self.twice = try SwiftSchemaPayload.read(Pennant.self, from: twicePayload, \
+             at: decoder.codingPath)"
+        ),
+    );
+    for definition in [splaying, twinning, gripping, plying] {
+        assert_written(&definition, TAKING);
+        assert_written(&definition, "try flag.encode(to: encoder); try ");
+    }
 }

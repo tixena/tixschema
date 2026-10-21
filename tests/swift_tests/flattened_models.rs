@@ -3,9 +3,11 @@
 //! struct, beside a member of its holder's own and in a variant under a tag key, a map flattened
 //! ahead of a struct, two flattened maps, a map flattened after each member that takes none of the
 //! keys it reads, and a map under a key Swift wraps, in a type that declares no parameter and in
-//! one that declares one, of models, of dates and one that names a function. serde reads the
-//! members in the order declared: a struct takes the keys it reads, and a map is handed every key
-//! no member ahead of it took. Every holder has a member of its own, whose key no map is handed.
+//! one that declares one, of models, of dates and one that names a function; and, after a struct,
+//! a struct with a flattened map, a member that names a function, a model with a rule and a struct
+//! that reads the same key. serde reads the members in the order declared: a struct takes the keys
+//! it reads, and every flattened member is handed every key no member ahead of it took. Every
+//! holder has a member of its own, whose key no flattened member is handed.
 
 use alloc::collections::BTreeMap;
 
@@ -15,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tixschema::model_schema;
 
-/// What [`Stopping`] is read from.
+/// What [`Stopping`], [`Twinning`] and [`Plying`] are read from.
 pub const STOPPING: &str = r#"{"label":"n","north":2,"note":"a"}"#;
 
 /// What [`Frapping`] is read from.
@@ -27,7 +29,7 @@ pub const TEXTS: &str = r#"{"label":"n","north":"s","note":"a"}"#;
 /// What [`Warping`] is read from.
 pub const WARPING: &str = r#"{"north":2,"note":"a","south":3}"#;
 
-/// What [`Bowsing`] is read from.
+/// What [`Bowsing`] and [`Splaying`] are read from.
 pub const BOWSING: &str = r#"{"label":"n","marker":"m","north":"s","note":"a"}"#;
 
 /// What [`Clewing`] is read from.
@@ -45,6 +47,9 @@ pub const FAKING: &str = r#"{"North":{"mark":"x"},"label":"n","note":"a"}"#;
 /// What [`Serving`] is read from.
 #[cfg(feature = "chrono")]
 pub const SERVING: &str = r#"{"label":"n","north":"2024-01-02T03:04:05.678Z","note":"a"}"#;
+
+/// What [`Gripping`] is read from.
+pub const GRIPPING: &str = r#"{"label":"n","mark":"x","note":"a"}"#;
 
 /// A plain enum a map is keyed by, which Swift reads through a wrapper.
 #[model_schema()]
@@ -250,9 +255,86 @@ pub struct Snaking {
     pub rest: BTreeMap<String, String>,
 }
 
+/// A struct with a flattened map of its own, which serde reads as a map and so takes no key.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Footing {
+    pub marker: String,
+    #[serde(flatten)]
+    pub rest: BTreeMap<String, String>,
+}
+
+/// A struct flattened after a struct, where serde hands it the keys neither the first nor its
+/// holder took.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Splaying {
+    #[serde(flatten)]
+    pub flag: Pennant,
+    #[serde(flatten)]
+    pub footing: Footing,
+    pub note: String,
+}
+
+/// The keys a function was handed, which [`Twinning`] reads its member from.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Counting {
+    pub keys: Vec<String>,
+}
+
+/// A member that names a function flattened after a struct, where serde hands the function the
+/// keys neither the struct nor its holder took.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Twinning {
+    #[serde(flatten)]
+    pub flag: Pennant,
+    pub note: String,
+    #[model_schema_prop(preprocess = ["withItsKeys"])]
+    #[serde(flatten)]
+    pub tally: Counting,
+}
+
+/// A model with a rule flattened after a struct, where serde hands it the keys neither the struct
+/// nor its holder took.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Gripping {
+    #[serde(flatten)]
+    pub flag: Pennant,
+    #[serde(flatten)]
+    pub notch: Notch,
+    pub note: String,
+}
+
+/// A struct flattened after a struct that reads the same key, where serde hands the second the
+/// object without it and refuses the payload.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Plying {
+    #[serde(flatten)]
+    pub flag: Pennant,
+    pub note: String,
+    #[serde(flatten)]
+    pub twice: Pennant,
+}
+
 /// The payload as it was handed.
 const fn as_given(payload: Value) -> Value {
     payload
+}
+
+/// The keys of the object `payload`, under `keys`.
+fn with_its_keys(payload: Value) -> Value {
+    let Value::Object(object) = payload else {
+        return payload;
+    };
+    let keys: Vec<Value> = object
+        .into_iter()
+        .map(|(key, _)| Value::String(key))
+        .collect();
+    serde_json::json!({ "keys": keys })
 }
 
 /// The text of `value` as serde writes it.
@@ -330,5 +412,33 @@ fn serde_hands_a_flattened_map_of_dates_the_keys_no_member_ahead_of_it_took() {
     assert_eq!(
         written(&read::<Serving>(SERVING).rest),
         r#"{"north":"2024-01-02T03:04:05.678Z"}"#
+    );
+}
+
+/// A struct with a flattened map, a member that names a function and a model, each after a
+/// struct, are handed the keys the struct did not take, and a struct after a struct that reads the
+/// same key is refused.
+#[test]
+fn serde_hands_a_member_flattened_after_a_struct_the_keys_the_struct_did_not_take() {
+    let splaying = read::<Splaying>(BOWSING);
+    assert_eq!(written(&splaying.footing.rest), r#"{"north":"s"}"#);
+    assert_eq!(
+        written(&splaying),
+        r#"{"label":"n","marker":"m","north":"s","note":"a"}"#
+    );
+    let twinning = read::<Twinning>(STOPPING);
+    assert_eq!(twinning.tally.keys, ["north"]);
+    assert_eq!(
+        written(&twinning),
+        r#"{"label":"n","note":"a","keys":["north"]}"#
+    );
+    assert_eq!(
+        written(&read::<Gripping>(GRIPPING)),
+        r#"{"label":"n","mark":"x","note":"a"}"#
+    );
+    let refused = serde_json::from_str::<Plying>(STOPPING).unwrap_err();
+    assert_eq!(
+        refused.to_string(),
+        "missing field `label` at line 1 column 34"
     );
 }

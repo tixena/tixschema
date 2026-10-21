@@ -1,9 +1,10 @@
 //! A map flattened after a struct, beside a member of its holder's own and in a variant under a
 //! tag key, a map flattened ahead of a struct, two flattened maps, a map flattened after each
 //! member that takes none of the keys it reads, and a map under a key Swift wraps, in a type that
-//! declares a parameter too, of models, of dates and one that names a function, each read and
-//! written back by the emitted Swift types compiled with warnings as errors, against what serde
-//! reads and writes back.
+//! declares a parameter too, of models, of dates and one that names a function, and, after a
+//! struct, a struct with a flattened map, a member that names a function, a model with a rule and
+//! a struct that reads the same key, each read and written back by the emitted Swift types
+//! compiled with warnings as errors, against what serde reads and writes back.
 
 #![cfg(feature = "swift")]
 
@@ -15,12 +16,13 @@ use serde_json::Value;
 
 use super::runtime::judged;
 use super::swift_flattened_models::{
-    BOWSING, Bowsing, CLEWING, Clewing, FAKING, FRAPPING, Faking, Frapping, Kedging, Marling,
-    Mousing, Notch, PARCELING, Parceling, Pennant, Quarter, STOPPING, Snaking, Stopping, TEXTS,
-    Toggling, WARPING, WORMING, Warping, Worming, bowsing_swift, clewing_swift, faking_swift,
-    frapping_swift, hanking_swift, kedging_swift, marling_swift, mousing_swift, notch_swift,
-    parceling_swift, pennant_swift, quarter_swift, reeving_swift, snaking_swift, stopping_swift,
-    toggling_swift, warping_swift, worming_swift,
+    BOWSING, Bowsing, CLEWING, Clewing, FAKING, FRAPPING, Faking, Frapping, GRIPPING, Gripping,
+    Kedging, Marling, Mousing, Notch, PARCELING, Parceling, Pennant, Plying, Quarter, STOPPING,
+    Snaking, Splaying, Stopping, TEXTS, Toggling, Twinning, WARPING, WORMING, Warping, Worming,
+    bowsing_swift, clewing_swift, counting_swift, faking_swift, footing_swift, frapping_swift,
+    gripping_swift, hanking_swift, kedging_swift, marling_swift, mousing_swift, notch_swift,
+    parceling_swift, pennant_swift, plying_swift, quarter_swift, reeving_swift, snaking_swift,
+    splaying_swift, stopping_swift, toggling_swift, twinning_swift, warping_swift, worming_swift,
 };
 #[cfg(feature = "chrono")]
 use super::swift_flattened_models::{SERVING, Serving, serving_swift};
@@ -28,11 +30,17 @@ use super::swift_flattened_models::{SERVING, Serving, serving_swift};
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
 const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
 
-/// What the run declares beside the emitted types: the function the models name, which answers
-/// the payload as it was handed, the text of a value written with its keys sorted, the read of a
-/// payload, and what a read that refuses one says.
+/// What the run declares beside the emitted types: the functions the models name, one answering
+/// the payload as it was handed and one the keys of the object it is handed, the text of a value
+/// written with its keys sorted, the read of a payload, and what a read that refuses one says, a
+/// key it misses in serde's words.
 const HELPERS: &str = r#"
 func asGiven(_ payload: Any) -> Any { payload }
+
+func withItsKeys(_ payload: Any) -> Any {
+  guard let object = payload as? [String: Any] else { return payload }
+  return ["keys": object.keys.sorted()]
+}
 
 func written<Read: Encodable>(_ value: Read) -> String {
   let encoder = JSONEncoder()
@@ -50,6 +58,8 @@ func refusal<Read: Decodable>(_ type: Read.Type, _ payload: String) -> String {
     return "read"
   } catch DecodingError.dataCorrupted(let context) {
     return context.debugDescription
+  } catch DecodingError.keyNotFound(let key, _) {
+    return "missing field `\(key.stringValue)`"
   } catch {
     return "\(error)"
   }
@@ -57,8 +67,9 @@ func refusal<Read: Decodable>(_ type: Read.Type, _ payload: String) -> String {
 "#;
 
 /// What prints each map read, then its holder written back, what a read of a model that breaks
-/// its rule says, and what a value whose two maps hold one key apart is written as and read back
-/// as.
+/// its rule says, what a value whose two maps hold one key apart is written as and read back as,
+/// then each member flattened after a struct, and what a read of a struct after a struct that
+/// reads the same key says.
 const MAIN: &str = r##"
 let stopping = read(Stopping.self, #"STOPPING"#)
 print("stopping: \(written(stopping.rest)) \(written(stopping))")
@@ -91,6 +102,14 @@ print("faking refused: \(refusal(Faking.self, #"BROKEN_FAKING"#))")
 let apart = Warping(first: ["north": 1], note: "a", second: ["north": 2, "south": 3])
 let back = read(Warping.self, written(apart))
 print("apart: \(written(apart)) \(written(back.first)) \(written(back.second))")
+let splaying = read(Splaying.self, #"BOWSING"#)
+print("splaying: \(written(splaying.footing.rest)) \(written(splaying))")
+let twinning = read(Twinning.self, #"STOPPING"#)
+print("twinning: \(written(twinning.tally.keys)) \(written(twinning))")
+let gripping = read(Gripping.self, #"GRIPPING"#)
+print("gripping: \(written(gripping.notch)) \(written(gripping))")
+print("gripping refused: \(refusal(Gripping.self, #"BROKEN_GRIPPING"#))")
+print("plying refused: \(refusal(Plying.self, #"STOPPING"#))")
 "##;
 
 /// What prints a map of dates read, each date as its milliseconds, then its holder written back.
@@ -109,6 +128,9 @@ const BROKEN_WORMING: &str = r#"{"label":"n","north":{"mark":""},"note":"a"}"#;
 
 /// A [`Faking`] whose model breaks its rule.
 const BROKEN_FAKING: &str = r#"{"North":{"mark":""},"label":"n","note":"a"}"#;
+
+/// A [`Gripping`] whose model breaks its rule.
+const BROKEN_GRIPPING: &str = r#"{"label":"n","mark":"","note":"a"}"#;
 
 /// `text` read as `T`.
 fn read<T>(text: &str) -> T
@@ -148,6 +170,7 @@ fn with_payloads(main: &str) -> String {
     let mut payloads = vec![
         ("BROKEN_WORMING", BROKEN_WORMING),
         ("BROKEN_FAKING", BROKEN_FAKING),
+        ("BROKEN_GRIPPING", BROKEN_GRIPPING),
         ("STOPPING", STOPPING),
         ("FRAPPING", FRAPPING),
         ("TEXTS", TEXTS),
@@ -157,6 +180,7 @@ fn with_payloads(main: &str) -> String {
         ("PARCELING", PARCELING),
         ("WORMING", WORMING),
         ("FAKING", FAKING),
+        ("GRIPPING", GRIPPING),
     ];
     #[cfg(feature = "chrono")]
     payloads.push(("SERVING", SERVING));
@@ -189,6 +213,12 @@ fn printed() -> Option<String> {
         worming_swift::swift_definition(),
         faking_swift::swift_definition(),
         snaking_swift::swift_definition(),
+        footing_swift::swift_definition(),
+        splaying_swift::swift_definition(),
+        counting_swift::swift_definition(),
+        twinning_swift::swift_definition(),
+        gripping_swift::swift_definition(),
+        plying_swift::swift_definition(),
     ];
     #[cfg(feature = "chrono")]
     definitions.push(serving_swift::swift_definition());
@@ -259,6 +289,36 @@ fn refusals() -> [String; 2] {
     ]
 }
 
+/// Each member flattened after a struct, read as serde reads it, then written back, what
+/// `validate()` answers of a [`Gripping`] whose model breaks its rule, and what serde says of a
+/// [`Plying`], ahead of the position it says it at.
+fn after_a_struct() -> String {
+    let splaying: Splaying = read(BOWSING);
+    let twinning: Twinning = read(STOPPING);
+    let gripping: Gripping = read(GRIPPING);
+    let broken_gripping = Gripping {
+        flag: pennant(),
+        notch: broken_notch(),
+        note: "a".to_owned(),
+    };
+    assert_eq!(written(&broken_gripping), BROKEN_GRIPPING);
+    let plying = serde_json::from_str::<Plying>(STOPPING)
+        .unwrap_err()
+        .to_string();
+    let (plying_refused, _position) = plying.split_once(" at line").unwrap();
+    format!(
+        "splaying: {} {}\ntwinning: {} {}\ngripping: {} {}\ngripping refused: {}\n\
+         plying refused: {plying_refused}\n",
+        written(&splaying.footing.rest),
+        written(&splaying),
+        serde_json::to_string(&twinning.tally.keys).unwrap(),
+        written(&twinning),
+        written(&gripping.notch),
+        written(&gripping),
+        broken_gripping.validate().unwrap_err().join("; "),
+    )
+}
+
 /// A [`Warping`] whose two maps hold one key apart, written, then the two maps it reads back as.
 /// serde writes the key twice, and each map reads it back with its last value.
 fn apart() -> [String; 3] {
@@ -273,12 +333,14 @@ fn apart() -> [String; 3] {
     [written(&apart), written(&back.first), written(&back.second)]
 }
 
-/// Each map is read from the keys serde hands it, at its place among the flattened members, and
-/// each holder is written back as serde writes it back, a key two members hold once with its last
-/// value. A model a map holds is judged once, with its holder, under the place serde names. A map
-/// of dates is read from the text serde writes and written back as that text.
+/// Each map, and each member flattened after a struct, is read from the keys serde hands it, at
+/// its place among the flattened members, and each holder is written back as serde writes it back,
+/// a key two members hold once with its last value. A model a map or a holder holds is judged
+/// once, with its holder, under the place serde names, and a struct after a struct that reads the
+/// same key is refused, as serde refuses it. A map of dates is read from the text serde writes and
+/// written back as that text.
 #[test]
-fn a_flattened_map_reads_in_swift_the_keys_serde_hands_it() {
+fn a_flattened_member_reads_in_swift_the_keys_serde_hands_it() {
     let stopping: Stopping = read(STOPPING);
     let frapping: Frapping = read(FRAPPING);
     let kedging: Kedging = read(TEXTS);
@@ -300,11 +362,12 @@ fn a_flattened_map_reads_in_swift_the_keys_serde_hands_it() {
     let snaking: Snaking = read(TEXTS);
     let [worming_refused, faking_refused] = refusals();
     let [apart_written, back_first, back_second] = apart();
+    let after_a_struct = after_a_struct();
     let expected = format!(
         "stopping: {} {}\nfrapping: {} {}\nkedging: {} {}\nwarping: {} {} {}\n\
          marling: {} {}\nmousing: {} {}\nbowsing: {} {}\nclewing: {} {}\nparceling: {} {}\n\
          toggling: {} {}\nworming: {} {}\nfaking: {} {}\nsnaking: {} {}\n\
-         worming refused: {}\nfaking refused: {}\napart: {} {} {}\n{}",
+         worming refused: {}\nfaking refused: {}\napart: {} {} {}\n{after_a_struct}{}",
         written(&stopping.rest),
         written(&stopping),
         written(&frapping.rest),
@@ -356,7 +419,12 @@ fn a_flattened_map_reads_in_swift_the_keys_serde_hands_it() {
              snaking: {\"north\":\"s\"} {\"label\":\"n\",\"north\":\"s\",\"note\":\"a\"}\n\
              worming refused: 'north.mark': too short: minimum length is 1, got 0\n\
              faking refused: 'North.mark': too short: minimum length is 1, got 0\n\
-             apart: {\"north\":2,\"note\":\"a\",\"south\":3} {\"north\":2,\"south\":3} {\"north\":2,\"south\":3}\n"
+             apart: {\"north\":2,\"note\":\"a\",\"south\":3} {\"north\":2,\"south\":3} {\"north\":2,\"south\":3}\n\
+             splaying: {\"north\":\"s\"} {\"label\":\"n\",\"marker\":\"m\",\"north\":\"s\",\"note\":\"a\"}\n\
+             twinning: [\"north\"] {\"keys\":[\"north\"],\"label\":\"n\",\"note\":\"a\"}\n\
+             gripping: {\"mark\":\"x\"} {\"label\":\"n\",\"mark\":\"x\",\"note\":\"a\"}\n\
+             gripping refused: 'mark': too short: minimum length is 1, got 0\n\
+             plying refused: missing field `label`\n"
         ),
         "{expected}"
     );
