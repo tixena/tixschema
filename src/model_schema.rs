@@ -536,8 +536,8 @@ struct CheckedMember {
 }
 
 /// A wrapper a value is reached through, outermost first: `Option` yields its `Some`, a transparent
-/// wrapper yields what it derefs to, and a reference yields the `str` or the list it borrows, which
-/// only the validator reaches. A sequence yields each element and a map each entry's value, on the
+/// wrapper yields what it derefs to, and a reference yields what it borrows, which only the
+/// validator reaches. A sequence yields each element and a map each entry's value, on the
 /// walk to what a field's own type declares alone: a field's own bound stops at a list and reads
 /// no map.
 #[cfg(feature = "serde")]
@@ -14305,7 +14305,8 @@ fn named_leaf_rendering(
 
 /// Generates the static validator for a string-shaped field with constraints, plus the serde
 /// deserializer — written against the constrained value itself when the field is bare, and against
-/// the field's declared type when it is wrapped. A borrowed `str` gets the validator alone.
+/// the field's declared type when it is wrapped. A field read through a reference gets the
+/// validator alone.
 #[cfg(feature = "serde")]
 fn generate_string_validation_code(
     member: &CheckedMember,
@@ -14440,7 +14441,9 @@ fn generate_numeric_validation_code(
         });
     }
 
-    let deserializer = if wraps.is_empty() {
+    let deserializer = if ends_on_a_borrow(wraps) {
+        quote! {}
+    } else if wraps.is_empty() {
         let refusal = refusal_from_violations();
         quote! {
             pub fn #deserialize_fn_ident<'de, D>(deserializer: D) -> ::core::result::Result<#rust_type_ident, D::Error>
@@ -14662,9 +14665,6 @@ fn constrained_shape(ty: &syn::Type) -> Option<ConstrainedShape> {
             });
         }
         if let syn::Type::Reference(reference) = current {
-            if !names_str(&reference.elem) && !names_a_list(&reference.elem) {
-                return None;
-            }
             wraps.push(ConstraintWrap::Borrowed);
             current = &reference.elem;
         } else if let syn::Type::Path(path) = current {
@@ -14872,6 +14872,8 @@ fn blocking_interior_mutability_wrapper(ty: &syn::Type) -> Option<String> {
             current = &array.elem;
         } else if let syn::Type::Slice(slice) = current {
             current = &slice.elem;
+        } else if let syn::Type::Reference(reference) = current {
+            current = &reference.elem;
         } else if let syn::Type::Path(path) = current {
             let segment = path.path.segments.last()?;
             let ident = segment.ident.to_string();
@@ -14886,14 +14888,6 @@ fn blocking_interior_mutability_wrapper(ty: &syn::Type) -> Option<String> {
             return None;
         }
     }
-}
-
-/// Whether a reference borrows `str`, which with a list is every borrow a bound is read through.
-fn names_str(borrowed: &syn::Type) -> bool {
-    let syn::Type::Path(named) = written_type(borrowed) else {
-        return false;
-    };
-    named.qself.is_none() && named.path.is_ident("str")
 }
 
 /// Whether a type is written as a list: an array, a slice, or one of the std sequences.
@@ -15799,14 +15793,15 @@ fn check_undescribable_std_field(
 }
 
 /// Whether a field is written as a string or a path itself, under `Option`, an ownership wrapper or
-/// the borrow of a `str`, which is what an enum's own string check reaches. It is the walk
+/// a reference, which is what an enum's own string check reaches. It is the walk
 /// `constrained_shape` makes, held to its two text leaves.
 fn written_as_text(ty: &syn::Type) -> bool {
     let mut current = ty;
     loop {
         current = written_type(current);
         if let syn::Type::Reference(reference) = current {
-            return names_str(&reference.elem);
+            current = &reference.elem;
+            continue;
         }
         let syn::Type::Path(path) = current else {
             return false;
@@ -16345,11 +16340,13 @@ pub fn bound_member(field: &Field, index: usize) -> BoundMember {
     )
 }
 
-/// Whether the walk ends on a borrow, of a `str` or of a list: the constrained values no hook is
-/// emitted for.
+/// Whether the walk reads through a reference anywhere: no hook is emitted for such a field, whose
+/// bound is the validator's alone.
 #[cfg(feature = "serde")]
-const fn ends_on_a_borrow(wraps: &[ConstraintWrap]) -> bool {
-    matches!(wraps.last(), Some(ConstraintWrap::Borrowed))
+fn ends_on_a_borrow(wraps: &[ConstraintWrap]) -> bool {
+    wraps
+        .iter()
+        .any(|wrap| matches!(wrap, ConstraintWrap::Borrowed))
 }
 
 /// Whether the field needs a `#[serde(default)]` written for it alongside the `deserialize_with`.

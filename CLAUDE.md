@@ -453,7 +453,7 @@ repeats none of it. What a change has to keep:
 - **The upgrade list states what a consumer sees**, each item with the text of its error.
 
 **A key written on a field measures the field's own value.** `Option` and the transparent wrappers
-(`Box`, `Rc`, `Arc`, `Cow`, the borrow of a `str` or of a list) hold one value and are read through;
+(`Box`, `Rc`, `Arc`, `Cow`, and every reference) hold one value and are read through;
 a list is a value of its own and is not. So on a list `minLength` and `maxLength` count its items,
 whatever they are, and `pattern`, `minimum` and `maximum` are refused. `README.md`'s "List Length"
 section is the consumer's view; this is what a change has to keep.
@@ -506,14 +506,19 @@ keys that bound it. `FieldDef::unmeasured_bound` is the one question the refusal
 and `apply_constraint_docs` are both written from, so the TypeScript comment states no bound the
 refusal turned away.
 
-A borrowed `str` is held to its bound by `validate()`, as a `String` is, and a borrowed list is
-counted as an owned one is. They are the two references `constrained_shape` reads through
-(`ConstraintWrap::Borrowed`, which `names_str` and `names_a_list` decide): `validate()` reaches the
-`str` through `&'a str` at any depth, and a reference to anything else has no shape and no
-validator. A borrowed field publishes its validator and no `deserialize_{field}`
-hook (`ends_on_a_borrow`), and `generate_field_validation` hangs nothing on one. A borrowed `str`
-member of an untagged enum is therefore the one constrained member the read does not check: it is
-read as it is with no bound written, and `validate()` answers for the bound.
+`validate()` reads through every reference, whatever it borrows, as `get_field_def` does for the
+schemas: a borrowed `str` is held to its bound as a `String` is, a `&'a String` and a `&'a u32` as
+their owned types are, and a borrowed list is counted as an owned one is. `constrained_shape` reads
+each reference as `ConstraintWrap::Borrowed`, at any depth, and the walk reads through it with
+`&**`. A field read through a reference publishes its validator and no `deserialize_{field}` hook
+(`ends_on_a_borrow`, which asks whether any wrapper of the walk is a reference), and
+`generate_field_validation` hangs nothing on one. A borrowed member of an untagged enum is
+therefore the one constrained member the read does not check: it is read as it is with no bound
+written, and `validate()` answers for the bound. A reference to a type a bound is refused on is
+refused the same way: a length on a `&'a bool` is the E0277 a length on a `bool` is
+(`tests/bound_text_refusals.rs`), and `blocking_interior_mutability_wrapper` retraces the walk
+through a reference, so a bound on a `&'a RefCell<String>` is refused at expansion, naming the
+wrapper.
 
 A slot takes the five keys, of a tuple variant and of a tuple struct, and is checked exactly where a
 named member in the same position is. `checked_member` is the one seam that names a member for its
@@ -561,7 +566,7 @@ reads the merged meta as it reads a member's own. `process_field` asks it throug
 `collect_untagged_variant_members` asks it directly.
 
 - `written_as_text` says what is reached: a field written as a string or a path itself, under
-  `Option`, an ownership wrapper or the borrow of a `str`. A list and its items, a field typed with
+  `Option`, an ownership wrapper or a reference. A list and its items, a field typed with
   a named type (a brand included), a number, a map, a tuple and a type parameter are not. It is
   `constrained_shape`'s walk held to `ConstraintLeaf::Str` and `ConstraintLeaf::Path`, written
   apart because it is asked in a build without `serde`;
@@ -2827,6 +2832,7 @@ tixschema/
 │   ├── std_result_tests/                 # The models and payloads every surface and client is held to, and the reproduction
 │   ├── declared_result_tests.rs          # A type of the crate's own named Result keeps its name
 │   ├── std_result_refusals.rs            # A Result named after another type fails at its identity check, E0308
+│   ├── bound_text_refusals.rs            # A length on a bool, owned or behind a reference, fails with E0277
 │   ├── collection_tests.rs
 │   ├── enum_tests.rs
 │   ├── serde_tests.rs
