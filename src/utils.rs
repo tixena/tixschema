@@ -608,6 +608,10 @@ thread_local! {
     /// [`WIRE_SCALARS`]: a type that lists `"mongodb"` is refused a map keyed by one in every
     /// build.
     static BSON_REFUSED_KEYS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+    /// The names of structs and enums that hold a map whose key the `bson` library refuses, each
+    /// to a description of the first such map. Kept out of [`ALIAS_INFO`] for the same reason as
+    /// [`BSON_REFUSED_KEYS`].
+    static BSON_REFUSED_HOLDERS: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
 }
 
 #[cfg(feature = "serde")]
@@ -1070,6 +1074,22 @@ pub fn record_bson_refused_key(rust_ident: &str) {
 /// declared below the item asking.
 pub fn is_recorded_bson_refused_key(rust_ident: &str) -> bool {
     BSON_REFUSED_KEYS.with(|names| names.borrow().contains(rust_ident))
+}
+
+/// Records that `rust_ident` names a struct or an enum that holds a map whose key the `bson`
+/// library refuses, `described` saying which map.
+pub fn record_bson_refused_holder(rust_ident: &str, described: &str) {
+    BSON_REFUSED_HOLDERS.with(|names| {
+        names
+            .borrow_mut()
+            .insert(rust_ident.to_owned(), described.to_owned());
+    });
+}
+
+/// What [`record_bson_refused_holder`] recorded for `rust_ident`. `None` for a name declared below
+/// the item asking.
+pub fn bson_refused_holder(rust_ident: &str) -> Option<String> {
+    BSON_REFUSED_HOLDERS.with(|names| names.borrow().get(rust_ident).cloned())
 }
 
 /// Records that `rust_ident` names an enum declared `#[serde(untagged)]`.

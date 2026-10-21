@@ -2332,15 +2332,24 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   map, in every build, spanned on the member's ident (a slot's type) and naming the member, behind
   its variant in an enum, and the key as written.
   - `bson_refused_keys` finds each map (`is_map_wrapper`) a member serde writes or reads holds,
-    behind `Option`, a list, a tuple, a transparent wrapper and a map's value. A member or a
-    variant under `skip` (`absent_from_wire`) is read past.
+    behind `Option`, a list, a tuple, a transparent wrapper and a map's value, and each model
+    declared above that holds one (`RefusedKey::Held`). A member or a variant under `skip`
+    (`absent_from_wire`) is read past.
+  - A held model is looked into through `BSON_REFUSED_HOLDERS`, each struct and enum that holds
+    such a map at any depth to a description of the first one. It is written in every build at
+    `exec_model_schema` (`record_bson_refused_holder_item`), whatever the model's `enable` list,
+    from the walk `bson_refused_maps` makes, the one `mongodb_map_key_refusals` makes. The
+    refusal names the holder's member, the model and that map. A member that holds the item
+    itself is read past, its maps being the item's own. A model declared below, or of another
+    crate, is not looked into.
   - `is_bson_refused_key` answers for a key, read under `Box`, `Rc`, `Arc` and `Cow`: one of
     `BSON_REFUSED_KEY_TYPES`, or a name `BSON_REFUSED_KEYS` holds. That registry is written in
     every build at `exec_model_schema` (`record_bson_refused_key_item`), for a brand or an alias
     over such a key, so a chain forwards its target's answer. A name declared below, or of
     another crate, is not refused.
   - `tests/foundation_refusals/number_keyed_map_with_mongodb.rs` holds the README's `Roster` to
-    the error, the unit tests in `src/model_schema/tests.rs` each position and each key, and
+    the error, `held_number_keyed_map_with_mongodb.rs` beside it a held model's, the unit tests
+    in `src/model_schema/tests.rs` each position, each key and each held model, and
     `tests/mongodb_operation_tests/readme/operations.rs` the README's text: the declaration and
     the error, the keys stored as their text, and a type that lists `"decode_with"` alone.
 - **A path is under the name serde writes.** `parse_written_renames` reads `rename`, `rename_all`
