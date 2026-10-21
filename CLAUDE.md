@@ -1346,17 +1346,20 @@ consumer's view; this is what a change has to keep.
   `class_body_parts` writes no entry for it, a variant with named members sharing it. A member
   under `skip_serializing_if` is written wherever it holds a value: no client calls the Rust
   function, and the README states the limit.
-- **A flattened map is read at its place, in the order declared**, as serde reads it
-  (`constructor_arguments`): from the object without the keys the holder's own members take and
-  those each member flattened ahead of it took, and it takes none itself, so two maps are handed
-  the same keys. A flattened struct keeps its read. What one takes is `keys_taken_by`: the keys
-  `struct_dart_tokens` records for its type in `DART_TAKEN_KEYS` (`taken_keys`), serde's own
-  list of the name and each alias of every member it reads, and none for a member that names a
-  function. A struct that names a `preprocess` on itself is read by serde as a value, and one
-  with a flattened member of its own as a map: each records none. A type the emitter has not
-  written takes none, so a map after a struct declared below its holder holds the struct's keys,
-  and the README states the limit. `toJson` writes each flattened member at its place: a key two
-  of them hold is written once, with the last value, where serde writes it twice.
+- **Every flattened member is read at its place, in the order declared**, as serde reads it
+  (`constructor_arguments`): from the object without the tag, the keys the holder's own members
+  take and those each member flattened ahead of it took. That is what a map, a JSON value, a
+  struct with a flattened member of its own and a function a member names are handed, and a
+  struct that reads a key a struct ahead of it took is refused, as serde refuses it. A map and a
+  JSON value take no key, so two maps are handed the same keys. What a member takes is
+  `keys_taken_by`: the keys `struct_dart_tokens` records for its type in `DART_TAKEN_KEYS`
+  (`taken_keys`), serde's own list of the name and each alias of every member it reads, and none
+  for a member that names a function. A struct that names a `preprocess` on itself is read by
+  serde as a value, and one with a flattened member of its own as a map: each records none. A
+  type the emitter has not written takes none, so a member after a struct declared below its
+  holder is handed the struct's keys, and the README states the limit. `toJson` writes each
+  flattened member at its place: a key two of them hold is written once, with the last value,
+  where serde writes it twice.
 - **`fromJsonUnjudged` is a taken name of a plain enum** (`DART_ENUM_NAMES_TAKEN`), which holds
   it as a static function. It is not in `DART_FIELD_NAMES_TAKEN`: Dart takes a field and a
   constructor under one name, so such a field is emitted as it was.
@@ -1367,8 +1370,8 @@ consumer's view; this is what a change has to keep.
   SDK: the sample beside what the Rust read answers, every case of `run_dart_validate.rs` read
   with `fromJson` and held to what its `validate()` answers, an untagged enum beside the variant
   serde takes, a reply that breaks a rule through both clients, and the README's section.
-  `tests/dart_tests/flattened.rs` pins the read of a flattened map at each place, over the models
-  of `tests/dart_tests/flattened_models.rs`, which also pin what serde reads of each, and
+  `tests/dart_tests/flattened.rs` pins the read of a flattened member at each place, over the
+  models of `tests/dart_tests/flattened_models.rs`, which also pin what serde reads of each, and
   `run_dart_flattened.rs` reads and writes each back under the Dart SDK, against serde.
 
 #### A `preprocess` in the Dart read
@@ -1404,10 +1407,11 @@ resort; this is what a change has to keep.
   optional and a tuple, holds the corrected payload under `corrected`, the variable of a `switch`
   of one arm; any other read is written around the call itself.
 - **A flattened member is read from the keys serde hands it** (`without`): the object without
-  the keys of the members beside it, and without the tag where the holder is a variant under a
-  tag key (`constructor_arguments`' `tag_key`). A function the member names, and one the type it
-  holds names, is handed those keys. A holder with no member of its own hands on `json` as it
-  was. A struct's own tag is not taken out: serde hands it on too. The slot of a variant under a
+  the keys of the members beside it and of the structs flattened ahead of it, and without the
+  tag where the holder is a variant under a tag key (`constructor_arguments`' `tag_key`). A
+  function the member names, and one the type it holds names, is handed those keys. A holder
+  with no member of its own hands its first flattened member `json` as it was. A struct's own
+  tag is not taken out: serde hands it on too. The slot of a variant under a
   tag key is read from the object without the tag where the slot names a function, and from
   `json` as it was where it names none, so a type such a slot holds is handed the tag, where
   Rust hands it none.
