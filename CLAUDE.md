@@ -2109,7 +2109,8 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   - `tests/foundation_refusals.rs` is the `trybuild` harness. Each file of
     `tests/foundation_refusals/` is a crate of its own, held to the `.stderr` beside it, written in
     the build with every plain feature on, the one the harness is gated on: a missing initializer,
-    each refusal of the `enable` list, and an initializer handed an argument. The initializer
+    each refusal of the `enable` list, an initializer handed an argument, and a type that lists
+    `"mongodb"` with a map keyed by a number. The initializer
     written twice, `tests/foundation_refusals/written_twice/main.rs`, is checked by cargo's JSON
     messages instead: an `E0428` names each item it writes, and no error but `E0428` and `E0119`
     is reported. rustc 1.99 reports the second marker's `impl` as `E0119` and 1.100 does not.
@@ -2302,6 +2303,26 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
     nothing.
   - A name that is no identifier, under a tag key whose snake case starts with a digit, is
     written as no function and no arm (`function_ident`).
+- **A type that lists `"mongodb"` holds no map whose key the `bson` library refuses.** serde
+  writes a key of a number or a `bool` as text into JSON only, and the `bson` library refuses to
+  write one and reads a stored one back as text, which the key's type refuses. Measured under
+  both majors: a `char`, a `chrono` date or time, a plain enum and a brand over a `String` are
+  stored as their text and read back, and are not refused. `mongodb_map_key_refusals`, which
+  `decode_with_guard_errors` chains where `args.enable.mongodb` holds, raises one error per such
+  map, in every build, spanned on the member's ident (a slot's type) and naming the member, behind
+  its variant in an enum, and the key as written.
+  - `bson_refused_keys` finds each map (`is_map_wrapper`) a member serde writes or reads holds,
+    behind `Option`, a list, a tuple, a transparent wrapper and a map's value. A member or a
+    variant under `skip` (`absent_from_wire`) is read past.
+  - `is_bson_refused_key` answers for a key, read under `Box`, `Rc`, `Arc` and `Cow`: one of
+    `BSON_REFUSED_KEY_TYPES`, or a name `BSON_REFUSED_KEYS` holds. That registry is written in
+    every build at `exec_model_schema` (`record_bson_refused_key_item`), for a brand or an alias
+    over such a key, so a chain forwards its target's answer. A name declared below, or of
+    another crate, is not refused.
+  - `tests/foundation_refusals/number_keyed_map_with_mongodb.rs` holds the README's `Roster` to
+    the error, the unit tests in `src/model_schema/tests.rs` each position and each key, and
+    `tests/mongodb_operation_tests/readme/operations.rs` the README's text: the declaration and
+    the error, the keys stored as their text, and a type that lists `"decode_with"` alone.
 - **A path is under the name serde writes.** `parse_written_renames` reads `rename`, `rename_all`
   and `rename_all_fields` for their `serialize` side in every build. A list whose two sides differ
   is refused by every build that describes the type, a mobile client included:
@@ -2851,7 +2872,7 @@ tixschema/
 │   ├── support_library_tests.rs          # One library per crate, what "mongodb" adds per feature, the author's scope
 │   ├── support_library_tests/            # The three parts: one library, stored types, the author's own names
 │   ├── foundation_refusals.rs            # The trybuild harness: each case below fails with its .stderr
-│   ├── foundation_refusals/              # The cases: a missing initializer, the enable refusals, a held type missing "mongodb"
+│   ├── foundation_refusals/              # The cases: a missing initializer, the enable refusals, a held type missing "mongodb", a map keyed by a number under "mongodb"
 │   ├── crates_apart_tests.rs             # Types of the two crates apart, held and read from here
 │   ├── crates_apart/
 │   │   ├── stored_customers/             # A crate apart: a stored Customer, both initializers

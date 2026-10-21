@@ -7598,7 +7598,7 @@ Every operation fails with `OperationError`, which the crate's MongoDB [support 
 
 ### What a row stores
 
-A row is written by the type's own `Serialize`, and a value of a filter or an update the same way, so what a filter writes is what the field stores. Two cases stand apart, and in both the type reads and writes as JSON as before.
+A row is written by the type's own `Serialize`, and a value of a filter or an update the same way, so what a filter writes is what the field stores. Two cases stand apart: a member whose serde form depends on the format, whose type reads and writes as JSON as before, and a map whose key is not text, whose type does not build.
 
 **A member whose serde form depends on the format has two stored forms.** The generated reads and writes go through `bson::Serializer::new()` and `bson::Deserializer::new(..)`, which call themselves human-readable. A typed `Collection<T>` of the driver writes through the `bson` library's raw serializer, which does not. `std::net::IpAddr` is such a member: no schema surface describes it, so the example is one of a build with tixschema's `mongo` features alone.
 
@@ -7625,7 +7625,7 @@ the row without an _id does not read as expected: address: invalid: expected Unk
 
 `ObjectId`, `bson::DateTime` and `bson::Uuid` are stored in one form by both serializers.
 
-**A map whose key is not text is neither written nor read as BSON.** tixschema takes a map keyed by a number, a `bool`, a `char` or a `chrono` date, because serde writes such a key as text into JSON. The `bson` library does not:
+**A map whose key is not text does not build.** tixschema takes a map keyed by a number or a `bool`, because serde writes such a key as text into JSON, and into JSON only. BSON document keys are always text: the `bson` library refuses to write such a key, and hands a stored one back to the key's type as text, which the type refuses. So a type that lists `"mongodb"` and holds such a map is refused where it is declared, in every build:
 
 ```rust
 #[model_schema(enable = ["decode_with", "mongodb"])]
@@ -7636,21 +7636,14 @@ pub struct Roster {
 }
 ```
 
-A roster holding the entry `7` to `seven` is written as JSON, `{"byNumber":{"7":"seven"}}`, and read back from it. `insert_one` answers `Unwritable` for it, under version 2 of the `bson` library and then under version 3:
-
 ```text
-a value could not be written as BSON: Invalid map key type: 7
-a value could not be written as BSON: BSON error. Kind: A serialization error occurred. Message: invalid document key type: int64.
+error: model_schema: type `Roster`: field `by_number`: a map keyed by `u32` cannot be stored in MongoDB — BSON document keys are always text, and the `bson` library refuses to write this key and to read it back. Key the map by a `String`, or do not list "mongodb" in `enable`.
 ```
 
-and a stored row `{ "byNumber": { "7": "seven" } }` is refused by every read with one `Undescribed` issue, which names no path:
-
-```text
-the row without an _id does not read as expected: undescribed: invalid type: string "7", expected u32
-the row without an _id does not read as expected: undescribed: BSON error. Kind: A deserialization-related error occurred. Message: invalid type: string "7", expected u32.
-```
-
-Nothing says so where the type is declared.
+- **The keys refused** are the integer types, `f32`, `f64` and `bool`, and a brand or an alias declared above over one of them, each also under `Box`, `Rc`, `Arc` and `Cow`. The error names the field and the key, once for each such map the field holds.
+- **The map is found in every member serde writes or reads**, of a struct and of each variant of an enum, behind an `Option`, a list, a tuple, a wrapper and another map's value: a field written `Option<Vec<BTreeMap<bool, u32>>>` is refused as `by_number` is. A member under `#[serde(skip)]` is not.
+- **A key serde writes as text is stored as that text and read back**: a `String`, a `char`, a `chrono` date or time, a plain enum, and a brand over a `String`. A key the expansion cannot see into, a type of another crate or a brand declared below the type, is not refused.
+- **A type that lists `"decode_with"` alone builds with such a map** and reads it from JSON. Its `from_bson_piped` refuses a stored row that holds the map, with one `Undescribed` issue.
 
 ### A query the operations do not cover
 
