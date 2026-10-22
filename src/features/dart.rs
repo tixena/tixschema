@@ -16,12 +16,13 @@ use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{
     brand_field, has_serde_skip_serializing, keys_taken_when_flattened, parse_serde_key_omission,
     struct_tag, tag_and_content_when_flattened, variant_names_when_flattened, variants_on_the_wire,
+    written_slots,
 };
 use crate::field_type::{
-    FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, classify_variant,
-    dart_from_json_argument, dart_lower_camel, dart_to_json_argument, get_field_def, is_plain_enum,
-    is_sequence_wrapper,
+    FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, dart_from_json_argument,
+    dart_lower_camel, dart_to_json_argument, get_field_def, is_plain_enum, is_sequence_wrapper,
 };
+use crate::model_schema::variant_wire_kind;
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
 use crate::utils::{
     MapKeyWire, compute_alias_export_name, compute_item_export_name, to_snake_case,
@@ -3308,7 +3309,7 @@ fn variant_payload(
     defaults: &SerdeDefaults,
 ) -> VariantPayload {
     let variant_name = variant.ident.to_string();
-    match classify_variant(variant) {
+    match variant_wire_kind(variant) {
         VariantKind::Unit => VariantPayload::Unit,
         VariantKind::Named => VariantPayload::Named(collect_dart_fields(
             &variant.fields,
@@ -3329,31 +3330,11 @@ fn variant_payload(
             )))
         }
         VariantKind::TupleMultiple => {
-            let slots: Vec<FieldDef> = variant
-                .fields
-                .iter()
-                .map(|field| {
-                    let mut field_def = field_def_with_prop_meta("slot", field, args);
-                    field_def.erase_type_parameters(type_parameters);
-                    field_def
-                })
-                .collect();
-            VariantPayload::Value(Box::new(FieldDef {
-                absent_from_wire: false,
-                array_depth: 0,
-                array_lengths: Vec::new(),
-                docs: String::new(),
-                field_type: FieldDefType::Tuple(slots),
-                model_schema_prop_meta: None,
-                name: "value".to_owned(),
-                nullable_levels: Vec::new(),
-                omits_value: false,
-                #[cfg(any(feature = "zod", feature = "jsonschema"))]
-                serde_default: None,
-                set_levels: Vec::new(),
-                #[cfg(feature = "jsonschema")]
-                type_span: proc_macro2::Span::call_site(),
-            }))
+            VariantPayload::Value(Box::new(written_slots(variant, |field| {
+                let mut field_def = field_def_with_prop_meta("slot", field, args);
+                field_def.erase_type_parameters(type_parameters);
+                field_def
+            })))
         }
     }
 }

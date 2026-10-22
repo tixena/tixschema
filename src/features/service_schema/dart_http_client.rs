@@ -2,6 +2,7 @@
 //! that builds a plain-terms request from the operation's own message and decodes the answer by
 //! status.
 
+use super::on_one_line;
 use super::result::result_name;
 use crate::features::dart::{
     dart_field_member, dart_fields_of, dart_json_decode, dart_json_encode, dart_local,
@@ -193,9 +194,9 @@ fn method_params(operation: &OperationDef, shape: &HttpShape) -> String {
 fn method_doc(operation: &OperationDef, shape: &HttpShape) -> String {
     format!(
         "  /// Calls `{}` over `{} {}`.",
-        operation.wire_name,
+        on_one_line(&operation.wire_name),
         shape.method.name(),
-        shape.path_template()
+        on_one_line(&shape.path_template())
     )
 }
 
@@ -334,7 +335,7 @@ fn path_build_stmt(fn_prefix: &str, operation: &OperationDef, shape: &HttpShape)
     for segment in &shape.path {
         match segment {
             PathSegment::Literal(text) => {
-                let _ = writeln!(stmt, "    path += '{}';", dart_escape(text));
+                let _ = writeln!(stmt, "    path += {};", quoted(text));
             }
             PathSegment::Placeholder(name) => {
                 let value = placeholder_value_dart_expr(fn_prefix, operation, shape, name);
@@ -1209,18 +1210,4 @@ fn dart_header_out_decode(ty: &Type, raw: &str) -> (String, bool) {
         | FieldDefType::NaiveDateTime
         | FieldDefType::DateTime => (raw.to_owned(), false),
     }
-}
-
-/// Escapes a path literal for a single-quoted Dart string: a backslash, a single quote and a
-/// dollar sign (which Dart reads as interpolation even inside a single-quoted literal) all need
-/// escaping; a path template is ASCII by construction, so nothing else does.
-fn dart_escape(text: &str) -> String {
-    let mut escaped = String::with_capacity(text.len());
-    for ch in text.chars() {
-        if matches!(ch, '\\' | '\'' | '$') {
-            escaped.push('\\');
-        }
-        escaped.push(ch);
-    }
-    escaped
 }

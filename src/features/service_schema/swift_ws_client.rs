@@ -13,6 +13,7 @@ use crate::service_schema::parse::{
 use core::fmt::Write as _;
 use syn::Type;
 
+use super::on_one_line;
 use super::swift_http_client::{swift_call, swift_parameter, swift_parameter_declared};
 use super::swift_type::swift_typename_of;
 
@@ -482,8 +483,8 @@ fn one_way_method(
     aux: &mut Vec<String>,
 ) -> String {
     let call = swift_call(operation);
-    let wire_name = &operation.wire_name;
-    let wire = &swift_quoted(wire_name);
+    let wire = &swift_quoted(&operation.wire_name);
+    let commented = on_one_line(&operation.wire_name);
     let (param_ty, param_aux) = message_swift_type(operation);
     aux.extend(param_aux);
     let refusal = refusal_name(named);
@@ -495,7 +496,7 @@ fn one_way_method(
         (String::new(), "")
     };
     format!(
-        "  /// Calls `{wire_name}` over `ws_rpc`.\n  \
+        "  /// Calls `{commented}` over `ws_rpc`.\n  \
          public func {call}({params}) async throws {{\n\
 {headers_build}    \
          do {{\n      \
@@ -725,8 +726,8 @@ fn reply_method(
     aux: &mut Vec<String>,
 ) -> String {
     let call = swift_call(operation);
-    let wire_name = &operation.wire_name;
-    let wire = &swift_quoted(wire_name);
+    let wire = &swift_quoted(&operation.wire_name);
+    let commented = on_one_line(&operation.wire_name);
     let (param_ty, param_aux) = message_swift_type(operation);
     aux.extend(param_aux);
     let failure = failure_name(named, operation).unwrap();
@@ -741,7 +742,7 @@ fn reply_method(
         success_block(named, prefix, wire, operation, success, &shape, aux);
     let error_block = declared_error_block(named, prefix, wire, operation, error, &shape, aux);
     format!(
-        "  /// Calls `{wire_name}` over `ws_rpc`.\n  \
+        "  /// Calls `{commented}` over `ws_rpc`.\n  \
          public func {call}({params}) async -> Result<{success_ty}, {failure}> {{\n\
 {headers_build}    \
          let raw: Data?\n    \

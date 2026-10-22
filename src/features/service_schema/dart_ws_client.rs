@@ -3,6 +3,7 @@
 //! app implements — one service, one `emit()`, emitting both halves together.
 
 use super::dart_http_client::{dart_call, dart_parameter, message_type};
+use super::on_one_line;
 use super::result::result_name;
 use crate::features::dart::{dart_json_decode, dart_json_encode, dart_typename, quoted};
 use crate::field_type::get_field_def;
@@ -355,7 +356,10 @@ fn client_method(named: &str, operation: &OperationDef, headered: bool) -> Strin
     let wire = &quoted(&operation.wire_name);
     let call = dart_call(operation);
     let returns = return_type(named, operation);
-    let doc = format!("  /// Calls `{}` over `ws_rpc`.", operation.wire_name);
+    let doc = format!(
+        "  /// Calls `{}` over `ws_rpc`.",
+        on_one_line(&operation.wire_name)
+    );
     let sent = message_encode(operation);
     if !headered {
         let params = message_dart_typename(operation);

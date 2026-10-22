@@ -4,6 +4,7 @@
 //! answer by status — mirroring [`super::dart_http_client`] statement for statement, since the URL,
 //! query and header rules it builds on were proven by execution on Dart.
 
+use super::on_one_line;
 use super::result::result_name;
 use crate::features::kotlin::{
     kotlin_bare, kotlin_declarations, kotlin_name, kotlin_property_name, kotlin_quoted,
@@ -405,9 +406,9 @@ fn method_params(operation: &OperationDef, shape: &HttpShape) -> String {
 fn method_doc(operation: &OperationDef, shape: &HttpShape) -> String {
     format!(
         "  /// Calls `{}` over `{} {}`.",
-        operation.wire_name,
+        on_one_line(&operation.wire_name),
         shape.method.name(),
-        shape.path_template()
+        on_one_line(&shape.path_template())
     )
 }
 
@@ -526,7 +527,7 @@ fn path_build_stmt(operation: &OperationDef, shape: &HttpShape, fn_prefix: &str)
     for segment in &shape.path {
         match segment {
             PathSegment::Literal(text) => {
-                let _ = writeln!(stmt, "    path += \"{}\"", kotlin_escape(text));
+                let _ = writeln!(stmt, "    path += {}", kotlin_quoted(text));
             }
             PathSegment::Placeholder(name) => {
                 let value = placeholder_value_kotlin_expr(fn_prefix, operation, shape, name);
@@ -1369,18 +1370,4 @@ fn kotlin_header_out_decode_is_fallible(ty: &Type) -> bool {
             | FieldDefType::F64
             | FieldDefType::SiblingType(_, _)
     )
-}
-
-/// Escapes a path literal for a double-quoted Kotlin string: a backslash, a double quote and a
-/// dollar sign (which Kotlin reads as interpolation even inside a plain string literal) all need
-/// escaping; a path template is ASCII by construction, so nothing else does.
-fn kotlin_escape(text: &str) -> String {
-    let mut escaped = String::with_capacity(text.len());
-    for ch in text.chars() {
-        if matches!(ch, '\\' | '"' | '$') {
-            escaped.push('\\');
-        }
-        escaped.push(ch);
-    }
-    escaped
 }

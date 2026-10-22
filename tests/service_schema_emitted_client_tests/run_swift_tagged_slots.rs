@@ -45,7 +45,7 @@ func told<Read: Codable>(_ at: Int, _ type: Read.Type, _ payload: String) {
 "#;
 
 /// `json` with the keys of every object sorted, as the Swift encoder of the run writes them.
-fn sorted(json: &str) -> String {
+pub fn sorted(json: &str) -> String {
     /// `value` with the keys of every object it holds sorted.
     fn sorting(value: Value) -> Value {
         match value {

@@ -129,17 +129,7 @@ const REFUSED_AS_A_NAME: [&str; 48] = [
 /// spelled as its escape, so a `//` comment keeps to its line, and the rest as [`ts_commented`]
 /// writes it, so a `/** */` one runs on.
 pub fn commented(text: &str) -> String {
-    let mut written = String::with_capacity(text.len());
-    for letter in text.chars() {
-        match letter {
-            '\n' => written.push_str("\\n"),
-            '\r' => written.push_str("\\r"),
-            '\u{2028}' => written.push_str("\\u2028"),
-            '\u{2029}' => written.push_str("\\u2029"),
-            other => written.push(other),
-        }
-    }
-    ts_commented(&written)
+    ts_commented(&super::on_one_line(text))
 }
 
 /// The schema the message validates against: the one `#[model_schema()]` published for it, read

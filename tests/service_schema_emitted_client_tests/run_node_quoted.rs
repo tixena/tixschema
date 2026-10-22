@@ -399,6 +399,28 @@ fn rust_answered(backend: &ImpostBackEnd, service: &str, request: &Value) -> Ans
     }
 }
 
+/// The status the Rust dispatcher answers a `POST` at `path` carrying `body` with, and the labels
+/// `note` was handed: what a client of another service that declares `note` is read as.
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+pub fn rust_noted(path: &str, body: Vec<u8>) -> (u16, Vec<String>) {
+    let backend = ImpostBackEnd::default();
+    let incoming = impost_http_rest_transport::IncomingRequest::new(
+        "POST".to_owned(),
+        path.to_owned(),
+        String::new(),
+        Vec::new(),
+        body,
+    );
+    let response = poll_once(impost_http_rest_transport::dispatch(
+        &backend,
+        &(),
+        &incoming,
+        &impost_http_rest_transport::DefaultFaultHandler,
+    ))
+    .unwrap();
+    (response.status(), backend.noted.into_inner().unwrap())
+}
+
 /// A request no route matches, built by a Rust twin's own constructor.
 fn unmatched<Request>(build: BuildsARequest<Request>) -> Request {
     build(

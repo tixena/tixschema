@@ -21,11 +21,13 @@ use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{
     brand_field, has_serde_skip_serializing, keys_taken_when_flattened, parse_serde_key_omission,
     struct_tag, tag_and_content_when_flattened, variant_names_when_flattened, variants_on_the_wire,
+    written_slots,
 };
 use crate::field_type::{
-    FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, classify_variant, get_field_def,
-    is_plain_enum, is_sequence_wrapper,
+    FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, get_field_def, is_plain_enum,
+    is_sequence_wrapper,
 };
+use crate::model_schema::variant_wire_kind;
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
 use crate::utils::{
     MapKeyWire, compute_alias_export_name, compute_item_export_name, to_snake_case,
@@ -501,7 +503,7 @@ fn unit_entries(item_enum: &ItemEnum, tag_attrs: &EnumTagAttrs) -> Vec<UnitEntry
     item_enum
         .variants
         .iter()
-        .filter(|variant| classify_variant(variant) == VariantKind::Unit)
+        .filter(|variant| variant_wire_kind(variant) == VariantKind::Unit)
         .map(|variant| {
             let (case_name, name) = variant_names(variant, rule);
             UnitEntry { case_name, name }
@@ -2216,7 +2218,7 @@ fn flattened_entries(item_enum: &ItemEnum, preprocess: &[FunctionName]) -> Vec<p
         .flat_map(|variant| {
             let variant_name = rename_override(&variant.attrs)
                 .unwrap_or_else(|| rule.apply_to_variant(&variant.ident.to_string()));
-            let unit = matches!(variant.fields, Fields::Unit);
+            let unit = variant_wire_kind(variant) == VariantKind::Unit;
             iter::once(variant_name.clone())
                 .chain(aliases::written_on(&variant.attrs))
                 .map(move |name| preprocess::Entry {
@@ -3474,7 +3476,7 @@ fn resolve_variant_payload(
     step: Option<&str>,
     aux: &mut Vec<String>,
 ) -> VariantPayload {
-    match classify_variant(variant) {
+    match variant_wire_kind(variant) {
         VariantKind::Unit => VariantPayload {
             beside: SlotEntries::default(),
             bound: Vec::new(),
@@ -3635,16 +3637,17 @@ fn slots_payload(
     aux: &mut Vec<String>,
 ) -> VariantPayload {
     let export_name = shape.export_name;
-    let slots: Vec<FieldDef> = variant
-        .fields
-        .iter()
-        .map(|field| {
-            let mut field_def = member_def(shape.args, "slot", field);
-            field_def.erase_type_parameters(shape.type_parameters);
-            field_def
-        })
-        .collect();
-    let checked = !validate::slot_rules(export_name, &slots).is_empty();
+    let tuple_field = written_slots(variant, |field| {
+        let mut field_def = member_def(shape.args, "slot", field);
+        field_def.erase_type_parameters(shape.type_parameters);
+        field_def
+    });
+    let slots: &[FieldDef] = if let FieldDefType::Tuple(slots) = &tuple_field.field_type {
+        slots
+    } else {
+        &[]
+    };
+    let checked = !validate::slot_rules(export_name, slots).is_empty();
     let bound = slots
         .iter()
         .enumerate()
@@ -3660,29 +3663,19 @@ fn slots_payload(
             )
         })
         .collect();
-    let tuple_field = FieldDef {
-        absent_from_wire: false,
-        array_depth: 0,
-        array_lengths: Vec::new(),
-        docs: String::new(),
-        field_type: FieldDefType::Tuple(slots),
-        model_schema_prop_meta: None,
-        name: "value".to_owned(),
-        nullable_levels: Vec::new(),
-        omits_value: false,
-        #[cfg(any(feature = "zod", feature = "jsonschema"))]
-        serde_default: None,
-        set_levels: Vec::new(),
-        #[cfg(feature = "jsonschema")]
-        type_span: proc_macro2::Span::call_site(),
-    };
     let hint = format!("{export_name}{}", variant.ident);
+    // The struct of a tuple of no slot reads and writes the `[]` serde writes for the variant.
+    let held = if slots.is_empty() {
+        tuple_shape(&[], &hint, aux).real_leaf
+    } else {
+        swift_full_real_type(&tuple_field, &hint, aux)
+    };
     VariantPayload {
         beside: SlotEntries::default(),
         bound,
         converted: None,
         corrected: None,
-        held: Some(swift_full_real_type(&tuple_field, &hint, aux)),
+        held: Some(held),
         rules: validate::payload_rules(export_name, step, checked),
         takes_keys: false,
         walked: None,
