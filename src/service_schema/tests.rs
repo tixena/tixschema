@@ -3132,6 +3132,52 @@ fn an_untagged_error_type_mapped_to_two_statuses_is_refused() {
     );
 }
 
+/// The enum is read untagged wherever its `#[serde(...)]` list writes the key, as serde reads it.
+#[test]
+fn an_untagged_error_type_is_refused_whichever_order_its_serde_keys_are_written_in() {
+    for (attribute, error) in [
+        (
+            quote! { #[serde(untagged, rename_all = "camelCase")] },
+            "WidgetErrorUntaggedFirst",
+        ),
+        (
+            quote! { #[serde(rename_all = "camelCase", untagged)] },
+            "WidgetErrorUntaggedLast",
+        ),
+    ] {
+        let named = Ident::new(error, Span::call_site());
+        exec_model_schema(
+            TokenStream::new(),
+            quote! {
+                #[derive(serde::Deserialize, serde::Serialize)]
+                #attribute
+                pub enum #named {
+                    Gone(GoneDetail),
+                    NotFound(NotFoundDetail),
+                }
+            },
+        );
+        assert_eq!(
+            refusals(&format!(
+                "pub trait WidgetService<Ctx> {{
+                    #[service_schema_op(http(
+                        method = \"GET\",
+                        path = \"/widgets/{{widget_id}}\",
+                        error_status(Gone = 410, NotFound = 404),
+                    ))]
+                    async fn get_widget(&self, ctx: &Ctx, widget_id: String) -> Result<Widget, {error}>;
+                }}"
+            )),
+            vec![format!(
+                "service_schema: operation `get_widget`: `{error}` is `#[serde(untagged)]`, so no \
+                 variant can be read off its value to pick a status\n       give the enum a tag or \
+                 map every variant to one status"
+            )],
+            "under {attribute}, the error's own reader carries no variant name to switch on"
+        );
+    }
+}
+
 #[test]
 fn an_untagged_error_type_mapped_to_one_status_is_not_refused() {
     record_untagged_enum("WidgetErrorUntaggedSingleProbe");

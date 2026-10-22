@@ -2199,27 +2199,6 @@ fn process_type_alias(item_type: ItemType, _args: &ModelSchemaArgs) -> TokenStre
     quote! { #alias }
 }
 
-/// Whether `attrs` carries `#[serde(untagged)]`, read off the raw tokens rather than through
-/// [`parse_serde_type_attributes`] — [`record_untagged_enum_item`] feeds a registry that has to
-/// answer the same way in every feature combination.
-fn has_serde_untagged(attrs: &[syn::Attribute]) -> bool {
-    for attr in attrs {
-        if attr.path().is_ident("serde") {
-            let mut found = false;
-            let _: syn::Result<()> = attr.parse_nested_meta(|nested| {
-                if nested.path.is_ident("untagged") {
-                    found = true;
-                }
-                Ok(())
-            });
-            if found {
-                return true;
-            }
-        }
-    }
-    false
-}
-
 /// Builds the `JSDoc` comment body (lines prefixed with ` * `) for an item, field, or enum
 /// variant. The no-docs fallback names what is exported, not as declared in Rust, and a
 /// ` ```rust example ` block is dropped as unreadable from a TypeScript comment.
@@ -6647,7 +6626,7 @@ fn variant_wire_names(
     item_enum: &syn::ItemEnum,
     variant: &syn::Variant,
 ) -> Vec<(&'static str, String)> {
-    if has_serde_untagged(&item_enum.attrs) {
+    if carries_untagged(&item_enum.attrs) {
         return Vec::new();
     }
     let ident = variant.ident.to_string();
@@ -6794,7 +6773,7 @@ fn record_wire_scalar_item(item: &Item) {
 /// item's own refusal. Alias transitivity: `type MyError = SomeUntaggedEnum;` is untagged too.
 fn record_untagged_enum_item(item: &Item) {
     if let Item::Enum(item_enum) = item {
-        if has_serde_untagged(&item_enum.attrs) {
+        if carries_untagged(&item_enum.attrs) {
             record_untagged_enum(&item_enum.ident.to_string());
         }
         return;

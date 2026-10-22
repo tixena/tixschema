@@ -10860,19 +10860,29 @@ fn a_unit_variants_read_name_is_measured_where_it_is_not_the_written_one() {
     );
 }
 
-/// An untagged enum writes a unit variant as `null`, and refuses it for that.
+/// An untagged enum writes a unit variant as `null`, and refuses it for that, wherever the list
+/// writes `untagged`.
 #[cfg(feature = "serde")]
 #[test]
 fn an_untagged_unit_variant_has_no_name_to_measure() {
-    let expanded = expansion_under(
-        "minLength = 9",
-        "#[serde(untagged)] pub enum Loose { Nothing, Text(String) }",
-    );
-    assert!(!expanded.contains("which breaks"), "got: {expanded}");
-    assert!(
-        expanded.contains("`Nothing` is a unit variant"),
-        "got: {expanded}"
-    );
+    for attribute in [
+        "#[serde(untagged)]",
+        "#[serde(untagged, rename_all = \"camelCase\")]",
+        "#[serde(rename_all = \"camelCase\", untagged)]",
+    ] {
+        let expanded = expansion_under(
+            "minLength = 9",
+            &format!("{attribute} pub enum Loose {{ Nothing, Text(String) }}"),
+        );
+        assert!(
+            !expanded.contains("which breaks"),
+            "under {attribute}, got: {expanded}"
+        );
+        assert!(
+            expanded.contains("`Nothing` is a unit variant"),
+            "under {attribute}, got: {expanded}"
+        );
+    }
 }
 
 #[test]
@@ -20571,6 +20581,31 @@ fn untagged_enum_registry_answers_only_after_the_enum_is_recorded() {
     record_untagged_enum("UntaggedEnumRegistryProbeAbove");
     let declared_above: syn::Type = syn::parse_quote!(UntaggedEnumRegistryProbeAbove);
     assert!(is_recorded_untagged_enum(&declared_above));
+}
+
+/// serde reads `untagged` wherever the list writes it, after a key with a value included.
+#[test]
+fn an_enum_is_recorded_untagged_wherever_its_list_writes_the_key() {
+    for (attribute, name) in [
+        (
+            "#[serde(untagged, rename_all = \"camelCase\")]",
+            "UntaggedWrittenFirstProbe",
+        ),
+        (
+            "#[serde(rename_all = \"camelCase\", untagged)]",
+            "UntaggedWrittenLastProbe",
+        ),
+    ] {
+        expansion_under(
+            "",
+            &format!("{attribute} pub enum {name} {{ Gone(String), Missing(u32) }}"),
+        );
+        let named: syn::Type = syn::parse_str(name).unwrap();
+        assert!(
+            is_recorded_untagged_enum(&named),
+            "`{name}` under {attribute} is untagged"
+        );
+    }
 }
 
 /// A brand over `Box<IdType>` expands without panicking, checked against `Box<String>`.
