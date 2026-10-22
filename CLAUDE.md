@@ -2227,6 +2227,10 @@ to keep.
   `corrected_field` with no function: `SwiftSchemaPayload(from:without:)`, then the type, a model
   `validate()` walks through `SwiftSchemaRead{Member}`, unjudged. A struct that reads a key of
   the holder's own members or one a struct ahead took is then refused, as serde refuses it. A
+  struct with a flattened member of its own, declared above and naming no function on itself,
+  takes keys: it hands them on to the members it flattens alone (`handed_reads`) and reads its
+  own members from the whole object, so it reads a key the types around it took, as TypeScript
+  and Zod read it, where serde refuses it (`tests/swift_tests/shared_key_models.rs`). A
   holder of no member of its own is handed keys where the types around it hand some (`around`,
   which `struct_declaration` takes) or where one of its reads names `taken`, so `handed_reads`
   writes its reads twice there, the second time with every member withheld from; one whose

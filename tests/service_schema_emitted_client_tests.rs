@@ -562,7 +562,15 @@ mod run_swift_own_tags;
 #[path = "swift_tests/flattened_models.rs"]
 mod swift_flattened_models;
 
-/// Those members, read and written back by the emitted Swift types.
+/// A struct with a flattened member of its own that reads a key a member of its holder's own, or a
+/// struct flattened ahead of it, took.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "swift_tests/shared_key_models.rs"]
+mod shared_key_models;
+
+/// Those members, and the structs with a flattened member of their own that read a key taken
+/// around them, read and written back by the emitted Swift types.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_swift_flattened.rs"]
 mod run_swift_flattened;
