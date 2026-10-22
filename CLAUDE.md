@@ -1758,7 +1758,11 @@ to keep.
   as a map: each records none. A type the emitter has not written takes none, and the README
   states the limit. `encode(to:)` writes each flattened member at its place, through its shape
   (`written_from`): a key two of them hold is written once, with the last value, where serde
-  writes it twice.
+  writes it twice. A flattened `Option` is written under `if let held` (`encode_statement`): the
+  keys of the value it holds, and nothing for `nil`, where `Optional`'s own `encode(to:)` writes
+  one value over its holder's keys. A holder with no member written under a key opens its object
+  all the same. `tests/swift_tests/flattened_options.rs` pins the text, and
+  `run_swift_flattened_options.rs` runs it against serde.
 - **Every flattened member is handed the keys its holder withholds, the first one included.**
   `member_reads` hands each a `Handed`: the `taken + [...]` of the holder's own keys and those
   each member flattened ahead took, and `withheld`, whether any key can be withheld: the holder
