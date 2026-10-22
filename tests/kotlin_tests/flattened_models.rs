@@ -3,11 +3,12 @@
 //! member of its struct, a flattened struct beside a member of its own, and an optional member
 //! beside a flattened one, with its twin under `nullable`. Beside them, a flattened member after
 //! a struct and beside a member of its holder's own. serde reads the members in the order
-//! declared: a struct takes the keys it reads, a member that names a function takes none, and
-//! every flattened member is handed the entries neither its holder's own members nor a member
-//! flattened ahead of it took. An externally tagged enum takes the first entry under the name of a
-//! variant it reads, beside a member of its holder's own, ahead of a member that names a function
-//! and ahead of a struct, and one declared below its holder is read from the object.
+//! declared: a struct takes the keys it reads, one with a member serde never writes among them, a
+//! member that names a function takes none, and every flattened member is handed the entries
+//! neither its holder's own members nor a member flattened ahead of it took. An externally tagged
+//! enum takes the first entry under the name of a variant it reads, beside a member of its
+//! holder's own, ahead of a member that names a function and ahead of a struct, and one declared
+//! below its holder is read from the object.
 
 use std::collections::HashMap;
 
@@ -64,6 +65,10 @@ pub const CLEATING: [&str; 3] = [
     r#"{"open_bay":{"label":"n"},"north":2}"#,
     r#"{"OpenBay":{"label":"n"},"north":2}"#,
 ];
+
+/// What [`Rousing`] and [`Gasketing`] are read from: the key of the member [`Unwritten`] reads and
+/// never writes among them.
+pub const UNWRITTEN: &str = r#"{"label":"n","hidden":1,"north":2}"#;
 
 /// What [`Scudding`] is read from.
 pub const SCUDDING: &str = r#"{"Bay":{"label":"n"},"label":"m","north":2}"#;
@@ -200,6 +205,38 @@ pub struct Brailing {
     #[model_schema_prop(preprocess = ["withItsKeys"])]
     #[serde(flatten)]
     pub tally: Bunting,
+}
+
+/// A struct with a member serde reads and never writes, which takes the keys it reads.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Unwritten {
+    #[serde(default, skip_serializing)]
+    pub hidden: u8,
+    pub label: String,
+}
+
+/// A member that names a function flattened after [`Unwritten`]: serde hands the function the keys
+/// the struct did not take.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Rousing {
+    #[serde(flatten)]
+    pub hauled: Unwritten,
+    #[model_schema_prop(preprocess = ["withItsKeys"])]
+    #[serde(flatten)]
+    pub tally: Bunting,
+}
+
+/// A struct flattened after [`Unwritten`] that reads a key it took: serde hands the second the
+/// object without it and refuses the payload.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Gasketing {
+    #[serde(flatten)]
+    pub hauled: Unwritten,
+    #[serde(flatten)]
+    pub labelling: Labelling,
 }
 
 /// A struct flattened after a struct that reads other keys, which serde reads.

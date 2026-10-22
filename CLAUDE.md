@@ -931,13 +931,15 @@ the consumer's view; this is what a change has to keep.
   (`flatten_plan`): from `JsonObject(obj - setOf(...) - {member}Keys ...)`, the object without the
   keys the holder's own members take and those each member flattened ahead of it took, and from
   `obj` where nothing was taken. An optional one looks for its keys in that object alone
-  (`flatten_struct_field_plan`). A struct takes the `descriptor.elementNames` of its unjudged
-  serializer, unless `preprocess::takes_no_key` answers for it: a member that names a function,
-  and a type `HANDED` does not note as handing its object to none, so a type the emitter has not
-  written takes none. The serializer the emitter writes declares no element, so a struct with a
-  flattened member of its own takes none, as serde reads it as a map, and so does one with a
-  member serde never writes, where serde takes its keys: the README states the limit. A map is
-  the one member of its object (section 4).
+  (`flatten_struct_field_plan`). A struct takes the keys `flattened_struct_keys` answers, unless
+  `preprocess::takes_no_key` answers for it: a member that names a function, and a type `HANDED`
+  does not note as handing its object to none, so a type the emitter has not written takes none.
+  The serializer the emitter writes declares no element, so `struct_kotlin_tokens` records in
+  `KOTLIN_TAKEN_KEYS` the keys `keys_taken_when_flattened` in `src/features/serde.rs` answers for
+  each struct it writes one for: those of a struct with a member serde never writes, and none of
+  one with a flattened member of its own, which serde reads as a map. A struct the plugin writes
+  the serializer of takes the `descriptor.elementNames` of its unjudged serializer, and its text
+  is what it was. A map is the one member of its object (section 4).
 - **A flattened externally tagged enum takes one entry** (`flatten_enum_field_plan`): the first
   of that object, in its order, under a name in the `setOf(...)` written from
   `variant_names_when_flattened` in `src/features/serde.rs`, which Dart reads too. The holder
@@ -1404,8 +1406,9 @@ consumer's view; this is what a change has to keep.
   member takes is `taken_by`, the `Taken` recorded for its type in `DART_TAKEN_KEYS`, and nothing
   for a member that names a function:
   - `Taken::Keys` of a struct, which `struct_dart_tokens` records from
-    `keys_taken_when_flattened` in `src/features/serde.rs`, which the Swift emitter reads too:
-    serde's own list of the name and each alias of every member it reads. `without` removes them.
+    `keys_taken_when_flattened` in `src/features/serde.rs`, which the Swift and Kotlin emitters
+    read too: serde's own list of the name and each alias of every member it reads. `without`
+    removes them.
   - `Taken::FirstOf` of an externally tagged enum, which `enum_dart_tokens` records from
     `variant_names_when_flattened` in `src/features/serde.rs`: the name each variant serde reads
     is read under and each alias, serde's `VARIANTS`. serde's

@@ -33,8 +33,8 @@ use self::validate::{Member, Rules};
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{
-    brand_field, has_serde_skip_serializing, parse_serde_key_omission, struct_tag,
-    variant_names_when_flattened,
+    brand_field, has_serde_skip_serializing, keys_taken_when_flattened, parse_serde_key_omission,
+    struct_tag, variant_names_when_flattened,
 };
 use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, classify_variant, get_field_def,
@@ -207,6 +207,10 @@ thread_local! {
     /// ident: the first entry of the holder's object under one of them is the enum's.
     static KOTLIN_VARIANT_NAMES: RefCell<HashMap<String, Vec<String>>> =
         RefCell::new(HashMap::new());
+    /// The keys serde takes off its holder's object for each struct the emitter wrote a serializer
+    /// for by hand, by Rust ident: the descriptor of that serializer declares no element.
+    static KOTLIN_TAKEN_KEYS: RefCell<HashMap<String, Vec<String>>> =
+        RefCell::new(HashMap::new());
 }
 
 /// The Kotlin tokens `item` earns, given what `#[model_schema(...)]` wrote on it. Dispatches on
@@ -286,6 +290,33 @@ fn flattened_variant_names(def: &FieldDef) -> Option<(&str, Vec<String>)> {
     }
     let names = KOTLIN_VARIANT_NAMES.with(|noted| noted.borrow().get(name).cloned())?;
     (!names.is_empty()).then_some((name.as_str(), names))
+}
+
+/// The keys a flattened struct typed `def` takes off its holder's object, as a Kotlin set: those
+/// serde reads where the emitter wrote the struct's serializer by hand, and the `elementNames` of
+/// the descriptor `serializer` answers for any other struct.
+fn flattened_struct_keys(def: &FieldDef, serializer: &str) -> String {
+    let recorded = if let FieldDefType::SiblingType(name, _) = &def.field_type {
+        KOTLIN_TAKEN_KEYS.with(|noted| noted.borrow().get(name).cloned())
+    } else {
+        None
+    };
+    recorded.map_or_else(
+        || format!("({serializer}).descriptor.elementNames.toSet()"),
+        |keys| {
+            if keys.is_empty() {
+                // Kotlin infers no element type from an empty `setOf()`.
+                "setOf<String>()".to_owned()
+            } else {
+                let listed = keys
+                    .iter()
+                    .map(|key| format!("\"{}\"", kotlin_template_text(key)))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("setOf({listed})")
+            }
+        },
+    )
 }
 
 /// The Kotlin name registered for `rust_ident`, or `None` for a type declared below the one
@@ -1335,7 +1366,7 @@ fn own_field_plan(
 /// One flattened *struct* (or `Option<Struct>`) field's own statements: the `serialize` merge, the
 /// `deserialize` read (leniently, off `rest`, the object serde hands the member, as the member's
 /// own `preprocess` then corrects it, and `null` where an optional field's own keys are all absent
-/// from `rest`), and the `elementNames` read the members flattened after it are handed the object
+/// from `rest`), and the keys it takes, which the members flattened after it are handed the object
 /// without.
 fn flatten_struct_field_plan(
     field: &KotlinField,
@@ -1347,8 +1378,10 @@ fn flatten_struct_field_plan(
     let inner_serializer = read::member_serializer(&base, type_parameters);
     let serialize = flattened_merge(field, prop, &inner_serializer);
     let keys_ident = format!("{}Keys", kotlin_bare(prop));
-    let key_read =
-        format!("val {keys_ident} = ({inner_serializer}).descriptor.elementNames.toSet()");
+    let key_read = format!(
+        "val {keys_ident} = {}",
+        flattened_struct_keys(&base, &inner_serializer)
+    );
     let handed = preprocess::corrected(preprocess::of(&field.field_def), rest);
     let decode = if field.field_def.is_optional() {
         format!(
@@ -1605,6 +1638,15 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
     let written_by_hand = fields
         .iter()
         .any(|field| field.flatten || field.never_written);
+    KOTLIN_TAKEN_KEYS.with(|noted| {
+        let mut recorded = noted.borrow_mut();
+        if written_by_hand {
+            let taken = keys_taken_when_flattened(&item_struct.fields, rule, args.preprocess);
+            recorded.insert(rust_ident.clone(), taken);
+        } else {
+            recorded.remove(&rust_ident);
+        }
+    });
     let handed_on = fields
         .iter()
         .any(|field| field.flatten && preprocess::takes_no_key(&field.field_def));
