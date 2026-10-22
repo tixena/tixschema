@@ -53,8 +53,8 @@ mod unrecorded;
 #[path = "../kotlin_tests/corrected_options_models.rs"]
 mod corrected_options;
 
-/// The holders of a struct with a flattened member of its own that reads a key taken around it,
-/// what serde says of each payload, and what Zod reads of it.
+/// The holders of a flattened struct that reads a key taken around it, what serde says of each
+/// payload, and what Zod reads of it.
 #[path = "../swift_tests/shared_key_models.rs"]
 mod shared_keys;
 
@@ -230,10 +230,10 @@ export function withFewStops(value: Shipment, ctx: ParsePayload<Shipment>): void
 
 export function withAStop(value: Transfer, ctx: ParsePayload<Transfer>): void {
   if (typeof value === "string") return;
-  if ("Road" in value && value.Road.stops.length === 0) {
+  if (value.Road !== undefined && value.Road.stops.length === 0) {
     ctx.issues.push({ code: "custom", message: "a road transfer makes a stop", path: ["Road", "stops"], input: value });
   }
-  if ("Rail" in value && value.Rail === "") {
+  if (value.Rail !== undefined && value.Rail === "") {
     ctx.issues.push({ code: "custom", message: "a rail transfer names its line", path: ["Rail"], input: value });
   }
 }
@@ -624,6 +624,22 @@ console.log(
   JSON.stringify(PAYLOADS.map(([schema, payload]) => lib[schema].safeParse(JSON.parse(payload)).success)),
 );
 "#;
+
+/// The functions the checks of [`DeclaredSway`] and [`DeclaredLull`] name, which refuse the unit
+/// variant's bare name.
+const NOT_CALM: &str = r#"import type { ParsePayload } from "zod/v4/core";
+
+export function notCalm(value: DeclaredTack, ctx: ParsePayload<DeclaredTack>): void {
+  if (value === "Calm") {
+    ctx.issues.push({ code: "custom", message: "a calm tack is refused", path: [], input: value });
+  }
+}
+
+export function notCalmLull(value: DeclaredLull, ctx: ParsePayload<DeclaredLull>): void {
+  if (value === "Calm") {
+    ctx.issues.push({ code: "custom", message: "a calm lull is refused", path: [], input: value });
+  }
+}"#;
 
 /// The functions the holders of [`corrected_options_bundle`] name, as a consumer writes them in
 /// TypeScript.
@@ -1016,6 +1032,47 @@ const PROJECT: &str = r#"{
 }
 "#;
 
+/// Each payload of an externally tagged enum, the schema it is parsed through and the type it is
+/// assigned to, and whether serde, Zod and TypeScript take it: one variant's entry, the name of a
+/// variant that holds none, and the entries of two variants, which none of the three takes.
+const HATCHES: [(&str, &str, &str, bool); 5] = [
+    (
+        "DeclaredHatch$Schema",
+        "DeclaredHatch",
+        r#"{"Bay":{"label":"n"}}"#,
+        true,
+    ),
+    ("DeclaredHatch$Schema", "DeclaredHatch", r#""Calm""#, true),
+    (
+        "DeclaredHatch$Schema",
+        "DeclaredHatch",
+        r#"{"Bay":{"label":"n"},"Dock":{"label":"s"}}"#,
+        false,
+    ),
+    (
+        "DeclaredLading$SchemaDefault",
+        "DeclaredLading<string>",
+        r#"{"held_fast":"a"}"#,
+        true,
+    ),
+    (
+        "DeclaredLading$SchemaDefault",
+        "DeclaredLading<string>",
+        r#"{"held_fast":"a","loose":{"cargo":"b"}}"#,
+        false,
+    ),
+];
+
+/// Each payload of [`DeclaredYaw`], and whether serde and its Zod schema take it: each variant's
+/// entry, a unit variant's over `null`, as serde writes it, and over a number. [`DeclaredSway`]
+/// and [`DeclaredDrift`] take each but the unit variant's, which a check refuses.
+const YAWS: [(&str, bool); 4] = [
+    (r#"{"note":"a","Calm":null}"#, true),
+    (r#"{"note":"a","Bay":{"label":"n"}}"#, true),
+    (r#"{"note":"a","Held":"x"}"#, true),
+    (r#"{"note":"a","Calm":1}"#, false),
+];
+
 static STOOD_DOWN: Once = Once::new();
 
 /// A struct whose fields bound a brand over a string, one declared below it and an optional one,
@@ -1239,6 +1296,77 @@ type ResultedModel = (
     fn() -> serde_json::Value,
 );
 
+/// An externally tagged enum of two variants that hold a value and one that holds none.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DeclaredHatch {
+    Bay { label: String },
+    Calm,
+    Dock { label: String },
+}
+
+/// An externally tagged enum that declares a parameter, its variants under the enum's
+/// `rename_all`.
+#[model_schema(default_types(Cargo = String))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeclaredLading<Cargo> {
+    Empty,
+    HeldFast(Cargo),
+    Loose { cargo: Cargo },
+}
+
+/// An externally tagged enum flattened under a member that names a function.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DeclaredTack {
+    Bay { label: String },
+    Calm,
+    Held(String),
+}
+
+/// [`DeclaredTack`] flattened beside a member of its holder's own, under a function that answers
+/// the payload as it was handed: serde writes a unit variant as its name over `null`.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeclaredYaw {
+    pub note: String,
+    #[model_schema_prop(preprocess = ["asGiven"])]
+    #[serde(flatten)]
+    pub tack: DeclaredTack,
+}
+
+/// [`DeclaredTack`] flattened beside a member of its holder's own, under a check that refuses its
+/// unit variant: serde writes the variant as its name over `null`, and the check is handed the
+/// enum's value.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeclaredSway {
+    pub note: String,
+    #[model_schema_prop(check = ["notCalm"])]
+    #[serde(flatten)]
+    pub tack: DeclaredTack,
+}
+
+/// An externally tagged enum that names a check on itself, which refuses its unit variant.
+#[model_schema(check = ["notCalmLull"])]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DeclaredLull {
+    Bay { label: String },
+    Calm,
+    Held(String),
+}
+
+/// [`DeclaredLull`] flattened beside a member of its holder's own: its check is run on the
+/// enum's value, its unit variant's bare name.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeclaredDrift {
+    #[serde(flatten)]
+    pub lull: DeclaredLull,
+    pub note: String,
+}
+
 fn bundle() -> String {
     [
         PREAMBLE.to_owned(),
@@ -1283,6 +1411,54 @@ fn bundle() -> String {
     .chain(dated())
     .chain(checks())
     .collect::<Vec<_>>()
+    .join("\n\n")
+}
+
+/// The payload as it was handed, which [`DeclaredYaw`] names.
+const fn as_given(payload: serde_json::Value) -> serde_json::Value {
+    payload
+}
+
+/// Refuses [`DeclaredLull::Calm`], which [`DeclaredLull`] names on itself.
+fn not_calm_lull(value: &DeclaredLull) -> Result<(), Vec<String>> {
+    if matches!(value, DeclaredLull::Calm) {
+        Err(vec!["a calm lull is refused".to_owned()])
+    } else {
+        Ok(())
+    }
+}
+
+/// Refuses [`DeclaredTack::Calm`], which [`DeclaredSway`] names.
+fn not_calm(value: &DeclaredTack) -> Result<(), Vec<String>> {
+    if matches!(value, DeclaredTack::Calm) {
+        Err(vec!["a calm tack is refused".to_owned()])
+    } else {
+        Ok(())
+    }
+}
+
+/// The externally tagged enums of [`HATCHES`] and [`YAWS`]: a bundle of their own, compiled with
+/// `tsc --strict` before it is loaded.
+fn hatches_bundle() -> String {
+    [
+        PREAMBLE.to_owned(),
+        DeclaredHatch::ts_definition(),
+        DeclaredHatch::zod_schema(),
+        DeclaredLading::<String>::ts_definition(),
+        DeclaredLading::<String>::zod_schema(),
+        AS_GIVEN_OR_NULL.to_owned(),
+        DeclaredTack::ts_definition(),
+        DeclaredTack::zod_schema(),
+        DeclaredYaw::ts_definition(),
+        DeclaredYaw::zod_schema(),
+        NOT_CALM.to_owned(),
+        DeclaredSway::ts_definition(),
+        DeclaredSway::zod_schema(),
+        DeclaredLull::ts_definition(),
+        DeclaredLull::zod_schema(),
+        DeclaredDrift::ts_definition(),
+        DeclaredDrift::zod_schema(),
+    ]
     .join("\n\n")
 }
 
@@ -1747,8 +1923,8 @@ fn corrected_options_bundle() -> String {
     .join("\n\n")
 }
 
-/// The holders of a struct with a flattened member of its own that reads a key taken around it: a
-/// bundle of their own, compiled with `tsc --strict` before it is loaded.
+/// The holders of a flattened struct that reads a key taken around it: a bundle of their own,
+/// compiled with `tsc --strict` before it is loaded.
 fn shared_keys_bundle() -> String {
     [
         PREAMBLE.to_owned(),
@@ -1762,6 +1938,22 @@ fn shared_keys_bundle() -> String {
         shared_keys::Gantline::zod_schema(),
         shared_keys::Clinching::ts_definition(),
         shared_keys::Clinching::zod_schema(),
+        shared_keys::Garnet::ts_definition(),
+        shared_keys::Garnet::zod_schema(),
+        shared_keys::Parrel::ts_definition(),
+        shared_keys::Parrel::zod_schema(),
+        shared_keys::Gudgeon::ts_definition(),
+        shared_keys::Gudgeon::zod_schema(),
+        shared_keys::Rubrail::ts_definition(),
+        shared_keys::Rubrail::zod_schema(),
+        shared_keys::Toggled::ts_definition(),
+        shared_keys::Toggled::zod_schema(),
+        shared_keys::Halliard::ts_definition(),
+        shared_keys::Halliard::zod_schema(),
+        shared_keys::Snotter::ts_definition(),
+        shared_keys::Snotter::zod_schema(),
+        shared_keys::Bitts::ts_definition(),
+        shared_keys::Bitts::zod_schema(),
     ]
     .join("\n\n")
 }
@@ -2849,9 +3041,9 @@ fn type_check_an_optional_flattened_type_that_names_a_function_is_read_from_its_
     );
 }
 
-/// A struct with a flattened member of its own is read by the Zod schema of its holder under
-/// `node` with a key a member of its holder's own, or a struct flattened ahead of it, reads too,
-/// and TypeScript takes the payload, where serde refuses it.
+/// A flattened struct is read by the Zod schema of its holder under `node` with a key a member of
+/// its holder's own, or a struct flattened ahead of it, reads too, an optional one where that key
+/// is there, and TypeScript takes the payload, where serde refuses it or reads `None`.
 #[test]
 fn type_check_a_key_read_by_a_struct_and_the_type_around_it_is_read_under_zod() {
     let listed: Vec<(String, &str)> = shared_keys::SHARED_KEYS
@@ -2871,8 +3063,10 @@ fn type_check_a_key_read_by_a_struct_and_the_type_around_it_is_read_under_zod() 
     let Some(at) = built_from("shared-keys-payloads", &shared_keys_bundle()) else {
         return;
     };
-    let mut payloads =
-        String::from("import type { Bowline, Clinching } from \"./lib/index.js\";\n");
+    let mut payloads = String::from(
+        "import type { Bitts, Bowline, Clinching, Gudgeon, Halliard, Parrel, Rubrail } from \
+         \"./lib/index.js\";\n",
+    );
     for (position, row) in shared_keys::SHARED_KEYS.iter().enumerate() {
         let _ = writeln!(
             payloads,
@@ -2887,5 +3081,104 @@ fn type_check_a_key_read_by_a_struct_and_the_type_around_it_is_read_under_zod() 
     assert!(
         passed,
         "TypeScript does not take each payload:\n{said}\n{payloads}"
+    );
+}
+
+/// The TypeScript type of an externally tagged enum takes one variant's entry and the name of a
+/// variant that holds none, and refuses an object of two variants' entries, as serde and the Zod
+/// schema under `node` refuse it.
+#[test]
+fn type_check_an_externally_tagged_enum_refuses_an_object_of_two_variants_entries() {
+    let stated: Vec<bool> = HATCHES.iter().map(|&(_, _, _, taken)| taken).collect();
+    let read: Vec<bool> = HATCHES
+        .iter()
+        .map(|&(_, typed, json, _)| {
+            if typed == "DeclaredHatch" {
+                serde_json::from_str::<DeclaredHatch>(json).is_ok()
+            } else {
+                serde_json::from_str::<DeclaredLading<String>>(json).is_ok()
+            }
+        })
+        .collect();
+    assert_eq!(read, stated, "serde does not take what the rows state");
+    let listed: Vec<(&str, &str)> = HATCHES
+        .iter()
+        .map(|&(schema, _, json, _)| (schema, json))
+        .collect();
+    let driver = TAKEN_DRIVER.replace("PAYLOADS", &serde_json::to_string(&listed).unwrap());
+    let Some((printed, failed)) = loaded_from("hatches", &hatches_bundle(), &driver) else {
+        return;
+    };
+    assert_eq!(
+        printed,
+        serde_json::to_string(&stated).unwrap(),
+        "the schemas do not take what the rows state:\n{failed}"
+    );
+    let Some(at) = built_from("hatches-payloads", &hatches_bundle()) else {
+        return;
+    };
+    let mut payloads =
+        String::from("import type { DeclaredHatch, DeclaredLading } from \"./lib/index.js\";\n");
+    for (position, &(_, typed, json, _)) in HATCHES.iter().enumerate() {
+        let _ = writeln!(payloads, "export const row{position}: {typed} = {json};");
+    }
+    fs::write(at.join("tsconfig.consumer.json"), CONSUMER_PROJECT).unwrap();
+    fs::write(at.join("consumer.ts"), &payloads).unwrap();
+    let (_, said) = compiled(&at, "tsconfig.consumer.json").unwrap();
+    fs::remove_dir_all(&at).unwrap();
+    // A row's line is its position after the import.
+    let typed: Vec<bool> = (0..HATCHES.len())
+        .map(|row| !said.contains(&format!("consumer.ts({},", row + 2)))
+        .collect();
+    assert_eq!(
+        typed, stated,
+        "TypeScript does not take what the rows state:\n{said}\n{payloads}"
+    );
+}
+
+/// An externally tagged enum flattened under a member that names a function, a `preprocess` or a
+/// `check`, is taken by the Zod schema of its holder under `node` as serde writes and reads it:
+/// each variant's entry, a unit variant's over `null` among them, and not a unit variant's over
+/// any other value. A check, the member's or the enum's own, is handed the enum's value, the unit
+/// variant's bare name, and refuses it as the Rust check does.
+#[test]
+fn type_check_a_flattened_enum_under_a_function_takes_a_unit_variants_entry_over_null() {
+    let checked = || {
+        YAWS.iter()
+            .map(|&(json, taken)| taken && !json.contains("Calm"))
+    };
+    let stated: Vec<bool> = YAWS
+        .iter()
+        .map(|&(_, taken)| taken)
+        .chain(checked())
+        .chain(checked())
+        .collect();
+    let read: Vec<bool> = YAWS
+        .iter()
+        .map(|&(json, _)| serde_json::from_str::<DeclaredYaw>(json).is_ok())
+        .chain(
+            YAWS.iter()
+                .map(|&(json, _)| serde_json::from_str::<DeclaredSway>(json).is_ok()),
+        )
+        .chain(
+            YAWS.iter()
+                .map(|&(json, _)| serde_json::from_str::<DeclaredDrift>(json).is_ok()),
+        )
+        .collect();
+    assert_eq!(read, stated, "serde does not take what the rows state");
+    let listed: Vec<(&str, &str)> = YAWS
+        .iter()
+        .map(|&(json, _)| ("DeclaredYaw$Schema", json))
+        .chain(YAWS.iter().map(|&(json, _)| ("DeclaredSway$Schema", json)))
+        .chain(YAWS.iter().map(|&(json, _)| ("DeclaredDrift$Schema", json)))
+        .collect();
+    let driver = TAKEN_DRIVER.replace("PAYLOADS", &serde_json::to_string(&listed).unwrap());
+    let Some((printed, failed)) = loaded_from("yaws", &hatches_bundle(), &driver) else {
+        return;
+    };
+    assert_eq!(
+        printed,
+        serde_json::to_string(&stated).unwrap(),
+        "the schema does not take what the rows state:\n{failed}"
     );
 }

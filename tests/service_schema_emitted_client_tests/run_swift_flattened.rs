@@ -7,11 +7,12 @@
 //! whose every member is flattened: a map, the one member of each, in each shape a map is read in,
 //! and a holder of flattened structs alone; and a member named after the container a written
 //! `encode(to:)` declares, of its holder's own and flattened; and what a variant under a tag alone
-//! holds as its one slot or flattens, which serde hands the object without the tag; and an
-//! optional map alone in its struct or in a variant under its name, under a content key or
-//! untagged, which serde reads as `None` wherever an entry does not read; and a struct with a
-//! flattened member of its own that reads a key a member of its holder's own or a struct flattened
-//! ahead of it took, as TypeScript and Zod read it, where serde refuses the payload.
+//! holds as its one slot or flattens, which serde hands the object without the tag and Swift reads
+//! the whole object from, as TypeScript and Zod read it; and an optional map alone in its struct or
+//! in a variant under its name, under a content key or untagged, which serde reads as `None`
+//! wherever an entry does not read; and a flattened struct that reads a key a member of its
+//! holder's own or a struct flattened ahead of it took, as TypeScript and Zod read it, where serde
+//! refuses the payload or reads `None`.
 
 #![cfg(feature = "swift")]
 
@@ -24,7 +25,9 @@ use serde_json::Value;
 
 use super::runtime::judged;
 use super::shared_key_models::{
-    SHARED_KEYS, bowline_swift, clinching_swift, earring_swift, gantline_swift, spritsail_swift,
+    SHARED_KEYS, bitts_swift, bowline_swift, clinching_swift, earring_swift, gantline_swift,
+    garnet_swift, gudgeon_swift, halliard_swift, parrel_swift, rubrail_swift, snotter_swift,
+    spritsail_swift, toggled_swift,
 };
 use super::swift_flattened_models::{
     BALING, BOWSING, BOXING, Baling, Bowsing, Boxing, CLEWING, COUNTS, Clewing, FAKING, FRAPPING,
@@ -86,9 +89,9 @@ func refusal<Read: Decodable>(_ type: Read.Type, _ payload: String) -> String {
 "#;
 
 /// What prints the keys each function was handed, then its holder written back; then each member
-/// flattened after a struct, and what a read of a struct after a struct that reads the same key
-/// says; then a struct flattened first beside a member of its holder's own, and what a read of
-/// one that reads the key of that member says.
+/// flattened after a struct, and a struct after a struct that reads the same key, written back;
+/// then a struct flattened first beside a member of its holder's own, one that reads the key of
+/// that member written back, and what a read of one that names a function says.
 const MAIN: &str = r##"
 let frapping = read(Frapping.self, #"FRAPPING"#)
 print("frapping: \(written(frapping.tally.keys)) \(written(frapping))")
@@ -107,9 +110,9 @@ print("twinning: \(written(twinning.tally.keys)) \(written(twinning))")
 let gripping = read(Gripping.self, #"GRIPPING"#)
 print("gripping: \(written(gripping.notch)) \(written(gripping))")
 print("gripping refused: \(refusal(Gripping.self, #"BROKEN_GRIPPING"#))")
-print("plying refused: \(refusal(Plying.self, #"STOPPING"#))")
+print("plying: \(written(read(Plying.self, #"BALING"#)))")
 print("hanking: \(written(read(Hanking.self, #"HANKING"#)))")
-print("whipping refused: \(refusal(Whipping.self, #"LABEL"#))")
+print("whipping: \(written(read(Whipping.self, #"LABEL"#)))")
 print("marrying refused: \(refusal(Marrying.self, #"LABEL"#))")
 "##;
 
@@ -252,6 +255,7 @@ fn with_payloads(main: &str) -> String {
         ("GRIPPING", GRIPPING),
         ("HANKING", HANKING),
         ("LABEL", LABEL),
+        ("BALING", BALING),
     ]
     .into_iter()
     .fold(main.to_owned(), |held, (named, payload)| {
@@ -388,7 +392,7 @@ fn after_a_struct() -> String {
         note: "a".to_owned(),
     };
     assert_eq!(written(&broken_gripping), BROKEN_GRIPPING);
-    let plying = serde_json::from_str::<Plying>(STOPPING)
+    let plying = serde_json::from_str::<Plying>(BALING)
         .unwrap_err()
         .to_string();
     let (plying_refused, _position) = plying.split_once(" at line").unwrap();
@@ -426,13 +430,14 @@ fn first() -> String {
 /// Each member that names a function, each member flattened after a struct and each struct
 /// flattened first is read from the keys serde hands it, and each holder is written back as serde
 /// writes it back. A model a holder holds is judged once, with its holder, under the place serde
-/// names, and a struct that reads a key its holder or a struct ahead of it took is refused, as
-/// serde refuses it.
+/// names. A struct that reads a key its holder or a struct ahead of it took reads it, as
+/// TypeScript and Zod read it, where serde refuses it, and one that names a function is handed
+/// what serde hands it, and refused as serde refuses it.
 #[test]
 fn a_flattened_member_reads_in_swift_the_keys_serde_hands_it() {
-    let expected = format!("{}{}{}", handed(), after_a_struct(), first());
+    let serde = format!("{}{}{}", handed(), after_a_struct(), first());
     assert_eq!(
-        expected,
+        serde,
         "frapping: [\"north\"] {\"keys\":[\"north\"],\"note\":\"a\"}\n\
          kedging: [\"label\",\"north\"] {\"keys\":[\"label\",\"north\"],\"label\":\"n\",\"note\":\"a\"}\n\
          marling: [\"label\",\"north\"] {\"keys\":[\"label\",\"north\"],\"label\":\"n\",\"note\":\"a\"}\n\
@@ -448,6 +453,15 @@ fn a_flattened_member_reads_in_swift_the_keys_serde_hands_it() {
          whipping refused: missing field `label`\n\
          marrying refused: missing field `label`\n"
     );
+    let expected = serde
+        .replace(
+            "plying refused: missing field `label`",
+            "plying: {\"label\":\"n\",\"note\":\"a\"}",
+        )
+        .replace(
+            "whipping refused: missing field `label`",
+            "whipping: {\"label\":\"n\"}",
+        );
     let Some(printed) = printed() else {
         return;
     };
@@ -522,13 +536,10 @@ fn a_member_named_after_the_container_reads_and_writes_in_swift_as_serde_does() 
     assert_eq!(printed, expected);
 }
 
-/// What a variant under a tag alone holds as its one slot or flattens beside no member of its own
-/// is read from the object without the tag, so a struct that reads a key named as the tag is
-/// refused, as serde refuses it, and one that reads another key is read and written back as serde
-/// writes it back, beside a variant with a member of its own. A model whose rule is broken is
-/// refused once, with its holder, under the place serde names.
-#[test]
-fn a_variant_under_a_tag_alone_reads_in_swift_without_the_tag() {
+/// Each variant under a tag alone of [`Grafting`] and [`Pointing`], read from a payload whose
+/// struct reads a key named as the tag, from one whose struct reads another key, and from one
+/// whose model breaks its rule.
+fn tag_alone_rows() -> [Row; 9] {
     let read_back = |name, read_as, json, told| Row {
         json,
         name,
@@ -540,15 +551,16 @@ fn a_variant_under_a_tag_alone_reads_in_swift_without_the_tag() {
         refused: true,
         ..read_back(name, read_as, json, told)
     };
-    let rows = [
-        refusing(
-            "grafting held refused",
+    // serde refuses the first two, and the Swift read writes them back.
+    [
+        read_back(
+            "grafting held",
             "Grafting",
             GRAFTING_HELD,
             refused::<Grafting>,
         ),
-        refusing(
-            "grafting slot refused",
+        read_back(
+            "grafting slot",
             "Grafting",
             GRAFTING_SLOT,
             refused::<Grafting>,
@@ -595,15 +607,26 @@ fn a_variant_under_a_tag_alone_reads_in_swift_without_the_tag() {
             BROKEN_POINTING_NOTCHED,
             refused::<Pointing>,
         ),
-    ];
+    ]
+}
+
+/// A struct a variant under a tag alone holds as its one slot or flattens beside no member of its
+/// own is read from the whole object, so one that reads a key named as the tag reads it, as
+/// TypeScript and Zod read it, where serde hands it the object without the tag and refuses the
+/// payload, and one that reads another key is read and written back as serde writes it back,
+/// beside a variant with a member of its own. A model whose rule is broken is refused once, with
+/// its holder, under the place serde names.
+#[test]
+fn a_variant_under_a_tag_alone_reads_in_swift_the_tag_its_struct_reads() {
+    let rows = tag_alone_rows();
     let expected = rows.iter().fold(String::new(), |mut expected, row| {
         let _ = writeln!(expected, "{}: {}", row.name, (row.told)(row.json));
         expected
     });
     assert_eq!(
         expected,
-        "grafting held refused: missing field `kind`\n\
-         grafting slot refused: missing field `kind`\n\
+        "grafting held: missing field `kind`\n\
+         grafting slot: missing field `kind`\n\
          pointing held: {\"kind\":\"Held\",\"label\":\"n\"}\n\
          pointing slot: {\"kind\":\"Slot\",\"label\":\"n\"}\n\
          pointing noted: {\"kind\":\"Noted\",\"label\":\"n\",\"note\":\"a\"}\n\
@@ -612,6 +635,15 @@ fn a_variant_under_a_tag_alone_reads_in_swift_without_the_tag() {
          pointing marked refused: 'mark': too short: minimum length is 1, got 0\n\
          pointing notched refused: 'mark': too short: minimum length is 1, got 0\n"
     );
+    let swift = expected
+        .replace(
+            "grafting held: missing field `kind`",
+            "grafting held: {\"kind\":\"Held\"}",
+        )
+        .replace(
+            "grafting slot: missing field `kind`",
+            "grafting slot: {\"kind\":\"Slot\"}",
+        );
     let definitions = [
         pennant_swift::swift_definition(),
         notch_swift::swift_definition(),
@@ -622,7 +654,7 @@ fn a_variant_under_a_tag_alone_reads_in_swift_without_the_tag() {
     let Some(printed) = printed_of(&definitions, &main_of(&rows)) else {
         return;
     };
-    assert_eq!(printed, expected);
+    assert_eq!(printed, swift);
 }
 
 /// Each optional map alone in its struct or in a variant, under its name, under a content key or
@@ -770,37 +802,45 @@ fn an_optional_map_reads_and_writes_in_swift_as_serde_does() {
     assert_eq!(printed, expected);
 }
 
-/// What prints each holder of [`SHARED_KEYS`] read from its payload: the key the type around the
-/// struct reads, the same key read by the struct, the key the struct flattens, and the holder
-/// written back.
+/// What prints each holder of [`SHARED_KEYS`] read from its payload and written back, and whether
+/// the optional struct of `Rubrail` was read.
 fn shared_key_main() -> String {
-    SHARED_KEYS
-        .iter()
-        .zip(["held.label", "held.gantline.label"])
-        .fold(String::new(), |mut main, (row, around)| {
-            let _ = writeln!(
-                main,
-                "do {{\n  let held = read({}.self, #\"{}\"#)\n  print(\"{}: \\({around}) \
-                 \\(held.spritsail.label) \\(held.spritsail.earring.tag) \\(written(held))\")\n}}",
-                row.holder, row.json, row.holder
-            );
-            main
-        })
+    let mut main = SHARED_KEYS.iter().fold(String::new(), |mut main, row| {
+        let _ = writeln!(
+            main,
+            "print(\"{}: \\(written(read({}.self, #\"{}\"#)))\")",
+            row.holder, row.holder, row.json
+        );
+        main
+    });
+    let _ = writeln!(
+        main,
+        "print(\"Rubrail flag: \\(read(Rubrail.self, #\"{{\"label\":\"n\"}}\"#).flag?.label ?? \"nil\")\")"
+    );
+    main
 }
 
-/// A struct with a flattened member of its own reads its own members from the whole object, so it
-/// reads a key a member of its holder's own or a struct flattened ahead of it took, as TypeScript
-/// and Zod read it, where serde refuses the payload; and its holder writes that key once.
+/// A flattened struct reads a key a member of its holder's own or a struct flattened ahead of it
+/// took from the whole object, as TypeScript and Zod read it, where serde refuses the payload, an
+/// optional one is read where that key is there, where serde reads `None`, and its holder writes
+/// that key once.
 #[test]
-fn a_struct_with_a_flattened_member_reads_in_swift_a_key_taken_around_it_as_zod_reads_it() {
-    let expected = SHARED_KEYS.iter().fold(String::new(), |mut expected, row| {
-        let _ = writeln!(expected, "{}: n n t {}", row.holder, row.zod);
+fn a_flattened_struct_reads_in_swift_a_key_taken_around_it_as_zod_reads_it() {
+    let mut expected = SHARED_KEYS.iter().fold(String::new(), |mut expected, row| {
+        let _ = writeln!(expected, "{}: {}", row.holder, row.zod);
         expected
     });
+    expected.push_str("Rubrail flag: n\n");
     assert_eq!(
         expected,
-        "Bowline: n n t {\"label\":\"n\",\"tag\":\"t\"}\n\
-         Clinching: n n t {\"label\":\"n\",\"tag\":\"t\"}\n",
+        "Bowline: {\"label\":\"n\",\"tag\":\"t\"}\n\
+         Clinching: {\"label\":\"n\",\"tag\":\"t\"}\n\
+         Parrel: {\"label\":\"n\"}\n\
+         Gudgeon: {\"label\":\"n\",\"note\":\"a\"}\n\
+         Rubrail: {\"label\":\"n\"}\n\
+         Halliard: {\"kind\":\"Held\"}\n\
+         Bitts: {\"label\":\"n\",\"type\":\"Held\"}\n\
+         Rubrail flag: n\n",
         "the table no longer states what Zod reads"
     );
     let definitions = [
@@ -809,6 +849,14 @@ fn a_struct_with_a_flattened_member_reads_in_swift_a_key_taken_around_it_as_zod_
         bowline_swift::swift_definition(),
         gantline_swift::swift_definition(),
         clinching_swift::swift_definition(),
+        garnet_swift::swift_definition(),
+        parrel_swift::swift_definition(),
+        gudgeon_swift::swift_definition(),
+        rubrail_swift::swift_definition(),
+        toggled_swift::swift_definition(),
+        halliard_swift::swift_definition(),
+        snotter_swift::swift_definition(),
+        bitts_swift::swift_definition(),
     ];
     let Some(printed) = printed_of(&definitions, &shared_key_main()) else {
         return;

@@ -427,12 +427,7 @@ fn an_optional_and_a_nullable_member_keep_the_rule_they_had() {
         &anchorage_swift::swift_definition(),
         &[
             "self.anchorNote = try container.decode(String?.self, forKey: .anchorNote); ",
-            concat!(
-                "let flattenedPayload = try SwiftSchemaPayload(from: decoder, ",
-                r#"without: taken + ["anchorNote", "heldParcel"]).value; "#,
-                "self.flattened = try SwiftSchemaPayload.read(FlattenedExtra.self, ",
-                "from: flattenedPayload, at: decoder.codingPath); ",
-            ),
+            "self.flattened = try FlattenedExtra(from: decoder); ",
             concat!(
                 "if try !container.decodeNil(forKey: .heldParcel) ",
                 "{ self.heldParcel = try Parcel(swiftSchemaUnjudged: ",
@@ -536,34 +531,17 @@ fn a_model_in_a_map_under_a_number_and_in_a_tuple_is_read_unjudged() {
     holds(&unwalked, &["self.byU32 = wireByU32.storage"]);
 }
 
-/// A flattened member is read from its holder's object without the holder's own keys: one that
-/// has a rule unjudged, through a type written for it, and one that has none as it was.
+/// A flattened struct is read from the whole object its holder reads, as TypeScript and Zod read
+/// it: one that has a rule unjudged, and one that has none as it reads itself.
 #[test]
-fn a_flattened_member_is_read_without_its_holders_own_keys() {
+fn a_flattened_struct_is_read_from_its_holders_whole_object() {
     holds(
         &berthed_swift::swift_definition(),
-        &[
-            concat!(
-                "private struct SwiftSchemaReadParcel: Decodable { let value: Parcel; ",
-                "init(from decoder: Decoder) throws { ",
-                "self.value = try Parcel(swiftSchemaUnjudged: decoder) } }",
-            ),
-            concat!(
-                "let parcelPayload = try SwiftSchemaPayload(from: decoder, ",
-                r#"without: taken + ["quay"]).value; "#,
-                "self.parcel = try SwiftSchemaPayload.read(SwiftSchemaReadParcel.self, ",
-                "from: parcelPayload, at: decoder.codingPath).value; ",
-            ),
-        ],
+        &["self.parcel = try Parcel(swiftSchemaUnjudged: decoder); "],
     );
     holds(
         &with_flatten_swift::swift_definition(),
-        &[concat!(
-            "let extraPayload = try SwiftSchemaPayload(from: decoder, ",
-            r#"without: taken + ["id"]).value; "#,
-            "self.extra = try SwiftSchemaPayload.read(FlattenedExtra.self, ",
-            "from: extraPayload, at: decoder.codingPath); ",
-        )],
+        &["self.extra = try FlattenedExtra(from: decoder); "],
     );
 }
 
@@ -663,8 +641,8 @@ fn a_unit_struct_has_both_reads() {
 }
 
 /// An enum reads the payload of the variant it holds unjudged: under the variant's name with no
-/// tag attribute, from its own decoder under a tag alone, a slot from the object without the tag,
-/// and under the content key.
+/// tag attribute, from its own decoder under a tag alone, a struct in a slot among them, and under
+/// the content key.
 #[test]
 fn an_enum_reads_the_payload_of_its_variant_unjudged() {
     holds(
@@ -694,16 +672,7 @@ fn an_enum_reads_the_payload_of_its_variant_unjudged() {
     holds(
         &lifted_swift::swift_definition(),
         &[
-            concat!(
-                r#"case "Boxed": let boxedPayload = try SwiftSchemaPayload(from: decoder, "#,
-                r#"without: taken + ["kind"]).value; self = .boxed(try SwiftSchemaPayload.read("#,
-                "SwiftSchemaReadBoxed.self, from: boxedPayload, at: decoder.codingPath).value); ",
-            ),
-            concat!(
-                "private struct SwiftSchemaReadBoxed: Decodable { let value: Parcel; ",
-                "init(from decoder: Decoder) throws { ",
-                "self.value = try Parcel(swiftSchemaUnjudged: decoder) } }",
-            ),
+            r#"case "Boxed": self = .boxed(try Parcel(swiftSchemaUnjudged: decoder)); "#,
             r#"case "Loose": self = .loose(try LiftedLoosePayload(swiftSchemaUnjudged: decoder)); "#,
             r#"case "Unladen": self = .unladen; "#,
             JUDGED,

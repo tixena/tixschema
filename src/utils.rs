@@ -214,6 +214,9 @@ impl WireLeaf {
 pub struct FlattenVariant {
     #[cfg(feature = "typescript")]
     pub typescript: String,
+    /// The key of a unit variant, written over `null`, where the enum's value is its bare name.
+    #[cfg(feature = "zod")]
+    pub unit: Option<String>,
     #[cfg(feature = "zod")]
     pub zod: String,
 }

@@ -213,9 +213,8 @@ fn the_swift_read_of_a_struct_under_its_own_tag_checks_the_tag_ahead_of_its_memb
         (
             pennant_swift::swift_definition(),
             format!(
-                "public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: \
-                 [String]) throws {{ {}let container = try decoder.container(keyedBy: \
-                 CodingKeys.self);",
+                "public init(swiftSchemaUnjudged decoder: Decoder) throws {{ {}let container = try \
+                 decoder.container(keyedBy: CodingKeys.self);",
                 tag_held("Pennant")
             ),
         ),

@@ -1,20 +1,24 @@
 //! An externally tagged enum flattened beside a member of its holder's own, optional and under a
 //! function too, each variant read in either order and written back by the emitted Dart types
 //! under the Dart VM, against what serde reads and writes back: a unit variant is an entry of its
-//! name over `null`. The enum read alone takes that entry too. A unit variant under a tag and a
-//! content key is read from an object with no content key alone. The models are those the Kotlin
-//! runs are held to, compiled with the `kotlin` feature.
+//! name over `null`. The enum read alone takes that entry too. Entries under two of its names are
+//! refused, as TypeScript and Zod refuse them. A unit variant under a tag and a content key is read
+//! from an object with no content key alone, and an enum under a tag and a content key flattened
+//! into its holder takes both keys. The models are those the Kotlin runs are held to, compiled
+//! with the `kotlin` feature.
 
 #![cfg(all(feature = "dart", feature = "kotlin", feature = "serde"))]
 
 use core::fmt::Write as _;
 
 use super::flattened_models::{
-    Belting, Stowing, Tacking, Yawing, belting_dart, read_of, stowing_dart, tacking_dart,
-    yawing_dart,
+    Belting, CHAFING, Chafing, FRAYING, Fraying, STOWING, Stowing, Tacking, UNDER_AN_ALIAS,
+    UNDER_TWO_NAMES, Yawing, belting_dart, bunting_dart, chafing_dart, fraying_dart, read_of,
+    snubber_dart, stowing_dart, tacking_dart, yawing_dart,
 };
 use super::run_dart_validate::{dart, from_until, module};
 use super::run_kotlin_refusals::{Becalming, becalming_dart};
+use super::tuple_variants_models::labelling_dart;
 
 /// What prints a read of [`Becalming`]: the value read, written back, or what the read throws.
 const BECALMING_TOLD: &str = "
@@ -92,6 +96,23 @@ const ALONE: [&str; 4] = [
     r#"{"Calm":1}"#,
     r#"{"Calm":{}}"#,
 ];
+
+/// What prints a [`Stowing`] read from each payload and written back, or what its read throws.
+const STOWING_TOLD: &str = "
+void stowing(int at, String payload) {
+  String printed;
+  try {
+    printed = jsonEncode(Stowing.fromJson(jsonDecode(payload)).toJson());
+  } catch (refusal) {
+    printed = '$refusal';
+  }
+  print('$at: $printed');
+}
+";
+
+/// The function [`Chafing`] names, which answers the keys of the object it is handed.
+const WITH_ITS_KEYS: &str = "dynamic withItsKeys(dynamic payload) => \
+     {'keys': (payload as Map<String, dynamic>).keys.toList()};";
 
 /// Each type a row reads, the payloads it reads, and what serde writes back of each.
 fn rows() -> Vec<(&'static str, &'static str, String)> {
@@ -258,4 +279,115 @@ fn the_emitted_holders_of_a_flattened_unit_variant_have_no_issue() {
     };
     assert!(clean, "{said}");
     assert!(said.contains("No issues found!"), "{said}");
+}
+
+/// A flattened externally tagged enum with entries under two of its names is refused, as
+/// TypeScript and Zod refuse it, where serde reads the first, under two variants' names in each
+/// order and under a variant's name beside its alias, naming each variant once, in the order the
+/// enum declares them. One entry, a unit variant's over `null`, an entry under an alias and no
+/// entry are read and refused as serde reads and refuses them.
+#[test]
+fn a_flattened_enum_with_entries_under_two_names_is_refused_in_dart() {
+    let refused = |variants: &str| {
+        format!(
+            "FormatException: more than one variant of enum Tacking found in flattened data: \
+             {variants}"
+        )
+    };
+    let mut rows: Vec<(&str, String)> = UNDER_TWO_NAMES
+        .iter()
+        .zip([refused("Bay, Dock"), refused("Bay, Dock"), refused("Dock")])
+        .map(|(&json, told)| {
+            assert!(
+                serde_json::from_str::<Stowing>(json).is_ok(),
+                "serde reads the first entry of {json}"
+            );
+            (json, told)
+        })
+        .collect();
+    for json in [STOWING[1], STOWING[4], UNDER_AN_ALIAS[0]] {
+        rows.push((json, read_of::<Stowing>(json)));
+    }
+    assert_eq!(
+        read_of::<Stowing>(STOWING[6]),
+        "refused",
+        "serde refuses a payload with no entry"
+    );
+    let mut expected = String::new();
+    let mut main = String::from("void main() {\n");
+    for (at, (json, told)) in rows.iter().enumerate() {
+        let _ = writeln!(expected, "{at}: {told}");
+        let _ = writeln!(main, "  stowing({at}, r'{json}');");
+    }
+    main.push_str("}\n");
+    assert_eq!(
+        expected,
+        "0: FormatException: more than one variant of enum Tacking found in flattened data: Bay, \
+         Dock\n\
+         1: FormatException: more than one variant of enum Tacking found in flattened data: Bay, \
+         Dock\n\
+         2: FormatException: more than one variant of enum Tacking found in flattened data: Dock\n\
+         3: {\"note\":\"a\",\"Bay\":{\"label\":\"n\"}}\n\
+         4: {\"note\":\"a\",\"Calm\":null}\n\
+         5: {\"note\":\"a\",\"Dock\":{\"label\":\"s\"}}\n"
+    );
+    let source = module(
+        &[
+            tacking_dart::dart_definition(),
+            stowing_dart::dart_definition(),
+        ],
+        &[STOWING_TOLD],
+        &main,
+    );
+    let Some((ran, printed)) = dart("under-two-names", &[], &source) else {
+        return;
+    };
+    assert!(ran, "{printed}");
+    assert_eq!(printed, expected, "the Dart read is not the answer above");
+}
+
+/// An enum under a tag and a content key flattened into its holder takes both keys, as serde reads
+/// it as a struct of the two: a member that names a function flattened after it is handed every
+/// other key, and a struct flattened after it reads the whole object. Each holder is written back
+/// as serde writes it back.
+#[test]
+fn an_enum_under_a_tag_and_a_content_key_takes_both_keys_in_dart() {
+    let chafing: Chafing = serde_json::from_str(CHAFING).unwrap();
+    let fraying: Fraying = serde_json::from_str(FRAYING[0]).unwrap();
+    let expected = format!(
+        "chafing: {} {}\nfraying: {} {}\n",
+        serde_json::to_string(&chafing.tally).unwrap(),
+        serde_json::to_string(&chafing).unwrap(),
+        serde_json::to_string(&fraying.labelling).unwrap(),
+        serde_json::to_string(&fraying).unwrap(),
+    );
+    assert_eq!(
+        expected,
+        "chafing: {\"keys\":[\"north\"]} {\"kind\":\"Rope\",\"held\":{\"label\":\"n\"},\"keys\":[\"north\"]}\n\
+         fraying: {\"label\":\"m\"} {\"kind\":\"Rope\",\"held\":{\"label\":\"n\"},\"label\":\"m\"}\n"
+    );
+    let main = format!(
+        "void main() {{\n  final chafing = Chafing.fromJson(jsonDecode(r'{CHAFING}'));\n  \
+         print('chafing: ${{jsonEncode(chafing.tally.toJson())}} \
+         ${{jsonEncode(chafing.toJson())}}');\n  final fraying = \
+         Fraying.fromJson(jsonDecode(r'{}'));\n  print('fraying: \
+         ${{jsonEncode(fraying.labelling.toJson())}} ${{jsonEncode(fraying.toJson())}}');\n}}\n",
+        FRAYING[0]
+    );
+    let source = module(
+        &[
+            labelling_dart::dart_definition(),
+            bunting_dart::dart_definition(),
+            snubber_dart::dart_definition(),
+            chafing_dart::dart_definition(),
+            fraying_dart::dart_definition(),
+        ],
+        &[WITH_ITS_KEYS],
+        &main,
+    );
+    let Some((ran, printed)) = dart("tag-and-content", &[], &source) else {
+        return;
+    };
+    assert!(ran, "{printed}");
+    assert_eq!(printed, expected, "the Dart read is not serde's");
 }

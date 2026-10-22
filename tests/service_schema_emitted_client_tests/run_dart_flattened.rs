@@ -11,21 +11,27 @@
 use core::fmt::Write as _;
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use super::dart_flattened_models::{
     BATTENING, BILGING, Battening, Belaying, Bilging, CAULKING, CLAMPING, Caulking, Clamping,
-    DUNNAGE, Doubling, Dunnage, FASTENING, FREEBOARD, Fastening, Freeboard, Hawsehole, Hoisting,
-    KEDGING, Kedging, LOADING, Lacing, Loading, MOUSING, Mousing, PAYLOAD, Rigging, SPARE,
-    STEEVING, Scuppering, Shoring, Spare, Steeving, TRIMMING, Trimming, Twin, battening_dart,
-    belaying_dart, bilging_dart, bracing_dart, caulking_dart, chocking_dart, clamping_dart,
-    doubling_dart, dunnage_dart, fastening_dart, frapping_dart, freeboard_dart, garboard_dart,
-    hatching_dart, hawsehole_dart, hoisting_dart, kedging_dart, keying_dart, lacing_dart,
-    loading_dart, marking_dart, mousing_dart, rigging_dart, scuppering_dart, shoring_dart,
-    spare_dart, steeving_dart, ticketing_dart, trimming_dart, twin_dart, warping_dart,
+    DUNNAGE, Dunnage, FASTENING, FREEBOARD, Fastening, Freeboard, Hawsehole, Hoisting, KEDGING,
+    Kedging, LOADING, Lacing, Loading, MOUSING, Mousing, PAYLOAD, Rigging, SPARE, STEEVING,
+    Scuppering, Shoring, Spare, Steeving, TRIMMING, Trimming, Twin, battening_dart, belaying_dart,
+    bilging_dart, bracing_dart, caulking_dart, chocking_dart, clamping_dart, dunnage_dart,
+    fastening_dart, frapping_dart, freeboard_dart, garboard_dart, hatching_dart, hawsehole_dart,
+    hoisting_dart, kedging_dart, keying_dart, lacing_dart, loading_dart, marking_dart,
+    mousing_dart, rigging_dart, scuppering_dart, shoring_dart, spare_dart, steeving_dart,
+    ticketing_dart, trimming_dart, twin_dart, warping_dart,
 };
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use super::dart_flattened_models::{LIMBER, Limber, limber_dart, scantling_dart};
 use super::run_dart_validate::{dart, module};
+use super::shared_key_models::{
+    SHARED_KEYS, bitts_dart, bowline_dart, clinching_dart, earring_dart, gantline_dart,
+    garnet_dart, gudgeon_dart, halliard_dart, parrel_dart, rubrail_dart, snotter_dart,
+    spritsail_dart, toggled_dart,
+};
 
 /// The function the models name, which answers the payload as it was handed.
 const AS_GIVEN: &str = "dynamic asGiven(dynamic payload) => payload;";
@@ -59,12 +65,6 @@ void main() {
   print('belaying: ${jsonEncode(belaying.rest.keys)} ${jsonEncode(belaying.toJson())}');
   final twin = Twin.fromJson(jsonDecode(r'PAYLOAD'));
   print('twin: ${jsonEncode(twin.other.keys)} ${jsonEncode(twin.toJson())}');
-  try {
-    Doubling.fromJson(jsonDecode(r'PAYLOAD'));
-    print('doubling: read');
-  } catch (_) {
-    print('doubling: refused');
-  }
 }
 ";
 
@@ -296,8 +296,7 @@ fn a_map_alone_reads_in_dart_the_keys_serde_hands_it() {
 
 /// A member that names a function is handed the keys no member ahead of it took, as serde hands it
 /// them: after a struct, beside a member of its holder's own, ahead of a struct, and after a
-/// member that takes no key. Each holder is written back as serde writes it back. A struct after a
-/// struct that reads the same key is refused, as serde refuses it.
+/// member that takes no key. Each holder is written back as serde writes it back.
 #[test]
 fn a_function_reads_in_dart_the_keys_serde_hands_it() {
     let clamping: Clamping = serde_json::from_str(CLAMPING).unwrap();
@@ -307,14 +306,9 @@ fn a_function_reads_in_dart_the_keys_serde_hands_it() {
     let rigging: Rigging = serde_json::from_str(PAYLOAD).unwrap();
     let belaying: Belaying = serde_json::from_str(PAYLOAD).unwrap();
     let twin: Twin = serde_json::from_str(PAYLOAD).unwrap();
-    let doubling = if serde_json::from_str::<Doubling>(PAYLOAD).is_ok() {
-        "read"
-    } else {
-        "refused"
-    };
     let expected = format!(
         "clamping: {} {}\nfastening: {} {}\nhoisting: {} {}\nlacing: {} {}\nrigging: {} {}\n\
-         belaying: {} {}\ntwin: {} {}\ndoubling: {doubling}\n",
+         belaying: {} {}\ntwin: {} {}\n",
         written(&clamping.other.keys),
         written(&clamping),
         written(&fastening.other.keys),
@@ -338,8 +332,7 @@ fn a_function_reads_in_dart_the_keys_serde_hands_it() {
          lacing: [\"label\",\"north\"] {\"label\":\"n\",\"keys\":[\"label\",\"north\"]}\n\
          rigging: [\"label\",\"north\"] {\"label\":\"n\",\"keys\":[\"label\",\"north\"]}\n\
          belaying: [\"label\",\"north\"] {\"label\":\"n\",\"keys\":[\"label\",\"north\"]}\n\
-         twin: [\"north\"] {\"label\":\"n\",\"keys\":[\"north\"]}\n\
-         doubling: refused\n"
+         twin: [\"north\"] {\"label\":\"n\",\"keys\":[\"north\"]}\n"
     );
     let Some(printed) = printed(
         "flattened-handed",
@@ -355,7 +348,6 @@ fn a_function_reads_in_dart_the_keys_serde_hands_it() {
             rigging_dart::dart_definition(),
             belaying_dart::dart_definition(),
             twin_dart::dart_definition(),
-            doubling_dart::dart_definition(),
         ],
         HANDED,
     ) else {
@@ -365,9 +357,10 @@ fn a_function_reads_in_dart_the_keys_serde_hands_it() {
 }
 
 /// An externally tagged enum flattened ahead of a member that names a function is read from the
-/// first entry under a variant's name or an alias of one, wherever it is in the object, and the
-/// function is handed every entry but that one, as serde reads them. A struct after the enum is
-/// handed every entry but that one. A function after an enum under a tag key alone, or after an
+/// one entry under a variant's name or an alias of one, wherever it is in the object, and the
+/// function is handed every entry but that one, as serde reads them. Entries under two of its names
+/// are refused, as TypeScript and Zod refuse them, where serde reads the first. A struct after the
+/// enum is read from the whole object. A function after an enum under a tag key alone, or after an
 /// untagged one, is handed every key. Each holder is written back as serde writes it back.
 #[test]
 fn a_function_after_a_flattened_enum_reads_in_dart_the_entries_serde_hands_it() {
@@ -400,15 +393,9 @@ fn a_function_after_a_flattened_enum_reads_in_dart_the_entries_serde_hands_it() 
     let trimming: Trimming = serde_json::from_str(TRIMMING).unwrap();
     let mousing: Mousing = serde_json::from_str(MOUSING).unwrap();
     let shoring: Shoring = serde_json::from_str(PAYLOAD).unwrap();
-    let rows = |named: &str, read: &[String]| {
-        read.iter().fold(String::new(), |mut acc, row| {
-            writeln!(acc, "{named}: {row}").unwrap();
-            acc
-        })
-    };
     let after_loading = format!(
         "{}trimming: {} {} {}\nmousing: {} {}\nshoring: {} {}\n",
-        rows("kedging", &kedged),
+        lines("kedging", &kedged),
         written(&trimming.marking),
         written(&trimming.rest.keys),
         written(&trimming),
@@ -417,9 +404,9 @@ fn a_function_after_a_flattened_enum_reads_in_dart_the_entries_serde_hands_it() 
         written(&shoring.rest.keys),
         written(&shoring),
     );
-    let expected = format!("{}{after_loading}", rows("loading", &loaded));
+    let serde = format!("{}{after_loading}", lines("loading", &loaded));
     assert_eq!(
-        expected,
+        serde,
         "loading: {\"Bay\":{\"label\":\"n\"}} [\"north\"] {\"Bay\":{\"label\":\"n\"},\"keys\":[\"north\"]}\n\
          loading: {\"Bay\":{\"label\":\"n\"}} [\"Dock\",\"north\"] \
          {\"Bay\":{\"label\":\"n\"},\"keys\":[\"Dock\",\"north\"]}\n\
@@ -440,6 +427,19 @@ fn a_function_after_a_flattened_enum_reads_in_dart_the_entries_serde_hands_it() 
          {\"kind\":\"Rope\",\"label\":\"n\",\"keys\":[\"kind\",\"label\",\"north\"]}\n\
          shoring: [\"label\",\"north\"] {\"label\":\"n\",\"keys\":[\"label\",\"north\"]}\n"
     );
+    // Entries under two of the enum's names are refused, as TypeScript and Zod refuse them.
+    let read: Vec<String> = LOADING
+        .iter()
+        .zip(&loaded)
+        .map(|(payload, row)| {
+            if [1, 2, 4, 6].map(|at| LOADING[at]).contains(payload) {
+                "refused".to_owned()
+            } else {
+                row.clone()
+            }
+        })
+        .collect();
+    let expected = format!("{}{after_loading}", lines("loading", &read));
     let Some(printed) = printed(
         "flattened-after-an-enum",
         &[
@@ -462,10 +462,10 @@ fn a_function_after_a_flattened_enum_reads_in_dart_the_entries_serde_hands_it() 
     assert_eq!(printed, expected);
 }
 
-/// An externally tagged enum flattened beside a member of its holder's own is read from the first
+/// An externally tagged enum flattened beside a member of its holder's own is read from the one
 /// entry under a variant's name, after keys no member reads and after the member's own key, and
-/// refused where no entry is under one, as serde reads it. The holder is written back as serde
-/// writes it back.
+/// refused where no entry is under one, as serde reads it, and where entries are under two, as
+/// TypeScript and Zod refuse it. The holder is written back as serde writes it back.
 #[test]
 fn a_flattened_enum_beside_a_member_reads_in_dart_the_entry_serde_reads() {
     let battened = BATTENING.iter().fold(String::new(), |mut acc, payload| {
@@ -487,6 +487,12 @@ fn a_flattened_enum_beside_a_member_reads_in_dart_the_entry_serde_reads() {
          battening: {\"Dock\":{\"label\":\"s\"}} a {\"Dock\":{\"label\":\"s\"},\"note\":\"a\"}\n\
          battening: refused\n"
     );
+    // The third holds entries under two of the enum's names, refused as TypeScript and Zod refuse
+    // them.
+    let dart_battened = battened.replace(
+        "battening: {\"Dock\":{\"label\":\"s\"}} a {\"Dock\":{\"label\":\"s\"},\"note\":\"a\"}",
+        "battening: refused",
+    );
     let Some(printed) = printed(
         "flattened-beside-a-member",
         &[
@@ -497,7 +503,7 @@ fn a_flattened_enum_beside_a_member_reads_in_dart_the_entry_serde_reads() {
     ) else {
         return;
     };
-    assert_eq!(printed, battened);
+    assert_eq!(printed, dart_battened);
 }
 
 /// An optional externally tagged enum flattened beside a member of its holder's own is read as no
@@ -682,4 +688,63 @@ fn an_optional_map_of_models_reads_in_dart_no_value_where_a_model_does_not_read(
     };
     assert!(ran, "{printed}");
     assert_eq!(printed, expected, "the Dart reads beside serde's");
+}
+
+/// A flattened struct reads a key a member of its holder's own, a struct flattened ahead of it or
+/// the tag of the variant that flattens it took, from the whole object, as TypeScript and Zod read
+/// it, where serde refuses the payload; an optional one is read where that key is there, where
+/// serde reads `None`; and its holder writes that key once.
+#[test]
+fn a_flattened_struct_reads_in_dart_a_key_taken_around_it_as_zod_reads_it() {
+    let mut expected = SHARED_KEYS.iter().fold(String::new(), |mut expected, row| {
+        let zod: Value = serde_json::from_str(row.zod).unwrap();
+        let _ = writeln!(expected, "{}: {zod}", row.holder);
+        expected
+    });
+    expected.push_str("Rubrail flag: n\n");
+    let mut main = String::from("void main() {\n");
+    for row in &SHARED_KEYS {
+        let _ = writeln!(
+            main,
+            "  print('{}: ${{jsonEncode({}.fromJson(jsonDecode(r'{}')).toJson())}}');",
+            row.holder, row.holder, row.json
+        );
+    }
+    main.push_str(
+        "  print('Rubrail flag: ${Rubrail.fromJson(jsonDecode(r'{\"label\":\"n\"}')).flag?.label}');\n}\n",
+    );
+    let source = module(
+        &[
+            earring_dart::dart_definition(),
+            spritsail_dart::dart_definition(),
+            bowline_dart::dart_definition(),
+            gantline_dart::dart_definition(),
+            clinching_dart::dart_definition(),
+            garnet_dart::dart_definition(),
+            parrel_dart::dart_definition(),
+            gudgeon_dart::dart_definition(),
+            rubrail_dart::dart_definition(),
+            toggled_dart::dart_definition(),
+            halliard_dart::dart_definition(),
+            snotter_dart::dart_definition(),
+            bitts_dart::dart_definition(),
+        ],
+        &[],
+        &main,
+    );
+    let Some((ran, printed)) = dart("shared-keys", &[], &source) else {
+        return;
+    };
+    assert!(ran, "{printed}");
+    let read = printed.lines().fold(String::new(), |mut read, line| {
+        let (holder, written) = line.split_once(": ").unwrap();
+        let value = serde_json::from_str::<Value>(written)
+            .map_or_else(|_| written.to_owned(), |value| value.to_string());
+        let _ = writeln!(read, "{holder}: {value}");
+        read
+    });
+    assert_eq!(
+        read, expected,
+        "the Dart read no longer reads each key as Zod reads it"
+    );
 }

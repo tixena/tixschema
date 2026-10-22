@@ -2715,7 +2715,7 @@ fn test_an_optional_flattened_union_offers_every_member_and_their_absence() {
 fn test_the_optional_flatten_type_offers_the_base_and_its_absence() {
     let ts = OptHolder::ts_definition();
     assert!(
-        ts.contains("} & (OptBase | { [K in keyof OptBase]?: never });"),
+        ts.contains("} & (OptBase | { [K in Exclude<keyof OptBase, \"own\">]?: never });"),
         "expected the base beside its absence, got: {ts}"
     );
     assert!(
@@ -2729,7 +2729,7 @@ fn test_the_optional_flatten_type_offers_the_base_and_its_absence() {
 fn test_an_optional_flattened_union_type_offers_its_members_and_their_absence() {
     let ts = OptUnionHolder::ts_definition();
     assert!(
-        ts.contains("} & (NestTagged | { [K in keyof NestTagged]?: never });"),
+        ts.contains("} & (NestTagged | { [K in Exclude<keyof NestTagged, \"own\">]?: never });"),
         "expected the union beside its absence, got: {ts}"
     );
     assert!(
@@ -2871,7 +2871,10 @@ fn test_the_named_nullable_flatten_schema_offers_the_base_and_its_absence() {
 fn test_the_named_nullable_flatten_type_offers_the_base_and_its_absence() {
     let ts = NamedMaybeHolder::ts_definition();
     assert!(
-        ts.contains("} & (MaybeOptBase | { [K in keyof NonNullable<MaybeOptBase>]?: never });"),
+        ts.contains(
+            "} & (MaybeOptBase | { [K in Exclude<keyof NonNullable<MaybeOptBase>, \"own\">]?: \
+             never });"
+        ),
         "expected the base beside its absence, got: {ts}"
     );
     assert!(
@@ -3586,14 +3589,15 @@ fn test_the_optional_all_object_tagged_flatten_type_names_the_keys_its_absence_l
     let declared = &ts[ts.find("export type").unwrap()..];
     assert_eq!(
         declared,
-        "export type OptExtObjHolder = {\n  /**\n   * own\n   * \n   */\n  own: string;\n} & (({\n  /**\n   * One\n   * \n   */\n  \"One\": FlatFirst;\n  \"Two\"?: never;\n} | {\n  /**\n   * Two\n   * \n   */\n  \"Two\": FlatSecond;\n  \"One\"?: never;\n}) | { [K in keyof ({\n  /**\n   * One\n   * \n   */\n  \"One\": FlatFirst;\n  \"Two\"?: never;\n} | {\n  /**\n   * Two\n   * \n   */\n  \"Two\": FlatSecond;\n  \"One\"?: never;\n})]?: never });"
+        "export type OptExtObjHolder = {\n  /**\n   * own\n   * \n   */\n  own: string;\n} & (({\n  /**\n   * One\n   * \n   */\n  \"One\": FlatFirst;\n  \"Two\"?: never;\n} | {\n  /**\n   * Two\n   * \n   */\n  \"Two\": FlatSecond;\n  \"One\"?: never;\n}) | { [K in Exclude<keyof ({\n  /**\n   * One\n   * \n   */\n  \"One\": FlatFirst;\n  \"Two\"?: never;\n} | {\n  /**\n   * Two\n   * \n   */\n  \"Two\": FlatSecond;\n  \"One\"?: never;\n}), \"own\">]?: never });"
     );
 }
 
-/// Standing on their own the two tagged enums are written exactly as they were on TypeScript too.
+/// Standing on their own, the two tagged enums close each object member against the other object
+/// members' keys on TypeScript, as serde and Zod refuse an object of two variants' keys.
 #[test]
 #[cfg(feature = "typescript")]
-fn test_the_tagged_enums_are_byte_identical_standing_alone_on_typescript() {
+fn test_the_tagged_enums_standing_alone_close_each_object_member_on_typescript() {
     let bare = MemberExtBare::ts_definition();
     let objects = MemberExtObjects::ts_definition();
     // Scoped to the type declaration alone: the `$Variant` reader appended after it is not part
@@ -3611,7 +3615,7 @@ fn test_the_tagged_enums_are_byte_identical_standing_alone_on_typescript() {
         ],
         [
             "export type MemberExtBare =   /**\n   * Bare\n   * \n   */\n  \"Bare\" | {\n  /**\n   * Wrapped\n   * \n   */\n  \"Wrapped\": FlatSecond;\n};",
-            "export type MemberExtObjects = {\n  /**\n   * One\n   * \n   */\n  \"One\": FlatFirst;\n} | {\n  /**\n   * Two\n   * \n   */\n  \"Two\": FlatSecond;\n};",
+            "export type MemberExtObjects = {\n  /**\n   * One\n   * \n   */\n  \"One\": FlatFirst;\n  \"Two\"?: never;\n} | {\n  /**\n   * Two\n   * \n   */\n  \"Two\": FlatSecond;\n  \"One\"?: never;\n};",
         ]
     );
 }

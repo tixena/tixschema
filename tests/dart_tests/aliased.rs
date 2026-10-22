@@ -96,8 +96,13 @@ fn a_flattened_enum_takes_the_entry_of_a_variant_under_an_alias() {
         &riding_dart::dart_definition(),
         &[
             "surging: Surging.fromJsonUnjudged((switch (({...json}..remove('note'))) { final \
-           whole => { for (final key in whole.keys.where(const ['Berth', 'Pier', 'Calm', 'Still', \
-           'Slack', 'Held', 'Tied'].contains).take(1)) key: whole[key] } })),"
+             whole => whole.keys.where(const ['Berth', 'Pier', 'Calm', 'Still', 'Slack', 'Held', \
+             'Tied'].contains).length > 1 ? throw FormatException('more than one variant of enum \
+             Surging found in flattened data: ' + [for (final variant in const [['Berth', 'Pier'], \
+             ['Calm', 'Still', 'Slack'], ['Held', 'Tied']]) if (variant.any(whole.containsKey)) \
+             variant.first].join(', ')) : { for (final key in whole.keys.where(const ['Berth', \
+             'Pier', 'Calm', 'Still', 'Slack', 'Held', 'Tied'].contains).take(1)) key: whole[key] \
+             } })),"
                 .to_owned(),
             "Map<String, dynamic> toJson() => { 'note': note,...(switch ((surging).toJson()) { \
              final String name => {name: null}, final written => written as Map<String, dynamic> \

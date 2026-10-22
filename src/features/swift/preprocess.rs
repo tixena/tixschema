@@ -81,6 +81,9 @@ pub(super) struct Member<'member> {
     pub real_type: &'member str,
     /// What the member's locals and the type written for it are named from.
     pub stem: &'member str,
+    /// The unit variants of the externally tagged enum a flattened member holds, which its read
+    /// takes from an entry over `null` in what its functions answer, as serde writes it.
+    pub units: &'member [Entry],
     /// Whether `validate()` runs the `validate()` of a value the member holds.
     pub walked: bool,
 }
@@ -128,6 +131,10 @@ thread_local! {
     /// The tag, then the content key where it has one, of each enum under a tag key the emitter
     /// has written.
     static TAG_KEYS: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
+
+    /// The tag and the content key serde takes off its holder's object for each enum under both
+    /// the emitter has written, read flattened: what serde hands no member flattened after it.
+    static TAKEN_TAG_KEYS: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
 }
 
 /// Records whether the type `rust_ident` names reads the keys the types around it took.
@@ -156,13 +163,45 @@ pub(super) fn note_keys(rust_ident: &str, keys: Vec<String>) {
 }
 
 /// The keys a member `def` describes, flattened into its holder, takes off the object serde hands
-/// it: those of a struct written above, and none for a member that names a function, which serde
-/// reads as a value.
+/// it: those of a struct written above, the tag and the content key of an enum under both written
+/// above, and none for a member that names a function, which serde reads as a value.
 pub(super) fn keys_taken_by(def: &FieldDef) -> Vec<String> {
     if !functions(def).is_empty() {
         return Vec::new();
     }
-    struct_keys(def)
+    let keys = struct_keys(def);
+    if !keys.is_empty() {
+        return keys;
+    }
+    let FieldDefType::SiblingType(name, _) = &def.field_type else {
+        return Vec::new();
+    };
+    TAKEN_TAG_KEYS.with(|recorded| recorded.borrow().get(name).cloned().unwrap_or_default())
+}
+
+/// Records `keys`, the tag and the content key serde takes for the enum `rust_ident` flattened into
+/// a holder, for a holder written after it: none for an enum under any other tagging, or one that
+/// names a function on itself.
+pub(super) fn note_tag_and_content(rust_ident: &str, keys: Vec<String>) {
+    TAKEN_TAG_KEYS.with(|recorded| {
+        if keys.is_empty() {
+            recorded.borrow_mut().remove(rust_ident);
+        } else {
+            recorded.borrow_mut().insert(rust_ident.to_owned(), keys);
+        }
+    });
+}
+
+/// Whether a member `def` describes, flattened into its holder, is read from the whole object its
+/// holder reads, as TypeScript and Zod read it: a struct, and an enum under a tag key that names no
+/// function on itself, written above, where the member names no function.
+pub(super) fn reads_the_whole(def: &FieldDef) -> bool {
+    let FieldDefType::SiblingType(name, _) = &def.field_type else {
+        return false;
+    };
+    functions(def).is_empty()
+        && (TAKEN_KEYS.with(|recorded| recorded.borrow().contains_key(name))
+            || TAG_KEYS.with(|recorded| recorded.borrow().contains_key(name)))
 }
 
 /// The keys serde reads the struct a member `def` describes under, whatever function the member
@@ -238,7 +277,8 @@ pub(super) fn found(stem: &str) -> String {
 /// and hand it to `sink`. No entry is refused, as serde refuses it, but where `optional`, which
 /// reads `nil` there; an entry the enum does not read refuses the payload, as TypeScript and Zod
 /// refuse it. Swift keeps no order of an object's keys, so the first of two entries is not known:
-/// entries under two names are refused, as TypeScript and Zod refuse them.
+/// entries under two names are refused, as TypeScript and Zod refuse them, naming each variant
+/// they belong to once, in the order the enum declares them.
 pub(super) fn entry(
     member: &Member<'_>,
     (named, entries): (&str, &[Entry]),
@@ -260,15 +300,35 @@ pub(super) fn entry(
         .iter()
         .map(|entry| format!("\"{}\"", swift_literal_text(&entry.name)))
         .collect();
+    let mut variants: Vec<(&str, Vec<String>)> = Vec::new();
+    for entry in entries {
+        let quoted = format!("\"{}\"", swift_literal_text(&entry.name));
+        match variants.last_mut() {
+            Some((variant, spelled)) if *variant == entry.variant => spelled.push(quoted),
+            Some(_) | None => variants.push((&entry.variant, vec![quoted])),
+        }
+    }
+    let grouped: Vec<String> = variants
+        .iter()
+        .map(|(variant, spelled)| {
+            format!(
+                "(\"{}\", [{}])",
+                swift_literal_text(variant),
+                spelled.join(", ")
+            )
+        })
+        .collect();
     let opened = format!(
         "let {stem}Object = try SwiftSchemaPayload(from: decoder, without: {taken}).value \
          as? [String: Any] ?? [:]; \
          let {found} = [{}].filter {{ {stem}Object[$0] != nil }}; \
-         if {found}.count > 1 {{ {} }}; ",
+         if {found}.count > 1 {{ let {stem}Variants = [{}].filter {{ variant in \
+         variant.1.contains {{ {found}.contains($0) }} }}.map {{ variant in variant.0 }}; {} }}; ",
         listed.join(", "),
+        grouped.join(", "),
         refused(&format!(
             "more than one variant of enum {enum_name} found in flattened data: \
-             \\({found}.joined(separator: \", \"))"
+             \\({stem}Variants.joined(separator: \", \"))"
         ))
     );
     let held = format!("let {stem}Key = {found}.first, let {stem}Held = {stem}Object[{stem}Key]");
@@ -458,7 +518,10 @@ fn value(
     twins: &mut Vec<String>,
 ) -> String {
     let stem = member.stem;
-    let corrected = called(member.functions, &format!("{stem}Payload"));
+    let corrected = unit_entry_read(
+        &called(member.functions, &format!("{stem}Payload")),
+        member.units,
+    );
     let read = |read_as: &str| {
         format!("try SwiftSchemaPayload.read({read_as}.self, from: {corrected}, at: {path})")
     };
@@ -494,6 +557,46 @@ fn value(
         member.real_type
     ));
     sink(&format!("{}.value", read(&twin)))
+}
+
+/// `answer` with an object of the one entry of a unit variant of `units` over `null` read as the
+/// name the enum's own read takes the variant under, which reads it as its bare name.
+fn unit_entry_read(answer: &str, units: &[Entry]) -> String {
+    if units.is_empty() {
+        return answer.to_owned();
+    }
+    let cases: Vec<String> = units
+        .iter()
+        .map(|entry| {
+            format!(
+                "case \"{}\": return \"{}\"",
+                swift_literal_text(&entry.name),
+                swift_literal_text(&entry.variant)
+            )
+        })
+        .collect();
+    format!(
+        "{{ () -> Any in let answer: Any = {answer}; guard let entries = answer as? [String: Any], \
+         entries.count == 1, let entry = entries.first, entry.value is NSNull else {{ return \
+         answer }}; switch entry.key {{ {}; default: return answer }} }}()",
+        cases.join("; ")
+    )
+}
+
+/// The unit variants of the externally tagged enum written above a flattened member `def`
+/// describes holds, under an `Option` or not, whatever function the member names.
+pub(super) fn units_of(def: &FieldDef) -> Vec<Entry> {
+    let FieldDefType::SiblingType(name, _) = &def.field_type else {
+        return Vec::new();
+    };
+    ENTRIES.with(|recorded| {
+        recorded
+            .borrow()
+            .get(name)
+            .map_or_else(Vec::new, |entries| {
+                entries.iter().filter(|entry| entry.unit).cloned().collect()
+            })
+    })
 }
 
 /// `written` with the type `Self` names in `named` under that name: in a type declared inside

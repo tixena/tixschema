@@ -662,8 +662,8 @@ fn a_struct_with_a_flattened_member_reads_what_it_merges_unjudged() {
         "output.json.encodeToJsonElement(BaseUnjudged, value.base).jsonObject.forEach { (k, v) \
          -> put(k, v) }",
         "val baseKeys = setOf(\"name\"); val base = \
-         input.json.decodeFromJsonElement(BaseUnjudged, JsonObject(JsonObject(obj - \
-         setOf(\"gate\")).filterKeys { it in setOf(\"name\") }))",
+         input.json.decodeFromJsonElement(BaseUnjudged, JsonObject(obj.filterKeys { it in \
+         setOf(\"name\") }))",
     ] {
         assert!(kotlin.contains(held), "no `{held}` in: {kotlin}");
     }
@@ -817,8 +817,10 @@ fn a_key_no_member_reads_is_refused_where_every_key_a_member_reads_is_known() {
 }
 
 /// A flattened `Option` of an enum under a tag key the emitter wrote is looked for by its tag, then
-/// its content key, and still takes the keys its descriptor names. One that names a function on
-/// itself has no key to be looked for by, and is `null` wherever its read throws.
+/// its content key, in the whole object its holder reads, as TypeScript and Zod read it. One under
+/// a tag alone takes the keys its descriptor names, and one under a tag and a content key takes
+/// both. One that names a function on itself has no key to be looked for by, and is `null`
+/// wherever its read throws.
 #[cfg(feature = "serde")]
 #[test]
 fn a_flattened_option_of_an_enum_under_a_tag_key_is_looked_for_by_its_tag() {
@@ -862,22 +864,20 @@ fn a_flattened_option_of_an_enum_under_a_tag_key_is_looked_for_by_its_tag() {
     ];
     assert_eq!(written.len(), 3, "each enum is written ahead of its holder");
     let kotlin = plain(&item);
-    let rest = "JsonObject(obj - setOf(\"note\"))";
     let decoded = |serializer: &str, from: &str| {
         format!("lenient.decodeFromJsonElement({serializer}, {from})")
     };
-    let after_hank = "JsonObject(obj - setOf(\"note\") - hankKeys)";
     let after_clew = "JsonObject(obj - setOf(\"note\") - hankKeys - clewKeys)";
     for held in [
         format!(
             "val hankKeys = (HankUnjudged).descriptor.elementNames.toSet(); val hank = if \
-             ({rest}.keys.any {{ it in setOf(\"kind\") }}) {} else null;",
-            decoded("HankUnjudged", rest)
+             (obj.keys.any {{ it in setOf(\"kind\") }}) {} else null;",
+            decoded("HankUnjudged", "obj")
         ),
         format!(
-            "val clewKeys = (ClewUnjudged).descriptor.elementNames.toSet(); val clew = if \
-             ({after_hank}.keys.any {{ it in setOf(\"kind\", \"body\") }}) {} else null;",
-            decoded("ClewUnjudged", after_hank)
+            "val clewKeys = setOf(\"kind\", \"body\"); val clew = if (obj.keys.any {{ it in \
+             setOf(\"kind\", \"body\") }}) {} else null;",
+            decoded("ClewUnjudged", "obj")
         ),
         format!(
             "val brailKeys = (BrailUnjudged).descriptor.elementNames.toSet(); val brail = if \

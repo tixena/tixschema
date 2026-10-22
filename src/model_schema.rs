@@ -11,6 +11,7 @@ pub mod ranges;
 
 use alloc::borrow::ToOwned;
 use core::fmt::Write as _;
+use core::iter;
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use core::ops::Range;
 use core::ptr;
@@ -41,7 +42,7 @@ use crate::field_type::ZOD_SCHEMA_BOUND;
 #[cfg(any(feature = "serde", feature = "jsonschema"))]
 use crate::field_type::{RESULT_ARMS, RangeKind};
 #[cfg(feature = "zod")]
-use crate::field_type::{zod_check_wrap, zod_preprocess_wrap};
+use crate::field_type::{zod_check_wrap, zod_check_wrap_handing, zod_preprocess_wrap};
 use crate::{
     field_type::{
         BoundKind, FieldDef, FieldDefType, VariantKind, classify_variant, format_number_literal,
@@ -2827,9 +2828,11 @@ fn flattened_zod_branches(fld: &FieldDef) -> Vec<String> {
 #[cfg(all(feature = "serde", feature = "typescript"))]
 fn flattened_ts_spelling(fld: &FieldDef) -> String {
     let named = fld.typescript_merged_typename();
+    // A function the field names changes no type: its enum's variants are spliced in either way.
     let variants: Vec<String> = fld
         .flatten_variants()
         .into_iter()
+        .chain(fld.flatten_variants_written_around())
         .map(|variant| variant.typescript)
         .collect();
     if !variants.is_empty() {
@@ -2876,6 +2879,8 @@ fn struct_schema_impl_items(
     let ts_generics = ts_generic_params(generics);
     #[cfg(feature = "zod")]
     let type_parameters = type_parameters_in_scope(generics);
+    #[cfg(feature = "typescript")]
+    let own_keys: Vec<String> = field_defs.iter().map(|fld| fld.name.clone()).collect();
     // bodies: (type_code, schema_code, json_schema_fields, fields_empty)
     let bodies = render_struct_field_bodies(field_defs, Some(item_name));
     // flatten: (ts_types, zod_schemas)
@@ -2896,7 +2901,7 @@ fn struct_schema_impl_items(
             rust_ident,
             &ts_generics,
             &bodies.0,
-            bodies.3,
+            &own_keys,
             &flatten.0,
         ),
         #[cfg(feature = "zod")]
@@ -11142,7 +11147,10 @@ fn render_external_content(
                 format!(
                     "{{\n{}}}{}",
                     parts.type_code,
-                    variant_flatten_typescript(&variant.flattened_fields)
+                    variant_flatten_typescript(
+                        &member_names(field_defs),
+                        &variant.flattened_fields
+                    )
                 ),
                 zod,
                 json,
@@ -11240,13 +11248,17 @@ fn render_external_variant(
 }
 
 /// Records what an object flattening an externally tagged enum joins for each of its variants, in
-/// the order the union writes them.
+/// the order the union writes them. Each Zod operand carries the enum's own `checks`, handed the
+/// enum's value: a unit variant's bare name.
 #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn record_external_flatten_operands(
     rust_ident: &str,
     variants: &[DiscriminatedVariant],
     members: &[(String, String, proc_macro2::TokenStream)],
+    checks: &[FunctionName],
 ) {
+    #[cfg(not(feature = "zod"))]
+    let _: &[FunctionName] = checks;
     #[cfg(feature = "typescript")]
     let exclusions = sibling_key_exclusions(
         &variants
@@ -11277,13 +11289,19 @@ fn record_external_flatten_operands(
             let _: usize = index;
             #[cfg(feature = "zod")]
             let zod = if unit {
-                format!("z.strictObject({{\n  \"{key}\": z.null(),\n}})")
+                zod_check_wrap_handing(
+                    format!("z.strictObject({{\n  \"{key}\": z.null(),\n}})"),
+                    checks,
+                    &format!("\"{key}\""),
+                )
             } else {
-                member.1.clone()
+                zod_check_wrap(member.1.clone(), checks)
             };
             FlattenVariant {
                 #[cfg(feature = "typescript")]
                 typescript,
+                #[cfg(feature = "zod")]
+                unit: unit.then(|| key.clone()),
                 #[cfg(feature = "zod")]
                 zod,
             }
@@ -11313,9 +11331,10 @@ fn sibling_key_exclusions(member_keys: &[Option<Vec<String>>]) -> Vec<Vec<String
         .collect()
 }
 
-/// One externally tagged variant's flatten operand with its siblings' tags marked absent, written
-/// in the key-per-line shape [`render_external_variant`] already wrote the variant in. A member
-/// that is no object literal keeps its spelling — there is no key list to add a line to.
+/// One externally tagged variant's union member or flatten operand with its siblings' tags marked
+/// absent, written in the key-per-line shape [`render_external_variant`] already wrote the variant
+/// in. A member that is no object literal keeps its spelling — there is no key list to add a line
+/// to.
 #[cfg(all(feature = "serde", feature = "typescript"))]
 fn close_tagged_flatten_member(member: &str, excluded: &[String]) -> String {
     if excluded.is_empty() {
@@ -11334,13 +11353,17 @@ fn close_tagged_flatten_member(member: &str, excluded: &[String]) -> String {
 
 /// Joins an externally tagged enum's rendered members into its three union surfaces: the
 /// JSON-schema body, the TypeScript union, and the Zod union. Member order is the enum's
-/// declaration order, as for the other two enum forms.
+/// declaration order, as for the other two enum forms. Each TypeScript object member says it
+/// carries no other object member's key, which serde and Zod refuse beside it.
 #[cfg(feature = "serde")]
 fn join_external_union(
+    variants: &[DiscriminatedVariant],
     members: &[(String, String, proc_macro2::TokenStream)],
 ) -> (proc_macro2::TokenStream, String, String) {
     #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
     let _: &_ = &members;
+    #[cfg(not(feature = "typescript"))]
+    let _: &_ = &variants;
 
     #[cfg(feature = "jsonschema")]
     let main_schema_code = {
@@ -11362,11 +11385,23 @@ fn join_external_union(
     let main_schema_code = quote! {};
 
     #[cfg(feature = "typescript")]
-    let type_code = members
-        .iter()
-        .map(|(ts, _, _)| ts.as_str())
-        .collect::<Vec<_>>()
-        .join(" | ");
+    let type_code = {
+        let exclusions = sibling_key_exclusions(
+            &variants
+                .iter()
+                .map(|variant| {
+                    (!matches!(variant.kind, VariantKind::Unit))
+                        .then(|| vec![variant.discriminator_value.clone()])
+                })
+                .collect::<Vec<_>>(),
+        );
+        members
+            .iter()
+            .zip(&exclusions)
+            .map(|((ts, _, _), excluded)| close_tagged_flatten_member(ts, excluded))
+            .collect::<Vec<_>>()
+            .join(" | ")
+    };
     #[cfg(not(feature = "typescript"))]
     let type_code = String::new();
 
@@ -11383,6 +11418,27 @@ fn join_external_union(
     let schema_code = String::new();
 
     (main_schema_code, type_code, schema_code)
+}
+
+/// What each variant of the externally tagged enum `ident` renders as, recorded as well for an
+/// object that flattens the enum: the flatten-edge spelling of a variant that holds a value is the
+/// member's own, which only this expansion holds.
+#[cfg(feature = "serde")]
+fn external_members(
+    ident: &syn::Ident,
+    variants: &[DiscriminatedVariant],
+    checks: &[FunctionName],
+) -> Vec<(String, String, proc_macro2::TokenStream)> {
+    let self_type_name = ident.to_string();
+    let members: Vec<(String, String, proc_macro2::TokenStream)> = variants
+        .iter()
+        .map(|variant| render_external_variant(variant, &self_type_name))
+        .collect();
+    #[cfg(any(feature = "typescript", feature = "zod"))]
+    record_external_flatten_operands(&self_type_name, variants, &members, checks);
+    #[cfg(not(any(feature = "typescript", feature = "zod")))]
+    let _: &[FunctionName] = checks;
+    members
 }
 
 /// Processes an enum that carries no serde tagging attributes and generates its definitions.
@@ -11412,7 +11468,6 @@ fn process_externally_tagged_enum(
     #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
     let enum_module_name_opt = None;
 
-    let self_type_name = item_enum.ident.to_string();
     // Read before the walk, which takes each member's own attribute off it.
     let item_checks = checks::ItemChecks::of(&args.check, variant_members(&item_enum));
     let variants =
@@ -11421,19 +11476,9 @@ fn process_externally_tagged_enum(
         return output;
     }
     let decode_with = enum_decode_with(&item_enum, args);
+    let members = external_members(&item_enum.ident, &variants.0, &args.check);
 
-    let members: Vec<(String, String, proc_macro2::TokenStream)> = variants
-        .0
-        .iter()
-        .map(|variant| render_external_variant(variant, &self_type_name))
-        .collect();
-
-    // Recorded once the variants have rendered, because the flatten-edge spelling of a data-carrying
-    // one is the member's own and only this expansion holds it.
-    #[cfg(any(feature = "typescript", feature = "zod"))]
-    record_external_flatten_operands(&item_enum.ident.to_string(), &variants.0, &members);
-
-    let (main_schema_code, type_code, schema_code) = join_external_union(&members);
+    let (main_schema_code, type_code, schema_code) = join_external_union(&variants.0, &members);
     #[cfg(not(feature = "jsonschema"))]
     let _: &_ = &main_schema_code;
     #[cfg(not(feature = "typescript"))]
@@ -11867,11 +11912,14 @@ fn render_internal_variant(
         #[cfg(not(feature = "zod"))]
         let zod = String::new();
 
+        let own_keys: Vec<String> = iter::once(tag_name.to_owned())
+            .chain(member_names(&variant.field_defs))
+            .collect();
         return (
             format!(
                 "{}{}",
                 parts.type_code,
-                variant_flatten_typescript(&variant.flattened_fields)
+                variant_flatten_typescript(&own_keys, &variant.flattened_fields)
             ),
             zod,
             json,
@@ -12228,7 +12276,7 @@ fn render_untagged_named(
         .join("; ");
     let ts = format!(
         "{{ {ts_fields} }}{}",
-        variant_flatten_typescript(&members.flattened_fields)
+        variant_flatten_typescript(&member_names(field_defs), &members.flattened_fields)
     );
 
     #[cfg(feature = "zod")]
@@ -13382,7 +13430,10 @@ fn write_adjacent_named_variant_fields(
         parts.type_code,
         "  {content_key}: {{\n{}}}{};",
         inner.type_code,
-        variant_flatten_typescript(&variant.flattened_fields)
+        variant_flatten_typescript(
+            &member_names(&variant.field_defs),
+            &variant.flattened_fields
+        )
     );
 
     #[cfg(feature = "zod")]
@@ -18581,25 +18632,61 @@ fn named_key_text(described: &proc_macro2::TokenStream) -> proc_macro2::TokenStr
     }
 }
 
-/// The ` & A & B` an object's own block is closed with, one operand per merged source.
+/// The ` & A & B` an object's own block, of the members `own_keys`, is closed with, one operand per
+/// merged source.
 #[cfg(feature = "typescript")]
-fn ts_intersection_suffix(operands: &[MergedOperand]) -> String {
-    operands.iter().fold(String::new(), |mut acc, operand| {
-        let _ = write!(acc, " & {}", ts_merged_operand(operand));
-        acc
-    })
+fn ts_intersection_suffix(own_keys: &[String], operands: &[MergedOperand]) -> String {
+    ts_merged_operands(own_keys, operands)
+        .iter()
+        .fold(String::new(), |mut acc, operand| {
+            let _ = write!(acc, " & {operand}");
+            acc
+        })
 }
 
-/// The ` & A & B` a variant's own object block is closed with, empty where the variant flattens
-/// nothing.
+/// What each merged source is written as inside the intersection, its absence leaving out the keys
+/// the object's own members `own_keys` and the other sources read: Zod's branch without the source
+/// reads them.
 #[cfg(feature = "typescript")]
-fn variant_flatten_typescript(flattened_fields: &[FieldDef]) -> String {
-    ts_intersection_suffix(&compute_flatten_outputs(flattened_fields).0)
+fn ts_merged_operands(own_keys: &[String], operands: &[MergedOperand]) -> Vec<String> {
+    operands
+        .iter()
+        .enumerate()
+        .map(|(at, operand)| {
+            let beside: Vec<String> = own_keys
+                .iter()
+                .map(|key| format!("\"{}\"", key.replace('\\', "\\\\").replace('"', "\\\"")))
+                .chain(
+                    operands
+                        .iter()
+                        .enumerate()
+                        .filter(|(other, _)| *other != at)
+                        .map(|(_, other)| format!("keyof NonNullable<{}>", other.spelling)),
+                )
+                .collect();
+            ts_merged_operand(operand, &beside.join(" | "))
+        })
+        .collect()
+}
+
+/// The name each of `field_defs` is written under.
+fn member_names(field_defs: &[FieldDef]) -> Vec<String> {
+    field_defs.iter().map(|fld| fld.name.clone()).collect()
+}
+
+/// The ` & A & B` a variant's own object block, of the members `own_keys`, is closed with, empty
+/// where the variant flattens nothing.
+#[cfg(feature = "typescript")]
+fn variant_flatten_typescript(own_keys: &[String], flattened_fields: &[FieldDef]) -> String {
+    ts_intersection_suffix(own_keys, &compute_flatten_outputs(flattened_fields).0)
 }
 
 /// Nothing closes the block where the surface is off.
 #[cfg(not(feature = "typescript"))]
-const fn variant_flatten_typescript(_flattened_fields: &[FieldDef]) -> String {
+const fn variant_flatten_typescript(
+    _own_keys: &[String],
+    _flattened_fields: &[FieldDef],
+) -> String {
     String::new()
 }
 
@@ -18611,16 +18698,22 @@ fn variant_flatten_zod(own: &str, flattened_fields: &[FieldDef]) -> String {
     zod_merged_object(own, &compute_flatten_outputs(flattened_fields).1)
 }
 
-/// What one merged source is written as inside the intersection.
+/// What one merged source is written as inside the intersection, its absence leaving out the keys
+/// `beside` names, a TypeScript union of keys, where it names any.
 #[cfg(feature = "typescript")]
-fn ts_merged_operand(operand: &MergedOperand) -> String {
+fn ts_merged_operand(operand: &MergedOperand, beside: &str) -> String {
     let spelling = &operand.spelling;
+    let absent = |keys: String| {
+        if beside.is_empty() {
+            format!("({spelling} | {{ [K in {keys}]?: never }})")
+        } else {
+            format!("({spelling} | {{ [K in Exclude<{keys}, {beside}>]?: never }})")
+        }
+    };
     match operand.absence {
         SourceAbsence::Never => spelling.clone(),
-        SourceAbsence::Field => format!("({spelling} | {{ [K in keyof {spelling}]?: never }})"),
-        SourceAbsence::Published => {
-            format!("({spelling} | {{ [K in keyof NonNullable<{spelling}>]?: never }})")
-        }
+        SourceAbsence::Field => absent(format!("keyof {spelling}")),
+        SourceAbsence::Published => absent(format!("keyof NonNullable<{spelling}>")),
     }
 }
 
@@ -18632,14 +18725,14 @@ fn generate_ts_definition_method(
     rust_ident: &str,
     ts_generics: &str,
     type_code: &str,
-    fields_empty: bool,
+    own_keys: &[String],
     flatten_types: &[MergedOperand],
 ) -> proc_macro2::TokenStream {
     let reexport = ident_reexport_ts(rust_ident, item_name, ts_generics);
+    let fields_empty = own_keys.is_empty();
     let has_flatten = !flatten_types.is_empty();
-    let operands: Vec<String> = flatten_types.iter().map(ts_merged_operand).collect();
-    let intersection_only = operands.join(" & ");
-    let intersection_suffix = ts_intersection_suffix(flatten_types);
+    let intersection_only = ts_merged_operands(own_keys, flatten_types).join(" & ");
+    let intersection_suffix = ts_intersection_suffix(own_keys, flatten_types);
 
     let typescript_type_gen = if fields_empty {
         if has_flatten {

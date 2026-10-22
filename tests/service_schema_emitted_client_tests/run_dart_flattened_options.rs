@@ -381,17 +381,17 @@ fn assert_written(definition: &str, fragment: &str) {
     );
 }
 
-/// A flattened `Option` of a struct whose keys are known is read where the object it is handed
-/// holds one of them, and is `null` where it holds none: alone in its holder, beside a member of
-/// its holder's own, and in a variant under a tag key, without the tag. One whose keys are not
-/// known, a struct declared below its holder and one with a flattened member of its own, is read
-/// in a closure that answers `null` where the read throws.
+/// A flattened `Option` of a struct whose keys are known is read where the whole object its holder
+/// reads holds one of them, as TypeScript and Zod read it, and is `null` where it holds none: alone
+/// in its holder, beside a member of its holder's own, and in a variant under a tag key. One whose
+/// keys are not known, a struct declared below its holder and one with a flattened member of its
+/// own, is read in a closure that answers `null` where the read throws.
 #[test]
 fn a_flattened_option_is_read_where_one_of_its_keys_is_held() {
     assert_written(
         &lapping_dart::dart_definition(),
-        "Lapping(note: json['note'] as String,tabling: (({...json}..remove('note')).keys.any(const \
-         ['label'].contains) ? Tabling.fromJsonUnjudged(({...json}..remove('note'))) : null),);",
+        "Lapping(note: json['note'] as String,tabling: (json.keys.any(const ['label'].contains) ? \
+         Tabling.fromJsonUnjudged(json) : null),);",
     );
     assert_written(
         &flaking_dart::dart_definition(),
@@ -400,9 +400,8 @@ fn a_flattened_option_is_read_where_one_of_its_keys_is_held() {
     );
     assert_written(
         &sennit_dart::dart_definition(),
-        "SennitLaid(tabling: (({...json}..remove('kind')..remove('note')).keys.any(const \
-         ['label'].contains) ? Tabling.fromJsonUnjudged(({...json}..remove('kind')..remove('note'))) \
-         : null),note: json['note'] as String,);",
+        "SennitLaid(tabling: (json.keys.any(const ['label'].contains) ? \
+         Tabling.fromJsonUnjudged(json) : null),note: json['note'] as String,);",
     );
     assert_written(
         &painter_dart::dart_definition(),
@@ -422,9 +421,10 @@ fn a_flattened_option_is_read_where_one_of_its_keys_is_held() {
 }
 
 /// A flattened `Option` of an enum under a tag key whose class was emitted above is read where the
-/// object it is handed holds its tag or its content key, and is `null` where it holds neither. One
-/// with no key to be looked for by, an untagged enum, one declared below its holder and one that
-/// names a function on itself, is read in a closure that answers `null` where the read throws.
+/// whole object its holder reads holds its tag or its content key, as TypeScript and Zod read it,
+/// and is `null` where it holds neither. One with no key to be looked for by, an untagged enum, one
+/// declared below its holder and one that names a function on itself, is handed the object without
+/// its holder's own keys and read in a closure that answers `null` where the read throws.
 #[test]
 fn a_flattened_option_of_an_enum_is_read_where_its_tag_or_its_content_key_is_held() {
     let handed = "({...json}..remove('note'))";
@@ -432,17 +432,13 @@ fn a_flattened_option_of_an_enum_is_read_where_its_tag_or_its_content_key_is_hel
         |read: &str| format!("(() {{ try {{ return {read}; }} catch (_) {{ return null; }} }})()");
     assert_written(
         &lowering_dart::dart_definition(),
-        &format!(
-            "Lowering(grommet: ({handed}.keys.any(const ['kind'].contains) ? \
-             Grommet.fromJsonUnjudged({handed}) : null),note: json['note'] as String,);"
-        ),
+        "Lowering(grommet: (json.keys.any(const ['kind'].contains) ? \
+         Grommet.fromJsonUnjudged(json) : null),note: json['note'] as String,);",
     );
     assert_written(
         &squaring_dart::dart_definition(),
-        &format!(
-            "Squaring(becket: ({handed}.keys.any(const ['kind', 'body'].contains) ? \
-             Becket.fromJsonUnjudged({handed}) : null),note: json['note'] as String,);"
-        ),
+        "Squaring(becket: (json.keys.any(const ['kind', 'body'].contains) ? \
+         Becket.fromJsonUnjudged(json) : null),note: json['note'] as String,);",
     );
     assert_written(
         &heeling_dart::dart_definition(),
@@ -467,13 +463,13 @@ fn a_flattened_option_of_an_enum_is_read_where_its_tag_or_its_content_key_is_hel
     );
 }
 
-/// A struct flattened bare is read as it was.
+/// A struct flattened bare is read from the whole object its holder reads, as TypeScript and Zod
+/// read it.
 #[test]
-fn a_flattened_struct_is_read_as_it_was() {
+fn a_flattened_struct_is_read_from_the_whole_object() {
     assert_written(
         &crowning_dart::dart_definition(),
-        "Crowning(note: json['note'] as String,tabling: \
-         Tabling.fromJsonUnjudged(({...json}..remove('note'))),);",
+        "Crowning(note: json['note'] as String,tabling: Tabling.fromJsonUnjudged(json),);",
     );
 }
 

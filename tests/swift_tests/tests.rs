@@ -460,14 +460,10 @@ fn a_nullable_field_always_writes_its_key_even_when_nil() {
 
 #[cfg(feature = "serde")]
 #[test]
-fn a_flattened_field_decodes_without_its_holders_keys_and_encodes_through_the_same_encoder() {
+fn a_flattened_field_decodes_from_its_holders_whole_object_and_encodes_through_the_same_encoder() {
     let swift = with_flatten_swift::swift_definition();
     assert!(
-        swift.contains(
-            "let extraPayload = try SwiftSchemaPayload(from: decoder, without: taken + [\"id\"]).value; \
-             self.extra = try SwiftSchemaPayload.read(FlattenedExtra.self, from: extraPayload, \
-             at: decoder.codingPath)"
-        ),
+        swift.contains("self.extra = try FlattenedExtra(from: decoder)"),
         "got: {swift}"
     );
     assert!(

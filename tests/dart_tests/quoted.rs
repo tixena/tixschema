@@ -132,18 +132,19 @@ fn an_enums_names_are_escaped_in_its_dart_text() {
     );
 }
 
-/// A struct and an externally tagged enum flattened beside a member of their holder's own are
-/// handed the object without that member's name, and the enum the one entry under one of its
-/// names, each written escaped.
+/// A struct flattened beside a member of its holder's own is read from the whole object, and an
+/// externally tagged enum is handed the object without that member's name and reads the one entry
+/// under one of its names, each written escaped.
 #[test]
 fn a_flattened_members_names_are_escaped_in_its_holders_dart_text() {
     holds_each(
         &tithed_dart::dart_definition(),
-        &[r"Tithed(leveed: Leveed.fromJsonUnjudged(({...json}..remove('no\'te'))),"],
+        &["Tithed(leveed: Leveed.fromJsonUnjudged(json),"],
     );
     holds_each(
         &mulcted_dart::dart_definition(),
         &[
+            r"(switch (({...json}..remove('no\'te'))) { final whole =>",
             r#"whole.keys.where(const ['Bid\$Ask', 'O\'Neil', 'C:\\Path', 'Calm"'].contains)"#,
             r"Map<String, dynamic> toJson() => { 'no\'te': note,",
         ],

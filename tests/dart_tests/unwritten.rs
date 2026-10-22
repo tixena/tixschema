@@ -45,8 +45,8 @@ fn a_member_serde_never_writes_beside_a_flattened_one_has_no_entry() {
 fn a_flattened_member_serde_never_writes_is_read_and_spread_nowhere() {
     let flemishing = flemishing_dart::dart_definition();
     for held in [
-        "braiding: (({...json}..remove('note')).keys.any(const ['label'].contains) ? \
-         Braiding.fromJsonUnjudged(({...json}..remove('note'))) : null)",
+        "braiding: (json.keys.any(const ['label'].contains) ? Braiding.fromJsonUnjudged(json) \
+         : null)",
         "Map<String, dynamic> toJson() => { 'note': note, };",
     ] {
         assert!(flemishing.contains(held), "no `{held}` in: {flemishing}");
@@ -54,7 +54,7 @@ fn a_flattened_member_serde_never_writes_is_read_and_spread_nowhere() {
     let splaying = splaying_dart::dart_definition();
     for held in [
         "const Splaying({required this.braiding,required this.note,});",
-        "Splaying(braiding: Braiding.fromJsonUnjudged(({...json}..remove('note'))),",
+        "Splaying(braiding: Braiding.fromJsonUnjudged(json),",
         "Map<String, dynamic> toJson() => { 'note': note, };",
     ] {
         assert!(splaying.contains(held), "no `{held}` in: {splaying}");

@@ -38,7 +38,7 @@ use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{
     brand_field, has_serde_skip_serializing, keys_taken_when_flattened, parse_serde_key_omission,
-    struct_tag, variant_names_when_flattened,
+    struct_tag, tag_and_content_when_flattened, variant_names_when_flattened,
 };
 use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, classify_variant, get_field_def,
@@ -175,6 +175,18 @@ struct FlattenPlan {
     serialize_stmts: Vec<String>,
 }
 
+/// The tag the object a serializer [`flatten_merging_serializer`] writes reads holds beside its
+/// members.
+#[derive(Clone, Copy)]
+enum BesideTag<'tag> {
+    /// The tag of a variant under a tag alone, which its enum reads and writes.
+    Enum(&'tag str),
+    /// No tag.
+    None,
+    /// A struct's own tag key and the struct's name, which the serializer checks and writes.
+    Own(&'tag (String, String)),
+}
+
 /// What one flattened member adds to the serializer of its holder.
 struct FlattenedMember {
     deserialize: String,
@@ -265,9 +277,10 @@ thread_local! {
     /// by which of its arms holds `()`, so every `Result` of one shape names one interface. Cleared
     /// with [`KOTLIN_TUPLE_AUX`].
     static KOTLIN_RESULTS: RefCell<Vec<([bool; 2], String)>> = const { RefCell::new(Vec::new()) };
-    /// The names serde reads each enum the emitter wrote under when it is flattened, by Rust
-    /// ident: the first entry of the holder's object under one of them is the enum's.
-    static KOTLIN_VARIANT_NAMES: RefCell<HashMap<String, Vec<String>>> =
+    /// The names serde reads each enum the emitter wrote under when it is flattened, one list per
+    /// variant, by Rust ident: the first entry of the holder's object under one of them is the
+    /// enum's.
+    static KOTLIN_VARIANT_NAMES: RefCell<HashMap<String, Vec<Vec<String>>>> =
         RefCell::new(HashMap::new());
     /// Each externally tagged enum the emitter wrote that writes a unit variant as its bare name,
     /// by Rust ident: serde writes that variant flattened as an entry, its name over `null`.
@@ -285,6 +298,10 @@ thread_local! {
     /// The tag, then the content key where it has one, of each enum under a tag key the emitter
     /// wrote, by Rust ident: what a flattened `Option` of it is looked for by.
     static KOTLIN_TAG_KEYS: RefCell<HashMap<String, Vec<String>>> =
+        RefCell::new(HashMap::new());
+    /// The tag and the content key each enum under both the emitter wrote takes off its holder's
+    /// object when it is flattened, by Rust ident: serde reads it as a struct of the two.
+    static KOTLIN_TAKEN_TAG_KEYS: RefCell<HashMap<String, Vec<String>>> =
         RefCell::new(HashMap::new());
 }
 
@@ -354,9 +371,10 @@ fn register_kotlin_name(rust_ident: &str, export_name: &str) {
 }
 
 /// The Rust ident of the enum a flattened member typed `def` holds, and the names it takes the
-/// first entry under, as serde reads an externally tagged enum: `None` for any other type, one the
-/// emitter has not written, and a member that names a function, which is handed the whole object.
-fn flattened_variant_names(def: &FieldDef) -> Option<(&str, Vec<String>)> {
+/// first entry under, one list per variant, as serde reads an externally tagged enum: `None` for
+/// any other type, one the emitter has not written, and a member that names a function, which is
+/// handed the whole object.
+fn flattened_variant_names(def: &FieldDef) -> Option<(&str, Vec<Vec<String>>)> {
     let FieldDefType::SiblingType(name, _) = &def.field_type else {
         return None;
     };
@@ -458,6 +476,27 @@ fn recorded_tag_keys(def: &FieldDef) -> Option<Vec<String>> {
     KOTLIN_TAG_KEYS.with(|noted| noted.borrow().get(name).cloned())
 }
 
+/// The tag and the content key the enum under both a flattened member typed `def` holds takes off
+/// its holder's object, where the emitter wrote that enum and the member names no function: `None`
+/// for any other type.
+fn taken_tag_keys(def: &FieldDef) -> Option<Vec<String>> {
+    let FieldDefType::SiblingType(name, _) = &def.field_type else {
+        return None;
+    };
+    if !preprocess::of(def).is_empty() {
+        return None;
+    }
+    KOTLIN_TAKEN_TAG_KEYS.with(|noted| noted.borrow().get(name).cloned())
+}
+
+/// Whether a flattened member typed `def` is read from the whole object its holder reads, as
+/// TypeScript and Zod read it: a struct, and an enum under a tag key, the emitter wrote that hands
+/// its object to no function.
+fn reads_the_whole(def: &FieldDef) -> bool {
+    (recorded_keys(def).is_some() || recorded_tag_keys(def).is_some())
+        && !preprocess::takes_no_key(def)
+}
+
 /// `keys` as a Kotlin set of strings.
 fn kotlin_set_of(keys: &[String]) -> String {
     if keys.is_empty() {
@@ -474,13 +513,16 @@ fn kotlin_set_of(keys: &[String]) -> String {
 }
 
 /// The keys a flattened struct typed `def` takes off its holder's object, as a Kotlin set: those
-/// serde reads where the emitter wrote the struct, and the `elementNames` of the descriptor
-/// `serializer` answers for any type it recorded no keys for.
+/// serde reads where the emitter wrote the struct, the tag and the content key of an enum under
+/// both it wrote, and the `elementNames` of the descriptor `serializer` answers for any type it
+/// recorded no keys for.
 fn flattened_struct_keys(def: &FieldDef, serializer: &str) -> String {
-    recorded_keys(def).map_or_else(
-        || format!("({serializer}).descriptor.elementNames.toSet()"),
-        |keys| kotlin_set_of(&keys),
-    )
+    recorded_keys(def)
+        .or_else(|| taken_tag_keys(def))
+        .map_or_else(
+            || format!("({serializer}).descriptor.elementNames.toSet()"),
+            |keys| kotlin_set_of(&keys),
+        )
 }
 
 /// The Kotlin name registered for `rust_ident`, or `None` for a type declared below the one
@@ -1792,27 +1834,41 @@ fn flattened_merge(field: &KotlinField, prop: &str, inner_serializer: &str) -> O
 }
 
 /// One flattened externally tagged enum's own statements, as [`flatten_struct_field_plan`] writes
-/// a struct's: the enum `read_under` names is read from the first entry of `rest` under one of the
-/// names it holds, which serde refuses the holder without and an optional enum reads no value
-/// without, and the key of that entry, which the members flattened after it are handed the object
-/// without.
+/// a struct's: the enum `read_under` names is read from the one entry of `rest` under one of the
+/// names it holds, one list per variant, which serde refuses the holder without and an optional
+/// enum reads no value without, and the key of that entry, which the members flattened after it
+/// are handed the object without. Entries under two names are refused, as TypeScript and Zod
+/// refuse them, naming each variant they belong to once, in the order the enum declares them.
 fn flatten_enum_field_plan(
     field: &KotlinField,
     prop: &str,
     type_parameters: &[String],
     rest: &str,
-    (enum_name, names): (&str, &[String]),
+    (enum_name, names): (&str, &[Vec<String>]),
 ) -> FlattenedMember {
     let base = flatten_base_field(&field.field_def);
     let inner_serializer = read::member_serializer(&base, type_parameters);
     let serialize = flattened_merge(field, prop, &inner_serializer);
     let entry_ident = format!("{}Entry", kotlin_bare(prop));
-    let listed = names
+    let entries_ident = format!("{}Entries", kotlin_bare(prop));
+    let listed = kotlin_set_of(&names.concat());
+    let variants = names
         .iter()
-        .map(|name| format!("\"{}\"", kotlin_template_text(name)))
+        .filter_map(|variant| {
+            Some(format!(
+                "if ({entries_ident}.any {{ it.key in {} }}) \"{}\" else null",
+                kotlin_set_of(variant),
+                kotlin_template_text(variant.first()?)
+            ))
+        })
         .collect::<Vec<_>>()
         .join(", ");
-    let entry_read = format!("{rest}.entries.firstOrNull {{ it.key in setOf({listed}) }}");
+    let entry_read = format!(
+        "{rest}.entries.filter {{ it.key in {listed} }}.also {{ {entries_ident} -> if \
+         ({entries_ident}.size > 1) throw SerializationException(\"more than one variant of enum \
+         {enum_name} found in flattened data: \" + listOfNotNull({variants}).joinToString(\", \")) \
+         }}.firstOrNull()"
+    );
     let (decode, entry_taken) = if field.field_def.is_optional() {
         (
             format!(
@@ -1892,7 +1948,13 @@ fn flatten_map_field_plan(
     (serialize, format!("val {prop} = {read}"))
 }
 
-fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPlan {
+/// The [`FlattenPlan`] of `fields`, read from an object that holds `beside`, a key no member
+/// reads, as well: the tag of a variant under a tag alone.
+fn flatten_plan(
+    fields: &[KotlinField],
+    type_parameters: &[String],
+    beside: Option<&str>,
+) -> FlattenPlan {
     let mut plan = FlattenPlan {
         ctor_args: Vec::new(),
         deserialize_stmts: Vec::new(),
@@ -1904,6 +1966,7 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
         .iter()
         .filter(|field| !field.flatten)
         .map(|field| format!("\"{}\"", field.wire_name))
+        .chain(beside.map(|key| format!("\"{}\"", kotlin_template_text(key))))
         .collect();
     // Kotlin infers no element type from an empty `setOf()`.
     let own_literal = if own_wire_keys.is_empty() {
@@ -1958,18 +2021,22 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
                 }
                 plan.push(member);
             } else {
-                let member = flatten_struct_field_plan(field, &prop, type_parameters, &rest);
+                let handed = if reads_the_whole(&flatten_base_field(&field.field_def)) {
+                    "obj"
+                } else {
+                    &rest
+                };
+                let member = flatten_struct_field_plan(field, &prop, type_parameters, handed);
                 if !preprocess::takes_no_key(&field.field_def) {
                     let _ = write!(taken, " - {}", member.taken);
                 }
                 plan.push(member);
-                members_read =
-                    members_read
-                        .zip(read_keys(&field.field_def))
-                        .map(|(mut so_far, keys)| {
-                            let _ = write!(so_far, " - {}", kotlin_set_of(&keys));
-                            so_far
-                        });
+                members_read = members_read
+                    .zip(read_keys(&field.field_def).or_else(|| taken_tag_keys(&field.field_def)))
+                    .map(|(mut so_far, keys)| {
+                        let _ = write!(so_far, " - {}", kotlin_set_of(&keys));
+                        so_far
+                    });
             }
         }
         plan.ctor_args.push(format!("{prop} = {prop}"));
@@ -1986,19 +2053,25 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
 /// `kotlinx.serialization` has no annotation for a member read and never written. `own` is the
 /// type's `preprocess`, which corrects the object every member is read from, and each alias of
 /// `renamed` is read in that object as the name it stands for. A key no member reads is refused
-/// wherever [`FlattenPlan::read`] knows every key the members read.
+/// wherever [`FlattenPlan::read`] knows every key the members read, but the tag of a variant under
+/// a tag alone, which its enum hands it with the object.
 fn flatten_merging_serializer(
     export_name: &str,
     generic_params: &str,
     type_parameters: &[String],
     fields: &[KotlinField],
-    own_tag: Option<&(String, String)>,
+    beside_tag: BesideTag<'_>,
     own: &[FunctionName],
     renamed: &[(String, String)],
 ) -> String {
+    let (own_tag, beside) = match beside_tag {
+        BesideTag::None => (None, None),
+        BesideTag::Own(own_tag) => (Some(own_tag), None),
+        BesideTag::Enum(key) => (None, Some(key)),
+    };
     let self_type = format!("{export_name}{generic_params}");
     let serializer_head = read::written_head(export_name, type_parameters);
-    let mut plan = flatten_plan(fields, type_parameters);
+    let mut plan = flatten_plan(fields, type_parameters, beside);
     // A struct's own tag is written ahead of everything merged into the object.
     if let Some((key, named)) = own_tag {
         plan.serialize_stmts
@@ -2164,7 +2237,7 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
             &generic_params,
             &type_parameters,
             &fields,
-            own_tag.as_ref(),
+            own_tag.as_ref().map_or(BesideTag::None, BesideTag::Own),
             args.preprocess,
             &renamed,
         );
@@ -2413,6 +2486,14 @@ fn enum_kotlin_tokens(item_enum: &ItemEnum, args: &KotlinArgs<'_>) -> TokenStrea
     register_kotlin_name(&rust_ident, &export_name);
     let tag_attrs = enum_tag_attrs(&item_enum.attrs);
     note_tag_keys(&rust_ident, tag_keys(&tag_attrs, args.preprocess));
+    KOTLIN_TAKEN_TAG_KEYS.with(|noted| {
+        let taken = tag_and_content_when_flattened(item_enum, args.preprocess);
+        if taken.is_empty() {
+            noted.borrow_mut().remove(&rust_ident);
+        } else {
+            noted.borrow_mut().insert(rust_ident.clone(), taken);
+        }
+    });
     let writes_bare_variant_names =
         tag_attrs.tag.is_none() && tag_attrs.content.is_none() && !tag_attrs.untagged;
     let defaults = SerdeDefaults::of_enum(item_enum);
@@ -2581,6 +2662,7 @@ fn variant_serializer(
     plugin: &Plugin<'_>,
     generic_params: &str,
     payload: &VariantPayload,
+    tag: Option<&str>,
 ) -> Option<String> {
     let VariantPayload::Named(fields) = payload else {
         return None;
@@ -2591,7 +2673,7 @@ fn variant_serializer(
             generic_params,
             plugin.type_parameters,
             fields,
-            None,
+            tag.map_or(BesideTag::None, BesideTag::Enum),
             &[],
             &aliases::of_members(fields),
         )
@@ -2751,17 +2833,22 @@ fn dispatched_tagged_variant(
         "{declaration} {}",
         variant_body(&payload, ctx.tagging, &wire_tag, ctx.serializable, ctx.args)
     );
-    if let Some(serializer) = variant_serializer(&plugin, ctx.generic_params, &payload) {
+    let tag_beside = beside_the_tag.then_some(ctx.tag_key);
+    if let Some(serializer) = variant_serializer(&plugin, ctx.generic_params, &payload, tag_beside)
+    {
         let _ = write!(subclass, " {serializer}");
     }
 
     let tag_key = ctx.tag_key;
     // Under a tag and a content key the content is read out of a `Map` index, which is nullable
     // in Kotlin, and refused where it is absent; under a tag alone it is the object without the
-    // tag; with no tag attribute the object's one entry is destructured, already non-null.
+    // tag, or the whole object for a variant read by hand, whose flattened struct reads the tag
+    // as TypeScript and Zod read it; with no tag attribute the object's one entry is destructured,
+    // already non-null.
     let data = match ctx.tagging {
         Tagging::Adjacent(content) => present("data", content),
         Tagging::External => "data".to_owned(),
+        Tagging::Unwrapped if written_by_hand(&payload) => "obj".to_owned(),
         Tagging::Unwrapped => format!("JsonObject(obj - \"{tag_key}\")"),
     };
     let own = || kotlin_subclass_serializer_expr(&subclass_name, ctx.type_parameters);
@@ -2984,7 +3071,7 @@ fn untagged_enum_kotlin_source(
             "{declaration} {{ {} }}",
             rules.written("override ")
         ));
-        subclasses.extend(variant_serializer(&plugin, &generic_params, &payload));
+        subclasses.extend(variant_serializer(&plugin, &generic_params, &payload, None));
         let subclass_serializer = kotlin_subclass_serializer_expr(&subclass_name, &type_parameters);
         serialize_arms.push(format!(
             "is {subclass_name} -> output.json.encodeToJsonElement({subclass_serializer}, value)"
