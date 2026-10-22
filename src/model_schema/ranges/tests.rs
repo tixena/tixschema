@@ -1190,3 +1190,328 @@ fn a_flattened_result_is_refused_naming_the_field() {
         messages[0]
     );
 }
+
+/// What every refusal of a key below a flattened member closes with, where it names `member`.
+#[cfg(feature = "serde")]
+fn keys_below(member: &str) -> String {
+    format!(
+        "serde reads every key below a flattened member as text, and reads no number and no `bool` \
+         from text, so no entry of that map reads back. Key the map by a `String`, or write the \
+         {member} under a key of its own."
+    )
+}
+
+/// The refusal of the member `field` flattens, where `held` names what it holds and `subject`
+/// leads it.
+#[cfg(feature = "serde")]
+fn keyed_by(subject: &str, field: &str, held: &str) -> String {
+    format!(
+        "model_schema: {subject}field `{field}`: `#[serde(flatten)]` cannot hold {held} \
+         \u{2014} {}",
+        keys_below("field")
+    )
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_map_flattened_with_a_key_serde_reads_no_entry_of_is_refused_naming_the_key() {
+    let _: Vec<String> = refused("#[serde(transparent)] pub struct Fathoms(pub u32);");
+    for (rest, key) in [
+        ("BTreeMap<isize, u8>", "isize"),
+        ("HashMap<bool, u8>", "bool"),
+        ("Option<BTreeMap<u32, u8>>", "u32"),
+        ("Box<HashMap<i64, String>>", "i64"),
+        ("BTreeMap<Box<u16>, u8>", "Box<u16>"),
+        ("BTreeMap<Fathoms, u8>", "Fathoms"),
+        ("BTreeMap<String, Vec<HashMap<u8, u8>>>", "u8"),
+    ] {
+        let attributes = if rest.starts_with("Option") {
+            "#[serde(flatten, default, skip_serializing_if = \"Option::is_none\")]"
+        } else {
+            "#[serde(flatten)]"
+        };
+        assert_eq!(
+            refused(&format!(
+                "pub struct Soundings {{ {attributes} pub rest: {rest} }}"
+            )),
+            vec![keyed_by(
+                "type `Soundings`: ",
+                "rest",
+                &format!("a map keyed by `{key}`")
+            )],
+            "{rest}"
+        );
+    }
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_variant_that_flattens_a_map_keyed_by_a_number_is_refused_naming_the_variant() {
+    assert_eq!(
+        refused("pub enum Sounding { Lines { #[serde(flatten)] depths: BTreeMap<u32, u8> } }"),
+        vec![keyed_by(
+            "type `Sounding`: variant `Lines`, ",
+            "depths",
+            "a map keyed by `u32`"
+        )]
+    );
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_type_declared_above_that_holds_a_map_keyed_by_a_number_is_refused_flattened() {
+    for declared in [
+        "#[serde(transparent)] pub struct Depths(pub BTreeMap<u32, u8>);",
+        "pub struct Slotted(pub Option<HashMap<bool, u8>>);",
+        "pub struct Charted { pub marks: Vec<BTreeMap<i16, u8>> }",
+    ] {
+        assert_eq!(refused(declared), NONE, "{declared}");
+    }
+    assert_eq!(
+        refused_generic("#[serde(transparent)] pub struct Over<T>(pub T);"),
+        NONE
+    );
+    assert_eq!(refusals(expanded("type Ladder = BTreeMap<i32, u8>;")), NONE);
+    for (written, held) in [
+        (
+            "Depths",
+            "`Depths`, which holds a map keyed by a number or a `bool` (field `0`, a map keyed by \
+             `u32`)",
+        ),
+        (
+            "Option<Slotted>",
+            "`Slotted`, which holds a map keyed by a number or a `bool` (field `0`, a map keyed \
+             by `bool`)",
+        ),
+        (
+            "Charted",
+            "`Charted`, which holds a map keyed by a number or a `bool` (field `marks`, a map \
+             keyed by `i16`)",
+        ),
+        (
+            "Ladder",
+            "`Ladder`, which holds a map keyed by a number or a `bool` (a map keyed by `i32`)",
+        ),
+        (
+            "Over<BTreeMap<u8, u8>>",
+            "`Over<BTreeMap<u8, u8>>`, which holds a map keyed by a number or a `bool` (a map \
+             keyed by `u8`)",
+        ),
+    ] {
+        let attributes = if written.starts_with("Option") {
+            "#[serde(flatten, default, skip_serializing_if = \"Option::is_none\")]"
+        } else {
+            "#[serde(flatten)]"
+        };
+        assert_eq!(
+            refused(&format!(
+                "pub struct Plumbing {{ {attributes} pub lead: {written} }}"
+            )),
+            vec![keyed_by("type `Plumbing`: ", "lead", held)],
+            "{written}"
+        );
+    }
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_map_flattened_with_a_key_serde_reads_from_text_builds() {
+    let _: Vec<String> = refused("pub enum Bearing { North, South }");
+    let _: Vec<String> = refused("#[serde(transparent)] pub struct Mark(pub String);");
+    let _: Vec<String> = refused("pub struct Counted { pub by_number: BTreeMap<u32, u8> }");
+    for source in [
+        "pub struct Lettered { #[serde(flatten)] pub rest: BTreeMap<char, u8> }",
+        "pub struct Charted { #[serde(flatten)] pub rest: BTreeMap<String, u8> }",
+        "pub struct Dated { #[serde(flatten)] pub rest: BTreeMap<NaiveDate, u8> }",
+        "pub struct Headed { #[serde(flatten)] pub rest: BTreeMap<Bearing, u8> }",
+        "pub struct Marked { #[serde(flatten)] pub rest: BTreeMap<Mark, u8> }",
+        "pub struct Unflattened { pub rest: BTreeMap<u32, u8> }",
+        "pub struct HeldUnflattened { pub counted: Counted }",
+        "pub struct Unread { #[serde(flatten, skip_deserializing)] pub rest: BTreeMap<u32, u8> }",
+        "pub struct ReadByHand { #[serde(flatten, deserialize_with = \"read_lines\")] \
+         pub rest: BTreeMap<u32, u8> }",
+    ] {
+        assert_eq!(refused(source), NONE, "{source}");
+    }
+    assert_eq!(
+        refused_generic("pub struct Keyed<T> { #[serde(flatten)] pub rest: BTreeMap<T, u8> }"),
+        NONE
+    );
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_type_declared_below_its_holder_is_not_looked_into_for_a_number_key() {
+    assert_eq!(
+        refused("pub struct Unseen { #[serde(flatten)] pub lead: DepthsBelow }"),
+        NONE
+    );
+    assert_eq!(
+        refused("pub struct DepthsBelow { pub marks: BTreeMap<u32, u8> }"),
+        NONE
+    );
+}
+
+/// The README quotes the refusal as the build answers it.
+#[cfg(feature = "serde")]
+#[test]
+fn the_readme_states_the_refusal_of_a_map_keyed_by_a_number_as_the_build_answers_it() {
+    let _: Vec<String> =
+        refused_generic("pub struct Rows<T> { #[serde(flatten)] pub rest: BTreeMap<T, u8> }");
+    for source in [
+        "pub struct Soundings { #[serde(flatten)] pub rest: BTreeMap<isize, u8> }",
+        "pub struct Dock { pub rows: Rows<u32> }",
+    ] {
+        let messages = refused(source);
+        assert_eq!(messages.len(), 1, "{source}: {messages:?}");
+        let answered = format!("error: {}", messages[0]);
+        assert!(
+            include_str!("../../../README.md").contains(&answered),
+            "the README no longer quotes: {answered}"
+        );
+    }
+}
+
+/// The refusal of `filling` filling the parameter `T` `reads` reads below a flattened member,
+/// as the key of a map where `keying`, and `filled_with` after "fills it".
+#[cfg(feature = "serde")]
+fn read_below(
+    subject: &str,
+    reads: &str,
+    keying: bool,
+    filling: &str,
+    filled_with: &str,
+) -> String {
+    let as_key = if keying { "as the key of a map " } else { "" };
+    format!(
+        "model_schema: {subject}`{reads}` reads its type parameter `T` {as_key}below \
+         `#[serde(flatten)]`, and `{filling}` fills it{filled_with} \u{2014} {}",
+        keys_below("member")
+    )
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_type_parameter_that_keys_a_map_below_a_flatten_is_refused_where_a_number_fills_it() {
+    assert_eq!(
+        refused_generic("pub struct Rows<T> { #[serde(flatten)] pub rest: BTreeMap<T, u8> }"),
+        NONE
+    );
+    assert_eq!(
+        refused_generic("pub struct Hand<T> { pub rows: Rows<T> }"),
+        NONE
+    );
+    let keying =
+        |subject: &str, reads: &str, filling: &str| read_below(subject, reads, true, filling, "");
+    assert_eq!(
+        refused("pub struct Dock { pub rows: Rows<u32> }"),
+        vec![keying("type `Dock`: field `rows`: ", "Rows", "u32")]
+    );
+    assert_eq!(
+        refused("pub struct Pier { pub rows: Option<Vec<Rows<bool>>> }"),
+        vec![keying("type `Pier`: field `rows`: ", "Rows", "bool")]
+    );
+    assert_eq!(
+        refused("pub struct Slip { pub hand: Hand<u8> }"),
+        vec![keying("type `Slip`: field `hand`: ", "Rows", "u8")]
+    );
+    assert_eq!(
+        refusals(expanded("type Ledger = Rows<u16>;")),
+        vec![keying("type `Ledger`: ", "Rows", "u16")]
+    );
+    assert_eq!(
+        refused_with_default(
+            "u32",
+            "pub struct Tally<T> { #[serde(flatten)] pub rest: BTreeMap<T, u8> }"
+        ),
+        vec![keying(
+            "type `Tally`: `default_types` entry `T`: ",
+            "Tally",
+            "u32"
+        )]
+    );
+    // Flattened, the member is refused whole, once.
+    assert_eq!(
+        refused("pub struct Quay { #[serde(flatten)] pub rows: Rows<Box<i64>> }").len(),
+        1
+    );
+    for source in [
+        "pub struct Wharf { pub rows: Rows<String> }",
+        "pub struct Mole { pub rows: Rows<char> }",
+    ] {
+        assert_eq!(refused(source), NONE, "{source}");
+    }
+    assert_eq!(
+        refused_generic("pub struct Jetty<T> { pub rows: Rows<T> }"),
+        NONE
+    );
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_type_parameter_read_below_a_flatten_is_refused_where_its_filling_holds_a_number_key() {
+    assert_eq!(
+        refused_generic("pub struct Spread<T> { #[serde(flatten)] pub rest: T }"),
+        NONE
+    );
+    assert_eq!(refused_generic("pub struct Inner<T> { pub held: T }"), NONE);
+    assert_eq!(
+        refused_generic("pub struct Wrapper<T> { #[serde(flatten)] pub inner: Inner<T> }"),
+        NONE
+    );
+    assert_eq!(
+        refused("pub struct Charted { pub marks: Vec<BTreeMap<i16, u8>> }"),
+        NONE
+    );
+    let below = |subject: &str, reads: &str, filling: &str, filled_with: &str| {
+        read_below(subject, reads, false, filling, filled_with)
+    };
+    assert_eq!(
+        refused("pub struct Dock { pub spread: Spread<BTreeMap<u32, u8>> }"),
+        vec![below(
+            "type `Dock`: field `spread`: ",
+            "Spread",
+            "BTreeMap<u32, u8>",
+            " with a map keyed by `u32`"
+        )]
+    );
+    assert_eq!(
+        refused("pub struct Berth { pub wrapper: Wrapper<Vec<HashMap<bool, u8>>> }"),
+        vec![below(
+            "type `Berth`: field `wrapper`: ",
+            "Wrapper",
+            "Vec<HashMap<bool, u8>>",
+            " with a map keyed by `bool`"
+        )]
+    );
+    assert_eq!(
+        refused("pub struct Moor { pub spread: Spread<Charted> }"),
+        vec![below(
+            "type `Moor`: field `spread`: ",
+            "Spread",
+            "Charted",
+            ", which holds a map keyed by a number or a `bool` (field `marks`, a map keyed by \
+             `i16`)"
+        )]
+    );
+    assert_eq!(
+        refused_generic("pub struct Keyed<T> { pub spread: Spread<BTreeMap<T, u8>> }"),
+        NONE
+    );
+    assert_eq!(
+        refused("pub struct Pier { pub keyed: Keyed<i8> }"),
+        vec![read_below(
+            "type `Pier`: field `keyed`: ",
+            "Keyed",
+            true,
+            "i8",
+            ""
+        )]
+    );
+    for source in [
+        "pub struct Wharf { pub spread: Spread<BTreeMap<String, u8>> }",
+        "pub struct Mole { pub wrapper: Wrapper<u32> }",
+    ] {
+        assert_eq!(refused(source), NONE, "{source}");
+    }
+}

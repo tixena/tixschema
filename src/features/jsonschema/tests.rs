@@ -31,6 +31,7 @@ fn test_json_schema_method_flatten_emits_merge() {
             label: "Base".to_owned(),
             map: false,
             optional: false,
+            unit_member: quote::quote! { false },
             value: quote::quote! { serde_json::json!({ "type": "object" }) },
         }],
         "Node",
@@ -52,6 +53,7 @@ fn test_the_merge_wraps_branches_in_the_spelling_its_source_used() {
             label: "Base".to_owned(),
             map: false,
             optional: false,
+            unit_member: quote::quote! { false },
             value: quote::quote! { serde_json::json!({ "type": "object" }) },
         }],
         "Node",
@@ -87,6 +89,7 @@ fn test_an_optional_merged_source_carries_its_absence_into_the_merge() {
                 label: "Base".to_owned(),
                 map: false,
                 optional,
+                unit_member: quote::quote! { false },
                 value: quote::quote! { serde_json::json!({ "type": "object" }) },
             }],
             "Node",
@@ -125,6 +128,7 @@ fn test_the_absence_of_a_source_read_as_entries_admits_the_keys_it_leaves() {
             label: "counts".to_owned(),
             map: true,
             optional: true,
+            unit_member: quote::quote! { false },
             value: quote::quote! { serde_json::json!({ "type": "object" }) },
         }],
         "Node",
@@ -145,7 +149,7 @@ fn test_the_absence_of_a_source_read_as_entries_admits_the_keys_it_leaves() {
         "{merge}"
     );
     assert!(
-        merge.contains("maps . push (serde_json :: Value :: Bool (true))"),
+        merge.contains("maps . push (serde_json :: json ! ({ \"additionalProperties\" : true }))"),
         "{merge}"
     );
 }
@@ -159,6 +163,7 @@ fn test_the_merge_expands_branches_to_a_fixed_point_under_a_path_terminator() {
             label: "Base".to_owned(),
             map: false,
             optional: false,
+            unit_member: quote::quote! { false },
             value: quote::quote! { serde_json::json!({ "type": "object" }) },
         }],
         "Node",
@@ -168,7 +173,8 @@ fn test_the_merge_expands_branches_to_a_fixed_point_under_a_path_terminator() {
 
     assert!(
         merge.contains(
-            "None => expanded_branches (branch , hoisted_defs , expanding , position , label)"
+            "None => expanded_branches (branch , hoisted_defs , expanding , position , label , \
+             unit_member)"
         ),
         "{merge}"
     );
@@ -191,6 +197,7 @@ fn test_the_merge_reads_a_tagged_unit_variant_at_the_edges_own_depth() {
             label: "Base".to_owned(),
             map: false,
             optional: false,
+            unit_member: quote::quote! { false },
             value: quote::quote! { serde_json::json!({ "type": "object" }) },
         }],
         "Node",

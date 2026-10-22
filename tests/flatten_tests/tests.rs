@@ -454,6 +454,110 @@ struct FlatOverLaterNothing {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct LaterNothing(());
 
+/// An untagged enum with a member over `()`, flattened by a struct declared above it: serde writes
+/// that member as no key and does not read the object back, and the JSON-schema merge refuses it
+/// by the record the enum publishes.
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct FlatOverLaterUnitMember {
+    #[serde(flatten)]
+    held: LaterUnitMember,
+    id: String,
+}
+
+/// The same enum through an alias declared below the holder, which forwards the enum's record.
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct FlatOverLaterUnitAlias {
+    #[serde(flatten)]
+    held: LaterUnitAlias,
+    id: String,
+}
+
+/// The same enum through a struct of one slot declared below the holder, which forwards the
+/// enum's record.
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct FlatOverLaterUnitSlot {
+    #[serde(flatten)]
+    held: LaterUnitSlot,
+    id: String,
+}
+
+#[model_schema()]
+type LaterUnitAlias = LaterUnitMember;
+
+#[model_schema(no_display)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct LaterUnitSlot(LaterUnitMember);
+
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(untagged)]
+enum LaterUnitMember {
+    Fields(FlatFirst),
+    Nothing(()),
+}
+
+/// A generic untagged enum filled at `()`, flattened by a struct declared above it: its member is
+/// its own type parameter, and the enum publishes no record at a filling, so the merge reads the
+/// `null` of that member as no key.
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct FlatOverLaterHeldUnit {
+    #[serde(flatten)]
+    held: LaterHeldMember<()>,
+    id: String,
+}
+
+#[model_schema(default_types(T = String))]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(untagged)]
+enum LaterHeldMember<T> {
+    Fields(FlatFirst),
+    Held(T),
+}
+
+/// A flattened `Option` of a struct declared below its holder: its `null` is the absence.
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct FlatOverLaterMaybeFields {
+    #[serde(flatten, skip_serializing_if = "Option::is_none", default)]
+    held: Option<LaterFieldsBelow>,
+    id: String,
+}
+
+/// The same `Option` through an alias declared below its holder.
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct FlatOverLaterMaybeAlias {
+    #[serde(flatten)]
+    held: LaterMaybeAlias,
+    id: String,
+}
+
+/// The same `Option` through a struct of one slot declared below its holder.
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct FlatOverLaterMaybeSlot {
+    #[serde(flatten)]
+    held: LaterMaybeSlot,
+    id: String,
+}
+
+#[model_schema()]
+type LaterMaybeAlias = Option<LaterFieldsBelow>;
+
+#[model_schema(no_display)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct LaterMaybeSlot(Option<LaterFieldsBelow>);
+
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct LaterFieldsBelow {
+    below: String,
+}
+
 /// A plain enum flattened by a struct declared above it, which the struct's expansion does not
 /// see: the JSON-schema merge answers for it at run time.
 #[model_schema()]
@@ -2091,6 +2195,119 @@ fn test_a_unit_flattened_below_its_holder_is_written_as_no_key() {
         serde_json::from_value::<FlatOverLaterNothing>(written).unwrap(),
         holder
     );
+}
+
+#[test]
+#[cfg(feature = "jsonschema")]
+#[should_panic(
+    expected = "`FlatOverLaterUnitMember`: `#[serde(flatten)]` of `LaterUnitMember` writes a union member as `()` — its branch 2 describes a `null`, for which serde writes no key, and which it does not read back as that member; write the field as a named member so the value gets a key of its own"
+)]
+fn test_a_unit_member_of_an_untagged_enum_flattened_below_its_holder_is_refused_by_the_merge() {
+    assert!(FlatOverLaterUnitMember::json_schema().is_object());
+}
+
+#[test]
+#[cfg(feature = "jsonschema")]
+#[should_panic(
+    expected = "`FlatOverLaterUnitAlias`: `#[serde(flatten)]` of `LaterUnitAlias` writes a union member as `()` — its branch 2 describes a `null`, for which serde writes no key, and which it does not read back as that member; write the field as a named member so the value gets a key of its own"
+)]
+fn test_a_unit_member_reached_through_an_alias_declared_below_is_refused_by_the_merge() {
+    assert!(FlatOverLaterUnitAlias::json_schema().is_object());
+}
+
+#[test]
+#[cfg(feature = "jsonschema")]
+#[should_panic(
+    expected = "`FlatOverLaterUnitSlot`: `#[serde(flatten)]` of `LaterUnitSlot` writes a union member as `()` — its branch 2 describes a `null`, for which serde writes no key, and which it does not read back as that member; write the field as a named member so the value gets a key of its own"
+)]
+fn test_a_unit_member_reached_through_a_slot_declared_below_is_refused_by_the_merge() {
+    assert!(FlatOverLaterUnitSlot::json_schema().is_object());
+}
+
+/// serde writes the member over `()` as no key, and reads that object back as no member.
+#[test]
+fn test_a_unit_member_of_an_untagged_enum_flattened_below_its_holder_does_not_read_back() {
+    let holder = FlatOverLaterUnitMember {
+        held: LaterUnitMember::Nothing(()),
+        id: "i".to_owned(),
+    };
+    let written = serde_json::to_value(&holder).unwrap();
+    assert_eq!(written, serde_json::json!({ "id": "i" }));
+    assert_eq!(
+        serde_json::from_value::<FlatOverLaterUnitMember>(written)
+            .unwrap_err()
+            .to_string(),
+        "data did not match any variant of untagged enum LaterUnitMember"
+    );
+}
+
+/// The `null` of a member over a type parameter filled at `()` is read as no key, which serde
+/// does not read back: the limit the scope sentence and the README state.
+#[test]
+#[cfg(feature = "jsonschema")]
+fn test_a_unit_filling_of_an_untagged_enum_flattened_below_its_holder_is_read_as_no_key() {
+    let holder = FlatOverLaterHeldUnit {
+        held: LaterHeldMember::Held(()),
+        id: "i".to_owned(),
+    };
+    let written = serde_json::to_value(&holder).unwrap();
+    assert_eq!(written, serde_json::json!({ "id": "i" }));
+    assert!(
+        serde_json::from_value::<FlatOverLaterHeldUnit>(written).is_err(),
+        "serde reads the object alone back"
+    );
+    let own = serde_json::json!({
+        "type": "object",
+        "properties": { "id": { "type": "string" } },
+        "required": ["id"],
+        "additionalProperties": false,
+    });
+    let fields = serde_json::json!({
+        "type": "object",
+        "properties": { "a": { "type": "string" }, "id": { "type": "string" } },
+        "required": ["id", "a"],
+        "additionalProperties": false,
+    });
+    assert_eq!(
+        FlatOverLaterHeldUnit::json_schema(),
+        serde_json::json!({ "type": "object", "anyOf": [fields, own] })
+    );
+}
+
+/// An `Option` of a type declared below its holder offers its absence as before, flattened
+/// directly, through an alias and through a struct of one slot.
+#[test]
+#[cfg(feature = "jsonschema")]
+fn test_an_option_flattened_below_its_holder_still_offers_its_absence() {
+    let own = serde_json::json!({
+        "type": "object",
+        "properties": { "id": { "type": "string" } },
+        "required": ["id"],
+        "additionalProperties": false,
+    });
+    let below = serde_json::json!({
+        "type": "object",
+        "properties": { "below": { "type": "string" }, "id": { "type": "string" } },
+        "required": ["id", "below"],
+        "additionalProperties": false,
+    });
+    let offered = serde_json::json!({ "type": "object", "anyOf": [below, own] });
+    for (holder, described) in [
+        (
+            "FlatOverLaterMaybeFields",
+            FlatOverLaterMaybeFields::json_schema as fn() -> serde_json::Value,
+        ),
+        (
+            "FlatOverLaterMaybeAlias",
+            FlatOverLaterMaybeAlias::json_schema,
+        ),
+        (
+            "FlatOverLaterMaybeSlot",
+            FlatOverLaterMaybeSlot::json_schema,
+        ),
+    ] {
+        assert_eq!(described(), offered, "for {holder}");
+    }
 }
 
 #[test]
