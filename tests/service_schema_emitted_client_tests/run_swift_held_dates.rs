@@ -2,8 +2,7 @@
 //! and written by the emitted Swift types compiled with warnings as errors, held by a type that
 //! declares a parameter and by one that declares none. Each payload the serde read reads prints
 //! what it prints, each date in the text chrono writes and each date under `as_number` as the
-//! number serde writes, and a date that is no date is refused, as the serde read refuses it. An
-//! untagged variant under `as_number` is compiled and not read.
+//! number serde writes, and a date that is no date is refused, as the serde read refuses it.
 
 #![cfg(feature = "swift")]
 
@@ -277,6 +276,11 @@ fn counted_rows() -> Vec<Row> {
             &AdjacentCountedTide::Spanned(first(), 1),
         ),
         read_row(
+            "one slot under as_number, untagged",
+            "UntaggedCountedTide",
+            &UntaggedCountedTide::Counted(first()),
+        ),
+        read_row(
             "a tuple struct under as_number",
             "Ticker",
             &Ticker(first(), 1),
@@ -414,14 +418,4 @@ fn each_date_held_in_a_slot_a_map_or_a_type_argument_reads_and_writes_in_swift_a
         run.stdout, run.stderr
     );
     assert_eq!(normalized(&run.stdout), normalized(&expected));
-}
-
-/// serde writes the date of an untagged variant under `as_number` as its text, which is what the
-/// model compiled and not read is left out of the run for.
-#[test]
-fn a_date_left_out_of_the_run_is_written_as_serde_writes_it() {
-    assert_eq!(
-        serde_json::to_string(&UntaggedCountedTide::Counted(first())).unwrap(),
-        FIRST_WRITTEN
-    );
 }

@@ -116,6 +116,8 @@ use crate::utils::{
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use crate::features::serde::brand_slot;
+#[cfg(all(feature = "serde", feature = "chrono"))]
+use crate::features::serde::parse_serde_field_hooks;
 #[cfg(all(
     feature = "serde",
     any(
@@ -3867,10 +3869,11 @@ fn non_object_wire(item: &Item) -> NonObjectWire {
         def.erase_type_parameters(&parameters);
         def
     };
+    let member = |field: &syn::Field| with_as_number(written(&field.ty), &field.attrs);
     let mut wire = NonObjectWire::default();
     if let Item::Struct(item_struct) = item {
         if let Some(slot) = written_as_its_slot(item_struct) {
-            let value = written(&slot.ty);
+            let value = member(slot);
             wire.leaves = filled_wire_leaves(&value);
             wire.members = filled_union_members(&value);
             wire.optional = writes_an_optional(value_filling(&value).unwrap_or(&value));
@@ -3903,7 +3906,7 @@ fn non_object_wire(item: &Item) -> NonObjectWire {
                     let first = variant.fields.iter().next();
                     let leaves = match (variant_wire_kind(variant), first) {
                         (VariantKind::TupleSingle, Some(slot)) => {
-                            member_written_leaves(&written(&slot.ty))
+                            member_written_leaves(&member(slot))
                         }
                         _ => vec![WireLeaf {
                             branch: Vec::new(),
@@ -6378,7 +6381,7 @@ fn flatten_edge_guard_error(
     field: &syn::Field,
     type_name: &str,
 ) -> Option<proc_macro2::TokenStream> {
-    let inner = get_field_def("_flattened", &field.ty, "");
+    let inner = with_as_number(get_field_def("_flattened", &field.ty, ""), &field.attrs);
     let (inner_name, non_object, scope) = if let FieldDefType::SiblingType(name, _) =
         &inner.field_type
         && !written_in_place(&inner)
@@ -6441,6 +6444,23 @@ fn flatten_edge_guard_error(
         ),
     };
     Some(syn::Error::new_spanned(&field.ty, message).to_compile_error())
+}
+
+/// `def`, the type of a member written with `attrs`, holding the `as_number` written among them,
+/// which is what says serde writes a `DateTime<Tz>` as the integer of its epoch milliseconds.
+#[cfg(any(
+    feature = "serde",
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema"
+))]
+fn with_as_number(mut def: FieldDef, attrs: &[syn::Attribute]) -> FieldDef {
+    if parse_model_schema_prop_attributes(attrs).as_number {
+        def.model_schema_prop_meta
+            .get_or_insert_with(ModelSchemaPropMeta::default)
+            .as_number = true;
+    }
+    def
 }
 
 /// Whether a flattened field's type, under its `Option`, is written in place rather than named: a
@@ -8257,7 +8277,10 @@ fn build_tuple_struct_zod_schema_method(
 fn tuple_struct_surface(fields: &syn::Fields, parameters: &[String]) -> Surface {
     let mut slots = fields.iter();
     match (slots.next(), slots.next()) {
-        (Some(slot), None) => Surface::written(&get_field_def("_slot", &slot.ty, ""), parameters),
+        (Some(slot), None) => Surface::written(
+            &with_as_number(get_field_def("_slot", &slot.ty, ""), &slot.attrs),
+            parameters,
+        ),
         _ => Surface::array(),
     }
 }
@@ -11948,7 +11971,8 @@ fn process_externally_tagged_enum(
 
 /// How an internally tagged newtype variant's inner value fares beside the tag, `written` being its
 /// type as written: a fixed-size array, whose length the def holds only where it is a literal, is
-/// a tuple to serde, and a numeric literal is the number its type is.
+/// a tuple to serde, a numeric literal is the number its type is, and a date under `as_number` is
+/// the integer the hook it is read through writes.
 #[cfg(feature = "serde")]
 fn tagged_content(inner: &FieldDef, written: &syn::Type) -> TaggedContent {
     let held = held_through_wrappers(written);
@@ -11986,6 +12010,8 @@ fn tagged_content(inner: &FieldDef, written: &syn::Type) -> TaggedContent {
         | FieldDefType::Usize => refused_as("an integer"),
         FieldDefType::Char => refused_as("a char"),
         FieldDefType::String | FieldDefType::StringLiteral(_) => refused_as("a string"),
+        #[cfg(feature = "chrono")]
+        FieldDefType::DateTime if inner.has_as_number() => refused_as("an integer"),
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime
         | FieldDefType::NaiveDate
@@ -12070,7 +12096,7 @@ fn internally_tagged_guard_errors(
             {
                 return None;
             }
-            let inner = get_field_def("_inner", &field.ty, "");
+            let inner = with_as_number(get_field_def("_inner", &field.ty, ""), &field.attrs);
             let content = tagged_content(&inner, &field.ty);
             if matches!(content, TaggedContent::Flattened)
                 && let Some(refused) =
@@ -13281,9 +13307,6 @@ fn collect_untagged_variant_members(
                 &mut injected_attrs,
             );
         field.attrs = new_attrs;
-        // Pushed for every field, flattened or not: `apply_deferred_field_attrs` zips this against
-        // the declaration's own fields, so a skipped push shifts every later field's attributes.
-        walked.deferred_attrs.push(injected_attrs);
         if !is_flatten {
             walked.validation_fns.extend(validation_fn);
         }
@@ -13298,6 +13321,10 @@ fn collect_untagged_variant_members(
             field_validation_guard_error,
         );
         walked.guard_errors.extend(member_guard_errors);
+        injected_attrs.extend(as_number_serde_hooks(field, &member_def));
+        // Pushed for every field, flattened or not: `apply_deferred_field_attrs` zips this against
+        // the declaration's own fields, so a skipped push shifts every later field's attributes.
+        walked.deferred_attrs.push(injected_attrs);
         hand_serde_default(&mut member_def, serde_default(&variant_name, &field_name));
         // Read once the member's def exists, since that is what says whether the member names a
         // type that could publish a validator.
@@ -13543,6 +13570,10 @@ fn written_non_object_wire(fld: &FieldDef, leaves_of: LeavesOf) -> Option<&'stat
         return is_sequence_wrapper(name)
             .then_some("array")
             .or_else(|| registered_non_object_wire(name, leaves_of));
+    }
+    #[cfg(feature = "chrono")]
+    if matches!(fld.field_type, FieldDefType::DateTime) && fld.has_as_number() {
+        return Some("integer");
     }
     // Everything the two structural questions above leave is a value one keyword describes or
     // nothing here can name, which is exactly what the shared mapping answers.
@@ -17264,30 +17295,116 @@ fn validate_as_number_flag(field_type: &FieldDefType, flag_set: bool) -> Result<
     Ok(())
 }
 
-/// `as_number` promises every surface an epoch-milliseconds number; this is the serde hook that
-/// makes the Rust side keep that promise. Held back where the author already reads the field
-/// through a hook of their own, which serde admits only one of.
+/// The refusal of `as_number` on a member the hook it hangs reads no value of: chrono's
+/// `ts_milliseconds` reads a `DateTime<Utc>`, and `ts_milliseconds_option` an `Option` of one.
+/// A member its author reads and writes through functions of their own takes no hook.
 #[cfg(all(feature = "serde", feature = "chrono"))]
-fn as_number_serde_hook(field: &Field, field_def: &FieldDef) -> Option<syn::Attribute> {
-    let as_number = field_def
-        .model_schema_prop_meta
-        .as_ref()
-        .is_some_and(|meta| meta.as_number);
-    if !as_number || has_serde_read_hook(&field.attrs) {
+fn as_number_hook_refusal(
+    field: &Field,
+    field_type: &FieldDefType,
+    flag_set: bool,
+) -> Option<String> {
+    if !flag_set || !matches!(field_type, FieldDefType::DateTime) {
         return None;
+    }
+    let hooks = parse_serde_field_hooks(&field.attrs);
+    let authored = hooks.with.is_some()
+        || (hooks.serialize_with.is_some() && hooks.deserialize_with.is_some());
+    if authored || names_a_utc_date(&field.ty) || names_an_optional_utc_date(&field.ty) {
+        return None;
+    }
+    Some(format!(
+        "`#[model_schema_prop(as_number)]` writes and reads the field through chrono's \
+         `ts_milliseconds` hook, which takes a `DateTime<Utc>`, or an `Option<DateTime<Utc>>` \
+         through `ts_milliseconds_option`, and the field is a `{}`. Declare the field as one of \
+         those two, or write and read it through functions of your own: a `with`, or a \
+         `serialize_with` beside a `deserialize_with`.",
+        written_spelling(&field.ty)
+    ))
+}
+
+/// No hook is hung where serde reads no attribute, or where no date is described.
+#[cfg(not(all(feature = "serde", feature = "chrono")))]
+const fn as_number_hook_refusal(
+    _field: &Field,
+    _field_type: &FieldDefType,
+    _flag_set: bool,
+) -> Option<String> {
+    None
+}
+
+/// Whether `ty` is written as a `DateTime` in `Utc`, the date chrono's millisecond hook reads.
+#[cfg(all(feature = "serde", feature = "chrono"))]
+fn names_a_utc_date(ty: &syn::Type) -> bool {
+    last_segment(ty).is_some_and(|last| {
+        last.ident == "DateTime"
+            && type_arguments_of(&last.arguments)
+                .next()
+                .and_then(last_segment)
+                .is_some_and(|zone| zone.ident == "Utc")
+    })
+}
+
+/// Whether `ty` is written as an `Option` of a `DateTime` in `Utc`.
+#[cfg(all(feature = "serde", feature = "chrono"))]
+fn names_an_optional_utc_date(ty: &syn::Type) -> bool {
+    last_segment(ty).is_some_and(|last| {
+        last.ident == "Option"
+            && type_arguments_of(&last.arguments)
+                .next()
+                .is_some_and(names_a_utc_date)
+    })
+}
+
+/// The last segment of the path `ty` is written as, and `None` for a type that is no path.
+#[cfg(all(feature = "serde", feature = "chrono"))]
+fn last_segment(ty: &syn::Type) -> Option<&syn::PathSegment> {
+    let syn::Type::Path(path) = written_type(ty) else {
+        return None;
+    };
+    path.path.segments.last()
+}
+
+/// The serde hooks `as_number` hangs on a member, so serde writes and reads the epoch milliseconds
+/// every surface describes: chrono's hook in each direction its author writes or reads it through
+/// no function of their own, the one serde admits beside the author's. An `Option` under a key
+/// read through the hook takes the `default` a bound's hook takes, so an absent key is `None`.
+#[cfg(all(feature = "serde", feature = "chrono"))]
+fn as_number_serde_hooks(field: &Field, field_def: &FieldDef) -> Vec<syn::Attribute> {
+    let hooks = parse_serde_field_hooks(&field.attrs);
+    if !field_def.has_as_number() || hooks.with.is_some() {
+        return Vec::new();
     }
     let module = if field_def.is_optional() {
         "chrono::serde::ts_milliseconds_option"
     } else {
         "chrono::serde::ts_milliseconds"
     };
-    let path_lit = syn::LitStr::new(module, proc_macro2::Span::call_site());
-    Some(syn::parse_quote! { #[serde(with = #path_lit)] })
+    let named = |path: &str| syn::LitStr::new(path, proc_macro2::Span::call_site());
+    let mut hung: Vec<syn::Attribute> = match (hooks.serialize_with, hooks.deserialize_with) {
+        (None, None) => {
+            let with = named(module);
+            vec![syn::parse_quote! { #[serde(with = #with)] }]
+        }
+        (Some(_), None) => {
+            let read = named(&format!("{module}::deserialize"));
+            vec![syn::parse_quote! { #[serde(deserialize_with = #read)] }]
+        }
+        (None, Some(_)) => {
+            let written = named(&format!("{module}::serialize"));
+            return vec![syn::parse_quote! { #[serde(serialize_with = #written)] }];
+        }
+        (Some(_), Some(_)) => return Vec::new(),
+    };
+    if field.ident.is_some() && field_def.is_optional() && !has_serde_default(&field.attrs) {
+        hung.push(syn::parse_quote! { #[serde(default)] });
+    }
+    hung
 }
 
 #[cfg(all(feature = "serde", not(feature = "chrono")))]
-const fn as_number_serde_hook(_field: &Field, _field_def: &FieldDef) -> Option<syn::Attribute> {
-    None
+const fn as_number_serde_hooks(_field: &Field, _field_def: &FieldDef) -> Vec<syn::Attribute> {
+    Vec::new()
 }
 
 /// Rejects `ts_optional` where the member has no key for it to make optional. A positional slot
@@ -17600,6 +17717,12 @@ fn model_schema_prop_guard_errors(
         flag_guard_error(
             field,
             label,
+            as_number_hook_refusal(field, &field_def.field_type, prop_meta.as_number)
+                .map_or(Ok(()), Err),
+        ),
+        flag_guard_error(
+            field,
+            label,
             validate_nullable_flag(field_def.is_optional(), prop_meta.nullable),
         ),
         flag_guard_error(field, label, check_nullable_ts_optional_conflict(prop_meta)),
@@ -17769,6 +17892,25 @@ fn check_fixed_shape_constraints(
         return Ok(());
     }
     let keys = written.join("`, `");
+    #[cfg(feature = "chrono")]
+    let under_as_number =
+        prop_meta.as_number && matches!(field_def.field_type, FieldDefType::DateTime);
+    #[cfg(not(feature = "chrono"))]
+    let under_as_number = false;
+    if let Some(name) = field_def.fixed_shape_name()
+        && under_as_number
+    {
+        return Err(syn::Error::new_spanned(
+            field,
+            format!(
+                "model_schema: {label}: `{keys}` cannot apply to `{name}` under `as_number` — no \
+                 surface reads a bound beside a date, the epoch milliseconds `as_number` writes it \
+                 as among them: the constraint would reach neither Zod, nor the JSON schema, nor \
+                 the generated validator. Drop it, or carry the milliseconds in an `i64` field, \
+                 which `minimum` and `maximum` bound."
+            ),
+        ));
+    }
     if let Some(name) = field_def.fixed_shape_name() {
         return Err(syn::Error::new_spanned(
             field,
@@ -18298,9 +18440,7 @@ fn process_field(
     let body = then_checks(declared, own_checks);
 
     #[cfg(feature = "serde")]
-    if let Some(attr) = as_number_serde_hook(field, &field_def) {
-        injected_attrs.push(attr);
-    }
+    injected_attrs.extend(as_number_serde_hooks(field, &field_def));
 
     deferred_attrs.push(injected_attrs);
 

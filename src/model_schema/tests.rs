@@ -522,6 +522,98 @@ fn as_number_err_on_non_datetime_field() {
     assert!(err.contains("DateTime<Tz>"));
 }
 
+/// The refusal of `as_number` on a date the hook it hangs reads no value of, `written` naming it.
+#[cfg(all(feature = "serde", feature = "chrono"))]
+fn as_number_hook_refusal(written: &str) -> String {
+    format!(
+        "model_schema: field `stamp`: `#[model_schema_prop(as_number)]` writes and reads the field \
+         through chrono's `ts_milliseconds` hook, which takes a `DateTime<Utc>`, or an \
+         `Option<DateTime<Utc>>` through `ts_milliseconds_option`, and the field is a `{written}`. \
+         Declare the field as one of those two, or write and read it through functions of your \
+         own: a `with`, or a `serialize_with` beside a `deserialize_with`."
+    )
+}
+
+/// `as_number` hangs chrono's millisecond hook on a `DateTime<Utc>` and an `Option` of one, and
+/// is refused on any other date the field holds where its author reads and writes it through no
+/// function of their own.
+#[cfg(all(feature = "serde", feature = "chrono"))]
+#[test]
+fn as_number_is_refused_on_a_date_the_millisecond_hook_reads_no_value_of() {
+    for (field, written) in [
+        ("pub stamp: Vec<DateTime<Utc>>", "Vec<DateTime<Utc>>"),
+        ("pub stamp: DateTime<Local>", "DateTime<Local>"),
+        ("pub stamp: Box<DateTime<Utc>>", "Box<DateTime<Utc>>"),
+        (
+            "#[serde(serialize_with = \"shown\")] pub stamp: DateTime<FixedOffset>",
+            "DateTime<FixedOffset>",
+        ),
+    ] {
+        assert_eq!(
+            refusal_texts(&expansion_over(&format!(
+                "#[derive(Serialize, Deserialize)] pub struct Stamped {{ \
+                 #[model_schema_prop(as_number)] {field} }}"
+            ))),
+            [as_number_hook_refusal(written)],
+            "for `{field}`"
+        );
+    }
+    let answered = format!("error: {}", as_number_hook_refusal("Vec<DateTime<Utc>>"));
+    assert!(
+        include_str!("../../README.md").contains(&answered),
+        "the README no longer quotes: {answered}"
+    );
+    for field in [
+        "pub stamp: DateTime<Utc>",
+        "pub stamp: chrono::DateTime<chrono::Utc>",
+        "#[serde(skip_serializing_if = \"Option::is_none\")] pub stamp: Option<DateTime<Utc>>",
+        "#[serde(with = \"local_millis\")] pub stamp: DateTime<Local>",
+        "#[serde(serialize_with = \"shown\", deserialize_with = \"read\")] pub stamp: \
+         Vec<DateTime<Utc>>",
+    ] {
+        let expanded = expansion_over(&format!(
+            "#[derive(Serialize, Deserialize)] pub struct Stamped {{ \
+             #[model_schema_prop(as_number)] {field} }}"
+        ));
+        assert_eq!(
+            compile_error_count(&expanded),
+            0,
+            "for `{field}`, got: {expanded}"
+        );
+    }
+}
+
+/// A bound on a date under `as_number` is refused in the words of the epoch milliseconds it is
+/// written as, and one on any other date in the words of the text it is written as.
+#[cfg(all(feature = "serde", feature = "chrono"))]
+#[test]
+fn a_bound_on_a_date_under_as_number_is_refused_as_the_milliseconds_it_is_written_as() {
+    let refused = refusal_texts(&expansion_over(
+        "pub struct Stamped { #[model_schema_prop(as_number, minimum = 0)] pub stamp: \
+         DateTime<Utc>, #[model_schema_prop(maximum = 2)] pub plain: DateTime<Utc> }",
+    ));
+    assert_eq!(
+        refused,
+        [
+            "model_schema: field `stamp`: `minimum` cannot apply to `chrono::DateTime` under \
+             `as_number` \u{2014} no surface reads a bound beside a date, the epoch milliseconds \
+             `as_number` writes it as among them: the constraint would reach neither Zod, nor the \
+             JSON schema, nor the generated validator. Drop it, or carry the milliseconds in an \
+             `i64` field, which `minimum` and `maximum` bound.",
+            "model_schema: field `plain`: `maximum` cannot apply to `chrono::DateTime` \u{2014} \
+             this crate writes that type's schema whole, not as the plain string or number a \
+             bound is spelled against, and no surface reads a bound beside it: the constraint \
+             would reach neither Zod, nor the JSON schema, nor the generated validator. Drop it, \
+             or carry the value in a `String` field the bound can measure.",
+        ]
+    );
+    let answered = format!("error: {}", refused[0]);
+    assert!(
+        include_str!("../../README.md").contains(&answered),
+        "the README no longer quotes: {answered}"
+    );
+}
+
 #[test]
 fn nullable_ok_on_option_field() {
     validate_nullable_flag(true, true).unwrap();
@@ -1631,6 +1723,56 @@ fn a_tagged_date_is_refused_in_the_words_serde_refuses_it() {
             refused_beside_serde!(DateTime<Utc>, DateTime::from_timestamp(0, 0).unwrap()),
         ],
         "a string",
+    );
+}
+
+/// A date under `as_number` is read and written through the hook the key hangs on it, which writes
+/// the integer of its epoch milliseconds: beside a tag and flattened, the expansion refuses it in
+/// the words serde refuses that integer in.
+#[cfg(all(feature = "serde", feature = "chrono"))]
+#[test]
+fn a_date_under_as_number_is_refused_as_the_integer_serde_writes() {
+    use chrono::{DateTime, Utc};
+    #[derive(serde::Serialize)]
+    #[serde(tag = "kind")]
+    enum Lettered {
+        Held(#[serde(with = "chrono::serde::ts_milliseconds")] DateTime<Utc>),
+    }
+    #[derive(serde::Serialize)]
+    struct Host {
+        id: u8,
+        #[serde(flatten, with = "chrono::serde::ts_milliseconds")]
+        stamp: DateTime<Utc>,
+    }
+    let at = DateTime::from_timestamp_millis(1_704_164_645_678).unwrap();
+    let tagged = internal_guard_errors(&syn::parse_quote! {
+        enum Lettered { Held(#[model_schema_prop(as_number)] DateTime<Utc>) }
+    });
+    let tagged_said = serde_json::to_string(&Lettered::Held(at))
+        .unwrap_err()
+        .to_string();
+    assert_quotes_serde(&[("DateTime<Utc>", tagged, tagged_said)], "an integer");
+
+    let flattened = super::flatten_edge_guard_error(
+        &syn::parse_quote! {
+            #[serde(flatten)] #[model_schema_prop(as_number)] stamp: DateTime<Utc>
+        },
+        "Host",
+    )
+    .map_or_else(String::new, |error| error.to_string());
+    let flattened_said = serde_json::to_string(&Host { id: 1, stamp: at })
+        .unwrap_err()
+        .to_string();
+    assert_eq!(
+        flattened_said,
+        "can only flatten structs and maps (got an integer)"
+    );
+    assert!(
+        flattened.contains(
+            "`#[serde(flatten)]` of `DateTime<Utc>` is not written as an object \u{2014} its \
+             schema describes a `integer`"
+        ),
+        "got: {flattened}"
     );
 }
 
@@ -2799,6 +2941,101 @@ fn a_flattened_type_serde_writes_as_no_object_declared_above_is_refused_in_every
          ClipId, pub name: String }",
     );
     assert_eq!(compile_error_count(&unseen), 0, "got: {unseen}");
+}
+
+/// A struct of one slot and an untagged member, declared above, that hold a date under
+/// `as_number` are refused flattened and beside a tag as the integer serde writes for it, through
+/// a generic type filled at one and an alias of one too, where a date with no `as_number` is
+/// refused as the text serde writes.
+#[cfg(all(feature = "serde", feature = "chrono"))]
+#[test]
+fn a_date_under_as_number_declared_above_is_refused_as_the_integer_serde_writes() {
+    for (args, declared) in [
+        (
+            "",
+            "pub struct ProbeMillis(#[model_schema_prop(as_number)] pub DateTime<Utc>);",
+        ),
+        ("", "pub struct ProbeInstant(pub DateTime<Utc>);"),
+        (
+            "",
+            "#[serde(untagged)] pub enum ProbeMillisOrFields { Fields { note: String }, \
+             Millis(#[model_schema_prop(as_number)] DateTime<Utc>) }",
+        ),
+        (
+            "default_types(T = String)",
+            "pub struct ProbeWrap<T>(pub T);",
+        ),
+    ] {
+        let expanded = serialized_under(args, declared);
+        assert_eq!(compile_error_count(&expanded), 0, "got: {expanded}");
+    }
+    let aliased = expansion_over("pub type ProbeMillisAlias = ProbeMillis;");
+    assert_eq!(compile_error_count(&aliased), 0, "got: {aliased}");
+    let whole = "is not written as an object \u{2014} its schema describes a";
+    for (inner, written) in [
+        ("ProbeMillis", "integer"),
+        ("ProbeWrap<ProbeMillis>", "integer"),
+        ("ProbeMillisAlias", "integer"),
+        ("ProbeInstant", "string"),
+    ] {
+        assert_eq!(
+            refusal_texts(&expansion_over(&format!(
+                "#[derive(Serialize, Deserialize)] pub struct ProbeFlatStamp {{ pub id: u8, \
+                 #[serde(flatten)] pub stamp: {inner} }}"
+            ))),
+            [whole_non_object_refusal("ProbeFlatStamp", inner, written)]
+        );
+        assert_eq!(
+            refusal_texts(&expansion_over(&format!(
+                "#[derive(Serialize, Deserialize)] #[serde(tag = \"kind\")] pub enum \
+                 ProbeTaggedStamp {{ Held({inner}) }}"
+            ))),
+            [tagged_non_object_refusal(
+                "ProbeTaggedStamp",
+                inner,
+                &format!("{whole} `{written}`")
+            )]
+        );
+    }
+    assert_eq!(
+        refusal_texts(&expansion_over(
+            "#[derive(Serialize, Deserialize)] pub struct ProbeFlatChoice { pub id: u8, \
+             #[serde(flatten)] pub stamp: ProbeMillisOrFields }",
+        )),
+        [flattened_branch_refusal(
+            "ProbeFlatChoice",
+            "ProbeMillisOrFields",
+            "2",
+            "integer"
+        )]
+    );
+}
+
+/// The record every build with serde writes of a date under `as_number` proves what the record a
+/// Zod surface writes proves: the integer serde writes.
+#[cfg(all(feature = "serde", feature = "zod", feature = "chrono"))]
+#[test]
+fn both_records_prove_the_integer_serde_writes_for_a_date_under_as_number() {
+    for declared in [
+        "pub struct Stamped(#[model_schema_prop(as_number)] pub DateTime<Utc>);",
+        "#[serde(untagged)] pub enum StampedOrFields { Fields { note: String }, \
+         Stamp(#[model_schema_prop(as_number)] DateTime<Utc>) }",
+        "#[serde(untagged)] pub enum MaybeStamped { Fields { note: String }, \
+         Stamp(#[model_schema_prop(as_number)] Option<DateTime<Utc>>) }",
+    ] {
+        let expanded = serialized_under("", declared);
+        assert_eq!(compile_error_count(&expanded), 0, "got: {expanded}");
+    }
+    let branch = |at: &str| Some(NonObject::Branch(at.to_owned(), "integer"));
+    for (flattened, proved) in [
+        ("Stamped", Some(NonObject::Whole("integer"))),
+        ("StampedOrFields", branch("2")),
+        ("MaybeStamped", branch("2.1")),
+    ] {
+        let inner = get_field_def("_flattened", &syn::parse_str(flattened).unwrap(), "");
+        assert_eq!(written_non_object(&inner), proved, "for `{flattened}`");
+        assert_eq!(surfaced_non_object(&inner), proved, "for `{flattened}`");
+    }
 }
 
 /// No local build is of the clients alone, so the gates are read off the sources.

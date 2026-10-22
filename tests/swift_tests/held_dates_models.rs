@@ -123,8 +123,7 @@ pub enum AdjacentCountedTide {
     Spanned(#[model_schema_prop(as_number)] DateTime<Utc>, u8),
 }
 
-/// A date under `as_number` in a variant of one slot, untagged. The Swift run compiles it and reads
-/// none of it: serde writes the date of an untagged variant as its text, flag or no flag.
+/// A date under `as_number` in a variant of one slot, untagged.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(untagged)]
