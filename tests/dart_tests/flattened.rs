@@ -1,14 +1,14 @@
 //! What the Dart emitter reads of a flattened member: the object at its place, without the keys
 //! the holder's own members take and the entries each member flattened ahead of it took, as serde
-//! hands it, and an externally tagged enum the one entry of that object it reads. A map is the
-//! one member of its object, and is read from every key. `toJson` writes each flattened member at
-//! its place. The reads are run under the Dart SDK in
-//! `tests/service_schema_emitted_client_tests/run_dart_flattened.rs`.
+//! hands it, and an externally tagged enum the one entry of that object it reads, an optional one
+//! no value where that object holds no such entry. A map is the one member of its object, and is
+//! read from every key. `toJson` writes each flattened member at its place. The reads are run under
+//! the Dart SDK in `tests/service_schema_emitted_client_tests/run_dart_flattened.rs`.
 
 use super::flattened_models::{
-    battening_dart, belaying_dart, clamping_dart, doubling_dart, fastening_dart, hoisting_dart,
-    kedging_dart, lacing_dart, loading_dart, mousing_dart, rigging_dart, shoring_dart, spare_dart,
-    trimming_dart, twin_dart,
+    battening_dart, belaying_dart, caulking_dart, clamping_dart, doubling_dart, fastening_dart,
+    hoisting_dart, kedging_dart, lacing_dart, loading_dart, mousing_dart, rigging_dart,
+    shoring_dart, spare_dart, trimming_dart, twin_dart,
 };
 
 /// The read of a map of `u8` values from the object `source` names.
@@ -179,6 +179,20 @@ fn a_flattened_externally_tagged_enum_is_read_from_its_variants_entry() {
         &battening_dart::dart_definition(),
         "Map<String, dynamic> toJson() => { ...((hatching).toJson() as Map<String, dynamic>),'note': \
          note, };",
+    );
+}
+
+/// An optional flattened externally tagged enum is read as no value where the object it is handed
+/// holds no entry under a variant's name, and from that entry where it holds one.
+#[test]
+fn an_optional_flattened_externally_tagged_enum_is_null_where_no_entry_is() {
+    assert_written(
+        &caulking_dart::dart_definition(),
+        &format!(
+            "Caulking(hatching: (switch ({}) {{ final entry => entry.isEmpty ? null : \
+             Hatching.fromJsonUnjudged(entry) }}),note: json['note'] as String,);",
+            first_of("({...json}..remove('note'))", "'Bay', 'Dock', 'Quay'")
+        ),
     );
 }
 
