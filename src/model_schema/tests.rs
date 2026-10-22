@@ -2483,6 +2483,229 @@ fn a_tagged_newtype_variant_over_a_type_serde_writes_as_an_optional_is_refused_i
     }
 }
 
+/// No local build is of the clients alone, so the gates are read off the sources.
+#[test]
+fn the_tagged_filled_refusal_is_compiled_in_every_build_with_serde() {
+    let with_serde = quote::quote!(cfg(feature = "serde")).to_string();
+    let expansion = include_str!("../model_schema.rs");
+    let registry = include_str!("../utils.rs");
+    for (source, named) in [
+        (expansion, "value_parameter_position"),
+        (expansion, "written_as_its_slot"),
+        (expansion, "value_filling"),
+        (expansion, "filled_argument"),
+        (expansion, "filled_spelling"),
+        (expansion, "filled_non_object"),
+        (expansion, "tagged_non_object_message"),
+        (expansion, "tagged_optional_message"),
+        (registry, "record_value_parameter"),
+        (registry, "value_parameter"),
+    ] {
+        assert_eq!(
+            gates_above(source, named),
+            [with_serde.as_str()],
+            "for `{named}`"
+        );
+    }
+}
+
+/// The expansion of `source`, deriving both serde traits, under the `#[model_schema(...)]`
+/// arguments `args`.
+#[cfg(feature = "serde")]
+fn serialized_under(args: &str, source: &str) -> proc_macro2::TokenStream {
+    super::exec_model_schema(
+        syn::parse_str(args).unwrap(),
+        syn::parse_str(&format!("#[derive(Serialize, Deserialize)] {source}")).unwrap(),
+    )
+}
+
+/// Declares the types the generic slots of the refusal of a filled generic type are held to: a
+/// struct, a struct of one slot over text and one over an `Option`, and a struct of one slot, a
+/// brand over a `Box` and an alias whose value is their type parameter, one of them through
+/// another.
+#[cfg(feature = "serde")]
+fn declare_filled_probes() {
+    for (args, declared) in [
+        ("", "pub struct ProbeFields { pub note: String }"),
+        ("", "pub struct ProbeText(String);"),
+        ("", "pub struct ProbeMaybe(Option<ProbeFields>);"),
+        (
+            "no_display, default_types(T = String)",
+            "pub struct ProbeWrap<T>(T);",
+        ),
+        (
+            "default_types(T = String)",
+            "#[serde(transparent)] pub struct ProbeBoxed<T>(Box<T>);",
+        ),
+        (
+            "no_display, default_types(U = String)",
+            "pub struct ProbeOuter<U>(ProbeWrap<U>);",
+        ),
+        (
+            "default_types(V = String)",
+            "pub type ProbeWrapAlias<V> = ProbeWrap<V>;",
+        ),
+    ] {
+        let expanded = serialized_under(args, declared);
+        assert_eq!(
+            compile_error_count(&expanded),
+            0,
+            "for {declared}, got: {expanded}"
+        );
+    }
+}
+
+/// The refusals of variant `Held` of `holder`, under the tag `kind` alone, over `slot`.
+#[cfg(feature = "serde")]
+fn held_under_tag(holder: &str, slot: &str) -> Vec<String> {
+    refusal_texts(&serialized_under(
+        "",
+        &format!("#[serde(tag = \"kind\")] pub enum {holder} {{ Held({slot}) }}"),
+    ))
+}
+
+/// A newtype variant under a tag alone over a generic type declared above whose value is its type
+/// parameter, filled at a value serde writes as no object, through a struct of one slot, a brand,
+/// an alias and a chain of them, refused as the slot of the same shape no parameter fills is.
+#[cfg(feature = "serde")]
+#[test]
+fn a_tagged_newtype_variant_over_a_generic_type_filled_at_no_object_is_refused_in_every_build_with_serde()
+ {
+    declare_filled_probes();
+    let whole = "is not written as an object \u{2014} its schema describes a";
+    let text = held_under_tag("ProbeFilledText", "ProbeWrap<String>");
+    assert_eq!(
+        text,
+        [tagged_non_object_refusal(
+            "ProbeFilledText",
+            "ProbeWrap<String>",
+            &format!("{whole} `string`")
+        )]
+    );
+    assert_eq!(
+        held_under_tag("ProbeTextHeld", "ProbeText"),
+        [tagged_non_object_refusal(
+            "ProbeTextHeld",
+            "ProbeText",
+            &format!("{whole} `string`")
+        )],
+        "the slot of the same shape no parameter fills"
+    );
+    let answered = format!("error: {}", text[0]);
+    assert!(
+        include_str!("../../README.md").contains(&answered),
+        "the README no longer quotes: {answered}"
+    );
+    assert_eq!(
+        held_under_tag("ProbeFilledCount", "Box<ProbeWrap<u32>>"),
+        [tagged_non_object_refusal(
+            "ProbeFilledCount",
+            "ProbeWrap<u32>",
+            &format!("{whole} `integer`")
+        )]
+    );
+    for (holder, slot, named) in [
+        ("ProbeFilledList", "ProbeWrap<Vec<String>>", "array"),
+        ("ProbeFilledFlag", "ProbeWrap<bool>", "boolean"),
+        ("ProbeFilledBrand", "ProbeBoxed<String>", "string"),
+        ("ProbeFilledChain", "ProbeOuter<f64>", "number"),
+        ("ProbeFilledAlias", "ProbeWrapAlias<String>", "string"),
+        ("ProbeFilledTwice", "ProbeWrap<ProbeWrap<char>>", "string"),
+        ("ProbeFilledNamed", "ProbeWrap<ProbeText>", "string"),
+    ] {
+        assert_eq!(
+            held_under_tag(holder, slot),
+            [tagged_non_object_refusal(
+                holder,
+                slot,
+                &format!("{whole} `{named}`")
+            )],
+            "for {slot}"
+        );
+    }
+}
+
+/// A newtype variant under a tag alone over a generic type declared above whose value is its type
+/// parameter, filled at an `Option` or at a type serde writes as one, directly and through a
+/// chain, refused as the slot of the same shape no parameter fills is.
+#[cfg(feature = "serde")]
+#[test]
+fn a_tagged_newtype_variant_over_a_generic_type_filled_at_an_optional_is_refused_in_every_build_with_serde()
+ {
+    declare_filled_probes();
+    let optional = held_under_tag("ProbeFilledOptional", "ProbeWrap<Option<ProbeFields>>");
+    assert_eq!(
+        optional,
+        [tagged_optional_refusal(
+            "ProbeFilledOptional",
+            "ProbeWrap<Option<ProbeFields>>"
+        )]
+    );
+    assert_eq!(
+        held_under_tag("ProbeMaybeHeld", "ProbeMaybe"),
+        [tagged_optional_refusal("ProbeMaybeHeld", "ProbeMaybe")],
+        "the slot of the same shape no parameter fills"
+    );
+    let answered = format!("error: {}", optional[0]);
+    assert!(
+        include_str!("../../README.md").contains(&answered),
+        "the README no longer quotes: {answered}"
+    );
+    for (holder, slot) in [
+        ("ProbeFilledOptionalText", "ProbeWrap<Option<String>>"),
+        ("ProbeFilledMaybe", "ProbeWrap<ProbeMaybe>"),
+        (
+            "ProbeFilledOptionalChain",
+            "ProbeOuter<Option<ProbeFields>>",
+        ),
+    ] {
+        assert_eq!(
+            held_under_tag(holder, slot),
+            [tagged_optional_refusal(holder, slot)],
+            "for {slot}"
+        );
+    }
+}
+
+/// The generic slots under a tag alone that stay accepted: a filling serde writes as an object,
+/// directly and through a chain, a type declared below, the enum's own parameter, and an enum under
+/// a tag and a content key.
+#[cfg(feature = "serde")]
+#[test]
+fn a_tagged_newtype_variant_over_a_generic_type_filled_at_an_object_is_accepted() {
+    declare_filled_probes();
+    for (args, accepted) in [
+        (
+            "",
+            "#[serde(tag = \"kind\")] pub enum ProbeFilledFields { Held(ProbeWrap<ProbeFields>) }",
+        ),
+        (
+            "",
+            "#[serde(tag = \"kind\")] pub enum ProbeFilledOuter { Held(ProbeOuter<ProbeFields>) }",
+        ),
+        (
+            "",
+            "#[serde(tag = \"kind\")] pub enum ProbeFilledLater { Held(ProbeWrapUnseen<String>) }",
+        ),
+        (
+            "",
+            "#[serde(tag = \"kind\", content = \"value\")] pub enum ProbeFilledAdjacent { \
+             Held(ProbeWrap<String>) }",
+        ),
+        (
+            "default_types(X = ProbeFields)",
+            "#[serde(tag = \"kind\")] pub enum ProbeFilledByItsOwn<X> { Held(ProbeWrap<X>) }",
+        ),
+    ] {
+        let expanded = serialized_under(args, accepted);
+        assert_eq!(
+            compile_error_count(&expanded),
+            0,
+            "for {accepted}, got: {expanded}"
+        );
+    }
+}
+
 /// What the record every build with serde writes proves of each flattened type is what the record
 /// a Zod surface writes proves, so the refusal reads the same with a schema surface and without.
 #[cfg(all(feature = "serde", feature = "zod"))]

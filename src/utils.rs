@@ -684,6 +684,10 @@ thread_local! {
     /// `#[serde(flatten)]`.
     static NON_OBJECT_WIRES: RefCell<HashMap<String, NonObjectWire>> =
         RefCell::new(HashMap::new());
+    /// The names `#[model_schema]` has been written on so far whose value serde writes as what
+    /// fills their type parameter at the position held. Kept in every build that reads
+    /// `#[serde(tag)]`.
+    static VALUE_PARAMETERS: RefCell<HashMap<String, usize>> = RefCell::new(HashMap::new());
 }
 
 /// What serde writes a value of a name as, in the leaves the flatten refusal reads, as
@@ -943,6 +947,25 @@ pub fn record_open_map_parameters(rust_ident: &str, positions: Vec<usize>) {
             names.borrow_mut().remove(rust_ident);
         } else {
             names.borrow_mut().insert(rust_ident.to_owned(), positions);
+        }
+    });
+}
+
+/// The position of the type parameter of `rust_ident` whose filling serde writes as a value of
+/// `rust_ident` itself. `None` for a name declared below the item asking.
+#[cfg(feature = "serde")]
+pub fn value_parameter(rust_ident: &str) -> Option<usize> {
+    VALUE_PARAMETERS.with(|names| names.borrow().get(rust_ident).copied())
+}
+
+/// Records the position [`value_parameter`] answers for `rust_ident`.
+#[cfg(feature = "serde")]
+pub fn record_value_parameter(rust_ident: &str, position: Option<usize>) {
+    VALUE_PARAMETERS.with(|names| {
+        if let Some(at) = position {
+            names.borrow_mut().insert(rust_ident.to_owned(), at);
+        } else {
+            names.borrow_mut().remove(rust_ident);
         }
     });
 }
