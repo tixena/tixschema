@@ -248,6 +248,34 @@ pub fn variant_on_the_wire(variant: &Variant) -> bool {
     !parse_serde_key_omission(&variant.attrs).absent_from_wire()
 }
 
+/// Whether `attrs` carry `#[serde(untagged)]`: serde writes the variant they are written on, or
+/// every variant of the enum, as its content alone, under no name. Read in every build, as
+/// [`parse_serde_key_omission`] is.
+pub fn carries_untagged(attrs: &[Attribute]) -> bool {
+    let mut untagged = false;
+    for attr in attrs {
+        if !attr.path().is_ident("serde") {
+            continue;
+        }
+        attr.parse_nested_meta(|nested| {
+            if nested.path.is_ident("untagged") {
+                untagged = true;
+            }
+            consume_unread_value(&nested)
+        })
+        .unwrap_or_else(|e| {
+            log::trace!("Failed to parse serde untagged attribute: {e}");
+        });
+    }
+    untagged
+}
+
+/// Whether serde's derive reads the members of `variant`: it reads none of a variant under `skip`
+/// or `skip_deserializing`. Read in every build, as [`parse_serde_key_omission`] is.
+pub fn variant_members_read(variant: &Variant) -> bool {
+    !parse_serde_key_omission(&variant.attrs).skips_deserializing
+}
+
 /// `item_enum` with the variants [`variant_on_the_wire`] answers for alone: what a client writes.
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 pub fn variants_on_the_wire(item_enum: &ItemEnum) -> ItemEnum {

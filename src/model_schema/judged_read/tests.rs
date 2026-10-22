@@ -409,6 +409,46 @@ fn a_member_the_items_bounds_keep_from_a_hook_is_read_with_none() {
     }
 }
 
+/// A member of a variant serde never reads, under `skip` or `skip_deserializing`, is read by no
+/// hook under any tagging, and a bound of a member of an untagged one hangs no hook on it, where a
+/// member of a variant serde reads keeps each of its own.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[test]
+fn a_member_of_a_variant_serde_never_reads_is_read_by_no_hook() {
+    for tagging in ["", "#[serde(tag = \"kind\")]", "#[serde(untagged)]"] {
+        let source = format!(
+            "#[derive(Serialize, Deserialize)] {tagging} pub enum UnreadHooks {{ Open {{ label: \
+             HookedLabel, #[model_schema_prop(minLength = 1)] text: String }}, #[serde(skip)] \
+             Closed {{ cache: HookedLabel }}, #[serde(skip_deserializing)] Shut {{ cache: \
+             HookedLabel, #[model_schema_prop(minLength = 1)] note: String }} }}"
+        );
+        let read = expansion_under("", &source);
+        assert!(
+            read.contains("fn read_unjudged_open_label"),
+            "for {source}: {read}"
+        );
+        for unwritten in ["read_unjudged_closed_cache", "read_unjudged_shut_cache"] {
+            assert!(
+                !read.contains(unwritten),
+                "found `{unwritten}` for {source}: {read}"
+            );
+        }
+        if tagging.contains("untagged") {
+            assert!(
+                read.contains("deserialize_with = \"unread_hooks_schema::deserialize_open_text\""),
+                "for {source}: {read}"
+            );
+        }
+        assert!(
+            !read.contains("deserialize_with = \"unread_hooks_schema::deserialize_shut_note\""),
+            "for {source}: {read}"
+        );
+    }
+}
+
 /// The parameters a member's type names, in the order the item declares them, and `None` where
 /// serde's call of a hook could not infer one, or where it names a const parameter.
 #[cfg(feature = "serde")]
