@@ -3,7 +3,7 @@
 
 use super::{FieldDef, FieldDefType};
 
-use crate::utils::{claim_published_name, is_declared_ident};
+use crate::utils::claim_published_name;
 
 #[cfg(feature = "zod")]
 use crate::bound_message::zod_repeat_check;
@@ -405,35 +405,6 @@ fn test_a_declared_type_named_after_a_std_map_leaves_it_a_map() {
         assert!(claim_published_name(name, name).is_none());
         assert!(super::is_map_wrapper(name), "for: {name}");
     }
-}
-
-/// `Value` and `Map` are the JSON values a refusal names, until the crate or the item declares a
-/// type under the name.
-#[test]
-fn test_a_json_value_is_reached_by_its_last_name_at_any_depth() {
-    let reached = |spelling: &str| {
-        let ty: syn::Type = syn::parse_str(spelling).unwrap();
-        super::get_field_def("held", &ty, "")
-            .any_json_name(|name| name == "Kept")
-            .map(ToOwned::to_owned)
-    };
-    for (spelling, name) in [
-        ("serde_json::Value", Some("Value")),
-        ("Option<Vec<HashMap<String, Value>>>", Some("Value")),
-        ("(u32, Value)", Some("Value")),
-        ("serde_json::Map<String, u8>", Some("Map")),
-        ("Holder<Map<String, Value>>", Some("Map")),
-        ("HashMap<String, u8>", None),
-        ("Kept", None),
-    ] {
-        assert_eq!(reached(spelling).as_deref(), name, "for: {spelling}");
-    }
-    assert!(claim_published_name("Value", "Value").is_none());
-    let ty: syn::Type = syn::parse_str("Vec<Value>").unwrap();
-    assert_eq!(
-        super::get_field_def("held", &ty, "").any_json_name(is_declared_ident),
-        None
-    );
 }
 
 #[test]

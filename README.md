@@ -494,7 +494,7 @@ A `#[model_schema()]` type of the crate's own named `IndexMap` or `IndexSet`, de
 
 ### A JSON value is no member
 
-A member that holds `serde_json::Value` or `serde_json::Map` stops the build. Either holds any JSON value, and no target can describe one: a schema would admit anything, and a client would read the value as a type of its language's that holds anything, or as none. The refusal is a compile error at expansion, in every build, one for each place the item writes it:
+A member that holds `serde_json::Value` or `serde_json::Map` stops the build. Either holds any JSON value, and no target can describe one: a schema would admit anything, and a client would read the value as a type of its language's that holds anything, or as none. Written by its full path, `serde_json::Value`, `::serde_json::Value` or `serde_json::Map<K, V>`, the type is refused by a compile error at expansion, in every build, one for each place the item writes it:
 
 - a field, a slot of a tuple struct, and a member or a slot of a variant, flattened or not;
 - the value under an `Option`, a list, a map's key or value, a tuple, a `Result` and a type argument, at any depth: `Option<Vec<HashMap<String, Value>>>`, `(u32, Value)`, `Wrapper<Value>`;
@@ -512,9 +512,29 @@ pub struct Holding {
 error: model_schema: type `Holding`: field `v` reaches `serde_json::Value`, which holds any JSON value, so no target can describe it. Declare the shape that value takes as a type of its own, and write that type in its place.
 ```
 
-The two names are read by their last segment, so a `Value` or a `Map` brought into scope with `use serde_json::{Map, Value};` is refused as well. A type the crate declares with `#[model_schema()]` under either name, above the type that names it, is that type, and so is one of the item's own type parameters and the item itself.
+The path is read as written: a module of the crate's own named `serde_json` is read as the crate.
 
-A [service](#services) operation that takes or answers either type stops the build the same way, at each type it puts on the wire, in every build with the `serde` feature, spanned on the type as written. The error names the operation and the position: `the request`, the one message the operation takes; `the reply` and `the fault`, the two arms of its `Result`; ``request header `name` ``, ``reply header `name` `` and ``fault header `name` ``, a `header_in`, `header_out` and `error_header_out` binding; and ``request part `name` ``, a `part` binding. The message declared from several arguments is a `#[model_schema()]` struct, so an argument there is refused as a field of it.
+A `Value` or a `Map<K, V>` written by its bare name, as `use serde_json::{Map, Value};` brings it into scope, may be `serde_json`'s type or a type of the crate's own, declared anywhere, and only the compiler can tell. So the macro writes a check beside the item, which the compiler evaluates: where the name is `serde_json`'s type, the build stops with the same message, as error `E0080`, spanned on the type as written; where it is another type, the check holds and the item builds. The check names `::serde_json`, so a crate that writes a bare `Value` or `Map<K, V>` in a member lists `serde_json` among its dependencies, whichever type the name is.
+
+```rust
+use serde_json::Value;
+
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+pub struct Reading {
+    pub data: Value,
+}
+```
+
+```text
+error[E0080]: evaluation panicked: model_schema: type `Reading`: field `data` reaches `serde_json::Value`, which holds any JSON value, so no target can describe it. Declare the shape that value takes as a type of its own, and write that type in its place.
+```
+
+The build reports, beside it, what the rest of the expansion names for a type of the crate's own, such as a `value_schema` module nothing declares.
+
+No check is written for a name that is one of the item's own type parameters, for the item itself, for a type the crate declares with `#[model_schema()]` under either name above the item, for a `Value<T>` written with arguments or a `Map` written with none, which are no `serde_json` type, and for a `Map<K, V>` whose arguments name one of the item's own type parameters, `Self` or a lifetime other than `'static`, which a check beside the item cannot name.
+
+A [service](#services) operation that takes or answers either type stops the build the same way, at each type it puts on the wire, in every build with the `serde` feature, spanned on the type as written: by its full path at expansion, and by its bare name at a check the compiler evaluates beside the trait. The error names the operation and the position: `the request`, the one message the operation takes; `the reply` and `the fault`, the two arms of its `Result`; ``request header `name` ``, ``reply header `name` `` and ``fault header `name` ``, a `header_in`, `header_out` and `error_header_out` binding; and ``request part `name` ``, a `part` binding. The message declared from several arguments is a `#[model_schema()]` struct, so an argument there is refused as a field of it.
 
 ```rust
 #[service_schema()]
@@ -4237,7 +4257,7 @@ Nine rules meet a crate that upgrades. Each is stated with what a build or a rea
 - **A map under `#[serde(flatten)]` alone beside a tag stops the build**, in a struct with its own `#[serde(tag = "...")]` and in a variant of an enum under a `tag` with no `content`: `#[serde(tag = "kind")] pub enum Keelson { Open { #[serde(flatten)] counts: BTreeMap<String, u8> } }` answers ``error: model_schema: type `Keelson`: variant `Open`, field `counts`: `#[serde(flatten)]` cannot hold a map beside the tag `kind` — serde writes the tag and the map's entries at one level, and no TypeScript type describes both. Write the map under a key of its own.`` Write the map under a key of its own, or, in a variant, name a `content` key. See [Intersection Types](#intersection-types-serdeflatten).
 - **A newtype variant under a `tag` with no `content` whose value writes a map stops the build**: a struct whose one member is a flattened map, a brand or a struct of one slot over a map, an alias of a map and an untagged enum with a variant that writes one, declared above the enum. With `pub struct Tally { #[serde(flatten)] counts: BTreeMap<String, u8> }`, `#[serde(tag = "kind")] pub enum Filled { Counted(Tally) }` answers ``error: model_schema: type `Filled`: variant `Counted`, field `0`: `Tally` writes a map, which cannot sit beside the tag `kind` — serde writes the tag and the map's entries at one level, and no TypeScript type describes both. Name a `content` key so the map gets an object of its own, or write the map under a key of its own.`` A variant that holds the enum's own type parameter is refused where a map fills it. Name a `content` key, or write the map under a key of its own. See [Internally Tagged Enums](#internally-tagged-enums-tag-with-no-content).
 - **A map that reaches a flattened member through an untagged enum, a generic type or a type parameter stops the build** beside another member that writes a key, as a map written there does: an `#[serde(untagged)]` enum with a map among its variants, and a brand, an alias or a struct over its own type parameter filled at a map, are refused with the error of a map written there, and a type parameter flattened beside a member is refused where a map fills it: with `Letter<T>` flattening `T` beside `id`, `pub struct Post { pub letter: Letter<HashMap<String, i32>> }` answers ``error: model_schema: type `Post`: field `letter`: `Letter` flattens its type parameter `T` beside `id`, and `HashMap<String, i32>` fills it with a map — serde writes the map's entries at one level with `id`, and no TypeScript type describes both. Write the map under a key of its own.`` Write the map under a key of its own. See [Intersection Types](#intersection-types-serdeflatten).
-- **A member that holds `serde_json::Value` or `serde_json::Map` stops the build**, at any depth: a `pub v: serde_json::Value` on `Holding` answers ``error: model_schema: type `Holding`: field `v` reaches `serde_json::Value`, which holds any JSON value, so no target can describe it. Declare the shape that value takes as a type of its own, and write that type in its place.`` A service operation whose message, reply, fault, header or part reaches one stops the build too, the error naming the operation and the position. See [A JSON value is no member](#a-json-value-is-no-member).
+- **A member that holds `serde_json::Value` or `serde_json::Map` stops the build**, at any depth: a `pub v: serde_json::Value` on `Holding` answers ``error: model_schema: type `Holding`: field `v` reaches `serde_json::Value`, which holds any JSON value, so no target can describe it. Declare the shape that value takes as a type of its own, and write that type in its place.`` A bare `Value` or `Map<K, V>` that names `serde_json`'s type stops it at a check the compiler evaluates beside the item, with `error[E0080]: evaluation panicked:` and the same message, and a crate that writes either bare name in a member lists `serde_json` among its dependencies, which the check names. A service operation whose message, reply, fault, header or part reaches one stops the build too, the error naming the operation and the position. See [A JSON value is no member](#a-json-value-is-no-member).
 - **Every language the crate builds for calls the function a `preprocess` names**, on a field and on a type. A build stops until a function under that name is in scope in that language:
 
   | | The build answers |

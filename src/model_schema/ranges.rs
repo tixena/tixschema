@@ -3,18 +3,21 @@
 //! `#[serde(flatten)]`, and that of one as a map key in a build whose map key guard does not run.
 //! Beside them, the refusal of a map under `#[serde(flatten)]` beside another member or a tag, or
 //! as the lone slot of a variant under a tag alone, written there or filling a type parameter a
-//! type flattens there.
+//! type flattens there, and `serde_json`'s `Value` and `Map`: refused by their full path, and
+//! checked beside the item by their bare name.
 
-use proc_macro2::{Ident, Span, TokenStream};
-use quote::{quote, quote_spanned};
+use proc_macro2::{Ident, Span, TokenStream, TokenTree};
+use quote::{ToTokens as _, quote, quote_spanned};
+use syn::ext::IdentExt as _;
 use syn::spanned::Spanned as _;
 use syn::{Fields, GenericArgument, Item, PathArguments, Type, TypePath};
 
+use super::judged_read::unclaimed_parameter;
 use crate::features::serde::parse_serde_key_omission;
 use crate::field_type::{
     RangeKind, names_std_ops, names_std_result, written_std_range, written_std_result,
 };
-use crate::utils::written_type;
+use crate::utils::{written_names, written_type};
 
 #[cfg(any(
     feature = "serde",
@@ -42,8 +45,14 @@ use crate::utils::{
     FlattenedBeside, FlattenedParameter, flattened_beside_parameters, is_open_map,
     open_map_parameters,
 };
-#[cfg(feature = "serde")]
-use syn::ext::IdentExt as _;
+
+/// A `serde_json` type that holds any JSON value, where a written type reaches it.
+enum AnyJson<'ty> {
+    /// `Value` with no arguments or `Map` with arguments, written by its bare name.
+    Bare(&'static str, &'ty Type),
+    /// `serde_json::Value` or `serde_json::Map`, written by its full path.
+    Named(&'static str),
+}
 
 /// One check per std range and std `Result` `item` writes by a path other than the std module that
 /// declares it, in the members serde reads or writes: a function that hands the std type back as
@@ -161,6 +170,177 @@ fn result_identity_check(path: &TypePath) -> Option<TokenStream> {
             }
             is_std_result::<(), ()>
         };
+    })
+}
+
+/// The first of `serde_json`'s two types that hold any JSON value, `Value` and `Map`, `ty` reaches
+/// by its full path, with or without a leading `::`.
+pub fn any_json_named(ty: &Type) -> Option<&'static str> {
+    any_json_reached(ty)
+        .into_iter()
+        .find_map(|reached| match reached {
+            AnyJson::Named(name) => Some(name),
+            AnyJson::Bare(..) => None,
+        })
+}
+
+/// Each `Value` with no arguments and each `Map` with arguments `ty` reaches by its bare name, once
+/// per spelling, where `kept` does not answer for the name and a check beside the declaration can
+/// name the type: it names none of `parameters`, no `Self` and no lifetime but `'static`.
+pub fn any_json_bare<'ty, F>(
+    ty: &'ty Type,
+    kept: F,
+    parameters: &[String],
+) -> Vec<(&'static str, &'ty Type)>
+where
+    F: Fn(&str) -> bool,
+{
+    let mut bare: Vec<(&'static str, &'ty Type)> = Vec::new();
+    for reached in any_json_reached(ty) {
+        if let AnyJson::Bare(name, written) = reached
+            && !kept(name)
+            && !names_what_a_check_cannot(written.to_token_stream(), parameters)
+            && !bare.iter().any(|&(_, seen)| seen == written)
+        {
+            bare.push((name, written));
+        }
+    }
+    bare
+}
+
+/// The check beside a declaration that `probed`, a bare `name` it writes, is no `serde_json` type:
+/// the probe's inherent const answers only where it is, and the evaluation then fails with
+/// `refusal`, spanned on `probed`.
+pub fn any_json_check(name: &str, probed: &Type, refusal: &str) -> TokenStream {
+    let held = if name == "Map" {
+        quote! { ::serde_json::Map<::std::string::String, ::serde_json::Value> }
+    } else {
+        quote! { ::serde_json::Value }
+    };
+    let written = written_names(probed.to_token_stream());
+    let probe = unclaimed_parameter("Probe", &written);
+    let fallback = unclaimed_parameter("Fallback", &written);
+    // The message is a format string: a brace in it is written twice.
+    let message = refusal.replace('{', "{{").replace('}', "}}");
+    let refused = quote_spanned! { probed.span()=>
+        ::core::assert!(!#probe::<#probed>::ANY_JSON, #message);
+    };
+    quote! {
+        const _: () = {
+            struct #probe<T: ?::core::marker::Sized>(::core::marker::PhantomData<T>);
+            trait #fallback {
+                const ANY_JSON: bool = false;
+            }
+            impl<T: ?::core::marker::Sized> #fallback for #probe<T> {}
+            impl #probe<#held> {
+                const ANY_JSON: bool = true;
+            }
+            ::core::assert!(
+                #probe::<#held>::ANY_JSON,
+                "the probe answers for serde_json's own type"
+            );
+            #refused
+        };
+    }
+}
+
+/// Every `serde_json::Value` and `serde_json::Map` `ty` reaches by its full path or by its bare
+/// name, in the order written: in a path's type arguments, a reference, an array, a slice, a tuple
+/// and parentheses.
+fn any_json_reached(ty: &Type) -> Vec<AnyJson<'_>> {
+    let mut reached = Vec::new();
+    collect_any_json(ty, &mut reached);
+    reached
+}
+
+/// Adds what `ty` reaches of [`any_json_reached`] to `reached`.
+fn collect_any_json<'ty>(ty: &'ty Type, reached: &mut Vec<AnyJson<'ty>>) {
+    let written = written_type(ty);
+    if let Type::Path(path) = written {
+        reached.extend(any_json_path(written, path));
+        for segment in &path.path.segments {
+            if let PathArguments::AngleBracketed(arguments) = &segment.arguments {
+                for argument in &arguments.args {
+                    if let GenericArgument::Type(held) = argument {
+                        collect_any_json(held, reached);
+                    }
+                }
+            }
+        }
+    } else if let Type::Reference(reference) = written {
+        collect_any_json(&reference.elem, reached);
+    } else if let Type::Array(array) = written {
+        collect_any_json(&array.elem, reached);
+    } else if let Type::Slice(slice) = written {
+        collect_any_json(&slice.elem, reached);
+    } else if let Type::Tuple(tuple) = written {
+        for position in &tuple.elems {
+            collect_any_json(position, reached);
+        }
+    } else if let Type::Paren(paren) = written {
+        collect_any_json(&paren.elem, reached);
+    } else {
+        // Every other type reaches neither name.
+    }
+}
+
+/// What `path`, written as `written`, names of `serde_json`'s two types.
+fn any_json_path<'ty>(written: &'ty Type, path: &TypePath) -> Option<AnyJson<'ty>> {
+    if path.qself.is_some() {
+        return None;
+    }
+    let segments: Vec<&syn::PathSegment> = path.path.segments.iter().collect();
+    if let [owner, last] = segments.as_slice() {
+        return if owner.ident == "serde_json" && owner.arguments.is_none() {
+            any_json_name(&last.ident).map(AnyJson::Named)
+        } else {
+            None
+        };
+    }
+    let [only] = segments.as_slice() else {
+        return None;
+    };
+    if path.path.leading_colon.is_some() {
+        return None;
+    }
+    match (any_json_name(&only.ident)?, &only.arguments) {
+        ("Value", PathArguments::None) => Some(AnyJson::Bare("Value", written)),
+        ("Map", PathArguments::AngleBracketed(_)) => Some(AnyJson::Bare("Map", written)),
+        _ => None,
+    }
+}
+
+/// `Value` or `Map`, where `ident` is one of the two.
+fn any_json_name(ident: &Ident) -> Option<&'static str> {
+    let name = ident.unraw();
+    if name == "Value" {
+        Some("Value")
+    } else if name == "Map" {
+        Some("Map")
+    } else {
+        None
+    }
+}
+
+/// Whether `tokens` name one of `parameters`, `Self` or a lifetime other than `'static`, none of
+/// which a check written beside the declaration can name.
+fn names_what_a_check_cannot(tokens: TokenStream, parameters: &[String]) -> bool {
+    let mut after_a_quote = false;
+    tokens.into_iter().any(|token| {
+        let unnameable = match &token {
+            TokenTree::Group(group) => names_what_a_check_cannot(group.stream(), parameters),
+            TokenTree::Ident(ident) => {
+                let name = ident.unraw().to_string();
+                if after_a_quote {
+                    name != "static"
+                } else {
+                    name == "Self" || parameters.contains(&name)
+                }
+            }
+            TokenTree::Punct(_) | TokenTree::Literal(_) => false,
+        };
+        after_a_quote = matches!(&token, TokenTree::Punct(punct) if punct.as_char() == '\'');
+        unnameable
     })
 }
 

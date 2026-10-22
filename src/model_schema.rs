@@ -7,7 +7,7 @@ extern crate alloc;
 pub mod checks;
 pub mod judged_read;
 pub mod preprocess;
-mod ranges;
+pub mod ranges;
 
 use alloc::borrow::ToOwned;
 use core::fmt::Write as _;
@@ -740,8 +740,9 @@ enum MapKeyRejection {
 #[derive(Debug)]
 pub enum UndescribableStd<'name> {
     /// `serde_json::Value` and `serde_json::Map`: any JSON value, which no target can describe.
-    /// Asked of every member and filling of an item, ahead of every shape ([`any_json_errors`]),
-    /// and of each type a service operation puts on the wire.
+    /// Refused by its full path in every member and filling of an item, ahead of every shape
+    /// ([`any_json_errors`]), and in each type a service operation puts on the wire; the message
+    /// of the check a bare name earns ([`any_json_checks`]).
     AnyJson(&'name str),
     /// `OsString`/`OsStr`: serde writes an externally tagged enum naming the target platform.
     PlatformString(&'name str),
@@ -4087,10 +4088,12 @@ fn default_types_bound_checks(
 }
 
 /// The checks the compiler answers for `item`: each filling against the bounds its parameter
-/// declares, and each range written by its bare name against the std range.
+/// declares, each range written by its bare name against the std range, and each `Value` and
+/// `Map` written by its bare name against `serde_json`'s.
 fn asked_of_the_compiler(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_macro2::TokenStream> {
     let mut checks = default_types_bound_checks(item, args);
     checks.extend(ranges::identity_checks(item));
+    checks.extend(any_json_checks(item, args));
     checks
 }
 
@@ -4532,63 +4535,102 @@ fn any_json_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_macro2::Toke
 }
 
 /// The refusal an item earns for each member, alias target and `default_types` filling that
-/// reaches `serde_json::Value` or `serde_json::Map`, each spanned on the type as written. Asked
-/// ahead of every shape, so every build refuses it. A name the item declares as a type parameter,
-/// the item's own and one the crate declared a type under are that type.
+/// reaches `serde_json::Value` or `serde_json::Map` written by its full path, each spanned on the
+/// type as written. Asked ahead of every shape, so every build refuses it. A bare name is asked of
+/// the compiler instead ([`any_json_checks`]).
 fn any_json_rejections(item: &Item, args: &ModelSchemaArgs) -> Vec<syn::Error> {
-    let mut written: Vec<(String, &syn::Type)> = Vec::new();
-    let (ident, generics) =
-        if let Item::Struct(item_struct) = item {
-            written.extend(
-                item_struct.fields.iter().enumerate().map(|(index, field)| {
-                    (preprocess::member_label(None, index, field), &field.ty)
-                }),
-            );
-            (&item_struct.ident, &item_struct.generics)
-        } else if let Item::Enum(item_enum) = item {
-            for variant in &item_enum.variants {
-                written.extend(variant.fields.iter().enumerate().map(|(index, field)| {
-                    (
-                        preprocess::member_label(Some(variant), index, field),
-                        &field.ty,
-                    )
-                }));
+    let label = item_label(item);
+    any_json_positions(item, args)
+        .into_iter()
+        .filter_map(|(subject, ty)| {
+            let message = any_json_message(&label, &subject, ranges::any_json_named(ty)?);
+            Some(syn::Error::new_spanned(ty, message))
+        })
+        .collect()
+}
+
+/// The check, beside the item, of each `Value` and `Map` a member, an alias target or a
+/// `default_types` filling writes by its bare name: the build fails with the refusal of
+/// [`any_json_rejections`] where the name is `serde_json`'s type. A name the item declares as a
+/// parameter, the item's own and one the crate declared a type under above are that type.
+fn any_json_checks(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_macro2::TokenStream> {
+    let (Some(own), Some(generics)) = (item_schema_ident(item), item_generics(item)) else {
+        return Vec::new();
+    };
+    let parameters: Vec<String> = generics
+        .params
+        .iter()
+        .map(|parameter| match parameter {
+            syn::GenericParam::Type(type_param) => type_param.ident.to_string(),
+            syn::GenericParam::Const(const_param) => const_param.ident.to_string(),
+            syn::GenericParam::Lifetime(lifetime_param) => {
+                lifetime_param.lifetime.ident.to_string()
             }
-            (&item_enum.ident, &item_enum.generics)
-        } else if let Item::Type(item_type) = item {
-            written.push(("the type it names".to_owned(), &item_type.ty));
-            (&item_type.ident, &item_type.generics)
-        } else {
-            return Vec::new();
-        };
+        })
+        .collect();
+    let kept = |name: &str| {
+        *own == name
+            || generics
+                .type_params()
+                .any(|parameter| parameter.ident == name)
+            || is_declared_ident(name)
+    };
+    let label = item_label(item);
+    any_json_positions(item, args)
+        .into_iter()
+        .flat_map(|(subject, ty)| {
+            ranges::any_json_bare(ty, kept, &parameters)
+                .into_iter()
+                .map(|(name, probed)| {
+                    ranges::any_json_check(name, probed, &any_json_message(&label, &subject, name))
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+/// Each type an item writes beside the subject a refusal of a JSON value names it by: every
+/// member, an alias's target, and each `default_types` filling.
+fn any_json_positions<'item>(
+    item: &'item Item,
+    args: &'item ModelSchemaArgs,
+) -> Vec<(String, &'item syn::Type)> {
+    let mut written: Vec<(String, &syn::Type)> = Vec::new();
+    if let Item::Struct(item_struct) = item {
+        written.extend(
+            item_struct
+                .fields
+                .iter()
+                .enumerate()
+                .map(|(index, field)| (preprocess::member_label(None, index, field), &field.ty)),
+        );
+    } else if let Item::Enum(item_enum) = item {
+        for variant in &item_enum.variants {
+            written.extend(variant.fields.iter().enumerate().map(|(index, field)| {
+                (
+                    preprocess::member_label(Some(variant), index, field),
+                    &field.ty,
+                )
+            }));
+        }
+    } else if let Item::Type(item_type) = item {
+        written.push(("the type it names".to_owned(), &item_type.ty));
+    } else {
+        return Vec::new();
+    }
     written.extend(
         args.default_types
             .iter()
             .map(|(name, filling)| (format!("`default_types` entry `{name}`"), filling)),
     );
-    let own = ident.to_string();
-    let parameters: Vec<String> = generics
-        .type_params()
-        .map(|parameter| parameter.ident.to_string())
-        .collect();
-    let kept = |name: &str| {
-        name == own
-            || parameters.iter().any(|parameter| parameter == name)
-            || is_declared_ident(name)
-    };
-    let label = item_label(item);
     written
-        .into_iter()
-        .filter_map(|(subject, ty)| {
-            let reached = get_field_def("", ty, "");
-            let rejection = UndescribableStd::AnyJson(reached.any_json_name(kept)?);
-            let message = undescribable_std_message(&subject, &rejection);
-            Some(syn::Error::new_spanned(
-                ty,
-                prefixed_guard_message(&format!("{label}: {message}")),
-            ))
-        })
-        .collect()
+}
+
+/// The refusal of `name`, `serde_json`'s `Value` or `Map`, reached at `subject` of the item
+/// `label` names.
+fn any_json_message(label: &str, subject: &str, name: &str) -> String {
+    let message = undescribable_std_message(subject, &UndescribableStd::AnyJson(name));
+    prefixed_guard_message(&format!("{label}: {message}"))
 }
 
 /// Every name of [`INDEXMAP_NAMES`] `written` holds at any depth, written with the type arguments

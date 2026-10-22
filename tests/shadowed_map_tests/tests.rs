@@ -1,8 +1,9 @@
-//! Tests of a model type named `Map`, and of ones named `IndexMap` and `IndexSet` where the
-//! `indexmap` feature is off.
+//! Tests of a model type named `Map`, of ones named `IndexMap` and `IndexSet` where the
+//! `indexmap` feature is off, and of one named `Value`.
 
 #[cfg(not(feature = "indexmap"))]
 mod named_as_indexmap;
+mod named_value;
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;

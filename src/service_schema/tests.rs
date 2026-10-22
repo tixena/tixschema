@@ -16,6 +16,7 @@ use super::{
     stream_envelope_refusal,
 };
 use crate::model_schema::exec_model_schema;
+use crate::model_schema::ranges::any_json_check;
 use crate::utils::record_untagged_enum;
 use core::mem::take;
 use proc_macro2::{Delimiter, Group, Span, TokenStream, TokenTree};
@@ -1000,19 +1001,28 @@ fn an_operation_that_takes_and_answers_a_json_value_is_refused_at_each_position(
     assert_eq!(
         spanned_refusals(
             "pub trait RawService<Ctx> {
-                async fn fetch(&self, ctx: &Ctx, req: FetchRequest) -> Result<Balance, Value>;
+                async fn fetch(&self, ctx: &Ctx, req: FetchRequest)
+                    -> Result<Balance, ::serde_json::Value>;
             }"
         ),
-        [any_json_refusal("the fault", "Value", "Value")]
+        [any_json_refusal(
+            "the fault",
+            "Value",
+            "::serde_json::Value"
+        )]
     );
     assert_eq!(
         spanned_refusals(
             "pub trait RawService<Ctx> {
                 #[service_schema_op(one_way)]
-                async fn fetch(&self, ctx: &Ctx, req: Vec<Value>);
+                async fn fetch(&self, ctx: &Ctx, req: Vec<serde_json::Value>);
             }"
         ),
-        [any_json_refusal("the request", "Value", "Vec<Value>")]
+        [any_json_refusal(
+            "the request",
+            "Value",
+            "Vec<serde_json::Value>"
+        )]
     );
 }
 
@@ -1040,13 +1050,13 @@ fn a_service_holding_a_json_value_expands_to_its_refusals_and_its_trait_alone() 
 #[test]
 fn a_json_value_is_refused_at_any_depth_of_a_message() {
     for (written, name) in [
-        ("Option<Vec<Value>>", "Value"),
-        ("HashMap<String, Value>", "Value"),
-        ("(u32, Value)", "Value"),
-        ("Box<Value>", "Value"),
-        ("Envelope<Value>", "Value"),
+        ("Option<Vec<serde_json::Value>>", "Value"),
+        ("HashMap<String, serde_json::Value>", "Value"),
+        ("(u32, ::serde_json::Value)", "Value"),
+        ("Box<serde_json::Value>", "Value"),
+        ("Envelope<serde_json::Value>", "Value"),
         ("serde_json::Map<String, Value>", "Map"),
-        ("Map<String, u8>", "Map"),
+        ("::serde_json::Map<String, u8>", "Map"),
     ] {
         assert_eq!(
             spanned_refusals(&format!(
@@ -1072,24 +1082,36 @@ fn a_header_and_a_part_that_hold_a_json_value_are_refused_by_their_names() {
                     header_out("etag"),
                     error_header_out("retry-after"),
                 ))]
-                async fn fetch(&self, ctx: &Ctx, trace: Value)
-                    -> Result<(Balance, Option<Value>), (FetchError, Map<String, u8>)>;
+                async fn fetch(&self, ctx: &Ctx, trace: serde_json::Value)
+                    -> Result<
+                        (Balance, Option<serde_json::Value>),
+                        (FetchError, serde_json::Map<String, u8>),
+                    >;
             }"#
         ),
         [
-            any_json_refusal("request header `x-trace`", "Value", "Value"),
-            any_json_refusal("reply header `etag`", "Value", "Option<Value>"),
-            any_json_refusal("fault header `retry-after`", "Map", "Map<String, u8>"),
+            any_json_refusal("request header `x-trace`", "Value", "serde_json::Value"),
+            any_json_refusal("reply header `etag`", "Value", "Option<serde_json::Value>"),
+            any_json_refusal(
+                "fault header `retry-after`",
+                "Map",
+                "serde_json::Map<String, u8>"
+            ),
         ]
     );
     assert_eq!(
         spanned_refusals(
             r#"pub trait RawService<Ctx> {
                 #[service_schema_op(http(method = "GET", path = "/balances", header_out("etag")))]
-                async fn fetch(&self, ctx: &Ctx) -> Result<(Vec<Value>, String), FetchError>;
+                async fn fetch(&self, ctx: &Ctx)
+                    -> Result<(Vec<serde_json::Value>, String), FetchError>;
             }"#
         ),
-        [any_json_refusal("the reply", "Value", "Vec<Value>")],
+        [any_json_refusal(
+            "the reply",
+            "Value",
+            "Vec<serde_json::Value>"
+        )],
         "the body of a header tuple is the reply"
     );
     assert_eq!(
@@ -1106,11 +1128,15 @@ fn a_header_and_a_part_that_hold_a_json_value_are_refused_by_their_names() {
                     ctx: &Ctx,
                     title: String,
                     category: String,
-                    attachment: Value,
+                    attachment: serde_json::Value,
                 ) -> Result<Balance, FetchError>;
             }"#
         ),
-        [any_json_refusal("request part `file`", "Value", "Value")]
+        [any_json_refusal(
+            "request part `file`",
+            "Value",
+            "serde_json::Value"
+        )]
     );
 }
 
@@ -1164,14 +1190,11 @@ fn a_name_the_service_or_the_crate_declares_is_no_json_value() {
     )
     .to_string();
     assert!(!declared.contains("compile_error"), "got: {declared}");
-    assert_eq!(
-        spanned_refusals(
-            "pub trait RawService<Ctx> {
-                async fn fetch(&self, ctx: &Ctx, req: Value) -> Result<Vec<Value>, FetchError>;
-            }"
-        ),
-        []
-    );
+    let holding_the_declared = "pub trait RawService<Ctx> {
+        async fn fetch(&self, ctx: &Ctx, req: Value) -> Result<Vec<Value>, FetchError>;
+    }";
+    assert_eq!(spanned_refusals(holding_the_declared), []);
+    assert_eq!(any_json_checked(holding_the_declared), Vec::<String>::new());
     let context_named_map = spanned_refusals(
         "pub trait RawService<Map> {
             async fn fetch(&self, ctx: &Map, req: Map) -> Result<Balance, FetchError>;
@@ -1184,6 +1207,55 @@ fn a_name_the_service_or_the_crate_declares_is_no_json_value() {
             .contains("puts the context type `Map` on the wire"),
         "the context is refused as the context, and only once. Got: {context_named_map:?}"
     );
+}
+
+/// The checks `parse::any_json_checks` writes beside the service `source` declares.
+fn any_json_checked(source: &str) -> Vec<String> {
+    super::parse::any_json_checks(&service(source))
+        .iter()
+        .map(ToString::to_string)
+        .collect()
+}
+
+/// The check of `written`, the bare `name` it writes, at `position` of the operation `fetch`.
+fn any_json_check_of(name: &str, written: &str, position: &str) -> String {
+    let (refusal, _) = any_json_refusal(position, name, written);
+    any_json_check(name, &syn::parse_str(written).unwrap(), &refusal).to_string()
+}
+
+/// A bare `Value` or `Map` on the wire is refused nowhere at expansion: a check beside the trait
+/// asks the compiler whether it is `serde_json`'s, under the name of its position.
+#[test]
+fn a_bare_json_value_on_the_wire_is_checked_at_each_position() {
+    let source = r#"pub trait RawService<Ctx> {
+        #[service_schema_op(http(
+            method = "GET",
+            path = "/balances",
+            header_in("x-trace" = trace),
+            header_out("etag"),
+            error_header_out("retry-after"),
+        ))]
+        async fn fetch(&self, ctx: &Ctx, trace: Value)
+            -> Result<(Vec<Value>, Option<Value>), (FetchError, Map<String, u8>)>;
+    }"#;
+    assert_eq!(spanned_refusals(source), []);
+    assert_eq!(
+        any_json_checked(source),
+        [
+            any_json_check_of("Value", "Value", "request header `x-trace`"),
+            any_json_check_of("Value", "Value", "the reply"),
+            any_json_check_of("Value", "Value", "reply header `etag`"),
+            any_json_check_of("Map", "Map<String, u8>", "fault header `retry-after`"),
+        ]
+    );
+    let expanded = expanded_over_amqp_rpc(
+        "pub trait RawService<Ctx> {
+            async fn fetch(&self, ctx: &Ctx, req: Envelope<Value>) -> Result<Balance, FetchError>;
+        }",
+    );
+    assert!(!expanded.contains("compile_error"), "got: {expanded}");
+    let check = any_json_check_of("Value", "Value", "the request");
+    assert!(expanded.contains(&check), "no {check} in: {expanded}");
 }
 
 /// The README quotes the refusal as the build answers it.

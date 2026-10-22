@@ -71,7 +71,11 @@ pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream
                     // Every language's generated clients are strings rather than callers of
                     // anything private, so they stay at the trait's scope.
                     let generated_clients = generated_clients(&service, wanted.non_exhaustive);
+                    // A bare `Value` or `Map` on the wire is asked of the compiler: no proc macro
+                    // can tell whether the name is `serde_json`'s.
+                    let any_json_checks = parse::any_json_checks(&service);
                     quote! {
+                        #(#any_json_checks)*
                         #messages
                         #support
                         #contract

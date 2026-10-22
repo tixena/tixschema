@@ -279,16 +279,6 @@ impl PartialEq for FieldDef {
 }
 
 impl FieldDef {
-    /// The first `serde_json` type that holds any JSON value, `Value` or `Map`, this field reaches
-    /// at any depth, read by its last name. `kept` answers for a name that is some other type: one
-    /// the crate declared, or one of the item's own.
-    pub fn any_json_name<F>(&self, kept: F) -> Option<&str>
-    where
-        F: Fn(&str) -> bool + Copy,
-    {
-        self.reached_name(|name| matches!(name, "Value" | "Map") && !kept(name))
-    }
-
     /// The enclosing item's own type parameter this field reaches *below* its own position — the
     /// `T` a `Later<T>` hands to the type it names, and the same `T` inside a tuple or a map.
     #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]

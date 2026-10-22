@@ -1,12 +1,12 @@
 //! The shape a `#[service_schema]` trait is read into, and the only place it is read.
 
-use crate::field_type::get_field_def;
+use crate::model_schema::ranges::{any_json_bare, any_json_check, any_json_named};
 use crate::model_schema::{UndescribableStd, undescribable_std_message};
 use crate::rename_rule::RenameRule;
 use crate::utils::{
     is_declared_ident, is_recorded_unit_struct_type, is_recorded_untagged_enum, is_wire_scalar_type,
 };
-use proc_macro2::TokenTree;
+use proc_macro2::{TokenStream, TokenTree};
 use quote::{ToTokens as _, format_ident};
 use std::collections::{HashMap, HashSet};
 use syn::ext::IdentExt as _;
@@ -2954,7 +2954,7 @@ fn service_refusals(service: &ServiceDef) -> Option<syn::Error> {
                 ));
             }
         }
-        for refusal in any_json_refusals(operation, &service.context_param) {
+        for refusal in any_json_refusals(operation) {
             refusals = Some(combined(refusals.take(), refusal));
         }
     }
@@ -2965,25 +2965,56 @@ fn service_refusals(service: &ServiceDef) -> Option<syn::Error> {
 }
 
 /// The refusal of each type `operation` puts on the wire that reaches `serde_json::Value` or
-/// `serde_json::Map`, spanned on the type as written. The context and a name the crate declared a
-/// type under are that type.
-fn any_json_refusals(operation: &OperationDef, context: &Ident) -> Vec<syn::Error> {
-    let kept = |name: &str| context == name || is_declared_ident(name);
+/// `serde_json::Map` written by its full path, spanned on the type as written. A bare name is asked
+/// of the compiler instead ([`any_json_checks`]).
+fn any_json_refusals(operation: &OperationDef) -> Vec<syn::Error> {
     json_positions(operation)
         .into_iter()
         .filter_map(|(position, declared)| {
-            let reached = get_field_def("", declared, "");
-            let rejection = UndescribableStd::AnyJson(reached.any_json_name(kept)?);
-            let subject = format!("operation `{}`: {position}", operation.ident);
-            Some(syn::Error::new_spanned(
-                declared,
-                format!(
-                    "service_schema: {}",
-                    undescribable_std_message(&subject, &rejection)
-                ),
-            ))
+            let message = any_json_message(operation, &position, any_json_named(declared)?);
+            Some(syn::Error::new_spanned(declared, message))
         })
         .collect()
+}
+
+/// The check, beside the trait, of each `Value` and `Map` a type `service` puts on the wire writes
+/// by its bare name: the build fails with the refusal of [`any_json_refusals`] where the name is
+/// `serde_json`'s type. The context and a name the crate declared a type under above are that
+/// type.
+pub fn any_json_checks(service: &ServiceDef) -> Vec<TokenStream> {
+    let context = service.context_param.to_string();
+    let kept = |name: &str| context == name || is_declared_ident(name);
+    let parameters = [context.clone()];
+    service
+        .operations
+        .iter()
+        .flat_map(|operation| {
+            json_positions(operation)
+                .into_iter()
+                .flat_map(|(position, declared)| {
+                    any_json_bare(declared, kept, &parameters)
+                        .into_iter()
+                        .map(|(name, probed)| {
+                            any_json_check(
+                                name,
+                                probed,
+                                &any_json_message(operation, &position, name),
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+/// The refusal of `name`, `serde_json`'s `Value` or `Map`, reached at `position` of `operation`.
+fn any_json_message(operation: &OperationDef, position: &str, name: &str) -> String {
+    let subject = format!("operation `{}`: {position}", operation.ident);
+    format!(
+        "service_schema: {}",
+        undescribable_std_message(&subject, &UndescribableStd::AnyJson(name))
+    )
 }
 
 /// Every type `operation` puts on the wire, beside the position a refusal names it by: the message

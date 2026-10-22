@@ -2402,18 +2402,38 @@ fn a_field_typed_a_json_value_is_refused_naming_the_field() {
     );
 }
 
+/// The full path is refused with or without a leading `::`, `Map` at any arguments.
+#[test]
+fn a_json_value_written_by_its_full_path_is_refused_in_each_spelling() {
+    for (written, name) in [
+        ("serde_json::Value", "Value"),
+        ("::serde_json::Value", "Value"),
+        ("serde_json::Map<String, serde_json::Value>", "Map"),
+        ("::serde_json::Map<String, u8>", "Map"),
+    ] {
+        assert_eq!(
+            any_json_refusals("", &format!("pub struct Holding {{ pub v: {written} }}")),
+            [(
+                any_json_sentence("type `Holding`: field `v`", name),
+                Some(written.to_owned())
+            )],
+            "for {written}"
+        );
+    }
+}
+
 #[test]
 fn a_json_value_is_refused_at_any_depth_of_a_field() {
     for written in [
-        "Value",
-        "Option<Vec<HashMap<String, Value>>>",
-        "(u32, Value)",
-        "Box<Value>",
-        "[Value; 2]",
-        "Vec<Option<Value>>",
-        "BTreeMap<String, Value>",
-        "Wrapper<Value>",
-        "Result<u8, Value>",
+        "Option<Vec<HashMap<String, serde_json::Value>>>",
+        "(u32, serde_json::Value)",
+        "Box<::serde_json::Value>",
+        "[serde_json::Value; 2]",
+        "&'static [serde_json::Value]",
+        "Vec<Option<serde_json::Value>>",
+        "BTreeMap<String, serde_json::Value>",
+        "Wrapper<serde_json::Value>",
+        "Result<u8, serde_json::Value>",
     ] {
         let refusals = any_json_refusals("", &format!("pub struct Holding {{ pub v: {written} }}"));
         assert_eq!(
@@ -2428,45 +2448,26 @@ fn a_json_value_is_refused_at_any_depth_of_a_field() {
 }
 
 #[test]
-fn a_json_map_is_refused_by_its_own_name() {
-    for written in [
-        "serde_json::Map<String, Value>",
-        "Map<String, u8>",
-        "Option<Map<String, String>>",
-    ] {
-        let refusals = any_json_refusals("", &format!("pub struct Holding {{ pub v: {written} }}"));
-        assert_eq!(
-            refusals,
-            [(
-                any_json_sentence("type `Holding`: field `v`", "Map"),
-                Some(written.to_owned())
-            )],
-            "for {written}"
-        );
-    }
-}
-
-#[test]
 fn every_member_of_an_enum_that_holds_a_json_value_is_refused_by_its_place() {
     let refusals = any_json_refusals(
         "",
-        "pub enum Holding { Named { kept: u8, v: Value }, Lone(Value), Pair(u8, Map<String, u8>), \
-         Empty }",
+        "pub enum Holding { Named { kept: u8, v: serde_json::Value }, Lone(serde_json::Value), \
+         Pair(u8, serde_json::Map<String, u8>), Empty }",
     );
     assert_eq!(
         refusals,
         [
             (
                 any_json_sentence("type `Holding`: field `v` of variant `Named`", "Value"),
-                Some("Value".to_owned())
+                Some("serde_json::Value".to_owned())
             ),
             (
                 any_json_sentence("type `Holding`: slot 0 of variant `Lone`", "Value"),
-                Some("Value".to_owned())
+                Some("serde_json::Value".to_owned())
             ),
             (
                 any_json_sentence("type `Holding`: slot 1 of variant `Pair`", "Map"),
-                Some("Map<String, u8>".to_owned())
+                Some("serde_json::Map<String, u8>".to_owned())
             ),
         ]
     );
@@ -2476,9 +2477,9 @@ fn every_member_of_an_enum_that_holds_a_json_value_is_refused_by_its_place() {
 fn a_slot_a_brand_and_a_flattened_member_holding_a_json_value_are_refused() {
     for (source, subject, spanned) in [
         (
-            "pub struct Holding(pub u8, pub Value);",
+            "pub struct Holding(pub u8, pub serde_json::Value);",
             "type `Holding`: slot 1",
-            "Value",
+            "serde_json::Value",
         ),
         (
             "#[serde(transparent)] pub struct Holding(pub serde_json::Value);",
@@ -2486,14 +2487,14 @@ fn a_slot_a_brand_and_a_flattened_member_holding_a_json_value_are_refused() {
             "serde_json::Value",
         ),
         (
-            "#[serde(transparent)] pub struct Holding { pub raw: Value }",
+            "#[serde(transparent)] pub struct Holding { pub raw: serde_json::Value }",
             "type `Holding`: field `raw`",
-            "Value",
+            "serde_json::Value",
         ),
         (
-            "pub struct Holding { #[serde(flatten)] pub rest: HashMap<String, Value> }",
+            "pub struct Holding { #[serde(flatten)] pub rest: HashMap<String, serde_json::Value> }",
             "type `Holding`: field `rest`",
-            "HashMap<String, Value>",
+            "HashMap<String, serde_json::Value>",
         ),
     ] {
         assert_eq!(
@@ -2508,11 +2509,11 @@ fn a_slot_a_brand_and_a_flattened_member_holding_a_json_value_are_refused() {
     assert_eq!(
         any_json_refusals(
             "",
-            "pub struct Holding { #[serde(flatten)] pub rest: Map<String, Value> }"
+            "pub struct Holding { #[serde(flatten)] pub rest: serde_json::Map<String, Value> }"
         ),
         [(
             any_json_sentence("type `Holding`: field `rest`", "Map"),
-            Some("Map<String, Value>".to_owned())
+            Some("serde_json::Map<String, Value>".to_owned())
         )]
     );
 }
@@ -2527,25 +2528,165 @@ fn an_alias_and_a_default_filling_of_a_json_value_are_refused() {
         )]
     );
     assert_eq!(
-        any_json_refusals("", "pub type Raw = Vec<Map<String, u8>>;"),
+        any_json_refusals("", "pub type Raw = Vec<serde_json::Map<String, u8>>;"),
         [(
             any_json_sentence("type `Raw`: the type it names", "Map"),
-            Some("Vec<Map<String, u8>>".to_owned())
+            Some("Vec<serde_json::Map<String, u8>>".to_owned())
         )]
     );
     assert_eq!(
         any_json_refusals(
-            "default_types(HeldType = Value)",
+            "default_types(HeldType = serde_json::Value)",
             "pub struct Probe<HeldType> { pub held: HeldType }"
         ),
         [(
             any_json_sentence("type `Probe`: `default_types` entry `HeldType`", "Value"),
-            Some("Value".to_owned())
+            Some("serde_json::Value".to_owned())
         )]
     );
 }
 
-/// A parameter, the item itself and a type the crate declared are what their names name.
+/// A bare name is no refusal at expansion: the compiler is asked whether it is `serde_json`'s.
+#[test]
+fn a_bare_value_or_map_is_refused_nowhere_at_expansion() {
+    for source in [
+        "pub struct Holding { pub v: Value }",
+        "pub struct Holding { pub v: Option<Vec<HashMap<String, Value>>> }",
+        "pub struct Holding { pub v: Map<String, Value> }",
+        "pub enum Holding { Lone(Value), Pair(u8, Map<String, u8>) }",
+        "pub type Raw = Vec<Map<String, u8>>;",
+    ] {
+        assert_eq!(any_json_refusals("", source), [], "for {source}");
+    }
+}
+
+/// The checks [`super::any_json_checks`] writes beside `source` under `#[model_schema(args)]`.
+fn any_json_checked(args: &str, source: &str) -> Vec<String> {
+    let item: syn::Item = syn::parse_str(source).unwrap();
+    let parsed = super::parse_model_schema_args(syn::parse_str(args).unwrap());
+    assert!(parsed.arg_rejection.is_none(), "for {args}");
+    super::any_json_checks(&item, &parsed)
+        .iter()
+        .map(ToString::to_string)
+        .collect()
+}
+
+/// The check of `written`, the bare `name` it writes, that fails with the refusal of `subject`.
+fn any_json_check_of(name: &str, written: &str, subject: &str) -> String {
+    super::ranges::any_json_check(
+        name,
+        &syn::parse_str(written).unwrap(),
+        &any_json_sentence(subject, name),
+    )
+    .to_string()
+}
+
+/// The check the compiler answers for a bare `Value`: an inherent const of the probe answers only
+/// for `serde_json`'s own type, and every path it writes starts at `::`.
+#[test]
+fn a_bare_value_is_checked_by_a_probe_the_compiler_evaluates() {
+    let message = any_json_sentence("type `Mapping`: the type it names", "Value");
+    assert_eq!(
+        any_json_checked("", "pub type Mapping = IndexMap<String, Value>;"),
+        [quote::quote! {
+            const _: () = {
+                struct Probe<T: ?::core::marker::Sized>(::core::marker::PhantomData<T>);
+                trait Fallback {
+                    const ANY_JSON: bool = false;
+                }
+                impl<T: ?::core::marker::Sized> Fallback for Probe<T> {}
+                impl Probe<::serde_json::Value> {
+                    const ANY_JSON: bool = true;
+                }
+                ::core::assert!(
+                    Probe::<::serde_json::Value>::ANY_JSON,
+                    "the probe answers for serde_json's own type"
+                );
+                ::core::assert!(!Probe::<Value>::ANY_JSON, #message);
+            };
+        }
+        .to_string()]
+    );
+}
+
+/// A bare `Map` is held to `serde_json`'s map of JSON values, and the probe is written as it is
+/// written, with its arguments.
+#[test]
+fn a_bare_map_is_checked_with_its_arguments() {
+    let checked = any_json_checked("", "pub struct Holding { pub v: Map<String, u8> }");
+    assert_eq!(
+        checked,
+        [any_json_check_of(
+            "Map",
+            "Map<String, u8>",
+            "type `Holding`: field `v`"
+        )]
+    );
+    assert!(
+        checked[0].contains(
+            ":: serde_json :: Map < :: std :: string :: String , :: serde_json :: Value >"
+        ),
+        "got: {checked:?}"
+    );
+}
+
+/// Each bare name in each position is checked once per spelling, under the position's subject:
+/// a member, a variant's member, an alias's target and a `default_types` filling.
+#[test]
+fn every_position_that_writes_a_bare_name_is_checked() {
+    assert_eq!(
+        any_json_checked(
+            "",
+            "pub struct Holding { pub v: (Value, Vec<Value>), pub w: Option<Map<String, Value>> }"
+        ),
+        [
+            any_json_check_of("Value", "Value", "type `Holding`: field `v`"),
+            any_json_check_of("Map", "Map<String, Value>", "type `Holding`: field `w`"),
+            any_json_check_of("Value", "Value", "type `Holding`: field `w`"),
+        ]
+    );
+    assert_eq!(
+        any_json_checked(
+            "",
+            "pub enum Holding { Named { v: Value }, Lone(Value), Empty }"
+        ),
+        [
+            any_json_check_of(
+                "Value",
+                "Value",
+                "type `Holding`: field `v` of variant `Named`"
+            ),
+            any_json_check_of("Value", "Value", "type `Holding`: slot 0 of variant `Lone`"),
+        ]
+    );
+    assert_eq!(
+        any_json_checked(
+            "default_types(HeldType = Value)",
+            "pub struct Probe<HeldType> { pub held: HeldType }"
+        ),
+        [any_json_check_of(
+            "Value",
+            "Value",
+            "type `Probe`: `default_types` entry `HeldType`"
+        )]
+    );
+}
+
+/// The probe's own names are numbered where the written type names them, so it never hides a
+/// type of the author's.
+#[test]
+fn the_probe_takes_names_the_written_type_does_not() {
+    let checked = any_json_checked("", "pub struct Holding { pub v: Map<Probe, Fallback> }");
+    assert_eq!(checked.len(), 1, "got: {checked:?}");
+    assert!(
+        checked[0].contains("struct Probe2 <") && checked[0].contains("trait Fallback2 {"),
+        "got: {checked:?}"
+    );
+}
+
+/// A parameter, the item itself and a type the crate declared are what their names name, and a
+/// name with arguments `serde_json`'s does not take is another type: none is refused, and none is
+/// checked.
 #[test]
 fn a_name_the_item_or_the_crate_declares_is_no_json_value() {
     for source in [
@@ -2553,14 +2694,87 @@ fn a_name_the_item_or_the_crate_declares_is_no_json_value() {
         "pub struct Value { pub children: Vec<Value> }",
         "pub enum Map { Leaf(u8), Nested(Box<Map>) }",
         "pub struct Holding { pub count: u8, pub ratio: f64 }",
+        "pub struct Holding<T> { pub v: Value<T> }",
+        "pub struct Holding { pub v: Map }",
+        "pub struct Holding { pub v: <Raw as Read>::Value }",
+        "pub struct Holding { pub v: crate::Value }",
     ] {
         assert_eq!(any_json_refusals("", source), [], "for {source}");
+        assert_eq!(
+            any_json_checked("", source),
+            Vec::<String>::new(),
+            "for {source}"
+        );
     }
     assert!(super::claim_published_name("Value", "Value").is_none());
+    for source in [
+        "pub struct Holding { pub v: Option<Value> }",
+        "pub type Mapping = IndexMap<String, Value>;",
+    ] {
+        assert_eq!(any_json_refusals("", source), [], "for {source}");
+        assert_eq!(
+            any_json_checked("", source),
+            Vec::<String>::new(),
+            "for {source}"
+        );
+    }
+}
+
+/// A `Map` whose arguments name what a check beside the item cannot, one of the item's own
+/// parameters, `Self` or a lifetime, is not checked; a bare `Value` among them still is.
+#[test]
+fn a_map_written_with_the_items_own_parameters_is_not_checked() {
+    for source in [
+        "pub struct Holding<T> { pub v: Map<String, T> }",
+        "pub struct Holding<'a> { pub v: Map<&'a str, u8> }",
+        "pub struct Holding<const N: usize> { pub v: Map<String, [u8; N]> }",
+        "pub struct Holding { pub v: Map<String, Box<Self>> }",
+    ] {
+        assert_eq!(
+            any_json_checked("", source),
+            Vec::<String>::new(),
+            "for {source}"
+        );
+    }
     assert_eq!(
-        any_json_refusals("", "pub struct Holding { pub v: Option<Value> }"),
-        []
+        any_json_checked("", "pub struct Holding<T> { pub v: Map<T, Value> }"),
+        [any_json_check_of(
+            "Value",
+            "Value",
+            "type `Holding`: field `v`"
+        )]
     );
+    assert_eq!(
+        any_json_checked("", "pub struct Holding { pub v: Map<&'static str, u8> }"),
+        [any_json_check_of(
+            "Map",
+            "Map<&'static str, u8>",
+            "type `Holding`: field `v`"
+        )]
+    );
+}
+
+/// The expansion of an item that writes a bare name holds the check beside the item, and no
+/// refusal.
+#[test]
+fn an_item_with_a_bare_value_expands_with_its_check_and_no_refusal() {
+    let expanded = super::exec_model_schema(
+        proc_macro2::TokenStream::new(),
+        syn::parse_str("pub struct Holding { pub v: Value, pub w: Map<String, Value> }").unwrap(),
+    );
+    let written = expanded.to_string();
+    assert_eq!(
+        identifiers_named(expanded, "compile_error"),
+        0,
+        "got: {written}"
+    );
+    for check in [
+        any_json_check_of("Value", "Value", "type `Holding`: field `v`"),
+        any_json_check_of("Map", "Map<String, Value>", "type `Holding`: field `w`"),
+        any_json_check_of("Value", "Value", "type `Holding`: field `w`"),
+    ] {
+        assert!(written.contains(&check), "no {check} in: {written}");
+    }
 }
 
 /// The README quotes the refusal as the build answers it: in its own section and in the list of
@@ -2583,8 +2797,10 @@ fn the_readme_states_the_refusal_of_a_json_value_as_the_build_answers_it() {
 fn an_item_holding_a_json_value_expands_to_its_refusals_alone() {
     let expanded = super::exec_model_schema(
         proc_macro2::TokenStream::new(),
-        syn::parse_str("pub struct Holding { pub v: serde_json::Value, pub w: Vec<Value> }")
-            .unwrap(),
+        syn::parse_str(
+            "pub struct Holding { pub v: serde_json::Value, pub w: Vec<::serde_json::Value> }",
+        )
+        .unwrap(),
     );
     let written = expanded.to_string();
     assert_eq!(
