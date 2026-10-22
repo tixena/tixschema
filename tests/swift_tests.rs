@@ -158,6 +158,13 @@ mod flattened;
 #[path = "swift_tests/flattened_options_models.rs"]
 mod flattened_options_models;
 
+/// An optional flattened member that names a function: a struct under a function that answers the
+/// payload as it was handed and under one that answers `null`, and an enum under a tag alone.
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde"))]
+#[path = "kotlin_tests/corrected_options_models.rs"]
+mod corrected_options_models;
+
 /// What the Swift emitter writes and reads of a flattened `Option`.
 #[cfg(test)]
 #[cfg(all(feature = "swift", feature = "serde"))]

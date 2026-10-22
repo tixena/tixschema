@@ -7,7 +7,8 @@ use proc_macro2::Span;
 
 use super::{
     Entry, Member, Plain, beside, called, entries_of, entry_payload, keys_standing_for, member,
-    naming_its_owner, note, note_entries, note_keys, note_tag_keys, taken_with, takes,
+    naming_its_owner, note, note_entries, note_keys, note_tag_keys, optional, struct_keys,
+    taken_with, takes,
 };
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::swift::read::{Presence, Source};
@@ -373,4 +374,69 @@ fn an_entry_is_handed_as_the_enums_own_read_takes_it() {
          case \"Quay\": hatchPayload = [\"Bay\": hatchHeld]; \
          default: hatchPayload = [hatchKey: hatchHeld] }"
     );
+}
+
+/// A flattened `Option` that names a function is read as the type it holds from what the function
+/// answers, and where that read throws is `nil` where the object the function is handed holds none
+/// of the keys, or no key at all where there are none, and the read's error is thrown otherwise.
+/// The keys are those of a struct noted with them, whatever function the member names, and none
+/// of an enum noted with its tag.
+#[test]
+fn an_optional_member_that_names_a_function_is_nil_where_the_object_holds_none_of_its_keys() {
+    note_keys("PreprocessOptionalHere", vec!["label".to_owned()]);
+    note_tag_keys("PreprocessOptionalTag", vec!["kind".to_owned()]);
+    let functions = named(&["asGiven"]);
+    let mut def = get_field_def("held", &syn::parse_quote!(PreprocessOptionalHere), "");
+    def.model_schema_prop_meta = Some(ModelSchemaPropMeta {
+        preprocess: functions.clone(),
+        ..ModelSchemaPropMeta::default()
+    });
+    assert_eq!(struct_keys(&def), ["label"]);
+    assert!(
+        struct_keys(&get_field_def(
+            "held",
+            &syn::parse_quote!(PreprocessOptionalTag),
+            ""
+        ))
+        .is_empty(),
+        "an enum's tag stands for no key of its variants"
+    );
+    let read = |keys: &[String]| {
+        optional(
+            &Member {
+                def: &def,
+                functions: &functions,
+                hint: "Hint",
+                keys: "CodingKeys",
+                plain: Plain::Declared,
+                real_type: "PreprocessOptionalHere",
+                stem: "held",
+                walked: false,
+            },
+            &Source::Beside("taken + [\"note\"]".to_owned()),
+            keys,
+            &|held| format!("self.held = {held}"),
+            &mut Vec::new(),
+        )
+    };
+    let opened = concat!(
+        "let heldPayload = try SwiftSchemaPayload(from: decoder, without: taken + [\"note\"]).value; ",
+        "do { self.held = try SwiftSchemaPayload.read(PreprocessOptionalHere.self, ",
+        "from: asGiven(heldPayload), at: decoder.codingPath) } catch { if ",
+    );
+    assert_eq!(
+        read(&["label".to_owned()]),
+        format!(
+            "{opened}[\"label\"].contains(where: {{ (heldPayload as? [String: Any] ?? [:])[$0] \
+             != nil }}) {{ throw error }}; self.held = nil }}"
+        )
+    );
+    assert_eq!(
+        read(&[]),
+        format!(
+            "{opened}!(heldPayload as? [String: Any] ?? [:]).isEmpty {{ throw error }}; \
+             self.held = nil }}"
+        )
+    );
+    note_tag_keys("PreprocessOptionalTag", Vec::new());
 }

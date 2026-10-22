@@ -2002,9 +2002,8 @@ to keep.
   enum declared below its holder or that names a function on itself, an alias and a type
   parameter. An externally tagged enum written above is read from its one entry (below). A model
   it holds that breaks its rule still refuses the payload through `validate()`, as the Rust read
-  refuses it. A member that names a function is
-  read from what its functions answer, and refused where its type does not read the answer, as
-  the Rust read refuses it, and a flattened map, optional or not, by `flattened_map`.
+  refuses it. A member that names a function is read as the Zod schema of its holder reads it
+  (`corrected_option`, section 12), and a flattened map, optional or not, by `flattened_map`.
   `tests/swift_tests/flattened_options.rs` pins the text, and `run_swift_flattened_options.rs`
   reads each payload against serde, the rows serde reads as `None` and the Swift read refuses held
   to the refusal it prints, an enum of each tagging and one declared below its holder among them.
@@ -2171,6 +2170,22 @@ change to the emitter has to keep.
   `validate()` walks it, through a private type written for it (`SwiftSchemaRead{Member}`),
   whose `init(from:)` holds the statements of `read::unjudged`. A model read from a corrected
   payload is therefore still read with no judgement.
+- **A flattened `Option` of any type but a map is read as the Zod schema of its holder reads
+  it.** `present_statement` hands it to `corrected_option`, which reads the type under the
+  `Option` (`flattened_under_option`) through `preprocess::optional`: the payload as
+  `Source::payload` answers it, then `do { ... } catch { ... }` around the read of the type from
+  what the functions answer, `null` among it. The `catch` throws the read's error where
+  `{member}Payload`, the object the functions were handed, holds one of the struct's keys
+  (`preprocess::struct_keys`, what `TAKEN_KEYS` records whatever function the member names), or
+  any key where none are known, and assigns `nil` otherwise. The tag and the content key of an
+  enum stand for none of its variants' members, so an enum's keys are not known. Zod's union
+  tries the type over the function's answer first, and its branch without the type takes an
+  object of no key beyond its holder's own, so serde's refusal of `{"note":"n"}` and its `None`
+  for a function that answers `null` are not followed, as the Kotlin read does not follow them.
+  `corrected_field` writes it, handed the keys as `absent`.
+  `tests/swift_tests/flattened_options.rs` pins the text of `Veering` and of `Reeved`, `Wormed`
+  and `Moused` of `tests/kotlin_tests/corrected_options_models.rs`, and
+  `run_swift_flattened_options.rs` holds the Swift read of each payload of `CORRECTED` to Zod's.
 - **A type's functions are called by its own read.** With `Written::own`, `read::both` writes the
   statements into the private `init(swiftSchemaCorrected:)`, and `init(swiftSchemaUnjudged:)`
   hands the functions the payload, then reads `SwiftSchemaRead` from what they answer, a private

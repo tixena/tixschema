@@ -12,7 +12,9 @@
 //! under, and the tag or the content key of an enum under a tag key. A type whose keys are not
 //! known, an untagged enum and an enum declared below its holder among them, is read as `nil`
 //! there, as serde reads it, and so is the map of dates where an entry is no date. The map of
-//! dates absent is built in code.
+//! dates absent is built in code. A member that names a function and is handed none of its
+//! struct's keys reads `nil`, as Zod reads it, where serde refuses what the function answers; the
+//! holders of `corrected_options_models.rs` are read as Zod reads each of their payloads.
 
 #![cfg(feature = "swift")]
 
@@ -23,6 +25,9 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
+use super::corrected_options_models::{
+    CORRECTED, frapped_swift, moused_swift, reeved_swift, tholepin_swift, wormed_swift,
+};
 use super::runtime::judged;
 use super::swift_flattened_options_models::{
     Crowning, EASING, Easing, FLAKING, FLAKING_ABSENT, FLAKING_MISTYPED, Fidding, Flaking, HEELING,
@@ -73,8 +78,20 @@ func refusal<Read: Decodable>(_ type: Read.Type, _ payload: String) -> String {
 }
 ";
 
+/// What the run of [`CORRECTED`] declares beside the emitted types: the function a holder names
+/// that answers `null`, and the read of a payload, written back with its keys sorted, or
+/// `refused`.
+const CORRECTED_HELPERS: &str = "
+func asNull(_ payload: Any) -> Any { NSNull() }
+
+func told<Read: Codable>(_ type: Read.Type, _ payload: String) -> String {
+  guard let read = try? JSONDecoder().decode(type, from: Data(payload.utf8)) else { return \"refused\" }
+  return written(read)
+}
+";
+
 /// A holder printed by the run: its name, the Swift that prints it, what serde tells of it, and
-/// what the Swift read tells in its place where it refuses what serde reads.
+/// what the Swift read tells in its place where it parts from serde.
 struct Row {
     decided: Option<&'static str>,
     name: &'static str,
@@ -121,6 +138,19 @@ impl Row {
             name,
             serde: written(&serde_json::from_str::<T>(json).unwrap()),
             swift: format!("written(read({read_as}.self, #\"{json}\"#))"),
+        }
+    }
+
+    /// The holder read as `T`, named `read_as` in Swift, from `json`, which serde refuses and the
+    /// Swift read reads as `read`, as Zod reads it.
+    fn read_by_zod<T>(name: &'static str, read_as: &str, json: &str, read: &'static str) -> Self
+    where
+        T: DeserializeOwned,
+    {
+        Self {
+            decided: Some(read),
+            swift: format!("written(read({read_as}.self, #\"{json}\"#))"),
+            ..Self::refused::<T>(name, read_as, json)
         }
     }
 
@@ -257,7 +287,7 @@ fn rows() -> Vec<Row> {
         ),
         Row::refused::<Kinking>("kinking refused", "Kinking", KINKING_SHORT),
         Row::refused::<Tarring>("tarring refused", "Tarring", TARRING_SHORT),
-        Row::refused::<Veering>("veering refused", "Veering", LAPPING_ABSENT),
+        Row::read_by_zod::<Veering>("veering absent", "Veering", LAPPING_ABSENT, LAPPING_ABSENT),
     ];
     rows.extend(enum_rows());
     #[cfg(feature = "chrono")]
@@ -336,8 +366,9 @@ fn printed(rows: &[Row]) -> Option<String> {
 /// writes them; a map of dates writes the text serde writes, and a struct flattened bare writes
 /// its keys beside its holder's own. A flattened `Option` is read as `nil` where the object holds
 /// none of its type's keys, as serde reads it, and a model it holds that breaks its rule refuses
-/// the payload in serde's words; one that names a function is refused where its type does not
-/// read what the function answers. Where the object holds a key its type does not read, a key
+/// the payload in serde's words; one that names a function, handed none of its struct's keys, is
+/// `nil`, as Zod reads it, where serde refuses what the function answers. Where the object holds
+/// a key its type does not read, a key
 /// held as a number or one of two keys, a variant's entry, tag or content that does not read, or
 /// a content with no tag, serde reads `None` and the Swift read refuses the payload, but for a
 /// type whose keys are not known and a map of dates one of whose entries is no date, each read as
@@ -380,7 +411,7 @@ fn a_flattened_option_reads_and_writes_in_swift_what_serde_reads_and_writes() {
          painter partial: {}\n\
          kinking refused: 'label': too short: minimum length is 2, got 1\n\
          tarring refused: 'label': too short: minimum length is 2, got 1\n\
-         veering refused: missing field `label`\n\
+         veering absent: missing field `label`\n\
          easing absent: {\"note\":\"n\"}\n\
          easing: {\"Round\":{\"turns\":2},\"note\":\"n\"}\n\
          easing mistyped: {\"note\":\"n\"}\n\
@@ -417,4 +448,59 @@ fn a_flattened_option_reads_and_writes_in_swift_what_serde_reads_and_writes() {
         printed,
         told(&|row| row.decided.map_or_else(|| row.serde.clone(), str::to_owned))
     );
+}
+
+/// An optional member that names a function is read from what the function answers, and where
+/// that read throws is `nil` where the object the function is handed holds none of its struct's
+/// keys, or no key at all for a type whose keys are not known, an enum under a tag alone among
+/// them, and refuses the payload where it holds one: each payload of [`CORRECTED`] reads as the
+/// Zod schema of its holder reads it, written back with its keys sorted, where serde refuses a
+/// type the answer does not read and reads `null` as `None`.
+#[test]
+fn an_optional_type_that_names_a_function_reads_in_swift_as_zod_does() {
+    let mut expected = String::new();
+    let mut main = String::new();
+    for (at, row) in CORRECTED.iter().enumerate() {
+        assert_eq!(
+            (row.read_back)(row.json),
+            row.serde,
+            "serde no longer reads `{}` as {} did",
+            row.json,
+            row.holder
+        );
+        let _ = writeln!(expected, "{at}: {}", row.zod);
+        let _ = writeln!(
+            main,
+            "print(\"{at}: \\(told({}.self, #\"{}\"#))\")",
+            row.holder, row.json
+        );
+    }
+    let source = [
+        "import Foundation".to_owned(),
+        tholepin_swift::swift_definition(),
+        reeved_swift::swift_definition(),
+        wormed_swift::swift_definition(),
+        frapped_swift::swift_definition(),
+        moused_swift::swift_definition(),
+        HELPERS.to_owned(),
+        CORRECTED_HELPERS.to_owned(),
+        main,
+    ]
+    .join("\n\n");
+    let Some(run) = judged(
+        "swift-corrected-options",
+        RUNTIME_VAR,
+        "swift",
+        &["-warnings-as-errors"],
+        "main.swift",
+        &source,
+    ) else {
+        return;
+    };
+    assert!(
+        run.succeeded,
+        "`swift -warnings-as-errors main.swift` failed.\n--- stdout ---\n{}\n--- stderr ---\n{}\n--- source ---\n{source}",
+        run.stdout, run.stderr
+    );
+    assert_eq!(run.stdout, expected, "the Swift read is not the Zod read");
 }
