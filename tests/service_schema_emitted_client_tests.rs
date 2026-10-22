@@ -421,7 +421,10 @@ mod run_kotlin_flattened;
 
 /// The models a name serde reads beside the one it writes is read under.
 #[cfg(test)]
-#[cfg(all(feature = "serde", any(feature = "dart", feature = "kotlin")))]
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "kotlin", feature = "swift")
+))]
 #[path = "kotlin_tests/aliased_models.rs"]
 mod aliased_models;
 
@@ -446,7 +449,7 @@ mod run_dart_flattened;
 /// The enums of the models a name serde reads beside the one it writes is read under, flattened,
 /// each beside a member of its holder's own. Declared after the module that declares the enums.
 #[cfg(test)]
-#[cfg(all(feature = "dart", feature = "serde"))]
+#[cfg(all(feature = "serde", any(feature = "dart", feature = "swift")))]
 #[path = "dart_tests/flattened_aliased_models.rs"]
 mod dart_flattened_aliased_models;
 
@@ -455,6 +458,18 @@ mod dart_flattened_aliased_models;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_dart_aliased.rs"]
 mod run_dart_aliased;
+
+/// A member under an alias in each way the Swift read reads a member under its key.
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde"))]
+#[path = "swift_tests/aliased_members_models.rs"]
+mod aliased_members_models;
+
+/// A variant and a member under the `alias` serde reads them under, read by the emitted Swift
+/// types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_aliased.rs"]
+mod run_swift_aliased;
 
 /// An externally tagged enum flattened beside a member, each variant read and written back by the
 /// emitted Dart types, a unit variant as an entry of its name over `null`.

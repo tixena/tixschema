@@ -2073,6 +2073,31 @@ to keep.
   rule, and one `swiftSchemaRead{Variant}` where a slot is read in several statements. A check and
   a model choose nothing. The registry says which name is a bounded brand (`note_bounded`), so one
   declared below the enum chooses nothing.
+- **A name serde reads beside the one it writes is read too.** `src/features/swift/aliases.rs` reads
+  the `#[serde(alias)]` names of a variant and of a field (`aliases::written_on`), and
+  `SwiftField::aliases` holds a member's, none for a flattened member or one serde never reads. A
+  tagged enum takes a variant under its written name and each alias in one `case`
+  (`aliases::case_names`), under every tagging, a unit variant of an externally tagged enum from its
+  bare name. A plain enum with a variant under an alias declares `init?(rawValue:)`
+  (`aliases::raw_value_init`), which Swift then synthesizes no more: the read Swift synthesizes, the
+  read written for a check or a function and a map's key all read through it. A struct with a member
+  under an alias declares `let aliased`, a container of every key under `SwiftSchemaAnyKey`
+  (`aliases::CONTAINER`, in `struct_body_content`), and `decode_statement` writes `aliases::lookup`
+  ahead of the member's read: the names among the member's own and its aliases the object holds
+  (`{member}Names`), refused with ``duplicate field `{wire}` `` where two are, as serde refuses
+  them, and the one it holds, or its own where it holds none (`{member}Key`). `SwiftField::keyed_at`
+  answers the container and the key every read of the member is written over, `keyed_read` and a
+  default's among them, so the member is read as before under the name found. `handed_reads` adds
+  each alias of a member of the holder's own to the keys a flattened member is not handed.
+  `CodingKeys` and `encode(to:)` do not move: the write keeps the written name, and a type that
+  names no alias is written as it was. An externally tagged enum read alone still refuses a unit
+  variant's entry over `null`, under its name or an alias, as TypeScript and the generated Zod
+  schema refuse it, where serde reads it. `tests/swift_tests/aliased.rs` pins the text over the
+  models of `tests/kotlin_tests/aliased_models.rs` and of
+  `tests/swift_tests/aliased_members_models.rs`, which holds a member under an alias in each way the
+  read reads a member under its key, and `run_swift_aliased.rs` reads and writes back each payload
+  of the Kotlin and the Dart runs and of `Tholing` under the toolchain, against serde, those of
+  `tests/dart_tests/flattened_aliased_models.rs` among them.
 - **A name the emitter has not written is read as a model**, as `validate()` calls it: a type
   declared below its holder, and a type of the consumer's own, which declares
   `init(swiftSchemaUnjudged:)` beside `validate()`.
@@ -3359,6 +3384,7 @@ tixschema/
 │   │   │   └── operations.rs     # mongodb: the operations, and OperationError and Read in the library
 │   │   ├── swift.rs              # Swift types and their Codable codec
 │   │   ├── swift/
+│   │   │   ├── aliases.rs        # The names serde reads a variant and a member under beside the one it writes
 │   │   │   ├── preprocess.rs     # preprocess in the Swift read: the payload type, the calls, the keys taken
 │   │   │   ├── read.rs           # The two reads of every Swift type: its own, and the one that judges
 │   │   │   └── validate.rs       # validate() of every Swift type: bounds, checks, holders

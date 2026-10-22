@@ -163,3 +163,22 @@ mod flattened_options_models;
 #[cfg(all(feature = "swift", feature = "serde"))]
 #[path = "swift_tests/flattened_options.rs"]
 mod flattened_options;
+
+/// The models a name serde reads beside the one it writes is read under.
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde"))]
+#[path = "kotlin_tests/aliased_models.rs"]
+mod aliased_models;
+
+/// A member under an alias in each way the Swift read reads a member under its key.
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde"))]
+#[path = "swift_tests/aliased_members_models.rs"]
+mod aliased_members_models;
+
+/// What the Swift emitter reads of a variant and a member under the `alias` serde reads them
+/// under.
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde"))]
+#[path = "swift_tests/aliased.rs"]
+mod aliased;
