@@ -17,7 +17,7 @@ use super::flattened_models::{
     Gasketing, HEAVING, HITCHING, Heaving, Hitching, Jibing, Knotting, LOCKER, Lanyarding, Luffing,
     Netting, Nipping, PAYLOAD, ProbeLocker, Quaying, Rousing, SCUDDING, STOWING, STROPPING,
     Scudding, Seizing, Slinging, Splicing, Stoppering, Stowing, Stropping, Tacking, UNDER_AN_ALIAS,
-    UNWRITTEN, Whipping, read_of,
+    UNWRITTEN, Whipping, Yawing, read_of,
 };
 #[cfg(feature = "serde")]
 use super::flattened_models::{
@@ -25,7 +25,7 @@ use super::flattened_models::{
     emptied_locker_kotlin, gasketing_kotlin, heaving_kotlin, hitching_kotlin, knotting_kotlin,
     luffing_kotlin, netting_kotlin, nipping_kotlin, probe_locker_kotlin, rousing_kotlin,
     scudding_kotlin, seizing_kotlin, slinging_kotlin, splicing_kotlin, stoppering_kotlin,
-    stowing_kotlin, whipping_kotlin,
+    stowing_kotlin, whipping_kotlin, yawing_kotlin,
 };
 use super::read::{kept, serializers};
 use super::tuple_variants_models::Labelling;
@@ -1258,6 +1258,89 @@ fn a_flattened_enum_is_read_from_the_first_entry_under_a_variants_name() {
         ),
     ] {
         assert!(kotlin.contains(&held), "no `{held}` in: {kotlin}");
+    }
+}
+
+/// What serde writes of each holder of a flattened externally tagged enum: a variant that holds a
+/// value as its entry, and a unit variant as its name over `null`, after the holder's own member,
+/// the enum optional and under a function too. An optional enum that holds no value writes no
+/// entry.
+#[test]
+fn serde_writes_a_flattened_enums_unit_variant_as_its_name_over_null() {
+    let note = || "a".to_owned();
+    for (tacking, expected) in [
+        (
+            Tacking::Bay {
+                label: "n".to_owned(),
+            },
+            r#"{"note":"a","Bay":{"label":"n"}}"#,
+        ),
+        (Tacking::Calm, r#"{"note":"a","Calm":null}"#),
+        (
+            Tacking::Dock {
+                label: "s".to_owned(),
+            },
+            r#"{"note":"a","Dock":{"label":"s"}}"#,
+        ),
+        (Tacking::Held("x".to_owned()), r#"{"note":"a","Held":"x"}"#),
+    ] {
+        let written = [
+            serde_json::to_string(&Stowing {
+                note: note(),
+                tacking: tacking.clone(),
+            }),
+            serde_json::to_string(&Belting {
+                note: note(),
+                tacking: Some(tacking.clone()),
+            }),
+            serde_json::to_string(&Yawing {
+                note: note(),
+                tacking,
+            }),
+        ]
+        .map(Result::unwrap);
+        assert_eq!(written, [expected; 3]);
+    }
+    let belting = Belting {
+        note: note(),
+        tacking: None,
+    };
+    assert_eq!(serde_json::to_string(&belting).unwrap(), r#"{"note":"a"}"#);
+}
+
+/// A flattened externally tagged enum with a unit variant merges what it writes as serde writes
+/// it: an object's entry as it is, and a bare name as that name over `null`, the enum optional and
+/// under a function too. An enum with no unit variant merges its object as before.
+#[test]
+#[cfg(feature = "serde")]
+fn a_flattened_enum_merges_a_unit_variant_as_its_name_over_null() {
+    for (kotlin, merged) in [
+        (
+            stowing_kotlin::kotlin_definition(),
+            "when (val written = output.json.encodeToJsonElement(TackingUnjudged, value.tacking)) \
+             { is JsonPrimitive -> put(written.content, JsonNull); else -> \
+             written.jsonObject.forEach { (k, v) -> put(k, v) } }",
+        ),
+        (
+            belting_kotlin::kotlin_definition(),
+            "value.tacking?.let { flattened -> when (val written = \
+             output.json.encodeToJsonElement(TackingUnjudged, flattened)) { is JsonPrimitive -> \
+             put(written.content, JsonNull); else -> written.jsonObject.forEach { (k, v) -> put(k, \
+             v) } } }",
+        ),
+        (
+            yawing_kotlin::kotlin_definition(),
+            "when (val written = output.json.encodeToJsonElement(TackingUnjudged, value.tacking)) \
+             { is JsonPrimitive -> put(written.content, JsonNull); else -> \
+             written.jsonObject.forEach { (k, v) -> put(k, v) } }",
+        ),
+        (
+            cleating_kotlin::kotlin_definition(),
+            "output.json.encodeToJsonElement(JibingUnjudged, value.jibing).jsonObject.forEach { \
+             (k, v) -> put(k, v) }",
+        ),
+    ] {
+        assert!(kotlin.contains(merged), "no `{merged}` in: {kotlin}");
     }
 }
 
