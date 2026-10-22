@@ -8,30 +8,34 @@
 //! plain enum under the names serde writes its variants under. An optional struct with a flattened
 //! member of its own is read wherever the struct reads, and as `null` wherever serde reads `None`,
 //! and one that takes a key is `null` where the key is absent and refuses a key that does not read.
+//! A variant reads and writes a flattened member at its own level, under every tagging.
 
 #![cfg(feature = "kotlin")]
 
+use core::fmt::Debug;
 use core::fmt::Write as _;
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::flattened_models::{
-    BELTING, Belting, Bending, Brailing, CHOCKED, CLEATING, Cathead, Cleating, CorrectedLocker,
-    Dipping, ENSIGN, EmptiedLocker, Gammoning, Gasketing, HEAVING, HITCHING, Hawsepipe, Heaving,
-    Hitching, Knotting, LOCKER, Lanyarding, Luffing, MARLINE, Netting, Nipping, PAYLOAD,
-    ProbeLocker, Rousing, SCARFING, SCUDDING, SNUBBED, STOWING, STROPPING, STRUCK, Scarfing,
-    Scudding, Seizing, Slinging, Snubbing, Splicing, Stoppering, Stowing, Striking, Stropping,
-    Tacking, UNDER_AN_ALIAS, UNWRITTEN, Whipping, Yawing, belting_kotlin, bending_kotlin,
-    brailing_kotlin, bunting_kotlin, cathead_kotlin, chock_kotlin, cleating_kotlin,
-    corrected_locker_kotlin, dipping_kotlin, emptied_locker_kotlin, ensign_kotlin,
-    gammoning_kotlin, gasketing_kotlin, hawsepipe_kotlin, hawser_kotlin, heaving_kotlin,
-    hitching_kotlin, jibing_kotlin, knotting_kotlin, lanyarding_kotlin, luffing_kotlin,
-    marline_kotlin, netting_kotlin, nipping_kotlin, noting_kotlin, probe_locker_kotlin,
-    quaying_kotlin, read_of, rousing_kotlin, scarfing_kotlin, scudding_kotlin, seizing_kotlin,
-    sheeting_kotlin, slinging_kotlin, snubbing_kotlin, splicing_kotlin, stoppering_kotlin,
-    stowing_kotlin, striking_kotlin, stropping_kotlin, tacking_kotlin, ticketed_kotlin,
-    unwritten_kotlin, whipping_kotlin, yawing_kotlin,
+    BELTING, BOWLINING, BROACHING, Belting, Bending, Bowlining, Brailing, Broaching, CHOCKED,
+    CLEATING, Cathead, Cleating, CorrectedLocker, Dipping, ENSIGN, EmptiedLocker, GAFFING, Gaffing,
+    Gammoning, Gasketing, HEAVING, HITCHING, Hawsepipe, Heaving, Hitching, Knotting, LOCKER,
+    Lanyarding, Luffing, MARLINE, Netting, Nipping, PAYLOAD, ProbeLocker, Rousing, SCARFING,
+    SCUDDING, SNUBBED, STOWING, STROPPING, STRUCK, SWAYING, Scarfing, Scudding, Seizing, Slinging,
+    Snubbing, Splicing, Stoppering, Stowing, Striking, Stropping, Swaying, Tacking, UNDER_AN_ALIAS,
+    UNWRITTEN, WHELPING, Whelping, Whipping, Yawing, belting_kotlin, bending_kotlin,
+    bowlining_kotlin, brailing_kotlin, broaching_kotlin, bunting_kotlin, cathead_kotlin,
+    chock_kotlin, cleating_kotlin, corrected_locker_kotlin, dipping_kotlin, emptied_locker_kotlin,
+    ensign_kotlin, gaffing_kotlin, gammoning_kotlin, gasketing_kotlin, hawsepipe_kotlin,
+    hawser_kotlin, heaving_kotlin, hitching_kotlin, jibing_kotlin, knotting_kotlin,
+    lanyarding_kotlin, luffing_kotlin, marline_kotlin, netting_kotlin, nipping_kotlin,
+    noting_kotlin, probe_locker_kotlin, quaying_kotlin, read_of, rousing_kotlin, scarfing_kotlin,
+    scudding_kotlin, seizing_kotlin, sheeting_kotlin, slinging_kotlin, snubbing_kotlin,
+    splicing_kotlin, stoppering_kotlin, stowing_kotlin, striking_kotlin, stropping_kotlin,
+    swaying_kotlin, tacking_kotlin, ticketed_kotlin, unwritten_kotlin, whelping_kotlin,
+    whipping_kotlin, yawing_kotlin,
 };
 use super::runtime::ran_kotlin;
 use super::swift_flattened_options_models::{
@@ -196,6 +200,20 @@ const WRITTEN: &str = r#"
 fun <T> written(name: String, serializer: KSerializer<T>, value: T, payload: String) {
     val back = Json.encodeToString(serializer, Json.decodeFromString(serializer, payload))
     println("$name: ${Json.encodeToString(serializer, value)} $back")
+}
+"#;
+
+/// What prints a row of an enum with a flattened member in a variant: the subclass read and the
+/// enum written back, or that the read is refused.
+const VARIANT_READ: &str = r#"
+fun <T : Any> variant(serializer: KSerializer<T>, payload: String) {
+    val told = try {
+        val read = Json.decodeFromString(serializer, payload)
+        "${read::class.simpleName} ${Json.encodeToString(serializer, read)}"
+    } catch (refused: SerializationException) {
+        "refused"
+    }
+    println("$payload: $told")
 }
 "#;
 
@@ -1012,6 +1030,128 @@ fn an_optional_struct_that_takes_no_key_reads_and_writes_in_kotlin_as_serde_does
         labelling_kotlin::kotlin_definition(),
         sheeting_kotlin::kotlin_definition(),
         scarfing_kotlin::kotlin_definition(),
+        main,
+    ];
+    let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
+        return;
+    };
+    assert_eq!(printed, expected, "the Kotlin read is not the read above");
+}
+
+/// What serde reads of `json` as the enum `T`, published as `enum_name`: the variant read, named
+/// as its Kotlin subclass is, and the enum written back, or `refused`.
+fn variant_read<T>(enum_name: &str, json: &str) -> String
+where
+    T: Debug + DeserializeOwned + Serialize,
+{
+    let told = told_by_serde(json, |read: &T| {
+        let debugged = format!("{read:?}");
+        let variant = debugged.split(' ').next().unwrap().to_owned();
+        format!("{variant} {}", self::json(read))
+    });
+    if told == "refused" {
+        told
+    } else {
+        format!("{enum_name}{told}")
+    }
+}
+
+/// A variant reads and writes a flattened member at its own level, as serde does, under every
+/// tagging that builds one: a map alone, an optional map alone, a struct beside a member of the
+/// variant's own, that member under its alias too, a member that names a function after a struct,
+/// a struct beside the tag, and a map of the enum's own parameter.
+#[test]
+fn a_variant_reads_and_writes_a_flattened_member_in_kotlin_as_serde_does() {
+    let mut rows: Vec<(&str, &str, String)> = Vec::new();
+    rows.extend(GAFFING.map(|json| {
+        let told = variant_read::<Gaffing>("Gaffing", json);
+        (json, "GaffingSerializer", told)
+    }));
+    rows.extend(BOWLINING.map(|json| {
+        let told = variant_read::<Bowlining>("Bowlining", json);
+        (json, "BowliningSerializer", told)
+    }));
+    rows.extend(SWAYING.map(|json| {
+        let told = variant_read::<Swaying>("Swaying", json);
+        (json, "SwayingSerializer", told)
+    }));
+    rows.extend(WHELPING.map(|json| {
+        let told = variant_read::<Whelping>("Whelping", json);
+        (json, "WhelpingSerializer", told)
+    }));
+    rows.extend(BROACHING.map(|json| {
+        let told = variant_read::<Broaching<u8>>("Broaching", json);
+        (json, "BroachingSerializer(serializer<UByte>())", told)
+    }));
+    let mut expected = String::new();
+    let mut main = String::from(VARIANT_READ);
+    main.push_str("fun main() {\n");
+    for (json, serializer, told) in &rows {
+        let _ = writeln!(expected, "{json}: {told}");
+        let _ = writeln!(main, "    variant({serializer}, \"\"\"{json}\"\"\")");
+    }
+    main.push_str("}\n");
+    assert_eq!(
+        expected,
+        "{\"Counted\":{}}: GaffingCounted {\"Counted\":{}}\n\
+         {\"Counted\":{\"north\":2}}: GaffingCounted {\"Counted\":{\"north\":2}}\n\
+         {\"Counted\":{\"north\":\"x\"}}: refused\n\
+         {\"Spare\":{}}: GaffingSpare {\"Spare\":{}}\n\
+         {\"Spare\":{\"north\":2}}: GaffingSpare {\"Spare\":{\"north\":2}}\n\
+         {\"Spare\":{\"north\":\"x\"}}: GaffingSpare {\"Spare\":{}}\n\
+         {\"Labelled\":{\"label\":\"n\",\"note\":\"a\"}}: GaffingLabelled \
+         {\"Labelled\":{\"label\":\"n\",\"note\":\"a\"}}\n\
+         {\"Labelled\":{\"note\":\"a\",\"label\":\"n\",\"north\":2}}: GaffingLabelled \
+         {\"Labelled\":{\"label\":\"n\",\"note\":\"a\"}}\n\
+         {\"Labelled\":{\"label\":\"n\",\"remark\":\"a\"}}: GaffingLabelled \
+         {\"Labelled\":{\"label\":\"n\",\"note\":\"a\"}}\n\
+         {\"Labelled\":{\"label\":\"n\",\"note\":\"a\",\"remark\":\"b\"}}: refused\n\
+         {\"Labelled\":{\"note\":\"a\"}}: refused\n\
+         {\"kind\":\"Counted\",\"held\":{}}: BowliningCounted {\"kind\":\"Counted\",\"held\":{}}\n\
+         {\"kind\":\"Counted\",\"held\":{\"north\":2}}: BowliningCounted \
+         {\"kind\":\"Counted\",\"held\":{\"north\":2}}\n\
+         {\"kind\":\"Counted\",\"held\":{\"north\":\"x\"}}: refused\n\
+         {\"kind\":\"Spare\",\"held\":{\"north\":2}}: BowliningSpare \
+         {\"kind\":\"Spare\",\"held\":{\"north\":2}}\n\
+         {\"kind\":\"Spare\",\"held\":{\"north\":\"x\"}}: BowliningSpare \
+         {\"kind\":\"Spare\",\"held\":{}}\n\
+         {\"kind\":\"Labelled\",\"held\":{\"note\":\"a\",\"label\":\"n\"}}: BowliningLabelled \
+         {\"kind\":\"Labelled\",\"held\":{\"label\":\"n\",\"note\":\"a\"}}\n\
+         {\"kind\":\"Labelled\",\"held\":{\"note\":\"a\"}}: refused\n\
+         {\"held\":{\"label\":\"n\",\"north\":2},\"kind\":\"Tallied\"}: BowliningTallied \
+         {\"kind\":\"Tallied\",\"held\":{\"label\":\"n\",\"keys\":[\"north\"]}}\n\
+         {\"kind\":\"Tallied\",\"held\":{\"north\":2}}: refused\n\
+         {\"note\":\"a\",\"label\":\"n\"}: SwayingAnnotated {\"label\":\"n\",\"note\":\"a\"}\n\
+         {\"north\":2}: SwayingCounted {\"north\":2}\n\
+         {\"north\":\"x\"}: SwayingSpare {}\n\
+         {}: SwayingCounted {}\n\
+         {\"label\":\"n\"}: SwayingSpare {}\n\
+         {\"label\":\"n\",\"note\":\"a\",\"north\":2}: SwayingAnnotated \
+         {\"label\":\"n\",\"note\":\"a\"}\n\
+         {\"kind\":\"Labelled\",\"label\":\"n\",\"note\":\"a\"}: WhelpingLabelled \
+         {\"kind\":\"Labelled\",\"label\":\"n\",\"note\":\"a\"}\n\
+         {\"note\":\"a\",\"label\":\"n\",\"kind\":\"Labelled\"}: WhelpingLabelled \
+         {\"kind\":\"Labelled\",\"label\":\"n\",\"note\":\"a\"}\n\
+         {\"kind\":\"Hoisted\",\"label\":\"n\"}: WhelpingHoisted \
+         {\"kind\":\"Hoisted\",\"label\":\"n\"}\n\
+         {\"label\":\"n\",\"north\":2,\"kind\":\"Hoisted\"}: WhelpingHoisted \
+         {\"kind\":\"Hoisted\",\"label\":\"n\"}\n\
+         {\"kind\":\"Hoisted\"}: refused\n\
+         {\"Counted\":{}}: BroachingCounted {\"Counted\":{}}\n\
+         {\"Counted\":{\"north\":2}}: BroachingCounted {\"Counted\":{\"north\":2}}\n\
+         {\"Counted\":{\"north\":\"x\"}}: refused\n",
+        "serde no longer reads each payload as it did"
+    );
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        labelling_kotlin::kotlin_definition(),
+        bunting_kotlin::kotlin_definition(),
+        gaffing_kotlin::kotlin_definition(),
+        bowlining_kotlin::kotlin_definition(),
+        swaying_kotlin::kotlin_definition(),
+        whelping_kotlin::kotlin_definition(),
+        broaching_kotlin::kotlin_definition(),
+        FUNCTIONS.to_owned(),
         main,
     ];
     let Some(printed) = ran_kotlin(&source.join("\n\n")) else {

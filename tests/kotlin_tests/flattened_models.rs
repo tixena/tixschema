@@ -15,7 +15,8 @@
 //! optional map, the one member, serde reads as `None` wherever an entry does not read as a count,
 //! and under a function from what the function answers. A map keyed by a plain enum serde writes
 //! and reads under the name each variant is written under, and refuses, or reads as `None` where
-//! it is optional, a key no variant is written under.
+//! it is optional, a key no variant is written under. A variant of an enum under each tagging
+//! reads and writes a flattened member at its own level, as a struct does.
 
 use alloc::collections::BTreeMap;
 use std::collections::HashMap;
@@ -124,6 +125,68 @@ pub const SNUBBED: [&str; 3] = [r#"{"bow":2}"#, r#"{"open_water":2}"#, r#"{"Open
 /// What [`Scarfing`] is read from: the key [`Sheeting`] reads beside another, no key, and the key
 /// held as a number, which [`Sheeting`] does not read.
 pub const SCARFING: [&str; 3] = [r#"{"label":"n","north":2}"#, "{}", r#"{"label":5}"#];
+
+/// What [`Gaffing`] is read from: a map with no entry, an entry that reads as a count and one that
+/// does not, an optional map with each, a struct beside a member of the variant's own, in the
+/// order serde writes them and in another, the member under its alias and under both of its
+/// names, and the struct's key absent.
+pub const GAFFING: [&str; 11] = [
+    r#"{"Counted":{}}"#,
+    r#"{"Counted":{"north":2}}"#,
+    r#"{"Counted":{"north":"x"}}"#,
+    r#"{"Spare":{}}"#,
+    r#"{"Spare":{"north":2}}"#,
+    r#"{"Spare":{"north":"x"}}"#,
+    r#"{"Labelled":{"label":"n","note":"a"}}"#,
+    r#"{"Labelled":{"note":"a","label":"n","north":2}}"#,
+    r#"{"Labelled":{"label":"n","remark":"a"}}"#,
+    r#"{"Labelled":{"label":"n","note":"a","remark":"b"}}"#,
+    r#"{"Labelled":{"note":"a"}}"#,
+];
+
+/// What [`Bowlining`] is read from: [`GAFFING`]'s variants under a tag and a content key, and a
+/// member that names a function flattened after a struct.
+pub const BOWLINING: [&str; 9] = [
+    r#"{"kind":"Counted","held":{}}"#,
+    r#"{"kind":"Counted","held":{"north":2}}"#,
+    r#"{"kind":"Counted","held":{"north":"x"}}"#,
+    r#"{"kind":"Spare","held":{"north":2}}"#,
+    r#"{"kind":"Spare","held":{"north":"x"}}"#,
+    r#"{"kind":"Labelled","held":{"note":"a","label":"n"}}"#,
+    r#"{"kind":"Labelled","held":{"note":"a"}}"#,
+    r#"{"held":{"label":"n","north":2},"kind":"Tallied"}"#,
+    r#"{"kind":"Tallied","held":{"north":2}}"#,
+];
+
+/// What [`Swaying`] is read from: the keys of its struct beside a member of the variant's own, a
+/// count, a count of text, no key, the struct's key alone, which neither the struct nor a count
+/// reads, and the keys of the struct and the member beside a key neither reads.
+pub const SWAYING: [&str; 6] = [
+    r#"{"note":"a","label":"n"}"#,
+    r#"{"north":2}"#,
+    r#"{"north":"x"}"#,
+    "{}",
+    r#"{"label":"n"}"#,
+    r#"{"label":"n","note":"a","north":2}"#,
+];
+
+/// What [`Whelping`] is read from: a struct beside a member of the variant's own beside the tag,
+/// in the order serde writes them and in another, a struct alone beside the tag and beside a key
+/// no member reads, and the tag alone.
+pub const WHELPING: [&str; 5] = [
+    r#"{"kind":"Labelled","label":"n","note":"a"}"#,
+    r#"{"note":"a","label":"n","kind":"Labelled"}"#,
+    r#"{"kind":"Hoisted","label":"n"}"#,
+    r#"{"label":"n","north":2,"kind":"Hoisted"}"#,
+    r#"{"kind":"Hoisted"}"#,
+];
+
+/// What [`Broaching`] is read from at `u8`: no entry, a count, and a count of text.
+pub const BROACHING: [&str; 3] = [
+    r#"{"Counted":{}}"#,
+    r#"{"Counted":{"north":2}}"#,
+    r#"{"Counted":{"north":"x"}}"#,
+];
 
 /// A map, the one member, which serde hands every key of the object.
 #[model_schema()]
@@ -571,6 +634,103 @@ pub struct Luffing {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Quaying {
     Bay { label: String },
+}
+
+/// A map flattened alone in a variant written under its name, an optional one, and a struct
+/// flattened beside a member of the variant's own, read under an alias too: serde reads and
+/// writes each at the variant's own level.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum Gaffing {
+    Counted {
+        #[serde(flatten)]
+        counts: BTreeMap<String, u8>,
+    },
+    Labelled {
+        #[serde(flatten)]
+        labelling: Labelling,
+        #[serde(alias = "remark")]
+        note: String,
+    },
+    Spare {
+        #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
+        counts: Option<BTreeMap<String, u8>>,
+    },
+}
+
+/// [`Gaffing`] under a tag and a content key, with a variant whose member that names a function
+/// is flattened after a struct: serde hands the function the keys the struct did not take.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", content = "held")]
+pub enum Bowlining {
+    Counted {
+        #[serde(flatten)]
+        counts: BTreeMap<String, u8>,
+    },
+    Labelled {
+        #[serde(flatten)]
+        labelling: Labelling,
+        note: String,
+    },
+    Spare {
+        #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
+        counts: Option<BTreeMap<String, u8>>,
+    },
+    Tallied {
+        #[serde(flatten)]
+        labelling: Labelling,
+        #[model_schema_prop(preprocess = ["withItsKeys"])]
+        #[serde(flatten)]
+        tally: Bunting,
+    },
+}
+
+/// [`Gaffing`]'s variants untagged, the struct first: serde takes the first variant that reads.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum Swaying {
+    Annotated {
+        #[serde(flatten)]
+        labelling: Labelling,
+        note: String,
+    },
+    Counted {
+        #[serde(flatten)]
+        counts: BTreeMap<String, u8>,
+    },
+    Spare {
+        #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
+        counts: Option<BTreeMap<String, u8>>,
+    },
+}
+
+/// A struct flattened in a variant under a tag alone, beside a member of the variant's own and
+/// alone: serde reads it from the object without the tag.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind")]
+pub enum Whelping {
+    Hoisted {
+        #[serde(flatten)]
+        labelling: Labelling,
+    },
+    Labelled {
+        #[serde(flatten)]
+        labelling: Labelling,
+        note: String,
+    },
+}
+
+/// A map of the enum's own parameter flattened alone in a variant written under its name.
+#[model_schema(default_types(Count = u8))]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum Broaching<Count> {
+    Counted {
+        #[serde(flatten)]
+        counts: BTreeMap<String, Count>,
+    },
 }
 
 /// The payload as it was handed.
