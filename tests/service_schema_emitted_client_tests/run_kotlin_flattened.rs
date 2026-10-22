@@ -3,8 +3,8 @@
 //! member beside a flattened one, beside its twin under `nullable`: each payload is written back as
 //! the serde read writes it back. A member flattened after a struct, or beside a member of its
 //! holder's own, is handed the keys serde hands it, and an externally tagged enum the one entry
-//! serde hands it, and is written as serde writes it, a unit variant as its name over `null`. An
-//! optional map, the one member, is read as `null` where serde reads `None`, and a map keyed by a
+//! serde hands it, and is written as serde writes it, a unit variant as its name over `null`, the
+//! one value its entry is read over, alone and flattened. An optional map, the one member, is read as `null` where serde reads `None`, and a map keyed by a
 //! plain enum under the names serde writes its variants under. An optional struct with a flattened
 //! member of its own is read wherever the struct reads, and as `null` wherever serde reads `None`,
 //! and one that takes a key is `null` where the key is absent and refuses a key that does not read.
@@ -47,11 +47,12 @@ use super::flattened_models::{
 };
 use super::runtime::ran_kotlin;
 use super::swift_flattened_options_models::{
-    Crowning, FLAKING, FLAKING_ABSENT, FLAKING_MISTYPED, Fidding, Flaking, HEELING, Heeling,
-    LAPPING, LAPPING_ABSENT, LAPPING_MISTYPED, LOWERING, Lowering, PITCHING, Pitching, Ratline,
-    SQUARING, Squaring, becket_kotlin, crowning_kotlin, fidding_kotlin, flaking_kotlin,
-    grommet_kotlin, heeling_kotlin, lowering_kotlin, nippering_kotlin, pitching_kotlin,
-    ratline_kotlin, shackle_kotlin, squaring_kotlin, tabling_kotlin, toggle_kotlin,
+    Crowning, Easing, FLAKING, FLAKING_ABSENT, FLAKING_MISTYPED, Fidding, Flaking, HEELING,
+    Heeling, LAPPING, LAPPING_ABSENT, LAPPING_MISTYPED, LOWERING, Lowering, PITCHING, Pitching,
+    Ratline, SQUARING, Squaring, Thimble, becket_kotlin, crowning_kotlin, easing_kotlin,
+    fidding_kotlin, flaking_kotlin, grommet_kotlin, heeling_kotlin, lowering_kotlin,
+    nippering_kotlin, pitching_kotlin, ratline_kotlin, shackle_kotlin, squaring_kotlin,
+    tabling_kotlin, thimble_kotlin, toggle_kotlin,
 };
 use super::tuple_variants_models::labelling_kotlin;
 use super::unrecorded_options_models::{
@@ -246,6 +247,20 @@ fun <T> told(name: String, serializer: KSerializer<T>, payload: String) {
     println("$name: $told")
 }
 "#;
+
+/// What an externally tagged enum, then a holder of a flattened `Option` of it, is read from: a
+/// unit variant's entry over a number and over `null`, its bare name and a variant's entry, then
+/// the unit variant's entry over a number and over `null` beside the holder's own member, and no
+/// entry.
+const UNIT_ENTRIES: [(&str, &str); 7] = [
+    ("Thimble", r#"{"Calm":1}"#),
+    ("Thimble", r#"{"Calm":null}"#),
+    ("Thimble", r#""Calm""#),
+    ("Thimble", r#"{"Round":{"turns":2}}"#),
+    ("Easing", r#"{"Calm":1,"note":"n"}"#),
+    ("Easing", r#"{"Calm":null,"note":"n"}"#),
+    ("Easing", r#"{"note":"n"}"#),
+];
 
 /// A payload, the type it is read as, and what serde writes back of it.
 struct Row {
@@ -1461,6 +1476,68 @@ fn a_flattened_option_of_an_enum_reads_in_kotlin_as_zod_does_where_its_keys_are_
         heeling_kotlin::kotlin_definition(),
         pitching_kotlin::kotlin_definition(),
         shackle_kotlin::kotlin_definition(),
+        main,
+    ];
+    let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
+        return;
+    };
+    assert_eq!(printed, expected, "the Kotlin read is not the read above");
+}
+
+/// An externally tagged enum reads a unit variant's entry over `null` alone, as serde reads the
+/// enum alone: the entry over any other value is refused, read alone and flattened, an optional
+/// holder refusing the payload, as TypeScript, Zod, Dart and Swift refuse it, where serde reads
+/// `None`. A bare name, an entry over `null` and a variant's entry read as they did.
+#[test]
+fn a_unit_variants_entry_reads_in_kotlin_over_null_alone() {
+    let serde_told: Vec<String> = UNIT_ENTRIES
+        .iter()
+        .map(|&(holder, payload)| {
+            if holder == "Thimble" {
+                told_by_serde(payload, json::<Thimble>)
+            } else {
+                told_by_serde(payload, json::<Easing>)
+            }
+        })
+        .collect();
+    assert_eq!(
+        serde_told,
+        [
+            "refused",
+            r#""Calm""#,
+            r#""Calm""#,
+            r#"{"Round":{"turns":2}}"#,
+            r#"{"note":"n"}"#,
+            r#"{"note":"n","Calm":null}"#,
+            r#"{"note":"n"}"#,
+        ],
+        "serde no longer reads each payload as it did"
+    );
+    let unit_over_a_number = serde_json::from_str::<Thimble>(UNIT_ENTRIES[0].1).unwrap_err();
+    assert_eq!(
+        unit_over_a_number.to_string(),
+        "invalid type: integer `1`, expected unit at line 1 column 9",
+        "serde no longer refuses a unit variant's entry over a number as it did"
+    );
+    let refused = "refused: SerializationException: Thimble: Calm takes no value";
+    let mut in_kotlin = serde_told;
+    in_kotlin[0] = refused.to_owned();
+    in_kotlin[4] = refused.to_owned();
+    let mut expected = String::new();
+    let mut main = String::from(TOLD_OR_REFUSED);
+    main.push_str("fun main() {\n");
+    for (at, (&(holder, payload), told)) in UNIT_ENTRIES.iter().zip(&in_kotlin).enumerate() {
+        let _ = writeln!(expected, "{at}: {told}");
+        let _ = writeln!(
+            main,
+            "    told(\"{at}\", serializer<{holder}>(), \"\"\"{payload}\"\"\")"
+        );
+    }
+    main.push_str("}\n");
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        thimble_kotlin::kotlin_definition(),
+        easing_kotlin::kotlin_definition(),
         main,
     ];
     let Some(printed) = ran_kotlin(&source.join("\n\n")) else {

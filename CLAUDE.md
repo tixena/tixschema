@@ -1045,6 +1045,14 @@ the consumer's view; this is what a change has to keep.
   entry by entry, optional and under a function too. Every other flattened member merges its
   object as it did, so an enum the emitter has not written throws on a unit variant: the README
   states the limit. `run_kotlin_flattened.rs` writes each variant of `Tacking` against serde.
+- **An externally tagged enum reads a unit variant's entry over `null` alone**, as serde reads
+  the enum alone (`dispatched_tagged_variant`): the arm reads `if (data is JsonNull)` and throws
+  `SerializationException("{Enum}: " + tag + " takes no value")` otherwise, the wording of the
+  Dart read; a bare name reads `data` as `JsonNull`. `flatten_enum_field_plan` hands the enum its
+  entry outside `runCatching`, so an optional enum whose unit variant's entry holds any other value
+  refuses the payload, as TypeScript, Zod, Dart and Swift refuse it, where serde reads `None`.
+  `run_kotlin_flattened.rs` reads `Thimble` and `Easing` of
+  `tests/swift_tests/flattened_options_models.rs` against serde.
 - **An enum under a tag alone is written by hand as well.** The plugin refuses
   `@KeepGeneratedSerializer` on a sealed interface, so `dispatched_tagged_enum_kotlin_source`
   writes all three taggings, `Tagging::Unwrapped` being the tag alone there: the tag is taken off

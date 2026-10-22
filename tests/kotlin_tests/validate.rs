@@ -532,7 +532,8 @@ fn the_serializer_the_emitter_writes_for_each_shape_is_its_unjudged_one() {
              JsonDecoder; val element = input.decodeJsonElement(); val (tag, data) = if (element \
              is JsonPrimitive) element.content to JsonNull else \
              element.jsonObject.entries.single().let { it.key to it.value }; return when (tag) { \
-             \"None\" -> SimpleChoiceNone; \"Value\" -> \
+             \"None\" -> if (data is JsonNull) SimpleChoiceNone else throw \
+             SerializationException(\"SimpleChoice: \" + tag + \" takes no value\"); \"Value\" -> \
              SimpleChoiceValue(input.json.decodeFromJsonElement(serializer<String>(), data)) else \
              -> error(\"unknown tag \" + tag) } } }",
             judged("SimpleChoice"),
