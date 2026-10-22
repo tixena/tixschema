@@ -11,9 +11,15 @@ use serde::{Deserialize, Serialize};
 
 use tixschema::model_schema;
 
-use super::flattened_models::{Knotting, Netting, Seizing, Splicing};
+use super::flattened_models::{
+    Bending, Brailing, HITCHING, Hitching, Knotting, Lanyarding, Netting, Nipping, PAYLOAD,
+    STROPPING, Seizing, Slinging, Splicing, Stoppering, Stropping, Whipping, read_of,
+};
 #[cfg(feature = "serde")]
-use super::flattened_models::{knotting_kotlin, netting_kotlin, seizing_kotlin, splicing_kotlin};
+use super::flattened_models::{
+    bending_kotlin, hitching_kotlin, knotting_kotlin, netting_kotlin, nipping_kotlin,
+    seizing_kotlin, slinging_kotlin, splicing_kotlin, stoppering_kotlin, whipping_kotlin,
+};
 use super::read::{kept, serializers};
 use super::tuple_variants_models::Labelling;
 
@@ -823,6 +829,38 @@ fn every_flattened_fixture_is_written_as_serde_writes_it() {
     );
 }
 
+/// What serde reads of each holder of a member flattened after a struct or beside a member of its
+/// own: a function after a struct is handed the keys neither the struct nor its holder took, and
+/// one ahead of a struct, or after a struct that takes no key, every key. A struct after a struct,
+/// or beside a member of its holder's own, that reads the same key is refused, and an optional one
+/// reads no value.
+#[test]
+fn serde_hands_a_flattened_member_the_keys_no_member_ahead_of_it_took() {
+    let whipping: Whipping = serde_json::from_str(PAYLOAD).unwrap();
+    assert_eq!(whipping.tally.keys, ["north"]);
+    let hitching: Hitching = serde_json::from_str(HITCHING).unwrap();
+    assert_eq!(hitching.tally.keys, ["north"]);
+    let bending: Bending = serde_json::from_str(PAYLOAD).unwrap();
+    assert_eq!(bending.extra.keys, ["label", "north"]);
+    assert_eq!(bending.labelling.label, "n");
+    let lanyarding: Lanyarding = serde_json::from_str(PAYLOAD).unwrap();
+    assert_eq!(lanyarding.tally.keys, ["label", "north"]);
+    let brailing: Brailing = serde_json::from_str(PAYLOAD).unwrap();
+    assert_eq!(brailing.tally.keys, ["label", "north"]);
+    assert_eq!(read_of::<Stropping>(STROPPING), STROPPING);
+    for refused in [
+        serde_json::from_str::<Stoppering>(PAYLOAD).unwrap_err(),
+        serde_json::from_str::<Nipping>(PAYLOAD).unwrap_err(),
+    ] {
+        assert_eq!(
+            refused.to_string(),
+            "missing field `label` at line 1 column 23"
+        );
+    }
+    let slinging: Slinging = serde_json::from_str(PAYLOAD).unwrap();
+    assert_eq!(slinging.spare, None);
+}
+
 /// A flattened map, the one member of its struct, is read from every key of the object and written
 /// entry by entry.
 #[test]
@@ -871,6 +909,68 @@ fn an_optional_member_beside_a_flattened_one_is_written_only_where_it_holds_a_va
         ),
         "got: {knotting}"
     );
+}
+
+/// Every flattened member is read from the object without the keys its holder's own members take
+/// and those each struct flattened ahead of it took, as serde hands it them: a function after a
+/// struct, a struct after a struct that reads the same key, a struct beside a member of its
+/// holder's own, and an optional struct, whose own keys are looked for in that object. A member a
+/// function reads takes none of the keys it reads, and one flattened first beside no member of its
+/// holder's own reads the whole object, as before.
+#[test]
+#[cfg(feature = "serde")]
+fn a_flattened_member_is_read_without_the_keys_taken_ahead_of_it() {
+    let labelling = "val labellingKeys = (LabellingUnjudged).descriptor.elementNames.toSet(); \
+                     val labelling = lenient.decodeFromJsonElement(LabellingUnjudged, obj);";
+    for (kotlin, held) in [
+        (whipping_kotlin::kotlin_definition(), labelling.to_owned()),
+        (
+            whipping_kotlin::kotlin_definition(),
+            "val tally = lenient.decodeFromJsonElement(BuntingUnjudged, \
+             withItsKeys(JsonObject(obj - labellingKeys)));"
+                .to_owned(),
+        ),
+        (
+            hitching_kotlin::kotlin_definition(),
+            "val labelling = lenient.decodeFromJsonElement(LabellingUnjudged, JsonObject(obj - \
+             setOf(\"note\")));"
+                .to_owned(),
+        ),
+        (
+            hitching_kotlin::kotlin_definition(),
+            "val tally = lenient.decodeFromJsonElement(BuntingUnjudged, \
+             withItsKeys(JsonObject(obj - setOf(\"note\") - labellingKeys)));"
+                .to_owned(),
+        ),
+        (
+            bending_kotlin::kotlin_definition(),
+            "val extra = lenient.decodeFromJsonElement(BuntingUnjudged, withItsKeys(obj));"
+                .to_owned(),
+        ),
+        (bending_kotlin::kotlin_definition(), labelling.to_owned()),
+        (stoppering_kotlin::kotlin_definition(), labelling.to_owned()),
+        (
+            stoppering_kotlin::kotlin_definition(),
+            "val twice = lenient.decodeFromJsonElement(LabellingUnjudged, JsonObject(obj - \
+             labellingKeys));"
+                .to_owned(),
+        ),
+        (
+            nipping_kotlin::kotlin_definition(),
+            "val labelling = lenient.decodeFromJsonElement(LabellingUnjudged, JsonObject(obj - \
+             setOf(\"label\")));"
+                .to_owned(),
+        ),
+        (
+            slinging_kotlin::kotlin_definition(),
+            "val spare = if (JsonObject(obj - labellingKeys).keys.any { it in spareKeys }) \
+             lenient.decodeFromJsonElement(LabellingUnjudged, JsonObject(obj - labellingKeys)) \
+             else null;"
+                .to_owned(),
+        ),
+    ] {
+        assert!(kotlin.contains(&held), "no `{held}` in: {kotlin}");
+    }
 }
 
 #[test]
@@ -1073,9 +1173,10 @@ fn test_generic_flatten_generic_sibling() {
     );
     assert!(
         kotlin.contains(
-            "val body = lenient.decodeFromJsonElement(WrapperUnjudged(tSerializer), obj)"
+            "val body = lenient.decodeFromJsonElement(WrapperUnjudged(tSerializer), \
+             JsonObject(obj - setOf(\"id\")))"
         ),
-        "got: {kotlin}"
+        "a flattened member is read from the object without its holder's own keys. got: {kotlin}"
     );
 }
 

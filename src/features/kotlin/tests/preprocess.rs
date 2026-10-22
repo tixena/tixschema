@@ -462,7 +462,8 @@ fn a_member_the_emitter_reads_is_corrected_in_place() {
          trimmed(obj.getValue(\"dock\")));",
         "val note = obj[\"note\"]?.let { input.json.decodeFromJsonElement(serializer<String?>(), \
          lowered(trimmed(it))) };",
-        "val parcel = lenient.decodeFromJsonElement(ParcelUnjudged, obj);",
+        "val parcel = lenient.decodeFromJsonElement(ParcelUnjudged, JsonObject(obj - \
+         setOf(\"dock\", \"note\")));",
     ] {
         assert!(kotlin.contains(held), "no `{held}` in: {kotlin}");
     }
@@ -480,13 +481,13 @@ fn a_member_the_emitter_reads_is_corrected_in_place() {
     );
 }
 
-/// A flattened member is handed the keys its holder's own members do not take where a function
-/// reads them: one its type names, one the member names, and one of a type the emitter has not
-/// written. A type known to name none is handed the whole object, as before. A member a function
-/// reads takes none of its keys from a map flattened after it.
+/// Every flattened member is handed the keys neither its holder's own members nor a struct
+/// flattened ahead of it take: a type that names no function, one its type names, one the member
+/// names, and one of a type the emitter has not written. A type that names a function, and one the
+/// emitter has not written, take none of the keys they read.
 #[cfg(feature = "serde")]
 #[test]
-fn a_flattened_member_a_function_reads_is_handed_what_its_holder_does_not_take() {
+fn every_flattened_member_is_handed_what_no_member_ahead_of_it_takes() {
     let base: ItemStruct = syn::parse_quote! {
         struct Base { name: String }
     };
@@ -505,14 +506,18 @@ fn a_flattened_member_a_function_reads_is_handed_what_its_holder_does_not_take()
             keyed: Keyed,
             #[serde(flatten)]
             later: Later,
+            #[serde(flatten)]
+            again: Base,
         }
     };
     let kotlin = plain(&fastened);
+    let own = "JsonObject(obj - setOf(\"dock\", \"gate\"))";
     let rest = "JsonObject(obj - setOf(\"dock\", \"gate\") - baseKeys)";
     for held in [
-        "val base = lenient.decodeFromJsonElement(BaseUnjudged, obj);".to_owned(),
+        format!("val base = lenient.decodeFromJsonElement(BaseUnjudged, {own});"),
         format!("val keyed = lenient.decodeFromJsonElement(KeyedUnjudged, {rest});"),
         format!("val later = lenient.decodeFromJsonElement(serializer<Later>(), {rest});"),
+        format!("val again = lenient.decodeFromJsonElement(BaseUnjudged, {rest});"),
     ] {
         assert!(kotlin.contains(&held), "no `{held}` in: {kotlin}");
     }

@@ -654,7 +654,7 @@ fn a_struct_with_a_flattened_member_reads_what_it_merges_unjudged() {
         "output.json.encodeToJsonElement(BaseUnjudged, value.base).jsonObject.forEach { (k, v) \
          -> put(k, v) }",
         "val baseKeys = (BaseUnjudged).descriptor.elementNames.toSet(); val base = \
-         lenient.decodeFromJsonElement(BaseUnjudged, obj)",
+         lenient.decodeFromJsonElement(BaseUnjudged, JsonObject(obj - setOf(\"gate\")))",
     ] {
         assert!(kotlin.contains(held), "no `{held}` in: {kotlin}");
     }

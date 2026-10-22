@@ -927,6 +927,17 @@ the consumer's view; this is what a change has to keep.
   answers no `serialize` statement for the member. A struct with neither keeps the plugin's
   serializer and its text. A member under `skip_serializing_if` is written wherever it holds a
   value: no client calls the Rust function, and the README states the limit.
+- **Every flattened member is read at its place, in the order declared**, as serde reads it
+  (`flatten_plan`): from `JsonObject(obj - setOf(...) - {member}Keys ...)`, the object without the
+  keys the holder's own members take and those each member flattened ahead of it took, and from
+  `obj` where nothing was taken. An optional one looks for its keys in that object alone
+  (`flatten_struct_field_plan`). A struct takes the `descriptor.elementNames` of its unjudged
+  serializer, unless `preprocess::takes_no_key` answers for it: a member that names a function,
+  and a type `HANDED` does not note as handing its object to none, so a type the emitter has not
+  written takes none. The serializer the emitter writes declares no element, so a struct with a
+  flattened member of its own takes none, as serde reads it as a map, and so does one with a
+  member serde never writes, where serde takes its keys: the README states the limit. A map is
+  the one member of its object (section 4).
 - **An enum under a tag alone is written by hand as well.** The plugin refuses
   `@KeepGeneratedSerializer` on a sealed interface, so `dispatched_tagged_enum_kotlin_source`
   writes all three taggings, `Tagging::Unwrapped` being the tag alone there: the tag is taken off
@@ -976,7 +987,10 @@ the consumer's view; this is what a change has to keep.
   `kotlin`. `run_kotlin_validate.rs` reads each row with `{Type}Unjudged` and, in a run of its
   own, with the type's serializer, held to what `validate()` answered.
   `run_kotlin_read.rs` holds the README's rows to what the Rust read answers of the same payload,
-  and both clients to their fault.
+  and both clients to their fault. `tests/kotlin_tests/flattened_models.rs` holds the models of a
+  member flattened after a struct and beside a member of its holder's own, and what serde reads
+  of each, `tests/kotlin_tests/tests.rs` pins their reads, and `run_kotlin_flattened.rs` reads and
+  writes each back under the toolchain, against serde.
 
 #### The Kotlin client's `preprocess`
 
@@ -1026,11 +1040,11 @@ say so.
   serializer only for a key that is there, and `own_field_plan` corrects inside `?.let`. A `null`
   is handed to the function: the serializer of a nullable member is a
   `JsonTransformingSerializer<T?>`.
-- **A flattened member a function reads is handed what serde hands it** (`flatten_plan`,
-  `preprocess::takes_the_rest`): the object without the keys the holder's own members take, and
-  without those a member flattened ahead of it took. `HANDED` notes, per type the emitter wrote,
-  whether it hands its object to a function, its own or one of a member it flattens. A type
-  known to hand it to none is read from the whole object, as before, and takes its own keys.
+- **A flattened member a function reads is handed what serde hands it**, as every flattened
+  member is ("The Kotlin client's read", above), and takes none of its keys
+  (`preprocess::takes_no_key`). `HANDED` notes, per type the emitter wrote, whether it hands its
+  object to a function, its own or one of a member it flattens: a type known to hand it to none
+  takes its own keys.
 - **A flattened map is read from every key of the object** (`flatten_map_field_plan`): it is
   the one member of its object (section 4), and the enum's serializer takes the tag off the
   object before it hands it a variant's class. A function the map names is handed the whole

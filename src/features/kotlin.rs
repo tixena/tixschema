@@ -152,9 +152,8 @@ enum Tagging<'tag> {
 
 /// What [`flatten_plan`] builds from a struct's fields: one `serialize_stmts` entry per field
 /// serde writes (own or flattened), one `deserialize_stmts` entry per field (own reads and
-/// flattened-struct `descriptor`-key reads interleaved, in field order, the map field's own read
-/// appended last so it can name every other field's own keys), and the constructor argument list
-/// in field order.
+/// flattened reads interleaved, in field order, each flattened read handed the object without the
+/// keys taken ahead of it), and the constructor argument list in field order.
 struct FlattenPlan {
     ctor_args: Vec<String>,
     deserialize_stmts: Vec<String>,
@@ -1315,10 +1314,10 @@ fn own_field_plan(
 }
 
 /// One flattened *struct* (or `Option<Struct>`) field's own statements: the `serialize` merge, the
-/// `deserialize` read (leniently, off the whole object — `null` when an optional field's own keys
-/// are all absent), and the `elementNames` read a later flattened member that names a function
-/// is handed the object without. `rest` is the object the member is read from, as the member's
-/// own `preprocess` then corrects it.
+/// `deserialize` read (leniently, off `rest`, the object serde hands the member, as the member's
+/// own `preprocess` then corrects it, and `null` where an optional field's own keys are all absent
+/// from `rest`), and the `elementNames` read the members flattened after it are handed the object
+/// without.
 fn flatten_struct_field_plan(
     field: &KotlinField,
     prop: &str,
@@ -1342,7 +1341,7 @@ fn flatten_struct_field_plan(
     let handed = preprocess::corrected(preprocess::of(&field.field_def), rest);
     let decode = if field.field_def.is_optional() {
         format!(
-            "val {prop} = if (obj.keys.any {{ it in {keys_ident} }}) lenient.decodeFromJsonElement({inner_serializer}, {handed}) else null"
+            "val {prop} = if ({rest}.keys.any {{ it in {keys_ident} }}) lenient.decodeFromJsonElement({inner_serializer}, {handed}) else null"
         )
     } else {
         format!("val {prop} = lenient.decodeFromJsonElement({inner_serializer}, {handed})")
@@ -1391,7 +1390,7 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
         format!("setOf({})", own_wire_keys.join(", "))
     };
     // What serde hands a flattened member: the object without the keys the holder's own members
-    // take, and without those a member flattened ahead of it took as it was read.
+    // take, and without those each member flattened ahead of it took as it was read.
     let mut taken = if own_wire_keys.is_empty() {
         String::new()
     } else {
@@ -1413,17 +1412,16 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
             plan.deserialize_stmts.push(decode);
         } else {
             plan.needs_lenient = true;
-            let takes_the_rest = preprocess::takes_the_rest(&field.field_def);
-            let rest = if takes_the_rest && !taken.is_empty() {
-                format!("JsonObject(obj{taken})")
-            } else {
+            let rest = if taken.is_empty() {
                 "obj".to_owned()
+            } else {
+                format!("JsonObject(obj{taken})")
             };
             let (serialize, decode, keys_ident) =
                 flatten_struct_field_plan(field, &prop, type_parameters, &rest);
             plan.serialize_stmts.push(serialize);
             plan.deserialize_stmts.push(decode);
-            if !takes_the_rest {
+            if !preprocess::takes_no_key(&field.field_def) {
                 let _ = write!(taken, " - {keys_ident}");
             }
         }
@@ -1535,7 +1533,7 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
         .any(|field| field.flatten || field.never_written);
     let handed_on = fields
         .iter()
-        .any(|field| field.flatten && preprocess::takes_the_rest(&field.field_def));
+        .any(|field| field.flatten && preprocess::takes_no_key(&field.field_def));
     preprocess::note(&rust_ident, handed_on || !args.preprocess.is_empty());
     let plugin = Plugin {
         owner: &export_name,
