@@ -3,8 +3,9 @@
 //! member of its holder's own, alone in its holder and in a variant under a tag key, a struct of
 //! two keys, a struct declared below its holder, a map of dates alone in its holder, a struct
 //! flattened bare beside a member of its holder's own, a model `validate()` walks alone and beside
-//! a member of its holder's own, a struct that reads the keys no member around it took, and a
-//! struct read from what a function answers. serde writes the keys of a flattened member that
+//! a member of its holder's own, a struct that reads the keys no member around it took, a struct
+//! read from what a function answers, and an enum of each tagging, and one declared below its
+//! holder, beside a member of its holder's own. serde writes the keys of a flattened member that
 //! holds a value beside its holder's own, and nothing for one that holds none, and reads one that
 //! names no function as `None` wherever the type it holds does not read from the object it is
 //! handed. `run_kotlin_flattened.rs` reads [`Crowning`] and [`Fidding`] as well.
@@ -56,6 +57,53 @@ pub const SENNIT_ABSENT: &str = r#"{"kind":"Laid","note":"n"}"#;
 
 /// What [`Sennit`] is read from with the flattened struct's key held as a number.
 pub const SENNIT_MISTYPED: &str = r#"{"kind":"Laid","label":5,"note":"n"}"#;
+
+/// What [`Easing`] is read from: no entry under a name a variant of [`Thimble`] is read under, a
+/// variant's entry, one its variant does not read, and a unit variant's entry over a number.
+pub const EASING: [&str; 4] = [
+    r#"{"note":"n"}"#,
+    r#"{"Round":{"turns":2},"note":"n"}"#,
+    r#"{"Round":{"turns":"x"},"note":"n"}"#,
+    r#"{"Calm":1,"note":"n"}"#,
+];
+
+/// What [`Lowering`] is read from: no tag, a variant, a unit variant, a variant whose member does
+/// not read, a tag that names no variant, and a variant's member with no tag.
+pub const LOWERING: [&str; 6] = [
+    r#"{"note":"n"}"#,
+    r#"{"kind":"Round","note":"n","turns":2}"#,
+    r#"{"kind":"Calm","note":"n"}"#,
+    r#"{"kind":"Round","note":"n","turns":"x"}"#,
+    r#"{"kind":"Gale","note":"n"}"#,
+    r#"{"note":"n","turns":2}"#,
+];
+
+/// What [`Squaring`] is read from: neither the tag nor the content key, a variant, a unit variant,
+/// a content its variant does not read, a tag that names no variant, and a content with no tag.
+pub const SQUARING: [&str; 6] = [
+    r#"{"note":"n"}"#,
+    r#"{"body":{"turns":2},"kind":"Round","note":"n"}"#,
+    r#"{"kind":"Calm","note":"n"}"#,
+    r#"{"body":{"turns":"x"},"kind":"Round","note":"n"}"#,
+    r#"{"kind":"Gale","note":"n"}"#,
+    r#"{"body":{"turns":2},"note":"n"}"#,
+];
+
+/// What [`Heeling`] is read from: no member of a variant of [`Toggle`], a variant's member, and one
+/// no variant reads.
+pub const HEELING: [&str; 3] = [
+    r#"{"note":"n"}"#,
+    r#"{"note":"n","turns":2}"#,
+    r#"{"note":"n","turns":"x"}"#,
+];
+
+/// What [`Pitching`] is read from: no entry under a name a variant of [`Shackle`] is read under, a
+/// variant's entry, and one its variant does not read.
+pub const PITCHING: [&str; 3] = [
+    r#"{"note":"n"}"#,
+    r#"{"Round":{"turns":2},"note":"n"}"#,
+    r#"{"Round":{"turns":"x"},"note":"n"}"#,
+];
 
 /// What [`Swaging`] is read from: a date under a key of the flattened map.
 #[cfg(feature = "chrono")]
@@ -193,6 +241,97 @@ pub struct Veering {
     #[model_schema_prop(preprocess = ["asGiven"])]
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
     pub tabling: Option<Tabling>,
+}
+
+/// An externally tagged enum [`Easing`] flattens: it is read from the entry under a variant's name.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum Thimble {
+    Calm,
+    Round { turns: u32 },
+}
+
+/// An enum under a tag key alone, which [`Lowering`] flattens.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind")]
+pub enum Grommet {
+    Calm,
+    Round { turns: u32 },
+}
+
+/// An enum under a tag and a content key, which [`Squaring`] flattens.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", content = "body")]
+pub enum Becket {
+    Calm,
+    Round { turns: u32 },
+}
+
+/// An untagged enum, which [`Heeling`] flattens.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum Toggle {
+    Flat { width: u32 },
+    Round { turns: u32 },
+}
+
+/// A flattened `Option` of an externally tagged enum, beside a member of its holder's own.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Easing {
+    pub note: String,
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    pub thimble: Option<Thimble>,
+}
+
+/// A flattened `Option` of an enum under a tag key alone, beside a member of its holder's own.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Lowering {
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    pub grommet: Option<Grommet>,
+    pub note: String,
+}
+
+/// A flattened `Option` of an enum under a tag and a content key, beside a member of its holder's
+/// own.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Squaring {
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    pub becket: Option<Becket>,
+    pub note: String,
+}
+
+/// A flattened `Option` of an untagged enum, which has no keys, beside a member of its holder's
+/// own.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Heeling {
+    pub note: String,
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    pub toggle: Option<Toggle>,
+}
+
+/// A flattened `Option` of [`Shackle`], declared below it, whose keys its read does not know,
+/// beside a member of its holder's own.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Pitching {
+    pub note: String,
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    pub shackle: Option<Shackle>,
+}
+
+/// The externally tagged enum [`Pitching`] flattens, declared below it.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum Shackle {
+    Calm,
+    Round { turns: u32 },
 }
 
 /// The payload as it was handed.
@@ -340,6 +479,45 @@ fn serde_refuses_a_flattened_option_whose_function_answers_what_its_type_does_no
         refused.to_string(),
         "missing field `label` at line 1 column 12"
     );
+}
+
+/// serde reads a flattened `Option` of an enum where the object holds what the enum reads, and as
+/// `None` wherever the enum does not read from the object it is handed, under each tagging and
+/// declared below its holder: no entry, tag or member of a variant, a variant's member that does
+/// not read, a unit variant's entry over a number, and a tag that names no variant or is missing.
+#[test]
+fn serde_reads_a_flattened_option_of_an_enum_as_none_wherever_the_enum_does_not_read() {
+    let round = || Some(Thimble::Round { turns: 2 });
+    let easing = EASING.map(|json| serde_json::from_str::<Easing>(json).unwrap().thimble);
+    assert_eq!(easing, [None, round(), None, None]);
+    let lowering = LOWERING.map(|json| serde_json::from_str::<Lowering>(json).unwrap().grommet);
+    assert_eq!(
+        lowering,
+        [
+            None,
+            Some(Grommet::Round { turns: 2 }),
+            Some(Grommet::Calm),
+            None,
+            None,
+            None,
+        ]
+    );
+    let squaring = SQUARING.map(|json| serde_json::from_str::<Squaring>(json).unwrap().becket);
+    assert_eq!(
+        squaring,
+        [
+            None,
+            Some(Becket::Round { turns: 2 }),
+            Some(Becket::Calm),
+            None,
+            None,
+            None,
+        ]
+    );
+    let heeling = HEELING.map(|json| serde_json::from_str::<Heeling>(json).unwrap().toggle);
+    assert_eq!(heeling, [None, Some(Toggle::Round { turns: 2 }), None]);
+    let pitching = PITCHING.map(|json| serde_json::from_str::<Pitching>(json).unwrap().shackle);
+    assert_eq!(pitching, [None, Some(Shackle::Round { turns: 2 }), None]);
 }
 
 /// serde reads the flattened map of dates from every key, writes each date back as the text it

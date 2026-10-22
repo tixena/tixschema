@@ -6,10 +6,10 @@ use core::iter;
 use proc_macro2::Span;
 
 use super::{
-    Entry, Member, Plain, beside, called, entries_of, entry_payload, member, naming_its_owner,
-    note, note_entries, taken_with, takes,
+    Entry, Member, Plain, beside, called, entries_of, entry_payload, keys_standing_for, member,
+    naming_its_owner, note, note_entries, note_keys, note_tag_keys, taken_with, takes,
 };
-use crate::features::model_schema_prop::FunctionName;
+use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::swift::read::{Presence, Source};
 use crate::field_type::get_field_def;
 
@@ -303,6 +303,45 @@ fn a_noted_enum_is_read_from_its_one_entry_under_no_list() {
     assert_eq!(names(syn::parse_quote!(PreprocessEntriesNowhere)), None);
     note_entries("PreprocessEntriesHere", Vec::new());
     assert_eq!(names(syn::parse_quote!(PreprocessEntriesHere)), None);
+}
+
+/// A flattened `Option` is tested by the keys of a struct noted with keys, and by the tag and the
+/// content key of an enum noted with them, under no function. An enum noted with no key, and a
+/// type noted nowhere, are tested by none.
+#[test]
+fn an_option_is_tested_by_a_structs_keys_and_an_enums_tag() {
+    note_keys("PreprocessKeysHere", vec!["label".to_owned()]);
+    note_tag_keys(
+        "PreprocessTagHere",
+        vec!["kind".to_owned(), "body".to_owned()],
+    );
+    let keys = |written: syn::Type| keys_standing_for(&get_field_def("held", &written, ""));
+    assert_eq!(
+        keys(syn::parse_quote!(Option<PreprocessKeysHere>)),
+        ["label"]
+    );
+    assert_eq!(
+        keys(syn::parse_quote!(Option<PreprocessTagHere>)),
+        ["kind", "body"]
+    );
+    assert!(
+        keys(syn::parse_quote!(Option<PreprocessTagNowhere>)).is_empty(),
+        "a type noted nowhere is tested by no key"
+    );
+    let mut corrected = get_field_def("held", &syn::parse_quote!(Option<PreprocessTagHere>), "");
+    corrected.model_schema_prop_meta = Some(ModelSchemaPropMeta {
+        preprocess: named(&["asGiven"]),
+        ..ModelSchemaPropMeta::default()
+    });
+    assert!(
+        keys_standing_for(&corrected).is_empty(),
+        "a member that names a function is tested by no key"
+    );
+    note_tag_keys("PreprocessTagHere", Vec::new());
+    assert!(
+        keys(syn::parse_quote!(Option<PreprocessTagHere>)).is_empty(),
+        "an enum noted with no key is tested by none"
+    );
 }
 
 /// The enum's own read is handed a unit variant's name where its entry holds `null`, an alias's

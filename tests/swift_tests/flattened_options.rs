@@ -1,15 +1,18 @@
 //! What the Swift emitter writes and reads of a flattened `Option`: the keys of the value it holds
 //! into its holder's object, and nothing for `nil`; `nil` where the object holds none of its type's
-//! keys, and the value its type reads from the object otherwise, a read that throws refusing the
-//! payload; and, for a type whose keys are not known, `nil` wherever its read throws. A struct
-//! flattened bare writes and reads what it did. The writes and the reads are run under the Swift
-//! toolchain in `tests/service_schema_emitted_client_tests/run_swift_flattened_options.rs`.
+//! keys, a struct's, the names an externally tagged enum's variants are read under, or the tag and
+//! the content key of an enum under a tag key, and the value its type reads from the object
+//! otherwise, a read that throws refusing the payload; and, for a type whose keys are not known,
+//! `nil` wherever its read throws. A struct flattened bare writes and reads what it did. The writes
+//! and the reads are run under the Swift toolchain in
+//! `tests/service_schema_emitted_client_tests/run_swift_flattened_options.rs`.
 
 #[cfg(feature = "chrono")]
 use super::flattened_options_models::swaging_swift;
 use super::flattened_options_models::{
-    crowning_swift, fidding_swift, flaking_swift, kinking_swift, lapping_swift, painter_swift,
-    ratline_swift, sennit_swift, tarring_swift, veering_swift,
+    crowning_swift, easing_swift, fidding_swift, flaking_swift, heeling_swift, kinking_swift,
+    lapping_swift, lowering_swift, painter_swift, pitching_swift, ratline_swift, sennit_swift,
+    squaring_swift, tarring_swift, veering_swift,
 };
 
 /// Asserts that `definition` holds `fragment`.
@@ -165,6 +168,55 @@ fn a_flattened_option_of_a_type_whose_keys_are_not_known_reads_nil_where_it_thro
     assert!(
         !ratline.contains("SwiftSchemaAnyKey"),
         "a read that tests no key declares no key type: {ratline}"
+    );
+}
+
+/// A flattened `Option` of an enum is read as `nil` where the object it is handed holds none of the
+/// enum's keys, and as the enum otherwise, a read that throws refusing the payload: an externally
+/// tagged enum by the names its variants are read under, an enum under a tag key alone by its tag,
+/// and one under a tag and a content key by both. An untagged enum, which has no keys, and an enum
+/// declared below its holder are read as `nil` wherever their read throws.
+#[test]
+fn a_flattened_option_of_an_enum_reads_nil_where_none_of_its_keys_is_there() {
+    assert_written(
+        &easing_swift::swift_definition(),
+        "if let thimbleKey = thimbleFound.first, let thimbleHeld = thimbleObject[thimbleKey] { \
+         let thimblePayload: Any; switch thimbleKey { case \"Calm\" where thimbleHeld is \
+         NSNull: thimblePayload = \"Calm\"; default: thimblePayload = [thimbleKey: thimbleHeld] \
+         }; self.thimble = try SwiftSchemaPayload.read(Thimble.self, from: thimblePayload, at: \
+         decoder.codingPath) } else { self.thimble = nil } }",
+    );
+    let tested = |keys: &str, member: &str, read_as: &str| {
+        format!(
+            "if try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys.contains(where: {{ \
+             [{keys}].contains($0.stringValue) && !(taken + [\"note\"]).contains($0.stringValue) \
+             }}) {{ let {member}Payload = try SwiftSchemaPayload(from: decoder, without: taken + \
+             [\"note\"]).value; self.{member} = try SwiftSchemaPayload.read({read_as}.self, from: \
+             {member}Payload, at: decoder.codingPath) }} else {{ self.{member} = nil }}; \
+             self.note = try container.decode(String.self, forKey: .note) }}"
+        )
+    };
+    assert_written(
+        &lowering_swift::swift_definition(),
+        &tested("\"kind\"", "grommet", "Grommet"),
+    );
+    assert_written(
+        &squaring_swift::swift_definition(),
+        &tested("\"kind\", \"body\"", "becket", "Becket"),
+    );
+    assert_written(
+        &heeling_swift::swift_definition(),
+        "self.note = try container.decode(String.self, forKey: .note); do { let togglePayload = \
+         try SwiftSchemaPayload(from: decoder, without: taken + [\"note\"]).value; self.toggle = \
+         try SwiftSchemaPayload.read(Toggle.self, from: togglePayload, at: decoder.codingPath) } \
+         catch { self.toggle = nil } }",
+    );
+    assert_written(
+        &pitching_swift::swift_definition(),
+        "self.note = try container.decode(String.self, forKey: .note); do { let shacklePayload = \
+         try SwiftSchemaPayload(from: decoder, without: taken + [\"note\"]).value; \
+         self.shackle = try SwiftSchemaPayload.read(SwiftSchemaReadShackle.self, from: \
+         shacklePayload, at: decoder.codingPath).value } catch { self.shackle = nil } }",
     );
 }
 

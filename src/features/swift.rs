@@ -1900,6 +1900,21 @@ fn flattened_entries(item_enum: &ItemEnum, preprocess: &[FunctionName]) -> Vec<p
         .collect()
 }
 
+/// The tag, then the content key where it has one, of an enum under a tag key: what a flattened
+/// `Option` of it is tested by. None for an untagged enum, and for one that names a function on
+/// itself, which is read from what the function answers.
+fn tag_keys(tag_attrs: &EnumTagAttrs, preprocess: &[FunctionName]) -> Vec<String> {
+    if tag_attrs.untagged || !preprocess.is_empty() {
+        return Vec::new();
+    }
+    tag_attrs
+        .tag
+        .iter()
+        .chain(&tag_attrs.content)
+        .cloned()
+        .collect()
+}
+
 /// The `#[serde(alias = "...")]` names a variant is read under beside its own.
 #[cfg(feature = "serde")]
 fn variant_aliases(attrs: &[syn::Attribute]) -> Vec<String> {
@@ -1912,9 +1927,10 @@ const fn variant_aliases(_attrs: &[syn::Attribute]) -> Vec<String> {
 }
 
 /// The statements that read from `source` the flattened `Option` `field`, which names no function
-/// and holds no map: `nil` where the object it is handed holds none of its type's keys, and the
-/// type otherwise, read as a flattened member of that type is, a read that throws refusing the
-/// payload. A type whose keys are not known is read as `nil` wherever its read throws.
+/// and holds no map: `nil` where the object it is handed holds none of its type's keys, a struct's
+/// or the tag and the content key of an enum under a tag key, and the type otherwise, read as a
+/// flattened member of that type is, a read that throws refusing the payload. A type whose keys
+/// are not known is read as `nil` wherever its read throws.
 fn flattened_option(
     field: &SwiftField,
     source: &read::Source,
@@ -1941,7 +1957,7 @@ fn flattened_option(
     };
     let read = present_statement(&held, source, withheld, false, container, locals, twins);
     let absent = format!("self.{} = nil", field.swift_name);
-    let keys = preprocess::keys_taken_by(&field.field_def);
+    let keys = preprocess::keys_standing_for(&field.field_def);
     if keys.is_empty() {
         return format!("do {{ {read} }} catch {{ {absent} }}");
     }
@@ -3743,6 +3759,7 @@ fn enum_swift_tokens(item_enum: &ItemEnum, args: &SwiftTypeArgs<'_>) -> TokenStr
     };
     preprocess::note(&rust_ident, read::takes_keys(&swift_source));
     preprocess::note_entries(&rust_ident, flattened_entries(item_enum, args.preprocess));
+    preprocess::note_tag_keys(&rust_ident, tag_keys(&tag_attrs, args.preprocess));
     let full_source = if aux.is_empty() {
         swift_source
     } else {

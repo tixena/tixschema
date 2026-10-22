@@ -569,8 +569,8 @@ fn careen_found(taken: &str) -> String {
 
 /// A flattened externally tagged enum is read from the one entry of the object it is handed under
 /// a variant's name or an alias, and refused where it holds two or none, or, optional, read as
-/// `nil` where it holds none and wherever the enum's read throws. Its model is read unjudged, and
-/// a member flattened after it is handed the object without that entry.
+/// `nil` where it holds none, an entry the enum's read refuses refusing the payload. Its model is
+/// read unjudged, and a member flattened after it is handed the object without that entry.
 #[test]
 fn a_flattened_enum_is_read_from_the_one_entry_under_a_variants_name() {
     let unjudged = "private struct SwiftSchemaReadCareen: Decodable { let value: Careen; \
@@ -601,8 +601,7 @@ fn a_flattened_enum_is_read_from_the_one_entry_under_a_variants_name() {
         &format!(
             "{TAKING} {{ let container = try decoder.container(keyedBy: CodingKeys.self); {}\
              if let careenKey = careenFound.first, let careenHeld = careenObject[careenKey] {{ \
-             do {{ {CAREEN_READ} }} catch {{ self.careen = nil }} }} \
-             else {{ self.careen = nil }}; \
+             {CAREEN_READ} }} else {{ self.careen = nil }}; \
              self.note = try container.decode(String.self, forKey: .note) }}",
             careen_found("taken + [\"note\"]")
         ),
