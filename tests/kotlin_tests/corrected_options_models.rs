@@ -6,10 +6,11 @@
 //! answer the type does not read. The Zod schema of the holder hands the function the whole object
 //! and reads the type from what it answers, and where that read fails takes an object that holds
 //! no key beyond its holder's own, with the type absent. `kotlin_tests/tests.rs` pins the Kotlin
-//! text and `swift_tests/flattened_options.rs` the Swift text, `run_kotlin_flattened.rs` and
-//! `run_swift_flattened_options.rs` of `service_schema_emitted_client_tests` hold the Kotlin and
-//! the Swift read to Zod's, and `generic_types_tests/declarations.rs` holds TypeScript and Zod to
-//! [`CORRECTED`].
+//! text and `swift_tests/flattened_options.rs` the Swift text, `run_kotlin_flattened.rs`,
+//! `run_swift_flattened_options.rs` and `run_dart_flattened_options.rs` of
+//! `service_schema_emitted_client_tests` hold the Kotlin, the Swift and the Dart read to Zod's, the
+//! last pinning the Dart text too, and `generic_types_tests/declarations.rs` holds TypeScript and
+//! Zod to [`CORRECTED`].
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};

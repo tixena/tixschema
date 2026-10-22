@@ -405,9 +405,9 @@ mod unrecorded_options_models;
 
 /// An optional flattened member that names a function: a struct the Kotlin emitter recorded keys
 /// for, under a function that answers the payload as it was handed and under one that answers
-/// `null`, and an enum under a tag alone, read by the Kotlin run and by the Swift run.
+/// `null`, and an enum under a tag alone, read by the Kotlin, the Swift and the Dart run.
 #[cfg(test)]
-#[cfg(any(feature = "kotlin", feature = "swift"))]
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
 #[path = "kotlin_tests/corrected_options_models.rs"]
 mod corrected_options_models;
 
