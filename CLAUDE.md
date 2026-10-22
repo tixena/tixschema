@@ -1509,7 +1509,13 @@ consumer's view; this is what a change has to keep.
   - `Taken::Keys` of a struct, which `struct_dart_tokens` records from
     `keys_taken_when_flattened` in `src/features/serde.rs`, which the Swift and Kotlin emitters
     read too: serde's own list of the name and each alias of every member it reads. `without`
-    removes them.
+    removes them. An optional one that names no function and is no map is read by
+    `flattened_decode`: where `taken_by` answers keys, `null` where the object it is handed holds
+    none of them, and its type's read where one is there, which refuses a key that does not read,
+    as TypeScript and Zod refuse it, where serde reads `None`; where it answers none, its type's
+    read inside a closure called in place, `(() { try { return ...; } catch (_) { return null; }
+    })()`, which declares no name and answers `null` wherever the read throws, as serde reads
+    `None`.
   - `Taken::FirstOf` of an externally tagged enum, which `enum_dart_tokens` records from
     `variant_names_when_flattened` in `src/features/serde.rs`: the name each variant serde reads
     is read under and each alias, serde's `VARIANTS`. serde's
@@ -1532,8 +1538,12 @@ consumer's view; this is what a change has to keep.
   A struct that names a `preprocess` on itself is read by serde as a value, and one with a
   flattened member of its own as a map: each records none. A type the emitter has not written
   takes none, so a member after a struct declared below its holder is handed the struct's keys,
-  and the README states the limit. `toJson` writes each flattened member at its place: a key two
-  of them hold is written once, with the last value, where serde writes it twice.
+  and an optional one is read in the closure, and the README states both. `toJson` writes each
+  flattened member at its place: a key two of them hold is written once, with the last value,
+  where serde writes it twice. `run_dart_flattened_options.rs` pins the read of a flattened
+  `Option` of a struct and runs it under the Dart SDK, over the models of
+  `tests/swift_tests/flattened_options_models.rs`, which the `dart_tests` binary cannot declare
+  beside the `Veering` of `kotlin_tests/aliased_models.rs`.
 - **A unit variant of an externally tagged enum is an entry of its name over `null`** where the
   enum is flattened, as serde writes and reads it. The enum's `toJson` writes the bare name, so
   `tagged_enum_dart_source` records every externally tagged enum with a unit variant in
