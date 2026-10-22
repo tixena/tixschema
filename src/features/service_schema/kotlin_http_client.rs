@@ -5,7 +5,10 @@
 //! query and header rules it builds on were proven by execution on Dart.
 
 use super::result::result_name;
-use crate::features::kotlin::{kotlin_bare, kotlin_name, kotlin_property_name, kotlin_typename};
+use crate::features::kotlin::{
+    kotlin_bare, kotlin_declarations, kotlin_name, kotlin_property_name, kotlin_read_serializer,
+    kotlin_typename,
+};
 use crate::field_type::{FieldDefType, get_field_def};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
@@ -93,6 +96,7 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
     }
     published.push(client_class(service, &named, &fn_prefix, has_multipart));
     published.extend(fault_helpers(service, &named, &fn_prefix));
+    published.extend(kotlin_declarations());
     published
 }
 
@@ -768,20 +772,20 @@ fn error_decode_block(
     error: &Type,
 ) -> String {
     if shape.error_header_out.is_empty() {
-        let error_ty = kotlin_type_of(error);
+        let read_by = read_serializer(error);
         return format!(
             "      return try {{\n        \
-             {result}.Declared(Json.decodeFromString(serializer<{error_ty}>(), response.body.decodeToString()))\n      \
+             {result}.Declared(Json.decodeFromString({read_by}, response.body.decodeToString()))\n      \
              }} catch (rejected: Throwable) {{\n        \
              {result}.Fault({fn_prefix}HttpUndeserializablePayload(\"{wire}\", rejected.toString()))\n      \
              }}\n"
         );
     }
     let extra = error_header_out_fields(shape, error);
-    let head_ty = kotlin_type_of(&body_element_type(error));
+    let read_by = read_serializer(&body_element_type(error));
     let mut stmt = format!(
         "      val declaredHead = try {{\n        \
-         Json.decodeFromString(serializer<{head_ty}>(), response.body.decodeToString())\n      \
+         Json.decodeFromString({read_by}, response.body.decodeToString())\n      \
          }} catch (rejected: Throwable) {{\n        \
          return {result}.Fault({fn_prefix}HttpUndeserializablePayload(\"{wire}\", rejected.toString()))\n      \
          }}\n"
@@ -974,20 +978,20 @@ fn success_decode_block(
         if is_unit_type(success) {
             return format!("      return {result}.Ok\n");
         }
-        let success_ty = kotlin_type_of(success);
+        let read_by = read_serializer(success);
         return format!(
             "      return try {{\n        \
-             {result}.Ok(Json.decodeFromString(serializer<{success_ty}>(), response.body.decodeToString()))\n      \
+             {result}.Ok(Json.decodeFromString({read_by}, response.body.decodeToString()))\n      \
              }} catch (rejected: Throwable) {{\n        \
              {result}.Fault({fn_prefix}HttpUndeserializablePayload(\"{wire}\", rejected.toString()))\n      \
              }}\n"
         );
     }
     let extra = header_out_fields(shape, success, 1);
-    let success_ty = kotlin_type_of(&body_element_type(success));
+    let read_by = read_serializer(&body_element_type(success));
     let mut stmt = format!(
         "      val value = try {{\n        \
-         Json.decodeFromString(serializer<{success_ty}>(), response.body.decodeToString())\n      \
+         Json.decodeFromString({read_by}, response.body.decodeToString())\n      \
          }} catch (rejected: Throwable) {{\n        \
          return {result}.Fault({fn_prefix}HttpUndeserializablePayload(\"{wire}\", rejected.toString()))\n      \
          }}\n"
@@ -1229,6 +1233,12 @@ fn kotlin_type_of(ty: &Type) -> String {
     kotlin_typename(&get_field_def("value", ty, ""))
 }
 
+/// The `KSerializer` a value typed `ty` is read with: the one of each text of one form and of each
+/// array of one length it holds, composed, so a text or an array of another is refused.
+pub(super) fn read_serializer(ty: &Type) -> String {
+    kotlin_read_serializer(&get_field_def("value", ty, ""))
+}
+
 /// Whether `ty` is a reference to another `#[model_schema()]` item — the one distinction
 /// [`kotlin_wire_text`] needs to decide whether a value must be read through its own JSON codec
 /// before it can be embedded as text.
@@ -1268,8 +1278,9 @@ fn kotlin_wire_text(ty: &Type, expr: &str, promoted: bool) -> String {
 }
 
 /// The expression that reads one `header_out` element's declared type back off `raw`. A number,
-/// boolean or list piece reads through its own `OrNull` conversion and may answer `null`; a
-/// string-shaped element is always non-null.
+/// boolean or list piece reads through its own `OrNull` conversion and may answer `null`, and so
+/// may a declared type and a text of one form, read from `raw` as a JSON string by its own
+/// serializer; any other string-shaped element is always non-null.
 fn kotlin_header_out_decode(ty: &Type, raw: &str) -> String {
     let base = option_inner(ty).unwrap_or(ty);
     if let Some(inner) = vec_inner(base) {
@@ -1297,12 +1308,16 @@ fn kotlin_header_out_decode(ty: &Type, raw: &str) -> String {
         | FieldDefType::F64 => format!("({raw}).to{}OrNull()", kotlin_type_of(base)),
         // The header text read as a JSON string, as the Rust client reads it, through the type's
         // own serializer; one that refuses it is a malformed header.
-        FieldDefType::SiblingType(_, _) => format!(
-            "runCatching {{ Json.decodeFromJsonElement(serializer<{}>(), JsonPrimitive({raw})) }}.getOrNull()",
-            kotlin_type_of(base)
+        FieldDefType::SiblingType(_, _) | FieldDefType::Char => format!(
+            "runCatching {{ Json.decodeFromJsonElement({}, JsonPrimitive({raw})) }}.getOrNull()",
+            read_serializer(base)
+        ),
+        #[cfg(feature = "chrono")]
+        FieldDefType::NaiveDate | FieldDefType::NaiveTime | FieldDefType::NaiveDateTime => format!(
+            "runCatching {{ Json.decodeFromJsonElement({}, JsonPrimitive({raw})) }}.getOrNull()",
+            read_serializer(base)
         ),
         FieldDefType::BooleanLiteral(_)
-        | FieldDefType::Char
         | FieldDefType::Map(_, _)
         | FieldDefType::NumberLiteral(_)
         | FieldDefType::Range(_, _)
@@ -1315,24 +1330,31 @@ fn kotlin_header_out_decode(ty: &Type, raw: &str) -> String {
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => raw.to_owned(),
         #[cfg(feature = "chrono")]
-        FieldDefType::NaiveDate
-        | FieldDefType::NaiveTime
-        | FieldDefType::NaiveDateTime
-        | FieldDefType::DateTime => raw.to_owned(),
+        FieldDefType::DateTime => raw.to_owned(),
     }
 }
 
 /// Whether [`kotlin_header_out_decode`]'s own expression for `ty` can answer `null` (a number, a
-/// `Boolean`, a declared type, or a list of those) — an always-non-null one needs no elvis to fault on, and
-/// writing one anyway is an unconditionally-true elvis kotlinc warns about.
+/// `Boolean`, a declared type, a text of one form, or a list of those) — an always-non-null one
+/// needs no elvis to fault on, and writing one anyway is an unconditionally-true elvis kotlinc
+/// warns about.
 fn kotlin_header_out_decode_is_fallible(ty: &Type) -> bool {
     let base = option_inner(ty).unwrap_or(ty);
     if let Some(inner) = vec_inner(base) {
         return kotlin_header_out_decode_is_fallible(inner);
     }
+    let read = get_field_def("value", base, "");
+    #[cfg(feature = "chrono")]
+    if matches!(
+        read.field_type,
+        FieldDefType::NaiveDate | FieldDefType::NaiveTime | FieldDefType::NaiveDateTime
+    ) {
+        return true;
+    }
     matches!(
-        get_field_def("value", base, "").field_type,
+        read.field_type,
         FieldDefType::Boolean
+            | FieldDefType::Char
             | FieldDefType::U8
             | FieldDefType::U16
             | FieldDefType::U32

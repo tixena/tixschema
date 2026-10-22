@@ -628,9 +628,14 @@ fn an_enum_with_no_default_writes_the_kotlin_text_it_wrote() {
          JsonObject ?: throw SerializationException(\"expected an object, found \" + it) }; val \
          tag = (obj[\"kind\"] as? JsonPrimitive)?.content; return when (tag) { \"Ebbing\" -> \
          input.json.decodeFromJsonElement(serializer<TideEbbing>(), JsonObject(obj - \"kind\")); \
-         \"Slack\" -> TideSlack else -> throw SerializationException(\"unknown tag \" + tag) } } \
-         } object TideSerializer : KSerializer<Tide> { override val descriptor: SerialDescriptor \
-         = TideUnjudged.descriptor; override fun serialize(encoder: Encoder, value: Tide) = \
+         \"Slack\" -> { if (!input.json.configuration.ignoreUnknownKeys) (obj - \
+         \"kind\").keys.firstOrNull()?.let { throw SerializationException(\"Encountered an \
+         unknown key '\" + it + \"'\") }; TideSlack } else -> throw \
+         SerializationException(\"unknown tag \" + tag) } } } object TideSerializer : \
+         KSerializer<Tide>, () -> KSerializer<Tide> { \
+         override fun invoke(): KSerializer<Tide> = TideUnjudged; override val descriptor: \
+         SerialDescriptor = TideUnjudged.descriptor; override fun serialize(encoder: Encoder, \
+         value: Tide) = \
          TideUnjudged.serialize(encoder, value); override fun deserialize(decoder: Decoder): \
          Tide { val read = TideUnjudged.deserialize(decoder); val violations = read.validate(); \
          if (violations.isNotEmpty()) throw SerializationException(violations.joinToString(\"; \

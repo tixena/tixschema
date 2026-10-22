@@ -7,6 +7,7 @@
 
 #![cfg(all(feature = "kotlin", feature = "serde"))]
 
+use alloc::collections::BTreeMap;
 use core::fmt::Write as _;
 
 use serde::de::DeserializeOwned;
@@ -41,7 +42,7 @@ const KOTLIN_IMPORTS: &str = "import kotlinx.serialization.*\n\
      import kotlinx.serialization.builtins.*";
 
 /// What prints a row: the read under the default `Json`, then under one that ignores unknown keys,
-/// each the value written back or the message of what the read throws.
+/// each the value written back or the first line of the message of what the read throws.
 const READ: &str = r#"
 val ignoring = Json { ignoreUnknownKeys = true }
 
@@ -50,7 +51,7 @@ fun <T> unknown(at: String, serializer: KSerializer<T>, payload: String) {
         try {
             "read " + json.encodeToString(serializer, json.decodeFromString(serializer, payload))
         } catch (refusal: SerializationException) {
-            "refused: " + refusal.message
+            "refused: " + (refusal.message ?: "").lines().first()
         }
     }
     println("$at: $told")
@@ -61,8 +62,11 @@ fun <T> unknown(at: String, serializer: KSerializer<T>, payload: String) {
 /// in a struct, in a variant under each tagging and beside a flattened struct, where the struct
 /// and the struct it flattens are under their own tag, and beside a flattened enum; the payloads
 /// serde writes of those, which hold none; a key a flattened map reads, and one handed to a
-/// flattened type whose keys are not known.
-const ROWS: [Row; 21] = [
+/// flattened type whose keys are not known; a key no member reads in a model held one and two
+/// levels inside a flattened struct, in the variant of a flattened enum and as a flattened map's
+/// value; and a key beside the tag of an enum under a tag alone, of each shape of variant, and
+/// beside the tag and the content of one under a tag and a content key.
+const ROWS: [Row; 34] = [
     Row {
         ignoring: "read {\"label\":\"north\"}",
         json: r#"{"label":"north","other":1}"#,
@@ -231,10 +235,129 @@ const ROWS: [Row; 21] = [
         serde: written_back::<Wearing>,
         zod: "read {\"kind\":\"Furled\",\"label\":\"north\",\"spare\":3}",
     },
+    Row {
+        ignoring: BITTERED,
+        json: concat!(
+            r#"{"note":"a","held":{"label":"x","other":1},"label":"n","#,
+            r#""rail":{"ringbolt":{"label":"y"}}}"#
+        ),
+        kotlin: UNKNOWN_AT,
+        named: "Bittering",
+        serde: written_back::<Bittering>,
+        zod: "refused",
+    },
+    Row {
+        ignoring: BITTERED,
+        json: concat!(
+            r#"{"note":"a","held":{"label":"x"},"label":"n","#,
+            r#""rail":{"ringbolt":{"label":"y","other":1}}}"#
+        ),
+        kotlin: UNKNOWN_AT,
+        named: "Bittering",
+        serde: written_back::<Bittering>,
+        zod: "refused",
+    },
+    Row {
+        ignoring: BITTERED,
+        json: r#"{"note":"a","held":{"label":"x"},"label":"n","rail":{"ringbolt":{"label":"y"}}}"#,
+        kotlin: BITTERED,
+        named: "Bittering",
+        serde: written_back::<Bittering>,
+        zod: BITTERED,
+    },
+    Row {
+        ignoring: "read {\"note\":\"a\",\"Fast\":{\"label\":\"n\"}}",
+        json: r#"{"note":"a","Fast":{"label":"n","other":1}}"#,
+        kotlin: UNKNOWN_AT,
+        named: "Snatching",
+        serde: written_back::<Snatching>,
+        zod: "refused",
+    },
+    Row {
+        ignoring: "read {\"north\":{\"label\":\"n\"}}",
+        json: r#"{"north":{"label":"n","other":1}}"#,
+        kotlin: UNKNOWN_AT,
+        named: "Halyarding",
+        serde: written_back::<Halyarding>,
+        zod: "refused",
+    },
+    Row {
+        ignoring: "read {\"kind\":\"Lull\"}",
+        json: r#"{"kind":"Lull","other":1}"#,
+        kotlin: UNKNOWN,
+        named: "Downhaul",
+        serde: written_back::<Downhaul>,
+        zod: "refused",
+    },
+    Row {
+        ignoring: "read {\"kind\":\"Gust\",\"speed\":1}",
+        json: r#"{"kind":"Gust","speed":1,"other":1}"#,
+        kotlin: UNKNOWN_AT,
+        named: "Downhaul",
+        serde: written_back::<Downhaul>,
+        zod: "refused",
+    },
+    Row {
+        ignoring: "read {\"kind\":\"Reefed\",\"note\":\"a\",\"label\":\"n\"}",
+        json: r#"{"kind":"Reefed","label":"n","note":"a","other":1}"#,
+        kotlin: UNKNOWN,
+        named: "Downhaul",
+        serde: written_back::<Downhaul>,
+        zod: "refused",
+    },
+    Row {
+        ignoring: "refused: Field 'value' is required for type with serial name 'Held', but it was \
+                   missing at path: $",
+        json: r#"{"kind":"Held","label":"x","other":1}"#,
+        kotlin: "refused: Encountered an unknown key 'label' at path: $",
+        named: "Downhaul",
+        serde: written_back::<Downhaul>,
+        zod: "refused",
+    },
+    Row {
+        ignoring: "read {\"kind\":\"Lull\"}",
+        json: r#"{"kind":"Lull"}"#,
+        kotlin: "read {\"kind\":\"Lull\"}",
+        named: "Downhaul",
+        serde: written_back::<Downhaul>,
+        zod: "read {\"kind\":\"Lull\"}",
+    },
+    Row {
+        ignoring: "read {\"kind\":\"Lull\"}",
+        json: r#"{"kind":"Lull","other":1}"#,
+        kotlin: UNKNOWN,
+        named: "Downhauling",
+        serde: written_back::<Downhauling>,
+        zod: "refused",
+    },
+    Row {
+        ignoring: "read {\"kind\":\"Gust\",\"load\":{\"speed\":1}}",
+        json: r#"{"kind":"Gust","load":{"speed":1},"other":1}"#,
+        kotlin: UNKNOWN,
+        named: "Downhauling",
+        serde: written_back::<Downhauling>,
+        zod: "refused",
+    },
+    Row {
+        ignoring: "read {\"kind\":\"Gust\",\"load\":{\"speed\":1}}",
+        json: r#"{"kind":"Gust","load":{"speed":1}}"#,
+        kotlin: "read {\"kind\":\"Gust\",\"load\":{\"speed\":1}}",
+        named: "Downhauling",
+        serde: written_back::<Downhauling>,
+        zod: "read {\"kind\":\"Gust\",\"load\":{\"speed\":1}}",
+    },
 ];
+
+/// What a lenient `Json` reads of each payload of [`Bittering`], and the default `Json` of the one
+/// that holds no key no member reads.
+const BITTERED: &str = "read {\"note\":\"a\",\"held\":{\"label\":\"x\"},\"label\":\"n\",\
+     \"rail\":{\"ringbolt\":{\"label\":\"y\"}}}";
 
 /// What the default `Json` throws for the key `other`, in the words of the plugin's serializer.
 const UNKNOWN: &str = "refused: Encountered an unknown key 'other'";
+
+/// What the plugin's serializer throws for the key `other`, with the path it was read at.
+const UNKNOWN_AT: &str = "refused: Encountered an unknown key 'other' at path: $";
 
 /// [`Furling`] under its own tag: a struct the Kotlin emitter writes the serializer of, whose tag
 /// is a key it reads.
@@ -269,6 +392,89 @@ pub struct Trucking {
 pub struct Parcelling {
     #[serde(flatten)]
     pub trucking: Trucking,
+}
+
+/// A model a model holds, which [`Thimbling`] holds bare and one level down.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Ringbolt {
+    pub label: String,
+}
+
+/// A model that holds [`Ringbolt`].
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Pinrail {
+    pub ringbolt: Ringbolt,
+}
+
+/// A struct whose keys the Kotlin emitter knows, holding a model one level and two levels down.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Thimbling {
+    pub held: Ringbolt,
+    pub label: String,
+    pub rail: Pinrail,
+}
+
+/// [`Thimbling`] flattened beside a member of its holder's own.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Bittering {
+    pub note: String,
+    #[serde(flatten)]
+    pub thimbling: Thimbling,
+}
+
+/// An externally tagged enum of one variant.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum Snatch {
+    Fast { label: String },
+}
+
+/// [`Snatch`] flattened beside a member of its holder's own.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Snatching {
+    pub note: String,
+    #[serde(flatten)]
+    pub snatch: Snatch,
+}
+
+/// A map of models flattened, the one member.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Halyarding {
+    #[serde(flatten)]
+    pub lines: BTreeMap<String, Ringbolt>,
+}
+
+/// An enum under a tag alone: a unit variant, one of members, one of a struct and one of a
+/// flattened member.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind")]
+pub enum Downhaul {
+    Gust {
+        speed: u32,
+    },
+    Held(Ringbolt),
+    Lull,
+    Reefed {
+        note: String,
+        #[serde(flatten)]
+        ringbolt: Ringbolt,
+    },
+}
+
+/// An enum under a tag and a content key: a variant of members and a unit variant.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", content = "load")]
+pub enum Downhauling {
+    Gust { speed: u32 },
+    Lull,
 }
 
 /// One payload, the type it is read as, and what each read answers of it.
@@ -325,6 +531,19 @@ fn serde_reads_past_a_key_no_member_reads() {
             "read {\"label\":\"north\",\"note\":\"a\"}",
             "read {\"label\":\"north\"}",
             "read {\"kind\":\"Furled\",\"label\":\"north\"}",
+            BITTERED,
+            BITTERED,
+            BITTERED,
+            "read {\"note\":\"a\",\"Fast\":{\"label\":\"n\"}}",
+            "read {\"north\":{\"label\":\"n\"}}",
+            "read {\"kind\":\"Lull\"}",
+            "read {\"kind\":\"Gust\",\"speed\":1}",
+            "read {\"kind\":\"Reefed\",\"note\":\"a\",\"label\":\"n\"}",
+            "read {\"kind\":\"Held\",\"label\":\"x\"}",
+            "read {\"kind\":\"Lull\"}",
+            "read {\"kind\":\"Lull\"}",
+            "read {\"kind\":\"Gust\",\"load\":{\"speed\":1}}",
+            "read {\"kind\":\"Gust\",\"load\":{\"speed\":1}}",
         ],
         "serde no longer reads each payload as it did"
     );
@@ -371,6 +590,15 @@ fn a_key_no_member_reads_is_refused_in_kotlin_under_the_default_json() {
         ensign_kotlin::kotlin_definition(),
         dressing_kotlin::kotlin_definition(),
         netting_kotlin::kotlin_definition(),
+        ringbolt_kotlin::kotlin_definition(),
+        pinrail_kotlin::kotlin_definition(),
+        thimbling_kotlin::kotlin_definition(),
+        bittering_kotlin::kotlin_definition(),
+        snatch_kotlin::kotlin_definition(),
+        snatching_kotlin::kotlin_definition(),
+        halyarding_kotlin::kotlin_definition(),
+        downhaul_kotlin::kotlin_definition(),
+        downhauling_kotlin::kotlin_definition(),
         main,
     ];
     let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
@@ -428,6 +656,24 @@ fn zod_module() -> String {
         Dressing::zod_schema(),
         Netting::ts_definition(),
         Netting::zod_schema(),
+        Ringbolt::ts_definition(),
+        Ringbolt::zod_schema(),
+        Pinrail::ts_definition(),
+        Pinrail::zod_schema(),
+        Thimbling::ts_definition(),
+        Thimbling::zod_schema(),
+        Bittering::ts_definition(),
+        Bittering::zod_schema(),
+        Snatch::ts_definition(),
+        Snatch::zod_schema(),
+        Snatching::ts_definition(),
+        Snatching::zod_schema(),
+        Halyarding::ts_definition(),
+        Halyarding::zod_schema(),
+        Downhaul::ts_definition(),
+        Downhaul::zod_schema(),
+        Downhauling::ts_definition(),
+        Downhauling::zod_schema(),
     ]
     .join("\n\n");
     module.push_str("\n\nconst told = [];\n");
@@ -496,4 +742,24 @@ fn the_readme_shows_the_refusal_the_run_measures() {
         ),
         "the README no longer declares the struct the row reads"
     );
+}
+
+/// The README's sentences on a model held inside a flattened struct and on an enum under a tag key
+/// show payloads the run measures, refused under the default `Json`.
+#[test]
+fn the_readme_shows_the_nested_and_tagged_refusals_the_run_measures() {
+    let readme = include_str!("../../README.md");
+    for (at, json) in [
+        (22, ROWS[22].json),
+        (32, r#"{"kind":"Gust","load":{"speed":1},"other":1}"#),
+        (31, r#"{"kind":"Lull","other":1}"#),
+        (26, r#"{"kind":"Lull","other":1}"#),
+    ] {
+        assert!(
+            ROWS[at].json == json && ROWS[at].kotlin.starts_with("refused"),
+            "row {at} is not the refusal the README shows"
+        );
+        let shown = format!("`{json}`");
+        assert!(readme.contains(&shown), "not in the README: {shown}");
+    }
 }

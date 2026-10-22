@@ -4,11 +4,11 @@
 //! `validate()` asks with the unjudged one, so the whole value is judged once.
 
 use super::texts::{self, TextForm};
-use super::validate;
+use super::{arrays, validate};
 use super::{
-    kotlin_base, kotlin_serializer_expr, kotlin_serializer_param_name, kotlin_typename,
-    lookup_kotlin_name, range_serializer, range_typename, result_serializer, result_typename,
-    sibling_typename, tuple_wrapper_typename,
+    innermost, kotlin_base, kotlin_serializer_expr, kotlin_serializer_param_name, kotlin_typename,
+    listed_serializer, lookup_kotlin_name, range_serializer, range_typename, result_serializer,
+    result_typename, sibling_typename, tuple_wrapper_typename,
 };
 use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
 
@@ -32,7 +32,8 @@ const WRITTEN: Annotated = Annotated {
 struct Annotated {
     /// Each model `validate()` asks names its unjudged serializer, for the plugin to read it by.
     models: bool,
-    /// Each text of one form names the serializer that refuses a text of any other.
+    /// Each text of one form names the serializer that refuses a text of any other, and each
+    /// array of one length the class that refuses an array of any other.
     texts: bool,
     /// The declaration holds models `validate()` asks, which are read unjudged: a tuple is the
     /// wrapper that reads the model of a position unjudged.
@@ -91,7 +92,18 @@ fn annotated_base(field: &FieldDef, annotated: Annotated) -> String {
         } else {
             wrapped
         };
-        format!("List<{item}>")
+        field
+            .fixed_length_at(level)
+            .filter(|_| annotated.texts)
+            .map_or_else(
+                || format!("List<{item}>"),
+                |length| {
+                    format!(
+                        "@Serializable(with = {}::class) List<{item}>",
+                        arrays::serializer(length)
+                    )
+                },
+            )
     })
 }
 
@@ -201,17 +213,10 @@ fn in_a_position(field: &FieldDef) -> bool {
         && holds_an_unjudged(field)
 }
 
-/// `field` under its list levels and its nullable ones: the value at the innermost level.
-fn innermost(field: &FieldDef) -> FieldDef {
-    let mut bare = field.clone();
-    bare.array_depth = 0;
-    bare.nullable_levels.clear();
-    bare
-}
-
 /// The serializer of `export_name`, the type's own: it reads through the unjudged one and throws
-/// what `validate()` answers of the value read, joined by `; `. `composed` says the unjudged one
-/// is written by the emitter, which binds each type parameter to `Any`.
+/// what `validate()` answers of the value read, joined by `; `. Called, it answers the unjudged
+/// one, which a holder that cannot name it reads by. `composed` says the unjudged one is written
+/// by the emitter, which binds each type parameter to `Any`.
 pub fn judged(
     export_name: &str,
     generic_params: &str,
@@ -241,7 +246,8 @@ pub fn judged(
         )
     };
     format!(
-        "{opens} : KSerializer<{own}> {{ {property}override val descriptor: SerialDescriptor = \
+        "{opens} : KSerializer<{own}>, () -> KSerializer<{own}> {{ {property}override fun \
+         invoke(): KSerializer<{own}> = {unjudged}; override val descriptor: SerialDescriptor = \
          {unjudged}.descriptor; override fun serialize(encoder: Encoder, value: {own}) = \
          {unjudged}.serialize(encoder, value); override fun deserialize(decoder: Decoder): {own} \
          {{ val read = {unjudged}.deserialize(decoder); val violations = read.validate(); if \
@@ -301,6 +307,11 @@ pub fn member_serializer(field: &FieldDef, type_parameters: &[String]) -> String
     held_serializer(field, field, type_parameters)
 }
 
+/// Whether [`member_serializer`] reads the member typed `field` with an unjudged serializer.
+pub fn member_read_unjudged(field: &FieldDef) -> bool {
+    validate::asks_the_held(field) && holds_an_unjudged(field)
+}
+
 /// `<T, U>`, each parameter followed by `bound`.
 fn parameter_list(type_parameters: &[String], bound: &str) -> String {
     let listed = type_parameters
@@ -333,11 +344,12 @@ pub fn position_typename(field: &FieldDef) -> String {
 
 /// How the member typed `field` is declared where the plugin reads it: the annotation that names
 /// an unjudged serializer on the property, and the type, which names one inside a list and a map,
-/// and the serializer of each text of one form where it is written. A model is read unjudged where
-/// `validate()` asks it for what it reports, and nowhere else.
+/// the serializer of each text of one form and the class of each array of one length where it is
+/// written. A model is read unjudged where `validate()` asks it for what it reports, and nowhere
+/// else.
 pub fn plugin_read(field: &FieldDef) -> (String, String) {
     let models = validate::asks_the_held(field) && holds_an_unjudged(field);
-    if !models && !texts::declared(field) {
+    if !models && !texts::declared(field) && !arrays::declared(field) {
         return (String::new(), kotlin_typename(field));
     }
     if models
@@ -437,7 +449,8 @@ pub fn transforming_inline(
 }
 
 /// The Kotlin type of `field` where the plugin reads it, which names the serializer of each text of
-/// one form where it is written: the value of a brand, and the type an alias names.
+/// one form and the class of each array of one length where it is written: the value of a brand,
+/// and the type an alias names.
 pub fn with_text_forms(field: &FieldDef) -> String {
     annotated_typename(
         field,
@@ -496,19 +509,7 @@ fn unjudged_serializer(field: &FieldDef, type_parameters: &[String]) -> String {
     } else {
         kotlin_serializer_expr(&innermost(field), type_parameters)
     };
-    let listed = (0..field.array_depth).fold(scalar, |inner, level| {
-        let item = if field.is_nullable_at(level) {
-            format!("{inner}.nullable")
-        } else {
-            inner
-        };
-        format!("ListSerializer({item})")
-    });
-    if field.is_optional() {
-        format!("{listed}.nullable")
-    } else {
-        listed
-    }
+    listed_serializer(field, scalar)
 }
 
 /// The head of the unjudged serializer the emitter writes for a type: an `object`, or a class

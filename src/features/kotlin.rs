@@ -11,6 +11,7 @@
 //! unjudged one calls each function a `preprocess` names, as `preprocess` writes the call.
 
 mod aliases;
+mod arrays;
 mod preprocess;
 mod read;
 mod texts;
@@ -172,6 +173,25 @@ struct FlattenPlan {
     /// known.
     read: Option<String>,
     serialize_stmts: Vec<String>,
+}
+
+/// What one flattened member adds to the serializer of its holder.
+struct FlattenedMember {
+    deserialize: String,
+    /// Whether the member is read under `lenient`, which reads past a key no member reads.
+    lenient: bool,
+    serialize: String,
+    /// The Kotlin term of the keys it takes, which the members flattened after it are not handed.
+    taken: String,
+}
+
+impl FlattenPlan {
+    /// Adds the statements of a flattened `member`.
+    fn push(&mut self, member: FlattenedMember) {
+        self.needs_lenient |= member.lenient;
+        self.serialize_stmts.push(member.serialize);
+        self.deserialize_stmts.push(member.deserialize);
+    }
 }
 
 /// Everything [`dispatched_tagged_variant`] needs that stays the same across every variant of one
@@ -877,14 +897,24 @@ fn kotlin_serializer_param_name(parameter: &str) -> String {
     )
 }
 
-/// A reference to `field`'s own `KSerializer`. A field reaching none of `type_parameters` and no
-/// text of one form ([`texts::reaches`]) resolves through the reified `serializer<T>()` as before;
-/// one that does composes `ListSerializer`/`MapSerializer`/`.nullable` instead: a parameter is
-/// never reifiable, and the reified serializer reads no annotation that names the serializer of a
-/// form.
+/// A reference to `field`'s own `KSerializer`. A field reaching none of `type_parameters`, no text
+/// of one form ([`texts::reaches`]) and no array of one length ([`arrays::reaches`]) resolves
+/// through the reified `serializer<T>()` as before; one that does composes
+/// `ListSerializer`/`MapSerializer`/`.nullable` instead: a parameter is never reifiable, and the
+/// reified serializer reads no annotation that names the serializer of a form or of a length.
 fn kotlin_serializer_expr(field: &FieldDef, type_parameters: &[String]) -> String {
-    if !field_reaches_type_parameter(field, type_parameters) && !texts::reaches(field) {
+    let composed = |def: &FieldDef| {
+        field_reaches_type_parameter(def, type_parameters)
+            || texts::reaches(def)
+            || arrays::reaches(def)
+    };
+    if !composed(field) {
         return format!("serializer<{}>()", kotlin_typename(field));
+    }
+    let held = innermost(field);
+    if !composed(&held) {
+        // An array of one length over a value the reified serializer reads.
+        return listed_serializer(field, format!("serializer<{}>()", kotlin_typename(&held)));
     }
     let scalar = match &field.field_type {
         FieldDefType::TypeParam(name) => kotlin_serializer_param_name(name),
@@ -924,9 +954,9 @@ fn kotlin_serializer_expr(field: &FieldDef, type_parameters: &[String]) -> Strin
             result_serializer(ok, err, |arm| kotlin_serializer_expr(arm, type_parameters))
         }
         FieldDefType::Char => texts::serializer(TextForm::Char),
-        // None of these ever reaches a type parameter (see `field_reaches_type_parameter`) or a
-        // text of one form, so this arm is unreached in practice; it stays total rather than a
-        // wildcard.
+        // None of these ever reaches a type parameter, a text of one form or an array of one
+        // length at its innermost level (see `composed`), so this arm is unreached in practice; it
+        // stays total rather than a wildcard.
         FieldDefType::Tuple(_)
         | FieldDefType::Unknown
         | FieldDefType::StringLiteral(_)
@@ -945,9 +975,9 @@ fn kotlin_serializer_expr(field: &FieldDef, type_parameters: &[String]) -> Strin
         | FieldDefType::Isize
         | FieldDefType::Usize
         | FieldDefType::F32
-        | FieldDefType::F64 => format!("serializer<{}>()", kotlin_typename(field)),
+        | FieldDefType::F64 => format!("serializer<{}>()", kotlin_typename(&held)),
         #[cfg(feature = "mongodb")]
-        FieldDefType::ObjectId => format!("serializer<{}>()", kotlin_typename(field)),
+        FieldDefType::ObjectId => format!("serializer<{}>()", kotlin_typename(&held)),
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate => texts::serializer(TextForm::Date),
         #[cfg(feature = "chrono")]
@@ -955,21 +985,41 @@ fn kotlin_serializer_expr(field: &FieldDef, type_parameters: &[String]) -> Strin
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveTime => texts::serializer(TextForm::Time),
         #[cfg(feature = "chrono")]
-        FieldDefType::DateTime => format!("serializer<{}>()", kotlin_typename(field)),
+        FieldDefType::DateTime => format!("serializer<{}>()", kotlin_typename(&held)),
     };
-    let wrapped = (0..field.array_depth).fold(scalar, |inner, level| {
+    listed_serializer(field, scalar)
+}
+
+/// `scalar`, the serializer of what `field` holds at its innermost level, under each level of its
+/// list and the `Option` it is written in: a level of one length is read through the class that
+/// refuses an array of any other.
+fn listed_serializer(field: &FieldDef, scalar: String) -> String {
+    let listed = (0..field.array_depth).fold(scalar, |inner, level| {
         let item = if field.is_nullable_at(level) {
             format!("{inner}.nullable")
         } else {
             inner
         };
-        format!("ListSerializer({item})")
+        let class = field
+            .fixed_length_at(level)
+            .map_or_else(|| "ListSerializer".to_owned(), arrays::serializer);
+        format!("{class}({item})")
     });
     if field.is_optional() {
-        format!("{wrapped}.nullable")
+        format!("{listed}.nullable")
     } else {
-        wrapped
+        listed
     }
+}
+
+/// `field` under its list levels, their lengths and its nullable ones: the value at the innermost
+/// level.
+fn innermost(field: &FieldDef) -> FieldDef {
+    let mut bare = field.clone();
+    bare.array_depth = 0;
+    bare.array_lengths.clear();
+    bare.nullable_levels.clear();
+    bare
 }
 
 /// The `KSerializer` for a variant's own subclass, which always carries the enclosing item's full
@@ -1278,6 +1328,26 @@ fn result_serializer(
     }
 }
 
+/// The declarations the types named since the last item was written need, a tuple's wrapper, a
+/// range's class, a `Result`'s interface and the serializer of a text of one form and of an array
+/// of one length among them, each once: the next item numbers its own.
+pub fn kotlin_declarations() -> Vec<String> {
+    KOTLIN_RANGES.with(|ranges| ranges.borrow_mut().clear());
+    KOTLIN_RESULTS.with(|results| results.borrow_mut().clear());
+    KOTLIN_TUPLES.with(|tuples| tuples.borrow_mut().clear());
+    texts::clear();
+    arrays::clear();
+    KOTLIN_TUPLE_AUX.with(RefCell::take)
+}
+
+/// A reference to the `KSerializer` a value typed `field`, held by no type the emitter writes, is
+/// read with: `serializer<T>()` of its Kotlin type, or one composed over the serializer of each
+/// text of one form and the class of each array of one length it holds, which
+/// [`kotlin_declarations`] declares.
+pub fn kotlin_read_serializer(field: &FieldDef) -> String {
+    kotlin_serializer_expr(field, &[])
+}
+
 /// The `{ident}_kotlin` module ident an item's own `kotlin_definition()` publishes from.
 fn kotlin_module_ident(rust_ident: &str, span: proc_macro2::Span) -> Ident {
     Ident::new(&format!("{}_kotlin", to_snake_case(rust_ident)), span)
@@ -1297,12 +1367,7 @@ fn kotlin_module_tokens(
     kotlin_source: &str,
     defaults: &SerdeDefaults,
 ) -> TokenStream {
-    KOTLIN_RANGES.with(|ranges| ranges.borrow_mut().clear());
-    KOTLIN_RESULTS.with(|results| results.borrow_mut().clear());
-    KOTLIN_TUPLES.with(|tuples| tuples.borrow_mut().clear());
-    texts::clear();
-    let full_source = KOTLIN_TUPLE_AUX
-        .with(RefCell::take)
+    let full_source = kotlin_declarations()
         .into_iter()
         .chain(once(kotlin_source.to_owned()))
         .chain(preprocess::serializers())
@@ -1595,21 +1660,24 @@ fn own_field_plan(
 }
 
 /// One flattened *struct* (or `Option<Struct>`) field's own statements: the `serialize` merge, the
-/// `deserialize` read (leniently, off `rest`, the object serde hands the member, as the member's
-/// own `preprocess` then corrects it), and the keys it takes, which the members flattened after it
-/// are handed the object without. An optional field is `null` where its own keys, or the tag and
-/// the content key of an enum under a tag key the emitter wrote, are all absent from `rest`, and,
-/// naming no function and having no key to look for, wherever its read throws: a struct the
-/// emitter wrote that takes no key, and a type it recorded no keys for whose serializer's
-/// descriptor names no element. One that names a function is read from what the function answers,
-/// and where that read throws is `null` where `rest` holds none of its keys, or no key at all
-/// where it has none to look for, and refused where it holds one.
+/// `deserialize` read (off `rest`, the object serde hands the member, as the member's own
+/// `preprocess` then corrects it), and the keys it takes, which the members flattened after it are
+/// handed the object without. A struct whose keys [`read_keys`] knows is read under the caller's
+/// `Json`, from `rest` kept to those keys, so a model it holds at any depth refuses a key no member
+/// reads as it does held under a key; any other member is read leniently. An optional field is
+/// `null` where its own keys, or the tag and the content key of an enum under a tag key the emitter
+/// wrote, are all absent from `rest`, and, naming no function and having no key to look for,
+/// wherever its read throws: a struct the emitter wrote that takes no key, and a type it recorded
+/// no keys for whose serializer's descriptor names no element, which is refused where it reads with
+/// no judgement and breaks a rule. One that names a function is read from what the function
+/// answers, and where that read throws is `null` where `rest` holds none of its keys, or no key at
+/// all where it has none to look for, and refused where it holds one.
 fn flatten_struct_field_plan(
     field: &KotlinField,
     prop: &str,
     type_parameters: &[String],
     rest: &str,
-) -> (String, String, String) {
+) -> FlattenedMember {
     let base = flatten_base_field(&field.field_def);
     let inner_serializer = read::member_serializer(&base, type_parameters);
     let serialize = flattened_merge(field, prop, &inner_serializer);
@@ -1620,7 +1688,17 @@ fn flatten_struct_field_plan(
     )];
     let functions = preprocess::of(&field.field_def);
     let corrected = preprocess::corrected(functions, rest);
-    let decoded = format!("lenient.decodeFromJsonElement({inner_serializer}, {corrected})");
+    let known = read_keys(&base);
+    let decoded = known.as_ref().map_or_else(
+        || format!("lenient.decodeFromJsonElement({inner_serializer}, {corrected})"),
+        |keys| {
+            format!(
+                "input.json.decodeFromJsonElement({inner_serializer}, \
+                 JsonObject({corrected}.filterKeys {{ it in {} }}))",
+                kotlin_set_of(keys)
+            )
+        },
+    );
     // With no key to look for, the type is held wherever it reads, as serde holds it.
     let tried = format!("runCatching {{ {decoded} }}.getOrNull()");
     let looked_for =
@@ -1649,14 +1727,39 @@ fn flatten_struct_field_plan(
             // The enum's serializer is written by hand, so its descriptor names neither key.
             (None, Some(tags)) => looked_for(&kotlin_set_of(&tags)),
             // A serializer written by hand declares no element; the plugin's names the keys.
-            (None, None) => format!(
-                "if ({keys_ident}.isEmpty()) {tried} else {}",
-                looked_for(&keys_ident)
-            ),
+            (None, None) => {
+                let without_keys = if read::member_read_unjudged(&base) {
+                    tried
+                } else {
+                    read_or_judged(&inner_serializer, &corrected)
+                };
+                format!(
+                    "if ({keys_ident}.isEmpty()) {without_keys} else {}",
+                    looked_for(&keys_ident)
+                )
+            }
         }
     };
     statements.push(format!("val {prop} = {read}"));
-    (serialize, statements.join("; "), keys_ident)
+    FlattenedMember {
+        deserialize: statements.join("; "),
+        lenient: known.is_none(),
+        serialize,
+        taken: keys_ident,
+    }
+}
+
+/// The read of `payload` by `serializer`, which judges, `null` where it throws. Where the
+/// serializer answers the one it reads through with no judgement when it is called, as the
+/// serializer of each type the emitter writes does, a payload that reads with none and breaks a
+/// rule is refused with what the judgement throws.
+fn read_or_judged(serializer: &str, payload: &str) -> String {
+    format!(
+        "runCatching {{ lenient.decodeFromJsonElement({serializer}, {payload}) }}.getOrElse {{ \
+         refused -> if (runCatching {{ lenient.decodeFromJsonElement(({serializer} as? \
+         Function0<*>)?.invoke() as? DeserializationStrategy<*> ?: {serializer}, {payload}) \
+         }}.isSuccess) throw refused else null }}"
+    )
 }
 
 /// The `serialize` statement that merges a flattened member's own keys into its holder's object,
@@ -1692,7 +1795,7 @@ fn flatten_enum_field_plan(
     type_parameters: &[String],
     rest: &str,
     (enum_name, names): (&str, &[String]),
-) -> (String, String, String) {
+) -> FlattenedMember {
     let base = flatten_base_field(&field.field_def);
     let inner_serializer = read::member_serializer(&base, type_parameters);
     let serialize = flattened_merge(field, prop, &inner_serializer);
@@ -1706,19 +1809,24 @@ fn flatten_enum_field_plan(
     let (decode, entry_taken) = if field.field_def.is_optional() {
         (
             format!(
-                "val {entry_ident} = {entry_read}; val {prop} = {entry_ident}?.let {{ lenient.decodeFromJsonElement({inner_serializer}, JsonObject(mapOf(it.toPair()))) }}"
+                "val {entry_ident} = {entry_read}; val {prop} = {entry_ident}?.let {{ input.json.decodeFromJsonElement({inner_serializer}, JsonObject(mapOf(it.toPair()))) }}"
             ),
             format!("setOfNotNull({entry_ident}?.key)"),
         )
     } else {
         (
             format!(
-                "val {entry_ident} = {entry_read} ?: throw SerializationException(\"no variant of enum {enum_name} found in flattened data\"); val {prop} = lenient.decodeFromJsonElement({inner_serializer}, JsonObject(mapOf({entry_ident}.toPair())))"
+                "val {entry_ident} = {entry_read} ?: throw SerializationException(\"no variant of enum {enum_name} found in flattened data\"); val {prop} = input.json.decodeFromJsonElement({inner_serializer}, JsonObject(mapOf({entry_ident}.toPair())))"
             ),
             format!("{entry_ident}.key"),
         )
     };
-    (serialize, decode, entry_taken)
+    FlattenedMember {
+        deserialize: decode,
+        lenient: false,
+        serialize,
+        taken: entry_taken,
+    }
 }
 
 /// One flattened map field's own statements: the `serialize` merge and the `deserialize` read,
@@ -1826,7 +1934,6 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
             plan.deserialize_stmts.push(decode);
             members_read = None;
         } else {
-            plan.needs_lenient = true;
             let rest = if taken.is_empty() {
                 "obj".to_owned()
             } else {
@@ -1834,22 +1941,19 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
             };
             if let Some((enum_name, names)) = flattened_variant_names(&field.field_def) {
                 let read_under = (enum_name, names.as_slice());
-                let (serialize, decode, entry_taken) =
+                let member =
                     flatten_enum_field_plan(field, &prop, type_parameters, &rest, read_under);
-                plan.serialize_stmts.push(serialize);
-                plan.deserialize_stmts.push(decode);
-                let _ = write!(taken, " - {entry_taken}");
+                let _ = write!(taken, " - {}", member.taken);
                 if let Some(so_far) = &mut members_read {
-                    let _ = write!(so_far, " - {entry_taken}");
+                    let _ = write!(so_far, " - {}", member.taken);
                 }
+                plan.push(member);
             } else {
-                let (serialize, decode, keys_ident) =
-                    flatten_struct_field_plan(field, &prop, type_parameters, &rest);
-                plan.serialize_stmts.push(serialize);
-                plan.deserialize_stmts.push(decode);
+                let member = flatten_struct_field_plan(field, &prop, type_parameters, &rest);
                 if !preprocess::takes_no_key(&field.field_def) {
-                    let _ = write!(taken, " - {keys_ident}");
+                    let _ = write!(taken, " - {}", member.taken);
                 }
+                plan.push(member);
                 members_read =
                     members_read
                         .zip(read_keys(&field.field_def))
@@ -2579,12 +2683,21 @@ fn members_renamed(payload: &VariantPayload) -> Vec<(String, String)> {
 
 /// The read of a unit variant: from an entry over `null` alone with no tag attribute, as serde
 /// reads it, from an object with no content key under a tag and a content key, as Zod reads it,
-/// and from its tag under a tag alone.
-fn unit_variant_read(tagging: Tagging<'_>, subclass_name: &str, export_name: &str) -> String {
+/// and from an object of its tag `tag_key` alone under a tag alone, as Zod reads it, refusing any
+/// other key under a `Json` that does not ignore unknown keys.
+fn unit_variant_read(
+    tagging: Tagging<'_>,
+    subclass_name: &str,
+    export_name: &str,
+    tag_key: &str,
+) -> String {
     let empty = match tagging {
         Tagging::Adjacent(_) => "data == null",
         Tagging::External => "data is JsonNull",
-        Tagging::Unwrapped => return subclass_name.to_owned(),
+        Tagging::Unwrapped => {
+            let left = format!("(obj - \"{}\").keys", kotlin_template_text(tag_key));
+            return format!("{{ {}; {subclass_name} }}", unknown_key_refused(&left));
+        }
     };
     format!(
         "if ({empty}) {subclass_name} else throw SerializationException(\"{export_name}: \" + tag \
@@ -2646,7 +2759,7 @@ fn dispatched_tagged_variant(
     let (content_expr, decode_expr) = match (&payload, &declared) {
         (VariantPayload::Unit, _) => (
             None,
-            unit_variant_read(ctx.tagging, &subclass_name, ctx.export_name),
+            unit_variant_read(ctx.tagging, &subclass_name, ctx.export_name, ctx.tag_key),
         ),
         (VariantPayload::Value(field_def), Some(held)) if !beside_the_tag => {
             let read_by = read::declared_serializer(field_def, held, ctx.type_parameters);
@@ -2759,12 +2872,17 @@ fn dispatched_tagged_enum_kotlin_source(
     let unknown = "throw SerializationException(\"unknown tag \" + tag)";
     let deserialize_body = match tagging {
         Tagging::Adjacent(content) => format!(
-            "val obj = {obj}; val tag = {}.content; val data = obj[\"{content}\"]; \
+            "val obj = {obj}; val tag = {}.content; val data = obj[\"{content}\"]; {}; \
              return when (tag) {{ {arms} else -> {unknown} }}",
             payload_read_as(
                 &present(&format!("obj[\"{tag_key}\"]"), tag_key),
                 JsonKind::Text
-            )
+            ),
+            unknown_key_refused(&format!(
+                "(obj - \"{}\" - \"{}\").keys",
+                kotlin_template_text(tag_key),
+                kotlin_template_text(content)
+            ))
         ),
         Tagging::External => format!(
             "val element = {whole}; \

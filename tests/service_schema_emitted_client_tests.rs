@@ -419,6 +419,12 @@ mod corrected_options_models;
 #[path = "service_schema_emitted_client_tests/run_kotlin_flattened.rs"]
 mod run_kotlin_flattened;
 
+/// A fixed array held in each place a read reads it, and what serde reads of a payload of each.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "kotlin_tests/fixed_arrays_models.rs"]
+mod fixed_arrays_models;
+
 /// A payload serde or Zod refuses, refused by a serializer the Kotlin emitter writes with
 /// `SerializationException`.
 #[cfg(test)]
@@ -436,6 +442,12 @@ mod text_forms_models;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin_text_forms.rs"]
 mod run_kotlin_text_forms;
+
+/// A bare date reply and a `char` header, read in their one form by the emitted Kotlin clients and
+/// dispatcher.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_service_forms.rs"]
+mod run_kotlin_service_forms;
 
 /// The models a name serde reads beside the one it writes is read under.
 #[cfg(test)]

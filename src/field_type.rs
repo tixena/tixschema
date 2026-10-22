@@ -558,6 +558,7 @@ impl FieldDef {
         feature = "jsonschema",
         feature = "zod",
         feature = "dart",
+        feature = "kotlin",
         feature = "swift"
     ))]
     pub fn fixed_length_at(&self, level: u8) -> Option<usize> {

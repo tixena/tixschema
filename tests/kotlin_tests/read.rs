@@ -7,6 +7,11 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
+use super::fixed_arrays_models::{
+    bitter_kotlin, bunt_kotlin, buntline_kotlin, cringling_kotlin, fishing_kotlin, reefband_kotlin,
+    sheaving_kotlin, shroud_kotlin, shrouding_kotlin,
+};
+
 /// What a type with no rule answers.
 const NO_RULE: &str = "fun validate(): List<String> = emptyList()";
 
@@ -85,7 +90,8 @@ fn generated(named: &str) -> String {
 /// The serializer of `named`, a type with no parameter: its unjudged read, then `validate()`.
 pub fn judged(named: &str) -> String {
     format!(
-        "object {named}Serializer : KSerializer<{named}> {{ override val descriptor: \
+        "object {named}Serializer : KSerializer<{named}>, () -> KSerializer<{named}> {{ override \
+         fun invoke(): KSerializer<{named}> = {named}Unjudged; override val descriptor: \
          SerialDescriptor = {named}Unjudged.descriptor; override fun serialize(encoder: Encoder, \
          value: {named}) = {named}Unjudged.serialize(encoder, value); override fun \
          deserialize(decoder: Decoder): {named} {{ val read = \
@@ -99,10 +105,12 @@ pub fn judged(named: &str) -> String {
 pub fn judged_over(named: &str, parameter: &str, bound: &str, handed: &str) -> String {
     format!(
         "class {named}Serializer<{parameter}{bound}>({handed}: KSerializer<{parameter}>) : \
-         KSerializer<{named}<{parameter}>> {{ private val kotlinSchemaUnjudged = \
-         {named}Unjudged({handed}); override val descriptor: SerialDescriptor = \
-         kotlinSchemaUnjudged.descriptor; override fun serialize(encoder: Encoder, value: \
-         {named}<{parameter}>) = kotlinSchemaUnjudged.serialize(encoder, value); override fun \
+         KSerializer<{named}<{parameter}>>, () -> KSerializer<{named}<{parameter}>> {{ private \
+         val kotlinSchemaUnjudged = {named}Unjudged({handed}); override fun invoke(): \
+         KSerializer<{named}<{parameter}>> = kotlinSchemaUnjudged; override val descriptor: \
+         SerialDescriptor = kotlinSchemaUnjudged.descriptor; override fun serialize(encoder: \
+         Encoder, value: {named}<{parameter}>) = kotlinSchemaUnjudged.serialize(encoder, value); \
+         override fun \
          deserialize(decoder: Decoder): {named}<{parameter}> {{ val read = \
          kotlinSchemaUnjudged.deserialize(decoder); val violations = read.validate(); if \
          (violations.isNotEmpty()) throw SerializationException(violations.joinToString(\"; \")); \
@@ -281,4 +289,126 @@ fn an_enum_reads_what_a_variant_holds_unjudged_and_judges_the_variant() {
         assert!(load.contains(&held), "no `{held}` in: {load}");
     }
     assert!(load.ends_with(&judged("Load")), "got: {load}");
+}
+
+/// The class `kotlin` declares that reads a list of `length` items, and refuses one of any other.
+fn array_class(kotlin: &str, length: usize) -> String {
+    let declared = |named: &str| {
+        format!(
+            "class {named}<Item>(item: KSerializer<Item>) : KSerializer<List<Item>> {{ private \
+             val listed = ListSerializer(item); override val descriptor: SerialDescriptor = \
+             listed.descriptor; override fun serialize(encoder: Encoder, value: List<Item>) = \
+             listed.serialize(encoder, value); override fun deserialize(decoder: Decoder): \
+             List<Item> {{ val read = listed.deserialize(decoder); if (read.size != {length}) \
+             throw SerializationException(\"invalid length \" + read.size + \", expected \
+             {length}\"); return read }} }}"
+        )
+    };
+    let named = kotlin
+        .match_indices("class KotlinArray")
+        .map(|(at, _)| {
+            let digits: String = kotlin[at + "class KotlinArray".len()..]
+                .chars()
+                .take_while(char::is_ascii_digit)
+                .collect();
+            format!("KotlinArray{digits}")
+        })
+        .find(|named| kotlin.contains(&declared(named)));
+    assert!(named.is_some(), "no class of {length} items in {kotlin}");
+    named.unwrap()
+}
+
+/// A level written `[T; N]` is read through a class the item declares, which refuses an array of
+/// another length, wherever a read reads it: named where the plugin reads it, on the property, in
+/// the type an alias names and inside a map's value and a type argument, and composed where the
+/// emitter writes the read, beside a flattened member, in a tuple's position and in a variant's
+/// slot. A list of any length is read as it was.
+#[test]
+fn a_fixed_array_is_read_through_the_class_of_its_length() {
+    let bunt = bunt_kotlin::kotlin_definition();
+    assert!(
+        bunt.contains("data class Bunt(val held: List<UByte>, val label: String)")
+            && !bunt.contains("KotlinArray"),
+        "got: {bunt}"
+    );
+    let composed = |kotlin: &str| format!("{}(serializer<UByte>())", array_class(kotlin, 2));
+    let annotated =
+        |kotlin: &str| format!("@Serializable(with = {}::class)", array_class(kotlin, 2));
+    let reefband = reefband_kotlin::kotlin_definition();
+    let buntline = buntline_kotlin::kotlin_definition();
+    let shroud = shroud_kotlin::kotlin_definition();
+    let shrouding = shrouding_kotlin::kotlin_definition();
+    let fishing = fishing_kotlin::kotlin_definition();
+    let sheaving = sheaving_kotlin::kotlin_definition();
+    let cringling = cringling_kotlin::kotlin_definition();
+    let bitter = bitter_kotlin::kotlin_definition();
+    for (kotlin, held) in [
+        (
+            &bitter,
+            format!(
+                "typealias BitterType = {} List<UByte>; typealias Bitter = BitterType;",
+                annotated(&bitter)
+            ),
+        ),
+        (
+            &reefband,
+            "data class Reefband(val bunt: Bunt, val pair: List<UByte>) {".to_owned(),
+        ),
+        (
+            &reefband,
+            format!(
+                "val pair = input.json.decodeFromJsonElement({}, (obj[\"pair\"] ?: throw \
+                 SerializationException(\"missing field `pair`\")));",
+                composed(&reefband)
+            ),
+        ),
+        (
+            &buntline,
+            format!(
+                "input.json.decodeFromJsonElement({}, array[1])",
+                composed(&buntline)
+            ),
+        ),
+        (
+            &shroud,
+            format!(
+                "data class ShroudPaired(val value: {} List<UByte>) : Shroud",
+                annotated(&shroud)
+            ),
+        ),
+        (
+            &shroud,
+            format!(
+                "\"Paired\" -> ShroudPaired(input.json.decodeFromJsonElement({}, data));",
+                composed(&shroud)
+            ),
+        ),
+        (
+            &shrouding,
+            format!(
+                "data class Shrouding(val byDock: Map<String, {} List<UByte>>)",
+                annotated(&shrouding)
+            ),
+        ),
+        (
+            &fishing,
+            format!(
+                "data class Fishing(val maybe: {} List<UByte>? = null)",
+                annotated(&fishing)
+            ),
+        ),
+        (
+            &sheaving,
+            format!("val catted: Catting<{} List<UByte>>", annotated(&sheaving)),
+        ),
+        (
+            &cringling,
+            format!(
+                "data class Cringling<T>(val pair: @Serializable(with = {}::class) List<T>)",
+                array_class(&cringling, 2)
+            ),
+        ),
+    ] {
+        assert!(kotlin.contains(&held), "no `{held}` in: {kotlin}");
+    }
 }

@@ -7,6 +7,7 @@
 //! wherever its type reads from the object it is handed, and as `None` wherever it does not.
 //! TypeScript and Zod read each holder of [`UNRECORDED`] where serde reads it, and refuse a payload
 //! that holds a key of that type where the type does not read, where serde reads `None`.
+//! [`Grommeting`] holds a struct declared below it that breaks a rule, which serde refuses.
 //! `kotlin_tests/tests.rs` pins the Kotlin text,
 //! `service_schema_emitted_client_tests/run_kotlin_flattened.rs` runs it against serde, and
 //! `generic_types_tests/declarations.rs` holds TypeScript and Zod to [`UNRECORDED`].
@@ -142,6 +143,24 @@ pub const CLAPPING_READ_BACK: [&str; 4] = [
     r#"{"note":"a"}"#,
 ];
 
+/// What [`Grommeting`] is read from: the struct held with its rule broken, held with its rule kept,
+/// no key of it, and a key of it that does not read.
+pub const GROMMETING: [&str; 4] = [
+    r#"{"label":"north","note":"n"}"#,
+    r#"{"label":"north","note":"nn"}"#,
+    "{}",
+    r#"{"label":5,"note":"nn"}"#,
+];
+
+/// What serde answers of each of [`GROMMETING`], read as [`Grommeting`]: the rule's message where
+/// the struct reads and breaks it, and what it writes back of every other.
+pub const GROMMETING_READ_BACK: [&str; 4] = [
+    "'note': too short: minimum length is 2, got 1",
+    r#"{"label":"north","note":"nn"}"#,
+    "{}",
+    "{}",
+];
+
 /// A payload of a holder below, what serde writes back of it, and whether TypeScript and Zod take
 /// it as the holder's type.
 pub struct Unrecorded {
@@ -243,6 +262,31 @@ pub struct Clapping {
     pub note: String,
 }
 
+/// The struct [`Gromet`] flattens.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Earing {
+    pub label: String,
+}
+
+/// [`Gromet`] optional, the one member, declared above it.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Grommeting {
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    pub gromet: Option<Gromet>,
+}
+
+/// A struct with a rule and a flattened member of its own, declared below its holder.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Gromet {
+    #[serde(flatten)]
+    pub earing: Earing,
+    #[model_schema_prop(minLength = 2)]
+    pub note: String,
+}
+
 /// The payload as it was handed.
 const fn as_given(payload: Value) -> Value {
     payload
@@ -276,6 +320,22 @@ fn serde_drops_a_key_of_the_type_held_from_exactly_the_payloads_zod_refuses() {
             row.holder
         );
     }
+}
+
+/// serde refuses a payload whose [`Gromet`] reads and breaks its rule, reads one that keeps it,
+/// and reads `None` where no key of it is there and where a key of it does not read.
+#[test]
+fn serde_refuses_a_flattened_option_that_reads_and_breaks_its_rule() {
+    let told = GROMMETING.map(|json| {
+        serde_json::from_str::<Grommeting>(json).map_or_else(
+            |refused| refused.to_string(),
+            |read| serde_json::to_string(&read).unwrap(),
+        )
+    });
+    assert_eq!(
+        told, GROMMETING_READ_BACK,
+        "serde no longer reads each payload as it did"
+    );
 }
 
 /// serde reads [`Clapping`] from what [`Clapped`]'s function answers wherever it reads, and as

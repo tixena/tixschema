@@ -493,9 +493,9 @@ fn the_serializer_the_emitter_writes_for_each_struct_shape_is_its_unjudged_one()
         (
             audit_kotlin::kotlin_definition(),
             "object AuditUnjudged : KSerializer<Audit> { override val descriptor: \
-             SerialDescriptor = buildClassSerialDescriptor(\"Audit\"); private val lenient = Json \
-             { ignoreUnknownKeys = true }; override fun serialize(encoder: Encoder, value: Audit) \
-             { val output = encoder as JsonEncoder; output.encodeJsonElement(buildJsonObject { \
+             SerialDescriptor = buildClassSerialDescriptor(\"Audit\"); override fun \
+             serialize(encoder: Encoder, value: Audit) { val output = encoder as JsonEncoder; \
+             output.encodeJsonElement(buildJsonObject { \
              put(\"id\", output.json.encodeToJsonElement(serializer<String>(), value.id)); \
              output.json.encodeToJsonElement(StampUnjudged, value.stamp).jsonObject.forEach { (k, \
              v) -> put(k, v) } }) }; override fun deserialize(decoder: Decoder): Audit { val \
@@ -504,7 +504,8 @@ fn the_serializer_the_emitter_writes_for_each_struct_shape_is_its_unjudged_one()
              val id = input.json.decodeFromJsonElement(serializer<String>(), (obj[\"id\"] ?: \
              throw SerializationException(\"missing field `id`\"))); \
              val stampKeys = setOf(\"created_at\", \"updated_at\"); val stamp = \
-             lenient.decodeFromJsonElement(StampUnjudged, JsonObject(obj - setOf(\"id\"))); \
+             input.json.decodeFromJsonElement(StampUnjudged, JsonObject(JsonObject(obj - \
+             setOf(\"id\")).filterKeys { it in setOf(\"created_at\", \"updated_at\") })); \
              if (!input.json.configuration.ignoreUnknownKeys) (obj - setOf(\"id\") - \
              setOf(\"created_at\", \"updated_at\")).keys.firstOrNull()?.let { throw \
              SerializationException(\"Encountered an unknown key '\" + it + \"'\") }; return \
@@ -579,7 +580,10 @@ fn the_serializer_the_emitter_writes_for_each_enum_shape_is_its_unjudged_one() {
              SerializationException(\"expected an object, found \" + it) }; val tag = \
              (obj[\"type\"] ?: throw SerializationException(\"missing field `type`\")).let { it \
              as? JsonPrimitive ?: throw SerializationException(\"expected a string, found \" + \
-             it) }.content; val data = obj[\"value\"]; return when (tag) { \"Flag\" -> \
+             it) }.content; val data = obj[\"value\"]; if \
+             (!input.json.configuration.ignoreUnknownKeys) (obj - \"type\" - \
+             \"value\").keys.firstOrNull()?.let { throw SerializationException(\"Encountered an \
+             unknown key '\" + it + \"'\") }; return when (tag) { \"Flag\" -> \
              DynamicValueFlag(input.json.decodeFromJsonElement(serializer<Boolean>(), (data ?: \
              throw SerializationException(\"missing field `value`\")))); \"Nothing\" -> if \
              (data == null) DynamicValueNothing else throw \

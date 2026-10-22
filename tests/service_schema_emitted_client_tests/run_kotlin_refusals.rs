@@ -10,9 +10,18 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
+use super::fixed_arrays_models::{
+    FIXED, becketing_kotlin, bitter_kotlin, bunt_kotlin, buntline_kotlin, catting_kotlin,
+    cringling_kotlin, earring_kotlin, fishing_kotlin, garland_kotlin, reefband_kotlin,
+    sheaving_kotlin, shroud_kotlin, shrouding_kotlin,
+};
 use super::flattened_models::{
     Bowlining, Stowing, Swaying, Tacking, Whelping, bowlining_kotlin, bunting_kotlin,
     stowing_kotlin, swaying_kotlin, tacking_kotlin, whelping_kotlin,
+};
+#[cfg(feature = "dart")]
+use super::run_dart_refusals::{
+    Clasping, Clenching, Grasping, clasping_kotlin, clenching_kotlin, grasping_kotlin,
 };
 use super::runtime::ran_kotlin;
 use super::tuple_variants_models::{Palleting, labelling_kotlin, palleting_kotlin};
@@ -163,6 +172,54 @@ const ROWS: [Row; 18] = [
         serde: serde_told::<Swaying>,
         thrown: "No variant of Swaying matched",
     },
+];
+
+/// What prints a fixed array's row: the payload read by the type's own serializer, then by its
+/// unjudged one, each written back as serde writes it, or the full name of the class of what the
+/// read throws and its message.
+const FIXED_TOLD: &str = r#"
+fun <T> fixed(at: String, judged: KSerializer<T>, unjudged: KSerializer<T>, payload: String) {
+    val told = listOf(judged, unjudged).joinToString(" | ") { serializer ->
+        try {
+            Json.encodeToString(serializer, Json.decodeFromString(serializer, payload))
+        } catch (refusal: Exception) {
+            "${refusal::class.qualifiedName}: ${refusal.message}"
+        }
+    }
+    println("$at: $told")
+}
+"#;
+
+/// [`Clenching`] and [`Clasping`], a fixed array at one level and at two, read from an array of
+/// another length at each level and of the length written, and [`Grasping`], a list, read at any
+/// length: each payload and what the Kotlin read throws, or `None` where it reads it.
+#[cfg(feature = "dart")]
+const CLENCHED: [(&str, &str, Option<&str>); 9] = [
+    (
+        "Clenching",
+        r#"{"pair":[1,2,3]}"#,
+        Some("invalid length 3, expected 2"),
+    ),
+    (
+        "Clenching",
+        r#"{"pair":[1]}"#,
+        Some("invalid length 1, expected 2"),
+    ),
+    (
+        "Clasping",
+        r#"{"grid":[[1,2],[3,4,5],[6,7]]}"#,
+        Some("invalid length 3, expected 2"),
+    ),
+    (
+        "Clasping",
+        r#"{"grid":[[1,2],[3,4]]}"#,
+        Some("invalid length 2, expected 3"),
+    ),
+    ("Clenching", r#"{"pair":[1,2]}"#, None),
+    ("Clasping", r#"{"grid":[[1,2],[3,4],[5,6]]}"#, None),
+    ("Grasping", r#"{"held":[1,2,3]}"#, None),
+    ("Grasping", r#"{"held":[]}"#, None),
+    ("Grasping", r#"{"held":[1]}"#, None),
 ];
 
 /// [`Becalming`]'s unit variant with no content, with `null` for one and with a value for one:
@@ -319,6 +376,134 @@ fn a_unit_variant_under_a_content_key_is_read_where_the_object_holds_no_content(
     assert_eq!(printed, expected, "the Kotlin read is not the answer above");
 }
 
+/// The Kotlin rows of the fixed arrays `rows` names, read by the type's own serializer and by its
+/// unjudged one, each held to `thrown` where the read refuses the payload and to what serde writes
+/// back of it where it reads it, and the source that prints them.
+fn fixed_rows<'rows>(
+    rows: impl Iterator<Item = (&'rows str, &'rows str, Option<&'rows str>, String)>,
+) -> (String, String) {
+    let mut expected = String::new();
+    let mut main = String::from(FIXED_TOLD);
+    main.push_str("fun main() {\n");
+    for (at, (read_as, json, thrown, serde)) in rows.enumerate() {
+        let told = thrown.map_or_else(
+            || serde.clone(),
+            |message| format!("kotlinx.serialization.SerializationException: {message}"),
+        );
+        let _ = writeln!(expected, "{at}: {told} | {told}");
+        let _ = writeln!(
+            main,
+            "    fixed(\"{at}\", {read_as}.serializer(), {read_as}Unjudged, \"\"\"{json}\"\"\")"
+        );
+    }
+    main.push_str("}\n");
+    (expected, main)
+}
+
+/// A fixed array of another length is refused, beside a flattened member, as an item of a list,
+/// named by an alias, in a tuple's position, in a variant's slot, as a map's value, under an
+/// `Option`, filling a type parameter and of a type parameter's filling, with the
+/// `SerializationException` the read of a tuple throws for an array of another length, by the
+/// type's own serializer and by its unjudged one, as serde refuses it. One of the length written
+/// is read and written back as serde writes it, and a list is read at any length.
+#[test]
+fn a_fixed_array_of_another_length_is_refused_wherever_it_is_held() {
+    for row in &FIXED {
+        let serde = (row.serde)(row.json);
+        assert_eq!(
+            serde == "refused",
+            row.thrown.is_some(),
+            "serde and the Kotlin read part on `{}` as {}",
+            row.json,
+            row.read_as
+        );
+    }
+    let (expected, main) = fixed_rows(
+        FIXED
+            .iter()
+            .map(|row| (row.read_as, row.json, row.thrown, (row.serde)(row.json))),
+    );
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        bunt_kotlin::kotlin_definition(),
+        reefband_kotlin::kotlin_definition(),
+        earring_kotlin::kotlin_definition(),
+        bitter_kotlin::kotlin_definition(),
+        becketing_kotlin::kotlin_definition(),
+        buntline_kotlin::kotlin_definition(),
+        shroud_kotlin::kotlin_definition(),
+        shrouding_kotlin::kotlin_definition(),
+        fishing_kotlin::kotlin_definition(),
+        catting_kotlin::kotlin_definition(),
+        sheaving_kotlin::kotlin_definition(),
+        cringling_kotlin::kotlin_definition(),
+        garland_kotlin::kotlin_definition(),
+        main,
+    ];
+    let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
+        return;
+    };
+    assert_eq!(printed, expected, "the Kotlin read is not the read above");
+}
+
+/// What serde writes back of `json` read as `T`, or its refusal.
+#[cfg(feature = "dart")]
+fn serde_written<T>(json: &str) -> String
+where
+    T: DeserializeOwned + Serialize,
+{
+    serde_json::from_str::<T>(json).map_or_else(
+        |refusal| refusal.to_string(),
+        |read| serde_json::to_string(&read).unwrap(),
+    )
+}
+
+/// The fixed arrays of the Dart run, [`Clenching`] and [`Clasping`], are refused at each level
+/// where the array is of another length, as serde refuses them, and read where it is of the length
+/// written, as [`Grasping`]'s list is read at any length, each written back as serde writes it.
+#[cfg(feature = "dart")]
+#[test]
+fn a_fixed_array_is_read_from_an_array_of_its_length_alone_at_each_level() {
+    let told = |&(read_as, json, _): &(&str, &str, Option<&str>)| match read_as {
+        "Clenching" => serde_written::<Clenching>(json),
+        "Clasping" => serde_written::<Clasping>(json),
+        _ => serde_written::<Grasping>(json),
+    };
+    let serde_told: Vec<String> = CLENCHED.iter().map(told).collect();
+    assert_eq!(
+        serde_told,
+        [
+            "trailing characters at line 1 column 14",
+            "invalid length 1, expected an array of length 2 at line 1 column 11",
+            "trailing characters at line 1 column 21",
+            "invalid length 2, expected an array of length 3 at line 1 column 21",
+            r#"{"pair":[1,2]}"#,
+            r#"{"grid":[[1,2],[3,4],[5,6]]}"#,
+            r#"{"held":[1,2,3]}"#,
+            r#"{"held":[]}"#,
+            r#"{"held":[1]}"#,
+        ],
+        "serde no longer answers each payload as it did"
+    );
+    let (expected, main) = fixed_rows(
+        CLENCHED
+            .iter()
+            .zip(serde_told)
+            .map(|(&(read_as, json, thrown), serde)| (read_as, json, thrown, serde)),
+    );
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        clenching_kotlin::kotlin_definition(),
+        clasping_kotlin::kotlin_definition(),
+        grasping_kotlin::kotlin_definition(),
+        main,
+    ];
+    let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
+        return;
+    };
+    assert_eq!(printed, expected, "the Kotlin read is not the read above");
+}
+
 /// The README's sentences on the refusals of the Kotlin read show payloads and messages the runs
 /// above measure.
 #[test]
@@ -346,5 +531,28 @@ fn the_readme_shows_refusals_the_run_measures() {
             kotlin == "read" || readme.contains(&format!("`{refusal}`")),
             "not in the README: {refusal}"
         );
+    }
+}
+
+/// The README's sentence on a fixed array declares the struct the run reads, and shows payloads
+/// and messages the run measures.
+#[cfg(feature = "dart")]
+#[test]
+fn the_readme_shows_the_fixed_array_refusals_the_run_measures() {
+    let readme = include_str!("../../README.md");
+    assert!(
+        readme
+            .contains("with `struct Clenching { pair: [u8; 2] }`, `{\"pair\":[1,2,3]}` is refused"),
+        "the README no longer declares the struct the run reads"
+    );
+    for &(read_as, json, thrown) in &CLENCHED[..2] {
+        let message = thrown.unwrap();
+        let shown = if json.ends_with("3]}") {
+            format!("`{json}` is refused with `SerializationException: {message}`")
+        } else {
+            format!("`{json}` with `{message}`")
+        };
+        assert_eq!(read_as, "Clenching", "the README shows a row of Clenching");
+        assert!(readme.contains(&shown), "not in the README: {shown}");
     }
 }

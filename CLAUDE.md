@@ -185,9 +185,11 @@ one whose rendering depends on where the field sits.
 
 `array_lengths` numbers levels the same way: `[[T; 2]; 3]` records `(0, 2)` and `(1, 3)`. The
 validating surfaces spend it — `minItems`/`maxItems` in the JSON schema, `.length(N)` in Zod — and
-so do the Dart and the Swift reads, which refuse an array of another length (`dart_decode_at`,
-`read::counted`), while TypeScript stays `Array<T>`. A length the expansion cannot read (const
-generic, `const` item, computed expression) records nothing and describes as an unbounded array.
+so do the Dart, the Swift and the Kotlin reads, which refuse an array of another length
+(`dart_decode_at`, `read::counted`, and in Kotlin a class of its length,
+`src/features/kotlin/arrays.rs`), while TypeScript stays `Array<T>`. A length the expansion cannot
+read (const generic, `const` item, computed expression) records nothing and describes as an
+unbounded array.
 
 **FieldDefType** (type categories):
 - Primitives: `Boolean`, `String`, `U8-U64`, `I8-I64`, `F32`, `F64`, `Usize`, `Isize`
@@ -941,8 +943,10 @@ the consumer's view; this is what a change has to keep.
 - **A type has two serializers, a plain enum apart.** `{Type}Unjudged` reads and writes the type
   and judges nothing. `{Type}Serializer` (`judged`) is the type's own, named by
   `@Serializable(with = ...)`: it reads through the first and throws
-  `SerializationException(validate().joinToString("; "))`. A type with parameters writes both as
-  classes over one serializer per parameter.
+  `SerializationException(validate().joinToString("; "))`. It is also a `() ->
+  KSerializer<{Type}>`, and called it answers the first, which a holder that cannot name it reads
+  by (`read_or_judged`, below). A type with parameters writes both as classes over one serializer
+  per parameter.
 - **The plugin's serializer is kept where the plugin takes the annotation.** A class, a unit
   struct's `object` and a brand's value class carry `@KeepGeneratedSerializer` (`kept`,
   `kept_inline`), and their `{Type}Unjudged` delegates to `generatedSerializer()` (`generated`).
@@ -981,14 +985,20 @@ the consumer's view; this is what a change has to keep.
   payload no variant of an untagged enum reads `No variant of {Enum} matched`. The `.jsonObject` of
   a write is the write's. `run_kotlin_refusals.rs` reads each refusal under the toolchain, beside
   serde's refusal of the same payload. The refusal of a text of another form is worded in
-  `src/features/kotlin/texts.rs` (below).
+  `src/features/kotlin/texts.rs`, and that of a fixed array of another length in
+  `src/features/kotlin/arrays.rs` (below).
 - **The serializer `flatten_merging_serializer` writes refuses a key no member reads**, as the
   plugin's refuses it under the default `Json` and as TypeScript and Zod refuse it, where serde
   reads past it: after the members are read, `unknown_key_refused` throws `Encountered an unknown
   key '{key}'` for the first key of the object no member read, under a `Json` whose
   `configuration.ignoreUnknownKeys` is `false`, so a caller's `Json { ignoreUnknownKeys = true }`
-  reads past it, as it reads past it in a class the plugin reads. A flattened member is read with
-  `lenient`, so a struct flattened into a holder leaves the check to the holder. `flatten_plan`
+  reads past it, as it reads past it in a class the plugin reads. A flattened struct whose keys
+  `read_keys` knows is read under the caller's `Json`, from the object kept to those keys
+  (`flatten_struct_field_plan`), and a flattened externally tagged enum from its one entry
+  (`flatten_enum_field_plan`), so a model either holds, at any depth, refuses a key no member of it
+  reads, as it does held under a key. Every other flattened member is read with `lenient`, which
+  `FlattenedMember::lenient` declares only where one is, and every model below it reads past such
+  a key: the README states the limit. `flatten_plan`
   answers what the members read in `FlattenPlan::read`, the terms subtracted from the object: the
   wire name of each own member (an alias is already read as it), the entry a flattened externally
   tagged enum took, and every key `KOTLIN_READ_KEYS` notes for a flattened struct the emitter
@@ -999,7 +1009,11 @@ the consumer's view; this is what a change has to keep.
   does not note: a struct with a flattened member of its own or that names a function on itself,
   an enum `flattened_variant_names` answers no names for, and a type the emitter has not written.
   Zod refuses a key none of those reads, and the README states the limit. A payload serde writes
-  holds no such key. `src/features/kotlin/tests.rs` pins the text, and `run_kotlin_unknown_keys.rs`
+  holds no such key. The serializer of an enum under a tag key refuses a key beside its tag and its
+  content key, under a tag and a content key, and beside the tag of a unit variant under a tag
+  alone (`unit_variant_read`), through `unknown_key_refused`, where Zod's strict object of each arm
+  refuses it; a variant of members under a tag alone is read by its class, which refuses it.
+  `src/features/kotlin/tests.rs` pins the text, and `run_kotlin_unknown_keys.rs`
   reads each payload under kotlinc with both `Json`s, beside serde's read and what Zod answers
   under node; the rows of `run_kotlin_flattened.rs` that hold a key serde reads past are pinned to
   the Kotlin read, the Zod read.
@@ -1029,11 +1043,33 @@ the consumer's view; this is what a change has to keep.
     model the emitter wrote above (`validate::reads_unjudged`); an alias with type parameters and
     a type declared below keep `serializer<T>()`, which reads any text, and the README states the
     limit.
+  - The service clients and the WebSocket dispatcher read a message, a reply and a header the same
+    way: `kotlin_read_serializer` composes its serializer, `read_serializer` in
+    `src/features/service_schema/kotlin_http_client.rs` hands it the message's type, and each
+    emitter writes what `kotlin_declarations` drains of the queue at the end of its source. A
+    header the HTTP client reads is read from its text as a JSON string through it
+    (`kotlin_header_out_decode`). `run_kotlin_service_forms.rs` reads a reply of a date and a
+    header of a `char` under kotlinc.
   - `tests/kotlin_tests/text_forms_models.rs` holds `TEXT_FORMS`, what serde, Zod and the Kotlin
     read answer of each payload of a `char` and of each chrono type in each place.
     `tests/kotlin_tests/text_forms.rs` pins the text, `run_kotlin_text_forms.rs` reads each payload
     under kotlinc, `tests/generic_types_tests/declarations.rs` holds Zod to the table under `node`,
     and `src/features/kotlin/tests/texts.rs` pins each shape and each limit.
+- **A fixed array is read from an array of its length alone**, at each level, by
+  `src/features/kotlin/arrays.rs`. `arrays::serializer` declares, once per item and length, `class
+  KotlinArray{N}<Item>(item: KSerializer<Item>) : KSerializer<List<Item>>` into the queue the tuple
+  wrappers are written from (`KOTLIN_ARRAYS`), which reads through `ListSerializer(item)` and throws
+  `SerializationException("invalid length n, expected N")`, the words of `tuple_array`. Where the
+  plugin reads, `annotated_base` writes `@Serializable(with = KotlinArray{N}::class)` on each level
+  of one length, and the plugin hands the class the serializer of the items, a type parameter's
+  among them. Where the emitter writes the read, `listed_serializer` composes `KotlinArray{N}(...)`
+  for each such level, wherever `arrays::reaches` finds one, through the walk `texts::found` makes,
+  so a type argument of a type declared below and of an alias with parameters reads any length,
+  as a text does there. `FieldDef::fixed_length_at` is compiled under `kotlin`. `validate()` is
+  unchanged. `tests/kotlin_tests/fixed_arrays_models.rs` holds `FIXED`, a fixed array in each
+  place and serde's read of each payload, `tests/kotlin_tests/read.rs` pins the text, and
+  `run_kotlin_refusals.rs` reads each payload under kotlinc through both serializers, and the
+  `Clenching`, `Clasping` and `Grasping` of the Dart run.
 - **A member serde never writes is read and has no `put`**, in a struct and in an enum's variant.
   `KotlinField::never_written` is `has_serde_skip_serializing`: `skip_serializing`, never
   `skip_serializing_if`. The plugin writes every property, so `struct_kotlin_tokens` hands a
@@ -1080,7 +1116,16 @@ the consumer's view; this is what a change has to keep.
   inside `runCatching` where they name none, the check made at run time: `if
   ({member}Keys.isEmpty()) runCatching { ... }.getOrNull() else if (...)`. So a serializer written
   by hand is tried, where TypeScript and Zod refuse a key of the type that does not read, and the
-  plugin's is looked for by its keys.
+  plugin's is looked for by its keys. Where the type is read by a serializer that judges, one
+  declared below its holder among them, the tried read is `read_or_judged`: where the judged read
+  throws, the payload is read again by what the serializer answers called, `(serializer as?
+  Function0<*>)?.invoke() as? DeserializationStrategy<*>`, its unjudged one, or by itself where it
+  answers none, and the judged read's refusal is thrown where that read succeeds: a value that
+  reads and breaks a rule is refused with the rule's message, as serde, TypeScript and Zod refuse
+  it, and one that does not read is `null`. A type of the consumer's own is tried as before.
+  `GROMMETING` in `tests/kotlin_tests/unrecorded_options_models.rs` holds `Grommeting` over
+  `Gromet`, declared below it with a rule and a flattened member of its own, with serde's answer of
+  each payload, and `run_kotlin_flattened.rs` holds the Kotlin read and Zod's to it.
   `tests/kotlin_tests/unrecorded_options_models.rs` holds `Fiddling` over `Crowned` declared below
   it and a holder of an enum under each tagging but serde's own, with serde's write-back of each
   payload and whether TypeScript and Zod take it, which `tests/generic_types_tests/declarations.rs`

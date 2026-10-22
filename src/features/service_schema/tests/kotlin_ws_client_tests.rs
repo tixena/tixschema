@@ -10,6 +10,20 @@ use super::{
     SHADOWED_LOCAL_SERVICE, kotlin_ws_client_of,
 };
 
+/// A service whose reply is a bare date, and whose request carries a `char` header.
+#[cfg(feature = "chrono")]
+const DATED_WS_SERVICE: &str = "
+    pub trait DatingService<Ctx> {
+        #[service_schema_op(http(
+            method = \"POST\",
+            path = \"/stamp\",
+            header_in(\"x-initial\" = initial)
+        ))]
+        async fn stamp(&self, ctx: &Ctx, label: String, initial: char)
+            -> Result<NaiveDate, DatingError>;
+    }
+";
+
 /// The body of one method, one dispatch arm, or one function, from its own start marker through
 /// the closing brace of whatever follows — mirrors `dart_ws_client_tests`'s own `body_from`.
 fn body_from<'written>(written: &'written str, marker: &str) -> &'written str {
@@ -618,4 +632,26 @@ fn an_argument_named_after_a_local_of_the_method_is_copied_before_the_local_is_w
     ] {
         assert!(written.contains(moved), "no `{moved}` in: {written}");
     }
+}
+
+/// The client reads a reply of a date through the serializer of its form, the dispatcher reads a
+/// header of a `char` through its own, and the module declares each serializer once.
+#[cfg(feature = "chrono")]
+#[test]
+fn a_bare_char_or_date_message_is_read_through_the_serializer_of_its_form() {
+    let written = kotlin_ws_client_of(DATED_WS_SERVICE);
+    for held in [
+        "DatingServiceStampResult.Ok(Json.decodeFromJsonElement(KotlinText1, \
+         reply.getValue(\"value\")))",
+        "Json.decodeFromJsonElement(KotlinText2, initialRaw)",
+        "object KotlinText1 : KSerializer<String> {",
+        "object KotlinText2 : KSerializer<String> {",
+    ] {
+        assert!(written.contains(held), "no `{held}` in: {written}");
+    }
+    assert_eq!(
+        written.matches("object KotlinText").count(),
+        2,
+        "each form is declared once: {written}"
+    );
 }
