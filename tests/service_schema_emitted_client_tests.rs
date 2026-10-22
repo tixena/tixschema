@@ -478,7 +478,8 @@ mod aliased_members_models;
 mod run_swift_aliased;
 
 /// An externally tagged enum flattened beside a member, each variant read and written back by the
-/// emitted Dart types, a unit variant as an entry of its name over `null`.
+/// emitted Dart types, a unit variant as an entry of its name over `null`, and a unit variant
+/// under a content key read from an object with no content key.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_dart_unit_entries.rs"]
 mod run_dart_unit_entries;

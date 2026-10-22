@@ -3221,7 +3221,18 @@ fn tagged_variant_tokens(
                  @override dynamic toJson({tp}) => {own_encode}; {validate} }}",
                 tp = codec.to_json_params,
             );
-            (class_text, format!("{subclass_name}{generic_params}()"))
+            let built = format!("{subclass_name}{generic_params}()");
+            // Under a content key Zod reads the variant as a strict object of the tag alone, so a
+            // content is refused, `null` among it, which serde reads.
+            let read = match held {
+                Some(holds_content) => format!(
+                    "{holds_content} ? throw FormatException('{export_name}: ' + {} + ' takes no \
+                     value') : {built}",
+                    corrects.tag
+                ),
+                None => built,
+            };
+            (class_text, read)
         }
         VariantPayload::Named(fields) => {
             let own = corrects.of_a_variant();

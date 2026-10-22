@@ -32,8 +32,9 @@ fn holds_each(definition: &str, pieces: &[String]) {
 
 /// An enum takes a variant under each of its aliases, under each tagging, and an externally
 /// tagged one reads the value of a variant read under an alias too from the entry it took, a unit
-/// variant from its entry over `null`. Each variant is written under the name serde writes, and a
-/// member of a variant is read under its alias.
+/// variant from its entry over `null`, and one under a content key from an object with no content.
+/// Each variant is written under the name serde writes, and a member of a variant is read under
+/// its alias.
 #[test]
 fn a_tagged_enum_reads_a_variant_under_each_alias() {
     holds_each(
@@ -77,8 +78,9 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
         &[
             "switch (tag) { case 'Berth' || 'Pier': return \
              ScendingBerth.fromJsonUnjudged(json['data']); case 'Calm' || 'Still': return \
-             ScendingCalm(); case 'Held' || 'Tied': return ScendingHeld(json['data'] as String); \
-             default:"
+             json.containsKey('data') ? throw FormatException('Scending: ' + tag + ' takes no \
+             value') : ScendingCalm(); case 'Held' || 'Tied': return ScendingHeld(json['data'] as \
+             String); default:"
                 .to_owned(),
             "@override dynamic toJson() => { 'kind': 'Held', 'data': value };".to_owned(),
         ],
