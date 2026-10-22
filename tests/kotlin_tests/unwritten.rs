@@ -5,7 +5,8 @@
 use super::unwritten_models::furling_kotlin;
 #[cfg(feature = "serde")]
 use super::unwritten_models::{
-    dousing_kotlin, ratcheting_kotlin, reefing_kotlin, shackling_kotlin, wearing_kotlin,
+    dousing_kotlin, flemishing_kotlin, ranging_kotlin, ratcheting_kotlin, reefing_kotlin,
+    shackling_kotlin, splaying_kotlin, wearing_kotlin,
 };
 
 /// A struct with a member serde never writes takes the serializer the emitter writes in place of
@@ -115,5 +116,41 @@ fn a_variant_with_a_member_serde_never_writes_names_the_serializer_the_emitter_w
             !kotlin.contains(&format!("{name}StruckUnjudged")),
             "got: {kotlin}"
         );
+    }
+}
+
+/// A flattened struct and a flattened map serde never writes are read, and merge nothing into
+/// what their holder writes. One that is no `Option` is read as a flattened member is, its key
+/// being none to leave out.
+#[cfg(feature = "serde")]
+#[test]
+fn a_flattened_member_serde_never_writes_merges_nothing() {
+    let flemishing = flemishing_kotlin::kotlin_definition();
+    let written = "output.encodeJsonElement(buildJsonObject { put(\"note\", \
+                   output.json.encodeToJsonElement(serializer<String>(), value.note)) })";
+    assert!(
+        flemishing.contains(written),
+        "no `{written}` in: {flemishing}"
+    );
+    let read = "val braiding = if (JsonObject(obj - setOf(\"note\")).keys.any { it in \
+                braidingKeys })";
+    assert!(flemishing.contains(read), "no `{read}` in: {flemishing}");
+    let splaying = splaying_kotlin::kotlin_definition();
+    for held in [
+        "data class Splaying(val braiding: Braiding, val note: String)",
+        "val braiding = input.json.decodeFromJsonElement(BraidingUnjudged, \
+         JsonObject(JsonObject(obj - setOf(\"note\")).filterKeys { it in setOf(\"label\") }));",
+        written,
+    ] {
+        assert!(splaying.contains(held), "no `{held}` in: {splaying}");
+    }
+    let ranging = ranging_kotlin::kotlin_definition();
+    for held in [
+        "data class Ranging(val counts: Map<String, UByte>)",
+        "output.encodeJsonElement(buildJsonObject {  })",
+        "val counts = obj.mapValues { (_, v) -> \
+         input.json.decodeFromJsonElement(serializer<UByte>(), v) };",
+    ] {
+        assert!(ranging.contains(held), "no `{held}` in: {ranging}");
     }
 }

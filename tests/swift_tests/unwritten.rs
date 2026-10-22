@@ -3,7 +3,7 @@
 
 use super::unwritten_models::furling_swift;
 #[cfg(feature = "serde")]
-use super::unwritten_models::reefing_swift;
+use super::unwritten_models::{flemishing_swift, ranging_swift, reefing_swift, splaying_swift};
 
 /// The member is read, and the `encode(to:)` written in place of Swift's own encodes no key for
 /// it.
@@ -41,4 +41,44 @@ fn a_member_serde_never_writes_beside_a_flattened_one_is_not_encoded() {
         ),
         "got: {reefing}"
     );
+}
+
+/// A flattened struct and a flattened map serde never writes are read, and `encode(to:)` encodes
+/// nothing of them, the object opened all the same. One that is no `Option` is read as a flattened
+/// member is, its key being none to leave out.
+#[cfg(feature = "serde")]
+#[test]
+fn a_flattened_member_serde_never_writes_is_read_and_not_encoded() {
+    let encoded_note = "public func encode(to encoder: Encoder) throws { var container = \
+                        encoder.container(keyedBy: CodingKeys.self); try \
+                        container.encode(self.note, forKey: .note) };";
+    let flemishing = flemishing_swift::swift_definition();
+    for held in [
+        "self.braiding = try SwiftSchemaPayload.read(Braiding.self, from: braidingPayload, at: \
+         decoder.codingPath)",
+        encoded_note,
+    ] {
+        assert!(flemishing.contains(held), "no `{held}` in: {flemishing}");
+    }
+    let splaying = splaying_swift::swift_definition();
+    for held in [
+        "public let braiding: Braiding;",
+        "let braidingPayload = try SwiftSchemaPayload(from: decoder, without: taken + \
+         [\"note\"]).value; self.braiding = try SwiftSchemaPayload.read(Braiding.self, from: \
+         braidingPayload, at: decoder.codingPath);",
+        encoded_note,
+    ] {
+        assert!(splaying.contains(held), "no `{held}` in: {splaying}");
+    }
+    let ranging = ranging_swift::swift_definition();
+    for held in [
+        "public let counts: [String: UInt8];",
+        "for entry in keyed.allKeys where !taken.contains(entry.stringValue) { \
+         entries[entry.stringValue] = try keyed.decode(UInt8.self, forKey: entry) }; \
+         self.counts = entries };",
+        "public func encode(to encoder: Encoder) throws { _ = encoder.container(keyedBy: \
+         CodingKeys.self);  };",
+    ] {
+        assert!(ranging.contains(held), "no `{held}` in: {ranging}");
+    }
 }

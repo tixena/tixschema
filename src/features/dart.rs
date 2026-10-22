@@ -882,7 +882,9 @@ fn collect_dart_fields(
         let wire_name = wire_field_name(&rust_name, rename_override(&field.attrs).as_deref(), rule);
         let mut field_def = field_def_with_prop_meta(&rust_name, field, args);
         field_def.erase_type_parameters(type_parameters);
-        if omission.omits_key && !field_def.is_optional() {
+        let flatten = field_is_flatten(&field.attrs);
+        // A flattened member has no key to leave out, and serde reads it whatever it writes.
+        if omission.omits_key && !flatten && !field_def.is_optional() {
             // Dart has no absent-key spelling: a `Map<String, dynamic>` answers a dropped key and
             // an explicit `null` alike, so an omitted key is the outer level's own nullability.
             field_def.nullable_levels.push(field_def.array_depth);
@@ -890,8 +892,8 @@ fn collect_dart_fields(
         collected.push(DartField {
             aliases: read_aliases(&field.attrs),
             default_at: default_at(&rust_name),
-            required: !omission.omits_key,
-            flatten: field_is_flatten(&field.attrs),
+            required: !omission.omits_key || !field_def.is_optional(),
+            flatten,
             field_def,
             member: dart_member(&rust_name, &DART_FIELD_NAMES_TAKEN, &written),
             never_written: has_serde_skip_serializing(&field.attrs),
@@ -2698,7 +2700,7 @@ fn class_body_parts(fields: &[DartField], extra_to_json: &[String]) -> ClassBody
     });
     let to_json_entries: String = fields
         .iter()
-        .filter(|field| field.flatten || !field.never_written)
+        .filter(|field| !field.never_written)
         .map(|field| {
             let encode = dart_encode_expr(&field.field_def, &field.member, false);
             if field.flatten {
