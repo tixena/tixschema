@@ -1,11 +1,14 @@
 //! A flattened `Option` member beside a member of its holder's own, alone in its holder and in a
-//! variant under a tag key, a map of dates alone in its holder, a struct flattened bare beside a
-//! member of its holder's own, a model `validate()` walks and a struct that reads the keys no
-//! member around it took, and a struct read from what a function answers, each read and written
-//! back by the emitted Swift types compiled with warnings as errors, against what serde reads and
-//! writes: read from serde's payload where the member holds a value, where it holds none and where
-//! its type does not read the payload, and refused where the model it holds breaks its rule or the
-//! function answers what its type does not read. The map of dates absent is built in code.
+//! variant under a tag key, a struct of two keys, a struct declared below its holder, a map of
+//! dates alone in its holder, a struct flattened bare beside a member of its holder's own, a model
+//! `validate()` walks and a struct that reads the keys no member around it took, and a struct read
+//! from what a function answers, each read and written back by the emitted Swift types compiled
+//! with warnings as errors, against what serde reads and writes: read from serde's payload where
+//! the member holds a value and where it holds none of its type's keys, and refused where the
+//! model it holds breaks its rule or the function answers what its type does not read. Where the
+//! object holds a key of the type that does not read, serde reads `None` and the Swift read
+//! refuses the payload, as TypeScript and Zod refuse it. A type whose keys are not known is read
+//! as `nil` there, as serde reads it. The map of dates absent is built in code.
 
 #![cfg(feature = "swift")]
 
@@ -19,9 +22,11 @@ use serde_json::Value;
 use super::runtime::judged;
 use super::swift_flattened_options_models::{
     Crowning, FLAKING, FLAKING_ABSENT, FLAKING_MISTYPED, Fidding, Flaking, KINKING_SHORT, Kinking,
-    LAPPING, LAPPING_ABSENT, Lapping, SENNIT, SENNIT_ABSENT, Sennit, TARRING_SHORT, Tarring,
-    Veering, crowning_swift, fidding_swift, flaking_swift, kinking_swift, lapping_swift,
-    plaiting_swift, sennit_swift, tabling_swift, tarring_swift, veering_swift,
+    LAPPING, LAPPING_ABSENT, LAPPING_MISTYPED, Lapping, PAINTER, Painter, Ratline, SENNIT,
+    SENNIT_ABSENT, SENNIT_MISTYPED, Sennit, TARRING_SHORT, Tarring, Veering, crowning_swift,
+    fidding_swift, flaking_swift, gasket_swift, kinking_swift, lapping_swift, nippering_swift,
+    painter_swift, plaiting_swift, ratline_swift, sennit_swift, tabling_swift, tarring_swift,
+    veering_swift,
 };
 #[cfg(feature = "chrono")]
 use super::swift_flattened_options_models::{SWAGING, Swaging, swaging_swift};
@@ -31,7 +36,8 @@ const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
 
 /// What the run declares beside the emitted types: the function a model names, answering the
 /// payload as it was handed, the text of a value written with its keys sorted, the read of a
-/// payload, and what a read that refuses one says, a key it misses in serde's words.
+/// payload, and what a read that refuses one says, a key it misses in serde's words and a value
+/// of the wrong type by its coding path.
 const HELPERS: &str = "
 func asGiven(_ payload: Any) -> Any { payload }
 
@@ -53,14 +59,18 @@ func refusal<Read: Decodable>(_ type: Read.Type, _ payload: String) -> String {
     return context.debugDescription
   } catch DecodingError.keyNotFound(let key, _) {
     return \"missing field `\\(key.stringValue)`\"
+  } catch DecodingError.typeMismatch(_, let context) {
+    return \"mismatch at '\\(context.codingPath.map { $0.stringValue }.joined(separator: \".\"))'\"
   } catch {
     return \"\\(error)\"
   }
 }
 ";
 
-/// A holder printed by the run: its name, the Swift that prints it, and what serde tells of it.
+/// A holder printed by the run: its name, the Swift that prints it, what serde tells of it, and
+/// what the Swift read tells in its place where it refuses what serde reads.
 struct Row {
+    decided: Option<&'static str>,
     name: &'static str,
     serde: String,
     swift: String,
@@ -74,9 +84,24 @@ impl Row {
         T: Serialize,
     {
         Self {
+            decided: None,
             name,
             serde: written(value),
             swift: format!("written({swift})"),
+        }
+    }
+
+    /// The holder read as `T`, named `read_as` in Swift, from `json`, which serde reads and the
+    /// Swift read refuses with `refused`.
+    fn decided<T>(name: &'static str, read_as: &str, json: &str, refused: &'static str) -> Self
+    where
+        T: DeserializeOwned + Serialize,
+    {
+        Self {
+            decided: Some(refused),
+            name,
+            serde: written(&serde_json::from_str::<T>(json).unwrap()),
+            swift: format!("refusal({read_as}.self, #\"{json}\"#)"),
         }
     }
 
@@ -86,6 +111,7 @@ impl Row {
         T: DeserializeOwned + Serialize,
     {
         Self {
+            decided: None,
             name,
             serde: written(&serde_json::from_str::<T>(json).unwrap()),
             swift: format!("written(read({read_as}.self, #\"{json}\"#))"),
@@ -100,6 +126,7 @@ impl Row {
     {
         let refusal = serde_json::from_str::<T>(json).err().unwrap().to_string();
         Self {
+            decided: None,
             name,
             serde: refusal.split_once(" at line").map_or_else(
                 || refusal.clone(),
@@ -122,12 +149,16 @@ where
 }
 
 /// Each holder read from a payload that holds the flattened member, then from one that holds
-/// none, then from one whose key its type does not read, and each whose model breaks its rule.
+/// none of its type's keys, then from one that holds a key its type does not read, and each whose
+/// model breaks its rule.
 fn rows() -> Vec<Row> {
+    let mistyped = "mismatch at 'label'";
     let mut rows = vec![
         Row::read::<Lapping>("lapping", "Lapping", LAPPING),
         Row::read::<Flaking>("flaking", "Flaking", FLAKING),
         Row::read::<Sennit>("sennit", "Sennit", SENNIT),
+        Row::read::<Painter>("painter", "Painter", PAINTER),
+        Row::read::<Ratline>("ratline", "Ratline", FLAKING),
         Row::read::<Crowning>("crowning", "Crowning", LAPPING),
         Row::read::<Kinking>("kinking", "Kinking", FLAKING),
         Row::read::<Tarring>("tarring", "Tarring", LAPPING),
@@ -136,12 +167,24 @@ fn rows() -> Vec<Row> {
         Row::read::<Lapping>("lapping absent", "Lapping", LAPPING_ABSENT),
         Row::read::<Flaking>("flaking absent", "Flaking", FLAKING_ABSENT),
         Row::read::<Sennit>("sennit absent", "Sennit", SENNIT_ABSENT),
+        Row::read::<Painter>("painter absent", "Painter", FLAKING_ABSENT),
+        Row::read::<Ratline>("ratline absent", "Ratline", FLAKING_ABSENT),
         Row::read::<Kinking>("kinking absent", "Kinking", FLAKING_ABSENT),
         Row::read::<Tarring>("tarring absent", "Tarring", LAPPING_ABSENT),
         Row::read::<Fidding>("fidding absent", "Fidding", FLAKING_ABSENT),
         Row::read::<Fidding>("fidding unread", "Fidding", LAPPING_ABSENT),
-        Row::read::<Flaking>("flaking mistyped", "Flaking", FLAKING_MISTYPED),
-        Row::read::<Kinking>("kinking mistyped", "Kinking", FLAKING_MISTYPED),
+        Row::read::<Ratline>("ratline mistyped", "Ratline", FLAKING_MISTYPED),
+        Row::decided::<Lapping>("lapping mistyped", "Lapping", LAPPING_MISTYPED, mistyped),
+        Row::decided::<Flaking>("flaking mistyped", "Flaking", FLAKING_MISTYPED, mistyped),
+        Row::decided::<Sennit>("sennit mistyped", "Sennit", SENNIT_MISTYPED, mistyped),
+        Row::decided::<Kinking>("kinking mistyped", "Kinking", FLAKING_MISTYPED, mistyped),
+        Row::decided::<Tarring>("tarring mistyped", "Tarring", LAPPING_MISTYPED, mistyped),
+        Row::decided::<Painter>(
+            "painter partial",
+            "Painter",
+            FLAKING,
+            "missing field `turns`",
+        ),
         Row::refused::<Kinking>("kinking refused", "Kinking", KINKING_SHORT),
         Row::refused::<Tarring>("tarring refused", "Tarring", TARRING_SHORT),
         Row::refused::<Veering>("veering refused", "Veering", LAPPING_ABSENT),
@@ -166,6 +209,10 @@ fn printed(rows: &[Row]) -> Option<String> {
         lapping_swift::swift_definition(),
         flaking_swift::swift_definition(),
         sennit_swift::swift_definition(),
+        gasket_swift::swift_definition(),
+        painter_swift::swift_definition(),
+        ratline_swift::swift_definition(),
+        nippering_swift::swift_definition(),
         crowning_swift::swift_definition(),
         plaiting_swift::swift_definition(),
         kinking_swift::swift_definition(),
@@ -205,20 +252,26 @@ fn printed(rows: &[Row]) -> Option<String> {
 /// A flattened `Option` that holds a value writes its keys beside its holder's own, and one that
 /// holds none writes nothing, alone in its holder and in a variant under a tag key too, as serde
 /// writes them; a map of dates writes the text serde writes, and a struct flattened bare writes
-/// its keys beside its holder's own. A flattened `Option` is read as `nil` wherever its type does
-/// not read the payload, a key absent or held as a type it does not read, as serde reads it, and
-/// a model it holds that breaks its rule refuses the payload in serde's words; one that names a
-/// function is refused where its type does not read what the function answers.
+/// its keys beside its holder's own. A flattened `Option` is read as `nil` where the object holds
+/// none of its type's keys, as serde reads it, and a model it holds that breaks its rule refuses
+/// the payload in serde's words; one that names a function is refused where its type does not
+/// read what the function answers. Where the object holds a key its type does not read, a key
+/// held as a number or one of two keys, serde reads `None` and the Swift read refuses the
+/// payload, but for a type whose keys are not known, read as `nil` as serde reads it.
 #[test]
 fn a_flattened_option_reads_and_writes_in_swift_what_serde_reads_and_writes() {
     let rows = rows();
-    let expected = rows.iter().fold(String::new(), |mut expected, row| {
-        let _ = writeln!(expected, "{}: {}", row.name, row.serde);
-        expected
-    });
+    let told = |says: &dyn Fn(&Row) -> String| {
+        rows.iter().fold(String::new(), |mut told, row| {
+            let _ = writeln!(told, "{}: {}", row.name, says(row));
+            told
+        })
+    };
     let shared = "lapping: {\"label\":\"north\",\"note\":\"n\"}\n\
          flaking: {\"label\":\"north\"}\n\
          sennit: {\"kind\":\"Laid\",\"label\":\"north\",\"note\":\"n\"}\n\
+         painter: {\"label\":\"north\",\"turns\":2}\n\
+         ratline: {\"label\":\"north\"}\n\
          crowning: {\"label\":\"north\",\"note\":\"n\"}\n\
          kinking: {\"label\":\"north\"}\n\
          tarring: {\"label\":\"north\",\"note\":\"n\"}\n\
@@ -227,12 +280,19 @@ fn a_flattened_option_reads_and_writes_in_swift_what_serde_reads_and_writes() {
          lapping absent: {\"note\":\"n\"}\n\
          flaking absent: {}\n\
          sennit absent: {\"kind\":\"Laid\",\"note\":\"n\"}\n\
+         painter absent: {}\n\
+         ratline absent: {}\n\
          kinking absent: {}\n\
          tarring absent: {\"note\":\"n\"}\n\
          fidding absent: {}\n\
          fidding unread: {}\n\
+         ratline mistyped: {}\n\
+         lapping mistyped: {\"note\":\"n\"}\n\
          flaking mistyped: {}\n\
+         sennit mistyped: {\"kind\":\"Laid\",\"note\":\"n\"}\n\
          kinking mistyped: {}\n\
+         tarring mistyped: {\"note\":\"n\"}\n\
+         painter partial: {}\n\
          kinking refused: 'label': too short: minimum length is 2, got 1\n\
          tarring refused: 'label': too short: minimum length is 2, got 1\n\
          veering refused: missing field `label`\n";
@@ -241,9 +301,12 @@ fn a_flattened_option_reads_and_writes_in_swift_what_serde_reads_and_writes() {
          swaging absent: {}\n";
     #[cfg(not(feature = "chrono"))]
     let dates = "";
-    assert_eq!(expected, format!("{shared}{dates}"));
+    assert_eq!(told(&|row| row.serde.clone()), format!("{shared}{dates}"));
     let Some(printed) = printed(&rows) else {
         return;
     };
-    assert_eq!(printed, expected);
+    assert_eq!(
+        printed,
+        told(&|row| row.decided.map_or_else(|| row.serde.clone(), str::to_owned))
+    );
 }

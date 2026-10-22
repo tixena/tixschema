@@ -1829,8 +1829,9 @@ fn present_statement(
 }
 
 /// The statements that read from `source` the flattened `Option` `field`, which names no function
-/// and holds no map, as serde reads one: the type it holds, read as a flattened member of that type
-/// is, and `nil` wherever that read throws, an object without the type's keys among them.
+/// and holds no map: `nil` where the object it is handed holds none of its type's keys, and the
+/// type otherwise, read as a flattened member of that type is, a read that throws refusing the
+/// payload. A type whose keys are not known is read as `nil` wherever its read throws.
 fn flattened_option(
     field: &SwiftField,
     source: &read::Source,
@@ -1856,9 +1857,19 @@ fn flattened_option(
         wire_name: field.wire_name.clone(),
     };
     let read = present_statement(&held, source, withheld, false, container, locals, twins);
+    let absent = format!("self.{} = nil", field.swift_name);
+    let keys = preprocess::keys_taken_by(&field.field_def);
+    if keys.is_empty() {
+        return format!("do {{ {read} }} catch {{ {absent} }}");
+    }
+    let without = if withheld && let read::Source::Beside(taken) = source {
+        Some(taken.as_str())
+    } else {
+        None
+    };
     format!(
-        "do {{ {read} }} catch {{ self.{} = nil }}",
-        field.swift_name
+        "if {} {{ {read} }} else {{ {absent} }}",
+        preprocess::holds_one_of(&keys, without)
     )
 }
 

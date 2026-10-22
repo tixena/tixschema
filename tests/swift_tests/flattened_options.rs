@@ -1,14 +1,15 @@
 //! What the Swift emitter writes and reads of a flattened `Option`: the keys of the value it holds
-//! into its holder's object, and nothing for `nil`; the value its type reads from the object, and
-//! `nil` wherever that read throws. A struct flattened bare writes and reads what it did. The
-//! writes and the reads are run under the Swift toolchain in
-//! `tests/service_schema_emitted_client_tests/run_swift_flattened_options.rs`.
+//! into its holder's object, and nothing for `nil`; `nil` where the object holds none of its type's
+//! keys, and the value its type reads from the object otherwise, a read that throws refusing the
+//! payload; and, for a type whose keys are not known, `nil` wherever its read throws. A struct
+//! flattened bare writes and reads what it did. The writes and the reads are run under the Swift
+//! toolchain in `tests/service_schema_emitted_client_tests/run_swift_flattened_options.rs`.
 
 #[cfg(feature = "chrono")]
 use super::flattened_options_models::swaging_swift;
 use super::flattened_options_models::{
-    crowning_swift, fidding_swift, flaking_swift, kinking_swift, lapping_swift, sennit_swift,
-    tarring_swift, veering_swift,
+    crowning_swift, fidding_swift, flaking_swift, kinking_swift, lapping_swift, painter_swift,
+    ratline_swift, sennit_swift, tarring_swift, veering_swift,
 };
 
 /// Asserts that `definition` holds `fragment`.
@@ -67,59 +68,103 @@ fn a_struct_flattened_bare_writes_what_it_wrote() {
     );
 }
 
-/// A flattened `Option` is read as its type is read where it is flattened bare, and as `nil`
-/// wherever that read throws: from the holder's decoder alone in its holder, and from the object
-/// without its holder's own keys beside them, in a variant under a tag key too.
+/// A flattened `Option` is read as `nil` where the object it is handed holds none of its type's
+/// keys, and as its type is read where it is flattened bare otherwise, so a read that throws
+/// refuses the payload: from the holder's decoder alone in its holder, and from the object without
+/// its holder's own keys beside them, in a variant under a tag key too. The keys are tested in the
+/// object it is handed, through a key type private to the holder.
 #[test]
-fn a_flattened_option_reads_nil_wherever_its_type_does_not_read() {
+fn a_flattened_option_reads_nil_where_none_of_its_types_keys_is_there() {
+    let flaking = flaking_swift::swift_definition();
     assert_written(
-        &flaking_swift::swift_definition(),
-        "public init(swiftSchemaUnjudged decoder: Decoder) throws { do { self.tabling = try \
-         Tabling(from: decoder) } catch { self.tabling = nil } }",
+        &flaking,
+        "public init(swiftSchemaUnjudged decoder: Decoder) throws { if try \
+         decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys.contains(where: { \
+         [\"label\"].contains($0.stringValue) }) { self.tabling = try Tabling(from: decoder) } \
+         else { self.tabling = nil } }",
+    );
+    assert_written(
+        &flaking,
+        "private struct SwiftSchemaAnyKey: CodingKey { var stringValue: String; var intValue: \
+         Int? { nil }; init?(stringValue: String) { self.stringValue = stringValue }; \
+         init?(intValue: Int) { nil } }",
     );
     assert_written(
         &lapping_swift::swift_definition(),
-        "self.note = try container.decode(String.self, forKey: .note); do { let tablingPayload = \
-         try SwiftSchemaPayload(from: decoder, without: taken + [\"note\"]).value; self.tabling = \
-         try SwiftSchemaPayload.read(Tabling.self, from: tablingPayload, at: decoder.codingPath) } \
-         catch { self.tabling = nil } }",
+        "self.note = try container.decode(String.self, forKey: .note); if try \
+         decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys.contains(where: { \
+         [\"label\"].contains($0.stringValue) && !(taken + \
+         [\"note\"]).contains($0.stringValue) }) { let tablingPayload = try \
+         SwiftSchemaPayload(from: decoder, without: taken + [\"note\"]).value; self.tabling = \
+         try SwiftSchemaPayload.read(Tabling.self, from: tablingPayload, at: decoder.codingPath) \
+         } else { self.tabling = nil } }",
     );
     assert_written(
         &sennit_swift::swift_definition(),
-        "do { let tablingPayload = try SwiftSchemaPayload(from: decoder, without: taken + \
-         [\"note\"]).value; self.tabling = try SwiftSchemaPayload.read(Tabling.self, from: \
-         tablingPayload, at: decoder.codingPath) } catch { self.tabling = nil }; self.note = try \
-         container.decode(String.self, forKey: .note) }",
+        "if try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys.contains(where: { \
+         [\"label\"].contains($0.stringValue) && !(taken + \
+         [\"note\"]).contains($0.stringValue) }) { let tablingPayload = try \
+         SwiftSchemaPayload(from: decoder, without: taken + [\"note\"]).value; self.tabling = \
+         try SwiftSchemaPayload.read(Tabling.self, from: tablingPayload, at: decoder.codingPath) \
+         } else { self.tabling = nil }; self.note = try container.decode(String.self, forKey: \
+         .note) }",
+    );
+    assert_written(
+        &painter_swift::swift_definition(),
+        "public init(swiftSchemaUnjudged decoder: Decoder) throws { if try \
+         decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys.contains(where: { \
+         [\"label\", \"turns\"].contains($0.stringValue) }) { self.gasket = try Gasket(from: \
+         decoder) } else { self.gasket = nil } }",
     );
 }
 
-/// A flattened `Option` of a model `validate()` walks reads the model with no judgement, and one of
-/// a type that reads the keys no member around it took hands it those keys; each reads `nil`
-/// wherever that read throws.
+/// A flattened `Option` of a model `validate()` walks reads the model with no judgement where the
+/// object holds one of its keys, and `nil` where it holds none.
 #[test]
-fn a_flattened_option_reads_a_walked_model_or_a_type_handed_keys_as_nil_where_it_throws() {
+fn a_flattened_option_reads_a_walked_model_where_one_of_its_keys_is_there() {
     assert_written(
         &kinking_swift::swift_definition(),
-        "public init(swiftSchemaUnjudged decoder: Decoder) throws { do { self.plaiting = try \
-         Plaiting(swiftSchemaUnjudged: decoder) } catch { self.plaiting = nil } }",
+        "public init(swiftSchemaUnjudged decoder: Decoder) throws { if try \
+         decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys.contains(where: { \
+         [\"label\"].contains($0.stringValue) }) { self.plaiting = try \
+         Plaiting(swiftSchemaUnjudged: decoder) } else { self.plaiting = nil } }",
     );
     assert_written(
         &tarring_swift::swift_definition(),
-        "do { let plaitingPayload = try SwiftSchemaPayload(from: decoder, without: taken + \
-         [\"note\"]).value; self.plaiting = try \
-         SwiftSchemaPayload.read(SwiftSchemaReadPlaiting.self, from: plaitingPayload, at: \
-         decoder.codingPath).value } catch { self.plaiting = nil } }",
+        "if try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys.contains(where: { \
+         [\"label\"].contains($0.stringValue) && !(taken + \
+         [\"note\"]).contains($0.stringValue) }) { let plaitingPayload = try \
+         SwiftSchemaPayload(from: decoder, without: taken + [\"note\"]).value; self.plaiting = \
+         try SwiftSchemaPayload.read(SwiftSchemaReadPlaiting.self, from: plaitingPayload, at: \
+         decoder.codingPath).value } else { self.plaiting = nil } }",
     );
     assert_written(
         &tarring_swift::swift_definition(),
         "private struct SwiftSchemaReadPlaiting: Decodable { let value: Plaiting; init(from \
          decoder: Decoder) throws { self.value = try Plaiting(swiftSchemaUnjudged: decoder) } }",
     );
+}
+
+/// A flattened `Option` of a type whose keys are not known is read as `nil` wherever its read
+/// throws: a struct with a flattened member of its own, handed the keys no member around it took,
+/// and a struct declared below its holder, read as a model.
+#[test]
+fn a_flattened_option_of_a_type_whose_keys_are_not_known_reads_nil_where_it_throws() {
     assert_written(
         &fidding_swift::swift_definition(),
         "swiftSchemaWithout taken: [String]) throws { do { self.crowning = try \
          Crowning(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken) } catch { \
          self.crowning = nil } }",
+    );
+    let ratline = ratline_swift::swift_definition();
+    assert_written(
+        &ratline,
+        "public init(swiftSchemaUnjudged decoder: Decoder) throws { do { self.nippering = try \
+         Nippering(swiftSchemaUnjudged: decoder) } catch { self.nippering = nil } }",
+    );
+    assert!(
+        !ratline.contains("SwiftSchemaAnyKey"),
+        "a read that tests no key declares no key type: {ratline}"
     );
 }
 
@@ -136,8 +181,8 @@ fn a_flattened_option_that_names_a_function_reads_what_it_answers() {
     );
 }
 
-/// A struct flattened bare reads what it read before a flattened `Option` read `nil` where its
-/// type throws: a read that throws refuses the payload.
+/// A struct flattened bare reads what it read before a flattened `Option` had a read of its own: a
+/// read that throws refuses the payload.
 #[test]
 fn a_struct_flattened_bare_reads_what_it_read() {
     assert_written(
