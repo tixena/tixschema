@@ -11,13 +11,7 @@ use super::models::{
     ConveyedText, ConveyedU8, ConveyedU16, ConveyedU32, ConveyedU64, ConveyedUsize, WIRE_FORMS,
 };
 
-/// The models a target reads no payload of in the form serde writes, each with that target: the
-/// JSON Schema of a date under `as_number` describes the date's text, and serde writes and reads
-/// the epoch-milliseconds number alone. Reported, and left as it is.
-const NO_COMMON_FORM: &[(&str, &str)] = &[("ConveyedMillis", "the JSON Schema")];
-
-/// The JSON Schema of each model admits every payload a client sends, and refuses each of a model
-/// [`NO_COMMON_FORM`] names it for.
+/// The JSON Schema of each model admits every payload a client sends.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn the_json_schema_admits_every_payload_a_client_sends() {
@@ -25,16 +19,50 @@ fn the_json_schema_admits_every_payload_a_client_sends() {
         let found = json_schema_of(row.held_by);
         assert!(found.is_some(), "no model named {}", row.held_by);
         let document = found.unwrap_or_default();
-        let reported = NO_COMMON_FORM.contains(&(row.held_by, "the JSON Schema"));
         for sent in row.sent() {
             let value: serde_json::Value = serde_json::from_str(&sent).unwrap();
-            assert_eq!(
+            assert!(
                 admits(&document, &value),
-                !reported,
-                "the JSON Schema of {} answers {sent} otherwise than the table states: {document}",
+                "the JSON Schema of {} refuses {sent}, which a client sends: {document}",
                 row.held_by
             );
         }
+    }
+}
+
+/// The JSON Schema refuses a value held in another form than the one serde writes, as serde
+/// refuses it: a date under `as_number` as its text, and a time and a date and time with no zone
+/// with a zone.
+#[cfg(feature = "jsonschema")]
+#[test]
+fn the_json_schema_refuses_a_value_in_another_form_than_serde_writes() {
+    for (held_by, payload) in [
+        ("ConveyedMillis", r#"{"value":"2024-01-02T03:04:05.678Z"}"#),
+        (
+            "ConveyedHour",
+            r#"{"keyed":{},"value":"10:20:30Z","values":[]}"#,
+        ),
+        (
+            "ConveyedHour",
+            r#"{"keyed":{"10:20:30Z":true},"value":"10:20:30","values":[]}"#,
+        ),
+        (
+            "ConveyedStamp",
+            r#"{"keyed":{},"value":"2024-01-05T10:20:30+00:00","values":[]}"#,
+        ),
+    ] {
+        let read = match held_by {
+            "ConveyedMillis" => serde_json::from_str::<ConveyedMillis>(payload).is_ok(),
+            "ConveyedHour" => serde_json::from_str::<ConveyedHour>(payload).is_ok(),
+            _ => serde_json::from_str::<ConveyedStamp>(payload).is_ok(),
+        };
+        assert!(!read, "serde reads {payload} as {held_by}");
+        let document = json_schema_of(held_by).unwrap_or_default();
+        let value: serde_json::Value = serde_json::from_str(payload).unwrap();
+        assert!(
+            !admits(&document, &value),
+            "the JSON Schema of {held_by} admits {payload}, which serde refuses: {document}"
+        );
     }
 }
 

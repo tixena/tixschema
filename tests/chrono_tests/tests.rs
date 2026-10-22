@@ -30,6 +30,16 @@ use serde::{Deserialize, Serialize};
 
 use tixschema::model_schema;
 
+#[cfg(feature = "jsonschema")]
+use serde::de::DeserializeOwned;
+
+#[cfg(feature = "jsonschema")]
+use super::documents::admits;
+
+/// The epoch milliseconds serde writes for `2024-01-02T03:04:05.678Z` under `as_number`.
+#[cfg(feature = "jsonschema")]
+const MILLIS: i64 = 1_704_164_645_678;
+
 #[model_schema()]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
@@ -188,6 +198,32 @@ struct CustomEpochHook {
     #[serde(with = "epoch_seconds")]
     stamp: DateTime<Utc>,
 }
+
+/// A date under `as_number` in an `Option`, which drops its key, and in a `nullable` one.
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+struct HeldMillis {
+    #[model_schema_prop(as_number)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    later: Option<DateTime<Utc>>,
+    #[model_schema_prop(as_number, nullable)]
+    settled: Option<DateTime<Utc>>,
+}
+
+/// A date under `as_number` in a named member of a variant.
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+enum MillisEvent {
+    Logged {
+        #[model_schema_prop(as_number)]
+        at: DateTime<Utc>,
+    },
+}
+
+/// A date under `as_number` in a slot of a tuple struct.
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+struct MillisPair(#[model_schema_prop(as_number)] DateTime<Utc>, u8);
 
 #[test]
 fn test_chrono_types_constructible() {
@@ -496,9 +532,7 @@ fn test_naive_date_json_schema() {
 fn test_naive_time_json_schema() {
     let schema = Schedule::json_schema();
     let properties = schema["properties"].as_object().unwrap();
-    let time_prop = &properties["start_time"];
-    assert_eq!(time_prop["type"], "string");
-    assert_eq!(time_prop["format"], "time");
+    assert_eq!(properties["start_time"], time_schema());
 }
 
 #[test]
@@ -506,9 +540,7 @@ fn test_naive_time_json_schema() {
 fn test_naive_datetime_json_schema() {
     let schema = LocalEvent::json_schema();
     let properties = schema["properties"].as_object().unwrap();
-    let datetime_prop = &properties["local_datetime"];
-    assert_eq!(datetime_prop["type"], "string");
-    assert_eq!(datetime_prop["format"], "date-time");
+    assert_eq!(properties["local_datetime"], date_time_schema());
 }
 
 #[test]
@@ -569,30 +601,21 @@ fn test_string_keyed_chrono_map_json_schema() {
             "dates",
             serde_json::json!({ "type": "string", "format": "date" }),
         ),
-        (
-            "local_datetimes",
-            serde_json::json!({ "type": "string", "format": "date-time" }),
-        ),
+        ("local_datetimes", date_time_schema()),
         (
             "optional_dates",
             serde_json::json!({
                 "anyOf": [{ "type": "string", "format": "date" }, { "type": "null" }]
             }),
         ),
-        (
-            "times",
-            serde_json::json!({ "type": "string", "format": "time" }),
-        ),
+        ("times", time_schema()),
         (
             "timestamps",
             serde_json::json!({ "type": "string", "format": "date-time" }),
         ),
         (
             "windows",
-            serde_json::json!({
-                "type": "array",
-                "items": { "type": "string", "format": "time" }
-            }),
+            serde_json::json!({ "type": "array", "items": time_schema() }),
         ),
     ] {
         let field = &properties[field_name];
@@ -638,7 +661,7 @@ fn test_nested_string_keyed_chrono_map_json_schema() {
                 "type": "array",
                 "items": {
                     "type": "object",
-                    "additionalProperties": { "type": "string", "format": "time" }
+                    "additionalProperties": time_schema()
                 }
             }),
         ),
@@ -845,4 +868,162 @@ fn as_number_holds_back_where_the_author_wrote_their_own_hook() {
     );
     let back: CustomEpochHook = serde_json::from_str(&json).unwrap();
     assert_eq!(back, value);
+}
+
+/// The JSON Schema of a `NaiveTime`: the text serde writes, its seconds written, whole. No
+/// `format` names it: RFC 3339's `time` holds a zone, which serde refuses.
+#[cfg(feature = "jsonschema")]
+fn time_schema() -> serde_json::Value {
+    serde_json::json!({
+        "type": "string",
+        "pattern": r"^(?:(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\.[0-9]+)?)$"
+    })
+}
+
+/// The JSON Schema of a `NaiveDateTime`: the text serde writes, whole. No `format` names it:
+/// RFC 3339's `date-time` holds a zone, which serde refuses.
+#[cfg(feature = "jsonschema")]
+fn date_time_schema() -> serde_json::Value {
+    serde_json::json!({
+        "type": "string",
+        "pattern": concat!(
+            r"^(?:(?:(?:[0-9][0-9][2468][048]|[0-9][0-9][13579][26]|[0-9][0-9]0[48]|",
+            r"[02468][048]00|[13579][26]00)-02-29|[0-9]{4}-(?:(?:0[13578]|1[02])-",
+            r"(?:0[1-9]|[12][0-9]|3[01])|(?:0[469]|11)-(?:0[1-9]|[12][0-9]|30)|",
+            r"(?:02)-(?:0[1-9]|1[0-9]|2[0-8])))T(?:[01][0-9]|2[0-3]):[0-5][0-9]:",
+            r"[0-5][0-9](?:\.[0-9]+)?)$"
+        )
+    })
+}
+
+/// The JSON Schema of `T` admits what serde writes of `value`, a date under `as_number` among it,
+/// and refuses the payload with that date's text in place of its number, which serde refuses.
+#[cfg(feature = "jsonschema")]
+fn held_to_the_millis_serde_writes<T>(value: &T, document: &serde_json::Value)
+where
+    T: Serialize + DeserializeOwned,
+{
+    let written = serde_json::to_string(value).unwrap();
+    assert!(
+        written.contains(&MILLIS.to_string()),
+        "serde writes no epoch milliseconds in {written}"
+    );
+    let as_text = written.replace(&MILLIS.to_string(), r#""2024-01-02T03:04:05.678Z""#);
+    assert!(
+        serde_json::from_str::<T>(&as_text).is_err(),
+        "serde reads the date's text in {as_text}"
+    );
+    assert!(
+        admits(document, &serde_json::from_str(&written).unwrap()),
+        "the JSON Schema refuses {written}, which serde writes: {document}"
+    );
+    assert!(
+        !admits(document, &serde_json::from_str(&as_text).unwrap()),
+        "the JSON Schema admits {as_text}, which serde refuses: {document}"
+    );
+}
+
+#[test]
+#[cfg(feature = "jsonschema")]
+fn a_date_under_as_number_is_described_as_the_integer_serde_writes() {
+    let at = DateTime::from_timestamp_millis(MILLIS).unwrap();
+    let start_time = NaiveTime::from_hms_opt(0, 0, 0).unwrap();
+    held_to_the_millis_serde_writes(
+        &Sample {
+            created_at: at,
+            due_at: at,
+            start_time,
+        },
+        &Sample::json_schema(),
+    );
+    held_to_the_millis_serde_writes(&DynamicValue::Number(at), &DynamicValue::json_schema());
+    held_to_the_millis_serde_writes(
+        &HeldMillis {
+            later: Some(at),
+            settled: Some(at),
+        },
+        &HeldMillis::json_schema(),
+    );
+    held_to_the_millis_serde_writes(&MillisEvent::Logged { at }, &MillisEvent::json_schema());
+    held_to_the_millis_serde_writes(&MillisPair(at, 1), &MillisPair::json_schema());
+
+    let absent = serde_json::to_value(HeldMillis {
+        later: None,
+        settled: None,
+    })
+    .unwrap();
+    assert!(
+        admits(&HeldMillis::json_schema(), &absent),
+        "the JSON Schema refuses {absent}, which serde writes"
+    );
+}
+
+#[test]
+#[cfg(feature = "jsonschema")]
+fn a_date_with_no_as_number_keeps_its_date_time_format() {
+    let properties = &Sample::json_schema()["properties"];
+    assert_eq!(
+        properties["created_at"],
+        serde_json::json!({ "type": "integer" }),
+        "in: {properties}"
+    );
+    assert_eq!(
+        properties["due_at"],
+        serde_json::json!({ "type": "string", "format": "date-time" }),
+        "in: {properties}"
+    );
+}
+
+#[test]
+#[cfg(feature = "jsonschema")]
+fn the_json_schema_of_each_chrono_type_admits_what_serde_writes_and_refuses_a_zone_it_refuses() {
+    let date = NaiveDate::from_ymd_opt(2024, 1, 5).unwrap();
+    let time = NaiveTime::from_hms_milli_opt(10, 20, 30, 125).unwrap();
+    let utc = date.and_time(time).and_utc();
+    let written = serde_json::to_value(AllChronoTypes {
+        date,
+        local_datetime: date.and_time(time),
+        local_timestamp: utc.with_timezone(&Local),
+        time,
+        utc_datetime: utc,
+    })
+    .unwrap();
+    let document = AllChronoTypes::json_schema();
+    assert!(
+        admits(&document, &written),
+        "the JSON Schema refuses {written}, which serde writes: {document}"
+    );
+    for (member, zoned) in [
+        ("time", "10:20:30Z"),
+        ("time", "10:20:30+02:00"),
+        ("local_datetime", "2024-01-05T10:20:30Z"),
+        ("local_datetime", "2024-01-05T10:20:30.125+02:00"),
+    ] {
+        let mut payload = written.clone();
+        payload[member] = serde_json::Value::String(zoned.to_owned());
+        assert!(
+            serde_json::from_value::<AllChronoTypes>(payload.clone()).is_err(),
+            "serde reads {payload}"
+        );
+        assert!(
+            !admits(&document, &payload),
+            "the JSON Schema admits {payload}, which serde refuses: {document}"
+        );
+    }
+
+    let tagged = FixedValue::json_schema();
+    let slot = serde_json::to_value(FixedValue::Time(time)).unwrap();
+    assert!(
+        admits(&tagged, &slot),
+        "the JSON Schema refuses {slot}, which serde writes: {tagged}"
+    );
+    let zoned_slot = serde_json::json!({ "type": "Time", "value": "10:20:30Z" });
+    assert!(
+        serde_json::from_value::<FixedValue>(zoned_slot.clone()).is_err(),
+        "serde reads {zoned_slot}"
+    );
+    assert!(
+        !admits(&tagged, &zoned_slot),
+        "the JSON Schema admits {zoned_slot}, which serde refuses: {tagged}"
+    );
 }

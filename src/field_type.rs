@@ -678,8 +678,10 @@ impl FieldDef {
         self.recorded_flatten_variants()
     }
 
+    /// Whether `#[model_schema_prop(as_number)]` was written on this field: a `DateTime<Tz>` serde
+    /// writes as the integer of its epoch milliseconds.
     #[cfg(feature = "chrono")]
-    fn has_as_number(&self) -> bool {
+    pub fn has_as_number(&self) -> bool {
         self.model_schema_prop_meta
             .as_ref()
             .is_some_and(|m| m.as_number)

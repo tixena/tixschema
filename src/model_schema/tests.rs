@@ -8701,7 +8701,9 @@ fn branded_json_inners() -> Vec<super::BrandedJsonInner> {
     let composite: syn::Type = syn::parse_quote!(Vec<String>);
     vec![
         #[cfg(feature = "chrono")]
-        super::BrandedJsonInner::Chrono("date-time"),
+        super::BrandedJsonInner::Chrono(super::ChronoText::Format("date-time")),
+        #[cfg(feature = "chrono")]
+        super::BrandedJsonInner::Chrono(super::ChronoText::Pattern("^\\d$".to_owned())),
         #[cfg(feature = "mongodb")]
         super::BrandedJsonInner::ObjectId,
         super::BrandedJsonInner::Scalar("string".to_owned()),
@@ -15134,20 +15136,40 @@ fn a_string_literal_enum_keyed_map_value_keeps_its_const() {
     );
 }
 
-/// A chrono value keeps the format it carries in field position, as it does under a `String` key.
+/// What the text of the chrono type `value_type` names is held to, as the tokens of a JSON literal
+/// write it: the `format` of a date and of a date and time with its zone, and the `pattern` of the
+/// text serde writes for a time and a date and time with no zone.
+#[cfg(all(feature = "chrono", feature = "jsonschema"))]
+fn chrono_text_held(value_type: &str) -> String {
+    match value_type {
+        "NaiveDate" => r#""format" : "date""#.to_owned(),
+        "NaiveTime" => {
+            r#""pattern" : "^(?:(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\\.[0-9]+)?)$""#
+                .to_owned()
+        }
+        "NaiveDateTime" => concat!(
+            r#""pattern" : "^(?:(?:(?:[0-9][0-9][2468][048]|[0-9][0-9][13579][26]|"#,
+            r"[0-9][0-9]0[48]|[02468][048]00|[13579][26]00)-02-29|[0-9]{4}-(?:(?:0[13578]|",
+            r"1[02])-(?:0[1-9]|[12][0-9]|3[01])|(?:0[469]|11)-(?:0[1-9]|[12][0-9]|30)|",
+            r"(?:02)-(?:0[1-9]|1[0-9]|2[0-8])))T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]",
+            r#"(?:\\.[0-9]+)?)$""#
+        )
+        .to_owned(),
+        _ => r#""format" : "date-time""#.to_owned(),
+    }
+}
+
+/// A chrono value keeps the form it carries in field position, as it does under a `String` key.
 #[cfg(all(feature = "chrono", feature = "jsonschema"))]
 #[test]
-fn a_chrono_enum_keyed_map_value_keeps_its_format() {
-    for (map_type, format) in [
-        ("HashMap<Slot, NaiveDate>", "date"),
-        ("HashMap<Slot, NaiveTime>", "time"),
-        ("HashMap<Slot, NaiveDateTime>", "date-time"),
-        ("HashMap<Slot, DateTime<Utc>>", "date-time"),
-    ] {
-        let tokens = map_field_schema(map_type).to_string();
+fn a_chrono_enum_keyed_map_value_keeps_its_form() {
+    for value_type in ["NaiveDate", "NaiveTime", "NaiveDateTime", "DateTime<Utc>"] {
+        let map_type = format!("HashMap<Slot, {value_type}>");
+        let tokens = map_field_schema(&map_type).to_string();
         assert!(
             tokens.contains(&format!(
-                r#"let value_schema = serde_json :: json ! ({{ "type" : "string" , "format" : "{format}" }}) ;"#
+                r#"let value_schema = serde_json :: json ! ({{ "type" : "string" , {} }}) ;"#,
+                chrono_text_held(value_type)
             )),
             "for {map_type}, got: {tokens}"
         );
@@ -15546,17 +15568,14 @@ fn string_key_map_value_schema(field_type: FieldDefType) -> String {
 
 #[cfg(all(feature = "chrono", feature = "jsonschema"))]
 #[test]
-fn a_chrono_string_keyed_map_value_keeps_its_format() {
-    for (map_type, format) in [
-        ("HashMap<String, NaiveDate>", "date"),
-        ("HashMap<String, NaiveTime>", "time"),
-        ("HashMap<String, NaiveDateTime>", "date-time"),
-        ("HashMap<String, DateTime<Utc>>", "date-time"),
-    ] {
-        let tokens = map_field_schema(map_type).to_string();
+fn a_chrono_string_keyed_map_value_keeps_its_form() {
+    for value_type in ["NaiveDate", "NaiveTime", "NaiveDateTime", "DateTime<Utc>"] {
+        let map_type = format!("HashMap<String, {value_type}>");
+        let tokens = map_field_schema(&map_type).to_string();
         assert!(
             tokens.contains(&format!(
-                r#""additionalProperties" : {{ "type" : "string" , "format" : "{format}" }}"#
+                r#""additionalProperties" : {{ "type" : "string" , {} }}"#,
+                chrono_text_held(value_type)
             )),
             "for {map_type}, got: {tokens}"
         );
@@ -15732,19 +15751,22 @@ fn a_vec_of_maps_string_keyed_map_value_renders_its_inner_members() {
 
 #[cfg(all(feature = "chrono", feature = "jsonschema"))]
 #[test]
-fn a_nested_chrono_map_value_keeps_its_format() {
+fn a_nested_chrono_map_value_keeps_its_form() {
     for (map_type, expected) in [
         (
             "HashMap<String, HashMap<String, NaiveDate>>",
-            r#"{ "type" : "object" , "additionalProperties" : { "type" : "string" , "format" : "date" } }"#,
+            r#"{ "type" : "object" , "additionalProperties" : { "type" : "string" , "format" : "date" } }"#.to_owned(),
         ),
         (
             "HashMap<String, HashMap<String, NaiveTime>>",
-            r#"{ "type" : "object" , "additionalProperties" : { "type" : "string" , "format" : "time" } }"#,
+            format!(
+                r#"{{ "type" : "object" , "additionalProperties" : {{ "type" : "string" , {} }} }}"#,
+                chrono_text_held("NaiveTime")
+            ),
         ),
         (
             "HashMap<String, Vec<HashMap<String, DateTime<Utc>>>>",
-            r#"{ "type" : "array" , "items" : { "type" : "object" , "additionalProperties" : { "type" : "string" , "format" : "date-time" } } }"#,
+            r#"{ "type" : "array" , "items" : { "type" : "object" , "additionalProperties" : { "type" : "string" , "format" : "date-time" } } }"#.to_owned(),
         ),
     ] {
         let tokens = map_field_schema(map_type).to_string();

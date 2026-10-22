@@ -56,6 +56,12 @@ use crate::{
 #[cfg(any(feature = "zod", feature = "jsonschema"))]
 use crate::field_type::is_undescribable_primitive;
 
+#[cfg(all(feature = "jsonschema", feature = "chrono"))]
+use crate::{
+    features::text_forms::{DATE, TIME_SENT},
+    utils::js_spelling,
+};
+
 #[cfg(any(feature = "serde", feature = "zod"))]
 use crate::bound_message::Bound;
 #[cfg(feature = "serde")]
@@ -495,10 +501,10 @@ struct BrandedValidation {
 /// The JSON schema shape a branded newtype's inner field describes.
 #[cfg(feature = "jsonschema")]
 enum BrandedJsonInner {
-    /// The string a chrono type writes, named by the `"format"` keyword that says which instant it
-    /// spells — the one field position carries for the same type.
+    /// The string a chrono type writes, held to its form as the field position holds the same
+    /// type.
     #[cfg(feature = "chrono")]
-    Chrono(&'static str),
+    Chrono(ChronoText),
     /// The `$oid` object an `ObjectId` writes, whose hex member carries the brand's string
     /// constraints.
     #[cfg(feature = "mongodb")]
@@ -510,13 +516,23 @@ enum BrandedJsonInner {
     Slot(Box<FieldDef>),
 }
 
+/// What the text of a chrono type is held to in a JSON schema, beside `"type": "string"`.
+#[cfg(all(feature = "jsonschema", feature = "chrono"))]
+enum ChronoText {
+    /// The `"format"` keyword that names its form: a date, and a date and time with its zone.
+    Format(&'static str),
+    /// The `"pattern"` of the text serde writes, whole: a time and a date and time with no zone,
+    /// whose form no format names, RFC 3339's `time` and `date-time` holding a zone serde refuses.
+    Pattern(String),
+}
+
 /// Whether the schema a brand narrows already states a `pattern` of its own.
 #[cfg(feature = "jsonschema")]
 #[derive(Clone, Copy)]
 enum BasePattern {
     /// The base states none, so the brand's is the schema's own `pattern` keyword.
     Absent,
-    #[cfg(feature = "mongodb")]
+    #[cfg(any(feature = "mongodb", feature = "chrono"))]
     Stated,
 }
 
@@ -8918,7 +8934,7 @@ fn branded_schema_obj_over(
             BasePattern::Absent => quote! {
                 schema_obj.insert("pattern".to_string(), serde_json::Value::String(#pattern.to_string()));
             },
-            #[cfg(feature = "mongodb")]
+            #[cfg(any(feature = "mongodb", feature = "chrono"))]
             BasePattern::Stated => quote! {
                 schema_obj.insert("allOf".to_string(), serde_json::json!([{ "pattern": #pattern }]));
             },
@@ -8951,18 +8967,23 @@ fn branded_constrained_schema_obj(
     )
 }
 
-/// The string a chrono-typed inner writes, carrying the `"format"` keyword [`chrono_json_schema_format`]
-/// gives that type — the one field position carries for it — and narrowed by the brand's own
-/// constraints, which sit beside `type` and `format` the way they sit beside `type` alone.
+/// The string a chrono-typed inner writes, held to its form as the field position holds it, and
+/// narrowed by the brand's own constraints, which sit beside `type` the way they sit beside `type`
+/// alone. A form held by a pattern is the base's own `pattern`, so the brand's is layered beside
+/// it — see [`BasePattern`].
 #[cfg(all(feature = "jsonschema", feature = "chrono"))]
-fn branded_chrono_schema(args: &ModelSchemaArgs, format: &str) -> proc_macro2::TokenStream {
+fn branded_chrono_schema(args: &ModelSchemaArgs, text: &ChronoText) -> proc_macro2::TokenStream {
+    let (keyword, value, base_pattern) = match text {
+        ChronoText::Format(format) => ("format", *format, BasePattern::Absent),
+        ChronoText::Pattern(pattern) => ("pattern", pattern.as_str(), BasePattern::Stated),
+    };
     branded_schema_obj_over(
         args,
         &quote! {
             schema_obj.insert("type".to_string(), serde_json::Value::String("string".to_string()));
-            schema_obj.insert("format".to_string(), serde_json::Value::String(#format.to_string()));
+            schema_obj.insert(#keyword.to_string(), serde_json::Value::String(#value.to_string()));
         },
-        BasePattern::Absent,
+        base_pattern,
     )
 }
 
@@ -9041,7 +9062,7 @@ fn build_branded_json_schema_method(
 ) -> proc_macro2::TokenStream {
     let body = match json_inner {
         #[cfg(feature = "chrono")]
-        BrandedJsonInner::Chrono(format) => branded_chrono_schema(args, format),
+        BrandedJsonInner::Chrono(text) => branded_chrono_schema(args, text),
         BrandedJsonInner::Scalar(type_name) => branded_constrained_schema_obj(args, type_name),
         #[cfg(feature = "mongodb")]
         BrandedJsonInner::ObjectId => {
@@ -9116,8 +9137,8 @@ fn branded_json_inner(inner: &FieldDef) -> BrandedJsonInner {
         return BrandedJsonInner::Slot(Box::new(inner.clone()));
     }
     #[cfg(feature = "chrono")]
-    if let Some(format) = chrono_json_schema_format(&inner.field_type) {
-        return BrandedJsonInner::Chrono(format);
+    if let Some(text) = chrono_json_schema_text(&inner.field_type) {
+        return BrandedJsonInner::Chrono(text);
     }
     // A name is not a shape, so it is deferred to the type it names, through the reference every
     // other position defers it through. A `char` is the one-character string it is everywhere.
@@ -12928,7 +12949,7 @@ fn field_json_schema_value(fld: &FieldDef) -> proc_macro2::TokenStream {
         | FieldDefType::NaiveDateTime
         | FieldDefType::DateTime => {
             // The arm has matched exactly the types the mapping answers for.
-            let item = chrono_json_schema_item(&fld.field_type).unwrap();
+            let item = chrono_json_schema_item(fld).unwrap();
             quote! { serde_json::json!(#item) }
         }
         FieldDefType::Map(key, value) => match map_json_schema_value(key, value) {
@@ -14173,14 +14194,17 @@ fn array_length_json_schema_bounds(fld: &FieldDef, level: u8) -> proc_macro2::To
     quote! { #min_items #max_items }
 }
 
-/// Which instant a chrono type's string spells, as the JSON-schema `"format"` keyword that names
-/// it, and `None` for every type that writes no such string.
+/// What a chrono type's text is held to in a JSON schema, and `None` for every type that writes no
+/// such text.
 #[cfg(all(feature = "jsonschema", feature = "chrono"))]
-const fn chrono_json_schema_format(field_type: &FieldDefType) -> Option<&'static str> {
+fn chrono_json_schema_text(field_type: &FieldDefType) -> Option<ChronoText> {
     match *field_type {
-        FieldDefType::NaiveDate => Some("date"),
-        FieldDefType::NaiveTime => Some("time"),
-        FieldDefType::NaiveDateTime | FieldDefType::DateTime => Some("date-time"),
+        FieldDefType::NaiveDate => Some(ChronoText::Format("date")),
+        FieldDefType::DateTime => Some(ChronoText::Format("date-time")),
+        FieldDefType::NaiveTime => Some(ChronoText::Pattern(whole_text_pattern(TIME_SENT))),
+        FieldDefType::NaiveDateTime => Some(ChronoText::Pattern(whole_text_pattern(&format!(
+            "{DATE}T{TIME_SENT}"
+        )))),
         FieldDefType::Boolean
         | FieldDefType::BooleanLiteral(_)
         | FieldDefType::Char
@@ -14211,13 +14235,33 @@ const fn chrono_json_schema_format(field_type: &FieldDefType) -> Option<&'static
     }
 }
 
-/// The JSON schema literal a chrono type describes as — the string it writes, carrying the
-/// `"format"` keyword that says which instant it spells — and `None` for every type that writes no
-/// such string.
+/// The pattern a text of the form `form` matches whole, spelled as every engine reads it: a `\d` as
+/// `[0-9]`, which is all ECMA-262 reads it as.
 #[cfg(all(feature = "jsonschema", feature = "chrono"))]
-fn chrono_json_schema_item(field_type: &FieldDefType) -> Option<proc_macro2::TokenStream> {
-    let format = chrono_json_schema_format(field_type)?;
-    Some(quote! { { "type": "string", "format": #format } })
+fn whole_text_pattern(form: &str) -> String {
+    // The forms are written in constructs both engines read, which the spelling never refuses.
+    js_spelling(&format!("^(?:{form})$")).unwrap()
+}
+
+/// The JSON schema literal the text of a chrono type describes as, the string held to its form,
+/// and `None` for every type that writes no such text.
+#[cfg(all(feature = "jsonschema", feature = "chrono"))]
+fn chrono_text_json_schema_item(field_type: &FieldDefType) -> Option<proc_macro2::TokenStream> {
+    Some(match chrono_json_schema_text(field_type)? {
+        ChronoText::Format(format) => quote! { { "type": "string", "format": #format } },
+        ChronoText::Pattern(pattern) => quote! { { "type": "string", "pattern": #pattern } },
+    })
+}
+
+/// The JSON schema literal a chrono value describes as: the integer of epoch milliseconds serde
+/// writes for a `DateTime<Tz>` under `as_number`, and the text of every other one. `None` for every
+/// type that writes neither.
+#[cfg(all(feature = "jsonschema", feature = "chrono"))]
+fn chrono_json_schema_item(fld: &FieldDef) -> Option<proc_macro2::TokenStream> {
+    if matches!(fld.field_type, FieldDefType::DateTime) && fld.has_as_number() {
+        return Some(quote! { { "type": "integer" } });
+    }
+    chrono_text_json_schema_item(&fld.field_type)
 }
 
 /// The JSON schema literal for a type that renders inline as a scalar — the object body itself,
@@ -14262,7 +14306,7 @@ fn scalar_field_json_schema_item(fld: &FieldDef) -> Option<proc_macro2::TokenStr
         FieldDefType::NaiveDate
         | FieldDefType::NaiveTime
         | FieldDefType::NaiveDateTime
-        | FieldDefType::DateTime => chrono_json_schema_item(&fld.field_type)?,
+        | FieldDefType::DateTime => chrono_json_schema_item(fld)?,
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => object_id_json_schema_item(&object_id_hex_json_schema()),
         FieldDefType::TypeParam(_)
@@ -15396,19 +15440,14 @@ fn build_object_id_field_schema(fld: &FieldDef, field_name_str: &str) -> proc_ma
     }
 }
 
-/// Builds the JSON schema for a string field with a specific `format` (e.g. date/time/date-time).
+/// Builds the JSON schema for a chrono field: what [`chrono_json_schema_item`] answers for it.
 #[cfg(all(feature = "jsonschema", feature = "chrono"))]
-fn build_string_format_field_schema(
-    fld: &FieldDef,
-    field_name_str: &str,
-    format: &str,
-) -> proc_macro2::TokenStream {
+fn build_chrono_field_schema(fld: &FieldDef, field_name_str: &str) -> proc_macro2::TokenStream {
+    // The arm calling this has matched exactly the types the mapping answers for.
+    let item = chrono_json_schema_item(fld).unwrap();
     let schema = nullable_slot_json_schema_value(
         fld,
-        arrayed_json_schema_value(
-            fld,
-            quote! { serde_json::json!({ "type": "string", "format": #format }) },
-        ),
+        arrayed_json_schema_value(fld, quote! { serde_json::json!(#item) }),
     );
     quote! {
         properties.insert(#field_name_str.to_string(), { #schema });
@@ -15527,11 +15566,7 @@ fn build_field_type_schema(fld: &FieldDef, field_name_str: &str) -> proc_macro2:
         FieldDefType::NaiveDate
         | FieldDefType::NaiveTime
         | FieldDefType::NaiveDateTime
-        | FieldDefType::DateTime => {
-            // The arm has matched exactly the types the mapping answers for.
-            let format = chrono_json_schema_format(&fld.field_type).unwrap();
-            build_string_format_field_schema(fld, field_name_str, format)
-        }
+        | FieldDefType::DateTime => build_chrono_field_schema(fld, field_name_str),
         FieldDefType::SiblingType(name, lst) => {
             build_sibling_type_field_schema(fld, field_name_str, name, lst)
         }
@@ -19011,7 +19046,7 @@ fn text_key_names(key: &FieldDef) -> Option<proc_macro2::TokenStream> {
         | FieldDefType::NaiveDate
         | FieldDefType::NaiveDateTime
         | FieldDefType::NaiveTime => {
-            return chrono_json_schema_item(&key.field_type)
+            return chrono_text_json_schema_item(&key.field_type)
                 .map(|item| quote! { serde_json::json!(#item) });
         }
         FieldDefType::SiblingType(name, arguments) => {

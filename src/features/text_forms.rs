@@ -5,8 +5,10 @@
 //! leaves out, drops the `Z` serde refuses on a date and time with no zone, and refuses a text no
 //! such rewrite turns into that form.
 //!
-//! The patterns are those of Zod 4.6.5, written with `\d` for an ASCII digit.
+//! The patterns are those of Zod 4.6.5, written with `\d` for an ASCII digit. The JSON Schema
+//! holds a time and a date and time with no zone to the form serde writes through them as well.
 
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 use crate::field_type::{FieldDef, FieldDefType};
 
 /// A date as `z.iso.date()` reads it, and as serde writes it.
@@ -18,11 +20,17 @@ pub const DATE: &str = concat!(
 );
 
 /// The hour and the minute of a time.
-#[cfg(feature = "chrono")]
+#[cfg(all(
+    feature = "chrono",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
 pub const HOUR_MINUTE: &str = r"(?:[01]\d|2[0-3]):[0-5]\d";
 
 /// A time as `z.iso.time()` reads it: the seconds and their fraction may be left out.
-#[cfg(feature = "chrono")]
+#[cfg(all(
+    feature = "chrono",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
 pub const TIME: &str = r"(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?";
 
 /// A time as serde writes it, its seconds written.
@@ -30,10 +38,14 @@ pub const TIME: &str = r"(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?";
 pub const TIME_SENT: &str = r"(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?";
 
 /// The zone of a date and time, as `z.iso.datetime({ offset: true })` reads it.
-#[cfg(feature = "chrono")]
+#[cfg(all(
+    feature = "chrono",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
 pub const OFFSET: &str = r"(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)";
 
 /// A text serde reads in one form alone.
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TextForm {
     Char,
@@ -49,6 +61,7 @@ pub enum TextForm {
     Zoned,
 }
 
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 impl TextForm {
     /// What a refusal names the form as: `expected {expected}, found "ab"`.
     pub const fn expected(self) -> &'static str {
@@ -198,4 +211,5 @@ impl TextForm {
 }
 
 #[cfg(test)]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 mod tests;

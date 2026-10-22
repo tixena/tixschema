@@ -3723,7 +3723,6 @@ A value already in that form is sent as it is, so no payload a client sent befor
 What a client cannot hold is left as it is:
 
 - **An integer a JavaScript `number` does not hold exactly**: an `i64`, an `isize`, a `u64` or a `usize` beyond `2^53 - 1` in size. serde writes `1152921504606846976`, `JSON.parse` reads `9007199254740993` as `9007199254740992`, and `z.number().int()` refuses any integer beyond `Number.MAX_SAFE_INTEGER`, `1152921504606846976` among them. Dart, on the Dart VM, Swift and Kotlin send it as it is, and a build with `swift` or `kotlin` refuses `u64` and `usize`.
-- **A date under `as_number`, which the JSON Schema describes as a date's text**, `{"type": "string", "format": "date-time"}`, where serde writes and reads the number of epoch milliseconds.
 - **A year outside 0000 to 9999 and a leap second.**
 
 `tests/wire_forms_tests/models.rs` holds the table, `WIRE_FORMS`: each value a caller hands a client, what serde answers of it, and what each client sends of it, or that it refuses it. Each client's run sends every row through its own codec, serde reads every payload any client sends, and the Zod schema and the JSON Schema read each one.
@@ -6496,17 +6495,19 @@ A consumer enabling `chrono` on tixschema must also enable `serde` on its own `c
 
 Supported types and mappings:
 
-| Rust Type | TypeScript | Zod Schema | JSON Schema Format |
-|-----------|------------|------------|--------------------|
-| `NaiveDate` | `string` | `z.iso.date()` | `"date"` |
-| `NaiveTime` | `string` | `z.preprocess(<millis and seconds arrow>, z.iso.time())` | `"time"` |
-| `NaiveDateTime` | `string` | `z.preprocess(<zone and seconds arrow>, z.iso.datetime({ local: true }))` | `"date-time"` |
-| `DateTime<Tz>` (default) | `Date` | `z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date())` | `"date-time"` |
-| `DateTime<Tz>` + `#[model_schema_prop(as_number)]` | `number` | `z.preprocess(<epoch arrow>, z.number().int())` | `"date-time"` |
+| Rust Type | TypeScript | Zod Schema | JSON Schema |
+|-----------|------------|------------|-------------|
+| `NaiveDate` | `string` | `z.iso.date()` | `{"type": "string", "format": "date"}` |
+| `NaiveTime` | `string` | `z.preprocess(<millis and seconds arrow>, z.iso.time())` | `{"type": "string", "pattern": <the time serde writes>}` |
+| `NaiveDateTime` | `string` | `z.preprocess(<zone and seconds arrow>, z.iso.datetime({ local: true }))` | `{"type": "string", "pattern": <the date and time serde writes>}` |
+| `DateTime<Tz>` (default) | `Date` | `z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date())` | `{"type": "string", "format": "date-time"}` |
+| `DateTime<Tz>` + `#[model_schema_prop(as_number)]` | `number` | `z.preprocess(<epoch arrow>, z.number().int())` | `{"type": "integer"}` |
 
 `DateTime<Tz>` renders as a native TypeScript `Date` by default, which is what MongoDB needs to expire a BSON `Date` via TTL. A `Date`, an ISO string and epoch milliseconds are coerced to one; anything else is refused before the coercion, since `z.coerce.date()` alone reads `null` as `1970-01-01T00:00:00.000Z` and `true` as one millisecond later. An `Option<DateTime<Tz>>` still reads `null` as `undefined`, through the `z.null()` arm every `Option` has. A `nullable` one reads `null` as `null`, a `null` among the items of a `Vec<Option<DateTime<Tz>>>` stays `null`, and in an untagged enum an input that is no date reaches the member written after the date. An object that is no `Date` is refused even where `new Date` would convert it, as it would a dayjs or a moment value: hand the schema the `Date` itself. The bare `as_number` flag opts a single `DateTime<Tz>` field into an epoch-milliseconds `number` instead, validated by a self-contained inline coercer (no imported helper). `as_number` is only valid on a `DateTime<Tz>` field — using it elsewhere is a compile error.
 
 On the Rust side, `as_number` also injects `#[serde(with = "chrono::serde::ts_milliseconds")]` (or `ts_milliseconds_option` for an `Option<DateTime<Tz>>`), so the field serializes to, and deserializes from, the same epoch-milliseconds number every surface describes — no hand-written serde attribute needed. Where the field already carries its own `with` or `deserialize_with`, the injection is held back and the author's hook runs instead.
+
+The JSON Schema describes the form serde writes. A `NaiveDate` is RFC 3339's `date` format and a `DateTime<Tz>` its `date-time`. A `NaiveTime` and a `NaiveDateTime` carry no zone, which RFC 3339's `time` and `date-time` formats require and serde refuses, so each is held to a pattern of the text serde writes, its seconds written: `^(?:(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\.[0-9]+)?)$` for a `NaiveTime`, which reads `10:20:30` and `10:20:30.125` and refuses `10:20:30Z`, and the pattern of the date, a `T` and that time for a `NaiveDateTime`. Under `as_number` a `DateTime<Tz>` is `{"type": "integer"}`, the epoch milliseconds that hook writes and reads, and a date's text is refused, as the hook refuses it.
 
 `NaiveTime` stays a TypeScript `string`, but its Zod schema also accepts millis-since-start-of-day, converting them to an `HH:MM:SS` string before validation, and writes the seconds an `HH:MM` text leaves out: `10:20` is `10:20:00`. `NaiveDateTime`'s Zod schema writes a text in the form serde reads the same way: `2024-01-05T10:20:30.000Z`, the text `toISOString()` writes, is `2024-01-05T10:20:30.000`, the `Z` serde refuses on a date and time with no zone dropped and the clock digits kept, and `2024-01-05T10:20` is `2024-01-05T10:20:00`. A client sends what the schema gives back, so each is sent in the form serde reads ([The Form Each Client Sends](#the-form-each-client-sends)). The `as_number` coercer ends on `z.number().int()`: serde reads no fraction of a millisecond.
 

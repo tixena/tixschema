@@ -2000,7 +2000,7 @@ pub fn portable_pattern(lit: &LitStr) -> Result<String, syn::Error> {
 
 /// The pattern rewritten to the spelling a JavaScript regex literal reads the same way, or the
 /// first construct in it that a JavaScript regex literal has no reading for.
-fn js_spelling(pattern: &str) -> Result<String, String> {
+pub fn js_spelling(pattern: &str) -> Result<String, String> {
     let ast = PatternParser::new().parse(pattern).map_err(|err| {
         format!(
             "`pattern` parses for `regex::Regex::new` but not for the grammar this guard reads it \
