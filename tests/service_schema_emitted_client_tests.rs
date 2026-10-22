@@ -470,9 +470,9 @@ mod run_swift_flattened_enums;
 /// under a tag key, of a struct of two keys, of a struct declared below its holder, of a model
 /// `validate()` walks, of a struct that reads the keys no member around it took and read from what
 /// a function answers, and a struct flattened bare beside a member of its holder's own. The Kotlin
-/// run reads the last two as well.
+/// run reads the last two as well, and the Dart run all but the map.
 #[cfg(test)]
-#[cfg(any(feature = "swift", feature = "kotlin"))]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 #[path = "swift_tests/flattened_options_models.rs"]
 mod swift_flattened_options_models;
 
@@ -481,6 +481,11 @@ mod swift_flattened_options_models;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_swift_flattened_options.rs"]
 mod run_swift_flattened_options;
+
+/// Those members, read and written back by the emitted Dart types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_flattened_options.rs"]
+mod run_dart_flattened_options;
 
 /// A member serde reads and never writes, in a struct of its own and beside a flattened member.
 #[cfg(test)]
