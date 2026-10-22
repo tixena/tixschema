@@ -168,7 +168,8 @@ struct VariantPayload {
     bound: Vec<String>,
     /// The one slot of the variant, where it is read and written as the type it is written as.
     converted: Option<Shaped>,
-    /// The one slot of the variant, with what its types are named from, where it names a function.
+    /// The one slot of the variant, with what its types are named from, where it is read from a
+    /// payload: one that names a function, and under a tag alone one whose type takes no keys.
     corrected: Option<(FieldDef, String)>,
     held: Option<String>,
     rules: Vec<String>,
@@ -250,10 +251,19 @@ struct Handed {
     withheld: bool,
 }
 
+impl EnumTagAttrs {
+    /// Whether the enum is written under a tag with no content key: serde takes the tag off the
+    /// object and hands each variant the rest.
+    const fn tag_alone(&self) -> bool {
+        self.tag.is_some() && self.content.is_none() && !self.untagged
+    }
+}
+
 impl VariantPayload {
     /// The statements that read the payload and hand it to `sink`: a type written for the variant
     /// and a value `validate()` walks unjudged, a slot that names a function from what the
-    /// function answers, and any other through its shape. A type written for such a slot joins
+    /// function answers, a slot under a tag alone whose type takes no keys from the object
+    /// without the tag, and any other through its shape. A type written for such a slot joins
     /// `twins`.
     fn read(
         &self,
@@ -2241,7 +2251,8 @@ fn swift_coding_keys(fields: &[SwiftField], extra: &[(String, String)]) -> Strin
 /// The body of a set of [`SwiftField`]s: properties, `CodingKeys`, the memberwise initializer,
 /// the reads, `encode(to:)` only where synthesis cannot reach, then `validate`, the method every
 /// emitted type has. `extra_coding_keys` lists cases with no matching field (an
-/// internally-tagged variant's tag), and `corrects` the functions the struct `owner` names.
+/// internally-tagged variant's tag), `corrects` the functions the struct `owner` names, and
+/// `around` says the types around the struct hand it keys it reads none of.
 fn struct_body_content(
     fields: &[SwiftField],
     extra_coding_keys: &[(String, String)],
@@ -2249,6 +2260,7 @@ fn struct_body_content(
     validate: &str,
     owner: &str,
     corrects: &[FunctionName],
+    around: bool,
 ) -> String {
     let props = fields.iter().fold(String::new(), |mut acc, field| {
         write!(
@@ -2273,7 +2285,7 @@ fn struct_body_content(
 
     let memberwise_init = memberwise_initializer(fields);
     let mut twins = Vec::new();
-    let members = member_reads(fields, !unsynthesized, &mut twins);
+    let members = member_reads(fields, !unsynthesized, around, &mut twins);
     let keyed = if names_container(&members) {
         "let container = try decoder.container(keyedBy: CodingKeys.self); "
     } else {
@@ -2341,15 +2353,20 @@ fn names_container(statements: &str) -> bool {
 
 /// The statements that read each of `fields` in the type's own read, in the order declared, a
 /// type written for one joining `twins`. `synthesized` says Swift wrote the read before the
-/// emitter did. Each flattened member is handed the object without the keys its holder's own
-/// members, the members flattened ahead of it and the types around its holder took, as serde
-/// reads it.
-fn member_reads(fields: &[SwiftField], synthesized: bool, twins: &mut Vec<String>) -> String {
+/// emitter did, and `around` that the types around the holder hand it keys it reads none of.
+/// Each flattened member is handed the object without the keys its holder's own members, the
+/// members flattened ahead of it and the types around its holder took, as serde reads it.
+fn member_reads(
+    fields: &[SwiftField],
+    synthesized: bool,
+    around: bool,
+    twins: &mut Vec<String>,
+) -> String {
     let alone = handed_reads(fields, synthesized, false);
-    // A holder of no member of its own is handed keys by the types around it only where one of
-    // its reads takes them.
+    // A holder of no member of its own is handed keys by the types around it where they hand it
+    // some, or where one of its reads takes them.
     let (statements, written) =
-        if fields.iter().all(|field| field.flatten) && read::names_taken(&alone.0) {
+        if fields.iter().all(|field| field.flatten) && (around || read::names_taken(&alone.0)) {
             handed_reads(fields, synthesized, true)
         } else {
             alone
@@ -2432,7 +2449,8 @@ fn field_rules(owner: &str, fields: &[SwiftField]) -> Vec<String> {
 
 /// The `public struct {export_name}{generics}: Codable, Sendable { ... }` a named-field struct or
 /// a struct-shaped variant payload earns, with the `DateTime` helpers appended when a field needs
-/// them. `rules` is what its `validate()` runs, and `corrects` the functions it names on itself.
+/// them. `rules` is what its `validate()` runs, `corrects` the functions it names on itself, and
+/// `around` says the types around it hand it keys it reads none of.
 fn struct_declaration(
     export_name: &str,
     generic_params: &str,
@@ -2440,6 +2458,7 @@ fn struct_declaration(
     own_tag: Option<&(String, String)>,
     rules: &[String],
     corrects: &[FunctionName],
+    around: bool,
 ) -> String {
     let content = struct_body_content(
         fields,
@@ -2448,6 +2467,7 @@ fn struct_declaration(
         &validate::method(rules),
         export_name,
         corrects,
+        around,
     );
     let shapes: Vec<&SwiftFieldShape> = fields.iter().map(|field| &field.shape).collect();
     let helpers = datetime_helpers_for(export_name, generic_params, &shapes);
@@ -2523,6 +2543,7 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
         own_tag.as_ref(),
         &rules,
         args.preprocess,
+        false,
     );
     preprocess::note(&rust_ident, read::takes_keys(&body));
     let typealias = ident_typealias(&rust_ident, &export_name, &generic_params);
@@ -2886,7 +2907,17 @@ fn named_payload(
         .cloned()
         .collect();
     let generic_params = bounded_generic_params(&named_parameters);
-    let declared = struct_declaration(&struct_name, &generic_params, &fields, None, &members, &[]);
+    // Under a tag alone the payload is read from the object the tag is in, so it takes the keys
+    // the enum hands it, the tag among them, where no member of its own reads one.
+    let declared = struct_declaration(
+        &struct_name,
+        &generic_params,
+        &fields,
+        None,
+        &members,
+        &[],
+        shape.tag_attrs.tag_alone(),
+    );
     let takes_keys = read::takes_keys(&declared);
     aux.push(declared);
     let bound = fields
@@ -2945,8 +2976,10 @@ fn slot_payload(
         && preprocess::beside(&field_def);
     let walked = (validate::walks(&field_def, runs_both) || handed_keys)
         .then(|| (field_def.clone(), hint.clone()));
-    let corrected =
-        (!preprocess::functions(&field_def).is_empty()).then(|| (field_def.clone(), hint));
+    // Under a tag alone a type that takes no keys is read from the object without the tag.
+    let corrected = (!preprocess::functions(&field_def).is_empty()
+        || (shape.tag_attrs.tag_alone() && !handed_keys))
+        .then(|| (field_def.clone(), hint));
     VariantPayload {
         bound,
         converted: slot.converts().then_some(slot),

@@ -648,7 +648,8 @@ fn a_unit_struct_has_both_reads() {
 }
 
 /// An enum reads the payload of the variant it holds unjudged: under the variant's name with no
-/// tag attribute, from its own decoder under a tag alone, and under the content key.
+/// tag attribute, from its own decoder under a tag alone, a slot from the object without the tag,
+/// and under the content key.
 #[test]
 fn an_enum_reads_the_payload_of_its_variant_unjudged() {
     holds(
@@ -678,7 +679,16 @@ fn an_enum_reads_the_payload_of_its_variant_unjudged() {
     holds(
         &lifted_swift::swift_definition(),
         &[
-            r#"case "Boxed": self = .boxed(try Parcel(swiftSchemaUnjudged: decoder)); "#,
+            concat!(
+                r#"case "Boxed": let boxedPayload = try SwiftSchemaPayload(from: decoder, "#,
+                r#"without: taken + ["kind"]).value; self = .boxed(try SwiftSchemaPayload.read("#,
+                "SwiftSchemaReadBoxed.self, from: boxedPayload, at: decoder.codingPath).value); ",
+            ),
+            concat!(
+                "private struct SwiftSchemaReadBoxed: Decodable { let value: Parcel; ",
+                "init(from decoder: Decoder) throws { ",
+                "self.value = try Parcel(swiftSchemaUnjudged: decoder) } }",
+            ),
             r#"case "Loose": self = .loose(try LiftedLoosePayload(swiftSchemaUnjudged: decoder)); "#,
             r#"case "Unladen": self = .unladen; "#,
             JUDGED,

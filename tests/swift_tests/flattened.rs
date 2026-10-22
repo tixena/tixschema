@@ -1,17 +1,19 @@
 //! What the Swift emitter reads of a flattened member: a map entry by entry, without the keys the
 //! types around its holder took, as serde hands it, and any other member without the keys its
 //! holder's own members, the structs flattened ahead of it and the types around its holder took.
-//! Each flattened member is written at its place. The reads are run under the Swift toolchain in
+//! Each flattened member is written at its place. What a variant under a tag alone holds as its one
+//! slot or flattens beside no member of its own is read from the object without the tag. The reads
+//! are run under the Swift toolchain in
 //! `tests/service_schema_emitted_client_tests/run_swift_flattened.rs`.
 
 #[cfg(feature = "chrono")]
 use super::flattened_models::serving_swift;
 use super::flattened_models::{
     baling_swift, bowsing_swift, boxing_swift, clewing_swift, faking_swift, footing_swift,
-    frapping_swift, gripping_swift, hanking_swift, kedging_swift, marling_swift, marrying_swift,
-    mousing_swift, parceling_swift, plying_swift, ratlining_swift, seaming_swift, snaking_swift,
-    splaying_swift, stopping_swift, stropping_swift, toggling_swift, twinning_swift,
-    whipping_swift, worming_swift,
+    frapping_swift, grafting_swift, gripping_swift, hanking_swift, kedging_swift, marling_swift,
+    marrying_swift, mousing_swift, parceling_swift, plying_swift, pointing_swift, ratlining_swift,
+    seaming_swift, snaking_swift, splaying_swift, stopping_swift, stropping_swift, toggling_swift,
+    twinning_swift, whipping_swift, worming_swift,
 };
 
 /// The read a holder takes the keys the types around it took with.
@@ -394,4 +396,75 @@ fn a_member_named_after_the_container_is_written_through_self() {
          encoder.container(keyedBy: CodingKeys.self); try self.container.encode(to: encoder); \
          try container.encode(self.note, forKey: .note) }",
     );
+}
+
+/// The read of the variant `wire` into the case `case` of a value `held` reads from the object
+/// without the tag, under the local `{case}Payload`.
+fn without_the_tag(wire: &str, case: &str, held: &str) -> String {
+    format!(
+        "case \"{wire}\": let {case}Payload = try SwiftSchemaPayload(from: decoder, \
+         without: taken + [\"kind\"]).value; self = .{case}(try SwiftSchemaPayload.read({held}, \
+         from: {case}Payload, at: decoder.codingPath)); "
+    )
+}
+
+/// What a variant under a tag alone holds as its one slot is read from the object without the
+/// tag, through a type written for it where `validate()` walks the slot, so a model is still read
+/// unjudged. The struct written for a variant whose every member is flattened takes the keys the
+/// types around it took, the tag among them, and reads each member from the object without them;
+/// one with a member of its own reads as it did.
+#[test]
+fn what_a_variant_under_a_tag_alone_holds_is_read_without_the_tag() {
+    let handed = |payload: &str, case: &str, wire: &str| {
+        format!(
+            "case \"{wire}\": self = .{case}(try {payload}(swiftSchemaUnjudged: decoder, \
+             swiftSchemaWithout: taken + [\"kind\"])); "
+        )
+    };
+    let grafting = grafting_swift::swift_definition();
+    assert_written(
+        &grafting,
+        &format!(
+            "{TAKING} {{ let flagPayload = try SwiftSchemaPayload(from: decoder, \
+             without: taken).value; self.flag = try SwiftSchemaPayload.read(Kinded.self, \
+             from: flagPayload, at: decoder.codingPath) }}"
+        ),
+    );
+    assert_written(&grafting, &handed("GraftingHeldPayload", "held", "Held"));
+    assert_written(&grafting, &without_the_tag("Slot", "slot", "Kinded.self"));
+    assert_no_keyed_container(&grafting);
+    let pointing = pointing_swift::swift_definition();
+    for (payload, case, wire) in [
+        ("PointingHeldPayload", "held", "Held"),
+        ("PointingMarkedPayload", "marked", "Marked"),
+        ("PointingNotedPayload", "noted", "Noted"),
+    ] {
+        assert_written(&pointing, &handed(payload, case, wire));
+    }
+    assert_written(
+        &pointing,
+        &format!(
+            "{TAKING} {{ let notchPayload = try SwiftSchemaPayload(from: decoder, \
+             without: taken).value; self.notch = try SwiftSchemaPayload.read(\
+             SwiftSchemaReadNotch.self, from: notchPayload, at: decoder.codingPath).value }}"
+        ),
+    );
+    assert_written(
+        &pointing,
+        &format!(
+            "{TAKING} {{ let container = try decoder.container(keyedBy: CodingKeys.self); {}",
+            pennant("flag", "taken + [\"note\"]")
+        ),
+    );
+    assert_written(
+        &pointing,
+        "private struct SwiftSchemaReadNotched: Decodable { let value: Notch; \
+         init(from decoder: Decoder) throws { self.value = try Notch(swiftSchemaUnjudged: decoder) } }",
+    );
+    assert_written(
+        &pointing,
+        &without_the_tag("Notched", "notched", "SwiftSchemaReadNotched.self")
+            .replace("decoder.codingPath))", "decoder.codingPath).value)"),
+    );
+    assert_written(&pointing, &without_the_tag("Slot", "slot", "Pennant.self"));
 }
