@@ -454,11 +454,10 @@ ident, or the container's `rename`); `with_struct_tag` puts the pair ahead of th
 as a required string literal and refuses a field that writes the same key, which serde would write
 twice. Dart writes it into `toJson`, Swift encodes it under `SwiftSchemaTagCodingKeys`, and Kotlin
 holds it in an `@EncodeDefault` property outside the constructor, which the plugin writes after the
-members and `{Type}Unjudged` moves ahead of them (`read::tag_first`), where serde writes it. Swift
-reads a payload with the key or without it, whatever value it holds, as serde does. Dart and Kotlin
-read one whose key holds the struct's name, and refuse one without the key or with another value
-under it, as TypeScript and Zod refuse it ("The Dart read refuses what `validate()` refuses" and
-"The Kotlin client's read", below).
+members and `{Type}Unjudged` moves ahead of them (`read::tag_first`), where serde writes it. The
+three read a payload whose key holds the struct's name, and refuse one without the key or with
+another value under it, as TypeScript and Zod refuse it, where serde reads past the key ("The Dart
+read refuses what `validate()` refuses", "The Swift read" and "The Kotlin client's read", below).
 
 ### 7. Field Validation Attributes (`#[model_schema_prop(...)]`)
 
@@ -2158,6 +2157,19 @@ to keep.
   `tests/swift_tests/tests.rs` pins the arm, and `run_swift_flattened_enums.rs` reads `Becalming`,
   of `run_kotlin_refusals.rs`, under the toolchain, with serde's answer and the Zod schema's text
   pinned beside each payload.
+- **A struct under its own tag reads its name under the tag alone**, as TypeScript and Zod read
+  it (`kind: z.literal("Flag")`), where serde reads past the tag whatever it holds, and where it
+  is absent. `own_tag_held` in `src/features/swift.rs` writes the check, inline, ahead of the
+  statements `struct_body_content` hands `read::both`: `DecodingError.dataCorrupted` with
+  ``missing field `{key}` `` for an object without the key under `SwiftSchemaTagCodingKeys`, and
+  `expected tag "{name}", found {value}` for another value under it, `null` among it, the value
+  read through `SwiftSchemaPayload` and written by `JSONSerialization`. A type that names a
+  function on itself checks the object its functions answered. A holder that flattens such a
+  struct hands it the tag, so the holder refuses the same payloads. `encode(to:)` is unchanged.
+  `run_swift_own_tags.rs` reads `FLAG_TAGS`, `PENNANT_TAGS` and `DRESSING_TAGS` of
+  `tests/kotlin_tests/flattened_models.rs`, the same rows of its own `Bunted`, which names a
+  function on itself, and a tag of `null` under the toolchain, with serde's write-back pinned
+  beside each row, and pins the text of each read.
 - **What a variant under a tag alone holds is handed the object without the tag**, as serde
   hands it. `EnumTagAttrs::tag_alone` is the one question. `named_payload` hands
   `struct_declaration` `around` under it, so the struct written for a variant whose every member
@@ -2241,12 +2253,13 @@ change to the emitter has to keep.
   (`preprocess::functions`). Nothing reads the item's derives: the Swift type is read whether or
   not the Rust one derives `Deserialize`.
 - **`src/features/swift/preprocess.rs` holds what is written.** `PAYLOAD` is the private
-  `SwiftSchemaPayload`, written into each type that names a function and into each that reads a
+  `SwiftSchemaPayload`, written into each type that names a function, into each that reads a
   member from its object without some keys, a flattened member or what a variant under a tag
-  alone holds, and into no other (`read::both` adds it where the statements or `Written::own`
-  name it). It reads any JSON value from a `Decoder`, reads a type back from one through
-  `JSONSerialization` and a `JSONDecoder` of its own, and writes the coding path of the value
-  into each `DecodingError` of that read. An answer `JSONSerialization.isValidJSONObject` refuses
+  alone holds, and into a struct under its own tag, which quotes a tag of another value through
+  it (`read::both` adds it where the statements or `Written::own` name it). It reads any JSON
+  value from a `Decoder`, reads a type back from one through `JSONSerialization` and a
+  `JSONDecoder` of its own, and writes the coding path of the value into each `DecodingError` of
+  that read. An answer `JSONSerialization.isValidJSONObject` refuses
   is a `dataCorrupted`, never an exception.
 - **A member's functions are called in the read the member had.** `preprocess::member` is the one
   writer, called from `decode_statement` (a field), `tuple_shape` (a slot of a tuple) and

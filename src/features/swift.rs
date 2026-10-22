@@ -2563,8 +2563,8 @@ fn struct_body_content(
         acc
     });
     let coding_keys = swift_coding_keys(fields, extra_coding_keys);
-    // A struct's own tag has no property to synthesize a codec from, so the tag is encoded under
-    // a key set of its own, and decoding reads past it.
+    // A struct's own tag has no property to synthesize a codec from, so the tag is encoded and
+    // read under a key set of its own.
     let unsynthesized = own_tag.is_some()
         || fields.iter().any(|field| {
             field.flatten || !matches!(field.shape.leaf_conversion, LeafConversion::None)
@@ -2587,8 +2587,9 @@ fn struct_body_content(
     } else {
         ""
     };
+    let tag_held = own_tag.map_or_else(String::new, |(key, named)| own_tag_held(key, named));
     let reads = read::both(
-        &format!("{keyed}{aliased}{members}"),
+        &format!("{tag_held}{keyed}{aliased}{members}"),
         &preprocess::Written {
             beside: "",
             named: owner,
@@ -2636,6 +2637,26 @@ fn struct_body_content(
         )
     });
     format!("{props}{coding_keys} {tag_keys}{memberwise_init}{reads}{encode_method}{validate}")
+}
+
+/// The statements that refuse the object the decoder holds where it holds no `key`, or another
+/// value than `named` under it: the tag of a struct under its own tag, which TypeScript and Zod
+/// refuse in the same places, where serde reads past it. A value refused is quoted as JSON.
+fn own_tag_held(key: &str, named: &str) -> String {
+    let key_text = swift_literal_text(key);
+    let name_text = swift_literal_text(named);
+    format!(
+        "let tagged = try decoder.container(keyedBy: SwiftSchemaTagCodingKeys.self); guard \
+         tagged.contains(.swiftSchemaTag) else {{ throw DecodingError.dataCorrupted(\
+         DecodingError.Context(codingPath: decoder.codingPath, debugDescription: \"missing field \
+         `{key_text}`\")) }}; guard (try? tagged.decode(String.self, forKey: .swiftSchemaTag)) == \
+         \"{name_text}\" else {{ let found = try JSONSerialization.data(withJSONObject: \
+         tagged.decode(SwiftSchemaPayload.self, forKey: .swiftSchemaTag).value, options: \
+         [.fragmentsAllowed, .sortedKeys, .withoutEscapingSlashes]); throw \
+         DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
+         debugDescription: \"expected tag \\\"{name_text}\\\", found \\(String(decoding: found, \
+         as: UTF8.self))\")) }}; "
+    )
 }
 
 /// Whether `statements` read or write through `container`, the keyed container of a struct's
