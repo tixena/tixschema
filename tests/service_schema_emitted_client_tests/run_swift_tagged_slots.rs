@@ -1,7 +1,7 @@
 //! The lone slot of a newtype variant under a tag alone, read and written back by the emitted
 //! Swift types compiled with warnings as errors, against what serde writes: the slot is read from
 //! the object without the tag, as serde hands it, and written beside the tag, an externally tagged
-//! enum's unit variant as an entry of its name over `null`.
+//! enum's unit variant as an entry of its name over `null`, and an `ObjectId` as its `$oid` key.
 
 #![cfg(all(feature = "swift", feature = "serde"))]
 
@@ -17,12 +17,15 @@ use super::tagged_slot_models::{
     lightering_swift, palleted_swift, serde_told, stevedore_swift, swaddled_swift, tonnage_swift,
     trussed_swift, waybilled_swift, wharfage_swift,
 };
+#[cfg(feature = "mongodb")]
+use super::tagged_slot_models::{STAMP_REFUSED, STAMPED, imprint_swift, stamping_swift};
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
 const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
 
 /// The function `Docketed::Trimmed` and `Docketed::Pared` name, and what prints a row: the value
-/// read, written back with its keys sorted, or the description of what the read throws.
+/// read, written back with its keys sorted, the key a read finds missing, or the description of
+/// what the read throws.
 const TOLD: &str = r#"
 func lightened(_ payload: Any) -> Any {
   guard var members = payload as? [String: Any] else { return payload }
@@ -38,9 +41,20 @@ func told<Read: Codable>(_ at: Int, _ type: Read.Type, _ payload: String) {
     print("\(at): read \(String(data: try encoder.encode(read), encoding: .utf8)!)")
   } catch DecodingError.dataCorrupted(let context) {
     print("\(at): \(context.debugDescription)")
+  } catch DecodingError.keyNotFound(let key, _) {
+    print("\(at): missing field `\(key.stringValue)`")
   } catch {
     print("\(at): \(error)")
   }
+}
+"#;
+
+/// The consumer's own `ObjectId`, public and `Sendable` as the emitted enum that holds it is.
+#[cfg(feature = "mongodb")]
+const OBJECT_ID: &str = r#"
+public struct ObjectId: Codable, Sendable {
+  public let oid: String
+  enum CodingKeys: String, CodingKey { case oid = "$oid" }
 }
 "#;
 
@@ -147,5 +161,76 @@ fn the_swift_text_reads_and_writes_a_unit_variant_beside_the_tag_as_its_entry() 
          };",
     ] {
         assert!(docketed.contains(held), "no `{held}` in: {docketed}");
+    }
+}
+
+/// An `ObjectId` in the slot is read from the object without the tag and written back as its
+/// `$oid` key beside the tag, as serde writes it, owned, in a `Box` and under a brand, and the tag
+/// alone is refused, as serde refuses it.
+#[cfg(feature = "mongodb")]
+#[test]
+fn an_object_id_beside_the_tag_is_read_and_written_back_by_swift_as_serde_writes_it() {
+    let mut main = String::new();
+    let mut expected = String::new();
+    for (at, json) in STAMPED.iter().enumerate() {
+        let _ = writeln!(main, "told({at}, Stamping.self, #\"{json}\"#)");
+        let written = serde_told("Stamping", json);
+        let back = written.strip_prefix("read ").unwrap();
+        let _ = writeln!(expected, "{at}: read {}", sorted(back));
+    }
+    assert_eq!(
+        serde_told("Stamping", STAMP_REFUSED.json),
+        "refused",
+        "serde no longer refuses {}",
+        STAMP_REFUSED.json
+    );
+    let _ = writeln!(
+        main,
+        "told({}, Stamping.self, #\"{}\"#)",
+        STAMPED.len(),
+        STAMP_REFUSED.json
+    );
+    let _ = writeln!(expected, "{}: {}", STAMPED.len(), STAMP_REFUSED.swift);
+    let source = [
+        "import Foundation".to_owned(),
+        OBJECT_ID.to_owned(),
+        imprint_swift::swift_definition(),
+        stamping_swift::swift_definition(),
+        TOLD.to_owned(),
+        main,
+    ]
+    .join("\n\n");
+    let Some(run) = judged(
+        "swift-tagged-object-ids",
+        RUNTIME_VAR,
+        "swift",
+        &["-warnings-as-errors"],
+        "main.swift",
+        &source,
+    ) else {
+        return;
+    };
+    assert!(
+        run.succeeded,
+        "`swift -warnings-as-errors main.swift` failed.\n--- stdout ---\n{}\n--- stderr ---\n{}\n--- source ---\n{source}",
+        run.stdout, run.stderr
+    );
+    assert_eq!(run.stdout, expected, "the Swift read is not serde's");
+}
+
+/// The Swift read hands an `ObjectId` in the slot the object without the tag, and the write encodes
+/// it into the object the tag is written in.
+#[cfg(feature = "mongodb")]
+#[test]
+fn the_swift_text_reads_and_writes_an_object_id_beside_the_tag() {
+    let stamping = stamping_swift::swift_definition();
+    for held in [
+        "case \"Held\": let heldPayload = try SwiftSchemaPayload(from: decoder, without: taken + \
+         [\"kind\"]).value; self = .held(try SwiftSchemaPayload.read(ObjectId.self, from: \
+         heldPayload, at: decoder.codingPath));",
+        "case .held(let payload): try container.encode(\"Held\", forKey: .swiftSchemaTag); try \
+         payload.encode(to: encoder);",
+    ] {
+        assert!(stamping.contains(held), "no `{held}` in: {stamping}");
     }
 }

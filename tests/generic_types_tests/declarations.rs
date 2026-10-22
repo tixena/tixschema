@@ -100,6 +100,8 @@ use core::fmt::Write as _;
 
 #[cfg(feature = "chrono")]
 use chrono::{DateTime, Utc};
+#[cfg(feature = "mongodb")]
+use mongodb::bson::oid::ObjectId;
 #[cfg(feature = "jsonschema")]
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -1152,6 +1154,17 @@ const MOORINGS: [(&str, bool); 9] = [
     (r#"{"kind":"Tacked","Calm":1}"#, false),
 ];
 
+/// Each payload of [`DeclaredStamp`], and whether serde, its Zod schema and its TypeScript type
+/// take it: an `ObjectId`'s `$oid` key beside the tag, as serde writes it, and not the tag alone or
+/// the key under another name.
+#[cfg(feature = "mongodb")]
+const STAMPS: [(&str, bool); 4] = [
+    (r#"{"kind":"Held","$oid":"507f1f77bcf86cd799439011"}"#, true),
+    (r#"{"kind":"Held"}"#, false),
+    (r#"{"kind":"Held","oid":"507f1f77bcf86cd799439011"}"#, false),
+    (r#"{"kind":"Idle"}"#, true),
+];
+
 /// Each payload of an externally tagged enum that declares a parameter, written with an argument,
 /// flattened beside a member and held by the lone slot of a variant under a tag alone, the schema
 /// it is parsed through and the type it is assigned to, and whether serde, Zod and TypeScript take
@@ -1734,6 +1747,17 @@ pub enum DeclaredMooring {
     Tacked(#[model_schema_prop(preprocess = ["asGiven"])] DeclaredTack),
 }
 
+/// An `ObjectId` in the lone slot of a variant under a tag alone, which serde writes beside the
+/// tag as its `$oid` key, as it writes a flattened one.
+#[cfg(feature = "mongodb")]
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum DeclaredStamp {
+    Held(ObjectId),
+    Idle,
+}
+
 /// [`DeclaredLading`] written with an argument and flattened beside a member of its holder's own.
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2002,6 +2026,19 @@ fn hatches_bundle() -> String {
         declared_pick_of_schema::Schema::zod_schema(),
         DeclaredGangway::ts_definition(),
         DeclaredGangway::zod_schema(),
+    ]
+    .join("\n\n")
+}
+
+/// [`DeclaredStamp`]: a bundle of its own, compiled with `tsc --strict` before it is loaded,
+/// beside the consumer's own `ObjectId`.
+#[cfg(feature = "mongodb")]
+fn stamps_bundle() -> String {
+    [
+        PREAMBLE.to_owned(),
+        "type ObjectId = { $oid: string };".to_owned(),
+        DeclaredStamp::ts_definition(),
+        DeclaredStamp::zod_schema(),
     ]
     .join("\n\n")
 }
@@ -4265,6 +4302,61 @@ fn type_check_a_slot_beside_the_tag_takes_a_unit_variants_entry_over_null() {
     fs::remove_dir_all(&at).unwrap();
     // A row's line is its position after the import.
     let typed: Vec<bool> = (0..MOORINGS.len())
+        .map(|row| !said.contains(&format!("consumer.ts({},", row + 2)))
+        .collect();
+    assert_eq!(
+        typed, stated,
+        "TypeScript does not take what the rows state:\n{said}\n{payloads}"
+    );
+}
+
+/// An `ObjectId` in the lone slot of a variant under a tag alone is taken by the Zod schema of the
+/// enum under `node` and by its TypeScript type under `tsc --strict` as serde writes and reads it:
+/// its `$oid` key beside the tag, and not the tag alone.
+#[cfg(feature = "mongodb")]
+#[test]
+fn type_check_an_object_id_beside_the_tag_is_taken_as_serde_writes_it() {
+    let held = DeclaredStamp::Held(ObjectId::parse_str("507f1f77bcf86cd799439011").unwrap());
+    assert_eq!(
+        serde_json::to_string(&held).unwrap(),
+        STAMPS[0].0,
+        "serde no longer writes an ObjectId beside the tag as the first row"
+    );
+    let stated: Vec<bool> = STAMPS.iter().map(|&(_, taken)| taken).collect();
+    let read: Vec<bool> = STAMPS
+        .iter()
+        .map(|&(json, _)| serde_json::from_str::<DeclaredStamp>(json).is_ok())
+        .collect();
+    assert_eq!(read, stated, "serde does not take what the rows state");
+    let listed: Vec<(&str, &str)> = STAMPS
+        .iter()
+        .map(|&(json, _)| ("DeclaredStamp$Schema", json))
+        .collect();
+    let driver = TAKEN_DRIVER.replace("PAYLOADS", &serde_json::to_string(&listed).unwrap());
+    let Some((printed, failed)) = loaded_from("stamps", &stamps_bundle(), &driver) else {
+        return;
+    };
+    assert_eq!(
+        printed,
+        serde_json::to_string(&stated).unwrap(),
+        "the schema does not take what the rows state:\n{failed}"
+    );
+    let Some(at) = built_from("stamps-payloads", &stamps_bundle()) else {
+        return;
+    };
+    let mut payloads = String::from("import type { DeclaredStamp } from \"./lib/index.js\";\n");
+    for (position, &(json, _)) in STAMPS.iter().enumerate() {
+        let _ = writeln!(
+            payloads,
+            "export const row{position}: DeclaredStamp = {json};"
+        );
+    }
+    fs::write(at.join("tsconfig.consumer.json"), CONSUMER_PROJECT).unwrap();
+    fs::write(at.join("consumer.ts"), &payloads).unwrap();
+    let (_, said) = compiled(&at, "tsconfig.consumer.json").unwrap();
+    fs::remove_dir_all(&at).unwrap();
+    // A row's line is its position after the import.
+    let typed: Vec<bool> = (0..STAMPS.len())
         .map(|row| !said.contains(&format!("consumer.ts({},", row + 2)))
         .collect();
     assert_eq!(

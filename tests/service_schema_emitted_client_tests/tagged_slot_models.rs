@@ -5,8 +5,11 @@
 //! externally tagged enum a function reads. serde writes the slot's members beside the tag, an
 //! externally tagged enum's variant as an entry, and reads the slot from the object without the
 //! tag. A struct that flattens the alias reads and writes the same entries, and so do a slot and a
-//! struct over an externally tagged enum that declares a parameter, written with an argument.
+//! struct over an externally tagged enum that declares a parameter, written with an argument. An
+//! `ObjectId` in the slot is written as its `$oid` key beside the tag, as a flattened one is.
 
+#[cfg(feature = "mongodb")]
+use mongodb::bson::oid::ObjectId;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -75,6 +78,26 @@ pub const ENTRIES_REFUSED: [Refused; 3] = [
         swift: "unknown tag Loose",
     },
 ];
+
+/// Each payload serde writes for [`Stamping`]: an `ObjectId` beside the tag, owned, in a `Box` and
+/// under a brand.
+#[cfg(feature = "mongodb")]
+pub const STAMPED: [&str; 3] = [
+    r#"{"kind":"Held","$oid":"507f1f77bcf86cd799439011"}"#,
+    r#"{"kind":"Boxed","$oid":"507f1f77bcf86cd799439011"}"#,
+    r#"{"kind":"Branded","$oid":"507f1f77bcf86cd799439011"}"#,
+];
+
+/// The tag of [`Stamping::Held`] alone, which serde refuses, and the words each client's
+/// `ObjectId` refuses it with.
+#[cfg(feature = "mongodb")]
+pub const STAMP_REFUSED: Refused = Refused {
+    dart: "_TypeError: type 'Null' is not a subtype of type 'String' in type cast",
+    json: r#"{"kind":"Held"}"#,
+    kotlin: "refused: Field '$oid' is required for type with serial name 'ObjectId', but it was \
+             missing at path: $",
+    swift: "missing field `$oid`",
+};
 
 /// A payload serde refuses, which TypeScript and the generated Zod schema refuse too, and what
 /// each client refuses it with.
@@ -241,6 +264,25 @@ pub enum Waybilled<Held> {
     Held(Held),
 }
 
+/// A brand over an `ObjectId`.
+#[cfg(feature = "mongodb")]
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct Imprint(pub ObjectId);
+
+/// An enum under a tag alone whose newtype variants hold an `ObjectId`, owned, in a `Box` and
+/// under [`Imprint`].
+#[cfg(feature = "mongodb")]
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind")]
+pub enum Stamping {
+    Boxed(Box<ObjectId>),
+    Branded(Imprint),
+    Held(ObjectId),
+}
+
 /// The function [`Docketed::Trimmed`] and [`Docketed::Pared`] name: drops a key `spare` from the
 /// object it is handed.
 pub fn lightened(mut payload: Value) -> Value {
@@ -256,6 +298,8 @@ pub fn serde_told(read_as: &str, json: &str) -> String {
         "Docketed" => written_back::<Docketed>(json),
         "Trussed" => written_back::<Trussed>(json),
         "Swaddled" => written_back::<Swaddled>(json),
+        #[cfg(feature = "mongodb")]
+        "Stamping" => written_back::<Stamping>(json),
         _ => written_back::<Waybilled<Tonnage>>(json),
     }
 }
