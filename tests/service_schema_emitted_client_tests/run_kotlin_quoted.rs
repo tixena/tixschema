@@ -37,14 +37,6 @@ fun <T> told(at: Int, serializer: KSerializer<T>, payload: String) {
 }
 "#;
 
-/// The payload serde writes that the Kotlin read refuses, and what it answers: a newtype variant
-/// over a struct under a tag alone, which the Kotlin read takes under a `value` key, where serde
-/// writes the struct's members beside the tag. The names in it are read as written.
-const PARTED: (&str, &str) = (
-    r#"{"ki'nd":"He\"ld","cost$usd":"c"}"#,
-    "refused: Encountered an unknown key 'cost$usd' at path: $",
-);
-
 /// A struct's payload with no tag, and with a tag of another value: each refused by the Kotlin
 /// read, as TypeScript and Zod refuse it, where serde reads past the tag.
 const REFUSED: [(&str, &str); 2] = [
@@ -77,12 +69,7 @@ fn a_name_that_holds_a_quote_is_read_and_written_back_as_serde_writes_it() {
     let mut at = 0_usize;
     for (read_as, json) in WRITTEN {
         main.push_str(&told(at, read_as, json));
-        let written = serde_written(read_as, json);
-        if json == PARTED.0 {
-            let _ = writeln!(expected, "{at}: {}", PARTED.1);
-        } else {
-            let _ = writeln!(expected, "{at}: read {written}");
-        }
+        let _ = writeln!(expected, "{at}: read {}", serde_written(read_as, json));
         at += 1;
     }
     for (read_as, json, back) in UNDER_AN_ALIAS {

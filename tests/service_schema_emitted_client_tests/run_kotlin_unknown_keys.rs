@@ -311,10 +311,9 @@ const ROWS: [Row; 34] = [
         zod: "refused",
     },
     Row {
-        ignoring: "refused: Field 'value' is required for type with serial name 'Held', but it was \
-                   missing at path: $",
+        ignoring: "read {\"kind\":\"Held\",\"label\":\"x\"}",
         json: r#"{"kind":"Held","label":"x","other":1}"#,
-        kotlin: "refused: Encountered an unknown key 'label' at path: $",
+        kotlin: UNKNOWN_AT,
         named: "Downhaul",
         serde: written_back::<Downhaul>,
         zod: "refused",

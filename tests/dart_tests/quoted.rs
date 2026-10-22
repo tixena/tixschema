@@ -107,7 +107,7 @@ fn an_enums_names_are_escaped_in_its_dart_text() {
         &levied_dart::dart_definition(),
         &[
             r"final tag = json['ki\'nd'] as String;",
-            r#"case 'He"ld': return LeviedHeld(Leveed.fromJsonUnjudged(json));"#,
+            r#"case 'He"ld': return LeviedHeld(Leveed.fromJsonUnjudged(({...json}..remove('ki\'nd'))));"#,
             r"Map<String, dynamic> toJson() => { 'ki\'nd': 'Bid\$Ask','lo\$t': lot, };",
             r#"{ 'ki\'nd': 'He"ld', ...((value).toJson() as Map<String, dynamic>) }"#,
             r"@override dynamic toJson() => { 'ki\'nd': 'Calm\\' };",

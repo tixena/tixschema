@@ -710,6 +710,28 @@ mod impost_http_rest_transport;
 #[path = "service_schema_emitted_client_tests/impost_filing_http_rest_transport.rs"]
 mod impost_filing_http_rest_transport;
 
+/// The lone slot of a newtype variant under a tag alone, in each shape serde writes beside the
+/// tag.
+#[cfg(test)]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+#[path = "service_schema_emitted_client_tests/tagged_slot_models.rs"]
+mod tagged_slot_models;
+
+/// Those slots, read and written back by the emitted Kotlin types beside serde and Zod.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_tagged_slots.rs"]
+mod run_kotlin_tagged_slots;
+
+/// Those slots, read and written back by the emitted Dart types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_tagged_slots.rs"]
+mod run_dart_tagged_slots;
+
+/// Those slots, read and written back by the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_tagged_slots.rs"]
+mod run_swift_tagged_slots;
+
 // The transport's expansion reaches each service through `$crate`, which is this binary's root:
 // every trait and its schema module are named here for it to resolve.
 #[cfg(all(test, feature = "dart"))]

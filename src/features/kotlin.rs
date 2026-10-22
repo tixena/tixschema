@@ -385,8 +385,9 @@ fn flattened_variant_names(def: &FieldDef) -> Option<(&str, Vec<Vec<String>>)> {
     (!names.is_empty()).then_some((name.as_str(), names))
 }
 
-/// Whether a flattened member typed `def` may write a variant as its bare name: an externally
-/// tagged enum the emitter wrote with a unit variant, whatever function it names.
+/// Whether a value typed `def`, flattened or beside the tag of a newtype variant under a tag
+/// alone, may write a variant as its bare name: an externally tagged enum the emitter wrote with a
+/// unit variant, whatever function it names.
 fn writes_a_bare_name(def: &FieldDef) -> bool {
     let FieldDefType::SiblingType(name, _) = &def.field_type else {
         return false;
@@ -1868,14 +1869,10 @@ fn flattened_merge(field: &KotlinField, prop: &str, inner_serializer: &str) -> O
         return None;
     }
     let merged = |held: &str| {
-        let written = format!("output.json.encodeToJsonElement({inner_serializer}, {held})");
-        if writes_a_bare_name(&field.field_def) {
-            format!(
-                "when (val written = {written}) {{ is JsonPrimitive -> put(written.content, JsonNull); else -> written.jsonObject.forEach {{ (k, v) -> put(k, v) }} }}"
-            )
-        } else {
-            format!("{written}.jsonObject.forEach {{ (k, v) -> put(k, v) }}")
-        }
+        merged_beside(
+            &field.field_def,
+            &format!("output.json.encodeToJsonElement({inner_serializer}, {held})"),
+        )
     };
     Some(if field.field_def.is_optional() {
         let held = merged("flattened");
@@ -1883,6 +1880,20 @@ fn flattened_merge(field: &KotlinField, prop: &str, inner_serializer: &str) -> O
     } else {
         merged(&format!("value.{prop}"))
     })
+}
+
+/// The statement that puts what `written`, the Kotlin expression of a value of the type `def`
+/// written as JSON, holds in the object being built, beside the keys already there: its members,
+/// or, for a variant written as its bare name, that name over `null`, as serde writes it there.
+fn merged_beside(def: &FieldDef, written: &str) -> String {
+    if writes_a_bare_name(def) {
+        format!(
+            "when (val written = {written}) {{ is JsonPrimitive -> put(written.content, \
+             JsonNull); else -> written.jsonObject.forEach {{ (k, v) -> put(k, v) }} }}"
+        )
+    } else {
+        format!("{written}.jsonObject.forEach {{ (k, v) -> put(k, v) }}")
+    }
 }
 
 /// One flattened externally tagged enum's own statements, as [`flatten_struct_field_plan`] writes
@@ -2798,9 +2809,9 @@ fn variant_subclass(
 }
 
 /// The members of a variant whose functions are called at their key by the enum's serializer,
-/// which hands the plugin the variant's object: each member `plugin` reads no other way, and a
-/// lone slot, which that object holds under `value`. A variant [`written_by_hand`] calls its
-/// members' functions itself.
+/// which hands the plugin the variant's object: each member `plugin` reads no other way. A lone
+/// slot's functions are called where the enum reads it, and a variant [`written_by_hand`] calls
+/// its members' functions itself.
 fn variant_keyed(
     payload: &VariantPayload,
     plugin: &Plugin<'_>,
@@ -2808,15 +2819,7 @@ fn variant_keyed(
     match payload {
         VariantPayload::Named(_) if written_by_hand(payload) => Vec::new(),
         VariantPayload::Named(fields) => plugin.keyed(fields),
-        VariantPayload::Unit => Vec::new(),
-        VariantPayload::Value(field_def) => {
-            let functions = preprocess::of(field_def);
-            if functions.is_empty() {
-                Vec::new()
-            } else {
-                vec![("value".to_owned(), functions.to_vec())]
-            }
-        }
+        VariantPayload::Unit | VariantPayload::Value(_) => Vec::new(),
     }
 }
 
@@ -2902,9 +2905,9 @@ fn dispatched_tagged_variant(
     let tag_key = ctx.tag_key;
     // Under a tag and a content key the content is read out of a `Map` index, which is nullable
     // in Kotlin, and refused where it is absent; under a tag alone it is the object without the
-    // tag, or the whole object for a variant read by hand, whose flattened struct reads the tag
-    // as TypeScript and Zod read it; with no tag attribute the object's one entry is destructured,
-    // already non-null.
+    // tag, as serde hands it a lone slot, or the whole object for a variant read by hand, whose
+    // flattened struct reads the tag as TypeScript and Zod read it; with no tag attribute the
+    // object's one entry is destructured, already non-null.
     let data = match ctx.tagging {
         Tagging::Adjacent(content) => present("data", content),
         Tagging::External => "data".to_owned(),
@@ -2917,7 +2920,7 @@ fn dispatched_tagged_variant(
             None,
             unit_variant_read(ctx.tagging, &subclass_name, ctx.export_name, ctx.tag_key),
         ),
-        (VariantPayload::Value(field_def), Some(held)) if !beside_the_tag => {
+        (VariantPayload::Value(field_def), Some(held)) => {
             let read_by = read::declared_serializer(field_def, held, ctx.type_parameters);
             (
                 Some(format!(
@@ -2929,7 +2932,7 @@ fn dispatched_tagged_variant(
                 ),
             )
         }
-        // Under a tag alone a variant is its subclass's own object, a lone slot included.
+        // A variant of members is its subclass's own object.
         (VariantPayload::Named(_) | VariantPayload::Value(_), _) => (
             Some(format!("output.json.encodeToJsonElement({}, value)", own())),
             format!(
@@ -2952,10 +2955,15 @@ fn dispatched_tagged_variant(
         (Tagging::External, Some(expr)) => {
             format!("is {subclass_name} -> buildJsonObject {{ put({tag}, {expr}) }}")
         }
-        (Tagging::Unwrapped, Some(expr)) => format!(
-            "is {subclass_name} -> buildJsonObject {{ put({key}, {tag}); \
-             {expr}.jsonObject.forEach {{ (k, v) -> put(k, v) }} }}"
-        ),
+        // serde writes a lone slot's own members beside the tag, after it.
+        (Tagging::Unwrapped, Some(expr)) => {
+            let merged = if let VariantPayload::Value(field_def) = &payload {
+                merged_beside(field_def, expr)
+            } else {
+                format!("{expr}.jsonObject.forEach {{ (k, v) -> put(k, v) }}")
+            };
+            format!("is {subclass_name} -> buildJsonObject {{ put({key}, {tag}); {merged} }}")
+        }
         (Tagging::Adjacent(_) | Tagging::Unwrapped, None) => {
             format!("is {subclass_name} -> buildJsonObject {{ put({key}, {tag}) }}")
         }
