@@ -225,15 +225,12 @@ struct Notice {
 struct Counts {
     #[serde(flatten)]
     by_name: HashMap<String, i32>,
-    title: String,
 }
 
-/// A flattened map of model types, beside a flattened struct.
+/// A flattened map of model types.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Releases {
-    #[serde(flatten)]
-    audit: Audit,
     #[serde(flatten)]
     by_name: BTreeMap<String, Version>,
 }
@@ -251,17 +248,6 @@ struct Body {
 struct Letter<T> {
     #[serde(flatten)]
     body: T,
-    id: String,
-}
-
-/// A flattened type parameter, then a flattened map: two fields that each take the rest.
-#[model_schema(enable = ["decode_with"], default_types(T = Body))]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Packet<T> {
-    #[serde(flatten)]
-    body: T,
-    #[serde(flatten)]
-    counts: HashMap<String, i32>,
     id: String,
 }
 
@@ -324,26 +310,12 @@ enum Seen {
 struct Spare {
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
     rest: Option<HashMap<String, i32>>,
-    title: String,
-}
-
-/// A flattened map of numbers beside a flattened tagged enum, whose text tag serde hands to the
-/// map as well.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Mixed {
-    #[serde(flatten)]
-    counts: HashMap<String, i32>,
-    #[serde(flatten)]
-    paint: Paint,
 }
 
 /// A flattened map read by a hook named like what the walk of a flattened type keeps its keys as.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Marked {
-    #[serde(flatten)]
-    audit: Audit,
     #[serde(flatten, deserialize_with = "declared")]
     rest: HashMap<String, i32>,
 }
@@ -369,15 +341,6 @@ struct Traced {
     title: String,
     #[serde(flatten)]
     trace: Trace,
-}
-
-/// A type that flattens one that flattens a map, which takes every key it is handed.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Report {
-    #[serde(flatten)]
-    counts: Counts,
-    id: String,
 }
 
 #[model_schema(enable = ["decode_with"])]
@@ -428,7 +391,6 @@ enum Tabled {
     Made {
         #[serde(flatten)]
         counts: Counts,
-        id: String,
     },
 }
 
@@ -590,13 +552,9 @@ fn what_serde_wrote_for_a_type_that_flattens_is_read_and_the_decider_never_runs(
 
     let counts = Counts {
         by_name: HashMap::from([("a".to_owned(), 1_i32), ("b".to_owned(), 2_i32)]),
-        title: "t".to_owned(),
     };
     let counts_written = serde_json::to_value(&counts).unwrap();
-    assert_eq!(
-        counts_written,
-        json!({ "a": 1_i32, "b": 2_i32, "title": "t" })
-    );
+    assert_eq!(counts_written, json!({ "a": 1_i32, "b": 2_i32 }));
     assert_eq!(
         read_counting!(Counts, counts_schema, counts_written, calls),
         Ok(counts)
@@ -969,7 +927,7 @@ fn an_untagged_enums_fields_walker_returns_the_keys_of_the_variant_serde_reads()
 
 #[test]
 fn a_flattened_map_takes_every_key_nothing_else_declares() {
-    let stored = json!({ "a": "x", "b": 2_i32, "title": "t" });
+    let stored = json!({ "a": "x", "b": 2_i32 });
     assert!(!serde_reads::<Counts>(&stored));
     assert_eq!(
         listed!(Counts, counts_schema, stored),
@@ -981,28 +939,17 @@ fn a_flattened_map_takes_every_key_nothing_else_declares() {
 fn a_flattened_map_of_model_types_walks_each_value_at_its_key() {
     let mut calls = 0_u32;
     let releases = Releases {
-        audit: Audit {
-            created_by: "ada".to_owned(),
-            revision: 1_i32,
-        },
         by_name: BTreeMap::from([("first".to_owned(), Version { number: 1_i32 })]),
     };
     let written = serde_json::to_value(&releases).unwrap();
-    assert_eq!(
-        written,
-        json!({ "createdBy": "ada", "first": { "number": 1_i32 }, "revision": 1_i32 })
-    );
+    assert_eq!(written, json!({ "first": { "number": 1_i32 } }));
     assert_eq!(
         read_counting!(Releases, releases_schema, written, calls),
         Ok(releases)
     );
     assert_eq!(calls, 0);
 
-    let stored = json!({
-        "createdBy": "ada",
-        "first": { "draft": true, "number": "1" },
-        "revision": 1_i32,
-    });
+    let stored = json!({ "first": { "draft": true, "number": "1" } });
     assert!(!serde_reads::<Releases>(&stored));
     assert_eq!(
         listed!(Releases, releases_schema, stored),
@@ -1035,40 +982,7 @@ fn a_flattened_type_parameter_is_read_whole_from_the_keys_nothing_else_declares(
             id: "i".to_owned(),
         })
     );
-    // Filled with a map, the parameter is read from the keys the type itself does not declare.
-    let counted = json!({ "id": "i", "x": 1_i32 });
-    assert!(serde_reads::<Letter<HashMap<String, i32>>>(&counted));
-    assert_eq!(
-        read_counting!(Letter<HashMap<String, i32>>, letter_schema, counted, calls),
-        Ok(Letter {
-            body: HashMap::from([("x".to_owned(), 1_i32)]),
-            id: "i".to_owned(),
-        })
-    );
     assert_eq!(calls, 0);
-}
-
-#[test]
-fn a_second_flattened_field_that_takes_the_rest_is_walked_by_nothing() {
-    let mut calls = 0_u32;
-    let stored = json!({ "a": 1_i32, "id": "i", "text": "x" });
-    assert_eq!(
-        read_counting!(Packet<Body>, packet_schema, stored, calls),
-        Ok(Packet {
-            body: Body {
-                text: "x".to_owned(),
-            },
-            counts: HashMap::from([("a".to_owned(), 1_i32)]),
-            id: "i".to_owned(),
-        })
-    );
-    assert_eq!(calls, 0);
-    let refused = json!({ "a": "bad", "id": "i", "text": "x" });
-    assert!(!serde_reads::<Packet<Body>>(&refused));
-    assert_eq!(
-        listed!(Packet<Body>, packet_schema, refused),
-        ["undescribed: invalid type: string \"bad\", expected i32"]
-    );
 }
 
 /// Each of two flattened types contributes its keys, and one undeclared key is listed once.
@@ -1256,43 +1170,26 @@ fn an_untagged_variant_that_flattens_lists_the_flattened_types_issues_as_its_own
 #[test]
 fn an_optional_flattened_map_is_walked_by_nothing_and_takes_every_key() {
     let mut calls = 0_u32;
-    let stored = json!({ "a": "x", "title": "t" });
+    let stored = json!({ "a": "x" });
     assert_eq!(
         read_counting!(Spare, spare_schema, stored, calls),
-        Ok(Spare {
-            rest: None,
-            title: "t".to_owned(),
-        })
+        Ok(Spare { rest: None })
     );
     assert_eq!(calls, 0);
-}
-
-#[test]
-fn a_flattened_map_that_cannot_hold_the_tag_of_an_enum_beside_it_is_undescribed() {
-    let stored = json!({ "kind": "Clear" });
-    assert!(!serde_reads::<Mixed>(&stored));
-    assert_eq!(
-        listed!(Mixed, mixed_schema, stored),
-        ["undescribed: invalid type: string \"Clear\", expected i32"]
-    );
 }
 
 #[test]
 fn a_hook_named_like_the_keys_a_flattening_walker_keeps_is_the_authors_function() {
     let mut calls = 0_u32;
-    let stored = json!({ "createdBy": "ada", "revision": 1_i32, "x": 1_i32 });
+    let stored = json!({ "x": 1_i32 });
     assert_eq!(
         read_counting!(Marked, marked_schema, stored, calls),
         Ok(Marked {
-            audit: Audit {
-                created_by: "ada".to_owned(),
-                revision: 1_i32,
-            },
             rest: HashMap::from([("x".to_owned(), 1_i32)]),
         })
     );
     assert_eq!(calls, 0);
-    let negative = json!({ "createdBy": "ada", "revision": 1_i32, "x": -1_i32 });
+    let negative = json!({ "x": -1_i32 });
     assert!(!serde_reads::<Marked>(&negative));
     assert_eq!(
         listed!(Marked, marked_schema, negative),
@@ -1316,26 +1213,6 @@ fn a_flattened_untagged_variant_with_no_field_declares_no_key() {
         listed!(Traced, traced_schema, stored),
         ["legacy: unknown: found Bool(true)"]
     );
-}
-
-/// serde hands a flattened type the keys the outer type's own fields did not take.
-#[test]
-fn a_flattened_type_that_flattens_a_map_is_handed_no_key_of_the_outer_type() {
-    let report = Report {
-        counts: Counts {
-            by_name: HashMap::from([("a".to_owned(), 1_i32)]),
-            title: "t".to_owned(),
-        },
-        id: "i".to_owned(),
-    };
-    let written = serde_json::to_value(&report).unwrap();
-    assert_eq!(written, json!({ "a": 1_i32, "id": "i", "title": "t" }));
-    let mut calls = 0_u32;
-    assert_eq!(
-        read_counting!(Report, report_schema, written, calls),
-        Ok(report)
-    );
-    assert_eq!(calls, 0);
 }
 
 #[test]
@@ -1391,25 +1268,6 @@ fn a_key_the_outer_type_and_a_flattened_type_both_declare_is_the_outer_types_alo
 }
 
 #[test]
-fn an_issue_in_a_flattened_type_that_flattens_a_map_is_listed_at_its_key() {
-    let stored = json!({ "a": "x", "id": "i", "title": "t" });
-    assert!(!serde_reads::<Report>(&stored));
-    assert_eq!(
-        listed!(Report, report_schema, stored),
-        ["a: invalid: expected I32, found String(\"x\"): invalid type: string \"x\", expected i32"]
-    );
-    // The map takes a key nothing declares, so serde refuses a value in it that is no count.
-    let undeclared = json!({ "a": 1_i32, "id": "i", "legacy": [1_i32], "title": "t" });
-    assert!(!serde_reads::<Report>(&undeclared));
-    assert_eq!(
-        listed!(Report, report_schema, undeclared),
-        [
-            "legacy: invalid: expected I32, found Array [Number(1)]: invalid type: sequence, expected i32"
-        ]
-    );
-}
-
-#[test]
 fn a_flattened_untagged_enum_no_variant_reads_holds_what_the_enum_was_handed() {
     let stored = json!({ "a": "x", "id": "i" });
     assert!(!serde_reads::<Scoreboard>(&stored));
@@ -1441,26 +1299,21 @@ fn a_flattened_untagged_enum_no_variant_reads_holds_what_the_enum_was_handed() {
 }
 
 #[test]
-fn a_variants_flattened_type_that_flattens_a_map_is_handed_no_key_of_the_variant() {
+fn a_variants_flattened_type_that_flattens_a_map_is_handed_no_tag() {
     let made = Tabled::Made {
         counts: Counts {
             by_name: HashMap::from([("a".to_owned(), 1_i32)]),
-            title: "t".to_owned(),
         },
-        id: "i".to_owned(),
     };
     let written = serde_json::to_value(&made).unwrap();
-    assert_eq!(
-        written,
-        json!({ "a": 1_i32, "id": "i", "kind": "Made", "title": "t" })
-    );
+    assert_eq!(written, json!({ "a": 1_i32, "kind": "Made" }));
     let mut calls = 0_u32;
     assert_eq!(
         read_counting!(Tabled, tabled_schema, written, calls),
         Ok(made)
     );
     assert_eq!(calls, 0);
-    let stored = json!({ "a": "x", "id": "i", "kind": "Made", "title": "t" });
+    let stored = json!({ "a": "x", "kind": "Made" });
     assert!(!serde_reads::<Tabled>(&stored));
     assert_eq!(
         listed!(Tabled, tabled_schema, stored),

@@ -234,12 +234,6 @@ pub struct ShapeQuestion {
 #[derive(Clone)]
 pub struct AliasInfo {
     pub export_name: String,
-    /// The keys serde takes from the object an item is flattened into, which no map flattened after
-    /// it is handed: a struct's members where its derive reads it, an externally tagged enum's
-    /// variant names, an adjacently tagged enum's tag and content, what an alias or a brand names
-    /// takes, and none for every other item.
-    #[cfg(all(feature = "serde", any(feature = "zod", feature = "jsonschema")))]
-    pub flatten_taken: Vec<String>,
     /// What an externally tagged enum's variants are spelled as where an object flattens the enum
     /// itself, one per variant in the order the union writes them, and empty for every other item.
     #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
@@ -669,6 +663,9 @@ thread_local! {
     /// build that reads a value, with or without a schema surface, so a recovering decode
     /// answers the same in all of them.
     static DECLARED: RefCell<HashMap<String, Declared>> = RefCell::new(HashMap::new());
+    /// The names `#[model_schema]` has been written on so far whose value serde writes, flattened,
+    /// as the entries of a map. Kept in every build that reads `#[serde(flatten)]`.
+    static OPEN_MAPS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
 }
 
 #[cfg(feature = "serde")]
@@ -809,6 +806,25 @@ pub fn record_declared(rust_ident: &str, declares: Declared) {
     });
 }
 
+/// Whether serde writes a value of `rust_ident`, flattened, as the entries of a map, where
+/// `#[model_schema]` has been written on it above.
+#[cfg(feature = "serde")]
+pub fn is_open_map(rust_ident: &str) -> bool {
+    OPEN_MAPS.with(|names| names.borrow().contains(rust_ident))
+}
+
+/// Records whether serde writes a value of `rust_ident`, flattened, as the entries of a map.
+#[cfg(feature = "serde")]
+pub fn record_open_map(rust_ident: &str, open: bool) {
+    OPEN_MAPS.with(|names| {
+        if open {
+            names.borrow_mut().insert(rust_ident.to_owned());
+        } else {
+            names.borrow_mut().remove(rust_ident);
+        }
+    });
+}
+
 /// Claims `published` for `rust_ident`, answering with the ident already holding it — and `None`
 /// where the claim is free or is this ident's own. The emitted names are one flat namespace, so
 /// two declarations reaching one name overwrite each other on every surface rather than merging.
@@ -875,8 +891,6 @@ pub fn register_alias_info(
             rust_ident.to_owned(),
             AliasInfo {
                 export_name: export_name.to_owned(),
-                #[cfg(all(feature = "serde", any(feature = "zod", feature = "jsonschema")))]
-                flatten_taken: Vec::new(),
                 #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
                 flatten_variants: Vec::new(),
                 key_wire: MapKeyWire::Named,
@@ -957,17 +971,6 @@ pub fn record_flatten_variants(rust_ident: &str, variants: &[FlattenVariant]) {
     ALIAS_INFO.with(|map| {
         if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
             info.flatten_variants = variants.to_vec();
-        }
-    });
-}
-
-/// Records the keys an item takes from the object it is flattened into, on the entry that item
-/// has already registered.
-#[cfg(all(feature = "serde", any(feature = "zod", feature = "jsonschema")))]
-pub fn record_flatten_taken(rust_ident: &str, keys: Vec<String>) {
-    ALIAS_INFO.with(|map| {
-        if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
-            info.flatten_taken = keys;
         }
     });
 }

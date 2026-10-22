@@ -345,7 +345,7 @@ unaffected at every position: a stringified key describes as `{"type": "object",
 - `NaiveTime` → `string` (Zod `z.iso.time()` wrapped in an inline preprocessor that also accepts millis-since-start-of-day)
 - `Range<T>` and `RangeInclusive<T>` → `{ start: T; end: T }`, `RangeFrom<T>` → `{ start: T }`, `RangeTo<T>` → `{ end: T }` (Zod `z.strictObject({ … })`, JSON Schema an object of those members, each `required`, with `additionalProperties: false`), each bound rendered as its type renders anywhere else. `written_std_range` in `src/field_type.rs` is the one seam that says a path is one: one of the four last names with one type argument, written in full under `core::ops` or `std::ops` (`names_std_ops`), or under any other path but a name `is_declared_ident` holds, a `#[model_schema()]` type of the crate's own declared above. A range written by any path but the full one earns the check `src/model_schema/ranges.rs` writes beside the holder in every build, which hands the std range back as the type the path names and fails with E0308 where that is another type. Each client writes a type of its own per range: a Dart record with named members, a Swift struct `{Holder}{Field}Range` (`{Holder}{Field}Argument{N}Range` in a type argument) that declares the parameters its bound reaches, and a Kotlin `@Serializable` data class over its bound's type, one per kind of range an item writes (`KOTLIN_RANGES`). Each refuses an object that holds a key the range does not write, as serde's own read of a range does: the Dart record's `switch` takes it only where every key is a member, and the Swift struct reads its keys through `SwiftSchemaAnyKey` first and throws `typeMismatch`, as Swift's own read of an enum does. `validate()` walks a range's bounds under their keys (`ConstraintWrap::Range`), the judged read reads a model in one unjudged (`range_built_back`), the recovering decode reads one whole (`Expected::Range`), and under `mongodb` a range field is a `Field`. A range as a map key and a bound key on a range field are refused in every build, and a range under `#[serde(flatten)]` in every build with `serde`
 - `Result<T, E>` → `{ Ok: T } | { Err: E }` (Zod `z.union([z.strictObject({ Ok: T }), z.strictObject({ Err: E })])`, JSON Schema a `oneOf` of the two objects, each with its one key `required` and `additionalProperties: false`), each arm rendered as its type renders anywhere else, and an arm of `()` (`FieldDef::is_unit`) as `null` on every surface, where `()` anywhere else keeps its own description. `written_std_result` in `src/field_type.rs` is the one seam that says a path is one: `Result` with two type arguments, written in full under `core::result` or `std::result` (`names_std_result`), or under any other path but a name `is_declared_ident` holds; a `Result<T>` of one keeps its reading. A `Result` written by any path but the full one earns the check `is_std_result` that `src/model_schema/ranges.rs` writes beside the holder, which fails with E0308 where the name is another type. Each client writes a type of its own: a Dart sealed class `DartResult{N}` with an `Ok` and an `Err` subclass, one per shape of `()` arms an item writes (`DART_RESULTS`), a Swift enum `{Holder}{Field}Result` of the cases `ok` and `err` that declares the parameters its arms reach, and a Kotlin sealed interface `KotlinResult{N}` with a class or an object per arm and a serializer that reads the object key by key (`KOTLIN_RESULTS`). Each refuses an object of both keys, of neither or of another key, as serde does. `validate()` walks the arm the value holds under its key (`HeldEnd::Arms`, the walk that branches as `HeldEnd::Positions` does), the judged read reads a model in either arm unjudged, built back arm by arm (`walked_read`, `result_read`, which several models of one member hand `MemberHook::leaves`), the recovering decode walks into the arm (`Step::Arms`) and lists an object that names neither arm or both as one `Invalid` at the field, expected `Variants(["Ok", "Err"])`, and under `mongodb` a `Result` field is a `Field`. A `Result` as a map key and a bound key on a `Result` field are refused in every build, and a `Result` under `#[serde(flatten)]` in every build with `serde`
-- `#[serde(flatten)]` field → TypeScript intersection (`A & B`), Zod `.and(...)`. A source writing more than one key set — a registered choice, or one reached through an `Option` — multiplies instead: `zod_merged_joins` builds one `.and(...)` chain per key set, `zod_merged_statements` binds the object to `{Type}$OwnSchema` and joins the copies where the object is a struct's own published binding, and `zod_merged_object` writes the object out once per copy where it is an enum variant's fragment of a larger literal. Either way the item contributes exactly one member to whatever union encloses it. A flattened map is joined as a record whose key refuses each key serde hands it none of (`FieldDef::zod_merged_schema`): the object's own keys, a struct's own tag apart, and each key a member flattened ahead of it takes, which `withheld_keys` collects in declaration order through `flattened_taken`. That reads `AliasInfo::flatten_taken`, which a struct read by its own derive with no flattened member, an externally tagged enum and an adjacently tagged enum record, and an alias and a brand forward from what they name; a name the registry holds no keys for takes none. A record whose key refuses a member's name already, a plain enum's, a `bool`'s, a number's and a date's, is written as it was. The JSON Schema merges a flattened map as its own description where its key is read as a string or a plain enum (`flattened_map_json_schema_value`), and as no key for any other key. Each merged source carries the keys `withheld_keys` answers for it (`MergedSource::withheld`), and the merge (`merged_tree` and `map_handing` in `src/features/jsonschema.rs`) reads as a map a leaf of a source `MergedSource::map` marks, a map keyed by a plain enum among them, and a leaf whose `additionalProperties` is not `false`, a struct with a flattened map and an alias of a map among them: the finished object's `additionalProperties` is the values of every such map, and a key a member names that serde hands a map as well is held to the member's schema and the map's values in one `allOf`. An object that merges no map is written as it was. `tests/flatten_tests/maps.rs` holds the models and what serde reads of each payload, `tests/flatten_tests/map_schemas.rs` the Zod text, `tests/flatten_tests/map_documents.rs` the JSON Schema of each model held to what serde reads, and `tests/generic_types_tests/declarations.rs` parses each payload under node
+- `#[serde(flatten)]` field → TypeScript intersection (`A & B`), Zod `.and(...)`. A source writing more than one key set — a registered choice, or one reached through an `Option` — multiplies instead: `zod_merged_joins` builds one `.and(...)` chain per key set, `zod_merged_statements` binds the object to `{Type}$OwnSchema` and joins the copies where the object is a struct's own published binding, and `zod_merged_object` writes the object out once per copy where it is an enum variant's fragment of a larger literal. Either way the item contributes exactly one member to whatever union encloses it. A map under `#[serde(flatten)]` beside any other member that writes a key is refused at `exec_model_schema`, ahead of every shape, in every build with `serde`, on a struct and on a variant of an enum under every tagging: serde writes the map's entries at one level with that key, and no TypeScript type describes both. `flattened_map_beside_errors` in `src/model_schema/ranges.rs` answers one error per such map, spanned on it and naming a member beside it; a member under `skip` writes no key. A member writes a map where its type, through `Option` and the transparent wrappers, is a map, or names a type declared above that `writes_an_open_map` recorded (`record_open_map` and `is_open_map` in `src/utils.rs`, kept in every build with `serde`): a struct whose one member on the wire is a flattened map, a brand or a struct of one slot over a map, and an alias of one. A type declared below, and a type parameter or a generic type filled at a map, are not looked into. A flattened map is therefore the one member of its object, and is joined as a record of every key, but in a variant under a tag alone, whose tag serde reads ahead of the variant and hands the map none of: there its record refuses the tag as a key (`FieldDef::zod_merged_schema`, handed the tag as `read_ahead` by `compute_flatten_outputs`). A record whose key refuses the tag already, a plain enum's, a `bool`'s, a number's and a date's, is written as it was. The JSON Schema merges a flattened map as its own description where its key is read as a string or a plain enum (`flattened_map_json_schema_value`), and as no key for any other key. Each merged source carries the tag a variant under a tag alone reads ahead of it (`MergedSource::withheld`), and the merge (`merged_tree` and `map_handing` in `src/features/jsonschema.rs`) reads as a map a leaf of a source `MergedSource::map` marks, a map keyed by a plain enum among them, and a leaf whose `additionalProperties` is not `false`, a struct with a flattened map and an alias of a map among them: the finished object's `additionalProperties` is the map's values, and a struct's own tag, which serde hands the map as well, is held to its own schema and the map's values in one `allOf`. An object that merges no map is written as it was. `tests/flatten_tests/maps.rs` holds the models of a map flattened alone in each place and what serde reads of each payload, `tests/flatten_tests/map_schemas.rs` the Zod text, `tests/flatten_tests/map_documents.rs` the JSON Schema of each model held to what serde reads, `src/model_schema/ranges/tests.rs` each refusal and each shape that builds, and `tests/generic_types_tests/declarations.rs` parses each payload under node
 - `#[serde(untagged)]` enum → TypeScript union (`A | B`), Zod `z.union([...])`, JSON Schema `anyOf`
 - A member of a struct or of an enum's variant under `#[serde(default)]` → the TypeScript member unchanged, Zod `T.prefault(<json>)`, JSON Schema `"default": <json>` with the key left out of `required`, and each client reading the JSON of the default where the key is left out (section 13)
 - Type parameter → TypeScript parameter (`X<IdType>`), Zod `X$SchemaFactory(idType)` (memoized, one cache level per parameter) plus `X$SchemaDefault` — that same factory called at the item's own declared `default_types`, checks included — JSON Schema the document of whatever fills it — `default_types(...)` where the type stands alone, the reference site's arguments where a field embeds it. A lifetime is dropped on every surface, a borrowed value writing what its owned form writes; a const renders as an array length only, and is refused where it is handed to a written type as an argument
@@ -1024,12 +1024,10 @@ say so.
   without those a member flattened ahead of it took. `HANDED` notes, per type the emitter wrote,
   whether it hands its object to a function, its own or one of a member it flattens. A type
   known to hand it to none is read from the whole object, as before, and takes its own keys.
-- **A flattened map is read at its place, in the order declared**, as serde reads it: from the
-  object without the keys the holder's own members take and those each member flattened ahead
-  of it took, and it takes none itself, so two maps are handed the same keys. A member a
-  function reads takes no key (`preprocess::takes_no_key`), and a type the emitter has not
-  written takes its own. Each map is written at its place: a key two members write is held once,
-  with the last value, where serde writes it twice.
+- **A flattened map is read from every key of the object** (`flatten_map_field_plan`): it is
+  the one member of its object (section 4), and the enum's serializer takes the tag off the
+  object before it hands it a variant's class. A function the map names is handed the whole
+  object.
 - **The path of a refusal below a function starts at the value the function answered**: a
   member and a type that name one are each read from a JSON value of their own. A list or an
   object where a text or a number is read is thrown by `kotlinx.serialization` 1.11.0 as
@@ -1367,12 +1365,12 @@ consumer's view; this is what a change has to keep.
   function, and the README states the limit.
 - **Every flattened member is read at its place, in the order declared**, as serde reads it
   (`constructor_arguments`): from the object without the tag, the keys the holder's own members
-  take and the entries each member flattened ahead of it took. That is what a map, a JSON value,
-  a struct with a flattened member of its own and a function a member names are handed, and a
-  struct that reads a key a struct ahead of it took is refused, as serde refuses it. A map and a
-  JSON value take no key, so two maps are handed the same keys. What a member takes is
-  `taken_by`, the `Taken` recorded for its type in `DART_TAKEN_KEYS`, and nothing for a member
-  that names a function:
+  take and the entries each member flattened ahead of it took. That is what a struct with a
+  flattened member of its own and a function a member names are handed, and a struct that reads
+  a key a struct ahead of it took is refused, as serde refuses it. A map is the one member of its
+  object (section 4), and is handed every key but the tag of a variant under a tag key. What a
+  member takes is `taken_by`, the `Taken` recorded for its type in `DART_TAKEN_KEYS`, and nothing
+  for a member that names a function:
   - `Taken::Keys` of a struct, which `struct_dart_tokens` records from
     `keys_taken_when_flattened` in `src/features/serde.rs`, which the Swift emitter reads too:
     serde's own list of the name and each alias of every member it reads. `without` removes them.
@@ -1708,25 +1706,26 @@ to keep.
   property is assigned through `self.` alone, so one named after a local is never read as it.
 - **A map under a key Swift reads through a wrapper** (`MapKeys::Wrapped`) is read by the wrapper,
   which gains an `init(swiftSchemaUnjudged:)` where its values are walked.
-- **A flattened map is read at its place, in the order declared**, as serde reads it
-  (`flattened_map`, from `member_reads`): entry by entry (`read::read_entries`), under no key the
-  holder's own members take, each member flattened ahead of it took or the types around the
-  holder took, a `where` clause over `taken + [...]` that `names_taken` counts, so the holder
-  takes those keys. It takes none itself, so two maps are handed the same keys, and a flattened
-  struct keeps its read. What one takes is `preprocess::keys_taken_by`: the keys
-  `struct_swift_tokens` records for its type (`preprocess::note_keys`), serde's own list from
-  `keys_taken_when_flattened`, and none for a member that names a function. A struct that names a
-  `preprocess` on itself is read by serde as a value, and one with a flattened member of its own
-  as a map: each records none. A type the emitter has not written takes none, and the README
-  states the limit. A map under a key Swift wraps is read by its wrapper, through the
-  `init(swiftSchemaUnjudged:swiftSchemaWithout:)` `flattened_wrapper_read` writes in an extension
-  of the wrapper for the flattened member alone. `encode(to:)` writes each flattened member at
-  its place, through its shape (`written_from`): a key two of them hold is written once, with the
-  last value, where serde writes it twice.
+- **A flattened map is read entry by entry** (`flattened_map`, from `member_reads`,
+  `read::read_entries`), under no key the types around the holder took, a `where` clause over
+  `taken` that `names_taken` counts, so the holder takes those keys: the tag of a variant under a
+  tag key among them. A map is the one member of its object (section 4), so the holder's own
+  members and the members flattened ahead of it take no key of it. A map under a key Swift wraps
+  is read by its wrapper, through the `init(swiftSchemaUnjudged:swiftSchemaWithout:)`
+  `flattened_wrapper_read` writes in an extension of the wrapper for the flattened member alone.
+  The read and the write of a struct whose every member is flattened declare a container they do
+  not use, so `run_swift_flattened.rs` runs no map, and `tests/swift_tests/flattened.rs` pins its
+  text. What a struct takes is `preprocess::keys_taken_by`: the keys `struct_swift_tokens` records
+  for its type (`preprocess::note_keys`), serde's own list from `keys_taken_when_flattened`, and
+  none for a member that names a function. A struct that names a `preprocess` on itself is read
+  by serde as a value, and one with a flattened member of its own as a map: each records none. A
+  type the emitter has not written takes none, and the README states the limit. `encode(to:)`
+  writes each flattened member at its place, through its shape (`written_from`): a key two of
+  them hold is written once, with the last value, where serde writes it twice.
 - **Every flattened member is handed the keys taken ahead of it.** `member_reads` hands each a
   `Handed`: the `taken + [...]` of the holder's own keys and those each member flattened ahead
   took, and `by_a_member`, whether a member ahead took any. A type that takes keys
-  (`preprocess::beside`) and a member that names a function read that expression, as a map does.
+  (`preprocess::beside`) and a member that names a function read that expression.
   Where `by_a_member` holds, `present_statement` reads any other flattened member through
   `corrected_field` with no function: `SwiftSchemaPayload(from:without:)`, then the type, a model
   `validate()` walks through `SwiftSchemaRead{Member}`, unjudged. A struct that reads a key a
@@ -1759,9 +1758,11 @@ to keep.
   `an_absent_key_and_a_null_are_read_as_they_were` passed on the emitter before a read was
   written. The `validate()` runs read a payload through the unjudged initializer, and build in
   code the three values no read hands back. `tests/swift_tests/flattened.rs` pins the read of a
-  flattened map at each place, and of each other member flattened after a struct, over the
-  models of `tests/swift_tests/flattened_models.rs`, which also pin what serde reads of each, and
-  `run_swift_flattened.rs` reads and writes each back under the toolchain, against serde.
+  flattened map alone in each shape, of a member that names a function at each place, and of
+  each other member flattened after a struct, over the models of
+  `tests/swift_tests/flattened_models.rs`, which also pin what serde reads of each, and
+  `run_swift_flattened.rs` reads and writes each holder with a member of its own back under the
+  toolchain, against serde.
 
 ### 12. The Swift `preprocess`
 
@@ -2996,7 +2997,7 @@ tixschema/
 │   │   ├── checks.rs             # check: the calls validate() makes, the alias refusal
 │   │   ├── judged_read.rs        # The Deserialize of a type that publishes validate() or names a preprocess
 │   │   ├── preprocess.rs         # preprocess: what an item names, the calls of a read, the refusals
-│   │   └── ranges.rs             # The identity check of a std range or a std Result written by its bare name; a flattened one, and one as a map key where no surface runs, refused
+│   │   └── ranges.rs             # The identity check of a std range or a std Result written by its bare name; a flattened one, and one as a map key where no surface runs, refused; a map flattened beside another member refused
 │   ├── check_example.md          # The check example the rustdoc runs and the README shows
 │   ├── preprocess_example.md     # The preprocess example the rustdoc runs and the README shows
 │   ├── field_type.rs             # Type system (FieldDef, FieldDefType)

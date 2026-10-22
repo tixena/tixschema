@@ -1678,8 +1678,8 @@ impl FieldDef {
 
     /// The same value on the Zod surface, for the same reason: what a merged source validates, with
     /// the outermost `Option` left to whatever assembles the merge. See
-    /// [`Self::typescript_merged_typename`]. serde hands a flattened map no key of `taken`, which
-    /// the members that take them answer for, so its record refuses each as a key.
+    /// [`Self::typescript_merged_typename`]. serde hands a flattened map no key of `taken`, the tag
+    /// an internally tagged enum reads ahead of the variant, so its record refuses each as a key.
     #[cfg(feature = "zod")]
     pub fn zod_merged_schema(&self, taken: &[String]) -> String {
         let FieldDefType::Map(key, value) = &self.field_type else {

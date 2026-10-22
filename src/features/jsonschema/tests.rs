@@ -119,7 +119,7 @@ fn test_a_merged_source_carries_the_keys_serde_hands_it_none_of() {
             map: true,
             optional: false,
             value: quote::quote! { serde_json::json!({ "type": "object" }) },
-            withheld: vec!["note".to_owned(), "label".to_owned()],
+            withheld: vec!["kind".to_owned()],
         }],
         "Node",
         &[],
@@ -127,7 +127,7 @@ fn test_a_merged_source_carries_the_keys_serde_hands_it_none_of() {
     .to_string();
 
     assert!(
-        merge.contains("(\"counts\" , false , true , & [\"note\" , \"label\"] ,"),
+        merge.contains("(\"counts\" , false , true , & [\"kind\"] ,"),
         "{merge}"
     );
     assert!(

@@ -1316,8 +1316,9 @@ fn own_field_plan(
 
 /// One flattened *struct* (or `Option<Struct>`) field's own statements: the `serialize` merge, the
 /// `deserialize` read (leniently, off the whole object — `null` when an optional field's own keys
-/// are all absent), and the `elementNames` read a later flattened map field needs. `rest` is the
-/// object the member is read from, as the member's own `preprocess` then corrects it.
+/// are all absent), and the `elementNames` read a later flattened member that names a function
+/// is handed the object without. `rest` is the object the member is read from, as the member's
+/// own `preprocess` then corrects it.
 fn flatten_struct_field_plan(
     field: &KotlinField,
     prop: &str,
@@ -1349,29 +1350,24 @@ fn flatten_struct_field_plan(
     (serialize, format!("{key_read}; {decode}"), keys_ident)
 }
 
-/// One flattened map field's own statements, at its place among the members: the `serialize`
-/// merge and the `deserialize` read, over whatever keys `consumed_keys` leaves, the keys no member
-/// ahead of it took, as `functions`, the field's own `preprocess`, correct the object of them.
+/// One flattened map field's own statements: the `serialize` merge and the `deserialize` read,
+/// over every key of the object, as `functions`, the field's own `preprocess`, correct it. A map
+/// flattened beside another member is refused, so serde hands the map every key of the object.
 fn flatten_map_field_plan(
     prop: &str,
     value_serializer: &str,
-    consumed_keys: &str,
     functions: &[FunctionName],
 ) -> (String, String) {
     let serialize = format!(
         "value.{prop}.forEach {{ (k, v) -> put(k, output.json.encodeToJsonElement({value_serializer}, v)) }}"
     );
-    let consumed = format!("{}ConsumedKeys", kotlin_bare(prop));
-    let left = format!("obj.filterKeys {{ it !in {consumed} }}");
     let entries = if functions.is_empty() {
-        left
+        "obj".to_owned()
     } else {
-        let whole = preprocess::corrected(functions, &format!("JsonObject({left})"));
-        format!("{whole}.jsonObject")
+        format!("{}.jsonObject", preprocess::corrected(functions, "obj"))
     };
     let decode = format!(
-        "val {consumed} = {consumed_keys}; \
-         val {prop} = {entries}.mapValues {{ (_, v) -> input.json.decodeFromJsonElement({value_serializer}, v) }}"
+        "val {prop} = {entries}.mapValues {{ (_, v) -> input.json.decodeFromJsonElement({value_serializer}, v) }}"
     );
     (serialize, decode)
 }
@@ -1401,9 +1397,6 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
     } else {
         format!(" - {own_literal}")
     };
-    // What serde hands a flattened map at its place: the object without the keys the holder's own
-    // members take, and without those each member flattened ahead of it took.
-    let mut consumed = vec![own_literal];
 
     for field in fields {
         let prop = kotlin_property_name(&field.rust_name);
@@ -1414,12 +1407,8 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
         } else if let FieldDefType::Map(_, map_value) = &field.field_def.field_type {
             let value_serializer =
                 read::held_serializer(&field.field_def, map_value, type_parameters);
-            let (serialize, decode) = flatten_map_field_plan(
-                &prop,
-                &value_serializer,
-                &consumed.join(" + "),
-                preprocess::of(&field.field_def),
-            );
+            let (serialize, decode) =
+                flatten_map_field_plan(&prop, &value_serializer, preprocess::of(&field.field_def));
             plan.serialize_stmts.push(serialize);
             plan.deserialize_stmts.push(decode);
         } else {
@@ -1436,9 +1425,6 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
             plan.deserialize_stmts.push(decode);
             if !takes_the_rest {
                 let _ = write!(taken, " - {keys_ident}");
-            }
-            if !preprocess::takes_no_key(&field.field_def) {
-                consumed.push(keys_ident);
             }
         }
         plan.ctor_args.push(format!("{prop} = {prop}"));

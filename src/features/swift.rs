@@ -1826,8 +1826,8 @@ fn held_map(def: &FieldDef) -> Option<FieldDef> {
 }
 
 /// The statements that read from `source` the map the flattened `field` holds, entry by entry and
-/// without the keys `source` names as taken, as serde hands it the keys no member ahead of it
-/// took: `None` for a field that holds no map. A map under a key Swift wraps is read by its
+/// without the keys the types around its holder took, the tag of a variant under a tag key among
+/// them: `None` for a field that holds no map. A map under a key Swift wraps is read by its
 /// wrapper, through the read [`flattened_wrapper_read`] gives it.
 fn flattened_map(
     field: &SwiftField,
@@ -1835,9 +1835,9 @@ fn flattened_map(
     source: &read::Source,
     locals: &mut read::Locals,
 ) -> Option<String> {
-    let read::Source::Beside(taken) = source else {
+    if !matches!(source, read::Source::Beside(_)) {
         return None;
-    };
+    }
     let def = held_map(&field.field_def)?;
     let FieldDefType::Map(key, value) = &def.field_type else {
         return None;
@@ -1858,7 +1858,7 @@ fn flattened_map(
         key,
         &swift_full_real_type(&def, &field.hint, &mut Vec::new()),
         source,
-        Some(taken),
+        true,
         &|under, put, nested| {
             if walked {
                 read::unjudged(value, &value_hint, under, put, nested)

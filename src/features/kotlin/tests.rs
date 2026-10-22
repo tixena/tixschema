@@ -633,31 +633,44 @@ fn a_struct_with_a_flattened_member_reads_what_it_merges_unjudged() {
         struct Yard {
             #[serde(flatten)]
             base: Base,
+            gate: String,
+        }
+    };
+    let docks: ItemStruct = syn::parse_quote! {
+        struct Docks {
             #[serde(flatten)]
             by_dock: BTreeMap<String, Parcel>,
-            gate: String,
         }
     };
     let written = [labelled_parcel(), plain(&base)];
     assert_eq!(written.len(), 2);
     let kotlin = plain(&item);
     for held in [
-        "@Serializable(with = YardSerializer::class) data class Yard(val base: Base, \
-         @SerialName(\"by_dock\") val byDock: Map<String, Parcel>, val gate: String) {",
+        "@Serializable(with = YardSerializer::class) data class Yard(val base: Base, val gate: \
+         String) {",
         "} object YardUnjudged : KSerializer<Yard> { override val descriptor: SerialDescriptor = \
          buildClassSerialDescriptor(\"Yard\"); private val lenient = Json { ignoreUnknownKeys = \
          true }; override fun serialize(",
         "output.json.encodeToJsonElement(BaseUnjudged, value.base).jsonObject.forEach { (k, v) \
          -> put(k, v) }",
-        "value.byDock.forEach { (k, v) -> put(k, output.json.encodeToJsonElement(ParcelUnjudged, \
-         v)) }",
         "val baseKeys = (BaseUnjudged).descriptor.elementNames.toSet(); val base = \
          lenient.decodeFromJsonElement(BaseUnjudged, obj)",
-        "mapValues { (_, v) -> input.json.decodeFromJsonElement(ParcelUnjudged, v) }",
     ] {
         assert!(kotlin.contains(held), "no `{held}` in: {kotlin}");
     }
     assert!(kotlin.ends_with(&judged("Yard")), "got: {kotlin}");
+    let map = plain(&docks);
+    for held in [
+        "@Serializable(with = DocksSerializer::class) data class Docks(@SerialName(\"by_dock\") \
+         val byDock: Map<String, Parcel>) {",
+        "value.byDock.forEach { (k, v) -> put(k, output.json.encodeToJsonElement(ParcelUnjudged, \
+         v)) }",
+        "val byDock = obj.mapValues { (_, v) -> input.json.decodeFromJsonElement(ParcelUnjudged, \
+         v) }",
+    ] {
+        assert!(map.contains(held), "no `{held}` in: {map}");
+    }
+    assert!(map.ends_with(&judged("Docks")), "got: {map}");
 }
 
 /// An enum under a tag alone is read by a serializer the emitter writes: it takes the tag off

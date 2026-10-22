@@ -12,11 +12,12 @@ use serde::{Deserialize, Deserializer, Serialize};
 use tixschema::model_schema;
 
 // The JSON schema of a type holding a `Version` names its module from here, beside the type.
+#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+use super::undescribed;
 #[cfg(feature = "jsonschema")]
 use super::version_schema;
 use super::{
-    Told, Version, invalid, missing, mistyped, oid, serde_reads, string, undescribed, unknown,
-    written,
+    Told, Version, invalid, missing, mistyped, oid, serde_reads, string, unknown, written,
 };
 
 /// What `$issues` say less each `reason`, whichever type's `$module` declares them.
@@ -294,7 +295,6 @@ struct Notice {
 struct Counts {
     #[serde(flatten)]
     by_name: HashMap<String, i32>,
-    title: String,
 }
 
 /// A flattened map of ids.
@@ -303,15 +303,12 @@ struct Counts {
 struct Owners {
     #[serde(flatten)]
     by_name: HashMap<String, ObjectId>,
-    title: String,
 }
 
-/// A flattened map of model types, beside a flattened struct.
+/// A flattened map of model types.
 #[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Releases {
-    #[serde(flatten)]
-    audit: Audit,
     #[serde(flatten)]
     by_name: HashMap<String, Version>,
 }
@@ -329,17 +326,6 @@ struct Body {
 struct Letter<T> {
     #[serde(flatten)]
     body: T,
-    id: String,
-}
-
-/// A flattened type parameter, then a flattened map: two fields that each take the rest.
-#[model_schema(enable = ["decode_with", "mongodb"], default_types(T = Body))]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Packet<T> {
-    #[serde(flatten)]
-    body: T,
-    #[serde(flatten)]
-    counts: HashMap<String, i32>,
     id: String,
 }
 
@@ -402,27 +388,6 @@ enum Seen {
 struct Spare {
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
     rest: Option<HashMap<String, i32>>,
-    title: String,
-}
-
-/// A flattened map of numbers beside a flattened tagged enum, whose text tag serde hands to the
-/// map as well.
-#[model_schema(enable = ["decode_with", "mongodb"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Mixed {
-    #[serde(flatten)]
-    counts: HashMap<String, i32>,
-    #[serde(flatten)]
-    paint: Paint,
-}
-
-/// A type that flattens one that flattens a map, which takes every key it is handed.
-#[model_schema(enable = ["decode_with", "mongodb"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Report {
-    #[serde(flatten)]
-    counts: Counts,
-    id: String,
 }
 
 #[model_schema(enable = ["decode_with", "mongodb"])]
@@ -473,7 +438,6 @@ enum Tabled {
     Made {
         #[serde(flatten)]
         counts: Counts,
-        id: String,
     },
 }
 
@@ -543,24 +507,6 @@ struct Trimmed {
     trim: Option<Trim>,
 }
 
-/// A struct with a named field, held as text so a map of numbers handed its key refuses it.
-#[model_schema(enable = ["decode_with", "mongodb"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Rev {
-    revision: String,
-}
-
-/// A flattened struct, then a flattened type that takes every key it is handed.
-#[model_schema(enable = ["decode_with", "mongodb"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Two {
-    #[serde(flatten)]
-    audit: Rev,
-    #[serde(flatten)]
-    counts: Counts,
-    id: String,
-}
-
 /// Internally tagged, with a variant that holds a type that takes every key it is handed.
 #[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -579,7 +525,6 @@ struct Extras(HashMap<String, i32>);
 struct Bag {
     #[serde(flatten)]
     extras: Extras,
-    title: String,
 }
 
 /// A single-slot struct over an `Option` of a struct, flattened.
@@ -640,8 +585,8 @@ enum Slot {
     Held(Mood),
 }
 
-/// Internally tagged, with a struct variant that flattens a struct and then a type that takes
-/// every key it is handed.
+/// Internally tagged, with a struct variant that flattens a type that takes every key it is
+/// handed.
 #[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
@@ -649,22 +594,16 @@ enum Booked {
     Gone,
     Made {
         #[serde(flatten)]
-        audit: Rev,
-        #[serde(flatten)]
         counts: Counts,
-        id: String,
     },
 }
 
-/// A flattened struct, then a flattened `Option` of a type that takes every key it is handed.
+/// A flattened `Option` of a type that takes every key it is handed.
 #[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Optioned {
-    #[serde(flatten)]
-    audit: Rev,
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
     counts: Option<Counts>,
-    id: String,
 }
 
 /// A single-slot struct whose slot a hook reads: serde hands the hook what the struct is handed.
@@ -757,19 +696,6 @@ struct ThroughHook {
 struct MapThroughHook {
     #[serde(flatten, deserialize_with = "as_written")]
     entries: HashMap<String, i32>,
-    id: String,
-}
-
-/// A flattened field read through a hook generic over what it reads, then a flattened type that
-/// takes every key it is handed.
-#[model_schema(enable = ["decode_with", "mongodb"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct HookAhead {
-    #[serde(flatten, deserialize_with = "as_written")]
-    ahead: Version,
-    #[serde(flatten)]
-    counts: Counts,
-    id: String,
 }
 
 /// A flattened field serde writes and never reads.
@@ -812,14 +738,12 @@ struct Tucked<T> {
 struct MaybeCounted {
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
     entries: Option<HashMap<String, i32>>,
-    id: String,
 }
 
 flagged! {
     Counts => counts_schema,
     DirectId => direct_id_schema,
     DirectMaybe => direct_maybe_schema,
-    HookAhead => hook_ahead_schema,
     IdThroughHook => id_through_hook_schema,
     Letter<ObjectId> => letter_schema,
     Letter<Option<Body>> => letter_schema,
@@ -924,9 +848,8 @@ fn what_serde_wrote_for_a_type_that_flattens_is_read_and_the_decider_never_runs(
 
     let counts = Counts {
         by_name: HashMap::from([("a".to_owned(), 1_i32)]),
-        title: "t".to_owned(),
     };
-    assert_eq!(written(&counts), doc! { "a": 1_i32, "title": "t" });
+    assert_eq!(written(&counts), doc! { "a": 1_i32 });
     assert_eq!(
         read_counting!(Counts, counts_schema, written(&counts), calls),
         Ok(counts)
@@ -1247,13 +1170,13 @@ fn an_untagged_enums_fields_walker_returns_the_keys_of_the_variant_serde_reads()
 
 #[test]
 fn a_flattened_map_takes_every_key_nothing_else_declares() {
-    let stored_row = doc! { "a": "x", "b": 2_i32, "title": "t" };
+    let stored_row = doc! { "a": "x", "b": 2_i32 };
     assert!(!serde_reads::<Counts>(&stored_row));
     assert_eq!(
         listed!(Counts, counts_schema, stored_row),
         [invalid("a", "I32", string("x"))]
     );
-    let owners = doc! { "alice": "6a7cc592ca0574e6efdfe219", "title": "t" };
+    let owners = doc! { "alice": "6a7cc592ca0574e6efdfe219" };
     assert!(serde_reads::<Owners>(&owners));
     assert_eq!(
         listed!(Owners, owners_schema, owners),
@@ -1269,24 +1192,16 @@ fn a_flattened_map_takes_every_key_nothing_else_declares() {
 fn a_flattened_map_of_model_types_walks_each_value_at_its_key() {
     let mut calls = 0_u32;
     let releases = Releases {
-        audit: audit(),
         by_name: HashMap::from([("first".to_owned(), Version { number: 1_i32 })]),
     };
-    assert_eq!(
-        written(&releases),
-        doc! { "createdBy": "ada", "revision": 1_i32, "first": { "number": 1_i32 } }
-    );
+    assert_eq!(written(&releases), doc! { "first": { "number": 1_i32 } });
     assert_eq!(
         read_counting!(Releases, releases_schema, written(&releases), calls),
         Ok(releases)
     );
     assert_eq!(calls, 0);
 
-    let stored_row = doc! {
-        "createdBy": "ada",
-        "revision": 1_i32,
-        "first": { "number": "1", "draft": true },
-    };
+    let stored_row = doc! { "first": { "number": "1", "draft": true } };
     assert!(!serde_reads::<Releases>(&stored_row));
     assert_eq!(
         listed!(Releases, releases_schema, stored_row),
@@ -1321,40 +1236,7 @@ fn a_flattened_type_parameter_is_read_whole_from_the_keys_nothing_else_declares(
             id: "i".to_owned(),
         })
     );
-    // Filled with a map, the parameter is read from the keys the type itself does not declare.
-    let counted = doc! { "id": "i", "x": 1_i32 };
-    assert!(serde_reads::<Letter<HashMap<String, i32>>>(&counted));
-    assert_eq!(
-        read_counting!(Letter<HashMap<String, i32>>, letter_schema, counted, calls),
-        Ok(Letter {
-            body: HashMap::from([("x".to_owned(), 1_i32)]),
-            id: "i".to_owned(),
-        })
-    );
     assert_eq!(calls, 0);
-}
-
-#[test]
-fn a_second_flattened_field_that_takes_the_rest_is_walked_by_nothing() {
-    let mut calls = 0_u32;
-    let stored_row = doc! { "a": 1_i32, "id": "i", "text": "x" };
-    assert_eq!(
-        read_counting!(Packet<Body>, packet_schema, stored_row, calls),
-        Ok(Packet {
-            body: Body {
-                text: "x".to_owned(),
-            },
-            counts: HashMap::from([("a".to_owned(), 1_i32)]),
-            id: "i".to_owned(),
-        })
-    );
-    assert_eq!(calls, 0);
-    let refused = doc! { "a": "bad", "id": "i", "text": "x" };
-    assert!(!serde_reads::<Packet<Body>>(&refused));
-    assert_eq!(
-        listed!(Packet<Body>, packet_schema, refused),
-        [undescribed()]
-    );
 }
 
 /// Each of two flattened types contributes its keys, and one undeclared key is listed once.
@@ -1524,42 +1406,10 @@ fn an_untagged_variant_that_flattens_lists_the_flattened_types_issues_as_its_own
 #[test]
 fn an_optional_flattened_map_is_walked_by_nothing_and_takes_every_key() {
     let mut calls = 0_u32;
-    let stored_row = doc! { "a": "x", "title": "t" };
+    let stored_row = doc! { "a": "x" };
     assert_eq!(
         read_counting!(Spare, spare_schema, stored_row, calls),
-        Ok(Spare {
-            rest: None,
-            title: "t".to_owned(),
-        })
-    );
-    assert_eq!(calls, 0);
-}
-
-#[test]
-fn a_flattened_map_that_cannot_hold_the_tag_of_an_enum_beside_it_is_undescribed() {
-    let stored_row = doc! { "kind": "Clear" };
-    assert!(!serde_reads::<Mixed>(&stored_row));
-    assert_eq!(listed!(Mixed, mixed_schema, stored_row), [undescribed()]);
-}
-
-/// serde hands a flattened type the keys the outer type's own fields did not take.
-#[test]
-fn a_flattened_type_that_flattens_a_map_is_handed_no_key_of_the_outer_type() {
-    let report = Report {
-        counts: Counts {
-            by_name: HashMap::from([("a".to_owned(), 1_i32)]),
-            title: "t".to_owned(),
-        },
-        id: "i".to_owned(),
-    };
-    assert_eq!(
-        written(&report),
-        doc! { "a": 1_i32, "title": "t", "id": "i" }
-    );
-    let mut calls = 0_u32;
-    assert_eq!(
-        read_counting!(Report, report_schema, written(&report), calls),
-        Ok(report)
+        Ok(Spare { rest: None })
     );
     assert_eq!(calls, 0);
 }
@@ -1608,23 +1458,6 @@ fn a_key_the_outer_type_and_a_flattened_type_both_declare_is_the_outer_types_alo
 }
 
 #[test]
-fn an_issue_in_a_flattened_type_that_flattens_a_map_is_listed_at_its_key() {
-    let stored_row = doc! { "a": "x", "id": "i", "title": "t" };
-    assert!(!serde_reads::<Report>(&stored_row));
-    assert_eq!(
-        listed!(Report, report_schema, stored_row),
-        [invalid("a", "I32", string("x"))]
-    );
-    // The map takes a key nothing declares, so serde refuses a value in it that is no count.
-    let undeclared = doc! { "a": 1_i32, "id": "i", "legacy": [1_i32], "title": "t" };
-    assert!(!serde_reads::<Report>(&undeclared));
-    assert_eq!(
-        listed!(Report, report_schema, undeclared),
-        [invalid("legacy", "I32", Bson::Array(vec![Bson::Int32(1)]))]
-    );
-}
-
-#[test]
 fn a_flattened_untagged_enum_no_variant_reads_holds_what_the_enum_was_handed() {
     let stored_row = doc! { "a": "x", "id": "i" };
     assert!(!serde_reads::<Scoreboard>(&stored_row));
@@ -1647,25 +1480,20 @@ fn a_flattened_untagged_enum_no_variant_reads_holds_what_the_enum_was_handed() {
 }
 
 #[test]
-fn a_variants_flattened_type_that_flattens_a_map_is_handed_no_key_of_the_variant() {
+fn a_variants_flattened_type_that_flattens_a_map_is_handed_no_tag() {
     let made = Tabled::Made {
         counts: Counts {
             by_name: HashMap::from([("a".to_owned(), 1_i32)]),
-            title: "t".to_owned(),
         },
-        id: "i".to_owned(),
     };
-    assert_eq!(
-        written(&made),
-        doc! { "kind": "Made", "a": 1_i32, "title": "t", "id": "i" }
-    );
+    assert_eq!(written(&made), doc! { "kind": "Made", "a": 1_i32 });
     let mut calls = 0_u32;
     assert_eq!(
         read_counting!(Tabled, tabled_schema, written(&made), calls),
         Ok(made)
     );
     assert_eq!(calls, 0);
-    let stored_row = doc! { "a": "x", "id": "i", "kind": "Made", "title": "t" };
+    let stored_row = doc! { "a": "x", "kind": "Made" };
     assert!(!serde_reads::<Tabled>(&stored_row));
     assert_eq!(
         listed!(Tabled, tabled_schema, stored_row),
@@ -1894,16 +1722,9 @@ fn each_flagged_type_answers_whether_a_document_names_a_value_of_it() {
     assert!(!Channel::decode_with_bson_named(&doc! {}));
 }
 
-fn rev() -> Rev {
-    Rev {
-        revision: "r".to_owned(),
-    }
-}
-
 fn counts() -> Counts {
     Counts {
         by_name: HashMap::from([("a".to_owned(), 1_i32)]),
-        title: "t".to_owned(),
     }
 }
 
@@ -1939,43 +1760,21 @@ where
 }
 
 #[test]
-fn a_flattened_type_declared_after_a_flattened_struct_is_handed_none_of_its_keys() {
+fn a_variant_or_an_option_that_flattens_a_type_that_takes_every_key_reads_what_serde_wrote() {
     let mut calls = 0_u32;
-    let two = Two {
-        audit: rev(),
-        counts: counts(),
-        id: "i".to_owned(),
-    };
-    assert_eq!(
-        written(&two),
-        doc! { "revision": "r", "a": 1_i32, "title": "t", "id": "i" }
-    );
-    assert_eq!(
-        read_counting!(Two, two_schema, written(&two), calls),
-        Ok(two)
-    );
-
-    let made = Booked::Made {
-        audit: rev(),
-        counts: counts(),
-        id: "i".to_owned(),
-    };
+    let made = Booked::Made { counts: counts() };
     assert_eq!(
         read_counting!(Booked, booked_schema, written(&made), calls),
         Ok(made)
     );
 
-    for held in [Some(counts()), None] {
-        let optioned = Optioned {
-            audit: rev(),
-            counts: held,
-            id: "i".to_owned(),
-        };
-        assert_eq!(
-            read_counting!(Optioned, optioned_schema, written(&optioned), calls),
-            Ok(optioned)
-        );
-    }
+    let optioned = Optioned {
+        counts: Some(counts()),
+    };
+    assert_eq!(
+        read_counting!(Optioned, optioned_schema, written(&optioned), calls),
+        Ok(optioned)
+    );
     assert_eq!(calls, 0);
 }
 
@@ -1983,10 +1782,7 @@ fn a_flattened_type_declared_after_a_flattened_struct_is_handed_none_of_its_keys
 #[test]
 fn an_internally_tagged_variants_value_is_handed_the_document_without_the_tag() {
     let filled = Filled::Counted(counts());
-    assert_eq!(
-        written(&filled),
-        doc! { "kind": "Counted", "a": 1_i32, "title": "t" }
-    );
+    assert_eq!(written(&filled), doc! { "kind": "Counted", "a": 1_i32 });
     let mut calls = 0_u32;
     assert_eq!(
         read_counting!(Filled, filled_schema, written(&filled), calls),
@@ -2000,9 +1796,8 @@ fn a_flattened_single_slot_struct_claims_the_keys_serde_reads_for_it() {
     let mut calls = 0_u32;
     let bag = Bag {
         extras: Extras(HashMap::from([("a".to_owned(), 1_i32)])),
-        title: "t".to_owned(),
     };
-    assert_eq!(written(&bag), doc! { "a": 1_i32, "title": "t" });
+    assert_eq!(written(&bag), doc! { "a": 1_i32 });
     assert_eq!(
         read_counting!(Bag, bag_schema, written(&bag), calls),
         Ok(bag)
@@ -2056,26 +1851,13 @@ fn a_flattened_plain_enum_claims_the_key_naming_its_variant() {
 /// An issue that is there is still listed once, where it sits, in each of the shapes above.
 #[test]
 fn an_issue_in_a_type_handed_what_serde_hands_it_is_listed_once_where_it_sits() {
-    let count_as_text = doc! { "a": "x", "id": "i", "revision": "r", "title": "t" };
-    assert!(!serde_reads::<Two>(&count_as_text));
-    assert_eq!(
-        listed!(Two, two_schema, count_as_text),
-        [invalid("a", "I32", string("x"))]
-    );
-    let revision_as_number = doc! { "a": 1_i32, "id": "i", "revision": 5_i32, "title": "t" };
-    assert!(!serde_reads::<Two>(&revision_as_number));
-    assert_eq!(
-        listed!(Two, two_schema, revision_as_number),
-        [invalid("revision", "String", Bson::Int32(5))]
-    );
-
-    let filled_count = doc! { "a": "x", "kind": "Counted", "title": "t" };
+    let filled_count = doc! { "a": "x", "kind": "Counted" };
     assert!(!serde_reads::<Filled>(&filled_count));
     assert_eq!(
         listed!(Filled, filled_schema, filled_count),
         [invalid("a", "I32", string("x"))]
     );
-    let unknown_tag = doc! { "a": 1_i32, "kind": "Emptied", "title": "t" };
+    let unknown_tag = doc! { "a": 1_i32, "kind": "Emptied" };
     assert!(!serde_reads::<Filled>(&unknown_tag));
     assert_eq!(
         listed!(Filled, filled_schema, unknown_tag),
@@ -2086,7 +1868,7 @@ fn an_issue_in_a_type_handed_what_serde_hands_it_is_listed_once_where_it_sits() 
         )]
     );
 
-    let bag_count = doc! { "a": "x", "title": "t" };
+    let bag_count = doc! { "a": "x" };
     assert!(!serde_reads::<Bag>(&bag_count));
     assert_eq!(
         listed!(Bag, bag_schema, bag_count),
@@ -2297,25 +2079,13 @@ fn every_kind_of_flattened_field_reads_what_serde_wrote_with_no_call() {
     reads_what_serde_wrote(&counts());
     reads_what_serde_wrote(&MaybeCounted {
         entries: Some(entries()),
-        id: "i".to_owned(),
     });
-    reads_what_serde_wrote(&MaybeCounted {
-        entries: None,
-        id: "i".to_owned(),
-    });
+    reads_what_serde_wrote(&MaybeCounted { entries: None });
     reads_what_serde_wrote(&ThroughHook {
         id: "i".to_owned(),
         version: Version { number: 3_i32 },
     });
-    reads_what_serde_wrote(&MapThroughHook {
-        entries: entries(),
-        id: "i".to_owned(),
-    });
-    reads_what_serde_wrote(&HookAhead {
-        ahead: Version { number: 3_i32 },
-        counts: counts(),
-        id: "i".to_owned(),
-    });
+    reads_what_serde_wrote(&MapThroughHook { entries: entries() });
     reads_what_serde_wrote(&NeverRead {
         id: "i".to_owned(),
         version: Some(Version { number: 3_i32 }),

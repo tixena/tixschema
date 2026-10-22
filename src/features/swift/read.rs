@@ -24,11 +24,10 @@ pub(super) const JUDGED: &str = "public init(from decoder: Decoder) throws { \
 
 /// What names, in the statements of a read, the keys the types around the type took: handed to
 /// what is read beside the type, or skipped by the read of a map's entries ([`read_entries`]).
-const TAKEN: [&str; 4] = [
+const TAKEN: [&str; 3] = [
     "swiftSchemaWithout: taken",
     "without: taken",
     "!taken.contains(",
-    "!(taken + ",
 ];
 
 /// What opens the type's own read, handed the keys the types around the type took.
@@ -452,7 +451,7 @@ fn map_unjudged(
         key,
         &written_type(def, hint),
         source,
-        None,
+        false,
         &|under, put, nested| unjudged(value, &value_hint, under, put, nested),
         sink,
         locals,
@@ -460,13 +459,14 @@ fn map_unjudged(
 }
 
 /// The statements that read from `source` the entries of a map whose `key` Swift keys natively
-/// into a `written`, each value read under its key by `value`, and hand the map to `sink`. No
-/// entry is read under a key `skipping` holds, a Swift expression of the keys taken.
+/// into a `written`, each value read under its key by `value`, and hand the map to `sink`. Where
+/// `skips_taken`, no entry is read under a key the types around the holder took: a map flattened
+/// beside another member is refused, so no member of the holder takes one.
 pub(super) fn read_entries(
     key: &FieldDef,
     written: &str,
     source: &Source,
-    skipping: Option<&str>,
+    skips_taken: bool,
     value: &EntryRead<'_>,
     sink: &dyn Fn(&str) -> String,
     locals: &mut Locals,
@@ -487,24 +487,17 @@ pub(super) fn read_entries(
         &|held| format!("{entries}[{named}] = {held}"),
         locals,
     );
-    let skipped = skipping.map_or_else(String::new, |taken| {
-        format!(" where !{}.contains({entry}.stringValue)", grouped(taken))
-    });
+    let skipped = if skips_taken {
+        format!(" where !taken.contains({entry}.stringValue)")
+    } else {
+        String::new()
+    };
     format!(
         "let {keyed} = try {}; var {entries}: {written} = [:]; \
          for {entry} in {keyed}.allKeys{skipped} {{ {refusal}{read} }}; {}",
         source.keyed(),
         sink(&entries)
     )
-}
-
-/// `keys`, a Swift expression of a list of keys, as the receiver of a call.
-fn grouped(keys: &str) -> String {
-    if keys.contains(' ') {
-        format!("({keys})")
-    } else {
-        keys.to_owned()
-    }
 }
 
 /// `stem`, then `stem1`, `stem2`: the name of the local of a kind written after `nth` others.

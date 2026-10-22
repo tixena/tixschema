@@ -1,12 +1,13 @@
 //! What the Dart emitter reads of a flattened member: the object at its place, without the keys
 //! the holder's own members take and the entries each member flattened ahead of it took, as serde
-//! hands it. `toJson` writes each flattened member at its place. The reads are run under the Dart
-//! SDK in `tests/service_schema_emitted_client_tests/run_dart_flattened.rs`.
+//! hands it. A map is the one member of its object, and is read from every key but the tag of an
+//! enum under a tag key. `toJson` writes each flattened member at its place. The reads are run
+//! under the Dart SDK in `tests/service_schema_emitted_client_tests/run_dart_flattened.rs`.
 
 use super::flattened_models::{
-    belaying_dart, clamping_dart, coupling_dart, doubling_dart, fastening_dart, hoisting_dart,
-    kedging_dart, lacing_dart, loading_dart, mousing_dart, pairing_dart, rigging_dart,
-    shoring_dart, stowing_dart, tethering_dart, trimming_dart, twin_dart,
+    belaying_dart, clamping_dart, doubling_dart, fastening_dart, hoisting_dart, kedging_dart,
+    lacing_dart, loading_dart, mousing_dart, rigging_dart, shoring_dart, spare_dart,
+    tethering_dart, trimming_dart, twin_dart,
 };
 
 /// The read of a map of `u8` values from the object `source` names.
@@ -17,12 +18,9 @@ fn counts_from(source: &str) -> String {
     )
 }
 
-/// The read of a map of `Stowage` values from the object `source` names.
-fn stowages_from(source: &str) -> String {
-    format!(
-        "Map<String, Stowage>.fromEntries(({source} as Map<String, dynamic>).entries.map((e) => \
-         MapEntry(e.key as String, Stowage.fromJsonUnjudged(e.value))))"
-    )
+/// The read of a member that names `withItsKeys` from the object `source` names.
+fn keyed_from(source: &str) -> String {
+    format!("Keying.fromJsonUnjudged(withItsKeys({source}))")
 }
 
 /// The object `source` names without its first entry under one of `names`, in the object's order.
@@ -30,14 +28,6 @@ fn without_first(source: &str, names: &str) -> String {
     format!(
         "(switch ({{...{source}}}) {{ final rest => \
          rest..remove(rest.keys.where(const [{names}].contains).firstOrNull) }})"
-    )
-}
-
-/// The `toJson` entry of the flattened map `member`, each value written by `value`.
-fn map_written(member: &str, value: &str) -> String {
-    format!(
-        "...(Map<String, dynamic>.fromEntries(({member}).entries.map((e) => MapEntry((e.key) as \
-         String, {value}))) as Map<String, dynamic>),"
     )
 }
 
@@ -49,132 +39,52 @@ fn assert_written(definition: &str, fragment: &str) {
     );
 }
 
-/// A map flattened after a struct is read without the keys the struct took, and beside a member
-/// of its holder's own without that member's key too. The struct is read as it was.
+/// A map that is the one member of its struct is read from every key, and one in a variant under
+/// a tag key from every key but the tag. Each is written entry by entry.
 #[test]
-fn a_map_after_a_flattened_struct_is_read_without_the_keys_the_struct_took() {
+fn a_map_alone_is_read_from_every_key_but_the_tag() {
+    let spare = spare_dart::dart_definition();
+    assert_written(&spare, &format!("Spare(rest: {},);", counts_from("json")));
     assert_written(
-        &coupling_dart::dart_definition(),
+        &spare,
+        "toJson() => { ...(Map<String, dynamic>.fromEntries((rest).entries.map((e) => \
+         MapEntry((e.key) as String, e.value))) as Map<String, dynamic>), };",
+    );
+    assert_written(
+        &tethering_dart::dart_definition(),
         &format!(
-            "Coupling(marking: Marking.fromJsonUnjudged(json),rest: {},);",
-            counts_from("({...json}..remove('label'))")
+            "TetheringHeld(rest: {},);",
+            counts_from("({...json}..remove('kind'))")
         ),
     );
+}
+
+/// A member that names a function flattened after a struct is handed the object without the keys
+/// the struct took, and beside a member of its holder's own without that member's key too. The
+/// struct is read as it was.
+#[test]
+fn a_function_after_a_flattened_struct_is_handed_the_object_without_the_keys_the_struct_took() {
     assert_written(
         &clamping_dart::dart_definition(),
         &format!(
             "Clamping(marking: Marking.fromJsonUnjudged(({{...json}}..remove('note'))),note: \
-             json['note'] as String,rest: {},);",
-            counts_from("({...json}..remove('note')..remove('label'))")
+             json['note'] as String,other: {},);",
+            keyed_from("({...json}..remove('note')..remove('label'))")
         ),
     );
-}
-
-/// In a variant under a tag key, a map flattened after a struct is read without the tag and the
-/// keys the struct took.
-#[test]
-fn a_map_after_a_flattened_struct_in_a_variant_is_read_without_the_tag_and_the_structs_keys() {
-    assert_written(
-        &tethering_dart::dart_definition(),
-        &format!(
-            "TetheringHeld(marking: Marking.fromJsonUnjudged(({{...json}}..remove('kind'))),rest: \
-             {},);",
-            counts_from("({...json}..remove('kind')..remove('label'))")
-        ),
-    );
-}
-
-/// A map that is the one flattened member is read as it was: without its holder's own keys.
-#[test]
-fn a_map_that_is_the_one_flattened_member_is_read_without_its_holders_keys() {
     assert_written(
         &fastening_dart::dart_definition(),
         &format!(
-            "Fastening(note: json['note'] as String,rest: {},);",
-            counts_from("({...json}..remove('note'))")
+            "Fastening(note: json['note'] as String,other: {},);",
+            keyed_from("({...json}..remove('note'))")
         ),
-    );
-}
-
-/// A map flattened ahead of a struct is handed every key, and so is each of two maps. Each is
-/// written at its place.
-#[test]
-fn a_map_ahead_of_every_flattened_struct_is_read_from_every_key() {
-    let hoisting = hoisting_dart::dart_definition();
-    assert_written(
-        &hoisting,
-        &format!(
-            "Hoisting(extra: {},marking: Marking.fromJsonUnjudged(json),);",
-            stowages_from("json")
-        ),
-    );
-    assert_written(
-        &hoisting,
-        &format!(
-            "toJson() => {{ {}...((marking).toJson() as Map<String, dynamic>), }};",
-            map_written("extra", "(e.value).toJson()")
-        ),
-    );
-    let stowing = stowing_dart::dart_definition();
-    assert_written(
-        &stowing,
-        &format!(
-            "Stowing(first: {},second: {},);",
-            counts_from("json"),
-            counts_from("json")
-        ),
-    );
-    assert_written(
-        &stowing,
-        &format!(
-            "toJson() => {{ {}{} }};",
-            map_written("first", "e.value"),
-            map_written("second", "e.value")
-        ),
-    );
-}
-
-/// A struct that names a function on itself, a member that names one, and a struct with a
-/// flattened member of its own take no key, and a map flattened after them is handed every key.
-#[test]
-fn a_map_after_a_member_that_takes_no_key_is_read_from_every_key() {
-    assert_written(
-        &lacing_dart::dart_definition(),
-        &format!(
-            "Lacing(issued: Ticketing.fromJsonUnjudged(json),rest: {},);",
-            stowages_from("json")
-        ),
-    );
-    assert_written(
-        &rigging_dart::dart_definition(),
-        &format!(
-            "Rigging(marking: Marking.fromJsonUnjudged(asGiven(json)),rest: {},);",
-            stowages_from("json")
-        ),
-    );
-    assert_written(
-        &belaying_dart::dart_definition(),
-        &format!(
-            "Belaying(bracing: Bracing.fromJsonUnjudged(json),rest: {},);",
-            stowages_from("json")
-        ),
-    );
-}
-
-/// A struct with a flattened map, a member that names a function and a struct that reads the same
-/// key, each flattened after a struct, are read without the keys the struct took. The struct is
-/// read as it was.
-#[test]
-fn a_member_after_a_flattened_struct_is_read_without_the_keys_the_struct_took() {
-    assert_written(
-        &pairing_dart::dart_definition(),
-        "Pairing(marking: Marking.fromJsonUnjudged(json),spare: \
-         Spare.fromJsonUnjudged(({...json}..remove('label'))),);",
     );
     assert_written(
         &twin_dart::dart_definition(),
-        "Twin(marking: Marking.fromJsonUnjudged(json),other: \
-         Keying.fromJsonUnjudged(withItsKeys(({...json}..remove('label')))),);",
+        &format!(
+            "Twin(marking: Marking.fromJsonUnjudged(json),other: {},);",
+            keyed_from("({...json}..remove('label'))")
+        ),
     );
     assert_written(
         &doubling_dart::dart_definition(),
@@ -183,58 +93,88 @@ fn a_member_after_a_flattened_struct_is_read_without_the_keys_the_struct_took() 
     );
 }
 
-/// A map flattened after an externally tagged enum is read without the first entry under the name
-/// of a variant serde reads, or an alias of one, each as serde reads it. The enum is read as it
-/// was.
+/// A member that names a function flattened ahead of a struct is handed every key, and so is one
+/// after a struct that names a function on itself, a member that names one, and a struct with a
+/// flattened member of its own: none of them takes a key.
 #[test]
-fn a_map_after_a_flattened_externally_tagged_enum_is_read_without_the_variants_entry() {
+fn a_function_ahead_of_every_struct_or_after_a_member_that_takes_no_key_is_handed_every_key() {
+    assert_written(
+        &hoisting_dart::dart_definition(),
+        &format!(
+            "Hoisting(extra: {},marking: Marking.fromJsonUnjudged(json),);",
+            keyed_from("json")
+        ),
+    );
+    assert_written(
+        &lacing_dart::dart_definition(),
+        &format!(
+            "Lacing(issued: Ticketing.fromJsonUnjudged(json),rest: {},);",
+            keyed_from("json")
+        ),
+    );
+    assert_written(
+        &rigging_dart::dart_definition(),
+        &format!(
+            "Rigging(marking: Marking.fromJsonUnjudged(asGiven(json)),rest: {},);",
+            keyed_from("json")
+        ),
+    );
+    assert_written(
+        &belaying_dart::dart_definition(),
+        &format!(
+            "Belaying(bracing: Bracing.fromJsonUnjudged(json),rest: {},);",
+            keyed_from("json")
+        ),
+    );
+}
+
+/// A member that names a function flattened after an externally tagged enum is handed the object
+/// without the first entry under the name of a variant serde reads, or an alias of one, each as
+/// serde reads it, and a member after both without the keys the second took as well. The enum is
+/// read as it was.
+#[test]
+fn a_function_after_a_flattened_externally_tagged_enum_is_handed_no_entry_of_the_variant() {
     assert_written(
         &loading_dart::dart_definition(),
         &format!(
             "Loading(hatching: Hatching.fromJsonUnjudged(json),rest: {},);",
-            stowages_from(&without_first("json", "'Bay', 'Dock', 'Quay'"))
+            keyed_from(&without_first("json", "'Bay', 'Dock', 'Quay'"))
         ),
     );
     assert_written(
         &kedging_dart::dart_definition(),
         &format!(
             "Kedging(kedge: Warping.fromJsonUnjudged(json),rest: {},);",
-            stowages_from(&without_first("json", "'pier', 'open_bay'"))
+            keyed_from(&without_first("json", "'pier', 'open_bay'"))
         ),
     );
-}
-
-/// A member flattened after an externally tagged enum is handed the object without the enum's
-/// entry, and a member after both is handed it without the keys the second took as well.
-#[test]
-fn a_member_after_a_flattened_externally_tagged_enum_is_read_without_the_variants_entry() {
     let after_the_enum = without_first("json", "'Bay', 'Dock', 'Quay'");
     assert_written(
         &trimming_dart::dart_definition(),
         &format!(
             "Trimming(hatching: Hatching.fromJsonUnjudged(json),marking: \
              Marking.fromJsonUnjudged({after_the_enum}),rest: {},);",
-            stowages_from(&format!("({{...{after_the_enum}}}..remove('label'))"))
+            keyed_from(&format!("({{...{after_the_enum}}}..remove('label'))"))
         ),
     );
 }
 
-/// A map flattened after an enum under a tag key alone, or after an untagged one, is read as it
-/// was: from every key.
+/// A member that names a function flattened after an enum under a tag key alone, or after an
+/// untagged one, is handed every key.
 #[test]
-fn a_map_after_an_enum_read_as_a_map_is_read_from_every_key() {
+fn a_function_after_an_enum_read_as_a_map_is_handed_every_key() {
     assert_written(
         &mousing_dart::dart_definition(),
         &format!(
             "Mousing(frapping: Frapping.fromJsonUnjudged(json),rest: {},);",
-            stowages_from("json")
+            keyed_from("json")
         ),
     );
     assert_written(
         &shoring_dart::dart_definition(),
         &format!(
             "Shoring(chocking: Chocking.fromJsonUnjudged(json),rest: {},);",
-            stowages_from("json")
+            keyed_from("json")
         ),
     );
 }

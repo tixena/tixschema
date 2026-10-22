@@ -1,13 +1,14 @@
 //! The models of the flattened Swift reads `swift_tests/flattened.rs` pins and
-//! `service_schema_emitted_client_tests/run_swift_flattened.rs` runs: a map flattened after a
-//! struct, beside a member of its holder's own and in a variant under a tag key, a map flattened
-//! ahead of a struct, two flattened maps, a map flattened after each member that takes none of the
-//! keys it reads, and a map under a key Swift wraps, in a type that declares no parameter and in
-//! one that declares one, of models, of dates and one that names a function; and, after a struct,
-//! a struct with a flattened map, a member that names a function, a model with a rule and a struct
-//! that reads the same key. serde reads the members in the order declared: a struct takes the keys
-//! it reads, and every flattened member is handed every key no member ahead of it took. Every
-//! holder has a member of its own, whose key no flattened member is handed.
+//! `service_schema_emitted_client_tests/run_swift_flattened.rs` runs: a map that is the one member
+//! of its struct and of a variant under a tag key, under a key Swift wraps, in a type that
+//! declares no parameter and in one that declares one, of models, of dates and one that names a
+//! function; and a member that names a function, beside a member of its holder's own, ahead of a
+//! struct and after each member that takes none of the keys it reads; and, after a struct, a
+//! struct with a flattened member of its own, a member that names a function, a model with a rule
+//! and a struct that reads the same key. serde reads the members in the order declared: a struct
+//! takes the keys it reads, and every flattened member is handed every key no member ahead of it
+//! took. Every holder of a member that names a function has a member of its own, whose key no
+//! flattened member is handed.
 
 use alloc::collections::BTreeMap;
 
@@ -17,36 +18,39 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tixschema::model_schema;
 
-/// What [`Stopping`], [`Twinning`] and [`Plying`] are read from.
+/// What [`Twinning`] and [`Plying`] are read from.
 pub const STOPPING: &str = r#"{"label":"n","north":2,"note":"a"}"#;
+
+/// What [`Stopping`] is read from.
+pub const COUNTS: &str = r#"{"north":2,"south":3}"#;
 
 /// What [`Frapping`] is read from.
 pub const FRAPPING: &str = r#"{"north":2,"note":"a"}"#;
 
-/// What [`Kedging`], [`Marling`], [`Mousing`] and [`Snaking`] are read from: a map of text.
+/// What [`Kedging`], [`Marling`] and [`Mousing`] are read from.
 pub const TEXTS: &str = r#"{"label":"n","north":"s","note":"a"}"#;
-
-/// What [`Warping`] is read from.
-pub const WARPING: &str = r#"{"north":2,"note":"a","south":3}"#;
 
 /// What [`Bowsing`] and [`Splaying`] are read from.
 pub const BOWSING: &str = r#"{"label":"n","marker":"m","north":"s","note":"a"}"#;
 
 /// What [`Clewing`] is read from.
-pub const CLEWING: &str = r#"{"kind":"Held","label":"n","north":2,"note":"a"}"#;
+pub const CLEWING: &str = r#"{"kind":"Held","north":2}"#;
 
 /// What [`Parceling`] and [`Toggling`] are read from.
-pub const PARCELING: &str = r#"{"North":2,"label":"n","note":"a"}"#;
+pub const PARCELING: &str = r#"{"North":2}"#;
 
 /// What [`Worming`] is read from.
-pub const WORMING: &str = r#"{"label":"n","north":{"mark":"x"},"note":"a"}"#;
+pub const WORMING: &str = r#"{"north":{"mark":"x"}}"#;
 
 /// What [`Faking`] is read from.
-pub const FAKING: &str = r#"{"North":{"mark":"x"},"label":"n","note":"a"}"#;
+pub const FAKING: &str = r#"{"North":{"mark":"x"}}"#;
 
 /// What [`Serving`] is read from.
 #[cfg(feature = "chrono")]
-pub const SERVING: &str = r#"{"label":"n","north":"2024-01-02T03:04:05.678Z","note":"a"}"#;
+pub const SERVING: &str = r#"{"north":"2024-01-02T03:04:05.678Z"}"#;
+
+/// What [`Snaking`] is read from.
+pub const SNAKING: &str = r#"{"north":"s"}"#;
 
 /// What [`Gripping`] is read from.
 pub const GRIPPING: &str = r#"{"label":"n","mark":"x","note":"a"}"#;
@@ -74,48 +78,103 @@ pub struct Notch {
     pub mark: String,
 }
 
-/// A map flattened after a struct, with a member of its holder's own between them: serde hands
-/// the map the keys neither took.
+/// The keys a function was handed, which the members below that name one read.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Counting {
+    pub keys: Vec<String>,
+}
+
+/// A map, the one member of its struct, which serde hands every key.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Stopping {
     #[serde(flatten)]
-    pub flag: Pennant,
-    pub note: String,
-    #[serde(flatten)]
     pub rest: BTreeMap<String, u8>,
 }
 
-/// A map, the one flattened member, beside a member of its holder's own.
+/// A map, the one member of a variant under a tag key, which serde hands every key but the tag.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind")]
+pub enum Clewing {
+    Held {
+        #[serde(flatten)]
+        rest: BTreeMap<String, u8>,
+    },
+}
+
+/// A map under a key Swift wraps.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Parceling {
+    #[serde(flatten)]
+    pub rest: BTreeMap<Quarter, u8>,
+}
+
+/// [`Parceling`] in a type that declares a parameter, which the map holds.
+#[model_schema(default_types(Held = u8))]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Toggling<Held> {
+    #[serde(flatten)]
+    pub rest: BTreeMap<Quarter, Held>,
+}
+
+/// A map of models with a rule.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Worming {
+    #[serde(flatten)]
+    pub rest: BTreeMap<String, Notch>,
+}
+
+/// A map of models with a rule under a key Swift wraps.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Faking {
+    #[serde(flatten)]
+    pub rest: BTreeMap<Quarter, Notch>,
+}
+
+/// A map of dates, which Swift reads from the text serde writes.
+#[cfg(feature = "chrono")]
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Serving {
+    #[serde(flatten)]
+    pub rest: BTreeMap<String, DateTime<Utc>>,
+}
+
+/// A map that names a function, which serde hands every key.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Snaking {
+    #[model_schema_prop(preprocess = ["asGiven"])]
+    #[serde(flatten)]
+    pub rest: BTreeMap<String, String>,
+}
+
+/// A member that names a function, the one flattened member, beside a member of its holder's own.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Frapping {
     pub note: String,
+    #[model_schema_prop(preprocess = ["withItsKeys"])]
     #[serde(flatten)]
-    pub rest: BTreeMap<String, u8>,
+    pub tally: Counting,
 }
 
-/// A map flattened ahead of a struct, where serde hands it every key but its holder's own, the
-/// struct's among them.
+/// A member that names a function flattened ahead of a struct, where serde hands the function
+/// every key but its holder's own, the struct's among them.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Kedging {
+    #[model_schema_prop(preprocess = ["withItsKeys"])]
     #[serde(flatten)]
-    pub extra: BTreeMap<String, String>,
+    pub extra: Counting,
     pub note: String,
     #[serde(flatten)]
     pub pennant: Pennant,
-}
-
-/// Two flattened maps, where serde hands each the same keys.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Warping {
-    #[serde(flatten)]
-    pub first: BTreeMap<String, u8>,
-    pub note: String,
-    #[serde(flatten)]
-    pub second: BTreeMap<String, u8>,
 }
 
 /// A struct that names a function on itself, which serde reads as a value.
@@ -134,20 +193,21 @@ pub struct Hanking {
     pub pennant: Pennant,
 }
 
-/// A map flattened after a struct that names a function on itself, where serde hands it every key
-/// but its holder's own.
+/// A member that names a function flattened after a struct that names one on itself, where serde
+/// hands the function every key but its holder's own.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Marling {
     #[serde(flatten)]
     pub issued: Reeving,
     pub note: String,
+    #[model_schema_prop(preprocess = ["withItsKeys"])]
     #[serde(flatten)]
-    pub rest: BTreeMap<String, String>,
+    pub tally: Counting,
 }
 
-/// A map flattened after a member that names a function, where serde hands it every key but its
-/// holder's own.
+/// A member that names a function flattened after another that names one, where serde hands the
+/// second every key but its holder's own.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Mousing {
@@ -155,113 +215,33 @@ pub struct Mousing {
     #[serde(flatten)]
     pub flag: Pennant,
     pub note: String,
+    #[model_schema_prop(preprocess = ["withItsKeys"])]
     #[serde(flatten)]
-    pub rest: BTreeMap<String, String>,
+    pub tally: Counting,
 }
 
-/// A map flattened after a struct with a flattened member of its own, where serde hands it every
-/// key but its holder's own.
+/// A member that names a function flattened after a struct with a flattened member of its own,
+/// where serde hands the function every key but its holder's own.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Bowsing {
     #[serde(flatten)]
     pub hanking: Hanking,
     pub note: String,
+    #[model_schema_prop(preprocess = ["withItsKeys"])]
     #[serde(flatten)]
-    pub rest: BTreeMap<String, String>,
+    pub tally: Counting,
 }
 
-/// A map flattened after a struct in a variant under a tag key, where serde hands it the keys
-/// neither the tag, the variant's own member nor the struct took.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(tag = "kind")]
-pub enum Clewing {
-    Held {
-        #[serde(flatten)]
-        flag: Pennant,
-        note: String,
-        #[serde(flatten)]
-        rest: BTreeMap<String, u8>,
-    },
-}
-
-/// A map under a key Swift wraps, flattened after a struct.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Parceling {
-    #[serde(flatten)]
-    pub flag: Pennant,
-    pub note: String,
-    #[serde(flatten)]
-    pub rest: BTreeMap<Quarter, u8>,
-}
-
-/// [`Parceling`] in a type that declares a parameter, which the map holds.
-#[model_schema(default_types(Held = u8))]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Toggling<Held> {
-    #[serde(flatten)]
-    pub flag: Pennant,
-    pub note: String,
-    #[serde(flatten)]
-    pub rest: BTreeMap<Quarter, Held>,
-}
-
-/// A map of models with a rule, flattened after a struct.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Worming {
-    #[serde(flatten)]
-    pub flag: Pennant,
-    pub note: String,
-    #[serde(flatten)]
-    pub rest: BTreeMap<String, Notch>,
-}
-
-/// A map of models with a rule under a key Swift wraps, flattened after a struct.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Faking {
-    #[serde(flatten)]
-    pub flag: Pennant,
-    pub note: String,
-    #[serde(flatten)]
-    pub rest: BTreeMap<Quarter, Notch>,
-}
-
-/// A map of dates, which Swift reads from the text serde writes, flattened after a struct.
-#[cfg(feature = "chrono")]
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Serving {
-    #[serde(flatten)]
-    pub flag: Pennant,
-    pub note: String,
-    #[serde(flatten)]
-    pub rest: BTreeMap<String, DateTime<Utc>>,
-}
-
-/// A map that names a function, flattened after a struct: serde hands the function the keys
-/// neither took.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Snaking {
-    #[serde(flatten)]
-    pub flag: Pennant,
-    pub note: String,
-    #[model_schema_prop(preprocess = ["asGiven"])]
-    #[serde(flatten)]
-    pub rest: BTreeMap<String, String>,
-}
-
-/// A struct with a flattened map of its own, which serde reads as a map and so takes no key.
+/// A struct with a flattened member of its own that names a function, which serde reads as a map
+/// and so takes no key: the function is handed the keys neither the struct nor its holders took.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Footing {
     pub marker: String,
+    #[model_schema_prop(preprocess = ["withItsKeys"])]
     #[serde(flatten)]
-    pub rest: BTreeMap<String, String>,
+    pub tally: Counting,
 }
 
 /// A struct flattened after a struct, where serde hands it the keys neither the first nor its
@@ -274,13 +254,6 @@ pub struct Splaying {
     #[serde(flatten)]
     pub footing: Footing,
     pub note: String,
-}
-
-/// The keys a function was handed, which [`Twinning`] reads its member from.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Counting {
-    pub keys: Vec<String>,
 }
 
 /// A member that names a function flattened after a struct, where serde hands the function the
@@ -353,32 +326,12 @@ where
     serde_json::from_str(text).unwrap()
 }
 
-/// A map after a struct holds the keys neither the struct nor its holder took, and a map ahead of
-/// a struct, and after a member that takes no key, every key but its holder's own.
+/// A map that is the one member of its struct holds every key, and one in a variant under a tag
+/// key every key but the tag, in each shape a map is read in.
 #[test]
-fn serde_hands_a_flattened_map_the_keys_no_member_ahead_of_it_took() {
-    assert_eq!(written(&read::<Stopping>(STOPPING).rest), r#"{"north":2}"#);
-    assert_eq!(written(&read::<Frapping>(FRAPPING).rest), r#"{"north":2}"#);
-    assert_eq!(
-        written(&read::<Kedging>(TEXTS).extra),
-        r#"{"label":"n","north":"s"}"#
-    );
-    let warping = read::<Warping>(WARPING);
-    assert_eq!(warping.first, warping.second);
-    assert_eq!(
-        written(&read::<Marling>(TEXTS).rest),
-        r#"{"label":"n","north":"s"}"#
-    );
-    assert_eq!(
-        written(&read::<Mousing>(TEXTS).rest),
-        r#"{"label":"n","north":"s"}"#
-    );
-    assert_eq!(
-        written(&read::<Bowsing>(BOWSING).rest),
-        r#"{"label":"n","marker":"m","north":"s"}"#
-    );
-    let Clewing::Held { flag, note, rest } = read::<Clewing>(CLEWING);
-    assert_eq!((flag.label.as_str(), note.as_str()), ("n", "a"));
+fn serde_hands_a_map_alone_every_key_but_a_tag_read_ahead_of_it() {
+    assert_eq!(written(&read::<Stopping>(COUNTS).rest), COUNTS);
+    let Clewing::Held { rest } = read::<Clewing>(CLEWING);
     assert_eq!(written(&rest), r#"{"north":2}"#);
     assert_eq!(
         written(&read::<Parceling>(PARCELING).rest),
@@ -387,44 +340,47 @@ fn serde_hands_a_flattened_map_the_keys_no_member_ahead_of_it_took() {
     assert_eq!(
         read::<Toggling<u8>>(PARCELING),
         Toggling {
-            flag: Pennant {
-                label: "n".to_owned(),
-            },
-            note: "a".to_owned(),
             rest: BTreeMap::from([(Quarter::North, 2)]),
         }
     );
-    assert_eq!(
-        written(&read::<Worming>(WORMING).rest),
-        r#"{"north":{"mark":"x"}}"#
-    );
-    assert_eq!(
-        written(&read::<Faking>(FAKING).rest),
-        r#"{"North":{"mark":"x"}}"#
-    );
-    assert_eq!(written(&read::<Snaking>(TEXTS).rest), r#"{"north":"s"}"#);
+    assert_eq!(written(&read::<Worming>(WORMING).rest), WORMING);
+    assert_eq!(written(&read::<Faking>(FAKING).rest), FAKING);
+    assert_eq!(written(&read::<Snaking>(SNAKING).rest), SNAKING);
 }
 
-/// A map of dates after a struct holds the keys neither the struct nor its holder took.
+/// A map of dates alone holds every key.
 #[cfg(feature = "chrono")]
 #[test]
-fn serde_hands_a_flattened_map_of_dates_the_keys_no_member_ahead_of_it_took() {
+fn serde_hands_a_map_of_dates_alone_every_key() {
+    assert_eq!(written(&read::<Serving>(SERVING).rest), SERVING);
+}
+
+/// A function beside a member of its holder's own, ahead of a struct, and after a member that
+/// takes no key is handed every key but its holder's own.
+#[test]
+fn serde_hands_a_function_the_keys_no_member_ahead_of_it_took() {
+    assert_eq!(read::<Frapping>(FRAPPING).tally.keys, ["north"]);
+    let kedging = read::<Kedging>(TEXTS);
+    assert_eq!(kedging.extra.keys, ["label", "north"]);
+    assert_eq!(kedging.pennant.label, "n");
+    assert_eq!(read::<Marling>(TEXTS).tally.keys, ["label", "north"]);
+    assert_eq!(read::<Mousing>(TEXTS).tally.keys, ["label", "north"]);
     assert_eq!(
-        written(&read::<Serving>(SERVING).rest),
-        r#"{"north":"2024-01-02T03:04:05.678Z"}"#
+        read::<Bowsing>(BOWSING).tally.keys,
+        ["label", "marker", "north"]
     );
 }
 
-/// A struct with a flattened map, a member that names a function and a model, each after a
-/// struct, are handed the keys the struct did not take, and a struct after a struct that reads the
-/// same key is refused.
+/// A struct with a flattened member of its own, a member that names a function and a model, each
+/// after a struct, are handed the keys the struct did not take, and a struct after a struct that
+/// reads the same key is refused.
 #[test]
 fn serde_hands_a_member_flattened_after_a_struct_the_keys_the_struct_did_not_take() {
     let splaying = read::<Splaying>(BOWSING);
-    assert_eq!(written(&splaying.footing.rest), r#"{"north":"s"}"#);
+    assert_eq!(splaying.footing.tally.keys, ["north"]);
     assert_eq!(
         written(&splaying),
-        r#"{"label":"n","marker":"m","north":"s","note":"a"}"#
+        r#"{"label":"n","marker":"m","keys":["north"],"note":"a"}"#
     );
     let twinning = read::<Twinning>(STOPPING);
     assert_eq!(twinning.tally.keys, ["north"]);

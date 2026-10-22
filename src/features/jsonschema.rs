@@ -17,9 +17,9 @@ pub struct MergeDiagnostic<'msg> {
 /// One schema merged into a base, together with how the author named it. A merged schema is a
 /// `serde_json` expression by the time it reaches the merge and no longer carries the name it came
 /// from, so the label travels beside it — it is what a diagnostic points the author at. `withheld`
-/// are the keys serde hands it none of: the base's own, and those each source ahead of it takes.
-/// `map` says serde hands it every other key, where its description closes it to some, as a map
-/// keyed by a plain enum's does.
+/// are the keys serde hands it none of: the tag an internally tagged enum reads ahead of the
+/// variant. `map` says serde hands it every other key, where its description closes it to some, as
+/// a map keyed by a plain enum's does.
 pub struct MergedSource {
     pub label: String,
     pub map: bool,
@@ -375,9 +375,9 @@ fn merge_readers() -> proc_macro2::TokenStream {
     }
 }
 
-/// How a merged object holds the keys serde hands each map merged into it, as the tokens that declare
-/// it: a key a member names is held to the map's values beside its own schema, and every other key
-/// to the values of every map.
+/// How a merged object holds the keys serde hands the map merged into it, as the tokens that declare
+/// it: a key the object names, its own tag, is held to the map's values beside its own schema, and
+/// every other key to the map's values.
 fn map_handing() -> proc_macro2::TokenStream {
     quote::quote! {
         // A map merged into an object: the schema of each value serde hands it, the keys serde
@@ -441,13 +441,8 @@ fn map_handing() -> proc_macro2::TokenStream {
                     *described = all_of(held);
                 }
             }
-            let rest: ::std::vec::Vec<serde_json::Value> = handed
-                .iter()
-                .filter(|map| holds_values(&map.value))
-                .map(|map| map.value.clone())
-                .collect();
-            let additional = if rest.is_empty() { first.value.clone() } else { all_of(rest) };
-            members.insert("additionalProperties".to_string(), additional);
+            // A map flattened beside another member is refused, so the object holds one.
+            members.insert("additionalProperties".to_string(), first.value.clone());
             members
         }
 

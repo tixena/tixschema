@@ -1,10 +1,8 @@
 //! The models of the flattened Kotlin reads `kotlin_tests/tests.rs` pins and
-//! `service_schema_emitted_client_tests/run_kotlin_flattened.rs` runs: a struct whose members are
-//! all flattened, one of them a map, and its twin with a member of its own; a map flattened ahead
-//! of a flattened struct, and two flattened maps; and an optional member beside a flattened one,
-//! with its twin under `nullable`.
+//! `service_schema_emitted_client_tests/run_kotlin_flattened.rs` runs: a map flattened as the one
+//! member of its struct, a flattened struct beside a member of its own, and an optional member
+//! beside a flattened one, with its twin under `nullable`.
 
-use alloc::collections::BTreeMap;
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
@@ -12,46 +10,21 @@ use tixschema::model_schema;
 
 use super::tuple_variants_models::{Labelling, labelling_schema};
 
-/// Every member flattened, the map last, where serde hands it the keys no member ahead took.
+/// A map, the one member, which serde hands every key of the object.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Netting {
     #[serde(flatten)]
-    pub labelling: Labelling,
-    #[serde(flatten)]
     pub rest: HashMap<String, u8>,
 }
 
-/// [`Netting`] with a member of its own beside the two flattened ones.
+/// A flattened struct beside a member of its own.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Knotting {
     #[serde(flatten)]
     pub labelling: Labelling,
     pub note: String,
-    #[serde(flatten)]
-    pub rest: HashMap<String, u8>,
-}
-
-/// A map of text flattened ahead of a flattened struct, where serde hands it every key, the
-/// struct's among them.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Hitching {
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, String>,
-    #[serde(flatten)]
-    pub labelling: Labelling,
-}
-
-/// Two flattened maps, where serde hands each the same keys.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Whipping {
-    #[serde(flatten)]
-    pub first: BTreeMap<String, u8>,
-    #[serde(flatten)]
-    pub second: BTreeMap<String, u8>,
 }
 
 /// An optional member beside a flattened one, its key left out where it holds no value.

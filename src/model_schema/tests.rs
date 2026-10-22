@@ -311,7 +311,7 @@ const DECODE_WITH_FLATTEN_FORMS: [(&str, &str); 7] = [
     ),
     (
         "enable = [\"decode_with\", \"mongodb\"]",
-        "pub struct DecodeFlatBag { #[serde(flatten)] pub extra: HashMap<String, i32>, pub title: String }",
+        "pub struct DecodeFlatBag { #[serde(flatten)] pub extra: HashMap<String, i32> }",
     ),
     (
         "enable = [\"decode_with\", \"mongodb\"], default_types(T = DecodeBody)",
@@ -2491,8 +2491,7 @@ fn a_slot_a_brand_and_a_flattened_member_holding_a_json_value_are_refused() {
             "Value",
         ),
         (
-            "pub struct Holding { pub count: u8, #[serde(flatten)] pub rest: HashMap<String, \
-             Value> }",
+            "pub struct Holding { #[serde(flatten)] pub rest: HashMap<String, Value> }",
             "type `Holding`: field `rest`",
             "HashMap<String, Value>",
         ),
@@ -2509,7 +2508,7 @@ fn a_slot_a_brand_and_a_flattened_member_holding_a_json_value_are_refused() {
     assert_eq!(
         any_json_refusals(
             "",
-            "pub struct Holding { pub count: u8, #[serde(flatten)] pub rest: Map<String, Value> }"
+            "pub struct Holding { #[serde(flatten)] pub rest: Map<String, Value> }"
         ),
         [(
             any_json_sentence("type `Holding`: field `rest`", "Map"),
@@ -16452,15 +16451,15 @@ fn a_flattened_type_parameter_is_merged_at_the_document_its_filling_binds() {
 
 #[cfg(feature = "jsonschema")]
 #[test]
-fn a_flattened_map_is_merged_as_a_map_handed_none_of_the_withheld_keys() {
+fn a_flattened_map_is_merged_as_a_map_handed_none_of_the_tag_read_ahead() {
     let merged = |written: &str| {
         let ty: syn::Type = syn::parse_str(written).unwrap();
-        super::flatten_merged_source(&super::get_field_def("rest", &ty, ""), &["note".to_owned()])
+        super::flatten_merged_source(&super::get_field_def("rest", &ty, ""), &["kind".to_owned()])
     };
 
     let by_name = merged("BTreeMap<String, u8>");
     assert!(by_name.map);
-    assert_eq!(by_name.withheld, ["note"]);
+    assert_eq!(by_name.withheld, ["kind"]);
     assert!(
         by_name
             .value

@@ -217,7 +217,7 @@ const SHAPE_ROWS: [(&str, &str, &str); 12] = [
     (
         "a flattened map",
         "Ledger.fromJson(@).toJson()",
-        r#"{"dock":"north","tag":7}"#,
+        r#"{"tag":7}"#,
     ),
     (
         "a slot under a content key",
@@ -255,7 +255,7 @@ a type flattened into a variant under a tag: read {\"kind\":\"Loose\",\"dock\":\
 a slot's function under a tag: read {\"kind\":\"Slot\",\"keys\":[\"tag\"],\"tag\":\"t\"}
 a type flattened into a variant under its name: read {\"Loose\":{\"dock\":\"north\",\"keys\":[\"tag\"],\"tag\":\"t\"}}
 a type flattened into a struct that writes a tag: read {\"kind\":\"Moored\",\"dock\":\"north\",\"keys\":[\"kind\",\"tag\"],\"tag\":\"t\"}
-a flattened map: read {\"dock\":\"north\",\"tag\":7}
+a flattened map: read {\"tag\":7}
 a slot under a content key: read {\"kind\":\"Left\",\"detail\":\"door\"}
 a slot of several: read {\"Split\":[\"a\",2]}
 a slot of a tuple struct: read [\"a\",2]
@@ -371,11 +371,10 @@ pub struct Moored {
     pub tagged: Tagged,
 }
 
-/// A map flattened beside a member of its holder.
+/// A map flattened as the only member of its holder.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Ledger {
-    pub dock: String,
     #[serde(flatten)]
     pub extras: BTreeMap<String, u32>,
 }

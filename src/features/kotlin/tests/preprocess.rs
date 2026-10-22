@@ -538,25 +538,31 @@ fn a_flattened_member_a_function_reads_is_handed_what_its_holder_does_not_take()
             #[serde(flatten)]
             base: Base,
             dock: String,
+        }
+    };
+    let named_by_the_member = plain(&girdled);
+    assert!(
+        named_by_the_member.contains(
+            "val base = lenient.decodeFromJsonElement(BaseUnjudged, withItsKeys(JsonObject(obj - \
+             setOf(\"dock\"))));"
+        ),
+        "got: {named_by_the_member}"
+    );
+    let strapped: ItemStruct = syn::parse_quote! {
+        struct Strapped {
             #[model_schema_prop(preprocess = ["withItsKeys"])]
             #[serde(flatten)]
             rest: BTreeMap<String, String>,
         }
     };
-    let named_by_the_member = plain(&girdled);
-    for held in [
-        "val base = lenient.decodeFromJsonElement(BaseUnjudged, withItsKeys(JsonObject(obj - \
-         setOf(\"dock\"))));",
-        "val restConsumedKeys = setOf(\"dock\"); ",
-        "val rest = withItsKeys(JsonObject(obj.filterKeys { it !in restConsumedKeys \
-         })).jsonObject.mapValues { (_, v) -> \
-         input.json.decodeFromJsonElement(serializer<String>(), v) }",
-    ] {
-        assert!(
-            named_by_the_member.contains(held),
-            "no `{held}` in: {named_by_the_member}"
-        );
-    }
+    let named_by_the_map = plain(&strapped);
+    assert!(
+        named_by_the_map.contains(
+            "val rest = withItsKeys(obj).jsonObject.mapValues { (_, v) -> \
+             input.json.decodeFromJsonElement(serializer<String>(), v) }"
+        ),
+        "got: {named_by_the_map}"
+    );
 }
 
 /// A member of a variant the plugin reads is read through a serializer of its own, named after
