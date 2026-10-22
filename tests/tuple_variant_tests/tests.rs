@@ -148,19 +148,18 @@ pub enum InternalOverEnum {
     EnumInner(InternalHue),
 }
 
-/// A newtype over a `String`: serde writes it as the string it wraps, and the registry cannot tell
-/// it apart from a struct — both register as having no enum members. So the declaration compiles
-/// and the divergence is left for the merge to catch.
-#[model_schema()]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct InternalSlug(pub String);
-
+/// A bare tag over a newtype over a `String` declared below it, which the enum's expansion does not
+/// see: the declaration compiles and the divergence is left for the merge to catch.
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "type")]
 pub enum InternalOverBrand {
     Branded(InternalSlug),
 }
+
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct InternalSlug(pub String);
 
 /// An untagged enum every member of which serde writes as an object, wrapped by a bare tag. The
 /// content joins the tag the same way a `#[serde(flatten)]` base does, so what lands beside the tag
@@ -192,8 +191,16 @@ pub enum InternalOverUntagged {
     Wrapped(InternalEither),
 }
 
-/// The same wrapping over a union with one member serde writes as a string. Only the JSON-schema
-/// merge reads the pair, so both fixtures are declared where they are read.
+/// The same wrapping over a union declared below it with one member serde writes as a string. Only
+/// the JSON-schema merge reads the pair, so both fixtures are declared where they are read.
+#[cfg(feature = "jsonschema")]
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(tag = "type")]
+pub enum InternalOverScalarUntagged {
+    Wrapped(InternalScalarEither),
+}
+
 #[cfg(feature = "jsonschema")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -201,14 +208,6 @@ pub enum InternalOverUntagged {
 pub enum InternalScalarEither {
     Obj(InternalFirst),
     Text(String),
-}
-
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-#[serde(tag = "type")]
-pub enum InternalOverScalarUntagged {
-    Wrapped(InternalScalarEither),
 }
 
 /// A recursive enum with no tagging attributes: what sits under a key is the enum itself. Only the

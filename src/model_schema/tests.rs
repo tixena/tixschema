@@ -2252,6 +2252,120 @@ fn a_flattened_type_serde_writes_as_no_object_declared_above_is_refused_in_every
     assert_eq!(compile_error_count(&unseen), 0, "got: {unseen}");
 }
 
+/// No local build is of the clients alone, so the gates are read off the sources.
+#[test]
+fn the_tagged_non_object_refusal_is_compiled_in_every_build_with_serde() {
+    let with_serde = quote::quote!(cfg(feature = "serde")).to_string();
+    let expansion = include_str!("../model_schema.rs");
+    for named in [
+        "tagged_non_object_message",
+        "internally_tagged_guard_errors",
+        "tagged_content",
+        "process_internally_tagged_enum",
+        "written_non_object",
+        "FLATTENED_NON_OBJECT_SCOPE",
+    ] {
+        assert_eq!(
+            gates_above(expansion, named),
+            [with_serde.as_str()],
+            "for `{named}`"
+        );
+    }
+}
+
+/// The refusal of the slot of variant `Held` of `holder`, under the tag `kind`, over `inner`,
+/// which `written` says serde writes as no object.
+#[cfg(feature = "serde")]
+fn tagged_non_object_refusal(holder: &str, inner: &str, written: &str) -> String {
+    format!(
+        "model_schema: variant `Held` of internally tagged enum `{holder}` wraps `{inner}`, \
+         which {written}, which cannot sit beside the tag: `#[serde(tag = \"kind\")]` with no \
+         `content` writes the variant's data as members of the object the tag is written in, and \
+         only a value serde writes as an object has members to put there. Name a `content` key \
+         so the value gets an object of its own, or wrap it in a struct whose fields can sit \
+         beside the tag. {}",
+        super::FLATTENED_NON_OBJECT_SCOPE
+    )
+}
+
+/// A newtype variant under a tag alone over a brand over text, a tuple struct and an untagged
+/// enum with a member that is no object, each declared above, and the slots that stay accepted:
+/// a brand over a struct, an untagged enum of objects, a type declared below, and an enum under a
+/// tag and a content key.
+#[cfg(feature = "serde")]
+#[test]
+fn a_tagged_newtype_variant_over_a_type_serde_writes_as_no_object_is_refused_in_every_build_with_serde()
+ {
+    for declared in [
+        "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct ProbeId(String);",
+        "#[derive(Serialize, Deserialize)] pub struct ProbePair(String, u32);",
+        "#[derive(Serialize, Deserialize)] pub struct ProbeFields { pub note: String }",
+        "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct ProbeBody(ProbeFields);",
+        "#[derive(Serialize, Deserialize)] #[serde(untagged)] pub enum ProbeEither { \
+         Fields(ProbeFields), Text(String) }",
+        "#[derive(Serialize, Deserialize)] #[serde(untagged)] pub enum ProbeObjects { \
+         Fields(ProbeFields), Body(ProbeBody) }",
+    ] {
+        let expanded = expansion_over(declared);
+        assert_eq!(compile_error_count(&expanded), 0, "got: {expanded}");
+    }
+    let whole = "is not written as an object \u{2014} its schema describes a";
+    let reading = refusal_texts(&expansion_over(
+        "#[derive(Serialize, Deserialize)] #[serde(tag = \"kind\")] pub enum ProbeReading { \
+         Held(ProbeId) }",
+    ));
+    assert_eq!(
+        reading,
+        [tagged_non_object_refusal(
+            "ProbeReading",
+            "ProbeId",
+            &format!("{whole} `string`")
+        )]
+    );
+    let answered = format!("error: {}", reading[0]);
+    assert!(
+        include_str!("../../README.md").contains(&answered),
+        "the README no longer quotes: {answered}"
+    );
+    assert_eq!(
+        refusal_texts(&expansion_over(
+            "#[derive(Serialize, Deserialize)] #[serde(tag = \"kind\")] pub enum ProbePaired { \
+             Held(ProbePair) }",
+        )),
+        [tagged_non_object_refusal(
+            "ProbePaired",
+            "ProbePair",
+            &format!("{whole} `array`")
+        )]
+    );
+    assert_eq!(
+        refusal_texts(&expansion_over(
+            "#[derive(Serialize, Deserialize)] #[serde(tag = \"kind\")] pub enum ProbeChoice { \
+             Held(ProbeEither) }",
+        )),
+        [tagged_non_object_refusal(
+            "ProbeChoice",
+            "ProbeEither",
+            "writes a union member that is not an object \u{2014} its branch 2 describes a \
+             `string`"
+        )]
+    );
+    for accepted in [
+        "#[serde(tag = \"kind\")] pub enum ProbeHolding { Held(ProbeBody) }",
+        "#[serde(tag = \"kind\")] pub enum ProbeChosen { Held(ProbeObjects) }",
+        "#[serde(tag = \"kind\")] pub enum ProbeLater { Held(ProbeUnseen) }",
+        "#[serde(tag = \"kind\", content = \"value\")] pub enum ProbeAdjacent { Held(ProbeId), \
+         Paired(ProbePair) }",
+    ] {
+        let expanded = expansion_over(&format!("#[derive(Serialize, Deserialize)] {accepted}"));
+        assert_eq!(
+            compile_error_count(&expanded),
+            0,
+            "for {accepted}, got: {expanded}"
+        );
+    }
+}
+
 /// What the record every build with serde writes proves of each flattened type is what the record
 /// a Zod surface writes proves, so the refusal reads the same with a schema surface and without.
 #[cfg(all(feature = "serde", feature = "zod"))]

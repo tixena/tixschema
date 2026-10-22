@@ -11094,9 +11094,8 @@ fn internally_tagged_guard_errors(
                 return Some(refused);
             }
             let message = match content {
-                TaggedContent::Flattened => {
-                    let inner_name = flattened_plain_enum(&inner)?;
-                    format!(
+                TaggedContent::Flattened => match flattened_plain_enum(&inner) {
+                    Some(inner_name) => format!(
                         "model_schema: variant `{variant_name}` of internally tagged enum \
                          `{enum_name}` wraps `{inner_name}`, which serde does not write as an \
                          object: a plain enum writes its own variant name, so nothing of it joins \
@@ -11104,8 +11103,9 @@ fn internally_tagged_guard_errors(
                          closed around the tag rejects. Name a `content` key so the value gets an \
                          object of its own, or wrap it in a struct whose fields can sit beside the \
                          tag. {FLATTENED_PLAIN_ENUM_SCOPE}"
-                    )
-                }
+                    ),
+                    None => tagged_non_object_message(variant_name, enum_name, tag_name, &inner)?,
+                },
                 TaggedContent::Refused(shape) => format!(
                     "model_schema: variant `{variant_name}` of internally tagged enum \
                      `{enum_name}` wraps {shape}, which cannot sit beside the tag: `#[serde(tag \
@@ -11128,6 +11128,38 @@ fn internally_tagged_guard_errors(
             Some(syn::Error::new_spanned(field, message).to_compile_error())
         })
         .collect()
+}
+
+/// The refusal of a newtype variant under a tag alone whose slot names a type declared above that
+/// `NON_OBJECT_WIRES` proves serde writes as no object, read as [`flatten_edge_guard_error`] reads
+/// it, and `None` for every other slot.
+#[cfg(feature = "serde")]
+fn tagged_non_object_message(
+    variant_name: &syn::Ident,
+    enum_name: &syn::Ident,
+    tag_name: &str,
+    inner: &FieldDef,
+) -> Option<String> {
+    let FieldDefType::SiblingType(inner_name, _) = &inner.field_type else {
+        return None;
+    };
+    let written = match written_non_object(inner)? {
+        NonObject::Branch(branch, named) => format!(
+            "writes a union member that is not an object — its branch {branch} describes a \
+             `{named}`"
+        ),
+        NonObject::Whole(named) => {
+            format!("is not written as an object — its schema describes a `{named}`")
+        }
+    };
+    Some(format!(
+        "model_schema: variant `{variant_name}` of internally tagged enum `{enum_name}` wraps \
+         `{inner_name}`, which {written}, which cannot sit beside the tag: `#[serde(tag = \
+         \"{tag_name}\")]` with no `content` writes the variant's data as members of the object \
+         the tag is written in, and only a value serde writes as an object has members to put \
+         there. Name a `content` key so the value gets an object of its own, or wrap it in a \
+         struct whose fields can sit beside the tag. {FLATTENED_NON_OBJECT_SCOPE}"
+    ))
 }
 
 /// Renders one variant of an internally tagged enum as a union member.
