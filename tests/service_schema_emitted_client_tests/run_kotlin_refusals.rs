@@ -1,4 +1,4 @@
-//! A payload serde refuses, read by a serializer the Kotlin emitter writes, compiled with
+//! A payload serde or Zod refuses, read by a serializer the Kotlin emitter writes, compiled with
 //! `-Werror`: each is refused with `SerializationException`, the exception the plugin's own
 //! serializers and the type's judged one throw, so a caller that catches it catches each.
 
@@ -7,6 +7,8 @@
 use core::fmt::Write as _;
 
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
+use tixschema::model_schema;
 
 use super::flattened_models::{
     Bowlining, Stowing, Swaying, Tacking, Whelping, bowlining_kotlin, bunting_kotlin,
@@ -163,6 +165,31 @@ const ROWS: [Row; 18] = [
     },
 ];
 
+/// [`Becalming`]'s unit variant with no content, with `null` for one and with a value for one:
+/// each payload, what serde answers of it, and what the Kotlin read answers of it.
+const UNIT_ROWS: [(&str, &str, &str); 3] = [
+    (r#"{"kind":"Lull"}"#, "read", "read"),
+    (
+        r#"{"kind":"Lull","held":null}"#,
+        "read",
+        "kotlinx.serialization.SerializationException: Becalming: Lull takes no value",
+    ),
+    (
+        r#"{"kind":"Lull","held":5}"#,
+        "invalid type: integer `5`, expected unit variant Becalming::Lull at line 1 column 23",
+        "kotlinx.serialization.SerializationException: Becalming: Lull takes no value",
+    ),
+];
+
+/// A unit variant under a tag and a content key, beside a variant that holds a value.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", content = "held")]
+pub enum Becalming {
+    Breeze(bool),
+    Lull,
+}
+
 /// One payload, the type it is read as and what serde answers of it.
 struct Row {
     json: &'static str,
@@ -251,7 +278,49 @@ fn a_serializer_tixschema_writes_refuses_with_a_serialization_exception() {
     );
 }
 
-/// The README's sentence on the refusals of the Kotlin read shows messages the run above measures.
+/// A unit variant under a tag and a content key is read where the object holds no content key, and
+/// an object that holds one is refused, `null` among its values, as Zod refuses it: its schema of
+/// the variant is a strict object of the tag alone. serde reads the variant over `null`.
+#[test]
+fn a_unit_variant_under_a_content_key_is_read_where_the_object_holds_no_content() {
+    let serde_told: Vec<String> = UNIT_ROWS
+        .iter()
+        .map(|&(json, _, _)| serde_told::<Becalming>(json))
+        .collect();
+    let serde_pinned: Vec<&str> = UNIT_ROWS.iter().map(|&(_, serde, _)| serde).collect();
+    assert_eq!(
+        serde_told, serde_pinned,
+        "serde no longer answers each payload as it did"
+    );
+    let zod = Becalming::zod_schema();
+    assert!(
+        zod.contains("z.strictObject({\n  kind: z.literal(\"Lull\"),\n})"),
+        "Zod no longer reads the unit variant as an object of its tag alone: {zod}"
+    );
+    let mut expected = String::new();
+    let mut main = String::from(THROWN);
+    main.push_str("fun main() {\n");
+    for (at, &(json, _, kotlin)) in UNIT_ROWS.iter().enumerate() {
+        let _ = writeln!(expected, "{at}: {kotlin}");
+        let _ = writeln!(
+            main,
+            "    thrown(\"{at}\", Becalming.serializer(), \"\"\"{json}\"\"\")"
+        );
+    }
+    main.push_str("}\n");
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        becalming_kotlin::kotlin_definition(),
+        main,
+    ];
+    let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
+        return;
+    };
+    assert_eq!(printed, expected, "the Kotlin read is not the answer above");
+}
+
+/// The README's sentences on the refusals of the Kotlin read show payloads and messages the runs
+/// above measure.
 #[test]
 fn the_readme_shows_refusals_the_run_measures() {
     let readme = include_str!("../../README.md");
@@ -268,5 +337,14 @@ fn the_readme_shows_refusals_the_run_measures() {
             "no row throws `{message}`"
         );
         assert!(readme.contains(shown), "not in the README: {shown}");
+    }
+    for &(json, _, kotlin) in &UNIT_ROWS {
+        let shown = format!("`{json}`");
+        assert!(readme.contains(&shown), "not in the README: {shown}");
+        let refusal = kotlin.trim_start_matches("kotlinx.serialization.");
+        assert!(
+            kotlin == "read" || readme.contains(&format!("`{refusal}`")),
+            "not in the README: {refusal}"
+        );
     }
 }

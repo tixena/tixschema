@@ -2427,6 +2427,21 @@ fn members_renamed(payload: &VariantPayload) -> Vec<(String, String)> {
     }
 }
 
+/// The read of a unit variant: from an entry over `null` alone with no tag attribute, as serde
+/// reads it, from an object with no content key under a tag and a content key, as Zod reads it,
+/// and from its tag under a tag alone.
+fn unit_variant_read(tagging: Tagging<'_>, subclass_name: &str, export_name: &str) -> String {
+    let empty = match tagging {
+        Tagging::Adjacent(_) => "data == null",
+        Tagging::External => "data is JsonNull",
+        Tagging::Unwrapped => return subclass_name.to_owned(),
+    };
+    format!(
+        "if ({empty}) {subclass_name} else throw SerializationException(\"{export_name}: \" + tag \
+         + \" takes no value\")"
+    )
+}
+
 /// One variant's own subclass, `serialize` arm and `deserialize` arm, for
 /// [`dispatched_tagged_enum_kotlin_source`] — pulled out of that function's own loop to keep it
 /// under this crate's line budget per function.
@@ -2479,16 +2494,10 @@ fn dispatched_tagged_variant(
     };
     let own = || kotlin_subclass_serializer_expr(&subclass_name, ctx.type_parameters);
     let (content_expr, decode_expr) = match (&payload, &declared) {
-        // An entry under a unit variant's name reads it over `null` alone, as serde reads it.
-        (VariantPayload::Unit, _) if matches!(ctx.tagging, Tagging::External) => (
+        (VariantPayload::Unit, _) => (
             None,
-            format!(
-                "if (data is JsonNull) {subclass_name} else throw SerializationException(\"{}: \" \
-                 + tag + \" takes no value\")",
-                ctx.export_name
-            ),
+            unit_variant_read(ctx.tagging, &subclass_name, ctx.export_name),
         ),
-        (VariantPayload::Unit, _) => (None, subclass_name.clone()),
         (VariantPayload::Value(field_def), Some(held)) if !beside_the_tag => {
             let read_by = read::declared_serializer(field_def, held, ctx.type_parameters);
             (

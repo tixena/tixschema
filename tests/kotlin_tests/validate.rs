@@ -577,8 +577,10 @@ fn the_serializer_the_emitter_writes_for_each_enum_shape_is_its_unjudged_one() {
              as? JsonPrimitive ?: throw SerializationException(\"expected a string, found \" + \
              it) }.content; val data = obj[\"value\"]; return when (tag) { \"Flag\" -> \
              DynamicValueFlag(input.json.decodeFromJsonElement(serializer<Boolean>(), (data ?: \
-             throw SerializationException(\"missing field `value`\")))); \"Nothing\" -> \
-             DynamicValueNothing; \"Number\" -> \
+             throw SerializationException(\"missing field `value`\")))); \"Nothing\" -> if \
+             (data == null) DynamicValueNothing else throw \
+             SerializationException(\"DynamicValue: \" + tag + \" takes no value\"); \"Number\" \
+             -> \
              DynamicValueNumber(input.json.decodeFromJsonElement(serializer<Long>(), (data ?: \
              throw SerializationException(\"missing field `value`\")))) else -> throw \
              SerializationException(\"unknown tag \" + tag) } } }",

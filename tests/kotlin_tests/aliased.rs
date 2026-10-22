@@ -63,7 +63,9 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
              input.json.decodeFromJsonElement(serializer<ScendingBerth>(), (data ?: throw \
              SerializationException(\"missing field `data`\")).{NAME_AS_LABEL});"
         ),
-        "\"Calm\", \"Still\" -> ScendingCalm;".to_owned(),
+        "\"Calm\", \"Still\" -> if (data == null) ScendingCalm else throw \
+         SerializationException(\"Scending: \" + tag + \" takes no value\");"
+            .to_owned(),
         "\"Held\", \"Tied\" -> ScendingHeld(".to_owned(),
         "is ScendingHeld -> buildJsonObject { put(\"kind\", \"Held\");".to_owned(),
     ] {
