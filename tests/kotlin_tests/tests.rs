@@ -3,6 +3,7 @@
 //! Each `#[model_schema]` item earns `kotlin_definition()` inside a `{snake_case}_kotlin` module
 //! beside it (never a direct inherent `impl` — see `features::kotlin::kotlin_module_tokens`).
 
+use alloc::collections::BTreeMap;
 use std::collections::HashMap;
 
 #[cfg(feature = "mongodb")]
@@ -12,17 +13,19 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::flattened_models::{
-    BELTING, Belting, Bending, Brailing, CLEATING, Cleating, Gasketing, HEAVING, HITCHING, Heaving,
-    Hitching, Jibing, Knotting, Lanyarding, Luffing, Netting, Nipping, PAYLOAD, Quaying, Rousing,
-    SCUDDING, STOWING, STROPPING, Scudding, Seizing, Slinging, Splicing, Stoppering, Stowing,
-    Stropping, Tacking, UNDER_AN_ALIAS, UNWRITTEN, Whipping, read_of,
+    BELTING, Belting, Bending, Brailing, CLEATING, Cleating, CorrectedLocker, EmptiedLocker,
+    Gasketing, HEAVING, HITCHING, Heaving, Hitching, Jibing, Knotting, LOCKER, Lanyarding, Luffing,
+    Netting, Nipping, PAYLOAD, ProbeLocker, Quaying, Rousing, SCUDDING, STOWING, STROPPING,
+    Scudding, Seizing, Slinging, Splicing, Stoppering, Stowing, Stropping, Tacking, UNDER_AN_ALIAS,
+    UNWRITTEN, Whipping, read_of,
 };
 #[cfg(feature = "serde")]
 use super::flattened_models::{
-    belting_kotlin, bending_kotlin, brailing_kotlin, cleating_kotlin, gasketing_kotlin,
-    heaving_kotlin, hitching_kotlin, knotting_kotlin, luffing_kotlin, netting_kotlin,
-    nipping_kotlin, rousing_kotlin, scudding_kotlin, seizing_kotlin, slinging_kotlin,
-    splicing_kotlin, stoppering_kotlin, stowing_kotlin, whipping_kotlin,
+    belting_kotlin, bending_kotlin, brailing_kotlin, cleating_kotlin, corrected_locker_kotlin,
+    emptied_locker_kotlin, gasketing_kotlin, heaving_kotlin, hitching_kotlin, knotting_kotlin,
+    luffing_kotlin, netting_kotlin, nipping_kotlin, probe_locker_kotlin, rousing_kotlin,
+    scudding_kotlin, seizing_kotlin, slinging_kotlin, splicing_kotlin, stoppering_kotlin,
+    stowing_kotlin, whipping_kotlin,
 };
 use super::read::{kept, serializers};
 use super::tuple_variants_models::Labelling;
@@ -886,6 +889,80 @@ fn a_flattened_map_is_read_from_every_key_and_written_entry_by_entry() {
          input.json.decodeFromJsonElement(serializer<UByte>(), v) }; return Netting(rest = rest) }",
     ] {
         assert!(netting.contains(held), "no `{held}` in: {netting}");
+    }
+}
+
+/// What serde reads of an optional map, the one member, from each of [`LOCKER`]: the map where
+/// every entry reads as a count, and `None` where one does not, which it writes as no entry. Under
+/// a function it reads the map from what the function answers: it refuses an entry that does not
+/// read as a count, and reads `null` as `None`.
+#[test]
+fn serde_reads_an_optional_flattened_map_as_none_where_an_entry_does_not_read() {
+    let read = LOCKER.map(|payload| serde_json::from_str::<ProbeLocker>(payload).unwrap().counts);
+    assert_eq!(
+        read,
+        [
+            Some(BTreeMap::new()),
+            Some(BTreeMap::from([("north".to_owned(), 2)])),
+            None,
+            None,
+            None
+        ]
+    );
+    assert_eq!(
+        LOCKER.map(read_of::<ProbeLocker>),
+        ["{}", r#"{"north":2}"#, "{}", "{}", "{}"]
+    );
+    assert_eq!(
+        LOCKER.map(read_of::<CorrectedLocker>),
+        ["{}", r#"{"north":2}"#, "refused", "refused", "refused"]
+    );
+    let emptied = LOCKER.map(|payload| {
+        serde_json::from_str::<EmptiedLocker>(payload)
+            .unwrap()
+            .counts
+    });
+    assert_eq!(emptied, [None, None, None, None, None]);
+}
+
+/// An optional map, the one member, writes no entry where it holds no value, and is read as
+/// `null` wherever an entry does not read as its value. Under a function it is read from what the
+/// function answers, and as `null` where that is `null`.
+#[test]
+#[cfg(feature = "serde")]
+fn an_optional_flattened_map_is_read_as_null_where_an_entry_does_not_read() {
+    let entries =
+        "mapValues { (_, v) -> input.json.decodeFromJsonElement(serializer<UByte>(), v) }";
+    for (kotlin, held) in [
+        (
+            probe_locker_kotlin::kotlin_definition(),
+            "buildJsonObject { value.counts?.forEach { (k, v) -> put(k, \
+             output.json.encodeToJsonElement(serializer<UByte>(), v)) } }"
+                .to_owned(),
+        ),
+        (
+            probe_locker_kotlin::kotlin_definition(),
+            format!(
+                "val counts = runCatching {{ obj.{entries} }}.getOrNull(); \
+                 return ProbeLocker(counts = counts) }}"
+            ),
+        ),
+        (
+            corrected_locker_kotlin::kotlin_definition(),
+            format!(
+                "val counts = asGiven(obj).let {{ if (it is JsonNull) null else \
+                 it.jsonObject.{entries} }}; return CorrectedLocker(counts = counts) }}"
+            ),
+        ),
+        (
+            emptied_locker_kotlin::kotlin_definition(),
+            format!(
+                "val counts = asNull(obj).let {{ if (it is JsonNull) null else \
+                 it.jsonObject.{entries} }}; return EmptiedLocker(counts = counts) }}"
+            ),
+        ),
+    ] {
+        assert!(kotlin.contains(&held), "no `{held}` in: {kotlin}");
     }
 }
 

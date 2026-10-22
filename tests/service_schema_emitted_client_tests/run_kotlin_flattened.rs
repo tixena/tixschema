@@ -3,7 +3,7 @@
 //! member beside a flattened one, beside its twin under `nullable`: each payload is written back
 //! as the serde read writes it back. A member flattened after a struct, or beside a member of its
 //! holder's own, is handed the keys serde hands it, and an externally tagged enum the one entry
-//! serde hands it.
+//! serde hands it. An optional map, the one member, is read as `null` where serde reads `None`.
 
 #![cfg(feature = "kotlin")]
 
@@ -13,16 +13,17 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::flattened_models::{
-    BELTING, Belting, Bending, Brailing, CLEATING, Cleating, Gasketing, HEAVING, HITCHING, Heaving,
-    Hitching, Knotting, Lanyarding, Luffing, Netting, Nipping, PAYLOAD, Rousing, SCUDDING, STOWING,
-    STROPPING, Scudding, Seizing, Slinging, Splicing, Stoppering, Stowing, Stropping,
-    UNDER_AN_ALIAS, UNWRITTEN, Whipping, belting_kotlin, bending_kotlin, brailing_kotlin,
-    bunting_kotlin, cleating_kotlin, gasketing_kotlin, heaving_kotlin, hitching_kotlin,
-    jibing_kotlin, knotting_kotlin, lanyarding_kotlin, luffing_kotlin, netting_kotlin,
-    nipping_kotlin, noting_kotlin, quaying_kotlin, read_of, rousing_kotlin, scudding_kotlin,
-    seizing_kotlin, sheeting_kotlin, slinging_kotlin, splicing_kotlin, stoppering_kotlin,
-    stowing_kotlin, stropping_kotlin, tacking_kotlin, ticketed_kotlin, unwritten_kotlin,
-    whipping_kotlin,
+    BELTING, Belting, Bending, Brailing, CLEATING, Cleating, CorrectedLocker, EmptiedLocker,
+    Gasketing, HEAVING, HITCHING, Heaving, Hitching, Knotting, LOCKER, Lanyarding, Luffing,
+    Netting, Nipping, PAYLOAD, ProbeLocker, Rousing, SCUDDING, STOWING, STROPPING, Scudding,
+    Seizing, Slinging, Splicing, Stoppering, Stowing, Stropping, UNDER_AN_ALIAS, UNWRITTEN,
+    Whipping, belting_kotlin, bending_kotlin, brailing_kotlin, bunting_kotlin, cleating_kotlin,
+    corrected_locker_kotlin, emptied_locker_kotlin, gasketing_kotlin, heaving_kotlin,
+    hitching_kotlin, jibing_kotlin, knotting_kotlin, lanyarding_kotlin, luffing_kotlin,
+    netting_kotlin, nipping_kotlin, noting_kotlin, probe_locker_kotlin, quaying_kotlin, read_of,
+    rousing_kotlin, scudding_kotlin, seizing_kotlin, sheeting_kotlin, slinging_kotlin,
+    splicing_kotlin, stoppering_kotlin, stowing_kotlin, stropping_kotlin, tacking_kotlin,
+    ticketed_kotlin, unwritten_kotlin, whipping_kotlin,
 };
 use super::runtime::ran_kotlin;
 use super::tuple_variants_models::labelling_kotlin;
@@ -80,10 +81,12 @@ const OPTIONAL_ROWS: [Row; 3] = [
     },
 ];
 
-/// The functions the models name: one answers the payload as it was handed, the other the keys of
-/// the object it is handed.
+/// The functions the models name: one answers the payload as it was handed, one `null`, and one
+/// the keys of the object it is handed.
 const FUNCTIONS: &str = r#"
 fun asGiven(payload: JsonElement): JsonElement = payload
+
+fun asNull(payload: JsonElement): JsonElement = JsonNull
 
 fun withItsKeys(payload: JsonElement): JsonElement =
     if (payload is JsonObject) {
@@ -578,4 +581,82 @@ fn an_enum_declared_below_its_holder_is_read_in_kotlin_from_the_object_it_is_han
         printed,
         format!("{}\nCollection has more than one element.\n", serde_read[0])
     );
+}
+
+/// What serde reads of `json` as `T`: its map, then the whole read written back, or `refused`.
+fn locker_told<T>(json: &str, counts: fn(&T) -> String) -> String
+where
+    T: DeserializeOwned + Serialize,
+{
+    serde_json::from_str::<T>(json).map_or_else(
+        |_| "refused".to_owned(),
+        |read| format!("{} {}", counts(&read), self::json(&read)),
+    )
+}
+
+/// An optional map, the one member, is read and written back as serde reads and writes it: the
+/// map where every entry reads as a count, and `null` where one does not, which writes no entry.
+/// Under a function it is read from what the function answers: an entry that does not read as a
+/// count is refused, and `null` is read as `null`.
+#[test]
+fn an_optional_flattened_map_reads_and_writes_in_kotlin_as_serde_does() {
+    let rows = [
+        (
+            "ProbeLocker",
+            LOCKER.map(|json| locker_told(json, |read: &ProbeLocker| self::json(&read.counts))),
+        ),
+        (
+            "CorrectedLocker",
+            LOCKER.map(|json| locker_told(json, |read: &CorrectedLocker| self::json(&read.counts))),
+        ),
+        (
+            "EmptiedLocker",
+            LOCKER.map(|json| locker_told(json, |read: &EmptiedLocker| self::json(&read.counts))),
+        ),
+    ];
+    let mut expected = String::new();
+    let mut main = String::from(ENTRY_READ);
+    main.push_str("fun main() {\n");
+    for (read_as, told) in &rows {
+        for (json, serde_told) in LOCKER.iter().zip(told) {
+            let _ = writeln!(expected, "{read_as} {json}: {serde_told}");
+            let _ = writeln!(
+                main,
+                "    entry(\"\"\"{read_as} {json}\"\"\", {read_as}.serializer(), \"\"\"{json}\"\"\") {{ \
+                 \"${{Json.encodeToString(serializer<Map<String, UByte>?>(), it.counts)}} \
+                 ${{Json.encodeToString({read_as}.serializer(), it)}}\" }}"
+            );
+        }
+    }
+    main.push_str("}\n");
+    assert_eq!(
+        expected,
+        "ProbeLocker {}: {} {}\n\
+         ProbeLocker {\"north\":2}: {\"north\":2} {\"north\":2}\n\
+         ProbeLocker {\"north\":\"x\"}: null {}\n\
+         ProbeLocker {\"north\":2,\"south\":\"x\"}: null {}\n\
+         ProbeLocker {\"north\":null}: null {}\n\
+         CorrectedLocker {}: {} {}\n\
+         CorrectedLocker {\"north\":2}: {\"north\":2} {\"north\":2}\n\
+         CorrectedLocker {\"north\":\"x\"}: refused\n\
+         CorrectedLocker {\"north\":2,\"south\":\"x\"}: refused\n\
+         CorrectedLocker {\"north\":null}: refused\n\
+         EmptiedLocker {}: null {}\n\
+         EmptiedLocker {\"north\":2}: null {}\n\
+         EmptiedLocker {\"north\":\"x\"}: null {}\n\
+         EmptiedLocker {\"north\":2,\"south\":\"x\"}: null {}\n\
+         EmptiedLocker {\"north\":null}: null {}\n"
+    );
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        probe_locker_kotlin::kotlin_definition(),
+        corrected_locker_kotlin::kotlin_definition(),
+        emptied_locker_kotlin::kotlin_definition(),
+        FUNCTIONS.to_owned(),
+        main,
+    ];
+    let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
+        return;
+    };
+    assert_eq!(printed, expected);
 }

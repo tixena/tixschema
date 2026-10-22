@@ -940,6 +940,16 @@ the consumer's view; this is what a change has to keep.
   one with a flattened member of its own, which serde reads as a map. A struct the plugin writes
   the serializer of takes the `descriptor.elementNames` of its unjudged serializer, and its text
   is what it was. A map is the one member of its object (section 4).
+- **An optional flattened map is `null` where serde reads `None`** (`flatten_map_field_plan`):
+  written through `value.{member}?.forEach`, so `null` writes no entry, and read inside
+  `runCatching { ... }.getOrNull()`, so an entry that throws as the map's value reads the map as
+  `null`, as serde's untagged read of an `Option` reads `None`. The decode of an entry throws
+  `SerializationException`, `IndexOutOfBoundsException` for a list or an object where a text or
+  a number is read, and an enum's read `IllegalStateException`, so the read catches whatever is
+  thrown, as the untagged enum's `recoverCatching` chain does. A map that is not optional is
+  read as it was.
+  `tests/kotlin_tests/flattened_models.rs` holds `ProbeLocker` and serde's reads of `LOCKER`, and
+  `run_kotlin_flattened.rs` holds the Kotlin read of each to serde's.
 - **A flattened externally tagged enum takes one entry** (`flatten_enum_field_plan`): the first
   of that object, in its order, under a name in the `setOf(...)` written from
   `variant_names_when_flattened` in `src/features/serde.rs`, which Dart reads too. The holder
@@ -1061,7 +1071,9 @@ say so.
 - **A flattened map is read from every key of the object** (`flatten_map_field_plan`): it is
   the one member of its object (section 4), and the enum's serializer takes the tag off the
   object before it hands it a variant's class. A function the map names is handed the whole
-  object.
+  object. An optional map is read from what the function answers as the Rust read of a
+  corrected payload reads it: `null` where it answers `JsonNull`, and refused where an entry
+  does not read as the map's value (`CorrectedLocker`, `EmptiedLocker`).
 - **The path of a refusal below a function starts at the value the function answered**: a
   member and a type that name one are each read from a JSON value of their own. A list or an
   object where a text or a number is read is thrown by `kotlinx.serialization` 1.11.0 as

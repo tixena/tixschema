@@ -8,8 +8,11 @@
 //! neither its holder's own members nor a member flattened ahead of it took. An externally tagged
 //! enum takes the first entry under the name of a variant it reads, beside a member of its
 //! holder's own, ahead of a member that names a function and ahead of a struct, and one declared
-//! below its holder is read from the object.
+//! below its holder is read from the object. An optional map, the one member, serde reads as
+//! `None` wherever an entry does not read as a count, and under a function from what the function
+//! answers.
 
+use alloc::collections::BTreeMap;
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
@@ -80,12 +83,50 @@ pub const UNDER_AN_ALIAS: [&str; 2] = [
     r#"{"Quay":{"label":"s"},"north":2}"#,
 ];
 
+/// What [`ProbeLocker`] and its twins are read from: no entry, an entry that reads as a count, an
+/// entry that does not, the two side by side, and `null`, which a count does not read.
+pub const LOCKER: [&str; 5] = [
+    "{}",
+    r#"{"north":2}"#,
+    r#"{"north":"x"}"#,
+    r#"{"north":2,"south":"x"}"#,
+    r#"{"north":null}"#,
+];
+
 /// A map, the one member, which serde hands every key of the object.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Netting {
     #[serde(flatten)]
     pub rest: HashMap<String, u8>,
+}
+
+/// An optional map, the one member: serde reads it as `None` wherever an entry it is handed does
+/// not read as a count, and writes `None` as no entry.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ProbeLocker {
+    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
+    pub counts: Option<BTreeMap<String, u8>>,
+}
+
+/// [`ProbeLocker`] under a function that answers the payload as it was handed: serde reads the
+/// map from what it answers, and refuses an entry that does not read as a count.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CorrectedLocker {
+    #[model_schema_prop(preprocess = ["asGiven"])]
+    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
+    pub counts: Option<BTreeMap<String, u8>>,
+}
+
+/// [`ProbeLocker`] under a function that answers `null`, which serde reads as `None`.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct EmptiedLocker {
+    #[model_schema_prop(preprocess = ["asNull"])]
+    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
+    pub counts: Option<BTreeMap<String, u8>>,
 }
 
 /// A flattened struct beside a member of its own.
@@ -389,6 +430,11 @@ pub enum Quaying {
 /// The payload as it was handed.
 const fn as_given(payload: Value) -> Value {
     payload
+}
+
+/// `null`, whatever `payload` is.
+fn as_null(_payload: Value) -> Value {
+    Value::Null
 }
 
 /// The keys of the object `payload`, under `keys`.

@@ -1450,23 +1450,43 @@ fn flatten_enum_field_plan(
 /// One flattened map field's own statements: the `serialize` merge and the `deserialize` read,
 /// over every key of the object, as `functions`, the field's own `preprocess`, correct it. A map
 /// flattened beside another member is refused, so serde hands the map every key of the object.
+/// An optional map writes no entry where it holds no value, and is read as `null`, as serde reads
+/// it, wherever an entry does not read as the map's value; under a function, where the function
+/// answers `null`.
 fn flatten_map_field_plan(
     prop: &str,
+    optional: bool,
     value_serializer: &str,
     functions: &[FunctionName],
 ) -> (String, String) {
+    let held = if optional { "?" } else { "" };
     let serialize = format!(
-        "value.{prop}.forEach {{ (k, v) -> put(k, output.json.encodeToJsonElement({value_serializer}, v)) }}"
+        "value.{prop}{held}.forEach {{ (k, v) -> put(k, output.json.encodeToJsonElement({value_serializer}, v)) }}"
     );
-    let entries = if functions.is_empty() {
-        "obj".to_owned()
-    } else {
-        format!("{}.jsonObject", preprocess::corrected(functions, "obj"))
+    let entries = |object: &str| {
+        format!(
+            "{object}.mapValues {{ (_, v) -> input.json.decodeFromJsonElement({value_serializer}, v) }}"
+        )
     };
-    let decode = format!(
-        "val {prop} = {entries}.mapValues {{ (_, v) -> input.json.decodeFromJsonElement({value_serializer}, v) }}"
-    );
-    (serialize, decode)
+    let read = if functions.is_empty() {
+        let every = entries("obj");
+        if optional {
+            format!("runCatching {{ {every} }}.getOrNull()")
+        } else {
+            every
+        }
+    } else {
+        let corrected = preprocess::corrected(functions, "obj");
+        if optional {
+            format!(
+                "{corrected}.let {{ if (it is JsonNull) null else {} }}",
+                entries("it.jsonObject")
+            )
+        } else {
+            entries(&format!("{corrected}.jsonObject"))
+        }
+    };
+    (serialize, format!("val {prop} = {read}"))
 }
 
 fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPlan {
@@ -1504,8 +1524,12 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
         } else if let FieldDefType::Map(_, map_value) = &field.field_def.field_type {
             let value_serializer =
                 read::held_serializer(&field.field_def, map_value, type_parameters);
-            let (serialize, decode) =
-                flatten_map_field_plan(&prop, &value_serializer, preprocess::of(&field.field_def));
+            let (serialize, decode) = flatten_map_field_plan(
+                &prop,
+                field.field_def.is_optional(),
+                &value_serializer,
+                preprocess::of(&field.field_def),
+            );
             plan.serialize_stmts.push(serialize);
             plan.deserialize_stmts.push(decode);
         } else {
