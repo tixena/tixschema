@@ -16,6 +16,8 @@ use syn::Attribute;
 
 #[cfg(feature = "zod")]
 use crate::features::model_schema_prop::FunctionName;
+#[cfg(feature = "zod")]
+use crate::features::model_schema_prop::LiteralValue;
 use crate::features::model_schema_prop::ModelSchemaPropMeta;
 use crate::utils::{MapKeyWire, is_declared_ident, lookup_alias_info, ts_quoted, written_type};
 
@@ -240,6 +242,41 @@ impl FieldDefType {
                 | Self::F32
                 | Self::F64
         )
+    }
+
+    /// The Rust name of the numeric primitive this is, or `None` for a type that is none.
+    pub const fn number_name(&self) -> Option<&'static str> {
+        match self {
+            Self::U8 => Some("u8"),
+            Self::U16 => Some("u16"),
+            Self::U32 => Some("u32"),
+            Self::U64 => Some("u64"),
+            Self::I8 => Some("i8"),
+            Self::I16 => Some("i16"),
+            Self::I32 => Some("i32"),
+            Self::I64 => Some("i64"),
+            Self::Usize => Some("usize"),
+            Self::Isize => Some("isize"),
+            Self::F32 => Some("f32"),
+            Self::F64 => Some("f64"),
+            Self::Boolean
+            | Self::BooleanLiteral(_)
+            | Self::Char
+            | Self::Map(_, _)
+            | Self::NumberLiteral(_)
+            | Self::Range(_, _)
+            | Self::Result(_, _)
+            | Self::SiblingType(_, _)
+            | Self::String
+            | Self::StringLiteral(_)
+            | Self::Tuple(_)
+            | Self::TypeParam(_)
+            | Self::Unknown => None,
+            #[cfg(feature = "mongodb")]
+            Self::ObjectId => None,
+            #[cfg(feature = "chrono")]
+            Self::DateTime | Self::NaiveDate | Self::NaiveDateTime | Self::NaiveTime => None,
+        }
     }
 }
 
@@ -1612,11 +1649,9 @@ impl FieldDef {
             // length is fixed, not read from `model_schema_prop`.
             FieldDefType::Char => "z.string().length(1)".to_owned(),
             FieldDefType::String => self.zod_string_type(),
-            FieldDefType::StringLiteral(literal) => format!("z.literal({})", ts_quoted(literal)),
-            FieldDefType::BooleanLiteral(value) => format!("z.literal({value})"),
-            FieldDefType::NumberLiteral(value) => {
-                format!("z.literal({})", format_number_literal(*value))
-            }
+            FieldDefType::StringLiteral(literal) => self.zod_literal(&ts_quoted(literal)),
+            FieldDefType::BooleanLiteral(value) => self.zod_literal(&value.to_string()),
+            FieldDefType::NumberLiteral(value) => self.zod_literal(&format_number_literal(*value)),
             FieldDefType::U8
             | FieldDefType::U16
             | FieldDefType::U32
@@ -1757,6 +1792,34 @@ impl FieldDef {
             format!(".max({count}, {reported})")
         });
         least.into_iter().chain(most).collect()
+    }
+
+    /// `z.literal` of `written`, reporting the sentence of a broken literal where the field's own
+    /// `literal` wrote it: a struct's own tag is a literal no `model_schema_prop` wrote. The
+    /// refinement copies the issue of a value of the literal's own type with `continue: true`, so a
+    /// union reports it at the value's path, as it reports a broken bound.
+    #[cfg(feature = "zod")]
+    fn zod_literal(&self, written: &str) -> String {
+        self.model_schema_prop_meta
+            .as_ref()
+            .and_then(|meta| meta.literal.as_ref())
+            .map_or_else(
+                || format!("z.literal({written})"),
+                |literal| {
+                    let kind = match literal {
+                        LiteralValue::Bool(_) => "boolean",
+                        LiteralValue::Number(_) => "number",
+                        LiteralValue::Str(_) => "string",
+                    };
+                    format!(
+                        "z.literal({written}, {}).check(z.superRefine((_, ctx) => {{\n  for (const \
+                         [at, issue] of ctx.issues.entries()) if (issue.code === \"invalid_value\") \
+                         ctx.issues[at] = {{ ...issue, continue: true }};\n}}, {{ when: (payload) \
+                         => typeof payload.value === \"{kind}\" }}))",
+                        zod_error_arg(Bound::Literal(literal))
+                    )
+                },
+            )
     }
 
     /// The whole record call a map is written as, read off its key: the constructor moves with the
@@ -2125,6 +2188,35 @@ pub fn format_number_literal(value: f64) -> String {
     } else {
         value.to_string()
     }
+}
+
+/// The literal as the Rust number `number` writes it, where a value of `number` is that literal:
+/// an integer whole and in its range, an `f32` that writes it back, a finite `f64`.
+pub fn held_number(number: &str, literal: f64) -> Option<String> {
+    let written = format_number_literal(literal);
+    let held = match number {
+        "f64" => literal.is_finite(),
+        "f32" => written
+            .parse::<f32>()
+            .is_ok_and(|nearest| nearest.to_string() == written),
+        whole => {
+            let Ok(value) = written.parse::<i128>() else {
+                return None;
+            };
+            let (least, most) = match whole {
+                "u8" => (0, i128::from(u8::MAX)),
+                "u16" => (0, i128::from(u16::MAX)),
+                "u32" => (0, i128::from(u32::MAX)),
+                "u64" | "usize" => (0, i128::from(u64::MAX)),
+                "i8" => (i128::from(i8::MIN), i128::from(i8::MAX)),
+                "i16" => (i128::from(i16::MIN), i128::from(i16::MAX)),
+                "i32" => (i128::from(i32::MIN), i128::from(i32::MAX)),
+                _ => (i128::from(i64::MIN), i128::from(i64::MAX)),
+            };
+            (least..=most).contains(&value)
+        }
+    };
+    held.then_some(written)
 }
 
 /// The union `union` writes around `held`, with every factory call in `held` handed in through a

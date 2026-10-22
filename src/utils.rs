@@ -834,12 +834,22 @@ pub enum FlattenedBeside {
     Tag(String),
 }
 
+/// What is recorded of one validator a field's bound published.
+#[cfg(feature = "serde")]
+struct RecordedValidator {
+    /// The validator judges each item of the field's list, and none of the list itself.
+    items: bool,
+    /// The name the validator writes in front of a violation, where it writes one.
+    named: Option<String>,
+}
+
 #[cfg(feature = "serde")]
 thread_local! {
     /// The fields a validator was published for, by schema module and helper stem, each with the
-    /// name its validator writes in front of a violation, where it writes one: those of the item
-    /// being expanded, read by the recovering decode of that same item.
-    static FIELD_VALIDATORS: RefCell<HashMap<(String, String), Option<String>>> =
+    /// name its validator writes in front of a violation, where it writes one, and whether it
+    /// judges each item of a list: those of the item being expanded, read by the recovering decode
+    /// of that same item.
+    static FIELD_VALIDATORS: RefCell<HashMap<(String, String), RecordedValidator>> =
         RefCell::new(HashMap::new());
 }
 
@@ -926,8 +936,18 @@ pub fn field_validator_name(module: &str, stem: &str) -> Option<String> {
     FIELD_VALIDATORS.with(|held| {
         held.borrow()
             .get(&(module.to_owned(), stem.to_owned()))
-            .cloned()
-            .flatten()
+            .and_then(|recorded| recorded.named.clone())
+    })
+}
+
+/// Whether `validate_{stem}_value` of `module` judges each item of its field's list, and none of
+/// the list itself: the validator of a `literal`, which each item holds.
+#[cfg(feature = "serde")]
+pub fn field_validator_judges_items(module: &str, stem: &str) -> bool {
+    FIELD_VALIDATORS.with(|held| {
+        held.borrow()
+            .get(&(module.to_owned(), stem.to_owned()))
+            .is_some_and(|recorded| recorded.items)
     })
 }
 
@@ -941,13 +961,16 @@ pub fn holds_field_validator(module: &str, stem: &str) -> bool {
 }
 
 /// Records that `module` holds `validate_{stem}_value`, which reports its field under `named`,
-/// or under no name.
+/// or under no name, and judges each item of the field's list where `items` holds.
 #[cfg(feature = "serde")]
-pub fn record_field_validator(module: &str, stem: &str, named: Option<&str>) {
+pub fn record_field_validator(module: &str, stem: &str, named: Option<&str>, items: bool) {
     FIELD_VALIDATORS.with(|held| {
         held.borrow_mut().insert(
             (module.to_owned(), stem.to_owned()),
-            named.map(str::to_owned),
+            RecordedValidator {
+                items,
+                named: named.map(str::to_owned),
+            },
         );
     });
 }

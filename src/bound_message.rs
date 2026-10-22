@@ -7,7 +7,29 @@ use core::fmt::Write as _;
 use crate::features::dart::dart_escaped;
 #[cfg(feature = "kotlin")]
 use crate::features::kotlin::kotlin_template_text;
-#[cfg(feature = "zod")]
+#[cfg(any(
+    feature = "serde",
+    feature = "zod",
+    feature = "dart",
+    feature = "kotlin",
+    feature = "swift"
+))]
+use crate::features::model_schema_prop::LiteralValue;
+#[cfg(any(
+    feature = "serde",
+    feature = "zod",
+    feature = "dart",
+    feature = "kotlin",
+    feature = "swift"
+))]
+use crate::field_type::format_number_literal;
+#[cfg(any(
+    feature = "serde",
+    feature = "zod",
+    feature = "dart",
+    feature = "kotlin",
+    feature = "swift"
+))]
 use crate::utils::escape_js_double_quoted;
 #[cfg(feature = "serde")]
 use quote::quote;
@@ -25,8 +47,9 @@ pub const REPEATED_ITEM: &str = "repeats an item: a set holds each item once";
 /// Every stem a violated bound's sentence can begin with. A refusal that reaches a reader as text
 /// is this crate's own only if it opens with one of these.
 #[cfg(feature = "serde")]
-pub const VIOLATION_STEMS: [&str; 5] = [
+pub const VIOLATION_STEMS: [&str; 6] = [
     "does not match pattern '",
+    "not the literal ",
     "too large: maximum is ",
     "too long: maximum length is ",
     "too short: minimum length is ",
@@ -34,7 +57,8 @@ pub const VIOLATION_STEMS: [&str; 5] = [
 ];
 
 /// A bound a declaration can carry, at the one value it was written with. `MaxItems` and
-/// `MinItems` are `maxLength` and `minLength` written on a list, whose items they count.
+/// `MinItems` are `maxLength` and `minLength` written on a list, whose items they count, and
+/// `Literal` is the one value a `literal` admits.
 #[cfg(any(
     feature = "serde",
     feature = "zod",
@@ -43,14 +67,15 @@ pub const VIOLATION_STEMS: [&str; 5] = [
     feature = "swift"
 ))]
 #[derive(Clone, Copy)]
-pub enum Bound<'pattern> {
+pub enum Bound<'written> {
+    Literal(&'written LiteralValue),
     MaxItems(usize),
     MaxLength(usize),
     Maximum(f64),
     MinItems(usize),
     MinLength(usize),
     Minimum(f64),
-    Pattern(&'pattern str),
+    Pattern(&'written str),
 }
 
 /// How a sentence measures the value that broke the bound, for the bounds that quote one back.
@@ -81,17 +106,25 @@ impl Bound<'_> {
         match self {
             Self::MaxItems(_) | Self::MinItems(_) => Some(Observed::Count),
             Self::MaxLength(_) | Self::MinLength(_) => Some(Observed::Length),
-            Self::Maximum(_) | Self::Minimum(_) => Some(Observed::Value),
+            Self::Literal(_) | Self::Maximum(_) | Self::Minimum(_) => Some(Observed::Value),
             Self::Pattern(_) => None,
         }
     }
 
     /// The bound in words, without the value that broke it. Every number here is rendered at
     /// expansion time, by the same `Display` that writes the bound into the Zod check beside it,
-    /// so the two spell it identically without either having to know how the other did.
+    /// so the two spell it identically without either having to know how the other did. A literal
+    /// is written as the Zod schema writes it: a string between double quotes.
     fn stated(self) -> String {
         let stem = self.stem();
         match self {
+            Self::Literal(LiteralValue::Bool(value)) => format!("{stem}{value}"),
+            Self::Literal(LiteralValue::Number(value)) => {
+                format!("{stem}{}", format_number_literal(*value))
+            }
+            Self::Literal(LiteralValue::Str(text)) => {
+                format!("{stem}\"{}\"", escape_js_double_quoted(text))
+            }
             Self::MaxItems(len)
             | Self::MaxLength(len)
             | Self::MinItems(len)
@@ -106,6 +139,7 @@ impl Bound<'_> {
     /// drift: a reader tells one of these sentences from a deserializer's own by that list alone.
     const fn stem(self) -> &'static str {
         match self {
+            Self::Literal(_) => "not the literal ",
             Self::MaxItems(_) | Self::MaxLength(_) => "too long: maximum length is ",
             Self::Maximum(_) => "too large: maximum is ",
             Self::MinItems(_) | Self::MinLength(_) => "too short: minimum length is ",
@@ -176,20 +210,32 @@ pub fn kotlin_repeated(place: Option<&str>) -> String {
 #[cfg(feature = "zod")]
 pub fn zod_error_arg(bound: Bound<'_>) -> String {
     let stated = bound.stated();
-    // Only a `pattern` carries text somebody else wrote, and it is the one rendered into a quoted
-    // string; the rest are built here out of a fixed vocabulary and digits.
+    // A `pattern` and a string `literal` carry text somebody else wrote, so the sentence is
+    // escaped for the string or the template it is written into.
     match bound.observed() {
         Some(Observed::Count) => format!(
-            "{{ error: (issue) => `{stated}, got ${{Array.isArray(issue.input) ? issue.input.length : 0}}` }}"
+            "{{ error: (issue) => `{}, got ${{Array.isArray(issue.input) ? issue.input.length : 0}}` }}",
+            js_template_text(&stated)
         ),
-        Some(Observed::Length) => {
-            format!("{{ error: (issue) => `{stated}, got ${{String(issue.input).length}}` }}")
-        }
-        Some(Observed::Value) => {
-            format!("{{ error: (issue) => `{stated}, got ${{String(issue.input)}}` }}")
-        }
+        Some(Observed::Length) => format!(
+            "{{ error: (issue) => `{}, got ${{String(issue.input).length}}` }}",
+            js_template_text(&stated)
+        ),
+        Some(Observed::Value) => format!(
+            "{{ error: (issue) => `{}, got ${{String(issue.input)}}` }}",
+            js_template_text(&stated)
+        ),
         None => format!("{{ error: \"{}\" }}", escape_js_double_quoted(&stated)),
     }
+}
+
+/// `text` as it is written between the backticks of a JavaScript template literal, which reads it
+/// back exactly.
+#[cfg(feature = "zod")]
+fn js_template_text(text: &str) -> String {
+    text.replace('\\', "\\\\")
+        .replace('`', "\\`")
+        .replace('$', "\\$")
 }
 
 /// The check a set's Zod array is written with: an array whose parsed items write one JSON text

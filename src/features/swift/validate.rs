@@ -13,9 +13,10 @@ use regex_syntax::ast::{
 
 use super::{SwiftTypeArgs, result_case, swift_full_real_type, swift_member};
 use crate::bound_message::{Bound, swift_literal_text, swift_repeated, swift_violation};
-use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
+use crate::features::model_schema_prop::{FunctionName, LiteralValue, ModelSchemaPropMeta};
 use crate::field_type::{
-    FieldDef, FieldDefType, RESULT_ARMS, RangeKind, get_field_def, is_sequence_wrapper,
+    FieldDef, FieldDefType, RESULT_ARMS, RangeKind, format_number_literal, get_field_def,
+    is_sequence_wrapper,
 };
 
 /// The helpers a statement of `validate()` calls, each with the text that calls it.
@@ -638,8 +639,19 @@ fn broken(condition: &str, violation: &str) -> String {
     format!("if {condition} {{ errors.append({violation}) }}")
 }
 
-/// The member's own bounds, on the value it holds under an `Option`.
+/// The member's own bounds, on the value it holds under an `Option`. A literal is the only rule
+/// of its member.
 fn bound_rules(owner: &str, member: &Checked<'_>, meta: &ModelSchemaPropMeta) -> Vec<String> {
+    if let Some(literal) = &meta.literal {
+        return vec![literal_rule(
+            owner,
+            member.def,
+            &member.access,
+            &written_step(member.step.as_deref()),
+            literal,
+            &mut Bindings::default(),
+        )];
+    }
     if !member.def.is_optional() {
         return bound_checks(
             owner,
@@ -658,6 +670,59 @@ fn bound_rules(owner: &str, member: &Checked<'_>, meta: &ModelSchemaPropMeta) ->
         member.access,
         checks.join("; ")
     )]
+}
+
+/// What `literal` adds for the value `def` describes at `value`, under `place`: each item of a
+/// list holds it, under its index, and an `Option` where it holds a value.
+fn literal_rule(
+    owner: &str,
+    def: &FieldDef,
+    value: &str,
+    place: &[Step],
+    literal: &LiteralValue,
+    bindings: &mut Bindings,
+) -> String {
+    if def.is_optional() {
+        let held = bindings.next_held();
+        let below = literal_rule(owner, &under_option(def), &held, place, literal, bindings);
+        return format!("if let {held} = {value} {{ {below} }}");
+    }
+    if def.array_depth > 0 {
+        let (index, held) = (bindings.next_index(), bindings.next_held());
+        let mut at = place.to_vec();
+        at.push(Step::Read(index.clone()));
+        let below = literal_rule(owner, &item_of(def), &held, &at, literal, bindings);
+        return format!("for ({index}, {held}) in {value}.enumerated() {{ {below} }}");
+    }
+    let mut shown = value.to_owned();
+    let condition = match literal {
+        LiteralValue::Bool(true) => format!("!{value}"),
+        LiteralValue::Bool(false) => value.to_owned(),
+        LiteralValue::Str(text) => format!("{value} != \"{}\"", swift_literal_text(text)),
+        LiteralValue::Number(number) => {
+            if matches!(number_kind(&def.field_type), Some(Number::Float)) {
+                shown = format!("{owner}.swiftSchemaPlain({value})");
+                let written = number.to_string();
+                if written.contains('.') {
+                    format!("{value} != {written}")
+                } else {
+                    format!("{value} != {written}.0")
+                }
+            } else {
+                format!("{value} != {}", format_number_literal(*number))
+            }
+        }
+    };
+    let said = match place {
+        [] => swift_violation(Bound::Literal(literal), None, &shown),
+        [Step::Written(step)] => swift_violation(Bound::Literal(literal), Some(step), &shown),
+        _ => format!(
+            "{owner}.swiftSchemaUnder(\"{}\", {})",
+            place_text(place).unwrap_or_default(),
+            swift_violation(Bound::Literal(literal), None, &shown)
+        ),
+    };
+    broken(&condition, &said)
 }
 
 /// The bounds of `meta` on `value`, which holds what `def` describes under no `Option`: a list is

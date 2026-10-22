@@ -6178,6 +6178,41 @@ fn a_constraint_refused_its_placement_leaves_no_hook_naming_the_dropped_module()
     assert_eq!(rendered, "", "got: {rendered}");
 }
 
+/// A literal on a field reached through an interior-mutability wrapper is refused: the validator
+/// has no way to reach the value it compares.
+#[cfg(feature = "serde")]
+#[test]
+fn a_literal_reached_through_an_interior_mutability_wrapper_is_refused() {
+    let mut item: syn::ItemStruct = syn::parse_quote! {
+        struct Guarded {
+            #[model_schema_prop(literal = "x")]
+            note: RefCell<String>,
+        }
+    };
+    let errors = super::collect_struct_fields(
+        &mut item.fields,
+        None,
+        Some("guarded_schema"),
+        "Guarded",
+        &syn::Generics::default(),
+        &super::StructContainer {
+            defaulted: false,
+            read_back: false,
+            serde_default: &|_| None,
+        },
+    )
+    .4;
+    assert_eq!(errors.len(), 1, "got: {errors:?}");
+    assert!(
+        errors[0].to_string().contains(
+            "`literal` is unsupported on a field reached through `RefCell` \u{2014} unlike `Box`, \
+             `Rc`, `Arc` and `Cow`, it does not implement `Deref`"
+        ),
+        "got: {}",
+        errors[0]
+    );
+}
+
 /// A refusal at build time and a helper name the field as its author wrote it. A report made as
 /// the program runs names the key serde writes.
 #[cfg(feature = "serde")]
@@ -7904,6 +7939,56 @@ fn a_literal_whose_kind_the_field_can_carry_is_left_alone() {
         quote::quote! { #[model_schema_prop(literal = 214)] flag: i32 },
         quote::quote! { #[model_schema_prop(literal = 3.5)] flag: f64 },
         quote::quote! { #[model_schema_prop(literal = true)] flag: Option<bool> },
+    ] {
+        let errors = field_prop_guard_errors(&syn::parse_quote! {
+            struct Report {
+                #field
+            }
+        });
+        assert!(errors.is_empty(), "for {field}: {errors:?}");
+    }
+}
+
+/// A numeric literal no value of the field's number is would refuse every value it holds.
+#[test]
+fn a_literal_the_fields_number_holds_no_value_of_is_refused() {
+    for (literal, field_type, number) in [
+        (quote::quote! { 300 }, quote::quote! { u8 }, "u8"),
+        (quote::quote! { -1 }, quote::quote! { Option<u32> }, "u32"),
+        (quote::quote! { 1.5 }, quote::quote! { i64 }, "i64"),
+        (quote::quote! { 128 }, quote::quote! { Vec<i8> }, "i8"),
+        (quote::quote! { 16777217 }, quote::quote! { f32 }, "f32"),
+    ] {
+        let messages = field_prop_guard_messages(&syn::parse_quote! {
+            struct Report {
+                #[model_schema_prop(literal = #literal)]
+                flag: #field_type,
+            }
+        });
+        let written = literal.to_string().replace(' ', "");
+        assert_eq!(
+            messages,
+            [format!(
+                "model_schema: field `flag`: `literal = {written}` cannot apply to a `{number}` \
+                 field — no `{number}` is {written}, so the literal would refuse every value the \
+                 field holds. Write a literal a `{number}` holds, or declare the field as a \
+                 number that holds {written}."
+            )],
+            "for {literal} on {field_type}"
+        );
+    }
+}
+
+/// A numeric literal is left alone where a value of the field's number is it.
+#[test]
+fn a_literal_the_fields_number_holds_is_left_alone() {
+    for field in [
+        quote::quote! { #[model_schema_prop(literal = 255)] flag: u8 },
+        quote::quote! { #[model_schema_prop(literal = -128)] flag: i8 },
+        quote::quote! { #[model_schema_prop(literal = 0.1)] flag: f32 },
+        quote::quote! { #[model_schema_prop(literal = 1.25)] flag: Vec<f32> },
+        quote::quote! { #[model_schema_prop(literal = 0.1)] flag: f64 },
+        quote::quote! { #[model_schema_prop(literal = 4294967295)] flag: u32 },
     ] {
         let errors = field_prop_guard_errors(&syn::parse_quote! {
             struct Report {

@@ -575,7 +575,7 @@ The functions tixschema writes that take or answer a `serde_json::Value` are unc
 
 This is what lets a type hold itself: `Option<Box<Self>>` is the self-reference, deferred in the generated schema the way any self-reference is. An `Rc` or `Arc` field needs serde's `rc` feature, which is where serde's impls for those two live.
 
-`RefCell<T>`, `Cell<T>`, `Mutex<T>` and `RwLock<T>` describe as `T` on every surface the same way: serde writes each as the value it guards, returning a serialization error rather than panicking when the guard cannot be taken (an already-mutably-borrowed `RefCell`, a poisoned `Mutex`/`RwLock`) — the same fallible path a schema does not describe for any other type. What sets them apart from `Box`/`Rc`/`Arc`/`Cow` is `Deref`: none of the four implements it, so `#[model_schema_prop(pattern = ..., minLength = ..., maxLength = ..., minimum = ..., maximum = ...)]` cannot reach through one to the value it guards, and is refused at expansion, naming the wrapper, wherever it is combined with one.
+`RefCell<T>`, `Cell<T>`, `Mutex<T>` and `RwLock<T>` describe as `T` on every surface the same way: serde writes each as the value it guards, returning a serialization error rather than panicking when the guard cannot be taken (an already-mutably-borrowed `RefCell`, a poisoned `Mutex`/`RwLock`) — the same fallible path a schema does not describe for any other type. What sets them apart from `Box`/`Rc`/`Arc`/`Cow` is `Deref`: none of the four implements it, so `#[model_schema_prop(pattern = ..., minLength = ..., maxLength = ..., minimum = ..., maximum = ...)]` and a [`literal`](#literal-values) cannot reach through one to the value it guards, and are refused at expansion, naming the wrapper, wherever they are combined with one.
 
 ```rust
 use std::borrow::Cow;
@@ -4619,6 +4619,8 @@ Twenty-four rules meet a crate that upgrades. Each is stated with what a build o
 
   Rust calls the snake case of the name, so `preprocess = ["withoutFragile"]` asks for `fn without_fragile(payload: serde_json::Value) -> serde_json::Value`.
 - **A read refuses a payload that breaks a bound or a check**, in Rust and in the Dart, Swift and Kotlin clients. A Rust read answers the error of its serde library: `serde_json::from_str::<Parcel>` answers `'label': too short: minimum length is 1, got 0` for a label the bound refuses. Dart throws a `FormatException`, Swift `DecodingError.dataCorrupted`, and Kotlin a `SerializationException`, each with the same text. To read a value that breaks a rule, call the read alone: `model_schema_read_unjudged`, `fromJsonUnjudged`, `init(swiftSchemaUnjudged:)`, or the serializer `{Type}Unjudged`.
+- **A read refuses a value other than a `literal`**, in Rust and in the Dart, Swift and Kotlin clients, as it refuses one that breaks a bound, and `validate()` answers the same sentence: with `#[model_schema_prop(literal = 214)] pub value: u8` on `Fixed`, `serde_json::from_str::<Fixed>(r#"{"value":7}"#)` answers `'value': not the literal 214, got 7`, where it read the value. A literal on a list holds each item, under its index.
+- **A `literal` no value of its field holds stops the build, and so does a `literal` reached through `RefCell`, `Cell`, `Mutex` or `RwLock`**: `#[model_schema_prop(literal = 300)] pub value: u8` answers ``error: model_schema: field `value`: `literal = 300` cannot apply to a `u8` field``, as do `literal = 1.5` on an integer and a literal an `f32` does not write back.
 - **`validate()` is there at every filling of a type that declares a parameter.** A `validate` of your own on one filling does not build: ``error[E0592]: duplicate definitions with name `validate` ``. See [A type that declares a parameter](#a-type-that-declares-a-parameter).
 - **A message of `validate()` names a value by its path in the payload**: `'parcelList.0.itemLabel': too short: minimum length is 1, got 0` for the first parcel of a list under the key `parcelList`. Code that reads a message for the name of a field reads the key serde writes, the index of each item and the key of each entry. See [The path a message names](#the-path-a-message-names).
 
@@ -4984,6 +4986,7 @@ Error: The method 'withinParcel' isn't defined for the type 'Parcel'.
 | `minLength`, `maxLength` on a list | `value.length`, its items |
 | `minimum`, `maximum` | `value < N`, `value > N` |
 | `pattern`, and the second pattern [an enum's own check](#a-check-written-on-the-enum) adds | `RegExp("...").hasMatch(value)`, a match anywhere in the string |
+| [`literal`](#literal-values) | `value != 214`, `value != 'fixed'`, `!value`: on each item of a list, under its index |
 | `check` on a field and on a type | a call of the function under that name |
 | a `HashSet`, a `BTreeSet` or an `IndexSet`, with no key | `_repeats(value)`, ahead of the set's count: two items are one where the JSON the codec writes for each is one text, and the message is [`repeats an item: a set holds each item once`](#a-set-holds-each-item-once) |
 
@@ -5190,6 +5193,7 @@ The `validate()` of the parcel `{"label":"","itemCodeList":["x","x"],"fragileIte
 | `minLength`, `maxLength` | a list | `value.size` |
 | `minimum`, `maximum` | a number | `value < 1u`, `value > 120.0`: a comparison in the number's own type |
 | `pattern`, and the second pattern an enum writes | a string | `Regex("...").containsMatchIn(value)`: a match anywhere |
+| [`literal`](#literal-values) | a string, a number or a `Boolean` | `value != 214u`, `value != "fixed"`, `!value`: in the number's own type, and on each item of a list, under its index |
 | none | a `HashSet`, a `BTreeSet` or an `IndexSet` | `value.toSet().size != value.size`, ahead of the set's count: two equal items repeat one, and the message is [`repeats an item: a set holds each item once`](#a-set-holds-each-item-once) |
 
 - **A length is counted in Unicode code points**, so `"é"` and a character outside the Basic Multilingual Plane each count one. The Rust validator counts the bytes of the UTF-8 text (`len()`) and the Zod schema counts UTF-16 code units (`length`), so the three agree on ASCII text and can differ on any other.
@@ -5505,6 +5509,7 @@ A type with no rule, which holds no type that has one, declares `public func val
 | `minLength`, `maxLength` on a list | `value.count` |
 | `minimum`, `maximum` | `value < N`, `value > N` |
 | `pattern`, and an enum's own beside a field's | `value.range(of: "...", options: .regularExpression) == nil`: a match anywhere in the string |
+| [`literal`](#literal-values) | `value != 214`, `value != "fixed"`, `!value`: on each item of a list, under its index |
 | `check = ["withinParcel"]` | `withinParcel(value)`, the Swift function of that name |
 | a `HashSet`, a `BTreeSet` or an `IndexSet`, with no key | `Parcel.swiftSchemaRepeats(value)`, ahead of the set's count: two items are one where `JSONEncoder` with sorted keys writes one text for both, and the message is [`repeats an item: a set holds each item once`](#a-set-holds-each-item-once) |
 
@@ -5677,7 +5682,7 @@ if container.contains(.spareParcel), try !container.decodeNil(forKey: .spareParc
 
 ### Literal Values
 
-You can constrain a `String` field to a specific literal value using `model_schema_prop(literal = "value")`. This generates `z.literal("value")` in the Zod schema and a literal type in TypeScript, while the Rust field remains a `String`.
+`model_schema_prop(literal = "value")` holds a `String` field to one value. The TypeScript type is the literal, the Zod schema `z.literal("value")` and the JSON Schema a `const`, and the field is a rule in Rust and in every client: the Rust field remains a `String`, and [`validate()`](#the-validate-method) refuses any other value, so the type's read refuses it too.
 
 ```rust
 #[model_schema()]
@@ -5695,21 +5700,23 @@ Generated:
 
 ```typescript
 export type Action = {
-  type: "generate";
+  type: "Generate";
   value: "document";
 };
 
 export const Action$Schema = z.discriminatedUnion("type", [
   z.strictObject({
-    type: z.literal("generate"),
-    value: z.literal("document"),
+    type: z.literal("Generate"),
+    value: z.literal("document", { error: (issue) => `not the literal "document", got ${String(issue.input)}` }).check(z.superRefine((_, ctx) => {
+  for (const [at, issue] of ctx.issues.entries()) if (issue.code === "invalid_value") ctx.issues[at] = { ...issue, continue: true };
+}, { when: (payload) => typeof payload.value === "string" })),
   }),
 ]).meta({
   examples: []
 });
 ```
 
-`literal` also accepts a boolean or a numeric value, provided the field's own Rust type can carry it: `literal = true`/`literal = false` on a `bool` field, `literal = 214` on any numeric field. Every surface renders the literal in the field's own kind, so the kind written must match the field's declared type — `literal = true` on a `String` field, or `literal = "x"` on a `bool` field, is a compile error naming both sides.
+`literal` also accepts a boolean or a numeric value, provided the field's own Rust type can carry it: `literal = true`/`literal = false` on a `bool` field, `literal = 214` on any numeric field. Every surface renders the literal in the field's own kind, so the kind written must match the field's declared type — `literal = true` on a `String` field, or `literal = "x"` on a `bool` field, is a compile error naming both sides. A numeric literal must be a value of the field's number: `literal = 300` on a `u8`, `literal = 1.5` on an integer and a literal an `f32` does not write back are compile errors, since the literal would refuse every value the field holds.
 
 ```rust
 #[model_schema()]
@@ -5734,12 +5741,37 @@ export type AdminUser = {
 
 export const AdminUser$Schema = z.strictObject({
   id: z.string(),
-  isSystemAdmin: z.literal(true),
+  isSystemAdmin: z.literal(true, { error: (issue) => `not the literal true, got ${String(issue.input)}` }).check(z.superRefine((_, ctx) => {
+  for (const [at, issue] of ctx.issues.entries()) if (issue.code === "invalid_value") ctx.issues[at] = { ...issue, continue: true };
+}, { when: (payload) => typeof payload.value === "boolean" })),
   email: z.string(),
 }).meta({
   examples: []
 });
 ```
+
+**A literal is a rule.** `validate()` refuses a value other than the literal, as it refuses a value that breaks a bound, and a serde read of the type refuses the payload with the same sentence, the literal written as the Zod schema writes it:
+
+```rust
+#[model_schema()]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Fixed {
+    #[model_schema_prop(literal = 214)]
+    pub value: u8,
+}
+
+let seven = Fixed { value: 7 };
+assert_eq!(seven.validate(), Err(vec!["'value': not the literal 214, got 7".to_owned()]));
+assert!(serde_json::from_str::<Fixed>(r#"{"value":7}"#).is_err());
+assert_eq!(serde_json::from_str::<Fixed>(r#"{"value":214}"#).unwrap().value, 214);
+```
+
+- **Every position holds it**: a struct's field, a variant's member under every tagging, a slot of a tuple struct and of a tuple variant, and a member read through `Option`, `Box`, `Rc`, `Arc`, `Cow` or a reference. An `Option` is held to it where it holds a value, and `None` stays valid. A literal on a member read through `RefCell`, `Cell`, `Mutex` or `RwLock` is refused at expansion: none implements `Deref`, so the validator cannot reach the value.
+- **A literal on a list holds each item**, as the TypeScript type `Array<"x">` and the Zod schema `z.array(z.literal("x"))` say: `'tags.1': not the literal "x", got y`.
+- **A member of an `#[serde(untagged)]` enum is held to it as the member is read**, so a literal chooses the variant, as Zod's union chooses it: a payload whose literal is not one variant's is tried against the next.
+- **A [recovering decode](#recovering-decode-decode_with)** lists a broken literal as one `Invalid` at the value that breaks it, each item of a list at its index.
+- **The Dart, Swift and Kotlin clients** hold it too: their [`validate()`](#validate-in-dart) refuses another value with the same sentence, and so does each client's read. A numeric literal is compared in the field's own type: an integer field as an integer.
+- **The Zod schema** reports the sentence as the issue of the literal, at the value's path, in every place it reads one, a union among them: a variant of an externally tagged or an untagged enum, and an `Option` of a list. A value of the literal's own type that is not the literal leaves its issue no abort, as a broken bound leaves its own, so a union reports the issue where the value is: `{"Struck":{"tool":"hammer"}}` is refused with `'Struck.tool': not the literal "die", got hammer`. The refinement the schema writes after `z.literal` is what does it, and the schema's TypeScript type, its input and its output stay those of `z.literal`.
 
 A literal takes no other rule. `minLength`, `maxLength`, `pattern`, `minimum`, `maximum` or `check` written beside it is a compile error in every build, naming the field, the literal and each rule: a literal admits one value, so a rule beside it is always met or never met. `as`, `preprocess`, `ts_optional` and `nullable` hold the value to no rule, and are written beside a literal as on any field.
 
@@ -5758,7 +5790,7 @@ error: model_schema: field `version`: `literal = "v1"` takes no other rule, and 
 
 An enum's own check does not reach a field that carries a literal ([A Check Written on the Enum](#a-check-written-on-the-enum)).
 
-**Recommended: Single-value enums over literal strings.** While `model_schema_prop(literal = ...)` works, a single-value enum provides type safety in Rust -- the field can only hold the correct value at compile time, whereas a `String` with a literal annotation can hold any string in Rust (the constraint only applies in the generated TypeScript/Zod output).
+**Recommended: Single-value enums over literal strings.** A single-value enum provides type safety in Rust -- the field can only hold the correct value at compile time, whereas a `String` with a literal annotation can be built in Rust with any string, which `validate()` and the read then refuse.
 
 ```rust
 // Correct: single-value enum
@@ -5785,12 +5817,12 @@ pub enum Action {
 pub enum ActionAlt {
     Generate {
         #[model_schema_prop(literal = "document")]
-        value: String,  // Any string value accepted in Rust
+        value: String,  // Any string can be built, and `validate()` refuses all but "document"
     },
 }
 ```
 
-Both approaches produce identical TypeScript and Zod output. The single-value enum is preferred because:
+Both approaches describe the same payload on every surface. The single-value enum is preferred because:
 
 - **Type safety in Rust** -- impossible to construct with a wrong value
 - **Self-documenting** -- the enum name makes the intent clear

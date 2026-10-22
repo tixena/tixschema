@@ -46,8 +46,8 @@ use crate::model_schema::preprocess;
 use crate::model_schema::{helper_name_stem, recovering_bound_check};
 use crate::rename_rule::resolve_rename_rule;
 use crate::utils::{
-    Declared, declared, field_validator_name, holds_field_validator, ident_schema_module_name,
-    to_snake_case, type_parameters_in_scope, written_names, written_type,
+    Declared, declared, field_validator_judges_items, field_validator_name, holds_field_validator,
+    ident_schema_module_name, to_snake_case, type_parameters_in_scope, written_names, written_type,
 };
 
 #[cfg(all(
@@ -896,6 +896,8 @@ impl Walk<'_> {
 
 /// The validator tixschema published for a field's own bound, which serde's read does not run.
 struct FieldValidator {
+    /// The validator judges each item of the field's list, and none of the list itself.
+    items: bool,
     /// The name the validator writes in front of each violation: the steps serde writes on the
     /// way to the field. `None` for a validator that writes no name.
     named: Option<String>,
@@ -1004,13 +1006,18 @@ impl Walker<'_> {
                     binding("index", depth),
                     binding("item", depth),
                 );
-                // A bound written on the field measures the list, and none of its items.
+                // A bound written on the field measures the list, and none of its items, but a
+                // literal, which each item holds.
+                let (of_items, of_list) = match validator {
+                    Some(judged) if judged.items => (Some(judged), None),
+                    _ => (None, validator),
+                };
                 let each = self.statement(
                     inner,
                     &item,
                     &under(segments, &quote! { ::core::result::Result::Err(#index) }),
                     depth,
-                    None,
+                    of_items,
                 );
                 let expected = self.expected(reported);
                 let walked =
@@ -1022,7 +1029,7 @@ impl Walker<'_> {
                         // The items are walked one by one, so the list is read with none judged.
                         body: self.bounded(
                             &walked,
-                            validator,
+                            of_list,
                             &whole,
                             held,
                             &(!inner.reads_whole())
@@ -1033,7 +1040,7 @@ impl Walker<'_> {
                         ),
                         nothing: false,
                         // The bound reads the list whole, so the arm keeps hold of it.
-                        pattern: if validator.is_some() {
+                        pattern: if of_list.is_some() {
                             quote! { #held @ #matched }
                         } else {
                             matched
@@ -4705,6 +4712,7 @@ fn recorded_validator(
 ) -> Option<FieldValidator> {
     let stem = helper_name_stem(declared_as, variant);
     holds_field_validator(module_name, &stem).then(|| FieldValidator {
+        items: field_validator_judges_items(module_name, &stem),
         named: field_validator_name(module_name, &stem),
         validator: format_ident!("validate_{stem}_value"),
     })

@@ -13,7 +13,7 @@ use syn::ext::IdentExt as _;
 use syn::{Field, Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
 
 use crate::bound_message::{Bound, dart_repeated, dart_violation};
-use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
+use crate::features::model_schema_prop::{FunctionName, LiteralValue, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{
     brand_field, has_serde_skip_serializing, keys_taken_when_flattened, parse_serde_key_omission,
@@ -23,7 +23,8 @@ use crate::features::serde::{
 use crate::features::text_forms::TextForm;
 use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, dart_from_json_argument,
-    dart_lower_camel, dart_to_json_argument, get_field_def, is_plain_enum, is_sequence_wrapper,
+    dart_lower_camel, dart_to_json_argument, format_number_literal, get_field_def, is_plain_enum,
+    is_sequence_wrapper,
 };
 use crate::model_schema::variant_wire_kind;
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
@@ -2437,7 +2438,7 @@ fn check_elements(
 }
 
 /// The bounds the member `field` writes for the value it holds at `expr`, each message led by
-/// `place`.
+/// `place`. A literal is the only rule of its member.
 fn own_bound_elements(
     field: &FieldDef,
     expr: &str,
@@ -2445,12 +2446,83 @@ fn own_bound_elements(
     depth: usize,
     helpers: &mut Helpers,
 ) -> Vec<String> {
-    field
-        .model_schema_prop_meta
-        .as_ref()
-        .map_or_else(Vec::new, |meta| {
-            bound_elements(field, expr, place, &Bounds::of(meta), depth, helpers)
-        })
+    let Some(meta) = &field.model_schema_prop_meta else {
+        return Vec::new();
+    };
+    if let Some(literal) = &meta.literal {
+        let (value, guard, below) = present(field, expr, depth);
+        let held = literal_elements(
+            field,
+            field.array_depth,
+            literal,
+            &value,
+            place,
+            below,
+            helpers,
+        );
+        return match guard {
+            Some(around) => guarded(&around, held),
+            None => held,
+        };
+    }
+    bound_elements(field, expr, place, &Bounds::of(meta), depth, helpers)
+}
+
+/// What `literal` adds for the value at `expr`, `level` list levels of `field` above the value it
+/// admits: each item of a list holds it, under its index.
+fn literal_elements(
+    field: &FieldDef,
+    level: u8,
+    literal: &LiteralValue,
+    expr: &str,
+    place: &[Step],
+    depth: usize,
+    helpers: &mut Helpers,
+) -> Vec<String> {
+    if let Some(inner_level) = level.checked_sub(1) {
+        let (index, item) = (binder("index", depth), binder("held", depth));
+        let within = stepped(place, Step::Bound(index.clone()));
+        let below = depth.saturating_add(1);
+        let inner = if field.is_nullable_at(inner_level) {
+            let held = binder("held", below);
+            let inside = literal_elements(
+                field,
+                inner_level,
+                literal,
+                &held,
+                &within,
+                below.saturating_add(1),
+                helpers,
+            );
+            guarded(&format!("if ({item} case final {held}?)"), inside)
+        } else {
+            literal_elements(field, inner_level, literal, &item, &within, below, helpers)
+        };
+        return guarded(
+            &format!("for (final ({index}, {item}) in {expr}.indexed)"),
+            inner,
+        );
+    }
+    let mut shown = expr.to_owned();
+    let broken = match literal {
+        LiteralValue::Bool(true) => format!("!{expr}"),
+        LiteralValue::Bool(false) => expr.to_owned(),
+        LiteralValue::Str(text) => format!("{expr} != '{}'", dart_escaped(text, '\'')),
+        LiteralValue::Number(number) => {
+            if matches!(field.field_type, FieldDefType::F32 | FieldDefType::F64) {
+                helpers.call(Helper::Number);
+                shown = format!("_number({expr})");
+                format!("{expr} != {}", dart_number(*number))
+            } else {
+                format!("{expr} != {}", format_number_literal(*number))
+            }
+        }
+    };
+    let named = (!place.is_empty()).then(|| dart_place(place, '"'));
+    vec![format!(
+        "if ({broken}) {}",
+        dart_violation(Bound::Literal(literal), named.as_deref(), &shown)
+    )]
 }
 
 /// Whether `validate()` runs what the member `field` holds: a member's own bound stands in for

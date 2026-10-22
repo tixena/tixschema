@@ -51,6 +51,21 @@ struct BoundedLabel(String);
 #[serde(transparent)]
 struct BoundedPath(String);
 
+/// A literal of each kind, one under an `Option` and one on each item of a list.
+#[model_schema(enable = ["decode_with"])]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct BoundedSeal {
+    #[model_schema_prop(literal = "lead")]
+    metal: String,
+    #[model_schema_prop(literal = 2)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    stamps: Option<u8>,
+    #[model_schema_prop(literal = true)]
+    struck: bool,
+    #[model_schema_prop(literal = "x")]
+    tags: Vec<String>,
+}
+
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
@@ -879,4 +894,57 @@ fn a_slot_after_a_skipped_one_is_named_by_its_position_in_the_array() {
             "Got:\n{schema}"
         );
     }
+}
+
+/// A broken literal is one issue at the value that breaks it, each item of a list at its index,
+/// and a callback that sets the literal there recovers the read.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn a_broken_literal_is_listed_once_at_its_value() {
+    use bounded_seal_schema::{Issue, Verdict};
+
+    let stored =
+        json!({ "metal": "tin", "stamps": 3_u8, "struck": false, "tags": ["x", "y", "x", "z"] });
+    let rejected = BoundedSeal::from_value_with(stored.clone(), |_, _| Verdict::Reject);
+    assert_eq!(
+        lines(&rejected.unwrap_err()),
+        [
+            "metal: invalid: expected String, found String(\"tin\"): not the literal \"lead\", got tin",
+            "stamps: invalid: expected Optional(U8), found Number(3): not the literal 2, got 3",
+            "struck: invalid: expected Boolean, found Bool(false): not the literal true, got false",
+            "tags[1]: invalid: expected String, found String(\"y\"): not the literal \"x\", got y",
+            "tags[3]: invalid: expected String, found String(\"z\"): not the literal \"x\", got z",
+        ]
+    );
+
+    let recovered = BoundedSeal::from_value_with(stored, |raw, found| {
+        for issue in found {
+            let Issue::Invalid {
+                path,
+                expected: _expected,
+                found: held,
+                reason: _reason,
+            } = issue
+            else {
+                return Verdict::Reject;
+            };
+            let literal = match held {
+                Value::String(_) if path.to_string().starts_with("tags") => json!("x"),
+                Value::String(_) => json!("lead"),
+                Value::Number(_) => json!(2_u8),
+                Value::Array(_) | Value::Bool(_) | Value::Null | Value::Object(_) => json!(true),
+            };
+            path.set_in_value(raw, literal);
+        }
+        Verdict::Fixed
+    });
+    assert_eq!(
+        recovered,
+        Ok(BoundedSeal {
+            metal: "lead".to_owned(),
+            stamps: Some(2),
+            struck: true,
+            tags: vec!["x".to_owned(); 4],
+        })
+    );
 }

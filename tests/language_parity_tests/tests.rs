@@ -63,6 +63,28 @@ mod declarations {
         #[model_schema_prop(maximum = 100)]
         pub credit_count: i64,
     }
+
+    /// A literal of each kind, whose sentences quote the value back.
+    #[model_schema()]
+    #[derive(Debug, Deserialize, Serialize)]
+    pub struct Channel {
+        #[model_schema_prop(literal = "stable")]
+        pub channel: String,
+    }
+
+    #[model_schema()]
+    #[derive(Debug, Deserialize, Serialize)]
+    pub struct Current {
+        #[model_schema_prop(literal = true)]
+        pub current: bool,
+    }
+
+    #[model_schema()]
+    #[derive(Debug, Deserialize, Serialize)]
+    pub struct Major {
+        #[model_schema_prop(literal = 2)]
+        pub major: u8,
+    }
 }
 
 /// The refusal path: one declaration, two dispatchers, one answer.
@@ -495,21 +517,66 @@ fn a_numeric_bound_reads_the_same_in_both_languages() {
     );
 }
 
+/// A literal quotes the value back, and does so identically.
+#[cfg(all(feature = "serde", feature = "zod"))]
+#[test]
+fn a_literal_reads_the_same_in_both_languages() {
+    let channel = declarations::Channel {
+        channel: "beta".to_owned(),
+    }
+    .validate()
+    .unwrap_err();
+    assert_eq!(
+        channel,
+        vec!["'channel': not the literal \"stable\", got beta"]
+    );
+    assert_eq!(
+        channel,
+        typescript_report(&declarations::Channel::zod_schema(), "channel", "beta"),
+    );
+
+    let current = declarations::Current { current: false }
+        .validate()
+        .unwrap_err();
+    assert_eq!(current, vec!["'current': not the literal true, got false"]);
+    assert_eq!(
+        current,
+        typescript_report(&declarations::Current::zod_schema(), "current", "false"),
+    );
+
+    let major = declarations::Major { major: 3 }.validate().unwrap_err();
+    assert_eq!(major, vec!["'major': not the literal 2, got 3"]);
+    assert_eq!(
+        major,
+        typescript_report(&declarations::Major::zod_schema(), "major", "3"),
+    );
+}
+
 #[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn no_emitted_check_is_left_to_report_in_zods_own_words() {
     for schema in [
         declarations::Capped::zod_schema(),
         declarations::Ceiling::zod_schema(),
+        declarations::Channel::zod_schema(),
         declarations::Claims::zod_schema(),
+        declarations::Current::zod_schema(),
         declarations::Direct::zod_schema(),
         declarations::Floor::zod_schema(),
+        declarations::Major::zod_schema(),
         declarations::OrganizationId::zod_schema(),
     ] {
-        let checks = [".min(", ".max(", "z.minLength(", "z.maxLength(", "z.regex("]
-            .iter()
-            .map(|check| schema.matches(check).count())
-            .sum::<usize>();
+        let checks = [
+            ".min(",
+            ".max(",
+            "z.minLength(",
+            "z.maxLength(",
+            "z.regex(",
+            "z.literal(",
+        ]
+        .iter()
+        .map(|check| schema.matches(check).count())
+        .sum::<usize>();
         assert_eq!(
             checks,
             error_arguments(&schema).len(),

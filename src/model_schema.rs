@@ -48,7 +48,7 @@ use crate::field_type::{zod_check_wrap, zod_check_wrap_handing, zod_preprocess_w
 use crate::{
     field_type::{
         BoundKind, FieldDef, FieldDefType, VariantKind, classify_variant, format_number_literal,
-        get_field_def, is_plain_enum,
+        get_field_def, held_number, is_plain_enum,
     },
     utils::{get_field_docs, get_variant_docs, strip_examples_from_docs},
 };
@@ -574,6 +574,28 @@ enum ConstraintLeaf {
     Str,
 }
 
+/// The value a `literal` is compared with, as a field's type reaches it.
+#[cfg(feature = "serde")]
+enum LiteralLeaf {
+    Bool,
+    /// The bare Rust numeric type, which is the validator's parameter type.
+    Number(&'static str),
+    /// A filesystem path, compared on its `to_string_lossy` rendering.
+    Path,
+    Str,
+}
+
+/// A field's type read down to the value a `literal` admits, with the wrappers on the way:
+/// `Option`, the transparent wrappers, every reference, and each level of a list, every item of
+/// which the literal admits alone.
+#[cfg(feature = "serde")]
+struct LiteralShape {
+    leaf: LiteralLeaf,
+    /// Every non-`'static` lifetime the field's type spells, deduplicated.
+    lifetimes: Vec<syn::Lifetime>,
+    wraps: Vec<ConstraintWrap>,
+}
+
 /// Where a field's constraints are enforced.
 ///
 /// Both readings publish the same two helpers into the schema module. What differs is whether the
@@ -705,6 +727,14 @@ impl HeldShape {
                     positions.iter().any(|(_, held)| held.walks_a_map())
                 }
             }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl LiteralShape {
+    /// Whether the literal is held by each item of a list, which the walk names by its index.
+    fn reaches_items(&self) -> bool {
+        self.wraps.contains(&ConstraintWrap::Sequence)
     }
 }
 
@@ -17553,6 +17583,7 @@ fn model_schema_prop_guard_errors(
     let refusals = [
         check_fixed_shape_constraints(field, field_def, prop_meta, label).err(),
         check_literal_kind_match(field, field_def, prop_meta, label).err(),
+        check_literal_held(field, field_def, prop_meta, label).err(),
         check_literal_alone(field, prop_meta, label).err(),
         check_as_type_override(field, written_def, prop_meta, label).err(),
         check_as_preprocess_conflict(field, prop_meta, label).err(),
@@ -17870,6 +17901,36 @@ fn check_literal_kind_match(
              {adjective} literal is carried by {carrier}, and the generated TypeScript, Zod and \
              JSON schema all render the literal in the field's own kind. Declare the field as \
              {carrier}, or write the literal as a value the field's own type can carry."
+        ),
+    ))
+}
+
+/// Rejects a numeric `literal` no value of the field's number is: a fraction or a value out of
+/// range on an integer, and a value an `f32` does not write back. The literal would refuse every
+/// value the field holds.
+fn check_literal_held(
+    field: &Field,
+    field_def: &FieldDef,
+    prop_meta: &ModelSchemaPropMeta,
+    label: &str,
+) -> Result<(), syn::Error> {
+    let Some(LiteralValue::Number(value)) = &prop_meta.literal else {
+        return Ok(());
+    };
+    let Some(number) = field_def.field_type.number_name() else {
+        return Ok(());
+    };
+    if held_number(number, *value).is_some() {
+        return Ok(());
+    }
+    let written = literal_written(&LiteralValue::Number(*value));
+    Err(syn::Error::new_spanned(
+        field,
+        format!(
+            "model_schema: {label}: `literal = {written}` cannot apply to a `{number}` field — \
+             no `{number}` is {written}, so the literal would refuse every value the field \
+             holds. Write a literal a `{number}` holds, or declare the field as a number that \
+             holds {written}."
         ),
     ))
 }
@@ -18685,22 +18746,304 @@ fn declared_as(field: &Field, index: usize) -> String {
         .map_or_else(|| index.to_string(), |member| member.unraw().to_string())
 }
 
-/// The `compile_error!` tokens for a length or range constraint written on a field reached through
-/// an interior-mutability wrapper (`RefCell`, `Cell`, `Mutex`, `RwLock`) — unlike `Box`/`Rc`/`Arc`/
-/// `Cow`, these don't implement `Deref`, so the validator has no safe way to reach the inner value.
+/// Reads a literal field's type down to the value the literal admits, or `None` for a type no
+/// literal sits on.
+#[cfg(feature = "serde")]
+fn literal_shape(ty: &syn::Type) -> Option<LiteralShape> {
+    let mut wraps = Vec::new();
+    let mut lifetimes: Vec<syn::Lifetime> = Vec::new();
+    let mut current = ty;
+    loop {
+        current = written_type(current);
+        if let syn::Type::Reference(reference) = current {
+            wraps.push(ConstraintWrap::Borrowed);
+            current = &reference.elem;
+        } else if let syn::Type::Array(array) = current {
+            wraps.push(ConstraintWrap::Sequence);
+            current = &array.elem;
+        } else if let syn::Type::Slice(slice) = current {
+            wraps.push(ConstraintWrap::Sequence);
+            current = &slice.elem;
+        } else if let syn::Type::Path(path) = current {
+            let segment = path.path.segments.last()?;
+            if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
+                wraps.push(generic_wrap(&segment.ident.to_string())?);
+                collect_lifetimes(args, &mut lifetimes);
+                current = sole_type_argument(args)?;
+            } else if matches!(segment.arguments, syn::PathArguments::None) {
+                let ident = segment.ident.to_string();
+                let leaf = match leaf_for_ident(&ident) {
+                    _ if ident == "bool" => LiteralLeaf::Bool,
+                    Some(ConstraintLeaf::Number(number)) => LiteralLeaf::Number(number),
+                    Some(ConstraintLeaf::Path) => LiteralLeaf::Path,
+                    Some(ConstraintLeaf::Str) => LiteralLeaf::Str,
+                    Some(ConstraintLeaf::List | ConstraintLeaf::Named(_)) | None => return None,
+                };
+                return Some(LiteralShape {
+                    leaf,
+                    lifetimes,
+                    wraps,
+                });
+            } else {
+                return None;
+            }
+        } else {
+            return None;
+        }
+    }
+}
+
+/// What a value of `leaf`, read as `value`, is compared with: `None` where the literal is of
+/// another kind, or a number the leaf holds no value of, which a guard refuses.
+#[cfg(feature = "serde")]
+fn literal_broken(leaf: &LiteralLeaf, literal: &LiteralValue) -> Option<proc_macro2::TokenStream> {
+    match (leaf, literal) {
+        (LiteralLeaf::Bool, LiteralValue::Bool(true)) => Some(quote! { !*value }),
+        (LiteralLeaf::Bool, LiteralValue::Bool(false)) => Some(quote! { *value }),
+        (LiteralLeaf::Number(number), LiteralValue::Number(held)) => {
+            let written: proc_macro2::TokenStream =
+                format!("{}{number}", held_number(number, *held)?)
+                    .parse()
+                    .ok()?;
+            // A float is compared through `partial_cmp`, which clippy's `float_cmp` reads past.
+            Some(if matches!(*number, "f32" | "f64") {
+                quote! {
+                    value.partial_cmp(&#written)
+                        != ::core::option::Option::Some(::core::cmp::Ordering::Equal)
+                }
+            } else {
+                quote! { *value != #written }
+            })
+        }
+        (LiteralLeaf::Path | LiteralLeaf::Str, LiteralValue::Str(text)) => {
+            Some(quote! { value != #text })
+        }
+        (LiteralLeaf::Bool | LiteralLeaf::Number(_) | LiteralLeaf::Path | LiteralLeaf::Str, _) => {
+            None
+        }
+    }
+}
+
+/// [`walk_wraps`] for the serde hook of a literal, which names no item: a list level binds no
+/// index.
+#[cfg(feature = "serde")]
+fn unindexed_walk(
+    wraps: &[ConstraintWrap],
+    value: &proc_macro2::Ident,
+    depth: usize,
+    leaf: &proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+    let Some((wrap, rest)) = wraps.split_first() else {
+        return leaf.clone();
+    };
+    if *wrap != ConstraintWrap::Sequence {
+        let head = &wraps[..1];
+        let below = unindexed_walk(rest, &wrap_binding(depth), depth.saturating_add(1), leaf);
+        return walk_wraps(head, value, depth, &below);
+    }
+    let next = wrap_binding(depth);
+    let inner = unindexed_walk(rest, &next, depth.saturating_add(1), leaf);
+    quote! {
+        for #next in #value {
+            #inner
+        }
+    }
+}
+
+/// The serde hook of a literal field under `shape`, which reads the field's own type and holds
+/// the value to `validator` as `validate()` does, or nothing for a field read through a borrow.
+#[cfg(feature = "serde")]
+fn literal_hook(
+    field_ty: &syn::Type,
+    shape: &LiteralShape,
+    owned: &proc_macro2::TokenStream,
+    validator: &proc_macro2::Ident,
+    deserializer: &proc_macro2::Ident,
+) -> proc_macro2::TokenStream {
+    let wraps = &shape.wraps;
+    let refusal = refusal_from_violations();
+    if ends_on_a_borrow(wraps) {
+        return quote! {};
+    }
+    if wraps.is_empty() {
+        return quote! {
+            pub fn #deserializer<'de, D>(deserializer: D) -> ::core::result::Result<#owned, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                use serde::Deserialize;
+                let read = #owned::deserialize(deserializer)?;
+                #validator(&read).map_err(#refusal)?;
+                ::core::result::Result::Ok(read)
+            }
+        };
+    }
+    let lifetimes = &shape.lifetimes;
+    let head = wrap_binding(0);
+    let leaf = constraint_leaf(CheckSink::Fail, &walked_value(wraps), validator);
+    let walk = unindexed_walk(wraps, &head, 1, &leaf);
+    quote! {
+        pub fn #deserializer<'de, #(#lifetimes,)* D>(deserializer: D) -> ::core::result::Result<#field_ty, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            let read = <#field_ty as serde::Deserialize>::deserialize(deserializer)?;
+            let check = |#head: &#field_ty| -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
+                #walk
+                ::core::result::Result::Ok(())
+            };
+            check(&read).map_err(#refusal)?;
+            ::core::result::Result::Ok(read)
+        }
+    }
+}
+
+/// What a literal field adds to `validate()`: the validator run on the value, or on each item of a
+/// list, whose report is written under the item's index.
+#[cfg(feature = "serde")]
+fn literal_validate_body(
+    member: &CheckedMember,
+    shape: &LiteralShape,
+    validator: &proc_macro2::Ident,
+) -> Option<proc_macro2::TokenStream> {
+    let wraps = &shape.wraps;
+    if !shape.reaches_items() {
+        return Some(build_field_validation(wraps, &member.checked, validator));
+    }
+    let head = wrap_binding(0);
+    let place: Vec<PlaceStep> = member
+        .reported
+        .iter()
+        .map(|key| PlaceStep::Written(key.clone()))
+        .collect();
+    let named_item = named_at(&held_at(&place, wraps, 1))?;
+    let naming = nested_under_fn();
+    let value = walked_value(wraps);
+    let leaf = quote! {
+        if let ::core::result::Result::Err(reported) = #validator(#value) {
+            #naming
+            errors.extend(reported.iter().map(|violation| #named_item));
+        }
+    };
+    let walk = walk_wraps(wraps, &head, 1, &leaf);
+    let checked = &member.checked;
+    Some(quote! {
+        {
+            let #head = #checked;
+            #walk
+        }
+    })
+}
+
+/// The validator, the `validate()` fragment and the serde hook of a field that carries a
+/// `literal`: the literal is its only rule. Where the literal is held by each item of a list, the
+/// validator names nothing, and `validate()` names each item by its index.
+#[cfg(feature = "serde")]
+fn generate_literal_validation(
+    ctx: &FieldContext<'_>,
+    field: &Field,
+    member: &CheckedMember,
+    literal: &LiteralValue,
+    gate: ConstraintGate,
+    injected_attrs: &mut Vec<syn::Attribute>,
+) -> Option<(proc_macro2::TokenStream, proc_macro2::TokenStream)> {
+    let module_name = ctx.schema_module_name?;
+    let shape = literal_shape(&field.ty)?;
+    let broken = literal_broken(&shape.leaf, literal)?;
+    let items = shape.reaches_items();
+    let named = if items {
+        None
+    } else {
+        member.reported.as_deref()
+    };
+    let reported = rust_violation(Bound::Literal(literal), named, &quote! { value });
+    let (param, rendering, owned) = match &shape.leaf {
+        LiteralLeaf::Bool => (quote! { value: &bool }, quote! {}, quote! { bool }),
+        LiteralLeaf::Number(number_type) => {
+            let written: proc_macro2::TokenStream = number_type.parse().ok()?;
+            (quote! { value: &#written }, quote! {}, written)
+        }
+        LiteralLeaf::Path => {
+            let (param, rendering) = checked_value_parts(true);
+            (param, rendering, quote! { ::std::path::PathBuf })
+        }
+        LiteralLeaf::Str => {
+            let (param, rendering) = checked_value_parts(false);
+            (param, rendering, quote! { ::std::string::String })
+        }
+    };
+    let stem = &member.stem;
+    let validator = proc_macro2::Ident::new(
+        &format!("validate_{stem}_value"),
+        proc_macro2::Span::call_site(),
+    );
+    let deserializer = proc_macro2::Ident::new(
+        &format!("deserialize_{stem}"),
+        proc_macro2::Span::call_site(),
+    );
+    let hook = literal_hook(&field.ty, &shape, &owned, &validator, &deserializer);
+    let validate_body = literal_validate_body(member, &shape, &validator)?;
+    if gate == ConstraintGate::Validator {
+        record_field_validator(module_name, stem, named, items);
+    }
+    if gate == ConstraintGate::Deserializer
+        && !ends_on_a_borrow(&shape.wraps)
+        && !has_serde_read_hook(&field.attrs)
+    {
+        let path_lit = syn::LitStr::new(
+            &format!("{module_name}::deserialize_{stem}"),
+            proc_macro2::Span::call_site(),
+        );
+        injected_attrs.push(syn::parse_quote! {
+            #[serde(deserialize_with = #path_lit)]
+        });
+        if needs_injected_default(&shape.wraps, has_serde_default(&field.attrs)) {
+            injected_attrs.push(syn::parse_quote! {
+                #[serde(default)]
+            });
+        }
+    }
+    let module_items = quote! {
+        pub fn #validator(#param) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
+            #rendering
+            let mut errors: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
+            if #broken {
+                errors.push(#reported);
+            }
+            if errors.is_empty() { ::core::result::Result::Ok(()) } else { ::core::result::Result::Err(errors) }
+        }
+
+        #hook
+    };
+    Some((module_items, bound_body(validate_body, module_name)))
+}
+
+/// The `compile_error!` tokens for a length, a range or a literal written on a field reached
+/// through an interior-mutability wrapper (`RefCell`, `Cell`, `Mutex`, `RwLock`) — unlike
+/// `Box`/`Rc`/`Arc`/`Cow`, these don't implement `Deref`, so the validator has no safe way to reach
+/// the inner value. `literal` says which of the two was written.
 #[cfg(feature = "serde")]
 fn interior_mutability_constraint_guard_error(
     field: &Field,
     raw_field_ident: &str,
     wrapper: &str,
+    literal: bool,
 ) -> proc_macro2::TokenStream {
+    let (keys, dropped) = if literal {
+        ("`literal` is", "the literal")
+    } else {
+        (
+            "pattern, minLength, maxLength, minimum and maximum are",
+            "the constraint",
+        )
+    };
     syn::Error::new_spanned(
         field,
         format!(
-            "model_schema: {}: pattern, minLength, maxLength, minimum and maximum are unsupported \
-             on a field reached through `{wrapper}` — unlike `Box`, `Rc`, `Arc` and `Cow`, it does \
-             not implement `Deref`, so the generated validator has no safe way to reach its inner \
-             value. Drop the constraint, or move the value out from under `{wrapper}`.",
+            "model_schema: {}: {keys} unsupported on a field reached through `{wrapper}` — unlike \
+             `Box`, `Rc`, `Arc` and `Cow`, it does not implement `Deref`, so the generated \
+             validator has no safe way to reach its inner value. Drop {dropped}, or move the \
+             value out from under `{wrapper}`.",
             field_label(raw_field_ident)
         ),
     )
@@ -18739,6 +19082,18 @@ fn generate_field_validation(
         &model_schema_prop_meta.check,
     );
 
+    if let Some(literal) = &model_schema_prop_meta.literal {
+        if let Some(wrapper) = blocking_interior_mutability_wrapper(&field.ty) {
+            let refused =
+                interior_mutability_constraint_guard_error(field, &member.label, &wrapper, true);
+            return (None, None, Some(refused));
+        }
+        return generate_literal_validation(ctx, field, &member, literal, gate, injected_attrs)
+            .map_or((None, None, None), |(items, body)| {
+                (Some(items), Some(body), None)
+            });
+    }
+
     let (Some(module_name), Some(shape)) = (ctx.schema_module_name, constrained_shape(&field.ty))
     else {
         if (has_string_constraints || has_numeric_constraints)
@@ -18751,6 +19106,7 @@ fn generate_field_validation(
                     field,
                     &member.label,
                     &wrapper,
+                    false,
                 )),
             );
         }
@@ -18783,7 +19139,7 @@ fn generate_field_validation(
 
     let helper_stem = &member.stem;
     if gate == ConstraintGate::Validator {
-        record_field_validator(module_name, helper_stem, member.reported.as_deref());
+        record_field_validator(module_name, helper_stem, member.reported.as_deref(), false);
     }
     // A borrow publishes no hook, and a member its author reads through a function of their own
     // keeps that one: serde admits one reader per field. Its bound is the validator's alone.

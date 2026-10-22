@@ -487,7 +487,8 @@ fn test_every_key_written_on_a_plain_slot_reaches_zod() {
         ),
         (
             LiteralSlot::zod_schema(),
-            "const LiteralSlot$RawSchema = z.literal(\"fixed\");",
+            "const LiteralSlot$RawSchema = z.literal(\"fixed\", { error: (issue) => `not the \
+             literal \"fixed\", got ${String(issue.input)}` }).check(z.superRefine((_, ctx) => {",
         ),
         (
             NullableSlot::zod_schema(),

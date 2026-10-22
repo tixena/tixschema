@@ -611,9 +611,9 @@ A function a `preprocess` names is called by the read alone of each language, ah
 | `maxLength = N` | a list | `.max(N)` on the array | `"maxItems"` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum | `validate()`: `value.length` | `validate()`: `value.count` | `validate()`: `value.size` |
 | `minimum = N` | numeric | `.min(N)` | `"minimum"` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum | `validate()`: `value < N` | `validate()`: `value < N` | `validate()`: `value < N`, in the number's own type |
 | `maximum = N` | numeric | `.max(N)` | `"maximum"` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum | `validate()`: `value > N` | `validate()`: `value > N` | `validate()`: `value > N`, in the number's own type |
-| `literal = "val"` | `String` | `z.literal("val")` | `{"type": "string", "const": "val"}` | — | — (a `String`) | — (a `String`) | — (a `String`) |
-| `literal = true` | `bool` | `z.literal(true)` | `{"type": "boolean", "const": true}` | — | — (a `bool`) | — (a `Bool`) | — (a `Boolean`) |
-| `literal = 214` | numeric | `z.literal(214)` | `{"type": "number", "const": 214}` | — | — (a `double`) | — (a `Double`) | — (a `Double`) |
+| `literal = "val"` | `String`, and each item of a list | `z.literal("val", { error })` and a refinement that leaves its issue no abort | `{"type": "string", "const": "val"}` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum | `validate()`: `value != 'val'` | `validate()`: `value != "val"` | `validate()`: `value != "val"` |
+| `literal = true` | `bool`, and each item of a list | `z.literal(true, { error })` and a refinement that leaves its issue no abort | `{"type": "boolean", "const": true}` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum | `validate()`: `!value` | `validate()`: `!value` | `validate()`: `!value` |
+| `literal = 214` | numeric, and each item of a list | `z.literal(214, { error })` and a refinement that leaves its issue no abort | `{"type": "number", "const": 214}` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum | `validate()`: `value != 214`, in the number's own type | `validate()`: `value != 214`, in the number's own type | `validate()`: `value.toUInt() != 214u`, in the number's own type |
 | `preprocess = ["fn"]` | any, and a type | `z.preprocess(fn, ...)` | — | every read of the type calls `fn` in snake case on the payload, a `serde_json::Value`, ahead of the value's read | in `fromJsonUnjudged`: `fn` on the payload, a `dynamic`, ahead of the value's read | in `init(swiftSchemaUnjudged:)`: `fn` on the payload, an `Any`, ahead of the value's read | in the read of `{Type}Unjudged`: `fn` on the payload, a `JsonElement`, ahead of the value's read |
 | `check = ["fn"]` | any, and a type | `.check((ctx) => { ... fn(own.value, own); ... })` | — | `validate()` calls `fn` in snake case, in every build, and the type's read refuses with its messages; an issue of the recovering decode | `validate()` calls `fn`, and `fromJson` throws `FormatException` with its messages | `validate()` calls `fn`, and `init(from:)` throws `DecodingError.dataCorrupted` with its messages | `validate()` calls `fn`, and `{Type}Serializer` throws `SerializationException` with its messages |
 | `ts_optional` | `Option<T>` | — | — | — (TypeScript-only) | — | — | — |
@@ -872,6 +872,50 @@ met. `check_literal_alone`, called from `model_schema_prop_guard_errors` right a
 `check`). `as`, `preprocess`, `ts_optional` and `nullable` hold the value to no rule and stay
 allowed beside it. `README.md`'s "Literal Values" section shows the refusal, and
 `a_literal_beside_a_rule_is_refused` holds the README to it.
+
+A `literal` is a rule, held where every bound is held: by `validate()`, by the read that runs it,
+by the hook of an untagged member, by the recovering decode and by each client's `validate()` and
+read. `README.md`'s "Literal Values" section is the consumer's view; this is what a change has to
+keep.
+
+- **One sentence.** `Bound::Literal` in `src/bound_message.rs` states `not the literal {written}`,
+  the literal as the Zod schema writes it (`214`, `"fixed"`, `true`), and quotes the value back;
+  `rust_violation`, `zod_error_arg`, `dart_violation`, `swift_violation` and `kotlin_violation`
+  write it, and `VIOLATION_STEMS` holds its stem. `zod_error_arg` escapes the sentence for the
+  template it is written into (`js_template_text`).
+- **Rust.** `generate_field_validation` hands a member with a literal to
+  `generate_literal_validation`: `literal_shape` reads the type through `Option`, the transparent
+  wrappers, every reference and each level of a list, and `literal_broken` compares the leaf in its
+  own type (`214u8`, `1.5f64`, `!*value`), a path on its `to_string_lossy` text. A literal on a list
+  holds each item: its validator names nothing, `validate()` names each item by its index
+  (`held_at`, `named_at`), its hook walks the items with no index (`unindexed_walk`), and
+  `record_field_validator` records it as judging items, so the recovering decode hands it each item
+  (`field_validator_judges_items`, `FieldValidator::items`) and no count of the list. A literal on
+  a member reached through an interior-mutability wrapper is refused, as a bound there is
+  (`interior_mutability_constraint_guard_error`).
+- **A number the field holds no value of is refused.** `check_literal_held`, beside
+  `check_literal_kind_match` in every build, refuses a numeric literal `held_number` in
+  `src/field_type.rs` answers `None` for: a fraction or a value out of range on an integer, a value
+  an `f32` does not write back, and one no `f64` is.
+- **Zod.** `FieldDef::zod_literal` writes `zod_error_arg(Bound::Literal)` on the `z.literal` of a
+  member whose meta holds a literal, a struct's own tag apart, and after it a `z.superRefine` that
+  runs, through its `when`, on a value of the literal's own JavaScript type alone, and copies the
+  literal's issue with `continue: true`. An issue with no abort is what a union reports at the
+  value's path, as it reports a broken bound's, so a variant of an externally tagged or an untagged
+  enum and an `Option` of a list name a broken literal where it is. A value of another type keeps
+  the abort, as a type mismatch does. The refinement changes no type: `.check` answers the schema
+  it is written on.
+- **The clients** hold the member in its own type and compare there: Dart's `literal_elements`
+  from `own_bound_elements`, Swift's `literal_rule` from `bound_rules`, Kotlin's
+  `literal_statements` from `bound_statements`, each through an optional and each level of a list,
+  an item under its index. Each is a member's bound, so it chooses a variant of an untagged enum
+  (`_bounds()`, `swiftSchemaBound{Variant}`, `kotlinSchemaBound()`).
+- **The tests.** `tests/model_schema_prop_tests/literal_models.rs` holds `LITERAL_READS`, what each
+  payload reads as. `literals.rs` holds serde's read to it, and
+  `type_check_a_literal_refuses_under_zod_what_serde_refuses` in
+  `tests/generic_types_tests/declarations.rs` the Zod schema under `node`;
+  `run_dart_literals.rs`, `run_swift_literals.rs` and `run_kotlin_literals.rs` hold each client
+  under its toolchain.
 
 `ts_optional` is a bare flag (no value): it renders an `Option<T>` field as the optional TypeScript key `field?: T` instead of the default `field: T | undefined`. Zod and JSON Schema output are unchanged. It is only valid on `Option<T>` fields (non-`Option` is a compile error) and composes with `as = Type`. The member must also have a key for the flag to make optional, and `validate_ts_optional_flag` refuses both positions where it has none, in every build: a positional slot writes no key at all, and one a serde attribute takes off the wire in both directions (`skip`, or `skip_serializing` and `skip_deserializing` together) is described on no surface. An attribute that drops the key one way only (`skip_serializing_if`, `skip_serializing`) leaves the member standing, and the flag still decides its spelling.
 
