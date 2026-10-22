@@ -11,7 +11,8 @@ use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
 const ALONE: &str = "public init(swiftSchemaUnjudged decoder: Decoder) throws { \
      try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }";
 
-/// The key type a map is read entry by entry under, written into each type that reads one so.
+/// The key type a map is read entry by entry under, and a flattened unit variant's entry written
+/// under, written into each type that names it.
 const ANY_KEY: &str = "private struct SwiftSchemaAnyKey: CodingKey { var stringValue: String; \
      var intValue: Int? { nil }; init?(stringValue: String) { self.stringValue = stringValue }; \
      init?(intValue: Int) { nil } }";
@@ -263,6 +264,16 @@ pub(super) fn any_key(read: &str) -> String {
         format!("{ANY_KEY}; ")
     } else {
         String::new()
+    }
+}
+
+/// The key type `written`, a type's `encode(to:)`, names, where `reads`, the type's reads as
+/// [`both`] writes them, declare none.
+pub(super) fn any_key_written(reads: &str, written: &str) -> String {
+    if reads.starts_with(ANY_KEY) {
+        String::new()
+    } else {
+        any_key(written)
     }
 }
 

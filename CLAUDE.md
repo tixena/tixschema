@@ -1911,12 +1911,13 @@ to keep.
   reads or writes through it, so a struct and a variant's payload whose every member is flattened
   declare neither, which `-warnings-as-errors` would refuse unused.
 - **Nothing is shared between two emitted types.** `SwiftSchemaAnyKey`, the key type a map is read
-  entry by entry under, is private to each type whose read names it (`any_key`). `Locals` numbers
-  what one initializer declares (`listed`, `items`, `keyed`, `entries`, `entry`, `number`), and a
-  property is assigned through `self.` alone, so one named after a local is never read as it. A
-  written `encode(to:)` reads each property through `self.` too (`encode_statement`), so a member
-  named after one of its locals (`container`, `tagged`, `held`, a `wire{Member}`) or its
-  parameter, `encoder`, is never read as either. `run_swift_flattened.rs` runs a member named
+  entry by entry under, is private to each type whose read or written `encode(to:)` names it
+  (`any_key`, `any_key_written`). `Locals` numbers what one initializer declares (`listed`,
+  `items`, `keyed`, `entries`, `entry`, `number`), and a property is assigned through `self.`
+  alone, so one named after a local is never read as it. A written `encode(to:)` reads each
+  property through `self.` too (`encode_statement`), so a member named after one of its locals
+  (`container`, `tagged`, `held`, `entry`, a `wire{Member}`) or its parameter, `encoder`, is
+  never read as either. `run_swift_flattened.rs` runs a member named
   `container`, of its holder's own and flattened, against serde.
 - **A map under a key Swift reads through a wrapper** (`MapKeys::Wrapped`) is read by the wrapper,
   which gains an `init(swiftSchemaUnjudged:)` where its values are walked.
@@ -2011,6 +2012,22 @@ to keep.
   `run_swift_flattened_enums.rs` reads the holders of `tests/kotlin_tests/flattened_models.rs` and
   of `Careen` against serde, three times, the rows with entries under two names held to the
   refusal.
+- **A flattened externally tagged enum's unit variant is written as its name over `null`**, as
+  serde writes it. The enum writes it as a bare name through `singleValueContainer()`, which the
+  holder's object drops with no error. `enum_swift_tokens` records, for an externally tagged enum,
+  the case and the written name of each unit variant (`unit_entries`, `variant_names`, which
+  `external_tagged_enum_swift_source` names its variants by, into `UNIT_ENTRIES`), and none for an
+  enum of any other shape. `encode_statement` hands a flattened member to `flattened_write`, which
+  writes, for a member `unit_entries_of` answers for, optional or under a function too, a `switch`
+  whose case of each unit variant writes `encodeNil(forKey:)` under `SwiftSchemaAnyKey` and whose
+  `default` writes the value as before.
+  `struct_body_content` declares the key type where the reads declare none
+  (`read::any_key_written`). An enum declared below its holder writes no entry for its unit
+  variant, and the README states the limit. A member under a function reads the entry back
+  through the enum's own read, which refuses it, as the Zod schema refuses it.
+  `tests/swift_tests/flattened.rs` and `flattened_options.rs` pin the text, and
+  `run_swift_flattened_enums.rs` writes each variant of `Tacking` in `Stowing`, `Belting` and
+  `Yawing` against serde, and reads serde's write back.
 - **An externally tagged enum is read from an object of one key.** The read
   `external_tagged_enum_swift_source` writes takes a unit variant from a bare string, then guards
   `container.allKeys.count == 1` beside the first key, as the read of a `Result` does, and refuses

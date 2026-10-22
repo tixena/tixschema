@@ -1,10 +1,11 @@
 //! What the Swift emitter writes and reads of a flattened `Option`: the keys of the value it holds
-//! into its holder's object, and nothing for `nil`; `nil` where the object holds none of its type's
-//! keys, a struct's, the names an externally tagged enum's variants are read under, or the tag and
-//! the content key of an enum under a tag key, and the value its type reads from the object
-//! otherwise, a read that throws refusing the payload; and, for a type whose keys are not known,
-//! `nil` wherever its read throws. A struct flattened bare writes and reads what it did. The writes
-//! and the reads are run under the Swift toolchain in
+//! into its holder's object, a unit variant of an externally tagged enum as an entry of its name
+//! over `null`, and nothing for `nil`; `nil` where the object holds none of its type's keys, a
+//! struct's, the names an externally tagged enum's variants are read under, or the tag and the
+//! content key of an enum under a tag key, and the value its type reads from the object otherwise,
+//! a read that throws refusing the payload; and, for a type whose keys are not known, `nil`
+//! wherever its read throws. A struct flattened bare writes and reads what it did. The writes and
+//! the reads are run under the Swift toolchain in
 //! `tests/service_schema_emitted_client_tests/run_swift_flattened_options.rs`.
 
 #[cfg(feature = "chrono")]
@@ -68,6 +69,27 @@ fn a_struct_flattened_bare_writes_what_it_wrote() {
         "public func encode(to encoder: Encoder) throws { var container = \
          encoder.container(keyedBy: CodingKeys.self); try container.encode(self.note, forKey: \
          .note); try self.tabling.encode(to: encoder) }",
+    );
+}
+
+/// A flattened `Option` of an externally tagged enum written above its holder writes a unit
+/// variant as an entry of its name over `null`, as serde writes it. One declared below its holder
+/// and one under a tag key write through the holder's encoder, as they wrote.
+#[test]
+fn a_flattened_option_of_an_enum_writes_a_unit_variant_as_its_name_over_null() {
+    assert_written(
+        &easing_swift::swift_definition(),
+        "if let held = self.thimble { switch held { case .calm: var entry = \
+         encoder.container(keyedBy: SwiftSchemaAnyKey.self); try entry.encodeNil(forKey: \
+         SwiftSchemaAnyKey(stringValue: \"Calm\")!); default: try held.encode(to: encoder) } }",
+    );
+    assert_written(
+        &pitching_swift::swift_definition(),
+        "if let held = self.shackle { try held.encode(to: encoder) }",
+    );
+    assert_written(
+        &lowering_swift::swift_definition(),
+        "if let held = self.grommet { try held.encode(to: encoder) }",
     );
 }
 
