@@ -1184,26 +1184,7 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
         // An opaque type parameter (`FieldDef::opaque_parameters`), and a type written as no path.
         FieldDefType::Unknown => expr.to_owned(),
         FieldDefType::TypeParam(name) => format!("{}({expr})", from_json_argument(name)),
-        FieldDefType::Tuple(elements) => {
-            let rendered = elements
-                .iter()
-                .enumerate()
-                .map(|(index, element)| {
-                    member_decode(
-                        element,
-                        &format!("({expr} as List<dynamic>)[{index}]"),
-                        None,
-                        read.of_member(element),
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-            if elements.len() == 1 {
-                format!("({rendered},)")
-            } else {
-                format!("({rendered})")
-            }
-        }
+        FieldDefType::Tuple(elements) => tuple_decode(elements, expr, read),
         FieldDefType::Range(kind, bound) => range_decode(*kind, bound, expr, read),
         FieldDefType::Result(ok, err) => result_decode(ok, err, expr, read),
         FieldDefType::SiblingType(name, generics) => {
@@ -1272,6 +1253,37 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
             }
         }
     }
+}
+
+/// The record the array `expr` holds, each position read as its element of `elements`. The array
+/// is bound once, under a name the read declares, and one of another length is refused, as serde
+/// and Zod refuse it.
+fn tuple_decode(elements: &[FieldDef], expr: &str, read: Read) -> String {
+    let array = declared("tuple");
+    let rendered = elements
+        .iter()
+        .enumerate()
+        .map(|(index, element)| {
+            member_decode(
+                element,
+                &format!("{array}[{index}]"),
+                None,
+                read.of_member(element),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let record = if elements.len() == 1 {
+        format!("({rendered},)")
+    } else {
+        format!("({rendered})")
+    };
+    let length = elements.len();
+    format!(
+        "switch ({expr} as List<dynamic>) {{ final {array} when {array}.length == {length} => \
+         {record}, final {array} => throw FormatException('invalid length ${{{array}.length}}, \
+         expected {length}') }}"
+    )
 }
 
 /// The record of the range of `kind` the object `expr` holds, each bound read as `bound` from the
@@ -3420,14 +3432,17 @@ fn tagged_enum_dart_source(
 
     let (json, map, tag) = (&corrects.json, &corrects.map, &corrects.tag);
     let (payload_ty, held_as, dispatch) = if is_external {
+        // serde and Zod read the variant from an object of one key, and refuse any other.
         (
             "dynamic",
             "",
             format!(
                 "if ({json} is String) {{ switch ({json}) \
                  {{ {} default: throw FormatException('Unknown {export_name}: ' + {json}); }} }} \
-                 final {map} = {json} as Map<String, dynamic>; final {tag} = {map}.keys.first; \
-                 switch ({tag}) \
+                 final {map} = {json} as Map<String, dynamic>; if ({map}.isEmpty) {{ throw \
+                 FormatException('empty object for {export_name}'); }} if ({map}.length > 1) {{ \
+                 throw FormatException('more than one key for {export_name}'); }} \
+                 final {tag} = {map}.keys.first; switch ({tag}) \
                  {{ {} default: throw FormatException('Unknown {export_name}: ' + {tag}); }}",
                 is_string_dispatch_arms.join(" "),
                 map_dispatch_arms.join(" "),

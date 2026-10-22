@@ -1587,14 +1587,20 @@ consumer's view; this is what a change has to keep.
 - **Every refusal the read writes itself is a `FormatException`**, thrown inline in the emitted
   text, with no declaration shared between two types. In `src/features/dart.rs`,
   `tagged_enum_dart_source` writes `Unknown {Enum}: {tag}` for a tag no variant has, under every
-  tagging, and `{Enum}: {tag} takes no value` for a unit variant's entry over a value;
-  `tagged_variant_tokens` the same words for its content under a content key;
-  `untagged_enum_dart_source` `No variant of {Enum} matched`; `plain_enum_dart_source`
-  `Unknown {Enum}: {name}`; `range_decode` `Unknown key of a {kind}: {keys}`; `result_decode`
-  `Not a Result: {keys}`; `own_tag_held` a struct's own tag; and `named_by_aliases` a member
-  under two of its names. A cast's `TypeError`, and every other error a Dart operation throws on
-  its own, are the language's. `run_dart_refusals.rs` reads each refusal under the Dart SDK,
-  beside serde's refusal of the same payload.
+  tagging, `{Enum}: {tag} takes no value` for a unit variant's entry over a value, and
+  `empty object for {Enum}` and `more than one key for {Enum}` for an externally tagged object
+  of no key and of several, as serde and Zod refuse each; `tagged_variant_tokens` the same words
+  for its content under a content key; `untagged_enum_dart_source` `No variant of {Enum}
+  matched`; `plain_enum_dart_source` `Unknown {Enum}: {name}`; `range_decode` `Unknown key of a
+  {kind}: {keys}`; `result_decode` `Not a Result: {keys}`; `tuple_decode`, the read of every
+  tuple (a member's, a tuple struct's, a variant's slots), `invalid length {n}, expected {m}`
+  for an array of another length, a longer one among them, as serde and Zod refuse it;
+  `own_tag_held` a struct's own tag; and `named_by_aliases` a member under two of its names. A
+  cast's `TypeError`, and every other error a Dart operation throws on its own, are the
+  language's. So an enum declared below its holder, handed the object without the holder's own
+  keys, is refused where that object holds another key beside its entry, which serde reads.
+  `run_dart_refusals.rs` reads each refusal under the Dart SDK, beside serde's refusal of the same
+  payload.
 - **A declared type is read unjudged exactly where the holder's `validate()` runs it.** `Read` is
   threaded through `dart_decode_expr` and `dart_decode_at`, and `Read::of_member` asks
   `walks_what_it_holds`, the question `member_elements` asks: a member's own bound stands in for
@@ -1794,8 +1800,9 @@ resort; this is what a change has to keep.
   absent key is read as it was, and a `null` the payload holds is handed over. A slot of a tuple
   and the value under a variant's name are held by every payload that is read.
 - **One read calls each function once.** A read that names its payload more than once, an
-  optional and a tuple, holds the corrected payload under `corrected`, the variable of a `switch`
-  of one arm; any other read is written around the call itself.
+  optional, holds the corrected payload under `corrected`, the variable of a `switch` of one arm;
+  any other read is written around the call itself, a tuple's among them, which binds its array
+  once.
 - **A flattened member is read from the keys serde hands it** (`without`, `without_first`,
   `first_of`): the object without the keys of the members beside it and the entries the members
   flattened ahead of it took, and without the tag where the holder is a variant under a tag key
@@ -1816,9 +1823,11 @@ resort; this is what a change has to keep.
   function the item's reads call (`called_by`, `DART_CALLED`), and `declared` numbers a name
   where one is called under it (`json2`): `json`, `payload`, `map`, `tag` and `read`, which
   `Corrects` holds, `corrected` where a flattened `Option` holds what its functions answer
-  (`corrected_option`), and the converter of a type parameter (`from_json_argument`), in the
-  signature of both reads and where a value behind the parameter is read. A member of the type
-  still hides a function of its name, as it hides a check's, and the documents say so.
+  (`corrected_option`), `range`, `result` and `tuple`, the value a range, a `Result` and a tuple
+  are read from (`range_decode`, `result_decode`, `tuple_decode`), and the converter of a type
+  parameter (`from_json_argument`), in the signature of both reads and where a value behind the
+  parameter is read. A member of the type still hides a function of its name, as it hides a
+  check's, and the documents say so.
 - **The payload a type's function takes is typed as its read types it**: a
   `Map<String, dynamic>` for a class and an enum under a tag key, a `String` for a plain enum,
   `dynamic` for a wrapper and any other enum. A payload of another kind is refused ahead of the
