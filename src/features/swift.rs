@@ -3266,7 +3266,8 @@ fn plain_enum_swift_source(
 
 /// The Swift tokens the externally tagged shape earns — serde's default once a variant carries
 /// data. Swift's own associated-value synthesis wraps a payload under an auto-generated `_0` key
-/// rather than serde's bare `{"Foo": payload}`, so this writes the codec by hand instead.
+/// rather than serde's bare `{"Foo": payload}`, so this writes the codec by hand instead. An object
+/// of no key or of several is refused, as serde refuses it: `allKeys` keeps no order to pick by.
 fn external_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> String {
     let &EnumShape {
         args,
@@ -3343,8 +3344,9 @@ fn external_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
             "if let single = try? decoder.singleValueContainer(), let tag = try? single.decode(String.self) {{ \
              switch tag {{ {unit_decode_arms} default: break }} }}; \
              let container = try decoder.container(keyedBy: SwiftSchemaExternalCodingKey.self); \
-             guard let key = container.allKeys.first else {{ \
-             throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: \"empty object for {export_name}\")) }}; \
+             guard container.allKeys.count == 1, let key = container.allKeys.first else {{ \
+             throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: \
+             container.allKeys.isEmpty ? \"empty object for {export_name}\" : \"more than one key for {export_name}\")) }}; \
              switch key.stringValue {{ {object_decode_arms} \
              default: throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: \"unknown tag \\(key.stringValue)\")) }}"
         ),

@@ -5,8 +5,11 @@
 //! `null`, optional, and with a model its holder judges. Every member flattened after it is handed
 //! the object without that entry. Entries under two names are refused, as TypeScript and Zod
 //! refuse them, where serde reads the first: Swift keeps no order of an object's keys, so the run
-//! is made three times. Each holder that reads is written back as serde writes it back. The
-//! holders of `kotlin_tests/flattened_models.rs` are declared where the Kotlin client is built.
+//! is made three times. Each holder that reads is written back as serde writes it back. The enum
+//! read alone is refused where its object holds other than one key, as serde refuses it, and so is
+//! an enum declared below its holder where the object it is handed holds another key, which serde
+//! reads past. The holders of `kotlin_tests/flattened_models.rs` are declared where the Kotlin
+//! client is built.
 
 #![cfg(all(feature = "swift", feature = "kotlin"))]
 
@@ -19,7 +22,7 @@ use serde_json::Value;
 
 use super::flattened_models::{
     BELTING, Belting, CLEATING, Cleating, HEAVING, Heaving, Luffing, SCUDDING, STOWING, Scudding,
-    Stowing, UNDER_AN_ALIAS, belting_swift, bunting_swift, cleating_swift, heaving_swift,
+    Stowing, Tacking, UNDER_AN_ALIAS, belting_swift, bunting_swift, cleating_swift, heaving_swift,
     jibing_swift, luffing_swift, quaying_swift, scudding_swift, stowing_swift, tacking_swift,
 };
 use super::runtime::judged;
@@ -440,4 +443,98 @@ fn a_holder_of_a_flattened_enum_writes_back_in_swift_what_serde_writes_back() {
         return;
     };
     assert_eq!(printed, expected);
+}
+
+/// What the run prints of each payload of `rows` read alone as a [`Tacking`]: the value serde
+/// reads, written back, or, for a payload serde refuses, the refusal the Swift read throws.
+fn tacking_told(rows: &[(&str, Option<&str>)]) -> String {
+    let mut expected = String::new();
+    for (at, &(json, refusal)) in rows.iter().enumerate() {
+        let read = serde_json::from_str::<Tacking>(json);
+        let told = match refusal {
+            Some(said) => {
+                assert!(read.is_err(), "serde refuses {json} read as a Tacking");
+                said.to_owned()
+            }
+            None => self::json(&read.unwrap()),
+        };
+        let _ = writeln!(expected, "{at}: {told}");
+    }
+    expected
+}
+
+/// An externally tagged enum read alone is read from an object of one key, or a unit variant from
+/// its name, as serde reads it: an object of several keys, two variants' entries or a variant's
+/// entry beside another key, is refused with `more than one key for Tacking`, and an empty object
+/// with `empty object for Tacking`, as serde refuses each, on every run.
+#[test]
+fn an_externally_tagged_enum_reads_in_swift_an_object_of_one_key_alone() {
+    let rows = [
+        (
+            r#"{"Bay":{"label":"n"},"Dock":{"label":"s"}}"#,
+            Some("more than one key for Tacking"),
+        ),
+        (
+            r#"{"Bay":{"label":"n"},"north":2}"#,
+            Some("more than one key for Tacking"),
+        ),
+        ("{}", Some("empty object for Tacking")),
+        (r#"{"Bay":{"label":"n"}}"#, None),
+        (r#""Calm""#, None),
+        (r#"{"Held":"x"}"#, None),
+    ];
+    let expected = tacking_told(&rows);
+    assert_eq!(
+        expected,
+        "0: more than one key for Tacking\n\
+         1: more than one key for Tacking\n\
+         2: empty object for Tacking\n\
+         3: {\"Bay\":{\"label\":\"n\"}}\n\
+         4: \"Calm\"\n\
+         5: {\"Held\":\"x\"}\n"
+    );
+    let mut main = String::new();
+    for (at, (json, _refusal)) in rows.iter().enumerate() {
+        let _ = writeln!(
+            main,
+            "entry({at}, Tacking.self, #\"{json}\"#) {{ written($0) }}"
+        );
+    }
+    for run in ["first", "second", "third"] {
+        let Some(printed) = printed(&main) else {
+            return;
+        };
+        assert_eq!(printed, expected, "the {run} run");
+    }
+}
+
+/// An externally tagged enum declared below the holder that flattens it is read from the object
+/// the holder hands it: as serde reads it where that object holds the enum's entry alone, and
+/// refused where it holds any other key, which serde reads past.
+#[test]
+fn an_enum_declared_below_its_holder_is_refused_in_swift_beside_another_key() {
+    let beside = STOWING[2];
+    let serde_read = [STOWING[0], beside].map(|payload| {
+        told(payload, None, |read: &Luffing| {
+            format!("{} {}", json(&read.quaying), read.note)
+        })
+    });
+    assert_eq!(serde_read, ["{\"Bay\":{\"label\":\"n\"}} a"; 2]);
+    let mut main = String::new();
+    for (at, payload) in [STOWING[0], beside].into_iter().enumerate() {
+        let _ = writeln!(
+            main,
+            "entry({at}, Luffing.self, #\"{payload}\"#) {{ \"\\(written($0.quaying)) \\($0.note)\" }}"
+        );
+    }
+    for run in ["first", "second", "third"] {
+        let Some(printed) = printed(&main) else {
+            return;
+        };
+        assert_eq!(
+            printed,
+            format!("0: {}\n1: more than one key for Quaying\n", serde_read[0]),
+            "the {run} run"
+        );
+    }
 }

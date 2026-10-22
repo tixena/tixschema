@@ -724,6 +724,26 @@ fn an_enum_reads_the_payload_of_its_variant_unjudged() {
     );
 }
 
+/// An enum with no tag attribute reads a unit variant from its name, and any other variant from
+/// an object of one key: an object of no key and one of several are refused, as serde refuses
+/// them.
+#[test]
+fn an_enum_with_no_tag_attribute_reads_an_object_of_one_key() {
+    holds(
+        &carried_swift::swift_definition(),
+        &[concat!(
+            "if let single = try? decoder.singleValueContainer(), let tag = try? ",
+            r#"single.decode(String.self) { switch tag { case "Unladen": self = .unladen; return; "#,
+            " default: break } }; let container = try decoder.container(keyedBy: ",
+            "SwiftSchemaExternalCodingKey.self); guard container.allKeys.count == 1, ",
+            "let key = container.allKeys.first else { throw DecodingError.dataCorrupted(",
+            "DecodingError.Context(codingPath: decoder.codingPath, debugDescription: ",
+            r#"container.allKeys.isEmpty ? "empty object for Carried" : "#,
+            r#""more than one key for Carried")) }; switch key.stringValue { "#,
+        )],
+    );
+}
+
 /// An untagged enum takes the first variant whose payload reads and whose own bounds hold: a
 /// member's, and that of a brand it holds. A check and a model a variant holds choose nothing.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
