@@ -1923,28 +1923,44 @@ fn a_tagged_range_and_result_are_refused_as_what_serde_writes_beside_the_tag() {
     }
 }
 
-/// serde writes an `ObjectId` beside the tag as its `$oid` key, and reads it back.
+/// serde writes an `ObjectId` beside the tag as its `$oid` key, and reads it back, as it writes a
+/// flattened one: the slot builds, owned or in a `Box`, and an `Option` of it is refused as any
+/// `Option` there is.
 #[cfg(all(feature = "serde", feature = "mongodb"))]
 #[test]
-fn a_tagged_object_id_is_refused_as_what_serde_writes_beside_the_tag() {
+fn a_tagged_object_id_builds_as_a_flattened_one_does() {
     use bson2::oid::ObjectId;
 
-    #[derive(serde::Serialize)]
+    #[derive(serde::Deserialize, serde::Serialize, Debug, PartialEq)]
     #[serde(tag = "kind")]
     enum Stamped {
         Held(ObjectId),
     }
 
-    let held = ObjectId::parse_str("507f1f77bcf86cd799439011").unwrap();
+    let held = Stamped::Held(ObjectId::parse_str("507f1f77bcf86cd799439011").unwrap());
+    let written = serde_json::to_string(&held).unwrap();
     assert_eq!(
-        serde_json::to_string(&Stamped::Held(held)).unwrap(),
-        r#"{"kind":"Held","$oid":"507f1f77bcf86cd799439011"}"#,
+        written, r#"{"kind":"Held","$oid":"507f1f77bcf86cd799439011"}"#,
         "serde no longer writes an ObjectId beside the tag"
     );
-    assert_written_beside(
+    assert_eq!(
+        serde_json::from_str::<Stamped>(&written).unwrap(),
+        held,
+        "serde no longer reads back the ObjectId it writes beside the tag"
+    );
+    for source in [
         "enum Stamped { Held(ObjectId) }",
-        "an ObjectId",
-        "its `$oid` key",
+        "enum Stamped { Held(Box<ObjectId>) }",
+    ] {
+        let errors = internal_guard_errors(&syn::parse_str(source).unwrap());
+        assert!(errors.is_empty(), "{source} is refused: {errors:?}");
+    }
+    let errors = internal_guard_errors(&syn::parse_quote! {
+        enum Stamped { Held(Option<ObjectId>) }
+    });
+    assert!(
+        errors.len() == 1 && errors[0].contains("containing an optional"),
+        "an Option of an ObjectId beside the tag is not refused as an optional: {errors:?}"
     );
 }
 

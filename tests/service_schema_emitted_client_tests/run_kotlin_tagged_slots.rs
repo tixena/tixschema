@@ -2,8 +2,8 @@
 //! Kotlin types compiled with `-Werror`, under the default `Json` and under `Json {
 //! ignoreUnknownKeys = true }`, beside what serde reads and what the generated Zod schema answers
 //! of the same payload. Kotlin reads the slot from the object without the tag and writes its
-//! members beside the tag, as serde does, and refuses the slot under a `value` key, as serde and
-//! Zod refuse it.
+//! members beside the tag, as serde does, an `ObjectId`'s `$oid` key among them, and refuses the
+//! slot under a `value` key, as serde and Zod refuse it.
 
 #![cfg(all(feature = "kotlin", feature = "serde"))]
 
@@ -24,6 +24,8 @@ use super::tagged_slot_models::{
     lightering_kotlin, palleted_kotlin, serde_told, stevedore_kotlin, swaddled_kotlin,
     tonnage_kotlin, trussed_kotlin, waybilled_kotlin, wharfage_kotlin,
 };
+#[cfg(feature = "mongodb")]
+use super::tagged_slot_models::{STAMP_REFUSED, STAMPED, imprint_kotlin, stamping_kotlin};
 
 const KOTLIN_IMPORTS: &str = "import kotlinx.serialization.*\n\
      import kotlinx.serialization.json.*\n\
@@ -50,6 +52,13 @@ fun <T> told(at: Int, serializer: KSerializer<T>, payload: String) {
     }
     println("$at: $told")
 }
+"#;
+
+/// The consumer's own `ObjectId`, as the README writes it.
+#[cfg(feature = "mongodb")]
+const OBJECT_ID: &str = r#"
+@Serializable
+data class ObjectId(@SerialName("\$oid") val oid: String)
 "#;
 
 /// The function `Docketed::Trimmed` and `Docketed::Pared` name, for the Zod schema.
@@ -299,6 +308,61 @@ fn the_kotlin_text_reads_and_writes_the_slot_beside_the_tag() {
     }
 }
 
+/// An `ObjectId` in the slot is read from the object without the tag and written back as its
+/// `$oid` key beside the tag, as serde writes it, owned, in a `Box` and under a brand, and the tag
+/// alone is refused under either `Json`, as serde refuses it.
+#[cfg(feature = "mongodb")]
+#[test]
+fn an_object_id_beside_the_tag_is_read_and_written_back_by_kotlin_as_serde_writes_it() {
+    let mut expected = String::new();
+    let mut main = String::from("fun main() {\n");
+    for (at, json) in STAMPED.iter().enumerate() {
+        let read = serde_told("Stamping", json);
+        let _ = writeln!(expected, "{at}: {read} | {read}");
+        let _ = writeln!(
+            main,
+            "    told({at}, serializer<Stamping>(), \"\"\"{}\"\"\")",
+            templated(json)
+        );
+    }
+    assert_eq!(
+        serde_told("Stamping", STAMP_REFUSED.json),
+        "refused",
+        "serde no longer refuses {}",
+        STAMP_REFUSED.json
+    );
+    let at = STAMPED.len();
+    let _ = writeln!(
+        expected,
+        "{at}: {} | {}",
+        STAMP_REFUSED.kotlin, STAMP_REFUSED.kotlin
+    );
+    let _ = writeln!(
+        main,
+        "    told({at}, serializer<Stamping>(), \"\"\"{}\"\"\")",
+        templated(STAMP_REFUSED.json)
+    );
+    main.push_str("}\n");
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        OBJECT_ID.to_owned(),
+        imprint_kotlin::kotlin_definition(),
+        stamping_kotlin::kotlin_definition(),
+        READ.to_owned(),
+        main,
+    ];
+    let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
+        return;
+    };
+    assert_eq!(printed, expected, "the Kotlin read is not serde's");
+}
+
+/// `json` as the text of a Kotlin raw string, where a `$` opens a template.
+#[cfg(feature = "mongodb")]
+fn templated(json: &str) -> String {
+    json.replace('$', "${'$'}")
+}
+
 /// The generated Zod schemas, and what prints each row's verdict.
 #[cfg(all(feature = "zod", feature = "typescript"))]
 fn zod_module() -> String {
@@ -447,5 +511,43 @@ fn the_readme_shows_the_entries_the_runs_read_and_refuse() {
         ),
     ] {
         assert!(readme.contains(&shown), "not in the README: {shown}");
+    }
+}
+
+/// The README's sentence on an `ObjectId` held beside the tag shows the payload the runs read and
+/// the tag alone they refuse.
+#[cfg(feature = "mongodb")]
+#[test]
+fn the_readme_shows_the_object_id_the_runs_read_and_refuse() {
+    let readme = include_str!("../../README.md");
+    for shown in [
+        format!(
+            "Serde writes `{}` for `#[serde(tag = \"kind\")] pub enum Stamping {{ Held(ObjectId) \
+             }}` and reads it back",
+            STAMPED[0]
+        ),
+        format!(
+            "The tag alone, `{}`, is refused as Serde refuses it",
+            STAMP_REFUSED.json
+        ),
+    ] {
+        assert!(readme.contains(&shown), "not in the README: {shown}");
+    }
+}
+
+/// The Kotlin read hands an `ObjectId` in the slot the object without the tag, and the write puts
+/// its `$oid` key after the tag.
+#[cfg(feature = "mongodb")]
+#[test]
+fn the_kotlin_text_reads_and_writes_an_object_id_beside_the_tag() {
+    let stamping = stamping_kotlin::kotlin_definition();
+    for held in [
+        "\"Held\" -> StampingHeld(input.json.decodeFromJsonElement(serializer<ObjectId>(), \
+         JsonObject(obj - \"kind\")))",
+        "is StampingHeld -> buildJsonObject { put(\"kind\", \"Held\"); \
+         output.json.encodeToJsonElement(serializer<ObjectId>(), value.value).jsonObject.forEach \
+         { (k, v) -> put(k, v) } }",
+    ] {
+        assert!(stamping.contains(held), "no `{held}` in: {stamping}");
     }
 }

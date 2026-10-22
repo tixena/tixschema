@@ -885,8 +885,9 @@ enum KeyAsked {
 /// it.
 #[cfg(feature = "serde")]
 enum TaggedContent {
-    /// A named type: what it writes are members, and they are the ones that join the tag, unless
-    /// it writes a map, which [`ranges::tagged_slot_map_error`] refuses.
+    /// A named type, or an `ObjectId`, which joins its `$oid` key as a flattened one does: what it
+    /// writes are members, and they are the ones that join the tag, unless it writes a map, which
+    /// [`ranges::tagged_slot_map_error`] refuses.
     Flattened,
     /// serde refuses to write it beside the tag: what the value is, and the shape serde's refusal
     /// names it by.
@@ -12022,7 +12023,7 @@ fn tagged_content(inner: &FieldDef, written: &syn::Type) -> TaggedContent {
         FieldDefType::Range(..) => TaggedContent::WrittenBeside("a range", "its bounds"),
         FieldDefType::Result(..) => TaggedContent::WrittenBeside("a result", "the key of its arm"),
         #[cfg(feature = "mongodb")]
-        FieldDefType::ObjectId => TaggedContent::WrittenBeside("an ObjectId", "its `$oid` key"),
+        FieldDefType::ObjectId => TaggedContent::Flattened,
         FieldDefType::TypeParam(_) => TaggedContent::Unnameable("a type parameter"),
         FieldDefType::Unknown => TaggedContent::Unnameable("a type the expansion cannot resolve"),
     }
@@ -12388,7 +12389,7 @@ fn render_internal_variant(
         let variant_name = &variant.discriminator_value;
         merged_object_value(
             &tag_object,
-            // The same reference a `#[serde(flatten)]` base contributes: both name a type whose
+            // The same source a `#[serde(flatten)]` member contributes: both are a value whose
             // members join the object being written.
             &[flatten_merged_source(inner)],
             &MergeDiagnostic {

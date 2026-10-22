@@ -902,6 +902,16 @@ struct FlattenedOidHolder {
     oid: ObjectId,
 }
 
+/// An `ObjectId` in the lone slot of a variant under a tag alone, whose `$oid` key serde writes
+/// beside the tag, as it writes a flattened one beside the object's own.
+#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(tag = "kind")]
+enum TaggedOidHolder {
+    Held(ObjectId),
+}
+
 /// A type parameter flattened beside a member, as serde alone writes it.
 #[derive(Serialize, Debug)]
 struct SerdeOnlyBag<T> {
@@ -4130,6 +4140,40 @@ fn test_a_flattened_object_id_document_admits_what_serde_writes() {
         serde_json::json!({ "id": 1_u32 }),
         serde_json::json!({ "id": 1_u32, "$oid": "x" }),
     ] {
+        assert!(
+            !super::documents::admits(&schema, &refused),
+            "{refused} is accepted by {schema}"
+        );
+    }
+}
+
+/// The JSON Schema of an `ObjectId` in the lone slot of a variant under a tag alone admits the
+/// `$oid` key serde writes beside the tag, and refuses what serde refuses: the tag alone, a key
+/// that is no `ObjectId`, and a key the `ObjectId` does not read.
+#[test]
+#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
+fn test_an_object_id_beside_the_tag_document_admits_what_serde_writes() {
+    let held = TaggedOidHolder::Held(ObjectId::parse_str("507f1f77bcf86cd799439011").unwrap());
+    let written = serde_json::to_value(&held).unwrap();
+    assert_eq!(
+        written,
+        serde_json::json!({ "kind": "Held", "$oid": "507f1f77bcf86cd799439011" }),
+        "serde no longer writes the `$oid` key beside the tag"
+    );
+    let schema = TaggedOidHolder::json_schema();
+    assert!(
+        super::documents::admits(&schema, &written),
+        "{written} is rejected by {schema}"
+    );
+    for refused in [
+        serde_json::json!({ "kind": "Held" }),
+        serde_json::json!({ "kind": "Held", "$oid": "x" }),
+        serde_json::json!({ "kind": "Held", "$oid": "507f1f77bcf86cd799439011", "id": 1_u32 }),
+    ] {
+        assert!(
+            serde_json::from_value::<TaggedOidHolder>(refused.clone()).is_err(),
+            "serde no longer refuses {refused}"
+        );
         assert!(
             !super::documents::admits(&schema, &refused),
             "{refused} is accepted by {schema}"

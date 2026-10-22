@@ -1,7 +1,8 @@
 //! The lone slot of a newtype variant under a tag alone, read and written back by the emitted Dart
 //! types under the Dart VM, against what serde writes: the slot is read from the object without
 //! the tag, as serde hands it, so an externally tagged enum there reads its one entry, and is
-//! written beside the tag, a unit variant of that enum as an entry of its name over `null`.
+//! written beside the tag, a unit variant of that enum as an entry of its name over `null`, and an
+//! `ObjectId` there as its `$oid` key.
 
 #![cfg(all(feature = "dart", feature = "serde"))]
 
@@ -14,6 +15,8 @@ use super::tagged_slot_models::{
     lightering_dart, palleted_dart, serde_told, stevedore_dart, swaddled_dart, tonnage_dart,
     trussed_dart, waybilled_dart, wharfage_dart,
 };
+#[cfg(feature = "mongodb")]
+use super::tagged_slot_models::{STAMP_REFUSED, STAMPED, imprint_dart, stamping_dart};
 
 /// The function `Docketed::Trimmed` and `Docketed::Pared` name, and what prints a row: the value
 /// read, written back, or the class of what the read or the write throws and its message.
@@ -34,9 +37,20 @@ void told(String at, Object? Function() read) {
 }
 ";
 
+/// The consumer's own `ObjectId`, as the README writes it.
+#[cfg(feature = "mongodb")]
+const OBJECT_ID: &str = r"
+class ObjectId {
+  final String oid;
+  ObjectId(this.oid);
+  factory ObjectId.fromJson(Map<String, dynamic> json) => ObjectId(json['\$oid'] as String);
+  Map<String, dynamic> toJson() => {'\$oid': oid};
+}
+";
+
 /// What `told` prints of `json` read as `read_as` and written back.
 fn told(at: usize, read_as: &str, json: &str) -> String {
-    if ["Docketed", "Swaddled", "Trussed"].contains(&read_as) {
+    if ["Docketed", "Stamping", "Swaddled", "Trussed"].contains(&read_as) {
         format!("  told('{at}', () => {read_as}.fromJson(jsonDecode(r'''{json}''')).toJson());\n")
     } else {
         format!(
@@ -124,4 +138,56 @@ fn the_dart_text_writes_a_unit_variant_beside_the_tag_as_its_entry() {
                    ((value).toJson()) { final String name => {name: null}, final written => \
                    written as Map<String, dynamic> }) };";
     assert!(docketed.contains(written), "no `{written}` in: {docketed}");
+}
+
+/// An `ObjectId` in the slot is read from the object without the tag and written back as its
+/// `$oid` key beside the tag, as serde writes it, owned, in a `Box` and under a brand, and the tag
+/// alone is refused, as serde refuses it.
+#[cfg(feature = "mongodb")]
+#[test]
+fn an_object_id_beside_the_tag_is_read_and_written_back_by_dart_as_serde_writes_it() {
+    let mut main = String::from("void main() {\n");
+    let mut expected = String::new();
+    for (at, json) in STAMPED.iter().enumerate() {
+        main.push_str(&told(at, "Stamping", json));
+        let _ = writeln!(expected, "{at}: {}", serde_told("Stamping", json));
+    }
+    assert_eq!(
+        serde_told("Stamping", STAMP_REFUSED.json),
+        "refused",
+        "serde no longer refuses {}",
+        STAMP_REFUSED.json
+    );
+    main.push_str(&told(STAMPED.len(), "Stamping", STAMP_REFUSED.json));
+    let _ = writeln!(expected, "{}: {}", STAMPED.len(), STAMP_REFUSED.dart);
+    main.push_str("}\n");
+    let source = module(
+        &[
+            OBJECT_ID.to_owned(),
+            imprint_dart::dart_definition(),
+            stamping_dart::dart_definition(),
+        ],
+        &[TOLD],
+        &main,
+    );
+    let Some((ran, printed)) = dart("tagged-object-ids", &[], &source) else {
+        return;
+    };
+    assert!(ran, "{printed}");
+    assert_eq!(printed, expected, "the Dart read is not serde's");
+}
+
+/// The Dart read hands an `ObjectId` in the slot the object without the tag, and the write spreads
+/// its `$oid` key after the tag.
+#[cfg(feature = "mongodb")]
+#[test]
+fn the_dart_text_reads_and_writes_an_object_id_beside_the_tag() {
+    let stamping = stamping_dart::dart_definition();
+    for held in [
+        "case 'Held': return StampingHeld(ObjectId.fromJson(({...json}..remove('kind'))));",
+        "@override dynamic toJson() => { 'kind': 'Held', ...((value).toJson() as Map<String, \
+         dynamic>) };",
+    ] {
+        assert!(stamping.contains(held), "no `{held}` in: {stamping}");
+    }
 }
