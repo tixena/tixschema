@@ -1398,7 +1398,9 @@ fn own_field_plan(
 /// are handed the object without. An optional field is `null` where its own keys are all absent
 /// from `rest`, and, naming no function and having no key to look for, wherever its read throws:
 /// a struct the emitter wrote that takes no key, and a type it recorded no keys for whose
-/// serializer's descriptor names no element.
+/// serializer's descriptor names no element. One that names a function is read from what the
+/// function answers, and where that read throws is `null` where `rest` holds none of its keys, or
+/// no key at all where it has none to look for, and refused where it holds one.
 fn flatten_struct_field_plan(
     field: &KotlinField,
     prop: &str,
@@ -1409,22 +1411,33 @@ fn flatten_struct_field_plan(
     let inner_serializer = read::member_serializer(&base, type_parameters);
     let serialize = flattened_merge(field, prop, &inner_serializer);
     let keys_ident = format!("{}Keys", kotlin_bare(prop));
-    let key_read = format!(
+    let mut statements = vec![format!(
         "val {keys_ident} = {}",
         flattened_struct_keys(&base, &inner_serializer)
-    );
+    )];
     let functions = preprocess::of(&field.field_def);
-    let decoded = format!(
-        "lenient.decodeFromJsonElement({inner_serializer}, {})",
-        preprocess::corrected(functions, rest)
-    );
+    let corrected = preprocess::corrected(functions, rest);
+    let decoded = format!("lenient.decodeFromJsonElement({inner_serializer}, {corrected})");
     // With no key to look for, the type is held wherever it reads, as serde holds it.
     let tried = format!("runCatching {{ {decoded} }}.getOrNull()");
     let looked_for = format!("if ({rest}.keys.any {{ it in {keys_ident} }}) {decoded} else null");
     let read = if !field.field_def.is_optional() {
         decoded
     } else if !functions.is_empty() {
-        looked_for
+        // Zod's union tries the type over what the function answers ahead of the branch without
+        // it, which takes an object that holds none of the type's keys.
+        let corrected_ident = format!("{}Corrected", kotlin_bare(prop));
+        statements.push(format!("val {corrected_ident} = {corrected}"));
+        let any_key = format!("{rest}.keys.any({keys_ident}::contains)");
+        let held = if recorded_keys(&base).is_some_and(|keys| !keys.is_empty()) {
+            any_key
+        } else {
+            format!("if ({keys_ident}.isEmpty()) {rest}.isNotEmpty() else {any_key}")
+        };
+        format!(
+            "runCatching {{ lenient.decodeFromJsonElement({inner_serializer}, {corrected_ident}) \
+             }}.getOrElse {{ if ({held}) throw it else null }}"
+        )
     } else {
         match recorded_keys(&base) {
             Some(keys) if keys.is_empty() => tried,
@@ -1433,11 +1446,8 @@ fn flatten_struct_field_plan(
             None => format!("if ({keys_ident}.isEmpty()) {tried} else {looked_for}"),
         }
     };
-    (
-        serialize,
-        format!("{key_read}; val {prop} = {read}"),
-        keys_ident,
-    )
+    statements.push(format!("val {prop} = {read}"));
+    (serialize, statements.join("; "), keys_ident)
 }
 
 /// The `serialize` statement that merges a flattened member's own keys into its holder's object,
