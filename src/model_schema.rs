@@ -92,6 +92,8 @@ use crate::utils::{
     record_shape_question, record_value_shape, shape_questions_for,
 };
 
+#[cfg(all(feature = "serde", any(feature = "zod", feature = "jsonschema")))]
+use crate::utils::is_open_map;
 #[cfg(feature = "serde")]
 use crate::utils::{
     Declared, TrivialPattern, forget_field_validators, record_declared, record_field_validator,
@@ -325,6 +327,13 @@ const INDEXMAP_NAMES: [(&str, &str, usize); 2] =
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 const WRITTEN_AS_ARRAY: &str = "a JSON array";
 const WRITTEN_AS_OBJECT: &str = "a JSON object";
+
+/// What the object joins in place of a source read as the entries of a map, where serde reads it
+/// as `None`: every key it was handed, with any value, and none of them in the value read. The
+/// output is typed as a map of no entries, which every map type and its absence take beside a tag.
+#[cfg(feature = "zod")]
+const ZOD_DROPPED_ENTRIES: &str =
+    "z.record(z.string(), z.unknown()).transform((): Record<string, never> => ({}))";
 
 /// One variant of a discriminated enum, carrying everything its union member is rendered from.
 struct DiscriminatedVariant {
@@ -856,6 +865,10 @@ struct MergedOperand {
     /// branch, empty otherwise (falls back to `spelling`).
     #[cfg(feature = "zod")]
     branches: Vec<String>,
+    /// Whether serde reads the source as the entries of a map, which its absence leaves in the
+    /// object (see [`flattened_as_entries`]).
+    #[cfg(feature = "zod")]
+    entries: bool,
     spelling: String,
 }
 
@@ -2523,6 +2536,8 @@ fn compute_flatten_outputs(
             absence: SourceAbsence::written(fld),
             #[cfg(feature = "zod")]
             branches: Vec::new(),
+            #[cfg(feature = "zod")]
+            entries: false,
             spelling: flattened_ts_spelling(fld),
         })
         .collect();
@@ -2535,6 +2550,7 @@ fn compute_flatten_outputs(
         .map(|fld| MergedOperand {
             absence: SourceAbsence::written(fld),
             branches: flattened_zod_branches(fld),
+            entries: flattened_as_entries(fld),
             spelling: fld.zod_merged_schema(read_ahead),
         })
         .collect();
@@ -2561,6 +2577,22 @@ fn flattened_name_offers_absence(fld: &FieldDef) -> bool {
 /// the merge to begin with, and the registry records no wire for a name to publish an absence in.
 #[cfg(all(any(feature = "zod", feature = "typescript"), not(feature = "serde")))]
 const fn flattened_name_offers_absence(_fld: &FieldDef) -> bool {
+    false
+}
+
+/// Whether serde reads a flattened source as the entries of a map: a map, or a type declared above
+/// that writes one. serde reads an `Option` of it as `None` wherever one entry does not read as
+/// the map, and leaves every entry in the object.
+#[cfg(all(feature = "serde", any(feature = "zod", feature = "jsonschema")))]
+fn flattened_as_entries(fld: &FieldDef) -> bool {
+    fld.array_depth == 0
+        && (matches!(fld.field_type, FieldDefType::Map(_, _))
+            || matches!(&fld.field_type, FieldDefType::SiblingType(name, _) if is_open_map(name)))
+}
+
+/// No source is read as entries where nothing reads `#[serde(flatten)]`.
+#[cfg(all(any(feature = "zod", feature = "jsonschema"), not(feature = "serde")))]
+const fn flattened_as_entries(_fld: &FieldDef) -> bool {
     false
 }
 
@@ -17440,6 +17472,7 @@ fn flatten_merged_sources(
 fn flatten_merged_source(fld: &FieldDef, withheld: &[String]) -> MergedSource {
     if let FieldDefType::SiblingType(name, arguments) = &fld.field_type {
         return MergedSource {
+            entries: flattened_as_entries(fld),
             label: name.clone(),
             map: false,
             optional: fld.is_optional(),
@@ -17465,6 +17498,7 @@ fn flatten_merged_source(fld: &FieldDef, withheld: &[String]) -> MergedSource {
         (quote! { serde_json::json!({ "type": "object" }) }, false)
     };
     MergedSource {
+        entries: flattened_as_entries(fld),
         label: fld.name.clone(),
         map,
         optional: fld.is_optional(),
@@ -18204,7 +18238,7 @@ fn zod_operand_contributions(operand: &MergedOperand) -> Vec<&str> {
 /// The `.and(...)` chain one per key set the merged sources write between them: one per branch of a
 /// source naming a choice, one more without the source wherever it offers its own absence, and the
 /// cross product of those across the sources. Always at least one, the empty chain a source-less
-/// object closes with.
+/// object closes with. The absence of a source read as entries holds the keys serde drops with it.
 #[cfg(feature = "zod")]
 fn zod_merged_joins(operands: &[MergedOperand]) -> Vec<String> {
     let mut joins = vec![String::new()];
@@ -18217,7 +18251,11 @@ fn zod_merged_joins(operands: &[MergedOperand]) -> Vec<String> {
                     .map(|schema| format!("{join}.and({})", deferred_zod_operand(schema)))
                     .collect();
                 if operand.absence.offered() {
-                    grown.push(join.clone());
+                    grown.push(if operand.entries {
+                        format!("{join}.and({ZOD_DROPPED_ENTRIES})")
+                    } else {
+                        join.clone()
+                    });
                 }
                 grown
             })

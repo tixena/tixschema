@@ -1516,6 +1516,38 @@ fn flattened_maps() -> String {
         flattened_maps::Transom::zod_schema(),
         flattened_maps::Bilge::ts_definition(),
         flattened_maps::Bilge::zod_schema(),
+        flattened_maps::Locker::ts_definition(),
+        flattened_maps::Locker::zod_schema(),
+        flattened_maps::Scupper::ts_definition(),
+        flattened_maps::Scupper::zod_schema(),
+        flattened_maps::Hawse::ts_definition(),
+        flattened_maps::Hawse::zod_schema(),
+        flattened_maps::Windlass::ts_definition(),
+        flattened_maps::Windlass::zod_schema(),
+        flattened_maps::Fathom::ts_definition(),
+        flattened_maps::Fathom::zod_schema(),
+        flattened_maps::sheave_tallies_schema::Schema::ts_definition(),
+        flattened_maps::sheave_tallies_schema::Schema::zod_schema(),
+        flattened_maps::Sheave::ts_definition(),
+        flattened_maps::Sheave::zod_schema(),
+        flattened_maps::spare_tallies_schema::Schema::ts_definition(),
+        flattened_maps::spare_tallies_schema::Schema::zod_schema(),
+        flattened_maps::Lazarette::ts_definition(),
+        flattened_maps::Lazarette::zod_schema(),
+        flattened_maps::PintleCounts::ts_definition(),
+        flattened_maps::PintleCounts::zod_schema(),
+        flattened_maps::Pintle::ts_definition(),
+        flattened_maps::Pintle::zod_schema(),
+        flattened_maps::Taffrail::ts_definition(),
+        flattened_maps::Taffrail::zod_schema(),
+        flattened_maps::Fairlead::ts_definition(),
+        flattened_maps::Fairlead::zod_schema(),
+        flattened_maps::Chock::ts_definition(),
+        flattened_maps::Chock::zod_schema(),
+        flattened_maps::Davit::ts_definition(),
+        flattened_maps::Davit::zod_schema(),
+        flattened_maps::Capstan::ts_definition(),
+        flattened_maps::Capstan::zod_schema(),
     ]
     .join("\n\n")
 }
@@ -2305,7 +2337,7 @@ fn type_check_a_set_refuses_a_repeat_under_zod() {
 /// Every payload serde reads with a map flattened into its object is read by the Zod schema of its
 /// type under `node`, and one with a count of the wrong type is refused under the count's key:
 /// serde hands a flattened map every key of its object but the tag an internally tagged enum reads
-/// ahead of the variant.
+/// ahead of the variant. An optional map with such a count is read, as serde reads it as `None`.
 #[test]
 fn type_check_a_flattened_map_reads_under_zod_what_serde_reads() {
     flattened_maps::assert_serde_reads_what_zod_reads();

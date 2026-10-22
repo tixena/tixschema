@@ -1,9 +1,10 @@
 //! The Zod schema of a struct a map is flattened into as the only member of its object: the map's
-//! record takes every key, but the tag an internally tagged enum reads ahead of the variant.
+//! record takes every key, but the tag an internally tagged enum reads ahead of the variant. An
+//! optional map's absence takes every key too, with any value.
 
 use super::maps::assert_serde_reads_what_zod_reads;
 #[cfg(feature = "zod")]
-use super::maps::{Bilge, Coaming, Keelson, TaggedThwart, Thwart, Transom};
+use super::maps::{Bilge, Chock, Coaming, Keelson, Locker, Sheave, TaggedThwart, Thwart, Transom};
 
 #[test]
 fn serde_reads_each_payload_zod_reads() {
@@ -42,4 +43,55 @@ fn only_a_map_in_a_variant_under_a_tag_refuses_a_key() {
         assert!(zod.contains("z.record(z.string(), "), "{zod}");
         assert!(!zod.contains(".refine((key)"), "{zod}");
     }
+}
+
+/// An optional map is the map, or, where serde reads it as `None`, every key with any value and
+/// none of them in the value read.
+#[cfg(feature = "zod")]
+#[test]
+fn an_optional_map_is_the_map_or_every_key_dropped() {
+    #[cfg(feature = "typescript")]
+    const EXPECTED: &str = "const Locker$OwnSchema = z.strictObject({\n});\n\nconst Locker$RawSchema = z.union([\n  Locker$OwnSchema.and(z.lazy(() => z.record(z.string(), z.number().int()))),\n  Locker$OwnSchema.and(z.record(z.string(), z.unknown()).transform((): Record<string, never> => ({}))),\n]);\n\nexport const Locker$Schema: ZodType<Locker> = Locker$RawSchema.meta({\n  examples: []\n});";
+    #[cfg(not(feature = "typescript"))]
+    const EXPECTED: &str = "const Locker$OwnSchema = z.strictObject({\n});\n\nexport const Locker$Schema = z.union([\n  Locker$OwnSchema.and(z.lazy(() => z.record(z.string(), z.number().int()))),\n  Locker$OwnSchema.and(z.record(z.string(), z.unknown()).transform((): Record<string, never> => ({}))),\n]).meta({\n  examples: []\n});";
+
+    assert_eq!(Locker::zod_schema(), EXPECTED);
+}
+
+/// The absence of an optional map refuses no key, the tag an internally tagged enum reads ahead of
+/// the variant included, which the variant's own object holds; a map named through an alias is
+/// dropped the same way.
+#[cfg(feature = "zod")]
+#[test]
+fn the_absence_of_an_optional_map_refuses_no_key() {
+    let dropped =
+        ".and(z.record(z.string(), z.unknown()).transform((): Record<string, never> => ({})))";
+    let chock = Chock::zod_schema();
+    assert!(
+        chock.contains(&format!(
+            "z.strictObject({{\n  kind: z.literal(\"Open\"),\n}}){dropped}"
+        )),
+        "{chock}"
+    );
+    let sheave = Sheave::zod_schema();
+    assert!(
+        sheave.contains(&format!("  Sheave$OwnSchema{dropped},\n")),
+        "{sheave}"
+    );
+}
+
+/// The README quotes the absence of an optional map as the emitter writes it.
+#[cfg(feature = "zod")]
+#[test]
+fn the_readme_quotes_the_absence_of_an_optional_map_as_it_is_written() {
+    let absence = "Locker$OwnSchema.and(z.record(z.string(), z.unknown()).transform((): Record<string, never> => ({})))";
+    assert!(
+        Locker::zod_schema().contains(absence),
+        "{}",
+        Locker::zod_schema()
+    );
+    assert!(
+        include_str!("../../README.md").contains(&format!("`{absence}`")),
+        "the README no longer quotes: {absence}"
+    );
 }

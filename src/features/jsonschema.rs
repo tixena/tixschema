@@ -19,8 +19,10 @@ pub struct MergeDiagnostic<'msg> {
 /// from, so the label travels beside it — it is what a diagnostic points the author at. `withheld`
 /// are the keys serde hands it none of: the tag an internally tagged enum reads ahead of the
 /// variant. `map` says serde hands it every other key, where its description closes it to some, as
-/// a map keyed by a plain enum's does.
+/// a map keyed by a plain enum's does. `entries` says serde reads it as the entries of a map: an
+/// absent one, which serde reads wherever one entry does not read, leaves every key in the object.
 pub struct MergedSource {
+    pub entries: bool,
     pub label: String,
     pub map: bool,
     pub optional: bool,
@@ -461,16 +463,61 @@ fn map_handing() -> proc_macro2::TokenStream {
     }
 }
 
+/// What a merged source offers where serde reads it as absent, as the tokens that declare it.
+fn absences() -> proc_macro2::TokenStream {
+    quote::quote! {
+        impl Branches<'_> {
+            // What an `Option` makes of what it wraps: one object cannot say a group of keys is
+            // written together or not at all, so the choice is an `anyOf` between two key sets.
+            fn or_absent(self) -> Self {
+                Self::Union("anyOf", vec![self, Self::Absent])
+            }
+
+            // What the absence of a source serde reads as the entries of a map leaves: the keys.
+            fn entries_left(self) -> Self {
+                match self {
+                    Self::Absent => Self::Dropped,
+                    Self::Union(spelling, branches) => Self::Union(
+                        spelling,
+                        branches.into_iter().map(Self::entries_left).collect(),
+                    ),
+                    other => other,
+                }
+            }
+        }
+
+        // One base with no members merged in, and every key it was handed held to nothing.
+        fn dropped_into(
+            base: &serde_json::Map<::std::string::String, serde_json::Value>,
+            handed: &[Handed],
+            withheld: &'static [&'static str],
+        ) -> Merged {
+            let mut maps = handed.to_vec();
+            maps.push(Handed {
+                value: serde_json::Value::Bool(true),
+                withheld,
+                own: ::std::vec::Vec::new(),
+            });
+            Merged::Object(merge_object_schemas(base, &serde_json::Map::new()), maps)
+        }
+    }
+}
+
 /// What the merge holds while it multiplies, as the tokens that declare it.
 fn merged_tree() -> proc_macro2::TokenStream {
     let handing = map_handing();
+    let absences = absences();
     quote::quote! {
         #handing
+        #absences
 
         enum Branches<'defs> {
             // What a source contributes when it is not there, through an `Option` or an item whose
             // surface offers a `null`: no members.
             Absent,
+            // What a map contributes when serde reads it as absent: no members, and every key it
+            // was handed, with any value, which serde drops with the map.
+            Dropped,
             Object(&'defs serde_json::Map<::std::string::String, serde_json::Value>),
             // An externally tagged enum's unit variant, which the description pins as the bare name
             // serde writes for it standing alone.
@@ -499,6 +546,7 @@ fn merged_tree() -> proc_macro2::TokenStream {
                         merge_object_schemas(base, &serde_json::Map::new()),
                         handed.to_vec(),
                     ),
+                    Self::Dropped => dropped_into(base, handed, given.1),
                     Self::Object(members) => Merged::Object(
                         merge_object_schemas(base, members),
                         handed_beside(handed, members, given),
@@ -534,12 +582,6 @@ fn merged_tree() -> proc_macro2::TokenStream {
                         }
                     }
                 }
-            }
-
-            // What an `Option` makes of what it wraps: one object cannot say a group of keys is
-            // written together or not at all, so the choice is an `anyOf` between two key sets.
-            fn or_absent(self) -> Self {
-                Self::Union("anyOf", vec![self, Self::Absent])
             }
         }
 
@@ -731,6 +773,7 @@ pub fn merged_object_value(
     let expansion = branch_expansion();
     let labels = merged.iter().map(|source| source.label.as_str());
     let optionals = merged.iter().map(|source| source.optional);
+    let entries = merged.iter().map(|source| source.entries);
     let maps = merged.iter().map(|source| source.map);
     let withheld = merged.iter().map(|source| {
         let keys = &source.withheld;
@@ -746,11 +789,11 @@ pub fn merged_object_value(
             #refusals
             #expansion
 
-            let flattened: ::std::vec::Vec<(&'static str, bool, bool, &'static [&'static str], serde_json::Value)> =
-                vec![ #((#labels, #optionals, #maps, #withheld, #values)),* ];
+            let flattened: ::std::vec::Vec<(&'static str, bool, bool, bool, &'static [&'static str], serde_json::Value)> =
+                vec![ #((#labels, #optionals, #entries, #maps, #withheld, #values)),* ];
 
             let mut described = Merged::Object(#base, ::std::vec::Vec::new());
-            for (label, optional, map, withheld, fs) in &flattened {
+            for (label, optional, entries, map, withheld, fs) in &flattened {
                 let mut expanding: ::std::vec::Vec<&str> = ::std::vec::Vec::new();
                 let mut position: ::std::vec::Vec<usize> = ::std::vec::Vec::new();
                 if let ::core::option::Option::Some(source) =
@@ -759,6 +802,7 @@ pub fn merged_object_value(
                     // The absence is offered around whatever the source described as, so a union
                     // reached through an `Option` keeps its own spelling.
                     let offered = if *optional { source.or_absent() } else { source };
+                    let offered = if *entries { offered.entries_left() } else { offered };
                     described = described.multiplied(&offered, (*map, *withheld));
                 }
             }
