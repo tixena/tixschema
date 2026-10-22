@@ -1,8 +1,9 @@
-//! A map that is the one member of its struct, and a member that names a function, flattened after
-//! a struct, beside a member of its holder's own, ahead of a struct, after a member that takes none
+//! A map that is the one member of its struct, a member that names a function, flattened after a
+//! struct, beside a member of its holder's own, ahead of a struct, after a member that takes none
 //! of the keys it reads, and after an externally tagged enum, an enum under a tag key and an
-//! untagged one, each read and written back by the emitted Dart types under the Dart VM, against
-//! what serde reads and writes back.
+//! untagged one, and an externally tagged enum beside a member of its holder's own, each read and
+//! written back by the emitted Dart types under the Dart VM, against what serde reads and writes
+//! back.
 
 #![cfg(feature = "dart")]
 
@@ -11,12 +12,12 @@ use core::fmt::Write as _;
 use serde::{Deserialize, Serialize};
 
 use super::dart_flattened_models::{
-    Belaying, CLAMPING, Clamping, Doubling, FASTENING, Fastening, Hoisting, KEDGING, Kedging,
-    LOADING, Lacing, Loading, MOUSING, Mousing, PAYLOAD, Rigging, SPARE, Shoring, Spare, TRIMMING,
-    Trimming, Twin, belaying_dart, bracing_dart, chocking_dart, clamping_dart, doubling_dart,
-    fastening_dart, frapping_dart, hatching_dart, hoisting_dart, kedging_dart, keying_dart,
-    lacing_dart, loading_dart, marking_dart, mousing_dart, rigging_dart, shoring_dart, spare_dart,
-    ticketing_dart, trimming_dart, twin_dart, warping_dart,
+    BATTENING, Battening, Belaying, CLAMPING, Clamping, Doubling, FASTENING, Fastening, Hoisting,
+    KEDGING, Kedging, LOADING, Lacing, Loading, MOUSING, Mousing, PAYLOAD, Rigging, SPARE, Shoring,
+    Spare, TRIMMING, Trimming, Twin, battening_dart, belaying_dart, bracing_dart, chocking_dart,
+    clamping_dart, doubling_dart, fastening_dart, frapping_dart, hatching_dart, hoisting_dart,
+    kedging_dart, keying_dart, lacing_dart, loading_dart, marking_dart, mousing_dart, rigging_dart,
+    shoring_dart, spare_dart, ticketing_dart, trimming_dart, twin_dart, warping_dart,
 };
 use super::run_dart_validate::{dart, module};
 
@@ -98,6 +99,25 @@ void main() {
 }
 ";
 
+/// What prints the enum and the member [`Battening`] read from each of its payloads, and what it
+/// writes back, or that the read is refused.
+const BESIDE_A_MEMBER: &str = "
+String battened(String payload) {
+  try {
+    final battening = Battening.fromJson(jsonDecode(payload));
+    return '${jsonEncode(battening.hatching.toJson())} ${battening.note} ${jsonEncode(battening.toJson())}';
+  } catch (_) {
+    return 'refused';
+  }
+}
+
+void main() {
+  for (final payload in BATTENING) {
+    print('battening: ${battened(payload)}');
+  }
+}
+";
+
 /// The payload of [`LOADING`] that holds a variant's entry under its alias: Dart reads no variant
 /// under an alias, and refuses what serde reads.
 const UNDER_AN_ALIAS: usize = 3;
@@ -126,6 +146,7 @@ fn with_payloads(main: &str) -> String {
         .replace("CLAMPING", CLAMPING)
         .replace("FASTENING", FASTENING)
         .replace("LOADING", &listed(&LOADING))
+        .replace("BATTENING", &listed(&BATTENING))
         .replace("KEDGING", &listed(&KEDGING))
         .replace("TRIMMING", TRIMMING)
         .replace("MOUSING", MOUSING)
@@ -237,11 +258,11 @@ fn a_function_reads_in_dart_the_keys_serde_hands_it() {
     assert_eq!(printed, expected);
 }
 
-/// A member that names a function flattened after an externally tagged enum is handed every entry
-/// but the first under a variant's name, and a struct after the enum every entry but that one, as
-/// serde hands them, whichever variant's entry comes first. A function after an enum under a tag
-/// key alone, or after an untagged one, is handed every key. Each holder is written back as serde
-/// writes it back.
+/// An externally tagged enum flattened ahead of a member that names a function is read from the
+/// first entry under a variant's name wherever it is in the object, and the function is handed
+/// every entry but that one, as serde reads them. A struct after the enum is handed every entry
+/// but that one. A function after an enum under a tag key alone, or after an untagged one, is
+/// handed every key. Each holder is written back as serde writes it back.
 #[test]
 fn a_function_after_a_flattened_enum_reads_in_dart_the_entries_serde_hands_it() {
     let loaded: Vec<String> = LOADING
@@ -301,6 +322,9 @@ fn a_function_after_a_flattened_enum_reads_in_dart_the_entries_serde_hands_it() 
          loading: {\"Dock\":{\"label\":\"s\"}} [\"north\"] {\"Dock\":{\"label\":\"s\"},\"keys\":[\"north\"]}\n\
          loading: {\"Bay\":{\"label\":\"n\"}} [\"Quay\",\"north\"] \
          {\"Bay\":{\"label\":\"n\"},\"keys\":[\"Quay\",\"north\"]}\n\
+         loading: {\"Bay\":{\"label\":\"n\"}} [\"north\"] {\"Bay\":{\"label\":\"n\"},\"keys\":[\"north\"]}\n\
+         loading: {\"Dock\":{\"label\":\"s\"}} [\"north\",\"south\",\"Bay\"] \
+         {\"Dock\":{\"label\":\"s\"},\"keys\":[\"north\",\"south\",\"Bay\"]}\n\
          kedging: {\"pier\":{\"label\":\"n\"}} [\"north\"] {\"pier\":{\"label\":\"n\"},\"keys\":[\"north\"]}\n\
          kedging: {\"open_bay\":{\"label\":\"n\"}} [\"north\"] \
          {\"open_bay\":{\"label\":\"n\"},\"keys\":[\"north\"]}\n\
@@ -333,4 +357,42 @@ fn a_function_after_a_flattened_enum_reads_in_dart_the_entries_serde_hands_it() 
         return;
     };
     assert_eq!(printed, expected_in_dart);
+}
+
+/// An externally tagged enum flattened beside a member of its holder's own is read from the first
+/// entry under a variant's name, after keys no member reads and after the member's own key, and
+/// refused where no entry is under one, as serde reads it. The holder is written back as serde
+/// writes it back.
+#[test]
+fn a_flattened_enum_beside_a_member_reads_in_dart_the_entry_serde_reads() {
+    let battened = BATTENING.iter().fold(String::new(), |mut acc, payload| {
+        let read = read_of(payload, |battening: &Battening| {
+            format!(
+                "{} {} {}",
+                written(&battening.hatching),
+                battening.note,
+                written(battening)
+            )
+        });
+        writeln!(acc, "battening: {read}").unwrap();
+        acc
+    });
+    assert_eq!(
+        battened,
+        "battening: {\"Bay\":{\"label\":\"n\"}} a {\"Bay\":{\"label\":\"n\"},\"note\":\"a\"}\n\
+         battening: {\"Bay\":{\"label\":\"n\"}} a {\"Bay\":{\"label\":\"n\"},\"note\":\"a\"}\n\
+         battening: {\"Dock\":{\"label\":\"s\"}} a {\"Dock\":{\"label\":\"s\"},\"note\":\"a\"}\n\
+         battening: refused\n"
+    );
+    let Some(printed) = printed(
+        "flattened-beside-a-member",
+        &[
+            hatching_dart::dart_definition(),
+            battening_dart::dart_definition(),
+        ],
+        BESIDE_A_MEMBER,
+    ) else {
+        return;
+    };
+    assert_eq!(printed, battened);
 }

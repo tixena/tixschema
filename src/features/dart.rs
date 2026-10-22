@@ -1358,17 +1358,33 @@ fn without(json: &str, taken: &[&str]) -> String {
     format!("({{...{json}}}{removed})")
 }
 
-/// The object `json` names without its first entry, in the object's order, under one of `names`:
-/// what serde hands a member flattened after an externally tagged enum, which takes that entry.
-fn without_first(json: &str, names: &[String]) -> String {
-    let listed = names
+/// `names` as the elements of a Dart list of strings.
+fn listed_names(names: &[String]) -> String {
+    names
         .iter()
         .map(|name| format!("'{name}'"))
         .collect::<Vec<_>>()
-        .join(", ");
+        .join(", ")
+}
+
+/// An object of the first entry of the object `json` names, in the object's order, under one of
+/// `names`, and of none where no entry is: what serde hands an externally tagged enum flattened
+/// into its holder, wherever that entry is.
+fn first_of(json: &str, names: &[String]) -> String {
+    format!(
+        "(switch ({json}) {{ final whole => {{ for (final key in \
+         whole.keys.where(const [{}].contains).take(1)) key: whole[key] }} }})",
+        listed_names(names)
+    )
+}
+
+/// The object `json` names without its first entry, in the object's order, under one of `names`:
+/// what serde hands a member flattened after an externally tagged enum, which takes that entry.
+fn without_first(json: &str, names: &[String]) -> String {
     format!(
         "(switch ({{...{json}}}) {{ final rest => \
-         rest..remove(rest.keys.where(const [{listed}].contains).firstOrNull) }})"
+         rest..remove(rest.keys.where(const [{}].contains).firstOrNull) }})",
+        listed_names(names)
     )
 }
 
@@ -2385,7 +2401,8 @@ fn generic_codec(parameters: &[String]) -> GenericCodec {
 /// The arguments the constructor of a class is read with from the object `json` names: each
 /// member from its key, where the payload holds it for a member that names a function, and a
 /// flattened one at its place, from the entries neither `tag_key`, a member of the holder's own nor
-/// a member flattened ahead of it takes.
+/// a member flattened ahead of it takes, an externally tagged enum from the first of them under a
+/// variant's name.
 fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>) -> String {
     let mut taken_ahead: Vec<String> = tag_key
         .into_iter()
@@ -2404,7 +2421,7 @@ fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>
     fields.iter().fold(String::new(), |mut acc, field| {
         let decode = if field.flatten {
             let keys: Vec<&str> = taken_ahead[removed..].iter().map(String::as_str).collect();
-            let handed = without(&source, &keys);
+            let mut handed = without(&source, &keys);
             match taken_by(&field.field_def) {
                 Taken::Keys(taken) => {
                     for key in taken {
@@ -2416,6 +2433,7 @@ fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>
                 Taken::FirstOf(names) => {
                     source = without_first(&handed, &names);
                     removed = taken_ahead.len();
+                    handed = first_of(&handed, &names);
                 }
             }
             // A flattened member is walked whatever it writes.

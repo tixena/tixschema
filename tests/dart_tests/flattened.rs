@@ -1,13 +1,14 @@
 //! What the Dart emitter reads of a flattened member: the object at its place, without the keys
 //! the holder's own members take and the entries each member flattened ahead of it took, as serde
-//! hands it. A map is the one member of its object, and is read from every key. `toJson` writes
-//! each flattened member at its place. The reads are run
-//! under the Dart SDK in `tests/service_schema_emitted_client_tests/run_dart_flattened.rs`.
+//! hands it, and an externally tagged enum the one entry of that object it reads. A map is the
+//! one member of its object, and is read from every key. `toJson` writes each flattened member at
+//! its place. The reads are run under the Dart SDK in
+//! `tests/service_schema_emitted_client_tests/run_dart_flattened.rs`.
 
 use super::flattened_models::{
-    belaying_dart, clamping_dart, doubling_dart, fastening_dart, hoisting_dart, kedging_dart,
-    lacing_dart, loading_dart, mousing_dart, rigging_dart, shoring_dart, spare_dart, trimming_dart,
-    twin_dart,
+    battening_dart, belaying_dart, clamping_dart, doubling_dart, fastening_dart, hoisting_dart,
+    kedging_dart, lacing_dart, loading_dart, mousing_dart, rigging_dart, shoring_dart, spare_dart,
+    trimming_dart, twin_dart,
 };
 
 /// The read of a map of `u8` values from the object `source` names.
@@ -21,6 +22,15 @@ fn counts_from(source: &str) -> String {
 /// The read of a member that names `withItsKeys` from the object `source` names.
 fn keyed_from(source: &str) -> String {
     format!("Keying.fromJsonUnjudged(withItsKeys({source}))")
+}
+
+/// An object of the first entry of the object `source` names under one of `names`, in the
+/// object's order.
+fn first_of(source: &str, names: &str) -> String {
+    format!(
+        "(switch ({source}) {{ final whole => {{ for (final key in \
+         whole.keys.where(const [{names}].contains).take(1)) key: whole[key] }} }})"
+    )
 }
 
 /// The object `source` names without its first entry under one of `names`, in the object's order.
@@ -120,23 +130,25 @@ fn a_function_ahead_of_every_struct_or_after_a_member_that_takes_no_key_is_hande
     );
 }
 
-/// A member that names a function flattened after an externally tagged enum is handed the object
-/// without the first entry under the name of a variant serde reads, or an alias of one, each as
-/// serde reads it, and a member after both without the keys the second took as well. The enum is
-/// read as it was.
+/// A flattened externally tagged enum is read from the first entry under the name of a variant
+/// serde reads, or an alias of one, each as serde reads it, and a member that names a function
+/// flattened after it is handed the object without that entry, and a member after both without
+/// the keys the second took as well.
 #[test]
 fn a_function_after_a_flattened_externally_tagged_enum_is_handed_no_entry_of_the_variant() {
+    let hatching = first_of("json", "'Bay', 'Dock', 'Quay'");
     assert_written(
         &loading_dart::dart_definition(),
         &format!(
-            "Loading(hatching: Hatching.fromJsonUnjudged(json),rest: {},);",
+            "Loading(hatching: Hatching.fromJsonUnjudged({hatching}),rest: {},);",
             keyed_from(&without_first("json", "'Bay', 'Dock', 'Quay'"))
         ),
     );
     assert_written(
         &kedging_dart::dart_definition(),
         &format!(
-            "Kedging(kedge: Warping.fromJsonUnjudged(json),rest: {},);",
+            "Kedging(kedge: Warping.fromJsonUnjudged({}),rest: {},);",
+            first_of("json", "'pier', 'open_bay'"),
             keyed_from(&without_first("json", "'pier', 'open_bay'"))
         ),
     );
@@ -144,9 +156,22 @@ fn a_function_after_a_flattened_externally_tagged_enum_is_handed_no_entry_of_the
     assert_written(
         &trimming_dart::dart_definition(),
         &format!(
-            "Trimming(hatching: Hatching.fromJsonUnjudged(json),marking: \
+            "Trimming(hatching: Hatching.fromJsonUnjudged({hatching}),marking: \
              Marking.fromJsonUnjudged({after_the_enum}),rest: {},);",
             keyed_from(&format!("({{...{after_the_enum}}}..remove('label'))"))
+        ),
+    );
+}
+
+/// A flattened externally tagged enum beside a member of its holder's own is read from the first
+/// entry under the name of a variant in the object without the member's key, wherever it is.
+#[test]
+fn a_flattened_externally_tagged_enum_is_read_from_its_variants_entry() {
+    assert_written(
+        &battening_dart::dart_definition(),
+        &format!(
+            "Battening(hatching: Hatching.fromJsonUnjudged({}),note: json['note'] as String,);",
+            first_of("({...json}..remove('note'))", "'Bay', 'Dock', 'Quay'")
         ),
     );
 }
