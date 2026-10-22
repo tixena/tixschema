@@ -977,7 +977,39 @@ the consumer's view; this is what a change has to keep.
   key, found {payload}`, a tag no variant has `unknown tag {tag}` under every tagging, and a
   payload no variant of an untagged enum reads `No variant of {Enum} matched`. The `.jsonObject` of
   a write is the write's. `run_kotlin_refusals.rs` reads each refusal under the toolchain, beside
-  serde's refusal of the same payload.
+  serde's refusal of the same payload. The refusal of a text of another form is worded in
+  `src/features/kotlin/texts.rs` (below).
+- **A `char` and a chrono date, time and date and time are read in their one form**, by
+  `src/features/kotlin/texts.rs`. Kotlin holds each as a `String`, and `TextForm` names its form.
+  `texts::serializer` declares, once per item and form, `object KotlinText{N} :
+  KSerializer<String>` into the queue the tuple wrappers are written from (`KOTLIN_TEXTS`, cleared
+  with them), which throws `SerializationException` for any other text: `expected a character,
+  found "ab"` for a text of other than one code point, as serde refuses it, and `expected a date,
+  found "x"` for a text Zod's `z.iso.date()`, `z.iso.time()` or `z.iso.datetime({ local: true })`
+  refuses, written with the regexes of Zod 4.6.5. Where serde and Zod part on a date, the read
+  follows Zod: serde reads more forms than Zod, years outside 0000 to 9999 and leap seconds among
+  them, and refuses a date and time under `Z` or with no seconds, which Zod reads. A
+  `DateTime<Tz>` has no form: Zod reads any text a JavaScript `Date` reads, and the read takes any
+  text.
+  - Where the plugin reads, the declaration names the serializer. `read::plugin_read` writes
+    `@Serializable(with = KotlinText{N}::class)` at each place `texts::declared` finds a form, the
+    value itself, inside a list, a nullable, a map's key and value, a type argument, a range's
+    bound and a `Result`'s arm, through the `Annotated` of `annotated_base`, and
+    `read::with_text_forms` writes it on a brand's value and on the type an alias names. The
+    property keeps its type.
+  - Where the emitter writes the read, `kotlin_serializer_expr` composes the serializer wherever
+    `texts::reaches` finds a form, as it composes one for a type parameter: the reified
+    `serializer<T>()` reads no annotation. The key of a flattened map of a form is read through it
+    (`flatten_plan`). An alias written above with no type parameter is read as the type it names
+    (`texts::note_alias`, `texts::named_by`). A type argument is handed to the serializer of a
+    model the emitter wrote above (`validate::reads_unjudged`); an alias with type parameters and
+    a type declared below keep `serializer<T>()`, which reads any text, and the README states the
+    limit.
+  - `tests/kotlin_tests/text_forms_models.rs` holds `TEXT_FORMS`, what serde, Zod and the Kotlin
+    read answer of each payload of a `char` and of each chrono type in each place.
+    `tests/kotlin_tests/text_forms.rs` pins the text, `run_kotlin_text_forms.rs` reads each payload
+    under kotlinc, `tests/generic_types_tests/declarations.rs` holds Zod to the table under `node`,
+    and `src/features/kotlin/tests/texts.rs` pins each shape and each limit.
 - **A member serde never writes is read and has no `put`**, in a struct and in an enum's variant.
   `KotlinField::never_written` is `has_serde_skip_serializing`: `skip_serializing`, never
   `skip_serializing_if`. The plugin writes every property, so `struct_kotlin_tokens` hands a

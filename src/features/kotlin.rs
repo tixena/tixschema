@@ -13,6 +13,7 @@
 mod aliases;
 mod preprocess;
 mod read;
+mod texts;
 mod validate;
 
 use core::cell::{Cell, RefCell};
@@ -30,6 +31,7 @@ use syn::{
 };
 
 use self::preprocess::Plugin;
+use self::texts::TextForm;
 use self::validate::{Member, Rules};
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
@@ -686,17 +688,7 @@ fn kotlin_base(field: &FieldDef) -> String {
             {
                 return kotlin_base(&field.collection_element_field(element));
             }
-            let class_name = lookup_kotlin_name(name).unwrap_or_else(|| name.clone());
-            if generics.is_empty() {
-                class_name
-            } else {
-                let arguments = generics
-                    .iter()
-                    .map(kotlin_typename)
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                format!("{class_name}<{arguments}>")
-            }
+            sibling_typename(name, generics, kotlin_typename)
         }
         FieldDefType::Map(key, value) => {
             format!("Map<{}, {}>", kotlin_typename(key), kotlin_typename(value))
@@ -742,6 +734,21 @@ fn kotlin_base(field: &FieldDef) -> String {
         };
         format!("List<{item}>")
     })
+}
+
+/// The Kotlin type of the type written `name` with `arguments`, each typed by `typed`.
+fn sibling_typename(
+    name: &str,
+    arguments: &[FieldDef],
+    typed: impl Fn(&FieldDef) -> String,
+) -> String {
+    let class_name = lookup_kotlin_name(name).unwrap_or_else(|| name.to_owned());
+    if arguments.is_empty() {
+        class_name
+    } else {
+        let written = arguments.iter().map(typed).collect::<Vec<_>>().join(", ");
+        format!("{class_name}<{written}>")
+    }
 }
 
 /// The Kotlin type `field` renders as: [`kotlin_base`] plus the `?` an [`FieldDef::is_optional`]
@@ -814,11 +821,13 @@ fn kotlin_serializer_param_name(parameter: &str) -> String {
     )
 }
 
-/// A reference to `field`'s own `KSerializer`. A field reaching none of `type_parameters`
-/// resolves through the reified `serializer<T>()` as before; one that does reach a parameter
-/// composes `ListSerializer`/`MapSerializer`/`.nullable` instead, since a parameter is never reifiable.
+/// A reference to `field`'s own `KSerializer`. A field reaching none of `type_parameters` and no
+/// text of one form ([`texts::reaches`]) resolves through the reified `serializer<T>()` as before;
+/// one that does composes `ListSerializer`/`MapSerializer`/`.nullable` instead: a parameter is
+/// never reifiable, and the reified serializer reads no annotation that names the serializer of a
+/// form.
 fn kotlin_serializer_expr(field: &FieldDef, type_parameters: &[String]) -> String {
-    if !field_reaches_type_parameter(field, type_parameters) {
+    if !field_reaches_type_parameter(field, type_parameters) && !texts::reaches(field) {
         return format!("serializer<{}>()", kotlin_typename(field));
     }
     let scalar = match &field.field_type {
@@ -832,13 +841,20 @@ fn kotlin_serializer_expr(field: &FieldDef, type_parameters: &[String]) -> Strin
                     type_parameters,
                 );
             }
-            let class_name = lookup_kotlin_name(name).unwrap_or_else(|| name.clone());
-            let arguments = generics
-                .iter()
-                .map(|generic| kotlin_serializer_expr(generic, type_parameters))
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!("{class_name}.serializer({arguments})")
+            texts::named_by(name)
+                .filter(|_| generics.is_empty())
+                .map_or_else(
+                    || {
+                        let class_name = lookup_kotlin_name(name).unwrap_or_else(|| name.clone());
+                        let arguments = generics
+                            .iter()
+                            .map(|generic| kotlin_serializer_expr(generic, type_parameters))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        format!("{class_name}.serializer({arguments})")
+                    },
+                    |target| kotlin_serializer_expr(&target, &[]),
+                )
         }
         FieldDefType::Map(key, value) => format!(
             "MapSerializer({}, {})",
@@ -851,15 +867,16 @@ fn kotlin_serializer_expr(field: &FieldDef, type_parameters: &[String]) -> Strin
         FieldDefType::Result(ok, err) => {
             result_serializer(ok, err, |arm| kotlin_serializer_expr(arm, type_parameters))
         }
-        // None of these ever reaches a type parameter (see `field_reaches_type_parameter`), so
-        // this arm is unreached in practice; it stays total rather than a wildcard.
+        FieldDefType::Char => texts::serializer(TextForm::Char),
+        // None of these ever reaches a type parameter (see `field_reaches_type_parameter`) or a
+        // text of one form, so this arm is unreached in practice; it stays total rather than a
+        // wildcard.
         FieldDefType::Tuple(_)
         | FieldDefType::Unknown
         | FieldDefType::StringLiteral(_)
         | FieldDefType::BooleanLiteral(_)
         | FieldDefType::NumberLiteral(_)
         | FieldDefType::Boolean
-        | FieldDefType::Char
         | FieldDefType::String
         | FieldDefType::U8
         | FieldDefType::U16
@@ -876,10 +893,13 @@ fn kotlin_serializer_expr(field: &FieldDef, type_parameters: &[String]) -> Strin
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => format!("serializer<{}>()", kotlin_typename(field)),
         #[cfg(feature = "chrono")]
-        FieldDefType::NaiveDate
-        | FieldDefType::NaiveTime
-        | FieldDefType::NaiveDateTime
-        | FieldDefType::DateTime => format!("serializer<{}>()", kotlin_typename(field)),
+        FieldDefType::NaiveDate => texts::serializer(TextForm::Date),
+        #[cfg(feature = "chrono")]
+        FieldDefType::NaiveDateTime => texts::serializer(TextForm::DateTime),
+        #[cfg(feature = "chrono")]
+        FieldDefType::NaiveTime => texts::serializer(TextForm::Time),
+        #[cfg(feature = "chrono")]
+        FieldDefType::DateTime => format!("serializer<{}>()", kotlin_typename(field)),
     };
     let wrapped = (0..field.array_depth).fold(scalar, |inner, level| {
         let item = if field.is_nullable_at(level) {
@@ -1224,6 +1244,7 @@ fn kotlin_module_tokens(
     KOTLIN_RANGES.with(|ranges| ranges.borrow_mut().clear());
     KOTLIN_RESULTS.with(|results| results.borrow_mut().clear());
     KOTLIN_TUPLES.with(|tuples| tuples.borrow_mut().clear());
+    texts::clear();
     let full_source = KOTLIN_TUPLE_AUX
         .with(RefCell::take)
         .into_iter()
@@ -1733,7 +1754,7 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
             plan.serialize_stmts.extend(serialize);
             plan.deserialize_stmts.push(decode);
         } else if let FieldDefType::Map(map_key, map_value) = &field.field_def.field_type {
-            let key_serializer = (kotlin_typename(map_key) != "String")
+            let key_serializer = (kotlin_typename(map_key) != "String" || texts::reaches(map_key))
                 .then(|| kotlin_serializer_expr(map_key, type_parameters));
             let value_serializer =
                 read::held_serializer(&field.field_def, map_value, type_parameters);
@@ -2032,7 +2053,7 @@ fn value_class_tokens(
     register_kotlin_name(&rust_ident, &export_name);
 
     let generic_params = kotlin_generic_params(&item_struct.generics);
-    let value_type = kotlin_typename(&value_field);
+    let value_type = read::with_text_forms(&value_field);
     let alias = ident_typealias(&rust_ident, &export_name, &generic_params);
     let serializable = serialized_parameters(&item_struct.generics);
     let mut rules = Rules::of(&serializable);
@@ -2175,8 +2196,11 @@ fn alias_kotlin_tokens(item_type: &ItemType, name_override: Option<&str>) -> Tok
     let mut target = get_field_def(&export_name, &item_type.ty, "");
     target.erase_type_parameters(&type_parameters);
     validate::note_alias(&rust_ident, &target);
+    if type_parameters.is_empty() {
+        texts::note_alias(&rust_ident, &target);
+    }
     let generic_params = kotlin_generic_params(&item_type.generics);
-    let target_type = kotlin_typename(&target);
+    let target_type = read::with_text_forms(&target);
     let alias = ident_typealias(&rust_ident, &export_name, &generic_params);
     let kotlin_source = format!("typealias {export_name}{generic_params} = {target_type};{alias}");
 

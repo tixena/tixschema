@@ -3,6 +3,7 @@
 //! integration test can declare.
 
 mod preprocess;
+mod texts;
 
 use proc_macro2::{Span, TokenTree};
 
