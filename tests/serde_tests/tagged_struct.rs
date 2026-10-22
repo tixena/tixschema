@@ -133,8 +133,9 @@ mod on_a_schema_surface {
     }
 }
 
-/// Each of the three languages writes the key with the struct's name and reads a payload with it
-/// or without it, as serde does.
+/// Each of the three languages writes the key with the struct's name. Dart and Swift read a payload
+/// with it or without it, as serde does, and Kotlin reads the struct's name alone under it, as
+/// TypeScript and Zod do.
 #[cfg(all(
     feature = "serde",
     any(feature = "dart", feature = "swift", feature = "kotlin")
@@ -196,7 +197,7 @@ mod on_a_mobile_surface {
 
     #[cfg(feature = "kotlin")]
     #[test]
-    fn kotlin_holds_the_tag_in_a_property_it_always_encodes_ahead_of_the_fields() {
+    fn kotlin_reads_the_tag_at_the_structs_name_and_encodes_it_ahead_of_the_fields() {
         assert_eq!(
             tagged_mobile_kotlin::kotlin_definition(),
             "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
@@ -206,6 +207,12 @@ mod on_a_mobile_surface {
              emptyList() } @OptIn(ExperimentalSerializationApi::class) object \
              TaggedMobileUnjudged : \
              JsonTransformingSerializer<TaggedMobile>(TaggedMobile.generatedSerializer()) { \
+             override fun transformDeserialize(element: JsonElement): JsonElement = \
+             element.also { whole: JsonElement -> if (whole is JsonObject) when \
+             (whole[\"kind\"]) { JsonPrimitive(\"TaggedMobile\") -> {}; null -> throw \
+             SerializationException(\"missing field `kind`\"); else -> throw \
+             SerializationException(\"expected tag \\\"TaggedMobile\\\", found \" + \
+             whole[\"kind\"]) } }; \
              override fun transformSerialize(element: JsonElement): JsonElement = \
              JsonObject(mapOf(\"kind\" to element.jsonObject.getValue(\"kind\")) + \
              element.jsonObject) } object TaggedMobileSerializer : \

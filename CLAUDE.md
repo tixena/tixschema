@@ -454,8 +454,10 @@ ident, or the container's `rename`); `with_struct_tag` puts the pair ahead of th
 as a required string literal and refuses a field that writes the same key, which serde would write
 twice. Dart writes it into `toJson`, Swift encodes it under `SwiftSchemaTagCodingKeys`, and Kotlin
 holds it in an `@EncodeDefault` property outside the constructor, which the plugin writes after the
-members and `{Type}Unjudged` moves ahead of them (`read::tag_first`), where serde writes it; all
-three read a payload with the key or without it, as serde does.
+members and `{Type}Unjudged` moves ahead of them (`read::tag_first`), where serde writes it. Dart
+and Swift read a payload with the key or without it, whatever value it holds, as serde does. Kotlin
+reads one whose key holds the struct's name, and refuses one without the key or with another value
+under it, as TypeScript and Zod refuse it ("The Kotlin client's read", below).
 
 ### 7. Field Validation Attributes (`#[model_schema_prop(...)]`)
 
@@ -947,13 +949,27 @@ the consumer's view; this is what a change has to keep.
   writes after the members ahead of them, as serde writes it; `kept_unjudged` joins it to the
   correction of a type that names a function. The serializer the emitter writes for a struct with
   a flattened member, a tuple struct and an enum is the unjudged one, under `written_head`.
+- **A struct under its own tag reads its name under the tag alone**, as TypeScript and Zod read
+  it (`kind: z.literal("Flag")`), where serde reads past the tag whatever it holds, and where it
+  is absent. `own_tag_held` in `src/features/kotlin.rs` writes the one check, inline: ``missing
+  field `{key}` `` for an object without the key, and `expected tag "{name}", found {value}` for
+  another value under it, each a `SerializationException`. `kept_unjudged` writes it into
+  `transformDeserialize`, after the correction of the payload where it has one, over the object
+  the plugin then reads, and `flatten_merging_serializer` right after `obj`, the corrected object
+  every member is read from. A holder that flattens such a struct hands it the tag, so the
+  holder refuses the same payloads. The write is serde's either way: the struct's name, ahead of
+  its members. `tests/kotlin_tests/flattened_models.rs` holds `FLAG_TAGS`, `PENNANT_TAGS` and
+  `DRESSING_TAGS`, `tests/kotlin_tests/tests.rs` pins serde's read of each and the Zod literal,
+  and `run_kotlin_flattened.rs` reads them under kotlinc, the first row as serde writes it back
+  and every other refused.
 - **Every refusal a serializer the emitter writes makes as it reads is a `SerializationException`**,
-  checked inline in the read, with no declaration shared at file scope. Four writers in
+  checked inline in the read, with no declaration shared at file scope. Five writers in
   `src/features/kotlin.rs` word it: `read_as` and `payload_read_as` read a payload as an object, an
   array or a tag's string (`JsonKind`) and refuse any other kind with `expected {kind}, found
   {payload}`, `present` refuses a key the object does not hold with serde's ``missing field
-  `{key}` ``, and `tuple_array` refuses the array of a tuple of another length, a longer one among
-  them, as serde and Zod refuse it, with `invalid length {n}, expected {m}`.
+  `{key}` ``, `tuple_array` refuses the array of a tuple of another length, a longer one among
+  them, as serde and Zod refuse it, with `invalid length {n}, expected {m}`, and `own_tag_held`
+  refuses a struct's own tag of another value, or none (above).
   `flatten_merging_serializer`, `own_field_plan`, `flatten_map_field_plan`,
   `tuple_wrapper_typename` and `tuple_struct_kotlin_tokens` call them, and so do
   `dispatched_tagged_enum_kotlin_source` and `dispatched_tagged_variant` for the tag and the

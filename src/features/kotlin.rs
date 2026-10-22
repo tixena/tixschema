@@ -561,6 +561,20 @@ fn present(read: &str, key: &str) -> String {
     )
 }
 
+/// The statement that refuses `object`, the Kotlin variable of a `JsonObject`, where it holds no
+/// `key` or holds another value than `named` under it: the tag of a struct under its own tag, which
+/// TypeScript and Zod refuse in the same places, where serde reads past it.
+fn own_tag_held(object: &str, key: &str, named: &str) -> String {
+    let key_text = kotlin_template_text(key);
+    let name_text = kotlin_template_text(named);
+    format!(
+        "when ({object}[\"{key_text}\"]) {{ JsonPrimitive(\"{name_text}\") -> {{}}; null -> throw \
+         SerializationException(\"missing field `{key_text}`\"); else -> throw \
+         SerializationException(\"expected tag \\\"{name_text}\\\", found \" + \
+         {object}[\"{key_text}\"]) }}"
+    )
+}
+
 /// The statements that read `payload` as the array of a tuple of `length` positions, `array`, and
 /// refuse an array of another length, in serde's words.
 fn tuple_array(payload: &str, length: usize) -> String {
@@ -1797,9 +1811,12 @@ fn flatten_merging_serializer(
          output.encodeJsonElement(buildJsonObject {{ {} }}) }}",
         plan.serialize_stmts.join("; ")
     );
+    let tag_held = own_tag.map_or_else(String::new, |(key, named)| {
+        format!("{}; ", own_tag_held("obj", key, named))
+    });
     let deserialize_body = format!(
         "override fun deserialize(decoder: Decoder): {self_type} {{ \
-         val input = decoder as JsonDecoder; val obj = {}; {}; \
+         val input = decoder as JsonDecoder; val obj = {}; {tag_held}{}; \
          return {export_name}({}) }}",
         payload_read_as(
             &aliases::keys_named(
@@ -1820,18 +1837,29 @@ fn flatten_merging_serializer(
 
 /// The unjudged serializer of a type the plugin writes a serializer for: the plugin's own, behind
 /// `correction`, the Kotlin expression [`ELEMENT`] is read as, where that is not [`ELEMENT`]
-/// itself, and writing a struct's own `tag` key ahead of its members, as serde writes it.
+/// itself. Handed `tag`, a struct's own tag key and the struct's name, it refuses a corrected
+/// object that holds any other value under the key, or none, and writes the tag ahead of the
+/// struct's members, as serde writes it.
 fn kept_unjudged(
     export_name: &str,
     generic_params: &str,
     type_parameters: &[String],
     correction: &str,
-    tag: Option<&str>,
+    tag: Option<&(String, String)>,
 ) -> String {
-    let overrides: Vec<String> = (correction != ELEMENT)
-        .then(|| read::transform(correction))
+    let read = tag.map_or_else(
+        || correction.to_owned(),
+        |(key, named)| {
+            format!(
+                "{correction}.also {{ whole: JsonElement -> if (whole is JsonObject) {} }}",
+                own_tag_held("whole", key, named)
+            )
+        },
+    );
+    let overrides: Vec<String> = (read != ELEMENT)
+        .then(|| read::transform(&read))
         .into_iter()
-        .chain(tag.map(read::tag_first))
+        .chain(tag.map(|(key, _)| read::tag_first(key)))
         .collect();
     if overrides.is_empty() {
         read::generated(export_name, generic_params, type_parameters)
@@ -1934,8 +1962,8 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
         )
     } else {
         // A struct's own tag: a property outside the constructor, always written and holding the
-        // struct's name unless a payload says otherwise, as serde writes it and reads past it.
-        // The unjudged serializer moves it ahead of the members, where serde writes it.
+        // struct's name. The unjudged serializer refuses a payload that holds any other value
+        // under the key, or none, and moves the tag ahead of the members, where serde writes it.
         let tag = own_tag.as_ref().map_or_else(String::new, |(key, named)| {
             format!(
                 "@SerialName(\"{key}\") @EncodeDefault val kotlinSchemaTag: String = \"{named}\"; "
@@ -1955,7 +1983,7 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
                     ),
                     &plugin.keyed(&fields)
                 ),
-                own_tag.as_ref().map(|(key, _)| key.as_str())
+                own_tag.as_ref()
             ),
             read::judged(&export_name, &generic_params, &type_parameters, false)
         )

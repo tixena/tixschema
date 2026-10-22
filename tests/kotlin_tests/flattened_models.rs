@@ -18,7 +18,8 @@
 //! it is optional, a key no variant is written under. A variant of an enum under each tagging
 //! reads and writes a flattened member at its own level, as a struct does. A struct under its own
 //! tag serde writes with the tag ahead of its members, alone and flattened ahead of a member of its
-//! holder's own.
+//! holder's own, and reads with no tag or with any value under it, alone, with a flattened member
+//! of its own and flattened, where TypeScript and Zod refuse every tag but the struct's name.
 
 use alloc::collections::BTreeMap;
 use std::collections::HashMap;
@@ -95,6 +96,32 @@ pub const GONFALON: &str = r#"{"label":"n","kind":"Gonfalon"}"#;
 
 /// What [`Semaphore`] is read from: its tag after its member under its alias.
 pub const SEMAPHORE: &str = r#"{"name":"n","kind":"Semaphore"}"#;
+
+/// What [`Flag`] is read from: its own tag, no tag, a tag of another value and one of another
+/// kind. serde reads each and writes the struct's name back; TypeScript and Zod, whose tag is the
+/// literal `"Flag"`, refuse all but the first.
+pub const FLAG_TAGS: [&str; 4] = [
+    r#"{"kind":"Flag","label":"n"}"#,
+    r#"{"label":"n"}"#,
+    r#"{"kind":"Other","label":"n"}"#,
+    r#"{"kind":5,"label":"n"}"#,
+];
+
+/// [`FLAG_TAGS`] for [`Pennant`], beside its own member.
+pub const PENNANT_TAGS: [&str; 4] = [
+    r#"{"kind":"Pennant","label":"n","note":"a"}"#,
+    r#"{"label":"n","note":"a"}"#,
+    r#"{"kind":"Other","label":"n","note":"a"}"#,
+    r#"{"kind":5,"label":"n","note":"a"}"#,
+];
+
+/// [`FLAG_TAGS`] for [`Ensign`] flattened in [`Dressing`], beside the holder's own member.
+pub const DRESSING_TAGS: [&str; 4] = [
+    r#"{"kind":"Ensign","label":"n","north":2}"#,
+    r#"{"label":"n","north":2}"#,
+    r#"{"kind":"Other","label":"n","north":2}"#,
+    r#"{"kind":5,"label":"n","north":2}"#,
+];
 
 /// What [`Dressing`] is read from: the tag of [`Ensign`] after every other key.
 pub const DRESSING: &str = r#"{"north":2,"label":"n","kind":"Ensign"}"#;
@@ -494,6 +521,16 @@ pub struct Gonfalon<Held> {
 pub struct Semaphore {
     #[serde(alias = "name")]
     pub label: String,
+}
+
+/// [`Flag`] with a flattened member, whose serializer tixschema writes.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind")]
+pub struct Pennant {
+    #[serde(flatten)]
+    pub labelling: Labelling,
+    pub note: String,
 }
 
 /// [`Ensign`] flattened ahead of a member of its holder's own: serde writes the struct's tag first.
