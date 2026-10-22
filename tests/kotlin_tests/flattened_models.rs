@@ -16,7 +16,9 @@
 //! and under a function from what the function answers. A map keyed by a plain enum serde writes
 //! and reads under the name each variant is written under, and refuses, or reads as `None` where
 //! it is optional, a key no variant is written under. A variant of an enum under each tagging
-//! reads and writes a flattened member at its own level, as a struct does.
+//! reads and writes a flattened member at its own level, as a struct does. A struct under its own
+//! tag serde writes with the tag ahead of its members, alone and flattened ahead of a member of its
+//! holder's own.
 
 use alloc::collections::BTreeMap;
 use std::collections::HashMap;
@@ -84,6 +86,18 @@ pub const ENSIGN: &str = r#"{"kind":"Ensign","label":"n","north":2}"#;
 
 /// What [`Striking`] is read from: the tag of [`Ensign`] alone, which serde reads no value from.
 pub const STRUCK: &str = r#"{"kind":"Ensign","note":"a"}"#;
+
+/// What [`Flag`] is read from: its tag after its member, which serde writes back ahead of it.
+pub const FLAG: &str = r#"{"label":"n","kind":"Flag"}"#;
+
+/// What [`Gonfalon`] is read from: its tag after its member.
+pub const GONFALON: &str = r#"{"label":"n","kind":"Gonfalon"}"#;
+
+/// What [`Semaphore`] is read from: its tag after its member under its alias.
+pub const SEMAPHORE: &str = r#"{"name":"n","kind":"Semaphore"}"#;
+
+/// What [`Dressing`] is read from: the tag of [`Ensign`] after every other key.
+pub const DRESSING: &str = r#"{"north":2,"label":"n","kind":"Ensign"}"#;
 
 /// What [`Gammoning`] is read from: the key of the member [`Marline`] never reads among them.
 pub const MARLINE: &str = r#"{"label":"n","north":2,"spare":1}"#;
@@ -455,6 +469,40 @@ pub struct Striking {
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     pub ensign: Option<Ensign>,
     pub note: String,
+}
+
+/// A struct under its own tag, which serde writes ahead of the struct's members.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind")]
+pub struct Flag {
+    pub label: String,
+}
+
+/// [`Flag`] with a type parameter, its tag written ahead of its members at every filling.
+#[model_schema(default_types(Held = String))]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind")]
+pub struct Gonfalon<Held> {
+    pub label: Held,
+}
+
+/// [`Flag`] with a member read under its alias as well.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind")]
+pub struct Semaphore {
+    #[serde(alias = "name")]
+    pub label: String,
+}
+
+/// [`Ensign`] flattened ahead of a member of its holder's own: serde writes the struct's tag first.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Dressing {
+    #[serde(flatten)]
+    pub ensign: Ensign,
+    pub north: u8,
 }
 
 /// A struct with a member serde writes and never reads, which does not take that member's key.

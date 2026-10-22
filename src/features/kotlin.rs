@@ -1820,17 +1820,28 @@ fn flatten_merging_serializer(
 
 /// The unjudged serializer of a type the plugin writes a serializer for: the plugin's own, behind
 /// `correction`, the Kotlin expression [`ELEMENT`] is read as, where that is not [`ELEMENT`]
-/// itself.
+/// itself, and writing a struct's own `tag` key ahead of its members, as serde writes it.
 fn kept_unjudged(
     export_name: &str,
     generic_params: &str,
     type_parameters: &[String],
     correction: &str,
+    tag: Option<&str>,
 ) -> String {
-    if correction == ELEMENT {
+    let overrides: Vec<String> = (correction != ELEMENT)
+        .then(|| read::transform(correction))
+        .into_iter()
+        .chain(tag.map(read::tag_first))
+        .collect();
+    if overrides.is_empty() {
         read::generated(export_name, generic_params, type_parameters)
     } else {
-        read::transforming(export_name, generic_params, type_parameters, correction)
+        read::transforming(
+            export_name,
+            generic_params,
+            type_parameters,
+            &overrides.join("; "),
+        )
     }
 }
 
@@ -1924,7 +1935,8 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
     } else {
         // A struct's own tag: a property outside the constructor, always written and holding the
         // struct's name unless a payload says otherwise, as serde writes it and reads past it.
-        let tag = own_tag.map_or_else(String::new, |(key, named)| {
+        // The unjudged serializer moves it ahead of the members, where serde writes it.
+        let tag = own_tag.as_ref().map_or_else(String::new, |(key, named)| {
             format!(
                 "@SerialName(\"{key}\") @EncodeDefault val kotlinSchemaTag: String = \"{named}\"; "
             )
@@ -1942,7 +1954,8 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
                         &renamed
                     ),
                     &plugin.keyed(&fields)
-                )
+                ),
+                own_tag.as_ref().map(|(key, _)| key.as_str())
             ),
             read::judged(&export_name, &generic_params, &type_parameters, false)
         )
@@ -2014,6 +2027,7 @@ fn value_class_tokens(
             &generic_params,
             &type_parameters,
             &preprocess::corrected(args.preprocess, ELEMENT),
+            None,
         )
     } else {
         let correction = preprocess::corrected(args.preprocess, "input.decodeJsonElement()");
@@ -2810,7 +2824,7 @@ fn plain_enum_kotlin_source(
         format!(
             "{} {body} {}",
             read::kept_plain(export_name),
-            kept_unjudged(export_name, "", &[], &correction)
+            kept_unjudged(export_name, "", &[], &correction, None)
         )
     } else if renamed.is_empty() {
         format!("@Serializable {body}")

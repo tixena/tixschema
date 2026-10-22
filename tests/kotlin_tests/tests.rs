@@ -16,24 +16,24 @@ use tixschema::model_schema;
 use super::corrected_options_models::{moused_kotlin, reeved_kotlin, wormed_kotlin};
 use super::flattened_models::{
     BELTING, BOWLINING, BROACHING, Belting, Bending, Bowlining, Brailing, Broaching, CHOCKED,
-    CLEATING, Cathead, Chock, Cleating, CorrectedLocker, Dipping, ENSIGN, EmptiedLocker, GAFFING,
-    Gaffing, Gammoning, Gasketing, HEAVING, HITCHING, Hawsepipe, Heaving, Hitching, Jibing,
-    Knotting, LOCKER, Lanyarding, Luffing, MARLINE, Netting, Nipping, PAYLOAD, ProbeLocker,
-    Quaying, Rousing, SCARFING, SCUDDING, SNUBBED, STOWING, STROPPING, STRUCK, SWAYING, Scarfing,
-    Scudding, Seizing, Sheeting, Slinging, Snubbing, Splicing, Stoppering, Stowing, Striking,
-    Stropping, Swaying, Tacking, UNDER_AN_ALIAS, UNWRITTEN, WHELPING, Whelping, Whipping, Yawing,
-    read_of,
+    CLEATING, Cathead, Chock, Cleating, CorrectedLocker, DRESSING, Dipping, Dressing, ENSIGN,
+    EmptiedLocker, FLAG, Flag, GAFFING, GONFALON, Gaffing, Gammoning, Gasketing, Gonfalon, HEAVING,
+    HITCHING, Hawsepipe, Heaving, Hitching, Jibing, Knotting, LOCKER, Lanyarding, Luffing, MARLINE,
+    Netting, Nipping, PAYLOAD, ProbeLocker, Quaying, Rousing, SCARFING, SCUDDING, SEMAPHORE,
+    SNUBBED, STOWING, STROPPING, STRUCK, SWAYING, Scarfing, Scudding, Seizing, Semaphore, Sheeting,
+    Slinging, Snubbing, Splicing, Stoppering, Stowing, Striking, Stropping, Swaying, Tacking,
+    UNDER_AN_ALIAS, UNWRITTEN, WHELPING, Whelping, Whipping, Yawing, read_of,
 };
 #[cfg(feature = "serde")]
 use super::flattened_models::{
     belting_kotlin, bending_kotlin, bowlining_kotlin, brailing_kotlin, broaching_kotlin,
-    cathead_kotlin, cleating_kotlin, corrected_locker_kotlin, dipping_kotlin,
-    emptied_locker_kotlin, gaffing_kotlin, gammoning_kotlin, gasketing_kotlin, hawsepipe_kotlin,
-    heaving_kotlin, hitching_kotlin, knotting_kotlin, luffing_kotlin, netting_kotlin,
-    nipping_kotlin, probe_locker_kotlin, quaying_kotlin, rousing_kotlin, scarfing_kotlin,
-    scudding_kotlin, seizing_kotlin, slinging_kotlin, splicing_kotlin, stoppering_kotlin,
-    stowing_kotlin, striking_kotlin, swaying_kotlin, whelping_kotlin, whipping_kotlin,
-    yawing_kotlin,
+    cathead_kotlin, cleating_kotlin, corrected_locker_kotlin, dipping_kotlin, dressing_kotlin,
+    emptied_locker_kotlin, flag_kotlin, gaffing_kotlin, gammoning_kotlin, gasketing_kotlin,
+    gonfalon_kotlin, hawsepipe_kotlin, heaving_kotlin, hitching_kotlin, knotting_kotlin,
+    luffing_kotlin, netting_kotlin, nipping_kotlin, probe_locker_kotlin, quaying_kotlin,
+    rousing_kotlin, scarfing_kotlin, scudding_kotlin, seizing_kotlin, semaphore_kotlin,
+    slinging_kotlin, splicing_kotlin, stoppering_kotlin, stowing_kotlin, striking_kotlin,
+    swaying_kotlin, whelping_kotlin, whipping_kotlin, yawing_kotlin,
 };
 use super::read::{kept, serializers};
 use super::tuple_variants_models::Labelling;
@@ -903,6 +903,72 @@ fn serde_hands_a_flattened_member_the_keys_no_member_ahead_of_it_took() {
     assert_eq!(gammoning.marline.spare, 0);
     let striking: Striking = serde_json::from_str(STRUCK).unwrap();
     assert_eq!(striking.ensign, None);
+}
+
+/// serde writes a struct's own tag ahead of the struct's members, whatever the order it was read
+/// in, and so does a holder that flattens the struct ahead of a member of its own.
+#[test]
+fn serde_writes_a_structs_own_tag_ahead_of_its_members() {
+    assert_eq!(
+        [
+            read_of::<Flag>(FLAG),
+            read_of::<Gonfalon<String>>(GONFALON),
+            read_of::<Semaphore>(SEMAPHORE),
+            read_of::<Dressing>(DRESSING),
+        ],
+        [
+            r#"{"kind":"Flag","label":"n"}"#,
+            r#"{"kind":"Gonfalon","label":"n"}"#,
+            r#"{"kind":"Semaphore","label":"n"}"#,
+            r#"{"kind":"Ensign","label":"n","north":2}"#,
+        ],
+        "serde's write of each payload"
+    );
+}
+
+/// The unjudged serializer of a struct under its own tag moves the tag, which the plugin writes
+/// after the constructor's properties, ahead of the members, beside the correction of a payload
+/// where it has one, and a holder merges what that serializer writes ahead of its own members.
+#[test]
+#[cfg(feature = "serde")]
+fn a_struct_under_its_own_tag_is_written_with_the_tag_ahead_of_its_members() {
+    let moved = "override fun transformSerialize(element: JsonElement): JsonElement = \
+                 JsonObject(mapOf(\"kind\" to element.jsonObject.getValue(\"kind\")) + \
+                 element.jsonObject)";
+    for (kotlin, written) in [
+        (
+            flag_kotlin::kotlin_definition(),
+            format!(
+                "@OptIn(ExperimentalSerializationApi::class) object FlagUnjudged : \
+                 JsonTransformingSerializer<Flag>(Flag.generatedSerializer()) {{ {moved} }}"
+            ),
+        ),
+        (
+            gonfalon_kotlin::kotlin_definition(),
+            format!(
+                "@OptIn(ExperimentalSerializationApi::class) class \
+                 GonfalonUnjudged<Held>(heldSerializer: KSerializer<Held>) : \
+                 JsonTransformingSerializer<Gonfalon<Held>>(Gonfalon.generatedSerializer(\
+                 heldSerializer)) {{ {moved} }}"
+            ),
+        ),
+        (
+            semaphore_kotlin::kotlin_definition(),
+            format!(
+                "-> val named = when (key) {{ \"name\" -> \"label\"; else -> key }}; if \
+                 (put(named, held) != null) throw SerializationException(\"duplicate field \
+                 `$named`\") }} }}) else whole }}; {moved} }}"
+            ),
+        ),
+        (
+            dressing_kotlin::kotlin_definition(),
+            "buildJsonObject { output.json.encodeToJsonElement(EnsignUnjudged, \
+             value.ensign).jsonObject.forEach { (k, v) -> put(k, v) }; put(\"north\""
+                .to_owned(),
+        ),
+    ] {
+        assert!(kotlin.contains(&written), "no `{written}` in: {kotlin}");
+    }
 }
 
 /// A flattened map, the one member of its struct, is read from every key of the object and written
