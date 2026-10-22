@@ -1019,6 +1019,17 @@ the consumer's view; this is what a change has to keep.
   the object and the rest is read as the variant's own subclass, a lone slot under the `value` key
   that subclass writes. The subclass carries its tag in `@SerialName`, and a tag no variant has
   throws `SerializationException`.
+- **A variant with a flattened member is written by hand too**, under every tagging, as serde
+  reads and writes the member at the variant's own level. `written_by_hand` asks it of the
+  variant's payload, `variant_subclass` names `{Subclass}Unjudged` in the class's
+  `@Serializable(with = ...)` and declares the members as the emitter's serializer reads them,
+  and `variant_serializer` writes that serializer through `flatten_merging_serializer`, with no
+  tag and no function of the type's. The enum hands it the variant's object as it is
+  (`members_renamed` and `variant_keyed` answer nothing for it): the serializer reads each alias
+  and calls each member's function itself. The enum judges the variant, so the subclass has no
+  judged serializer. A variant with no flattened member keeps the plugin's serializer and its
+  text. `tests/kotlin_tests/flattened_models.rs` holds the models and serde's reads, and
+  `run_kotlin_flattened.rs` reads and writes each under kotlinc, against serde.
 - **A model is read unjudged exactly where `validate()` asks it, and nowhere else.** A model read
   unjudged where no `validate()` reaches it is a broken value handed back. `validate::asks_the_held`
   is the condition `Rules::member` walks under, asked of a scratch `Rules`, and

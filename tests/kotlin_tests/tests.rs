@@ -13,22 +13,25 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::flattened_models::{
-    BELTING, Belting, Bending, Brailing, CHOCKED, CLEATING, Cathead, Chock, Cleating,
-    CorrectedLocker, Dipping, ENSIGN, EmptiedLocker, Gammoning, Gasketing, HEAVING, HITCHING,
-    Hawsepipe, Heaving, Hitching, Jibing, Knotting, LOCKER, Lanyarding, Luffing, MARLINE, Netting,
-    Nipping, PAYLOAD, ProbeLocker, Quaying, Rousing, SCARFING, SCUDDING, SNUBBED, STOWING,
-    STROPPING, STRUCK, Scarfing, Scudding, Seizing, Sheeting, Slinging, Snubbing, Splicing,
-    Stoppering, Stowing, Striking, Stropping, Tacking, UNDER_AN_ALIAS, UNWRITTEN, Whipping, Yawing,
+    BELTING, BOWLINING, BROACHING, Belting, Bending, Bowlining, Brailing, Broaching, CHOCKED,
+    CLEATING, Cathead, Chock, Cleating, CorrectedLocker, Dipping, ENSIGN, EmptiedLocker, GAFFING,
+    Gaffing, Gammoning, Gasketing, HEAVING, HITCHING, Hawsepipe, Heaving, Hitching, Jibing,
+    Knotting, LOCKER, Lanyarding, Luffing, MARLINE, Netting, Nipping, PAYLOAD, ProbeLocker,
+    Quaying, Rousing, SCARFING, SCUDDING, SNUBBED, STOWING, STROPPING, STRUCK, SWAYING, Scarfing,
+    Scudding, Seizing, Sheeting, Slinging, Snubbing, Splicing, Stoppering, Stowing, Striking,
+    Stropping, Swaying, Tacking, UNDER_AN_ALIAS, UNWRITTEN, WHELPING, Whelping, Whipping, Yawing,
     read_of,
 };
 #[cfg(feature = "serde")]
 use super::flattened_models::{
-    belting_kotlin, bending_kotlin, brailing_kotlin, cathead_kotlin, cleating_kotlin,
-    corrected_locker_kotlin, dipping_kotlin, emptied_locker_kotlin, gammoning_kotlin,
-    gasketing_kotlin, hawsepipe_kotlin, heaving_kotlin, hitching_kotlin, knotting_kotlin,
-    luffing_kotlin, netting_kotlin, nipping_kotlin, probe_locker_kotlin, rousing_kotlin,
-    scarfing_kotlin, scudding_kotlin, seizing_kotlin, slinging_kotlin, splicing_kotlin,
-    stoppering_kotlin, stowing_kotlin, striking_kotlin, whipping_kotlin, yawing_kotlin,
+    belting_kotlin, bending_kotlin, bowlining_kotlin, brailing_kotlin, broaching_kotlin,
+    cathead_kotlin, cleating_kotlin, corrected_locker_kotlin, dipping_kotlin,
+    emptied_locker_kotlin, gaffing_kotlin, gammoning_kotlin, gasketing_kotlin, hawsepipe_kotlin,
+    heaving_kotlin, hitching_kotlin, knotting_kotlin, luffing_kotlin, netting_kotlin,
+    nipping_kotlin, probe_locker_kotlin, quaying_kotlin, rousing_kotlin, scarfing_kotlin,
+    scudding_kotlin, seizing_kotlin, slinging_kotlin, splicing_kotlin, stoppering_kotlin,
+    stowing_kotlin, striking_kotlin, swaying_kotlin, whelping_kotlin, whipping_kotlin,
+    yawing_kotlin,
 };
 use super::read::{kept, serializers};
 use super::tuple_variants_models::Labelling;
@@ -1488,6 +1491,147 @@ fn a_flattened_enum_merges_a_unit_variant_as_its_name_over_null() {
     ] {
         assert!(kotlin.contains(merged), "no `{merged}` in: {kotlin}");
     }
+}
+
+/// What serde reads of each enum with a flattened member in a variant, written back: a map's
+/// entries and a struct's keys at the variant's own level, under every tagging that builds one,
+/// each written back where serde writes the variant's own members.
+#[test]
+fn serde_reads_a_variants_flattened_member_at_the_variants_own_level() {
+    let read = [
+        GAFFING.map(read_of::<Gaffing>).to_vec(),
+        BOWLINING.map(read_of::<Bowlining>).to_vec(),
+        SWAYING.map(read_of::<Swaying>).to_vec(),
+        WHELPING.map(read_of::<Whelping>).to_vec(),
+        BROACHING.map(read_of::<Broaching<u8>>).to_vec(),
+    ]
+    .concat();
+    assert_eq!(
+        read,
+        [
+            r#"{"Counted":{}}"#,
+            r#"{"Counted":{"north":2}}"#,
+            "refused",
+            r#"{"Spare":{}}"#,
+            r#"{"Spare":{"north":2}}"#,
+            r#"{"Spare":{}}"#,
+            r#"{"Labelled":{"label":"n","note":"a"}}"#,
+            r#"{"Labelled":{"label":"n","note":"a"}}"#,
+            r#"{"Labelled":{"label":"n","note":"a"}}"#,
+            "refused",
+            "refused",
+            r#"{"kind":"Counted","held":{}}"#,
+            r#"{"kind":"Counted","held":{"north":2}}"#,
+            "refused",
+            r#"{"kind":"Spare","held":{"north":2}}"#,
+            r#"{"kind":"Spare","held":{}}"#,
+            r#"{"kind":"Labelled","held":{"label":"n","note":"a"}}"#,
+            "refused",
+            r#"{"kind":"Tallied","held":{"label":"n","keys":["north"]}}"#,
+            "refused",
+            r#"{"label":"n","note":"a"}"#,
+            r#"{"north":2}"#,
+            "{}",
+            "{}",
+            "{}",
+            r#"{"label":"n","note":"a"}"#,
+            r#"{"kind":"Labelled","label":"n","note":"a"}"#,
+            r#"{"kind":"Labelled","label":"n","note":"a"}"#,
+            r#"{"kind":"Hoisted","label":"n"}"#,
+            r#"{"kind":"Hoisted","label":"n"}"#,
+            "refused",
+            r#"{"Counted":{}}"#,
+            r#"{"Counted":{"north":2}}"#,
+            "refused",
+        ],
+        "serde no longer reads each payload as it did"
+    );
+}
+
+/// A variant with a flattened member is read and written by a serializer the emitter writes, as a
+/// struct with one is, under every tagging: the enum hands it the variant's object as it is, and
+/// it reads each alias and calls each function of a member itself. A variant with no flattened
+/// member keeps the plugin's serializer.
+#[test]
+#[cfg(feature = "serde")]
+fn a_variant_with_a_flattened_member_is_read_by_a_serializer_of_its_own() {
+    for (kotlin, written) in [
+        (
+            gaffing_kotlin::kotlin_definition(),
+            "@Serializable(with = GaffingCountedUnjudged::class) data class \
+             GaffingCounted(val counts: Map<String, UByte>) : Gaffing { override fun validate(): \
+             List<String> = emptyList() } object GaffingCountedUnjudged : \
+             KSerializer<GaffingCounted> {",
+        ),
+        (
+            gaffing_kotlin::kotlin_definition(),
+            "val counts = obj.mapValues { (_, v) -> \
+             input.json.decodeFromJsonElement(serializer<UByte>(), v) }; return \
+             GaffingCounted(counts = counts) }",
+        ),
+        (
+            gaffing_kotlin::kotlin_definition(),
+            "\"Counted\" -> input.json.decodeFromJsonElement(serializer<GaffingCounted>(), data); \
+             \"Labelled\" -> input.json.decodeFromJsonElement(serializer<GaffingLabelled>(), \
+             data);",
+        ),
+        (
+            gaffing_kotlin::kotlin_definition(),
+            "val named = when (key) { \"remark\" -> \"note\"; else -> key }",
+        ),
+        (
+            bowlining_kotlin::kotlin_definition(),
+            "val tally = lenient.decodeFromJsonElement(BuntingUnjudged, \
+             withItsKeys(JsonObject(obj - labellingKeys)));",
+        ),
+        (
+            bowlining_kotlin::kotlin_definition(),
+            "\"Tallied\" -> input.json.decodeFromJsonElement(serializer<BowliningTallied>(), \
+             data!!)",
+        ),
+        (
+            swaying_kotlin::kotlin_definition(),
+            ".recoverCatching { \
+             input.json.decodeFromJsonElement(serializer<SwayingAnnotated>(), element) as \
+             Swaying }",
+        ),
+        (
+            whelping_kotlin::kotlin_definition(),
+            "@SerialName(\"Hoisted\") @Serializable(with = WhelpingHoistedUnjudged::class) data \
+             class WhelpingHoisted(val labelling: Labelling) : Whelping",
+        ),
+        (
+            whelping_kotlin::kotlin_definition(),
+            "\"Hoisted\" -> input.json.decodeFromJsonElement(serializer<WhelpingHoisted>(), \
+             JsonObject(obj - \"kind\"));",
+        ),
+        (
+            broaching_kotlin::kotlin_definition(),
+            "@Serializable(with = BroachingCountedUnjudged::class) data class \
+             BroachingCounted<Count>(val counts: Map<String, Count>) : Broaching<Count> { \
+             override fun validate(): List<String> = emptyList() } class \
+             BroachingCountedUnjudged<Count: Any>(private val countSerializer: \
+             KSerializer<Count>) : KSerializer<BroachingCounted<Count>> {",
+        ),
+        (
+            quaying_kotlin::kotlin_definition(),
+            "@Serializable data class QuayingBay(val label: String) : Quaying {",
+        ),
+    ] {
+        assert!(kotlin.contains(written), "no `{written}` in: {kotlin}");
+    }
+    let gaffing = gaffing_kotlin::kotlin_definition();
+    assert_eq!(
+        gaffing.matches("\"remark\" -> \"note\"").count(),
+        1,
+        "the enum reads no alias of a variant that reads its own: {gaffing}"
+    );
+    let bowlining = bowlining_kotlin::kotlin_definition();
+    assert_eq!(
+        bowlining.matches("withItsKeys(").count(),
+        1,
+        "the enum calls no function of a variant that calls its own: {bowlining}"
+    );
 }
 
 #[test]

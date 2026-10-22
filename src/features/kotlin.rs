@@ -1621,13 +1621,13 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
     plan
 }
 
-/// The unjudged `KSerializer` a struct with one or more `#[serde(flatten)]` fields earns, since
-/// `kotlinx.serialization` has no annotation for flatten: it merges each flattened value's own
-/// keys into the enclosing object, tolerant of the other fields' own keys on decode. A struct with
-/// a member serde never writes earns it too: `kotlinx.serialization` has no annotation for a
-/// member read and never written. `own` is the type's `preprocess`, which corrects the object
-/// every member is read from, and each alias of `renamed` is read in that object as the name it
-/// stands for.
+/// The unjudged `KSerializer` a struct with one or more `#[serde(flatten)]` fields earns, and so
+/// does a variant with one, since `kotlinx.serialization` has no annotation for flatten: it merges
+/// each flattened value's own keys into the enclosing object, tolerant of the other fields' own
+/// keys on decode. A struct with a member serde never writes earns it too: `kotlinx.serialization`
+/// has no annotation for a member read and never written. `own` is the type's `preprocess`, which
+/// corrects the object every member is read from, and each alias of `renamed` is read in that
+/// object as the name it stands for.
 fn flatten_merging_serializer(
     export_name: &str,
     generic_params: &str,
@@ -2159,13 +2159,44 @@ fn variant_payload(
     }
 }
 
+/// Whether a variant's `payload` is read and written by [the merging
+/// serializer](flatten_merging_serializer): it holds a `#[serde(flatten)]` member, which serde
+/// reads and writes at the variant's own level.
+fn written_by_hand(payload: &VariantPayload) -> bool {
+    matches!(payload, VariantPayload::Named(fields) if fields.iter().any(|field| field.flatten))
+}
+
+/// `{Subclass}Unjudged`, the serializer the emitter writes for the subclass `plugin` names, where
+/// [`written_by_hand`] says the variant is read by one. The enum judges the variant, so the
+/// subclass has no judged serializer.
+fn variant_serializer(
+    plugin: &Plugin<'_>,
+    generic_params: &str,
+    payload: &VariantPayload,
+) -> Option<String> {
+    let VariantPayload::Named(fields) = payload else {
+        return None;
+    };
+    written_by_hand(payload).then(|| {
+        flatten_merging_serializer(
+            plugin.owner,
+            generic_params,
+            plugin.type_parameters,
+            fields,
+            None,
+            &[],
+            &aliases::of_members(fields),
+        )
+    })
+}
+
 /// One variant's own subclass declaration, implementing `export_name`. `bare_value` selects a
 /// `@JvmInline value class` for a scalar `Value` payload — the bare wire form an untagged member
 /// needs — while a tagged form wraps it in an ordinary `data class` property instead. The plugin
-/// writes the subclass's serializer, `plugin`, which reads a model the variant holds unjudged.
-/// Beside the declaration, the type a `Value` payload's property is declared with, which the
-/// enum's serializer reads the value by: a walked and an unwalked wrapper of one tuple are two
-/// classes.
+/// writes the subclass's serializer, `plugin`, which reads a model the variant holds unjudged, but
+/// for a variant [`variant_serializer`] reads. Beside the declaration, the type a `Value`
+/// payload's property is declared with, which the enum's serializer reads the value by: a walked
+/// and an unwalked wrapper of one tuple are two classes.
 fn variant_subclass(
     export_name: &str,
     plugin: &Plugin<'_>,
@@ -2182,6 +2213,13 @@ fn variant_subclass(
         VariantPayload::Unit => (
             format!(
                 "{annotation}@Serializable data object {subclass_name} : {export_name}{nothing_generic_args}"
+            ),
+            None,
+        ),
+        VariantPayload::Named(fields) if written_by_hand(payload) => (
+            format!(
+                "{annotation}@Serializable(with = {subclass_name}Unjudged::class) data class {subclass_name}{generic_params}({}) : {export_name}{generic_params}",
+                data_class_params(fields, None)
             ),
             None,
         ),
@@ -2211,12 +2249,14 @@ fn variant_subclass(
 
 /// The members of a variant whose functions are called at their key by the enum's serializer,
 /// which hands the plugin the variant's object: each member `plugin` reads no other way, and a
-/// lone slot, which that object holds under `value`.
+/// lone slot, which that object holds under `value`. A variant [`written_by_hand`] calls its
+/// members' functions itself.
 fn variant_keyed(
     payload: &VariantPayload,
     plugin: &Plugin<'_>,
 ) -> Vec<(String, Vec<FunctionName>)> {
     match payload {
+        VariantPayload::Named(_) if written_by_hand(payload) => Vec::new(),
         VariantPayload::Named(fields) => plugin.keyed(fields),
         VariantPayload::Unit => Vec::new(),
         VariantPayload::Value(field_def) => {
@@ -2230,9 +2270,12 @@ fn variant_keyed(
     }
 }
 
-/// Each alias of a member of a variant's `payload`, beside the name the member is written under.
+/// Each alias of a member of a variant's `payload`, beside the name the member is written under,
+/// which the enum's serializer reads as that name. A variant [`written_by_hand`] reads its own.
 fn members_renamed(payload: &VariantPayload) -> Vec<(String, String)> {
-    if let VariantPayload::Named(fields) = payload {
+    if written_by_hand(payload) {
+        Vec::new()
+    } else if let VariantPayload::Named(fields) = payload {
         aliases::of_members(fields)
     } else {
         Vec::new()
@@ -2272,10 +2315,13 @@ fn dispatched_tagged_variant(
         false,
         &payload,
     );
-    let subclass = format!(
+    let mut subclass = format!(
         "{declaration} {}",
         variant_body(&payload, ctx.tagging, &wire_tag, ctx.serializable, ctx.args)
     );
+    if let Some(serializer) = variant_serializer(&plugin, ctx.generic_params, &payload) {
+        let _ = write!(subclass, " {serializer}");
+    }
 
     let tag_key = ctx.tag_key;
     // Under a tag and a content key the content is read out of a `Map` index, which is nullable
@@ -2495,6 +2541,7 @@ fn untagged_enum_kotlin_source(
             "{declaration} {{ {} }}",
             rules.written("override ")
         ));
+        subclasses.extend(variant_serializer(&plugin, &generic_params, &payload));
         let subclass_serializer = kotlin_subclass_serializer_expr(&subclass_name, &type_parameters);
         serialize_arms.push(format!(
             "is {subclass_name} -> output.json.encodeToJsonElement({subclass_serializer}, value)"
