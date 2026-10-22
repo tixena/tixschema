@@ -27,6 +27,7 @@ fn test_json_schema_method_flatten_emits_merge() {
     let with_flatten = generate_struct_json_schema_method(
         &fields,
         &[MergedSource {
+            entries: false,
             label: "Base".to_owned(),
             map: false,
             optional: false,
@@ -48,6 +49,7 @@ fn test_the_merge_wraps_branches_in_the_spelling_its_source_used() {
     let merge = generate_struct_json_schema_method(
         &[],
         &[MergedSource {
+            entries: false,
             label: "Base".to_owned(),
             map: false,
             optional: false,
@@ -83,6 +85,7 @@ fn test_an_optional_merged_source_carries_its_absence_into_the_merge() {
         generate_struct_json_schema_method(
             &[],
             &[MergedSource {
+                entries: false,
                 label: "Base".to_owned(),
                 map: false,
                 optional,
@@ -96,7 +99,10 @@ fn test_an_optional_merged_source_carries_its_absence_into_the_merge() {
     };
 
     let optional = merge_of(true);
-    assert!(optional.contains("(\"Base\" , true ,"), "{optional}");
+    assert!(
+        optional.contains("(\"Base\" , true , false ,"),
+        "{optional}"
+    );
     assert!(
         optional.contains("if * optional { source . or_absent () } else { source }"),
         "{optional}"
@@ -107,7 +113,45 @@ fn test_an_optional_merged_source_carries_its_absence_into_the_merge() {
     );
 
     let required = merge_of(false);
-    assert!(required.contains("(\"Base\" , false ,"), "{required}");
+    assert!(
+        required.contains("(\"Base\" , false , false ,"),
+        "{required}"
+    );
+}
+
+#[test]
+fn test_the_absence_of_a_source_read_as_entries_admits_the_keys_it_leaves() {
+    let merge = generate_struct_json_schema_method(
+        &[],
+        &[MergedSource {
+            entries: true,
+            label: "counts".to_owned(),
+            map: true,
+            optional: true,
+            value: quote::quote! { serde_json::json!({ "type": "object" }) },
+            withheld: Vec::new(),
+        }],
+        "Node",
+        &[],
+    )
+    .to_string();
+
+    assert!(
+        merge.contains("(\"counts\" , true , true , true , & [] ,"),
+        "{merge}"
+    );
+    assert!(
+        merge.contains("if * entries { offered . entries_left () } else { offered }"),
+        "{merge}"
+    );
+    assert!(
+        merge.contains("Self :: Absent => Self :: Dropped"),
+        "{merge}"
+    );
+    assert!(
+        merge.contains("value : serde_json :: Value :: Bool (true)"),
+        "{merge}"
+    );
 }
 
 #[test]
@@ -115,6 +159,7 @@ fn test_a_merged_source_carries_the_keys_serde_hands_it_none_of() {
     let merge = generate_struct_json_schema_method(
         &[],
         &[MergedSource {
+            entries: false,
             label: "counts".to_owned(),
             map: true,
             optional: false,
@@ -127,7 +172,7 @@ fn test_a_merged_source_carries_the_keys_serde_hands_it_none_of() {
     .to_string();
 
     assert!(
-        merge.contains("(\"counts\" , false , true , & [\"kind\"] ,"),
+        merge.contains("(\"counts\" , false , false , true , & [\"kind\"] ,"),
         "{merge}"
     );
     assert!(
@@ -145,6 +190,7 @@ fn test_the_merge_expands_branches_to_a_fixed_point_under_a_path_terminator() {
     let merge = generate_struct_json_schema_method(
         &[],
         &[MergedSource {
+            entries: false,
             label: "Base".to_owned(),
             map: false,
             optional: false,
@@ -177,6 +223,7 @@ fn test_the_merge_reads_a_tagged_unit_variant_at_the_edges_own_depth() {
     let merge = generate_struct_json_schema_method(
         &[],
         &[MergedSource {
+            entries: false,
             label: "Base".to_owned(),
             map: false,
             optional: false,

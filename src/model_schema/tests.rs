@@ -17434,6 +17434,7 @@ fn merged_source(spelling: &str, branches: &[&str], absence: SourceAbsence) -> M
             .iter()
             .map(|branch| (*branch).to_owned())
             .collect::<Vec<_>>(),
+        entries: false,
         spelling: spelling.to_owned(),
     }
 }
@@ -17533,6 +17534,34 @@ fn an_absent_source_writes_the_object_with_it_and_without_it() {
             "z.union([\n  OWN.and(z.lazy(() => Base$Schema)),\n  OWN,\n])"
         );
     }
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn the_absence_of_a_source_read_as_entries_holds_every_key_it_was_handed() {
+    for absence in [SourceAbsence::Field, SourceAbsence::Published] {
+        let operands = [MergedOperand {
+            entries: true,
+            ..merged_source("Counts$Schema", &[], absence)
+        }];
+        assert_eq!(
+            super::zod_merged_joins(&operands),
+            vec![
+                ".and(z.lazy(() => Counts$Schema))".to_owned(),
+                ".and(z.record(z.string(), z.unknown()).transform((): Record<string, never> => \
+                 ({})))"
+                    .to_owned()
+            ]
+        );
+    }
+    let always = [MergedOperand {
+        entries: true,
+        ..merged_source("Counts$Schema", &[], SourceAbsence::Never)
+    }];
+    assert_eq!(
+        super::zod_merged_joins(&always),
+        vec![".and(z.lazy(() => Counts$Schema))".to_owned()]
+    );
 }
 
 #[cfg(feature = "zod")]
