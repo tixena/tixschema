@@ -12,13 +12,17 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::flattened_models::{
-    Bending, Brailing, HITCHING, Hitching, Knotting, Lanyarding, Netting, Nipping, PAYLOAD,
-    STROPPING, Seizing, Slinging, Splicing, Stoppering, Stropping, Whipping, read_of,
+    BELTING, Belting, Bending, Brailing, CLEATING, Cleating, HEAVING, HITCHING, Heaving, Hitching,
+    Jibing, Knotting, Lanyarding, Luffing, Netting, Nipping, PAYLOAD, Quaying, SCUDDING, STOWING,
+    STROPPING, Scudding, Seizing, Slinging, Splicing, Stoppering, Stowing, Stropping, Tacking,
+    UNDER_AN_ALIAS, Whipping, read_of,
 };
 #[cfg(feature = "serde")]
 use super::flattened_models::{
-    bending_kotlin, hitching_kotlin, knotting_kotlin, netting_kotlin, nipping_kotlin,
-    seizing_kotlin, slinging_kotlin, splicing_kotlin, stoppering_kotlin, whipping_kotlin,
+    belting_kotlin, bending_kotlin, cleating_kotlin, heaving_kotlin, hitching_kotlin,
+    knotting_kotlin, luffing_kotlin, netting_kotlin, nipping_kotlin, scudding_kotlin,
+    seizing_kotlin, slinging_kotlin, splicing_kotlin, stoppering_kotlin, stowing_kotlin,
+    whipping_kotlin,
 };
 use super::read::{kept, serializers};
 use super::tuple_variants_models::Labelling;
@@ -966,6 +970,170 @@ fn a_flattened_member_is_read_without_the_keys_taken_ahead_of_it() {
             "val spare = if (JsonObject(obj - labellingKeys).keys.any { it in spareKeys }) \
              lenient.decodeFromJsonElement(LabellingUnjudged, JsonObject(obj - labellingKeys)) \
              else null;"
+                .to_owned(),
+        ),
+    ] {
+        assert!(kotlin.contains(&held), "no `{held}` in: {kotlin}");
+    }
+}
+
+/// What serde reads of each holder of a flattened externally tagged enum: the first entry, in the
+/// object's order, under a name a variant is read under, its alias included, is the enum's, and
+/// every other entry is left to the members after it. A holder with no such entry is refused, and
+/// an optional enum reads no value.
+#[test]
+fn serde_hands_a_flattened_enum_the_first_entry_under_a_variants_name() {
+    let bay = || Tacking::Bay {
+        label: "n".to_owned(),
+    };
+    let dock = || Tacking::Dock {
+        label: "s".to_owned(),
+    };
+    let stowed: Vec<_> = STOWING
+        .iter()
+        .map(|payload| serde_json::from_str::<Stowing>(payload).map(|read| read.tacking))
+        .collect();
+    assert_eq!(
+        stowed[..6]
+            .iter()
+            .map(|read| read.as_ref().ok())
+            .collect::<Vec<_>>(),
+        [
+            Some(&bay()),
+            Some(&bay()),
+            Some(&bay()),
+            Some(&bay()),
+            Some(&Tacking::Calm),
+            Some(&Tacking::Held("x".to_owned()))
+        ]
+    );
+    assert_eq!(
+        stowed[6].as_ref().unwrap_err().to_string(),
+        "no variant of enum Tacking found in flattened data at line 1 column 12"
+    );
+    let belted = BELTING.map(|payload| serde_json::from_str::<Belting>(payload).unwrap().tacking);
+    assert_eq!(belted, [Some(bay()), None, None]);
+    let heaved = HEAVING.map(|payload| {
+        let read: Heaving = serde_json::from_str(payload).unwrap();
+        (read.tacking, read.tally.keys)
+    });
+    assert_eq!(
+        heaved,
+        [
+            (bay(), vec!["north".to_owned()]),
+            (bay(), vec!["Dock".to_owned(), "north".to_owned()]),
+            (dock(), vec!["Bay".to_owned(), "north".to_owned()]),
+            (bay(), vec!["Quay".to_owned(), "north".to_owned()]),
+        ]
+    );
+    let cleated = CLEATING.map(|payload| {
+        serde_json::from_str::<Cleating>(payload).map(|read| (read.jibing, read.tally.keys))
+    });
+    let north = || vec!["north".to_owned()];
+    assert_eq!(
+        cleated[..2]
+            .iter()
+            .map(|read| read.as_ref().ok())
+            .collect::<Vec<_>>(),
+        [
+            Some(&(
+                Jibing::Jetty {
+                    label: "n".to_owned()
+                },
+                north()
+            )),
+            Some(&(
+                Jibing::OpenBay {
+                    label: "n".to_owned()
+                },
+                north()
+            )),
+        ]
+    );
+    assert_eq!(
+        cleated[2].as_ref().unwrap_err().to_string(),
+        "no variant of enum Jibing found in flattened data at line 1 column 35"
+    );
+    let scudding: Scudding = serde_json::from_str(SCUDDING).unwrap();
+    assert_eq!(
+        (
+            scudding.hatch,
+            scudding.labelling.label,
+            scudding.tally.keys
+        ),
+        (bay(), "m".to_owned(), north())
+    );
+    let stowing: Stowing = serde_json::from_str(UNDER_AN_ALIAS[0]).unwrap();
+    assert_eq!(stowing.tacking, dock());
+    let heaving: Heaving = serde_json::from_str(UNDER_AN_ALIAS[1]).unwrap();
+    assert_eq!((heaving.tacking, heaving.tally.keys), (dock(), north()));
+    let luffing: Luffing = serde_json::from_str(STOWING[0]).unwrap();
+    assert_eq!(
+        luffing.quaying,
+        Quaying::Bay {
+            label: "n".to_owned()
+        }
+    );
+}
+
+/// A flattened externally tagged enum is read from the first entry, in the object's order, under
+/// a name a variant is read under, its `rename`, the enum's `rename_all` and an alias included:
+/// the holder is refused without one, and an optional enum reads no value. Every member flattened
+/// after it is handed the object without that entry. An enum declared below its holder is read
+/// from the object without the holder's own keys, as before.
+#[test]
+#[cfg(feature = "serde")]
+fn a_flattened_enum_is_read_from_the_first_entry_under_a_variants_name() {
+    let tacking_names = "setOf(\"Bay\", \"Calm\", \"Dock\", \"Quay\", \"Held\")";
+    for (kotlin, held) in [
+        (
+            stowing_kotlin::kotlin_definition(),
+            format!(
+                "val tackingEntry = JsonObject(obj - setOf(\"note\")).entries.firstOrNull {{ \
+                 it.key in {tacking_names} }} ?: throw SerializationException(\"no variant of \
+                 enum Tacking found in flattened data\"); val tacking = \
+                 lenient.decodeFromJsonElement(TackingUnjudged, \
+                 JsonObject(mapOf(tackingEntry.toPair())));"
+            ),
+        ),
+        (
+            belting_kotlin::kotlin_definition(),
+            format!(
+                "val tackingEntry = JsonObject(obj - setOf(\"note\")).entries.firstOrNull {{ \
+                 it.key in {tacking_names} }}; val tacking = tackingEntry?.let {{ \
+                 lenient.decodeFromJsonElement(TackingUnjudged, JsonObject(mapOf(it.toPair()))) \
+                 }};"
+            ),
+        ),
+        (
+            cleating_kotlin::kotlin_definition(),
+            "val jibingEntry = obj.entries.firstOrNull { it.key in setOf(\"pier\", \"open_bay\") \
+             } ?: throw SerializationException(\"no variant of enum Jibing found in flattened \
+             data\");"
+                .to_owned(),
+        ),
+        (
+            heaving_kotlin::kotlin_definition(),
+            "val tally = lenient.decodeFromJsonElement(BuntingUnjudged, \
+             withItsKeys(JsonObject(obj - tackingEntry.key)));"
+                .to_owned(),
+        ),
+        (
+            scudding_kotlin::kotlin_definition(),
+            "val labelling = lenient.decodeFromJsonElement(LabellingUnjudged, JsonObject(obj - \
+             hatchEntry.key));"
+                .to_owned(),
+        ),
+        (
+            scudding_kotlin::kotlin_definition(),
+            "val tally = lenient.decodeFromJsonElement(BuntingUnjudged, \
+             withItsKeys(JsonObject(obj - hatchEntry.key - labellingKeys)));"
+                .to_owned(),
+        ),
+        (
+            luffing_kotlin::kotlin_definition(),
+            "val quaying = lenient.decodeFromJsonElement(serializer<Quaying>(), JsonObject(obj - \
+             setOf(\"note\")));"
                 .to_owned(),
         ),
     ] {

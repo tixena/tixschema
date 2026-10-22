@@ -5,7 +5,9 @@
 //! a struct and beside a member of its holder's own. serde reads the members in the order
 //! declared: a struct takes the keys it reads, a member that names a function takes none, and
 //! every flattened member is handed the entries neither its holder's own members nor a member
-//! flattened ahead of it took.
+//! flattened ahead of it took. An externally tagged enum takes the first entry under the name of a
+//! variant it reads, beside a member of its holder's own, ahead of a member that names a function
+//! and ahead of a struct, and one declared below its holder is read from the object.
 
 use std::collections::HashMap;
 
@@ -24,6 +26,54 @@ pub const HITCHING: &str = r#"{"label":"n","north":2,"note":"a"}"#;
 
 /// What [`Stropping`] is read from.
 pub const STROPPING: &str = r#"{"label":"n","note":"a"}"#;
+
+/// What [`Stowing`] is read from: a variant's entry ahead of the holder's own key and after it,
+/// beside a key no member reads and beside a second variant's entry, a unit variant's and a
+/// newtype variant's entry, and no variant's entry, which serde refuses.
+pub const STOWING: [&str; 7] = [
+    r#"{"Bay":{"label":"n"},"note":"a"}"#,
+    r#"{"note":"a","Bay":{"label":"n"}}"#,
+    r#"{"note":"a","Bay":{"label":"n"},"north":2}"#,
+    r#"{"Bay":{"label":"n"},"Dock":{"label":"s"},"note":"a"}"#,
+    r#"{"Calm":null,"note":"a"}"#,
+    r#"{"Held":"x","note":"a"}"#,
+    r#"{"note":"a"}"#,
+];
+
+/// What [`Belting`] is read from: a variant's entry, and no variant's entry, of a key no variant is
+/// read under and of none, where serde reads no value.
+pub const BELTING: [&str; 3] = [
+    r#"{"Bay":{"label":"n"},"note":"a"}"#,
+    r#"{"Other":1,"note":"a"}"#,
+    r#"{"note":"a"}"#,
+];
+
+/// What [`Heaving`] is read from: one variant's entry, two variants' entries in each order, and an
+/// alias after a variant's entry.
+pub const HEAVING: [&str; 4] = [
+    r#"{"Bay":{"label":"n"},"north":2}"#,
+    r#"{"Bay":{"label":"n"},"Dock":{"label":"s"},"north":2}"#,
+    r#"{"Dock":{"label":"s"},"Bay":{"label":"n"},"north":2}"#,
+    r#"{"Bay":{"label":"n"},"Quay":{"label":"s"},"north":2}"#,
+];
+
+/// What [`Cleating`] is read from: a variant under its `rename`, one under the enum's `rename_all`,
+/// and one under its Rust name, which serde reads no variant under.
+pub const CLEATING: [&str; 3] = [
+    r#"{"pier":{"label":"n"},"north":2}"#,
+    r#"{"open_bay":{"label":"n"},"north":2}"#,
+    r#"{"OpenBay":{"label":"n"},"north":2}"#,
+];
+
+/// What [`Scudding`] is read from.
+pub const SCUDDING: &str = r#"{"Bay":{"label":"n"},"label":"m","north":2}"#;
+
+/// A variant's entry under its `alias`, beside a member of its holder's own and ahead of a member
+/// that names a function: serde reads it, and the Kotlin read of an enum refuses it.
+pub const UNDER_AN_ALIAS: [&str; 2] = [
+    r#"{"Quay":{"label":"s"},"note":"a"}"#,
+    r#"{"Quay":{"label":"s"},"north":2}"#,
+];
 
 /// A map, the one member, which serde hands every key of the object.
 #[model_schema()]
@@ -192,6 +242,111 @@ pub struct Slinging {
     pub labelling: Labelling,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     pub spare: Option<Labelling>,
+}
+
+/// An externally tagged enum, which serde reads from the first entry under a variant's name or an
+/// alias of one.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum Tacking {
+    Bay {
+        label: String,
+    },
+    Calm,
+    #[serde(alias = "Quay")]
+    Dock {
+        label: String,
+    },
+    Held(String),
+}
+
+/// An externally tagged enum flattened beside a member of its holder's own: serde hands the enum
+/// the first entry under the name of a variant, and leaves every other key to the holder.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Stowing {
+    pub note: String,
+    #[serde(flatten)]
+    pub tacking: Tacking,
+}
+
+/// [`Stowing`] with its enum optional, which serde reads no value of where no entry is under the
+/// name of a variant.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Belting {
+    pub note: String,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub tacking: Option<Tacking>,
+}
+
+/// A member that names a function flattened after an externally tagged enum, where serde hands
+/// the function every entry but the one the enum took.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Heaving {
+    #[serde(flatten)]
+    pub tacking: Tacking,
+    #[model_schema_prop(preprocess = ["withItsKeys"])]
+    #[serde(flatten)]
+    pub tally: Bunting,
+}
+
+/// An externally tagged enum whose variants are written under the enum's `rename_all` and under a
+/// `rename` of their own.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Jibing {
+    #[serde(rename = "pier")]
+    Jetty {
+        label: String,
+    },
+    OpenBay {
+        label: String,
+    },
+}
+
+/// A member that names a function flattened after [`Jibing`].
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Cleating {
+    #[serde(flatten)]
+    pub jibing: Jibing,
+    #[model_schema_prop(preprocess = ["withItsKeys"])]
+    #[serde(flatten)]
+    pub tally: Bunting,
+}
+
+/// A struct and a member that names a function flattened after an externally tagged enum, where
+/// serde hands the struct every entry but the enum's, and the function every entry neither took.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Scudding {
+    #[serde(flatten)]
+    pub hatch: Tacking,
+    #[serde(flatten)]
+    pub labelling: Labelling,
+    #[model_schema_prop(preprocess = ["withItsKeys"])]
+    #[serde(flatten)]
+    pub tally: Bunting,
+}
+
+/// An externally tagged enum flattened beside a member of its holder's own and declared below the
+/// holder, which the emitter has not written when it writes the holder.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Luffing {
+    pub note: String,
+    #[serde(flatten)]
+    pub quaying: Quaying,
+}
+
+/// The enum [`Luffing`] flattens.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum Quaying {
+    Bay { label: String },
 }
 
 /// The payload as it was handed.

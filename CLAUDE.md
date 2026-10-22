@@ -938,6 +938,16 @@ the consumer's view; this is what a change has to keep.
   flattened member of its own takes none, as serde reads it as a map, and so does one with a
   member serde never writes, where serde takes its keys: the README states the limit. A map is
   the one member of its object (section 4).
+- **A flattened externally tagged enum takes one entry** (`flatten_enum_field_plan`): the first
+  of that object, in its order, under a name in the `setOf(...)` written from
+  `variant_names_when_flattened` in `src/features/serde.rs`, which Dart reads too. The holder
+  hands the enum the object of that one entry, throws `SerializationException` where there is
+  none and reads `null` for an optional enum, and every member after it is read from the object
+  without `{member}Entry.key`. `enum_kotlin_tokens` records the names in `KOTLIN_VARIANT_NAMES`,
+  and `flattened_variant_names` reads them: an enum under a tag key, an untagged one, one that
+  names a function on itself or on its member, and one the emitter has not written are read as a
+  struct is, and take no key. The enum's own read takes no variant under an `alias`, so an entry
+  under one is taken and refused: the README states both limits.
 - **An enum under a tag alone is written by hand as well.** The plugin refuses
   `@KeepGeneratedSerializer` on a sealed interface, so `dispatched_tagged_enum_kotlin_source`
   writes all three taggings, `Tagging::Unwrapped` being the tag alone there: the tag is taken off
@@ -988,9 +998,10 @@ the consumer's view; this is what a change has to keep.
   own, with the type's serializer, held to what `validate()` answered.
   `run_kotlin_read.rs` holds the README's rows to what the Rust read answers of the same payload,
   and both clients to their fault. `tests/kotlin_tests/flattened_models.rs` holds the models of a
-  member flattened after a struct and beside a member of its holder's own, and what serde reads
-  of each, `tests/kotlin_tests/tests.rs` pins their reads, and `run_kotlin_flattened.rs` reads and
-  writes each back under the toolchain, against serde.
+  member flattened after a struct and beside a member of its holder's own, and of an externally
+  tagged enum flattened beside other keys, `tests/kotlin_tests/tests.rs` pins their reads, and
+  `run_kotlin_flattened.rs` reads each under the toolchain, against serde, and writes back the
+  structs. A variant's entry under an alias is held apart (`UNDER_AN_ALIAS`).
 
 #### The Kotlin client's `preprocess`
 

@@ -34,6 +34,7 @@ use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{
     brand_field, has_serde_skip_serializing, parse_serde_key_omission, struct_tag,
+    variant_names_when_flattened,
 };
 use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, classify_variant, get_field_def,
@@ -202,6 +203,10 @@ thread_local! {
     /// by which of its arms holds `()`, so every `Result` of one shape names one interface. Cleared
     /// with [`KOTLIN_TUPLE_AUX`].
     static KOTLIN_RESULTS: RefCell<Vec<([bool; 2], String)>> = const { RefCell::new(Vec::new()) };
+    /// The names serde reads each enum the emitter wrote under when it is flattened, by Rust
+    /// ident: the first entry of the holder's object under one of them is the enum's.
+    static KOTLIN_VARIANT_NAMES: RefCell<HashMap<String, Vec<String>>> =
+        RefCell::new(HashMap::new());
 }
 
 /// The Kotlin tokens `item` earns, given what `#[model_schema(...)]` wrote on it. Dispatches on
@@ -267,6 +272,20 @@ fn register_kotlin_name(rust_ident: &str, export_name: &str) {
             .borrow_mut()
             .insert(rust_ident.to_owned(), export_name.to_owned());
     });
+}
+
+/// The Rust ident of the enum a flattened member typed `def` holds, and the names it takes the
+/// first entry under, as serde reads an externally tagged enum: `None` for any other type, one the
+/// emitter has not written, and a member that names a function, which is handed the whole object.
+fn flattened_variant_names(def: &FieldDef) -> Option<(&str, Vec<String>)> {
+    let FieldDefType::SiblingType(name, _) = &def.field_type else {
+        return None;
+    };
+    if !preprocess::of(def).is_empty() {
+        return None;
+    }
+    let names = KOTLIN_VARIANT_NAMES.with(|noted| noted.borrow().get(name).cloned())?;
+    (!names.is_empty()).then_some((name.as_str(), names))
 }
 
 /// The Kotlin name registered for `rust_ident`, or `None` for a type declared below the one
@@ -1326,15 +1345,7 @@ fn flatten_struct_field_plan(
 ) -> (String, String, String) {
     let base = flatten_base_field(&field.field_def);
     let inner_serializer = read::member_serializer(&base, type_parameters);
-    let serialize = if field.field_def.is_optional() {
-        format!(
-            "value.{prop}?.let {{ flattened -> output.json.encodeToJsonElement({inner_serializer}, flattened).jsonObject.forEach {{ (k, v) -> put(k, v) }} }}"
-        )
-    } else {
-        format!(
-            "output.json.encodeToJsonElement({inner_serializer}, value.{prop}).jsonObject.forEach {{ (k, v) -> put(k, v) }}"
-        )
-    };
+    let serialize = flattened_merge(field, prop, &inner_serializer);
     let keys_ident = format!("{}Keys", kotlin_bare(prop));
     let key_read =
         format!("val {keys_ident} = ({inner_serializer}).descriptor.elementNames.toSet()");
@@ -1347,6 +1358,60 @@ fn flatten_struct_field_plan(
         format!("val {prop} = lenient.decodeFromJsonElement({inner_serializer}, {handed})")
     };
     (serialize, format!("{key_read}; {decode}"), keys_ident)
+}
+
+/// The `serialize` statement that merges a flattened member's own keys into its holder's object,
+/// read by `inner_serializer`; an optional member that holds no value merges none.
+fn flattened_merge(field: &KotlinField, prop: &str, inner_serializer: &str) -> String {
+    if field.field_def.is_optional() {
+        format!(
+            "value.{prop}?.let {{ flattened -> output.json.encodeToJsonElement({inner_serializer}, flattened).jsonObject.forEach {{ (k, v) -> put(k, v) }} }}"
+        )
+    } else {
+        format!(
+            "output.json.encodeToJsonElement({inner_serializer}, value.{prop}).jsonObject.forEach {{ (k, v) -> put(k, v) }}"
+        )
+    }
+}
+
+/// One flattened externally tagged enum's own statements, as [`flatten_struct_field_plan`] writes
+/// a struct's: the enum `read_under` names is read from the first entry of `rest` under one of the
+/// names it holds, which serde refuses the holder without and an optional enum reads no value
+/// without, and the key of that entry, which the members flattened after it are handed the object
+/// without.
+fn flatten_enum_field_plan(
+    field: &KotlinField,
+    prop: &str,
+    type_parameters: &[String],
+    rest: &str,
+    (enum_name, names): (&str, &[String]),
+) -> (String, String, String) {
+    let base = flatten_base_field(&field.field_def);
+    let inner_serializer = read::member_serializer(&base, type_parameters);
+    let serialize = flattened_merge(field, prop, &inner_serializer);
+    let entry_ident = format!("{}Entry", kotlin_bare(prop));
+    let listed = names
+        .iter()
+        .map(|name| format!("\"{}\"", kotlin_template_text(name)))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let entry_read = format!("{rest}.entries.firstOrNull {{ it.key in setOf({listed}) }}");
+    let (decode, entry_taken) = if field.field_def.is_optional() {
+        (
+            format!(
+                "val {entry_ident} = {entry_read}; val {prop} = {entry_ident}?.let {{ lenient.decodeFromJsonElement({inner_serializer}, JsonObject(mapOf(it.toPair()))) }}"
+            ),
+            format!("setOfNotNull({entry_ident}?.key)"),
+        )
+    } else {
+        (
+            format!(
+                "val {entry_ident} = {entry_read} ?: throw SerializationException(\"no variant of enum {enum_name} found in flattened data\"); val {prop} = lenient.decodeFromJsonElement({inner_serializer}, JsonObject(mapOf({entry_ident}.toPair())))"
+            ),
+            format!("{entry_ident}.key"),
+        )
+    };
+    (serialize, decode, entry_taken)
 }
 
 /// One flattened map field's own statements: the `serialize` merge and the `deserialize` read,
@@ -1417,12 +1482,21 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
             } else {
                 format!("JsonObject(obj{taken})")
             };
-            let (serialize, decode, keys_ident) =
-                flatten_struct_field_plan(field, &prop, type_parameters, &rest);
-            plan.serialize_stmts.push(serialize);
-            plan.deserialize_stmts.push(decode);
-            if !preprocess::takes_no_key(&field.field_def) {
-                let _ = write!(taken, " - {keys_ident}");
+            if let Some((enum_name, names)) = flattened_variant_names(&field.field_def) {
+                let read_under = (enum_name, names.as_slice());
+                let (serialize, decode, entry_taken) =
+                    flatten_enum_field_plan(field, &prop, type_parameters, &rest, read_under);
+                plan.serialize_stmts.push(serialize);
+                plan.deserialize_stmts.push(decode);
+                let _ = write!(taken, " - {entry_taken}");
+            } else {
+                let (serialize, decode, keys_ident) =
+                    flatten_struct_field_plan(field, &prop, type_parameters, &rest);
+                plan.serialize_stmts.push(serialize);
+                plan.deserialize_stmts.push(decode);
+                if !preprocess::takes_no_key(&field.field_def) {
+                    let _ = write!(taken, " - {keys_ident}");
+                }
             }
         }
         plan.ctor_args.push(format!("{prop} = {prop}"));
@@ -1807,6 +1881,10 @@ fn enum_kotlin_tokens(item_enum: &ItemEnum, args: &KotlinArgs<'_>) -> TokenStrea
     } else {
         validate::note_model(&rust_ident);
         preprocess::note(&rust_ident, !args.preprocess.is_empty());
+        let names = variant_names_when_flattened(item_enum, args.preprocess);
+        KOTLIN_VARIANT_NAMES.with(|noted| {
+            noted.borrow_mut().insert(rust_ident.clone(), names);
+        });
         if tag_attrs.untagged {
             untagged_enum_kotlin_source(item_enum, &export_name, &tag_attrs, args, &defaults)
         } else {

@@ -2,7 +2,8 @@
 //! own, read and written by the emitted Kotlin types compiled with `-Werror`, and an optional
 //! member beside a flattened one, beside its twin under `nullable`: each payload is written back
 //! as the serde read writes it back. A member flattened after a struct, or beside a member of its
-//! holder's own, is handed the keys serde hands it.
+//! holder's own, is handed the keys serde hands it, and an externally tagged enum the one entry
+//! serde hands it.
 
 #![cfg(feature = "kotlin")]
 
@@ -12,11 +13,14 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::flattened_models::{
-    Bending, Brailing, HITCHING, Hitching, Knotting, Lanyarding, Netting, Nipping, PAYLOAD,
-    STROPPING, Seizing, Slinging, Splicing, Stoppering, Stropping, Whipping, bending_kotlin,
-    brailing_kotlin, bunting_kotlin, hitching_kotlin, knotting_kotlin, lanyarding_kotlin,
-    netting_kotlin, nipping_kotlin, noting_kotlin, read_of, seizing_kotlin, sheeting_kotlin,
-    slinging_kotlin, splicing_kotlin, stoppering_kotlin, stropping_kotlin, ticketed_kotlin,
+    BELTING, Belting, Bending, Brailing, CLEATING, Cleating, HEAVING, HITCHING, Heaving, Hitching,
+    Knotting, Lanyarding, Luffing, Netting, Nipping, PAYLOAD, SCUDDING, STOWING, STROPPING,
+    Scudding, Seizing, Slinging, Splicing, Stoppering, Stowing, Stropping, UNDER_AN_ALIAS,
+    Whipping, belting_kotlin, bending_kotlin, brailing_kotlin, bunting_kotlin, cleating_kotlin,
+    heaving_kotlin, hitching_kotlin, jibing_kotlin, knotting_kotlin, lanyarding_kotlin,
+    luffing_kotlin, netting_kotlin, nipping_kotlin, noting_kotlin, quaying_kotlin, read_of,
+    scudding_kotlin, seizing_kotlin, sheeting_kotlin, slinging_kotlin, splicing_kotlin,
+    stoppering_kotlin, stowing_kotlin, stropping_kotlin, tacking_kotlin, ticketed_kotlin,
     whipping_kotlin,
 };
 use super::runtime::ran_kotlin;
@@ -132,12 +136,34 @@ fun main() {
 }
 "#;
 
+/// What prints a row of a holder of a flattened enum: what the read holds, as `shown` tells it, or
+/// that the read is refused.
+const ENTRY_READ: &str = r#"
+fun <T> entry(name: String, serializer: KSerializer<T>, payload: String, shown: (T) -> String) {
+    val told = try {
+        shown(Json.decodeFromString(serializer, payload))
+    } catch (refused: SerializationException) {
+        "refused"
+    }
+    println("$name: $told")
+}
+"#;
+
 /// A payload, the type it is read as, and what serde writes back of it.
 struct Row {
     json: &'static str,
     name: &'static str,
     read_as: &'static str,
     written: fn(&str) -> String,
+}
+
+/// A holder of a flattened enum, a payload it is read from, what Kotlin prints of what it read,
+/// and what serde reads of it, told the same way.
+struct EntryRow {
+    json: &'static str,
+    read_as: &'static str,
+    shown: &'static str,
+    told: fn(&str) -> String,
 }
 
 /// What serde writes back of `json`, read as `T`.
@@ -299,4 +325,235 @@ fn a_member_flattened_after_a_struct_reads_in_kotlin_the_keys_serde_hands_it() {
         return;
     };
     assert_eq!(printed, expected);
+}
+
+/// What serde reads of `json` as `T`, as `shown` tells it, or `refused` where it refuses it.
+fn told_by_serde<T>(json: &str, shown: fn(&T) -> String) -> String
+where
+    T: DeserializeOwned,
+{
+    serde_json::from_str::<T>(json).map_or_else(|_| "refused".to_owned(), |read| shown(&read))
+}
+
+/// The JSON serde writes of `value`.
+fn json<T>(value: &T) -> String
+where
+    T: Serialize,
+{
+    serde_json::to_string(value).unwrap()
+}
+
+/// Each row of a holder of a flattened externally tagged enum: what serde reads of each payload,
+/// the enum written alone and each other member after it.
+fn entry_rows() -> Vec<EntryRow> {
+    let stowing = |json: &str| {
+        told_by_serde(json, |read: &Stowing| {
+            format!("{} {}", self::json(&read.tacking), read.note)
+        })
+    };
+    let belting = |json: &str| {
+        told_by_serde(json, |read: &Belting| {
+            format!("{} {}", self::json(&read.tacking), read.note)
+        })
+    };
+    let heaving = |json: &str| {
+        told_by_serde(json, |read: &Heaving| {
+            format!("{} {}", self::json(&read.tacking), self::json(&read.tally))
+        })
+    };
+    let cleating = |json: &str| {
+        told_by_serde(json, |read: &Cleating| {
+            format!("{} {}", self::json(&read.jibing), self::json(&read.tally))
+        })
+    };
+    let scudding = |json: &str| {
+        told_by_serde(json, |read: &Scudding| {
+            format!(
+                "{} {} {}",
+                self::json(&read.hatch),
+                self::json(&read.labelling),
+                self::json(&read.tally)
+            )
+        })
+    };
+    let enum_and_note = "\"${Json.encodeToString(serializer<Tacking>(), it.tacking)} ${it.note}\"";
+    let optional_and_note =
+        "\"${Json.encodeToString(serializer<Tacking?>(), it.tacking)} ${it.note}\"";
+    let enum_and_tally = "\"${Json.encodeToString(serializer<Tacking>(), it.tacking)} \
+                          ${Json.encodeToString(serializer<Bunting>(), it.tally)}\"";
+    let renamed_and_tally = "\"${Json.encodeToString(serializer<Jibing>(), it.jibing)} \
+                             ${Json.encodeToString(serializer<Bunting>(), it.tally)}\"";
+    let enum_struct_and_tally = "\"${Json.encodeToString(serializer<Tacking>(), it.hatch)} \
+                                 ${Json.encodeToString(serializer<Labelling>(), it.labelling)} \
+                                 ${Json.encodeToString(serializer<Bunting>(), it.tally)}\"";
+    let mut rows = Vec::new();
+    rows.extend(STOWING.map(|json| EntryRow {
+        json,
+        read_as: "Stowing",
+        shown: enum_and_note,
+        told: stowing,
+    }));
+    rows.extend(BELTING.map(|json| EntryRow {
+        json,
+        read_as: "Belting",
+        shown: optional_and_note,
+        told: belting,
+    }));
+    rows.extend(HEAVING.map(|json| EntryRow {
+        json,
+        read_as: "Heaving",
+        shown: enum_and_tally,
+        told: heaving,
+    }));
+    rows.extend(CLEATING.map(|json| EntryRow {
+        json,
+        read_as: "Cleating",
+        shown: renamed_and_tally,
+        told: cleating,
+    }));
+    rows.push(EntryRow {
+        json: SCUDDING,
+        read_as: "Scudding",
+        shown: enum_struct_and_tally,
+        told: scudding,
+    });
+    rows
+}
+
+/// The Kotlin source of every holder of a flattened enum and what it flattens, with `main`.
+fn entry_source(main: String) -> String {
+    [
+        KOTLIN_IMPORTS.to_owned(),
+        labelling_kotlin::kotlin_definition(),
+        bunting_kotlin::kotlin_definition(),
+        tacking_kotlin::kotlin_definition(),
+        jibing_kotlin::kotlin_definition(),
+        stowing_kotlin::kotlin_definition(),
+        belting_kotlin::kotlin_definition(),
+        heaving_kotlin::kotlin_definition(),
+        cleating_kotlin::kotlin_definition(),
+        scudding_kotlin::kotlin_definition(),
+        FUNCTIONS.to_owned(),
+        main,
+    ]
+    .join("\n\n")
+}
+
+/// A flattened externally tagged enum is handed the first entry, in the object's order, under the
+/// name a variant is read under, and every member after it the object without that entry, as serde
+/// hands them: beside a member of its holder's own, beside a key no member reads, ahead of a
+/// function and of a struct, under a `rename` and the enum's `rename_all`, and optional. A payload
+/// with no such entry is refused, and an optional enum reads no value.
+#[test]
+fn a_flattened_enum_reads_in_kotlin_the_entry_serde_hands_it() {
+    let rows = entry_rows();
+    let mut expected = String::new();
+    let mut main = String::from(ENTRY_READ);
+    main.push_str("fun main() {\n");
+    for (at, row) in rows.iter().enumerate() {
+        let _ = writeln!(expected, "{at}: {}", (row.told)(row.json));
+        let _ = writeln!(
+            main,
+            "    entry(\"{at}\", {}.serializer(), \"\"\"{}\"\"\") {{ {} }}",
+            row.read_as, row.json, row.shown
+        );
+    }
+    main.push_str("}\n");
+    assert_eq!(
+        expected,
+        "0: {\"Bay\":{\"label\":\"n\"}} a\n\
+         1: {\"Bay\":{\"label\":\"n\"}} a\n\
+         2: {\"Bay\":{\"label\":\"n\"}} a\n\
+         3: {\"Bay\":{\"label\":\"n\"}} a\n\
+         4: \"Calm\" a\n\
+         5: {\"Held\":\"x\"} a\n\
+         6: refused\n\
+         7: {\"Bay\":{\"label\":\"n\"}} a\n\
+         8: null a\n\
+         9: null a\n\
+         10: {\"Bay\":{\"label\":\"n\"}} {\"keys\":[\"north\"]}\n\
+         11: {\"Bay\":{\"label\":\"n\"}} {\"keys\":[\"Dock\",\"north\"]}\n\
+         12: {\"Dock\":{\"label\":\"s\"}} {\"keys\":[\"Bay\",\"north\"]}\n\
+         13: {\"Bay\":{\"label\":\"n\"}} {\"keys\":[\"Quay\",\"north\"]}\n\
+         14: {\"pier\":{\"label\":\"n\"}} {\"keys\":[\"north\"]}\n\
+         15: {\"open_bay\":{\"label\":\"n\"}} {\"keys\":[\"north\"]}\n\
+         16: refused\n\
+         17: {\"Bay\":{\"label\":\"n\"}} {\"label\":\"m\"} {\"keys\":[\"north\"]}\n"
+    );
+    let Some(printed) = ran_kotlin(&entry_source(main)) else {
+        return;
+    };
+    assert_eq!(printed, expected);
+}
+
+/// A variant's entry under its `alias` is taken by the holder as serde takes it, and the Kotlin
+/// read of the enum refuses it, where serde reads the variant.
+#[test]
+fn a_flattened_enum_refuses_in_kotlin_a_variant_under_its_alias() {
+    let serde_read = [
+        told_by_serde(UNDER_AN_ALIAS[0], |read: &Stowing| {
+            format!("{} {}", json(&read.tacking), read.note)
+        }),
+        told_by_serde(UNDER_AN_ALIAS[1], |read: &Heaving| {
+            format!("{} {}", json(&read.tacking), json(&read.tally))
+        }),
+    ];
+    assert_eq!(
+        serde_read,
+        [
+            "{\"Dock\":{\"label\":\"s\"}} a",
+            "{\"Dock\":{\"label\":\"s\"}} {\"keys\":[\"north\"]}"
+        ]
+    );
+    let main = format!(
+        "fun <T> refusal(serializer: KSerializer<T>, payload: String) {{\n\
+         try {{ Json.decodeFromString(serializer, payload); println(\"read\") }} \
+         catch (refused: IllegalStateException) {{ println(refused.message) }}\n\
+         }}\n\n\
+         fun main() {{\n\
+         refusal(Stowing.serializer(), \"\"\"{}\"\"\")\n\
+         refusal(Heaving.serializer(), \"\"\"{}\"\"\")\n\
+         }}\n",
+        UNDER_AN_ALIAS[0], UNDER_AN_ALIAS[1]
+    );
+    let Some(printed) = ran_kotlin(&entry_source(main)) else {
+        return;
+    };
+    assert_eq!(printed, "unknown tag Quay\nunknown tag Quay\n");
+}
+
+/// An enum declared below its holder is not known to take an entry: it is read from the object
+/// its holder hands it, as serde reads it where that object holds its entry alone, and refused
+/// where it holds any other key, which serde reads.
+#[test]
+fn an_enum_declared_below_its_holder_is_read_in_kotlin_from_the_object_it_is_handed() {
+    let beside = STOWING[2];
+    let serde_read = [STOWING[0], beside].map(|payload| {
+        told_by_serde(payload, |read: &Luffing| {
+            format!("{} {}", json(&read.quaying), read.note)
+        })
+    });
+    assert_eq!(serde_read, ["{\"Bay\":{\"label\":\"n\"}} a"; 2]);
+    let main = format!(
+        "fun main() {{\n\
+         val read = Json.decodeFromString(Luffing.serializer(), \"\"\"{}\"\"\")\n\
+         println(\"${{Json.encodeToString(serializer<Quaying>(), read.quaying)}} ${{read.note}}\")\n\
+         try {{ Json.decodeFromString(Luffing.serializer(), \"\"\"{beside}\"\"\"); println(\"read\") }} \
+         catch (refused: IllegalArgumentException) {{ println(refused.message) }}\n\
+         }}\n",
+        STOWING[0]
+    );
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        quaying_kotlin::kotlin_definition(),
+        luffing_kotlin::kotlin_definition(),
+        main,
+    ];
+    let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
+        return;
+    };
+    assert_eq!(
+        printed,
+        format!("{}\nCollection has more than one element.\n", serde_read[0])
+    );
 }
