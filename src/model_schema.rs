@@ -302,6 +302,13 @@ const FLATTENED_NON_OBJECT_SCOPE: &str = "This refusal holds in every build with
      here, and where a schema surface is on it keeps its TypeScript and Zod intersection, and is \
      refused by the JSON surface when the merge runs.";
 
+/// What the refusal of a tagged newtype variant over a type serde writes as an `Option` says
+/// about its own reach.
+#[cfg(feature = "serde")]
+const TAGGED_OPTIONAL_SCOPE: &str = "This refusal holds in every build with serde, and only a \
+     type declared above reaches it: one declared below, or in another crate, is not refused \
+     here, and no surface refuses it.";
+
 /// The list `validate()` collects each message in.
 const VALIDATE_SINK: &str = "errors";
 
@@ -3544,8 +3551,10 @@ fn non_object_wire(item: &Item) -> NonObjectWire {
             syn::Fields::Unnamed(slots) if slots.unnamed.len() == 1 => slots.unnamed.first(),
             syn::Fields::Named(_) | syn::Fields::Unnamed(_) | syn::Fields::Unit => None,
         });
-        if let Some(value) = held {
-            wire.leaves = published_wire_leaves(&written(&value.ty), written_leaves);
+        if let Some(slot) = held {
+            let value = written(&slot.ty);
+            wire.leaves = published_wire_leaves(&value, written_leaves);
+            wire.optional = writes_an_optional(&value);
         } else if matches!(item_struct.fields, syn::Fields::Unnamed(_)) {
             wire.leaves = vec![WireLeaf {
                 branch: Vec::new(),
@@ -3592,10 +3601,27 @@ fn non_object_wire(item: &Item) -> NonObjectWire {
         let value = written(&alias.ty);
         wire.leaves = published_wire_leaves(&value, written_leaves);
         wire.members = written_union_members(&value);
+        wire.optional = writes_an_optional(&value);
     } else {
         // Nothing else is expanded.
     }
     wire
+}
+
+/// Whether serde writes a value of `def` as an `Option`: `def` is one, or names a type declared
+/// above that `NON_OBJECT_WIRES` records as one.
+#[cfg(feature = "serde")]
+fn writes_an_optional(def: &FieldDef) -> bool {
+    if def.is_optional() {
+        return true;
+    }
+    if def.array_depth > 0 {
+        return false;
+    }
+    let FieldDefType::SiblingType(name, _) = &def.field_type else {
+        return false;
+    };
+    recorded_non_object_wire(name).is_some_and(|wire| wire.optional)
 }
 
 /// What one untagged member written as `fld` contributes below its own position, as the Zod
@@ -11104,7 +11130,10 @@ fn internally_tagged_guard_errors(
                          object of its own, or wrap it in a struct whose fields can sit beside the \
                          tag. {FLATTENED_PLAIN_ENUM_SCOPE}"
                     ),
-                    None => tagged_non_object_message(variant_name, enum_name, tag_name, &inner)?,
+                    None => tagged_non_object_message(variant_name, enum_name, tag_name, &inner)
+                        .or_else(|| {
+                            tagged_optional_message(variant_name, enum_name, tag_name, &inner)
+                        })?,
                 },
                 TaggedContent::Refused(shape) => format!(
                     "model_schema: variant `{variant_name}` of internally tagged enum \
@@ -11160,6 +11189,33 @@ fn tagged_non_object_message(
          there. Name a `content` key so the value gets an object of its own, or wrap it in a \
          struct whose fields can sit beside the tag. {FLATTENED_NON_OBJECT_SCOPE}"
     ))
+}
+
+/// The refusal of a newtype variant under a tag alone whose slot names a type declared above that
+/// serde writes as an `Option`, which the tag refuses for `Some` and `None` alike, and `None` for
+/// every other slot.
+#[cfg(feature = "serde")]
+fn tagged_optional_message(
+    variant_name: &syn::Ident,
+    enum_name: &syn::Ident,
+    tag_name: &str,
+    inner: &FieldDef,
+) -> Option<String> {
+    let FieldDefType::SiblingType(inner_name, _) = &inner.field_type else {
+        return None;
+    };
+    writes_an_optional(inner).then(|| {
+        format!(
+            "model_schema: variant `{variant_name}` of internally tagged enum `{enum_name}` wraps \
+             `{inner_name}`, which serde writes as an optional, which cannot sit beside the tag: \
+             `#[serde(tag = \"{tag_name}\")]` with no `content` writes the variant's data as \
+             members of the object the tag is written in, and only a value serde writes as an \
+             object has members to put there. serde refuses this one at run time — `cannot \
+             serialize tagged newtype variant {enum_name}::{variant_name} containing an \
+             optional`. Name a `content` key so the value gets an object of its own, or wrap it \
+             in a struct whose fields can sit beside the tag. {TAGGED_OPTIONAL_SCOPE}"
+        )
+    })
 }
 
 /// Renders one variant of an internally tagged enum as a union member.
