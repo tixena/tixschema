@@ -10,7 +10,8 @@
 //! and one that takes a key is `null` where the key is absent and refuses a key that does not read.
 //! An optional type the emitter recorded no keys for is read as the first where its serializer
 //! declares no property, and as the second where it declares some. A variant reads and writes a
-//! flattened member at its own level, under every tagging.
+//! flattened member at its own level, under every tagging. An optional member that names a
+//! function is read from what the function answers, as the Zod schema of its holder reads it.
 
 #![cfg(feature = "kotlin")]
 
@@ -20,6 +21,9 @@ use core::fmt::Write as _;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
+use super::corrected_options_models::{
+    CORRECTED, frapped_kotlin, moused_kotlin, reeved_kotlin, tholepin_kotlin, wormed_kotlin,
+};
 use super::flattened_models::{
     BELTING, BOWLINING, BROACHING, Belting, Bending, Bowlining, Brailing, Broaching, CHOCKED,
     CLEATING, Cathead, Cleating, CorrectedLocker, Dipping, ENSIGN, EmptiedLocker, GAFFING, Gaffing,
@@ -1111,6 +1115,44 @@ fn an_optional_type_of_no_recorded_key_reads_and_writes_in_kotlin_as_serde_does(
         return;
     };
     assert_eq!(printed, expected, "the Kotlin read is not the read above");
+}
+
+/// An optional member that names a function is read from what the function answers, and where
+/// that read throws is `null` where the object the function is handed holds none of its type's
+/// keys, or no key at all for a type whose keys are not known, and refuses the payload where it
+/// holds one: each payload reads as the Zod schema of its holder reads it, written back with its
+/// keys in order, where serde refuses a type the answer does not read and reads `null` as `None`.
+#[test]
+fn an_optional_type_that_names_a_function_reads_in_kotlin_as_zod_does() {
+    let mut expected = String::new();
+    let mut main = String::from(ENTRY_READ);
+    main.push_str("fun main() {\n");
+    for (at, row) in CORRECTED.iter().enumerate() {
+        let _ = writeln!(expected, "{at}: {}", row.zod);
+        let _ = writeln!(
+            main,
+            "    entry(\"{at}\", {holder}.serializer(), \"\"\"{}\"\"\") {{ \
+             Json.encodeToString(JsonObject(Json.encodeToJsonElement({holder}.serializer(), \
+             it).jsonObject.toSortedMap())) }}",
+            row.json,
+            holder = row.holder
+        );
+    }
+    main.push_str("}\n");
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        FUNCTIONS.to_owned(),
+        tholepin_kotlin::kotlin_definition(),
+        reeved_kotlin::kotlin_definition(),
+        wormed_kotlin::kotlin_definition(),
+        frapped_kotlin::kotlin_definition(),
+        moused_kotlin::kotlin_definition(),
+        main,
+    ];
+    let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
+        return;
+    };
+    assert_eq!(printed, expected, "the Kotlin read is not the Zod read");
 }
 
 /// What serde reads of `json` as the enum `T`, published as `enum_name`: the variant read, named

@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 
 use tixschema::model_schema;
 
+#[cfg(feature = "serde")]
+use super::corrected_options_models::{moused_kotlin, reeved_kotlin, wormed_kotlin};
 use super::flattened_models::{
     BELTING, BOWLINING, BROACHING, Belting, Bending, Bowlining, Brailing, Broaching, CHOCKED,
     CLEATING, Cathead, Chock, Cleating, CorrectedLocker, Dipping, ENSIGN, EmptiedLocker, GAFFING,
@@ -1281,6 +1283,61 @@ fn an_optional_type_of_no_recorded_key_is_read_where_its_descriptor_names_no_ele
         (
             slipping_kotlin::kotlin_definition(),
             read("slipped", "SlippedUnjudged", beside_a_note),
+        ),
+    ] {
+        assert!(kotlin.contains(&held), "no `{held}` in: {kotlin}");
+    }
+}
+
+/// An optional flattened member that names a function is read from what the function answers,
+/// which is called first, and where that read throws is `null` where the object the function is
+/// handed holds none of its type's keys, or no key at all where its serializer's descriptor names
+/// none, and refuses the payload where it holds one.
+#[test]
+#[cfg(feature = "serde")]
+fn an_optional_type_that_names_a_function_is_read_from_what_the_function_answers() {
+    let read = |prop: &str, keys: &str, (function, serializer): (&str, &str), held: &str| {
+        format!(
+            "val {prop}Keys = {keys}; val {prop}Corrected = {function}(JsonObject(obj - \
+             setOf(\"note\"))); val {prop} = runCatching {{ \
+             lenient.decodeFromJsonElement({serializer}, {prop}Corrected) }}.getOrElse {{ if \
+             ({held}) throw it else null }};"
+        )
+    };
+    let any_key =
+        |prop: &str| format!("JsonObject(obj - setOf(\"note\")).keys.any({prop}Keys::contains)");
+    let tholepin = ("setOf(\"label\")", any_key("tholepin"));
+    for (kotlin, held) in [
+        (
+            reeved_kotlin::kotlin_definition(),
+            read(
+                "tholepin",
+                tholepin.0,
+                ("asGiven", "TholepinUnjudged"),
+                &tholepin.1,
+            ),
+        ),
+        (
+            wormed_kotlin::kotlin_definition(),
+            read(
+                "tholepin",
+                tholepin.0,
+                ("asNull", "TholepinUnjudged"),
+                &tholepin.1,
+            ),
+        ),
+        (
+            moused_kotlin::kotlin_definition(),
+            read(
+                "frapped",
+                "(FrappedUnjudged).descriptor.elementNames.toSet()",
+                ("asGiven", "FrappedUnjudged"),
+                &format!(
+                    "if (frappedKeys.isEmpty()) JsonObject(obj - setOf(\"note\")).isNotEmpty() \
+                     else {}",
+                    any_key("frapped")
+                ),
+            ),
         ),
     ] {
         assert!(kotlin.contains(&held), "no `{held}` in: {kotlin}");

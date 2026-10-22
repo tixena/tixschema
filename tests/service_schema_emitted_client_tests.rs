@@ -403,6 +403,14 @@ mod flattened_models;
 #[path = "kotlin_tests/unrecorded_options_models.rs"]
 mod unrecorded_options_models;
 
+/// An optional flattened member that names a function: a struct the Kotlin emitter recorded keys
+/// for, under a function that answers the payload as it was handed and under one that answers
+/// `null`, and an enum under a tag alone.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "kotlin_tests/corrected_options_models.rs"]
+mod corrected_options_models;
+
 /// A map flattened as the one member of its struct, optional or not and keyed by a plain enum, a
 /// flattened struct beside a member of its own, an optional member beside a flattened one, and a
 /// member flattened after a struct or beside a member of its holder's own, read and written by

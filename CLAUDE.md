@@ -960,13 +960,23 @@ the consumer's view; this is what a change has to keep.
   own, has none to be looked for by (`recorded_keys`): where the member names no function it is
   read inside `runCatching { ... }.getOrNull()`, held wherever its read succeeds and `null`
   wherever it throws, as serde's untagged read of an `Option` reads `None`, and it still takes no
-  key. A member that names a function is looked for by its keys. A type `KOTLIN_TAKEN_KEYS`
-  records nothing for, a struct the emitter has not written, an enum under a tag key or untagged,
-  an alias and a type parameter, is looked for by the `descriptor.elementNames` of its serializer
-  where they name an element, and read inside `runCatching` where they name none, the check made
-  at run time: `if ({member}Keys.isEmpty()) runCatching { ... }.getOrNull() else if (...)`. So a
-  serializer written by hand is tried, where TypeScript and Zod refuse a key of the type that does
-  not read, and the plugin's is looked for by its keys.
+  key. A member that names a function is read as the Zod schema of its holder reads it: its
+  functions are called first, into `{member}Corrected`, the type is read from what they answer
+  inside `runCatching`, and `getOrElse` answers `null` where the object handed holds none of its
+  keys (`.keys.any({member}Keys::contains)`), or no key at all where `{member}Keys` is empty, and
+  throws the read's error where it holds one. Zod's union tries the type over the function's
+  answer first, and its branch without the type takes an object of no key beyond its holder's
+  own, so serde's refusal of `{"note":"n"}` and its `None` for a function that answers `null` are
+  not followed. `tests/kotlin_tests/corrected_options_models.rs` holds `Reeved`, `Wormed` and
+  `Moused` with what serde, TypeScript and Zod read of each payload, which
+  `tests/generic_types_tests/declarations.rs` measures, and `run_kotlin_flattened.rs` holds the
+  Kotlin read to Zod's. A type `KOTLIN_TAKEN_KEYS` records nothing for, a struct the emitter has
+  not written, an enum under a tag key or untagged, an alias and a type parameter, is looked for
+  by the `descriptor.elementNames` of its serializer where they name an element, and read inside
+  `runCatching` where they name none, the check made at run time: `if ({member}Keys.isEmpty())
+  runCatching { ... }.getOrNull() else if (...)`. So a serializer written by hand is tried, where
+  TypeScript and Zod refuse a key of the type that does not read, and the plugin's is looked for
+  by its keys.
   `tests/kotlin_tests/unrecorded_options_models.rs` holds `Fiddling` over `Crowned` declared below
   it and a holder of an enum under each tagging but serde's own, with serde's write-back of each
   payload and whether TypeScript and Zod take it, which `tests/generic_types_tests/declarations.rs`

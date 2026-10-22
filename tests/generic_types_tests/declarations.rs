@@ -42,6 +42,11 @@ mod flattened_maps;
 #[path = "../kotlin_tests/unrecorded_options_models.rs"]
 mod unrecorded;
 
+/// The holders of an optional flattened member that names a function, what serde reads of each
+/// payload, and whether TypeScript and Zod take it.
+#[path = "../kotlin_tests/corrected_options_models.rs"]
+mod corrected_options;
+
 use core::fmt::Write as _;
 
 #[cfg(feature = "chrono")]
@@ -601,6 +606,27 @@ const TAKEN_DRIVER: &str = r#"import * as lib from "./lib/index.js";
 console.log(
   JSON.stringify(PAYLOADS.map(([schema, payload]) => lib[schema].safeParse(JSON.parse(payload)).success)),
 );
+"#;
+
+/// The functions the holders of [`corrected_options_bundle`] name, as a consumer writes them in
+/// TypeScript.
+const AS_GIVEN_OR_NULL: &str = "export function asGiven(payload: unknown): unknown {
+  return payload;
+}
+
+export function asNull(_payload: unknown): unknown {
+  return null;
+}";
+
+/// Parses each payload through the schema of the type it is read as, and prints what each read
+/// answers, one line each: the object, its keys in order, or `refused`.
+const READ_DRIVER: &str = r#"import * as lib from "./lib/index.js";
+
+const sorted = (value) => Object.fromEntries(Object.keys(value).sort().map((key) => [key, value[key]]));
+for (const [schema, payload] of PAYLOADS) {
+  const read = lib[schema].safeParse(JSON.parse(payload));
+  console.log(read.success ? JSON.stringify(sorted(read.data)) : "refused");
+}
 "#;
 
 /// Parses each payload of a `Result` through the schema of the type it is read as, the declared
@@ -1601,6 +1627,26 @@ fn unrecorded_options() -> String {
     .join("\n\n")
 }
 
+/// The holders of an optional flattened member that names a function: a bundle of their own,
+/// compiled with `tsc --strict` before it is loaded.
+fn corrected_options_bundle() -> String {
+    [
+        PREAMBLE.to_owned(),
+        AS_GIVEN_OR_NULL.to_owned(),
+        corrected_options::Tholepin::ts_definition(),
+        corrected_options::Tholepin::zod_schema(),
+        corrected_options::Reeved::ts_definition(),
+        corrected_options::Reeved::zod_schema(),
+        corrected_options::Wormed::ts_definition(),
+        corrected_options::Wormed::zod_schema(),
+        corrected_options::Frapped::ts_definition(),
+        corrected_options::Frapped::zod_schema(),
+        corrected_options::Moused::ts_definition(),
+        corrected_options::Moused::zod_schema(),
+    ]
+    .join("\n\n")
+}
+
 /// What serde's read of `json` as a `T` prints, as the driver of the `Result`s prints the same
 /// payload: the value, with the keys of each object in order, or the refusal, with each message
 /// of `validate()` where the type judges a model it holds.
@@ -2480,6 +2526,61 @@ fn type_check_an_optional_flattened_type_is_refused_where_a_key_of_it_does_not_r
         .collect();
     assert_eq!(
         typed, taken,
+        "TypeScript does not take what it is stated to take:\n{said}\n{payloads}"
+    );
+}
+
+/// An optional flattened member that names a function is read by the Zod schema of its holder
+/// under `node` from what the function answers, and is absent where that read fails and the object
+/// holds none of its type's keys, and the payload refused where it holds one. TypeScript, which
+/// calls no function, takes the type's keys whatever the function answers.
+#[test]
+fn type_check_an_optional_flattened_type_that_names_a_function_is_read_from_its_answer() {
+    let listed: Vec<(String, &str)> = corrected_options::CORRECTED
+        .iter()
+        .map(|row| (format!("{}$Schema", row.holder), row.json))
+        .collect();
+    let driver = READ_DRIVER.replace("PAYLOADS", &serde_json::to_string(&listed).unwrap());
+    let Some((printed, failed)) =
+        loaded_from("corrected-options", &corrected_options_bundle(), &driver)
+    else {
+        return;
+    };
+    let zod: Vec<&str> = corrected_options::CORRECTED
+        .iter()
+        .map(|row| row.zod)
+        .collect();
+    assert_eq!(
+        printed,
+        zod.join("\n"),
+        "the schemas do not read what they are stated to read:\n{failed}"
+    );
+    let Some(at) = built_from("corrected-options-payloads", &corrected_options_bundle()) else {
+        return;
+    };
+    let mut payloads =
+        String::from("import type { Moused, Reeved, Wormed } from \"./lib/index.js\";\n");
+    for (position, row) in corrected_options::CORRECTED.iter().enumerate() {
+        let _ = writeln!(
+            payloads,
+            "export const row{position}: {} = {};",
+            row.holder, row.json
+        );
+    }
+    fs::write(at.join("tsconfig.consumer.json"), CONSUMER_PROJECT).unwrap();
+    fs::write(at.join("consumer.ts"), &payloads).unwrap();
+    let (_, said) = compiled(&at, "tsconfig.consumer.json").unwrap();
+    fs::remove_dir_all(&at).unwrap();
+    // A row's line is its position after the import.
+    let typed: Vec<bool> = (0..corrected_options::CORRECTED.len())
+        .map(|row| !said.contains(&format!("consumer.ts({},", row + 2)))
+        .collect();
+    let stated: Vec<bool> = corrected_options::CORRECTED
+        .iter()
+        .map(|row| row.typed)
+        .collect();
+    assert_eq!(
+        typed, stated,
         "TypeScript does not take what it is stated to take:\n{said}\n{payloads}"
     );
 }
