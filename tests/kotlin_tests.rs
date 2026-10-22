@@ -63,7 +63,8 @@ mod unrecorded_options_models;
 #[path = "kotlin_tests/corrected_options_models.rs"]
 mod corrected_options_models;
 
-/// A member serde reads and never writes, in a struct of its own and beside a flattened member.
+/// A member serde reads and never writes, in a struct of its own, beside a flattened member and in
+/// an enum's variant under each tagging that writes a variant's named members.
 #[cfg(test)]
 #[cfg(feature = "kotlin")]
 #[path = "service_schema_emitted_client_tests/unwritten_models.rs"]

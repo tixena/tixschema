@@ -1778,10 +1778,10 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
 /// The unjudged `KSerializer` a struct with one or more `#[serde(flatten)]` fields earns, and so
 /// does a variant with one, since `kotlinx.serialization` has no annotation for flatten: it merges
 /// each flattened value's own keys into the enclosing object, tolerant of the other fields' own
-/// keys on decode. A struct with a member serde never writes earns it too: `kotlinx.serialization`
-/// has no annotation for a member read and never written. `own` is the type's `preprocess`, which
-/// corrects the object every member is read from, and each alias of `renamed` is read in that
-/// object as the name it stands for.
+/// keys on decode. A struct or a variant with a member serde never writes earns it too:
+/// `kotlinx.serialization` has no annotation for a member read and never written. `own` is the
+/// type's `preprocess`, which corrects the object every member is read from, and each alias of
+/// `renamed` is read in that object as the name it stands for.
 fn flatten_merging_serializer(
     export_name: &str,
     generic_params: &str,
@@ -2348,9 +2348,14 @@ fn variant_payload(
 
 /// Whether a variant's `payload` is read and written by [the merging
 /// serializer](flatten_merging_serializer): it holds a `#[serde(flatten)]` member, which serde
-/// reads and writes at the variant's own level.
+/// reads and writes at the variant's own level, or a member serde never writes, which the plugin
+/// would write.
 fn written_by_hand(payload: &VariantPayload) -> bool {
-    matches!(payload, VariantPayload::Named(fields) if fields.iter().any(|field| field.flatten))
+    matches!(
+        payload,
+        VariantPayload::Named(fields)
+            if fields.iter().any(|field| field.flatten || field.never_written)
+    )
 }
 
 /// `{Subclass}Unjudged`, the serializer the emitter writes for the subclass `plugin` names, where
