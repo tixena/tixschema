@@ -893,7 +893,8 @@ fn a_flattened_option_of_an_enum_under_a_tag_key_is_looked_for_by_its_tag() {
 
 /// An enum under a tag alone is read by a serializer the emitter writes: it takes the tag off
 /// the object and reads the rest as the variant, and writes the variant with the tag ahead of it.
-/// A newtype variant is written under the `value` key its own serializer writes.
+/// A newtype variant reads the rest as the value it holds, and writes that value's members beside
+/// the tag, as serde writes them.
 #[cfg(feature = "serde")]
 #[test]
 fn an_enum_under_a_tag_alone_is_read_and_written_by_hand_over_its_variants() {
@@ -951,9 +952,12 @@ fn an_enum_under_a_tag_alone_is_read_and_written_by_hand_over_its_variants() {
              unknown key '\" + it + \"'\") }}; \
              LiftHeld }}; {} else -> throw SerializationException(\"unknown tag \" + tag) }} }} }} \
              {}",
-            merged("Boxed"),
+            "is LiftBoxed -> buildJsonObject { put(\"kind\", \"Boxed\"); \
+             output.json.encodeToJsonElement(ParcelUnjudged, value.value).jsonObject.forEach { \
+             (k, v) -> put(k, v) } }",
             merged("Loose"),
-            rest("Boxed"),
+            "\"Boxed\" -> LiftBoxed(input.json.decodeFromJsonElement(ParcelUnjudged, \
+             JsonObject(obj - \"kind\")))",
             rest("Loose"),
             judged("Lift")
         )

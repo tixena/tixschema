@@ -582,9 +582,9 @@ fn every_flattened_member_is_handed_what_no_member_ahead_of_it_takes() {
 }
 
 /// A member of a variant the plugin reads is read through a serializer of its own, named after
-/// the variant's class. A slot is corrected by the enum's serializer: in place where it reads
-/// the slot itself, and under the `value` key of the object it hands the plugin under a tag
-/// alone. A slot of several is corrected by the wrapper that reads the array.
+/// the variant's class. A slot is corrected in place by the enum's serializer, which reads it
+/// itself, from the object without the tag under a tag alone. A slot of several is corrected by
+/// the wrapper that reads the array.
 #[cfg(feature = "serde")]
 #[test]
 fn a_member_and_a_slot_of_a_variant_are_corrected_where_each_is_read() {
@@ -634,10 +634,9 @@ fn a_member_and_a_slot_of_a_variant_are_corrected_where_each_is_read() {
     };
     let lift = definition(enum_kotlin_tokens(&under_a_tag, &plain_args()));
     for held in [
-        format!(
-            "\"Boxed\" -> input.json.decodeFromJsonElement(serializer<LiftBoxed>(), {}); ",
-            keyed("JsonObject(obj - \"kind\")", "\"value\" -> unwrapped(held)")
-        ),
+        "\"Boxed\" -> LiftBoxed(input.json.decodeFromJsonElement(ParcelUnjudged, \
+         unwrapped(JsonObject(obj - \"kind\")))); "
+            .to_owned(),
         "\"Loose\" -> input.json.decodeFromJsonElement(serializer<LiftLoose>(), JsonObject(obj - \
          \"kind\")) else -> "
             .to_owned(),

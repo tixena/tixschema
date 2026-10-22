@@ -355,8 +355,8 @@ fn a_tagged_enum_dispatches_unjudged_and_judges_once() {
         &lift,
         &format!(
             "{}{{ final tag = json['kind'] as String; switch (tag) {{ case 'Boxed': return \
-             LiftBoxed(Parcel.fromJsonUnjudged(json)); case 'Loose': return \
-             LiftLoose.fromJsonUnjudged(json); default:",
+             LiftBoxed(Parcel.fromJsonUnjudged(({{...json}}..remove('kind')))); case 'Loose': \
+             return LiftLoose.fromJsonUnjudged(json); default:",
             pair("Lift", "Map<String, dynamic> json", "json")
         ),
     );

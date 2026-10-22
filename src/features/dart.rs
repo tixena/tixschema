@@ -3494,7 +3494,7 @@ fn tagged_variant_tokens(
         }
         VariantPayload::Value(field_def) => {
             // serde hands a slot beside its tag the object without the tag.
-            let source = if shape.merge_tag_into_object && !member_functions(field_def).is_empty() {
+            let source = if shape.merge_tag_into_object {
                 without(&payload_expr, &[shape.tag_key])
             } else {
                 payload_expr

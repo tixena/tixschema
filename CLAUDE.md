@@ -1307,9 +1307,14 @@ the consumer's view; this is what a change has to keep.
 - **An enum under a tag alone is written by hand as well.** The plugin refuses
   `@KeepGeneratedSerializer` on a sealed interface, so `dispatched_tagged_enum_kotlin_source`
   writes all three taggings, `Tagging::Unwrapped` being the tag alone there: the tag is taken off
-  the object and the rest is read as the variant's own subclass, a lone slot under the `value` key
-  that subclass writes. The subclass carries its tag in `@SerialName`, and a tag no variant has
-  throws `SerializationException`.
+  the object and the rest is read as the variant's own subclass. A lone slot is read from the rest
+  as the value it holds, through the serializer the other taggings read it with
+  (`read::declared_serializer`), and its members are written after the tag, as serde writes them
+  (`merged_beside`, which writes an externally tagged enum's unit variant as an entry of its name
+  over `null`). The subclass keeps its `value` property and carries its tag in `@SerialName`, and
+  a tag no variant has throws `SerializationException`. `run_kotlin_tagged_slots.rs` reads and
+  writes back a slot of each shape serde writes beside the tag, against serde and Zod, with
+  `run_dart_tagged_slots.rs` and `run_swift_tagged_slots.rs` beside it.
 - **A variant with a flattened member is written by hand too**, under every tagging, as serde
   reads and writes the member at the variant's own level, and so is a variant with a member serde
   never writes. `written_by_hand` asks it of the variant's payload, `variant_subclass` names
@@ -1437,11 +1442,11 @@ say so.
   `preprocess::keyed`). The plugin takes a serializer on a property only where its constructor
   takes no parameter, or one per argument of the property's own type, so none can be handed the
   parameter's serializer. `{Type}Unjudged` corrects such a member of a class, and the enum's
-  serializer the object it hands a variant's class (`variant_keyed`). The lone slot of a variant
-  under a tag alone is corrected the same way, under the `value` key its class reads.
+  serializer the object it hands a variant's class (`variant_keyed`).
 - **A member the emitter reads is corrected in place**: `own_field_plan`, a slot of a tuple
-  struct, a slot of a variant read by the enum's serializer, a slot of an untagged variant as the
-  variant is tried, and a position of a tuple's wrapper (`tuple_wrapper_typename`).
+  struct, a slot of a variant read by the enum's serializer, under a tag alone from the object
+  without the tag, a slot of an untagged variant as the variant is tried, and a position of a
+  tuple's wrapper (`tuple_wrapper_typename`).
 - **No function is called for a key the payload does not hold.** The plugin asks a property's
   serializer only for a key that is there, and `own_field_plan` corrects inside `?.let`. A `null`
   is handed to the function: the serializer of a nullable member is a
@@ -2011,9 +2016,8 @@ resort; this is what a change has to keep.
   those keys. A holder with no member of its own hands its first flattened member `json` as it
   was, an externally tagged enum apart. A struct's own
   tag is not taken out: serde hands it on too. The slot of a variant under a
-  tag key is read from the object without the tag where the slot names a function, and from
-  `json` as it was where it names none, so a type such a slot holds is handed the tag, where
-  Rust hands it none.
+  tag alone, and the function it names, are handed the object without the tag, as serde hands
+  them, so an externally tagged enum there reads its one entry (`run_dart_tagged_slots.rs`).
 - **A flattened `Option` of any type but a map that names a function is read as the Zod schema
   of its holder reads it** (`corrected_option`), where serde parts from Zod: where the type does
   not read what the functions answer, `null` among it, the member is `null` where the object they
