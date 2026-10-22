@@ -95,6 +95,7 @@ pub fn declares_a_parameter(read_as: &str) -> bool {
 
 /// Whether `validate()` judges a model or a brand the type `read_as` names holds, so that a client
 /// lists what it refuses.
+#[cfg(any(feature = "dart", feature = "kotlin"))]
 pub fn judged(read_as: &str) -> bool {
     models()
         .into_iter()

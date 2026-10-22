@@ -9,7 +9,9 @@
 //! `encode(to:)` declares, of its holder's own and flattened; and what a variant under a tag alone
 //! holds as its one slot or flattens, which serde hands the object without the tag; and an
 //! optional map alone in its struct or in a variant under its name, under a content key or
-//! untagged, which serde reads as `None` wherever an entry does not read.
+//! untagged, which serde reads as `None` wherever an entry does not read; and a struct with a
+//! flattened member of its own that reads a key a member of its holder's own or a struct flattened
+//! ahead of it took, as TypeScript and Zod read it, where serde refuses the payload.
 
 #![cfg(feature = "swift")]
 
@@ -21,6 +23,9 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use super::runtime::judged;
+use super::shared_key_models::{
+    SHARED_KEYS, bowline_swift, clinching_swift, earring_swift, gantline_swift, spritsail_swift,
+};
 use super::swift_flattened_models::{
     BALING, BOWSING, BOXING, Baling, Bowsing, Boxing, CLEWING, COUNTS, Clewing, FAKING, FRAPPING,
     Faking, Frapping, GRAFTING_HELD, GRAFTING_SLOT, GRIPPING, Grafting, Gripping, HALYARD,
@@ -164,7 +169,7 @@ fn alone_rows() -> Vec<Row> {
         refused: false,
         told,
     };
-    let mut rows = vec![
+    vec![
         row("stopping", "Stopping", COUNTS, written_back::<Stopping>),
         row("clewing", "Clewing", CLEWING, written_back::<Clewing>),
         row(
@@ -207,10 +212,9 @@ fn alone_rows() -> Vec<Row> {
                 refused::<Seaming>,
             )
         },
-    ];
-    #[cfg(feature = "chrono")]
-    rows.push(row("serving", "Serving", SERVING, written_back::<Serving>));
-    rows
+        #[cfg(feature = "chrono")]
+        row("serving", "Serving", SERVING, written_back::<Serving>),
+    ]
 }
 
 /// `text` read as `T`.
@@ -310,7 +314,7 @@ fn printed() -> Option<String> {
 /// definitions of the types whose every member is flattened, or `None` where no toolchain is
 /// reachable.
 fn printed_alone(rows: &[Row]) -> Option<String> {
-    let mut definitions = vec![
+    let definitions = [
         pennant_swift::swift_definition(),
         notch_swift::swift_definition(),
         counting_swift::swift_definition(),
@@ -324,9 +328,9 @@ fn printed_alone(rows: &[Row]) -> Option<String> {
         snaking_swift::swift_definition(),
         stropping_swift::swift_definition(),
         seaming_swift::swift_definition(),
+        #[cfg(feature = "chrono")]
+        serving_swift::swift_definition(),
     ];
-    #[cfg(feature = "chrono")]
-    definitions.push(serving_swift::swift_definition());
     printed_of(&definitions, &main_of(rows))
 }
 
@@ -764,4 +768,53 @@ fn an_optional_map_reads_and_writes_in_swift_as_serde_does() {
         return;
     };
     assert_eq!(printed, expected);
+}
+
+/// What prints each holder of [`SHARED_KEYS`] read from its payload: the key the type around the
+/// struct reads, the same key read by the struct, the key the struct flattens, and the holder
+/// written back.
+fn shared_key_main() -> String {
+    SHARED_KEYS
+        .iter()
+        .zip(["held.label", "held.gantline.label"])
+        .fold(String::new(), |mut main, (row, around)| {
+            let _ = writeln!(
+                main,
+                "do {{\n  let held = read({}.self, #\"{}\"#)\n  print(\"{}: \\({around}) \
+                 \\(held.spritsail.label) \\(held.spritsail.earring.tag) \\(written(held))\")\n}}",
+                row.holder, row.json, row.holder
+            );
+            main
+        })
+}
+
+/// A struct with a flattened member of its own reads its own members from the whole object, so it
+/// reads a key a member of its holder's own or a struct flattened ahead of it took, as TypeScript
+/// and Zod read it, where serde refuses the payload; and its holder writes that key once.
+#[test]
+fn a_struct_with_a_flattened_member_reads_in_swift_a_key_taken_around_it_as_zod_reads_it() {
+    let expected = SHARED_KEYS.iter().fold(String::new(), |mut expected, row| {
+        let _ = writeln!(expected, "{}: n n t {}", row.holder, row.zod);
+        expected
+    });
+    assert_eq!(
+        expected,
+        "Bowline: n n t {\"label\":\"n\",\"tag\":\"t\"}\n\
+         Clinching: n n t {\"label\":\"n\",\"tag\":\"t\"}\n",
+        "the table no longer states what Zod reads"
+    );
+    let definitions = [
+        earring_swift::swift_definition(),
+        spritsail_swift::swift_definition(),
+        bowline_swift::swift_definition(),
+        gantline_swift::swift_definition(),
+        clinching_swift::swift_definition(),
+    ];
+    let Some(printed) = printed_of(&definitions, &shared_key_main()) else {
+        return;
+    };
+    assert_eq!(
+        printed, expected,
+        "the Swift read no longer reads each key as Zod reads it"
+    );
 }

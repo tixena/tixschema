@@ -306,7 +306,7 @@ fn rows() -> Vec<Row> {
 /// What `swift -warnings-as-errors` prints of each of `rows` written, or `None` where no
 /// toolchain is reachable.
 fn printed(rows: &[Row]) -> Option<String> {
-    let mut definitions = vec![
+    let definitions = [
         tabling_swift::swift_definition(),
         lapping_swift::swift_definition(),
         flaking_swift::swift_definition(),
@@ -331,9 +331,9 @@ fn printed(rows: &[Row]) -> Option<String> {
         heeling_swift::swift_definition(),
         pitching_swift::swift_definition(),
         shackle_swift::swift_definition(),
+        #[cfg(feature = "chrono")]
+        swaging_swift::swift_definition(),
     ];
-    #[cfg(feature = "chrono")]
-    definitions.push(swaging_swift::swift_definition());
     let main = rows.iter().fold(String::new(), |mut main, row| {
         let _ = writeln!(main, "print(\"{}: \\({})\")", row.name, row.swift);
         main

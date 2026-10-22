@@ -47,6 +47,11 @@ mod unrecorded;
 #[path = "../kotlin_tests/corrected_options_models.rs"]
 mod corrected_options;
 
+/// The holders of a struct with a flattened member of its own that reads a key taken around it,
+/// what serde says of each payload, and what Zod reads of it.
+#[path = "../swift_tests/shared_key_models.rs"]
+mod shared_keys;
+
 /// A `char` and a chrono date, time and date and time held in each place, and what serde, Zod and
 /// the Kotlin read answer of each payload.
 #[cfg(feature = "chrono")]
@@ -1712,6 +1717,25 @@ fn corrected_options_bundle() -> String {
     .join("\n\n")
 }
 
+/// The holders of a struct with a flattened member of its own that reads a key taken around it: a
+/// bundle of their own, compiled with `tsc --strict` before it is loaded.
+fn shared_keys_bundle() -> String {
+    [
+        PREAMBLE.to_owned(),
+        shared_keys::Earring::ts_definition(),
+        shared_keys::Earring::zod_schema(),
+        shared_keys::Spritsail::ts_definition(),
+        shared_keys::Spritsail::zod_schema(),
+        shared_keys::Bowline::ts_definition(),
+        shared_keys::Bowline::zod_schema(),
+        shared_keys::Gantline::ts_definition(),
+        shared_keys::Gantline::zod_schema(),
+        shared_keys::Clinching::ts_definition(),
+        shared_keys::Clinching::zod_schema(),
+    ]
+    .join("\n\n")
+}
+
 /// The holders of a text serde reads in one form alone: a bundle of their own, compiled with
 /// `tsc --strict` before it is loaded.
 #[cfg(feature = "chrono")]
@@ -2763,5 +2787,46 @@ fn type_check_an_optional_flattened_type_that_names_a_function_is_read_from_its_
     assert_eq!(
         typed, stated,
         "TypeScript does not take what it is stated to take:\n{said}\n{payloads}"
+    );
+}
+
+/// A struct with a flattened member of its own is read by the Zod schema of its holder under
+/// `node` with a key a member of its holder's own, or a struct flattened ahead of it, reads too,
+/// and TypeScript takes the payload, where serde refuses it.
+#[test]
+fn type_check_a_key_read_by_a_struct_and_the_type_around_it_is_read_under_zod() {
+    let listed: Vec<(String, &str)> = shared_keys::SHARED_KEYS
+        .iter()
+        .map(|row| (format!("{}$Schema", row.holder), row.json))
+        .collect();
+    let driver = READ_DRIVER.replace("PAYLOADS", &serde_json::to_string(&listed).unwrap());
+    let Some((printed, failed)) = loaded_from("shared-keys", &shared_keys_bundle(), &driver) else {
+        return;
+    };
+    let zod: Vec<&str> = shared_keys::SHARED_KEYS.iter().map(|row| row.zod).collect();
+    assert_eq!(
+        printed,
+        zod.join("\n"),
+        "the schemas do not read what they are stated to read:\n{failed}"
+    );
+    let Some(at) = built_from("shared-keys-payloads", &shared_keys_bundle()) else {
+        return;
+    };
+    let mut payloads =
+        String::from("import type { Bowline, Clinching } from \"./lib/index.js\";\n");
+    for (position, row) in shared_keys::SHARED_KEYS.iter().enumerate() {
+        let _ = writeln!(
+            payloads,
+            "export const row{position}: {} = {};",
+            row.holder, row.json
+        );
+    }
+    fs::write(at.join("tsconfig.consumer.json"), CONSUMER_PROJECT).unwrap();
+    fs::write(at.join("consumer.ts"), &payloads).unwrap();
+    let (passed, said) = compiled(&at, "tsconfig.consumer.json").unwrap();
+    fs::remove_dir_all(&at).unwrap();
+    assert!(
+        passed,
+        "TypeScript does not take each payload:\n{said}\n{payloads}"
     );
 }
