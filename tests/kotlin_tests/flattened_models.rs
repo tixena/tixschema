@@ -11,7 +11,9 @@
 //! below its holder is read from the object. serde writes such an enum's unit variant as an entry,
 //! its name over `null`, the enum optional and under a function too. An optional map, the one
 //! member, serde reads as `None` wherever an entry does not read as a count, and under a function
-//! from what the function answers.
+//! from what the function answers. A map keyed by a plain enum serde writes and reads under the
+//! name each variant is written under, and refuses, or reads as `None` where it is optional, a key
+//! no variant is written under.
 
 use alloc::collections::BTreeMap;
 use std::collections::HashMap;
@@ -94,6 +96,20 @@ pub const LOCKER: [&str; 5] = [
     r#"{"north":null}"#,
 ];
 
+/// What [`Cathead`] and [`Hawsepipe`] are read from: no entry, a key a variant of [`Chock`] is
+/// written under, both, a key none is written under, and a count of text.
+pub const CHOCKED: [&str; 5] = [
+    "{}",
+    r#"{"Port":2}"#,
+    r#"{"Port":2,"Starboard":3}"#,
+    r#"{"Bow":2}"#,
+    r#"{"Port":"x"}"#,
+];
+
+/// What [`Snubbing`] is read from: a key under its variant's `rename`, one under the enum's
+/// `rename_all`, and one under a variant's Rust name, which serde reads no variant under.
+pub const SNUBBED: [&str; 3] = [r#"{"bow":2}"#, r#"{"open_water":2}"#, r#"{"OpenWater":2}"#];
+
 /// A map, the one member, which serde hands every key of the object.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -128,6 +144,50 @@ pub struct EmptiedLocker {
     #[model_schema_prop(preprocess = ["asNull"])]
     #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
     pub counts: Option<BTreeMap<String, u8>>,
+}
+
+/// The keys of [`Cathead`]'s map.
+#[model_schema()]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+pub enum Chock {
+    Port,
+    Starboard,
+}
+
+/// A map keyed by a plain enum, the one member: serde writes each key as the name its variant is
+/// written under, and refuses a key no variant is written under.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Cathead {
+    #[serde(flatten)]
+    pub lines: BTreeMap<Chock, u8>,
+}
+
+/// [`Cathead`]'s map optional: serde reads it as `None` where a key names no variant of [`Chock`].
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Hawsepipe {
+    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
+    pub lines: Option<BTreeMap<Chock, u8>>,
+}
+
+/// The keys of [`Snubbing`]'s map, written under the enum's `rename_all` and under a `rename` of
+/// their own.
+#[model_schema()]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Hawser {
+    #[serde(rename = "bow")]
+    Forward,
+    OpenWater,
+}
+
+/// A map keyed by [`Hawser`], the one member.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Snubbing {
+    #[serde(flatten)]
+    pub lines: BTreeMap<Hawser, u8>,
 }
 
 /// A flattened struct beside a member of its own.

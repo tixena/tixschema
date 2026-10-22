@@ -1482,22 +1482,36 @@ fn flatten_enum_field_plan(
 /// One flattened map field's own statements: the `serialize` merge and the `deserialize` read,
 /// over every key of the object, as `functions`, the field's own `preprocess`, correct it. A map
 /// flattened beside another member is refused, so serde hands the map every key of the object.
-/// An optional map writes no entry where it holds no value, and is read as `null`, as serde reads
-/// it, wherever an entry does not read as the map's value; under a function, where the function
-/// answers `null`.
+/// A key Kotlin holds as no `String` is written as the text `key_serializer` writes for it, and
+/// read back through it, so a key it refuses refuses the entry. An optional map writes no entry
+/// where it holds no value, and is read as `null`, as serde reads it, wherever an entry does not
+/// read as the map's key and value; under a function, where the function answers `null`.
 fn flatten_map_field_plan(
     prop: &str,
     optional: bool,
-    value_serializer: &str,
+    (key_serializer, value_serializer): (Option<&str>, &str),
     functions: &[FunctionName],
 ) -> (String, String) {
     let held = if optional { "?" } else { "" };
+    let written_key = key_serializer.map_or_else(
+        || "k".to_owned(),
+        |key| format!("output.json.encodeToJsonElement({key}, k).jsonPrimitive.content"),
+    );
     let serialize = format!(
-        "value.{prop}{held}.forEach {{ (k, v) -> put(k, output.json.encodeToJsonElement({value_serializer}, v)) }}"
+        "value.{prop}{held}.forEach {{ (k, v) -> put({written_key}, output.json.encodeToJsonElement({value_serializer}, v)) }}"
     );
     let entries = |object: &str| {
-        format!(
-            "{object}.mapValues {{ (_, v) -> input.json.decodeFromJsonElement({value_serializer}, v) }}"
+        key_serializer.map_or_else(
+            || {
+                format!(
+                    "{object}.mapValues {{ (_, v) -> input.json.decodeFromJsonElement({value_serializer}, v) }}"
+                )
+            },
+            |key| {
+                format!(
+                    "{object}.entries.associate {{ (k, v) -> input.json.decodeFromJsonElement({key}, JsonPrimitive(k)) to input.json.decodeFromJsonElement({value_serializer}, v) }}"
+                )
+            },
         )
     };
     let read = if functions.is_empty() {
@@ -1553,13 +1567,15 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
             let (serialize, decode) = own_field_plan(field, &prop, type_parameters);
             plan.serialize_stmts.extend(serialize);
             plan.deserialize_stmts.push(decode);
-        } else if let FieldDefType::Map(_, map_value) = &field.field_def.field_type {
+        } else if let FieldDefType::Map(map_key, map_value) = &field.field_def.field_type {
+            let key_serializer = (kotlin_typename(map_key) != "String")
+                .then(|| kotlin_serializer_expr(map_key, type_parameters));
             let value_serializer =
                 read::held_serializer(&field.field_def, map_value, type_parameters);
             let (serialize, decode) = flatten_map_field_plan(
                 &prop,
                 field.field_def.is_optional(),
-                &value_serializer,
+                (key_serializer.as_deref(), &value_serializer),
                 preprocess::of(&field.field_def),
             );
             plan.serialize_stmts.push(serialize);
