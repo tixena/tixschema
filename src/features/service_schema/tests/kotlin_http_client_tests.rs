@@ -13,6 +13,27 @@ use super::{
     SHADOWED_LOCAL_SERVICE, kotlin_http_client_of,
 };
 
+/// A service whose reply is a bare date, whose reply header is a `char`, and whose reply is a
+/// text of no form.
+#[cfg(feature = "chrono")]
+const DATED_HTTP_SERVICE: &str = "
+    pub trait DatingService<Ctx> {
+        #[service_schema_op(http(method = \"POST\", path = \"/stamp\"))]
+        async fn stamp(&self, ctx: &Ctx, label: String) -> Result<NaiveDate, DatingError>;
+
+        #[service_schema_op(http(
+            method = \"POST\",
+            path = \"/initial\",
+            header_out(\"x-initial\")
+        ))]
+        async fn initial(&self, ctx: &Ctx, label: String)
+            -> Result<(String, char), DatingError>;
+
+        #[service_schema_op(http(method = \"POST\", path = \"/name\"))]
+        async fn name(&self, ctx: &Ctx, label: String) -> Result<String, DatingError>;
+    }
+";
+
 /// The body of one method, from its own doc comment through the closing brace of the method
 /// following it (or the end of the class) — mirrors `dart_http_client_tests`'s own `method_body`.
 fn method_body<'written>(written: &'written str, call: &str) -> &'written str {
@@ -369,4 +390,32 @@ fn an_argument_named_after_a_local_of_the_method_is_copied_before_the_local_is_w
     ] {
         assert!(written.contains(moved), "no `{moved}` in: {written}");
     }
+}
+
+/// A reply of a date is read through the serializer of its form, and a header of a `char` from its
+/// text as a JSON string through the serializer of its own, a malformed header where it refuses
+/// the text. The client declares each serializer once, after its own declarations, and a reply of
+/// no form is read as it was.
+#[cfg(feature = "chrono")]
+#[test]
+fn a_bare_char_or_date_message_is_read_through_the_serializer_of_its_form() {
+    let written = kotlin_http_client_of(DATED_HTTP_SERVICE);
+    for held in [
+        "DatingServiceStampResult.Ok(Json.decodeFromString(KotlinText1, \
+         response.body.decodeToString()))",
+        "val headerOut0 = runCatching { Json.decodeFromJsonElement(KotlinText2, \
+         JsonPrimitive(rawHeaderOut0)) }.getOrNull() ?: return DatingServiceInitialResult.Fault(",
+        "DatingServiceNameResult.Ok(Json.decodeFromString(serializer<String>(), \
+         response.body.decodeToString()))",
+        "object KotlinText1 : KSerializer<String> {",
+        "throw SerializationException(\"expected a date, found \" + JsonPrimitive(text))",
+        "object KotlinText2 : KSerializer<String> {",
+        "throw SerializationException(\"expected a character, found \" + JsonPrimitive(text))",
+    ] {
+        assert!(written.contains(held), "no `{held}` in: {written}");
+    }
+    assert!(
+        written.ends_with(" return text } }"),
+        "the serializers are declared last. Got: {written}"
+    );
 }

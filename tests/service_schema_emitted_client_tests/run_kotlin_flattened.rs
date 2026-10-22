@@ -52,6 +52,8 @@ use super::flattened_models::{
     unwritten_kotlin, whelping_kotlin, whipping_kotlin, yawing_kotlin,
 };
 use super::runtime::ran_kotlin;
+#[cfg(all(feature = "zod", feature = "typescript"))]
+use super::runtime::{node_modules, ran_with_modules, stand_down_modules};
 use super::swift_flattened_options_models::{
     Crowning, Easing, FLAKING, FLAKING_ABSENT, FLAKING_MISTYPED, Fidding, Flaking, HEELING,
     Heeling, LAPPING, LAPPING_ABSENT, LAPPING_MISTYPED, LOWERING, Lowering, PITCHING, Pitching,
@@ -62,10 +64,13 @@ use super::swift_flattened_options_models::{
 };
 use super::tuple_variants_models::labelling_kotlin;
 use super::unrecorded_options_models::{
-    CLAPPING, CLAPPING_READ_BACK, Clapping, READ_BACK, UNRECORDED, bight_kotlin, bridled_kotlin,
-    bridling_kotlin, clapped_kotlin, clapping_kotlin, crowned_kotlin, fiddling_kotlin,
-    hitched_kotlin, slipped_kotlin, slipping_kotlin, snagging_kotlin,
+    CLAPPING, CLAPPING_READ_BACK, Clapping, GROMMETING, GROMMETING_READ_BACK, Grommeting,
+    READ_BACK, UNRECORDED, bight_kotlin, bridled_kotlin, bridling_kotlin, clapped_kotlin,
+    clapping_kotlin, crowned_kotlin, earing_kotlin, fiddling_kotlin, gromet_kotlin,
+    grommeting_kotlin, hitched_kotlin, slipped_kotlin, slipping_kotlin, snagging_kotlin,
 };
+#[cfg(all(feature = "zod", feature = "typescript"))]
+use super::unrecorded_options_models::{Earing, Gromet};
 
 const KOTLIN_IMPORTS: &str = "import kotlinx.serialization.*\n\
      import kotlinx.serialization.json.*\n\
@@ -1402,6 +1407,119 @@ fn an_optional_type_of_no_recorded_key_reads_and_writes_in_kotlin_as_serde_does(
         return;
     };
     assert_eq!(printed, expected, "the Kotlin read is not the read above");
+}
+
+/// An optional member whose type is declared below its holder, with a flattened member of its own,
+/// is refused where its type reads with no judgement and breaks a rule, with the rule's message, as
+/// serde refuses it, and is read where it keeps it. It is `null` where no key of it is there and
+/// where a key of it does not read, as serde reads `None`.
+#[test]
+fn an_optional_type_declared_below_that_breaks_a_rule_is_refused_in_kotlin_as_serde_refuses_it() {
+    let serde_told = GROMMETING.map(|json| {
+        serde_json::from_str::<Grommeting>(json)
+            .map_or_else(|refused| refused.to_string(), |read| self::json(&read))
+    });
+    assert_eq!(
+        serde_told, GROMMETING_READ_BACK,
+        "serde no longer reads each payload as it did"
+    );
+    let mut expected = String::new();
+    let mut main = String::from(TOLD_OR_REFUSED);
+    main.push_str("fun main() {\n");
+    for (at, (json, serde)) in GROMMETING.iter().zip(GROMMETING_READ_BACK).enumerate() {
+        let in_kotlin = if serde.starts_with('{') {
+            serde.to_owned()
+        } else {
+            format!("refused: SerializationException: {serde}")
+        };
+        let _ = writeln!(expected, "{at}: {in_kotlin}");
+        let _ = writeln!(
+            main,
+            "    told(\"{at}\", Grommeting.serializer(), \"\"\"{json}\"\"\")"
+        );
+    }
+    main.push_str("}\n");
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        earing_kotlin::kotlin_definition(),
+        grommeting_kotlin::kotlin_definition(),
+        gromet_kotlin::kotlin_definition(),
+        main,
+    ];
+    let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
+        return;
+    };
+    assert_eq!(printed, expected, "the Kotlin read is not the read above");
+}
+
+/// The README's sentence on a broken rule held below its holder declares the struct the run reads,
+/// and shows payloads and the message the run measures.
+#[test]
+fn the_readme_shows_the_broken_rule_held_below_the_run_measures() {
+    let readme = include_str!("../../README.md");
+    for shown in [
+        "`struct Gromet { #[serde(flatten)] earing: Earing, #[model_schema_prop(minLength = 2)] \
+         note: String }`"
+            .to_owned(),
+        format!(
+            "`{}` is refused with `SerializationException: {}`",
+            GROMMETING[0], GROMMETING_READ_BACK[0]
+        ),
+        format!("`{}` reads `null`", GROMMETING[3]),
+    ] {
+        assert!(readme.contains(&shown), "not in the README: {shown}");
+    }
+}
+
+/// The generated Zod schema refuses the payload whose [`Gromet`] breaks its rule and the one whose
+/// key does not read, and reads the others, as the Kotlin read answers each but the last.
+#[cfg(all(feature = "zod", feature = "typescript"))]
+#[test]
+fn zod_refuses_a_flattened_option_declared_below_that_breaks_a_rule() {
+    const REQUIRED: &[&str] = &["zod"];
+    let Some(modules) = node_modules(REQUIRED) else {
+        stand_down_modules(
+            REQUIRED,
+            "the generated Zod schema of a broken rule held below",
+        );
+        return;
+    };
+    let mut module = [
+        "import { z, type ZodType } from \"zod\";".to_owned(),
+        Earing::ts_definition(),
+        Earing::zod_schema(),
+        Grommeting::ts_definition(),
+        Grommeting::zod_schema(),
+        Gromet::ts_definition(),
+        Gromet::zod_schema(),
+    ]
+    .join("\n\n");
+    module.push_str("\n\nconst told = [];\n");
+    for json in GROMMETING {
+        let _ = writeln!(
+            module,
+            "told.push(Grommeting$Schema.safeParse(JSON.parse({})).success ? \"read\" : \
+             \"refused\");",
+            serde_json::to_string(json).unwrap()
+        );
+    }
+    module.push_str("console.log(JSON.stringify(told));\n");
+    let Some(printed) = ran_with_modules(
+        "grommeting",
+        "TIXSCHEMA_NODE",
+        "node",
+        "grommeting.mts",
+        &module,
+        &modules,
+    ) else {
+        return;
+    };
+    let told: Vec<String> = serde_json::from_str(printed.trim()).unwrap();
+    assert_eq!(
+        told,
+        ["refused", "read", "read", "refused"],
+        "the Zod schema no longer answers each payload as it did"
+    );
 }
 
 /// An optional member that names a function is read from what the function answers, and where

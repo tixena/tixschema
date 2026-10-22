@@ -12,6 +12,12 @@ mod tests;
 #[path = "kotlin_tests/validate.rs"]
 mod validate;
 
+/// A fixed array held in each place a read reads it.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "kotlin_tests/fixed_arrays_models.rs"]
+mod fixed_arrays_models;
+
 /// The two serializers of each type: the read alone, and the type's own, which judges.
 #[cfg(test)]
 #[cfg(feature = "kotlin")]

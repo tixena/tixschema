@@ -145,32 +145,42 @@ fn matched(pattern: &str) -> String {
 /// bound and an arm of a `Result`. A tuple's wrapper reads its positions itself, and an alias with
 /// no type parameter names the serializer in its own declaration.
 pub fn declared(field: &FieldDef) -> bool {
-    found(field, false)
+    found(field, false, is_a_text)
 }
 
-/// Whether `field` reaches a text of one form [`reaches`] or [`declared`] asks about: `written`
-/// asks for a serializer the emitter writes.
-fn found(field: &FieldDef, written: bool) -> bool {
+/// Whether `field`, or a value it holds where [`reaches`] or [`declared`] looks, is one `sought`
+/// answers for: `written` asks for a serializer the emitter writes.
+pub fn found(field: &FieldDef, written: bool, sought: fn(&FieldDef) -> bool) -> bool {
+    if sought(field) {
+        return true;
+    }
     if let FieldDefType::SiblingType(name, arguments) = &field.field_type {
         if let [element] = arguments.as_slice()
             && is_sequence_wrapper(name)
         {
-            found(element, written)
+            found(element, written, sought)
         } else if arguments.is_empty() {
-            written && named_by(name).is_some_and(|target| found(&target, written))
+            written && named_by(name).is_some_and(|target| found(&target, written, sought))
         } else {
             (!written || validate::reads_unjudged(name))
-                && arguments.iter().any(|argument| found(argument, written))
+                && arguments
+                    .iter()
+                    .any(|argument| found(argument, written, sought))
         }
     } else if let FieldDefType::Map(key, value) = &field.field_type {
-        found(key, written) || found(value, written)
+        found(key, written, sought) || found(value, written, sought)
     } else if let FieldDefType::Range(_, bound) = &field.field_type {
-        found(bound, written)
+        found(bound, written, sought)
     } else if let FieldDefType::Result(ok, err) = &field.field_type {
-        found(ok, written) || found(err, written)
+        found(ok, written, sought) || found(err, written, sought)
     } else {
-        TextForm::of(field).is_some()
+        false
     }
+}
+
+/// Whether a value typed `field` is a text of one form at its innermost level.
+const fn is_a_text(field: &FieldDef) -> bool {
+    TextForm::of(field).is_some()
 }
 
 /// The type the alias written `name` names, where the emitter wrote it above with no type
@@ -194,7 +204,7 @@ pub fn note_alias(rust_ident: &str, target: &FieldDef) {
 /// emitter wrote above: the serializer of an alias with type parameters is no class's, and a type
 /// declared below may be one.
 pub fn reaches(field: &FieldDef) -> bool {
-    found(field, true)
+    found(field, true, is_a_text)
 }
 
 /// The serializer a text of `form` is read through, declared once per item.

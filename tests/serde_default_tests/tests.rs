@@ -517,7 +517,8 @@ fn a_type_with_no_default_writes_the_kotlin_text_it_wrote() {
          GangwaySerializer::class) @KeepGeneratedSerializer data class Gangway(val label: String, \
          val width: UInt) { fun validate(): List<String> = emptyList() } \
          @OptIn(ExperimentalSerializationApi::class) object GangwayUnjudged : KSerializer<Gangway> \
-         by Gangway.generatedSerializer() object GangwaySerializer : KSerializer<Gangway> { \
+         by Gangway.generatedSerializer() object GangwaySerializer : KSerializer<Gangway>, () -> \
+         KSerializer<Gangway> { override fun invoke(): KSerializer<Gangway> = GangwayUnjudged; \
          override val descriptor: SerialDescriptor = GangwayUnjudged.descriptor; override fun \
          serialize(encoder: Encoder, value: Gangway) = GangwayUnjudged.serialize(encoder, value); \
          override fun deserialize(decoder: Decoder): Gangway { val read = \

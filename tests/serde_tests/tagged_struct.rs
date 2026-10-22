@@ -233,7 +233,9 @@ mod on_a_mobile_surface {
              override fun transformSerialize(element: JsonElement): JsonElement = \
              JsonObject(mapOf(\"kind\" to element.jsonObject.getValue(\"kind\")) + \
              element.jsonObject) } object TaggedMobileSerializer : \
-             KSerializer<TaggedMobile> { override val descriptor: SerialDescriptor = \
+             KSerializer<TaggedMobile>, () -> KSerializer<TaggedMobile> { override fun invoke(): \
+             KSerializer<TaggedMobile> = TaggedMobileUnjudged; override val descriptor: \
+             SerialDescriptor = \
              TaggedMobileUnjudged.descriptor; override fun serialize(encoder: Encoder, value: \
              TaggedMobile) = TaggedMobileUnjudged.serialize(encoder, value); override fun \
              deserialize(decoder: Decoder): TaggedMobile { val read = \

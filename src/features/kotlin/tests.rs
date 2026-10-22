@@ -2,6 +2,7 @@
 //! a class, and what `validate()` and the two serializers of a type write for the shapes no
 //! integration test can declare.
 
+mod arrays;
 mod preprocess;
 mod texts;
 
@@ -43,7 +44,8 @@ fn generated(named: &str) -> String {
 /// The serializer of `named`, a type with no parameter: its unjudged read, then `validate()`.
 fn judged(named: &str) -> String {
     format!(
-        "object {named}Serializer : KSerializer<{named}> {{ override val descriptor: \
+        "object {named}Serializer : KSerializer<{named}>, () -> KSerializer<{named}> {{ override \
+         fun invoke(): KSerializer<{named}> = {named}Unjudged; override val descriptor: \
          SerialDescriptor = {named}Unjudged.descriptor; override fun serialize(encoder: Encoder, \
          value: {named}) = {named}Unjudged.serialize(encoder, value); override fun \
          deserialize(decoder: Decoder): {named} {{ val read = \
@@ -57,10 +59,12 @@ fn judged(named: &str) -> String {
 fn judged_over(named: &str, parameter: &str, bound: &str, handed: &str) -> String {
     format!(
         "class {named}Serializer<{parameter}{bound}>({handed}: KSerializer<{parameter}>) : \
-         KSerializer<{named}<{parameter}>> {{ private val kotlinSchemaUnjudged = \
-         {named}Unjudged({handed}); override val descriptor: SerialDescriptor = \
-         kotlinSchemaUnjudged.descriptor; override fun serialize(encoder: Encoder, value: \
-         {named}<{parameter}>) = kotlinSchemaUnjudged.serialize(encoder, value); override fun \
+         KSerializer<{named}<{parameter}>>, () -> KSerializer<{named}<{parameter}>> {{ private \
+         val kotlinSchemaUnjudged = {named}Unjudged({handed}); override fun invoke(): \
+         KSerializer<{named}<{parameter}>> = kotlinSchemaUnjudged; override val descriptor: \
+         SerialDescriptor = kotlinSchemaUnjudged.descriptor; override fun serialize(encoder: \
+         Encoder, value: {named}<{parameter}>) = kotlinSchemaUnjudged.serialize(encoder, value); \
+         override fun \
          deserialize(decoder: Decoder): {named}<{parameter}> {{ val read = \
          kotlinSchemaUnjudged.deserialize(decoder); val violations = read.validate(); if \
          (violations.isNotEmpty()) throw SerializationException(violations.joinToString(\"; \")); \
@@ -654,12 +658,12 @@ fn a_struct_with_a_flattened_member_reads_what_it_merges_unjudged() {
         "@Serializable(with = YardSerializer::class) data class Yard(val base: Base, val gate: \
          String) {",
         "} object YardUnjudged : KSerializer<Yard> { override val descriptor: SerialDescriptor = \
-         buildClassSerialDescriptor(\"Yard\"); private val lenient = Json { ignoreUnknownKeys = \
-         true }; override fun serialize(",
+         buildClassSerialDescriptor(\"Yard\"); override fun serialize(",
         "output.json.encodeToJsonElement(BaseUnjudged, value.base).jsonObject.forEach { (k, v) \
          -> put(k, v) }",
-        "val baseKeys = setOf(\"name\"); val base = lenient.decodeFromJsonElement(BaseUnjudged, \
-         JsonObject(obj - setOf(\"gate\")))",
+        "val baseKeys = setOf(\"name\"); val base = \
+         input.json.decodeFromJsonElement(BaseUnjudged, JsonObject(JsonObject(obj - \
+         setOf(\"gate\")).filterKeys { it in setOf(\"name\") }))",
     ] {
         assert!(kotlin.contains(held), "no `{held}` in: {kotlin}");
     }
@@ -706,7 +710,8 @@ fn a_flattened_struct_takes_the_keys_serde_reads_where_the_emitter_wrote_it() {
     let kotlin = plain(&item);
     for held in [
         "val pennantKeys = setOf(\"label\", \"name\"); val pennant = \
-         lenient.decodeFromJsonElement(PennantUnjudged, obj);",
+         input.json.decodeFromJsonElement(PennantUnjudged, JsonObject(obj.filterKeys { it in \
+         setOf(\"label\", \"name\", \"spare\", \"kind\") }));",
         "val unseenKeys = (serializer<Unseen>()).descriptor.elementNames.toSet(); val unseen = \
          lenient.decodeFromJsonElement(serializer<Unseen>(), JsonObject(obj - pennantKeys));",
     ] {
@@ -940,8 +945,12 @@ fn an_enum_under_a_tag_alone_is_read_and_written_by_hand_over_its_variants() {
              Lift {{ val input = decoder as JsonDecoder; val obj = \
              input.decodeJsonElement().let {{ it as? JsonObject ?: throw \
              SerializationException(\"expected an object, found \" + it) }}; val tag = \
-             (obj[\"kind\"] as? JsonPrimitive)?.content; return when (tag) {{ {}; \"Held\" -> LiftHeld; {} else -> \
-             throw SerializationException(\"unknown tag \" + tag) }} }} }} {}",
+             (obj[\"kind\"] as? JsonPrimitive)?.content; return when (tag) {{ {}; \"Held\" -> \
+             {{ if (!input.json.configuration.ignoreUnknownKeys) (obj - \
+             \"kind\").keys.firstOrNull()?.let {{ throw SerializationException(\"Encountered an \
+             unknown key '\" + it + \"'\") }}; \
+             LiftHeld }}; {} else -> throw SerializationException(\"unknown tag \" + tag) }} }} }} \
+             {}",
             merged("Boxed"),
             merged("Loose"),
             rest("Boxed"),

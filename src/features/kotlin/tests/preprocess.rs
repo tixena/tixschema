@@ -470,8 +470,8 @@ fn a_member_the_emitter_reads_is_corrected_in_place() {
          trimmed((obj[\"dock\"] ?: throw SerializationException(\"missing field `dock`\"))));",
         "val note = obj[\"note\"]?.let { input.json.decodeFromJsonElement(serializer<String?>(), \
          lowered(trimmed(it))) };",
-        "val parcel = lenient.decodeFromJsonElement(ParcelUnjudged, JsonObject(obj - \
-         setOf(\"dock\", \"note\")));",
+        "val parcel = input.json.decodeFromJsonElement(ParcelUnjudged, JsonObject(JsonObject(obj \
+         - setOf(\"dock\", \"note\")).filterKeys { it in setOf(\"label\") }));",
     ] {
         assert!(kotlin.contains(held), "no `{held}` in: {kotlin}");
     }
@@ -522,10 +522,16 @@ fn every_flattened_member_is_handed_what_no_member_ahead_of_it_takes() {
     let own = "JsonObject(obj - setOf(\"dock\", \"gate\"))";
     let rest = "JsonObject(obj - setOf(\"dock\", \"gate\") - baseKeys)";
     for held in [
-        format!("val base = lenient.decodeFromJsonElement(BaseUnjudged, {own});"),
+        format!(
+            "val base = input.json.decodeFromJsonElement(BaseUnjudged, \
+             JsonObject({own}.filterKeys {{ it in setOf(\"name\") }}));"
+        ),
         format!("val keyed = lenient.decodeFromJsonElement(KeyedUnjudged, {rest});"),
         format!("val later = lenient.decodeFromJsonElement(serializer<Later>(), {rest});"),
-        format!("val again = lenient.decodeFromJsonElement(BaseUnjudged, {rest});"),
+        format!(
+            "val again = input.json.decodeFromJsonElement(BaseUnjudged, \
+             JsonObject({rest}.filterKeys {{ it in setOf(\"name\") }}));"
+        ),
     ] {
         assert!(kotlin.contains(&held), "no `{held}` in: {kotlin}");
     }

@@ -51,7 +51,10 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
              input.json.decodeFromJsonElement(serializer<CareeningBerth>(), JsonObject(obj - \
              \"kind\").{NAME_AS_LABEL});"
         ),
-        "\"Calm\", \"Still\" -> CareeningCalm else -> throw SerializationException(".to_owned(),
+        "\"Calm\", \"Still\" -> { if (!input.json.configuration.ignoreUnknownKeys) (obj - \
+         \"kind\").keys.firstOrNull()?.let { throw SerializationException(\"Encountered an \
+         unknown key '\" + it + \"'\") }; CareeningCalm } else -> throw SerializationException("
+            .to_owned(),
         "is CareeningCalm -> buildJsonObject { put(\"kind\", \"Calm\") }".to_owned(),
     ] {
         assert!(careening.contains(&held), "no `{held}` in: {careening}");
@@ -167,6 +170,8 @@ fn a_struct_read_by_hand_reads_a_member_under_its_alias() {
 fn a_flattened_struct_takes_each_alias_of_its_members() {
     let fothering = fothering_kotlin::kotlin_definition();
     let held = "val hawsingKeys = setOf(\"label\", \"name\", \"title\", \"note\", \"remark\"); \
-                val hawsing = lenient.decodeFromJsonElement(HawsingUnjudged, obj);";
+                val hawsing = input.json.decodeFromJsonElement(HawsingUnjudged, \
+                JsonObject(obj.filterKeys { it in setOf(\"label\", \"name\", \"title\", \"note\", \
+                \"remark\") }));";
     assert!(fothering.contains(held), "no `{held}` in: {fothering}");
 }
