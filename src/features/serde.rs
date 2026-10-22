@@ -17,10 +17,13 @@ pub mod read_bounds;
 ))]
 pub mod defaults;
 
-#[cfg(all(feature = "serde", any(feature = "dart", feature = "swift")))]
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
 use core::iter::once;
 
-#[cfg(any(feature = "dart", feature = "swift"))]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 use crate::features::model_schema_prop::FunctionName;
 #[cfg(feature = "serde")]
 use crate::field_type::is_plain_enum;
@@ -628,7 +631,10 @@ pub const fn keys_taken_when_flattened(
 /// the name each variant it reads is read under, and each alias, its `VARIANTS`. serde takes the
 /// first entry of the holder's object, in its order, under one of them. An enum under a tag key, an
 /// untagged one and one that names a function on itself (`preprocess`) answer none.
-#[cfg(all(feature = "serde", any(feature = "dart", feature = "swift")))]
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
 pub fn variant_names_when_flattened(
     item_enum: &ItemEnum,
     preprocess: &[FunctionName],
@@ -653,7 +659,10 @@ pub fn variant_names_when_flattened(
 }
 
 /// Without `serde` no member is flattened, so no enum takes an entry.
-#[cfg(all(not(feature = "serde"), any(feature = "dart", feature = "swift")))]
+#[cfg(all(
+    not(feature = "serde"),
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
 pub const fn variant_names_when_flattened(
     _item_enum: &ItemEnum,
     _preprocess: &[FunctionName],
