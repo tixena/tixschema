@@ -162,7 +162,7 @@ a member that holds a model, judged by its holder: refused
     'packet.label': too short: minimum length is 1, got 0
 a member beside a flattened one: read {\"dock\":\"north\",\"note\":\"n\",\"fragileItemCodes\":[],\"itemCodeList\":[],\"label\":\"A\"}
 a flattened member that names a function: read {\"dock\":\"north\",\"keys\":[\"other\",\"tag\"],\"tag\":\"t\"}
-a flattened map that names a function: read {\"dock\":\"north\",\"keys\":[\"other\",\"tag\"],\"other\":[\"1\"],\"tag\":[\"t\"]}
+a flattened map that names a function: read {\"keys\":[\"other\",\"tag\"],\"other\":[\"1\"],\"tag\":[\"t\"]}
 a flattened type after one that took its keys: read {\"dock\":\"north\",\"strap\":\"s\",\"keys\":[\"tag\"],\"tag\":\"t\"}
 a member that reaches a parameter, at a text: read {\"codes\":[\"x\"],\"held\":\"h\",\"label\":\"A\",\"spare\":\"s\"}
 a member that reaches a parameter, at a number: read {\"codes\":[7],\"held\":8,\"label\":\"A\"}
@@ -534,7 +534,6 @@ pub struct Girdled {
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Sashed {
-    pub dock: String,
     #[model_schema_prop(preprocess = ["withItsKeys"])]
     #[serde(flatten)]
     pub rest: BTreeMap<String, Vec<String>>,
@@ -994,7 +993,7 @@ fn struct_member_rows() -> Vec<Reading> {
         row::<Sashed>(
             "a flattened map that names a function",
             "Sashed",
-            r#"{"dock":"north","other":["1"],"tag":["t"]}"#,
+            r#"{"other":["1"],"tag":["t"]}"#,
         ),
         row::<Lashed>(
             "a flattened type after one that took its keys",

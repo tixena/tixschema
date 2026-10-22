@@ -1,8 +1,8 @@
 //! `preprocess` in the Swift read: the functions a type and its members name, each called on a
 //! payload ahead of the value read from it. A type that names one on itself reads the keys the
 //! types around it did not take, and so does a type that reads one from its own decoder. The keys
-//! a struct takes where it is flattened are noted here too: a map flattened after it is not handed
-//! them.
+//! a struct takes where it is flattened are noted here too: a member flattened after it is not
+//! handed them.
 
 use core::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -104,7 +104,7 @@ thread_local! {
     static TAKING: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
 
     /// The keys serde takes off its holder's object for each struct the emitter has written, read
-    /// flattened: what serde hands no map flattened after it.
+    /// flattened: what serde hands no member flattened after it.
     static TAKEN_KEYS: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
 }
 

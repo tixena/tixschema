@@ -1,13 +1,13 @@
 //! The models of the flattened Dart reads `dart_tests/flattened.rs` pins and
-//! `service_schema_emitted_client_tests/run_dart_flattened.rs` runs: a map flattened after a
-//! struct, beside a member of its holder's own and in a variant under a tag key, a map that is the
-//! one flattened member, a map flattened ahead of a struct, two flattened maps, a map flattened
-//! after a member that takes none of the keys it reads, and, after a struct, a struct with a
-//! flattened map, a member that names a function and a struct that reads the same key; and a map
-//! flattened after an externally tagged enum, after an enum under a tag key and after an untagged
-//! one. serde reads the members in the order declared: a struct takes the keys it reads, an
-//! externally tagged enum the first entry under the name of a variant it reads, and every
-//! flattened member is handed every entry no member ahead of it took.
+//! `service_schema_emitted_client_tests/run_dart_flattened.rs` runs: a map that is the one member
+//! of its struct, and of a variant under a tag key; and a member that names a function, which is
+//! handed the keys serde hands it, after a struct, beside a member of its holder's own and in a
+//! variant under a tag key, ahead of a struct, after each member that takes none of the keys it
+//! reads, and after an externally tagged enum, an enum under a tag key and an untagged one. serde
+//! reads the members in the order declared: a struct takes the keys it reads, an externally tagged
+//! enum the first entry under the name of a variant it reads, and every flattened member is handed
+//! every entry no member ahead of it took. A struct after a struct that reads the same key is
+//! refused.
 
 use alloc::collections::BTreeMap;
 
@@ -15,8 +15,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tixschema::model_schema;
 
-/// What every other struct is read from.
+/// What every struct below but those named apart is read from.
 pub const PAYLOAD: &str = r#"{"label":"n","north":2}"#;
+
+/// What [`Spare`] is read from.
+pub const SPARE: &str = r#"{"north":2,"south":3}"#;
 
 /// What [`Clamping`] is read from.
 pub const CLAMPING: &str = r#"{"label":"n","north":2,"note":"a"}"#;
@@ -25,10 +28,7 @@ pub const CLAMPING: &str = r#"{"label":"n","north":2,"note":"a"}"#;
 pub const FASTENING: &str = r#"{"north":2,"note":"a"}"#;
 
 /// What [`Tethering`] is read from.
-pub const TETHERING: &str = r#"{"kind":"Held","label":"n","north":2}"#;
-
-/// What [`Stowing`] is read from.
-pub const STOWING: &str = r#"{"north":2,"south":3}"#;
+pub const TETHERING: &str = r#"{"kind":"Held","north":2}"#;
 
 /// What [`Loading`] is read from: one variant's entry, two variants' entries in each order, a
 /// variant's entry under its alias, and an alias after a variant's entry.
@@ -61,64 +61,65 @@ pub struct Marking {
     pub label: String,
 }
 
-/// What a map below holds of each entry serde hands it: a count, a text or a marking.
+/// The keys a function was handed, which the members below that name one read.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(untagged)]
-pub enum Stowage {
-    Count(u8),
-    Marked(Marking),
-    Text(String),
+pub struct Keying {
+    pub keys: Vec<String>,
 }
 
-/// A map flattened after a struct, where serde hands it the keys the struct did not take.
+/// A map, the one member of its struct, which serde hands every key.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Coupling {
-    #[serde(flatten)]
-    pub marking: Marking,
+pub struct Spare {
     #[serde(flatten)]
     pub rest: BTreeMap<String, u8>,
 }
 
-/// [`Coupling`] with a member of its own between the two flattened ones.
+/// A map, the one member of a variant under a tag key, which serde hands every key but the tag.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind")]
+pub enum Tethering {
+    Held {
+        #[serde(flatten)]
+        rest: BTreeMap<String, u8>,
+    },
+}
+
+/// A member that names a function flattened after a struct, with a member of its holder's own
+/// between them: serde hands the function the keys neither took.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Clamping {
     #[serde(flatten)]
     pub marking: Marking,
     pub note: String,
+    #[model_schema_prop(preprocess = ["withItsKeys"])]
     #[serde(flatten)]
-    pub rest: BTreeMap<String, u8>,
+    pub other: Keying,
 }
 
-/// A map, the one flattened member, beside a member of its holder's own.
+/// A member that names a function, the one flattened member, beside a member of its holder's own.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Fastening {
     pub note: String,
+    #[model_schema_prop(preprocess = ["withItsKeys"])]
     #[serde(flatten)]
-    pub rest: BTreeMap<String, u8>,
+    pub other: Keying,
 }
 
-/// A map flattened ahead of a struct, where serde hands it every key, the struct's among them.
+/// A member that names a function flattened ahead of a struct, where serde hands the function
+/// every key, the struct's among them.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Hoisting {
+    #[model_schema_prop(preprocess = ["withItsKeys"])]
     #[serde(flatten)]
-    pub extra: BTreeMap<String, Stowage>,
+    pub extra: Keying,
     #[serde(flatten)]
     pub marking: Marking,
-}
-
-/// Two flattened maps, where serde hands each the same keys.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Stowing {
-    #[serde(flatten)]
-    pub first: BTreeMap<String, u8>,
-    #[serde(flatten)]
-    pub second: BTreeMap<String, u8>,
 }
 
 /// A struct that names a function on itself, which serde reads as a value.
@@ -136,75 +137,41 @@ pub struct Bracing {
     pub marking: Marking,
 }
 
-/// A map flattened after a struct that names a function on itself, where serde hands it every key.
+/// A member that names a function flattened after a struct that names one on itself, where serde
+/// hands the function every key.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Lacing {
     #[serde(flatten)]
     pub issued: Ticketing,
+    #[model_schema_prop(preprocess = ["withItsKeys"])]
     #[serde(flatten)]
-    pub rest: BTreeMap<String, Stowage>,
+    pub rest: Keying,
 }
 
-/// A map flattened after a member that names a function, where serde hands it every key.
+/// A member that names a function flattened after another that names one, where serde hands the
+/// second every key.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Rigging {
     #[model_schema_prop(preprocess = ["asGiven"])]
     #[serde(flatten)]
     pub marking: Marking,
+    #[model_schema_prop(preprocess = ["withItsKeys"])]
     #[serde(flatten)]
-    pub rest: BTreeMap<String, Stowage>,
+    pub rest: Keying,
 }
 
-/// A map flattened after a struct with a flattened member of its own, where serde hands it every
-/// key.
+/// A member that names a function flattened after a struct with a flattened member of its own,
+/// where serde hands the function every key.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Belaying {
     #[serde(flatten)]
     pub bracing: Bracing,
+    #[model_schema_prop(preprocess = ["withItsKeys"])]
     #[serde(flatten)]
-    pub rest: BTreeMap<String, Stowage>,
-}
-
-/// A map flattened after a struct in a variant under a tag key, where serde hands it the keys
-/// neither the tag nor the struct took.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(tag = "kind")]
-pub enum Tethering {
-    Held {
-        #[serde(flatten)]
-        marking: Marking,
-        #[serde(flatten)]
-        rest: BTreeMap<String, u8>,
-    },
-}
-
-/// A struct with a flattened map of its own, which serde reads as a map and so takes no key.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Spare {
-    #[serde(flatten)]
-    pub rest: BTreeMap<String, Stowage>,
-}
-
-/// A struct flattened after a struct, where serde hands it the keys the first did not take.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Pairing {
-    #[serde(flatten)]
-    pub marking: Marking,
-    #[serde(flatten)]
-    pub spare: Spare,
-}
-
-/// The keys a function was handed, which [`Twin`] reads its member from.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Keying {
-    pub keys: Vec<String>,
+    pub rest: Keying,
 }
 
 /// A member that names a function flattened after a struct, where serde hands the function the
@@ -244,15 +211,16 @@ pub enum Hatching {
     },
 }
 
-/// A map flattened after an externally tagged enum, where serde hands it every entry but the one
-/// the enum took.
+/// A member that names a function flattened after an externally tagged enum, where serde hands
+/// the function every entry but the one the enum took.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Loading {
     #[serde(flatten)]
     pub hatching: Hatching,
+    #[model_schema_prop(preprocess = ["withItsKeys"])]
     #[serde(flatten)]
-    pub rest: BTreeMap<String, Stowage>,
+    pub rest: Keying,
 }
 
 /// An externally tagged enum whose variants are written under the enum's `rename_all` and under a
@@ -270,18 +238,19 @@ pub enum Warping {
     },
 }
 
-/// A map flattened after [`Warping`].
+/// A member that names a function flattened after [`Warping`].
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Kedging {
     #[serde(flatten)]
     pub kedge: Warping,
+    #[model_schema_prop(preprocess = ["withItsKeys"])]
     #[serde(flatten)]
-    pub rest: BTreeMap<String, Stowage>,
+    pub rest: Keying,
 }
 
-/// A struct and a map flattened after an externally tagged enum, where serde hands the struct
-/// every entry but the enum's, and the map every entry neither took.
+/// A struct and a member that names a function flattened after an externally tagged enum, where
+/// serde hands the struct every entry but the enum's, and the function every entry neither took.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Trimming {
@@ -289,8 +258,9 @@ pub struct Trimming {
     pub hatching: Hatching,
     #[serde(flatten)]
     pub marking: Marking,
+    #[model_schema_prop(preprocess = ["withItsKeys"])]
     #[serde(flatten)]
-    pub rest: BTreeMap<String, Stowage>,
+    pub rest: Keying,
 }
 
 /// An enum under a tag key alone, which serde reads as a map and so takes no key.
@@ -301,14 +271,16 @@ pub enum Frapping {
     Rope { label: String },
 }
 
-/// A map flattened after [`Frapping`], where serde hands it every key.
+/// A member that names a function flattened after [`Frapping`], where serde hands the function
+/// every key.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Mousing {
     #[serde(flatten)]
     pub frapping: Frapping,
+    #[model_schema_prop(preprocess = ["withItsKeys"])]
     #[serde(flatten)]
-    pub rest: BTreeMap<String, Stowage>,
+    pub rest: Keying,
 }
 
 /// An untagged enum, which serde reads as a map and so takes no key.
@@ -319,14 +291,16 @@ pub enum Chocking {
     Rope { label: String },
 }
 
-/// A map flattened after [`Chocking`], where serde hands it every key.
+/// A member that names a function flattened after [`Chocking`], where serde hands the function
+/// every key.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Shoring {
     #[serde(flatten)]
     pub chocking: Chocking,
+    #[model_schema_prop(preprocess = ["withItsKeys"])]
     #[serde(flatten)]
-    pub rest: BTreeMap<String, Stowage>,
+    pub rest: Keying,
 }
 
 /// The payload as it was handed.
@@ -354,43 +328,33 @@ where
     serde_json::to_string(value).unwrap()
 }
 
-/// A map after a struct holds the keys the struct did not take, and a map ahead of a struct, and
-/// after a member that takes no key, holds every key. serde writes a key two members hold twice.
+/// A map that is the one member of its struct holds every key, and one in a variant under a tag
+/// key every key but the tag.
 #[test]
-fn serde_hands_a_flattened_map_the_keys_no_member_ahead_of_it_took() {
-    let coupling: Coupling = serde_json::from_str(PAYLOAD).unwrap();
-    assert_eq!(written(&coupling.rest), r#"{"north":2}"#);
-    let clamping: Clamping = serde_json::from_str(CLAMPING).unwrap();
-    assert_eq!(written(&clamping.rest), r#"{"north":2}"#);
-    let fastening: Fastening = serde_json::from_str(FASTENING).unwrap();
-    assert_eq!(written(&fastening.rest), r#"{"north":2}"#);
-    let Tethering::Held { marking, rest } = serde_json::from_str(TETHERING).unwrap();
-    assert_eq!(marking.label, "n");
+fn serde_hands_a_map_alone_every_key_but_a_tag_read_ahead_of_it() {
+    let spare: Spare = serde_json::from_str(SPARE).unwrap();
+    assert_eq!(written(&spare.rest), SPARE);
+    let Tethering::Held { rest } = serde_json::from_str(TETHERING).unwrap();
     assert_eq!(written(&rest), r#"{"north":2}"#);
-    let hoisting: Hoisting = serde_json::from_str(PAYLOAD).unwrap();
-    assert_eq!(written(&hoisting.extra), PAYLOAD);
-    assert_eq!(written(&hoisting), r#"{"label":"n","north":2,"label":"n"}"#);
-    let lacing: Lacing = serde_json::from_str(PAYLOAD).unwrap();
-    assert_eq!(written(&lacing.rest), PAYLOAD);
-    let rigging: Rigging = serde_json::from_str(PAYLOAD).unwrap();
-    assert_eq!(written(&rigging.rest), PAYLOAD);
-    let belaying: Belaying = serde_json::from_str(PAYLOAD).unwrap();
-    assert_eq!(written(&belaying.rest), PAYLOAD);
-    let stowing: Stowing = serde_json::from_str(STOWING).unwrap();
-    assert_eq!(
-        written(&stowing),
-        r#"{"north":2,"south":3,"north":2,"south":3}"#
-    );
 }
 
-/// A struct with a flattened map and a member that names a function, each after a struct, are
-/// handed the keys the struct did not take, and a struct after a struct that reads the same key is
-/// refused.
+/// A function after a struct is handed the keys neither the struct nor its holder took, and one
+/// ahead of a struct, and after a member that takes no key, every key but its holder's own.
 #[test]
-fn serde_hands_a_flattened_member_the_keys_no_struct_ahead_of_it_took() {
-    let pairing: Pairing = serde_json::from_str(PAYLOAD).unwrap();
-    assert_eq!(written(&pairing.spare.rest), r#"{"north":2}"#);
-    assert_eq!(written(&pairing), PAYLOAD);
+fn serde_hands_a_function_the_keys_no_member_ahead_of_it_took() {
+    let clamping: Clamping = serde_json::from_str(CLAMPING).unwrap();
+    assert_eq!(clamping.other.keys, ["north"]);
+    let fastening: Fastening = serde_json::from_str(FASTENING).unwrap();
+    assert_eq!(fastening.other.keys, ["north"]);
+    let hoisting: Hoisting = serde_json::from_str(PAYLOAD).unwrap();
+    assert_eq!(hoisting.extra.keys, ["label", "north"]);
+    assert_eq!(hoisting.marking.label, "n");
+    let lacing: Lacing = serde_json::from_str(PAYLOAD).unwrap();
+    assert_eq!(lacing.rest.keys, ["label", "north"]);
+    let rigging: Rigging = serde_json::from_str(PAYLOAD).unwrap();
+    assert_eq!(rigging.rest.keys, ["label", "north"]);
+    let belaying: Belaying = serde_json::from_str(PAYLOAD).unwrap();
+    assert_eq!(belaying.rest.keys, ["label", "north"]);
     let twin: Twin = serde_json::from_str(PAYLOAD).unwrap();
     assert_eq!(twin.other.keys, ["north"]);
     assert_eq!(written(&twin), r#"{"label":"n","keys":["north"]}"#);
@@ -409,55 +373,55 @@ where
     serde_json::from_str::<T>(payload).map_or_else(|_| "refused".to_owned(), |read| parts(&read))
 }
 
-/// What a map after an externally tagged enum holds of each payload, and the variant the enum
-/// read: serde takes the first entry under a variant's name or an alias of one, never one under
-/// the variant's Rust name, and hands the map every other entry.
+/// What a function after an externally tagged enum is handed of each payload, and the variant the
+/// enum read: serde takes the first entry under a variant's name or an alias of one, never one
+/// under the variant's Rust name, and hands the function every other entry.
 #[test]
-fn serde_hands_a_map_after_an_externally_tagged_enum_every_entry_but_the_variants() {
+fn serde_hands_a_function_after_an_externally_tagged_enum_every_entry_but_the_variants() {
     let loaded: Vec<String> = LOADING
         .iter()
         .map(|payload| {
             read_of(payload, |loading: &Loading| {
-                format!("{} {}", written(&loading.hatching), written(&loading.rest))
+                format!("{} {:?}", written(&loading.hatching), loading.rest.keys)
             })
         })
         .collect();
     assert_eq!(
         loaded,
         [
-            r#"{"Bay":{"label":"n"}} {"north":2}"#,
-            r#"{"Bay":{"label":"n"}} {"Dock":{"label":"s"},"north":2}"#,
-            r#"{"Dock":{"label":"s"}} {"Bay":{"label":"n"},"north":2}"#,
-            r#"{"Dock":{"label":"s"}} {"north":2}"#,
-            r#"{"Bay":{"label":"n"}} {"Quay":{"label":"s"},"north":2}"#,
+            r#"{"Bay":{"label":"n"}} ["north"]"#,
+            r#"{"Bay":{"label":"n"}} ["Dock", "north"]"#,
+            r#"{"Dock":{"label":"s"}} ["Bay", "north"]"#,
+            r#"{"Dock":{"label":"s"}} ["north"]"#,
+            r#"{"Bay":{"label":"n"}} ["Quay", "north"]"#,
         ]
     );
     let kedged: Vec<String> = KEDGING
         .iter()
         .map(|payload| {
             read_of(payload, |kedging: &Kedging| {
-                format!("{} {}", written(&kedging.kedge), written(&kedging.rest))
+                format!("{} {:?}", written(&kedging.kedge), kedging.rest.keys)
             })
         })
         .collect();
     assert_eq!(
         kedged,
         [
-            r#"{"pier":{"label":"n"}} {"north":2}"#,
-            r#"{"open_bay":{"label":"n"}} {"north":2}"#,
+            r#"{"pier":{"label":"n"}} ["north"]"#,
+            r#"{"open_bay":{"label":"n"}} ["north"]"#,
             "refused",
         ]
     );
     let trimming: Trimming = serde_json::from_str(TRIMMING).unwrap();
     assert_eq!(trimming.marking.label, "m");
-    assert_eq!(written(&trimming.rest), r#"{"north":2}"#);
+    assert_eq!(trimming.rest.keys, ["north"]);
 }
 
-/// A map after an enum under a tag key alone, or after an untagged one, holds every key.
+/// A function after an enum under a tag key alone, or after an untagged one, is handed every key.
 #[test]
-fn serde_hands_a_map_after_an_enum_read_as_a_map_every_key() {
+fn serde_hands_a_function_after_an_enum_read_as_a_map_every_key() {
     let mousing: Mousing = serde_json::from_str(MOUSING).unwrap();
-    assert_eq!(written(&mousing.rest), MOUSING);
+    assert_eq!(mousing.rest.keys, ["kind", "label", "north"]);
     let shoring: Shoring = serde_json::from_str(PAYLOAD).unwrap();
-    assert_eq!(written(&shoring.rest), PAYLOAD);
+    assert_eq!(shoring.rest.keys, ["label", "north"]);
 }

@@ -3,7 +3,6 @@
 //! Each `#[model_schema]` item earns `kotlin_definition()` inside a `{snake_case}_kotlin` module
 //! beside it (never a direct inherent `impl` — see `features::kotlin::kotlin_module_tokens`).
 
-use alloc::collections::BTreeMap;
 use std::collections::HashMap;
 
 #[cfg(feature = "mongodb")]
@@ -12,12 +11,9 @@ use serde::{Deserialize, Serialize};
 
 use tixschema::model_schema;
 
-use super::flattened_models::{Hitching, Knotting, Netting, Seizing, Splicing, Whipping};
+use super::flattened_models::{Knotting, Netting, Seizing, Splicing};
 #[cfg(feature = "serde")]
-use super::flattened_models::{
-    hitching_kotlin, knotting_kotlin, netting_kotlin, seizing_kotlin, splicing_kotlin,
-    whipping_kotlin,
-};
+use super::flattened_models::{knotting_kotlin, netting_kotlin, seizing_kotlin, splicing_kotlin};
 use super::read::{kept, serializers};
 use super::tuple_variants_models::Labelling;
 
@@ -227,7 +223,6 @@ pub struct OptionalAudit {
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaggedRecord {
-    pub id: String,
     #[serde(flatten)]
     pub tags: HashMap<String, String>,
 }
@@ -371,7 +366,6 @@ fn test_every_declared_type_is_constructible() {
     assert_eq!(optional_audit.stamp, None);
 
     let tagged_record = TaggedRecord {
-        id: "a".to_owned(),
         tags: HashMap::from([("color".to_owned(), "red".to_owned())]),
     };
     assert_eq!(tagged_record.tags.len(), 1);
@@ -781,8 +775,11 @@ fn test_flatten_map() {
         "got: {kotlin}"
     );
     assert!(
-        kotlin.contains("filterKeys") || kotlin.contains("filter {"),
-        "a flattened map takes whatever keys are left over. got: {kotlin}"
+        kotlin.contains(
+            "val tags = obj.mapValues { (_, v) -> \
+             input.json.decodeFromJsonElement(serializer<String>(), v) }"
+        ),
+        "a flattened map takes every key of the object. got: {kotlin}"
     );
 }
 
@@ -793,23 +790,20 @@ fn every_flattened_fixture_is_written_as_serde_writes_it() {
     let labelling = || Labelling {
         label: "n".to_owned(),
     };
-    let rest = || HashMap::from([("north".to_owned(), 2)]);
     assert_eq!(
         serde_json::to_string(&Netting {
-            labelling: labelling(),
-            rest: rest()
+            rest: HashMap::from([("north".to_owned(), 2)]),
         })
         .unwrap(),
-        r#"{"label":"n","north":2}"#
+        r#"{"north":2}"#
     );
     assert_eq!(
         serde_json::to_string(&Knotting {
             labelling: labelling(),
             note: "a".to_owned(),
-            rest: rest()
         })
         .unwrap(),
-        r#"{"label":"n","note":"a","north":2}"#
+        r#"{"label":"n","note":"a"}"#
     );
     assert_eq!(
         serde_json::to_string(&Splicing {
@@ -829,84 +823,19 @@ fn every_flattened_fixture_is_written_as_serde_writes_it() {
     );
 }
 
-/// A struct whose members are all flattened takes no key of its own ahead of the map's: the empty
-/// set is written with its type, which Kotlin cannot infer from nothing. A struct with a member of
-/// its own writes its keys as it did.
+/// A flattened map, the one member of its struct, is read from every key of the object and written
+/// entry by entry.
 #[test]
 #[cfg(feature = "serde")]
-fn test_flatten_map_beside_no_member_of_its_own() {
+fn a_flattened_map_is_read_from_every_key_and_written_entry_by_entry() {
     let netting = netting_kotlin::kotlin_definition();
-    assert!(
-        netting.contains("val restConsumedKeys = setOf<String>() + labellingKeys;"),
-        "got: {netting}"
-    );
-    let knotting = knotting_kotlin::kotlin_definition();
-    assert!(
-        knotting.contains("val restConsumedKeys = setOf(\"note\") + labellingKeys;"),
-        "got: {knotting}"
-    );
-}
-
-/// What serde hands a flattened map: every key no member ahead of it took, so a map ahead of a
-/// flattened struct holds the struct's keys too, and each of two maps holds the same keys.
-#[test]
-fn every_flattened_map_fixture_is_read_as_serde_reads_it() {
-    assert_eq!(
-        serde_json::from_str::<Hitching>(r#"{"label":"n","north":"2"}"#).unwrap(),
-        Hitching {
-            extra: BTreeMap::from([
-                ("label".to_owned(), "n".to_owned()),
-                ("north".to_owned(), "2".to_owned()),
-            ]),
-            labelling: Labelling {
-                label: "n".to_owned()
-            },
-        }
-    );
-    let counts = || BTreeMap::from([("north".to_owned(), 2), ("south".to_owned(), 3)]);
-    assert_eq!(
-        serde_json::from_str::<Whipping>(r#"{"north":2,"south":3}"#).unwrap(),
-        Whipping {
-            first: counts(),
-            second: counts(),
-        }
-    );
-}
-
-/// A flattened map is read at its place among the members, without the keys the members ahead of
-/// it took, and written at its place: ahead of a flattened struct it takes no key away, and each
-/// of two maps is read and written apart.
-#[test]
-#[cfg(feature = "serde")]
-fn a_flattened_map_is_read_and_written_at_its_place() {
-    let hitching = hitching_kotlin::kotlin_definition();
     for held in [
-        "buildJsonObject { value.extra.forEach { (k, v) -> put(k, \
-         output.json.encodeToJsonElement(serializer<String>(), v)) }; \
-         output.json.encodeToJsonElement(LabellingUnjudged, value.labelling).jsonObject\
-         .forEach { (k, v) -> put(k, v) } }",
-        "val obj = input.decodeJsonElement().jsonObject; val extraConsumedKeys = setOf<String>(); \
-         val extra = obj.filterKeys { it !in extraConsumedKeys }.mapValues { (_, v) -> \
-         input.json.decodeFromJsonElement(serializer<String>(), v) }; val labellingKeys = \
-         (LabellingUnjudged).descriptor.elementNames.toSet(); val labelling = \
-         lenient.decodeFromJsonElement(LabellingUnjudged, obj); return Hitching(extra = extra, \
-         labelling = labelling) }",
+        "buildJsonObject { value.rest.forEach { (k, v) -> put(k, \
+         output.json.encodeToJsonElement(serializer<UByte>(), v)) } }",
+        "val obj = input.decodeJsonElement().jsonObject; val rest = obj.mapValues { (_, v) -> \
+         input.json.decodeFromJsonElement(serializer<UByte>(), v) }; return Netting(rest = rest) }",
     ] {
-        assert!(hitching.contains(held), "no `{held}` in: {hitching}");
-    }
-    let whipping = whipping_kotlin::kotlin_definition();
-    for held in [
-        "buildJsonObject { value.first.forEach { (k, v) -> put(k, \
-         output.json.encodeToJsonElement(serializer<UByte>(), v)) }; value.second.forEach { (k, \
-         v) -> put(k, output.json.encodeToJsonElement(serializer<UByte>(), v)) } }",
-        "val obj = input.decodeJsonElement().jsonObject; val firstConsumedKeys = setOf<String>(); \
-         val first = obj.filterKeys { it !in firstConsumedKeys }.mapValues { (_, v) -> \
-         input.json.decodeFromJsonElement(serializer<UByte>(), v) }; val secondConsumedKeys = \
-         setOf<String>(); val second = obj.filterKeys { it !in secondConsumedKeys }.mapValues { \
-         (_, v) -> input.json.decodeFromJsonElement(serializer<UByte>(), v) }; return \
-         Whipping(first = first, second = second) }",
-    ] {
-        assert!(whipping.contains(held), "no `{held}` in: {whipping}");
+        assert!(netting.contains(held), "no `{held}` in: {netting}");
     }
 }
 
@@ -938,7 +867,7 @@ fn an_optional_member_beside_a_flattened_one_is_written_only_where_it_holds_a_va
         knotting.contains(
             "{ output.json.encodeToJsonElement(LabellingUnjudged, value.labelling).jsonObject\
              .forEach { (k, v) -> put(k, v) }; put(\"note\", \
-             output.json.encodeToJsonElement(serializer<String>(), value.note)); "
+             output.json.encodeToJsonElement(serializer<String>(), value.note)) }"
         ),
         "got: {knotting}"
     );

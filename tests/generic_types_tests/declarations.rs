@@ -33,7 +33,7 @@ mod resulted;
 #[path = "../set_tests/models.rs"]
 mod sets;
 
-/// The models a map is flattened into, and the payloads serde reads and refuses for them.
+/// The models a map is flattened into alone, and the payloads serde reads and refuses for them.
 #[path = "../flatten_tests/maps.rs"]
 mod flattened_maps;
 
@@ -1498,54 +1498,24 @@ fn sets() -> String {
 fn flattened_maps() -> String {
     [
         PREAMBLE.to_owned(),
-        flattened_maps::Marking::ts_definition(),
-        flattened_maps::Marking::zod_schema(),
-        flattened_maps::Stocktake::ts_definition(),
-        flattened_maps::Stocktake::zod_schema(),
-        flattened_maps::TaggedStocktake::ts_definition(),
-        flattened_maps::TaggedStocktake::zod_schema(),
-        flattened_maps::Stowing::ts_definition(),
-        flattened_maps::Stowing::zod_schema(),
-        flattened_maps::Trussing::ts_definition(),
-        flattened_maps::Trussing::zod_schema(),
-        flattened_maps::Ballast::ts_definition(),
-        flattened_maps::Ballast::zod_schema(),
-        flattened_maps::Dunnage::ts_definition(),
-        flattened_maps::Dunnage::zod_schema(),
-        flattened_maps::Tiers::ts_definition(),
-        flattened_maps::Tiers::zod_schema(),
-        flattened_maps::Enclosure::ts_definition(),
-        flattened_maps::Enclosure::zod_schema(),
-        flattened_maps::Sheeting::ts_definition(),
-        flattened_maps::Sheeting::zod_schema(),
-        flattened_maps::marking_alias_schema::Schema::ts_definition(),
-        flattened_maps::marking_alias_schema::Schema::zod_schema(),
-        flattened_maps::Cording::ts_definition(),
-        flattened_maps::Cording::zod_schema(),
-        flattened_maps::Rigging::ts_definition(),
-        flattened_maps::Rigging::zod_schema(),
-        flattened_maps::Landing::ts_definition(),
-        flattened_maps::Landing::zod_schema(),
-        flattened_maps::Pigeonhole::ts_definition(),
-        flattened_maps::Pigeonhole::zod_schema(),
-        flattened_maps::Winch::ts_definition(),
-        flattened_maps::Winch::zod_schema(),
-        flattened_maps::Davit::ts_definition(),
-        flattened_maps::Davit::zod_schema(),
-        flattened_maps::ShelfCode::ts_definition(),
-        flattened_maps::ShelfCode::zod_schema(),
-        flattened_maps::Shelflist::ts_definition(),
-        flattened_maps::Shelflist::zod_schema(),
-        flattened_maps::Billing::<String>::ts_definition(),
-        flattened_maps::Billing::<String>::zod_schema(),
-        flattened_maps::Hatchway::ts_definition(),
-        flattened_maps::Hatchway::zod_schema(),
-        flattened_maps::Compartment::ts_definition(),
-        flattened_maps::Compartment::zod_schema(),
-        flattened_maps::Bulkhead::ts_definition(),
-        flattened_maps::Bulkhead::zod_schema(),
-        flattened_maps::Scuttle::ts_definition(),
-        flattened_maps::Scuttle::zod_schema(),
+        flattened_maps::Thwart::ts_definition(),
+        flattened_maps::Thwart::zod_schema(),
+        flattened_maps::TaggedThwart::ts_definition(),
+        flattened_maps::TaggedThwart::zod_schema(),
+        flattened_maps::Gunwale::ts_definition(),
+        flattened_maps::Gunwale::zod_schema(),
+        flattened_maps::StrakeCode::ts_definition(),
+        flattened_maps::StrakeCode::zod_schema(),
+        flattened_maps::Strake::ts_definition(),
+        flattened_maps::Strake::zod_schema(),
+        flattened_maps::Coaming::ts_definition(),
+        flattened_maps::Coaming::zod_schema(),
+        flattened_maps::Keelson::ts_definition(),
+        flattened_maps::Keelson::zod_schema(),
+        flattened_maps::Transom::ts_definition(),
+        flattened_maps::Transom::zod_schema(),
+        flattened_maps::Bilge::ts_definition(),
+        flattened_maps::Bilge::zod_schema(),
     ]
     .join("\n\n")
 }
@@ -2334,23 +2304,17 @@ fn type_check_a_set_refuses_a_repeat_under_zod() {
 
 /// Every payload serde reads with a map flattened into its object is read by the Zod schema of its
 /// type under `node`, and one with a count of the wrong type is refused under the count's key:
-/// serde hands a flattened map no key a member of the object or a member flattened ahead of the
-/// map took.
+/// serde hands a flattened map every key of its object but the tag an internally tagged enum reads
+/// ahead of the variant.
 #[test]
 fn type_check_a_flattened_map_reads_under_zod_what_serde_reads() {
     flattened_maps::assert_serde_reads_what_zod_reads();
     let listed: Vec<(&str, String, &str)> = flattened_maps::PAYLOADS
         .iter()
         .map(|payload| {
-            // The one model that declares a parameter is read at its declared default.
-            let binding = if payload.read_as == "Billing" {
-                "SchemaDefault"
-            } else {
-                "Schema"
-            };
             (
                 payload.name,
-                format!("{}${binding}", payload.read_as),
+                format!("{}$Schema", payload.read_as),
                 payload.json,
             )
         })

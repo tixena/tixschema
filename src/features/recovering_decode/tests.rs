@@ -4298,25 +4298,6 @@ fn a_flattened_option_is_walked_where_its_type_answers_that_the_object_names_it(
         ),
         "got: {alone}"
     );
-    let unread = json_fields_walk_of(
-        "pub struct Beside { \
-         #[serde(flatten, default, skip_serializing_if = \"Option::is_none\")] pub extra: Option<Extra>, \
-         #[serde(flatten, default, skip_serializing_if = \"Option::is_none\")] pub more: Option<HashMap<String, i32>>, \
-         pub title: String }",
-    );
-    assert!(
-        unread.contains(
-            "if < Extra > :: decode_with_value_named (& rest) { let mut nested = :: std :: vec :: \
-             Vec :: new () ; < Extra > :: decode_with_value_fields (& rest , path , issue , & \
-             mut nested) ; match < Extra as serde :: Deserialize > :: deserialize (serde_json \
-             :: Value :: Object (rest . clone ())) {"
-        ),
-        "got: {unread}"
-    );
-    assert!(
-        !unread.contains("keys =") && !unread.contains("declared"),
-        "got: {unread}"
-    );
 }
 
 /// `decode_with_value_named` as it is emitted, answering `answer`.
@@ -4348,7 +4329,7 @@ fn every_struct_shape_answers_whether_an_object_names_a_value_of_it() {
             "< Audit > :: decode_with_value_named (object)",
         ),
         (
-            "pub struct Bag { #[serde(flatten)] pub audit: Audit, #[serde(flatten)] pub extra: HashMap<String, i32>, pub title: String }",
+            "pub struct Open { #[serde(flatten)] pub extra: HashMap<String, i32> }",
             "! object . is_empty ()",
         ),
         (FLATTENING_A_PARAMETER, "! object . is_empty ()"),
@@ -4524,43 +4505,26 @@ fn a_later_flattened_type_is_handed_what_the_earlier_ones_left() {
         "got: {parameter}"
     );
     let hooked = json_fields_walk_of(
-        "pub struct Hooked { #[serde(flatten, with = \"as_text\")] pub first: HashMap<String, i32>, \
+        "pub struct Hooked { #[serde(flatten, with = \"as_text\")] pub first: Audit, \
          #[serde(flatten)] pub counts: Counts }",
     );
     assert!(
         hooked.contains(
-            "let taken = hooked_schema :: value_remaining :: < HashMap < String , i32 > , _ > \
-             (as_text :: deserialize , & hooked_schema :: Asked :: default () , object) ; let \
-             remaining = taken . as_ref () . unwrap_or (object) ; declared . extend (< Counts > \
-             :: decode_with_value_fields (remaining , path , issue , out)"
+            "let taken = hooked_schema :: value_remaining :: < Audit , _ > (as_text :: \
+             deserialize , & hooked_schema :: Asked :: default () , object) ; let remaining = \
+             taken . as_ref () . unwrap_or (object) ; declared . extend (< Counts > :: \
+             decode_with_value_fields (remaining , path , issue , out)"
         ),
         "got: {hooked}"
     );
     for source in [
         "pub struct One { #[serde(flatten)] pub counts: Counts, pub id: String }",
-        "pub struct After { #[serde(flatten)] pub extra: HashMap<String, i32>, \
-         #[serde(flatten)] pub counts: Counts, pub id: String }",
         "pub struct Unread { #[serde(flatten, skip_deserializing)] pub cached: Audit, \
          #[serde(flatten)] pub counts: Counts }",
     ] {
         let walk = json_fields_walk_of(source);
         assert!(!walk.contains("_remaining"), "for {source}, got: {walk}");
     }
-}
-
-#[test]
-fn the_rest_is_read_without_what_serde_takes_for_an_earlier_field_no_walk_reaches() {
-    let walk = json_fields_walk_of(
-        "pub struct Bundle<T> { \
-         #[serde(flatten, skip_serializing_if = \"Option::is_none\")] pub body: Option<T>, \
-         #[serde(flatten)] pub counts: HashMap<String, i32>, pub id: String }",
-    );
-    assert!(
-        walk.contains(
-            "let taken = bundle_schema :: value_remaining :: < Option < T > , _ > (< Option < T > as serde :: Deserialize > :: deserialize , & bundle_schema :: Asked :: default () , object) ; let remaining = taken . as_ref () . unwrap_or (object) ; for (key , item) in remaining { if ! matches ! (key . as_str () , \"id\") {"
-        ),
-        "got: {walk}"
-    );
 }
 
 #[test]
@@ -4712,38 +4676,7 @@ fn a_plain_enum_gets_the_fields_walker_of_an_externally_tagged_enum() {
 }
 
 #[test]
-fn a_flattened_map_walks_the_value_of_every_key_nothing_else_declares() {
-    let beside_a_type = json_fields_walk_of(
-        "pub struct Bag { #[serde(flatten)] pub audit: Audit, \
-         #[serde(flatten)] pub extra: HashMap<String, Inner>, pub title: String }",
-    );
-    assert!(
-        beside_a_type.contains(
-            "declared . extend (< Audit > :: decode_with_value_fields (& rest , path , issue , \
-             out) . into_iter () . filter_map (| key | object . keys () . find (| own | own . \
-             as_str () == key) . map (:: std :: string :: String :: as_str))) ; for (key , item) \
-             in object { if ! declared . contains (& key . as_str ()) { < Inner > :: \
-             decode_with_value_issues (item , & [path , & [:: core :: result :: Result :: Ok (key \
-             . clone ())]] . concat () , issue , out) ; } } object . keys () . map (:: std :: \
-             string :: String :: as_str) . collect () }"
-        ),
-        "got: {beside_a_type}"
-    );
-    let beside_a_key = json_fields_walk_of(
-        "pub struct Bag { #[serde(flatten)] pub extra: HashMap<String, i32>, pub title: String }",
-    );
-    assert!(
-        beside_a_key.contains(
-            "for (key , item) in object { if ! matches ! (key . as_str () , \"title\") { out . \
-             extend (bag_schema :: value_leaf (item , < i32 as serde :: Deserialize > :: \
-             deserialize , | read | serde_json :: to_value (read) . ok () , [path , & [:: core :: \
-             result :: Result :: Ok (key . clone ())]] . concat () , & [(\"I32\" , & [] , 0)] , \
-             issue)) ; } } object . keys () . map (:: std :: string :: String :: as_str) . collect \
-             () }"
-        ),
-        "got: {beside_a_key}"
-    );
-    assert!(!beside_a_key.contains("declared"), "got: {beside_a_key}");
+fn a_flattened_map_alone_walks_the_value_of_every_key() {
     let alone = json_fields_walk_of(
         "pub struct Open { #[serde(flatten)] pub extra: HashMap<String, i32> }",
     );
@@ -4786,58 +4719,6 @@ fn a_flattened_parameter_is_read_whole_from_the_keys_nothing_else_declares() {
         ),
         "got: {alone}"
     );
-    let hooked = json_fields_walk_of(
-        "pub struct Hooked { #[serde(flatten)] pub audit: Audit, \
-         #[serde(flatten, with = \"as_text\")] pub rest: HashMap<String, i32> }",
-    );
-    assert!(
-        hooked.contains(
-            "out . extend (hooked_schema :: value_leaf (& serde_json :: Value :: Object (object \
-             . iter () . filter (| (key , _) | ! declared . contains (& key . as_str ())) . map \
-             (| (key , held) | (key . clone () , held . clone ())) . collect ()) , as_text :: \
-             deserialize , | _ : & HashMap < String , i32 > | :: core :: option :: Option :: None \
-             , path . to_vec () , & [(\"Map\" , & [] , 1) , (\"I32\" , & [] , 0)] , issue) . \
-             filter (| _ | ! hooked_schema :: reads_an_option :: < HashMap < String , i32 > , _ \
-             > (as_text :: deserialize , & hooked_schema :: Asked :: default ()))) ;"
-        ),
-        "got: {hooked}"
-    );
-}
-
-#[test]
-fn only_the_first_flattened_field_that_takes_the_rest_is_walked() {
-    let walk = json_fields_walk_of(
-        "pub struct Packet<T> { #[serde(flatten)] pub body: T, \
-         #[serde(flatten)] pub counts: HashMap<String, i32>, pub id: String }",
-    );
-    assert!(
-        walk.contains(
-            ":: std :: vec :: Vec :: new ())) , } out . extend (packet_schema :: value_leaf (& \
-             serde_json :: Value :: Object (object . iter () . filter (| (key , _) | ! matches \
-             ! (key . as_str () , \"id\")) . map (| (key , held) | (key . clone () , held . \
-             clone ())) . collect ()) , < T as serde :: Deserialize > :: deserialize , | _ | \
-             :: core :: option :: Option :: None , path . to_vec () , & [(\"TypeParam\" , & \
-             [\"T\"] , 0)] , issue) . filter (| _ | ! packet_schema :: reads_an_option :: < T , \
-             _ > (< T as serde :: Deserialize > :: deserialize , & packet_schema :: Asked :: \
-             default ()))) ; object . keys () . map (:: std :: string :: String :: as_str) . \
-             collect () }"
-        ),
-        "got: {walk}"
-    );
-    assert!(!walk.contains("for (key , item) in object"), "got: {walk}");
-    let maps = json_fields_walk_of(
-        "pub struct Twice { #[serde(flatten)] pub first: HashMap<String, i32>, \
-         #[serde(flatten)] pub second: HashMap<String, String> }",
-    );
-    assert_eq!(
-        maps.matches("for (key , item) in object").count(),
-        1,
-        "got: {maps}"
-    );
-    assert!(
-        maps.contains("< i32 as serde :: Deserialize >") && !maps.contains("< String as serde"),
-        "got: {maps}"
-    );
 }
 
 #[test]
@@ -4858,18 +4739,6 @@ fn a_flattened_field_no_walk_reaches_takes_every_key_and_lists_nothing() {
             "for {source}, got: {walk}"
         );
     }
-    let beside_a_type = json_fields_walk_of(
-        "pub struct Beside { #[serde(flatten)] pub audit: Audit, \
-         #[serde(flatten, default, skip_serializing_if = \"Option::is_none\")] pub rest: Option<HashMap<String, i32>> }",
-    );
-    assert!(
-        beside_a_type.contains(
-            ", out : & mut :: std :: vec :: Vec < I > ,) -> :: std :: vec :: Vec < & 'a str > { < \
-             Audit > :: decode_with_value_fields (object , path , issue , out) ; object . keys \
-             () . map (:: std :: string :: String :: as_str) . collect () }"
-        ),
-        "got: {beside_a_type}"
-    );
     // serde neither writes nor reads a flattened field under `skip`, or under `skip_serializing`
     // beside `skip_deserializing`, so no key is its own.
     for source in [
@@ -5027,21 +4896,6 @@ fn a_variants_flattened_field_is_walked_in_the_object_its_fields_sit_in() {
              concat () ,"
         ),
         "got: {untagged}"
-    );
-    // A variant that flattens a map leaves no key of its object undeclared.
-    let open = enum_json_of(
-        "pub enum Outline { Gone, Made { #[serde(flatten)] extra: HashMap<String, i32>, title: String } }",
-    );
-    assert!(
-        open.contains(
-            "for (key , item) in inner { if ! matches ! (key . as_str () , \"title\") { out . \
-             extend (outline_schema :: value_leaf (item , < i32 as serde :: Deserialize > :: \
-             deserialize , | read | serde_json :: to_value (read) . ok () , [path , & [:: core :: \
-             result :: Result :: Ok (\"Made\" . to_owned ()) , :: core :: result :: Result :: Ok \
-             (key . clone ())]] . concat () , & [(\"I32\" , & [] , 0)] , issue)) ; } } } return \
-             vec ! [\"Made\"] ; }"
-        ),
-        "got: {open}"
     );
 }
 
@@ -5474,7 +5328,6 @@ fn a_key_serde_never_writes_and_a_map_have_no_function() {
         #[cfg(feature = "indexmap")]
         "pub a: Option<IndexMap<String, u8>>",
         "pub a: Option<HashMap<String, u8>>",
-        "#[serde(flatten)] pub a: HashMap<String, u8>",
         "#[serde(flatten)] pub a: Unseen",
         "#[serde(flatten, with = \"hook\")] pub a: Inner",
     ] {

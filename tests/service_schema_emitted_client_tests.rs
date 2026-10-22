@@ -386,21 +386,22 @@ mod tuple_variants_models;
 #[path = "service_schema_emitted_client_tests/run_kotlin_tuple_variants.rs"]
 mod run_kotlin_tuple_variants;
 
-/// A struct whose members are all flattened, one of them a map, and its twin with a member of its
+/// A map flattened as the one member of its struct, a flattened struct beside a member of its
 /// own, and an optional member beside a flattened one with its twin under `nullable`. Declared
 /// after the module that declares the member they flatten.
 #[cfg(all(test, feature = "kotlin"))]
 #[path = "kotlin_tests/flattened_models.rs"]
 mod flattened_models;
 
-/// A struct whose members are all flattened, one of them a map, and an optional member beside a
-/// flattened one, read and written by the emitted Kotlin types.
+/// A map flattened as the one member of its struct, a flattened struct beside a member of its
+/// own, and an optional member beside a flattened one, read and written by the emitted Kotlin
+/// types.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin_flattened.rs"]
 mod run_kotlin_flattened;
 
-/// A map flattened after a struct, ahead of one, beside another map and after a member that
-/// takes none of the keys it reads, and a member of each other kind flattened after a struct.
+/// A map that is the one member of its object, and a member that names a function flattened at
+/// each place a member can be handed fewer keys than its object holds.
 #[cfg(test)]
 #[cfg(feature = "dart")]
 #[path = "dart_tests/flattened_models.rs"]
@@ -411,14 +412,15 @@ mod dart_flattened_models;
 #[path = "service_schema_emitted_client_tests/run_dart_flattened.rs"]
 mod run_dart_flattened;
 
-/// A map flattened after a struct, ahead of one, beside another map, after a member that takes
-/// none of the keys it reads, under a key Swift wraps, of models, of dates and naming a function.
+/// A map that is the one member of its object, under a key Swift wraps, of models, of dates and
+/// naming a function, and a member that names a function at each place a member can be handed
+/// fewer keys than its object holds.
 #[cfg(test)]
 #[cfg(feature = "swift")]
 #[path = "swift_tests/flattened_models.rs"]
 mod swift_flattened_models;
 
-/// Those maps, read and written back by the emitted Swift types.
+/// Those members, read and written back by the emitted Swift types.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_swift_flattened.rs"]
 mod run_swift_flattened;

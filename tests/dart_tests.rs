@@ -43,8 +43,8 @@ mod unwritten_models;
 #[path = "dart_tests/unwritten.rs"]
 mod unwritten;
 
-/// A map flattened after a struct, ahead of one, beside another map and after a member that
-/// takes none of the keys it reads, and a member of each other kind flattened after a struct.
+/// A map that is the one member of its object, and a member that names a function flattened at
+/// each place a member can be handed fewer keys than its object holds.
 #[cfg(test)]
 #[cfg(all(feature = "dart", feature = "serde"))]
 #[path = "dart_tests/flattened_models.rs"]

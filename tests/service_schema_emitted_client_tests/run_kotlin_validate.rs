@@ -217,15 +217,21 @@ pub struct Depot {
     pub spare_parcel: Option<Parcel>,
 }
 
-/// A model and a map of models written into the holder's own object.
+/// A model written into the holder's own object.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Yard {
     #[serde(flatten)]
     pub base: Base,
+    pub gate: String,
+}
+
+/// A map of models written into the holder's own object.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Docks {
     #[serde(flatten)]
     pub by_dock: BTreeMap<String, Parcel>,
-    pub gate: String,
 }
 
 /// A brand with each of its three bounds and a check.
@@ -843,8 +849,10 @@ fn holder_rows() -> Vec<Row> {
         base: Base {
             base_name: String::new(),
         },
-        by_dock: BTreeMap::from([("north".to_owned(), unlabelled())]),
         gate: "east".to_owned(),
+    };
+    let docks = Docks {
+        by_dock: BTreeMap::from([("north".to_owned(), unlabelled())]),
     };
     vec![
         row(
@@ -855,6 +863,7 @@ fn holder_rows() -> Vec<Row> {
         ),
         row("Depot, held", "Depot", &empty, empty.validate()),
         row("Yard", "Yard", &yard, yard.validate()),
+        row("Docks", "Docks", &docks, docks.validate()),
     ]
 }
 
@@ -1159,6 +1168,7 @@ fn shape_definitions() -> Vec<String> {
         base_kotlin::kotlin_definition(),
         depot_kotlin::kotlin_definition(),
         yard_kotlin::kotlin_definition(),
+        docks_kotlin::kotlin_definition(),
         code_kotlin::kotlin_definition(),
         roster_kotlin::kotlin_definition(),
         user_id_kotlin::kotlin_definition(),

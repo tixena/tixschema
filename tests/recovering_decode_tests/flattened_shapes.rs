@@ -75,28 +75,27 @@ struct Flat<A, B> {
     later: B,
 }
 
-/// A flattened map of numbers beside a key of text: it takes every key it is handed.
+/// A flattened map of numbers alone: it takes every key it is handed.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Counts {
     #[serde(flatten)]
     by_name: HashMap<String, i32>,
-    title: String,
 }
 
-/// A struct with a named field, held as text so a map of numbers handed its key refuses it.
+/// A struct with a named field.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Rev {
     revision: String,
 }
 
-/// A struct that itself flattens a map.
+/// A struct that itself flattens a struct, which serde reads as a map.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Notes {
     #[serde(flatten)]
-    by_key: HashMap<String, i32>,
+    audit: Rev,
     name: String,
 }
 
@@ -178,17 +177,6 @@ struct Row(Vec<i32>);
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Spot((String, u32));
 
-/// A flattened struct, then a flattened type that takes every key it is handed.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Two {
-    #[serde(flatten)]
-    audit: Rev,
-    #[serde(flatten)]
-    counts: Counts,
-    id: String,
-}
-
 /// Internally tagged, with a variant that holds a type that takes every key it is handed.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -203,7 +191,6 @@ enum Filled {
 struct Bag {
     #[serde(flatten)]
     extras: Extras,
-    title: String,
 }
 
 /// A flattened single-slot struct over an `Option` of a struct.
@@ -250,297 +237,6 @@ enum Slot {
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct NewestRev(Option<Rev>);
 
-// Each shape serde flattens, flattened before `Counts` in one type and after it in another: serde
-// reads the two flattened fields in the order declared.
-
-/// `Counts` flattened after a struct with named fields.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct RevFirst {
-    #[serde(flatten)]
-    before: Rev,
-    id: String,
-    #[serde(flatten)]
-    later: Counts,
-}
-
-/// `Counts` flattened before a struct with named fields.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct RevLast {
-    #[serde(flatten)]
-    before: Counts,
-    id: String,
-    #[serde(flatten)]
-    later: Rev,
-}
-
-/// `Counts` flattened after a struct that itself flattens a map.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct NotesFirst {
-    #[serde(flatten)]
-    before: Notes,
-    id: String,
-    #[serde(flatten)]
-    later: Counts,
-}
-
-/// `Counts` flattened before a struct that itself flattens a map.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct NotesLast {
-    #[serde(flatten)]
-    before: Counts,
-    id: String,
-    #[serde(flatten)]
-    later: Notes,
-}
-
-/// `Counts` flattened after an externally tagged enum.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct BorderFirst {
-    #[serde(flatten)]
-    before: Border,
-    id: String,
-    #[serde(flatten)]
-    later: Counts,
-}
-
-/// `Counts` flattened before an externally tagged enum.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct BorderLast {
-    #[serde(flatten)]
-    before: Counts,
-    id: String,
-    #[serde(flatten)]
-    later: Border,
-}
-
-/// `Counts` flattened after an internally tagged enum.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct TintFirst {
-    #[serde(flatten)]
-    before: Tint,
-    id: String,
-    #[serde(flatten)]
-    later: Counts,
-}
-
-/// `Counts` flattened before an internally tagged enum.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct TintLast {
-    #[serde(flatten)]
-    before: Counts,
-    id: String,
-    #[serde(flatten)]
-    later: Tint,
-}
-
-/// `Counts` flattened after an adjacently tagged enum.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct RimFirst {
-    #[serde(flatten)]
-    before: Rim,
-    id: String,
-    #[serde(flatten)]
-    later: Counts,
-}
-
-/// `Counts` flattened before an adjacently tagged enum.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct RimLast {
-    #[serde(flatten)]
-    before: Counts,
-    id: String,
-    #[serde(flatten)]
-    later: Rim,
-}
-
-/// `Counts` flattened after an untagged enum.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct ViaFirst {
-    #[serde(flatten)]
-    before: Via,
-    id: String,
-    #[serde(flatten)]
-    later: Counts,
-}
-
-/// `Counts` flattened before an untagged enum.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct ViaLast {
-    #[serde(flatten)]
-    before: Counts,
-    id: String,
-    #[serde(flatten)]
-    later: Via,
-}
-
-/// `Counts` flattened after a single-slot struct over a struct.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct RevRefFirst {
-    #[serde(flatten)]
-    before: RevRef,
-    id: String,
-    #[serde(flatten)]
-    later: Counts,
-}
-
-/// `Counts` flattened before a single-slot struct over a struct.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct RevRefLast {
-    #[serde(flatten)]
-    before: Counts,
-    id: String,
-    #[serde(flatten)]
-    later: RevRef,
-}
-
-/// `Counts` flattened after a single-slot struct over a map.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct ExtrasFirst {
-    #[serde(flatten)]
-    before: Extras,
-    id: String,
-    #[serde(flatten)]
-    later: Counts,
-}
-
-/// `Counts` flattened before a single-slot struct over a map.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct ExtrasLast {
-    #[serde(flatten)]
-    before: Counts,
-    id: String,
-    #[serde(flatten)]
-    later: Extras,
-}
-
-/// `Counts` flattened after a single-slot struct over an `Option` of a struct.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct NewestRevFirst {
-    #[serde(flatten)]
-    before: NewestRev,
-    id: String,
-    #[serde(flatten)]
-    later: Counts,
-}
-
-/// `Counts` flattened before a single-slot struct over an `Option` of a struct.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct NewestRevLast {
-    #[serde(flatten)]
-    before: Counts,
-    id: String,
-    #[serde(flatten)]
-    later: NewestRev,
-}
-
-/// `Counts` flattened after a generic brand filled with a struct.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct WrapFirst {
-    #[serde(flatten)]
-    before: Wrap<Rev>,
-    id: String,
-    #[serde(flatten)]
-    later: Counts,
-}
-
-/// `Counts` flattened before a generic brand filled with a struct.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct WrapLast {
-    #[serde(flatten)]
-    before: Counts,
-    id: String,
-    #[serde(flatten)]
-    later: Wrap<Rev>,
-}
-
-/// `Counts` flattened after an `Option` of a struct.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct MaybeRevFirst {
-    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
-    before: Option<Rev>,
-    id: String,
-    #[serde(flatten)]
-    later: Counts,
-}
-
-/// `Counts` flattened before an `Option` of a struct.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct MaybeRevLast {
-    #[serde(flatten)]
-    before: Counts,
-    id: String,
-    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
-    later: Option<Rev>,
-}
-
-/// `Counts` flattened after an `Option` of an internally tagged enum.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct MaybeTintFirst {
-    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
-    before: Option<Tint>,
-    id: String,
-    #[serde(flatten)]
-    later: Counts,
-}
-
-/// `Counts` flattened before an `Option` of an internally tagged enum.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct MaybeTintLast {
-    #[serde(flatten)]
-    before: Counts,
-    id: String,
-    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
-    later: Option<Tint>,
-}
-
-/// `Counts` flattened after a plain enum, which a schema surface refuses to see flattened.
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct MoodFirst {
-    #[serde(flatten)]
-    before: Mood,
-    id: String,
-    #[serde(flatten)]
-    later: Counts,
-}
-
-/// `Counts` flattened before a plain enum, which a schema surface refuses to see flattened.
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct MoodLast {
-    #[serde(flatten)]
-    before: Counts,
-    id: String,
-    #[serde(flatten)]
-    later: Mood,
-}
-
 /// A `#[serde(transparent)]` struct over a type that takes every key it is handed.
 #[model_schema(enable = ["decode_with"], no_display)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -554,7 +250,6 @@ struct CountsRef {
 struct Ledgered {
     #[serde(flatten)]
     counts: CountsRef,
-    id: String,
 }
 
 /// Untagged, with a variant that holds a type that takes every key it is handed.
@@ -569,7 +264,6 @@ enum Tallied {
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Scored {
-    id: String,
     #[serde(flatten)]
     tallied: Tallied,
 }
@@ -594,8 +288,8 @@ struct Felt {
     id: String,
 }
 
-/// Internally tagged, with a struct variant that flattens a struct and then a type that takes
-/// every key it is handed.
+/// Internally tagged, with a struct variant that flattens a type that takes every key it is
+/// handed.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
@@ -603,10 +297,7 @@ enum Booked {
     Gone,
     Made {
         #[serde(flatten)]
-        audit: Rev,
-        #[serde(flatten)]
         counts: Counts,
-        id: String,
     },
 }
 
@@ -627,15 +318,12 @@ enum Crated {
     Empty,
 }
 
-/// A flattened struct, then a flattened `Option` of a type that takes every key it is handed.
+/// A flattened `Option` of a type that takes every key it is handed.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Optioned {
-    #[serde(flatten)]
-    audit: Rev,
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
     counts: Option<Counts>,
-    id: String,
 }
 
 /// Two flattened structs, neither of which takes every key.
@@ -659,7 +347,6 @@ struct MaybeExtras(Option<HashMap<String, i32>>);
 struct Pouch {
     #[serde(flatten)]
     extras: MaybeExtras,
-    title: String,
 }
 
 /// A flattened generic brand filled with a map.
@@ -668,7 +355,6 @@ struct Pouch {
 struct Basket {
     #[serde(flatten)]
     body: Wrap<HashMap<String, i32>>,
-    id: String,
 }
 
 /// A model type that carries no flag: it only ever fills a parameter.
@@ -676,39 +362,6 @@ struct Basket {
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Plain {
     text: String,
-}
-
-/// A flattened type parameter, then a flattened type that takes every key it is handed.
-#[model_schema(enable = ["decode_with"], default_types(T = Plain))]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Parcel<T> {
-    #[serde(flatten)]
-    body: T,
-    #[serde(flatten)]
-    counts: Counts,
-    id: String,
-}
-
-/// A flattened generic brand filled with a struct, then a flattened type that takes every key.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Wrapping {
-    #[serde(flatten)]
-    body: Wrap<Plain>,
-    #[serde(flatten)]
-    counts: Counts,
-    id: String,
-}
-
-/// An optional flattened type parameter, which no walk reaches, then a flattened map.
-#[model_schema(enable = ["decode_with"], default_types(T = Plain))]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Bundle<T> {
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
-    body: Option<T>,
-    #[serde(flatten)]
-    counts: HashMap<String, i32>,
-    id: String,
 }
 
 /// A flattened type parameter beside a key of the type's own.
@@ -758,19 +411,6 @@ struct ThroughHook {
 struct MapThroughHook {
     #[serde(flatten, deserialize_with = "as_written")]
     entries: HashMap<String, i32>,
-    id: String,
-}
-
-/// A flattened field read through a hook generic over what it reads, then a flattened type that
-/// takes every key it is handed.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct HookAhead {
-    #[serde(flatten, deserialize_with = "as_written")]
-    ahead: Version,
-    #[serde(flatten)]
-    counts: Counts,
-    id: String,
 }
 
 /// A flattened field serde writes and never reads.
@@ -804,7 +444,6 @@ struct Unpicked {
 struct MaybeCounted {
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
     entries: Option<HashMap<String, i32>>,
-    id: String,
 }
 
 /// A single-slot struct over an `Option` of an `Option` of a struct, the inner one in a `Box`,
@@ -834,17 +473,6 @@ struct Posted {
     postmark: Postmark,
 }
 
-/// The hooked slot, then a flattened type that takes every key it is handed.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct PostedFirst {
-    #[serde(flatten)]
-    brand: Postmark,
-    #[serde(flatten)]
-    counts: Counts,
-    id: String,
-}
-
 /// A single-slot struct over a map a hook reads.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -855,7 +483,6 @@ struct Chalk(#[serde(deserialize_with = "as_written")] HashMap<String, i32>);
 struct Slate {
     #[serde(flatten)]
     chalk: Chalk,
-    id: String,
 }
 
 /// A `#[serde(transparent)]` struct whose field a hook reads.
@@ -889,30 +516,6 @@ struct Guess {
 }
 
 flagged! {
-    RevFirst => rev_first_schema,
-    RevLast => rev_last_schema,
-    NotesFirst => notes_first_schema,
-    NotesLast => notes_last_schema,
-    BorderFirst => border_first_schema,
-    BorderLast => border_last_schema,
-    TintFirst => tint_first_schema,
-    TintLast => tint_last_schema,
-    RimFirst => rim_first_schema,
-    RimLast => rim_last_schema,
-    ViaFirst => via_first_schema,
-    ViaLast => via_last_schema,
-    RevRefFirst => rev_ref_first_schema,
-    RevRefLast => rev_ref_last_schema,
-    ExtrasFirst => extras_first_schema,
-    ExtrasLast => extras_last_schema,
-    NewestRevFirst => newest_rev_first_schema,
-    NewestRevLast => newest_rev_last_schema,
-    WrapFirst => wrap_first_schema,
-    WrapLast => wrap_last_schema,
-    MaybeRevFirst => maybe_rev_first_schema,
-    MaybeRevLast => maybe_rev_last_schema,
-    MaybeTintFirst => maybe_tint_first_schema,
-    MaybeTintLast => maybe_tint_last_schema,
     CountsRef => counts_ref_schema,
     Ledgered => ledgered_schema,
     Tallied => tallied_schema,
@@ -923,11 +526,7 @@ flagged! {
     Optioned => optioned_schema,
     Pouch => pouch_schema,
     Basket => basket_schema,
-    Parcel<Plain> => parcel_schema,
-    Wrapping => wrapping_schema,
-    Bundle<Plain> => bundle_schema,
     Posted => posted_schema,
-    PostedFirst => posted_first_schema,
     Slate => slate_schema,
     Waxed => waxed_schema,
     Guess => guess_schema,
@@ -936,19 +535,15 @@ flagged! {
     Signed => signed_schema,
     Letter<Plain> => letter_schema,
     Letter<Option<Plain>> => letter_schema,
-    Letter<HashMap<String, i32>> => letter_schema,
     DirectMaybe => direct_maybe_schema,
     Pocket => pocket_schema,
     ThroughHook => through_hook_schema,
     MapThroughHook => map_through_hook_schema,
-    HookAhead => hook_ahead_schema,
     MaybeCounted => maybe_counted_schema,
 }
 
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
 flagged! {
-    MoodFirst => mood_first_schema,
-    MoodLast => mood_last_schema,
     Felt => felt_schema,
 }
 
@@ -964,13 +559,6 @@ where
 fn counts() -> Counts {
     Counts {
         by_name: HashMap::from([("a".to_owned(), 1_i32)]),
-        title: "t".to_owned(),
-    }
-}
-
-fn rev() -> Rev {
-    Rev {
-        revision: "r".to_owned(),
     }
 }
 
@@ -1064,8 +652,8 @@ fn serde_takes_nothing_for_a_flattened_map_a_struct_that_flattens_and_an_untagge
  {
     let both = |left: &Value| (entries(left), entries(left));
     assert_eq!(
-        serde_left::<Notes>(&json!({ "id": "i", "name": "n", "x": 1_i32 })),
-        both(&json!({ "name": "n", "x": 1_i32 }))
+        serde_left::<Notes>(&json!({ "id": "i", "name": "n", "revision": "r", "x": 1_i32 })),
+        both(&json!({ "name": "n", "revision": "r", "x": 1_i32 }))
     );
     assert_eq!(
         serde_left::<Extras>(&json!({ "id": "i", "x": 1_i32 })),
@@ -1172,7 +760,9 @@ fn the_walker_is_told_what_serde_leaves_by_each_types_own_reader() {
     told_what_serde_leaves::<Wrap<Rev>>(&keyed);
     told_what_serde_leaves::<Option<Rev>>(&keyed);
     told_what_serde_leaves::<Box<Rev>>(&keyed);
-    told_what_serde_leaves::<Notes>(&json!({ "id": "i", "name": "n", "x": 1_i32 }));
+    told_what_serde_leaves::<Notes>(
+        &json!({ "id": "i", "name": "n", "revision": "r", "x": 1_i32 }),
+    );
     let open = json!({ "id": "i", "x": 1_i32 });
     told_what_serde_leaves::<Extras>(&open);
     told_what_serde_leaves::<Option<Rev>>(&open);
@@ -1197,8 +787,9 @@ fn the_walker_is_told_what_serde_leaves_by_each_types_own_reader() {
 /// Where serde takes nothing, what is left is the object itself, and no copy is made of it.
 #[test]
 fn no_copy_is_made_of_what_is_left_where_serde_takes_nothing() {
+    let noted = json!({ "id": "i", "name": "n", "revision": "r", "x": 1_i32 });
+    assert!(!walker_left::<Notes>(&noted).1);
     let named = json!({ "id": "i", "name": "n", "x": 1_i32 });
-    assert!(!walker_left::<Notes>(&named).1);
     assert!(!walker_left::<Extras>(&named).1);
     assert!(!walker_left::<Option<Rev>>(&named).1);
     let solid = json!({ "color": "red", "id": "i", "kind": "Solid", "x": 1_i32 });
@@ -1206,32 +797,12 @@ fn no_copy_is_made_of_what_is_left_where_serde_takes_nothing() {
     assert!(walker_left::<Rev>(&json!({ "id": "i", "revision": "r", "x": 1_i32 })).1);
 }
 
-#[test]
-fn a_flattened_type_declared_after_a_flattened_struct_is_handed_none_of_its_keys() {
-    let two = Two {
-        audit: rev(),
-        counts: counts(),
-        id: "i".to_owned(),
-    };
-    let written = serde_json::to_value(&two).unwrap();
-    assert_eq!(
-        written,
-        json!({ "a": 1_i32, "id": "i", "revision": "r", "title": "t" })
-    );
-    let mut calls = 0_u32;
-    assert_eq!(read_counting!(Two, two_schema, written, calls), Ok(two));
-    assert_eq!(calls, 0);
-}
-
 /// The type an internally tagged variant holds is handed the object without the tag's key.
 #[test]
 fn an_internally_tagged_variants_value_is_handed_the_object_without_the_tag() {
     let filled = Filled::Counted(counts());
     let written = serde_json::to_value(&filled).unwrap();
-    assert_eq!(
-        written,
-        json!({ "a": 1_i32, "kind": "Counted", "title": "t" })
-    );
+    assert_eq!(written, json!({ "a": 1_i32, "kind": "Counted" }));
     let mut calls = 0_u32;
     assert_eq!(
         read_counting!(Filled, filled_schema, written, calls),
@@ -1245,10 +816,9 @@ fn a_flattened_single_slot_struct_claims_the_keys_serde_reads_for_it() {
     let mut calls = 0_u32;
     let bag = Bag {
         extras: Extras(HashMap::from([("a".to_owned(), 1_i32)])),
-        title: "t".to_owned(),
     };
     let bag_written = serde_json::to_value(&bag).unwrap();
-    assert_eq!(bag_written, json!({ "a": 1_i32, "title": "t" }));
+    assert_eq!(bag_written, json!({ "a": 1_i32 }));
     assert_eq!(read_counting!(Bag, bag_schema, bag_written, calls), Ok(bag));
 
     let paper = Paper {
@@ -1301,95 +871,20 @@ fn a_flattened_plain_enum_claims_the_key_naming_its_variant() {
 }
 
 #[test]
-fn a_shape_that_takes_its_keys_reads_before_a_type_that_takes_every_key_and_not_after_it() {
-    let keyed = json!({ "a": 1_i32, "id": "i", "revision": "r", "title": "t" });
-    assert!(agrees::<RevFirst>(&keyed));
-    assert!(!agrees::<RevLast>(&keyed));
-    assert!(agrees::<RevRefFirst>(&keyed));
-    assert!(!agrees::<RevRefLast>(&keyed));
-    assert!(agrees::<NewestRevFirst>(&keyed));
-    assert!(!agrees::<NewestRevLast>(&keyed));
-    assert!(agrees::<WrapFirst>(&keyed));
-    assert!(!agrees::<WrapLast>(&keyed));
-    assert!(agrees::<MaybeRevFirst>(&keyed));
-    assert!(!agrees::<MaybeRevLast>(&keyed));
-
-    let curved = json!({ "Curved": { "radius": 1.5_f64 }, "a": 1_i32, "id": "i", "title": "t" });
-    assert!(agrees::<BorderFirst>(&curved));
-    assert!(!agrees::<BorderLast>(&curved));
-    let dotted = json!({
-        "a": 1_i32,
-        "data": { "gap": 2_i32 },
-        "id": "i",
-        "rim": "Dotted",
-        "title": "t",
-    });
-    assert!(agrees::<RimFirst>(&dotted));
-    assert!(!agrees::<RimLast>(&dotted));
-}
-
-#[test]
-fn a_shape_that_takes_nothing_shares_its_keys_with_a_type_that_takes_every_key() {
-    // A variant's key held as a number is one the map of numbers reads as well.
-    let pager = json!({ "a": 1_i32, "id": "i", "number": 7_i32, "title": "t" });
-    assert!(agrees::<ViaFirst>(&pager));
-    assert!(agrees::<ViaLast>(&pager));
-    let mail = json!({ "a": 1_i32, "address": "a@b", "id": "i", "title": "t" });
-    assert!(!agrees::<ViaFirst>(&mail));
-    assert!(!agrees::<ViaLast>(&mail));
-
-    let solid = json!({ "a": 1_i32, "color": "red", "id": "i", "kind": "Solid", "title": "t" });
-    assert!(!agrees::<TintFirst>(&solid));
-    assert!(!agrees::<TintLast>(&solid));
-    assert!(!agrees::<MaybeTintFirst>(&solid));
-    assert!(!agrees::<MaybeTintLast>(&solid));
-
-    // Each of the two takes every key, and neither can hold the other's key of text.
-    let named = json!({ "a": 1_i32, "id": "i", "n": 2_i32, "name": "x", "title": "t" });
-    assert!(!agrees::<NotesFirst>(&named));
-    assert!(!agrees::<NotesLast>(&named));
-    let counted = json!({ "a": 1_i32, "id": "i", "title": "t", "x": 2_i32 });
-    assert!(!agrees::<ExtrasFirst>(&counted));
-    assert!(!agrees::<ExtrasLast>(&counted));
-}
-
-#[test]
-fn an_absent_optional_shape_reads_before_and_after_a_type_that_takes_every_key() {
-    let absent = json!({ "a": 1_i32, "id": "i", "title": "t" });
-    assert!(agrees::<MaybeRevFirst>(&absent));
-    assert!(agrees::<MaybeRevLast>(&absent));
-    assert!(agrees::<MaybeTintFirst>(&absent));
-    assert!(agrees::<MaybeTintLast>(&absent));
-    assert!(agrees::<NewestRevFirst>(&absent));
-    assert!(agrees::<NewestRevLast>(&absent));
-}
-
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-#[test]
-fn a_plain_enum_flattened_before_and_after_a_type_that_takes_every_key_reads_as_serde_reads_it() {
-    let calm = json!({ "Calm": null, "a": 1_i32, "id": "i", "title": "t" });
-    assert!(agrees::<MoodFirst>(&calm));
-    assert!(!agrees::<MoodLast>(&calm));
-}
-
-#[test]
 fn every_place_a_type_is_handed_an_object_hands_it_what_serde_hands_it() {
-    let held = json!({ "a": 1_i32, "title": "t" });
+    let held = json!({ "a": 1_i32 });
     assert!(agrees::<CountsRef>(&held));
     assert!(agrees::<Tallied>(&held));
     assert!(agrees::<Boxed>(&json!({ "Counted": held })));
     assert!(agrees::<Crated>(
         &json!({ "data": held, "kind": "Counted" })
     ));
-    let keyed = json!({ "a": 1_i32, "id": "i", "title": "t" });
-    assert!(agrees::<Ledgered>(&keyed));
-    assert!(agrees::<Scored>(&keyed));
+    assert!(agrees::<Ledgered>(&held));
+    assert!(agrees::<Scored>(&held));
 
-    let made = json!({ "a": 1_i32, "id": "i", "kind": "Made", "revision": "r", "title": "t" });
-    assert!(agrees::<Booked>(&made));
-    let there = json!({ "a": 1_i32, "id": "i", "revision": "r", "title": "t" });
-    assert!(agrees::<Optioned>(&there));
-    assert!(agrees::<Optioned>(&json!({ "id": "i", "revision": "r" })));
+    assert!(agrees::<Booked>(&json!({ "a": 1_i32, "kind": "Made" })));
+    assert!(agrees::<Optioned>(&held));
+    assert!(agrees::<Optioned>(&json!({})));
 }
 
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
@@ -1406,28 +901,13 @@ fn a_flattened_untagged_variant_over_a_plain_enum_claims_the_key_naming_its_vari
 
 #[test]
 fn an_issue_in_a_type_handed_what_serde_hands_it_is_listed_once_where_it_sits() {
-    let count_as_text = json!({ "a": "x", "id": "i", "revision": "r", "title": "t" });
-    assert!(!serde_reads::<Two>(&count_as_text));
-    assert_eq!(
-        listed!(Two, two_schema, count_as_text),
-        ["a: invalid: expected I32, found String(\"x\"): invalid type: string \"x\", expected i32"]
-    );
-    let revision_as_number = json!({ "a": 1_i32, "id": "i", "revision": 5_i32, "title": "t" });
-    assert!(!serde_reads::<Two>(&revision_as_number));
-    assert_eq!(
-        listed!(Two, two_schema, revision_as_number),
-        [
-            "revision: invalid: expected String, found Number(5): invalid type: integer `5`, expected a string"
-        ]
-    );
-
-    let filled_count = json!({ "a": "x", "kind": "Counted", "title": "t" });
+    let filled_count = json!({ "a": "x", "kind": "Counted" });
     assert!(!serde_reads::<Filled>(&filled_count));
     assert_eq!(
         listed!(Filled, filled_schema, filled_count),
         ["a: invalid: expected I32, found String(\"x\"): invalid type: string \"x\", expected i32"]
     );
-    let unknown_tag = json!({ "a": 1_i32, "kind": "Emptied", "title": "t" });
+    let unknown_tag = json!({ "a": 1_i32, "kind": "Emptied" });
     assert!(!serde_reads::<Filled>(&unknown_tag));
     assert_eq!(
         listed!(Filled, filled_schema, unknown_tag),
@@ -1439,7 +919,7 @@ fn an_issue_in_a_type_handed_what_serde_hands_it_is_listed_once_where_it_sits() 
 
 #[test]
 fn an_issue_in_a_flattened_single_slot_struct_is_what_a_flattened_field_of_its_value_lists() {
-    let bag_count = json!({ "a": "x", "title": "t" });
+    let bag_count = json!({ "a": "x" });
     assert!(!serde_reads::<Bag>(&bag_count));
     assert_eq!(
         listed!(Bag, bag_schema, bag_count),
@@ -1500,29 +980,12 @@ fn a_key_no_flattened_struct_declares_is_unknown_once_beside_two_of_them() {
 
 #[test]
 fn a_flattened_single_slot_struct_over_an_optional_map_claims_what_serde_reads() {
-    let counted = json!({ "a": 1_i32, "title": "t" });
+    let counted = json!({ "a": 1_i32 });
     assert!(agrees::<Pouch>(&counted));
-    assert!(agrees::<Pouch>(&json!({ "title": "t" })));
-    assert!(agrees::<Basket>(&json!({ "a": 1_i32, "id": "i" })));
+    assert!(agrees::<Pouch>(&json!({})));
+    assert!(agrees::<Basket>(&counted));
     assert!(agrees::<Deeper>(&json!({ "name": "n", "number": 3_i32 })));
     assert!(agrees::<Deeper>(&json!({ "name": "n" })));
-}
-
-#[test]
-fn a_flattened_type_declared_after_a_flattened_type_parameter_is_handed_what_its_filling_left() {
-    let texted = json!({ "a": 1_i32, "id": "i", "text": "x", "title": "t" });
-    assert!(agrees::<Parcel<Plain>>(&texted));
-    assert!(agrees::<Wrapping>(&texted));
-
-    let bundled = json!({ "a": 1_i32, "id": "i", "text": "x" });
-    assert!(agrees::<Bundle<Plain>>(&bundled));
-    assert!(agrees::<Bundle<Plain>>(&json!({ "a": 1_i32, "id": "i" })));
-    let count_as_text = json!({ "a": "x", "id": "i", "text": "x" });
-    assert!(!serde_reads::<Bundle<Plain>>(&count_as_text));
-    assert_eq!(
-        listed!(Bundle<Plain>, bundle_schema, count_as_text),
-        ["a: invalid: expected I32, found String(\"x\"): invalid type: string \"x\", expected i32"]
-    );
 }
 
 #[test]
@@ -1532,10 +995,7 @@ fn a_flattened_single_slot_struct_with_a_hooked_slot_claims_what_its_hook_reads(
     assert!(agrees::<Waxed>(&numbered));
     assert!(agrees::<Guess>(&numbered));
     assert!(agrees::<Guess>(&json!({ "id": "i" })));
-    assert!(agrees::<Slate>(&json!({ "a": 1_i32, "id": "i" })));
-    assert!(agrees::<PostedFirst>(
-        &json!({ "a": 1_i32, "id": "i", "number": 3_i32, "title": "t" })
-    ));
+    assert!(agrees::<Slate>(&json!({ "a": 1_i32 })));
 
     let number_as_text = json!({ "id": "i", "number": "3" });
     assert!(!serde_reads::<Posted>(&number_as_text));
@@ -1627,9 +1087,9 @@ fn a_flattened_value_read_whole_that_its_reader_refuses_is_invalid_at_the_object
 
 #[test]
 fn every_kind_of_flattened_field_reads_what_serde_wrote_with_no_call() {
-    assert!(agrees::<Counts>(&json!({ "a": 1_i32, "title": "t" })));
-    assert!(agrees::<MaybeCounted>(&json!({ "a": 1_i32, "id": "i" })));
-    assert!(agrees::<MaybeCounted>(&json!({ "id": "i" })));
+    assert!(agrees::<Counts>(&json!({ "a": 1_i32 })));
+    assert!(agrees::<MaybeCounted>(&json!({ "a": 1_i32 })));
+    assert!(agrees::<MaybeCounted>(&json!({})));
     assert!(agrees::<Signed>(
         &json!({ "id": "i", "number": 3_i32, "revision": "r" })
     ));
@@ -1637,15 +1097,9 @@ fn every_kind_of_flattened_field_reads_what_serde_wrote_with_no_call() {
     assert!(agrees::<ThroughHook>(
         &json!({ "id": "i", "number": 3_i32 })
     ));
-    assert!(agrees::<MapThroughHook>(&json!({ "a": 1_i32, "id": "i" })));
-    assert!(agrees::<HookAhead>(
-        &json!({ "a": 1_i32, "id": "i", "number": 3_i32, "title": "t" })
-    ));
+    assert!(agrees::<MapThroughHook>(&json!({ "a": 1_i32 })));
 
     assert!(agrees::<Letter<Plain>>(&json!({ "id": "i", "text": "t" })));
-    assert!(agrees::<Letter<HashMap<String, i32>>>(
-        &json!({ "a": 1_i32, "id": "i" })
-    ));
 }
 
 #[test]

@@ -7,6 +7,10 @@ use super::identity_checks;
 use crate::field_type::{RangeKind, written_std_range, written_std_result};
 use crate::utils::claim_published_name;
 
+/// What a type that builds is refused with.
+#[cfg(feature = "serde")]
+const NONE: [&str; 0] = [];
+
 /// What `#[model_schema()]` expands `source` to.
 fn expanded(source: &str) -> TokenStream {
     super::super::exec_model_schema(TokenStream::new(), syn::parse_str(source).unwrap())
@@ -190,6 +194,192 @@ fn a_flattened_range_is_refused_naming_the_field() {
         "{}",
         messages[0]
     );
+}
+
+/// The refusals `#[model_schema()]` writes for `source`, a struct or an enum deriving both of
+/// serde's traits.
+#[cfg(feature = "serde")]
+fn refused(source: &str) -> Vec<String> {
+    refusals(expanded(&format!(
+        "#[derive(Serialize, Deserialize)] {source}"
+    )))
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_map_flattened_beside_a_member_is_refused_naming_both() {
+    let messages = refused(
+        "pub struct Stocktake { #[serde(flatten)] pub counts: BTreeMap<String, u8>, \
+         pub note: String }",
+    );
+    assert_eq!(
+        messages,
+        vec![
+            "model_schema: type `Stocktake`: field `counts`: `#[serde(flatten)]` cannot hold a map \
+             beside other members \u{2014} serde writes the map's entries at one level with \
+             `note`, and no TypeScript type describes both. Write the map under a key of its own."
+                .to_owned()
+        ]
+    );
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_map_flattened_beside_a_flattened_struct_another_map_or_through_an_option_is_refused() {
+    let _: Vec<String> = refused("pub struct ShelfMark { pub label: String }");
+    for (source, refused_fields) in [
+        (
+            "pub struct Tagged { #[serde(flatten)] pub marking: ShelfMark, \
+             #[serde(flatten)] pub spare: BTreeMap<String, u8> }",
+            vec!["spare"],
+        ),
+        (
+            "pub struct Twice { #[serde(flatten)] pub a: BTreeMap<String, u8>, \
+             #[serde(flatten)] pub b: BTreeMap<String, String> }",
+            vec!["a", "b"],
+        ),
+        (
+            "pub struct Maybe { #[serde(flatten)] pub rest: Option<BTreeMap<String, u8>>, \
+             pub note: String }",
+            vec!["rest"],
+        ),
+        (
+            "pub struct Boxed { pub note: String, \
+             #[serde(flatten)] pub rest: Box<HashMap<String, u8>> }",
+            vec!["rest"],
+        ),
+    ] {
+        let messages = refused(source);
+        assert_eq!(
+            messages.len(),
+            refused_fields.len(),
+            "{source}: {messages:?}"
+        );
+        for (message, field) in messages.iter().zip(refused_fields) {
+            assert!(
+                message.contains(&format!(
+                    ": field `{field}`: `#[serde(flatten)]` cannot hold a map beside other members"
+                )),
+                "{source}: {message}"
+            );
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_map_flattened_alone_builds() {
+    for source in [
+        "pub struct Counted { #[serde(flatten)] pub counts: BTreeMap<String, u8> }",
+        "pub struct Cached { #[serde(flatten)] pub counts: BTreeMap<String, u8>, \
+         #[serde(skip)] pub cache: u32 }",
+        "pub struct ShelfLabel { #[serde(flatten)] pub marking: ShelfMark, pub note: String }",
+        "pub enum Counting { Tally { #[serde(flatten)] counts: BTreeMap<String, u8> } }",
+    ] {
+        assert_eq!(refused(source), NONE, "{source}");
+    }
+}
+
+/// The README quotes the refusal as the build answers it: where `#[serde(flatten)]` of a map is
+/// described, and in the list of what an upgrade asks of a crate.
+#[cfg(feature = "serde")]
+#[test]
+fn the_readme_states_the_refusal_of_a_map_beside_a_member_as_the_build_answers_it() {
+    let messages = refused(
+        "pub struct Stocktake { #[serde(flatten)] pub counts: BTreeMap<String, u8>, \
+         pub note: String }",
+    );
+    assert_eq!(messages.len(), 1, "{messages:?}");
+    let answered = format!("error: {}", messages[0]);
+    assert_eq!(
+        include_str!("../../../README.md")
+            .matches(&answered)
+            .count(),
+        2,
+        "the README no longer quotes: {answered}"
+    );
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_type_declared_above_that_writes_a_map_is_refused_flattened_beside_a_member() {
+    let _: Vec<String> = refused("pub struct ShelfMark { pub label: String }");
+    assert_eq!(
+        refused("pub struct Spare { #[serde(flatten)] pub rest: BTreeMap<String, u8> }"),
+        NONE
+    );
+    assert_eq!(
+        refusals(expanded("type SpareCounts = BTreeMap<String, u8>;")),
+        NONE
+    );
+    assert_eq!(
+        refused("#[serde(transparent)] pub struct Wrapped(pub BTreeMap<String, u8>);"),
+        NONE
+    );
+    assert_eq!(
+        refused("pub struct Slotted(pub Option<HashMap<String, u8>>);"),
+        NONE
+    );
+    for name in ["Spare", "SpareCounts", "Wrapped", "Slotted"] {
+        let messages = refused(&format!(
+            "pub struct Shelved {{ #[serde(flatten)] pub marking: ShelfMark, \
+             #[serde(flatten)] pub spare: {name} }}"
+        ));
+        assert_eq!(messages.len(), 1, "{name}: {messages:?}");
+        assert!(
+            messages[0].starts_with(
+                "model_schema: type `Shelved`: field `spare`: `#[serde(flatten)]` cannot hold a \
+                 map beside other members \u{2014} serde writes the map's entries at one level \
+                 with `marking`"
+            ),
+            "{name}: {}",
+            messages[0]
+        );
+    }
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_type_declared_below_its_holder_is_not_looked_into() {
+    let _: Vec<String> = refused("pub struct ShelfMark { pub label: String }");
+    assert_eq!(
+        refused(
+            "pub struct Unseen { #[serde(flatten)] pub marking: ShelfMark, \
+             #[serde(flatten)] pub spare: SpareBelow }"
+        ),
+        NONE
+    );
+    assert_eq!(
+        refused("pub struct SpareBelow { #[serde(flatten)] pub rest: BTreeMap<String, u8> }"),
+        NONE
+    );
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_variant_that_flattens_a_map_beside_a_member_is_refused_under_each_tagging() {
+    for tagging in [
+        "",
+        "#[serde(tag = \"kind\")]",
+        "#[serde(tag = \"kind\", content = \"held\")]",
+        "#[serde(untagged)]",
+    ] {
+        let messages = refused(&format!(
+            "{tagging} pub enum Berth {{ Open {{ #[serde(flatten)] counts: BTreeMap<String, u8>, \
+             note: String }}, Closed {{ note: String }} }}"
+        ));
+        assert_eq!(
+            messages,
+            vec![
+                "model_schema: type `Berth`: variant `Open`, field `counts`: `#[serde(flatten)]` \
+                 cannot hold a map beside other members \u{2014} serde writes the map's entries \
+                 at one level with `note`, and no TypeScript type describes both. Write the map \
+                 under a key of its own."
+                    .to_owned()
+            ],
+            "{tagging}"
+        );
+    }
 }
 
 #[test]

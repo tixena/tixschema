@@ -208,7 +208,6 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct Annex {
-        pub annex_parcel: Parcel,
         #[serde(flatten)]
         pub parcels_by_gate: BTreeMap<String, Parcel>,
     }
@@ -668,7 +667,6 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
     #[test]
     fn a_map_written_as_the_whole_value_names_its_entry_by_the_key_alone() {
         let annex = Annex {
-            annex_parcel: sound(),
             parcels_by_gate: at_north(),
         };
         assert_eq!(
