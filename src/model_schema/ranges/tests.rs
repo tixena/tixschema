@@ -870,6 +870,177 @@ fn a_map_flattened_alone_where_serde_writes_no_tag_beside_it_builds() {
     }
 }
 
+/// The refusal of the lone slot of the variant `Counted` of `holder`, written `slot`, under the tag
+/// `kind`.
+#[cfg(feature = "serde")]
+fn slot_beside_kind(holder: &str, slot: &str) -> String {
+    format!(
+        "model_schema: type `{holder}`: variant `Counted`, field `0`: `{slot}` writes a map, which \
+         cannot sit beside the tag `kind` \u{2014} serde writes the tag and the map's entries at \
+         one level, and no TypeScript type describes both. Name a `content` key so the map gets an \
+         object of its own, or write the map under a key of its own."
+    )
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_lone_slot_that_writes_a_map_is_refused_under_a_tag_alone() {
+    assert_eq!(
+        refused("pub struct Tally { #[serde(flatten)] counts: BTreeMap<String, u8> }"),
+        NONE
+    );
+    assert_eq!(
+        refusals(expanded("type TallyCounts = BTreeMap<String, u8>;")),
+        NONE
+    );
+    assert_eq!(
+        refused("#[serde(transparent)] pub struct TallyBrand(pub BTreeMap<String, u8>);"),
+        NONE
+    );
+    assert_eq!(
+        refused("pub struct TallySlot(pub HashMap<String, u8>);"),
+        NONE
+    );
+    assert_eq!(
+        refused(
+            "#[serde(untagged)] pub enum TallyEither { Named { name: String }, \
+             Counted(HashMap<String, u8>) }"
+        ),
+        NONE
+    );
+    assert_eq!(
+        refused_generic("#[serde(transparent)] pub struct TallyWrap<T>(T);"),
+        NONE
+    );
+    for (holder, slot) in [
+        ("Filled", "Tally"),
+        ("Aliased", "TallyCounts"),
+        ("Branded", "TallyBrand"),
+        ("Slotted", "TallySlot"),
+        ("Either", "TallyEither"),
+        ("Boxed", "Box<Tally>"),
+        ("Wrapped", "TallyWrap<HashMap<String, i32>>"),
+        ("WrappedTally", "TallyWrap<Tally>"),
+    ] {
+        assert_eq!(
+            refused(&format!(
+                "#[serde(tag = \"kind\")] pub enum {holder} {{ Counted({slot}), Empty }}"
+            )),
+            vec![slot_beside_kind(holder, slot)],
+            "{slot}"
+        );
+    }
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_lone_slot_that_writes_a_map_builds_where_serde_writes_no_tag_beside_it() {
+    assert_eq!(
+        refused("pub struct Tally { #[serde(flatten)] counts: BTreeMap<String, u8> }"),
+        NONE
+    );
+    assert_eq!(refused("pub struct ShelfMark { pub label: String }"), NONE);
+    for source in [
+        "pub enum Named { Counted(Tally), Empty }",
+        "#[serde(tag = \"kind\", content = \"held\")] pub enum Adjacent { Counted(Tally), Empty }",
+        "#[serde(untagged)] pub enum Loose { Counted(Tally), Named { name: String } }",
+        "#[serde(tag = \"kind\")] pub enum Keyed { Counted(ShelfMark), Empty }",
+        "#[serde(tag = \"kind\")] pub enum Unwritten { Counted(#[serde(skip)] Tally), Empty }",
+    ] {
+        assert_eq!(refused(source), NONE, "{source}");
+    }
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_lone_slot_declared_below_its_enum_is_not_looked_into() {
+    assert_eq!(
+        refused("#[serde(tag = \"kind\")] pub enum Filled { Counted(TallyBelow), Empty }"),
+        NONE
+    );
+    assert_eq!(
+        refused("pub struct TallyBelow { #[serde(flatten)] counts: BTreeMap<String, u8> }"),
+        NONE
+    );
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_type_parameter_in_a_lone_slot_under_a_tag_alone_is_refused_where_a_map_fills_it() {
+    let _: Vec<String> = refused("pub struct Plain { pub text: String }");
+    assert_eq!(
+        refused_generic("#[serde(transparent)] pub struct TallyWrap<T>(T);"),
+        NONE
+    );
+    assert_eq!(
+        refused_generic("#[serde(tag = \"kind\")] pub enum Hold<T> { Counted(TallyWrap<T>) }"),
+        NONE
+    );
+    assert_eq!(
+        refused_generic("#[serde(tag = \"kind\")] pub enum Bare<T> { Counted(T) }"),
+        NONE
+    );
+    let beside_kind = |subject: &str, flattens: &str| {
+        format!(
+            "model_schema: type `{subject}`: `{flattens}` flattens its type parameter `T` beside \
+             the tag `kind`, and `HashMap<String, i32>` fills it with a map \u{2014} serde writes \
+             the tag and the map's entries at one level, and no TypeScript type describes both. \
+             Write the map under a key of its own."
+        )
+    };
+    assert_eq!(
+        refused("pub struct Dock { pub hold: Hold<HashMap<String, i32>> }"),
+        vec![beside_kind("Dock`: field `hold", "Hold")]
+    );
+    assert_eq!(
+        refused("pub struct Pier { pub bare: Option<Bare<HashMap<String, i32>>> }"),
+        vec![beside_kind("Pier`: field `bare", "Bare")]
+    );
+    assert_eq!(
+        refused_with_default(
+            "HashMap<String, i32>",
+            "#[serde(tag = \"kind\")] pub enum Stowed<T> { Counted(TallyWrap<T>) }"
+        ),
+        vec![beside_kind("Stowed`: `default_types` entry `T", "Stowed")]
+    );
+    assert_eq!(
+        refused("pub struct Quay { pub hold: Hold<Plain>, pub bare: Bare<Plain> }"),
+        NONE
+    );
+    assert_eq!(
+        refused_generic(
+            "#[serde(tag = \"kind\", content = \"held\")] pub enum Crated<T> { \
+             Counted(TallyWrap<T>) }"
+        ),
+        NONE
+    );
+    assert_eq!(
+        refused("pub struct Wharf { pub crated: Crated<HashMap<String, i32>> }"),
+        NONE
+    );
+}
+
+/// The README quotes the refusal of a lone slot that writes a map beside a tag as the build answers
+/// it: where an internally tagged enum is described, and in the list of what an upgrade asks of a
+/// crate.
+#[cfg(feature = "serde")]
+#[test]
+fn the_readme_states_the_refusal_of_a_slot_that_writes_a_map_beside_a_tag_as_the_build_answers_it()
+{
+    let _: Vec<String> =
+        refused("pub struct Tally { #[serde(flatten)] counts: BTreeMap<String, u8> }");
+    let messages = refused("#[serde(tag = \"kind\")] pub enum Filled { Counted(Tally) }");
+    assert_eq!(messages.len(), 1, "{messages:?}");
+    let answered = format!("error: {}", messages[0]);
+    assert_eq!(
+        include_str!("../../../README.md")
+            .matches(&answered)
+            .count(),
+        2,
+        "the README no longer quotes: {answered}"
+    );
+}
+
 #[test]
 fn a_result_written_by_its_bare_name_is_checked_wherever_it_is_written() {
     for (field, checks) in [

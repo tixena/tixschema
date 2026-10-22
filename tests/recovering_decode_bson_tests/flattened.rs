@@ -501,12 +501,21 @@ struct Trimmed {
     trim: Option<Trim>,
 }
 
-/// Internally tagged, with a variant that holds a type that takes every key it is handed.
+/// A count that refuses every key it does not declare: handed a key of another type's, it lists
+/// it.
+#[model_schema(enable = ["decode_with", "mongodb"])]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+struct Tallies {
+    a: i32,
+}
+
+/// Internally tagged, with a variant that holds a type that refuses every key it does not declare.
 #[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Filled {
-    Counted(Counts),
+    Counted(Tallies),
 }
 
 /// A single-slot struct over a map, flattened.
@@ -1734,7 +1743,7 @@ fn an_option_that_flattens_a_type_that_takes_every_key_reads_what_serde_wrote() 
 /// The type an internally tagged variant holds is handed the document without the tag's key.
 #[test]
 fn an_internally_tagged_variants_value_is_handed_the_document_without_the_tag() {
-    let filled = Filled::Counted(counts());
+    let filled = Filled::Counted(Tallies { a: 1_i32 });
     assert_eq!(written(&filled), doc! { "kind": "Counted", "a": 1_i32 });
     let mut calls = 0_u32;
     assert_eq!(
