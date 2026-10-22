@@ -970,21 +970,33 @@ the consumer's view; this is what a change has to keep.
   not followed. `tests/kotlin_tests/corrected_options_models.rs` holds `Reeved`, `Wormed` and
   `Moused` with what serde, TypeScript and Zod read of each payload, which
   `tests/generic_types_tests/declarations.rs` measures, and `run_kotlin_flattened.rs` holds the
-  Kotlin read to Zod's. A type `KOTLIN_TAKEN_KEYS` records nothing for, a struct the emitter has
-  not written, an enum under a tag key or untagged, an alias and a type parameter, is looked for
-  by the `descriptor.elementNames` of its serializer where they name an element, and read inside
-  `runCatching` where they name none, the check made at run time: `if ({member}Keys.isEmpty())
-  runCatching { ... }.getOrNull() else if (...)`. So a serializer written by hand is tried, where
-  TypeScript and Zod refuse a key of the type that does not read, and the plugin's is looked for
-  by its keys.
+  Kotlin read to Zod's. An optional enum under a tag key the emitter wrote, whose member names no
+  function, is looked for by the tag, then the content key, which `enum_kotlin_tokens` records in
+  `KOTLIN_TAG_KEYS` (`tag_keys`, `recorded_tag_keys`): `if ({rest}.keys.any { it in setOf("kind",
+  "body") }) ... else null`, so a tag or a content that does not read refuses the payload with
+  what the enum's read throws, as TypeScript and Zod refuse it, where serde reads `None`, and a
+  variant's member with no tag reads `null`, as serde reads it. `{member}Keys` stays the
+  `elementNames` of its descriptor, which names none, so the members flattened after it are
+  handed what they were. An untagged enum and one that names a function on itself record no key.
+  A type neither registry records keys for, a struct or an enum the emitter has not written, an
+  untagged enum, an enum that names a function on itself, an alias and a type parameter, is looked
+  for by the `descriptor.elementNames` of its serializer where they name an element, and read
+  inside `runCatching` where they name none, the check made at run time: `if
+  ({member}Keys.isEmpty()) runCatching { ... }.getOrNull() else if (...)`. So a serializer written
+  by hand is tried, where TypeScript and Zod refuse a key of the type that does not read, and the
+  plugin's is looked for by its keys.
   `tests/kotlin_tests/unrecorded_options_models.rs` holds `Fiddling` over `Crowned` declared below
   it and a holder of an enum under each tagging but serde's own, with serde's write-back of each
   payload and whether TypeScript and Zod take it, which `tests/generic_types_tests/declarations.rs`
-  measures under `tsc --strict` and `node`; `tests/kotlin_tests/tests.rs` pins the Kotlin text and
-  `run_kotlin_flattened.rs` runs it against serde, beside `Ratline`, which keeps the key test. A
-  struct takes the keys `flattened_struct_keys` answers, unless `preprocess::takes_no_key` answers
-  for it: a member that names a function, and a type `HANDED` does not note as handing its object
-  to none, so a type the emitter has not written takes none.
+  measures under `tsc --strict` and `node`, and `Clapping` over `Clapped`, which names a function
+  on itself, with serde's write-back; `tests/kotlin_tests/tests.rs` pins the Kotlin text and
+  `run_kotlin_flattened.rs` runs it against serde, beside `Ratline`, which keeps the key test.
+  `run_kotlin_flattened.rs` also reads `Lowering`, `Squaring`, `Heeling` and `Pitching` of
+  `tests/swift_tests/flattened_options_models.rs` against serde, each row TypeScript and Zod
+  refuse held to what the Kotlin read throws. A struct takes the keys `flattened_struct_keys`
+  answers, unless `preprocess::takes_no_key` answers for it: a member that names a function, and a
+  type `HANDED` does not note as handing its object to none, so a type the emitter has not written
+  takes none.
   `struct_kotlin_tokens` records in `KOTLIN_TAKEN_KEYS`, for every struct it writes, the keys
   `keys_taken_when_flattened` in `src/features/serde.rs` answers: the name and each alias of every
   member serde reads, one serde never writes among them, and neither the struct's own tag nor a

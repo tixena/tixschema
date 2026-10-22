@@ -221,6 +221,10 @@ thread_local! {
     /// plugin's names the struct's own tag and a member serde never reads, and no alias.
     static KOTLIN_TAKEN_KEYS: RefCell<HashMap<String, Vec<String>>> =
         RefCell::new(HashMap::new());
+    /// The tag, then the content key where it has one, of each enum under a tag key the emitter
+    /// wrote, by Rust ident: what a flattened `Option` of it is looked for by.
+    static KOTLIN_TAG_KEYS: RefCell<HashMap<String, Vec<String>>> =
+        RefCell::new(HashMap::new());
 }
 
 /// The Kotlin tokens `item` earns, given what `#[model_schema(...)]` wrote on it. Dispatches on
@@ -320,25 +324,64 @@ fn recorded_keys(def: &FieldDef) -> Option<Vec<String>> {
     KOTLIN_TAKEN_KEYS.with(|noted| noted.borrow().get(name).cloned())
 }
 
+/// The tag, then the content key where it has one, of an enum under a tag key: what a flattened
+/// `Option` of it is looked for by. None for an untagged enum, and for one that names a function
+/// on itself, which is read from what the function answers.
+fn tag_keys(tag_attrs: &EnumTagAttrs, preprocess: &[FunctionName]) -> Vec<String> {
+    if tag_attrs.untagged || !preprocess.is_empty() {
+        return Vec::new();
+    }
+    tag_attrs
+        .tag
+        .iter()
+        .chain(&tag_attrs.content)
+        .cloned()
+        .collect()
+}
+
+/// Notes `keys`, the tag and the content key of the enum written under `rust_ident`, for a holder
+/// written after it: none for an enum under no tag key, or one that names a function on itself.
+fn note_tag_keys(rust_ident: &str, keys: Vec<String>) {
+    KOTLIN_TAG_KEYS.with(|noted| {
+        if keys.is_empty() {
+            noted.borrow_mut().remove(rust_ident);
+        } else {
+            noted.borrow_mut().insert(rust_ident.to_owned(), keys);
+        }
+    });
+}
+
+/// The tag and the content key of the enum under a tag key a flattened member typed `def` holds,
+/// where the emitter wrote that enum: `None` for any other type.
+fn recorded_tag_keys(def: &FieldDef) -> Option<Vec<String>> {
+    let FieldDefType::SiblingType(name, _) = &def.field_type else {
+        return None;
+    };
+    KOTLIN_TAG_KEYS.with(|noted| noted.borrow().get(name).cloned())
+}
+
+/// `keys` as a Kotlin set of strings.
+fn kotlin_set_of(keys: &[String]) -> String {
+    if keys.is_empty() {
+        // Kotlin infers no element type from an empty `setOf()`.
+        "setOf<String>()".to_owned()
+    } else {
+        let listed = keys
+            .iter()
+            .map(|key| format!("\"{}\"", kotlin_template_text(key)))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("setOf({listed})")
+    }
+}
+
 /// The keys a flattened struct typed `def` takes off its holder's object, as a Kotlin set: those
 /// serde reads where the emitter wrote the struct, and the `elementNames` of the descriptor
 /// `serializer` answers for any type it recorded no keys for.
 fn flattened_struct_keys(def: &FieldDef, serializer: &str) -> String {
     recorded_keys(def).map_or_else(
         || format!("({serializer}).descriptor.elementNames.toSet()"),
-        |keys| {
-            if keys.is_empty() {
-                // Kotlin infers no element type from an empty `setOf()`.
-                "setOf<String>()".to_owned()
-            } else {
-                let listed = keys
-                    .iter()
-                    .map(|key| format!("\"{}\"", kotlin_template_text(key)))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                format!("setOf({listed})")
-            }
-        },
+        |keys| kotlin_set_of(&keys),
     )
 }
 
@@ -1395,12 +1438,13 @@ fn own_field_plan(
 /// One flattened *struct* (or `Option<Struct>`) field's own statements: the `serialize` merge, the
 /// `deserialize` read (leniently, off `rest`, the object serde hands the member, as the member's
 /// own `preprocess` then corrects it), and the keys it takes, which the members flattened after it
-/// are handed the object without. An optional field is `null` where its own keys are all absent
-/// from `rest`, and, naming no function and having no key to look for, wherever its read throws:
-/// a struct the emitter wrote that takes no key, and a type it recorded no keys for whose
-/// serializer's descriptor names no element. One that names a function is read from what the
-/// function answers, and where that read throws is `null` where `rest` holds none of its keys, or
-/// no key at all where it has none to look for, and refused where it holds one.
+/// are handed the object without. An optional field is `null` where its own keys, or the tag and
+/// the content key of an enum under a tag key the emitter wrote, are all absent from `rest`, and,
+/// naming no function and having no key to look for, wherever its read throws: a struct the
+/// emitter wrote that takes no key, and a type it recorded no keys for whose serializer's
+/// descriptor names no element. One that names a function is read from what the function answers,
+/// and where that read throws is `null` where `rest` holds none of its keys, or no key at all
+/// where it has none to look for, and refused where it holds one.
 fn flatten_struct_field_plan(
     field: &KotlinField,
     prop: &str,
@@ -1420,7 +1464,8 @@ fn flatten_struct_field_plan(
     let decoded = format!("lenient.decodeFromJsonElement({inner_serializer}, {corrected})");
     // With no key to look for, the type is held wherever it reads, as serde holds it.
     let tried = format!("runCatching {{ {decoded} }}.getOrNull()");
-    let looked_for = format!("if ({rest}.keys.any {{ it in {keys_ident} }}) {decoded} else null");
+    let looked_for =
+        |keys: &str| format!("if ({rest}.keys.any {{ it in {keys} }}) {decoded} else null");
     let read = if !field.field_def.is_optional() {
         decoded
     } else if !functions.is_empty() {
@@ -1439,11 +1484,16 @@ fn flatten_struct_field_plan(
              }}.getOrElse {{ if ({held}) throw it else null }}"
         )
     } else {
-        match recorded_keys(&base) {
-            Some(keys) if keys.is_empty() => tried,
-            Some(_) => looked_for,
+        match (recorded_keys(&base), recorded_tag_keys(&base)) {
+            (Some(keys), _) if keys.is_empty() => tried,
+            (Some(_), _) => looked_for(&keys_ident),
+            // The enum's serializer is written by hand, so its descriptor names neither key.
+            (None, Some(tags)) => looked_for(&kotlin_set_of(&tags)),
             // A serializer written by hand declares no element; the plugin's names the keys.
-            None => format!("if ({keys_ident}.isEmpty()) {tried} else {looked_for}"),
+            (None, None) => format!(
+                "if ({keys_ident}.isEmpty()) {tried} else {}",
+                looked_for(&keys_ident)
+            ),
         }
     };
     statements.push(format!("val {prop} = {read}"));
@@ -2032,6 +2082,7 @@ fn enum_kotlin_tokens(item_enum: &ItemEnum, args: &KotlinArgs<'_>) -> TokenStrea
     let export_name = compute_item_export_name(&rust_ident, args.name_override);
     register_kotlin_name(&rust_ident, &export_name);
     let tag_attrs = enum_tag_attrs(&item_enum.attrs);
+    note_tag_keys(&rust_ident, tag_keys(&tag_attrs, args.preprocess));
     let writes_bare_variant_names =
         tag_attrs.tag.is_none() && tag_attrs.content.is_none() && !tag_attrs.untagged;
     let defaults = SerdeDefaults::of_enum(item_enum);

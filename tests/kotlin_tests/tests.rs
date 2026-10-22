@@ -39,7 +39,7 @@ use super::read::{kept, serializers};
 use super::tuple_variants_models::Labelling;
 #[cfg(feature = "serde")]
 use super::unrecorded_options_models::{
-    bridling_kotlin, fiddling_kotlin, slipping_kotlin, snagging_kotlin,
+    bridling_kotlin, clapping_kotlin, fiddling_kotlin, slipping_kotlin, snagging_kotlin,
 };
 
 #[model_schema()]
@@ -1254,7 +1254,9 @@ fn an_optional_struct_that_takes_no_key_is_read_wherever_its_read_succeeds() {
 
 /// An optional flattened member whose type the emitter recorded no keys for is looked for by the
 /// elements its serializer's descriptor names, and where it names none, a serializer written by
-/// hand, is read wherever its read succeeds and is `null` wherever that read throws.
+/// hand, is read wherever its read succeeds and is `null` wherever that read throws: a struct
+/// declared below its holder, an untagged enum and an enum under a tag key that names a function
+/// on itself.
 #[test]
 #[cfg(feature = "serde")]
 fn an_optional_type_of_no_recorded_key_is_read_where_its_descriptor_names_no_element() {
@@ -1273,16 +1275,40 @@ fn an_optional_type_of_no_recorded_key_is_read_where_its_descriptor_names_no_ele
             read("crowned", "serializer<Crowned>()", "obj"),
         ),
         (
+            slipping_kotlin::kotlin_definition(),
+            read("slipped", "SlippedUnjudged", beside_a_note),
+        ),
+        (
+            clapping_kotlin::kotlin_definition(),
+            read("clapped", "ClappedUnjudged", beside_a_note),
+        ),
+    ] {
+        assert!(kotlin.contains(&held), "no `{held}` in: {kotlin}");
+    }
+}
+
+/// An optional flattened enum under a tag key the emitter wrote is `null` where the object it is
+/// handed holds neither its tag nor its content key, and is read where it holds one, so a read
+/// that throws refuses the payload. It still takes the keys its descriptor names.
+#[test]
+#[cfg(feature = "serde")]
+fn an_optional_enum_under_a_tag_key_is_looked_for_by_its_tag_and_its_content_key() {
+    let read = |prop: &str, serializer: &str, keys: &str| {
+        let rest = "JsonObject(obj - setOf(\"note\"))";
+        format!(
+            "val {prop}Keys = ({serializer}).descriptor.elementNames.toSet(); val {prop} = if \
+             ({rest}.keys.any {{ it in setOf({keys}) }}) \
+             lenient.decodeFromJsonElement({serializer}, {rest}) else null;"
+        )
+    };
+    for (kotlin, held) in [
+        (
             snagging_kotlin::kotlin_definition(),
-            read("hitched", "HitchedUnjudged", beside_a_note),
+            read("hitched", "HitchedUnjudged", "\"kind\""),
         ),
         (
             bridling_kotlin::kotlin_definition(),
-            read("bridled", "BridledUnjudged", beside_a_note),
-        ),
-        (
-            slipping_kotlin::kotlin_definition(),
-            read("slipped", "SlippedUnjudged", beside_a_note),
+            read("bridled", "BridledUnjudged", "\"kind\", \"held\""),
         ),
     ] {
         assert!(kotlin.contains(&held), "no `{held}` in: {kotlin}");
