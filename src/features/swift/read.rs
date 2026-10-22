@@ -4,7 +4,10 @@
 
 use super::preprocess::{self, PAYLOAD, Written};
 use super::validate::{item_of, under_option};
-use super::{MapKeys, held_at, keyed_map_wrapper, map_keys, swift_full_real_type};
+use super::{
+    MapKeys, Shaped, arrayed, held_at, keyed_map_wrapper, map_keys, swift_full_real_type,
+    swift_resolve, through_alias,
+};
 use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
 
 /// The read of a type alone, where it has one that takes the keys the types around it took.
@@ -384,9 +387,11 @@ pub(super) fn unjudged(
             locals,
         );
         return format!(
-            "var {listed} = try {}; var {items}: {} = []; while !{listed}.isAtEnd {{ {read} }}; {}",
+            "var {listed} = try {}; var {items}: {} = []; while !{listed}.isAtEnd {{ {read} }}; \
+             {}{}",
             source.unkeyed(),
             written_type(def, hint),
+            refusing_another_length(def, &listed, &items),
             sink(&items)
         );
     }
@@ -440,6 +445,100 @@ pub(super) fn unjudged(
         | FieldDefType::NaiveDateTime
         | FieldDefType::DateTime => held(source, &written_type(def, hint), sink),
     }
+}
+
+/// Whether a read of `def` holds an array to the length it was written with: a level written as
+/// `[T; N]`, an alias of one written above, or the values of a map Swift keys natively that hold
+/// one. A map under a key Swift wraps, and every type the emitter writes, holds its own.
+pub(super) fn holds_a_length(def: &FieldDef) -> bool {
+    (0..def.array_depth).any(|level| def.fixed_length_at(level).is_some())
+        || through_alias(def).is_some()
+        || matches!(
+            &def.field_type,
+            FieldDefType::Map(key, value)
+                if !matches!(map_keys(key), MapKeys::Wrapped)
+                    && holds_a_length(&arrayed((**value).clone()))
+        )
+}
+
+/// The statements that read from `source` the value of `shaped`, which [`holds_a_length`], and hand
+/// it to `sink`: each level written as `[T; N]` item by item, refused where it holds another number
+/// of items, as serde refuses it, a map's entries one by one, and what holds no such level in one
+/// call. `stem` is what a local of that call is named from.
+pub(super) fn counted(
+    shaped: &Shaped,
+    stem: &str,
+    source: &Source,
+    sink: &dyn Fn(&str) -> String,
+    locals: &mut Locals,
+) -> String {
+    let def = &shaped.def;
+    if !holds_a_length(def) {
+        return shaped.read_whole(&shaped.real_type(), stem, source, sink);
+    }
+    if let Some(target) = through_alias(def) {
+        return counted(&target, stem, source, sink, locals);
+    }
+    if def.is_optional() {
+        let (holds, present) = source.holding();
+        let read = counted(&shaped.at(under_option(def)), stem, &present, sink, locals);
+        return format!("if {holds} {{ {read} }} else {{ {} }}", sink("nil"));
+    }
+    if def.array_depth > 0 {
+        let [listed, items] = locals.next_list();
+        let item = shaped.at(item_of(def));
+        let read = counted(
+            &item,
+            stem,
+            &Source::Listed(listed.clone()),
+            &|held| format!("{items}.append({held})"),
+            locals,
+        );
+        return format!(
+            "var {listed} = try {}; var {items}: {} = []; while !{listed}.isAtEnd {{ {read} }}; \
+             {}{}",
+            source.unkeyed(),
+            shaped.real_type(),
+            refusing_another_length(def, &listed, &items),
+            sink(&items)
+        );
+    }
+    let FieldDefType::Map(key, value) = &def.field_type else {
+        return shaped.read_whole(&shaped.real_type(), stem, source, sink);
+    };
+    let value_hint = format!("{}Value", shaped.hint);
+    let value_def = arrayed((**value).clone());
+    let (_, value_shape) = swift_resolve(&value_def, &value_hint, &mut Vec::new());
+    let entry = Shaped {
+        def: value_def,
+        hint: value_hint,
+        shape: value_shape,
+    };
+    read_entries(
+        key,
+        &shaped.real_type(),
+        source,
+        false,
+        &|under, put, nested| counted(&entry, stem, under, put, nested),
+        sink,
+        locals,
+    )
+}
+
+/// The statement that refuses `items`, the items of the outer level of `def` read from `listed`,
+/// where that level is written as `[T; N]` and they are not `N`, in the words serde refuses an
+/// array of another length with: nothing for a level of any length.
+fn refusing_another_length(def: &FieldDef, listed: &str, items: &str) -> String {
+    def.array_depth
+        .checked_sub(1)
+        .and_then(|level| def.fixed_length_at(level))
+        .map_or_else(String::new, |length| {
+            format!(
+                "guard {items}.count == {length} else {{ throw DecodingError.dataCorrupted(\
+                 DecodingError.Context(codingPath: {listed}.codingPath, debugDescription: \
+                 \"invalid length \\({items}.count), expected {length}\")) }}; "
+            )
+        })
 }
 
 /// [`unjudged`] of the map `def` over `key` and `value`: through the wrapper written for it, or

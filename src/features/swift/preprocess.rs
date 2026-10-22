@@ -8,8 +8,8 @@
 use core::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
-use super::read::{Locals, Source, unjudged};
-use super::{swift_member, swift_upper_camel};
+use super::read::{Locals, Source, counted, unjudged};
+use super::{Shaped, swift_member, swift_upper_camel};
 use crate::bound_message::swift_literal_text;
 use crate::features::model_schema_prop::FunctionName;
 use crate::field_type::{FieldDef, FieldDefType};
@@ -87,6 +87,8 @@ pub(super) struct Member<'member> {
 
 /// How a member is read where `validate()` walks nothing it holds.
 pub(super) enum Plain<'member> {
+    /// Item by item, through a type written for it, where it holds an array of a fixed length.
+    Counted(&'member Shaped),
     /// As the type it is declared as.
     Declared,
     /// As the type `wire`, which `convert` turns into the declared one from the local it is
@@ -376,7 +378,8 @@ pub(super) fn called(functions: &[FunctionName], payload: &str) -> String {
 
 /// The statements that read `member` from `source` through its functions, and hand the value to
 /// `sink`. A member `validate()` walks is read through a type written for it, added to `twins`,
-/// so each model it holds is read alone and judged with its holder.
+/// so each model it holds is read alone and judged with its holder, and so is one that holds an
+/// array to its length, read item by item.
 pub(super) fn member(
     member: &Member<'_>,
     source: &Source,
@@ -459,30 +462,38 @@ fn value(
     let read = |read_as: &str| {
         format!("try SwiftSchemaPayload.read({read_as}.self, from: {corrected}, at: {path})")
     };
-    if member.walked {
-        let twin = format!("SwiftSchemaRead{}", swift_upper_camel(stem));
-        let statements = unjudged(
+    let held = |value: &str| format!("self.value = {value}");
+    let statements = if member.walked {
+        unjudged(
             member.def,
             member.hint,
             &Source::Decoder,
-            &|held| format!("self.value = {held}"),
+            &held,
             &mut Locals::default(),
-        );
-        twins.push(format!(
-            "private struct {twin}: Decodable {{ let value: {}; \
-             init(from decoder: Decoder) throws {{ {statements} }} }}",
-            member.real_type
-        ));
-        sink(&format!("{}.value", read(&twin)))
+        )
     } else {
         match member.plain {
-            Plain::Declared => sink(&read(member.real_type)),
+            Plain::Counted(shaped) => counted(
+                shaped,
+                stem,
+                &Source::Decoder,
+                &held,
+                &mut Locals::default(),
+            ),
+            Plain::Declared => return sink(&read(member.real_type)),
             Plain::Wire { convert, wire } => {
                 let local = format!("wire{}", swift_upper_camel(stem));
-                format!("let {local} = {}; {}", read(wire), sink(&convert(&local)))
+                return format!("let {local} = {}; {}", read(wire), sink(&convert(&local)));
             }
         }
-    }
+    };
+    let twin = format!("SwiftSchemaRead{}", swift_upper_camel(stem));
+    twins.push(format!(
+        "private struct {twin}: Decodable {{ let value: {}; \
+         init(from decoder: Decoder) throws {{ {statements} }} }}",
+        member.real_type
+    ));
+    sink(&format!("{}.value", read(&twin)))
 }
 
 /// `written` with the type `Self` names in `named` under that name: in a type declared inside

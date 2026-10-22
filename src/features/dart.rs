@@ -646,9 +646,15 @@ fn read_as(name: String, aliases: Vec<String>) -> Vec<String> {
 fn any_of(names: &[String]) -> String {
     names
         .iter()
-        .map(|name| format!("'{name}'"))
+        .map(|name| quoted(name))
         .collect::<Vec<_>>()
         .join(" || ")
+}
+
+/// `name`, a key or a name serde writes, as a Dart string literal between single quotes, which
+/// reads `$` as an interpolation and `\` as an escape.
+fn quoted(name: &str) -> String {
+    format!("'{}'", dart_escaped(name, '\''))
 }
 
 /// Whether `attrs` carries `#[serde(flatten)]` — always `false` without the `serde` feature, since
@@ -1303,7 +1309,7 @@ fn range_decode(kind: RangeKind, bound: &FieldDef, expr: &str, read: Read) -> St
     let written = kind
         .members()
         .iter()
-        .map(|member| format!("key == '{member}'"))
+        .map(|member| format!("key == {}", quoted(member)))
         .collect::<Vec<_>>()
         .join(" || ");
     let rendered = kind
@@ -1312,7 +1318,7 @@ fn range_decode(kind: RangeKind, bound: &FieldDef, expr: &str, read: Read) -> St
         .map(|member| {
             let decoded = member_decode(
                 bound,
-                &format!("{object}['{member}']"),
+                &format!("{object}[{}]", quoted(member)),
                 None,
                 read.of_member(bound),
             );
@@ -1402,8 +1408,9 @@ fn result_decode(ok: &FieldDef, err: &FieldDef, expr: &str, read: Read) -> Strin
     let (class, arguments) = (result_class(ok, err), result_arguments(ok, err));
     let object = declared("result");
     let arms = RESULT_ARMS.into_iter().zip([ok, err]).map(|(arm, def)| {
-        let held = format!("{object}['{arm}']");
-        let named = format!("{object}.length == 1 && {object}.containsKey('{arm}')");
+        let key = quoted(arm);
+        let held = format!("{object}[{key}]");
+        let named = format!("{object}.length == 1 && {object}.containsKey({key})");
         if def.is_unit() {
             format!("final {object} when {named} && {held} == null => {class}{arm}{arguments}()")
         } else {
@@ -1424,11 +1431,12 @@ fn result_encode(ok: &FieldDef, err: &FieldDef, expr: &str) -> String {
     let class = result_class(ok, err);
     let held = declared("held");
     let arms = RESULT_ARMS.into_iter().zip([ok, err]).map(|(arm, def)| {
+        let key = quoted(arm);
         if def.is_unit() {
-            format!("{class}{arm}() => <String, dynamic>{{'{arm}': null}}")
+            format!("{class}{arm}() => <String, dynamic>{{{key}: null}}")
         } else {
             let encoded = dart_encode_expr(def, &held, true);
-            format!("{class}{arm}(value: final {held}) => <String, dynamic>{{'{arm}': {encoded}}}")
+            format!("{class}{arm}(value: final {held}) => <String, dynamic>{{{key}: {encoded}}}")
         }
     });
     format!(
@@ -1487,7 +1495,7 @@ fn without(json: &str, taken: &[&str]) -> String {
         return json.to_owned();
     }
     let removed = taken.iter().fold(String::new(), |mut acc, key| {
-        write!(acc, "..remove('{key}')").unwrap();
+        write!(acc, "..remove({})", quoted(key)).unwrap();
         acc
     });
     format!("({{...{json}}}{removed})")
@@ -1497,7 +1505,7 @@ fn without(json: &str, taken: &[&str]) -> String {
 fn listed_names(names: &[String]) -> String {
     names
         .iter()
-        .map(|name| format!("'{name}'"))
+        .map(|name| quoted(name))
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -1632,7 +1640,7 @@ fn dart_encode_at(field: &FieldDef, level: u8, expr: &str) -> String {
                 .iter()
                 .map(|member| {
                     let encoded = dart_encode_expr(bound, &format!("({expr}).{member}"), false);
-                    format!("'{member}': {encoded}")
+                    format!("{}: {encoded}", quoted(member))
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -2641,10 +2649,11 @@ fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>
             }
         } else {
             let read = Read::Unjudged.of_member(&field.field_def);
-            let held = format!("{json}.containsKey('{}')", field.wire_name);
+            let key = quoted(&field.wire_name);
+            let held = format!("{json}.containsKey({key})");
             let present = member_decode(
                 &field.field_def,
-                &format!("{json}['{}']", field.wire_name),
+                &format!("{json}[{key}]"),
                 Some(&held),
                 read,
             );
@@ -2707,11 +2716,12 @@ fn class_body_parts(fields: &[DartField], extra_to_json: &[String]) -> ClassBody
                     format!("...{entries},")
                 }
             } else if field.required {
-                format!("'{}': {encode},", field.wire_name)
+                format!("{}: {encode},", quoted(&field.wire_name))
             } else {
                 format!(
-                    "if ({} != null) '{}': {encode},",
-                    field.member, field.wire_name
+                    "if ({} != null) {}: {encode},",
+                    field.member,
+                    quoted(&field.wire_name)
                 )
             }
         })
@@ -2791,7 +2801,7 @@ fn named_by_aliases(fields: &[DartField], json: &str, named: &str) -> Option<Str
     let arms: Vec<String> = fields
         .iter()
         .filter(|field| !field.flatten && !field.aliases.is_empty())
-        .map(|field| format!("{} => '{}'", any_of(&field.aliases), field.wire_name))
+        .map(|field| format!("{} => {}", any_of(&field.aliases), quoted(&field.wire_name)))
         .collect();
     if arms.is_empty() {
         return None;
@@ -2900,7 +2910,7 @@ fn struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -> Toke
     let own_tag = struct_tag(item_struct);
     let tag_written: Vec<String> = own_tag
         .iter()
-        .map(|(key, named)| format!("'{key}': '{named}',"))
+        .map(|(key, named)| format!("{}: {},", quoted(key), quoted(named)))
         .collect();
     let mut helpers = Helpers::default();
     let mut rules = field_elements(&fields, &[], Asked::Rules, &mut helpers);
@@ -3199,9 +3209,10 @@ fn tagged_payload_json_expr(
             }
         },
         |content| {
+            let key = quoted(content);
             (
-                format!("{json}['{content}']"),
-                Some(format!("{json}.containsKey('{content}')")),
+                format!("{json}[{key}]"),
+                Some(format!("{json}.containsKey({key})")),
             )
         },
     )
@@ -3214,16 +3225,14 @@ fn tagged_payload_json_expr(
 /// `content_key`) — external's own `Unit` case (`own_encode` absent, no `content_key`) is the bare
 /// wire string external tagging actually writes for one.
 fn tagged_wrap_encode(shape: &TagShape<'_>, wire_tag: &str, own_encode: Option<&str>) -> String {
+    let (tag_key, tag) = (quoted(shape.tag_key), quoted(wire_tag));
     match (shape.content_key, own_encode) {
         (Some(content), Some(encode)) => {
-            format!(
-                "{{ '{}': '{wire_tag}', '{content}': {encode} }}",
-                shape.tag_key
-            )
+            format!("{{ {tag_key}: {tag}, {}: {encode} }}", quoted(content))
         }
-        (Some(_), None) => format!("{{ '{}': '{wire_tag}' }}", shape.tag_key),
-        (None, Some(encode)) => format!("{{ '{wire_tag}': {encode} }}"),
-        (None, None) => format!("'{wire_tag}'"),
+        (Some(_), None) => format!("{{ {tag_key}: {tag} }}"),
+        (None, Some(encode)) => format!("{{ {tag}: {encode} }}"),
+        (None, None) => tag,
     }
 }
 
@@ -3265,14 +3274,14 @@ fn tagged_variant_tokens(
     let entry = if aliased {
         corrects.tag.clone()
     } else {
-        format!("'{wire_tag}'")
+        quoted(wire_tag)
     };
     let (payload_expr, held) = tagged_payload_json_expr(&entry, shape, corrects);
     let extends = format!("extends {export_name}{generic_params}");
     match payload {
         VariantPayload::Unit => {
             let own_encode = if shape.merge_tag_into_object {
-                format!("{{ '{}': '{wire_tag}' }}", shape.tag_key)
+                format!("{{ {}: {} }}", quoted(shape.tag_key), quoted(wire_tag))
             } else {
                 tagged_wrap_encode(shape, wire_tag, None)
             };
@@ -3297,7 +3306,7 @@ fn tagged_variant_tokens(
         VariantPayload::Named(fields) => {
             let own = corrects.of_a_variant();
             let class_text = if shape.merge_tag_into_object {
-                let extra = vec![format!("'{}': '{wire_tag}',", shape.tag_key)];
+                let extra = vec![format!("{}: {},", quoted(shape.tag_key), quoted(wire_tag))];
                 // serde hands a variant the object without its tag.
                 let reads = class_reads(subclass_name, fields, Some(shape.tag_key), codec, &own);
                 let content =
@@ -3342,8 +3351,9 @@ fn tagged_variant_tokens(
                 // Internal tagging with a non-`Named` payload: serde admits only an object-shaped
                 // one, so the tag merges into that object.
                 format!(
-                    "{{ '{}': '{wire_tag}', ...({own_encode} as Map<String, dynamic>) }}",
-                    shape.tag_key
+                    "{{ {}: {}, ...({own_encode} as Map<String, dynamic>) }}",
+                    quoted(shape.tag_key),
+                    quoted(wire_tag)
                 )
             } else {
                 tagged_wrap_encode(shape, wire_tag, Some(&own_encode))
@@ -3462,8 +3472,9 @@ fn tagged_enum_dart_source(
             "Map<String, dynamic>",
             " as Map<String, dynamic>",
             format!(
-                "final {tag} = {json}['{tag_key}'] as String; switch ({tag}) {{ {} default: \
+                "final {tag} = {json}[{}] as String; switch ({tag}) {{ {} default: \
                  throw FormatException('Unknown {export_name}: ' + {tag}); }}",
+                quoted(tag_key),
                 map_dispatch_arms.join(" "),
             ),
         )
@@ -3633,7 +3644,7 @@ fn plain_enum_dart_source(
         .collect();
     let member_list = members
         .iter()
-        .map(|(name, names)| format!("{name}('{}')", names[0]))
+        .map(|(name, names)| format!("{name}({})", quoted(&names[0])))
         .collect::<Vec<_>>()
         .join(", ");
     let match_arms = members

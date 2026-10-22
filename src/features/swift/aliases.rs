@@ -6,6 +6,7 @@ use core::fmt::Write as _;
 
 use syn::Attribute;
 
+use super::swift_quoted;
 use crate::bound_message::swift_literal_text;
 #[cfg(feature = "serde")]
 use crate::features::serde::parse_serde_field_attributes;
@@ -27,15 +28,13 @@ pub(super) const fn written_on(_attrs: &[Attribute]) -> Vec<String> {
     Vec::new()
 }
 
-/// The names a `case` of a `switch` over a variant's name takes the variant under: `wire`, as it
-/// is written, then each of `aliases`.
+/// The names a `case` of a `switch` over a variant's name takes the variant under: `wire`, then
+/// each of `aliases`.
 pub(super) fn case_names(wire: &str, aliases: &[String]) -> String {
-    aliases
-        .iter()
-        .fold(format!("\"{wire}\""), |mut names, alias| {
-            write!(names, ", \"{}\"", swift_literal_text(alias)).unwrap();
-            names
-        })
+    aliases.iter().fold(swift_quoted(wire), |mut names, alias| {
+        write!(names, ", {}", swift_quoted(alias)).unwrap();
+        names
+    })
 }
 
 /// The `init?(rawValue:)` of a plain enum that reads a variant under an alias, in place of the one
@@ -78,7 +77,7 @@ pub(super) fn lookup(stem: &str, wire: &str, aliases: &[String]) -> String {
          if {stem}Names.count > 1 {{ throw DecodingError.dataCorrupted(DecodingError.Context(\
          codingPath: aliased.codingPath, debugDescription: \"duplicate field `{written}`\")) }}; \
          let {} = {stem}Names.first ?? SwiftSchemaAnyKey(stringValue: \"{written}\")!; ",
-        case_names(&written, aliases),
+        case_names(wire, aliases),
         key(stem)
     )
 }

@@ -75,3 +75,15 @@ mod flattened_aliased_models;
 #[cfg(all(feature = "dart", feature = "serde"))]
 #[path = "dart_tests/aliased.rs"]
 mod aliased;
+
+/// Models whose names on the wire hold a character a Dart string literal reads apart from text.
+#[cfg(test)]
+#[cfg(all(feature = "dart", feature = "serde"))]
+#[path = "dart_tests/quoted_models.rs"]
+mod quoted_models;
+
+/// What the Dart emitter writes of a name on the wire that holds such a character.
+#[cfg(test)]
+#[cfg(all(feature = "dart", feature = "serde"))]
+#[path = "dart_tests/quoted.rs"]
+mod quoted;

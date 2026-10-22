@@ -728,6 +728,9 @@ fn every_struct_shape_calls_its_own_function_on_the_whole_payload() {
         &[
             concat!(
                 "var container = try decoder.unkeyedContainer(); ",
+                "if let count = container.count, count != 3 { throw DecodingError.dataCorrupted(",
+                "DecodingError.Context(codingPath: container.codingPath, debugDescription: ",
+                r#""invalid length \(count), expected 3")) }; "#,
                 "let slot0Decoder = try container.superDecoder(); ",
                 "let slot0Payload = try SwiftSchemaPayload(from: slot0Decoder).value; ",
                 "slot0 = try SwiftSchemaPayload.read(String.self, from: trimmed(slot0Payload), ",

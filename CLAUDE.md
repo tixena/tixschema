@@ -185,9 +185,9 @@ one whose rendering depends on where the field sits.
 
 `array_lengths` numbers levels the same way: `[[T; 2]; 3]` records `(0, 2)` and `(1, 3)`. The
 validating surfaces spend it — `minItems`/`maxItems` in the JSON schema, `.length(N)` in Zod — and
-so does the Dart read, which refuses an array of another length (`dart_decode_at`), while
-TypeScript stays `Array<T>`. A length the expansion cannot read (const generic, `const` item,
-computed expression) records nothing and describes as an unbounded array.
+so do the Dart and the Swift reads, which refuse an array of another length (`dart_decode_at`,
+`read::counted`), while TypeScript stays `Array<T>`. A length the expansion cannot read (const
+generic, `const` item, computed expression) records nothing and describes as an unbounded array.
 
 **FieldDefType** (type categories):
 - Primitives: `Boolean`, `String`, `U8-U64`, `I8-I64`, `F32`, `F64`, `Usize`, `Isize`
@@ -1761,6 +1761,14 @@ consumer's view; this is what a change has to keep.
   `tests/kotlin_tests/flattened_models.rs` under the Dart SDK, with serde's write-back pinned
   beside each row, and pins the text of each read; `src/features/dart/tests.rs` pins the check
   under a function and an alias.
+- **A name serde writes is written escaped wherever it sits between quotes.** `quoted` writes it
+  as a Dart string literal through `dart_escaped`, a `$`, a `'` and a `\` escaped: a member's wire
+  name in the read and in `toJson`, an alias, a struct's own tag key and name, a variant's name,
+  an enum's tag key and content key, a plain enum's value, and every list of names a flattened
+  member is read by (`listed_names`, `without`). A name with no such character is written as it
+  was. `tests/dart_tests/quoted.rs` pins the text over the models of
+  `tests/dart_tests/quoted_models.rs`, and `run_dart_quoted.rs` reads and writes back each
+  payload under the Dart SDK, against serde.
 - **A name serde reads beside the one it writes is read too.** `read_aliases` reads the
   `#[serde(alias)]` names of a field and of a variant, none for one serde never reads, and
   `DartField::aliases` holds a member's. A tagged enum takes a variant under its written name or
@@ -2290,6 +2298,32 @@ to keep.
   read reads a member under its key, and `run_swift_aliased.rs` reads and writes back each payload
   of the Kotlin and the Dart runs and of `Tholing` under the toolchain, against serde, those of
   `tests/dart_tests/flattened_aliased_models.rs` among them.
+- **A fixed array is read item by item and held to its length, and so is a tuple.**
+  `read::holds_a_length` is the one question: a level written as `[T; N]`
+  (`FieldDef::fixed_length_at`), an alias of one written above (`through_alias`, over
+  `COUNTED_ALIASES`, which `alias_swift_tokens` notes for an alias that declares no parameter), or
+  the values of a map Swift keys natively that hold one. `read::counted` reads such a value: each
+  level through a nested unkeyed container, refused by `refusing_another_length` after its items
+  with `DecodingError.dataCorrupted` and serde's `invalid length {n}, expected {N}` at the coding
+  path of that array, a map's entries one by one, and the rest in one call
+  (`Shaped::read_whole`). `read::unjudged` refuses the same way at each level it walks. It is
+  reached from every read of a value: `present_statement` for a member, `Shaped::read` for a slot
+  of a tuple, of a variant and of a `Result`, a map's value and a flattened map's entry, the brand
+  and the lone slot (`wrapper_read`, `lone_slot_read`), and `preprocess::Plain::Counted`, which
+  `plain_read` chooses, for a member a function corrects and a default. A fixed array that fills a
+  type parameter is held in `{Holder}{Field}Argument{N}Fixed`, written by `held_argument`, which
+  writes `{hint}Date` too: the type it fills reads it through `Decodable`. A value of any length
+  is read as it was. `tuple_struct` refuses an array of another length ahead of the slots, where
+  the decoder knows its `count`. `tests/swift_tests/read.rs` pins the text, and
+  `run_swift_refusals.rs` reads each place under the toolchain, judged and unjudged, against serde,
+  with the fixed arrays and the tuples of `run_dart_refusals.rs`.
+- **A name serde writes is written escaped wherever it sits between quotes.** `swift_quoted` writes
+  it as a Swift string literal through `swift_literal_text`, a `"` and a `\` escaped: a member's
+  key in `CodingKeys`, a struct's own tag key and name, a variant's name, an enum's tag key and
+  content key, a plain enum's value, and an alias (`aliases::case_names`). A name with no such
+  character is written as it was. `tests/swift_tests/quoted.rs` pins the text over the models of
+  `tests/dart_tests/quoted_models.rs`, and `run_swift_quoted.rs` reads and writes back each
+  payload under the toolchain, against serde.
 - **A name the emitter has not written is read as a model**, as `validate()` calls it: a type
   declared below its holder, and a type of the consumer's own, which declares
   `init(swiftSchemaUnjudged:)` beside `validate()`.

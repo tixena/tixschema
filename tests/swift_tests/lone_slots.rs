@@ -401,8 +401,10 @@ fn a_struct_of_several_slots_wraps_the_tuple_of_the_ones_serde_reads() {
         &clipped_swift::swift_definition(),
         &[
             "public struct ClippedTuple: Codable, Sendable { let slot0: String; ",
-            "var container = try decoder.unkeyedContainer(); \
-             slot0 = try container.decode(String.self);  }; ",
+            "var container = try decoder.unkeyedContainer(); if let count = container.count, \
+             count != 1 { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: \
+             container.codingPath, debugDescription: \"invalid length \\(count), expected 1\")) \
+             }; slot0 = try container.decode(String.self);  }; ",
             r#"if slot0.unicodeScalars.count < 1 { errors.append("'0': too short: minimum length is 1, got \(slot0.unicodeScalars.count)") }"#,
             "public struct Clipped: Codable, Sendable { public let value: ClippedTuple; ",
             "self.value = try ClippedTuple(swiftSchemaUnjudged: decoder) }; ",
