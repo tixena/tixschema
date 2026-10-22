@@ -67,7 +67,7 @@ use core::slice::from_ref;
 use syn::spanned::Spanned as _;
 
 #[cfg(feature = "serde")]
-use crate::utils::{Declared, declared};
+use crate::utils::{Declared, declared, record_plain_enum};
 use crate::utils::{is_recorded_untagged_enum, record_untagged_enum};
 
 /// The variants of [`rendered_discriminated_union`]'s enum, in the order they are declared.
@@ -1593,13 +1593,10 @@ fn internally_tagged_empty_tuple_variant_is_accepted() {
 }
 
 /// A name is not the criterion — what serde writes for it is.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn internally_tagged_newtype_over_a_registered_plain_enum_is_rejected() {
-    register_alias_info("Hue", "Hue", "hue_schema", AliasKind::EnumMembers);
+    record_plain_enum("Hue", true);
     let errors = internal_guard_errors(&syn::parse_quote! {
         enum E { V(Hue) }
     });
@@ -1618,37 +1615,21 @@ fn internally_tagged_newtype_over_a_registered_plain_enum_is_rejected() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn internally_tagged_newtype_over_a_non_enum_or_unknown_name_is_accepted() {
-    register_alias_info(
-        "Payload",
-        "Payload",
-        "payload_schema",
-        AliasKind::NoEnumMembers,
-    );
+    record_plain_enum("Payload", false);
     for source in ["enum E { V(Payload) }", "enum E { V(NeverRegistered) }"] {
         let errors = internal_guard_errors(&syn::parse_str(source).unwrap());
         assert!(errors.is_empty(), "got: {errors:?} for {source}");
     }
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn flattening_a_registered_plain_enum_is_rejected() {
-    register_alias_info("Hue", "Hue", "hue_schema", AliasKind::EnumMembers);
-    register_alias_info(
-        "Payload",
-        "Payload",
-        "payload_schema",
-        AliasKind::NoEnumMembers,
-    );
+    record_plain_enum("Hue", true);
+    record_plain_enum("Payload", false);
 
     let rejected: syn::Field = syn::parse_quote! { pub tone: Hue };
     let error = super::flattened_field_guard_error(&rejected, "Holder")
@@ -1983,7 +1964,8 @@ fn a_rename_refusal_is_spanned_on_the_key_that_names_the_two() {
     }
 }
 
-/// Each `cfg` written above the function `named` of `source`, or above its import of it.
+/// Each `cfg` written above the function or the constant `named` of `source`, or above its import
+/// of it.
 fn gates_above(source: &str, named: &str) -> Vec<String> {
     let mut gates = Vec::new();
     for item in &syn::parse_file(source).unwrap().items {
@@ -1991,6 +1973,10 @@ fn gates_above(source: &str, named: &str) -> Vec<String> {
             && function.sig.ident == named
         {
             &function.attrs
+        } else if let syn::Item::Const(constant) = item
+            && constant.ident == named
+        {
+            &constant.attrs
         } else if let syn::Item::Use(import) = item
             && quote::ToTokens::to_token_stream(&import.tree)
                 .to_string()
@@ -2049,6 +2035,105 @@ fn the_rename_guard_is_compiled_in_every_build_that_describes_a_type() {
             "for `{named}`"
         );
     }
+}
+
+/// No local build is of the clients alone, so the gates are read off the sources.
+#[test]
+fn the_flattened_plain_enum_refusal_is_compiled_in_every_build_with_serde() {
+    let with_serde = quote::quote!(cfg(feature = "serde")).to_string();
+    let expansion = include_str!("../model_schema.rs");
+    let registry = include_str!("../utils.rs");
+    for (source, named) in [
+        (expansion, "FLATTENED_PLAIN_ENUM_SCOPE"),
+        (expansion, "flattened_plain_enum"),
+        (expansion, "flattened_field_guard_error"),
+        (expansion, "internally_tagged_guard_errors"),
+        (expansion, "written_as_a_variant_name"),
+        (registry, "is_recorded_plain_enum"),
+        (registry, "record_plain_enum"),
+    ] {
+        assert_eq!(
+            gates_above(source, named),
+            [with_serde.as_str()],
+            "for `{named}`"
+        );
+    }
+    for named in ["collect_struct_fields", "variant_flatten_guard_errors"] {
+        assert_eq!(
+            gates_above(expansion, named),
+            Vec::<String>::new(),
+            "for `{named}`"
+        );
+    }
+}
+
+/// A plain enum declared above the type that flattens it, in a struct, in a variant's members,
+/// beside the tag of a variant and through an alias, and one declared below it, which no
+/// expansion sees.
+#[cfg(feature = "serde")]
+#[test]
+fn a_flattened_plain_enum_declared_above_is_refused_in_every_build_with_serde() {
+    for declared in [
+        "#[derive(Serialize, Deserialize)] pub enum Weather { Calm, Gale }",
+        "pub type Climate = Weather;",
+    ] {
+        let expanded = expansion_over(declared);
+        assert_eq!(compile_error_count(&expanded), 0, "got: {expanded}");
+    }
+    let logged = refusal_texts(&expansion_over(
+        "#[derive(Serialize, Deserialize)] pub struct Logged { pub note: String, \
+         #[serde(flatten)] pub weather: Weather }",
+    ));
+    assert_eq!(
+        logged,
+        [format!(
+            "model_schema: field `weather` of `Logged` carries `#[serde(flatten)]` over \
+             `Weather`, which serde does not write as an object: a plain enum writes its own \
+             variant name, so it contributes no members to the object being written \u{2014} \
+             serde writes that name as a key holding null, which a schema closed around the \
+             remaining fields rejects. Write the field as a named member so the value gets a key \
+             of its own, or flatten a type serde writes as an object. {}",
+            super::FLATTENED_PLAIN_ENUM_SCOPE
+        )]
+    );
+    let answered = format!("error: {}", logged[0]);
+    assert!(
+        include_str!("../../README.md").contains(&answered),
+        "the README no longer quotes: {answered}"
+    );
+    for (source, refusal) in [
+        (
+            "#[derive(Serialize, Deserialize)] pub struct Charted { pub note: String, \
+             #[serde(flatten)] pub climate: Climate }",
+            "model_schema: field `climate` of `Charted` carries `#[serde(flatten)]` over \
+             `Climate`, which serde does not write as an object",
+        ),
+        (
+            "#[derive(Serialize, Deserialize)] pub enum Logbook { Noted { note: String, \
+             #[serde(flatten)] weather: Weather } }",
+            "model_schema: field `weather` of `Logbook` carries `#[serde(flatten)]` over \
+             `Weather`, which serde does not write as an object",
+        ),
+        (
+            "#[derive(Serialize, Deserialize)] #[serde(tag = \"kind\")] pub enum Reading { \
+             Held(Weather) }",
+            "model_schema: variant `Held` of internally tagged enum `Reading` wraps `Weather`, \
+             which serde does not write as an object",
+        ),
+    ] {
+        let refused = refusal_texts(&expansion_over(source));
+        assert!(
+            refused.len() == 1
+                && refused[0].starts_with(refusal)
+                && refused[0].ends_with(super::FLATTENED_PLAIN_ENUM_SCOPE),
+            "for {source}, got: {refused:?}"
+        );
+    }
+    let unseen = expansion_over(
+        "#[derive(Serialize, Deserialize)] pub struct Forecast { pub note: String, \
+         #[serde(flatten)] pub weather: Outlook }",
+    );
+    assert_eq!(compile_error_count(&unseen), 0, "got: {unseen}");
 }
 
 /// The struct a build of the clients alone took, each client naming `both_ways`, a key serde
@@ -16215,6 +16300,7 @@ fn a_direct_flatten_of_an_object_an_unregistered_name_or_an_array_stays_admitted
 #[test]
 fn a_direct_flatten_of_a_plain_enum_is_left_to_the_guard_written_for_it() {
     seed_registered_wire("DirectHue", AliasKind::EnumMembers, Some("string"));
+    record_plain_enum("DirectHue", true);
     let field: syn::Field = syn::parse_quote! { #[serde(flatten)] tone: DirectHue };
     assert!(direct_flatten_error(&field).is_none());
     let written = super::flattened_field_guard_error(&field, "Host")
@@ -16775,18 +16861,10 @@ fn a_flattened_variant_field_over_an_unrecorded_name_is_not_refused() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn a_flattened_variant_field_over_a_plain_enum_is_refused() {
-    register_alias_info(
-        "VariantHue",
-        "VariantHue",
-        &ident_schema_module_name("VariantHue"),
-        AliasKind::EnumMembers,
-    );
+    record_plain_enum("VariantHue", true);
     let errors = discriminated_guard_errors(syn::parse_quote! {
         enum Probe {
             Named {
@@ -16932,18 +17010,10 @@ fn a_flattening_untagged_member_proves_no_key_list() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn a_flattened_untagged_variant_field_over_a_plain_enum_is_refused() {
-    register_alias_info(
-        "UntaggedVariantHue",
-        "UntaggedVariantHue",
-        &ident_schema_module_name("UntaggedVariantHue"),
-        AliasKind::EnumMembers,
-    );
+    record_plain_enum("UntaggedVariantHue", true);
     let errors = untagged_guard_errors(syn::parse_quote! {
         enum Probe {
             Named {

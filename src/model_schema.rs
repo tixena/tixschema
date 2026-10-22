@@ -94,9 +94,9 @@ use crate::utils::{
 
 #[cfg(feature = "serde")]
 use crate::utils::{
-    Declared, TrivialPattern, forget_field_validators, record_declared, record_field_validator,
-    record_flattened_beside_parameters, record_open_map, record_open_map_parameters,
-    trivial_pattern,
+    Declared, TrivialPattern, forget_field_validators, is_recorded_plain_enum, record_declared,
+    record_field_validator, record_flattened_beside_parameters, record_open_map,
+    record_open_map_parameters, record_plain_enum, trivial_pattern,
 };
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
@@ -288,12 +288,11 @@ const PLACEHOLDER_CLOSES: &str = "__";
 
 /// What every plain-enum flatten diagnostic says about its own reach, so an author who fixes the
 /// one declaration named there knows what was and was not checked around it.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
-const FLATTENED_PLAIN_ENUM_SCOPE: &str = "Only a type the registry has already classified reaches this guard; one it has not keeps its \
-     TypeScript and Zod intersection, and is refused by the JSON surface when the merge runs.";
+#[cfg(feature = "serde")]
+const FLATTENED_PLAIN_ENUM_SCOPE: &str = "This refusal holds in every build with serde, and only a \
+     plain enum declared above reaches it: one declared below, or in another crate, is not \
+     refused here, and where a schema surface is on it keeps its TypeScript and Zod \
+     intersection, and is refused by the JSON surface when the merge runs.";
 
 /// The list `validate()` collects each message in.
 const VALIDATE_SINK: &str = "errors";
@@ -1870,18 +1869,15 @@ fn alias_undescribable_std_error(
 }
 
 /// The name of a flattened value's type when the registry proves that type is a plain enum.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 fn flattened_plain_enum(inner: &FieldDef) -> Option<&str> {
     let FieldDefType::SiblingType(name, generic_args) = &inner.field_type else {
         return None;
     };
-    if !generic_args.is_empty() || inner.is_array() {
+    if !generic_args.is_empty() || inner.array_depth > 0 {
         return None;
     }
-    (registered_key_kind(name) == Some(AliasKind::EnumMembers)).then_some(name.as_str())
+    is_recorded_plain_enum(name).then_some(name.as_str())
 }
 
 /// The alias schema module is referenced by all three schema features — `typescript` and `zod`
@@ -3503,6 +3499,21 @@ fn record_item(item: &Item) {
         record_open_map(&name, ranges::writes_an_open_map(item));
         record_open_map_parameters(&name, ranges::open_map_parameter_positions(item));
         record_flattened_beside_parameters(&name, ranges::flattened_beside_parameters_of(item));
+        record_plain_enum(&name, written_as_a_variant_name(item));
+    }
+}
+
+/// Whether serde writes `item` as the bare name of one of its variants: a plain enum, and an
+/// alias of one declared above.
+#[cfg(feature = "serde")]
+fn written_as_a_variant_name(item: &Item) -> bool {
+    if let Item::Enum(item_enum) = item {
+        matches!(Tagging::of(item_enum), Tagging::Plain)
+    } else if let Item::Type(alias) = item {
+        let target = get_field_def("_aliased", &alias.ty, "");
+        !target.is_optional() && flattened_plain_enum(&target).is_some()
+    } else {
+        false
     }
 }
 
@@ -5419,10 +5430,7 @@ fn branded_guard_errors(
 /// The `compile_error!` tokens for a `#[serde(flatten)]` field the registry proves is a plain enum,
 /// or `None` for every other field. Read from the declaration, not the collected field, so the
 /// diagnostic keeps the span of the type it rejects.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 fn flattened_field_guard_error(
     field: &syn::Field,
     type_name: &str,
@@ -5619,10 +5627,7 @@ fn collect_struct_fields(
         // Read before the field is processed, which strips the attributes the declaration carried.
         let is_flatten = is_flattened_field(field);
 
-        #[cfg(all(
-            feature = "serde",
-            any(feature = "typescript", feature = "zod", feature = "jsonschema")
-        ))]
+        #[cfg(feature = "serde")]
         if is_flatten {
             guard_errors.extend(flattened_field_guard_error(field, type_name));
         }
@@ -9895,15 +9900,9 @@ fn variant_flatten_guard_errors(
     field: &syn::Field,
     enum_type_name: &str,
 ) -> Vec<proc_macro2::TokenStream> {
-    #[cfg(all(
-        feature = "serde",
-        any(feature = "typescript", feature = "zod", feature = "jsonschema")
-    ))]
+    #[cfg(feature = "serde")]
     let named = [flattened_field_guard_error(field, enum_type_name)];
-    #[cfg(not(all(
-        feature = "serde",
-        any(feature = "typescript", feature = "zod", feature = "jsonschema")
-    )))]
+    #[cfg(not(feature = "serde"))]
     let named = {
         let _: (&_, &_) = (&field, &enum_type_name);
         [None]
@@ -10925,7 +10924,6 @@ fn internally_tagged_guard_errors(
                 return Some(refused);
             }
             let message = match content {
-                #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
                 TaggedContent::Flattened => {
                     let inner_name = flattened_plain_enum(&inner)?;
                     format!(
@@ -10938,8 +10936,6 @@ fn internally_tagged_guard_errors(
                          tag. {FLATTENED_PLAIN_ENUM_SCOPE}"
                     )
                 }
-                #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-                TaggedContent::Flattened => return None,
                 TaggedContent::Refused(shape) => format!(
                     "model_schema: variant `{variant_name}` of internally tagged enum \
                      `{enum_name}` wraps {shape}, which cannot sit beside the tag: `#[serde(tag \
