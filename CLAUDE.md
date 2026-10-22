@@ -1971,10 +1971,19 @@ to keep.
   found in flattened data``, as serde refuses it; an optional enum is `nil` there and wherever
   its read throws. `handed_reads` adds `{member}Found` to the keys each member flattened after it
   is handed (`taken + [...] + {member}Found`). An enum declared below its holder is read as any
-  other flattened member is. `tests/swift_tests/flattened.rs` pins the text of `Anchoring`,
-  `Dredging` and `Fending`, and `run_swift_flattened_enums.rs` reads the holders of
-  `tests/kotlin_tests/flattened_models.rs` and of `Careen` against serde, three times, the rows
-  with entries under two names held to the refusal.
+  other flattened member is, and is refused where the object it is handed holds another key.
+  `tests/swift_tests/flattened.rs` pins the text of `Anchoring`, `Dredging` and `Fending`, and
+  `run_swift_flattened_enums.rs` reads the holders of `tests/kotlin_tests/flattened_models.rs` and
+  of `Careen` against serde, three times, the rows with entries under two names held to the
+  refusal.
+- **An externally tagged enum is read from an object of one key.** The read
+  `external_tagged_enum_swift_source` writes takes a unit variant from a bare string, then guards
+  `container.allKeys.count == 1` beside the first key, as the read of a `Result` does, and refuses
+  an object of no key with ``empty object for {Enum}`` and one of several with ``more than one key
+  for {Enum}``, as serde and Zod refuse each: `allKeys` keeps no order, so no first key is known.
+  `tests/swift_tests/read.rs` pins the guard, and `run_swift_flattened_enums.rs` reads `Tacking`
+  alone and `Luffing`, which flattens an enum declared below it beside another key, against
+  serde, three times.
 - **What a variant under a tag alone holds is handed the object without the tag**, as serde
   hands it. `EnumTagAttrs::tag_alone` is the one question. `named_payload` hands
   `struct_declaration` `around` under it, so the struct written for a variant whose every member
