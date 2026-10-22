@@ -1,7 +1,11 @@
 //! The shape a `#[service_schema]` trait is read into, and the only place it is read.
 
+use crate::field_type::get_field_def;
+use crate::model_schema::{UndescribableStd, undescribable_std_message};
 use crate::rename_rule::RenameRule;
-use crate::utils::{is_recorded_unit_struct_type, is_recorded_untagged_enum, is_wire_scalar_type};
+use crate::utils::{
+    is_declared_ident, is_recorded_unit_struct_type, is_recorded_untagged_enum, is_wire_scalar_type,
+};
 use proc_macro2::TokenTree;
 use quote::{ToTokens as _, format_ident};
 use std::collections::{HashMap, HashSet};
@@ -2903,9 +2907,9 @@ fn plain_argument_name_message(operation: &Ident) -> String {
     )
 }
 
-/// The two rules that can only be checked once every operation has been read: no wire name and no
-/// TypeScript spelling is carried by two operations, and the context reaches neither the message
-/// nor either result arm.
+/// The rules that can only be checked once every operation has been read: no wire name and no
+/// TypeScript spelling is carried by two operations, the context reaches neither the message nor
+/// either result arm, and no type on the wire reaches a JSON value.
 fn service_refusals(service: &ServiceDef) -> Option<syn::Error> {
     let mut refusals: Option<syn::Error> = None;
     let mut wire_names: HashMap<&str, &Ident> = HashMap::new();
@@ -2950,11 +2954,86 @@ fn service_refusals(service: &ServiceDef) -> Option<syn::Error> {
                 ));
             }
         }
+        for refusal in any_json_refusals(operation, &service.context_param) {
+            refusals = Some(combined(refusals.take(), refusal));
+        }
     }
     if let Some(collisions) = generated_message_collisions(service) {
         refusals = Some(combined(refusals.take(), collisions));
     }
     refusals
+}
+
+/// The refusal of each type `operation` puts on the wire that reaches `serde_json::Value` or
+/// `serde_json::Map`, spanned on the type as written. The context and a name the crate declared a
+/// type under are that type.
+fn any_json_refusals(operation: &OperationDef, context: &Ident) -> Vec<syn::Error> {
+    let kept = |name: &str| context == name || is_declared_ident(name);
+    json_positions(operation)
+        .into_iter()
+        .filter_map(|(position, declared)| {
+            let reached = get_field_def("", declared, "");
+            let rejection = UndescribableStd::AnyJson(reached.any_json_name(kept)?);
+            let subject = format!("operation `{}`: {position}", operation.ident);
+            Some(syn::Error::new_spanned(
+                declared,
+                format!(
+                    "service_schema: {}",
+                    undescribable_std_message(&subject, &rejection)
+                ),
+            ))
+        })
+        .collect()
+}
+
+/// Every type `operation` puts on the wire, beside the position a refusal names it by: the message
+/// it names, each header and part it binds, and both arms of its reply, a tuple that carries
+/// headers taken apart. The message declared from several arguments is a `#[model_schema()]`
+/// struct, refused by that expansion.
+fn json_positions(operation: &OperationDef) -> Vec<(String, &Type)> {
+    let mut positions = Vec::new();
+    if let OperationInputs::Named(declared) = &operation.inputs {
+        positions.push(("the request".to_owned(), declared.as_ref()));
+    }
+    let binding = operation.http.as_ref();
+    for header in binding.into_iter().flat_map(|http| &http.header_in) {
+        positions.push((format!("request header `{}`", header.name), &header.ty));
+    }
+    for part in binding.into_iter().flat_map(|http| &http.multipart_parts) {
+        positions.push((format!("request part `{}`", part.name), &part.ty));
+    }
+    if let OperationOutcome::Reply { error, success } = &operation.outcome {
+        let header_out = binding.map_or_default(|http| http.header_out.as_slice());
+        let error_header_out = binding.map_or_default(|http| http.error_header_out.as_slice());
+        positions.extend(arm_positions("the reply", "reply", success, header_out));
+        positions.extend(arm_positions("the fault", "fault", error, error_header_out));
+    }
+    positions
+}
+
+/// A result arm's positions: the arm itself, or, where `headers` are declared, the tuple's trailing
+/// elements as those headers, in order, and every element ahead of them as the arm.
+fn arm_positions<'op>(
+    arm: &str,
+    side: &str,
+    answered: &'op Type,
+    headers: &[String],
+) -> Vec<(String, &'op Type)> {
+    let Some(elements) = tuple_elements(answered).filter(|_| !headers.is_empty()) else {
+        return vec![(arm.to_owned(), answered)];
+    };
+    let ahead = elements.len().saturating_sub(headers.len());
+    elements
+        .iter()
+        .enumerate()
+        .map(|(index, element)| {
+            let position = index
+                .checked_sub(ahead)
+                .and_then(|at| headers.get(at))
+                .map_or_else(|| arm.to_owned(), |name| format!("{side} header `{name}`"));
+            (position, element)
+        })
+        .collect()
 }
 
 /// The name a type is written with, where that name is the one that resolves in the scope a
