@@ -13,14 +13,15 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::flattened_models::{
-    BELTING, Belting, Bending, Brailing, CLEATING, Cleating, HEAVING, HITCHING, Heaving, Hitching,
-    Knotting, Lanyarding, Luffing, Netting, Nipping, PAYLOAD, SCUDDING, STOWING, STROPPING,
-    Scudding, Seizing, Slinging, Splicing, Stoppering, Stowing, Stropping, UNDER_AN_ALIAS,
-    Whipping, belting_kotlin, bending_kotlin, brailing_kotlin, bunting_kotlin, cleating_kotlin,
-    heaving_kotlin, hitching_kotlin, jibing_kotlin, knotting_kotlin, lanyarding_kotlin,
-    luffing_kotlin, netting_kotlin, nipping_kotlin, noting_kotlin, quaying_kotlin, read_of,
-    scudding_kotlin, seizing_kotlin, sheeting_kotlin, slinging_kotlin, splicing_kotlin,
-    stoppering_kotlin, stowing_kotlin, stropping_kotlin, tacking_kotlin, ticketed_kotlin,
+    BELTING, Belting, Bending, Brailing, CLEATING, Cleating, Gasketing, HEAVING, HITCHING, Heaving,
+    Hitching, Knotting, Lanyarding, Luffing, Netting, Nipping, PAYLOAD, Rousing, SCUDDING, STOWING,
+    STROPPING, Scudding, Seizing, Slinging, Splicing, Stoppering, Stowing, Stropping,
+    UNDER_AN_ALIAS, UNWRITTEN, Whipping, belting_kotlin, bending_kotlin, brailing_kotlin,
+    bunting_kotlin, cleating_kotlin, gasketing_kotlin, heaving_kotlin, hitching_kotlin,
+    jibing_kotlin, knotting_kotlin, lanyarding_kotlin, luffing_kotlin, netting_kotlin,
+    nipping_kotlin, noting_kotlin, quaying_kotlin, read_of, rousing_kotlin, scudding_kotlin,
+    seizing_kotlin, sheeting_kotlin, slinging_kotlin, splicing_kotlin, stoppering_kotlin,
+    stowing_kotlin, stropping_kotlin, tacking_kotlin, ticketed_kotlin, unwritten_kotlin,
     whipping_kotlin,
 };
 use super::runtime::ran_kotlin;
@@ -119,6 +120,12 @@ fun main() {
     }
     handed("after a struct with a flattened member", Brailing.serializer(), """PAYLOAD""") {
         Json.encodeToString(Brailing.serializer(), it)
+    }
+    handed("after a struct with an unwritten member", Rousing.serializer(), """UNWRITTEN""") {
+        Json.encodeToString(Rousing.serializer(), it)
+    }
+    handed("a struct after one with an unwritten member", Gasketing.serializer(), """UNWRITTEN""") {
+        Json.encodeToString(Gasketing.serializer(), it)
     }
     handed("a struct after one of other keys", Stropping.serializer(), """STROPPING""") {
         Json.encodeToString(Stropping.serializer(), it)
@@ -242,9 +249,9 @@ fn an_optional_member_beside_a_flattened_one_is_written_in_kotlin_as_serde_write
 
 /// A member flattened after a struct, or beside a member of its holder's own, is handed the
 /// object without the keys they took, as serde hands it: a function after a struct is handed the
-/// keys the struct did not take, and every key after a struct that takes none, and a struct that
-/// reads a key a member ahead of it, or one of its holder's own, took is refused, as serde refuses
-/// it. An optional one reads no value.
+/// keys the struct did not take, a struct with a member serde never writes among them, and every
+/// key after a struct that takes none, and a struct that reads a key a member ahead of it, or one
+/// of its holder's own, took is refused, as serde refuses it. An optional one reads no value.
 #[test]
 fn a_member_flattened_after_a_struct_reads_in_kotlin_the_keys_serde_hands_it() {
     let slinging: Slinging = serde_json::from_str(PAYLOAD).unwrap();
@@ -262,6 +269,14 @@ fn a_member_flattened_after_a_struct_reads_in_kotlin_the_keys_serde_hands_it() {
         format!(
             "after a struct with a flattened member: {}",
             read_of::<Brailing>(PAYLOAD)
+        ),
+        format!(
+            "after a struct with an unwritten member: {}",
+            read_of::<Rousing>(UNWRITTEN)
+        ),
+        format!(
+            "a struct after one with an unwritten member: {}",
+            read_of::<Gasketing>(UNWRITTEN)
         ),
         format!(
             "a struct after one of other keys: {}",
@@ -293,6 +308,9 @@ fn a_member_flattened_after_a_struct_reads_in_kotlin_the_keys_serde_hands_it() {
          {\"label\":\"n\",\"keys\":[\"label\",\"north\"]}\n\
          after a struct with a flattened member: \
          {\"label\":\"n\",\"keys\":[\"label\",\"north\"]}\n\
+         after a struct with an unwritten member: \
+         {\"label\":\"n\",\"keys\":[\"north\"]}\n\
+         a struct after one with an unwritten member: refused\n\
          a struct after one of other keys: {\"label\":\"n\",\"note\":\"a\"}\n\
          a struct after one of the same key: refused\n\
          a struct beside a member of the same key: refused\n\
@@ -301,7 +319,8 @@ fn a_member_flattened_after_a_struct_reads_in_kotlin_the_keys_serde_hands_it() {
     let main = HANDED
         .replace("PAYLOAD", PAYLOAD)
         .replace("HITCHING", HITCHING)
-        .replace("STROPPING", STROPPING);
+        .replace("STROPPING", STROPPING)
+        .replace("UNWRITTEN", UNWRITTEN);
     let source = [
         KOTLIN_IMPORTS.to_owned(),
         labelling_kotlin::kotlin_definition(),
@@ -314,6 +333,9 @@ fn a_member_flattened_after_a_struct_reads_in_kotlin_the_keys_serde_hands_it() {
         lanyarding_kotlin::kotlin_definition(),
         sheeting_kotlin::kotlin_definition(),
         brailing_kotlin::kotlin_definition(),
+        unwritten_kotlin::kotlin_definition(),
+        rousing_kotlin::kotlin_definition(),
+        gasketing_kotlin::kotlin_definition(),
         stropping_kotlin::kotlin_definition(),
         stoppering_kotlin::kotlin_definition(),
         nipping_kotlin::kotlin_definition(),

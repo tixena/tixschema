@@ -27,7 +27,7 @@ use core::iter::once;
 use crate::features::model_schema_prop::FunctionName;
 #[cfg(feature = "serde")]
 use crate::field_type::is_plain_enum;
-#[cfg(any(feature = "dart", feature = "swift"))]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 use crate::rename_rule::RenameRule;
 #[cfg(feature = "serde")]
 use crate::rename_rule::resolve_rename_rule;
@@ -592,7 +592,10 @@ pub fn variant_steps(_item_enum: &ItemEnum, variant: &Variant) -> Vec<String> {
 /// into it: the name each member it reads is read under, and each alias. A struct with a flattened
 /// member of its own is read as a map, and one that names a function on itself (`preprocess`) as a
 /// value: neither takes a key.
-#[cfg(all(feature = "serde", any(feature = "dart", feature = "swift")))]
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
 pub fn keys_taken_when_flattened(
     fields: &Fields,
     rule: RenameRule,
@@ -618,7 +621,10 @@ pub fn keys_taken_when_flattened(
 }
 
 /// Without `serde` no member is flattened, so none takes a key.
-#[cfg(all(not(feature = "serde"), any(feature = "dart", feature = "swift")))]
+#[cfg(all(
+    not(feature = "serde"),
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
 pub const fn keys_taken_when_flattened(
     _fields: &Fields,
     _rule: RenameRule,
