@@ -263,24 +263,27 @@ fn a_tuple_struct_reads_each_slot_as_a_member() {
     assert_written(
         &pair_dart::dart_definition(),
         &format!(
-            "{}=> Pair(((json as List<dynamic>)[0] as String, (json as List<dynamic>)[1] as \
-             int));",
+            "{}=> Pair(switch (json as List<dynamic>) {{ final tuple when tuple.length == 2 => \
+             (tuple[0] as String, tuple[1] as int), final tuple => throw FormatException('invalid \
+             length ${{tuple.length}}, expected 2') }});",
             pair("Pair", "dynamic json", "json")
         ),
     );
     assert_written(
         &lot_dart::dart_definition(),
         &format!(
-            "{}=> Lot(((json as List<dynamic>)[0] as String, Item.fromJsonUnjudged((json as \
-             List<dynamic>)[1])));",
+            "{}=> Lot(switch (json as List<dynamic>) {{ final tuple when tuple.length == 2 => \
+             (tuple[0] as String, Item.fromJsonUnjudged(tuple[1])), final tuple => throw \
+             FormatException('invalid length ${{tuple.length}}, expected 2') }});",
             pair("Lot", "dynamic json", "json")
         ),
     );
     assert_written(
         &sleeve_dart::dart_definition(),
         &format!(
-            "{}=> Sleeve(((json as List<dynamic>)[0] as String,)); dynamic toJson() => \
-             [(value).$1];",
+            "{}=> Sleeve(switch (json as List<dynamic>) {{ final tuple when tuple.length == 1 => \
+             (tuple[0] as String,), final tuple => throw FormatException('invalid length \
+             ${{tuple.length}}, expected 1') }}); dynamic toJson() => [(value).$1];",
             pair("Sleeve", "dynamic json", "json")
         ),
     );
@@ -296,14 +299,17 @@ fn a_tagged_enum_dispatches_unjudged_and_judges_once() {
         &format!(
             "{}{{ if (json is String) {{ switch (json) {{ case 'Held': return FreightHeld(); \
              default: throw FormatException('Unknown Freight: ' + json); }} }} final map = json as \
-             Map<String, dynamic>; final tag = map.keys.first; switch (tag) {{ case 'Boxed': \
+             Map<String, dynamic>; if (map.isEmpty) {{ throw FormatException('empty object for \
+             Freight'); }} if (map.length > 1) {{ throw FormatException('more than one key for \
+             Freight'); }} final tag = map.keys.first; switch (tag) {{ case 'Boxed': \
              return FreightBoxed(Parcel.fromJsonUnjudged(map['Boxed'])); case 'Held': return \
              map[tag] == null ? FreightHeld() : throw FormatException('Freight: ' + tag + ' takes \
              no value'); case 'Loose': return \
              FreightLoose.fromJsonUnjudged(map['Loose']); case 'Split': return \
-             FreightSplit(((map['Split'] as List<dynamic>)[0] as String, (map['Split'] as \
-             List<dynamic>)[1] as int)); default: throw FormatException('Unknown Freight: ' + \
-             tag); }} }} dynamic toJson();",
+             FreightSplit(switch (map['Split'] as List<dynamic>) {{ final tuple when tuple.length \
+             == 2 => (tuple[0] as String, tuple[1] as int), final tuple => throw \
+             FormatException('invalid length ${{tuple.length}}, expected 2') }}); default: throw \
+             FormatException('Unknown Freight: ' + tag); }} }} dynamic toJson();",
             pair("Freight", "dynamic json", "json")
         ),
     );
