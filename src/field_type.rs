@@ -29,8 +29,10 @@ use crate::utils::{
     zod_factory_argument,
 };
 
+#[cfg(any(feature = "zod", all(feature = "serde", feature = "typescript")))]
+use crate::utils::placeholders_filled;
 #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
-use crate::utils::{FlattenVariant, parameter_placeholder, placeholders_filled};
+use crate::utils::{FlattenVariant, parameter_placeholder};
 
 #[cfg(feature = "chrono")]
 use crate::features::chrono;
@@ -1280,17 +1282,28 @@ impl FieldDef {
     }
 
     /// The members of the untagged union this field names as an object flattening it spells them,
-    /// as the registry recorded them — and nothing for a field that names no such union, and for one
-    /// whose members carry no exclusion the union's own name does not already describe.
+    /// as the registry recorded them, each of the union's own type parameters filled with the
+    /// argument written at its position — and nothing for a field that names no such union, for
+    /// one whose members carry no exclusion the union's own name does not already describe, and for
+    /// one that writes no argument at a position a member names.
     #[cfg(all(feature = "serde", feature = "typescript"))]
     pub fn ts_union_members(&self) -> Vec<String> {
         if self.array_depth > 0 || self.is_written_around() {
             return Vec::new();
         }
-        let FieldDefType::SiblingType(name, _) = &self.field_type else {
+        let FieldDefType::SiblingType(name, arguments) = &self.field_type else {
             return Vec::new();
         };
-        lookup_alias_info(name).map_or_else(Vec::new, |info| info.ts_union_members)
+        lookup_alias_info(name)
+            .map_or_else(Vec::new, |info| info.ts_union_members)
+            .iter()
+            .map(|member| {
+                placeholders_filled(member, |at| {
+                    arguments.get(at).map(Self::typescript_typename)
+                })
+            })
+            .collect::<Option<Vec<String>>>()
+            .unwrap_or_default()
     }
 
     /// Builds the TypeScript type before the outermost optional wrap: the type match plus one
@@ -1979,17 +1992,29 @@ impl FieldDef {
         }
     }
 
-    /// The members of the untagged union this field names, as the registry recorded them, and
-    /// nothing for a field that names no such union.
+    /// The members of the untagged union this field names, as the registry recorded them, each of
+    /// the union's own type parameters filled with the argument written at its position, and
+    /// nothing for a field that names no such union or writes no argument at a position a member
+    /// names.
     #[cfg(feature = "zod")]
     pub fn zod_union_members(&self) -> Vec<ZodUnionMember> {
         if self.array_depth > 0 || self.is_written_around() {
             return Vec::new();
         }
-        let FieldDefType::SiblingType(name, _) = &self.field_type else {
+        let FieldDefType::SiblingType(name, arguments) = &self.field_type else {
             return Vec::new();
         };
-        lookup_alias_info(name).map_or_else(Vec::new, |info| info.zod_union_members)
+        lookup_alias_info(name)
+            .map_or_else(Vec::new, |info| info.zod_union_members)
+            .into_iter()
+            .map(|mut member| {
+                member.spelling = placeholders_filled(&member.spelling, |at| {
+                    arguments.get(at).map(Self::zod_type)
+                })?;
+                Some(member)
+            })
+            .collect::<Option<Vec<ZodUnionMember>>>()
+            .unwrap_or_default()
     }
 }
 

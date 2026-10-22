@@ -100,7 +100,7 @@ use crate::utils::{
 
 #[cfg(feature = "serde")]
 use crate::utils::{
-    Declared, NonObjectWire, TrivialPattern, UnionParameter, WireLeaf, WrittenAs,
+    Declared, NonObjectWire, SlotBesideTag, TrivialPattern, UnionParameter, WireLeaf, WrittenAs,
     forget_field_validators, is_recorded_plain_enum, record_declared, record_field_validator,
     record_flattened_parameters, record_non_object_wire, record_open_map,
     record_open_map_parameters, record_plain_enum, record_text_key_parameters,
@@ -1026,6 +1026,17 @@ enum NonObject {
     Written(String, WrittenAs),
 }
 
+/// What serde makes of a value filling a type parameter a type flattens, where the type's
+/// TypeScript type and Zod schema, written once for every filling, describe no value serde writes.
+#[cfg(feature = "serde")]
+enum RefusedFilling {
+    /// An `Option` held by the lone slot of a variant under a tag alone, of which serde refuses
+    /// every write.
+    Optional(SlotBesideTag),
+    /// A value serde writes as no object.
+    Written(NonObject),
+}
+
 /// What a refusal says of a union member serde writes as one [`WrittenAs`], flattened or held
 /// beside a tag: the member, the keyword its branch describes, what serde writes for it there,
 /// and the scope sentence the refusal closes with.
@@ -1140,6 +1151,7 @@ pub struct BoundMember {
 /// the bindings its constrained members are checked under, and the three enum-wide lists the walk
 /// adds to, which the caller joins onto its own in declaration order.
 #[cfg(feature = "serde")]
+#[derive(Default)]
 struct UntaggedVariantMembers {
     bound: Vec<BoundMember>,
     checks: Vec<proc_macro2::TokenStream>,
@@ -1167,6 +1179,70 @@ struct UntaggedEnum<'walk> {
     /// among the enum's.
     serde_default: &'walk VariantDefaultAt,
     type_parameters: &'walk [String],
+}
+
+/// One variant of an untagged enum as its walk left it: what its wire is, the variant, its walked
+/// members, and its branch in the union.
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+struct UntaggedMember<'walk> {
+    #[cfg(feature = "zod")]
+    branch: usize,
+    kind: &'walk VariantKind,
+    variant: &'walk syn::Variant,
+    walked: &'walk UntaggedVariantMembers,
+}
+
+/// What an untagged enum records for an object that flattens it, gathered variant by variant.
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[derive(Default)]
+struct UntaggedFlattenRecord {
+    /// The keys each member names, where it names them.
+    #[cfg(feature = "typescript")]
+    member_keys: Vec<Option<Vec<String>>>,
+    #[cfg(feature = "typescript")]
+    ts: Vec<String>,
+    #[cfg(feature = "zod")]
+    zod: ZodMergeParts,
+}
+
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+impl UntaggedFlattenRecord {
+    /// Adds what `member` contributes, rendered as `spelled` in the enum `self_type_name` of the
+    /// type parameters `parameters`: a generic enum's members with each parameter written as its
+    /// [`parameter_placeholder`], which a holder fills with its argument.
+    fn add(
+        &mut self,
+        member: &UntaggedMember<'_>,
+        (parameters, self_type_name): (&[String], &str),
+        spelled: (&str, &str),
+    ) {
+        let placed = placed_untagged_member(member, parameters, self_type_name);
+        #[cfg(feature = "zod")]
+        let (field_defs, zod) = placed.as_ref().map_or(
+            (&member.walked.field_defs, spelled.1),
+            |(members, _, zod)| (&members.field_defs, zod.as_str()),
+        );
+        #[cfg(feature = "zod")]
+        self.zod.extend(zod_merge_branches(
+            member.kind,
+            field_defs,
+            zod,
+            member.branch,
+        ));
+        #[cfg(feature = "typescript")]
+        self.member_keys.push(untagged_member_keys(
+            member.kind,
+            &member.walked.field_defs,
+            &member.walked.flattened_fields,
+        ));
+        #[cfg(feature = "typescript")]
+        self.ts.push(
+            placed
+                .as_ref()
+                .map_or(spelled.0, |(_, ts, _)| ts.as_str())
+                .to_owned(),
+        );
+    }
 }
 
 /// The two casing rules an enum's container declares, which reach two different things: `variants`
@@ -2095,16 +2171,17 @@ fn written_as_a_plain_enum(def: &FieldDef) -> bool {
     bare.array_depth == 0 && is_recorded_plain_enum(name)
 }
 
-/// The entries an alias of `target`, declaring `generics`, joins an object with where the target
-/// is an externally tagged enum: the enum's own, filled with what the alias writes, each of the
-/// alias's own type parameters written as its [`parameter_placeholder`].
+/// `target`, the type an alias declaring `generics` names, with each of the alias's own type
+/// parameters written as its [`parameter_placeholder`]: what the enum it names records for an
+/// object that flattens it is read through it, filled with what the alias writes, and the
+/// alias's own parameters are left for its holder to fill.
 #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
-fn alias_flatten_variants(target: &FieldDef, generics: &syn::Generics) -> Vec<FlattenVariant> {
+fn alias_target_placed(target: &FieldDef, generics: &syn::Generics) -> FieldDef {
     let parameters = type_parameters_in_scope(generics);
     let mut placed = target.clone();
     placed.erase_type_parameters(&parameters);
     placed.place_type_parameters(&parameters);
-    placed.flatten_variants()
+    placed
 }
 
 /// The alias schema module is referenced by all three schema features — `typescript` and `zod`
@@ -2134,16 +2211,15 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
     Surface::written(&alias_field_def, &type_parameters_in_scope(&alias.generics))
         .record(&rust_ident_str);
     // An alias *is* the type it names, so a merge that flattens it multiplies over exactly the
-    // members the target's own name would have given it.
-    #[cfg(feature = "zod")]
-    record_zod_union_members(&rust_ident_str, &alias_field_def.zod_union_members());
-    // An object that takes an externally tagged enum's entries through its alias takes the enum's
-    // own, filled with what the alias writes, its own parameters left for its holder to fill.
+    // members, or takes exactly the entries, the target's own name would have given it.
     #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
-    record_flatten_variants(
-        &rust_ident_str,
-        &alias_flatten_variants(&alias_field_def, &alias.generics),
-    );
+    let placed = alias_target_placed(&alias_field_def, &alias.generics);
+    #[cfg(all(feature = "serde", feature = "zod"))]
+    record_zod_union_members(&rust_ident_str, &placed.zod_union_members());
+    #[cfg(all(feature = "zod", not(feature = "serde")))]
+    record_zod_union_members(&rust_ident_str, &alias_field_def.zod_union_members());
+    #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+    record_flatten_variants(&rust_ident_str, &placed.flatten_variants());
 
     // Registered above whatever the outcome, so a type naming a refused alias still resolves to the
     // export name the author wrote and the alias's own diagnostic stays the one they act on.
@@ -3923,6 +3999,32 @@ fn written_as_an_entry(def: &FieldDef) -> Option<bool> {
     filled_union_members(def).iter().any(entry).then_some(false)
 }
 
+/// What serde makes of `def`, filling a type parameter a type flattens, or holds in `slot`, the
+/// lone slot of a variant under a tag alone: an `Option` in such a slot, and a value serde writes
+/// as no object, read as a member of the same type flattened is read, from the record every build
+/// with serde writes. `None` for a value serde writes a variant of as an entry of its name over
+/// `null`, which `filled_entry_errors` refuses, and for every value serde writes as an object.
+#[cfg(feature = "serde")]
+fn refused_filling(def: &FieldDef, slot: Option<&SlotBesideTag>) -> Option<RefusedFilling> {
+    if let Some(held) = slot
+        && (writes_an_optional(def) || value_filling(def).is_some_and(writes_an_optional))
+    {
+        return Some(RefusedFilling::Optional(held.clone()));
+    }
+    if written_as_an_entry(def).is_some() {
+        return None;
+    }
+    let non_object = if written_in_place(def) {
+        written_non_object_wire(&without_its_option(def), written_leaves).map(NonObject::Whole)
+    } else if written_as_a_plain_enum(def) {
+        None
+    } else {
+        value_filling(&without_its_option(def))
+            .map_or_else(|| written_non_object(def), flattened_filling_non_object)
+    };
+    non_object.map(RefusedFilling::Written)
+}
+
 /// [`written_union_members`] of `def`, a generic type declared above that it names, itself or
 /// under an `Option`, read at its [`value_filling`].
 #[cfg(feature = "serde")]
@@ -4131,27 +4233,32 @@ fn flattened_map_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_macro2:
     };
     flattening_levels(item)
         .into_iter()
-        .flat_map(|(subject, fields, tag)| {
+        .flat_map(|(subject, fields, tag, _)| {
             ranges::flattened_map_beside_errors(&subject, fields, generics, tag.as_deref())
         })
         .chain(ranges::filled_map_errors(item, &args.default_types))
         .chain(ranges::filled_entry_errors(item, &args.default_types))
+        .chain(ranges::filled_non_object_errors(item, &args.default_types))
         .chain(ranges::text_read_map_key_errors(item))
         .chain(ranges::filled_text_key_errors(item, &args.default_types))
         .collect()
 }
 
 /// Each level of `item` serde writes a flattened member's entries at, with the subject a refusal
-/// there opens with and the tag serde writes at that level: a struct, with its own tag, and each
-/// variant of an enum serde writes or reads, with the enum's tag where it writes no content key.
+/// there opens with, the tag serde writes at that level and the variant it is: a struct, with its
+/// own tag, and each variant of an enum serde writes or reads, with the enum's tag where it writes
+/// no content key.
 #[cfg(feature = "serde")]
-fn flattening_levels(item: &Item) -> Vec<(String, &syn::Fields, Option<String>)> {
+fn flattening_levels(
+    item: &Item,
+) -> Vec<(String, &syn::Fields, Option<String>, Option<&syn::Ident>)> {
     let label = item_label(item);
     if let Item::Struct(item_struct) = item {
         vec![(
             format!("{label}: "),
             &item_struct.fields,
             struct_tag(item_struct).map(|(key, _)| key),
+            None,
         )]
     } else if let Item::Enum(item_enum) = item {
         let tag = match Tagging::of(item_enum) {
@@ -4171,6 +4278,7 @@ fn flattening_levels(item: &Item) -> Vec<(String, &syn::Fields, Option<String>)>
                     format!("{label}: variant `{}`, ", variant.ident),
                     &variant.fields,
                     tag.clone(),
+                    Some(&variant.ident),
                 )
             })
             .collect()
@@ -12443,6 +12551,39 @@ fn render_untagged_variant(
     }
 }
 
+/// What an object flattening the untagged enum `self_type_name` records for the variant `walked`
+/// renders: its members with each of the enum's type parameters, `parameters`, written as its
+/// [`parameter_placeholder`], which a holder fills, and their TypeScript and Zod spellings. `None`
+/// for an enum that declares none, which records the members as it renders them.
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+fn placed_untagged_member(
+    member: &UntaggedMember<'_>,
+    parameters: &[String],
+    self_type_name: &str,
+) -> Option<(UntaggedVariantMembers, String, String)> {
+    if parameters.is_empty() {
+        return None;
+    }
+    let placed = |fields: &[FieldDef]| -> Vec<FieldDef> {
+        fields
+            .iter()
+            .map(|fld| {
+                let mut written = fld.clone();
+                written.place_type_parameters(parameters);
+                written
+            })
+            .collect()
+    };
+    let members = UntaggedVariantMembers {
+        field_defs: placed(&member.walked.field_defs),
+        flattened_fields: placed(&member.walked.flattened_fields),
+        ..UntaggedVariantMembers::default()
+    };
+    let (ts, zod, _) =
+        render_untagged_variant(member.kind, member.variant, &members, self_type_name).ok()?;
+    Some((members, ts, zod))
+}
+
 /// Refuses an untagged variant that reached the unit wire by taking its lone slot off it, spanned on
 /// the variant.
 #[cfg(feature = "serde")]
@@ -13101,13 +13242,9 @@ fn collect_untagged_members(
     let type_parameters = type_parameters_in_scope(&item_enum.generics);
     let rename_all_fields = parse_serde_type_attributes(&item_enum.attrs).rename_all_fields;
     let mut ts_parts: Vec<String> = Vec::new();
-    #[cfg(feature = "typescript")]
-    let mut ts_member_keys: Vec<Option<Vec<String>>> = Vec::new();
+    #[cfg(any(feature = "typescript", feature = "zod"))]
+    let mut recorded = UntaggedFlattenRecord::default();
     let mut zod_parts: Vec<String> = Vec::new();
-    #[cfg(feature = "zod")]
-    let mut zod_merge_parts: ZodMergeParts = Vec::new();
-    #[cfg(not(feature = "zod"))]
-    let zod_merge_parts: ZodMergeParts = Vec::new();
     let mut json_parts: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut guard_errors: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut validation_fns: Vec<proc_macro2::TokenStream> = Vec::new();
@@ -13140,19 +13277,18 @@ fn collect_untagged_members(
         match rendered {
             None => {}
             Some(Ok((ts, zod, json_val))) => {
-                #[cfg(feature = "zod")]
-                zod_merge_parts.extend(zod_merge_branches(
-                    &kind,
-                    &walked.field_defs,
-                    &zod,
-                    ts_parts.len() + 1,
-                ));
-                #[cfg(feature = "typescript")]
-                ts_member_keys.push(untagged_member_keys(
-                    &kind,
-                    &walked.field_defs,
-                    &walked.flattened_fields,
-                ));
+                #[cfg(any(feature = "typescript", feature = "zod"))]
+                recorded.add(
+                    &UntaggedMember {
+                        #[cfg(feature = "zod")]
+                        branch: ts_parts.len() + 1,
+                        kind: &kind,
+                        variant,
+                        walked: &walked,
+                    },
+                    (&type_parameters, &enum_type_name),
+                    (&ts, &zod),
+                );
                 ts_parts.push(ts);
                 zod_parts.push(zod);
                 json_parts.push(json_val);
@@ -13177,9 +13313,13 @@ fn collect_untagged_members(
     }
 
     #[cfg(feature = "typescript")]
-    let ts_merge_parts = ts_flatten_operands(&ts_parts, &ts_member_keys);
+    let ts_merge_parts = ts_flatten_operands(&recorded.ts, &recorded.member_keys);
     #[cfg(not(feature = "typescript"))]
     let ts_merge_parts: Vec<String> = Vec::new();
+    #[cfg(feature = "zod")]
+    let zod_merge_parts = recorded.zod;
+    #[cfg(not(feature = "zod"))]
+    let zod_merge_parts: ZodMergeParts = Vec::new();
 
     (
         ts_parts,

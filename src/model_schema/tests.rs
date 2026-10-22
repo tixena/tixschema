@@ -4087,7 +4087,7 @@ fn an_untagged_enum_filled_at_an_object_at_its_own_parameter_or_declared_below_i
          ProbeOwnMember<T> }",
         "#[serde(tag = \"kind\")] pub enum ProbeHeldOwnParameter<T> { Held(ProbeOwnMember<T>) }",
     ] {
-        let expanded = serialized_under("default_types(T = String)", accepted);
+        let expanded = serialized_under("default_types(T = ProbeFields)", accepted);
         assert_eq!(
             compile_error_count(&expanded),
             0,
@@ -4423,7 +4423,7 @@ fn a_holder_of_an_untagged_enum_at_its_own_parameter_filled_at_an_object_or_decl
         "#[serde(tag = \"kind\")] pub enum ProbeHeldSlotOwnParameter<T> { \
          Held(ProbeSlotOwnOf<T>) }",
     ] {
-        let expanded = serialized_under("default_types(T = String)", accepted);
+        let expanded = serialized_under("default_types(T = ProbeFields)", accepted);
         assert_eq!(
             compile_error_count(&expanded),
             0,

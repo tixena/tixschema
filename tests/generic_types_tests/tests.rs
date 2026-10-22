@@ -876,7 +876,7 @@ mod jsonschema {
     /// there.
     #[cfg(feature = "serde")]
     mod flattened_parameter {
-        use super::super::{Carried, FlatCarrier, FlatReferrer};
+        use super::super::{Carried, FlatReferrer, FlatTextReferrer};
 
         #[test]
         fn a_flattened_parameter_merges_the_members_the_reference_site_filled_it_with() {
@@ -894,7 +894,8 @@ mod jsonschema {
             );
         }
 
-        /// A non-object filling has no members to merge.
+        /// A non-object filling has no members to merge: one declared below the place that fills
+        /// the parameter, which the expansion does not see, is refused where the document is built.
         #[test]
         #[should_panic(
             expected = "`FlatCarrier`: `#[serde(flatten)]` of `held` is not written as \
@@ -902,7 +903,7 @@ mod jsonschema {
                         members to merge"
         )]
         fn a_flattened_parameter_filled_by_a_scalar_is_refused_where_the_filling_is_known() {
-            let _: serde_json::Value = FlatCarrier::<String>::json_schema();
+            drop(FlatTextReferrer::json_schema());
         }
 
         #[test]
@@ -1734,9 +1735,9 @@ pub struct Refilled<ValueType> {
 
 /// A struct whose flattened source is one of its own type parameters, gated on both `serde`
 /// (which reads `#[serde(flatten)]`) and `jsonschema` (which builds the document). The declared
-/// filling is a scalar; the object filling reaches it from the reference site below.
+/// filling is a struct; the fillings below reach it from the reference sites.
 #[cfg(all(feature = "serde", feature = "jsonschema"))]
-#[model_schema(default_types(HeldType = String))]
+#[model_schema(default_types(HeldType = Inner<u32>))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlatCarrier<HeldType> {
     #[serde(flatten)]
@@ -1752,6 +1753,22 @@ pub struct FlatCarrier<HeldType> {
 pub struct FlatReferrer {
     pub held: FlatCarrier<Inner<u32>>,
 }
+
+/// The same struct filled at a brand over text declared below the place that fills it: the
+/// expansion of that place does not see the brand, and the document refuses it.
+#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[model_schema()]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlatTextReferrer {
+    pub held: FlatCarrier<FlatLaterText>,
+}
+
+/// The brand over text [`FlatTextReferrer`] fills [`FlatCarrier`] with.
+#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[model_schema()]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct FlatLaterText(pub String);
 
 /// The same seam with the object filling written in the declaration instead: the default names a
 /// sibling item, so the standalone document is the one place the merge and a declared filling meet.

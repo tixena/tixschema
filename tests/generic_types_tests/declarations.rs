@@ -1264,6 +1264,85 @@ const LADINGS: [(&str, &str, &str, bool); 22] = [
     ),
 ];
 
+/// Each payload of an untagged enum that declares a parameter, written with an argument and
+/// flattened beside a member, the schema it is parsed through and the type it is assigned to, and
+/// whether serde, Zod and TypeScript take it: each member at the argument, directly and at the
+/// holder's own parameter, and not the member alone, a member of another type, or no member.
+const LANDINGS: [(&str, &str, &str, bool); 12] = [
+    (
+        "DeclaredLanding$Schema",
+        "DeclaredLanding",
+        r#"{"note":"n","label":"l"}"#,
+        true,
+    ),
+    (
+        "DeclaredLanding$Schema",
+        "DeclaredLanding",
+        r#"{"note":"n","count":3}"#,
+        true,
+    ),
+    (
+        "DeclaredLanding$Schema",
+        "DeclaredLanding",
+        r#"{"note":"n"}"#,
+        false,
+    ),
+    (
+        "DeclaredLanding$Schema",
+        "DeclaredLanding",
+        r#"{"note":"n","label":3}"#,
+        false,
+    ),
+    (
+        "DeclaredJetty$SchemaDefault",
+        "DeclaredJetty<DeclaredCarton>",
+        r#"{"note":"n","label":"l"}"#,
+        true,
+    ),
+    (
+        "DeclaredJetty$SchemaDefault",
+        "DeclaredJetty<DeclaredCarton>",
+        r#"{"note":"n","count":3}"#,
+        true,
+    ),
+    (
+        "DeclaredJetty$SchemaDefault",
+        "DeclaredJetty<DeclaredCarton>",
+        r#"{"note":"n","label":3}"#,
+        false,
+    ),
+    (
+        "DeclaredSlipway$Schema",
+        "DeclaredSlipway",
+        r#"{"note":"n","load":3}"#,
+        true,
+    ),
+    (
+        "DeclaredSlipway$Schema",
+        "DeclaredSlipway",
+        r#"{"note":"n","count":3}"#,
+        true,
+    ),
+    (
+        "DeclaredSlipway$Schema",
+        "DeclaredSlipway",
+        r#"{"note":"n","load":"x"}"#,
+        false,
+    ),
+    (
+        "DeclaredSlipway$Schema",
+        "DeclaredSlipway",
+        r#"{"note":"n","load":true}"#,
+        false,
+    ),
+    (
+        "DeclaredSlipway$Schema",
+        "DeclaredSlipway",
+        r#"{"note":"n"}"#,
+        false,
+    ),
+];
+
 static STOOD_DOWN: Once = Once::new();
 
 /// A struct whose fields bound a brand over a string, one declared below it and an optional one,
@@ -1621,6 +1700,60 @@ pub enum DeclaredMarina<Stowed> {
     Laden(DeclaredLading<Stowed>),
 }
 
+/// The struct an untagged enum that declares a parameter is filled with.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeclaredCarton {
+    pub label: String,
+}
+
+/// An untagged enum that declares a parameter: a member that is the parameter, and one of named
+/// fields.
+#[model_schema(default_types(Cargo = DeclaredCarton))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum DeclaredEither<Cargo> {
+    Counted { count: u32 },
+    Held(Cargo),
+}
+
+/// [`DeclaredEither`] written with an argument and flattened beside a member of its holder's own.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeclaredLanding {
+    #[serde(flatten)]
+    pub either: DeclaredEither<DeclaredCarton>,
+    pub note: String,
+}
+
+/// [`DeclaredEither`] flattened at its holder's own parameter.
+#[model_schema(default_types(Stowed = DeclaredCarton))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeclaredJetty<Stowed> {
+    #[serde(flatten)]
+    pub either: DeclaredEither<Stowed>,
+    pub note: String,
+}
+
+/// An untagged enum that declares a parameter, of two members of named fields, each closed to the
+/// other's key where it is flattened.
+#[model_schema(default_types(Cargo = String))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum DeclaredPick<Cargo> {
+    Carried { load: Cargo },
+    Counted { count: u32 },
+}
+
+/// [`DeclaredPick`] written with an argument and flattened beside a member of its holder's own.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeclaredSlipway {
+    pub note: String,
+    #[serde(flatten)]
+    pub pick: DeclaredPick<u32>,
+}
+
 fn bundle() -> String {
     [
         PREAMBLE.to_owned(),
@@ -1726,6 +1859,18 @@ fn hatches_bundle() -> String {
         DeclaredWharf::zod_schema(),
         DeclaredMarina::<bool>::ts_definition(),
         DeclaredMarina::<bool>::zod_schema(),
+        DeclaredCarton::ts_definition(),
+        DeclaredCarton::zod_schema(),
+        DeclaredEither::<DeclaredCarton>::ts_definition(),
+        DeclaredEither::<DeclaredCarton>::zod_schema(),
+        DeclaredLanding::ts_definition(),
+        DeclaredLanding::zod_schema(),
+        DeclaredJetty::<DeclaredCarton>::ts_definition(),
+        DeclaredJetty::<DeclaredCarton>::zod_schema(),
+        DeclaredPick::<String>::ts_definition(),
+        DeclaredPick::<String>::zod_schema(),
+        DeclaredSlipway::ts_definition(),
+        DeclaredSlipway::zod_schema(),
     ]
     .join("\n\n")
 }
@@ -3985,6 +4130,59 @@ fn type_check_an_enum_written_with_an_argument_takes_each_entry_at_the_argument(
     fs::remove_dir_all(&at).unwrap();
     // A row's line is its position after the import.
     let typed: Vec<bool> = (0..LADINGS.len())
+        .map(|row| !said.contains(&format!("consumer.ts({},", row + 2)))
+        .collect();
+    assert_eq!(
+        typed, stated,
+        "TypeScript does not take what the rows state:\n{said}\n{payloads}"
+    );
+}
+
+/// An untagged enum that declares a parameter, written with an argument and flattened, is taken by
+/// the Zod schema of its holder under `node` and by its TypeScript type under `tsc --strict` as
+/// serde writes and reads it: each member at the argument, directly and at the holder's own
+/// parameter, and each member of named fields closed to the other's key.
+#[test]
+fn type_check_an_untagged_enum_written_with_an_argument_takes_each_member_at_the_argument() {
+    let stated: Vec<bool> = LANDINGS.iter().map(|&(_, _, _, taken)| taken).collect();
+    let read: Vec<bool> = LANDINGS
+        .iter()
+        .map(|&(_, typed, json, _)| match typed {
+            "DeclaredLanding" => serde_json::from_str::<DeclaredLanding>(json).is_ok(),
+            "DeclaredSlipway" => serde_json::from_str::<DeclaredSlipway>(json).is_ok(),
+            _ => serde_json::from_str::<DeclaredJetty<DeclaredCarton>>(json).is_ok(),
+        })
+        .collect();
+    assert_eq!(read, stated, "serde does not take what the rows state");
+    let listed: Vec<(&str, &str)> = LANDINGS
+        .iter()
+        .map(|&(schema, _, json, _)| (schema, json))
+        .collect();
+    let driver = TAKEN_DRIVER.replace("PAYLOADS", &serde_json::to_string(&listed).unwrap());
+    let Some((printed, failed)) = loaded_from("landings", &hatches_bundle(), &driver) else {
+        return;
+    };
+    assert_eq!(
+        printed,
+        serde_json::to_string(&stated).unwrap(),
+        "the schemas do not take what the rows state:\n{failed}"
+    );
+    let Some(at) = built_from("landings-payloads", &hatches_bundle()) else {
+        return;
+    };
+    let mut payloads = String::from(
+        "import type { DeclaredCarton, DeclaredJetty, DeclaredLanding, DeclaredSlipway } from \
+         \"./lib/index.js\";\n",
+    );
+    for (position, &(_, typed, json, _)) in LANDINGS.iter().enumerate() {
+        let _ = writeln!(payloads, "export const row{position}: {typed} = {json};");
+    }
+    fs::write(at.join("tsconfig.consumer.json"), CONSUMER_PROJECT).unwrap();
+    fs::write(at.join("consumer.ts"), &payloads).unwrap();
+    let (_, said) = compiled(&at, "tsconfig.consumer.json").unwrap();
+    fs::remove_dir_all(&at).unwrap();
+    // A row's line is its position after the import.
+    let typed: Vec<bool> = (0..LANDINGS.len())
         .map(|row| !said.contains(&format!("consumer.ts({},", row + 2)))
         .collect();
     assert_eq!(
