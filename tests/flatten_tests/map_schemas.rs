@@ -1,13 +1,20 @@
 //! The Zod schema of a struct a map is flattened into as the only member of its object: the map's
 //! record takes every key. An optional map's absence takes every key too, with any value.
 
-use super::maps::assert_serde_reads_what_zod_reads;
 #[cfg(feature = "zod")]
 use super::maps::{Bilge, Coaming, Locker, Sheave, Stanchion, Thole, Thwart, Transom};
+use super::maps::{assert_serde_reads_what_zod_reads, assert_zod_refuses_each_key_serde_drops};
 
 #[test]
 fn serde_reads_each_payload_zod_reads() {
     assert_serde_reads_what_zod_reads();
+}
+
+/// Zod refuses a payload of an optional struct exactly where serde reads the struct as `None`
+/// and drops a key.
+#[test]
+fn zod_refuses_each_key_serde_drops_from_an_optional_struct() {
+    assert_zod_refuses_each_key_serde_drops();
 }
 
 /// The record of a map alone in its object takes every key.

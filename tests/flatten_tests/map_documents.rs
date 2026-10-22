@@ -11,8 +11,8 @@ use tixschema::model_schema;
 
 use super::documents::admits;
 use super::maps::{
-    Bilge, Capstan, Coaming, Davit, Fairlead, Fathom, Gunwale, Lazarette, Locker, PAYLOADS, Pintle,
-    Scupper, Sheave, Stanchion, Strake, Thole, Thwart, Transom, Windlass, serde_reads,
+    Bilge, Capstan, Coaming, Davit, Fairlead, Fathom, Gunwale, Hawser, Lazarette, Locker, PAYLOADS,
+    Pintle, Scupper, Sheave, Stanchion, Strake, Thole, Thwart, Transom, Windlass, serde_reads,
 };
 
 /// Payloads of the models declared here, each with whether serde reads it.
@@ -192,5 +192,37 @@ fn an_optional_map_is_the_map_or_every_key() {
                 },
             ],
         })
+    );
+}
+
+/// serde reads a flattened `Option` of a struct as `None` where its keys do not read, and drops
+/// them; the JSON Schema refuses that payload, and the README states both.
+#[test]
+fn serde_reads_as_none_an_optional_flattened_struct_the_json_schema_refuses() {
+    let read: Hawser = serde_json::from_str(r#"{"label":3}"#).unwrap();
+    assert!(read.burgee.is_none(), "serde reads {read:?}");
+    assert_eq!(
+        serde_json::to_string(&read).unwrap(),
+        "{}",
+        "serde writes {read:?} back"
+    );
+    let document = Hawser::json_schema();
+    assert!(
+        !admits(&document, &json!({ "label": 3_u8 })),
+        "the JSON Schema admits a label of a number: {document}"
+    );
+    assert!(
+        admits(&document, &json!({ "label": "a" })),
+        "the JSON Schema refuses a label: {document}"
+    );
+    assert!(
+        admits(&document, &json!({})),
+        "the JSON Schema refuses no key: {document}"
+    );
+    let example = "reads `{\"label\":\"a\"}` with `burgee: Some(Burgee { label: \"a\" })`, and \
+                   `{\"label\":3}` with `burgee: None`, which it writes back as `{}`";
+    assert!(
+        include_str!("../../README.md").contains(example),
+        "the README no longer states: {example}"
     );
 }
