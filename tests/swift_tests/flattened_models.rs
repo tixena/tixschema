@@ -11,14 +11,16 @@
 //! struct. serde reads the members in the order declared: a struct takes the keys it reads, and
 //! every flattened member is handed every key neither its holder's own members nor a member ahead
 //! of it took. Every holder of a member that names a function has a member of its own, whose key
-//! no flattened member is handed, but [`Stropping`]. [`Boxing`] and [`Baling`] each hold a member
-//! named after the container their written `encode(to:)` declares, of their own and flattened.
+//! no flattened member is handed, but [`Stropping`] and [`Dredging`]. [`Boxing`] and [`Baling`]
+//! each hold a member named after the container their written `encode(to:)` declares, of their own
+//! and flattened.
 //! [`Grafting`] and [`Pointing`] are enums under a tag alone whose variants hold a struct as their
 //! one slot and flatten one beside no member of their own, and in [`Pointing`] beside one: serde
 //! takes the tag off the object first, so a struct that reads a key named as the tag is refused.
 //! [`Trussing`], [`Halyard`], [`Tailing`], [`Slacking`], [`Reeling`] and [`Winching`] each hold an
 //! optional map as the one member of their struct or variant, which serde reads as `None` wherever
-//! an entry does not read.
+//! an entry does not read. [`Anchoring`], [`Dredging`] and [`Fending`] flatten [`Careen`], an
+//! externally tagged enum serde reads from the first entry under a variant's name or an alias.
 
 use alloc::collections::BTreeMap;
 
@@ -141,6 +143,29 @@ pub const WINCHING_BROKEN: &str = r#"{"north":{"mark":""}}"#;
 
 /// What [`Winching`] is read from with a model that does not read.
 pub const WINCHING_MISTYPED: &str = r#"{"north":{"mark":5}}"#;
+
+/// What [`Anchoring`] is read from: a variant's entry beside a key no member reads, one whose
+/// model breaks its rule, a unit variant's entry, an entry under an alias, and entries under two
+/// variants' names.
+pub const ANCHORING: [&str; 5] = [
+    r#"{"note":"a","Bay":{"label":"n"},"north":2}"#,
+    r#"{"Bay":{"label":""},"note":"a"}"#,
+    r#"{"Calm":null,"note":"a"}"#,
+    r#"{"Quay":{"label":"s"},"note":"a"}"#,
+    r#"{"Calm":null,"Dock":{"label":"s"},"note":"a"}"#,
+];
+
+/// What [`Dredging`] is read from.
+pub const DREDGING: &str = r#"{"Dock":{"label":"s"},"north":2}"#;
+
+/// What [`Fending`] is read from: no variant's entry, one, one whose model breaks its rule, and
+/// entries under a variant's name and an alias of another.
+pub const FENDING: [&str; 4] = [
+    r#"{"note":"a"}"#,
+    r#"{"Bay":{"label":"n"},"note":"a"}"#,
+    r#"{"Bay":{"label":""},"note":"a"}"#,
+    r#"{"Bay":{"label":"n"},"Quay":{"label":"s"},"note":"a"}"#,
+];
 
 /// A plain enum a map is keyed by, which Swift reads through a wrapper.
 #[model_schema()]
@@ -554,6 +579,53 @@ pub struct Winching {
     pub notches: Option<BTreeMap<String, Notch>>,
 }
 
+/// An externally tagged enum with a rule, a unit variant and an alias, which serde reads flattened
+/// from the first entry under a variant's name or an alias of one.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum Careen {
+    Bay {
+        #[model_schema_prop(minLength = 1)]
+        label: String,
+    },
+    Calm,
+    #[serde(alias = "Quay")]
+    Dock {
+        label: String,
+    },
+}
+
+/// [`Careen`] flattened beside a member of its holder's own.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Anchoring {
+    #[serde(flatten)]
+    pub careen: Careen,
+    pub note: String,
+}
+
+/// [`Careen`] flattened ahead of a member that names a function, which serde hands every entry
+/// but the enum's.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Dredging {
+    #[serde(flatten)]
+    pub careen: Careen,
+    #[model_schema_prop(preprocess = ["withItsKeys"])]
+    #[serde(flatten)]
+    pub tally: Counting,
+}
+
+/// [`Careen`] optional beside a member of its holder's own, which serde reads no value of where no
+/// entry is under the name of a variant.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Fending {
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub careen: Option<Careen>,
+    pub note: String,
+}
+
 /// The payload as it was handed.
 const fn as_given(payload: Value) -> Value {
     payload
@@ -739,6 +811,40 @@ fn serde_hands_what_a_variant_under_a_tag_alone_holds_the_object_without_the_tag
         assert_eq!(read::<Pointing>(text), read_as);
         assert_eq!(written(&read_as), text);
     }
+}
+
+/// A flattened externally tagged enum is read from the first entry under a variant's name or an
+/// alias, its model judged with its holder, and a member flattened after it is handed every entry
+/// but that one. An optional enum reads `None` from a payload with no such entry. Of two entries
+/// serde reads the first, where Swift refuses the payload as TypeScript and Zod do.
+#[test]
+fn serde_reads_a_flattened_enum_from_the_first_entry_under_a_variants_name() {
+    let bay = || Careen::Bay {
+        label: "n".to_owned(),
+    };
+    let dock = || Careen::Dock {
+        label: "s".to_owned(),
+    };
+    let anchored = |text: &str| serde_json::from_str::<Anchoring>(text).map(|read| read.careen);
+    assert_eq!(anchored(ANCHORING[0]).unwrap(), bay());
+    assert_eq!(
+        anchored(ANCHORING[1]).unwrap_err().to_string(),
+        "'Bay.label': too short: minimum length is 1, got 0"
+    );
+    assert_eq!(anchored(ANCHORING[2]).unwrap(), Careen::Calm);
+    assert_eq!(anchored(ANCHORING[3]).unwrap(), dock());
+    assert_eq!(anchored(ANCHORING[4]).unwrap(), Careen::Calm);
+    let dredging = read::<Dredging>(DREDGING);
+    assert_eq!(dredging.careen, dock());
+    assert_eq!(dredging.tally.keys, ["north"]);
+    let fended = |text: &str| serde_json::from_str::<Fending>(text).map(|read| read.careen);
+    assert_eq!(fended(FENDING[0]).unwrap(), None);
+    assert_eq!(fended(FENDING[1]).unwrap(), Some(bay()));
+    assert_eq!(
+        fended(FENDING[2]).unwrap_err().to_string(),
+        "'Bay.label': too short: minimum length is 1, got 0"
+    );
+    assert_eq!(fended(FENDING[3]).unwrap(), Some(bay()));
 }
 
 /// An optional map alone in its struct or in a variant, under its name, under a content key or

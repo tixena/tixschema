@@ -1,8 +1,8 @@
 //! `preprocess` in the Swift read: the functions a type and its members name, each called on a
 //! payload ahead of the value read from it. A type that names one on itself reads the keys the
 //! types around it did not take, and so does a type that reads one from its own decoder. The keys
-//! a struct takes where it is flattened are noted here too: a member flattened after it is not
-//! handed them.
+//! a struct takes where it is flattened, and the names an externally tagged enum takes its one
+//! entry under, are noted here too: a member flattened after either is not handed them.
 
 use core::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -56,6 +56,17 @@ pub(super) const PAYLOAD: &str = "private struct SwiftSchemaPayload: Decodable {
      init?(stringValue: String) { self.stringValue = stringValue }; \
      init?(intValue: Int) { nil } } }";
 
+/// A name serde reads a variant of an externally tagged enum flattened into a holder under.
+#[derive(Clone)]
+pub(super) struct Entry {
+    /// The variant's name, or an alias of it.
+    pub name: String,
+    /// Whether the variant holds no value, which the enum's own read takes as its name alone.
+    pub unit: bool,
+    /// The name the enum's own read takes the variant under.
+    pub variant: String,
+}
+
 /// One member that names functions, as its read is written.
 pub(super) struct Member<'member> {
     pub def: &'member FieldDef,
@@ -106,6 +117,10 @@ thread_local! {
     /// The keys serde takes off its holder's object for each struct the emitter has written, read
     /// flattened: what serde hands no member flattened after it.
     static TAKEN_KEYS: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
+
+    /// The names each externally tagged enum the emitter has written takes its one entry of its
+    /// holder's object under, read flattened.
+    static ENTRIES: RefCell<HashMap<String, Vec<Entry>>> = RefCell::new(HashMap::new());
 }
 
 /// Records whether the type `rust_ident` names reads the keys the types around it took.
@@ -144,6 +159,129 @@ pub(super) fn keys_taken_by(def: &FieldDef) -> Vec<String> {
         return Vec::new();
     };
     TAKEN_KEYS.with(|recorded| recorded.borrow().get(name).cloned().unwrap_or_default())
+}
+
+/// Records `entries`, the names the enum `rust_ident` takes its entry under where it is flattened,
+/// for a holder written after it: none for an enum serde does not read from one entry.
+pub(super) fn note_entries(rust_ident: &str, entries: Vec<Entry>) {
+    ENTRIES.with(|recorded| {
+        if entries.is_empty() {
+            recorded.borrow_mut().remove(rust_ident);
+        } else {
+            recorded.borrow_mut().insert(rust_ident.to_owned(), entries);
+        }
+    });
+}
+
+/// The enum a flattened member `def` describes, under an `Option` or not, and the names it takes
+/// its one entry under: `None` for any other type, an enum written below, and a member that names
+/// a function, which serde reads as a value.
+pub(super) fn entries_of(def: &FieldDef) -> Option<(&str, Vec<Entry>)> {
+    if !functions(def).is_empty() || def.array_depth > 0 {
+        return None;
+    }
+    let FieldDefType::SiblingType(name, _) = &def.field_type else {
+        return None;
+    };
+    ENTRIES
+        .with(|recorded| recorded.borrow().get(name).cloned())
+        .map(|entries| (name.as_str(), entries))
+}
+
+/// The local the names of the entries the member `stem` found are held in: every member flattened
+/// after it is handed the object without them.
+pub(super) fn found(stem: &str) -> String {
+    format!("{stem}Found")
+}
+
+/// The statements that read `member`, the enum `named` flattened into its holder, from the one
+/// entry of the object without `taken` under one of `entries`' names, at the holder's coding path,
+/// and hand it to `sink`. No entry is refused, as serde refuses it, but where `optional`, which
+/// reads `nil` there and wherever the enum's read throws. Swift keeps no order of an object's
+/// keys, so the first of two entries is not known: entries under two names are refused, as
+/// TypeScript and Zod refuse them.
+pub(super) fn entry(
+    member: &Member<'_>,
+    (named, entries): (&str, &[Entry]),
+    taken: &str,
+    optional: bool,
+    sink: &dyn Fn(&str) -> String,
+    twins: &mut Vec<String>,
+) -> String {
+    let stem = member.stem;
+    let found = found(stem);
+    let enum_name = swift_literal_text(named);
+    let refused = |description: &str| {
+        format!(
+            "throw DecodingError.dataCorrupted(DecodingError.Context(\
+             codingPath: decoder.codingPath, debugDescription: \"{description}\"))"
+        )
+    };
+    let listed: Vec<String> = entries
+        .iter()
+        .map(|entry| format!("\"{}\"", swift_literal_text(&entry.name)))
+        .collect();
+    let opened = format!(
+        "let {stem}Object = try SwiftSchemaPayload(from: decoder, without: {taken}).value \
+         as? [String: Any] ?? [:]; \
+         let {found} = [{}].filter {{ {stem}Object[$0] != nil }}; \
+         if {found}.count > 1 {{ {} }}; ",
+        listed.join(", "),
+        refused(&format!(
+            "more than one variant of enum {enum_name} found in flattened data: \
+             \\({found}.joined(separator: \", \"))"
+        ))
+    );
+    let held = format!("let {stem}Key = {found}.first, let {stem}Held = {stem}Object[{stem}Key]");
+    let read = format!(
+        "{}; {}",
+        entry_payload(stem, entries),
+        value(member, "decoder.codingPath", sink, twins)
+    );
+    if optional {
+        let absent = sink("nil");
+        format!("{opened}if {held} {{ do {{ {read} }} catch {{ {absent} }} }} else {{ {absent} }}")
+    } else {
+        format!(
+            "{opened}guard {held} else {{ {} }}; {read}",
+            refused(&format!(
+                "no variant of enum {enum_name} found in flattened data"
+            ))
+        )
+    }
+}
+
+/// The statement that holds in `{stem}Payload` what the enum's own read takes of the entry
+/// `{stem}Held` under `{stem}Key`: a unit variant's name, over `null` alone, as TypeScript and Zod
+/// read it, and any other entry under the name the read takes its variant under.
+fn entry_payload(stem: &str, entries: &[Entry]) -> String {
+    let cases: Vec<String> = entries
+        .iter()
+        .filter_map(|entry| {
+            let name = swift_literal_text(&entry.name);
+            let variant = swift_literal_text(&entry.variant);
+            if entry.unit {
+                Some(format!(
+                    "case \"{name}\" where {stem}Held is NSNull: {stem}Payload = \"{variant}\""
+                ))
+            } else if entry.name == entry.variant {
+                None
+            } else {
+                Some(format!(
+                    "case \"{name}\": {stem}Payload = [\"{variant}\": {stem}Held]"
+                ))
+            }
+        })
+        .collect();
+    if cases.is_empty() {
+        format!("let {stem}Payload: Any = [{stem}Key: {stem}Held]")
+    } else {
+        format!(
+            "let {stem}Payload: Any; switch {stem}Key {{ {}; \
+             default: {stem}Payload = [{stem}Key: {stem}Held] }}",
+            cases.join("; ")
+        )
+    }
 }
 
 /// Whether `def` names such a type under no list: one a holder that reads it from its own decoder

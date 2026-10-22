@@ -1,25 +1,42 @@
 //! What the Swift emitter reads of a flattened member: a map entry by entry, without the keys the
 //! types around its holder took, as serde hands it, an optional one `nil` wherever an entry does
 //! not read, and any other member without the keys its holder's own members, the structs
-//! flattened ahead of it and the types around its holder took. Each flattened member is written
-//! at its place. What a variant under a tag alone holds as its one slot or flattens beside no
-//! member of its own is read from the object without the tag. The reads are run under the Swift
-//! toolchain in `tests/service_schema_emitted_client_tests/run_swift_flattened.rs`.
+//! flattened ahead of it and the types around its holder took. An externally tagged enum is read
+//! from the one entry under a variant's name, which no member flattened after it is handed. Each
+//! flattened member is written at its place. What a variant under a tag alone holds as its one
+//! slot or flattens beside no member of its own is read from the object without the tag. The reads
+//! are run under the Swift toolchain in `tests/service_schema_emitted_client_tests/`, in
+//! `run_swift_flattened.rs` and `run_swift_flattened_enums.rs`.
 
 #[cfg(feature = "chrono")]
 use super::flattened_models::serving_swift;
 use super::flattened_models::{
-    baling_swift, bowsing_swift, boxing_swift, clewing_swift, faking_swift, footing_swift,
-    frapping_swift, grafting_swift, gripping_swift, halyard_swift, hanking_swift, kedging_swift,
-    marling_swift, marrying_swift, mousing_swift, parceling_swift, plying_swift, pointing_swift,
-    ratlining_swift, reeling_swift, seaming_swift, slacking_swift, snaking_swift, splaying_swift,
-    stopping_swift, stropping_swift, tailing_swift, toggling_swift, trussing_swift, twinning_swift,
-    whipping_swift, winching_swift, worming_swift,
+    anchoring_swift, baling_swift, bowsing_swift, boxing_swift, clewing_swift, dredging_swift,
+    faking_swift, fending_swift, footing_swift, frapping_swift, grafting_swift, gripping_swift,
+    halyard_swift, hanking_swift, kedging_swift, marling_swift, marrying_swift, mousing_swift,
+    parceling_swift, plying_swift, pointing_swift, ratlining_swift, reeling_swift, seaming_swift,
+    slacking_swift, snaking_swift, splaying_swift, stopping_swift, stropping_swift, tailing_swift,
+    toggling_swift, trussing_swift, twinning_swift, whipping_swift, winching_swift, worming_swift,
 };
 
 /// The read a holder takes the keys the types around it took with.
 const TAKING: &str =
     "public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws";
+
+/// The statements that read `Careen` unjudged from the entry found, a unit variant over `null`
+/// as its name and an alias under its variant's name.
+const CAREEN_READ: &str = "let careenPayload: Any; switch careenKey { \
+     case \"Calm\" where careenHeld is NSNull: careenPayload = \"Calm\"; \
+     case \"Quay\": careenPayload = [\"Dock\": careenHeld]; \
+     default: careenPayload = [careenKey: careenHeld] }; \
+     self.careen = try SwiftSchemaPayload.read(SwiftSchemaReadCareen.self, from: careenPayload, \
+     at: decoder.codingPath).value";
+
+/// The entry found, where the payload must hold one.
+const CAREEN_HELD: &str = "guard let careenKey = careenFound.first, \
+     let careenHeld = careenObject[careenKey] else { \
+     throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
+     debugDescription: \"no variant of enum Careen found in flattened data\")) }; ";
 
 /// The read of a map flattened into `property`, keyed by text, of entries `value` reads under
 /// `entry`, gathered in a `[String: {value_type}]`: of every key the types around its holder did
@@ -532,6 +549,62 @@ fn an_optional_map_is_nil_wherever_an_entry_does_not_read() {
                 "Notch",
                 "try Notch(swiftSchemaUnjudged: keyed.superDecoder(forKey: entry))",
             )
+        ),
+    );
+}
+
+/// The statements that find the entry of `Careen` the member `careen` takes in the object
+/// without `taken`, and refuse entries under two names.
+fn careen_found(taken: &str) -> String {
+    format!(
+        "let careenObject = try SwiftSchemaPayload(from: decoder, without: {taken}).value \
+         as? [String: Any] ?? [:]; \
+         let careenFound = [\"Bay\", \"Calm\", \"Dock\", \"Quay\"]\
+         .filter {{ careenObject[$0] != nil }}; \
+         if careenFound.count > 1 {{ throw DecodingError.dataCorrupted(DecodingError.Context(\
+         codingPath: decoder.codingPath, debugDescription: \"more than one variant of enum Careen \
+         found in flattened data: \\(careenFound.joined(separator: \", \"))\")) }}; "
+    )
+}
+
+/// A flattened externally tagged enum is read from the one entry of the object it is handed under
+/// a variant's name or an alias, and refused where it holds two or none, or, optional, read as
+/// `nil` where it holds none and wherever the enum's read throws. Its model is read unjudged, and
+/// a member flattened after it is handed the object without that entry.
+#[test]
+fn a_flattened_enum_is_read_from_the_one_entry_under_a_variants_name() {
+    let unjudged = "private struct SwiftSchemaReadCareen: Decodable { let value: Careen; \
+         init(from decoder: Decoder) throws { \
+         self.value = try Careen(swiftSchemaUnjudged: decoder) } }";
+    let anchoring = anchoring_swift::swift_definition();
+    assert_written(&anchoring, unjudged);
+    assert_written(
+        &anchoring,
+        &format!(
+            "{TAKING} {{ let container = try decoder.container(keyedBy: CodingKeys.self); \
+             {}{CAREEN_HELD}{CAREEN_READ}; \
+             self.note = try container.decode(String.self, forKey: .note) }}",
+            careen_found("taken + [\"note\"]")
+        ),
+    );
+    let dredging = dredging_swift::swift_definition();
+    assert_written(
+        &dredging,
+        &format!(
+            "{TAKING} {{ {}{CAREEN_HELD}{CAREEN_READ}; {} }}",
+            careen_found("taken"),
+            handed("tally", "taken + careenFound")
+        ),
+    );
+    assert_written(
+        &fending_swift::swift_definition(),
+        &format!(
+            "{TAKING} {{ let container = try decoder.container(keyedBy: CodingKeys.self); {}\
+             if let careenKey = careenFound.first, let careenHeld = careenObject[careenKey] {{ \
+             do {{ {CAREEN_READ} }} catch {{ self.careen = nil }} }} \
+             else {{ self.careen = nil }}; \
+             self.note = try container.decode(String.self, forKey: .note) }}",
+            careen_found("taken + [\"note\"]")
         ),
     );
 }

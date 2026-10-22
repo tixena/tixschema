@@ -5,7 +5,10 @@ use core::iter;
 
 use proc_macro2::Span;
 
-use super::{Member, Plain, beside, called, member, naming_its_owner, note, taken_with, takes};
+use super::{
+    Entry, Member, Plain, beside, called, entries_of, entry_payload, member, naming_its_owner,
+    note, note_entries, taken_with, takes,
+};
 use crate::features::model_schema_prop::FunctionName;
 use crate::features::swift::read::{Presence, Source};
 use crate::field_type::get_field_def;
@@ -269,4 +272,66 @@ fn a_noted_type_is_read_beside_the_keys_taken_under_no_list() {
     assert!(!read(syn::parse_quote!(String)));
     note("PreprocessNotedHere", false);
     assert!(!takes("PreprocessNotedHere"));
+}
+
+/// An enum is one a holder reads from its one entry once its names are noted, under an `Option`
+/// and under no list, where the member names no function. An enum noted with no name is not.
+#[test]
+fn a_noted_enum_is_read_from_its_one_entry_under_no_list() {
+    let entry = |name: &str, variant: &str, unit| Entry {
+        name: name.to_owned(),
+        unit,
+        variant: variant.to_owned(),
+    };
+    note_entries(
+        "PreprocessEntriesHere",
+        vec![entry("Bay", "Bay", false), entry("Quay", "Bay", false)],
+    );
+    let names = |written: syn::Type| {
+        entries_of(&get_field_def("held", &written, "")).map(|(named, entries)| {
+            let names: Vec<String> = entries.into_iter().map(|noted| noted.name).collect();
+            format!("{named}: {}", names.join(", "))
+        })
+    };
+    let noted = Some("PreprocessEntriesHere: Bay, Quay".to_owned());
+    assert_eq!(names(syn::parse_quote!(PreprocessEntriesHere)), noted);
+    assert_eq!(
+        names(syn::parse_quote!(Option<PreprocessEntriesHere>)),
+        noted
+    );
+    assert_eq!(names(syn::parse_quote!(Vec<PreprocessEntriesHere>)), None);
+    assert_eq!(names(syn::parse_quote!(PreprocessEntriesNowhere)), None);
+    note_entries("PreprocessEntriesHere", Vec::new());
+    assert_eq!(names(syn::parse_quote!(PreprocessEntriesHere)), None);
+}
+
+/// The enum's own read is handed a unit variant's name where its entry holds `null`, an alias's
+/// entry under its variant's name, and any other entry as it is.
+#[test]
+fn an_entry_is_handed_as_the_enums_own_read_takes_it() {
+    let entry = |name: &str, variant: &str, unit| Entry {
+        name: name.to_owned(),
+        unit,
+        variant: variant.to_owned(),
+    };
+    assert_eq!(
+        entry_payload("hatch", &[entry("Bay", "Bay", false)]),
+        "let hatchPayload: Any = [hatchKey: hatchHeld]"
+    );
+    assert_eq!(
+        entry_payload(
+            "hatch",
+            &[
+                entry("Bay", "Bay", false),
+                entry("Calm", "Calm", true),
+                entry("Still", "Calm", true),
+                entry("Quay", "Bay", false),
+            ]
+        ),
+        "let hatchPayload: Any; switch hatchKey { \
+         case \"Calm\" where hatchHeld is NSNull: hatchPayload = \"Calm\"; \
+         case \"Still\" where hatchHeld is NSNull: hatchPayload = \"Calm\"; \
+         case \"Quay\": hatchPayload = [\"Bay\": hatchHeld]; \
+         default: hatchPayload = [hatchKey: hatchHeld] }"
+    );
 }
