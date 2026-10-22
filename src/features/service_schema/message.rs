@@ -3,7 +3,7 @@
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
-    HttpShape, OperationDef, OperationInputs, ScalarKind, option_inner, scalar_kind,
+    BodyKind, HttpShape, OperationDef, OperationInputs, ScalarKind, option_inner, scalar_kind,
     tuple_elements, vec_inner, written,
 };
 use crate::utils::ts_commented;
@@ -41,7 +41,7 @@ const TAKEN_BY_A_DISPATCHER: [&str; 25] = [
 
 /// The locals and parameters an emitted method writes around an operation's own argument: the
 /// REST client's, the client's over a transport, and the dispatcher's.
-const TAKEN_BY_A_METHOD: [&str; 28] = [
+const TAKEN_BY_A_METHOD: [&str; 29] = [
     "answer",
     "answered",
     "body",
@@ -51,6 +51,7 @@ const TAKEN_BY_A_METHOD: [&str; 28] = [
     "declared",
     "error",
     "headers",
+    "held",
     "impl",
     "operation",
     "outcome",
@@ -214,6 +215,31 @@ pub fn body_type(headers: usize, ty: &Type) -> &Type {
     tuple_elements(ty)
         .and_then(|elements| elements.first())
         .unwrap_or(ty)
+}
+
+/// `text` with `by` more spaces ahead of each of its lines.
+pub fn deeper(text: &str, by: usize) -> String {
+    let margin = " ".repeat(by);
+    text.lines().fold(String::new(), |mut moved, line| {
+        moved.push_str(&margin);
+        moved.push_str(line);
+        moved.push('\n');
+        moved
+    })
+}
+
+/// The type a reply's success carries as its body: [`body_type`], but a pair of the bytes and
+/// their content type for a `body = "bytes"` operation that declares a header beside them, as the
+/// TypeScript dispatcher answers it.
+pub fn success_body(shape: &HttpShape, success: &Type) -> Type {
+    if matches!(shape.body_kind, BodyKind::Bytes)
+        && !shape.header_out.is_empty()
+        && let Some(elements) = tuple_elements(success)
+        && let (Some(bytes), Some(content_type)) = (elements.get(0), elements.get(1))
+    {
+        return syn::parse_quote! { (#bytes, #content_type) };
+    }
+    body_type(shape.header_out.len(), success).clone()
 }
 
 /// The types of a header tuple's trailing header elements, one per declared name, in order.

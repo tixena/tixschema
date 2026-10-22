@@ -1,6 +1,8 @@
 //! The `ws_rpc` TypeScript transport, read off the emitted text.
 
-use super::{MIXED_SERVICE, TS_HEADER_TUPLE_SERVICE, ws_client_of};
+use super::{
+    MIXED_SERVICE, SHELVING_SERVICE, STREAMING_ONLY_SERVICE, TS_HEADER_TUPLE_SERVICE, ws_client_of,
+};
 
 #[test]
 fn a_successful_reply_is_checked_against_the_declared_success() {
@@ -343,4 +345,30 @@ fn table_of(written: &str, named: &str) -> String {
         .map(|(body, _)| body.to_owned());
     assert!(found.is_some(), "no `{named}` table found. Got: {written}");
     found.unwrap()
+}
+
+/// The schema tables name no operation only `http_rest` carries, and so no schema of a streamed
+/// reply.
+#[test]
+fn the_reply_tables_hold_no_operation_only_http_rest_carries() {
+    let written = ws_client_of(SHELVING_SERVICE);
+    assert!(
+        written.contains("  \"tally\": z.number().int().min(0).max(4294967295),\n")
+            && written.contains("  \"tally\": ShelvingError$Schema,\n"),
+        "got: {written}"
+    );
+    assert!(
+        !written.contains("\"fetch\"")
+            && !written.contains("\"shelve\"")
+            && !written.contains("Streamed"),
+        "got: {written}"
+    );
+    let alone = ws_client_of(STREAMING_ONLY_SERVICE);
+    assert!(
+        alone.contains(
+            "const streamingOnlyServiceSuccessSchemas: { readonly [operation: string]: \
+             ZodType<unknown> | undefined } = {};"
+        ) && !alone.contains("Streamed"),
+        "got: {alone}"
+    );
 }

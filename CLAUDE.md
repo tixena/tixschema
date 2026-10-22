@@ -157,6 +157,24 @@ fails.
 7. **Service Schema Accessors** ([features/service_schema.rs](src/features/service_schema.rs))
    - `ts_http_service()`: the TypeScript route table and request dispatcher for `http_rest`, mirroring the Rust `dispatch`/`ROUTES` pair
    - `ts_ws_server()`: the TypeScript connection-accepting WebSocket server for Node, wrapping the existing single-socket dispatcher attachment
+   - `ts_http_client()`'s seam carries `body` as a `Uint8Array`, a JSON body as its UTF-8 text, as
+     the Dart, Swift and Kotlin seams carry bytes; a `bytes` reply is answered as the
+     `Array<number>` its result declares, which the transport-agnostic and `ws_rpc` clients parse
+     from the pair of the bytes and their content type the TypeScript dispatcher answers
+     (`message::success_body`)
+   - An operation only `http_rest` carries, a `body = "stream"` one and one with a `part(...)` file
+     part, is `OperationDef::carried_by_http_alone`, the question the Rust refusal of `ws_rpc` and
+     `amqp_rpc` reads. Every `ws_rpc` and transport-agnostic emitter reads
+     `ServiceDef::enveloped()`, the service without such operations, so no client of those
+     transports has a method, no reply table an entry and no dispatcher a handler for one, and
+     `left_to_http_rest` writes the sentence each states that in. `create{Service}Dispatcher`,
+     `attach{Service}WsDispatcher` and `create{Service}WsServer` take `Omit<{Service}Impl<Ctx>,
+     ...>` (`service::enveloped_impl`), and `create{Service}HttpDispatcher` answers such an
+     operation in a `switch` of its own ahead of that dispatcher (`dispatch_stmt`). The `http_rest`
+     clients keep it. `run_http_alone.rs` compiles the `ws_rpc` client of each language of such a
+     service under its toolchain, and
+     `a_service_with_an_operation_only_http_rest_carries_type_checks_against_the_real_zod` the
+     TypeScript surfaces under `tsc --strict`
    - `dart_definition()`: every Dart type a service publishes -- its messages, fault type, and one sealed `{Service}{Operation}Result` pair per reply operation
    - `swift_http_client()`/`swift_ws_client()`: the Swift `http_rest` and `ws_rpc` clients -- one method per operation answering `Result<Success, Failure>`, a one-way method throwing the shared `{Service}Refusal`
    - `kotlin_http_client()`/`kotlin_ws_client()`: the Kotlin `http_rest` and `ws_rpc` clients -- one method per operation answering the sealed `{Service}{Operation}Result`; the WebSocket one also carries the mini server, `attach{Service}WsDispatcher(frames, handlers, onFault)`, and its `share`
@@ -2917,6 +2935,26 @@ change has to keep.
 - **TypeScript sends what the message's Zod check gives back**, over HTTP, the bus seam and the
   WebSocket transport, which carries the seam's messages: the integer ranges and the `f32` range
   of section 4, and the preprocessors of `NaiveTime` and `NaiveDateTime`, decide what is sent.
+- **A value written as text is written in the form the Rust dispatcher reads**: a path
+  placeholder, a query field, a `header_in` and a text part. `text_types` in
+  `src/features/service_schema.rs` lists the types an operation writes as text, which each client
+  writes the helpers of its forms for. TypeScript writes a header through its own Zod schema
+  (`header_in_build_stmt`, the HTTP client's `header_issues`) and every text through
+  `{prefix}HttpWireText`, a `Date` by `toISOString()`. Dart writes a value that is no `String` or
+  `bool` through its codec (`dart_wire_text`), Swift through the form helpers or
+  `{prefix}WireText` over `{prefix}DatedEncoder` (`swift_wire_text`, `bound_text`), and Kotlin
+  through the serializer it reads the value with (`kotlin_wire_text`, `{prefix}HttpSentText`).
+  Each refuses as it refuses a message: TypeScript and Swift answer the fault, Dart and Kotlin
+  throw. A Swift `Date` is written and read as RFC 3339 text by the client's `DatedEncoder` and
+  `DatedDecoder`, a `ws_rpc` header written through a container so the encoder's strategy applies
+  (`header_in_type`), and a date `header_out` is read as that text by every client. The Rust
+  and TypeScript `http_rest` dispatchers read a path placeholder percent-decoded, as they read a
+  query value (`percent_decoded`, `{prefix}HttpPercentDecoded`), so the text every client
+  percent-encodes there is the text the implementation is handed; an adapter hands
+  `IncomingRequest::new` the path as the request carried it. The Kotlin `ws_rpc` attachment writes
+  a reply's value, its declared error and each `header_out` through the serializer the client
+  reads them with (`read_serializer`), and answers a text of another form as `handler-panic`, as
+  the Dart attachment does.
 - **What no client changes is reported, not changed**: an `i64`, `isize`, `u64` or `usize`
   beyond `2^53 - 1` in size, which a JavaScript number does not hold exactly. Years outside 0000
   to 9999 and leap seconds are out of scope.
@@ -2930,7 +2968,15 @@ change has to keep.
   codec under its toolchain, and `run_node_wire_forms.rs` sends a message through the three
   TypeScript clients. `TEXT_FORMS` in `tests/kotlin_tests/text_forms_models.rs` holds what each
   client reads of a text, which `run_kotlin_text_forms.rs`, `run_dart_text_forms.rs` and
-  `run_swift_text_forms.rs` run.
+  `run_swift_text_forms.rs` run. `tests/service_schema_emitted_client_tests/text_position_rows.rs`
+  hands each value of `WIRE_FORMS` to the `http_rest` client of each language in a path, a query,
+  a header and a part (`run_node_text_positions.rs`, `run_dart_text_positions.rs`,
+  `run_swift_text_positions.rs`, `run_kotlin_text_positions.rs`), and `ENCODED` a slash, a percent
+  sign and a character beyond ASCII in a path, and the Rust dispatcher reads each request sent;
+  `run_kotlin_service_forms.rs` holds the Kotlin attachment's replies of a date and a `char`;
+  `sundial_service.rs` and `run_sundial.rs` send a date message, a `char` and a date header
+  through the `http_rest` and `ws_rpc` clients of each language, which read the date reply and
+  `header_out` the Rust dispatchers write.
 
 ### Generic Types and Zod Factories
 

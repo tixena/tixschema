@@ -113,7 +113,7 @@ function conversationClientServiceHttpFault(kind: ConversationClientServiceFault
   return built as ConversationClientServiceFault;
 }
 
-/** Mirrors the Rust `match_path`: a literal token is stripped as a prefix, a placeholder takes one non-empty segment, and nothing may remain. */
+/** Mirrors the Rust `match_path`: a literal token is stripped as a prefix, a placeholder takes one non-empty segment, percent-decoded, and nothing may remain. */
 function conversationClientServiceHttpMatchPath(template: ReadonlyArray<string | null>, path: string): Array<string> | undefined {
   let rest = path;
   const captured: Array<string> = [];
@@ -125,11 +125,21 @@ function conversationClientServiceHttpMatchPath(template: ReadonlyArray<string |
       const end = rest.indexOf(\"/\") === -1 ? rest.length : rest.indexOf(\"/\");
       const value = rest.slice(0, end);
       if (value === \"\") return undefined;
-      captured.push(value);
+      captured.push(conversationClientServiceHttpPercentDecoded(value));
       rest = rest.slice(end);
     }
   }
   return rest === \"\" ? captured : undefined;
+}
+
+/** Mirrors the Rust `percent_decoded`: each `%XX` escape decoded to the byte it names, anything else kept, and the bytes read as UTF-8, lossily. */
+function conversationClientServiceHttpPercentDecoded(raw: string): string {
+  const bytes: Array<number> = [];
+  for (const piece of raw.split(/(%[0-9A-Fa-f]{2})/)) {
+    if (/^%[0-9A-Fa-f]{2}$/.test(piece)) bytes.push(parseInt(piece.slice(1), 16));
+    else bytes.push(...new TextEncoder().encode(piece));
+  }
+  return new TextDecoder().decode(new Uint8Array(bytes));
 }
 
 /** Mirrors the Rust `parse_query`: split on `&`, split each pair once on `=`, percent-decode both halves. */
@@ -457,22 +467,38 @@ fn a_stream_reply_answers_206_or_the_declared_status_off_the_streamed_records_ow
     );
 }
 
-/// A bound part is neither checked nor read here — see `service_tests`.
+/// The route's arm reads the fields off the parts and hands the parts on. The bound part is read
+/// by the `dispatch` this module answers an operation only `http_rest` carries with, which
+/// refuses a missing required one through the dispatcher's own fault.
 #[test]
 fn a_multipart_operation_reads_its_own_fields_off_parts_and_hands_a_bound_part_to_the_dispatcher() {
     let written = http_service_of(MULTIPART_HTTP_SERVICE);
+    let (dispatched, routed) = written
+        .split_once("  return async (ctx, request) => {")
+        .unwrap_or_default();
     assert!(
-        written.contains("request.parts.find(([name]) => name === \"title\")"),
+        routed.contains("request.parts.find(([name]) => name === \"title\")"),
         "an ordinary Generated field is read off a named part. Got: {written}"
     );
     assert!(
-        !written.contains("\"a required multipart part was not carried\""),
-        "this server keeps no presence check of its own for a `part(...)` binding: the \
-         dispatcher refuses a missing required one. Got: {written}"
+        !routed.contains("attachment"),
+        "the route's arm names no part's own parameter. Got: {written}"
     );
     assert!(
-        !written.contains("attachment"),
-        "the part's own parameter is named nowhere in this module. Got: {written}"
+        dispatched.contains(
+            "  const enveloped = createUploadClientServiceDispatcher(impl);\n  \
+             const dispatch = async (\n"
+        ) && dispatched.contains("      case \"upload-document\": {")
+            && dispatched
+                .contains("const attachment = parts.find(([name]) => name === \"file\")?.[1];")
+            && dispatched.contains("\"a required multipart part was not carried\"")
+            && dispatched.contains(
+                "return { answered: await impl.uploadDocument(ctx, received.data, attachment), \
+                 headers: [] };"
+            )
+            && dispatched.contains("return enveloped(ctx, operation, payload, headers, parts);"),
+        "the operation is answered by this module's own `dispatch`, which reads and checks the \
+         part. Got: {written}"
     );
     assert!(
         written.contains("dispatch(ctx, operation, payload, headers, parts)"),

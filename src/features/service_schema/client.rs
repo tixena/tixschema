@@ -46,12 +46,13 @@
 //! property. The method's own `JSDoc` names it too, `Promise<void>` having no room to say it.
 
 use super::fault;
+use super::left_to_http_rest;
 use super::message;
 use super::result::result_name;
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
-    HttpShape, OperationDef, OperationOutcome, ServiceDef, is_unit_type, option_inner,
+    BodyKind, HttpShape, OperationDef, OperationOutcome, ServiceDef, is_unit_type, option_inner,
 };
 use crate::utils::ts_quoted;
 use core::fmt::Write as _;
@@ -64,6 +65,9 @@ struct Rejoined<'shape> {
     /// The returned envelope around the rejoined tuple: what goes before it, and after it.
     answered: (&'static str, &'static str),
     body: &'static str,
+    /// How many elements of the tuple the body is: two for a `body = "bytes"` reply, its bytes
+    /// and their content type, and one otherwise.
+    body_width: usize,
     ident_prefix: &'static str,
     indent: &'static str,
     names: &'shape [String],
@@ -77,7 +81,13 @@ impl Rejoined<'_> {
     fn stmt(&self, prefix: &str, wire: &str) -> String {
         let margin = self.indent;
         let mut stmt = String::new();
-        let mut joined = vec![self.body.to_owned()];
+        let mut joined = if self.body_width == 1 {
+            vec![self.body.to_owned()]
+        } else {
+            (0..self.body_width)
+                .map(|index| format!("{}[{index}]", self.body))
+                .collect()
+        };
         for (index, (name, ty)) in self.names.iter().zip(&self.types).enumerate() {
             let ident = format!("{}{index}", self.ident_prefix);
             let quoted = ts_quoted(name);
@@ -104,10 +114,12 @@ impl Rejoined<'_> {
     }
 }
 
-pub fn emit(service: &ServiceDef) -> Vec<String> {
+pub fn emit(declared: &ServiceDef) -> Vec<String> {
+    let apart = left_to_http_rest(declared, "method", message::commented);
+    let service = &declared.enveloped();
     let mut published = vec![
         transport_type(&service.ident.to_string()),
-        client_type(service),
+        client_type(service, apart.as_deref()),
     ];
     // The readers land ahead of the factory that calls them, a bundle being read top to bottom.
     published.extend(fault_helpers(service));
@@ -117,8 +129,11 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
 
 /// The client type: one method per operation, named the way a TypeScript caller expects to type it
 /// and answering the operation's own result type.
-fn client_type(service: &ServiceDef) -> String {
+fn client_type(service: &ServiceDef, apart: Option<&str>) -> String {
     let named = service.ident.to_string();
+    let (note, every) = apart.map_or((String::new(), "Every operation"), |said| {
+        (format!(" * {said}\n"), "Every other operation")
+    });
     let methods = service
         .operations
         .iter()
@@ -137,8 +152,9 @@ fn client_type(service: &ServiceDef) -> String {
         "/**\n \
          * A `{named}` caller, over any transport that can send an operation name beside a \
          payload.\n \
-         *\n \
-         * Every operation the service declares has a method here, taking the message and then \
+         *\n\
+         {note} \
+         * {every} the service declares has a method here, taking the message and then \
          one\n \
          * argument per `header_in` binding. A request-and-reply operation answers its own result \
          type;\n \
@@ -311,7 +327,7 @@ fn method(service: &ServiceDef, operation: &OperationDef) -> String {
         .collect::<Vec<_>>()
         .join(", ");
     let checked = validation(service, operation);
-    let (headers_build, headers) = header_in_build_stmt(&shape);
+    let (headers_build, headers) = header_in_build_stmt(&prefix, operation);
     let sending = match &operation.outcome {
         OperationOutcome::OneWay => {
             format!("      await transport.notify({wire}, validated.data, {headers});")
@@ -348,24 +364,44 @@ fn method_params(operation: &OperationDef) -> String {
 }
 
 /// The outgoing header list, one JSON-encoded entry per `header_in` binding, and the expression
-/// the transport call passes: `headers`, or an empty list for an operation binding none. An
-/// optional binding holding `undefined` goes out as `null`, as the Rust client writes a `None`.
-fn header_in_build_stmt(shape: &HttpShape) -> (String, String) {
+/// the transport call passes: `headers`, or an empty list for an operation binding none. Each value
+/// is parsed by its type's Zod schema first and refused as the message is, under the header's
+/// name; an optional binding holding `undefined` goes out as `null`, as the Rust client writes a
+/// `None`.
+fn header_in_build_stmt(prefix: &str, operation: &OperationDef) -> (String, String) {
+    let shape = HttpShape::of(operation);
     if shape.header_in.is_empty() {
         return (String::new(), "[]".to_owned());
     }
+    let wire = ts_quoted(&operation.wire_name);
     let mut stmt = String::from("      const headers: Array<[string, string]> = [];\n");
     for header in &shape.header_in {
         let name = ts_quoted(&header.name);
         let parameter = message::parameter_name(&header.parameter);
+        let schema = get_field_def(&parameter, &header.ty, "").zod_type();
+        let refusal = outbound_refusal(
+            prefix,
+            operation,
+            &wire,
+            &format!(
+                "held.error.issues.map((issue) => ({{ path: [{name}, ...issue.path], message: \
+                 issue.message }}))"
+            ),
+        );
         let value = if option_inner(&header.ty).is_some() {
-            format!("{parameter} ?? null")
+            "held.data ?? null"
         } else {
-            parameter
+            "held.data"
         };
-        let _ = writeln!(
+        let _ = write!(
             stmt,
-            "      headers.push([{name}, JSON.stringify({value})]);"
+            "      {{\n        \
+             const held = {schema}.safeParse({parameter});\n        \
+             if (!held.success) {{\n{}        \
+             }}\n        \
+             headers.push([{name}, JSON.stringify({value})]);\n      \
+             }}\n",
+            message::deeper(&refusal, 2)
         );
     }
     (stmt, "headers".to_owned())
@@ -383,12 +419,12 @@ fn header_tuple_answer(
     success: &Type,
     headers: &str,
 ) -> String {
-    let success_body = message::body_type(shape.header_out.len(), success);
+    let success_body = message::success_body(shape, success);
     let error_body = message::body_type(shape.error_header_out.len(), error);
-    let value_ty = if is_unit_type(success_body) {
+    let value_ty = if is_unit_type(&success_body) {
         "undefined".to_owned()
     } else {
-        get_field_def("value", success_body, "").typescript_typename()
+        get_field_def("value", &success_body, "").typescript_typename()
     };
     let error_ty = get_field_def("error", error_body, "").typescript_typename();
     let mut stmt = format!(
@@ -406,12 +442,12 @@ fn header_tuple_answer(
 /// anything else parsed against the operation's declared success before the `header_out` elements
 /// are rejoined onto it.
 fn success_stmt(prefix: &str, wire: &str, shape: &HttpShape, success: &Type) -> String {
-    let body = message::body_type(shape.header_out.len(), success);
+    let body = message::success_body(shape, success);
     let mut stmt = String::from("      if (answered.ok) {\n");
-    let value = if is_unit_type(body) {
+    let value = if is_unit_type(&body) {
         "undefined"
     } else {
-        let schema = get_field_def("value", body, "").zod_type();
+        let schema = get_field_def("value", &body, "").zod_type();
         let _ = write!(
             stmt,
             "        const parsed = {schema}.safeParse(answered.value);\n        \
@@ -427,9 +463,15 @@ fn success_stmt(prefix: &str, wire: &str, shape: &HttpShape, success: &Type) -> 
         );
         "parsed.data"
     };
+    let body_width = if matches!(shape.body_kind, BodyKind::Bytes) {
+        2
+    } else {
+        1
+    };
     let rejoined = Rejoined {
         answered: ("{ ok: true, value: ", " }"),
         body: value,
+        body_width,
         ident_prefix: "headerOut",
         indent: "        ",
         names: &shape.header_out,
@@ -465,6 +507,7 @@ fn failure_stmt(prefix: &str, wire: &str, shape: &HttpShape, error: &Type) -> St
     let rejoined = Rejoined {
         answered: ("{ ok: false, error: ", " }"),
         body: "declared.data",
+        body_width: 1,
         ident_prefix: "errorHeaderOut",
         indent: "      ",
         names: &shape.error_header_out,
@@ -512,11 +555,22 @@ fn validation(service: &ServiceDef, operation: &OperationDef) -> String {
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
     let wire = ts_quoted(&operation.wire_name);
     let schema = message::schema(operation);
-    let refusal = match &operation.outcome {
-        OperationOutcome::OneWay => format!(
-            "        throw {prefix}Refused({prefix}OutboundFault({wire}, \
-             validated.error.issues));"
-        ),
+    let refusal = outbound_refusal(&prefix, operation, &wire, "validated.error.issues");
+    format!(
+        "      const validated = {schema}.safeParse(req);\n      \
+         if (!validated.success) {{\n{refusal}\n      \
+         }}\n"
+    )
+}
+
+/// What a method answers for a value it refuses before the transport is reached, the issues
+/// `issues` holds folded into one outbound fault: thrown by a one-way method, answered in the
+/// failure arm by a replying one.
+fn outbound_refusal(prefix: &str, operation: &OperationDef, wire: &str, issues: &str) -> String {
+    match &operation.outcome {
+        OperationOutcome::OneWay => {
+            format!("        throw {prefix}Refused({prefix}OutboundFault({wire}, {issues}));")
+        }
         OperationOutcome::Reply {
             error: _error,
             success: _success,
@@ -525,16 +579,11 @@ fn validation(service: &ServiceDef, operation: &OperationDef) -> String {
              ok: false,\n          \
              error: {{\n            \
              isServiceFault: true,\n            \
-             fault: {prefix}OutboundFault({wire}, validated.error.issues),\n          \
+             fault: {prefix}OutboundFault({wire}, {issues}),\n          \
              }},\n        \
              }};"
         ),
-    };
-    format!(
-        "      const validated = {schema}.safeParse(req);\n      \
-         if (!validated.success) {{\n{refusal}\n      \
-         }}\n"
-    )
+    }
 }
 
 /// What a method's `JSDoc` says it throws. Only a one-way method throws at all — a replying one

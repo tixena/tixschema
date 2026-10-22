@@ -81,10 +81,27 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
     published
 }
 
+/// The implementation `create{Service}Dispatcher` and the `ws_rpc` attachment drive:
+/// `{Service}Impl<Ctx>` without the members only `http_rest` carries.
+pub fn enveloped_impl(service: &ServiceDef) -> String {
+    let named = service.ident.to_string();
+    let left_out: Vec<String> = service
+        .operations
+        .iter()
+        .filter(|operation| operation.carried_by_http_alone().is_some())
+        .map(|operation| ts_quoted(&operation.ts_name))
+        .collect();
+    if left_out.is_empty() {
+        format!("{named}Impl<Ctx>")
+    } else {
+        format!("Omit<{named}Impl<Ctx>, {}>", left_out.join(" | "))
+    }
+}
+
 /// One arm of the dispatcher's `switch`: parse the payload, read and decode each bound header and
 /// part, then call. An implementation may assume its message is valid and every bound value
 /// present or `undefined` as declared, because neither ever reaches it otherwise.
-fn arm(service: &ServiceDef, operation: &OperationDef) -> String {
+pub fn arm(service: &ServiceDef, operation: &OperationDef) -> String {
     let wire = ts_quoted(&operation.wire_name);
     let call = &operation.ts_name;
     let received = payload_check(service, operation);
@@ -225,9 +242,11 @@ fn dispatched_type(named: &str) -> String {
 fn dispatcher(service: &ServiceDef) -> String {
     let named = service.ident.to_string();
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
+    let driven = enveloped_impl(service);
     let arms = service
         .operations
         .iter()
+        .filter(|operation| operation.carried_by_http_alone().is_none())
         .map(|operation| arm(service, operation))
         .collect::<Vec<_>>()
         .join("\n");
@@ -245,7 +264,7 @@ fn dispatcher(service: &ServiceDef) -> String {
          reply.\n \
          */\n\
          export function create{named}Dispatcher<Ctx>(\n  \
-         impl: {named}Impl<Ctx>,\n\
+         impl: {driven},\n\
          ): (\n  \
          ctx: Ctx,\n  \
          operation: string,\n  \
@@ -409,14 +428,32 @@ fn interface(service: &ServiceDef) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n");
+    let http_alone: Vec<String> = service
+        .operations
+        .iter()
+        .filter(|operation| operation.carried_by_http_alone().is_some())
+        .map(|operation| format!("`{}`", operation.ts_name))
+        .collect();
+    let (refused_at, apart) = if http_alone.is_empty() {
+        (format!("create{named}Dispatcher"), String::new())
+    } else {
+        (
+            format!("create{named}HttpDispatcher"),
+            format!(
+                "\n *\n * `create{named}Dispatcher` and `attach{named}WsDispatcher` take it without \
+                 {}, which only\n * `http_rest` carries.",
+                http_alone.join(", ")
+            ),
+        )
+    };
     format!(
         "/**\n \
          * What a `{named}` implementation satisfies, in full or not at all.\n \
          *\n \
          * Every operation the service declares is a required member, so an implementation missing \
          one\n \
-         * is refused where it reaches `create{named}Dispatcher`. Adding an operation breaks every\n \
-         * implementation until each one handles it, which is what the interface is for.\n \
+         * is refused where it reaches `{refused_at}`. Adding an operation breaks every\n \
+         * implementation until each one handles it, which is what the interface is for.{apart}\n \
          *\n \
          * The context is the implementation's own type, constructed per message by whatever owns \
          the\n \

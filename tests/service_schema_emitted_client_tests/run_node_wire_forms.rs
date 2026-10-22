@@ -33,8 +33,8 @@ async function through(send) {
 const overHttp = (parcel) => through(async (carry) => {
   const client = createConveyingClientServiceHttpClient({
     async send(request) {
-      carry(JSON.parse(request.body));
-      return { status: 204, headers: [], body: "" };
+      carry(JSON.parse(new TextDecoder().decode(request.body)));
+      return { status: 204, headers: [], body: new Uint8Array() };
     },
   });
   await client.post(parcel);

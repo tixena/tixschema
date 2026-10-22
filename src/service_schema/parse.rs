@@ -83,6 +83,7 @@ const UNMATCHED_CLOSING_BRACE_MESSAGE: &str = concat!(
 pub const DEFAULT_BINDING_ERROR_STATUS: u16 = 422;
 
 /// One service, read once.
+#[derive(Clone)]
 pub struct ServiceDef {
     /// The trait's type parameter, which every operation takes and no message carries.
     pub context_param: Ident,
@@ -94,8 +95,37 @@ pub struct ServiceDef {
     pub operations: Vec<OperationDef>,
 }
 
+impl ServiceDef {
+    /// The service as `ws_rpc` and a transport-agnostic client or dispatcher see it: every
+    /// operation [`OperationDef::carried_by_http_alone`] answers for left out.
+    #[cfg(any(
+        all(feature = "typescript", feature = "zod"),
+        feature = "dart",
+        feature = "kotlin",
+        feature = "swift"
+    ))]
+    pub fn enveloped(&self) -> Self {
+        let mut enveloped = self.clone();
+        enveloped
+            .operations
+            .retain(|operation| operation.carried_by_http_alone().is_none());
+        enveloped
+    }
+}
+
+/// What of an operation only `http_rest` carries: no envelope `ws_rpc` and `amqp_rpc` answer
+/// with holds it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HttpAlone {
+    /// A `part(...)` file part of a `body = "multipart"` operation.
+    FilePart,
+    /// A `body = "stream"` reply.
+    Stream,
+}
+
 /// One message the macro declares, for an operation that named none. Everything the type needs to
 /// be written and to be registered, so neither reader re-reads the operation it came from.
+#[derive(Clone)]
 pub struct GeneratedMessage {
     /// The operation it was declared for: `expire_credit`. Its rustdoc names it.
     pub declared_for: Ident,
@@ -107,6 +137,7 @@ pub struct GeneratedMessage {
 }
 
 /// One operation: a name in three spellings, a message in, and either a reply or nothing.
+#[derive(Clone)]
 pub struct OperationDef {
     /// What `http(...)` declared, or `None` for an operation that named no group.
     pub http: Option<HttpBinding>,
@@ -121,6 +152,17 @@ pub struct OperationDef {
 }
 
 impl OperationDef {
+    /// What of this operation only `http_rest` carries, or `None` where every transport carries
+    /// all of it.
+    pub fn carried_by_http_alone(&self) -> Option<HttpAlone> {
+        let binding = self.http.as_ref()?;
+        match binding.body_kind {
+            BodyKind::Stream => Some(HttpAlone::Stream),
+            BodyKind::Multipart if !binding.multipart_parts.is_empty() => Some(HttpAlone::FilePart),
+            BodyKind::Bytes | BodyKind::Json | BodyKind::Multipart => None,
+        }
+    }
+
     /// What the message declared for this operation is called: `expire_credit` becomes
     /// `ExpireCreditRequest`. Nothing for the operation whose one argument already is the
     /// message, since none is declared for it.
@@ -138,6 +180,7 @@ impl OperationDef {
 
 /// How the incoming message was declared. Which one it is decides who declares the message, never
 /// whether there is one — every operation receives exactly one.
+#[derive(Clone)]
 pub enum OperationInputs {
     /// No arguments after the context. An empty message is declared for it, so an operation that
     /// later gains a field does not change from carrying no payload to carrying one.
@@ -150,6 +193,7 @@ pub enum OperationInputs {
 }
 
 /// What the operation answers with.
+#[derive(Clone)]
 pub enum OperationOutcome {
     /// Marked `#[service_schema_op(one_way)]`: no reply, and therefore no error arm either. An
     /// operation that has to report failure is a request-and-reply operation declared wrong.
@@ -168,7 +212,7 @@ pub enum OperationOutcome {
 /// these — the default (`POST /{wire-name}`, status 200, the whole message as the body) needs
 /// nothing checked against the signature, so a transport computes it on its own rather than
 /// reading it off a materialized value here.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct HttpBinding {
     /// How the body is carried: `Json` (the default), `Bytes` (`body = "bytes"`) or `Stream`
     /// (`body = "stream"`), each checked against the signature by [`build_http_binding`].

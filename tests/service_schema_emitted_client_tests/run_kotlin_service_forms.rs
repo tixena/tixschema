@@ -1,7 +1,8 @@
-//! A service whose reply is a `NaiveDate` and whose request carries a `char` header, run by the
-//! emitted Kotlin clients and dispatcher, compiled with `-Werror`: each reads the bare text through
-//! the serializer of its form, as serde reads it, so a text of another form is refused and answered
-//! as the fault each answers for what it cannot read.
+//! A service whose replies are a `NaiveDate` and a `char` and whose request carries a `char`
+//! header, run by the emitted Kotlin clients and dispatcher, compiled with `-Werror`: each reads
+//! and writes the bare text through the serializer of its form, as serde reads it, so a text of
+//! another form is refused and answered as the fault each answers for what it cannot read or
+//! write.
 
 #![cfg(all(feature = "kotlin", feature = "chrono"))]
 
@@ -58,12 +59,16 @@ class Capturing : DatingClientServiceWsSocket {
     }
 }
 
-object Handlers : DatingClientServiceHandlers {
+class Writing(private val stamped: String, private val lettered: String) : DatingClientServiceHandlers {
+    override suspend fun initial(req: String): DatingClientServiceInitialResult =
+        DatingClientServiceInitialResult.Ok(lettered)
     override suspend fun stamp(req: String): DatingClientServiceStampResult =
-        DatingClientServiceStampResult.Ok("2024-01-05")
+        DatingClientServiceStampResult.Ok(stamped)
     override suspend fun letter(req: String, initial: String): DatingClientServiceLetterResult =
         DatingClientServiceLetterResult.Ok(req + initial)
 }
+
+val Handlers = Writing("2024-01-05", "a")
 
 fun faulted(fault: DatingClientServiceFaultFields): String =
     "fault " + Json.encodeToJsonElement(serializer<DatingClientServiceFaultKind>(), fault.kind).jsonPrimitive.content +
@@ -85,14 +90,17 @@ suspend fun overTheSocket(reply: String): String {
     return answered
 }
 
-suspend fun dispatched(initial: String): String {
+suspend fun dispatched(initial: String): String = replied(
+    Handlers,
+    """{"kind":"request","id":"1","service":"DatingClientService","operation":"letter","payload":"n","headers":{"x-initial":$initial}}""",
+)
+
+suspend fun replied(handlers: DatingClientServiceHandlers, request: String): String {
     val socket = Capturing()
     val transport = DatingClientServiceWsTransport(socket, DatingClientServiceWsOptions(heartbeat = null))
     val faults = mutableListOf<DatingClientServiceFaultFields>()
-    attachDatingClientServiceWsDispatcher(transport.frames, Handlers, onFault = { faults.add(it) })
-    socket.onMessage?.invoke(
-        """{"kind":"request","id":"1","service":"DatingClientService","operation":"letter","payload":"n","headers":{"x-initial":$initial}}""",
-    )
+    attachDatingClientServiceWsDispatcher(transport.frames, handlers, onFault = { faults.add(it) })
+    socket.onMessage?.invoke(request)
     val reply = Json.parseToJsonElement(socket.answered.await()).jsonObject
     transport.close()
     val ok = reply.getValue("ok").jsonPrimitive.boolean
@@ -111,6 +119,14 @@ fun main() = runBlocking {
     println(overTheSocket("\"x\""))
     println(dispatched("\"a\""))
     println(dispatched("\"ab\""))
+    for ((operation, handlers) in listOf(
+        "stamp" to Writing("2024-01-05", "a"),
+        "stamp" to Writing("x", "a"),
+        "initial" to Writing("2024-01-05", "a"),
+        "initial" to Writing("2024-01-05", "ab"),
+    )) {
+        println(replied(handlers, """{"kind":"request","id":"1","service":"DatingClientService","operation":"$operation","payload":"n"}"""))
+    }
 }
 "#;
 
@@ -120,9 +136,13 @@ pub enum DatingError {
     Missing,
 }
 
-/// A service whose reply is a bare date, and whose other operation reads a `char` header.
+/// A service whose replies are a bare `char` and a bare date, and whose other operation reads a
+/// `char` header.
 #[service_schema(transports = [])]
 pub trait DatingClientService<Ctx> {
+    #[service_schema_op(http(method = "POST", path = "/initial"))]
+    async fn initial(&self, ctx: &Ctx, label: String) -> Result<char, DatingError>;
+
     #[service_schema_op(http(method = "POST", path = "/letter", header_in("x-initial" = initial)))]
     async fn letter(&self, ctx: &Ctx, label: String, initial: char) -> Result<String, DatingError>;
 
@@ -134,6 +154,11 @@ pub trait DatingClientService<Ctx> {
 pub struct DatingBackEnd;
 
 impl DatingClientService<()> for DatingBackEnd {
+    async fn initial(&self, _ctx: &(), label: String) -> Result<char, DatingError> {
+        ready(()).await;
+        label.chars().next().ok_or(DatingError::Missing)
+    }
+
     async fn letter(&self, _ctx: &(), label: String, initial: char) -> Result<String, DatingError> {
         ready(()).await;
         Ok(format!("{label}{initial}"))
@@ -174,11 +199,19 @@ fn the_backend_writes_what_the_kotlin_clients_read() {
         Some(Ok("na".to_owned())),
         "the backend no longer answers the letter the dispatcher's handler answers"
     );
+    let initialled = poll_once(DatingBackEnd.initial(&(), "north".to_owned()));
+    assert_eq!(
+        initialled.map(|answered| serde_json::to_string(&answered.unwrap()).unwrap()),
+        Some("\"n\"".to_owned()),
+        "the backend no longer writes the character the dispatcher's handler answers"
+    );
 }
 
 /// The Kotlin HTTP client and WebSocket client read a reply of a date through the serializer of its
 /// form, and answer their fault for a text of another, and the dispatcher reads a header of a
 /// `char` so, and answers a fault for a text of more than one character, as serde refuses each.
+/// The dispatcher writes a reply of a date and of a `char` through the same serializers, and
+/// answers a handler's text of another form as a `handler-panic` fault, as the Dart one does.
 #[test]
 fn a_bare_char_or_date_message_is_read_in_its_one_form_by_the_kotlin_clients() {
     assert_eq!(
@@ -217,7 +250,13 @@ fn a_bare_char_or_date_message_is_read_in_its_one_form_by_the_kotlin_clients() {
          found \"x\"\n\
          read na\n\
          fault failed-validation at x-initial: kotlinx.serialization.SerializationException: \
-         expected a character, found \"ab\" (1 to onFault)\n",
+         expected a character, found \"ab\" (1 to onFault)\n\
+         read 2024-01-05\n\
+         fault handler-panic: kotlinx.serialization.SerializationException: expected a date, \
+         found \"x\" (1 to onFault)\n\
+         read a\n\
+         fault handler-panic: kotlinx.serialization.SerializationException: expected a \
+         character, found \"ab\" (1 to onFault)\n",
         "the Kotlin clients no longer read each message as above"
     );
 }

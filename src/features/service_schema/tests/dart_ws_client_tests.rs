@@ -7,7 +7,7 @@
 use super::{
     DART_HEADER_TUPLE_SERVICE, DART_PRIMITIVE_SERVICE, DART_UNIT_SUCCESS_HTTP_SERVICE,
     DART_WS_SERVICE, MIXED_SERVICE, RESERVED_WORD_SERVICE, SHADOWED_LOCAL_SERVICE,
-    dart_ws_client_of,
+    SHELVING_SERVICE, STREAMING_ONLY_SERVICE, dart_ws_client_of,
 };
 
 /// The body of one method or dispatch arm, from its own start marker through the closing brace of
@@ -706,4 +706,59 @@ fn an_argument_named_after_a_local_of_the_method_is_moved_off_it() {
     ] {
         assert!(written.contains(moved), "no `{moved}` in: {written}");
     }
+}
+
+/// Only `http_rest` carries a streamed reply and a file part: neither the client nor the
+/// attachment has a member for either, and each says so.
+#[test]
+fn neither_the_client_nor_the_attachment_holds_an_operation_only_http_rest_carries() {
+    let written = dart_ws_client_of(SHELVING_SERVICE);
+    assert!(
+        written.contains(
+            "/// A `ShelvingClientService` caller over `ws_rpc`.\n\
+             /// `fetch`, `shelve` have no method here: only `http_rest` carries them.\n\
+             class ShelvingClientServiceWsClient {"
+        ) && written.contains(
+            "/// `fetch`, `shelve` have no handler here: only `http_rest` carries them.\n\
+             class ShelvingClientServiceHandlers<Ctx> {\n  \
+             ShelvingClientServiceHandlers({\n    \
+             required this.tally,\n  \
+             });"
+        ),
+        "got: {written}"
+    );
+    assert!(
+        !written.contains("'fetch'")
+            && !written.contains("'shelve'")
+            && !written.contains("Streamed"),
+        "got: {written}"
+    );
+}
+
+/// A service of no operation `ws_rpc` carries has a client of no method and an attachment of no
+/// handler, which answers every frame as an unknown operation.
+#[test]
+fn a_service_of_no_operation_ws_rpc_carries_has_a_client_of_no_method() {
+    let written = dart_ws_client_of(STREAMING_ONLY_SERVICE);
+    assert!(
+        written.contains(
+            "/// `fetch` has no method here: only `http_rest` carries it.\n\
+             class StreamingOnlyServiceWsClient {\n  \
+             StreamingOnlyServiceWsClient(StreamingOnlyServiceWsTransport transport);\n\
+             }"
+        ) && written.contains(
+            "/// `fetch` has no handler here: only `http_rest` carries it.\n\
+             class StreamingOnlyServiceHandlers<Ctx> {\n  \
+             StreamingOnlyServiceHandlers();\n\
+             }"
+        ),
+        "got: {written}"
+    );
+    assert!(
+        written.contains("_streamingOnlyServiceWsUnknownOperation(")
+            && !written.contains("_streamingOnlyServiceWsTransportFailure")
+            && !written.contains("_streamingOnlyServiceWsFailedValidation")
+            && !written.contains("_streamingOnlyServiceWsHandlerPanic"),
+        "only the fault the attachment answers with is written. Got: {written}"
+    );
 }

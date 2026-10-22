@@ -9,16 +9,18 @@ use super::{
 };
 #[cfg(feature = "zod")]
 use super::{
-    HeaderProbeDocument, HeaderProbeError, HeaderProbeServiceSchema, LapsedProbeError,
-    LapsedProbeServiceSchema, QuotedFilingProbeServiceSchema, QuotedProbeServiceSchema,
-    ReservedProbeServiceSchema, SpooledProbeServiceSchema, UnitPingError, UnitPingRequest,
-    UnitPingServiceSchema,
+    BytesProbeServiceSchema, HeaderProbeDocument, HeaderProbeError, HeaderProbeServiceSchema,
+    LapsedProbeError, LapsedProbeServiceSchema, QuotedFilingProbeServiceSchema,
+    QuotedProbeServiceSchema, ReservedProbeServiceSchema, SpooledProbeServiceSchema,
+    StreamedProbeServiceSchema, UnitPingError, UnitPingRequest, UnitPingServiceSchema,
 };
 use std::env;
 use std::env::temp_dir;
 use std::fs;
 use std::io::Write as _;
 use std::io::stderr;
+#[cfg(feature = "zod")]
+use std::os::unix::fs::symlink;
 use std::path::PathBuf;
 use std::process::{Command, id};
 use std::sync::Once;
@@ -85,6 +87,148 @@ declare const z: {
   union(arms: ReadonlyArray<ZodBuilder>): ZodBuilder;
 };
 ";
+
+/// Names the directory whose `node_modules` holds the real `zod`, which a check of what a client
+/// reads compiles against: the surface above types every parse as `never`, which any value fills.
+#[cfg(feature = "zod")]
+const MODULES_VAR: &str = "TIXSCHEMA_NODE_MODULES";
+
+/// The project a check against the real `zod` compiles, its modules resolving `zod` through the
+/// `node_modules` beside them.
+#[cfg(feature = "zod")]
+const ZOD_PROJECT: &str = r#"{
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"]
+  },
+  "files": ["bundle.ts", "caller.ts"]
+}
+"#;
+
+/// A caller reading each `bytes` reply of `BytesProbeService` off every TypeScript client as its
+/// result declares it: the bytes as an `Array<number>`, their content type, then the header.
+#[cfg(feature = "zod")]
+const BYTES_CALLER: &str = r#"import {
+  createBytesProbeServiceClient,
+  createBytesProbeServiceHttpClient,
+  createBytesProbeServiceWsTransport,
+  type BytesProbeServiceHttpTransport,
+  type BytesProbeServiceTransport,
+  type BytesProbeServiceWsSocket,
+} from "./bundle.js";
+
+declare const http: BytesProbeServiceHttpTransport;
+declare const bus: BytesProbeServiceTransport;
+declare const socket: BytesProbeServiceWsSocket;
+
+export async function read(): Promise<string> {
+  const said: Array<string> = [];
+  const clients = [
+    createBytesProbeServiceHttpClient(http),
+    createBytesProbeServiceClient(bus),
+    createBytesProbeServiceClient(createBytesProbeServiceWsTransport(socket)),
+  ];
+  for (const client of clients) {
+    const spooled = await client.spool("a");
+    if (spooled.ok) {
+      const [bytes, contentType, id]: [Array<number>, string, string] = spooled.value;
+      said.push(`${bytes.length}:${contentType}:${id}`);
+    } else if ("isServiceFault" in spooled.error) {
+      said.push(spooled.error.fault.kind);
+    } else {
+      const [declared, reason] = spooled.error;
+      said.push(`${declared.errorCode}:${reason ?? ""}`);
+    }
+    const dumped = await client.dump("a");
+    if (dumped.ok) {
+      const [bytes, contentType]: [Array<number>, string] = dumped.value;
+      said.push(`${bytes.length}:${contentType}`);
+    }
+  }
+  return said.join(",");
+}
+"#;
+
+/// A caller of every TypeScript surface of `SpooledProbeService` and `StreamedProbeService`: the
+/// `http_rest` client and dispatcher hold the streamed operation, and the transport-agnostic and
+/// `ws_rpc` ones only the operations their envelope carries.
+#[cfg(feature = "zod")]
+const HTTP_ALONE_CALLER: &str = r#"import {
+  attachSpooledProbeServiceWsDispatcher,
+  attachStreamedProbeServiceWsDispatcher,
+  createSpooledProbeServiceClient,
+  createSpooledProbeServiceDispatcher,
+  createSpooledProbeServiceHttpClient,
+  createSpooledProbeServiceHttpDispatcher,
+  createSpooledProbeServiceWsTransport,
+  createStreamedProbeServiceClient,
+  createStreamedProbeServiceHttpClient,
+  createStreamedProbeServiceHttpDispatcher,
+  createStreamedProbeServiceWsTransport,
+  type SpooledProbeServiceHttpTransport,
+  type SpooledProbeServiceSpoolOutcome,
+  type SpooledProbeServiceStreamOutcome,
+  type SpooledProbeServiceWsSocket,
+  type StreamedProbeServiceHttpTransport,
+  type StreamedProbeServiceStreamOutcome,
+  type StreamedProbeServiceWsSocket,
+} from "./bundle.js";
+
+declare const http: SpooledProbeServiceHttpTransport;
+declare const socket: SpooledProbeServiceWsSocket;
+declare const streamedHttp: StreamedProbeServiceHttpTransport;
+declare const streamedSocket: StreamedProbeServiceWsSocket;
+declare const spooled: SpooledProbeServiceSpoolOutcome;
+declare const streamed: SpooledProbeServiceStreamOutcome;
+declare const alone: StreamedProbeServiceStreamOutcome;
+
+const spool = async (_ctx: null, _req: string) => spooled;
+export const dispatch = createSpooledProbeServiceDispatcher<null>({ spool });
+export const detach = attachSpooledProbeServiceWsDispatcher<null>(socket, null, { spool }, () => {});
+export const served = createSpooledProbeServiceHttpDispatcher<null>({ spool, stream: async () => streamed });
+export const servedAlone = createStreamedProbeServiceHttpDispatcher<null>({ stream: async () => alone });
+export const detachAlone = attachStreamedProbeServiceWsDispatcher<null>(streamedSocket, null, {}, () => {});
+
+export async function read(): Promise<string> {
+  const said: Array<string> = [];
+  const enveloped = createSpooledProbeServiceClient(createSpooledProbeServiceWsTransport(socket));
+  const spooledReply = await enveloped.spool("a");
+  said.push(spooledReply.ok ? "spooled" : "refused");
+  const streamedReply = await createSpooledProbeServiceHttpClient(http).stream("a");
+  said.push(streamedReply.ok ? "streamed" : "refused");
+  const aloneReply = await createStreamedProbeServiceHttpClient(streamedHttp).stream("a");
+  said.push(aloneReply.ok ? "streamed" : "refused");
+  const empty = createStreamedProbeServiceClient(createStreamedProbeServiceWsTransport(streamedSocket));
+  said.push(String(Object.keys(empty).length));
+  return said.join(",");
+}
+"#;
+
+/// A caller asking the transport-agnostic client and dispatcher of `SpooledProbeService` for the
+/// streamed operation, which only `http_rest` carries.
+#[cfg(feature = "zod")]
+const HTTP_ALONE_MISUSE: &str = r#"import {
+  createSpooledProbeServiceClient,
+  createSpooledProbeServiceDispatcher,
+  type SpooledProbeServiceSpoolOutcome,
+  type SpooledProbeServiceStreamOutcome,
+  type SpooledProbeServiceTransport,
+} from "./bundle.js";
+
+declare const bus: SpooledProbeServiceTransport;
+declare const spooled: SpooledProbeServiceSpoolOutcome;
+declare const streamed: SpooledProbeServiceStreamOutcome;
+
+export const called = createSpooledProbeServiceClient(bus).stream("a");
+export const dispatch = createSpooledProbeServiceDispatcher<null>({
+  spool: async () => spooled,
+  stream: async () => streamed,
+});
+"#;
 
 /// Everything above the implementation's members.
 #[cfg(feature = "zod")]
@@ -353,7 +497,7 @@ const HEADER_HTTP_CALLER: &str = r#"import {
 const transport: HeaderProbeServiceHttpTransport = {
   async send(request) {
     void request;
-    return { status: 200, headers: [], body: "{}" };
+    return { status: 200, headers: [], body: new TextEncoder().encode("{}") };
   },
 };
 
@@ -442,6 +586,10 @@ const UNIT_SUCCESS_MEMBER_OK_WITH_ARRAY: &str = "  async ping(ctx, req): \
      void `${ctx.loggerName}:${req.probe}`;\n    \
      return { ok: true, value: [] };\n  \
      },\n";
+
+/// Said once per test binary when no `zod` is reachable.
+#[cfg(feature = "zod")]
+static ZOD_STOOD_DOWN: Once = Once::new();
 
 /// The implementation fixture, with every named operation but the ones listed as left out.
 #[cfg(feature = "zod")]
@@ -616,6 +764,108 @@ fn quoted_probe_bundle() -> String {
         QuotedFilingProbeServiceSchema::ts_http_service(),
     ]
     .join("\n\n")
+}
+
+/// Every surface of `BytesProbeService`, beside the real `zod`.
+#[cfg(feature = "zod")]
+fn bytes_probe_bundle() -> String {
+    [
+        "import { z, type ZodType } from \"zod\";".to_owned(),
+        HeaderProbeError::ts_definition(),
+        HeaderProbeError::zod_schema(),
+        BytesProbeServiceSchema::ts_definition(),
+        BytesProbeServiceSchema::ts_client(),
+        BytesProbeServiceSchema::ts_service(),
+        BytesProbeServiceSchema::ts_ws_client(),
+        BytesProbeServiceSchema::ts_ws_service(),
+        BytesProbeServiceSchema::ts_http_client(),
+        BytesProbeServiceSchema::ts_http_service(),
+    ]
+    .join("\n\n")
+}
+
+/// Every surface of `SpooledProbeService` and of `StreamedProbeService`, beside the real `zod`.
+#[cfg(feature = "zod")]
+fn http_alone_bundle() -> String {
+    [
+        "import { z, type ZodType } from \"zod\";".to_owned(),
+        HeaderProbeError::ts_definition(),
+        HeaderProbeError::zod_schema(),
+        SpooledProbeServiceSchema::ts_definition(),
+        SpooledProbeServiceSchema::ts_client(),
+        SpooledProbeServiceSchema::ts_service(),
+        SpooledProbeServiceSchema::ts_ws_client(),
+        SpooledProbeServiceSchema::ts_ws_service(),
+        SpooledProbeServiceSchema::ts_http_client(),
+        SpooledProbeServiceSchema::ts_http_service(),
+        StreamedProbeServiceSchema::ts_definition(),
+        StreamedProbeServiceSchema::ts_client(),
+        StreamedProbeServiceSchema::ts_service(),
+        StreamedProbeServiceSchema::ts_ws_client(),
+        StreamedProbeServiceSchema::ts_ws_service(),
+        StreamedProbeServiceSchema::ts_http_client(),
+        StreamedProbeServiceSchema::ts_http_service(),
+    ]
+    .join("\n\n")
+}
+
+/// [`compiled`], for `files` beside the real `zod` and under [`ZOD_PROJECT`], or `None` where
+/// [`MODULES_VAR`] names no directory: a check of what a client reads is no check against the
+/// surface above.
+#[cfg(feature = "zod")]
+fn compiled_beside_zod(named: &str, files: &[(&str, String)]) -> Option<(bool, String)> {
+    let Some(modules) = env::var(MODULES_VAR)
+        .ok()
+        .map(|named_at| PathBuf::from(named_at).join("node_modules"))
+    else {
+        ZOD_STOOD_DOWN.call_once(|| {
+            let notice = format!(
+                "\ntixschema: no `zod` is reachable, so the clients of a `bytes` reply were NOT \
+                 type-checked against it.\n  Name in {MODULES_VAR} a directory whose \
+                 `node_modules` holds `zod`, and run `just typecheck-ts`.\n\n"
+            );
+            drop(stderr().write_all(notice.as_bytes()));
+        });
+        return None;
+    };
+    assert!(
+        modules.join("zod").is_dir(),
+        "{MODULES_VAR} names a directory whose `node_modules` holds no `zod`: {}",
+        modules.display()
+    );
+    let named_compiler = env::var(COMPILER_VAR).ok();
+    let compiler = named_compiler.clone().unwrap_or_else(|| "tsc".to_owned());
+    let at = workspace(named);
+    symlink(&modules, at.join("node_modules")).unwrap();
+    fs::write(
+        at.join("package.json"),
+        "{ \"type\": \"module\", \"private\": true }\n",
+    )
+    .unwrap();
+    fs::write(at.join("tsconfig.json"), ZOD_PROJECT).unwrap();
+    for (called, written) in files {
+        fs::write(at.join(called), written).unwrap();
+    }
+    let run = Command::new(&compiler)
+        .args(["--pretty", "false", "-p", "tsconfig.json"])
+        .current_dir(&at)
+        .output();
+    fs::remove_dir_all(&at).unwrap();
+    let Ok(reported) = run else {
+        assert!(
+            named_compiler.is_none(),
+            "{COMPILER_VAR} names `{compiler}`, and no compiler could be started there: {}",
+            run.unwrap_err()
+        );
+        stand_down();
+        return None;
+    };
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&reported.stdout),
+        String::from_utf8_lossy(&reported.stderr)
+    );
+    Some((reported.status.success(), said))
 }
 
 /// Said on the process's own stderr rather than through `eprintln!`, which `cargo test` captures
@@ -1045,4 +1295,73 @@ fn a_declared_error_of_one_status_type_checks_at_the_http_dispatcher() {
             "a declared error of one status does not compile at the http dispatcher:\n{said}"
         );
     }
+}
+
+/// Every TypeScript client of a `bytes` operation compiles under `--strict` against the real
+/// `zod`, and answers the bytes as the `Array<number>` its result declares: the `http_rest`
+/// client reads them off the seam's binary body, and the transport-agnostic client, over a bus
+/// and over `ws_rpc`, parses the pair of the bytes and their content type the dispatcher answers.
+#[cfg(feature = "zod")]
+#[test]
+fn every_client_of_a_bytes_operation_type_checks_against_the_real_zod() {
+    let files = [
+        ("bundle.ts", bytes_probe_bundle()),
+        ("caller.ts", BYTES_CALLER.to_owned()),
+    ];
+    let Some((accepted, said)) = compiled_beside_zod("bytes-clients", &files) else {
+        return;
+    };
+    assert!(
+        accepted,
+        "a client of a `bytes` operation does not compile against the real `zod`:\n{said}"
+    );
+}
+
+/// Every TypeScript surface of a service with an operation only `http_rest` carries compiles
+/// under `--strict` against the real `zod`, a service of no other operation among them: the
+/// `http_rest` client and dispatcher hold the operation, and the transport-agnostic and `ws_rpc`
+/// client and dispatcher name neither it nor `StreamedAnswer`, so a caller asking them for it is
+/// refused.
+#[cfg(feature = "zod")]
+#[test]
+fn a_service_with_an_operation_only_http_rest_carries_type_checks_against_the_real_zod() {
+    for enveloped in [
+        SpooledProbeServiceSchema::ts_client(),
+        SpooledProbeServiceSchema::ts_ws_client(),
+        StreamedProbeServiceSchema::ts_client(),
+        StreamedProbeServiceSchema::ts_ws_client(),
+    ] {
+        assert!(
+            !enveloped.contains("StreamedAnswer") && !enveloped.contains("stream("),
+            "a `ws_rpc` or transport-agnostic client names the streamed operation:\n{enveloped}"
+        );
+    }
+    let files = [
+        ("bundle.ts", http_alone_bundle()),
+        ("caller.ts", HTTP_ALONE_CALLER.to_owned()),
+    ];
+    let Some((accepted, said)) = compiled_beside_zod("http-alone", &files) else {
+        return;
+    };
+    assert!(
+        accepted,
+        "a service with an operation only `http_rest` carries does not compile:\n{said}"
+    );
+    let misused = [
+        ("bundle.ts", http_alone_bundle()),
+        ("caller.ts", HTTP_ALONE_MISUSE.to_owned()),
+    ];
+    let Some((compiled, told)) = compiled_beside_zod("http-alone-misused", &misused) else {
+        return;
+    };
+    assert!(
+        !compiled
+            && told.contains(
+                "error TS2339: Property 'stream' does not exist on type \
+                 'SpooledProbeServiceClient'."
+            )
+            && told.contains("'stream' does not exist in type"),
+        "a caller asking the transport-agnostic client or dispatcher for the streamed operation \
+         is not refused:\n{told}"
+    );
 }

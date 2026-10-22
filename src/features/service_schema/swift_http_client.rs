@@ -1,7 +1,8 @@
 //! The Swift `http_rest` client: one transport seam the app implements, one `async` method per
 //! operation, mirroring the Dart client's request grammar statement for statement.
 
-use crate::features::swift::{swift_field_member, swift_member, swift_quoted};
+use crate::features::swift::{forms, swift_field_member, swift_member, swift_quoted};
+use crate::features::text_forms::TextForm;
 use crate::field_type::{FieldDefType, get_field_def};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
@@ -14,12 +15,12 @@ use crate::service_schema::support::fault_fields_typescript_name;
 use core::fmt::Write as _;
 use syn::{Ident, Type};
 
-use super::on_one_line;
 use super::swift_type::swift_typename_of;
+use super::{on_one_line, text_types};
 
 /// The locals and parameters an emitted method writes around an operation's own argument: the
 /// REST client's and the `ws_rpc` client's.
-const TAKEN_BY_A_METHOD: [&str; 23] = [
+const TAKEN_BY_A_METHOD: [&str; 24] = [
     "answer",
     "body",
     "contentRange",
@@ -38,6 +39,7 @@ const TAKEN_BY_A_METHOD: [&str; 23] = [
     "probed",
     "query",
     "raw",
+    "rendered",
     "req",
     "response",
     "status",
@@ -49,6 +51,13 @@ const TAKEN_BY_A_METHOD: [&str; 23] = [
 /// and the `contentType`, paired with the body as an `AsyncThrowingStream<Data, Error>`.
 const STREAMED_ANSWER_SWIFT_TYPE: &str =
     "(contentRange: String?, contentType: String, body: AsyncThrowingStream<Data, Error>)";
+
+/// One text a statement writes: the expression of its value, and whether that expression throws,
+/// the refusal of a value no form serde reads holds.
+struct SwiftText {
+    expr: String,
+    throws: bool,
+}
 
 pub fn emit(service: &ServiceDef) -> Vec<String> {
     let named = service.ident.to_string();
@@ -209,12 +218,18 @@ fn client_struct(
         .map(|operation| method(named, fn_prefix, operation, has_multipart))
         .collect::<Vec<_>>()
         .join("\n\n");
+    let forms = forms::helpers(&text_forms(service));
+    let texts = if forms.is_empty() {
+        String::new()
+    } else {
+        format!("  {}\n\n", forms.trim_end())
+    };
     format!(
         "/// A `{named}` caller over `http_rest`.\n\
          public struct {named}HttpClient: Sendable {{\n  \
          private let transport: any {named}HttpTransport\n\n  \
          public init(transport: any {named}HttpTransport) {{ self.transport = transport }}\n\n\
-         {methods}\n\
+         {texts}{methods}\n\
          }}"
     )
 }
@@ -343,11 +358,13 @@ fn method(named: &str, fn_prefix: &str, operation: &OperationDef, has_multipart:
     let call = swift_call(operation);
     let params = method_params(operation, &shape);
     let returns = return_type(named, operation);
-    let path_build = path_build_stmt(fn_prefix, operation, &shape);
-    let query_build = query_build_stmt(operation, &shape);
-    let headers_build = header_in_build_stmt(named, fn_prefix, operation, &shape);
-    let body_build = body_build_stmt(named, fn_prefix, wire, &operation.outcome, &shape);
-    let parts_build = multipart_parts_build_stmt(operation, &shape, has_multipart);
+    let recover = encode_failure_recovery(named, fn_prefix, wire, &operation.outcome);
+    let path_build = path_build_stmt(fn_prefix, &recover, operation, &shape);
+    let query_build = query_build_stmt(fn_prefix, &recover, operation, &shape);
+    let headers_build = header_in_build_stmt(named, fn_prefix, &recover, operation, &shape);
+    let body_build = body_build_stmt(named, fn_prefix, wire, operation, &shape);
+    let parts_build =
+        multipart_parts_build_stmt(fn_prefix, &recover, operation, &shape, has_multipart);
     let method_str = shape.method.name();
     let (send, decode) = match &operation.outcome {
         OperationOutcome::OneWay => (
@@ -382,28 +399,56 @@ fn placeholder_value_swift_expr(
     operation: &OperationDef,
     shape: &HttpShape,
     placeholder: &str,
-) -> String {
+) -> SwiftText {
     let accessor = swift_field_member(placeholder);
+    let interpolated = || SwiftText {
+        expr: format!("\"\\(req.{accessor})\""),
+        throws: false,
+    };
     match &operation.inputs {
-        OperationInputs::Empty => format!("\"\\(req.{accessor})\""),
+        OperationInputs::Empty => interpolated(),
         OperationInputs::Generated(fields) => fields
             .iter()
             .find(|(field, _)| written(field) == placeholder)
-            .map_or_else(
-                || format!("\"\\(req.{accessor})\""),
-                |(_, ty)| swift_wire_text(ty, &format!("req.{accessor}")),
-            ),
+            .map_or_else(interpolated, |(_, ty)| {
+                swift_wire_text(fn_prefix, ty, &format!("req.{accessor}"))
+            }),
         OperationInputs::Named(declared) => {
             if shape.placeholder_names().len() == 1 && is_scalar_named_type(declared) {
-                swift_wire_text(declared, "req")
+                swift_wire_text(fn_prefix, declared, "req")
             } else {
-                format!("{fn_prefix}WireText(req.{accessor})")
+                SwiftText {
+                    expr: format!("try {fn_prefix}WireText(req.{accessor})"),
+                    throws: true,
+                }
             }
         }
     }
 }
 
-fn path_build_stmt(fn_prefix: &str, operation: &OperationDef, shape: &HttpShape) -> String {
+/// The statements at `margin` that bind `rendered` to `text`, answering `recover` where its
+/// expression throws.
+fn bound_text(text: &SwiftText, recover: &str, margin: &str) -> String {
+    if !text.throws {
+        return format!("{margin}let rendered = {}\n", text.expr);
+    }
+    format!(
+        "{margin}let rendered: String\n\
+         {margin}do {{\n\
+         {margin}  rendered = {}\n\
+         {margin}}} catch {{\n\
+         {margin}  {recover}\n\
+         {margin}}}\n",
+        text.expr
+    )
+}
+
+fn path_build_stmt(
+    fn_prefix: &str,
+    recover: &str,
+    operation: &OperationDef,
+    shape: &HttpShape,
+) -> String {
     let mut stmt = String::from("    var path = \"\"\n");
     for segment in &shape.path {
         match segment {
@@ -412,14 +457,27 @@ fn path_build_stmt(fn_prefix: &str, operation: &OperationDef, shape: &HttpShape)
             }
             PathSegment::Placeholder(name) => {
                 let value = placeholder_value_swift_expr(fn_prefix, operation, shape, name);
-                let _ = writeln!(stmt, "    path += {fn_prefix}PercentEncode({value})");
+                if value.throws {
+                    let _ = write!(
+                        stmt,
+                        "    do {{\n{}      path += {fn_prefix}PercentEncode(rendered)\n    }}\n",
+                        bound_text(&value, recover, "      ")
+                    );
+                } else {
+                    let _ = writeln!(stmt, "    path += {fn_prefix}PercentEncode({})", value.expr);
+                }
             }
         }
     }
     stmt
 }
 
-fn query_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
+fn query_build_stmt(
+    fn_prefix: &str,
+    recover: &str,
+    operation: &OperationDef,
+    shape: &HttpShape,
+) -> String {
     if shape.method.carries_a_body() {
         return "    let query: [(String, String)] = []\n".to_owned();
     }
@@ -440,12 +498,13 @@ fn query_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
         let key = wire_key(field);
         let accessor = swift_field_member(&field_name);
         let inner = option_inner(ty).unwrap_or(ty);
-        let rendered = swift_wire_text(inner, "value");
+        let rendered = swift_wire_text(fn_prefix, inner, "value");
         let _ = write!(
             pushes,
-            "    if let value = req.{accessor} {{\n      \
-             query.append((\"{key}\", {rendered}))\n    \
-             }}\n"
+            "    if let value = req.{accessor} {{\n{}      \
+             query.append((\"{key}\", rendered))\n    \
+             }}\n",
+            bound_text(&rendered, recover, "      ")
         );
     }
     if pushes.is_empty() {
@@ -459,6 +518,7 @@ fn query_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
 fn header_in_build_stmt(
     named: &str,
     fn_prefix: &str,
+    recover: &str,
     operation: &OperationDef,
     shape: &HttpShape,
 ) -> String {
@@ -475,27 +535,22 @@ fn header_in_build_stmt(
             swift_quoted(&operation.wire_name),
         );
         let refusal = outbound_refusal_stmt(named, operation, &fault_expr);
-        // `text` is substituted twice (check, then append) rather than bound to a `let` first: a
-        // bare `{ ... }` block is not a statement Swift accepts outside a closure.
-        if let Some(inner) = option_inner(&header.ty) {
-            let text = swift_wire_text(inner, &parameter);
-            let _ = writeln!(
-                stmt,
-                "    if let {parameter} = {parameter} {{\n      \
-                 if !{fn_prefix}LegalHeaderValue({text}) {{\n        {refusal}\n      \
-                 }}\n      \
-                 headers.append(({name}, {text}))\n    \
-                 }}"
-            );
+        let inner = option_inner(&header.ty);
+        let text = swift_wire_text(fn_prefix, inner.unwrap_or(&header.ty), &parameter);
+        let opened = if inner.is_some() {
+            format!("if let {parameter} = {parameter}")
         } else {
-            let text = swift_wire_text(&header.ty, &parameter);
-            let _ = writeln!(
-                stmt,
-                "    if !{fn_prefix}LegalHeaderValue({text}) {{\n      {refusal}\n    \
-                 }}\n    \
-                 headers.append(({name}, {text}))"
-            );
-        }
+            "do".to_owned()
+        };
+        let _ = writeln!(
+            stmt,
+            "    {opened} {{\n{}      \
+             if !{fn_prefix}LegalHeaderValue(rendered) {{\n        {refusal}\n      \
+             }}\n      \
+             headers.append(({name}, rendered))\n    \
+             }}",
+            bound_text(&text, recover, "      ")
+        );
     }
     stmt
 }
@@ -516,38 +571,64 @@ fn body_build_stmt(
     named: &str,
     fn_prefix: &str,
     wire: &str,
-    outcome: &OperationOutcome,
+    operation: &OperationDef,
     shape: &HttpShape,
 ) -> String {
-    match shape.body_kind {
-        BodyKind::Multipart => "    let body = Data()\n".to_owned(),
-        BodyKind::Bytes | BodyKind::Json | BodyKind::Stream => {
-            if shape.method.carries_a_body() {
-                json_encode_body_stmt(named, fn_prefix, wire, outcome)
-            } else {
-                "    let body = Data()\n".to_owned()
-            }
-        }
+    if encodes_a_body(shape) {
+        json_encode_body_stmt(named, fn_prefix, wire, operation)
+    } else {
+        "    let body = Data()\n".to_owned()
     }
 }
 
+/// Whether a method writes its message as a JSON body: every method that carries a body, but a
+/// multipart one, whose message rides in its parts.
+const fn encodes_a_body(shape: &HttpShape) -> bool {
+    shape.method.carries_a_body() && !matches!(shape.body_kind, BodyKind::Multipart)
+}
+
+/// The message as a JSON body, through [`dated_encoder_fn`]'s encoder, a `char` or a date the
+/// message is in the form serde writes.
 fn json_encode_body_stmt(
     named: &str,
     fn_prefix: &str,
     wire: &str,
-    outcome: &OperationOutcome,
+    operation: &OperationDef,
 ) -> String {
-    let recover = encode_failure_recovery(named, fn_prefix, wire, outcome);
+    let recover = encode_failure_recovery(named, fn_prefix, wire, &operation.outcome);
+    let sent = match &operation.inputs {
+        OperationInputs::Named(declared) => swift_sent_value(declared, "req"),
+        OperationInputs::Empty | OperationInputs::Generated(_) => None,
+    };
     format!(
         "    let body: Data\n    \
          do {{\n      \
-         body = try JSONEncoder().encode(req)\n    \
+         body = try {fn_prefix}DatedEncoder().encode({})\n    \
          }} catch {{\n      \
-{recover}\
-         }}\n"
+         {recover}\n    \
+         }}\n",
+        sent.as_deref().unwrap_or("req")
     )
 }
 
+/// The expression that writes `expr`, a value of `ty` Swift holds a `char` or a date of as a
+/// `String`, in the form serde writes, under an `Option` and a list alike; `None` where `ty`
+/// reaches no such text. It throws for a text no rewrite turns into its form.
+pub(super) fn swift_sent_value(ty: &Type, expr: &str) -> Option<String> {
+    if let Some(inner) = option_inner(ty) {
+        let held = swift_sent_value(inner, "held")?;
+        return Some(format!("try ({expr}).map {{ held in {held} }}"));
+    }
+    if let Some(inner) = vec_inner(ty) {
+        let element = swift_sent_value(inner, "element")?;
+        return Some(format!("try ({expr}).map {{ element in {element} }}"));
+    }
+    forms::held_as_text(&get_field_def("value", ty, ""))
+        .map(|form| forms::sent_call_at(form, expr, "[]"))
+}
+
+/// What a method answers for a value it cannot write, before the transport is reached: a message
+/// its encoder refuses, and a text no form serde reads holds.
 fn encode_failure_recovery(
     named: &str,
     fn_prefix: &str,
@@ -556,15 +637,11 @@ fn encode_failure_recovery(
 ) -> String {
     let fault = format!("{fn_prefix}UndeserializablePayload({wire}, \"\\(error)\")");
     match outcome {
-        OperationOutcome::OneWay => {
-            format!("      throw {named}Refusal(fault: {fault})\n")
-        }
+        OperationOutcome::OneWay => format!("throw {named}Refusal(fault: {fault})"),
         OperationOutcome::Reply {
             error: _error,
             success: _success,
-        } => {
-            format!("      return .failure(.fault({fault}))\n")
-        }
+        } => format!("return .failure(.fault({fault}))"),
     }
 }
 
@@ -572,6 +649,8 @@ fn encode_failure_recovery(
 /// not otherwise placeholder-bound, then one per declared `part` binding, passed through
 /// untouched. Every other body kind on a multipart-declaring service still builds an empty one.
 fn multipart_parts_build_stmt(
+    fn_prefix: &str,
+    recover: &str,
     operation: &OperationDef,
     shape: &HttpShape,
     has_multipart: bool,
@@ -593,16 +672,25 @@ fn multipart_parts_build_stmt(
             let key = wire_key(field);
             let accessor = swift_field_member(&field_name);
             if let Some(inner) = option_inner(ty) {
-                let text = swift_wire_text(inner, "value");
+                let text = swift_wire_text(fn_prefix, inner, "value");
                 let _ = write!(
                     stmt,
-                    "    if let value = req.{accessor} {{\n      \
-                     parts.append((\"{key}\", {text}))\n    \
-                     }}\n"
+                    "    if let value = req.{accessor} {{\n{}      \
+                     parts.append((\"{key}\", rendered))\n    \
+                     }}\n",
+                    bound_text(&text, recover, "      ")
                 );
             } else {
-                let text = swift_wire_text(ty, &format!("req.{accessor}"));
-                let _ = writeln!(stmt, "    parts.append((\"{key}\", {text}))");
+                let text = swift_wire_text(fn_prefix, ty, &format!("req.{accessor}"));
+                if text.throws {
+                    let _ = write!(
+                        stmt,
+                        "    do {{\n{}      parts.append((\"{key}\", rendered))\n    }}\n",
+                        bound_text(&text, recover, "      ")
+                    );
+                } else {
+                    let _ = writeln!(stmt, "    parts.append((\"{key}\", {}))", text.expr);
+                }
             }
         }
     }
@@ -842,14 +930,14 @@ fn header_value_read_stmts(
                 fallible_header_read_stmt(fn_prefix, wire, name, &ident, &raw_ident, element_ty)
             );
         } else if option_inner(element_ty).is_some() {
-            let decode = swift_header_out_decode(element_ty, "raw");
+            let decode = swift_header_out_decode(fn_prefix, element_ty, "raw");
             let _ = write!(
                 stmt,
                 "      let {raw_ident} = {fn_prefix}FindHeader(response.headers, {name})\n      \
                  let {ident} = {raw_ident}.map {{ raw in {decode} }}\n",
             );
         } else {
-            let decode = swift_header_out_decode(element_ty, &raw_ident);
+            let decode = swift_header_out_decode(fn_prefix, element_ty, &raw_ident);
             let _ = write!(
                 stmt,
                 "      guard let {raw_ident} = {fn_prefix}FindHeader(response.headers, {name}) \
@@ -871,8 +959,13 @@ fn header_value_read_stmts(
 /// item type.
 fn header_read_is_fallible(bare_ty: &Type) -> bool {
     let leaf = vec_inner(bare_ty).unwrap_or(bare_ty);
+    let read = get_field_def("value", leaf, "");
+    #[cfg(feature = "chrono")]
+    if matches!(read.field_type, FieldDefType::DateTime) {
+        return true;
+    }
     matches!(
-        get_field_def("value", leaf, "").field_type,
+        read.field_type,
         FieldDefType::Boolean
             | FieldDefType::U8
             | FieldDefType::U16
@@ -910,7 +1003,8 @@ fn fallible_header_read_stmt(
     let bare_ty = option_inner(element_ty).unwrap_or(element_ty);
     if option_inner(element_ty).is_some() {
         let full_ty = swift_typename_of(element_ty);
-        let assign = fallible_assign_stmt(ident, bare_ty, raw_ident, &bad_type_fault, false);
+        let assign =
+            fallible_assign_stmt(fn_prefix, ident, bare_ty, raw_ident, &bad_type_fault, false);
         format!(
             "      let {raw_ident} = {fn_prefix}FindHeader(response.headers, {name})\n      \
              let {ident}: {full_ty}\n      \
@@ -921,7 +1015,8 @@ fn fallible_header_read_stmt(
              }}\n"
         )
     } else {
-        let assign = fallible_assign_stmt(ident, bare_ty, raw_ident, &bad_type_fault, true);
+        let assign =
+            fallible_assign_stmt(fn_prefix, ident, bare_ty, raw_ident, &bad_type_fault, true);
         format!(
             "      guard let {raw_ident} = {fn_prefix}FindHeader(response.headers, {name}) \
              else {{\n        \
@@ -940,6 +1035,7 @@ fn fallible_header_read_stmt(
 /// faulting if one is `nil`. `declare` says whether this is `{ident}`'s own first appearance (a
 /// required element) or an assignment into an already-declared `Optional` (an optional one).
 fn fallible_assign_stmt(
+    fn_prefix: &str,
     ident: &str,
     bare_ty: &Type,
     raw_ident: &str,
@@ -950,7 +1046,7 @@ fn fallible_assign_stmt(
         Some(item_ty) => {
             let keyword = if declare { "let " } else { "" };
             let item = swift_typename_of(item_ty);
-            let item_expr = swift_header_out_decode(item_ty, "piece");
+            let item_expr = swift_header_out_decode(fn_prefix, item_ty, "piece");
             format!(
                 "      let {ident}Pieces = {raw_ident}.split(separator: \",\").map {{ piece -> \
                  String in String(piece) }}\n      \
@@ -963,11 +1059,11 @@ fn fallible_assign_stmt(
             )
         }
         None if declare => {
-            let expr = swift_header_out_decode(bare_ty, raw_ident);
+            let expr = swift_header_out_decode(fn_prefix, bare_ty, raw_ident);
             format!("      guard let {ident} = {expr} else {{\n        {fault_stmt}\n      }}\n")
         }
         None => {
-            let expr = swift_header_out_decode(bare_ty, raw_ident);
+            let expr = swift_header_out_decode(fn_prefix, bare_ty, raw_ident);
             format!(
                 "      guard let {ident}Decoded = {expr} else {{\n        {fault_stmt}\n      \
                  }}\n      \
@@ -985,7 +1081,8 @@ fn error_decode_block(fn_prefix: &str, wire: &str, shape: &HttpShape, error: &Ty
         return format!(
             "      let declared: {error_ty}\n      \
              do {{\n        \
-             declared = try JSONDecoder().decode({error_ty}.self, from: response.body)\n      \
+             declared = try {fn_prefix}DatedDecoder().decode({error_ty}.self, from: \
+             response.body)\n      \
              }} catch {{\n        \
              return .failure(.fault(\n          \
              {fn_prefix}UndeserializablePayload({wire}, \"\\(error)\")\n        \
@@ -1001,7 +1098,8 @@ fn error_decode_block(fn_prefix: &str, wire: &str, shape: &HttpShape, error: &Ty
     let mut stmt = format!(
         "      let declaredHead: {head_ty}\n      \
          do {{\n        \
-         declaredHead = try JSONDecoder().decode({head_ty}.self, from: response.body)\n      \
+         declaredHead = try {fn_prefix}DatedDecoder().decode({head_ty}.self, from: \
+         response.body)\n      \
          }} catch {{\n        \
          return .failure(.fault(\n          \
          {fn_prefix}UndeserializablePayload({wire}, \"\\(error)\")\n        \
@@ -1040,7 +1138,8 @@ fn success_decode_block(fn_prefix: &str, wire: &str, shape: &HttpShape, success:
         return format!(
             "      let value: {success_ty}\n      \
              do {{\n        \
-             value = try JSONDecoder().decode({success_ty}.self, from: response.body)\n      \
+             value = try {fn_prefix}DatedDecoder().decode({success_ty}.self, from: \
+             response.body)\n      \
              }} catch {{\n        \
              return .failure(.fault(\n          \
              {fn_prefix}UndeserializablePayload({wire}, \"\\(error)\")\n        \
@@ -1058,7 +1157,7 @@ fn success_decode_block(fn_prefix: &str, wire: &str, shape: &HttpShape, success:
     let mut stmt = format!(
         "      let value: {body_ty}\n      \
          do {{\n        \
-         value = try JSONDecoder().decode({body_ty}.self, from: response.body)\n      \
+         value = try {fn_prefix}DatedDecoder().decode({body_ty}.self, from: response.body)\n      \
          }} catch {{\n        \
          return .failure(.fault(\n          \
          {fn_prefix}UndeserializablePayload({wire}, \"\\(error)\")\n        \
@@ -1106,8 +1205,27 @@ fn fault_helpers(service: &ServiceDef, named: &str, fn_prefix: &str) -> Vec<Stri
     if reads_a_response_header(service) {
         helpers.push(find_header_fn(fn_prefix));
     }
-    if service.operations.iter().any(path_reads_a_named_field) {
+    let writes_text = service.operations.iter().any(|operation| {
+        path_reads_a_named_field(operation)
+            || text_types(operation).iter().any(writes_through_wire_text)
+    });
+    if writes_text {
         helpers.push(wire_text_fn(fn_prefix));
+    }
+    if writes_text
+        || service
+            .operations
+            .iter()
+            .any(|operation| encodes_a_body(&HttpShape::of(operation)))
+    {
+        helpers.push(dated_encoder_fn(fn_prefix));
+    }
+    if service
+        .operations
+        .iter()
+        .any(|operation| !matches!(operation.outcome, OperationOutcome::OneWay))
+    {
+        helpers.push(dated_decoder_fn(fn_prefix));
     }
     helpers.extend([
         transport_failure_fn(named, fn_prefix),
@@ -1196,20 +1314,62 @@ fn query_text_fn(fn_prefix: &str) -> String {
     )
 }
 
-/// A named message's field as the text a path segment carries, as the Rust client writes it: a
-/// string as itself, anything else as its JSON, through the field's own `Encodable` conformance.
+/// A value as the text a path segment, a query, a header or a part carries, as the Rust client
+/// writes it: a string as itself, anything else as its JSON, through [`dated_encoder_fn`]'s
+/// encoder. Throws for a value the encoder refuses, a `Double` NaN among them.
 fn wire_text_fn(fn_prefix: &str) -> String {
     format!(
-        "func {fn_prefix}WireText<Value: Encodable>(_ value: Value) -> String {{\n  \
-         let encoder = JSONEncoder()\n  \
+        "func {fn_prefix}WireText<Value: Encodable>(_ value: Value) throws -> String {{\n  \
+         let encoder = {fn_prefix}DatedEncoder()\n  \
          encoder.outputFormatting = [.withoutEscapingSlashes]\n  \
-         guard let data = try? encoder.encode(value) else {{\n    \
-         return \"\"\n  \
-         }}\n  \
+         let data = try encoder.encode(value)\n  \
          if let text = try? JSONDecoder().decode(String.self, from: data) {{\n    \
          return text\n  \
          }}\n  \
          return String(decoding: data, as: UTF8.self)\n\
+         }}"
+    )
+}
+
+/// The encoder a message and a value written as text go through: a `Date` as the RFC 3339 text
+/// with its fraction the model codec writes, where `JSONEncoder` alone writes a number.
+fn dated_encoder_fn(fn_prefix: &str) -> String {
+    format!(
+        "/// A `JSONEncoder` that writes a `Date` as the RFC 3339 text serde reads.\n\
+         func {fn_prefix}DatedEncoder() -> JSONEncoder {{\n  \
+         let encoder = JSONEncoder()\n  \
+         encoder.dateEncodingStrategy = .custom {{ date, encoder in\n    \
+         let formatter = ISO8601DateFormatter()\n    \
+         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]\n    \
+         var container = encoder.singleValueContainer()\n    \
+         try container.encode(formatter.string(from: date))\n  \
+         }}\n  \
+         return encoder\n\
+         }}"
+    )
+}
+
+/// The decoder a reply goes through: a `Date` from the RFC 3339 text serde writes, with a fraction
+/// or with none, where `JSONDecoder` alone reads a number.
+fn dated_decoder_fn(fn_prefix: &str) -> String {
+    format!(
+        "/// A `JSONDecoder` that reads a `Date` from the RFC 3339 text serde writes.\n\
+         func {fn_prefix}DatedDecoder() -> JSONDecoder {{\n  \
+         let decoder = JSONDecoder()\n  \
+         decoder.dateDecodingStrategy = .custom {{ decoder in\n    \
+         let container = try decoder.singleValueContainer()\n    \
+         let text = try container.decode(String.self)\n    \
+         let fractional = ISO8601DateFormatter()\n    \
+         fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]\n    \
+         let whole = ISO8601DateFormatter()\n    \
+         whole.formatOptions = [.withInternetDateTime]\n    \
+         guard let date = fractional.date(from: text) ?? whole.date(from: text) else {{\n      \
+         throw DecodingError.dataCorruptedError(in: container, debugDescription: \"expected a \
+         date and time with its zone, found \\(text)\")\n    \
+         }}\n    \
+         return date\n  \
+         }}\n  \
+         return decoder\n\
          }}"
     )
 }
@@ -1286,32 +1446,110 @@ fn message_swift_typename(operation: &OperationDef) -> String {
     }
 }
 
-/// Whether `ty` is a reference to another `#[model_schema()]` item rather than a primitive this
-/// crate itself renders — every one reachable here is a branded newtype, `is_scalar_named_type`
-/// being what let it stand in for the whole message in the first place.
-fn is_sibling_type(ty: &Type) -> bool {
+/// The Swift expression that renders `ty`'s value at `expr` as URL- or header-safe text: an
+/// `Option<T>` reads as the empty string when absent, a `Vec<T>` joins its elements' own text
+/// with a comma, a `String`, a `Bool` and an integer interpolate as the text serde reads, a
+/// `char` and a date Swift holds as a `String` are written in the form serde writes, and any
+/// other value is written through [`wire_text_fn`]'s encoder, as it is in a body. The two last
+/// throw for a value no form serde reads holds.
+fn swift_wire_text(fn_prefix: &str, ty: &Type, expr: &str) -> SwiftText {
+    if let Some(inner) = option_inner(ty) {
+        let rendered = swift_wire_text(fn_prefix, inner, "unwrapped");
+        let tried = if rendered.throws { "try " } else { "" };
+        return SwiftText {
+            expr: format!(
+                "({tried}({expr}).map {{ unwrapped in {} }} ?? \"\")",
+                rendered.expr
+            ),
+            throws: rendered.throws,
+        };
+    }
+    if let Some(inner) = vec_inner(ty) {
+        let element = swift_wire_text(fn_prefix, inner, "element");
+        let tried = if element.throws { "try " } else { "" };
+        return SwiftText {
+            expr: format!(
+                "({tried}({expr}).map {{ element in {} }}.joined(separator: \",\"))",
+                element.expr
+            ),
+            throws: element.throws,
+        };
+    }
+    let field = get_field_def("value", ty, "");
+    if let Some(form) = forms::held_as_text(&field) {
+        return SwiftText {
+            expr: forms::sent_call_at(form, expr, "[]"),
+            throws: true,
+        };
+    }
+    if interpolates(&field.field_type) {
+        return SwiftText {
+            expr: format!("\"\\({expr})\""),
+            throws: false,
+        };
+    }
+    SwiftText {
+        expr: format!("try {fn_prefix}WireText({expr})"),
+        throws: true,
+    }
+}
+
+/// Whether Swift's string interpolation writes a value of `field_type` as the text serde reads:
+/// a `String`, a `Bool` and an integer.
+const fn interpolates(field_type: &FieldDefType) -> bool {
     matches!(
-        get_field_def("value", ty, "").field_type,
-        FieldDefType::SiblingType(_, _)
+        field_type,
+        FieldDefType::String
+            | FieldDefType::StringLiteral(_)
+            | FieldDefType::Boolean
+            | FieldDefType::BooleanLiteral(_)
+            | FieldDefType::U8
+            | FieldDefType::U16
+            | FieldDefType::U32
+            | FieldDefType::U64
+            | FieldDefType::I8
+            | FieldDefType::I16
+            | FieldDefType::I32
+            | FieldDefType::I64
+            | FieldDefType::Usize
+            | FieldDefType::Isize
     )
 }
 
-/// The Swift expression that renders `ty`'s value at `expr` as URL- or header-safe text: an
-/// `Option<T>` reads as the empty string when absent, a `Vec<T>` joins its elements' own text
-/// with a comma, and a branded sibling type is read through its own `.value` first.
-fn swift_wire_text(ty: &Type, expr: &str) -> String {
-    if let Some(inner) = option_inner(ty) {
-        let rendered = swift_wire_text(inner, "unwrapped");
-        return format!("(({expr}).map {{ unwrapped in {rendered} }} ?? \"\")");
+/// Whether [`swift_wire_text`] writes a value of `ty` through [`wire_text_fn`].
+fn writes_through_wire_text(ty: &Type) -> bool {
+    let base = option_inner(ty).unwrap_or(ty);
+    if let Some(inner) = vec_inner(base) {
+        return writes_through_wire_text(inner);
     }
-    if let Some(inner) = vec_inner(ty) {
-        let element = swift_wire_text(inner, "element");
-        return format!("(({expr}).map {{ element in {element} }}.joined(separator: \",\"))");
+    let field = get_field_def("value", base, "");
+    forms::held_as_text(&field).is_none() && !interpolates(&field.field_type)
+}
+
+/// The forms of the texts the service's client writes as a `String` Swift holds, as text or in a
+/// message written whole as the body, once each, in the order its operations first write them.
+fn text_forms(service: &ServiceDef) -> Vec<TextForm> {
+    let mut found = Vec::new();
+    for operation in &service.operations {
+        let mut written = text_types(operation);
+        if let OperationInputs::Named(declared) = &operation.inputs
+            && encodes_a_body(&HttpShape::of(operation))
+        {
+            written.push(declared.as_ref().clone());
+        }
+        for ty in written {
+            let mut base = &ty;
+            while let Some(inner) = option_inner(base).or_else(|| vec_inner(base)) {
+                base = inner;
+            }
+            if let Some(form) = forms::held_as_text(&get_field_def("value", base, ""))
+                && !found.contains(&form)
+            {
+                found.push(form);
+            }
+        }
     }
-    if is_sibling_type(ty) {
-        return format!("\"\\(({expr}).value)\"");
-    }
-    format!("\"\\({expr})\"")
+    found
 }
 
 /// The expression that reads one `header_out` element's declared type back off `raw`, a
@@ -1319,10 +1557,10 @@ fn swift_wire_text(ty: &Type, expr: &str) -> String {
 /// `Optional`, `nil` on a value that will not become the declared type — read through
 /// [`header_read_is_fallible`] before a scalar (non-`Vec`) slot of one is ever reached this way.
 /// Every other kind still answers the value directly, since it cannot fail to decode.
-fn swift_header_out_decode(ty: &Type, raw: &str) -> String {
+fn swift_header_out_decode(fn_prefix: &str, ty: &Type, raw: &str) -> String {
     let base = option_inner(ty).unwrap_or(ty);
     if let Some(inner) = vec_inner(base) {
-        let element = swift_header_out_decode(inner, "piece");
+        let element = swift_header_out_decode(fn_prefix, inner, "piece");
         return format!(
             "{raw}.split(separator: \",\").map {{ piece -> String in String(piece) }}\n        \
              .map {{ piece in {element} }}"
@@ -1345,10 +1583,15 @@ fn swift_header_out_decode(ty: &Type, raw: &str) -> String {
         | FieldDefType::F32
         | FieldDefType::F64 => format!("{}({raw})", swift_typename_of(base)),
         // The header text read as a JSON string, as the Rust client reads it, through the type's
-        // own `Decodable` conformance; one that refuses it is a malformed header.
+        // own `Decodable` conformance and a `Date` as the model codec reads one; one that refuses
+        // it is a malformed header.
         FieldDefType::SiblingType(_, _) => format!(
-            "(try? JSONDecoder().decode({}.self, from: JSONEncoder().encode({raw})))",
+            "(try? {fn_prefix}DatedDecoder().decode({}.self, from: JSONEncoder().encode({raw})))",
             swift_typename_of(base)
+        ),
+        #[cfg(feature = "chrono")]
+        FieldDefType::DateTime => format!(
+            "(try? {fn_prefix}DatedDecoder().decode(Date.self, from: JSONEncoder().encode({raw})))"
         ),
         FieldDefType::BooleanLiteral(_)
         | FieldDefType::Char
@@ -1364,9 +1607,8 @@ fn swift_header_out_decode(ty: &Type, raw: &str) -> String {
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => raw.to_owned(),
         #[cfg(feature = "chrono")]
-        FieldDefType::NaiveDate
-        | FieldDefType::NaiveTime
-        | FieldDefType::NaiveDateTime
-        | FieldDefType::DateTime => raw.to_owned(),
+        FieldDefType::NaiveDate | FieldDefType::NaiveTime | FieldDefType::NaiveDateTime => {
+            raw.to_owned()
+        }
     }
 }

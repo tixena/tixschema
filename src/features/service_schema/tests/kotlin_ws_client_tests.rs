@@ -7,7 +7,7 @@
 
 use super::{
     KOTLIN_UNIT_SUCCESS_HTTP_SERVICE, KOTLIN_WS_SERVICE, MIXED_SERVICE, RESERVED_WORD_SERVICE,
-    SHADOWED_LOCAL_SERVICE, kotlin_ws_client_of,
+    SHADOWED_LOCAL_SERVICE, SHELVING_SERVICE, STREAMING_ONLY_SERVICE, kotlin_ws_client_of,
 };
 
 /// A service whose reply is a bare date, and whose request carries a `char` header.
@@ -638,12 +638,13 @@ fn an_argument_named_after_a_local_of_the_method_is_copied_before_the_local_is_w
 /// header of a `char` through its own, and the module declares each serializer once.
 #[cfg(feature = "chrono")]
 #[test]
-fn a_bare_char_or_date_message_is_read_through_the_serializer_of_its_form() {
+fn a_bare_char_or_date_is_written_and_read_through_the_serializer_of_its_form() {
     let written = kotlin_ws_client_of(DATED_WS_SERVICE);
     for held in [
-        "DatingServiceStampResult.Ok(Json.decodeFromJsonElement(KotlinText1, \
+        "put(\"x-initial\", Json.encodeToJsonElement(KotlinText1, initial))",
+        "DatingServiceStampResult.Ok(Json.decodeFromJsonElement(KotlinText2, \
          reply.getValue(\"value\")))",
-        "Json.decodeFromJsonElement(KotlinText2, initialRaw)",
+        "Json.decodeFromJsonElement(KotlinText1, initialRaw)",
         "object KotlinText1 : KSerializer<String> {",
         "object KotlinText2 : KSerializer<String> {",
     ] {
@@ -653,5 +654,64 @@ fn a_bare_char_or_date_message_is_read_through_the_serializer_of_its_form() {
         written.matches("object KotlinText").count(),
         2,
         "each form is declared once: {written}"
+    );
+}
+
+/// The dispatcher writes a date reply through the serializer of its form, inside a `try` that
+/// answers a text of another form as the fault a handler that threw is answered with.
+#[cfg(feature = "chrono")]
+#[test]
+fn the_dispatcher_writes_a_bare_date_reply_through_the_serializer_of_its_form() {
+    let written = kotlin_ws_client_of(DATED_WS_SERVICE);
+    for held in [
+        "        try {\n          when (answered) {\n            is DatingServiceStampResult.Ok -> \
+         send(buildJsonObject { put(\"kind\", \"reply\"); put(\"id\", id); put(\"service\", \
+         \"DatingService\"); put(\"ok\", true); put(\"value\", \
+         Json.encodeToJsonElement(KotlinText2, answered.value)) }.toString())\n",
+        "        } catch (unwritten: SerializationException) {\n          \
+         val fault = datingServiceWsHandlerPanic(\"stamp\", unwritten.toString())\n          \
+         onFault(fault)\n",
+    ] {
+        assert!(written.contains(held), "no `{held}` in: {written}");
+    }
+    assert!(
+        !written.contains("serializer<String>(), answered.value"),
+        "the reply is written through no serializer of a plain text: {written}"
+    );
+}
+
+/// Only `http_rest` carries a streamed reply and a file part: neither the client nor the handlers
+/// have a member for either, and each says so.
+#[test]
+fn neither_the_client_nor_the_handlers_hold_an_operation_only_http_rest_carries() {
+    let written = kotlin_ws_client_of(SHELVING_SERVICE);
+    assert!(
+        written.contains(
+            "/// A `ShelvingClientService` caller over `ws_rpc`.\n\
+             /// `fetch`, `shelve` have no method here: only `http_rest` carries them.\n\
+             class ShelvingClientServiceWsClient("
+        ) && written.contains(
+            "/// `fetch`, `shelve` have no handler here: only `http_rest` carries them.\n\
+             interface ShelvingClientServiceHandlers {\n  \
+             suspend fun tally(req: String): ShelvingClientServiceTallyResult\n"
+        ),
+        "got: {written}"
+    );
+    assert!(
+        !written.contains("\"fetch\"")
+            && !written.contains("\"shelve\"")
+            && !written.contains("Streamed"),
+        "got: {written}"
+    );
+    let alone = kotlin_ws_client_of(STREAMING_ONLY_SERVICE);
+    assert!(
+        alone.contains(
+            "/// `fetch` has no method here: only `http_rest` carries it.\n\
+             class StreamingOnlyServiceWsClient("
+        ) && alone.contains(
+            "/// `fetch` has no handler here: only `http_rest` carries it.\n\
+             interface StreamingOnlyServiceHandlers {"
+        ),
+        "got: {alone}"
     );
 }

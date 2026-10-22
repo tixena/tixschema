@@ -1,6 +1,6 @@
 //! The `ws_rpc` dispatcher attachment, read off the emitted text.
 
-use super::{MIXED_SERVICE, ws_service_of};
+use super::{MIXED_SERVICE, SHELVING_SERVICE, ws_service_of};
 
 #[test]
 fn a_declared_error_crosses_with_every_field_it_carries() {
@@ -155,5 +155,20 @@ fn the_frame_headers_reach_the_dispatcher_and_its_headers_reach_the_reply() {
              dispatched.headers);"
         ),
         "got: {written}"
+    );
+}
+
+/// The attachment drives an implementation without the members only `http_rest` carries.
+#[test]
+fn the_attachment_takes_no_member_for_an_operation_only_http_rest_carries() {
+    let written = ws_service_of(SHELVING_SERVICE);
+    assert!(
+        written.contains("  impl: Omit<ShelvingClientServiceImpl<Ctx>, \"fetch\" | \"shelve\">,\n"),
+        "got: {written}"
+    );
+    let mixed = ws_service_of(MIXED_SERVICE);
+    assert!(
+        mixed.contains("  impl: UsageServiceImpl<Ctx>,\n"),
+        "got: {mixed}"
     );
 }

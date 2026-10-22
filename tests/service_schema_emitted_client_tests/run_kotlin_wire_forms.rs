@@ -36,7 +36,7 @@ fun <T> read(serializer: KSerializer<T>, payload: String): String =
 "#;
 
 /// The Kotlin value of `json`, as the model `held_by` holds it.
-fn kotlin_value(held_by: &str, json: &str) -> String {
+pub fn kotlin_value(held_by: &str, json: &str) -> String {
     let text = json.trim_matches('"');
     match held(held_by) {
         Held::Flag => json.to_owned(),

@@ -436,34 +436,29 @@ fn an_operation_binding_no_header_answers_its_outcome_with_no_headers() {
     );
 }
 
+/// Only `http_rest` carries a file part, so the transport-agnostic dispatcher has no arm for the
+/// operation and takes the implementation without its member.
 #[test]
-fn the_arm_looks_up_a_bound_part_and_refuses_a_missing_one_through_the_same_fault() {
+fn the_dispatcher_has_no_arm_for_an_operation_only_http_rest_carries() {
     let written = service_of(MULTIPART_HTTP_SERVICE);
-    let arm = written
-        .split("      case \"upload-document\": {")
-        .nth(1)
-        .and_then(|rest| rest.split_once("\n      }"))
-        .map(|(body, _)| body.to_owned());
-    assert!(arm.is_some(), "got: {written}");
-    let body = arm.unwrap();
     assert!(
-        body.contains("const attachment = parts.find(([name]) => name === \"file\")?.[1];"),
-        "got: {body}"
+        !written.contains("case \"upload-document\""),
+        "got: {written}"
     );
     assert!(
-        body.contains(
-            "if (attachment === undefined) {\n          return \
-             uploadClientServiceFramed(uploadClientServiceInboundFault(\"upload-document\", [{ \
-             path: [\"file\"], message: \"a required multipart part was not carried\" }]));\n        \
-             }"
+        written.contains(
+            "export function createUploadClientServiceDispatcher<Ctx>(\n  \
+             impl: Omit<UploadClientServiceImpl<Ctx>, \"uploadDocument\">,\n"
         ),
-        "got: {body}"
+        "got: {written}"
     );
     assert!(
-        body.contains(
-            "return { answered: await impl.uploadDocument(ctx, received.data, attachment), \
-             headers: [] };"
+        written.contains(
+            "is refused where it reaches `createUploadClientServiceHttpDispatcher`."
+        ) && written.contains(
+            " * `createUploadClientServiceDispatcher` and `attachUploadClientServiceWsDispatcher` \
+             take it without `uploadDocument`, which only\n * `http_rest` carries."
         ),
-        "got: {body}"
+        "the interface keeps the member the `http_rest` dispatcher drives. Got: {written}"
     );
 }

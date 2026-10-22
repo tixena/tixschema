@@ -84,8 +84,13 @@ fn the_seam_carries_a_request_record_in_and_a_response_record_out() {
             && seam.contains("path: string;")
             && seam.contains("query: string;")
             && seam.contains("headers: ReadonlyArray<readonly [string, string]>;")
-            && seam.contains("body: string;"),
+            && seam.contains("body: Uint8Array;"),
         "got: {seam}"
+    );
+    assert!(
+        !seam.contains("body: string;"),
+        "each body crosses as its bytes, as the Dart, Swift and Kotlin seams carry it. \
+         Got: {seam}"
     );
     assert!(
         seam.contains("}): Promise<{") && seam.contains("status: number;"),
@@ -106,8 +111,9 @@ fn a_bodied_operation_fills_a_literal_path_and_serializes_the_validated_message_
         "a bodied method carries no query string. Got: {method}"
     );
     assert!(
-        method.contains("const body = JSON.stringify(sending);"),
-        "the body is the validated message, not the raw argument. Got: {method}"
+        method.contains("const body = new TextEncoder().encode(JSON.stringify(sending));"),
+        "the body is the validated message, not the raw argument, as its UTF-8 bytes. \
+         Got: {method}"
     );
     assert!(method.contains("method: \"POST\","), "got: {method}");
 }
@@ -118,9 +124,13 @@ fn a_path_placeholder_is_filled_by_exact_segment_substitution() {
     let method = method_body(&written, "getVersion");
     assert!(
         method.contains("path += \"/documents/\";")
-            && method.contains("path += encodeURIComponent(String(sending.documentId));")
+            && method.contains(
+                "path += encodeURIComponent(documentClientServiceHttpWireText(sending.documentId));"
+            )
             && method.contains("path += \"/versions/\";")
-            && method.contains("path += encodeURIComponent(String(sending.versionId));"),
+            && method.contains(
+                "path += encodeURIComponent(documentClientServiceHttpWireText(sending.versionId));"
+            ),
         "each segment is pushed in template order, a placeholder reading its own field off the \
          validated message rather than splitting a shared prefix. Got: {method}"
     );
@@ -131,11 +141,16 @@ fn a_placeholder_bound_generated_field_fills_the_path() {
     let written = http_client_of(SINGLE_PLACEHOLDER_HTTP_SERVICE);
     let method = method_body(&written, "window");
     assert!(
-        method.contains("path += encodeURIComponent(String(sending.conversationId));"),
+        method.contains(
+            "path += encodeURIComponent(\
+             conversationClientServiceHttpWireText(sending.conversationId));"
+        ),
         "the field the placeholder names is read off the validated message. Got: {method}"
     );
     assert!(
-        !method.contains("path += encodeURIComponent(String(sending));"),
+        !method.contains(
+            "path += encodeURIComponent(conversationClientServiceHttpWireText(sending));"
+        ),
         "stringifying the whole message would send `[object Object]` as the segment. \
          Got: {method}"
     );
@@ -146,7 +161,9 @@ fn a_lone_placeholder_on_a_scalar_message_still_is_the_whole_message() {
     let written = http_client_of(SINGLE_PLACEHOLDER_HTTP_SERVICE);
     let method = method_body(&written, "purgeConversation");
     assert!(
-        method.contains("path += encodeURIComponent(String(sending));"),
+        method.contains(
+            "path += encodeURIComponent(conversationClientServiceHttpWireText(sending));"
+        ),
         "a message that already is a wire scalar has no field to read: it is the segment. \
          Got: {method}"
     );
@@ -159,8 +176,10 @@ fn an_unbound_generated_field_builds_the_query_string_of_a_bodyless_method() {
     assert!(
         method.contains("const queryParts: Array<string> = [];")
             && method.contains("if (sending.limit !== undefined) {")
-            && method
-                .contains("queryParts.push(`limit=${encodeURIComponent(String(sending.limit))}`);")
+            && method.contains(
+                "queryParts.push(`limit=${encodeURIComponent(\
+                 conversationClientServiceHttpWireText(sending.limit))}`);"
+            )
             && method.contains("const query = queryParts.join(\"&\");"),
         "a field the path does not bind is a query parameter, read off the validated message by \
          its own type. Got: {method}"
@@ -194,24 +213,38 @@ fn a_header_in_binding_becomes_an_extra_argument_and_a_built_header() {
     assert!(
         method.contains("const headers: Array<[string, string]> = [];")
             && method.contains(
-                "if (byteRange !== undefined) {\n        \
-                 const rendered = String(byteRange);\n        \
-                 if (!documentClientServiceHttpLegalHeaderValue(rendered)) {\n        \
-                 return {\n          \
-                 ok: false,\n          \
-                 error: {\n            \
-                 isServiceFault: true,\n            \
-                 fault: documentClientServiceHttpOutboundFault(\"get-version\", [{ path: \
-                 [\"range\"], message: \"a header value contains a character illegal in an \
-                 HTTP header\" }]),\n          \
-                 },\n        \
+                "        const held = z.union([z.null().transform(() => undefined), z.string(), \
+                 z.undefined()]).prefault(undefined).safeParse(byteRange);\n        \
+                 if (!held.success) {\n          \
+                 return {\n            \
+                 ok: false,\n            \
+                 error: {\n              \
+                 isServiceFault: true,\n              \
+                 fault: documentClientServiceHttpOutboundFault(\"get-version\", \
+                 held.error.issues.map((issue) => ({ path: [\"range\", ...issue.path], message: \
+                 issue.message }))),\n            \
+                 },\n          \
                  };\n        \
                  }\n        \
-                 headers.push([\"range\", rendered]);\n      \
+                 if (held.data !== undefined) {\n          \
+                 const rendered = documentClientServiceHttpWireText(held.data);\n          \
+                 if (!documentClientServiceHttpLegalHeaderValue(rendered)) {\n            \
+                 return {\n              \
+                 ok: false,\n              \
+                 error: {\n                \
+                 isServiceFault: true,\n                \
+                 fault: documentClientServiceHttpOutboundFault(\"get-version\", [{ path: \
+                 [\"range\"], message: \"a header value contains a character illegal in an \
+                 HTTP header\" }]),\n              \
+                 },\n            \
+                 };\n          \
+                 }\n          \
+                 headers.push([\"range\", rendered]);\n        \
                  }"
             ),
-        "the header is built from the extra argument, never from the message, and its rendered \
-         value is checked before it is pushed. Got: {method}"
+        "the header is built from the extra argument, never from the message, parsed by its \
+         type's schema and refused as the message is, and its rendered value is checked before it \
+         is pushed. Got: {method}"
     );
 }
 
@@ -399,7 +432,7 @@ fn a_named_message_answering_to_one_placeholder_is_read_back_as_the_whole_value(
     let written = http_client_of(MIXED_HTTP_SERVICE);
     let method = method_body(&written, "purgeDocument");
     assert!(
-        method.contains("path += encodeURIComponent(String(sending));"),
+        method.contains("path += encodeURIComponent(documentClientServiceHttpWireText(sending));"),
         "a `Named` message with exactly one placeholder is that placeholder's own value, not a \
          field read off it. Got: {method}"
     );
@@ -459,9 +492,11 @@ fn a_bytes_operation_reads_the_body_content_type_and_header_out_back() {
          Got: {method}"
     );
     assert!(
-        method.contains("return { ok: true, value: [response.body, contentType, headerOut0] };"),
-        "the body pair rides first, then the declared header - body-pair-first ordering. \
-         Got: {method}"
+        method.contains(
+            "return { ok: true, value: [Array.from(response.body), contentType, headerOut0] };"
+        ),
+        "the bytes, as the `Array<number>` the result declares, and their content type ride \
+         first, then the declared header - body-pair-first ordering. Got: {method}"
     );
 }
 
@@ -485,15 +520,18 @@ fn a_multipart_method_builds_one_text_part_per_field_and_one_file_part_per_bindi
     let written = http_client_of(MULTIPART_HTTP_SERVICE);
     let method = method_body(&written, "uploadDocument");
     assert!(
-        method.contains("const body = \"\";"),
+        method.contains("const body = new Uint8Array();"),
         "a multipart method's content rides in `parts`, never `body`. Got: {method}"
     );
     assert!(
         method.contains("const parts: Array<[string, unknown]> = [];")
-            && method.contains("parts.push([\"title\", String(sending.title)]);")
+            && method.contains(
+                "parts.push([\"title\", uploadClientServiceHttpWireText(sending.title)]);"
+            )
             && method.contains(
                 "if (sending.description !== undefined) {\n        \
-                 parts.push([\"description\", String(sending.description)]);\n      \
+                 parts.push([\"description\", \
+                 uploadClientServiceHttpWireText(sending.description)]);\n      \
                  }"
             )
             && method.contains("parts.push([\"file\", attachment]);"),
@@ -601,7 +639,7 @@ fn the_seam_carries_a_body_stream_field_only_where_a_service_declares_one() {
             "}): Promise<{\n    \
              status: number;\n    \
              headers: ReadonlyArray<readonly [string, string]>;\n    \
-             body: string;\n    \
+             body: Uint8Array;\n    \
              bodyStream: ReadableStream<Uint8Array>;\n  \
              }>;"
         ),
@@ -634,8 +672,8 @@ fn an_argument_named_after_a_word_typescript_refuses_takes_a_trailing_underscore
     let written = http_client_of(RESERVED_WORD_SERVICE);
     for moved in [
         "async for(req: ForRequest, default_: string | undefined) {",
-        "if (default_ !== undefined) {",
-        "const rendered = String(default_);",
+        "safeParse(default_);",
+        "const rendered = lookupServiceHttpWireText(held.data);",
         "headers.push([\"x-tenant\", rendered]);",
     ] {
         assert!(written.contains(moved), "no `{moved}` in: {written}");
@@ -647,8 +685,8 @@ fn an_argument_named_after_a_local_of_the_method_is_moved_off_it() {
     let written = http_client_of(SHADOWED_LOCAL_SERVICE);
     for moved in [
         "async shadow(req: ShadowRequest, headers_: string, path_: string | undefined) {",
-        "const rendered = String(headers_);",
-        "if (path_ !== undefined) {",
+        "z.string().safeParse(headers_);",
+        "safeParse(path_);",
     ] {
         assert!(written.contains(moved), "no `{moved}` in: {written}");
     }

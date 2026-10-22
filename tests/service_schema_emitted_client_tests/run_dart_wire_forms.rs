@@ -57,7 +57,7 @@ String refusing(Object? Function() reading) {
 ";
 
 /// The Dart value of `json`, as the model `held_by` holds it.
-fn dart_value(held_by: &str, json: &str) -> String {
+pub fn dart_value(held_by: &str, json: &str) -> String {
     let text = json.trim_matches('"');
     match held(held_by) {
         Held::Number(_) if json == "NaN" => "double.nan".to_owned(),
@@ -89,10 +89,10 @@ fn dart_handed(row: &WireFormRow) -> String {
     )
 }
 
-/// Runs `dart` over `source` under `TZ=UTC`, in a directory of its own, and answers whether it
-/// succeeded with everything it wrote. `None` where no runtime was reachable, which the probe has
-/// then said.
-fn dart_at_utc(source: &str) -> Option<(bool, String)> {
+/// Runs `dart` over `source` under `TZ=UTC`, in a directory of its own named for `named`, and
+/// answers whether it succeeded with everything it wrote. `None` where no runtime was reachable,
+/// which the probe has then said.
+pub fn dart_at_utc(named: &str, source: &str) -> Option<(bool, String)> {
     ran(
         "dart",
         RUNTIME_VAR,
@@ -100,7 +100,7 @@ fn dart_at_utc(source: &str) -> Option<(bool, String)> {
         "reachable.dart",
         "void main() {}",
     )?;
-    let at = env::temp_dir().join(format!("tixschema-emitted-dart-wire-forms-{}", id()));
+    let at = env::temp_dir().join(format!("tixschema-emitted-dart-{named}-{}", id()));
     if at.exists() {
         fs::remove_dir_all(&at).unwrap();
     }
@@ -181,7 +181,7 @@ fn each_value_is_sent_by_dart_in_the_form_every_target_reads() {
         conveyed_slotted_dart::dart_definition(),
     ];
     let source = module(&definitions, &[PRINTERS], &main);
-    let Some((ran, printed_by_dart)) = dart_at_utc(&source) else {
+    let Some((ran, printed_by_dart)) = dart_at_utc("wire-forms", &source) else {
         return;
     };
     assert!(ran, "{printed_by_dart}");

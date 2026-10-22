@@ -120,8 +120,8 @@ const NODE_DRIVER: &str = r#"
 const sent = [];
 const transport = {
   async send(request) {
-    sent.push(request);
-    return { status: 200, headers: [], body: JSON.stringify({ name: "" }) };
+    sent.push({ ...request, body: new TextDecoder().decode(request.body) });
+    return { status: 200, headers: [], body: new TextEncoder().encode(JSON.stringify({ name: "" })) };
   },
 };
 const client = createLookupClientServiceHttpClient(transport);
@@ -132,9 +132,12 @@ await client.shadow({ message: "m", sending: "s" }, "b", "p", "t");
 console.log(JSON.stringify(sent));
 "#;
 
-/// The schemas the emitted TypeScript client names, passing every value through untouched.
+/// The schemas the emitted TypeScript client names, passing every value through untouched: each
+/// message's, and every schema a header's is built of through `z`.
 const NODE_SCHEMA_STUBS: &str =
     "const pass = { safeParse: (value) => ({ success: true, data: value }) };
+const built = () => new Proxy(pass, { get: (stub, key) => key in stub ? stub[key] : () => built() });
+const z = built();
 const ForRequest$Schema = pass;
 const ImportRequest$Schema = pass;
 const LookupError$Schema = pass;

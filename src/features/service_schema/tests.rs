@@ -312,6 +312,52 @@ const MULTIPART_HTTP_SERVICE: &str = "
     }
 ";
 
+/// A JSON operation beside a streamed one and one with a file part, the two only `http_rest`
+/// carries.
+#[cfg(any(
+    all(feature = "typescript", feature = "zod"),
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
+))]
+const SHELVING_SERVICE: &str = "
+    pub trait ShelvingClientService<Ctx> {
+        #[service_schema_op(http(method = \"GET\", path = \"/tally/{shelf}\"))]
+        async fn tally(&self, ctx: &Ctx, shelf: String) -> Result<u32, ShelvingError>;
+
+        #[service_schema_op(http(method = \"GET\", path = \"/fetched/{shelf}\", body = \"stream\"))]
+        async fn fetch(&self, ctx: &Ctx, shelf: String) -> Result<StreamedAnswer, ShelvingError>;
+
+        #[service_schema_op(http(
+            method = \"POST\",
+            path = \"/shelved\",
+            body = \"multipart\",
+            part(\"file\" = attachment),
+        ))]
+        async fn shelve(
+            &self,
+            ctx: &Ctx,
+            title: String,
+            note: String,
+            attachment: Box<dyn BodySource + Send>,
+        ) -> Result<ShelvedReceipt, ShelvingError>;
+    }
+";
+
+/// A service whose one operation only `http_rest` carries.
+#[cfg(any(
+    all(feature = "typescript", feature = "zod"),
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
+))]
+const STREAMING_ONLY_SERVICE: &str = "
+    pub trait StreamingOnlyService<Ctx> {
+        #[service_schema_op(http(method = \"GET\", path = \"/fetched/{shelf}\", body = \"stream\"))]
+        async fn fetch(&self, ctx: &Ctx, shelf: String) -> Result<StreamedAnswer, ShelvingError>;
+    }
+";
+
 #[cfg(all(feature = "typescript", feature = "zod"))]
 const SINGLE_PLACEHOLDER_HTTP_SERVICE: &str = "
     pub trait ConversationClientService<Ctx> {

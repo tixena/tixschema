@@ -3,6 +3,7 @@
 //! hook that hands one socket to a second service. Wraps the single-socket attachment rather than
 //! re-emitting its frame rules.
 
+use super::service::enveloped_impl;
 use crate::service_schema::parse::ServiceDef;
 
 pub fn emit(service: &ServiceDef) -> Vec<String> {
@@ -11,7 +12,7 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
         server_socket_type(&named),
         connection_type(&named),
         server_options_type(&named),
-        create_server_fn(&named),
+        create_server_fn(&named, &enveloped_impl(service)),
     ]
 }
 
@@ -67,10 +68,10 @@ fn server_options_type(named: &str) -> String {
     )
 }
 
-fn create_server_fn(named: &str) -> String {
+fn create_server_fn(named: &str, driven: &str) -> String {
     format!(
         "{header}{accept}{returned}}}",
-        header = server_header_stmt(named),
+        header = server_header_stmt(named, driven),
         accept = accept_fn_stmt(named),
         returned = returned_server_stmt(),
     )
@@ -78,10 +79,10 @@ fn create_server_fn(named: &str) -> String {
 
 /// The factory's signature, its return type, and the heartbeat default and connection set every
 /// accepted socket shares.
-fn server_header_stmt(named: &str) -> String {
+fn server_header_stmt(named: &str, driven: &str) -> String {
     format!(
         "export function create{named}WsServer<Ctx>(\n  \
-         impl: {named}Impl<Ctx>,\n  \
+         impl: {driven},\n  \
          contextFor: (connection: {named}WsConnection) => Ctx,\n  \
          options: {named}WsServerOptions,\n\
          ): {{\n  \

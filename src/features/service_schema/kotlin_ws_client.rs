@@ -4,8 +4,8 @@
 //! `kotlinx.serialization` idioms rather than Dart's `Future`/`Stream` pair.
 
 use super::kotlin_http_client::{held_copies, kotlin_held, read_serializer};
-use super::on_one_line;
 use super::result::result_name;
+use super::{left_to_http_rest, on_one_line};
 use crate::features::kotlin::{
     kotlin_bare, kotlin_declarations, kotlin_name, kotlin_property_name, kotlin_quoted,
     kotlin_typename,
@@ -28,7 +28,10 @@ struct HeaderElement {
     wire_name: String,
 }
 
-pub fn emit(service: &ServiceDef) -> Vec<String> {
+pub fn emit(declared: &ServiceDef) -> Vec<String> {
+    let methods_apart = noted(left_to_http_rest(declared, "method", on_one_line));
+    let handlers_apart = noted(left_to_http_rest(declared, "handler", on_one_line));
+    let service = &declared.enveloped();
     let named = service.ident.to_string();
     let fn_prefix = RenameRule::CamelCase.apply_to_variant(&named);
     let has_header_in = declares_header_in(service);
@@ -42,14 +45,33 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
         published.push(refusal_class(&named));
     }
     published.push(transport_class(&named, has_header_in));
-    published.push(client_class(service, &named, &fn_prefix, has_header_in));
-    published.push(handlers_interface(service, &named));
+    published.push(client_class(
+        service,
+        &named,
+        &fn_prefix,
+        has_header_in,
+        &methods_apart,
+    ));
+    published.push(handlers_interface(service, &named, &handlers_apart));
     published.push(attachment_class(&named));
     published.push(attach_dispatcher_fn(&named, &fn_prefix, has_header_in));
     published.push(dispatch_fn(service, &named, &fn_prefix, has_header_in));
     published.extend(fault_helpers(&named, &fn_prefix, needs_field));
     published.extend(kotlin_declarations());
     published
+}
+
+/// `text` with two more spaces ahead of each of its lines: an arm moved into a `try`.
+fn deeper(text: &str) -> String {
+    text.lines().fold(String::new(), |mut moved, line| {
+        let _ = writeln!(moved, "  {line}");
+        moved
+    })
+}
+
+/// `note` as one more line of a `///` comment, or nothing.
+fn noted(note: Option<String>) -> String {
+    note.map_or_else(String::new, |said| format!("/// {said}\n"))
 }
 
 fn has_one_way(service: &ServiceDef) -> bool {
@@ -350,7 +372,13 @@ fn transport_close_stmt(named: &str) -> String {
     )
 }
 
-fn client_class(service: &ServiceDef, named: &str, fn_prefix: &str, has_headers: bool) -> String {
+fn client_class(
+    service: &ServiceDef,
+    named: &str,
+    fn_prefix: &str,
+    has_headers: bool,
+    note: &str,
+) -> String {
     let methods = service
         .operations
         .iter()
@@ -359,6 +387,7 @@ fn client_class(service: &ServiceDef, named: &str, fn_prefix: &str, has_headers:
         .join("\n\n");
     format!(
         "/// A `{named}` caller over `ws_rpc`.\n\
+         {note}\
          class {named}WsClient(private val transport: {named}WsTransport) {{\n\
          {methods}\n\
          }}"
@@ -378,8 +407,9 @@ fn client_method_params(shape: &HttpShape, req_ty: &str) -> String {
     params.join(", ")
 }
 
-/// One entry per `header_in` binding, each JSON-encoded; `None` sent as JSON `null` rather than
-/// omitted, mirroring the Rust client's own unconditional `outbound_headers`.
+/// One entry per `header_in` binding, each JSON-encoded through the serializer it is read with, a
+/// `char` and a date in the form serde writes; `None` sent as JSON `null` rather than omitted,
+/// mirroring the Rust client's own unconditional `outbound_headers`.
 fn client_headers_build_stmt(shape: &HttpShape) -> String {
     if shape.header_in.is_empty() {
         return "    val headers = buildJsonObject {}\n".to_owned();
@@ -390,17 +420,17 @@ fn client_headers_build_stmt(shape: &HttpShape) -> String {
         let prop = kotlin_held(&header.parameter);
         let name = kotlin_quoted(&header.name);
         if let Some(inner) = option_inner(&header.ty) {
-            let inner_ty = kotlin_type_of(inner);
             let _ = writeln!(
                 stmt,
                 "      put({name}, {prop}?.let {{ \
-                 Json.encodeToJsonElement(serializer<{inner_ty}>(), it) }} ?: JsonNull)"
+                 Json.encodeToJsonElement({}, it) }} ?: JsonNull)",
+                read_serializer(inner)
             );
         } else {
-            let ty = kotlin_type_of(&header.ty);
             let _ = writeln!(
                 stmt,
-                "      put({name}, Json.encodeToJsonElement(serializer<{ty}>(), {prop}))"
+                "      put({name}, Json.encodeToJsonElement({}, {prop}))",
+                read_serializer(&header.ty)
             );
         }
     }
@@ -417,6 +447,7 @@ fn client_method(
     let wire = &kotlin_quoted(&operation.wire_name);
     let call = kotlin_name(&operation.ts_name);
     let req_ty = message_kotlin_typename(operation);
+    let sent = message_serializer(operation);
     let shape = HttpShape::of(operation);
     let params = client_method_params(&shape, &req_ty);
     let doc = format!(
@@ -434,7 +465,7 @@ fn client_method(
              suspend fun {call}({params}) {{\n\
 {headers_build}    \
              try {{\n      \
-             transport.notify({wire}, Json.encodeToJsonElement(serializer<{req_ty}>(), req){headers_arg})\n    \
+             transport.notify({wire}, Json.encodeToJsonElement({sent}, req){headers_arg})\n    \
              }} catch (uncarried: Throwable) {{\n      \
              throw {named}WsRefusal({fn_prefix}WsTransportFailure({wire}, uncarried.toString()))\n    \
              }}\n  \
@@ -448,7 +479,7 @@ fn client_method(
                  suspend fun {call}({params}): {result} {{\n\
 {headers_build}    \
                  val reply = try {{\n      \
-                 transport.request({wire}, Json.encodeToJsonElement(serializer<{req_ty}>(), req){headers_arg})\n    \
+                 transport.request({wire}, Json.encodeToJsonElement({sent}, req){headers_arg})\n    \
                  }} catch (uncarried: Throwable) {{\n      \
                  return {result}.Fault({fn_prefix}WsTransportFailure({wire}, uncarried.toString()))\n    \
                  }}\n    \
@@ -657,7 +688,7 @@ fn handler_member(named: &str, operation: &OperationDef) -> String {
     )
 }
 
-fn handlers_interface(service: &ServiceDef, named: &str) -> String {
+fn handlers_interface(service: &ServiceDef, named: &str, note: &str) -> String {
     let members = service
         .operations
         .iter()
@@ -669,6 +700,7 @@ fn handlers_interface(service: &ServiceDef, named: &str) -> String {
          /// declared operation. A reply operation answers the same sealed result the client\n\
          /// reads rather than throwing its declared error; anything a handler throws regardless\n\
          /// reaches `onFault` instead.\n\
+         {note}\
          interface {named}Handlers {{\n\
          {members}\n\
          }}"
@@ -880,17 +912,17 @@ fn header_write_stmt(extra: &[HeaderElement], accessor_root: &str) -> String {
         let accessor = format!("{accessor_root}.{}", field.kotlin_prop);
         let name = kotlin_quoted(&field.wire_name);
         if let Some(inner) = option_inner(&field.ty) {
-            let inner_ty = kotlin_type_of(inner);
+            let written = read_serializer(inner);
             let _ = writeln!(
                 stmt,
                 "              {accessor}?.let {{ put({name}, \
-                 Json.encodeToJsonElement(serializer<{inner_ty}>(), it)) }}"
+                 Json.encodeToJsonElement({written}, it)) }}"
             );
         } else {
-            let ty = kotlin_type_of(&field.ty);
+            let written = read_serializer(&field.ty);
             let _ = writeln!(
                 stmt,
-                "              put({name}, Json.encodeToJsonElement(serializer<{ty}>(), {accessor}))"
+                "              put({name}, Json.encodeToJsonElement({written}, {accessor}))"
             );
         }
     }
@@ -902,18 +934,16 @@ fn header_write_stmt(extra: &[HeaderElement], accessor_root: &str) -> String {
 /// was declared, so `success` is a tuple.
 fn ok_reply_parts(shape: &HttpShape, success: &Type) -> (String, String) {
     let extra = header_elements(&shape.header_out, success, "headerOut");
-    let body_ty = kotlin_type_of(body_type(shape.header_out.len(), success));
-    let body_expr =
-        format!("Json.encodeToJsonElement(serializer<{body_ty}>(), answered.value.value)");
+    let written = read_serializer(body_type(shape.header_out.len(), success));
+    let body_expr = format!("Json.encodeToJsonElement({written}, answered.value.value)");
     (header_write_stmt(&extra, "answered.value"), body_expr)
 }
 
 /// [`ok_reply_parts`]'s own twin on the declared-error side.
 fn declared_reply_parts(shape: &HttpShape, error: &Type) -> (String, String) {
     let extra = header_elements(&shape.error_header_out, error, "errorHeaderOut");
-    let head_ty = kotlin_type_of(body_type(shape.error_header_out.len(), error));
-    let body_expr =
-        format!("Json.encodeToJsonElement(serializer<{head_ty}>(), answered.error.error)");
+    let written = read_serializer(body_type(shape.error_header_out.len(), error));
+    let body_expr = format!("Json.encodeToJsonElement({written}, answered.error.error)");
     (header_write_stmt(&extra, "answered.error"), body_expr)
 }
 
@@ -924,8 +954,8 @@ fn ok_arm(named: &str, result: &str, shape: &HttpShape, success: &Type) -> Strin
         let ok_value = if is_unit_type(success) {
             "JsonNull".to_owned()
         } else {
-            let success_ty = kotlin_type_of(success);
-            format!("Json.encodeToJsonElement(serializer<{success_ty}>(), answered.value)")
+            let written = read_serializer(success);
+            format!("Json.encodeToJsonElement({written}, answered.value)")
         };
         let ok_frame = reply_frame_expr(named, "true", "value", &ok_value);
         return format!("          is {result}.Ok -> send({ok_frame})\n");
@@ -951,12 +981,12 @@ fn ok_arm(named: &str, result: &str, shape: &HttpShape, success: &Type) -> Strin
 /// [`ok_arm`]'s own twin on the declared-error side.
 fn declared_arm(named: &str, result: &str, shape: &HttpShape, error: &Type) -> String {
     if shape.error_header_out.is_empty() {
-        let error_ty = kotlin_type_of(error);
+        let written = read_serializer(error);
         let declared_frame = reply_frame_expr(
             named,
             "false",
             "error",
-            &format!("Json.encodeToJsonElement(serializer<{error_ty}>(), answered.error)"),
+            &format!("Json.encodeToJsonElement({written}, answered.error)"),
         );
         return format!("          is {result}.Declared -> send({declared_frame})\n");
     }
@@ -1026,6 +1056,13 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
             let declared_line = declared_arm(named, &result, &shape, error);
             let fault_envelope = fault_envelope_expr(named, "answered.fault");
             let fault_frame = reply_frame_expr(named, "false", "error", &fault_envelope);
+            let unwritten_frame = reply_frame_expr(
+                named,
+                "false",
+                "error",
+                &fault_envelope_expr(named, "fault"),
+            );
+            let arms = deeper(&format!("{ok_line}{declared_line}"));
             let _ = write!(
                 arm,
                 "      val answered = try {{\n        \
@@ -1037,9 +1074,15 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
                  return\n      \
                  }}\n      \
                  if (id != null) {{\n        \
+                 try {{\n          \
                  when (answered) {{\n\
-{ok_line}{declared_line}          \
-                 is {result}.Fault -> send({fault_frame})\n        \
+{arms}            \
+                 is {result}.Fault -> send({fault_frame})\n          \
+                 }}\n        \
+                 }} catch (unwritten: SerializationException) {{\n          \
+                 val fault = {fn_prefix}WsHandlerPanic({wire}, unwritten.toString())\n          \
+                 onFault(fault)\n          \
+                 send({unwritten_frame})\n        \
                  }}\n      \
                  }}\n    \
                  }}\n"
@@ -1150,8 +1193,9 @@ fn kotlin_type_of(ty: &Type) -> String {
     kotlin_typename(&get_field_def("value", ty, ""))
 }
 
-/// The `KSerializer` the dispatcher reads the message with, [`read_serializer`] of the type the
-/// operation named, or `serializer<T>()` of the one the macro declared.
+/// The `KSerializer` the client writes the message with and the dispatcher reads it with,
+/// [`read_serializer`] of the type the operation named, a `char` and a date in the form serde
+/// writes, or `serializer<T>()` of the one the macro declared.
 fn message_serializer(operation: &OperationDef) -> String {
     if let OperationInputs::Named(declared) = &operation.inputs {
         read_serializer(declared)
