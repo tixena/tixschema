@@ -1,8 +1,11 @@
 //! A flattened `Option` member beside a member of its holder's own, alone in its holder and in a
-//! variant under a tag key, a map of dates alone in its holder, and a struct flattened bare beside
-//! a member of its holder's own, each written by the emitted Swift types compiled with warnings as
-//! errors, against what serde writes: read from serde's payload where the member holds a value,
-//! and built in code where it holds none.
+//! variant under a tag key, a map of dates alone in its holder, a struct flattened bare beside a
+//! member of its holder's own, a model `validate()` walks and a struct that reads the keys no
+//! member around it took, and a struct read from what a function answers, each read and written
+//! back by the emitted Swift types compiled with warnings as errors, against what serde reads and
+//! writes: read from serde's payload where the member holds a value, where it holds none and where
+//! its type does not read the payload, and refused where the model it holds breaks its rule or the
+//! function answers what its type does not read. The map of dates absent is built in code.
 
 #![cfg(feature = "swift")]
 
@@ -15,8 +18,10 @@ use serde_json::Value;
 
 use super::runtime::judged;
 use super::swift_flattened_options_models::{
-    Crowning, FLAKING, Flaking, LAPPING, Lapping, SENNIT, Sennit, crowning_swift, flaking_swift,
-    lapping_swift, sennit_swift, tabling_swift,
+    Crowning, FLAKING, FLAKING_ABSENT, FLAKING_MISTYPED, Fidding, Flaking, KINKING_SHORT, Kinking,
+    LAPPING, LAPPING_ABSENT, Lapping, SENNIT, SENNIT_ABSENT, Sennit, TARRING_SHORT, Tarring,
+    Veering, crowning_swift, fidding_swift, flaking_swift, kinking_swift, lapping_swift,
+    plaiting_swift, sennit_swift, tabling_swift, tarring_swift, veering_swift,
 };
 #[cfg(feature = "chrono")]
 use super::swift_flattened_options_models::{SWAGING, Swaging, swaging_swift};
@@ -24,9 +29,12 @@ use super::swift_flattened_options_models::{SWAGING, Swaging, swaging_swift};
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
 const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
 
-/// What the run declares beside the emitted types: the text of a value written with its keys
-/// sorted, and the read of a payload.
+/// What the run declares beside the emitted types: the function a model names, answering the
+/// payload as it was handed, the text of a value written with its keys sorted, the read of a
+/// payload, and what a read that refuses one says, a key it misses in serde's words.
 const HELPERS: &str = "
+func asGiven(_ payload: Any) -> Any { payload }
+
 func written<Read: Encodable>(_ value: Read) -> String {
   let encoder = JSONEncoder()
   encoder.outputFormatting = [.sortedKeys]
@@ -36,10 +44,22 @@ func written<Read: Encodable>(_ value: Read) -> String {
 func read<Read: Decodable>(_ type: Read.Type, _ payload: String) -> Read {
   try! JSONDecoder().decode(type, from: Data(payload.utf8))
 }
+
+func refusal<Read: Decodable>(_ type: Read.Type, _ payload: String) -> String {
+  do {
+    _ = try JSONDecoder().decode(type, from: Data(payload.utf8))
+    return \"read\"
+  } catch DecodingError.dataCorrupted(let context) {
+    return context.debugDescription
+  } catch DecodingError.keyNotFound(let key, _) {
+    return \"missing field `\\(key.stringValue)`\"
+  } catch {
+    return \"\\(error)\"
+  }
+}
 ";
 
-/// A holder printed by the run: its name, the Swift that builds it, and the text serde writes of
-/// it.
+/// A holder printed by the run: its name, the Swift that prints it, and what serde tells of it.
 struct Row {
     name: &'static str,
     serde: String,
@@ -48,6 +68,7 @@ struct Row {
 
 impl Row {
     /// The holder `value`, built in Swift by `swift`.
+    #[cfg(feature = "chrono")]
     fn built<T>(name: &'static str, swift: &str, value: &T) -> Self
     where
         T: Serialize,
@@ -55,7 +76,7 @@ impl Row {
         Self {
             name,
             serde: written(value),
-            swift: swift.to_owned(),
+            swift: format!("written({swift})"),
         }
     }
 
@@ -67,7 +88,24 @@ impl Row {
         Self {
             name,
             serde: written(&serde_json::from_str::<T>(json).unwrap()),
-            swift: format!("read({read_as}.self, #\"{json}\"#)"),
+            swift: format!("written(read({read_as}.self, #\"{json}\"#))"),
+        }
+    }
+
+    /// What the read of `json` as `T`, named `read_as` in Swift, says as it refuses the payload,
+    /// ahead of any position serde says it at.
+    fn refused<T>(name: &'static str, read_as: &str, json: &str) -> Self
+    where
+        T: DeserializeOwned,
+    {
+        let refusal = serde_json::from_str::<T>(json).err().unwrap().to_string();
+        Self {
+            name,
+            serde: refusal.split_once(" at line").map_or_else(
+                || refusal.clone(),
+                |(refused, _position)| refused.to_owned(),
+            ),
+            swift: format!("refusal({read_as}.self, #\"{json}\"#)"),
         }
     }
 }
@@ -83,35 +121,30 @@ where
     serde_json::to_string(&keyed).unwrap()
 }
 
-/// Each holder read from a payload that holds the flattened member, then each built with the
-/// flattened `Option` absent, which the Swift read takes from no payload that lacks its keys.
+/// Each holder read from a payload that holds the flattened member, then from one that holds
+/// none, then from one whose key its type does not read, and each whose model breaks its rule.
 fn rows() -> Vec<Row> {
     let mut rows = vec![
         Row::read::<Lapping>("lapping", "Lapping", LAPPING),
         Row::read::<Flaking>("flaking", "Flaking", FLAKING),
         Row::read::<Sennit>("sennit", "Sennit", SENNIT),
         Row::read::<Crowning>("crowning", "Crowning", LAPPING),
-        Row::built(
-            "lapping absent",
-            r#"Lapping(note: "n", tabling: nil)"#,
-            &Lapping {
-                tabling: None,
-                note: "n".to_owned(),
-            },
-        ),
-        Row::built(
-            "flaking absent",
-            "Flaking(tabling: nil)",
-            &Flaking { tabling: None },
-        ),
-        Row::built(
-            "sennit absent",
-            r#"Sennit.laid(SennitLaidPayload(tabling: nil, note: "n"))"#,
-            &Sennit::Laid {
-                tabling: None,
-                note: "n".to_owned(),
-            },
-        ),
+        Row::read::<Kinking>("kinking", "Kinking", FLAKING),
+        Row::read::<Tarring>("tarring", "Tarring", LAPPING),
+        Row::read::<Fidding>("fidding", "Fidding", LAPPING),
+        Row::read::<Veering>("veering", "Veering", LAPPING),
+        Row::read::<Lapping>("lapping absent", "Lapping", LAPPING_ABSENT),
+        Row::read::<Flaking>("flaking absent", "Flaking", FLAKING_ABSENT),
+        Row::read::<Sennit>("sennit absent", "Sennit", SENNIT_ABSENT),
+        Row::read::<Kinking>("kinking absent", "Kinking", FLAKING_ABSENT),
+        Row::read::<Tarring>("tarring absent", "Tarring", LAPPING_ABSENT),
+        Row::read::<Fidding>("fidding absent", "Fidding", FLAKING_ABSENT),
+        Row::read::<Fidding>("fidding unread", "Fidding", LAPPING_ABSENT),
+        Row::read::<Flaking>("flaking mistyped", "Flaking", FLAKING_MISTYPED),
+        Row::read::<Kinking>("kinking mistyped", "Kinking", FLAKING_MISTYPED),
+        Row::refused::<Kinking>("kinking refused", "Kinking", KINKING_SHORT),
+        Row::refused::<Tarring>("tarring refused", "Tarring", TARRING_SHORT),
+        Row::refused::<Veering>("veering refused", "Veering", LAPPING_ABSENT),
     ];
     #[cfg(feature = "chrono")]
     rows.extend([
@@ -134,11 +167,16 @@ fn printed(rows: &[Row]) -> Option<String> {
         flaking_swift::swift_definition(),
         sennit_swift::swift_definition(),
         crowning_swift::swift_definition(),
+        plaiting_swift::swift_definition(),
+        kinking_swift::swift_definition(),
+        tarring_swift::swift_definition(),
+        fidding_swift::swift_definition(),
+        veering_swift::swift_definition(),
     ];
     #[cfg(feature = "chrono")]
     definitions.push(swaging_swift::swift_definition());
     let main = rows.iter().fold(String::new(), |mut main, row| {
-        let _ = writeln!(main, "print(\"{}: \\(written({}))\")", row.name, row.swift);
+        let _ = writeln!(main, "print(\"{}: \\({})\")", row.name, row.swift);
         main
     });
     let source = [
@@ -167,9 +205,12 @@ fn printed(rows: &[Row]) -> Option<String> {
 /// A flattened `Option` that holds a value writes its keys beside its holder's own, and one that
 /// holds none writes nothing, alone in its holder and in a variant under a tag key too, as serde
 /// writes them; a map of dates writes the text serde writes, and a struct flattened bare writes
-/// its keys beside its holder's own.
+/// its keys beside its holder's own. A flattened `Option` is read as `nil` wherever its type does
+/// not read the payload, a key absent or held as a type it does not read, as serde reads it, and
+/// a model it holds that breaks its rule refuses the payload in serde's words; one that names a
+/// function is refused where its type does not read what the function answers.
 #[test]
-fn a_flattened_option_writes_in_swift_what_serde_writes() {
+fn a_flattened_option_reads_and_writes_in_swift_what_serde_reads_and_writes() {
     let rows = rows();
     let expected = rows.iter().fold(String::new(), |mut expected, row| {
         let _ = writeln!(expected, "{}: {}", row.name, row.serde);
@@ -179,9 +220,22 @@ fn a_flattened_option_writes_in_swift_what_serde_writes() {
          flaking: {\"label\":\"north\"}\n\
          sennit: {\"kind\":\"Laid\",\"label\":\"north\",\"note\":\"n\"}\n\
          crowning: {\"label\":\"north\",\"note\":\"n\"}\n\
+         kinking: {\"label\":\"north\"}\n\
+         tarring: {\"label\":\"north\",\"note\":\"n\"}\n\
+         fidding: {\"label\":\"north\",\"note\":\"n\"}\n\
+         veering: {\"label\":\"north\",\"note\":\"n\"}\n\
          lapping absent: {\"note\":\"n\"}\n\
          flaking absent: {}\n\
-         sennit absent: {\"kind\":\"Laid\",\"note\":\"n\"}\n";
+         sennit absent: {\"kind\":\"Laid\",\"note\":\"n\"}\n\
+         kinking absent: {}\n\
+         tarring absent: {\"note\":\"n\"}\n\
+         fidding absent: {}\n\
+         fidding unread: {}\n\
+         flaking mistyped: {}\n\
+         kinking mistyped: {}\n\
+         kinking refused: 'label': too short: minimum length is 2, got 1\n\
+         tarring refused: 'label': too short: minimum length is 2, got 1\n\
+         veering refused: missing field `label`\n";
     #[cfg(feature = "chrono")]
     let dates = "swaging: {\"north\":\"2024-01-02T03:04:05.678Z\"}\n\
          swaging absent: {}\n";
