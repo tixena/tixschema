@@ -43,8 +43,8 @@ mod unwritten_models;
 #[path = "dart_tests/unwritten.rs"]
 mod unwritten;
 
-/// A map that is the one member of its object, and a member that names a function flattened at
-/// each place a member can be handed fewer keys than its object holds.
+/// A map that is the one member of its object, optional too, and a member that names a function
+/// flattened at each place a member can be handed fewer keys than its object holds.
 #[cfg(test)]
 #[cfg(all(feature = "dart", feature = "serde"))]
 #[path = "dart_tests/flattened_models.rs"]

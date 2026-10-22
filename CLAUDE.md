@@ -1513,17 +1513,21 @@ consumer's view; this is what a change has to keep.
   take and the entries each member flattened ahead of it took. That is what a struct with a
   flattened member of its own and a function a member names are handed, and a struct that reads
   a key a struct ahead of it took is refused, as serde refuses it. A map is the one member of its
-  object (section 4), and is handed every key but the tag of a variant under a tag key. What a
-  member takes is `taken_by`, the `Taken` recorded for its type in `DART_TAKEN_KEYS`, and nothing
-  for a member that names a function:
+  object (section 4), and is handed every key but the tag of a variant under a tag key. An
+  optional map that names no function takes no key, and is read in the closure below, so it is
+  `null` wherever an entry does not read as its key and value, as serde's untagged read of an
+  `Option` reads `None`; one that names a function is read from what the function answers, where
+  an entry that does not read refuses the payload, as the Rust read refuses it. What a member
+  takes is `taken_by`, the `Taken` recorded for its type in `DART_TAKEN_KEYS`, and nothing for a
+  member that names a function:
   - `Taken::Keys` of a struct, which `struct_dart_tokens` records from
     `keys_taken_when_flattened` in `src/features/serde.rs`, which the Swift and Kotlin emitters
     read too: serde's own list of the name and each alias of every member it reads. `without`
-    removes them. An optional one that names no function and is no map is read by
-    `flattened_decode`: where `taken_by` answers keys, `null` where the object it is handed holds
-    none of them, and its type's read where one is there, which refuses a key that does not read,
-    as TypeScript and Zod refuse it, where serde reads `None`; where it answers none, its type's
-    read inside a closure called in place, `(() { try { return ...; } catch (_) { return null; }
+    removes them. An optional one that names no function is read by `flattened_decode`: where
+    `taken_by` answers keys, `null` where the object it is handed holds none of them, and its
+    type's read where one is there, which refuses a key that does not read, as TypeScript and Zod
+    refuse it, where serde reads `None`; where it answers none, a map among them, its type's read
+    inside a closure called in place, `(() { try { return ...; } catch (_) { return null; }
     })()`, which declares no name and answers `null` wherever the read throws, as serde reads
     `None`.
   - `Taken::FirstOf` of an externally tagged enum, which `enum_dart_tokens` records from
@@ -1587,7 +1591,9 @@ consumer's view; this is what a change has to keep.
   serde takes, a reply that breaks a rule through both clients, and the README's section.
   `tests/dart_tests/flattened.rs` pins the read of a flattened member at each place, over the
   models of `tests/dart_tests/flattened_models.rs`, which also pin what serde reads of each, and
-  `run_dart_flattened.rs` reads and writes each back under the Dart SDK, against serde.
+  `run_dart_flattened.rs` reads and writes each back under the Dart SDK, against serde. A map of
+  models with a rule (`Limber`) is held to serde under a schema surface alone: a build with none
+  holds no bound in Rust, and the Dart read refuses what it breaks in every build.
   `tests/dart_tests/aliased.rs` pins the read of a variant and a member under an alias, over the
   models of `tests/kotlin_tests/aliased_models.rs` and of
   `tests/dart_tests/flattened_aliased_models.rs`, which flattens each tagged enum of the first
