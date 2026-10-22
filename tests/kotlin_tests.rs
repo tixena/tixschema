@@ -87,3 +87,16 @@ mod aliased_models;
 #[cfg(all(feature = "kotlin", feature = "serde"))]
 #[path = "kotlin_tests/aliased.rs"]
 mod aliased;
+
+/// A `char` and a chrono date, time and date and time held in each place, and what serde, Zod and
+/// the Kotlin read answer of each payload.
+#[cfg(test)]
+#[cfg(all(feature = "kotlin", feature = "chrono"))]
+#[path = "kotlin_tests/text_forms_models.rs"]
+mod text_forms_models;
+
+/// What the Kotlin emitter writes for a `char` and a chrono date, time and date and time.
+#[cfg(test)]
+#[cfg(all(feature = "kotlin", feature = "chrono"))]
+#[path = "kotlin_tests/text_forms.rs"]
+mod text_forms;

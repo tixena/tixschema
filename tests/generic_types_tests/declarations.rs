@@ -47,6 +47,12 @@ mod unrecorded;
 #[path = "../kotlin_tests/corrected_options_models.rs"]
 mod corrected_options;
 
+/// A `char` and a chrono date, time and date and time held in each place, and what serde, Zod and
+/// the Kotlin read answer of each payload.
+#[cfg(feature = "chrono")]
+#[path = "../kotlin_tests/text_forms_models.rs"]
+mod text_forms;
+
 use core::fmt::Write as _;
 
 #[cfg(feature = "chrono")]
@@ -1647,6 +1653,38 @@ fn corrected_options_bundle() -> String {
     .join("\n\n")
 }
 
+/// The holders of a text serde reads in one form alone: a bundle of their own, compiled with
+/// `tsc --strict` before it is loaded.
+#[cfg(feature = "chrono")]
+fn text_forms_bundle() -> String {
+    [
+        PREAMBLE.to_owned(),
+        text_forms::Chronometer::ts_definition(),
+        text_forms::Chronometer::zod_schema(),
+        text_forms::LetterLog::ts_definition(),
+        text_forms::LetterLog::zod_schema(),
+        text_forms::LetterLines::ts_definition(),
+        text_forms::LetterLines::zod_schema(),
+        text_forms::DayLog::ts_definition(),
+        text_forms::DayLog::zod_schema(),
+        text_forms::DayLines::ts_definition(),
+        text_forms::DayLines::zod_schema(),
+        text_forms::TimeLog::ts_definition(),
+        text_forms::TimeLog::zod_schema(),
+        text_forms::TimeLines::ts_definition(),
+        text_forms::TimeLines::zod_schema(),
+        text_forms::StampLog::ts_definition(),
+        text_forms::StampLog::zod_schema(),
+        text_forms::StampLines::ts_definition(),
+        text_forms::StampLines::zod_schema(),
+        text_forms::InstantLog::ts_definition(),
+        text_forms::InstantLog::zod_schema(),
+        text_forms::InstantLines::ts_definition(),
+        text_forms::InstantLines::zod_schema(),
+    ]
+    .join("\n\n")
+}
+
 /// What serde's read of `json` as a `T` prints, as the driver of the `Result`s prints the same
 /// payload: the value, with the keys of each object in order, or the refusal, with each message
 /// of `validate()` where the type judges a model it holds.
@@ -2426,6 +2464,28 @@ fn type_check_a_set_refuses_a_repeat_under_zod() {
         format!("{printed}\n"),
         sets::PRINTED,
         "the schemas do not refuse a repeat:\n{failed}"
+    );
+}
+
+/// Each payload of a `char` and of a chrono date, time and date and time is read by the Zod schema
+/// of its type under `node` exactly where [`text_forms::TEXT_FORMS`] states, which the Kotlin read
+/// is held to.
+#[cfg(feature = "chrono")]
+#[test]
+fn type_check_a_text_of_one_form_is_read_under_zod_where_the_table_states() {
+    let taken: Vec<bool> = text_forms::TEXT_FORMS.iter().map(|row| row.zod).collect();
+    let listed: Vec<(String, &str)> = text_forms::TEXT_FORMS
+        .iter()
+        .map(|row| (format!("{}$Schema", row.read_as), row.json))
+        .collect();
+    let driver = TAKEN_DRIVER.replace("PAYLOADS", &serde_json::to_string(&listed).unwrap());
+    let Some((printed, failed)) = loaded_from("text-forms", &text_forms_bundle(), &driver) else {
+        return;
+    };
+    assert_eq!(
+        printed,
+        serde_json::to_string(&taken).unwrap(),
+        "the schemas do not read what the table states:\n{failed}"
     );
 }
 

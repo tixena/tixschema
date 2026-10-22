@@ -511,7 +511,7 @@ fn test_width_table() {
         "val single: Float",
         "val double: Double",
         "val text: String",
-        "val letter: String",
+        "val letter: @Serializable(with = KotlinText",
         "val items: List<Int>",
         "val map: Map<String, Int>",
     ] {
@@ -698,7 +698,10 @@ fn test_alias() {
 #[cfg(feature = "chrono")]
 fn test_dates() {
     let kotlin = dates_kotlin::kotlin_definition();
-    assert!(kotlin.contains("val plainDate: String"), "got: {kotlin}");
+    assert!(
+        kotlin.contains("val plainDate: @Serializable(with = KotlinText"),
+        "got: {kotlin}"
+    );
     assert!(kotlin.contains("val zonedMs: Long"), "got: {kotlin}");
 }
 

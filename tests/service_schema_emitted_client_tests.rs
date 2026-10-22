@@ -425,6 +425,18 @@ mod run_kotlin_flattened;
 #[path = "service_schema_emitted_client_tests/run_kotlin_refusals.rs"]
 mod run_kotlin_refusals;
 
+/// A `char` and a chrono date, time and date and time held in each place, and what serde, Zod and
+/// the Kotlin read answer of each payload.
+#[cfg(test)]
+#[cfg(all(feature = "kotlin", feature = "chrono"))]
+#[path = "kotlin_tests/text_forms_models.rs"]
+mod text_forms_models;
+
+/// Those payloads, read by the emitted Kotlin types where the table states.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_text_forms.rs"]
+mod run_kotlin_text_forms;
+
 /// The models a name serde reads beside the one it writes is read under.
 #[cfg(test)]
 #[cfg(all(
