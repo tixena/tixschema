@@ -1020,6 +1020,222 @@ fn a_type_parameter_in_a_lone_slot_under_a_tag_alone_is_refused_where_a_map_fill
     );
 }
 
+/// The refusal of `filling` filling the type parameter `parameter` that `flattens` flattens
+/// `beside` a key, in the place `subject` names, `named` where the filling is an externally tagged
+/// enum the advice names.
+#[cfg(feature = "serde")]
+fn filled_entry(
+    subject: &str,
+    flattens: &str,
+    parameter: &str,
+    beside: &str,
+    filling: &str,
+    named: bool,
+) -> String {
+    let advice = if named {
+        "Name the enum where the type parameter stands, which every surface describes by its \
+         entries, or write it under a key of its own."
+    } else {
+        "Write it under a key of its own."
+    };
+    format!(
+        "model_schema: {subject}: `{flattens}` flattens its type parameter `{parameter}`{beside}, \
+         and `{filling}` fills it with a value serde writes a variant of there as an entry of its \
+         name over null \u{2014} the TypeScript type and the Zod schema of `{flattens}`, written \
+         once for every filling, describe that variant as its bare name. {advice}"
+    )
+}
+
+/// Declares the types the fillings of a flattened type parameter are read against: an externally
+/// tagged enum with a unit variant and one without, a struct, a plain enum, an untagged enum with a
+/// member over the first, a brand and an alias of it, and the types that flatten a parameter.
+#[cfg(feature = "serde")]
+fn declare_entry_fillings() {
+    for declared in [
+        "pub enum Pallet { Loose, Stacked { layers: u32 } }",
+        "pub enum Stacking { Stacked { layers: u32 } }",
+        "pub struct Crate { pub label: String }",
+        "pub enum Plainly { One, Two }",
+        "#[serde(untagged)] pub enum Either { Pal(Pallet), Boxed(Crate) }",
+        "#[serde(transparent)] pub struct PalletBrand(Pallet);",
+    ] {
+        assert_eq!(refused(declared), NONE, "{declared}");
+    }
+    assert_eq!(refusals(expanded("type PalletAlias = Pallet;")), NONE);
+    assert_eq!(
+        generic(
+            "Held",
+            "#[derive(Serialize, Deserialize)] #[serde(tag = \"kind\")] pub enum Waybill<Held> \
+             { Empty, Held(Held) }"
+        ),
+        NONE
+    );
+    assert_eq!(
+        refused_generic("pub struct Bag<T> { pub id: u32, #[serde(flatten)] pub inner: T }"),
+        NONE
+    );
+    assert_eq!(
+        refused_generic("pub struct Wrap<T> { #[serde(flatten)] pub inner: T }"),
+        NONE
+    );
+    assert_eq!(
+        generic(
+            "U",
+            "#[derive(Serialize, Deserialize)] pub struct Outer<U> { pub bill: Waybill<U> }"
+        ),
+        NONE
+    );
+}
+
+/// A type parameter flattened, beside a member, beside a tag or alone, and one held by the lone
+/// slot of a variant under a tag alone, is refused where a value serde writes a variant of as an
+/// entry of its name over `null` fills it: an externally tagged enum with a unit variant, itself,
+/// under an `Option` or through an alias or a brand, a plain enum, and an untagged enum with a
+/// member over one.
+#[cfg(feature = "serde")]
+#[test]
+fn a_type_parameter_flattened_or_beside_a_tag_is_refused_where_a_variant_written_as_an_entry_fills_it()
+ {
+    declare_entry_fillings();
+    let tag = " beside the tag `kind`";
+    let member = " beside `id`";
+    for (written, flattens, parameter, beside, filling, named) in [
+        ("Waybill<Pallet>", "Waybill", "Held", tag, "Pallet", true),
+        (
+            "Vec<Waybill<Pallet>>",
+            "Waybill",
+            "Held",
+            tag,
+            "Pallet",
+            true,
+        ),
+        ("Outer<Pallet>", "Waybill", "Held", tag, "Pallet", true),
+        (
+            "Waybill<PalletAlias>",
+            "Waybill",
+            "Held",
+            tag,
+            "PalletAlias",
+            true,
+        ),
+        (
+            "Waybill<PalletBrand>",
+            "Waybill",
+            "Held",
+            tag,
+            "PalletBrand",
+            true,
+        ),
+        ("Waybill<Plainly>", "Waybill", "Held", tag, "Plainly", false),
+        ("Bag<Pallet>", "Bag", "T", member, "Pallet", true),
+        (
+            "Bag<Option<Pallet>>",
+            "Bag",
+            "T",
+            member,
+            "Option<Pallet>",
+            true,
+        ),
+        ("Bag<Either>", "Bag", "T", member, "Either", false),
+        ("Wrap<Pallet>", "Wrap", "T", "", "Pallet", true),
+        ("Wrap<Plainly>", "Wrap", "T", "", "Plainly", false),
+    ] {
+        assert_eq!(
+            refused(&format!("pub struct Manifest {{ pub held: {written} }}")),
+            vec![filled_entry(
+                "type `Manifest`: field `held`",
+                flattens,
+                parameter,
+                beside,
+                filling,
+                named
+            )],
+            "{written}"
+        );
+    }
+    assert_eq!(
+        refusals(expanded("type Bill = Waybill<Pallet>;")),
+        vec![filled_entry(
+            "type `Bill`",
+            "Waybill",
+            "Held",
+            tag,
+            "Pallet",
+            true
+        )]
+    );
+    assert_eq!(
+        refused_with_default(
+            "Pallet",
+            "pub struct Sack<T> { #[serde(flatten)] pub inner: T }"
+        ),
+        vec![filled_entry(
+            "type `Sack`: `default_types` entry `T`",
+            "Sack",
+            "T",
+            "",
+            "Pallet",
+            true
+        )]
+    );
+}
+
+/// Every other filling of those parameters builds: an enum whose every variant holds a value, a
+/// struct, an `Option` beside a tag, which serde refuses to write there, a map flattened alone, and
+/// a type declared below.
+#[cfg(feature = "serde")]
+#[test]
+fn a_type_parameter_flattened_or_beside_a_tag_builds_at_every_other_filling() {
+    declare_entry_fillings();
+    for built in [
+        "Waybill<Stacking>",
+        "Waybill<Crate>",
+        "Waybill<Option<Pallet>>",
+        "Waybill<PalletBelow>",
+        "Bag<Crate>",
+        "Bag<Stacking>",
+        "Wrap<Stacking>",
+        "Wrap<HashMap<String, u8>>",
+        "Outer<Crate>",
+    ] {
+        assert_eq!(
+            refused(&format!("pub struct Manifest {{ pub held: {built} }}")),
+            NONE,
+            "{built}"
+        );
+    }
+}
+
+/// The README quotes the refusal of a type parameter beside a tag filled at an externally tagged
+/// enum with a unit variant as the build answers it, in its section and in the list of what an
+/// upgrade asks of a crate.
+#[cfg(feature = "serde")]
+#[test]
+fn the_readme_states_the_refusal_of_a_filling_written_as_an_entry_as_the_build_answers_it() {
+    assert_eq!(
+        refused("pub enum Pallet { Loose, Stacked { layers: u32 } }"),
+        NONE
+    );
+    assert_eq!(
+        generic(
+            "Held",
+            "#[derive(Serialize, Deserialize)] #[serde(tag = \"kind\")] pub enum Waybill<Held> \
+             { Empty, Held(Held) }"
+        ),
+        NONE
+    );
+    let messages = refused("pub struct Manifest { pub bill: Waybill<Pallet> }");
+    assert_eq!(messages.len(), 1, "{messages:?}");
+    let answered = format!("error: {}", messages[0]);
+    assert_eq!(
+        include_str!("../../../README.md")
+            .matches(&answered)
+            .count(),
+        2,
+        "the README no longer quotes: {answered}"
+    );
+}
+
 /// serde neither writes nor reads a variant under `#[serde(skip)]`, so what it holds sits beside
 /// no tag and no member: each shape refused there in a variant under a tag alone, or beside a
 /// member under any tagging, builds. Under `skip_serializing` alone serde still reads the variant,

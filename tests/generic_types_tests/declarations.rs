@@ -1114,6 +1114,147 @@ const MOORINGS: [(&str, bool); 9] = [
     (r#"{"kind":"Tacked","Calm":1}"#, false),
 ];
 
+/// Each payload of an externally tagged enum that declares a parameter, written with an argument,
+/// flattened beside a member and held by the lone slot of a variant under a tag alone, the schema
+/// it is parsed through and the type it is assigned to, and whether serde, Zod and TypeScript take
+/// it: each variant's entry at the argument, a unit variant's over `null` among them, and not the
+/// member or the tag alone, an entry of another type, or beside the tag the entries of two
+/// variants.
+const LADINGS: [(&str, &str, &str, bool); 22] = [
+    (
+        "DeclaredBerth$Schema",
+        "DeclaredBerth",
+        r#"{"note":"n","empty":null}"#,
+        true,
+    ),
+    (
+        "DeclaredBerth$Schema",
+        "DeclaredBerth",
+        r#"{"note":"n","held_fast":7}"#,
+        true,
+    ),
+    (
+        "DeclaredBerth$Schema",
+        "DeclaredBerth",
+        r#"{"note":"n","loose":{"cargo":7}}"#,
+        true,
+    ),
+    (
+        "DeclaredBerth$Schema",
+        "DeclaredBerth",
+        r#"{"note":"n"}"#,
+        false,
+    ),
+    (
+        "DeclaredBerth$Schema",
+        "DeclaredBerth",
+        r#"{"held_fast":7}"#,
+        false,
+    ),
+    (
+        "DeclaredBerth$Schema",
+        "DeclaredBerth",
+        r#"{"note":"n","held_fast":"x"}"#,
+        false,
+    ),
+    (
+        "DeclaredQuay$SchemaDefault",
+        "DeclaredQuay<boolean>",
+        r#"{"note":"n","empty":null}"#,
+        true,
+    ),
+    (
+        "DeclaredQuay$SchemaDefault",
+        "DeclaredQuay<boolean>",
+        r#"{"note":"n","held_fast":true}"#,
+        true,
+    ),
+    (
+        "DeclaredQuay$SchemaDefault",
+        "DeclaredQuay<boolean>",
+        r#"{"note":"n","held_fast":7}"#,
+        false,
+    ),
+    (
+        "DeclaredPier$Schema",
+        "DeclaredPier",
+        r#"{"note":"n","empty":null}"#,
+        true,
+    ),
+    (
+        "DeclaredPier$Schema",
+        "DeclaredPier",
+        r#"{"note":"n","held_fast":7}"#,
+        true,
+    ),
+    (
+        "DeclaredPier$Schema",
+        "DeclaredPier",
+        r#"{"note":"n","held_fast":true}"#,
+        false,
+    ),
+    (
+        "DeclaredWharf$Schema",
+        "DeclaredWharf",
+        r#"{"kind":"Laden","empty":null}"#,
+        true,
+    ),
+    (
+        "DeclaredWharf$Schema",
+        "DeclaredWharf",
+        r#"{"kind":"Laden","held_fast":7}"#,
+        true,
+    ),
+    (
+        "DeclaredWharf$Schema",
+        "DeclaredWharf",
+        r#"{"kind":"Laden"}"#,
+        false,
+    ),
+    (
+        "DeclaredWharf$Schema",
+        "DeclaredWharf",
+        r#"{"kind":"Laden","empty":null,"held_fast":7}"#,
+        false,
+    ),
+    (
+        "DeclaredWharf$Schema",
+        "DeclaredWharf",
+        r#"{"kind":"Laden","held_fast":"x"}"#,
+        false,
+    ),
+    (
+        "DeclaredWharf$Schema",
+        "DeclaredWharf",
+        r#"{"kind":"Held","held_fast":true}"#,
+        true,
+    ),
+    (
+        "DeclaredWharf$Schema",
+        "DeclaredWharf",
+        r#"{"kind":"Held","empty":null}"#,
+        true,
+    ),
+    (
+        "DeclaredMarina$SchemaDefault",
+        "DeclaredMarina<boolean>",
+        r#"{"kind":"Laden","empty":null}"#,
+        true,
+    ),
+    (
+        "DeclaredMarina$SchemaDefault",
+        "DeclaredMarina<boolean>",
+        r#"{"kind":"Laden","held_fast":true}"#,
+        true,
+    ),
+    (
+        "DeclaredMarina$SchemaDefault",
+        "DeclaredMarina<boolean>",
+        r#"{"kind":"Laden","held_fast":7}"#,
+        false,
+    ),
+];
+
 static STOOD_DOWN: Once = Once::new();
 
 /// A struct whose fields bound a brand over a string, one declared below it and an optional one,
@@ -1420,6 +1561,57 @@ pub enum DeclaredMooring {
     Tacked(#[model_schema_prop(preprocess = ["asGiven"])] DeclaredTack),
 }
 
+/// [`DeclaredLading`] written with an argument and flattened beside a member of its holder's own.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeclaredBerth {
+    #[serde(flatten)]
+    pub lading: DeclaredLading<u32>,
+    pub note: String,
+}
+
+/// [`DeclaredLading`] flattened at its holder's own parameter.
+#[model_schema(default_types(Stowed = bool))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeclaredQuay<Stowed> {
+    #[serde(flatten)]
+    pub lading: DeclaredLading<Stowed>,
+    pub note: String,
+}
+
+/// An alias of [`DeclaredLading`] that declares a parameter of its own.
+#[model_schema(default_types(Stowed = String))]
+pub type DeclaredHold<Stowed> = DeclaredLading<Stowed>;
+
+/// [`DeclaredHold`] written with an argument and flattened beside a member of its holder's own.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeclaredPier {
+    #[serde(flatten)]
+    pub hold: DeclaredHold<u32>,
+    pub note: String,
+}
+
+/// [`DeclaredLading`] and [`DeclaredHold`] written with an argument in the lone slot of a variant
+/// under a tag alone: serde writes each variant beside the tag as an entry, a unit variant's over
+/// `null`.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum DeclaredWharf {
+    Held(DeclaredHold<bool>),
+    Laden(DeclaredLading<u32>),
+}
+
+/// [`DeclaredLading`] at its holder's own parameter in the lone slot of a variant under a tag
+/// alone.
+#[model_schema(default_types(Stowed = bool))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum DeclaredMarina<Stowed> {
+    Laden(DeclaredLading<Stowed>),
+}
+
 fn bundle() -> String {
     [
         PREAMBLE.to_owned(),
@@ -1513,6 +1705,18 @@ fn hatches_bundle() -> String {
         DeclaredDrift::zod_schema(),
         DeclaredMooring::ts_definition(),
         DeclaredMooring::zod_schema(),
+        DeclaredBerth::ts_definition(),
+        DeclaredBerth::zod_schema(),
+        DeclaredQuay::<bool>::ts_definition(),
+        DeclaredQuay::<bool>::zod_schema(),
+        declared_hold_schema::Schema::ts_definition(),
+        declared_hold_schema::Schema::zod_schema(),
+        DeclaredPier::ts_definition(),
+        DeclaredPier::zod_schema(),
+        DeclaredWharf::ts_definition(),
+        DeclaredWharf::zod_schema(),
+        DeclaredMarina::<bool>::ts_definition(),
+        DeclaredMarina::<bool>::zod_schema(),
     ]
     .join("\n\n")
 }
@@ -3520,6 +3724,63 @@ fn type_check_a_slot_beside_the_tag_takes_a_unit_variants_entry_over_null() {
     fs::remove_dir_all(&at).unwrap();
     // A row's line is its position after the import.
     let typed: Vec<bool> = (0..MOORINGS.len())
+        .map(|row| !said.contains(&format!("consumer.ts({},", row + 2)))
+        .collect();
+    assert_eq!(
+        typed, stated,
+        "TypeScript does not take what the rows state:\n{said}\n{payloads}"
+    );
+}
+
+/// An externally tagged enum that declares a parameter, written with an argument, flattened and in
+/// the lone slot of a variant under a tag alone, is taken by the Zod schema of its holder under
+/// `node` and by its TypeScript type under `tsc --strict` as serde writes and reads it: each
+/// variant's entry at the argument, a unit variant's over `null` among them, directly, at the
+/// holder's own parameter, flattened and beside the tag, and through an alias that declares a
+/// parameter of its own.
+#[test]
+fn type_check_an_enum_written_with_an_argument_takes_each_entry_at_the_argument() {
+    let stated: Vec<bool> = LADINGS.iter().map(|&(_, _, _, taken)| taken).collect();
+    let read: Vec<bool> = LADINGS
+        .iter()
+        .map(|&(_, typed, json, _)| match typed {
+            "DeclaredBerth" => serde_json::from_str::<DeclaredBerth>(json).is_ok(),
+            "DeclaredPier" => serde_json::from_str::<DeclaredPier>(json).is_ok(),
+            "DeclaredWharf" => serde_json::from_str::<DeclaredWharf>(json).is_ok(),
+            "DeclaredMarina<boolean>" => serde_json::from_str::<DeclaredMarina<bool>>(json).is_ok(),
+            _ => serde_json::from_str::<DeclaredQuay<bool>>(json).is_ok(),
+        })
+        .collect();
+    assert_eq!(read, stated, "serde does not take what the rows state");
+    let listed: Vec<(&str, &str)> = LADINGS
+        .iter()
+        .map(|&(schema, _, json, _)| (schema, json))
+        .collect();
+    let driver = TAKEN_DRIVER.replace("PAYLOADS", &serde_json::to_string(&listed).unwrap());
+    let Some((printed, failed)) = loaded_from("ladings", &hatches_bundle(), &driver) else {
+        return;
+    };
+    assert_eq!(
+        printed,
+        serde_json::to_string(&stated).unwrap(),
+        "the schemas do not take what the rows state:\n{failed}"
+    );
+    let Some(at) = built_from("ladings-payloads", &hatches_bundle()) else {
+        return;
+    };
+    let mut payloads = String::from(
+        "import type { DeclaredBerth, DeclaredMarina, DeclaredPier, DeclaredQuay, DeclaredWharf } \
+         from \"./lib/index.js\";\n",
+    );
+    for (position, &(_, typed, json, _)) in LADINGS.iter().enumerate() {
+        let _ = writeln!(payloads, "export const row{position}: {typed} = {json};");
+    }
+    fs::write(at.join("tsconfig.consumer.json"), CONSUMER_PROJECT).unwrap();
+    fs::write(at.join("consumer.ts"), &payloads).unwrap();
+    let (_, said) = compiled(&at, "tsconfig.consumer.json").unwrap();
+    fs::remove_dir_all(&at).unwrap();
+    // A row's line is its position after the import.
+    let typed: Vec<bool> = (0..LADINGS.len())
         .map(|row| !said.contains(&format!("consumer.ts({},", row + 2)))
         .collect();
     assert_eq!(

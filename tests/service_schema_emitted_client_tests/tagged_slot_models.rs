@@ -4,7 +4,8 @@
 //! struct, a struct with a flattened member, one declared below the enum, and a struct and an
 //! externally tagged enum a function reads. serde writes the slot's members beside the tag, an
 //! externally tagged enum's variant as an entry, and reads the slot from the object without the
-//! tag. A struct that flattens the alias reads and writes the same entries.
+//! tag. A struct that flattens the alias reads and writes the same entries, and so do a slot and a
+//! struct over an externally tagged enum that declares a parameter, written with an argument.
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -13,7 +14,7 @@ use tixschema::model_schema;
 
 /// Each payload serde writes, and the type it is read as, as Kotlin and Swift name it: an
 /// externally tagged enum's unit variant among them, as an entry of its name over `null`.
-pub const WRITTEN: [(&str, &str); 25] = [
+pub const WRITTEN: [(&str, &str); 29] = [
     ("Docketed", r#"{"kind":"Weighed","cost":"c"}"#),
     (
         "Docketed",
@@ -45,6 +46,10 @@ pub const WRITTEN: [(&str, &str); 25] = [
     ("Trussed", r#"{"note":"n","Stacked":{"layers":5}}"#),
     ("Docketed", r#"{"kind":"Idle"}"#),
     ("Waybilled<Tonnage>", r#"{"kind":"Held","cost":"c"}"#),
+    ("Docketed", r#"{"kind":"Cradled","Carried":7}"#),
+    ("Docketed", r#"{"kind":"Cradled","Empty":null}"#),
+    ("Swaddled", r#"{"note":"n","Carried":7}"#),
+    ("Swaddled", r#"{"note":"n","Empty":null}"#),
 ];
 
 /// The payloads of [`Docketed::External`] serde refuses, and the words each client refuses each
@@ -154,6 +159,24 @@ pub struct Trussed {
     pub pallet: Lashing,
 }
 
+/// An enum with no tag attribute that declares a parameter, of a variant that holds it and a unit
+/// variant.
+#[model_schema(default_types(Load = String))]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum Cradled<Load> {
+    Carried(Load),
+    Empty,
+}
+
+/// [`Cradled`] written with an argument and flattened beside a member of its holder's own.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Swaddled {
+    pub note: String,
+    #[serde(flatten)]
+    pub wrapping: Cradled<u32>,
+}
+
 /// An untagged enum of two structs' shapes.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -187,6 +210,7 @@ pub enum Docketed {
     Aliased(Drayage),
     Below(Lightering),
     Branded(Wharfage),
+    Cradled(Cradled<u32>),
     Either(Dray),
     External(Palleted),
     Filled(Lighter<String>),
@@ -231,6 +255,7 @@ pub fn serde_told(read_as: &str, json: &str) -> String {
     match read_as {
         "Docketed" => written_back::<Docketed>(json),
         "Trussed" => written_back::<Trussed>(json),
+        "Swaddled" => written_back::<Swaddled>(json),
         _ => written_back::<Waybilled<Tonnage>>(json),
     }
 }

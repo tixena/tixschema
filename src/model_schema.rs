@@ -70,8 +70,9 @@ use crate::utils::escape_js_double_quoted;
 #[cfg(feature = "typescript")]
 use crate::utils::ts_generic_params;
 use crate::utils::{
-    constraining_pattern, emittable_pattern, portable_pattern, ts_commented, ts_quoted,
-    type_parameters_in_scope, written_type,
+    PLACEHOLDER_CLOSES, PLACEHOLDER_OPENS, constraining_pattern, emittable_pattern,
+    parameter_placeholder, portable_pattern, ts_commented, ts_quoted, type_parameters_in_scope,
+    written_type,
 };
 
 #[cfg(feature = "zod")]
@@ -101,7 +102,7 @@ use crate::utils::{
 use crate::utils::{
     Declared, NonObjectWire, TrivialPattern, UnionParameter, WireLeaf, WrittenAs,
     forget_field_validators, is_recorded_plain_enum, record_declared, record_field_validator,
-    record_flattened_beside_parameters, record_non_object_wire, record_open_map,
+    record_flattened_parameters, record_non_object_wire, record_open_map,
     record_open_map_parameters, record_plain_enum, record_text_key_parameters,
     record_union_parameters, record_value_parameter, recorded_non_object_wire, trivial_pattern,
     union_parameters, value_parameter,
@@ -302,12 +303,6 @@ const NUMBER_KEY_PATTERN: &str = "^-?[0-9]+(\\.[0-9]+)?$";
 #[cfg(feature = "jsonschema")]
 const BOOLEAN_KEY_PATTERN: &str = "^(true|false)$";
 
-/// What a [`parameter_placeholder`] opens with, ahead of the position.
-const PLACEHOLDER_OPENS: &str = "__tixschema_parameter_";
-
-/// What a [`parameter_placeholder`] closes with, after the position.
-const PLACEHOLDER_CLOSES: &str = "__";
-
 /// What every plain-enum flatten diagnostic says about its own reach, so an author who fixes the
 /// one declaration named there knows what was and was not checked around it.
 #[cfg(feature = "serde")]
@@ -391,6 +386,7 @@ const WRITTEN_AS_OBJECT: &str = "a JSON object";
 const ZOD_DROPPED_ENTRIES: &str = "z.record(z.string(), z.unknown()).transform(() => ({}))";
 
 /// One variant of a discriminated enum, carrying everything its union member is rendered from.
+#[derive(Clone)]
 struct DiscriminatedVariant {
     discriminator_value: String,
     docs: String,
@@ -2099,6 +2095,18 @@ fn written_as_a_plain_enum(def: &FieldDef) -> bool {
     bare.array_depth == 0 && is_recorded_plain_enum(name)
 }
 
+/// The entries an alias of `target`, declaring `generics`, joins an object with where the target
+/// is an externally tagged enum: the enum's own, filled with what the alias writes, each of the
+/// alias's own type parameters written as its [`parameter_placeholder`].
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+fn alias_flatten_variants(target: &FieldDef, generics: &syn::Generics) -> Vec<FlattenVariant> {
+    let parameters = type_parameters_in_scope(generics);
+    let mut placed = target.clone();
+    placed.erase_type_parameters(&parameters);
+    placed.place_type_parameters(&parameters);
+    placed.flatten_variants()
+}
+
 /// The alias schema module is referenced by all three schema features — `typescript` and `zod`
 /// through the export name, `jsonschema` through `#module_ident::Schema::json_schema()` — so the
 /// module and its `register_alias_info` call are gated on the union, not `typescript` alone.
@@ -2130,16 +2138,12 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
     #[cfg(feature = "zod")]
     record_zod_union_members(&rust_ident_str, &alias_field_def.zod_union_members());
     // An object that takes an externally tagged enum's entries through its alias takes the enum's
-    // own. The variants of an enum written with arguments name its own parameters, unbound here.
+    // own, filled with what the alias writes, its own parameters left for its holder to fill.
     #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
-    if alias.generics.params.is_empty()
-        && matches!(
-            &alias_field_def.field_type,
-            FieldDefType::SiblingType(_, arguments) if arguments.is_empty()
-        )
-    {
-        record_flatten_variants(&rust_ident_str, &alias_field_def.flatten_variants());
-    }
+    record_flatten_variants(
+        &rust_ident_str,
+        &alias_flatten_variants(&alias_field_def, &alias.generics),
+    );
 
     // Registered above whatever the outcome, so a type naming a refused alias still resolves to the
     // export name the author wrote and the alias's own diagnostic stays the one they act on.
@@ -3508,12 +3512,6 @@ fn held_model_maps(
     own.into_iter().chain(in_arguments).collect()
 }
 
-/// What a struct's, an enum's or an alias's own type parameter at position `at` is spelled as
-/// while the maps it keys are recorded. [`filled_in`] writes the argument a holder fills it with in its place.
-fn parameter_placeholder(at: usize) -> String {
-    format!("{PLACEHOLDER_OPENS}{at}{PLACEHOLDER_CLOSES}")
-}
-
 /// `described` with each [`parameter_placeholder`] in it replaced by the argument at its position
 /// among `arguments`, spelled as written, and by `_` where none is written there.
 fn filled_in(described: &str, arguments: &[&syn::Type]) -> String {
@@ -3738,7 +3736,7 @@ fn record_item(item: &Item) {
         record_open_map(&name, ranges::writes_an_open_map(item));
         record_open_map_parameters(&name, ranges::open_map_parameter_positions(item));
         record_text_key_parameters(&name, ranges::text_key_parameters_of(item));
-        record_flattened_beside_parameters(&name, ranges::flattened_beside_parameters_of(item));
+        record_flattened_parameters(&name, ranges::flattened_parameters_of(item));
         record_plain_enum(&name, written_as_a_variant_name(item));
         record_non_object_wire(&name, non_object_wire(item));
         record_value_parameter(&name, value_parameter_position(item));
@@ -3922,6 +3920,28 @@ fn filled_wire_leaves(written: &FieldDef) -> Vec<WireLeaf> {
     } else {
         published_wire_leaves(value, written_leaves)
     }
+}
+
+/// Whether serde writes a variant of the value `def` names as an entry of its name over `null`
+/// flattened or beside a tag, and, where it does, whether that variant is a unit variant of an
+/// externally tagged enum `def` names itself: a plain enum's variant, or a unit variant of the
+/// value's own or of an untagged member's, under an `Option` or not.
+#[cfg(feature = "serde")]
+fn written_as_an_entry(def: &FieldDef) -> Option<bool> {
+    let entry = |leaf: &WireLeaf| {
+        matches!(
+            leaf.written_as,
+            Some(WrittenAs::PlainEnumName | WrittenAs::UnitVariantName)
+        )
+    };
+    let own = filled_wire_leaves(def);
+    if own.iter().any(entry) {
+        return Some(
+            own.iter()
+                .all(|leaf| leaf.written_as != Some(WrittenAs::PlainEnumName)),
+        );
+    }
+    filled_union_members(def).iter().any(entry).then_some(false)
 }
 
 /// [`written_union_members`] of `def`, a generic type declared above that it names, itself or
@@ -4136,6 +4156,7 @@ fn flattened_map_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_macro2:
             ranges::flattened_map_beside_errors(&subject, fields, generics, tag.as_deref())
         })
         .chain(ranges::filled_map_errors(item, &args.default_types))
+        .chain(ranges::filled_entry_errors(item, &args.default_types))
         .chain(ranges::text_read_map_key_errors(item))
         .chain(ranges::filled_text_key_errors(item, &args.default_types))
         .collect()
@@ -11439,16 +11460,38 @@ fn render_external_variant(
 
 /// Records what an object flattening an externally tagged enum joins for each of its variants, in
 /// the order the union writes them. Each Zod operand carries the enum's own `checks`, handed the
-/// enum's value: a unit variant's bare name.
+/// enum's value: a unit variant's bare name. An enum with type parameters, `parameters`, records
+/// its members with each written as its [`parameter_placeholder`], which a holder fills.
 #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn record_external_flatten_operands(
     rust_ident: &str,
     variants: &[DiscriminatedVariant],
     members: &[(String, String, proc_macro2::TokenStream)],
+    parameters: &[String],
     checks: &[FunctionName],
 ) {
     #[cfg(not(feature = "zod"))]
     let _: &[FunctionName] = checks;
+    let placed: Vec<(String, String, proc_macro2::TokenStream)>;
+    let recorded = if parameters.is_empty() {
+        members
+    } else {
+        placed = variants
+            .iter()
+            .map(|declared| {
+                let mut written = declared.clone();
+                for fld in written
+                    .field_defs
+                    .iter_mut()
+                    .chain(&mut written.flattened_fields)
+                {
+                    fld.place_type_parameters(parameters);
+                }
+                render_external_variant(&written, rust_ident)
+            })
+            .collect();
+        &placed
+    };
     #[cfg(feature = "typescript")]
     let exclusions = sibling_key_exclusions(
         &variants
@@ -11458,7 +11501,7 @@ fn record_external_flatten_operands(
     );
     let operands: Vec<FlattenVariant> = variants
         .iter()
-        .zip(members)
+        .zip(recorded)
         .enumerate()
         .map(|(index, (variant, member))| {
             let unit = matches!(variant.kind, VariantKind::Unit);
@@ -11611,13 +11654,14 @@ fn join_external_union(
     (main_schema_code, type_code, schema_code)
 }
 
-/// What each variant of the externally tagged enum `ident` renders as, recorded as well for an
-/// object that flattens the enum: the flatten-edge spelling of a variant that holds a value is the
-/// member's own, which only this expansion holds.
+/// What each variant of the externally tagged enum `ident`, of the type parameters `parameters`,
+/// renders as, recorded as well for an object that flattens the enum: the flatten-edge spelling of
+/// a variant that holds a value is the member's own, which only this expansion holds.
 #[cfg(feature = "serde")]
 fn external_members(
     ident: &syn::Ident,
     variants: &[DiscriminatedVariant],
+    parameters: &[String],
     checks: &[FunctionName],
 ) -> Vec<(String, String, proc_macro2::TokenStream)> {
     let self_type_name = ident.to_string();
@@ -11626,9 +11670,9 @@ fn external_members(
         .map(|variant| render_external_variant(variant, &self_type_name))
         .collect();
     #[cfg(any(feature = "typescript", feature = "zod"))]
-    record_external_flatten_operands(&self_type_name, variants, &members, checks);
+    record_external_flatten_operands(&self_type_name, variants, &members, parameters, checks);
     #[cfg(not(any(feature = "typescript", feature = "zod")))]
-    let _: &[FunctionName] = checks;
+    let _: (&[FunctionName], &[String]) = (checks, parameters);
     members
 }
 
@@ -11667,7 +11711,12 @@ fn process_externally_tagged_enum(
         return output;
     }
     let decode_with = enum_decode_with(&item_enum, args);
-    let members = external_members(&item_enum.ident, &variants.0, &args.check);
+    let members = external_members(
+        &item_enum.ident,
+        &variants.0,
+        &type_parameters_in_scope(&item_enum.generics),
+        &args.check,
+    );
 
     let (main_schema_code, type_code, schema_code) = join_external_union(&variants.0, &members);
     #[cfg(not(feature = "jsonschema"))]
@@ -12167,19 +12216,15 @@ fn render_internal_variant(
 }
 
 /// The TypeScript and the Zod member of a variant under the tag `tag_name` alone whose lone slot
-/// `inner` names an externally tagged enum declared above with no argument: the object `parts`
-/// closes, joined with each variant's entry as a flattened enum is. `None` for any other slot.
+/// `inner` names an externally tagged enum declared above: the object `parts` closes, joined with
+/// each variant's entry as a flattened enum is. `None` for any other slot.
 #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn entries_beside_the_tag(
     parts: &VariantParts,
     inner: &FieldDef,
     tag_name: &str,
 ) -> Option<(String, String)> {
-    let named = matches!(
-        &inner.field_type,
-        FieldDefType::SiblingType(_, arguments) if arguments.is_empty()
-    );
-    if !named
+    if !matches!(&inner.field_type, FieldDefType::SiblingType(..))
         || (inner.flatten_variants().is_empty()
             && inner.flatten_variants_written_around().is_empty())
     {
