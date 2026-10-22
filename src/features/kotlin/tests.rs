@@ -714,6 +714,103 @@ fn a_flattened_struct_takes_the_keys_serde_reads_where_the_emitter_wrote_it() {
     }
 }
 
+/// A struct the emitter writes the serializer of refuses a key no member reads, under a `Json`
+/// that does not ignore unknown keys: the names of its own members and its own tag, every key a
+/// flattened struct the emitter wrote reads, an alias, a member serde never reads and its tag among
+/// them, and the entry a flattened externally tagged enum took. Beside a flattened map, a struct
+/// with a flattened member of its own, or a type the emitter has not written, no key is refused.
+#[cfg(feature = "serde")]
+#[test]
+fn a_key_no_member_reads_is_refused_where_every_key_a_member_reads_is_known() {
+    let refused = |read: &str, named: &str| {
+        format!(
+            "if (!input.json.configuration.ignoreUnknownKeys) (obj{read}).keys.firstOrNull()?.let \
+             {{ throw SerializationException(\"Encountered an unknown key '\" + it + \"'\") }}; \
+             return {named}("
+        )
+    };
+    let burgee: ItemStruct = syn::parse_quote! {
+        #[serde(tag = "flag")]
+        struct Burgee {
+            label: String,
+            #[serde(default, skip_serializing)]
+            spare: Option<u32>,
+        }
+    };
+    let ensign: ItemStruct = syn::parse_quote! {
+        #[serde(tag = "kind")]
+        struct Ensign {
+            #[serde(alias = "name")]
+            label: String,
+            #[serde(skip_deserializing)]
+            spare: u8,
+        }
+    };
+    let tack: ItemEnum = syn::parse_quote! {
+        enum Tack { Bay { label: String }, Calm }
+    };
+    let dipped: ItemStruct = syn::parse_quote! {
+        struct Dipped {
+            #[serde(flatten)]
+            ensign: Ensign,
+            #[serde(flatten)]
+            tack: Tack,
+            note: String,
+        }
+    };
+    let written_burgee = plain(&burgee);
+    assert!(
+        written_burgee.contains(&refused(
+            " - setOf(\"label\", \"spare\") - \"flag\"",
+            "Burgee"
+        )),
+        "got: {written_burgee}"
+    );
+    let written = [
+        plain(&ensign),
+        definition(enum_kotlin_tokens(&tack, &plain_args())),
+    ];
+    assert_eq!(written.len(), 2, "each is written ahead of its holder");
+    let written_dipped = plain(&dipped);
+    assert!(
+        written_dipped.contains(&refused(
+            " - setOf(\"note\") - setOf(\"label\", \"name\", \"spare\", \"kind\") - \
+             tackEntry.key",
+            "Dipped"
+        )),
+        "got: {written_dipped}"
+    );
+    let any_key: [ItemStruct; 3] = [
+        syn::parse_quote! {
+            struct Counted {
+                #[serde(flatten)]
+                counts: BTreeMap<String, u8>,
+            }
+        },
+        syn::parse_quote! {
+            struct Rigged {
+                #[serde(flatten)]
+                dipped: Dipped,
+                note: String,
+            }
+        },
+        syn::parse_quote! {
+            struct Hoisted {
+                #[serde(flatten)]
+                unseen: Unseen,
+                note: String,
+            }
+        },
+    ];
+    for item in &any_key {
+        let kotlin = plain(item);
+        assert!(
+            !kotlin.contains("Encountered an unknown key"),
+            "got: {kotlin}"
+        );
+    }
+}
+
 /// A flattened `Option` of an enum under a tag key the emitter wrote is looked for by its tag, then
 /// its content key, and still takes the keys its descriptor names. One that names a function on
 /// itself has no key to be looked for by, and is `null` wherever its read throws.

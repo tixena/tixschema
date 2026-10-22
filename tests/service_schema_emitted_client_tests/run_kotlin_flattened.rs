@@ -16,7 +16,8 @@
 //! function is read from what the function answers, as the Zod schema of its holder reads it. A
 //! struct under its own tag is written with the tag ahead of its members, alone and flattened, as
 //! serde writes it, and refuses a payload with no tag or another value under it, as TypeScript and
-//! Zod refuse it, where serde reads it.
+//! Zod refuse it, where serde reads it. A key no member reads is refused, as Zod refuses it, where
+//! serde reads past it.
 
 #![cfg(feature = "kotlin")]
 
@@ -269,6 +270,15 @@ const UNIT_ENTRIES: [(&str, &str); 7] = [
 /// What each payload of a [`TagRows`] holds under the tag.
 const TAGS: [&str; 4] = ["its tag", "no tag", "another tag", "a tag of another kind"];
 
+/// The payloads of [`a_variant_reads_and_writes_a_flattened_member_in_kotlin_as_serde_does`]
+/// that hold `north`, a key no member reads, which serde reads past, and what the Kotlin read
+/// answers of each: `run_kotlin_unknown_keys.rs` holds what Zod answers of each.
+const VARIANT_READ_PAST: [(&str, &str); 3] = [
+    (GAFFING[7], "refused"),
+    (SWAYING[5], "SwayingSpare {}"),
+    (WHELPING[3], "refused"),
+];
+
 /// A payload, the type it is read as, and what serde writes back of it.
 struct Row {
     json: &'static str,
@@ -383,7 +393,8 @@ fn an_optional_member_beside_a_flattened_one_is_written_in_kotlin_as_serde_write
 /// object without the keys they took, as serde hands it: a function after a struct is handed the
 /// keys the struct did not take, a struct with a member serde never writes among them, and every
 /// key after a struct that takes none, and a struct that reads a key a member ahead of it, or one
-/// of its holder's own, took is refused, as serde refuses it. An optional one reads no value.
+/// of its holder's own, took is refused, as serde refuses it. An optional one reads no value, and
+/// the key no member reads beside it is refused, as Zod refuses it.
 #[test]
 fn a_member_flattened_after_a_struct_reads_in_kotlin_the_keys_serde_hands_it() {
     let slinging: Slinging = serde_json::from_str(PAYLOAD).unwrap();
@@ -448,6 +459,12 @@ fn a_member_flattened_after_a_struct_reads_in_kotlin_the_keys_serde_hands_it() {
          a struct beside a member of the same key: refused\n\
          an optional struct after one of the same key: {\"label\":\"n\"} null\n"
     );
+    // `north`, which serde reads past, is a key no member reads: `run_kotlin_unknown_keys.rs`
+    // holds Zod's refusal of the payload.
+    let kotlin = expected.replace(
+        "an optional struct after one of the same key: {\"label\":\"n\"} null\n",
+        "an optional struct after one of the same key: refused\n",
+    );
     let main = HANDED
         .replace("PAYLOAD", PAYLOAD)
         .replace("HITCHING", HITCHING)
@@ -479,7 +496,7 @@ fn a_member_flattened_after_a_struct_reads_in_kotlin_the_keys_serde_hands_it() {
     let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
         return;
     };
-    assert_eq!(printed, expected);
+    assert_eq!(printed, kotlin);
 }
 
 /// A struct under its own tag, alone, with a type parameter and with a member under its alias,
@@ -827,9 +844,10 @@ fn entry_source(main: String) -> String {
 
 /// A flattened externally tagged enum is handed the first entry, in the object's order, under the
 /// name a variant is read under, and every member after it the object without that entry, as serde
-/// hands them: beside a member of its holder's own, beside a key no member reads, ahead of a
-/// function and of a struct, under a `rename`, the enum's `rename_all` and an `alias`, and
-/// optional. A payload with no such entry is refused, and an optional enum reads no value.
+/// hands them: beside a member of its holder's own, ahead of a function and of a struct, under a
+/// `rename`, the enum's `rename_all` and an `alias`, and optional. A payload with no such entry is
+/// refused, and an optional enum reads no value. A key no member reads, a second variant's entry
+/// among them, is refused, as Zod refuses it, where serde reads past it.
 #[test]
 fn a_flattened_enum_reads_in_kotlin_the_entry_serde_hands_it() {
     let rows = entry_rows();
@@ -868,10 +886,21 @@ fn a_flattened_enum_reads_in_kotlin_the_entry_serde_hands_it() {
          18: {\"Dock\":{\"label\":\"s\"}} a\n\
          19: {\"Dock\":{\"label\":\"s\"}} {\"keys\":[\"north\"]}\n"
     );
+    // `run_kotlin_unknown_keys.rs` holds Zod's refusal of each.
+    let read_past = [STOWING[2], STOWING[3], BELTING[1]];
+    let mut kotlin = String::new();
+    for (at, row) in rows.iter().enumerate() {
+        let told = if read_past.contains(&row.json) {
+            "refused".to_owned()
+        } else {
+            (row.told)(row.json)
+        };
+        let _ = writeln!(kotlin, "{at}: {told}");
+    }
     let Some(printed) = ran_kotlin(&entry_source(main)) else {
         return;
     };
-    assert_eq!(printed, expected);
+    assert_eq!(printed, kotlin);
 }
 
 /// A flattened externally tagged enum is written as serde writes it, beside a member of its
@@ -1431,10 +1460,19 @@ where
     }
 }
 
+/// What the Kotlin read of a variant answers of `json`, where serde answers `told`.
+fn kotlin_variant_read<'read>(json: &str, told: &'read str) -> &'read str {
+    VARIANT_READ_PAST
+        .iter()
+        .find(|&&(past, _)| past == json)
+        .map_or(told, |&(_, read)| read)
+}
+
 /// A variant reads and writes a flattened member at its own level, as serde does, under every
 /// tagging that builds one: a map alone, an optional map alone, a struct beside a member of the
 /// variant's own, that member under its alias too, a member that names a function after a struct,
-/// a struct beside the tag, and a map of the enum's own parameter.
+/// a struct beside the tag, and a map of the enum's own parameter. A key no member of a variant
+/// reads is refused, as Zod refuses it, so an untagged enum takes the variant Zod takes.
 #[test]
 fn a_variant_reads_and_writes_a_flattened_member_in_kotlin_as_serde_does() {
     let mut rows: Vec<(&str, &str, String)> = Vec::new();
@@ -1459,10 +1497,12 @@ fn a_variant_reads_and_writes_a_flattened_member_in_kotlin_as_serde_does() {
         (json, "BroachingSerializer(serializer<UByte>())", told)
     }));
     let mut expected = String::new();
+    let mut kotlin = String::new();
     let mut main = String::from(VARIANT_READ);
     main.push_str("fun main() {\n");
     for (json, serializer, told) in &rows {
         let _ = writeln!(expected, "{json}: {told}");
+        let _ = writeln!(kotlin, "{json}: {}", kotlin_variant_read(json, told));
         let _ = writeln!(main, "    variant({serializer}, \"\"\"{json}\"\"\")");
     }
     main.push_str("}\n");
@@ -1532,7 +1572,7 @@ fn a_variant_reads_and_writes_a_flattened_member_in_kotlin_as_serde_does() {
     let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
         return;
     };
-    assert_eq!(printed, expected, "the Kotlin read is not the read above");
+    assert_eq!(printed, kotlin, "the Kotlin read is not the read above");
 }
 
 /// Each payload of each holder of a flattened `Option` of an enum, beside what serde writes back

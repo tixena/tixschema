@@ -587,6 +587,12 @@ mod run_swift_unwritten;
 #[path = "service_schema_emitted_client_tests/run_kotlin_unwritten.rs"]
 mod run_kotlin_unwritten;
 
+/// A key no member reads, refused by the emitted Kotlin types under the default `Json` as Zod
+/// refuses it. Declared after the modules that declare the members its models flatten.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_unknown_keys.rs"]
+mod run_kotlin_unknown_keys;
+
 // The transport's expansion reaches each service through `$crate`, which is this binary's root:
 // every trait and its schema module are named here for it to resolve.
 #[cfg(all(test, feature = "dart"))]

@@ -964,13 +964,14 @@ the consumer's view; this is what a change has to keep.
   and `run_kotlin_flattened.rs` reads them under kotlinc, the first row as serde writes it back
   and every other refused.
 - **Every refusal a serializer the emitter writes makes as it reads is a `SerializationException`**,
-  checked inline in the read, with no declaration shared at file scope. Five writers in
+  checked inline in the read, with no declaration shared at file scope. Six writers in
   `src/features/kotlin.rs` word it: `read_as` and `payload_read_as` read a payload as an object, an
   array or a tag's string (`JsonKind`) and refuse any other kind with `expected {kind}, found
   {payload}`, `present` refuses a key the object does not hold with serde's ``missing field
   `{key}` ``, `tuple_array` refuses the array of a tuple of another length, a longer one among
-  them, as serde and Zod refuse it, with `invalid length {n}, expected {m}`, and `own_tag_held`
-  refuses a struct's own tag of another value, or none (above).
+  them, as serde and Zod refuse it, with `invalid length {n}, expected {m}`, `own_tag_held`
+  refuses a struct's own tag of another value, or none (above), and `unknown_key_refused` refuses a
+  key no member reads (below).
   `flatten_merging_serializer`, `own_field_plan`, `flatten_map_field_plan`,
   `tuple_wrapper_typename` and `tuple_struct_kotlin_tokens` call them, and so do
   `dispatched_tagged_enum_kotlin_source` and `dispatched_tagged_variant` for the tag and the
@@ -980,6 +981,27 @@ the consumer's view; this is what a change has to keep.
   a write is the write's. `run_kotlin_refusals.rs` reads each refusal under the toolchain, beside
   serde's refusal of the same payload. The refusal of a text of another form is worded in
   `src/features/kotlin/texts.rs` (below).
+- **The serializer `flatten_merging_serializer` writes refuses a key no member reads**, as the
+  plugin's refuses it under the default `Json` and as TypeScript and Zod refuse it, where serde
+  reads past it: after the members are read, `unknown_key_refused` throws `Encountered an unknown
+  key '{key}'` for the first key of the object no member read, under a `Json` whose
+  `configuration.ignoreUnknownKeys` is `false`, so a caller's `Json { ignoreUnknownKeys = true }`
+  reads past it, as it reads past it in a class the plugin reads. A flattened member is read with
+  `lenient`, so a struct flattened into a holder leaves the check to the holder. `flatten_plan`
+  answers what the members read in `FlattenPlan::read`, the terms subtracted from the object: the
+  wire name of each own member (an alias is already read as it), the entry a flattened externally
+  tagged enum took, and every key `KOTLIN_READ_KEYS` notes for a flattened struct the emitter
+  wrote (`read_keys`): the name and each alias of every member, one serde never reads among them,
+  and its own tag, so a holder reads the tag serde writes for it. `flatten_merging_serializer`
+  adds the struct's own tag. `FlattenPlan::read` is `None`, and no key is refused, beside a
+  flattened map, a member `preprocess::takes_no_key` answers for and a type `KOTLIN_READ_KEYS`
+  does not note: a struct with a flattened member of its own or that names a function on itself,
+  an enum `flattened_variant_names` answers no names for, and a type the emitter has not written.
+  Zod refuses a key none of those reads, and the README states the limit. A payload serde writes
+  holds no such key. `src/features/kotlin/tests.rs` pins the text, and `run_kotlin_unknown_keys.rs`
+  reads each payload under kotlinc with both `Json`s, beside serde's read and what Zod answers
+  under node; the rows of `run_kotlin_flattened.rs` that hold a key serde reads past are pinned to
+  the Kotlin read, the Zod read.
 - **A `char` and a chrono date, time and date and time are read in their one form**, by
   `src/features/kotlin/texts.rs`. Kotlin holds each as a `String`, and `TextForm` names its form.
   `texts::serializer` declares, once per item and form, `object KotlinText{N} :
