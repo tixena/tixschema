@@ -46,6 +46,8 @@ use super::http_service;
 use super::kotlin_http_client;
 #[cfg(feature = "kotlin")]
 use super::kotlin_ws_client;
+#[cfg(all(feature = "typescript", feature = "zod"))]
+use super::message;
 #[cfg(feature = "typescript")]
 use super::result;
 #[cfg(all(feature = "typescript", feature = "zod"))]
@@ -1724,5 +1726,22 @@ fn a_build_without_kotlin_publishes_no_kotlin_http_client() {
         !rendered.contains("kotlin_http_client"),
         "an artifact behind a feature that is off is absent rather than emitted empty. \
          Got: {rendered}"
+    );
+}
+
+/// A name written into a comment keeps a `//` comment to its line and does not close a `/** */`
+/// one: each line terminator is spelled as its escape, and `*/` as `*\/`. Any other text is kept.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+#[test]
+fn a_name_in_a_comment_keeps_to_its_line_and_leaves_the_comment_open() {
+    assert_eq!(
+        message::commented("no*/te\n\r\u{2028}\u{2029}\\ le$vy'it\"q*"),
+        "no*\\/te\\n\\r\\u2028\\u2029\\ le$vy'it\"q*",
+        "a name in a comment is spelled another way"
+    );
+    assert_eq!(
+        message::commented("get-available-balance"),
+        "get-available-balance",
+        "a name with nothing to spell apart is written as it was"
     );
 }

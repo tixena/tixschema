@@ -64,6 +64,10 @@ mod shared_keys;
 #[path = "../kotlin_tests/text_forms_models.rs"]
 mod text_forms;
 
+/// Models whose names on the wire hold a `$`, a quote, a double quote and a backslash, and what
+/// serde writes of each.
+#[path = "../dart_tests/quoted_models.rs"]
+mod quoted;
 /// The enums with a variant serde neither writes nor reads, or drops in one direction alone, and
 /// what serde and Zod take of each payload.
 #[path = "../skipped_variant_tests/models.rs"]
@@ -577,6 +581,16 @@ for (const [name, schema, payload] of PAYLOADS) {
   }
 }
 console.log(printed.join("\n"));
+"#;
+
+/// Parses each payload through the schema of the model it is read as, and prints one line per
+/// payload: the value read, or the issues of the refusal.
+const QUOTED_DRIVER: &str = r#"import * as lib from "./lib/index.js";
+
+for (const [readAs, payload] of PAYLOADS) {
+  const read = lib[`${readAs}$Schema`].safeParse(JSON.parse(payload));
+  console.log(JSON.stringify(read.success ? read.data : { refused: read.error.issues }));
+}
 "#;
 
 /// Parses each payload of the sets through the schema of the type it is read as, the declared
@@ -1714,6 +1728,31 @@ fn ranges() -> String {
         ranged::Rostered::ts_definition(),
         #[cfg(feature = "chrono")]
         ranged::Rostered::zod_schema(),
+    ]
+    .join("\n\n")
+}
+
+/// The models whose names hold a quote: a bundle of their own, compiled with `tsc --strict` before
+/// it is loaded, each type after the ones it holds.
+fn quoted_bundle() -> String {
+    [
+        PREAMBLE.to_owned(),
+        quoted::Leveed::ts_definition(),
+        quoted::Leveed::zod_schema(),
+        quoted::Tolled::ts_definition(),
+        quoted::Tolled::zod_schema(),
+        quoted::Tariffed::ts_definition(),
+        quoted::Tariffed::zod_schema(),
+        quoted::Levied::ts_definition(),
+        quoted::Levied::zod_schema(),
+        quoted::Dutied::ts_definition(),
+        quoted::Dutied::zod_schema(),
+        quoted::Excised::ts_definition(),
+        quoted::Excised::zod_schema(),
+        quoted::Tithed::ts_definition(),
+        quoted::Tithed::zod_schema(),
+        quoted::Mulcted::ts_definition(),
+        quoted::Mulcted::zod_schema(),
     ]
     .join("\n\n")
 }
@@ -3250,5 +3289,43 @@ fn type_check_a_flattened_enum_under_a_function_takes_a_unit_variants_entry_over
         printed,
         serde_json::to_string(&stated).unwrap(),
         "the schema does not take what the rows state:\n{failed}"
+    );
+}
+
+/// The models whose names hold a `$`, a quote, a double quote and a backslash compile under
+/// `tsc --strict`, and the Zod schema of each reads every payload serde writes as serde writes it:
+/// a struct's members, its own tag key and its name, an enum's variants under each tagging, its tag
+/// key and its content key, a plain enum's values, and a struct and an externally tagged enum
+/// flattened beside a member of their holder's own. A payload under an alias is read as serde
+/// writes it back.
+#[test]
+fn type_check_a_name_that_holds_a_quote_is_read_under_zod_as_serde_writes_it() {
+    let mut listed: Vec<(&str, String)> = quoted::WRITTEN
+        .iter()
+        .map(|&(read_as, json)| (read_as, quoted::serde_written(read_as, json)))
+        .collect();
+    for (read_as, json, back) in quoted::UNDER_AN_ALIAS {
+        assert_eq!(
+            quoted::serde_written(read_as, json),
+            back,
+            "serde no longer reads {json} as {back}"
+        );
+        listed.push((read_as, back.to_owned()));
+    }
+    let expected: Vec<serde_json::Value> = listed
+        .iter()
+        .map(|(_, written)| serde_json::from_str(written).unwrap())
+        .collect();
+    let driver = QUOTED_DRIVER.replace("PAYLOADS", &serde_json::to_string(&listed).unwrap());
+    let Some((printed, failed)) = loaded_from("quoted", &quoted_bundle(), &driver) else {
+        return;
+    };
+    let read: Vec<serde_json::Value> = printed
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(
+        read, expected,
+        "Zod does not read what serde writes:\n{failed}"
     );
 }

@@ -124,6 +124,25 @@ const REFUSED_AS_A_NAME: [&str; 48] = [
     "yield",
 ];
 
+/// `text` as a comment the TypeScript service code writes can hold it: each line terminator
+/// spelled as its escape, so a `//` comment keeps to its line, and `*/` as `*\/`, so a `/** */`
+/// one runs on.
+pub fn commented(text: &str) -> String {
+    let mut written = String::with_capacity(text.len());
+    let mut letters = text.chars().peekable();
+    while let Some(letter) = letters.next() {
+        match letter {
+            '\n' => written.push_str("\\n"),
+            '\r' => written.push_str("\\r"),
+            '\u{2028}' => written.push_str("\\u2028"),
+            '\u{2029}' => written.push_str("\\u2029"),
+            '*' if letters.peek() == Some(&'/') => written.push_str("*\\"),
+            other => written.push(other),
+        }
+    }
+    written
+}
+
 /// The schema the message validates against: the one `#[model_schema()]` published for it, read
 /// through the same field walk every other reference to the type goes through rather than by
 /// pasting a suffix onto a name.

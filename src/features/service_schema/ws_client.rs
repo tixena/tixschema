@@ -8,6 +8,7 @@ use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationOutcome, ServiceDef, is_unit_type,
 };
+use crate::utils::ts_quoted;
 use core::fmt::Write as _;
 use syn::Type;
 
@@ -116,8 +117,7 @@ fn schemas_table(
             continue;
         };
         let schema = get_field_def(field, ty, "").zod_type();
-        let wire = &operation.wire_name;
-        let _ = writeln!(entries, "  \"{wire}\": {schema},");
+        let _ = writeln!(entries, "  {}: {schema},", ts_quoted(&operation.wire_name));
     }
     let body = if entries.is_empty() {
         String::new()
@@ -285,8 +285,9 @@ fn transport_header(named: &str) -> String {
 /// per-transport request counter and its correlation map, and the two heartbeat timers with the
 /// readers that stop and (re)schedule them.
 fn heartbeat_state_stmt(named: &str) -> String {
+    let quoted = ts_quoted(named);
     format!(
-        "  const service = \"{named}\";\n  \
+        "  const service = {quoted};\n  \
          const heartbeat = options.heartbeat === undefined ? {{ intervalMs: 30_000, timeoutMs: \
          10_000 }} : options.heartbeat;\n  \
          let next = 0;\n  \

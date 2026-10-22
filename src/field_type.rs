@@ -17,7 +17,7 @@ use syn::Attribute;
 #[cfg(feature = "zod")]
 use crate::features::model_schema_prop::FunctionName;
 use crate::features::model_schema_prop::ModelSchemaPropMeta;
-use crate::utils::{MapKeyWire, is_declared_ident, lookup_alias_info, written_type};
+use crate::utils::{MapKeyWire, is_declared_ident, lookup_alias_info, ts_quoted, written_type};
 
 #[cfg(feature = "zod")]
 use crate::bound_message::{Bound, zod_error_arg, zod_repeat_check};
@@ -1280,7 +1280,7 @@ impl FieldDef {
             }
             FieldDefType::Boolean => "boolean".to_owned(),
             FieldDefType::Char | FieldDefType::String => "string".to_owned(),
-            FieldDefType::StringLiteral(literal) => format!("\"{literal}\""),
+            FieldDefType::StringLiteral(literal) => ts_quoted(literal),
             FieldDefType::BooleanLiteral(value) => value.to_string(),
             FieldDefType::NumberLiteral(value) => format_number_literal(*value),
             FieldDefType::U8
@@ -1519,7 +1519,7 @@ impl FieldDef {
             // length is fixed, not read from `model_schema_prop`.
             FieldDefType::Char => "z.string().length(1)".to_owned(),
             FieldDefType::String => self.zod_string_type(),
-            FieldDefType::StringLiteral(literal) => format!("z.literal(\"{literal}\")"),
+            FieldDefType::StringLiteral(literal) => format!("z.literal({})", ts_quoted(literal)),
             FieldDefType::BooleanLiteral(value) => format!("z.literal({value})"),
             FieldDefType::NumberLiteral(value) => {
                 format!("z.literal({})", format_number_literal(*value))
@@ -1716,7 +1716,8 @@ impl FieldDef {
                     .rev()
                     .filter_map(|variant| variant.unit.as_deref())
                     .fold("ctx.value".to_owned(), |rest, key| {
-                        format!("\"{key}\" in ctx.value ? \"{key}\" : {rest}")
+                        let quoted = ts_quoted(key);
+                        format!("{quoted} in ctx.value ? {quoted} : {rest}")
                     });
                 return self.zod_preprocess_wrap(zod_check_wrap_handing(
                     choice,

@@ -9,7 +9,8 @@ use super::{
 };
 #[cfg(feature = "zod")]
 use super::{
-    HeaderProbeDocument, HeaderProbeError, HeaderProbeServiceSchema, ReservedProbeServiceSchema,
+    HeaderProbeDocument, HeaderProbeError, HeaderProbeServiceSchema,
+    QuotedFilingProbeServiceSchema, QuotedProbeServiceSchema, ReservedProbeServiceSchema,
     UnitPingError, UnitPingRequest, UnitPingServiceSchema,
 };
 use std::env;
@@ -551,6 +552,31 @@ fn reserved_probe_bundle() -> String {
     .join("\n\n")
 }
 
+/// Every surface of `QuotedProbeService`, then the `http_rest` surfaces of
+/// `QuotedFilingProbeService`, whose names hold a quote, a backslash, a line break and the end of
+/// a comment.
+#[cfg(feature = "zod")]
+fn quoted_probe_bundle() -> String {
+    [
+        HeaderProbeDocument::ts_definition(),
+        HeaderProbeDocument::zod_schema(),
+        HeaderProbeError::ts_definition(),
+        HeaderProbeError::zod_schema(),
+        QuotedProbeServiceSchema::ts_definition(),
+        QuotedProbeServiceSchema::ts_client(),
+        QuotedProbeServiceSchema::ts_service(),
+        QuotedProbeServiceSchema::ts_ws_client(),
+        QuotedProbeServiceSchema::ts_ws_service(),
+        QuotedProbeServiceSchema::ts_http_client(),
+        QuotedProbeServiceSchema::ts_http_service(),
+        QuotedFilingProbeServiceSchema::ts_definition(),
+        QuotedFilingProbeServiceSchema::ts_service(),
+        QuotedFilingProbeServiceSchema::ts_http_client(),
+        QuotedFilingProbeServiceSchema::ts_http_service(),
+    ]
+    .join("\n\n")
+}
+
 /// Said on the process's own stderr rather than through `eprintln!`, which `cargo test` captures
 /// and only shows for a test that failed. A stand-down is a pass that proved nothing, so it has to
 /// be visible on a run where everything passed.
@@ -917,5 +943,18 @@ fn a_service_named_after_reserved_words_type_checks_on_every_surface() {
     assert!(
         accepted,
         "a service named after reserved words does not compile:\n{said}"
+    );
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn a_service_whose_names_hold_a_quote_type_checks_on_every_surface() {
+    let files = bundled(quoted_probe_bundle());
+    let Some((accepted, said)) = compiled("quoted-names", &files) else {
+        return;
+    };
+    assert!(
+        accepted,
+        "a service whose names hold a quote does not compile:\n{said}"
     );
 }
