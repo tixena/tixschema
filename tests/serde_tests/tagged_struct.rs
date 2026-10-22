@@ -133,9 +133,8 @@ mod on_a_schema_surface {
     }
 }
 
-/// Each of the three languages writes the key with the struct's name. Swift reads a payload with it
-/// or without it, as serde does, and Dart and Kotlin read the struct's name alone under it, as
-/// TypeScript and Zod do.
+/// Each of the three languages writes the key with the struct's name, and reads the struct's name
+/// alone under it, as TypeScript and Zod do.
 #[cfg(all(
     feature = "serde",
     any(feature = "dart", feature = "swift", feature = "kotlin")
@@ -187,12 +186,24 @@ mod on_a_mobile_surface {
 
     #[cfg(feature = "swift")]
     #[test]
-    fn swift_encodes_the_tag_under_a_key_set_of_its_own() {
+    fn swift_reads_the_tag_at_the_structs_name_and_encodes_it_under_a_key_set_of_its_own() {
         let definition = tagged_mobile_swift::swift_definition();
         for written in [
             "private enum SwiftSchemaTagCodingKeys: String, CodingKey { case swiftSchemaTag = \"kind\" };",
             "var tagged = encoder.container(keyedBy: SwiftSchemaTagCodingKeys.self); try tagged.encode(\"TaggedMobile\", forKey: .swiftSchemaTag);",
-            "public init(swiftSchemaUnjudged decoder: Decoder) throws { let container = try decoder.container(keyedBy: CodingKeys.self); self.name = try container.decode(String.self, forKey: .name) };",
+            "public init(swiftSchemaUnjudged decoder: Decoder) throws { let tagged = try \
+             decoder.container(keyedBy: SwiftSchemaTagCodingKeys.self); guard \
+             tagged.contains(.swiftSchemaTag) else { throw \
+             DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
+             debugDescription: \"missing field `kind`\")) }; guard (try? \
+             tagged.decode(String.self, forKey: .swiftSchemaTag)) == \"TaggedMobile\" else { let \
+             found = try JSONSerialization.data(withJSONObject: \
+             tagged.decode(SwiftSchemaPayload.self, forKey: .swiftSchemaTag).value, options: \
+             [.fragmentsAllowed, .sortedKeys, .withoutEscapingSlashes]); throw \
+             DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
+             debugDescription: \"expected tag \\\"TaggedMobile\\\", found \\(String(decoding: \
+             found, as: UTF8.self))\")) }; let container = try decoder.container(keyedBy: \
+             CodingKeys.self); self.name = try container.decode(String.self, forKey: .name) };",
         ] {
             assert!(
                 definition.contains(written),
