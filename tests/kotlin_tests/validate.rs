@@ -485,6 +485,7 @@ fn a_flattened_member_is_reported_under_no_name() {
 
 /// The serializer the emitter writes for a struct with a flattened member and for a tuple struct
 /// is its unjudged one, a model it holds read unjudged, and the type's own serializer follows it.
+/// The struct refuses a key neither its own member nor the struct it flattens reads.
 #[cfg(feature = "serde")]
 #[test]
 fn the_serializer_the_emitter_writes_for_each_struct_shape_is_its_unjudged_one() {
@@ -504,7 +505,10 @@ fn the_serializer_the_emitter_writes_for_each_struct_shape_is_its_unjudged_one()
              throw SerializationException(\"missing field `id`\"))); \
              val stampKeys = setOf(\"created_at\", \"updated_at\"); val stamp = \
              lenient.decodeFromJsonElement(StampUnjudged, JsonObject(obj - setOf(\"id\"))); \
-             return Audit(id = id, stamp = stamp) } }",
+             if (!input.json.configuration.ignoreUnknownKeys) (obj - setOf(\"id\") - \
+             setOf(\"created_at\", \"updated_at\")).keys.firstOrNull()?.let { throw \
+             SerializationException(\"Encountered an unknown key '\" + it + \"'\") }; return \
+             Audit(id = id, stamp = stamp) } }",
             judged("Audit"),
         ),
         (

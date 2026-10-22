@@ -64,8 +64,9 @@ fn a_member_serde_never_writes_beside_a_flattened_one_has_no_put() {
 
 /// A variant with a member serde never writes takes the serializer the emitter writes,
 /// `{Enum}{Variant}Unjudged`, in place of the plugin's, under each tagging that writes a variant's
-/// named members: the member is read, and no key is written for it. The variant beside it, with no
-/// such member, keeps the plugin's serializer.
+/// named members: the member is read, and no key is written for it, and a key no member reads is
+/// refused, as the plugin refuses it. The variant beside it, with no such member, keeps the
+/// plugin's serializer.
 #[cfg(feature = "serde")]
 #[test]
 fn a_variant_with_a_member_serde_never_writes_names_the_serializer_the_emitter_writes() {
@@ -96,8 +97,11 @@ fn a_variant_with_a_member_serde_never_writes_names_the_serializer_the_emitter_w
         assert!(
             kotlin.contains(&format!(
                 "val spare = obj[\"spare\"]?.let {{ \
-                 input.json.decodeFromJsonElement(serializer<UInt?>(), it) }}; return \
-                 {name}Furled(label = label, spare = spare) }} }}"
+                 input.json.decodeFromJsonElement(serializer<UInt?>(), it) }}; if \
+                 (!input.json.configuration.ignoreUnknownKeys) (obj - setOf(\"label\", \
+                 \"spare\")).keys.firstOrNull()?.let {{ throw SerializationException(\"Encountered \
+                 an unknown key '\" + it + \"'\") }}; return {name}Furled(label = label, spare = \
+                 spare) }} }}"
             )),
             "got: {kotlin}"
         );

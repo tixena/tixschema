@@ -167,6 +167,10 @@ struct FlattenPlan {
     ctor_args: Vec<String>,
     deserialize_stmts: Vec<String>,
     needs_lenient: bool,
+    /// What the members read off the object, as the Kotlin terms subtracted from it, or `None`
+    /// where a member may read any key: a flattened map, and a flattened type whose keys are not
+    /// known.
+    read: Option<String>,
     serialize_stmts: Vec<String>,
 }
 
@@ -251,6 +255,11 @@ thread_local! {
     /// ident: the descriptor of a serializer written by hand declares no element, and the
     /// plugin's names the struct's own tag and a member serde never reads, and no alias.
     static KOTLIN_TAKEN_KEYS: RefCell<HashMap<String, Vec<String>>> =
+        RefCell::new(HashMap::new());
+    /// Every key each struct the emitter wrote reads, by Rust ident: the name and each alias of
+    /// its members, a member serde never reads among them, and its own tag. A struct with a
+    /// flattened member of its own, or that names a function on itself, is not noted.
+    static KOTLIN_READ_KEYS: RefCell<HashMap<String, Vec<String>>> =
         RefCell::new(HashMap::new());
     /// The tag, then the content key where it has one, of each enum under a tag key the emitter
     /// wrote, by Rust ident: what a flattened `Option` of it is looked for by.
@@ -353,6 +362,43 @@ fn recorded_keys(def: &FieldDef) -> Option<Vec<String>> {
         return None;
     };
     KOTLIN_TAKEN_KEYS.with(|noted| noted.borrow().get(name).cloned())
+}
+
+/// Every key the struct a flattened member typed `def` holds reads, where the emitter noted them:
+/// `None` for any other type, and for a member that may hand its object to a function.
+fn read_keys(def: &FieldDef) -> Option<Vec<String>> {
+    let FieldDefType::SiblingType(name, _) = &def.field_type else {
+        return None;
+    };
+    if preprocess::takes_no_key(def) {
+        return None;
+    }
+    KOTLIN_READ_KEYS.with(|noted| noted.borrow().get(name).cloned())
+}
+
+/// Notes every key the struct written under `rust_ident` reads, for a holder written after it: the
+/// name and each alias of each of its `fields`, and its own tag. A struct with a flattened member,
+/// or that names a function on itself, `own`, reads keys not known here, and is not noted.
+fn note_read_keys(
+    rust_ident: &str,
+    fields: &[KotlinField],
+    own_tag: Option<&(String, String)>,
+    own: &[FunctionName],
+) {
+    let known = own.is_empty() && !fields.iter().any(|field| field.flatten);
+    KOTLIN_READ_KEYS.with(|noted| {
+        if known {
+            let every = fields
+                .iter()
+                .flat_map(|field| once(&field.wire_name).chain(&field.aliases))
+                .chain(own_tag.map(|(key, _)| key))
+                .cloned()
+                .collect();
+            noted.borrow_mut().insert(rust_ident.to_owned(), every);
+        } else {
+            noted.borrow_mut().remove(rust_ident);
+        }
+    });
 }
 
 /// The tag, then the content key where it has one, of an enum under a tag key: what a flattened
@@ -574,6 +620,16 @@ fn own_tag_held(object: &str, key: &str, named: &str) -> String {
          SerializationException(\"missing field `{key_text}`\"); else -> throw \
          SerializationException(\"expected tag \\\"{name_text}\\\", found \" + \
          {object}[\"{key_text}\"]) }}"
+    )
+}
+
+/// The statement that refuses the first of `left`, the Kotlin expression of the keys of an object
+/// no member read, in the words of the plugin's serializer, which refuses it under the same `Json`:
+/// one whose configuration does not ignore unknown keys, as TypeScript and Zod refuse it.
+fn unknown_key_refused(left: &str) -> String {
+    format!(
+        "if (!input.json.configuration.ignoreUnknownKeys) {left}.firstOrNull()?.let {{ throw \
+         SerializationException(\"Encountered an unknown key '\" + it + \"'\") }}"
     )
 }
 
@@ -1726,6 +1782,7 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
         ctor_args: Vec::new(),
         deserialize_stmts: Vec::new(),
         needs_lenient: false,
+        read: None,
         serialize_stmts: Vec::new(),
     };
     let own_wire_keys: Vec<String> = fields
@@ -1746,6 +1803,7 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
     } else {
         format!(" - {own_literal}")
     };
+    let mut members_read = Some(taken.clone());
 
     for field in fields {
         let prop = kotlin_property_name(&field.rust_name);
@@ -1766,6 +1824,7 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
             );
             plan.serialize_stmts.push(serialize);
             plan.deserialize_stmts.push(decode);
+            members_read = None;
         } else {
             plan.needs_lenient = true;
             let rest = if taken.is_empty() {
@@ -1780,6 +1839,9 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
                 plan.serialize_stmts.push(serialize);
                 plan.deserialize_stmts.push(decode);
                 let _ = write!(taken, " - {entry_taken}");
+                if let Some(so_far) = &mut members_read {
+                    let _ = write!(so_far, " - {entry_taken}");
+                }
             } else {
                 let (serialize, decode, keys_ident) =
                     flatten_struct_field_plan(field, &prop, type_parameters, &rest);
@@ -1788,11 +1850,19 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
                 if !preprocess::takes_no_key(&field.field_def) {
                     let _ = write!(taken, " - {keys_ident}");
                 }
+                members_read =
+                    members_read
+                        .zip(read_keys(&field.field_def))
+                        .map(|(mut so_far, keys)| {
+                            let _ = write!(so_far, " - {}", kotlin_set_of(&keys));
+                            so_far
+                        });
             }
         }
         plan.ctor_args.push(format!("{prop} = {prop}"));
     }
 
+    plan.read = members_read;
     plan
 }
 
@@ -1802,7 +1872,8 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
 /// keys on decode. A struct or a variant with a member serde never writes earns it too:
 /// `kotlinx.serialization` has no annotation for a member read and never written. `own` is the
 /// type's `preprocess`, which corrects the object every member is read from, and each alias of
-/// `renamed` is read in that object as the name it stands for.
+/// `renamed` is read in that object as the name it stands for. A key no member reads is refused
+/// wherever [`FlattenPlan::read`] knows every key the members read.
 fn flatten_merging_serializer(
     export_name: &str,
     generic_params: &str,
@@ -1835,9 +1906,18 @@ fn flatten_merging_serializer(
     let tag_held = own_tag.map_or_else(String::new, |(key, named)| {
         format!("{}; ", own_tag_held("obj", key, named))
     });
+    let unknown = plan.read.map_or_else(String::new, |read| {
+        let tag = own_tag.map_or_else(String::new, |(key, _)| {
+            format!(" - \"{}\"", kotlin_template_text(key))
+        });
+        format!(
+            "{}; ",
+            unknown_key_refused(&format!("(obj{read}{tag}).keys"))
+        )
+    });
     let deserialize_body = format!(
         "override fun deserialize(decoder: Decoder): {self_type} {{ \
-         val input = decoder as JsonDecoder; val obj = {}; {tag_held}{}; \
+         val input = decoder as JsonDecoder; val obj = {}; {tag_held}{}; {unknown}\
          return {export_name}({}) }}",
         payload_read_as(
             &aliases::keys_named(
@@ -1937,10 +2017,10 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
     let renamed = aliases::of_members(&fields);
     // A struct that names a function takes no key (`preprocess::note`), and an optional holder
     // still looks for it by the keys its read reads.
-    note_taken_keys(
-        &rust_ident,
-        keys_taken_when_flattened(&item_struct.fields, rule, &[]),
-    );
+    let taken = keys_taken_when_flattened(&item_struct.fields, rule, &[]);
+    note_taken_keys(&rust_ident, taken);
+    let own_tag = struct_tag(item_struct);
+    note_read_keys(&rust_ident, &fields, own_tag.as_ref(), args.preprocess);
     let handed_on = fields
         .iter()
         .any(|field| field.flatten && preprocess::takes_no_key(&field.field_def));
@@ -1965,7 +2045,6 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
     named_member_rules(&mut rules, &fields, None);
     rules.own(args.check);
     let validated = rules.written("");
-    let own_tag = struct_tag(item_struct);
     let kotlin_source = if written_by_hand {
         let unjudged = flatten_merging_serializer(
             &export_name,
