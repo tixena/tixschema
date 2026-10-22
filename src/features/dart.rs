@@ -1446,15 +1446,12 @@ fn first_entry_decode(def: &FieldDef, first: &str) -> String {
 }
 
 /// The read of a member typed `def` flattened into its holder from `handed`, the object it is
-/// handed, whose type takes `keys`. An optional one that names no function and is no map reads no
-/// value where `handed` holds none of `keys`, and is refused where its type does not read, as
-/// TypeScript and Zod refuse it. Where no key is known it reads no value wherever its type does
-/// not read, as serde reads it.
+/// handed, whose type takes `keys`. An optional one that names no function reads no value where
+/// `handed` holds none of `keys`, and is refused where its type does not read, as TypeScript and
+/// Zod refuse it. Where no key is known, a map among them, it reads no value wherever its type
+/// does not read, as serde reads it.
 fn flattened_decode(def: &FieldDef, handed: &str, keys: &[String]) -> String {
-    if !def.is_optional()
-        || !member_functions(def).is_empty()
-        || matches!(def.field_type, FieldDefType::Map(..))
-    {
+    if !def.is_optional() || !member_functions(def).is_empty() {
         return member_decode(def, handed, None, Read::Unjudged);
     }
     let read = dart_decode_at(def, def.array_depth, handed, Read::Unjudged);
@@ -2491,8 +2488,8 @@ fn generic_codec(parameters: &[String]) -> GenericCodec {
 /// member from its key, where the payload holds it for a member that names a function, and a
 /// flattened one at its place, from the entries neither `tag_key`, a member of the holder's own nor
 /// a member flattened ahead of it takes, an externally tagged enum from the first of them under a
-/// variant's name, an optional one as no value where none is, and an optional struct as no value
-/// where none of its keys is.
+/// variant's name, an optional one as no value where none is, an optional struct as no value
+/// where none of its keys is, and an optional map as no value where an entry does not read.
 fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>) -> String {
     let mut taken_ahead: Vec<String> = tag_key
         .into_iter()

@@ -423,8 +423,8 @@ mod aliased_models;
 #[path = "service_schema_emitted_client_tests/run_kotlin_aliased.rs"]
 mod run_kotlin_aliased;
 
-/// A map that is the one member of its object, and a member that names a function flattened at
-/// each place a member can be handed fewer keys than its object holds.
+/// A map that is the one member of its object, optional too, and a member that names a function
+/// flattened at each place a member can be handed fewer keys than its object holds.
 #[cfg(test)]
 #[cfg(feature = "dart")]
 #[path = "dart_tests/flattened_models.rs"]

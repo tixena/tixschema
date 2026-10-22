@@ -4,10 +4,13 @@
 //! after a struct, beside a member of its holder's own and in a variant under a tag key, ahead of a
 //! struct, after each member that takes none of the keys it reads, and after an externally tagged
 //! enum, an enum under a tag key and an untagged one; and an externally tagged enum beside a member
-//! of its holder's own, and that enum optional. serde reads the members in the order declared: a
-//! struct takes the keys it reads, an externally tagged enum the first entry under the name of a
-//! variant it reads, wherever it is, and every flattened member is handed every entry no member
-//! ahead of it took. A struct after a struct that reads the same key is refused.
+//! of its holder's own, and that enum optional; and an optional map, the one member of its struct
+//! or of a variant, keyed by a plain enum, of models with a rule and under a function. serde reads
+//! the members in the order declared: a struct takes the keys it reads, an externally tagged enum
+//! the first entry under the name of a variant it reads, wherever it is, and every flattened member
+//! is handed every entry no member ahead of it took. A struct after a struct that reads the same
+//! key is refused, and an optional map that names no function is `None` wherever an entry does not
+//! read.
 
 use alloc::collections::BTreeMap;
 
@@ -71,6 +74,46 @@ pub const TRIMMING: &str = r#"{"Bay":{"label":"n"},"label":"m","north":2}"#;
 
 /// What [`Mousing`] is read from.
 pub const MOUSING: &str = r#"{"kind":"Rope","label":"n","north":2}"#;
+
+/// What [`Dunnage`], [`Scuppering`] and [`Hawsehole`] are read from: no entry, an entry that reads
+/// as a count, an entry that does not, the two side by side, and `null`, which a count does not
+/// read.
+pub const DUNNAGE: [&str; 5] = [
+    "{}",
+    r#"{"north":2}"#,
+    r#"{"north":"x"}"#,
+    r#"{"north":2,"south":"x"}"#,
+    r#"{"north":null}"#,
+];
+
+/// What [`Steeving`] is read from: its variant with no entry, with an entry that reads as a count,
+/// and with one that does not.
+pub const STEEVING: [&str; 3] = [
+    r#"{"Open":{}}"#,
+    r#"{"Open":{"north":2}}"#,
+    r#"{"Open":{"north":"x"}}"#,
+];
+
+/// What [`Freeboard`] is read from: its variant with no entry under the content key, with an entry
+/// that reads as a count, and with one that does not.
+pub const FREEBOARD: [&str; 3] = [
+    r#"{"kind":"Open","held":{}}"#,
+    r#"{"kind":"Open","held":{"north":2}}"#,
+    r#"{"kind":"Open","held":{"north":"x"}}"#,
+];
+
+/// What [`Bilging`] is read from: a key a variant of [`Garboard`] is written under, a key none is
+/// written under, and a count of text.
+pub const BILGING: [&str; 3] = [r#"{"North":2}"#, r#"{"West":2}"#, r#"{"North":"x"}"#];
+
+/// What [`Limber`] is read from: a model that keeps its rule, one that breaks it, and one that does
+/// not read. A build with no schema surface holds no rule in Rust, and declares neither.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+pub const LIMBER: [&str; 3] = [
+    r#"{"north":{"mark":"x"}}"#,
+    r#"{"north":{"mark":""}}"#,
+    r#"{"north":{"mark":5}}"#,
+];
 
 /// The member the structs below flatten.
 #[model_schema()]
@@ -331,6 +374,92 @@ pub struct Shoring {
     pub rest: Keying,
 }
 
+/// An optional map, the one member of its struct: serde reads it as `None` wherever an entry it is
+/// handed does not read as a count, and writes `None` as no entry.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Dunnage {
+    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
+    pub counts: Option<BTreeMap<String, u8>>,
+}
+
+/// [`Dunnage`]'s map, the one member of a variant written under its name.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum Steeving {
+    Open {
+        #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
+        counts: Option<BTreeMap<String, u8>>,
+    },
+}
+
+/// [`Dunnage`]'s map, the one member of a variant under a content key.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", content = "held")]
+pub enum Freeboard {
+    Open {
+        #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
+        counts: Option<BTreeMap<String, u8>>,
+    },
+}
+
+/// [`Dunnage`]'s map, the one member of an untagged variant.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum Scuppering {
+    Open {
+        #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
+        counts: Option<BTreeMap<String, u8>>,
+    },
+}
+
+/// The keys of [`Bilging`]'s map.
+#[model_schema()]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+pub enum Garboard {
+    North,
+    South,
+}
+
+/// An optional map keyed by [`Garboard`]: serde reads it as `None` where a key names no variant.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Bilging {
+    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
+    pub counts: Option<BTreeMap<Garboard, u8>>,
+}
+
+/// The model [`Limber`]'s map holds, whose `validate()` holds its mark to a length.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Scantling {
+    #[model_schema_prop(minLength = 1)]
+    pub mark: String,
+}
+
+/// An optional map of [`Scantling`]s: serde reads it as `None` where a model does not read, and
+/// reads a model that breaks its rule with no judgement, the holder's read refusing it.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Limber {
+    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
+    pub notches: Option<BTreeMap<String, Scantling>>,
+}
+
+/// [`Dunnage`]'s map under a function that answers the payload as it was handed: serde reads the
+/// map from what it answers, and refuses an entry that does not read as a count.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Hawsehole {
+    #[model_schema_prop(preprocess = ["asGiven"])]
+    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
+    pub counts: Option<BTreeMap<String, u8>>,
+}
+
 /// The payload as it was handed.
 const fn as_given(payload: Value) -> Value {
     payload
@@ -496,4 +625,116 @@ fn serde_hands_a_function_after_an_enum_read_as_a_map_every_key() {
     assert_eq!(mousing.rest.keys, ["kind", "label", "north"]);
     let shoring: Shoring = serde_json::from_str(PAYLOAD).unwrap();
     assert_eq!(shoring.rest.keys, ["label", "north"]);
+}
+
+/// An optional map alone in its struct, or the one member of a variant under its name, under a
+/// content key or untagged, holds every entry where each reads, and is `None` wherever one does
+/// not: a count of text, `null` and a key that names no variant of [`Garboard`]. serde writes
+/// nothing for `None`. Under a function, it refuses an entry that does not read.
+#[test]
+fn serde_reads_an_optional_flattened_map_as_none_wherever_an_entry_does_not_read() {
+    let dunnage = DUNNAGE.map(|payload| {
+        read_of(payload, |read: &Dunnage| {
+            format!("{} {}", written(&read.counts), written(read))
+        })
+    });
+    assert_eq!(
+        dunnage,
+        [
+            "{} {}",
+            r#"{"north":2} {"north":2}"#,
+            "null {}",
+            "null {}",
+            "null {}",
+        ],
+        "serde reads no map where an entry does not read"
+    );
+    let steeving = STEEVING.map(|payload| {
+        read_of(payload, |read: &Steeving| {
+            let Steeving::Open { counts } = read;
+            format!("{} {}", written(counts), written(read))
+        })
+    });
+    assert_eq!(
+        steeving,
+        [
+            r#"{} {"Open":{}}"#,
+            r#"{"north":2} {"Open":{"north":2}}"#,
+            r#"null {"Open":{}}"#,
+        ],
+        "serde reads no map in a variant under its name where an entry does not read"
+    );
+    let freeboard = FREEBOARD.map(|payload| {
+        read_of(payload, |read: &Freeboard| {
+            let Freeboard::Open { counts } = read;
+            format!("{} {}", written(counts), written(read))
+        })
+    });
+    assert_eq!(
+        freeboard,
+        [
+            r#"{} {"kind":"Open","held":{}}"#,
+            r#"{"north":2} {"kind":"Open","held":{"north":2}}"#,
+            r#"null {"kind":"Open","held":{}}"#,
+        ],
+        "serde reads no map under a content key where an entry does not read"
+    );
+    let scuppering = DUNNAGE.map(|payload| {
+        read_of(payload, |read: &Scuppering| {
+            let Scuppering::Open { counts } = read;
+            format!("{} {}", written(counts), written(read))
+        })
+    });
+    assert_eq!(
+        scuppering, dunnage,
+        "an untagged variant reads its map so too"
+    );
+    let bilging = BILGING.map(|payload| {
+        read_of(payload, |read: &Bilging| {
+            format!("{} {}", written(&read.counts), written(read))
+        })
+    });
+    assert_eq!(
+        bilging,
+        [r#"{"North":2} {"North":2}"#, "null {}", "null {}"],
+        "serde reads no map where a key names no variant"
+    );
+    let hawsehole = DUNNAGE.map(|payload| {
+        read_of(payload, |read: &Hawsehole| {
+            format!("{} {}", written(&read.counts), written(read))
+        })
+    });
+    assert_eq!(
+        hawsehole,
+        [
+            "{} {}",
+            r#"{"north":2} {"north":2}"#,
+            "refused",
+            "refused",
+            "refused",
+        ],
+        "serde refuses an entry of what a function answers that does not read"
+    );
+}
+
+/// An optional map of models is `None` where a model does not read, and a model that breaks its
+/// rule is read with no judgement and refused with its holder, under the place serde names.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn serde_reads_an_optional_flattened_map_of_models_as_none_where_a_model_does_not_read() {
+    let limber = LIMBER.map(|payload| {
+        serde_json::from_str::<Limber>(payload).map_or_else(
+            |refused| refused.to_string(),
+            |read| format!("{} {}", written(&read.notches), written(&read)),
+        )
+    });
+    assert_eq!(
+        limber,
+        [
+            r#"{"north":{"mark":"x"}} {"north":{"mark":"x"}}"#,
+            "'north.mark': too short: minimum length is 1, got 0",
+            "null {}",
+        ],
+        "serde judges a model of the map once, with its holder"
+    );
 }
