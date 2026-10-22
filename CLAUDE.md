@@ -349,27 +349,50 @@ unaffected at every position: a stringified key describes as `{"type": "object",
 - `#[serde(untagged)]` enum → TypeScript union (`A | B`), Zod `z.union([...])`, JSON Schema `anyOf`
 - A member of a struct or of an enum's variant under `#[serde(default)]` → the TypeScript member unchanged, Zod `T.prefault(<json>)`, JSON Schema `"default": <json>` with the key left out of `required`, and each client reading the JSON of the default where the key is left out (section 13)
 - Type parameter → TypeScript parameter (`X<IdType>`), Zod `X$SchemaFactory(idType)` (memoized, one cache level per parameter) plus `X$SchemaDefault` — that same factory called at the item's own declared `default_types`, checks included — JSON Schema the document of whatever fills it — `default_types(...)` where the type stands alone, the reference site's arguments where a field embeds it. A lifetime is dropped on every surface, a borrowed value writing what its owned form writes; a const renders as an array length only, and is refused where it is handed to a written type as an argument
-- `serde_json::Value` and `serde_json::Map` → refused, in every build: a compile error at
-  expansion naming the place, ``model_schema: type `Holding`: field `v` reaches
-  `serde_json::Value`, which holds any JSON value, so no target can describe it.`` and the rewrite
-  to make. No target describes either, and none keeps code for them. `any_json_errors` asks it at
-  `exec_model_schema`, ahead of every shape, of each member (a field, a slot, a variant's member),
-  the type an alias names and each `default_types` filling, and refuses through
-  `UndescribableStd::AnyJson`, the arm beside the std types `undescribable_std_rejection` refuses
-  (`OsString`, the cells and locks, `LinkedList`). Those are asked at each position under a schema
-  surface; this one is asked once, ungated, because no build may describe it.
-  `FieldDef::any_json_name` reads the two names by their last segment through `reached_name`, at
-  any depth, and keeps a name the crate declared (`is_declared_ident`), one of the item's own type
-  parameters and the item's own. A `#[service_schema]` operation is refused the same way:
-  `any_json_refusals` in `src/service_schema/parse.rs`, gathered by `service_refusals`, asks it of
-  each type `json_positions` lists (the one message the operation names, each `header_in` and
-  `part`, and both arms of the reply, a tuple that carries `header_out` or `error_header_out` taken
-  apart), keeps the context and a declared name, and words the error through
-  `undescribable_std_message`: ``service_schema: operation `fetch`: the request reaches
-  `serde_json::Value`, ...``. The message declared from several arguments is a `#[model_schema()]`
-  struct, refused by that expansion. tixschema's own APIs that take or answer a
-  `serde_json::Value` (a `preprocess` function, `from_value_with`, `from_value_piped`,
-  `schema_examples()`, the archie conversions) are untouched
+- `serde_json::Value` and `serde_json::Map` → refused, in every build, by the path written. No
+  target describes either, and none keeps code for them.
+  - **The full path is refused at expansion**: `serde_json::Value`, `::serde_json::Value` and
+    `serde_json::Map<…>`, a path whose segments are exactly `serde_json` then the name. A compile
+    error naming the place, ``model_schema: type `Holding`: field `v` reaches
+    `serde_json::Value`, which holds any JSON value, so no target can describe it.`` and the
+    rewrite to make. `any_json_errors` asks it at `exec_model_schema`, ahead of every shape, of
+    each type `any_json_positions` lists (a field, a slot, a variant's member, the type an alias
+    names and each `default_types` filling), through `ranges::any_json_named`, and refuses through
+    `UndescribableStd::AnyJson`, the arm beside the std types `undescribable_std_rejection`
+    refuses (`OsString`, the cells and locks, `LinkedList`). Those are asked at each position
+    under a schema surface; this one is asked once, ungated, because no build may describe it. A
+    module of the crate's own named `serde_json` is not told apart from the crate: the owner's
+    decision.
+  - **A bare name is asked of the compiler.** A `Value` with no arguments and a `Map` with
+    arguments, written as one segment, may be a type declared below the item or in another
+    crate, which no expansion sees. `any_json_checks`, gathered by `asked_of_the_compiler` beside
+    `ranges::identity_checks`, writes one `ranges::any_json_check` beside the item per spelling a
+    position writes: `Probe<T>` with an inherent `const ANY_JSON: bool = true` on
+    `Probe<::serde_json::Value>` (on `Probe<::serde_json::Map<::std::string::String,
+    ::serde_json::Value>>` for `Map`) and a `Fallback` trait's `false` for every other `T`, then
+    `::core::assert!(!Probe::<written>::ANY_JSON, refusal)`, spanned on the written type, which
+    fails with E0080 and the refusal's message only where the name is `serde_json`'s type. The
+    first assert reads the inherent const, so no `dead_code` fires; nothing is allowed.
+    `Probe` and `Fallback` are numbered where the written type names them (`unclaimed_parameter`).
+    A crate that writes a bare name lists `serde_json`, which the check names.
+    `ranges::any_json_bare` keeps no check for a name `is_declared_ident` answers for, one of the
+    item's own type parameters, or the item's own name, and none for a `Map<…>` whose arguments
+    name what a check outside the item cannot (one of its parameters, `Self`, a lifetime other
+    than `'static`). `tests/any_json_refusals.rs` holds a bare `Value` brought in with
+    `use serde_json::Value;` to the E0080, and the crate's own `Value` declared below an alias
+    that names it to a build with warnings denied; `tests/shadowed_map_tests/named_value.rs`
+    lints that shape under this crate's own table.
+  - **A `#[service_schema]` operation is held to both**: `any_json_refusals` in
+    `src/service_schema/parse.rs`, gathered by `service_refusals`, refuses the full path in each
+    type `json_positions` lists (the one message the operation names, each `header_in` and `part`,
+    and both arms of the reply, a tuple that carries `header_out` or `error_header_out` taken
+    apart), and `any_json_checks` there writes the check of each bare name beside the trait, in the
+    expansion that passes every refusal, keeping the context and a declared name. Both word the
+    error through `undescribable_std_message`: ``service_schema: operation `fetch`: the request
+    reaches `serde_json::Value`, ...``. The message declared from several arguments is a
+    `#[model_schema()]` struct, refused or checked by that expansion. tixschema's own APIs that
+    take or answer a `serde_json::Value` (a `preprocess` function, `from_value_with`,
+    `from_value_piped`, `schema_examples()`, the archie conversions) are untouched
 
 ### 5. Zod v4 Requirements
 
@@ -3115,7 +3138,7 @@ tixschema/
 │   │   ├── checks.rs             # check: the calls validate() makes, the alias refusal
 │   │   ├── judged_read.rs        # The Deserialize of a type that publishes validate() or names a preprocess
 │   │   ├── preprocess.rs         # preprocess: what an item names, the calls of a read, the refusals
-│   │   └── ranges.rs             # The identity check of a std range or a std Result written by its bare name; a flattened one, and one as a map key where no surface runs, refused; a map flattened beside another member refused
+│   │   └── ranges.rs             # The identity check of a std range or a std Result written by its bare name; a flattened one, and one as a map key where no surface runs, refused; a map flattened beside another member refused; serde_json's Value and Map refused by their full path and checked by their bare name
 │   ├── check_example.md          # The check example the rustdoc runs and the README shows
 │   ├── preprocess_example.md     # The preprocess example the rustdoc runs and the README shows
 │   ├── field_type.rs             # Type system (FieldDef, FieldDefType)
@@ -3160,6 +3183,7 @@ tixschema/
 │   ├── std_range_tests/                  # The models and payloads every surface and client is held to
 │   ├── declared_range_tests.rs           # A type of the crate's own named Range keeps its name
 │   ├── std_range_refusals.rs             # A range named after another type fails at its identity check, E0308
+│   ├── any_json_refusals.rs              # A bare Value that is serde_json's fails at its check, E0080; the crate's own Value builds
 │   ├── std_result_tests.rs               # The std Result: every surface, validate(), the read, the decode, MongoDB, the README
 │   ├── std_result_tests/                 # The models and payloads every surface and client is held to, and the reproduction
 │   ├── declared_result_tests.rs          # A type of the crate's own named Result keeps its name
