@@ -755,8 +755,9 @@ pub struct NonObjectWire {
 }
 
 /// A type parameter an item flattens, as [`FLATTENED_PARAMETERS`] holds it: where it is filled
-/// with a map, serde writes the map's entries at one level with the key beside it, and where it is
-/// filled with an enum, a unit variant as an entry of its name over `null`.
+/// with a map, serde writes the map's entries at one level with the key beside it, where it is
+/// filled with an enum, a unit variant as an entry of its name over `null`, and where it is filled
+/// with a value serde writes as no object, nothing it can join the object with.
 #[cfg(feature = "serde")]
 #[derive(Clone)]
 pub struct FlattenedParameter {
@@ -768,6 +769,19 @@ pub struct FlattenedParameter {
     pub flattens: String,
     /// The parameter as the type that flattens it declares it.
     pub parameter: String,
+    /// The lone slot of a variant under a tag alone that holds it, where one does: serde refuses
+    /// every write of an `Option` there.
+    pub slot: Option<SlotBesideTag>,
+}
+
+/// The lone slot of a variant under a tag alone, which serde writes beside the tag.
+#[cfg(feature = "serde")]
+#[derive(Clone)]
+pub struct SlotBesideTag {
+    /// The tag serde writes beside it.
+    pub tag: String,
+    /// The variant whose slot it is.
+    pub variant: String,
 }
 
 /// A type parameter an item reads, in a value of its own, where serde reads every key as text, as
@@ -1611,15 +1625,15 @@ pub fn ident_reexport_zod(rust_ident: &str, export_name: &str, binding_suffix: &
 }
 
 /// What an item's own type parameter at position `at` is spelled as where what a holder fills it
-/// with is written in its place: the maps it keys, and the variants an externally tagged enum
-/// records for an object that flattens it.
+/// with is written in its place: the maps it keys, and the variants an externally tagged enum and
+/// the members an untagged enum record for an object that flattens it.
 pub fn parameter_placeholder(at: usize) -> String {
     format!("{PLACEHOLDER_OPENS}{at}{PLACEHOLDER_CLOSES}")
 }
 
 /// `described` with each [`parameter_placeholder`] in it replaced by what `filling` answers for its
 /// position, or `None` where `filling` answers nothing for one.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(any(feature = "zod", all(feature = "serde", feature = "typescript")))]
 pub fn placeholders_filled<F>(described: &str, filling: F) -> Option<String>
 where
     F: Fn(usize) -> Option<String>,

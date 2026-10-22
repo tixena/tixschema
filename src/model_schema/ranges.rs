@@ -31,8 +31,9 @@ use crate::utils::{written_names, written_type};
 use super::prefixed_guard_message;
 #[cfg(feature = "serde")]
 use super::{
-    KeyAsked, RefusedKey, bson_refused_keys, flattening_levels, forwarded_parameter_position,
-    is_bson_refused_key, item_generics, item_label, item_schema_ident, placed_tokens,
+    KeyAsked, NonObject, RefusedFilling, RefusedKey, TAGGED_UNIT_WRITTEN, WrittenWords,
+    bson_refused_keys, flattening_levels, forwarded_parameter_position, is_bson_refused_key,
+    item_generics, item_label, item_schema_ident, placed_tokens, refused_filling,
     refused_member_named, type_arguments_of, writes_an_optional, written_as_an_entry,
     written_spelling,
 };
@@ -53,8 +54,8 @@ use crate::field_type::{
 };
 #[cfg(feature = "serde")]
 use crate::utils::{
-    FlattenedBeside, FlattenedParameter, FlattenedRead, TextKeyParameter, TextKeysRead,
-    flattened_parameters, is_open_map, open_map_parameters, text_key_parameters,
+    FlattenedBeside, FlattenedParameter, FlattenedRead, SlotBesideTag, TextKeyParameter,
+    TextKeysRead, flattened_parameters, is_open_map, open_map_parameters, text_key_parameters,
 };
 
 /// What every refusal of a key serde reads below a flattened member says of serde.
@@ -1022,17 +1023,23 @@ pub fn flattened_parameters_of(item: &Item) -> Vec<FlattenedParameter> {
     }
     let flattens = ident.to_string();
     let mut held = Vec::new();
-    for (_, fields, tag) in flattening_levels(item) {
+    for (_, fields, tag, variant) in flattening_levels(item) {
         let written: Vec<&syn::Field> = fields
             .iter()
             .filter(|field| !parse_serde_key_omission(&field.attrs).absent_from_wire())
             .collect();
         // serde writes the lone slot of a variant under a tag alone beside the tag, as it writes a
         // flattened member there.
-        let slot_beside_tag =
-            tag.is_some() && matches!(fields, Fields::Unnamed(slots) if slots.unnamed.len() == 1);
+        let slot = tag
+            .as_ref()
+            .zip(variant)
+            .filter(|_| matches!(fields, Fields::Unnamed(slots) if slots.unnamed.len() == 1))
+            .map(|(key, held_by)| SlotBesideTag {
+                tag: key.clone(),
+                variant: held_by.unraw().to_string(),
+            });
         for (index, field) in written.iter().enumerate() {
-            if !slot_beside_tag && !parse_serde_field_attributes(&field.attrs).flatten {
+            if slot.is_none() && !parse_serde_field_attributes(&field.attrs).flatten {
                 continue;
             }
             let beside = written
@@ -1048,6 +1055,7 @@ pub fn flattened_parameters_of(item: &Item) -> Vec<FlattenedParameter> {
                     beside: beside.clone(),
                     flattens: flattens.clone(),
                     parameter: parameters[at].clone(),
+                    slot: slot.clone(),
                 });
             }
         }
@@ -1072,14 +1080,20 @@ pub fn flattened_parameters_of(item: &Item) -> Vec<FlattenedParameter> {
             });
         }
     }
-    // One record per parameter, one beside a key ahead of one alone: a filling is refused once,
-    // and a map that fills it wherever it sits beside a key.
+    // One record per parameter, one beside a key ahead of one alone and holding the slot beside a
+    // tag where any does: a filling is refused once, a map that fills it wherever it sits beside a
+    // key, and an `Option` wherever a slot beside a tag holds it.
     let mut kept: Vec<FlattenedParameter> = Vec::new();
     for filled in held {
         match kept.iter_mut().find(|other| other.at == filled.at) {
             None => kept.push(filled),
-            Some(other) if other.beside.is_none() && filled.beside.is_some() => *other = filled,
-            Some(_) => {}
+            Some(other) => {
+                let slot = other.slot.take().or_else(|| filled.slot.clone());
+                if other.beside.is_none() && filled.beside.is_some() {
+                    *other = filled;
+                }
+                other.slot = slot;
+            }
         }
     }
     kept
@@ -1192,13 +1206,14 @@ fn filled_map_message(
 /// fills, in a type `item` writes, a type parameter a type flattens, spanned on the enum: in its
 /// members, in an alias's value, and in each of `default_types`. The type's description is
 /// written once for every filling, and takes the enum's own value, the variant's bare name. An
-/// `Option` beside a tag is left to serde, which refuses every write of one there.
+/// `Option` in the lone slot of a variant under a tag alone is refused by
+/// [`filled_non_object_errors`], as serde refuses every write of one there.
 #[cfg(feature = "serde")]
 pub fn filled_entry_errors(item: &Item, default_types: &[(Ident, Type)]) -> Vec<TokenStream> {
     refused_fillings(item, default_types, |argument, parameters, filled| {
         let mut def = get_field_def("", argument, "");
         def.erase_type_parameters(parameters);
-        if matches!(filled.beside, Some(FlattenedBeside::Tag(_))) && writes_an_optional(&def) {
+        if filled.slot.is_some() && writes_an_optional(&def) {
             return None;
         }
         written_as_an_entry(&def)
@@ -1240,6 +1255,124 @@ fn filled_entry_message(
          the TypeScript type and the Zod schema of `{flattens}`, written once for every filling, \
          describe that variant as its bare name. {advice}",
         filled.parameter
+    )
+}
+
+/// The refusal of each value that fills, in a type `item` writes, a type parameter a type flattens
+/// where serde writes it as no object, and of each `Option` that fills one held by the lone slot of
+/// a variant under a tag alone, spanned on the value: in its members, in an alias's value, and in
+/// each of `default_types`. The type's description, written once for every filling, joins what
+/// fills the parameter to the object, and serde writes no member of such a value there.
+#[cfg(feature = "serde")]
+pub fn filled_non_object_errors(item: &Item, default_types: &[(Ident, Type)]) -> Vec<TokenStream> {
+    refused_fillings(item, default_types, |argument, parameters, filled| {
+        let mut def = get_field_def("", argument, "");
+        def.erase_type_parameters(parameters);
+        refused_filling(&def, filled.slot.as_ref())
+    })
+    .into_iter()
+    .map(|(subject, argument, filled, refused)| {
+        let message = filled_non_object_message(&subject, argument, &filled, refused);
+        syn::Error::new_spanned(argument, prefixed_guard_message(&message)).to_compile_error()
+    })
+    .collect()
+}
+
+/// The refusal of `argument` filling the parameter `filled` holds, as `refused` says serde writes
+/// it, in the words of the refusal of the same value flattened, or held by the lone slot of a
+/// variant under a tag alone, where it is written in the parameter's place.
+#[cfg(feature = "serde")]
+fn filled_non_object_message(
+    subject: &str,
+    argument: &Type,
+    filled: &FlattenedParameter,
+    refused: RefusedFilling,
+) -> String {
+    let flattens = &filled.flattens;
+    let (beside, written) = match refused {
+        RefusedFilling::Optional(slot) => (
+            format!(" beside the tag `{}`", slot.tag),
+            format!(
+                "a value serde writes as an optional, {} serde refuses every write of it at run \
+                 time \u{2014} `cannot serialize tagged newtype variant {flattens}::{} \
+                 containing an optional`.",
+                beside_the_tag(&slot.tag),
+                slot.variant
+            ),
+        ),
+        RefusedFilling::Written(non_object) => (
+            match &filled.beside {
+                Some(FlattenedBeside::Member(member)) => format!(" beside `{member}`"),
+                Some(FlattenedBeside::Tag(key)) => format!(" beside the tag `{key}`"),
+                None => String::new(),
+            },
+            filled_non_object_words(
+                non_object,
+                flattens,
+                filled.slot.as_ref().map(|slot| slot.tag.as_str()),
+            ),
+        ),
+    };
+    format!(
+        "{subject}`{flattens}` flattens its type parameter `{}`{beside}, and `{}` fills it with \
+         {written} Write it under a key of its own.",
+        filled.parameter,
+        written_spelling(argument)
+    )
+}
+
+/// What a refusal says of a value serde writes as `non_object`, filling a type parameter `flattens`
+/// flattens, or holds in the lone slot of a variant beside the tag `tag`.
+#[cfg(feature = "serde")]
+fn filled_non_object_words(non_object: NonObject, flattens: &str, tag: Option<&str>) -> String {
+    match (non_object, tag) {
+        (NonObject::Branch(branch, named), Some(key)) => format!(
+            "a value that writes a union member that is not an object \u{2014} its branch \
+             {branch} describes a `{named}`, {}",
+            beside_the_tag(key)
+        ),
+        (NonObject::Branch(branch, named), None) => format!(
+            "a value that writes a union member that is not an object \u{2014} its branch \
+             {branch} describes a `{named}`, which has no members to merge, and what serde writes \
+             for that member does not join the object being written."
+        ),
+        (NonObject::Written(branch, written), _) => {
+            let words = WrittenWords::of(written, tag.is_some());
+            format!(
+                "a value that writes a union member as {} \u{2014} its branch {branch} describes \
+                 a `{}`, {}.",
+                words.member, words.keyword, words.serde_writes
+            )
+        }
+        (NonObject::Whole("null"), Some(_)) => format!(
+            "a value serde writes as `()` \u{2014} its schema describes a `null`: \
+             {TAGGED_UNIT_WRITTEN}"
+        ),
+        (NonObject::Whole("null"), None) => format!(
+            "a value serde writes as `()` \u{2014} its schema describes a `null`: serde writes no \
+             key for it, and reads the object back, while the TypeScript type and the Zod schema \
+             of `{flattens}` intersect the object with `null`, which admits no value."
+        ),
+        (NonObject::Whole(named), Some(key)) => format!(
+            "a value that is not written as an object \u{2014} its schema describes a `{named}`, \
+             {}",
+            beside_the_tag(key)
+        ),
+        (NonObject::Whole(named), None) => format!(
+            "a value that is not written as an object \u{2014} its schema describes a `{named}`, \
+             which has no members to merge, and what serde writes for it does not join the object \
+             being written."
+        ),
+    }
+}
+
+/// What a refusal says of a value serde writes as no object beside the tag `key`.
+#[cfg(feature = "serde")]
+fn beside_the_tag(key: &str) -> String {
+    format!(
+        "which cannot sit beside the tag: `#[serde(tag = \"{key}\")]` with no `content` writes the \
+         variant's data as members of the object the tag is written in, and only a value serde \
+         writes as an object has members to put there."
     )
 }
 

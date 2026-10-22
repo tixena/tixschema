@@ -822,6 +822,114 @@ struct ExtCarriedAliasHolder {
     own: String,
 }
 
+/// An untagged enum that declares a parameter: a member that is the parameter, and one of named
+/// fields.
+#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+#[model_schema(default_types(Load = BasePart))]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(untagged)]
+enum MemberUntaggedCarried<Load> {
+    Counted { count: u32 },
+    Held(Load),
+}
+
+/// That enum written with an argument and flattened: each member is its own with the parameter
+/// filled by the argument.
+#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct UntaggedCarriedHolder {
+    #[serde(flatten)]
+    either: MemberUntaggedCarried<BasePart>,
+    own: String,
+}
+
+/// That enum flattened at its holder's own parameter, which the holder's factory binds.
+#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+#[model_schema(default_types(Held = BasePart))]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct UntaggedCarriedOwnHolder<Held> {
+    #[serde(flatten)]
+    either: MemberUntaggedCarried<Held>,
+    own: String,
+}
+
+/// An untagged enum that declares a parameter, of two members of named fields, each closed to the
+/// other's key where it is flattened.
+#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+#[model_schema(default_types(Load = String))]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(untagged)]
+enum MemberUntaggedPicked<Load> {
+    Carried { load: Load },
+    Counted { count: u32 },
+}
+
+/// That enum written with an argument and flattened.
+#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct UntaggedPickedHolder {
+    own: String,
+    #[serde(flatten)]
+    pick: MemberUntaggedPicked<u32>,
+}
+
+/// An alias of that enum that declares a parameter of its own.
+#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+#[model_schema(default_types(Stowed = String))]
+type MemberUntaggedPickedOf<Stowed> = MemberUntaggedPicked<Stowed>;
+
+/// The alias written with an argument and flattened.
+#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct UntaggedPickedAliasHolder {
+    own: String,
+    #[serde(flatten)]
+    pick: MemberUntaggedPickedOf<bool>,
+}
+
+/// A type parameter flattened beside a member, as serde alone writes it.
+#[derive(Serialize, Debug)]
+struct SerdeOnlyBag<T> {
+    id: u32,
+    #[serde(flatten)]
+    inner: T,
+}
+
+/// A type parameter held by the lone slot of a variant under a tag alone, as serde alone writes it.
+#[derive(Serialize, Debug)]
+#[serde(tag = "kind")]
+enum SerdeOnlyWaybill<Held> {
+    Held(Held),
+}
+
+/// A brand over text, as serde alone writes it.
+#[derive(Serialize, Debug)]
+#[serde(transparent)]
+struct SerdeOnlyCode(String);
+
+/// A type parameter flattened beside a member, filled where every surface describes what serde
+/// writes: at a struct, and at an `Option` of one.
+#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+#[model_schema(default_types(T = BasePart))]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct ObjectFilledBag<T> {
+    id: u32,
+    #[serde(flatten)]
+    inner: T,
+}
+
+/// [`ObjectFilledBag`] filled at a struct and at an `Option` of one, which build.
+#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct ObjectFilledBags {
+    held: ObjectFilledBag<BasePart>,
+    maybe: ObjectFilledBag<Option<BasePart>>,
+}
+
 /// And a tagged enum whose every variant carries data, which serde writes as the object its name
 /// tags in every case — admitted where it always was, on every surface.
 #[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
@@ -3783,6 +3891,281 @@ fn test_a_flattened_enum_written_with_an_argument_documents_each_entry_at_the_ar
             );
         }
     }
+}
+
+#[test]
+#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+fn test_a_flattened_untagged_enum_written_with_an_argument_round_trips_every_member() {
+    let owner = BasePart {
+        owner: "w".to_owned(),
+    };
+    for (either, expected) in [
+        (
+            MemberUntaggedCarried::Held(owner),
+            serde_json::json!({ "owner": "w", "own": "o" }),
+        ),
+        (
+            MemberUntaggedCarried::Counted { count: 3 },
+            serde_json::json!({ "count": 3_u32, "own": "o" }),
+        ),
+    ] {
+        let holder = UntaggedCarriedHolder {
+            either,
+            own: "o".to_owned(),
+        };
+        let written = serde_json::to_value(&holder).unwrap();
+        assert_eq!(written, expected);
+        let back: UntaggedCarriedHolder = serde_json::from_value(written).unwrap();
+        assert_eq!(back, holder);
+    }
+    for (pick, expected) in [
+        (
+            MemberUntaggedPicked::Carried { load: 7 },
+            serde_json::json!({ "load": 7_u32, "own": "o" }),
+        ),
+        (
+            MemberUntaggedPicked::Counted { count: 3 },
+            serde_json::json!({ "count": 3_u32, "own": "o" }),
+        ),
+    ] {
+        let holder = UntaggedPickedHolder {
+            pick,
+            own: "o".to_owned(),
+        };
+        let written = serde_json::to_value(&holder).unwrap();
+        assert_eq!(written, expected);
+        let back: UntaggedPickedHolder = serde_json::from_value(written).unwrap();
+        assert_eq!(back, holder);
+    }
+}
+
+/// Zod joins each member of an untagged enum written with an argument, the parameter written as
+/// the argument, and names no parameter the holder's factory does not bind.
+#[test]
+#[cfg(feature = "zod")]
+fn test_a_flattened_untagged_enum_written_with_an_argument_parses_each_member_at_the_argument() {
+    let counted = "z.strictObject({ count: z.number().int().min(0).max(4294967295), })";
+    for (holder, zod, members) in [
+        (
+            "UntaggedCarriedHolder",
+            UntaggedCarriedHolder::zod_schema(),
+            ["BasePart$Schema", counted],
+        ),
+        (
+            "UntaggedCarriedOwnHolder",
+            UntaggedCarriedOwnHolder::<BasePart>::zod_schema(),
+            ["held", counted],
+        ),
+        (
+            "UntaggedPickedHolder",
+            UntaggedPickedHolder::zod_schema(),
+            [
+                "z.strictObject({ load: z.number().int().min(0).max(4294967295), })",
+                counted,
+            ],
+        ),
+        (
+            "UntaggedPickedAliasHolder",
+            UntaggedPickedAliasHolder::zod_schema(),
+            ["z.strictObject({ load: z.boolean(), })", counted],
+        ),
+    ] {
+        for member in members {
+            assert!(
+                zod.contains(&format!("$OwnSchema.and(z.lazy(() => {member}))")),
+                "{holder}: no operand `{member}` in: {zod}"
+            );
+        }
+        for unbound in [
+            "=> load)",
+            "=> stowed)",
+            "__tixschema_parameter_",
+            "MemberUntaggedCarried$Schema",
+        ] {
+            assert!(!zod.contains(unbound), "{holder} names `{unbound}`: {zod}");
+        }
+    }
+}
+
+/// TypeScript joins each member of an untagged enum written with an argument where its members
+/// close each other's keys, the parameter written as the argument, and names no parameter the
+/// holder does not declare.
+#[test]
+#[cfg(feature = "typescript")]
+fn test_a_flattened_untagged_enum_written_with_an_argument_types_each_member_at_the_argument() {
+    let picked = UntaggedPickedHolder::ts_definition();
+    assert!(
+        picked.contains("} & ({ load: number; count?: never } | { count: number; load?: never });"),
+        "expected one key set per member, got: {picked}"
+    );
+    for (holder, ts) in [
+        ("UntaggedPickedHolder", picked),
+        (
+            "UntaggedCarriedHolder",
+            UntaggedCarriedHolder::ts_definition(),
+        ),
+        (
+            "UntaggedCarriedOwnHolder",
+            UntaggedCarriedOwnHolder::<BasePart>::ts_definition(),
+        ),
+    ] {
+        for unbound in ["Load", "__tixschema_parameter_"] {
+            assert!(!ts.contains(unbound), "{holder} names `{unbound}`: {ts}");
+        }
+    }
+}
+
+/// The untagged enum's own text names its own parameter, as it did before any holder filled it.
+#[test]
+#[cfg(all(feature = "zod", feature = "typescript"))]
+fn test_a_generic_untagged_enum_flattened_with_an_argument_keeps_its_own_text() {
+    let ts = MemberUntaggedPicked::<String>::ts_definition();
+    assert!(
+        ts.contains("{ load: Load } | { count: number }") && !ts.contains("__tixschema_parameter_"),
+        "Got: {ts}"
+    );
+    let zod = MemberUntaggedPicked::<String>::zod_schema();
+    assert!(
+        zod.contains(
+            "z.union([z.strictObject({ load: load, }), z.strictObject({ count: \
+             z.number().int().min(0).max(4294967295), \
+             })])"
+        ) && !zod.contains("__tixschema_parameter_"),
+        "Got: {zod}"
+    );
+}
+
+/// The JSON Schema of each holder admits each member at the argument, and refuses the holder's own
+/// member alone and a member of another type.
+#[test]
+#[cfg(feature = "jsonschema")]
+fn test_a_flattened_untagged_enum_written_with_an_argument_documents_each_member_at_the_argument() {
+    for (schema, admitted, refused) in [
+        (
+            UntaggedCarriedHolder::json_schema(),
+            [
+                serde_json::json!({ "owner": "w", "own": "o" }),
+                serde_json::json!({ "count": 3_u32, "own": "o" }),
+            ],
+            serde_json::json!({ "owner": 3_u32, "own": "o" }),
+        ),
+        (
+            UntaggedPickedAliasHolder::json_schema(),
+            [
+                serde_json::json!({ "load": true, "own": "o" }),
+                serde_json::json!({ "count": 3_u32, "own": "o" }),
+            ],
+            serde_json::json!({ "load": 7_u32, "own": "o" }),
+        ),
+    ] {
+        for payload in admitted {
+            assert!(
+                super::documents::admits(&schema, &payload),
+                "{payload} is rejected by {schema}"
+            );
+        }
+        for payload in [serde_json::json!({ "own": "o" }), refused] {
+            assert!(
+                !super::documents::admits(&schema, &payload),
+                "{payload} is accepted by {schema}"
+            );
+        }
+    }
+}
+
+/// serde refuses every write of a type parameter flattened, or held by the lone slot of a variant
+/// under a tag alone, filled at a value it writes as no object, and of that slot filled at an
+/// `Option`: the fillings the build refuses where they are written.
+#[test]
+fn test_serde_refuses_every_write_of_a_parameter_filled_at_a_value_written_as_no_object() {
+    let refused = |written: Result<String, serde_json::Error>| written.unwrap_err().to_string();
+    for (filling, said) in [
+        (
+            refused(serde_json::to_string(&SerdeOnlyBag {
+                id: 1,
+                inner: "x".to_owned(),
+            })),
+            "can only flatten structs and maps (got a string)",
+        ),
+        (
+            refused(serde_json::to_string(&SerdeOnlyBag {
+                id: 1,
+                inner: 7_u32,
+            })),
+            "can only flatten structs and maps (got an integer)",
+        ),
+        (
+            refused(serde_json::to_string(&SerdeOnlyBag {
+                id: 1,
+                inner: vec![1_u8],
+            })),
+            "can only flatten structs and maps (got a sequence)",
+        ),
+        (
+            refused(serde_json::to_string(&SerdeOnlyBag {
+                id: 1,
+                inner: Some("x".to_owned()),
+            })),
+            "can only flatten structs and maps (got a string)",
+        ),
+        (
+            refused(serde_json::to_string(&SerdeOnlyBag {
+                id: 1,
+                inner: SerdeOnlyCode("c".to_owned()),
+            })),
+            "can only flatten structs and maps (got a string)",
+        ),
+        (
+            refused(serde_json::to_string(&SerdeOnlyWaybill::Held(
+                "x".to_owned(),
+            ))),
+            "cannot serialize tagged newtype variant SerdeOnlyWaybill::Held containing a string",
+        ),
+        (
+            refused(serde_json::to_string(&SerdeOnlyWaybill::Held(Some(
+                BasePart {
+                    owner: "o".to_owned(),
+                },
+            )))),
+            "cannot serialize tagged newtype variant SerdeOnlyWaybill::Held containing an optional",
+        ),
+        (
+            refused(serde_json::to_string(
+                &SerdeOnlyWaybill::<Option<BasePart>>::Held(None),
+            )),
+            "cannot serialize tagged newtype variant SerdeOnlyWaybill::Held containing an optional",
+        ),
+    ] {
+        assert_eq!(filling, said);
+    }
+    assert_eq!(
+        serde_json::to_string(&SerdeOnlyBag { id: 1, inner: () }).unwrap(),
+        r#"{"id":1}"#,
+        "serde writes `()` flattened as no key"
+    );
+}
+
+/// A type parameter flattened beside a member builds filled at a struct and at an `Option` of one,
+/// which serde writes as the struct's keys, or as no key for `None`, and reads back.
+#[test]
+#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+fn test_a_parameter_flattened_at_an_object_or_an_option_of_one_round_trips() {
+    let bags = ObjectFilledBags {
+        held: ObjectFilledBag {
+            id: 1,
+            inner: BasePart {
+                owner: "o".to_owned(),
+            },
+        },
+        maybe: ObjectFilledBag { id: 2, inner: None },
+    };
+    let written = serde_json::to_value(&bags).unwrap();
+    assert_eq!(
+        written,
+        serde_json::json!({ "held": { "id": 1_u32, "owner": "o" }, "maybe": { "id": 2_u32 } })
+    );
+    let back: ObjectFilledBags = serde_json::from_value(written).unwrap();
+    assert_eq!(back, bags);
 }
 
 #[test]
