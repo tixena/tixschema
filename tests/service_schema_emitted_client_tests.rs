@@ -500,7 +500,8 @@ mod run_swift_flattened;
 /// An externally tagged enum flattened beside a member of its holder's own, ahead of a function
 /// and of a struct, optional, and with a model its holder judges, read by the emitted Swift types
 /// from the one entry under a variant's name and written as serde writes it, a unit variant as an
-/// entry of its name over `null`, and read alone from an object of one key.
+/// entry of its name over `null`, and read alone from an object of one key; and a unit variant
+/// under a content key read from an object with no content key.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_swift_flattened_enums.rs"]
 mod run_swift_flattened_enums;

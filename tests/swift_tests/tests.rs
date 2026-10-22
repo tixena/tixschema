@@ -309,6 +309,14 @@ fn an_adjacently_tagged_enum_writes_the_payload_under_its_own_content_key() {
         "got: {swift}"
     );
     assert!(
+        swift.contains(
+            "case \"Cleared\": guard !container.contains(.swiftSchemaContent) else { throw \
+             DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
+             debugDescription: \"AdjacentTagged: \\(tag) takes no value\")) }; self = .cleared; "
+        ),
+        "a unit variant is read from an object with no content key alone. Got: {swift}"
+    );
+    assert!(
         swift.contains("case .flag(let payload): try container.encode(\"Flag\""),
         "got: {swift}"
     );
