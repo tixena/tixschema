@@ -2706,6 +2706,388 @@ fn a_tagged_newtype_variant_over_a_generic_type_filled_at_an_object_is_accepted(
     }
 }
 
+/// No local build is of the clients alone, so the gates are read off the sources.
+#[test]
+fn the_filled_holder_and_flatten_refusals_are_compiled_in_every_build_with_serde() {
+    let with_serde = quote::quote!(cfg(feature = "serde")).to_string();
+    let expansion = include_str!("../model_schema.rs");
+    for named in [
+        "non_object_wire",
+        "without_its_option",
+        "under_an_option",
+        "filled_wire_leaves",
+        "filled_union_members",
+        "writes_an_optional",
+        "flatten_edge_guard_error",
+        "flattened_name_non_object",
+        "refused_branch",
+        "flattened_filling_non_object",
+        "filled_non_object",
+        "filled_spelling",
+        "value_filling",
+    ] {
+        assert_eq!(
+            gates_above(expansion, named),
+            [with_serde.as_str()],
+            "for `{named}`"
+        );
+    }
+}
+
+/// Declares, beside the types [`declare_filled_probes`] declares, the types whose value is a
+/// generic type declared above filled at an argument: a struct of one slot, a brand and an alias
+/// filled at a value serde writes as no object, at an `Option` and at a struct, a struct of one
+/// slot over an `Option` of one, and a struct of one slot over `Option<String>`.
+#[cfg(feature = "serde")]
+fn declare_filled_holders() {
+    declare_filled_probes();
+    for (args, declared) in [
+        (
+            "no_display",
+            "pub struct ProbeTextFilled(ProbeWrap<String>);",
+        ),
+        (
+            "no_display",
+            "#[serde(transparent)] pub struct ProbeCountFilled(Box<ProbeWrap<u32>>);",
+        ),
+        ("", "pub type ProbeFlagFilled = ProbeWrap<bool>;"),
+        (
+            "no_display",
+            "pub struct ProbeListFilled(ProbeOuter<Vec<String>>);",
+        ),
+        (
+            "no_display",
+            "pub struct ProbeNamedFilled(ProbeWrap<ProbeText>);",
+        ),
+        (
+            "no_display",
+            "pub struct ProbeMaybeFilled(ProbeWrap<Option<ProbeFields>>);",
+        ),
+        (
+            "no_display",
+            "pub struct ProbeMaybeTextFilled(Option<ProbeWrap<String>>);",
+        ),
+        (
+            "no_display",
+            "pub struct ProbeFieldsFilled(ProbeWrap<ProbeFields>);",
+        ),
+        (
+            "no_display",
+            "pub struct ProbeLaterFilled(ProbeWrapUnseen<String>);",
+        ),
+        ("", "pub struct ProbeMaybeText(Option<String>);"),
+    ] {
+        let expanded = serialized_under(args, declared);
+        assert_eq!(
+            compile_error_count(&expanded),
+            0,
+            "for {declared}, got: {expanded}"
+        );
+    }
+}
+
+/// A newtype variant under a tag alone over a type declared above whose value is a generic type
+/// declared above filled at a value serde writes as no object, a struct of one slot, a brand, an
+/// alias and a chain of them, refused as the slot over the filling itself is, and over one filled
+/// at an `Option`, refused as the slot over that `Option` is.
+#[cfg(feature = "serde")]
+#[test]
+fn a_tagged_newtype_variant_over_a_holder_of_a_generic_type_filled_at_no_object_is_refused_in_every_build_with_serde()
+ {
+    declare_filled_holders();
+    let whole = "is not written as an object \u{2014} its schema describes a";
+    let text = held_under_tag("ProbeHeldTextFilled", "ProbeTextFilled");
+    assert_eq!(
+        text,
+        [tagged_non_object_refusal(
+            "ProbeHeldTextFilled",
+            "ProbeTextFilled",
+            &format!("{whole} `string`")
+        )]
+    );
+    assert_eq!(
+        held_under_tag("ProbeHeldText", "ProbeText"),
+        [tagged_non_object_refusal(
+            "ProbeHeldText",
+            "ProbeText",
+            &format!("{whole} `string`")
+        )],
+        "the slot over the filling itself"
+    );
+    let answered = format!("error: {}", text[0]);
+    assert!(
+        include_str!("../../README.md").contains(&answered),
+        "the README no longer quotes: {answered}"
+    );
+    for (holder, slot, inner, named) in [
+        (
+            "ProbeHeldCountFilled",
+            "ProbeCountFilled",
+            "ProbeCountFilled",
+            "integer",
+        ),
+        (
+            "ProbeHeldFlagFilled",
+            "ProbeFlagFilled",
+            "ProbeFlagFilled",
+            "boolean",
+        ),
+        (
+            "ProbeHeldListFilled",
+            "Box<ProbeListFilled>",
+            "ProbeListFilled",
+            "array",
+        ),
+        (
+            "ProbeHeldNamedFilled",
+            "ProbeNamedFilled",
+            "ProbeNamedFilled",
+            "string",
+        ),
+        (
+            "ProbeHeldFilledHolder",
+            "ProbeWrap<ProbeTextFilled>",
+            "ProbeWrap<ProbeTextFilled>",
+            "string",
+        ),
+    ] {
+        assert_eq!(
+            held_under_tag(holder, slot),
+            [tagged_non_object_refusal(
+                holder,
+                inner,
+                &format!("{whole} `{named}`")
+            )],
+            "for {slot}"
+        );
+    }
+    assert_eq!(
+        held_under_tag("ProbeHeldMaybeFilled", "ProbeMaybeFilled"),
+        [tagged_optional_refusal(
+            "ProbeHeldMaybeFilled",
+            "ProbeMaybeFilled"
+        )]
+    );
+    assert_eq!(
+        held_under_tag("ProbeHeldMaybe", "ProbeMaybe"),
+        [tagged_optional_refusal("ProbeHeldMaybe", "ProbeMaybe")],
+        "the slot over that `Option` itself"
+    );
+}
+
+/// The refusal of a flattened `inner` of `holder` whose union member at `branch` serde writes as a
+/// `named` value.
+#[cfg(feature = "serde")]
+fn branch_non_object_refusal(holder: &str, inner: &str, branch: &str, named: &str) -> String {
+    format!(
+        "model_schema: `{holder}`: `#[serde(flatten)]` of `{inner}` writes a union member that is \
+         not an object \u{2014} its branch {branch} describes a `{named}`, which has no members to \
+         merge, and what serde writes for that member does not join the object being written; \
+         write the field as a named member so the value gets a key of its own. {}",
+        super::FLATTENED_NON_OBJECT_SCOPE
+    )
+}
+
+/// The refusals of `holder`, a struct that flattens `flattened` beside a member of its own.
+#[cfg(feature = "serde")]
+fn flattened_beside_an_id(holder: &str, flattened: &str) -> Vec<String> {
+    let attribute = if flattened.starts_with("Option<") {
+        "#[serde(default, flatten, skip_serializing_if = \"Option::is_none\")]"
+    } else {
+        "#[serde(flatten)]"
+    };
+    refusal_texts(&serialized_under(
+        "",
+        &format!("pub struct {holder} {{ pub id: String, {attribute} pub wrap: {flattened} }}"),
+    ))
+}
+
+/// A generic type declared above whose value is its type parameter, flattened into a struct and
+/// into a variant's members at a filling serde writes as no object, directly, under `Box`, under
+/// an `Option`, through a brand, an alias and a chain, each refused as the type of the same shape
+/// no parameter fills is; and a type declared above whose value is one, flattened, refused as the
+/// type over the filling itself is.
+#[cfg(feature = "serde")]
+#[test]
+fn a_flattened_generic_type_filled_at_no_object_is_refused_in_every_build_with_serde() {
+    declare_filled_holders();
+    let text = flattened_beside_an_id("ProbeFlatText", "ProbeWrap<String>");
+    assert_eq!(
+        text,
+        [whole_non_object_refusal(
+            "ProbeFlatText",
+            "ProbeWrap<String>",
+            "string"
+        )]
+    );
+    assert_eq!(
+        flattened_beside_an_id("ProbeFlatTextItself", "ProbeText"),
+        [whole_non_object_refusal(
+            "ProbeFlatTextItself",
+            "ProbeText",
+            "string"
+        )],
+        "the type of the same shape no parameter fills"
+    );
+    let answered = format!("error: {}", text[0]);
+    assert!(
+        include_str!("../../README.md").contains(&answered),
+        "the README no longer quotes: {answered}"
+    );
+    for (holder, flattened, inner, named) in [
+        (
+            "ProbeFlatCount",
+            "Box<ProbeWrap<u32>>",
+            "ProbeWrap<u32>",
+            "integer",
+        ),
+        (
+            "ProbeFlatList",
+            "ProbeWrap<Vec<String>>",
+            "ProbeWrap<Vec<String>>",
+            "array",
+        ),
+        (
+            "ProbeFlatBrand",
+            "ProbeBoxed<String>",
+            "ProbeBoxed<String>",
+            "string",
+        ),
+        (
+            "ProbeFlatChain",
+            "ProbeOuter<f64>",
+            "ProbeOuter<f64>",
+            "number",
+        ),
+        (
+            "ProbeFlatAlias",
+            "ProbeWrapAlias<bool>",
+            "ProbeWrapAlias<bool>",
+            "boolean",
+        ),
+        (
+            "ProbeFlatNamed",
+            "ProbeWrap<ProbeText>",
+            "ProbeWrap<ProbeText>",
+            "string",
+        ),
+        (
+            "ProbeFlatOptional",
+            "Option<ProbeWrap<String>>",
+            "ProbeWrap<String>",
+            "string",
+        ),
+        (
+            "ProbeFlatOptionalItself",
+            "Option<ProbeText>",
+            "ProbeText",
+            "string",
+        ),
+        (
+            "ProbeFlatHolder",
+            "ProbeTextFilled",
+            "ProbeTextFilled",
+            "string",
+        ),
+    ] {
+        assert_eq!(
+            flattened_beside_an_id(holder, flattened),
+            [whole_non_object_refusal(holder, inner, named)],
+            "for {flattened}"
+        );
+    }
+    assert_eq!(
+        refusal_texts(&serialized_under(
+            "",
+            "pub enum ProbeFlatLog { Noted { note: String, #[serde(flatten)] wrap: \
+             ProbeWrap<String> } }",
+        )),
+        [whole_non_object_refusal(
+            "ProbeFlatLog",
+            "ProbeWrap<String>",
+            "string"
+        )]
+    );
+}
+
+/// A generic type declared above whose value is its type parameter, flattened at an `Option` of
+/// text, and a type declared above whose value is an `Option` of one filled at text, each refused
+/// with the branch of the `Option`, as a struct of one slot over `Option<String>` is.
+#[cfg(feature = "serde")]
+#[test]
+fn a_flattened_generic_type_filled_at_an_option_of_no_object_is_refused_in_every_build_with_serde()
+{
+    declare_filled_holders();
+    for (holder, flattened) in [
+        ("ProbeFlatMaybeText", "ProbeWrap<Option<String>>"),
+        ("ProbeFlatMaybeTextItself", "ProbeMaybeText"),
+        ("ProbeFlatMaybeTextHolder", "ProbeMaybeTextFilled"),
+    ] {
+        assert_eq!(
+            flattened_beside_an_id(holder, flattened),
+            [branch_non_object_refusal(holder, flattened, "1", "string")],
+            "for {flattened}"
+        );
+    }
+}
+
+/// The shapes left alone: a generic type filled at a struct and at an `Option` of one, flattened,
+/// and a type whose value is one, flattened and in a tagged slot; a generic type declared below,
+/// flattened and filling a type declared above; and a generic type filled at the holder's own
+/// type parameter.
+#[cfg(feature = "serde")]
+#[test]
+fn a_generic_type_filled_at_an_object_is_accepted_flattened_and_held() {
+    declare_filled_holders();
+    for (args, accepted) in [
+        (
+            "",
+            "pub struct ProbeFlatFields { pub id: String, #[serde(flatten)] pub wrap: \
+             ProbeWrap<ProbeFields> }",
+        ),
+        (
+            "",
+            "pub struct ProbeFlatMaybeFields { pub id: String, #[serde(flatten)] pub wrap: \
+             ProbeWrap<Option<ProbeFields>> }",
+        ),
+        (
+            "",
+            "pub struct ProbeFlatFieldsHolder { pub id: String, #[serde(flatten)] pub wrap: \
+             ProbeFieldsFilled }",
+        ),
+        (
+            "",
+            "#[serde(tag = \"kind\")] pub enum ProbeHeldFieldsFilled { Held(ProbeFieldsFilled) }",
+        ),
+        (
+            "",
+            "pub struct ProbeFlatLater { pub id: String, #[serde(flatten)] pub wrap: \
+             ProbeWrapUnseen<String> }",
+        ),
+        (
+            "",
+            "pub struct ProbeFlatLaterHolder { pub id: String, #[serde(flatten)] pub wrap: \
+             ProbeLaterFilled }",
+        ),
+        (
+            "",
+            "#[serde(tag = \"kind\")] pub enum ProbeHeldLaterFilled { Held(ProbeLaterFilled) }",
+        ),
+        (
+            "default_types(X = ProbeFields)",
+            "pub struct ProbeFlatOwn<X> { pub id: String, #[serde(flatten)] pub wrap: \
+             ProbeWrap<X> }",
+        ),
+    ] {
+        let expanded = serialized_under(args, accepted);
+        assert_eq!(
+            compile_error_count(&expanded),
+            0,
+            "for {accepted}, got: {expanded}"
+        );
+    }
+}
+
 /// What the record every build with serde writes proves of each flattened type is what the record
 /// a Zod surface writes proves, so the refusal reads the same with a schema surface and without.
 #[cfg(all(feature = "serde", feature = "zod"))]
