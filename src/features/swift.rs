@@ -2028,6 +2028,20 @@ fn keyed_read(field: &SwiftField, container: &str, absent_is_nil: bool) -> Strin
 
 /// The `try container.encode...` statement a field earns inside a hand-written `encode(to:)`.
 fn encode_statement(field: &SwiftField, container: &str) -> String {
+    if field.flatten && field.field_def.is_optional() {
+        // `Optional`'s own `encode(to:)` writes a single value over the holder's keys, and `null`
+        // for `nil`, where serde writes the held value's keys beside them, and nothing for `None`.
+        let held = encode_conversion(
+            &field.field_def,
+            &field.shape,
+            field.field_def.array_depth,
+            "held",
+        );
+        return format!(
+            "if let held = {} {{ try {held}.encode(to: encoder) }}",
+            field.swift_name
+        );
+    }
     if field.flatten {
         return format!(
             "try {}.encode(to: encoder)",
@@ -2283,8 +2297,12 @@ fn struct_body_content(
             .join("; ");
         let container = if names_container(&statements) {
             "var container = encoder.container(keyedBy: CodingKeys.self); "
-        } else if fields.iter().any(|field| field.never_written) {
-            // No member is written under a key: the object is opened all the same.
+        } else if fields
+            .iter()
+            .any(|field| field.never_written || (field.flatten && field.field_def.is_optional()))
+        {
+            // No member is written under a key, and a flattened `Option` may write nothing: the
+            // object is opened all the same.
             "_ = encoder.container(keyedBy: CodingKeys.self); "
         } else {
             ""

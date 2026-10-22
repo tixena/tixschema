@@ -426,6 +426,18 @@ mod swift_flattened_models;
 #[path = "service_schema_emitted_client_tests/run_swift_flattened.rs"]
 mod run_swift_flattened;
 
+/// A flattened `Option` beside a member of its holder's own, alone in its holder and in a variant
+/// under a tag key, and a struct flattened bare beside a member of its holder's own.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "swift_tests/flattened_options_models.rs"]
+mod swift_flattened_options_models;
+
+/// Those members, held and absent, read and written back by the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_flattened_options.rs"]
+mod run_swift_flattened_options;
+
 /// A member serde reads and never writes, in a struct of its own and beside a flattened member.
 #[cfg(test)]
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
