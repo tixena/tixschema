@@ -216,8 +216,9 @@ thread_local! {
     /// Each externally tagged enum the emitter wrote that writes a unit variant as its bare name,
     /// by Rust ident: serde writes that variant flattened as an entry, its name over `null`.
     static KOTLIN_BARE_NAMED: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
-    /// The keys serde takes off its holder's object for each struct the emitter wrote a serializer
-    /// for by hand, by Rust ident: the descriptor of that serializer declares no element.
+    /// The keys serde reads each struct the emitter wrote from when it is flattened, by Rust
+    /// ident: the descriptor of a serializer written by hand declares no element, and the
+    /// plugin's names the struct's own tag and a member serde never reads, and no alias.
     static KOTLIN_TAKEN_KEYS: RefCell<HashMap<String, Vec<String>>> =
         RefCell::new(HashMap::new());
 }
@@ -311,8 +312,8 @@ fn writes_a_bare_name(def: &FieldDef) -> bool {
 }
 
 /// The keys a flattened struct typed `def` takes off its holder's object, as a Kotlin set: those
-/// serde reads where the emitter wrote the struct's serializer by hand, and the `elementNames` of
-/// the descriptor `serializer` answers for any other struct.
+/// serde reads where the emitter wrote the struct, and the `elementNames` of the descriptor
+/// `serializer` answers for a struct it has not written.
 fn flattened_struct_keys(def: &FieldDef, serializer: &str) -> String {
     let recorded = if let FieldDefType::SiblingType(name, _) = &def.field_type {
         KOTLIN_TAKEN_KEYS.with(|noted| noted.borrow().get(name).cloned())
@@ -1680,16 +1681,10 @@ fn kept_unjudged(
     }
 }
 
-/// Notes the keys the struct written under `rust_ident` takes off its holder's object when it is
-/// flattened, `None` where the `elementNames` of its serializer's descriptor are those keys.
-fn note_taken_keys(rust_ident: &str, taken: Option<Vec<String>>) {
+/// Notes the keys the struct written under `rust_ident` is read from when it is flattened.
+fn note_taken_keys(rust_ident: &str, keys: Vec<String>) {
     KOTLIN_TAKEN_KEYS.with(|noted| {
-        let mut recorded = noted.borrow_mut();
-        if let Some(keys) = taken {
-            recorded.insert(rust_ident.to_owned(), keys);
-        } else {
-            recorded.remove(rust_ident);
-        }
+        noted.borrow_mut().insert(rust_ident.to_owned(), keys);
     });
 }
 
@@ -1727,11 +1722,11 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
         .iter()
         .any(|field| field.flatten || field.never_written);
     let renamed = aliases::of_members(&fields);
-    // The descriptor of the plugin's serializer names no alias.
+    // A struct that names a function takes no key (`preprocess::note`), and an optional holder
+    // still looks for it by the keys its read reads.
     note_taken_keys(
         &rust_ident,
-        (written_by_hand || !renamed.is_empty())
-            .then(|| keys_taken_when_flattened(&item_struct.fields, rule, args.preprocess)),
+        keys_taken_when_flattened(&item_struct.fields, rule, &[]),
     );
     let handed_on = fields
         .iter()

@@ -239,7 +239,7 @@ fn a_struct_read_by_hand_reads_a_member_under_its_alias() {
     let held = format!(
         "val obj = input.decodeJsonElement().{NAME_AS_LABEL}.jsonObject; val label = \
          input.json.decodeFromJsonElement(serializer<String>(), obj.getValue(\"label\")); \
-         val tallyKeys = (BuntingUnjudged).descriptor.elementNames.toSet(); val tally = \
+         val tallyKeys = setOf(\"keys\"); val tally = \
          lenient.decodeFromJsonElement(BuntingUnjudged, withItsKeys(JsonObject(obj - \
          setOf(\"label\"))));"
     );

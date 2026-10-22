@@ -653,8 +653,8 @@ fn a_struct_with_a_flattened_member_reads_what_it_merges_unjudged() {
          true }; override fun serialize(",
         "output.json.encodeToJsonElement(BaseUnjudged, value.base).jsonObject.forEach { (k, v) \
          -> put(k, v) }",
-        "val baseKeys = (BaseUnjudged).descriptor.elementNames.toSet(); val base = \
-         lenient.decodeFromJsonElement(BaseUnjudged, JsonObject(obj - setOf(\"gate\")))",
+        "val baseKeys = setOf(\"name\"); val base = lenient.decodeFromJsonElement(BaseUnjudged, \
+         JsonObject(obj - setOf(\"gate\")))",
     ] {
         assert!(kotlin.contains(held), "no `{held}` in: {kotlin}");
     }
@@ -671,6 +671,42 @@ fn a_struct_with_a_flattened_member_reads_what_it_merges_unjudged() {
         assert!(map.contains(held), "no `{held}` in: {map}");
     }
     assert!(map.ends_with(&judged("Docks")), "got: {map}");
+}
+
+/// A flattened struct the emitter wrote takes the keys serde reads it from: each name and alias of
+/// a member it reads, and neither its own tag nor a member serde never reads. One it has not
+/// written takes the `elementNames` of its descriptor.
+#[cfg(feature = "serde")]
+#[test]
+fn a_flattened_struct_takes_the_keys_serde_reads_where_the_emitter_wrote_it() {
+    let pennant: ItemStruct = syn::parse_quote! {
+        #[serde(tag = "kind")]
+        struct Pennant {
+            #[serde(alias = "name")]
+            label: String,
+            #[serde(skip_deserializing)]
+            spare: u8,
+        }
+    };
+    let item: ItemStruct = syn::parse_quote! {
+        struct Hoist {
+            #[serde(flatten)]
+            pennant: Pennant,
+            #[serde(flatten)]
+            unseen: Unseen,
+        }
+    };
+    let written = plain(&pennant);
+    assert!(written.ends_with(&judged("Pennant")), "got: {written}");
+    let kotlin = plain(&item);
+    for held in [
+        "val pennantKeys = setOf(\"label\", \"name\"); val pennant = \
+         lenient.decodeFromJsonElement(PennantUnjudged, obj);",
+        "val unseenKeys = (serializer<Unseen>()).descriptor.elementNames.toSet(); val unseen = \
+         lenient.decodeFromJsonElement(serializer<Unseen>(), JsonObject(obj - pennantKeys));",
+    ] {
+        assert!(kotlin.contains(held), "no `{held}` in: {kotlin}");
+    }
 }
 
 /// An enum under a tag alone is read by a serializer the emitter writes: it takes the tag off

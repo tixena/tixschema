@@ -14,20 +14,20 @@ use tixschema::model_schema;
 
 use super::flattened_models::{
     BELTING, Belting, Bending, Brailing, CHOCKED, CLEATING, Cathead, Chock, Cleating,
-    CorrectedLocker, EmptiedLocker, Gasketing, HEAVING, HITCHING, Hawsepipe, Heaving, Hitching,
-    Jibing, Knotting, LOCKER, Lanyarding, Luffing, Netting, Nipping, PAYLOAD, ProbeLocker, Quaying,
-    Rousing, SCUDDING, SNUBBED, STOWING, STROPPING, Scudding, Seizing, Slinging, Snubbing,
-    Splicing, Stoppering, Stowing, Stropping, Tacking, UNDER_AN_ALIAS, UNWRITTEN, Whipping, Yawing,
-    read_of,
+    CorrectedLocker, Dipping, ENSIGN, EmptiedLocker, Gammoning, Gasketing, HEAVING, HITCHING,
+    Hawsepipe, Heaving, Hitching, Jibing, Knotting, LOCKER, Lanyarding, Luffing, MARLINE, Netting,
+    Nipping, PAYLOAD, ProbeLocker, Quaying, Rousing, SCUDDING, SNUBBED, STOWING, STROPPING, STRUCK,
+    Scudding, Seizing, Slinging, Snubbing, Splicing, Stoppering, Stowing, Striking, Stropping,
+    Tacking, UNDER_AN_ALIAS, UNWRITTEN, Whipping, Yawing, read_of,
 };
 #[cfg(feature = "serde")]
 use super::flattened_models::{
     belting_kotlin, bending_kotlin, brailing_kotlin, cathead_kotlin, cleating_kotlin,
-    corrected_locker_kotlin, emptied_locker_kotlin, gasketing_kotlin, hawsepipe_kotlin,
-    heaving_kotlin, hitching_kotlin, knotting_kotlin, luffing_kotlin, netting_kotlin,
-    nipping_kotlin, probe_locker_kotlin, rousing_kotlin, scudding_kotlin, seizing_kotlin,
-    slinging_kotlin, splicing_kotlin, stoppering_kotlin, stowing_kotlin, whipping_kotlin,
-    yawing_kotlin,
+    corrected_locker_kotlin, dipping_kotlin, emptied_locker_kotlin, gammoning_kotlin,
+    gasketing_kotlin, hawsepipe_kotlin, heaving_kotlin, hitching_kotlin, knotting_kotlin,
+    luffing_kotlin, netting_kotlin, nipping_kotlin, probe_locker_kotlin, rousing_kotlin,
+    scudding_kotlin, seizing_kotlin, slinging_kotlin, splicing_kotlin, stoppering_kotlin,
+    stowing_kotlin, striking_kotlin, whipping_kotlin, yawing_kotlin,
 };
 use super::read::{kept, serializers};
 use super::tuple_variants_models::Labelling;
@@ -774,8 +774,8 @@ fn test_flatten_optional_struct() {
         "got: {kotlin}"
     );
     assert!(
-        kotlin.contains("elementNames"),
-        "an absent flattened `Option` is told apart by its own declared keys. got: {kotlin}"
+        kotlin.contains("val stampKeys = setOf(\"created_at\", \"updated_at\");"),
+        "an absent flattened `Option` is told apart by the keys serde reads it from. got: {kotlin}"
     );
 }
 
@@ -840,9 +840,11 @@ fn every_flattened_fixture_is_written_as_serde_writes_it() {
 
 /// What serde reads of each holder of a member flattened after a struct or beside a member of its
 /// own: a function after a struct is handed the keys neither the struct nor its holder took, a
-/// struct with a member serde never writes among them, and one ahead of a struct, or after a
-/// struct that takes no key, every key. A struct after a struct, or beside a member of its
-/// holder's own, that reads the same key is refused, and an optional one reads no value.
+/// struct with a member serde never writes among them, the struct's own tag and the key of a
+/// member it never reads among those it did not, and one ahead of a struct, or after a struct
+/// that takes no key, every key. A struct after a struct, or beside a member of its holder's own,
+/// that reads the same key is refused, and an optional one reads no value, nor does one whose tag
+/// alone is in the object.
 #[test]
 fn serde_hands_a_flattened_member_the_keys_no_member_ahead_of_it_took() {
     let whipping: Whipping = serde_json::from_str(PAYLOAD).unwrap();
@@ -876,6 +878,13 @@ fn serde_hands_a_flattened_member_the_keys_no_member_ahead_of_it_took() {
     }
     let slinging: Slinging = serde_json::from_str(PAYLOAD).unwrap();
     assert_eq!(slinging.spare, None);
+    let dipping: Dipping = serde_json::from_str(ENSIGN).unwrap();
+    assert_eq!(dipping.tally.keys, ["kind", "north"]);
+    let gammoning: Gammoning = serde_json::from_str(MARLINE).unwrap();
+    assert_eq!(gammoning.tally.keys, ["north", "spare"]);
+    assert_eq!(gammoning.marline.spare, 0);
+    let striking: Striking = serde_json::from_str(STRUCK).unwrap();
+    assert_eq!(striking.ensign, None);
 }
 
 /// A flattened map, the one member of its struct, is read from every key of the object and written
@@ -1096,8 +1105,8 @@ fn an_optional_member_beside_a_flattened_one_is_written_only_where_it_holds_a_va
 #[test]
 #[cfg(feature = "serde")]
 fn a_flattened_member_is_read_without_the_keys_taken_ahead_of_it() {
-    let labelling = "val labellingKeys = (LabellingUnjudged).descriptor.elementNames.toSet(); \
-                     val labelling = lenient.decodeFromJsonElement(LabellingUnjudged, obj);";
+    let labelling = "val labellingKeys = setOf(\"label\"); val labelling = \
+                     lenient.decodeFromJsonElement(LabellingUnjudged, obj);";
     for (kotlin, held) in [
         (whipping_kotlin::kotlin_definition(), labelling.to_owned()),
         (
@@ -1149,12 +1158,13 @@ fn a_flattened_member_is_read_without_the_keys_taken_ahead_of_it() {
     }
 }
 
-/// A struct whose serializer the emitter writes takes the keys serde takes of it, which its
-/// descriptor does not name: those it reads where it has a member serde never writes, and none
-/// where it has a flattened member of its own. A struct the plugin writes keeps its descriptor's.
+/// A flattened struct takes the keys serde takes of it, whoever writes its serializer: those it
+/// reads, where it has a member serde never writes too, and none where it has a flattened member
+/// of its own. Neither its own tag nor a member serde never reads is among them, and an optional
+/// one is looked for by them.
 #[test]
 #[cfg(feature = "serde")]
-fn a_struct_written_by_hand_takes_the_keys_serde_takes_of_it() {
+fn a_flattened_struct_takes_the_keys_serde_takes_of_it() {
     let hauled = "val hauledKeys = setOf(\"hidden\", \"label\"); val hauled = \
                   lenient.decodeFromJsonElement(UnwrittenUnjudged, obj);";
     for (kotlin, held) in [
@@ -1177,7 +1187,26 @@ fn a_struct_written_by_hand_takes_the_keys_serde_takes_of_it() {
         ),
         (
             whipping_kotlin::kotlin_definition(),
-            "val labellingKeys = (LabellingUnjudged).descriptor.elementNames.toSet();",
+            "val labellingKeys = setOf(\"label\");",
+        ),
+        (
+            dipping_kotlin::kotlin_definition(),
+            "val ensignKeys = setOf(\"label\"); val ensign = \
+             lenient.decodeFromJsonElement(EnsignUnjudged, obj); val tallyKeys = setOf(\"keys\"); \
+             val tally = lenient.decodeFromJsonElement(BuntingUnjudged, \
+             withItsKeys(JsonObject(obj - ensignKeys)));",
+        ),
+        (
+            gammoning_kotlin::kotlin_definition(),
+            "val marlineKeys = setOf(\"label\"); val marline = \
+             lenient.decodeFromJsonElement(MarlineUnjudged, obj); val tallyKeys = setOf(\"keys\"); \
+             val tally = lenient.decodeFromJsonElement(BuntingUnjudged, \
+             withItsKeys(JsonObject(obj - marlineKeys)));",
+        ),
+        (
+            striking_kotlin::kotlin_definition(),
+            "val ensignKeys = setOf(\"label\"); val ensign = if (JsonObject(obj - \
+             setOf(\"note\")).keys.any { it in ensignKeys })",
         ),
     ] {
         assert!(kotlin.contains(held), "no `{held}` in: {kotlin}");
@@ -1624,9 +1653,7 @@ fn test_generic_flatten_generic_sibling() {
          bound to the constructor argument. got: {kotlin}"
     );
     assert!(
-        kotlin.contains(
-            "val bodyKeys = (WrapperUnjudged(tSerializer)).descriptor.elementNames.toSet()"
-        ),
+        kotlin.contains("val bodyKeys = setOf(\"value\")"),
         "got: {kotlin}"
     );
     assert!(

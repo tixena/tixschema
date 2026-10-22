@@ -957,12 +957,15 @@ the consumer's view; this is what a change has to keep.
   (`flatten_struct_field_plan`). A struct takes the keys `flattened_struct_keys` answers, unless
   `preprocess::takes_no_key` answers for it: a member that names a function, and a type `HANDED`
   does not note as handing its object to none, so a type the emitter has not written takes none.
-  The serializer the emitter writes declares no element, so `struct_kotlin_tokens` records in
-  `KOTLIN_TAKEN_KEYS` the keys `keys_taken_when_flattened` in `src/features/serde.rs` answers for
-  each struct it writes one for: those of a struct with a member serde never writes, and none of
-  one with a flattened member of its own, which serde reads as a map. A struct the plugin writes
-  the serializer of takes the `descriptor.elementNames` of its unjudged serializer, and its text
-  is what it was. A map is the one member of its object (section 4).
+  `struct_kotlin_tokens` records in `KOTLIN_TAKEN_KEYS`, for every struct it writes, the keys
+  `keys_taken_when_flattened` in `src/features/serde.rs` answers: the name and each alias of every
+  member serde reads, one serde never writes among them, and neither the struct's own tag nor a
+  member under `skip_deserializing`; none for a struct with a flattened member of its own, which
+  serde reads as a map. The descriptor of a serializer the emitter writes declares no element,
+  and the plugin's names the tag and a member serde never reads, and no alias. A struct that
+  names a function on itself takes none, and is recorded with the keys its read reads, which an
+  optional holder looks for. A struct the emitter has not written is looked for by the
+  `descriptor.elementNames` of its serializer. A map is the one member of its object (section 4).
 - **A flattened map's key is written and read through the key's own serializer**
   (`flatten_map_field_plan`), where the key's Kotlin type (`kotlin_typename`) is no `String`: it
   is written as `output.json.encodeToJsonElement(<key>, k).jsonPrimitive.content` and read over
@@ -1054,10 +1057,9 @@ the consumer's view; this is what a change has to keep.
   `aliases::plain_enum_serializer`, a `{Type}Unjudged` written by hand that reads each variant under
   its name and each alias, and carries no opt-in. One that names a function keeps
   `read::kept_plain`, and `aliases::text_named` reads the alias after the functions. The write keeps
-  the written name. A struct with an aliased member records in `KOTLIN_TAKEN_KEYS` the keys
-  `keys_taken_when_flattened` answers, its aliases among them, which its descriptor's `elementNames`
-  do not hold. `@JsonNames` is not used: it is experimental, and the build compiles under `-Werror`
-  with no opt-in to it.
+  the written name. A struct records in `KOTLIN_TAKEN_KEYS` the keys `keys_taken_when_flattened`
+  answers, its aliases among them, which its descriptor's `elementNames` do not hold. `@JsonNames`
+  is not used: it is experimental, and the build compiles under `-Werror` with no opt-in to it.
 - **A serializer the emitter writes binds a parameter to `Any`** (`COMPOSED`), which
   `KSerializer<T>.nullable` requires, and one that delegates to the plugin's binds none. So
   `unjudged_serializer` composes a model written with a nullable argument through its own
@@ -1069,8 +1071,9 @@ the consumer's view; this is what a change has to keep.
   own, with the type's serializer, held to what `validate()` answered.
   `run_kotlin_read.rs` holds the README's rows to what the Rust read answers of the same payload,
   and both clients to their fault. `tests/kotlin_tests/flattened_models.rs` holds the models of a
-  member flattened after a struct and beside a member of its holder's own, and of an externally
-  tagged enum flattened beside other keys, `tests/kotlin_tests/tests.rs` pins their reads, and
+  member flattened after a struct and beside a member of its holder's own, a struct under its own
+  tag and one with a member serde never reads among them, and of an externally tagged enum
+  flattened beside other keys, `tests/kotlin_tests/tests.rs` pins their reads, and
   `run_kotlin_flattened.rs` reads each under the toolchain, against serde, and writes back the
   structs, a variant's entry under an alias among them (`UNDER_AN_ALIAS`).
   `tests/kotlin_tests/aliased_models.rs` holds the models of a variant and a member under an
