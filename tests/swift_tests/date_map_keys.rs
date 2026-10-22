@@ -1,6 +1,7 @@
 //! What the Swift backend writes for a map keyed by a date: the wrapper the map is read through
-//! computes its formatter in a static property, binds each key the formatter reads with `guard`,
-//! and writes each key with the same formatter. A wrapper of any other key is written as it was.
+//! computes its two formatters in static properties, binds each key one of them reads with
+//! `guard`, and writes each key with the one that writes a fraction of a second. A wrapper of any
+//! other key declares no formatter.
 //! A list or an optional of such maps is read as one of the wrapper and handed on as each
 //! wrapper's storage, with no `try`: the wrapper's own read is what parses a key.
 //! `service_schema_emitted_client_tests/run_swift_date_map_keys.rs` compiles the models of
@@ -26,15 +27,20 @@ use super::text_map_keys_models::{almanac_swift, ephemeris_swift, gazetteer_swif
 #[cfg(feature = "jsonschema")]
 use super::date_map_keys_models::sailing_schema;
 
-/// The formatter a wrapper of a date key declares ahead of its coding key.
+/// The two formatters a wrapper of a date key declares ahead of its coding key: one reads and
+/// writes a fraction of a second, the other reads a date of whole seconds.
 const FORMATTER: &str = "private static var isoFormatterForKeys: ISO8601DateFormatter { \
                          let f = ISO8601DateFormatter(); \
                          f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; \
-                         return f }; ";
+                         return f }; \
+                         private static var isoWholeFormatterForKeys: ISO8601DateFormatter { \
+                         let f = ISO8601DateFormatter(); \
+                         f.formatOptions = [.withInternetDateTime]; return f }; ";
 
 /// How a wrapper binds a date key, ahead of the entry it reads.
 const DATE_KEY: &str = "let wireKey = codingKey.stringValue; \
-                        guard let key = Self.isoFormatterForKeys.date(from: wireKey) else { \
+                        guard let key = Self.isoFormatterForKeys.date(from: wireKey) ?? \
+                        Self.isoWholeFormatterForKeys.date(from: wireKey) else { \
                         throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
                         debugDescription: \"bad key \\(wireKey)\") }; result[key] = ";
 
@@ -189,8 +195,8 @@ fn each_model_is_written_as_serde_writes_it() {
 }
 
 /// chrono writes no fraction for a date of whole seconds, and six or nine digits for a finer one:
-/// the formatter reads no text of whole seconds, and keeps three digits of a longer fraction, so
-/// no key of the run is such a date.
+/// the wrapper reads a text of whole seconds through its second formatter, and keeps three digits
+/// of a longer fraction, so no key of the run is finer than a millisecond.
 #[test]
 fn a_date_of_whole_seconds_or_finer_than_milliseconds_is_written_as_chrono_writes_it() {
     let whole = DateTime::from_timestamp(1_704_164_645, 0).unwrap();
@@ -250,6 +256,9 @@ fn the_wrapper_of_a_date_key_is_written_whole() {
            private static var isoFormatterForKeys: ISO8601DateFormatter { \
            let f = ISO8601DateFormatter(); \
            f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f }; \
+           private static var isoWholeFormatterForKeys: ISO8601DateFormatter { \
+           let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime]; \
+           return f }; \
            private struct DynamicCodingKey: CodingKey { var stringValue: String; \
            init?(stringValue: String) { self.stringValue = stringValue }; \
            var intValue: Int? { nil }; init?(intValue: Int) { nil } }; \
@@ -258,7 +267,8 @@ fn the_wrapper_of_a_date_key_is_written_whole() {
            let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
            var result: [Date: Sailing] = [:]; for codingKey in container.allKeys { \
            let wireKey = codingKey.stringValue; \
-           guard let key = Self.isoFormatterForKeys.date(from: wireKey) else { \
+           guard let key = Self.isoFormatterForKeys.date(from: wireKey) ?? \
+           Self.isoWholeFormatterForKeys.date(from: wireKey) else { \
            throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
            debugDescription: \"bad key \\(wireKey)\") }; \
            result[key] = try Sailing(swiftSchemaUnjudged: \
@@ -268,7 +278,8 @@ fn the_wrapper_of_a_date_key_is_written_whole() {
            let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
            var result: [Date: Sailing] = [:]; for codingKey in container.allKeys { \
            let wireKey = codingKey.stringValue; \
-           guard let key = Self.isoFormatterForKeys.date(from: wireKey) else { \
+           guard let key = Self.isoFormatterForKeys.date(from: wireKey) ?? \
+           Self.isoWholeFormatterForKeys.date(from: wireKey) else { \
            throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
            debugDescription: \"bad key \\(wireKey)\") }; \
            result[key] = try container.decode(Sailing.self, forKey: codingKey) }; \
@@ -360,10 +371,10 @@ fn a_wrapper_of_a_parsed_key_is_written_as_it_was() {
     );
 }
 
-/// A wrapper of a key Swift holds as its text, and of a flag, declares no formatter, and is
-/// written as it was.
+/// A wrapper of a key Swift holds as its text, and of a flag, declares no formatter: a date's text
+/// is read and sent through the functions of its form.
 #[test]
-fn a_wrapper_of_a_text_key_or_a_flag_is_written_as_it_was() {
+fn a_wrapper_of_a_text_key_or_a_flag_declares_no_formatter() {
     assert_eq!(
         read_back(&Roll {
             by_count: HashMap::from([(
@@ -389,12 +400,15 @@ fn a_wrapper_of_a_text_key_or_a_flag_is_written_as_it_was() {
              public init(from decoder: Decoder) throws { \
              let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
              var result: [String: String] = [:]; for codingKey in container.allKeys { \
-             let wireKey = codingKey.stringValue; let key = wireKey; \
+             let wireKey = codingKey.stringValue; \
+             let key = try Self.swiftSchemaReadDate(wireKey, \
+             codingPath: container.codingPath + [codingKey]); \
              result[key] = try container.decode(String.self, forKey: codingKey) }; \
              storage = result }; \
              public func encode(to encoder: Encoder) throws { \
              var container = encoder.container(keyedBy: DynamicCodingKey.self); \
-             for (key, value) in storage { let wireKey = key; \
+             for (key, value) in storage { \
+             let wireKey = (try Self.swiftSchemaSentDate(key, codingPath: encoder.codingPath)); \
              guard let codingKey = DynamicCodingKey(stringValue: wireKey) else { continue }; \
              try container.encode(value, forKey: codingKey) } } }; ",
             "public struct RollFlagsKeyedMap: Codable, Sendable { \

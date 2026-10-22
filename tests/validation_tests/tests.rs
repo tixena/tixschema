@@ -1148,11 +1148,11 @@ mod a_check_the_enum_declares {
         for member in [
             format!("label: {held},"),
             format!("label: z.string().{own_min}.{max},"),
-            format!("\"Pair\": z.tuple([{held}, z.number().int()]),"),
+            format!("\"Pair\": z.tuple([{held}, z.number().int().min(0).max(4294967295)]),"),
             format!("\"Slot\": {held},"),
             "label: Label$Schema,".to_owned(),
             "tags: z.array(z.string()),".to_owned(),
-            "count: z.number().int(),".to_owned(),
+            "count: z.number().int().min(0).max(4294967295),".to_owned(),
             "z.literal(\"Bare\")".to_owned(),
         ] {
             assert!(external.contains(&member), "{member} in:\n{external}");
@@ -1172,7 +1172,7 @@ mod a_check_the_enum_declares {
         let adjacent = HeldAdjacent::zod_schema();
         for member in [
             format!("label: {held},"),
-            format!("data: z.tuple([{held}, z.number().int()]),"),
+            format!("data: z.tuple([{held}, z.number().int().min(0).max(4294967295)]),"),
             format!("data: {held},"),
         ] {
             assert!(adjacent.contains(&member), "{member} in:\n{adjacent}");
@@ -3741,7 +3741,7 @@ fn test_a_tagged_tuple_variants_slot_check_reaches_zod() {
     let code = "z.string().check(z.regex(/^[A-Z]{3}$/, { error: \"does not match pattern \
                 '^[A-Z]{3}$'\" })),";
     let pair = "z.tuple([z.string().min(2, { error: (issue) => `too short: minimum length is 2, \
-                got ${String(issue.input).length}` }), z.number().int().min(1, { error: (issue) \
+                got ${String(issue.input).length}` }), z.number().int().max(4294967295).min(1, { error: (issue) \
                 => `too small: minimum is 1, got ${String(issue.input)}` })]),";
     let external = ZodExternal::zod_schema();
     let adjacent = ZodAdjacent::zod_schema();

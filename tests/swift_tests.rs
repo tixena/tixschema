@@ -2,6 +2,19 @@
 
 extern crate alloc;
 
+/// A `char` and a chrono date, time and date and time held in each place, and what serde, Zod and
+/// each client's read answer of each payload.
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "chrono"))]
+#[path = "kotlin_tests/text_forms_models.rs"]
+mod text_forms_models;
+
+/// What the Swift emitter writes for a `char` and a chrono date, time and date and time.
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "chrono"))]
+#[path = "swift_tests/text_forms.rs"]
+mod text_forms;
+
 #[cfg(test)]
 #[cfg(feature = "swift")]
 #[path = "swift_tests/tests.rs"]

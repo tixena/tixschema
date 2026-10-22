@@ -823,7 +823,7 @@ fn test_adjacent_named_variant_zod_nests_under_content_key() {
     assert!(zod.contains("x: z.string()"), "Got: {zod}");
     assert!(
         zod.contains(
-            "y: z.union([z.null().transform(() => undefined), z.number().int(), z.undefined()])"
+            "y: z.union([z.null().transform(() => undefined), z.number().int().min(0).max(4294967295), z.undefined()])"
         ),
         "Got: {zod}"
     );
@@ -894,7 +894,7 @@ fn test_tuple_with_vec_zod() {
     let zod = TupleWithVecZod::zod_schema();
 
     assert!(
-        zod.contains("\"Image\": z.tuple([z.string(), z.array(z.number().int())])"),
+        zod.contains("\"Image\": z.tuple([z.string(), z.array(z.number().int().min(0).max(255))])"),
         "Image should have z.tuple. Got: {zod}"
     );
 
@@ -1260,11 +1260,11 @@ fn test_single_tuple_variant_option_content_zod_null_flavor() {
     let zod = SlotContent::zod_schema();
 
     assert!(
-        zod.contains("value: z.nullable(z.array(z.number().int()))"),
+        zod.contains("value: z.nullable(z.array(z.number().int().min(0).max(4294967295)))"),
         "Covered's content admits the `null`. Got: {zod}"
     );
     assert!(
-        zod.contains("value: z.array(z.nullable(z.number().int()))"),
+        zod.contains("value: z.array(z.nullable(z.number().int().min(0).max(4294967295)))"),
         "Element's `null` stays among the items. Got: {zod}"
     );
     assert!(
@@ -1347,7 +1347,9 @@ fn test_multi_tuple_variant_option_element_zod_null_flavor() {
     let zod = SlotElements::zod_schema();
 
     assert!(
-        zod.contains("value: z.tuple([z.string(), z.nullable(z.number().int())])"),
+        zod.contains(
+            "value: z.tuple([z.string(), z.nullable(z.number().int().min(0).max(4294967295))])"
+        ),
         "Pair's tuple admits the `null` in place. Got: {zod}"
     );
 }
@@ -1540,7 +1542,7 @@ fn test_attribute_less_enum_zod_is_the_externally_tagged_union() {
     );
     assert!(
         zod.contains(
-            "z.strictObject({\n  \"Pair\": z.tuple([z.number().int(), z.number().int()]),\n})"
+            "z.strictObject({\n  \"Pair\": z.tuple([z.number().int().min(0).max(4294967295), z.number().int().min(0).max(4294967295)]),\n})"
         ),
         "Pair's member is the closed object holding its tuple. Got: {zod}"
     );
@@ -1812,7 +1814,7 @@ fn test_explicitly_tagged_twin_keeps_the_adjacent_zod_form() {
 
     assert!(zod.contains("z.discriminatedUnion(\"type\""), "Got: {zod}");
     assert!(
-        zod.contains("value: z.tuple([z.number().int(), z.number().int()])"),
+        zod.contains("value: z.tuple([z.number().int().min(0).max(4294967295), z.number().int().min(0).max(4294967295)])"),
         "Got: {zod}"
     );
 }
@@ -2186,7 +2188,7 @@ fn test_bare_tag_over_an_enum_written_with_an_argument_zod_joins_each_entry() {
             "z.union([\n  z.strictObject({\n  type: z.literal(\"Held\"),\n}).and(z.lazy(() => \
              z.strictObject({\n  \"Bare\": z.null(),\n}))),\n  z.strictObject({\n  type: \
              z.literal(\"Held\"),\n}).and(z.lazy(() => z.strictObject({\n  \"Carried\": \
-             z.number().int(),\n}))),\n])"
+             z.number().int().min(0).max(4294967295),\n}))),\n])"
         ),
         "expected one operand per variant, got: {zod}"
     );
@@ -2577,7 +2579,7 @@ fn test_a_variant_whose_lone_slot_is_dropped_describes_as_its_name_in_typescript
 fn test_a_dropped_variant_slot_leaves_the_described_tuple_in_zod() {
     let zod = ExternalDroppedSlots::zod_schema();
     assert!(
-        zod.contains("\"Lead\": z.tuple([z.number().int()])"),
+        zod.contains("\"Lead\": z.tuple([z.number().int().min(0).max(4294967295)])"),
         "Got: {zod}"
     );
     assert!(zod.contains("\"Every\": z.tuple([])"), "Got: {zod}");
@@ -2718,13 +2720,13 @@ fn test_a_variant_carrying_no_dropped_slot_describes_unchanged_in_typescript() {
 fn test_a_variant_carrying_no_dropped_slot_describes_unchanged_in_zod() {
     assert!(
         ExternalDroppedSlots::zod_schema()
-            .contains("\"Kept\": z.tuple([z.number().int(), z.boolean()])"),
+            .contains("\"Kept\": z.tuple([z.number().int().min(0).max(255), z.boolean()])"),
         "Got: {}",
         ExternalDroppedSlots::zod_schema()
     );
     assert!(
         AdjacentDroppedSlots::zod_schema()
-            .contains("value: z.tuple([z.number().int(), z.boolean()])"),
+            .contains("value: z.tuple([z.number().int().min(0).max(255), z.boolean()])"),
         "Got: {}",
         AdjacentDroppedSlots::zod_schema()
     );

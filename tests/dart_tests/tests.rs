@@ -714,7 +714,7 @@ fn test_datetime_maps_to_dart_datetime_by_default() {
         "DateTime<Tz> should map to Dart's own DateTime. Got: {dart}"
     );
     assert!(dart.contains("created_at: DateTime.parse(json['created_at'] as String),"));
-    assert!(dart.contains("'created_at': (created_at).toIso8601String(),"));
+    assert!(dart.contains("'created_at': (created_at).toUtc().toIso8601String(),"));
 }
 
 #[test]

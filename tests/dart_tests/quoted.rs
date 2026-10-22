@@ -2,6 +2,7 @@
 //! written between the quotes of a Dart string with the character escaped, so the file compiles and
 //! the read and the write take the name serde writes. A double quote needs no escape there.
 
+use super::held_numbers::u8_held;
 use super::quoted_models::{
     Dutied, Excised, Leveed, Levied, Mulcted, Tariffed, Tithed, Tolled, UNDER_AN_ALIAS, WRITTEN,
     dutied_dart, excised_dart, levied_dart, mulcted_dart, serde_written, tariffed_dart,
@@ -91,14 +92,19 @@ fn a_structs_names_are_escaped_in_its_dart_text() {
 /// a plain enum's values.
 #[test]
 fn an_enums_names_are_escaped_in_its_dart_text() {
+    let read = format!("TolledBid(lot: {},);", u8_held(r"json['lo\$t'] as int"));
+    let written = format!(
+        r"@override dynamic toJson() => {{ 'Bid\$Ask': {{ 'lo\$t': {}, }} }};",
+        u8_held("lot")
+    );
     holds_each(
         &tolled_dart::dart_definition(),
         &[
             r#"case 'Calm"': return TolledStill();"#,
             r"case 'Bid\$Ask' || 'O\'Neil': return TolledBid.fromJsonUnjudged(map[tag]);",
             r"case 'C:\\Path': return TolledHeld(map['C:\\Path'] as String);",
-            r"TolledBid(lot: json['lo\$t'] as int,);",
-            r"@override dynamic toJson() => { 'Bid\$Ask': { 'lo\$t': lot, } };",
+            &read,
+            &written,
             r"@override dynamic toJson() => { 'C:\\Path': value };",
             r#"@override dynamic toJson() => 'Calm"';"#,
         ],
@@ -108,7 +114,10 @@ fn an_enums_names_are_escaped_in_its_dart_text() {
         &[
             r"final tag = json['ki\'nd'] as String;",
             r#"case 'He"ld': return LeviedHeld(Leveed.fromJsonUnjudged(({...json}..remove('ki\'nd'))));"#,
-            r"Map<String, dynamic> toJson() => { 'ki\'nd': 'Bid\$Ask','lo\$t': lot, };",
+            &format!(
+                r"Map<String, dynamic> toJson() => {{ 'ki\'nd': 'Bid\$Ask','lo\$t': {}, }};",
+                u8_held("lot")
+            ),
             r#"{ 'ki\'nd': 'He"ld', ...((value).toJson() as Map<String, dynamic>) }"#,
             r"@override dynamic toJson() => { 'ki\'nd': 'Calm\\' };",
         ],
@@ -119,7 +128,10 @@ fn an_enums_names_are_escaped_in_its_dart_text() {
             r"final tag = json['ki\$nd'] as String;",
             r"case 'Bid\$Ask': return DutiedBid.fromJsonUnjudged(json['bo\'dy']);",
             r"case 'Calm\\': return json.containsKey('bo\'dy') ? throw",
-            r"@override dynamic toJson() => { 'ki\$nd': 'Bid\$Ask', 'bo\'dy': { 'lot': lot, } };",
+            &format!(
+                r"@override dynamic toJson() => {{ 'ki\$nd': 'Bid\$Ask', 'bo\'dy': {{ 'lot': {}, }} }};",
+                u8_held("lot")
+            ),
             r#"@override dynamic toJson() => { 'ki\$nd': 'He"ld', 'bo\'dy': value };"#,
         ],
     );

@@ -67,6 +67,11 @@ mod run_node_ws_headers;
 #[path = "service_schema_emitted_client_tests/run_node_ws_server.rs"]
 mod run_node_ws_server;
 
+/// Each TypeScript client handed a message in a wider form than serde reads, over each transport.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_wire_forms.rs"]
+mod run_node_wire_forms;
+
 /// The emitted `http_rest` server: the seven design requests, the reader forms, the query-read
 /// message, and the three body kinds compared against the Rust twins above.
 #[cfg(test)]
@@ -439,9 +444,12 @@ mod fixed_arrays_models;
 mod run_kotlin_refusals;
 
 /// A `char` and a chrono date, time and date and time held in each place, and what serde, Zod and
-/// the Kotlin read answer of each payload.
+/// each client's read answer of each payload.
 #[cfg(test)]
-#[cfg(all(feature = "kotlin", feature = "chrono"))]
+#[cfg(all(
+    feature = "chrono",
+    any(feature = "dart", feature = "kotlin", feature = "swift")
+))]
 #[path = "kotlin_tests/text_forms_models.rs"]
 mod text_forms_models;
 
@@ -449,6 +457,50 @@ mod text_forms_models;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin_text_forms.rs"]
 mod run_kotlin_text_forms;
+
+/// Those payloads, read by the emitted Dart types where the table states.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_text_forms.rs"]
+mod run_dart_text_forms;
+
+/// Those payloads, read by the emitted Swift types where the table states.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_text_forms.rs"]
+mod run_swift_text_forms;
+
+/// A model per type the wire holds as a text, a number or a `bool`, and what each client sends of
+/// each value a caller hands it.
+#[cfg(test)]
+#[cfg(all(
+    feature = "chrono",
+    any(feature = "dart", feature = "kotlin", feature = "swift")
+))]
+#[path = "wire_forms_tests/models.rs"]
+mod wire_forms_models;
+
+/// What each client is handed of those values, and what it prints of them.
+#[cfg(test)]
+#[cfg(all(
+    feature = "chrono",
+    any(feature = "dart", feature = "kotlin", feature = "swift")
+))]
+#[path = "service_schema_emitted_client_tests/wire_form_rows.rs"]
+mod wire_form_rows;
+
+/// Those values, sent by the emitted Kotlin types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_wire_forms.rs"]
+mod run_kotlin_wire_forms;
+
+/// Those values, sent by the emitted Dart types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_wire_forms.rs"]
+mod run_dart_wire_forms;
+
+/// Those values, sent by the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_wire_forms.rs"]
+mod run_swift_wire_forms;
 
 /// A bare date reply and a `char` header, read in their one form by the emitted Kotlin clients and
 /// dispatcher.

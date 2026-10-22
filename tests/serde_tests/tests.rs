@@ -334,7 +334,7 @@ fn test_serde_with_optional_fields_zod() {
         "optionalField: z.union([z.null().transform(() => undefined), z.string(), z.undefined()])"
     ));
     assert!(zod.contains(
-        "customOptional: z.union([z.null().transform(() => undefined), z.number().int(), z.undefined()])"
+        "customOptional: z.union([z.null().transform(() => undefined), z.number().int().min(-2147483648).max(2147483647), z.undefined()])"
     ));
 }
 

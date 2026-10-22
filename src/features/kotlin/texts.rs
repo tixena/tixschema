@@ -1,36 +1,20 @@
 //! A text serde reads in one form alone, which the Kotlin client holds as a `String`: a `char`, and
-//! a chrono date, time or date and time. Each is read through a serializer of the item's own, which
-//! throws `SerializationException` for a `char` of other than one code point, as serde refuses it,
-//! and for a date, a time or a date and time the Zod schema of it refuses. Where serde and Zod
-//! part, the read follows Zod: serde reads forms Zod refuses, and refuses a date and time under `Z`
-//! or with no seconds, which Zod reads.
+//! a chrono date, time, date and time, and date and time with its zone. Each is read and written
+//! through a serializer of the item's own. Its read throws `SerializationException` for a `char`
+//! of other than one code point, as serde refuses it, and for a date, a time or a date and time
+//! the Zod schema of it refuses: where serde and Zod part, the read follows Zod. Its write sends
+//! the form serde writes ([`TextForm`]), and throws for a text no rewrite turns into it.
 //!
 //! The plugin reads a declared value by the serializer its annotation names, and a serializer the
 //! emitter writes composes the one it reads a value with.
 
 use core::cell::RefCell;
+use core::fmt::Write as _;
 use std::collections::HashMap;
 
-#[cfg(feature = "chrono")]
-use super::kotlin_template_text;
-use super::{KOTLIN_TUPLE_AUX, KOTLIN_TUPLE_COUNTER, validate};
+use super::{KOTLIN_TUPLE_AUX, KOTLIN_TUPLE_COUNTER, kotlin_template_text, validate};
+use crate::features::text_forms::TextForm;
 use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
-
-/// A date as `z.iso.date()` reads it.
-#[cfg(feature = "chrono")]
-const DATE: &str = concat!(
-    r"(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|",
-    r"\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|",
-    r"(?:02)-(?:0[1-9]|1\d|2[0-8])))"
-);
-
-/// A time as `z.iso.time()` reads it: the seconds and their fraction may be left out.
-#[cfg(feature = "chrono")]
-const TIME: &str = r"(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?";
-
-/// The time `z.iso.datetime({ local: true })` reads under `Z`, where the seconds are required.
-#[cfg(feature = "chrono")]
-const TIME_UNDER_Z: &str = r"(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z)";
 
 thread_local! {
     /// The type each alias the emitter wrote with no type parameter names, by Rust ident.
@@ -40,90 +24,71 @@ thread_local! {
     static KOTLIN_TEXTS: RefCell<Vec<(TextForm, String)>> = const { RefCell::new(Vec::new()) };
 }
 
-/// A text serde reads in one form alone.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum TextForm {
-    Char,
-    #[cfg(feature = "chrono")]
-    Date,
-    #[cfg(feature = "chrono")]
-    DateTime,
-    #[cfg(feature = "chrono")]
-    Time,
-}
-
-impl TextForm {
-    /// The `object` named `named` that reads and writes a text of the form, and refuses any other.
-    fn declared(self, named: &str) -> String {
-        let (form, refused, expected) = match self {
-            Self::Char => (
-                String::new(),
-                "text.codePointCount(0, text.length) != 1",
-                "a character",
-            ),
-            #[cfg(feature = "chrono")]
-            Self::Date => (matched(DATE), "!form.matches(text)", "a date"),
-            #[cfg(feature = "chrono")]
-            Self::DateTime => (
-                matched(&format!("{DATE}T(?:{TIME_UNDER_Z}|{TIME})")),
-                "!form.matches(text)",
-                "a date and time",
-            ),
-            #[cfg(feature = "chrono")]
-            Self::Time => (matched(TIME), "!form.matches(text)", "a time"),
-        };
+/// The `object` named `named` that reads a text of `form`, refusing one Zod refuses, and writes
+/// it in the form serde writes, refusing one no rewrite turns into that form.
+fn object_declared(form: TextForm, named: &str) -> String {
+    let expected = form.expected();
+    let refused = |text: &str| {
         format!(
-            "object {named} : KSerializer<String> {{ {form}override val descriptor: \
-             SerialDescriptor = PrimitiveSerialDescriptor(\"{named}\", PrimitiveKind.STRING); \
-             override fun serialize(encoder: Encoder, value: String) = \
-             encoder.encodeString(value); override fun deserialize(decoder: Decoder): String {{ \
-             val text = decoder.decodeString(); if ({refused}) throw \
-             SerializationException(\"expected {expected}, found \" + JsonPrimitive(text)); \
-             return text }} }}"
+            "throw SerializationException(\"expected {expected}, found \" + JsonPrimitive({text}))"
         )
+    };
+    let read = form.read();
+    let sent = form.sent();
+    let mut members = String::new();
+    if let Some(pattern) = &read {
+        members.push_str(&matched("form", pattern));
     }
-
-    /// The form of a value typed `field`, at its innermost level.
-    pub const fn of(field: &FieldDef) -> Option<Self> {
-        match &field.field_type {
-            FieldDefType::Char => Some(Self::Char),
-            #[cfg(feature = "chrono")]
-            FieldDefType::NaiveDate => Some(Self::Date),
-            #[cfg(feature = "chrono")]
-            FieldDefType::NaiveDateTime => Some(Self::DateTime),
-            #[cfg(feature = "chrono")]
-            FieldDefType::NaiveTime => Some(Self::Time),
-            // Zod reads any text a JavaScript `Date` reads there, which no Kotlin check can follow.
-            #[cfg(feature = "chrono")]
-            FieldDefType::DateTime => None,
-            #[cfg(feature = "mongodb")]
-            FieldDefType::ObjectId => None,
-            FieldDefType::SiblingType(_, _)
-            | FieldDefType::Map(_, _)
-            | FieldDefType::Tuple(_)
-            | FieldDefType::Range(_, _)
-            | FieldDefType::Result(_, _)
-            | FieldDefType::TypeParam(_)
-            | FieldDefType::Unknown
-            | FieldDefType::StringLiteral(_)
-            | FieldDefType::BooleanLiteral(_)
-            | FieldDefType::NumberLiteral(_)
-            | FieldDefType::Boolean
-            | FieldDefType::String
-            | FieldDefType::U8
-            | FieldDefType::U16
-            | FieldDefType::U32
-            | FieldDefType::U64
-            | FieldDefType::I8
-            | FieldDefType::I16
-            | FieldDefType::I32
-            | FieldDefType::I64
-            | FieldDefType::Isize
-            | FieldDefType::Usize
-            | FieldDefType::F32
-            | FieldDefType::F64 => None,
+    let sending = match (&read, &sent) {
+        (Some(reading), Some(sending)) if reading == sending => Some("form"),
+        (_, Some(pattern)) => {
+            members.push_str(&matched("sending", pattern));
+            Some("sending")
         }
-    }
+        (_, None) => None,
+    };
+    let (mut steps, zoneless) = if form.unzoned() {
+        (
+            "val unzoned = value.removeSuffix(\"Z\"); ".to_owned(),
+            "unzoned",
+        )
+    } else {
+        (String::new(), "value")
+    };
+    let current = form.unsecond().map_or(zoneless, |pattern| {
+        members.push_str(&matched("unsecond", &pattern));
+        let _ = write!(
+            steps,
+            "val sent = unsecond.matchEntire({zoneless})?.let {{ it.groupValues[1] + \":00\" + \
+             it.groupValues[2] }} ?: {zoneless}; "
+        );
+        "sent"
+    });
+    let held = sending.map_or_else(
+        || format!("{current}.codePointCount(0, {current}.length) != 1"),
+        |pattern| format!("!{pattern}.matches({current})"),
+    );
+    let checked_read = read.map_or_else(
+        || {
+            if form == TextForm::Char {
+                format!(
+                    "if (text.codePointCount(0, text.length) != 1) {}; ",
+                    refused("text")
+                )
+            } else {
+                String::new()
+            }
+        },
+        |_| format!("if (!form.matches(text)) {}; ", refused("text")),
+    );
+    format!(
+        "object {named} : KSerializer<String> {{ {members}override val descriptor: \
+         SerialDescriptor = PrimitiveSerialDescriptor(\"{named}\", PrimitiveKind.STRING); \
+         override fun serialize(encoder: Encoder, value: String) {{ {steps}if ({held}) {}; \
+         encoder.encodeString({current}) }} override fun deserialize(decoder: Decoder): String {{ \
+         val text = decoder.decodeString(); {checked_read}return text }} }}",
+        refused("value")
+    )
 }
 
 /// Drops the serializers of the item just written.
@@ -131,11 +96,10 @@ pub fn clear() {
     KOTLIN_TEXTS.with(|texts| texts.borrow_mut().clear());
 }
 
-/// The `Regex` property a serializer matches a whole text against `pattern` through.
-#[cfg(feature = "chrono")]
-fn matched(pattern: &str) -> String {
+/// The `Regex` property `named` a serializer matches a whole text against `pattern` through.
+fn matched(named: &str, pattern: &str) -> String {
     format!(
-        "private val form = Regex(\"{}\"); ",
+        "private val {named} = Regex(\"{}\"); ",
         kotlin_template_text(pattern)
     )
 }
@@ -179,7 +143,7 @@ pub fn found(field: &FieldDef, written: bool, sought: fn(&FieldDef) -> bool) -> 
 }
 
 /// Whether a value typed `field` is a text of one form at its innermost level.
-const fn is_a_text(field: &FieldDef) -> bool {
+fn is_a_text(field: &FieldDef) -> bool {
     TextForm::of(field).is_some()
 }
 
@@ -220,7 +184,7 @@ pub fn serializer(form: TextForm) -> String {
             next
         });
         let named = format!("KotlinText{index}");
-        KOTLIN_TUPLE_AUX.with(|aux| aux.borrow_mut().push(form.declared(&named)));
+        KOTLIN_TUPLE_AUX.with(|aux| aux.borrow_mut().push(object_declared(form, &named)));
         written.push((form, named.clone()));
         named
     })

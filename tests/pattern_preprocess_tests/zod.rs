@@ -23,7 +23,7 @@ fn the_wrap_opens_the_expression_of_every_shape() {
         ),
         (
             Stack::zod_schema(),
-            "z.preprocess(unwrapped, z.tuple([z.array(z.string()), z.number().int()]))",
+            "z.preprocess(unwrapped, z.tuple([z.array(z.string()), z.number().int().min(0).max(4294967295)]))",
         ),
         (
             Parcel::zod_schema(),
@@ -49,7 +49,7 @@ fn the_wrap_opens_the_expression_of_every_shape() {
             Reference::zod_schema(),
             if cfg!(feature = "serde") {
                 "z.preprocess(unwrapped, z.union([z.strictObject({ name: z.string(), }), \
-                 z.number().int()]))"
+                 z.number().int().min(0).max(4294967295)]))"
             } else {
                 "z.preprocess(unwrapped, z.discriminatedUnion("
             },
@@ -117,7 +117,7 @@ fn the_wrap_is_around_the_expression_and_its_check() {
     let schema = Weighed::zod_schema();
     assert!(
         bound(&schema).starts_with(
-            "z.preprocess(unwrapped, z.strictObject({\n  grams: z.number().int(),\n}).check((ctx) \
+            "z.preprocess(unwrapped, z.strictObject({\n  grams: z.number().int().min(0).max(4294967295),\n}).check((ctx) \
              => {\n"
         ),
         "got: {schema}"

@@ -115,7 +115,7 @@ fn typescript_names_the_types_declared_here() {
 fn zod_calls_the_factories_of_the_types_declared_here() {
     let zod = Holder::zod_schema();
     for call in [
-        "IndexMap$SchemaFactory(z.string(), z.number().int())",
+        "IndexMap$SchemaFactory(z.string(), z.number().int().min(0).max(4294967295))",
         "IndexSet$SchemaFactory(z.string())",
     ] {
         assert!(zod.contains(call), "missing `{call}` in: {zod}");

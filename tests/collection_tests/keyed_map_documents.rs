@@ -42,7 +42,7 @@ fn the_json_schema_admits_each_payload_zod_reads() {
                 &document(payload.read_as),
                 &serde_json::from_str(payload.json).unwrap()
             ),
-            serde_reads(payload) || payload.parted,
+            serde_reads(payload) || payload.parted || payload.widened,
             "the JSON Schema parts from Zod on `{}`: {}",
             payload.name,
             document(payload.read_as)

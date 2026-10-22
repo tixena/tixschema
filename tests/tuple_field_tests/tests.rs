@@ -470,8 +470,8 @@ fn test_enum_keyed_map_element_tuple_field_ts_and_zod() {
     {
         let zod = EnumKeyedMapSlotRow::zod_schema();
         for expected in [
-            "slot: z.tuple([z.string(), z.partialRecord(SlotKind$Schema, z.number().int())])",
-            "nested_slot: z.tuple([z.string(), z.record(z.string(), z.partialRecord(SlotKind$Schema, z.number().int()))])",
+            "slot: z.tuple([z.string(), z.partialRecord(SlotKind$Schema, z.number().int().min(0).max(4294967295))])",
+            "nested_slot: z.tuple([z.string(), z.record(z.string(), z.partialRecord(SlotKind$Schema, z.number().int().min(0).max(4294967295)))])",
         ] {
             assert!(zod.contains(expected), "missing {expected}, got: {zod}");
         }
@@ -511,7 +511,7 @@ fn test_map_element_tuple_field_ts_and_zod() {
     {
         let zod = MapSlotShape::zod_schema();
         assert!(
-            zod.contains("slot: z.tuple([z.string(), z.record(z.string(), z.number().int())])"),
+            zod.contains("slot: z.tuple([z.string(), z.record(z.string(), z.number().int().min(0).max(4294967295))])"),
             "Expected the map's own Zod rendering in the slot. Got: {zod}"
         );
     }
@@ -565,7 +565,7 @@ fn test_nested_tuple_element_tuple_field_ts_and_zod() {
         let zod = NestedTupleShape::zod_schema();
         assert!(
             zod.contains(
-                "slot: z.tuple([z.string(), z.tuple([z.number().int(), z.number().int()])])"
+                "slot: z.tuple([z.string(), z.tuple([z.number().int().min(0).max(4294967295), z.number().int().min(0).max(4294967295)])])"
             ),
             "Expected the nested tuple's own Zod rendering in the slot. Got: {zod}"
         );

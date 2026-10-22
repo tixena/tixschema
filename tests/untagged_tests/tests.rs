@@ -1200,7 +1200,7 @@ fn test_untagged_map_member_keys_zod() {
     let zod = KeyedUnion::zod_schema();
     assert!(
         zod.contains(
-            "z.strictObject({ counts: z.partialRecord(Bucket$Schema, z.number().int()), })"
+            "z.strictObject({ counts: z.partialRecord(Bucket$Schema, z.number().int().min(0).max(4294967295)), })"
         ),
         "Got:\n{zod}"
     );
@@ -2491,7 +2491,7 @@ fn test_an_untagged_list_member_writes_its_count_in_zod() {
     let count = "${Array.isArray(issue.input) ? issue.input.length : 0}";
     for member in [
         format!(
-            "z.array(z.number().int()).min(2, {{ error: (issue) => `too short: minimum length is \
+            "z.array(z.number().int().min(0).max(4294967295)).min(2, {{ error: (issue) => `too short: minimum length is \
              2, got {count}` }}).max(2, {{ error: (issue) => `too long: maximum length is 2, got \
              {count}` }})"
         ),

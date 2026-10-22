@@ -1407,7 +1407,7 @@ mod branded_composite_inner_tests {
         let zod = WeightMap::zod_schema();
         assert!(
             zod.contains(
-                r#"const WeightMap$RawSchema = z.record(z.string(), z.number().int()).brand<"WeightMap">()"#
+                r#"const WeightMap$RawSchema = z.record(z.string(), z.number().int().min(0).max(4294967295)).brand<"WeightMap">()"#
             ),
             "Got:\n{zod}"
         );
@@ -1430,7 +1430,7 @@ mod branded_composite_inner_tests {
         let zod = LabelPair::zod_schema();
         assert!(
             zod.contains(
-                r#"const LabelPair$RawSchema = z.tuple([z.string(), z.number().int()]).brand<"LabelPair">()"#
+                r#"const LabelPair$RawSchema = z.tuple([z.string(), z.number().int().min(0).max(4294967295)]).brand<"LabelPair">()"#
             ),
             "Got:\n{zod}"
         );
@@ -2395,7 +2395,12 @@ mod branded_chrono_zod_tests {
             ("DayStamp", "z.iso.date()", DayStamp::zod_schema()),
             (
                 "MomentStamp",
-                "z.iso.datetime({ local: true })",
+                concat!(
+                    r#"z.preprocess((arg) => { if (typeof arg !== "string") return arg; "#,
+                    r#"const read = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(:\d{2}(?:\.\d+)?)?Z?$/.exec(arg); "#,
+                    r#"return read ? `${read[1]}${read[2] ?? ":00"}` : arg; }, "#,
+                    "z.iso.datetime({ local: true }))"
+                ),
                 MomentStamp::zod_schema(),
             ),
             (

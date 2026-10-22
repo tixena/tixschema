@@ -317,7 +317,9 @@ fn dart_reads_a_member_of_a_variant_left_out_from_the_json_of_its_default() {
     let written = super::models::berthing_dart::dart_definition();
     for read in [
         "BerthingDocked(dock: json.containsKey('dock') ? (json['dock'] as String) : \
-         (jsonDecode('\"\"') as String),pier: json['pier'] as int,)",
+         (jsonDecode('\"\"') as String),pier: (switch (json['pier'] as int) { final number when \
+         number >= 0 && number <= 4294967295 => number, final number => throw \
+         FormatException('expected an integer from 0 to 4294967295, found $number') }),)",
         "BerthingMoored(dock: json.containsKey('dock') ? (json['dock'] as String) : \
          (jsonDecode('\"north\"') as String),line: json.containsKey('line') ? (json['line'] as \
          String) : (jsonDecode('\"\"') as String),)",
@@ -383,7 +385,12 @@ fn the_zod_schema_parses_the_default_of_each_member_of_a_variant() {
         AdjacentBerthing::zod_schema(),
         UntaggedBerthing::zod_schema(),
     ] {
-        for member in [docked, moored, line, "pier: z.number().int(),"] {
+        for member in [
+            docked,
+            moored,
+            line,
+            "pier: z.number().int().min(0).max(4294967295),",
+        ] {
             assert!(schema.contains(member), "{member}\n{schema}");
         }
         assert!(!schema.contains('\u{1}'), "{schema}");
@@ -525,7 +532,7 @@ fn an_enum_with_no_default_writes_the_zod_text_it_wrote() {
         Tide::zod_schema(),
         "const Tide$RawSchema = z.discriminatedUnion(\"kind\", [z.strictObject({
   kind: z.literal(\"Ebbing\"),
-  height: z.number().int(),
+  height: z.number().int().min(0).max(4294967295),
 }), z.strictObject({
   kind: z.literal(\"Slack\"),
 })]);
@@ -566,8 +573,13 @@ fn an_enum_with_no_default_writes_the_dart_text_it_wrote() {
          TideEbbing.fromJsonUnjudged(json); final violations = read.validate(); if \
          (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; } \
          factory TideEbbing.fromJsonUnjudged(Map<String, dynamic> json) => TideEbbing(height: \
-         json['height'] as int,); Map<String, dynamic> toJson() => { 'kind': 'Ebbing','height': \
-         height, }; @override List<String> validate() => const []; } class TideSlack extends \
+         (switch (json['height'] as int) { final number when number >= 0 && number <= \
+         4294967295 => number, final number => throw FormatException('expected an integer from \
+         0 to 4294967295, found $number') }),); Map<String, dynamic> toJson() => { 'kind': \
+         'Ebbing','height': (switch (height) { final number when number >= 0 && number <= \
+         4294967295 => number, final number => throw FormatException('expected an integer from \
+         0 to 4294967295, found $number') }), }; @override List<String> validate() => const []; \
+         } class TideSlack extends \
          Tide { const TideSlack(); @override dynamic toJson() => { 'kind': 'Slack' }; @override \
          List<String> validate() => const []; }"
     );

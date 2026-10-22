@@ -22,6 +22,9 @@ pub mod object_id;
 #[cfg(feature = "chrono")]
 pub mod chrono;
 
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+pub mod text_forms;
+
 #[cfg(feature = "dart")]
 pub mod dart;
 

@@ -68,6 +68,13 @@ mod text_forms;
 /// writes of each.
 #[path = "commented_models.rs"]
 mod commented;
+
+/// A model per type the wire holds as a text, a number or a `bool`, and what each client sends of
+/// each value a caller hands it.
+#[cfg(feature = "chrono")]
+#[path = "../wire_forms_tests/models.rs"]
+mod wire_forms;
+
 /// Models whose names on the wire hold a `$`, a quote, a double quote and a backslash, and what
 /// serde writes of each.
 #[path = "../dart_tests/quoted_models.rs"]
@@ -77,6 +84,8 @@ mod quoted;
 #[path = "../skipped_variant_tests/models.rs"]
 mod skipped_variants;
 
+#[cfg(feature = "chrono")]
+use alloc::collections::BTreeSet;
 use core::fmt::Write as _;
 
 #[cfg(feature = "chrono")]
@@ -2322,6 +2331,106 @@ fn text_forms_bundle() -> String {
     .join("\n\n")
 }
 
+/// The models of [`wire_forms::WIRE_FORMS`]: a bundle of their own, compiled with `tsc --strict`
+/// before it is loaded, beside the consumer's own `ObjectId`.
+#[cfg(feature = "chrono")]
+fn wire_forms_bundle() -> String {
+    let mut parts = vec![
+        PREAMBLE.to_owned(),
+        wire_forms::ConveyedFlag::ts_definition(),
+        wire_forms::ConveyedFlag::zod_schema(),
+        wire_forms::ConveyedLetter::ts_definition(),
+        wire_forms::ConveyedLetter::zod_schema(),
+        wire_forms::ConveyedText::ts_definition(),
+        wire_forms::ConveyedText::zod_schema(),
+        wire_forms::ConveyedU8::ts_definition(),
+        wire_forms::ConveyedU8::zod_schema(),
+        wire_forms::ConveyedU16::ts_definition(),
+        wire_forms::ConveyedU16::zod_schema(),
+        wire_forms::ConveyedU32::ts_definition(),
+        wire_forms::ConveyedU32::zod_schema(),
+        wire_forms::ConveyedI8::ts_definition(),
+        wire_forms::ConveyedI8::zod_schema(),
+        wire_forms::ConveyedI16::ts_definition(),
+        wire_forms::ConveyedI16::zod_schema(),
+        wire_forms::ConveyedI32::ts_definition(),
+        wire_forms::ConveyedI32::zod_schema(),
+        wire_forms::ConveyedI64::ts_definition(),
+        wire_forms::ConveyedI64::zod_schema(),
+        wire_forms::ConveyedIsize::ts_definition(),
+        wire_forms::ConveyedIsize::zod_schema(),
+        wire_forms::ConveyedU64::<u64>::ts_definition(),
+        wire_forms::ConveyedU64::<u64>::zod_schema(),
+        wire_forms::ConveyedUsize::<usize>::ts_definition(),
+        wire_forms::ConveyedUsize::<usize>::zod_schema(),
+        wire_forms::ConveyedF32::ts_definition(),
+        wire_forms::ConveyedF32::zod_schema(),
+        wire_forms::ConveyedF64::ts_definition(),
+        wire_forms::ConveyedF64::zod_schema(),
+        wire_forms::ConveyedLiteralCount::ts_definition(),
+        wire_forms::ConveyedLiteralCount::zod_schema(),
+        wire_forms::ConveyedLiteralFlag::ts_definition(),
+        wire_forms::ConveyedLiteralFlag::zod_schema(),
+        wire_forms::ConveyedLiteralText::ts_definition(),
+        wire_forms::ConveyedLiteralText::zod_schema(),
+        wire_forms::ConveyedDay::ts_definition(),
+        wire_forms::ConveyedDay::zod_schema(),
+        wire_forms::ConveyedHour::ts_definition(),
+        wire_forms::ConveyedHour::zod_schema(),
+        wire_forms::ConveyedStamp::ts_definition(),
+        wire_forms::ConveyedStamp::zod_schema(),
+        wire_forms::ConveyedInstant::ts_definition(),
+        wire_forms::ConveyedInstant::zod_schema(),
+        wire_forms::ConveyedMillis::ts_definition(),
+        wire_forms::ConveyedMillis::zod_schema(),
+        wire_forms::ConveyedSlot::ts_definition(),
+        wire_forms::ConveyedSlot::zod_schema(),
+        wire_forms::ConveyedSlotted::ts_definition(),
+        wire_forms::ConveyedSlotted::zod_schema(),
+    ];
+    #[cfg(feature = "mongodb")]
+    parts.extend([
+        "type ObjectId = { $oid: string };".to_owned(),
+        wire_forms::ConveyedObjectId::ts_definition(),
+        wire_forms::ConveyedObjectId::zod_schema(),
+    ]);
+    parts.join("\n\n")
+}
+
+/// The JavaScript value a row of [`wire_forms::WIRE_FORMS`] hands the Zod schema of its model:
+/// a `Date` for a `DateTime<Tz>`, read from the text handed, and the JSON handed for any other.
+#[cfg(feature = "chrono")]
+fn wire_form_handed(row: &wire_forms::WireFormRow) -> String {
+    let value = if row.held_by == "ConveyedInstant" {
+        format!("new Date({})", row.handed)
+    } else {
+        row.handed.to_owned()
+    };
+    let key = if row.handed.starts_with('"') {
+        row.handed.to_owned()
+    } else {
+        format!("\"{}\"", row.handed)
+    };
+    match wire_forms::places(row.held_by) {
+        wire_forms::Places::Keyed => {
+            format!("{{ keyed: {{ [{key}]: true }}, value: {value}, values: [{value}] }}")
+        }
+        wire_forms::Places::Listed => format!("{{ value: {value}, values: [{value}] }}"),
+        wire_forms::Places::Lone => format!("{{ value: {value} }}"),
+    }
+}
+
+/// The schema the model `held_by` names publishes: its `$SchemaDefault` where it declares a
+/// parameter.
+#[cfg(feature = "chrono")]
+fn wire_form_schema(held_by: &str) -> String {
+    if matches!(held_by, "ConveyedU64" | "ConveyedUsize") {
+        format!("{held_by}$SchemaDefault")
+    } else {
+        format!("{held_by}$Schema")
+    }
+}
+
 /// What serde's read of `json` as a `T` prints, as the driver of the `Result`s prints the same
 /// payload: the value, with the keys of each object in order, or the refusal, with each message
 /// of `validate()` where the type judges a model it holds.
@@ -3274,6 +3383,101 @@ fn type_check_a_text_of_one_form_is_read_under_zod_where_the_table_states() {
         printed,
         serde_json::to_string(&taken).unwrap(),
         "the schemas do not read what the table states:\n{failed}"
+    );
+}
+
+/// Each value of [`wire_forms::WIRE_FORMS`] is sent by the Zod schema of its model under `node`
+/// in the form the table states, which is what the clients over every transport send, as the
+/// check's own output, and the schema reads every payload any client sends but a number a
+/// JavaScript `number` cannot hold, which it refuses.
+#[cfg(feature = "chrono")]
+#[test]
+fn type_check_each_value_is_sent_under_zod_in_the_form_every_target_reads() {
+    let handed = wire_forms::WIRE_FORMS
+        .iter()
+        .filter(|row| {
+            !matches!(
+                row.typescript,
+                wire_forms::Sends::Unheld | wire_forms::Sends::Unemitted
+            )
+        })
+        .fold(String::new(), |mut written, row| {
+            let _ = writeln!(
+                written,
+                "  sent({}, {}),",
+                wire_form_schema(row.held_by),
+                wire_form_handed(row)
+            );
+            written
+        });
+    let expected: Vec<String> = wire_forms::WIRE_FORMS
+        .iter()
+        .filter(|row| {
+            !matches!(
+                row.typescript,
+                wire_forms::Sends::Unheld | wire_forms::Sends::Unemitted
+            )
+        })
+        .map(|row| {
+            row.payload(row.typescript)
+                .unwrap_or_else(|| "refused".to_owned())
+        })
+        .collect();
+    let read: Vec<(String, String, bool)> = wire_forms::WIRE_FORMS
+        .iter()
+        .flat_map(|row| {
+            let held = row.typescript != wire_forms::Sends::Unheld;
+            row.sent()
+                .into_iter()
+                .map(move |sent| (wire_form_schema(row.held_by), sent, held))
+        })
+        .collect();
+    let driver = format!(
+        "import * as lib from \"./lib/index.js\";\n\n\
+         const sent = (schema, handed) => {{\n  \
+         const read = schema.safeParse(handed);\n  \
+         return read.success ? JSON.stringify(read.data) : \"refused\";\n\
+         }};\n\
+         const {{ {schemas} }} = lib;\n\
+         console.log(JSON.stringify([\n{handed}]));\n\
+         console.log(JSON.stringify({read}.map(([schema, payload]) => \
+         lib[schema].safeParse(JSON.parse(payload)).success)));\n",
+        schemas = wire_forms::WIRE_FORMS
+            .iter()
+            .map(|row| wire_form_schema(row.held_by))
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>()
+            .join(", "),
+        read = serde_json::to_string(
+            &read
+                .iter()
+                .map(|(schema, sent, _)| (schema, sent))
+                .collect::<Vec<_>>()
+        )
+        .unwrap(),
+    );
+    let Some((printed, failed)) = loaded_from("wire-forms", &wire_forms_bundle(), &driver) else {
+        return;
+    };
+    let mut lines = printed.lines();
+    let sent: Vec<String> = serde_json::from_str(lines.next().unwrap_or("[]")).unwrap();
+    assert_eq!(
+        sent, expected,
+        "the Zod schemas do not send each value as the table states:\n{failed}"
+    );
+    let readable: Vec<bool> = serde_json::from_str(lines.next().unwrap_or("[]")).unwrap();
+    let misread: Vec<&(String, String, bool)> = read
+        .iter()
+        .zip(&readable)
+        .filter_map(|(sent_by_a_client, taken)| {
+            (*taken != sent_by_a_client.2).then_some(sent_by_a_client)
+        })
+        .collect();
+    assert!(
+        misread.is_empty() && readable.len() == read.len(),
+        "the Zod schemas read a payload a client sends otherwise than the table states, a \
+         value a JavaScript number cannot hold being refused: {misread:?}\n{failed}"
     );
 }
 

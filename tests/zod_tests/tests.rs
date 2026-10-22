@@ -182,7 +182,7 @@ fn test_optional_fields_use_union_with_undefined() {
     );
     assert!(
         zod.contains(
-            "optional_number: z.union([z.null().transform(() => undefined), z.number().int(), z.undefined()])"
+            "optional_number: z.union([z.null().transform(() => undefined), z.number().int().min(-2147483648).max(2147483647), z.undefined()])"
         ),
         "Optional numbers should use z.union with undefined. Got: {zod}"
     );
@@ -203,8 +203,8 @@ fn test_vec_fields_use_z_array() {
         "Vec<String> should use z.array(z.string()). Got: {zod}"
     );
     assert!(
-        zod.contains("numbers: z.array(z.number().int())"),
-        "Vec<i32> should use z.array(z.number().int()). Got: {zod}"
+        zod.contains("numbers: z.array(z.number().int().min(-2147483648).max(2147483647))"),
+        "Vec<i32> should use z.array(z.number().int().min(-2147483648).max(2147483647)). Got: {zod}"
     );
     assert!(
         zod.contains(
@@ -223,7 +223,9 @@ fn test_hashmap_uses_z_record() {
         "HashMap<String, String> should use z.record. Got: {zod}"
     );
     assert!(
-        zod.contains("counts: z.record(z.string(), z.number().int())"),
+        zod.contains(
+            "counts: z.record(z.string(), z.number().int().min(-2147483648).max(2147483647))"
+        ),
         "HashMap<String, i32> should use z.record with int values. Got: {zod}"
     );
 }
@@ -375,7 +377,7 @@ fn test_complex_nested_collections() {
     );
     assert!(
         zod.contains(
-            "optional_map: z.union([z.null().transform(() => undefined), z.record(z.string(), z.number().int()), z.undefined()])"
+            "optional_map: z.union([z.null().transform(() => undefined), z.record(z.string(), z.number().int().min(-2147483648).max(2147483647)), z.undefined()])"
         ),
         "Optional HashMap should wrap in union. Got: {zod}"
     );

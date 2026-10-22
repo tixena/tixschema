@@ -399,7 +399,7 @@ fn a_header_tuple_reply_is_rejoined_from_the_envelope_and_the_reply_headers() {
     assert!(
         written.contains(
             "const headerOut1 = versionServiceReplyHeader(\"get\", replied, \"x-age\", \
-             z.nullable(z.number().int()));\n        \
+             z.nullable(z.number().int().min(0).max(4294967295)));\n        \
              if (!headerOut1.ok) {\n          \
              return { ok: false, error: { isServiceFault: true, fault: headerOut1.fault } };\n        \
              }\n        \

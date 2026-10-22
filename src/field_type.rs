@@ -65,6 +65,11 @@ pub const ZOD_SCHEMA_BOUND: &str = "SomeType";
 #[cfg(all(feature = "chrono", feature = "zod"))]
 const TIMESTAMP_KEY_ZOD: &str = "z.iso.datetime({ offset: true })";
 
+/// The magnitude every `f32` serde reads stays below: a larger one is read as an infinity, which
+/// serde then writes as `null`. The midpoint between `f32::MAX` and the next power of two.
+#[cfg(any(feature = "zod", feature = "dart"))]
+pub const F32_READ_BOUND: &str = "3.4028235677973366e38";
+
 /// The kinds of bound `model_schema_prop` carries, named by what each is measured on: a length or
 /// a pattern on a string, a range on a number, and a pattern or a range on one value of either,
 /// which a list is not.
@@ -177,6 +182,44 @@ pub enum FieldDefType {
 }
 
 impl FieldDefType {
+    /// The least and the most value of an integer type serde reads, on each side a JavaScript
+    /// `number` does not already bound by holding only whole numbers up to 2^53 exactly, which
+    /// `.int()` checks; neither side for any other type.
+    pub const fn integer_range(&self) -> (Option<f64>, Option<f64>) {
+        match self {
+            Self::U8 => (Some(0.0), Some(255.0)),
+            Self::U16 => (Some(0.0), Some(65_535.0)),
+            Self::U32 => (Some(0.0), Some(4_294_967_295.0)),
+            Self::U64 | Self::Usize => (Some(0.0), None),
+            Self::I8 => (Some(-128.0), Some(127.0)),
+            Self::I16 => (Some(-32_768.0), Some(32_767.0)),
+            Self::I32 => (Some(-2_147_483_648.0), Some(2_147_483_647.0)),
+            Self::I64
+            | Self::Isize
+            | Self::F32
+            | Self::F64
+            | Self::Boolean
+            | Self::BooleanLiteral(_)
+            | Self::Char
+            | Self::Map(_, _)
+            | Self::NumberLiteral(_)
+            | Self::Range(_, _)
+            | Self::Result(_, _)
+            | Self::SiblingType(_, _)
+            | Self::String
+            | Self::StringLiteral(_)
+            | Self::Tuple(_)
+            | Self::TypeParam(_)
+            | Self::Unknown => (None, None),
+            #[cfg(feature = "mongodb")]
+            Self::ObjectId => (None, None),
+            #[cfg(feature = "chrono")]
+            Self::DateTime | Self::NaiveDate | Self::NaiveDateTime | Self::NaiveTime => {
+                (None, None)
+            }
+        }
+    }
+
     /// Whether this is one of the numeric primitives — every integer and float kind a
     /// `literal = N` may collapse into a [`Self::NumberLiteral`].
     pub const fn is_numeric(&self) -> bool {
@@ -1569,7 +1612,10 @@ impl FieldDef {
             | FieldDefType::I64
             | FieldDefType::Usize
             | FieldDefType::Isize => self.zod_number_type("z.number().int()"),
-            FieldDefType::F32 | FieldDefType::F64 => self.zod_number_type("z.number()"),
+            FieldDefType::F32 => self.zod_number_type(&format!(
+                "z.number().gt(-{F32_READ_BOUND}).lt({F32_READ_BOUND})"
+            )),
+            FieldDefType::F64 => self.zod_number_type("z.number()"),
             #[cfg(feature = "mongodb")]
             FieldDefType::ObjectId => object_id::get_object_id_zod_schema(),
             #[cfg(feature = "chrono")]
@@ -1800,19 +1846,32 @@ impl FieldDef {
         matches!(&self.field_type, FieldDefType::SiblingType(name, _) if names_a_zod_preprocess(name))
     }
 
-    /// Builds the Zod schema string for a numeric field, applying any min/max constraints.
+    /// Builds the Zod schema string for a numeric field: the range of its integer type, then any
+    /// min/max constraints. A side of the range a declared bound narrows is left to the bound.
     #[cfg(feature = "zod")]
     fn zod_number_type(&self, base: &str) -> String {
         let mut result = base.to_owned();
-        if let Some(meta) = &self.model_schema_prop_meta {
-            if let Some(min) = meta.minimum {
-                let reported = zod_error_arg(Bound::Minimum(min));
-                result = format!("{result}.min({min}, {reported})");
-            }
-            if let Some(max) = meta.maximum {
-                let reported = zod_error_arg(Bound::Maximum(max));
-                result = format!("{result}.max({max}, {reported})");
-            }
+        let declared = self.model_schema_prop_meta.as_ref();
+        let minimum = declared.and_then(|meta| meta.minimum);
+        let maximum = declared.and_then(|meta| meta.maximum);
+        let (least, most) = self.field_type.integer_range();
+        if let Some(width) = least
+            && minimum.is_none_or(|bound| bound < width)
+        {
+            result = format!("{result}.min({width})");
+        }
+        if let Some(width) = most
+            && maximum.is_none_or(|bound| bound > width)
+        {
+            result = format!("{result}.max({width})");
+        }
+        if let Some(min) = minimum {
+            let reported = zod_error_arg(Bound::Minimum(min));
+            result = format!("{result}.min({min}, {reported})");
+        }
+        if let Some(max) = maximum {
+            let reported = zod_error_arg(Bound::Maximum(max));
+            result = format!("{result}.max({max}, {reported})");
         }
         result
     }

@@ -1,7 +1,7 @@
 //! What the Swift backend writes for a map under a key Swift holds as the text serde writes for it:
 //! a `NaiveDate`, a `NaiveTime`, a `NaiveDateTime` and a type parameter. The wrapper the map is read
-//! through binds that text as the key, with no `guard`, and a key parsed from its text keeps the
-//! `guard` it had. `service_schema_emitted_client_tests/run_swift_text_map_keys.rs` compiles the
+//! through binds that text as the key, with no `guard`: a date or a time once its read holds it to
+//! its form, and a type parameter's as it is. A key parsed from its text keeps the `guard` it had. `service_schema_emitted_client_tests/run_swift_text_map_keys.rs` compiles the
 //! models of `text_map_keys_models.rs` under a Swift toolchain and reads a payload of each.
 
 use std::collections::HashMap;
@@ -43,6 +43,24 @@ pub struct Keyring {
     pub flags: HashMap<bool, String>,
     pub offsets: HashMap<i64, String>,
     pub stamps: HashMap<DateTime<Utc>, String>,
+}
+
+/// How a wrapper binds a key it holds as its text of the form `read` holds it to, ahead of the
+/// entry it reads.
+fn form_key(read: &str) -> String {
+    format!(
+        "let wireKey = codingKey.stringValue; let key = try Self.swiftSchemaRead{read}(wireKey, \
+         codingPath: container.codingPath + [codingKey]); result[key] = "
+    )
+}
+
+/// How many keys `swift` binds as their text, a date's and a time's held to its form.
+fn text_keys(swift: &str) -> usize {
+    swift.matches(TEXT_KEY).count()
+        + ["Date", "Time", "Stamp"]
+            .into_iter()
+            .map(|read| swift.matches(&form_key(read)).count())
+            .sum::<usize>()
 }
 
 /// How a wrapper binds a key `parsed` from its text, ahead of the entry it reads.
@@ -268,7 +286,7 @@ fn a_key_held_as_its_text_is_bound_with_no_guard() {
             !swift.contains("let wireKey = codingKey.stringValue; guard"),
             "{swift}"
         );
-        assert_eq!(swift.matches(TEXT_KEY).count(), reads, "{swift}");
+        assert_eq!(text_keys(&swift), reads, "{swift}");
     }
 }
 
@@ -280,7 +298,9 @@ fn a_wrapper_reads_a_model_under_a_key_held_as_its_text_with_no_judgement() {
             "init(swiftSchemaUnjudged decoder: Decoder) throws { \
              let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
              var result: [String: Moorage] = [:]; for codingKey in container.allKeys { \
-             let wireKey = codingKey.stringValue; let key = wireKey; \
+             let wireKey = codingKey.stringValue; \
+             let key = try Self.swiftSchemaReadDate(wireKey, \
+             codingPath: container.codingPath + [codingKey]); \
              result[key] = try Moorage(swiftSchemaUnjudged: \
              container.superDecoder(forKey: codingKey)) }; storage = result }; ",
             "public let berths: [String: Moorage]; ",
@@ -309,11 +329,12 @@ fn a_key_parsed_from_its_text_keeps_its_guard() {
         "UInt32(wireKey)",
         "(wireKey == \"true\" ? true : wireKey == \"false\" ? false : nil)",
         "Int64(wireKey)",
-        "Self.isoFormatterForKeys.date(from: wireKey)",
+        "Self.isoFormatterForKeys.date(from: wireKey) ?? \
+         Self.isoWholeFormatterForKeys.date(from: wireKey)",
     ] {
         holds(&swift, &[&guarded(parsed)]);
     }
-    assert!(!swift.contains(TEXT_KEY), "{swift}");
+    assert_eq!(text_keys(&swift), 0, "{swift}");
     let keyring = Keyring {
         bells: HashMap::from([(Bell::First, "b".to_owned())]),
         counts: HashMap::from([(1, "c".to_owned())]),

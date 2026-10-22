@@ -99,7 +99,7 @@ export type User = {
 ///
 #[doc = "```typescript
 const User$RawSchema = z.strictObject({
-  age: z.union([z.null().transform(() => undefined), z.number().int(), z.undefined()]).prefault(undefined),
+  age: z.union([z.null().transform(() => undefined), z.number().int().min(0).max(4294967295), z.undefined()]).prefault(undefined),
   firstName: z.string(),
   id: z.string(),
   lastName: z.string(),

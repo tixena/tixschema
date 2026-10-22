@@ -91,9 +91,10 @@ fn the_dart_definition_names_each_agreed_key() {
         &parcel_dart::dart_definition(),
         &[
             "reference: json['ref'] as String",
-            "weight_grams: json['weightGrams'] as int",
+            "weight_grams: (switch (json['weightGrams'] as int) { final number when number >= 0 \
+             && number <= 4294967295 => number,",
             "'ref': reference",
-            "'weightGrams': weight_grams",
+            "'weightGrams': (switch (weight_grams) {",
         ],
         &["'reference'", "'weight_grams'"],
     );

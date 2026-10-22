@@ -2,10 +2,29 @@
 
 extern crate alloc;
 
+/// A `char` and a chrono date, time and date and time held in each place, and what serde, Zod and
+/// each client's read answer of each payload.
+#[cfg(test)]
+#[cfg(all(feature = "dart", feature = "chrono"))]
+#[path = "kotlin_tests/text_forms_models.rs"]
+mod text_forms_models;
+
+/// What the Dart emitter writes for a `char` and a chrono date, time and date and time.
+#[cfg(test)]
+#[cfg(all(feature = "dart", feature = "chrono"))]
+#[path = "dart_tests/text_forms.rs"]
+mod text_forms;
+
 #[cfg(test)]
 #[cfg(feature = "dart")]
 #[path = "dart_tests/tests.rs"]
 mod tests;
+
+/// The text that holds a narrow integer to its type's range.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "dart_tests/held_numbers.rs"]
+mod held_numbers;
 
 #[cfg(test)]
 #[cfg(all(

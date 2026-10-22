@@ -1,6 +1,7 @@
 //! Swift type and `Codable`-codec generation.
 
 mod aliases;
+mod forms;
 mod preprocess;
 mod read;
 mod validate;
@@ -23,6 +24,7 @@ use crate::features::serde::{
     struct_tag, tag_and_content_when_flattened, variant_names_when_flattened, variants_on_the_wire,
     written_slots,
 };
+use crate::features::text_forms::TextForm;
 use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, get_field_def, is_plain_enum,
     is_sequence_wrapper,
@@ -220,10 +222,6 @@ struct VariantRead<'read> {
 /// least one field.
 #[derive(Clone)]
 enum LeafConversion {
-    /// A `DateTime<Tz>` field under `#[model_schema_prop(as_number)]`: the wire is still the ISO
-    /// 8601 string chrono writes, the Swift value is epoch milliseconds.
-    #[cfg(feature = "chrono")]
-    DateTimeAsNumber,
     /// A `DateTime<Tz>` field: the wire is an ISO 8601 string with fractional seconds, which
     /// `JSONDecoder`'s default strategy cannot parse into `Date` without a formatter.
     #[cfg(feature = "chrono")]
@@ -233,6 +231,9 @@ enum LeafConversion {
     MapWrapper(String),
     /// The leaf reads and writes exactly as its own Swift type spells it.
     None,
+    /// A text of one form: read as the Zod schema of the form reads it, and written in the form
+    /// serde writes.
+    Text(TextForm),
     /// A map Swift keys natively whose values convert: each value is turned through its own shape.
     Values(Box<Shaped>),
 }
@@ -991,8 +992,8 @@ fn swift_map_key_codec(key: &FieldDef) -> (Option<String>, String) {
                 "String(key)".to_owned(),
             )
         }
-        FieldDefType::Char
-        | FieldDefType::String
+        FieldDefType::Char => (None, forms::sent_call(TextForm::Char, "key")),
+        FieldDefType::String
         | FieldDefType::StringLiteral(_)
         | FieldDefType::TypeParam(_)
         | FieldDefType::Unknown
@@ -1009,12 +1010,18 @@ fn swift_map_key_codec(key: &FieldDef) -> (Option<String>, String) {
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => (None, "key".to_owned()),
         #[cfg(feature = "chrono")]
-        FieldDefType::NaiveDate | FieldDefType::NaiveTime | FieldDefType::NaiveDateTime => {
-            (None, "key".to_owned())
-        }
+        FieldDefType::NaiveDate | FieldDefType::NaiveTime | FieldDefType::NaiveDateTime => (
+            None,
+            forms::held_as_text(key)
+                .map_or_else(|| "key".to_owned(), |form| forms::sent_call(form, "key")),
+        ),
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime => (
-            Some("Self.isoFormatterForKeys.date(from: wireKey)".to_owned()),
+            Some(
+                "Self.isoFormatterForKeys.date(from: wireKey) ?? \
+                 Self.isoWholeFormatterForKeys.date(from: wireKey)"
+                    .to_owned(),
+            ),
             "Self.isoFormatterForKeys.string(from: key)".to_owned(),
         ),
     }
@@ -1055,7 +1062,8 @@ fn map_key_wrapper_struct(
     // no static property and a stored `ISO8601DateFormatter` is not `Sendable`.
     #[cfg(feature = "chrono")]
     let formatter_decl = if matches!(key.field_type, FieldDefType::DateTime) {
-        "private static var isoFormatterForKeys: ISO8601DateFormatter { let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f };"
+        "private static var isoFormatterForKeys: ISO8601DateFormatter { let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f }; \
+         private static var isoWholeFormatterForKeys: ISO8601DateFormatter { let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime]; return f };"
     } else {
         ""
     };
@@ -1082,6 +1090,12 @@ fn map_key_wrapper_struct(
 
 /// What a map's wrapper binds the key of one entry with, read from `wireKey` as `key` is.
 fn wrapper_bound_key(key: &FieldDef) -> String {
+    if let Some(form) = forms::held_as_text(key) {
+        return format!(
+            "let key = {}; ",
+            forms::read_call(form, "wireKey", "container.codingPath + [codingKey]")
+        );
+    }
     swift_map_key_codec(key).0.map_or_else(
         || "let key = wireKey; ".to_owned(),
         |parsed| {
@@ -1298,9 +1312,8 @@ fn swift_field_shape(field: &FieldDef, name_hint: &str, aux: &mut Vec<String>) -
         FieldDefType::SiblingType(name, generics) => sibling_shape(name, generics, name_hint, aux),
         FieldDefType::Map(key, value) => map_shape(key, value, name_hint, aux),
         FieldDefType::Boolean | FieldDefType::BooleanLiteral(_) => direct_shape("Bool".to_owned()),
-        FieldDefType::Char | FieldDefType::String | FieldDefType::StringLiteral(_) => {
-            direct_shape("String".to_owned())
-        }
+        FieldDefType::String | FieldDefType::StringLiteral(_) => direct_shape("String".to_owned()),
+        FieldDefType::Char => text_shape(TextForm::Char),
         FieldDefType::NumberLiteral(_) | FieldDefType::F64 => direct_shape("Double".to_owned()),
         FieldDefType::F32 => direct_shape("Float".to_owned()),
         FieldDefType::U8 => direct_shape("UInt8".to_owned()),
@@ -1316,10 +1329,19 @@ fn swift_field_shape(field: &FieldDef, name_hint: &str, aux: &mut Vec<String>) -
         FieldDefType::ObjectId => direct_shape("ObjectId".to_owned()),
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate | FieldDefType::NaiveTime | FieldDefType::NaiveDateTime => {
-            direct_shape("String".to_owned())
+            forms::held_as_text(field).map_or_else(|| direct_shape("String".to_owned()), text_shape)
         }
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime => datetime_shape(field),
+    }
+}
+
+/// A text of one form, held as a `String` and read and written through the functions of its form.
+fn text_shape(form: TextForm) -> SwiftFieldShape {
+    SwiftFieldShape {
+        leaf_conversion: LeafConversion::Text(form),
+        real_leaf: "String".to_owned(),
+        wire_leaf: "String".to_owned(),
     }
 }
 
@@ -1332,16 +1354,12 @@ fn direct_shape(swift_type: String) -> SwiftFieldShape {
     }
 }
 
-/// The `DateTime<Tz>` leaf: `Date` (or `Int64` under `as_number`) is the real type, the ISO 8601
-/// string chrono writes is the wire type.
+/// The `DateTime<Tz>` leaf: `Date` is the real type, the ISO 8601 string chrono writes is the wire
+/// type. Under `as_number` both are the `Int64` of epoch milliseconds serde writes.
 #[cfg(feature = "chrono")]
 fn datetime_shape(field: &FieldDef) -> SwiftFieldShape {
     if has_as_number(field) {
-        SwiftFieldShape {
-            leaf_conversion: LeafConversion::DateTimeAsNumber,
-            real_leaf: "Int64".to_owned(),
-            wire_leaf: "String".to_owned(),
-        }
+        direct_shape("Int64".to_owned())
     } else {
         SwiftFieldShape {
             leaf_conversion: LeafConversion::DateTimePlain,
@@ -1412,7 +1430,7 @@ fn tuple_shape(elements: &[FieldDef], name_hint: &str, aux: &mut Vec<String>) ->
         &validate::method(&rules),
     ));
     let shapes: Vec<&SwiftFieldShape> = slots.iter().collect();
-    let helpers = datetime_helpers_for(&struct_name, &generic_params, &shapes);
+    let helpers = leaf_helpers_for(&struct_name, &generic_params, &shapes, None);
     if !helpers.is_empty() {
         aux.push(helpers);
     }
@@ -1518,7 +1536,7 @@ fn range_shape(
         memberwise_initializer(&fields),
         validate::method(&validate::range_rules(&struct_name, kind, bound)),
     ));
-    let helpers = datetime_helpers_for(&struct_name, &generic_params, &[&shape]);
+    let helpers = leaf_helpers_for(&struct_name, &generic_params, &[&shape], None);
     if !helpers.is_empty() {
         aux.push(helpers);
     }
@@ -1616,7 +1634,7 @@ fn result_shape(
         validate::method(&validate::result_rules(&enum_name, ok, err)),
     ));
     let held_shapes: Vec<&SwiftFieldShape> = shapes.iter().collect();
-    let helpers = datetime_helpers_for(&enum_name, &generic_params, &held_shapes);
+    let helpers = leaf_helpers_for(&enum_name, &generic_params, &held_shapes, None);
     if !helpers.is_empty() {
         aux.push(helpers);
     }
@@ -1624,17 +1642,11 @@ fn result_shape(
 }
 
 /// A slot, a value serde writes with no key, as it is declared and read: its Swift type, and its
-/// shape. An `as_number` date is read and written as the `Int64` it is declared as, which is the
-/// number serde writes.
+/// shape.
 fn slot_resolve(written: &FieldDef, name_hint: &str, aux: &mut Vec<String>) -> (String, Shaped) {
     let def = arrayed(written.clone());
     let (real_type, resolved) = swift_resolve(&def, name_hint, aux);
     let hint = name_hint.to_owned();
-    #[cfg(feature = "chrono")]
-    if matches!(resolved.leaf_conversion, LeafConversion::DateTimeAsNumber) {
-        let shape = direct_shape(resolved.real_leaf);
-        return (real_type, Shaped { def, hint, shape });
-    }
     (
         real_type,
         Shaped {
@@ -1737,7 +1749,7 @@ fn held_argument(real_type: &str, argument: &Shaped, aux: &mut Vec<String>) -> S
         argument.written("value"),
         validate::method(&[])
     ));
-    let helpers = datetime_helpers_for(&name, &generic_params, &[&argument.shape]);
+    let helpers = leaf_helpers_for(&name, &generic_params, &[&argument.shape], None);
     if !helpers.is_empty() {
         aux.push(helpers);
     }
@@ -1751,7 +1763,10 @@ fn map_keys(key: &FieldDef) -> MapKeys {
         return MapKeys::Wrapped;
     }
     match key.field_type {
-        FieldDefType::Char | FieldDefType::String | FieldDefType::StringLiteral(_) => MapKeys::Text,
+        FieldDefType::String | FieldDefType::StringLiteral(_) => MapKeys::Text,
+        // Read and written through the functions of its form, which a native dictionary calls none
+        // of.
+        FieldDefType::Char => MapKeys::Wrapped,
         FieldDefType::Isize => MapKeys::Whole,
         FieldDefType::SiblingType(_, _)
         | FieldDefType::TypeParam(_)
@@ -1838,7 +1853,12 @@ fn map_shape(
         &entry,
         unjudged.as_deref(),
     ));
-    let helpers = datetime_helpers_for(&wrapper_name, &generic_params, &[&entry.shape]);
+    let helpers = leaf_helpers_for(
+        &wrapper_name,
+        &generic_params,
+        &[&entry.shape],
+        forms::held_as_text(key),
+    );
     if !helpers.is_empty() {
         aux.push(helpers);
     }
@@ -1916,10 +1936,7 @@ fn decode_leaf(shape: &SwiftFieldShape, expr: &str) -> String {
         LeafConversion::DateTimePlain => {
             format!("try Self.swiftSchemaParseIso8601Date({expr}, codingPath: decoder.codingPath)")
         }
-        #[cfg(feature = "chrono")]
-        LeafConversion::DateTimeAsNumber => format!(
-            "try Self.swiftSchemaParseIso8601Millis({expr}, codingPath: decoder.codingPath)"
-        ),
+        LeafConversion::Text(form) => forms::read_call(*form, expr, "decoder.codingPath"),
         LeafConversion::Values(value) => format!(
             "{}{expr}.mapValues {{ {} }}",
             tried(shape),
@@ -1933,9 +1950,32 @@ fn decode_leaf(shape: &SwiftFieldShape, expr: &str) -> String {
 fn throws(conversion: &LeafConversion) -> bool {
     match conversion {
         #[cfg(feature = "chrono")]
-        LeafConversion::DateTimePlain | LeafConversion::DateTimeAsNumber => true,
+        LeafConversion::DateTimePlain => true,
+        LeafConversion::Text(_) => true,
         LeafConversion::Values(value) => throws(&value.shape.leaf_conversion),
         LeafConversion::MapWrapper(_) | LeafConversion::None => false,
+    }
+}
+
+/// Whether writing a value through `conversion` throws: the write of a text of one form does, at
+/// any depth of the values of a map Swift keys natively.
+fn writes_throw(conversion: &LeafConversion) -> bool {
+    match conversion {
+        LeafConversion::Text(_) => true,
+        LeafConversion::Values(value) => writes_throw(&value.shape.leaf_conversion),
+        #[cfg(feature = "chrono")]
+        LeafConversion::DateTimePlain => false,
+        LeafConversion::MapWrapper(_) | LeafConversion::None => false,
+    }
+}
+
+/// `written`, the write of a value of `shape` over a closure, behind the `try` it needs where the
+/// write throws, in parentheses, so that a `try` written around it reaches nothing it covers.
+fn write_tried(shape: &SwiftFieldShape, written: String) -> String {
+    if writes_throw(&shape.leaf_conversion) {
+        format!("(try {written})")
+    } else {
+        written
     }
 }
 
@@ -1957,11 +1997,13 @@ fn encode_leaf(shape: &SwiftFieldShape, expr: &str) -> String {
         LeafConversion::MapWrapper(wrapper) => format!("{wrapper}(storage: {expr})"),
         #[cfg(feature = "chrono")]
         LeafConversion::DateTimePlain => format!("Self.swiftSchemaFormatIso8601Date({expr})"),
-        #[cfg(feature = "chrono")]
-        LeafConversion::DateTimeAsNumber => format!("Self.swiftSchemaFormatIso8601Millis({expr})"),
-        LeafConversion::Values(value) => format!(
-            "{expr}.mapValues {{ {} }}",
-            written_from(&value.def, &value.shape, "$0")
+        LeafConversion::Text(form) => forms::sent_call(*form, expr),
+        LeafConversion::Values(value) => write_tried(
+            shape,
+            format!(
+                "{expr}.mapValues {{ {} }}",
+                written_from(&value.def, &value.shape, "$0")
+            ),
         ),
     }
 }
@@ -1997,9 +2039,15 @@ fn encode_conversion(field: &FieldDef, shape: &SwiftFieldShape, level: u8, expr:
     let inner_level = level - 1;
     let inner = encode_conversion(field, shape, inner_level, "$0");
     if field.is_nullable_at(inner_level) {
-        format!("{expr}.map {{ $0.map {{ {inner} }} }}")
+        write_tried(
+            shape,
+            format!(
+                "{expr}.map {{ {} }}",
+                write_tried(shape, format!("$0.map {{ {inner} }}"))
+            ),
+        )
     } else {
-        format!("{expr}.map {{ {inner} }}")
+        write_tried(shape, format!("{expr}.map {{ {inner} }}"))
     }
 }
 
@@ -2023,7 +2071,7 @@ fn written_from(def: &FieldDef, shape: &SwiftFieldShape, held: &str) -> String {
     }
     if def.is_optional() {
         let inner = encode_conversion(def, shape, def.array_depth, "$0");
-        format!("{held}.map {{ {inner} }}")
+        write_tried(shape, format!("{held}.map {{ {inner} }}"))
     } else {
         encode_conversion(def, shape, def.array_depth, held)
     }
@@ -2625,30 +2673,38 @@ fn unit_entries_write(entries: &[UnitEntry], held: &str, written: &str) -> Strin
 }
 
 /// The per-struct static helpers a `DateTime` field's decode/encode calls into — a formatter with
-/// fractional seconds, so the emitted round trip is byte-for-byte the ISO 8601 text chrono wrote.
+/// fractional seconds, so the emitted round trip is byte-for-byte the ISO 8601 text chrono wrote,
+/// and one without them, which reads the text chrono writes for a date of whole seconds.
 /// Swift refuses a static stored property in a generic type, so a type that declares a parameter
-/// builds its formatter on each call, and any other shares one.
+/// builds its formatters on each call, and any other shares them.
 #[cfg(feature = "chrono")]
 fn datetime_helpers(export_name: &str, declares_a_parameter: bool) -> String {
-    let formatter = if declares_a_parameter {
-        "private static var swiftSchemaIso8601Formatter: ISO8601DateFormatter { \
-         let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f };"
-    } else {
-        "private static let swiftSchemaIso8601Formatter: ISO8601DateFormatter = { \
-         let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f }();"
+    let formatter = |named: &str, options: &str| {
+        if declares_a_parameter {
+            format!(
+                "private static var {named}: ISO8601DateFormatter {{ let f = \
+                 ISO8601DateFormatter(); f.formatOptions = [{options}]; return f }};"
+            )
+        } else {
+            format!(
+                "private static let {named}: ISO8601DateFormatter = {{ let f = \
+                 ISO8601DateFormatter(); f.formatOptions = [{options}]; return f }}();"
+            )
+        }
     };
     format!(
-        "extension {export_name} {{ {formatter} \
+        "extension {export_name} {{ {} {} \
          private static func swiftSchemaParseIso8601Date(_ text: String, codingPath: [CodingKey]) throws -> Date {{ \
-         guard let date = swiftSchemaIso8601Formatter.date(from: text) else {{ \
+         guard let date = swiftSchemaIso8601Formatter.date(from: text) ?? \
+         swiftSchemaWholeIso8601Formatter.date(from: text) else {{ \
          throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: codingPath, debugDescription: \"bad ISO8601 date: \\(text)\")) }}; \
          return date }}; \
-         private static func swiftSchemaFormatIso8601Date(_ date: Date) -> String {{ swiftSchemaIso8601Formatter.string(from: date) }}; \
-         private static func swiftSchemaParseIso8601Millis(_ text: String, codingPath: [CodingKey]) throws -> Int64 {{ \
-         let date = try swiftSchemaParseIso8601Date(text, codingPath: codingPath); \
-         return Int64((date.timeIntervalSince1970 * 1000).rounded()) }}; \
-         private static func swiftSchemaFormatIso8601Millis(_ millis: Int64) -> String {{ \
-         swiftSchemaIso8601Formatter.string(from: Date(timeIntervalSince1970: Double(millis) / 1000)) }} }};"
+         private static func swiftSchemaFormatIso8601Date(_ date: Date) -> String {{ swiftSchemaIso8601Formatter.string(from: date) }} }};",
+        formatter(
+            "swiftSchemaIso8601Formatter",
+            ".withInternetDateTime, .withFractionalSeconds"
+        ),
+        formatter("swiftSchemaWholeIso8601Formatter", ".withInternetDateTime"),
     )
 }
 
@@ -2657,9 +2713,9 @@ fn datetime_helpers(export_name: &str, declares_a_parameter: bool) -> String {
 #[cfg(feature = "chrono")]
 fn reads_a_date(shape: &SwiftFieldShape) -> bool {
     match &shape.leaf_conversion {
-        LeafConversion::DateTimePlain | LeafConversion::DateTimeAsNumber => true,
+        LeafConversion::DateTimePlain => true,
         LeafConversion::Values(value) => reads_a_date(&value.shape),
-        LeafConversion::MapWrapper(_) | LeafConversion::None => false,
+        LeafConversion::MapWrapper(_) | LeafConversion::None | LeafConversion::Text(_) => false,
     }
 }
 
@@ -2689,6 +2745,43 @@ const fn datetime_helpers_for(
     _shapes: &[&SwiftFieldShape],
 ) -> String {
     String::new()
+}
+
+/// The forms of the texts a value of `shape` is read and written through, gathered into `found`
+/// once each.
+fn text_forms_of(shape: &SwiftFieldShape, found: &mut Vec<TextForm>) {
+    match &shape.leaf_conversion {
+        LeafConversion::Text(form) => {
+            if !found.contains(form) {
+                found.push(*form);
+            }
+        }
+        LeafConversion::Values(value) => text_forms_of(&value.shape, found),
+        #[cfg(feature = "chrono")]
+        LeafConversion::DateTimePlain => {}
+        LeafConversion::MapWrapper(_) | LeafConversion::None => {}
+    }
+}
+
+/// The helpers the read and the write of one of `shapes` call, written into `export_name`: the
+/// date helpers ([`datetime_helpers_for`]) and an extension with those of each text of one form,
+/// `keyed` the form of the keys of a map's wrapper. Nothing where none is called.
+fn leaf_helpers_for(
+    export_name: &str,
+    generic_params: &str,
+    shapes: &[&SwiftFieldShape],
+    keyed: Option<TextForm>,
+) -> String {
+    let mut written = datetime_helpers_for(export_name, generic_params, shapes);
+    let mut found: Vec<TextForm> = keyed.into_iter().collect();
+    for shape in shapes {
+        text_forms_of(shape, &mut found);
+    }
+    let texts = forms::helpers(&found);
+    if !texts.is_empty() {
+        write!(written, "extension {export_name} {{ {texts}}};").unwrap();
+    }
+    written
 }
 
 /// Walks a named-field struct's or a struct-shaped enum variant's fields into [`SwiftField`]s,
@@ -3053,7 +3146,7 @@ fn struct_declaration(
         around,
     );
     let shapes: Vec<&SwiftFieldShape> = fields.iter().map(|field| &field.shape).collect();
-    let helpers = datetime_helpers_for(export_name, generic_params, &shapes);
+    let helpers = leaf_helpers_for(export_name, generic_params, &shapes, None);
     format!(
         "public struct {export_name}{generic_params}: Codable, Sendable {{ {content} }}; {helpers}"
     )
@@ -3226,7 +3319,7 @@ fn value_wrapper_tokens(
         format!("try container.decode({real_type}.self)")
     };
     let encode = format!("try container.encode({})", shaped.written("value"));
-    let helpers = datetime_helpers_for(&export_name, &generic_params, &[&shaped.shape]);
+    let helpers = leaf_helpers_for(&export_name, &generic_params, &[&shaped.shape], None);
     let mut twins = Vec::new();
     let own_read = if matches!(wrapped, Wrapped::Slot) {
         lone_slot_read(&shaped, &real_type, &export_name, &decode, &mut twins)
@@ -4227,7 +4320,7 @@ fn tried_read(
 /// date, of `slots`, after the separator that ends the enum. Empty where none does.
 fn enum_date_helpers(shape: &EnumShape<'_>, slots: &[SwiftFieldShape]) -> String {
     let shapes: Vec<&SwiftFieldShape> = slots.iter().collect();
-    let helpers = datetime_helpers_for(shape.export_name, shape.generic_params, &shapes);
+    let helpers = leaf_helpers_for(shape.export_name, shape.generic_params, &shapes, None);
     if helpers.is_empty() {
         helpers
     } else {

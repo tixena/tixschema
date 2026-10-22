@@ -36,7 +36,7 @@ mod tests {
         assert!(typescript.contains("span: Range<number>;"), "{typescript}");
         let zod = Shelved::zod_schema();
         assert!(
-            zod.contains("span: Range$SchemaFactory(z.number().int()),"),
+            zod.contains("span: Range$SchemaFactory(z.number().int().min(0).max(4294967295)),"),
             "{zod}"
         );
         let document = Shelved::json_schema();

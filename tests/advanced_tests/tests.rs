@@ -466,12 +466,18 @@ fn test_edge_cases_ts_definition() {
     assert_zod_contains_fields(
         &zod_schema,
         &[
-            ("tiny_number", "z.number().int()"),
-            ("small_number", "z.number().int()"),
-            ("medium_number", "z.number().int()"),
-            ("float_number", "z.number()"),
+            ("tiny_number", "z.number().int().min(0).max(255)"),
+            ("small_number", "z.number().int().min(0).max(65535)"),
+            ("medium_number", "z.number().int().min(0).max(4294967295)"),
+            (
+                "float_number",
+                "z.number().gt(-3.4028235677973366e38).lt(3.4028235677973366e38)",
+            ),
             ("strings", "z.array(z.string())"),
-            ("numbers", "z.array(z.number().int())"),
+            (
+                "numbers",
+                "z.array(z.number().int().min(0).max(4294967295))",
+            ),
             ("booleans", "z.array(z.boolean())"),
             (
                 "optional_strings",
@@ -479,7 +485,7 @@ fn test_edge_cases_ts_definition() {
             ),
             (
                 "optional_numbers",
-                "z.union([z.null().transform(() => undefined), z.array(z.number().int()), z.undefined()])",
+                "z.union([z.null().transform(() => undefined), z.array(z.number().int().min(0).max(4294967295)), z.undefined()])",
             ),
             ("string_map", "z.record(z.string(), z.string())"),
             (

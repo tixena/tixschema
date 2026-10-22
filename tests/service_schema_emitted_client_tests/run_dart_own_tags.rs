@@ -160,7 +160,9 @@ fn the_dart_read_of_a_struct_under_its_own_tag_checks_the_tag_ahead_of_its_membe
         ),
         (
             dressing_dart::dart_definition(),
-            "Dressing(ensign: Ensign.fromJsonUnjudged(json),north: json['north'] as int,)"
+            "Dressing(ensign: Ensign.fromJsonUnjudged(json),north: (switch (json['north'] as \
+             int) { final number when number >= 0 && number <= 255 => number, final number => \
+             throw FormatException('expected an integer from 0 to 255, found $number') }),)"
                 .to_owned(),
         ),
         (

@@ -32,7 +32,6 @@ use syn::{
 };
 
 use self::preprocess::Plugin;
-use self::texts::TextForm;
 use self::validate::{Member, Rules};
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
@@ -41,6 +40,7 @@ use crate::features::serde::{
     struct_tag, tag_and_content_when_flattened, variant_names_when_flattened, variants_on_the_wire,
     written_slots,
 };
+use crate::features::text_forms::TextForm;
 use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, get_field_def, is_plain_enum,
     is_sequence_wrapper,
@@ -1048,7 +1048,10 @@ fn kotlin_serializer_expr(field: &FieldDef, type_parameters: &[String]) -> Strin
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveTime => texts::serializer(TextForm::Time),
         #[cfg(feature = "chrono")]
-        FieldDefType::DateTime => format!("serializer<{}>()", kotlin_typename(&held)),
+        FieldDefType::DateTime => TextForm::of(field).map_or_else(
+            || format!("serializer<{}>()", kotlin_typename(&held)),
+            texts::serializer,
+        ),
     };
     listed_serializer(field, scalar)
 }

@@ -2,6 +2,7 @@
 //! else, written as `null`, and refused where its key is absent, as serde refuses it. A tuple
 //! struct of no slot, which is no `()`, is read from and written as `[]`.
 
+use super::held_numbers::u32_held;
 use super::unit_models::{
     probe_nothing_dart, probe_slotless_dart, probe_unit_adjacent_dart,
     probe_unit_either_holder_dart, probe_units_dart,
@@ -25,7 +26,11 @@ fn unit_is_read_from_null_and_written_as_null_in_each_position() {
             "listed: (json['listed'] as List<dynamic>).map((e) => {}).toList()",
             unit_read("e")
         ),
-        format!("(tuple[0] as int, {})", unit_read("tuple[1]")),
+        format!(
+            "({}, {})",
+            u32_held("tuple[0] as int"),
+            unit_read("tuple[1]")
+        ),
         format!(
             "unit: (json.containsKey('unit') ? {} : throw FormatException('missing field \
              `unit`'))",
@@ -34,9 +39,11 @@ fn unit_is_read_from_null_and_written_as_null_in_each_position() {
         "nothing: (json.containsKey('nothing') ? ProbeNothing.fromJsonUnjudged(json['nothing']) \
          : throw FormatException('missing field `nothing`'))"
             .to_owned(),
-        "'listed': listed.map((e) => null).toList(),'nothing': (nothing).toJson(),'paired': \
-         [(paired).$1, null],'unit': null,"
-            .to_owned(),
+        format!(
+            "'listed': listed.map((e) => null).toList(),'nothing': (nothing).toJson(),'paired': \
+             [{}, null],'unit': null,",
+            u32_held("(paired).$1")
+        ),
         "final List<()> listed;final ProbeNothing nothing;final (int, ()) paired;final () unit;"
             .to_owned(),
     ] {

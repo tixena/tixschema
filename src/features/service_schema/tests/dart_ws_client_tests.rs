@@ -557,7 +557,9 @@ fn a_client_method_takes_a_header_in_value_per_binding_and_sends_it_as_json() {
         method.contains(
             "final headers = <String, dynamic>{\n      \
              'x-tenant': tenant,\n      \
-             'x-trace': (trace == null ? null : trace),\n    \
+             'x-trace': (trace == null ? null : (switch (trace) { final number when number >= 0 \
+             && number <= 4294967295 => number, final number => throw FormatException('expected \
+             an integer from 0 to 4294967295, found $number') })),\n    \
              };"
         ),
         "every binding is written, an optional value included as `null` rather than left out. \
@@ -584,9 +586,13 @@ fn a_client_method_splits_a_header_tuple_reply_and_names_the_header_on_a_bad_dec
             && method.contains("value = Document.fromJson(reply['value']);")
             && method.contains("headerOut0 = replyHeaders?['etag'] as String;")
             && method.contains(
-                "headerOut1 = (replyHeaders?['x-age'] == null ? null : replyHeaders?['x-age'] as int);"
+                "headerOut1 = (replyHeaders?['x-age'] == null ? null : (switch \
+                 (replyHeaders?['x-age'] as int) { final number when number >= 0 && number <= \
+                 4294967295 => number, final number => throw FormatException('expected an integer \
+                 from 0 to 4294967295, found $number') }));"
             )
-            && method.contains("return VersionServiceGetResultOk((value, headerOut0, headerOut1));"),
+            && method
+                .contains("return VersionServiceGetResultOk((value, headerOut0, headerOut1));"),
         "the response decodes alone, and each `header_out` element decodes off the reply's own \
          `headers`, in declaration order. Got: {method}"
     );
@@ -629,7 +635,10 @@ fn a_handler_takes_a_header_in_value_per_binding_read_off_the_request_frame() {
         arm.contains("final headersIn = frame['headers'] as Map<String, dynamic>?;")
             && arm.contains("tenant = headersIn?['x-tenant'] as String;")
             && arm.contains(
-                "trace = (headersIn?['x-trace'] == null ? null : headersIn?['x-trace'] as int);"
+                "trace = (headersIn?['x-trace'] == null ? null : (switch (headersIn?['x-trace'] \
+                 as int) { final number when number >= 0 && number <= 4294967295 => number, final \
+                 number => throw FormatException('expected an integer from 0 to 4294967295, found \
+                 $number') }));"
             )
             && arm.contains("await handlers.get(ctx, decoded, tenant, trace);"),
         "each header_in value decodes off the request frame's own `headers` and is passed \
@@ -649,7 +658,12 @@ fn the_attachment_splits_a_handler_s_header_tuple_answer_omitting_a_null_element
         arm.contains("final (bodyOut, headersOut0, headersOut1) = answered;")
             && arm.contains("final headersOut = <String, dynamic>{};")
             && arm.contains("headersOut['etag'] = headersOut0;")
-            && arm.contains("if (headersOut1 != null) {\n              headersOut['x-age'] = headersOut1;\n            }")
+            && arm.contains(
+                "if (headersOut1 != null) {\n              headersOut['x-age'] = (switch \
+                 (headersOut1) { final number when number >= 0 && number <= 4294967295 => number, \
+                 final number => throw FormatException('expected an integer from 0 to 4294967295, \
+                 found $number') });\n            }"
+            )
             && arm.contains("'value': (bodyOut).toJson(),")
             && arm.contains("if (headersOut.isNotEmpty) 'headers': headersOut,"),
         "the handler's own record is split: its head under `value`, every other element under \
