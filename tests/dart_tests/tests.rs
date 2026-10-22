@@ -533,6 +533,13 @@ fn test_adjacently_tagged_unit_variant_has_no_content_key() {
         dart.contains("{ 'type': 'Nothing' }"),
         "a Unit variant under adjacent tagging writes no content key at all. Got: {dart}"
     );
+    assert!(
+        dart.contains(
+            "case 'Nothing': return json.containsKey('value') ? throw \
+             FormatException('DynamicValue: ' + tag + ' takes no value') : DynamicValueNothing();"
+        ),
+        "and is read from an object with no content key alone. Got: {dart}"
+    );
 }
 
 #[test]

@@ -1644,6 +1644,13 @@ consumer's view; this is what a change has to keep.
   its entry, under each of its names, where the value is `null`, and refuses any other value: the
   Zod schema takes the entry over `null` alone, where serde's flattened read takes an empty
   object too. So does the enum read alone, as serde reads it.
+- **An enum under a tag and a content key reads a unit variant from an object with no content
+  key**, as Zod's strict object of the tag alone reads it (`tagged_variant_tokens`): the arm reads
+  `json.containsKey('{content}')` and throws `FormatException('{Enum}: ' + tag + ' takes no
+  value')` where it holds, a content of `null` among it, which serde reads. serde writes the
+  variant as its tag alone. `run_dart_unit_entries.rs` reads `Becalming`, of
+  `run_kotlin_refusals.rs`, under the toolchain, with serde's answer and the Zod schema's text
+  pinned beside each payload.
 - **A name serde reads beside the one it writes is read too.** `read_aliases` reads the
   `#[serde(alias)]` names of a field and of a variant, none for one serde never reads, and
   `DartField::aliases` holds a member's. A tagged enum takes a variant under its written name or
