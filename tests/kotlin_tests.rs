@@ -130,3 +130,15 @@ mod quoted_models;
 #[cfg(all(feature = "kotlin", feature = "serde"))]
 #[path = "kotlin_tests/quoted.rs"]
 mod quoted;
+
+/// A member, and a variant, serde neither writes nor reads, typed with a width no client maps.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "swift_tests/unwired_models.rs"]
+mod unwired_models;
+
+/// What the Kotlin emitter declares of a member, and a variant, serde neither writes nor reads.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "kotlin_tests/unwired.rs"]
+mod unwired;

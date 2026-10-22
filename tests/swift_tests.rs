@@ -214,3 +214,15 @@ mod unit_models;
 #[cfg(all(feature = "swift", feature = "serde"))]
 #[path = "swift_tests/units.rs"]
 mod units;
+
+/// A member, and a variant, serde neither writes nor reads, typed with a width no client maps.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "swift_tests/unwired_models.rs"]
+mod unwired_models;
+
+/// What the Swift emitter declares of a member, and a variant, serde neither writes nor reads.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "swift_tests/unwired.rs"]
+mod unwired;

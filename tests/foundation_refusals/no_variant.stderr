@@ -1,0 +1,5 @@
+error: model_schema: type `Becalm`: declares no variant, so serde writes no value of it and reads none, and no surface can describe it. Declare a variant serde writes or reads.
+ --> tests/foundation_refusals/no_variant.rs:8:10
+  |
+8 | pub enum Becalm {}
+  |          ^^^^^^

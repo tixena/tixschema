@@ -1620,14 +1620,43 @@ fn internally_tagged_tuple_variant_is_rejected() {
     );
 }
 
-/// An empty tuple variant carries nothing: serde writes the tag alone, which is the unit arm.
+/// Under a tag alone serde's derive refuses a tuple variant of no slot, skipped or not, and the
+/// refusal raised ahead of every shape says so: the internally tagged guard raises none of its
+/// own for it, so the declaration earns one refusal.
 #[cfg(feature = "serde")]
 #[test]
-fn internally_tagged_empty_tuple_variant_is_accepted() {
-    let errors = internal_guard_errors(&syn::parse_quote! {
-        enum E { V() }
-    });
-    assert!(errors.is_empty(), "got: {errors:?}");
+fn internally_tagged_empty_tuple_variant_is_refused_in_serdes_words() {
+    let refusal = "model_schema: variant `Empty`: `Empty()` is a tuple variant with no field, and \
+                   serde's derive refuses a tuple variant of no slot or of several under \
+                   `#[serde(tag = \"kind\")]` with no `content`, under `#[serde(skip)]` or not: \
+                   `#[serde(tag = \"...\")] cannot be used with tuple variants`. Write `Empty` \
+                   for a unit variant.";
+    for (source, skipped) in [
+        (
+            "#[serde(tag = \"kind\")] pub enum ProbeTaggedEmpty { Open { note: String }, Empty() }",
+            "",
+        ),
+        (
+            "#[serde(tag = \"kind\")] pub enum ProbeTaggedEmpty { Open { note: String }, \
+             #[serde(skip)] Empty() }",
+            "skipped ",
+        ),
+    ] {
+        assert_refused_without_member_keys(
+            "",
+            source,
+            &proc_macro2::Literal::string(refusal).to_string(),
+        );
+        let item: syn::ItemEnum = syn::parse_str(source).unwrap();
+        assert!(
+            internal_guard_errors(&item).is_empty(),
+            "the {skipped}variant earns no second refusal"
+        );
+    }
+    assert!(
+        include_str!("../../README.md").contains(refusal),
+        "the README no longer quotes this refusal:\n{refusal}"
+    );
 }
 
 /// A name is not the criterion — what serde writes for it is.
@@ -4975,6 +5004,37 @@ fn a_bare_value_or_map_is_refused_nowhere_at_expansion() {
     }
 }
 
+/// A member serde neither writes nor reads, and every member of a variant it neither writes nor
+/// reads, is on no surface: neither the full path nor a bare name of a JSON value is refused or
+/// checked there. Written one way, the member is refused as before.
+#[test]
+fn a_json_value_serde_neither_writes_nor_reads_is_refused_nowhere() {
+    for source in [
+        "pub struct Holding { pub note: String, #[serde(skip)] pub v: serde_json::Value }",
+        "pub struct Holding { #[serde(skip_serializing, skip_deserializing)] pub v: Value }",
+        "pub struct Holding(String, #[serde(skip)] serde_json::Map<String, u8>);",
+        "pub enum Holding { Open { note: String }, #[serde(skip)] Closed { v: serde_json::Value }, \
+         #[serde(skip)] Lone(Value) }",
+    ] {
+        assert_eq!(any_json_refusals("", source), [], "for {source}");
+        assert_eq!(
+            any_json_checked("", source),
+            Vec::<String>::new(),
+            "for {source}"
+        );
+    }
+    assert_eq!(
+        any_json_refusals(
+            "",
+            "pub struct Holding { #[serde(skip_deserializing)] pub v: serde_json::Value }"
+        ),
+        [(
+            any_json_sentence("type `Holding`: field `v`", "Value"),
+            Some("serde_json::Value".to_owned())
+        )]
+    );
+}
+
 /// The checks [`super::any_json_checks`] writes beside `source` under `#[model_schema(args)]`.
 fn any_json_checked(args: &str, source: &str) -> Vec<String> {
     let item: syn::Item = syn::parse_str(source).unwrap();
@@ -5289,6 +5349,39 @@ fn a_u64_or_usize_field_is_refused_for_swift() {
         }
     };
     assert!(swift_width_refusals(&i64_item).is_empty());
+}
+
+/// No Swift type declares a member serde neither writes nor reads, nor a member of a variant it
+/// neither writes nor reads, so the width guard reads past both; a member under one one-way skip
+/// is written or read, and is refused.
+#[cfg(feature = "swift")]
+#[test]
+fn the_swift_width_guard_reads_past_what_serde_neither_writes_nor_reads() {
+    let unwired: [syn::Item; 4] = [
+        syn::parse_quote! { struct Report { note: String, #[serde(skip)] count: u64 } },
+        syn::parse_quote! {
+            struct Report { #[serde(skip_serializing, skip_deserializing)] total: usize }
+        },
+        syn::parse_quote! { struct Report(String, #[serde(skip)] u64); },
+        syn::parse_quote! {
+            enum Report { Open { note: String }, #[serde(skip)] Closed { count: u64 } }
+        },
+    ];
+    for item in &unwired {
+        let refusals = swift_width_refusals(item);
+        assert!(refusals.is_empty(), "got: {refusals:?}");
+    }
+    let one_way: [syn::Item; 3] = [
+        syn::parse_quote! { struct Report { #[serde(skip_serializing)] count: u64 } },
+        syn::parse_quote! { struct Report { #[serde(skip_deserializing)] count: u64 } },
+        syn::parse_quote! {
+            enum Report { Open { note: String }, #[serde(skip_serializing)] Closed { count: u64 } }
+        },
+    ];
+    for item in &one_way {
+        let refusals = swift_width_refusals(item);
+        assert_eq!(refusals.len(), 1, "got: {refusals:?}");
+    }
 }
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
@@ -6731,7 +6824,7 @@ fn field_prop_guard_errors_in_scope(item: &syn::ItemStruct, parameters: &[String
     rendered.erase_type_parameters(parameters);
     apply_serde_key_omission(&mut rendered, field);
     let meta = super::parse_model_schema_prop_attributes(&field.attrs);
-    super::collect_field_guard_errors(field, &rendered, &written, &name, &meta, Vec::new())
+    super::collect_field_guard_errors(field, &rendered, &written, &name, &meta, true, Vec::new())
         .iter()
         .map(ToString::to_string)
         .collect()
@@ -7914,6 +8007,85 @@ fn a_kotlin_field_reaching_u64_or_usize_is_refused() {
             "for {ty}, expected {message:?}, got: {}",
             errors[0]
         );
+    }
+}
+
+/// A member serde neither writes nor reads is declared by no Kotlin type, so its width is refused
+/// nothing; one under a single one-way skip is still refused.
+#[cfg(feature = "kotlin")]
+#[test]
+fn the_kotlin_width_guard_reads_past_a_member_serde_neither_writes_nor_reads() {
+    for item in [
+        syn::parse_quote! { struct Report { #[serde(skip)] count: u64 } },
+        syn::parse_quote! {
+            struct Report { #[serde(skip_serializing, skip_deserializing)] count: usize }
+        },
+    ] {
+        let errors = field_prop_guard_errors(&item);
+        assert!(errors.is_empty(), "got: {errors:?}");
+    }
+    for item in [
+        syn::parse_quote! { struct Report { #[serde(skip_serializing)] count: u64 } },
+        syn::parse_quote! { struct Report { #[serde(skip_deserializing)] count: u64 } },
+    ] {
+        let errors = field_prop_guard_errors(&item);
+        assert_eq!(errors.len(), 1, "got: {errors:?}");
+        assert!(
+            errors[0].contains("`u64` has no Kotlin mapping"),
+            "got: {}",
+            errors[0]
+        );
+    }
+}
+
+/// Through the whole expansion, no guard of a member's type refuses a member serde neither writes
+/// nor reads, nor a member of a variant it neither writes nor reads: a width neither client maps,
+/// a std type no schema describes, a map keyed by a value serde writes as no string, and a JSON
+/// value. Each is refused where serde writes it.
+#[cfg(all(feature = "serde", feature = "kotlin", feature = "swift"))]
+#[test]
+fn no_guard_of_a_members_type_refuses_what_serde_neither_writes_nor_reads() {
+    let expanded = |source: &str| {
+        super::exec_model_schema(
+            proc_macro2::TokenStream::new(),
+            syn::parse_str(&format!("#[derive(Serialize, Deserialize)] {source}")).unwrap(),
+        )
+    };
+    for source in [
+        "pub struct ProbeUnwiredHold { pub note: String, #[serde(skip)] pub count: u64, \
+         #[serde(skip)] pub listed: std::collections::LinkedList<String>, #[serde(skip)] pub \
+         platform: std::ffi::OsString, #[serde(skip)] pub keyed: \
+         std::collections::BTreeMap<(u8, u8), u32>, #[serde(skip)] pub held: serde_json::Value }",
+        "pub enum ProbeUnwiredTally { Open { note: String }, #[serde(skip)] Closed { count: u64, \
+         listed: std::collections::LinkedList<String>, keyed: std::collections::BTreeMap<(u8, \
+         u8), u32>, held: serde_json::Value } }",
+    ] {
+        let tokens = expanded(source);
+        assert_eq!(
+            compile_error_count(&tokens),
+            0,
+            "for {source}, got: {tokens}"
+        );
+    }
+    for (member, refusal) in [
+        ("pub count: u64", "`u64` has no Swift mapping"),
+        ("pub count: u64", "`u64` has no Kotlin mapping"),
+        (
+            "pub listed: std::collections::LinkedList<String>",
+            "reaches `LinkedList`",
+        ),
+        (
+            "pub keyed: std::collections::BTreeMap<(u8, u8), u32>",
+            "a map key must be a value serde writes as a string",
+        ),
+        ("pub held: serde_json::Value", "reaches `serde_json::Value`"),
+    ] {
+        let source = format!(
+            "pub struct ProbeHalfWiredHold {{ pub note: String, #[serde(skip_deserializing)] \
+             {member} }}"
+        );
+        let tokens = expanded(&source).to_string();
+        assert!(tokens.contains(refusal), "for {source}, got: {tokens}");
     }
 }
 
@@ -19615,12 +19787,14 @@ fn the_shapes_the_macro_expands_are_not_refused() {
     }
 }
 
-/// `Foo()` is refused on the variant under the default and the adjacent tagging alike.
+/// `Foo()` is refused on the variant under the default, the adjacent and the untagged tagging
+/// alike.
 #[test]
 fn an_empty_tuple_variant_is_refused_on_the_variant() {
     for source in [
         "pub enum Choice { Unit, Empty(), Data(i32) }",
         "#[serde(tag = \"kind\", content = \"body\")] pub enum Choice { Unit, Empty(), Data(i32) }",
+        "#[serde(untagged)] pub enum Choice { Empty(), Data(i32) }",
     ] {
         let expanded = expansion_over(source).to_string();
         assert!(
@@ -19643,6 +19817,33 @@ fn an_empty_tuple_variant_is_refused_on_the_variant() {
             "for {source}, got: {located:?}"
         );
     }
+}
+
+/// A map whose value is `()` builds and describes its values as `null`: serde writes
+/// `{"keyed":{"a":null}}` and refuses `[]` as a value, and Zod under node reads the first and
+/// refuses the second.
+#[cfg(all(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn a_map_of_units_describes_its_values_as_null() {
+    let expanded = expansion_over(
+        "#[derive(Serialize, Deserialize)] pub struct ProbeUnitsKeyed { pub keyed: \
+         std::collections::BTreeMap<String, ()> }",
+    );
+    let written = expanded.to_string();
+    assert!(!written.contains("compile_error"), "got: {written}");
+    let texts = literal_texts(&expanded).join("\n");
+    for rendered in [
+        "keyed: Partial<Record<string, null>>;",
+        "keyed: z.record(z.string(), z.null()),",
+    ] {
+        assert!(texts.contains(rendered), "no `{rendered}` in: {texts}");
+    }
+    assert!(
+        written.contains(
+            r#""keyed" . to_string () , serde_json :: json ! ({ "type" : "object" , "additionalProperties" : serde_json :: json ! ({ "type" : "null" }) }))"#
+        ),
+        "got: {written}"
+    );
 }
 
 /// A unit variant, a one-slot and a many-slot tuple variant are not refused.
@@ -20836,7 +21037,8 @@ fn the_record_of_a_member_over_unit_is_published_under_its_one_name() {
 }
 
 /// An enum whose every variant serde neither writes nor reads is refused, its members' keys taken
-/// off; an enum with a variant serde reads or writes, and an enum of no variant, are not.
+/// off, and so is an enum of no variant, under a tag or not; an enum with a variant serde reads or
+/// writes is not.
 #[test]
 fn an_enum_with_no_variant_serde_writes_or_reads_is_refused() {
     assert_refused_without_member_keys(
@@ -20847,10 +21049,26 @@ fn an_enum_with_no_variant_serde_writes_or_reads_is_refused() {
          `skip_serializing` and `skip_deserializing` together, so serde writes no value of it and \
          reads none, and no surface can describe it. Let serde write or read one of its variants.",
     );
+    for (source, name) in [
+        ("pub enum Becalm {}", "Becalm"),
+        (
+            "#[serde(tag = \"kind\")] pub enum BecalmTagged {}",
+            "BecalmTagged",
+        ),
+    ] {
+        let refusal = format!(
+            "model_schema: type `{name}`: declares no variant, so serde writes no value of it and \
+             reads none, and no surface can describe it. Declare a variant serde writes or reads."
+        );
+        assert_refused_without_member_keys("", source, &refusal);
+        assert!(
+            name != "Becalm" || include_str!("../../README.md").contains(&refusal),
+            "the README no longer quotes this refusal:\n{refusal}"
+        );
+    }
     for source in [
         "pub enum ProbeHalfWritten { #[serde(skip_serializing)] Read, #[serde(skip)] Neither }",
         "pub enum ProbeHalfRead { #[serde(skip_deserializing)] Written, #[serde(skip)] Neither }",
-        "pub enum ProbeNoVariant {}",
     ] {
         let refusals = super::no_variant_on_the_wire_errors(&syn::parse_str(source).unwrap());
         assert!(refusals.is_empty(), "for {source}, got: {refusals:?}");

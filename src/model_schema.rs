@@ -127,7 +127,7 @@ use crate::features::serde::{
     has_serde_read_hook, parse_read_renames, parse_written_renames, struct_tag,
 };
 use crate::features::serde::{
-    brand_field, has_serde_default, member_steps, parse_serde_key_omission,
+    brand_field, has_serde_default, member_steps, parse_serde_key_omission, tag_written_alone,
     transparent_fields_apart, variant_on_the_wire, variant_steps, written_and_read_by_the_author,
 };
 
@@ -1194,7 +1194,7 @@ struct FieldContext<'ctx> {
     /// ones declared.
     member_steps: &'ctx [Vec<String>],
     /// Whether serde writes or reads the container: a member of a variant it neither writes nor
-    /// reads has no key for a guard to read.
+    /// reads has no key for a guard to read, and its type is refused nothing.
     on_the_wire: bool,
     rename_all: Option<&'ctx str>,
     schema_module_name: Option<&'ctx str>,
@@ -1854,7 +1854,8 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     if let Some(output) = refused_item_output(&item, &empty_tuple_variant_errors(&item)) {
         return output;
     }
-    // An enum serde writes and reads no variant of has no value to describe, in any build.
+    // An enum serde writes and reads no variant of, or that declares none, has no value to
+    // describe, in any build.
     if let Some(output) = refused_item_output(&item, &no_variant_on_the_wire_errors(&item)) {
         return output;
     }
@@ -4325,52 +4326,70 @@ fn item_attrs(item: &Item) -> &[syn::Attribute] {
     }
 }
 
-/// The `compile_error!` tokens for every enum variant written `Foo()` that serde writes or reads,
-/// which serde writes with an empty `[]` payload while every surface describes the unit variant
-/// `Foo`.
+/// The `compile_error!` tokens for every enum variant written `Foo()`: where serde writes or reads
+/// one, it writes an empty `[]` payload while every surface describes the unit variant `Foo`, and
+/// under a tag with no `content` its derive refuses every one, skipped or not.
 fn empty_tuple_variant_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
     let Item::Enum(item_enum) = item else {
         return Vec::new();
     };
+    let tag = tag_written_alone(&item_enum.attrs);
     item_enum
         .variants
         .iter()
-        .filter(|variant| variant_on_the_wire(variant))
+        .filter(|variant| tag.is_some() || variant_on_the_wire(variant))
         .filter(|variant| {
             matches!(&variant.fields, syn::Fields::Unnamed(slots) if slots.unnamed.is_empty())
         })
         .map(|variant| {
             let name = &variant.ident;
-            syn::Error::new_spanned(
-                variant,
-                prefixed_guard_message(&format!(
-                    "variant `{name}`: `{name}()` is a tuple variant with no field, which serde \
-                     writes with an empty `[]` payload, while every surface describes it as the \
-                     unit variant `{name}`, so a value of it never crosses. Write `{name}` for a \
-                     unit variant, or give it a field."
-                )),
-            )
-            .to_compile_error()
+            let message = tag.as_ref().map_or_else(
+                || {
+                    format!(
+                        "variant `{name}`: `{name}()` is a tuple variant with no field, which \
+                         serde writes with an empty `[]` payload, while every surface describes \
+                         it as the unit variant `{name}`, so a value of it never crosses. Write \
+                         `{name}` for a unit variant, or give it a field."
+                    )
+                },
+                |key| {
+                    format!(
+                        "variant `{name}`: `{name}()` is a tuple variant with no field, and \
+                         serde's derive refuses a tuple variant of no slot or of several under \
+                         `#[serde(tag = \"{key}\")]` with no `content`, under `#[serde(skip)]` \
+                         or not: `#[serde(tag = \"...\")] cannot be used with tuple variants`. \
+                         Write `{name}` for a unit variant."
+                    )
+                },
+            );
+            syn::Error::new_spanned(variant, prefixed_guard_message(&message)).to_compile_error()
         })
         .collect()
 }
 
-/// The `compile_error!` tokens for an enum that declares variants and none serde writes or reads,
-/// which leaves no value for a surface to describe.
+/// The `compile_error!` tokens for an enum that declares no variant, or declares variants and none
+/// serde writes or reads, which leaves no value for a surface to describe.
 fn no_variant_on_the_wire_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
     let Item::Enum(item_enum) = item else {
         return Vec::new();
     };
-    if item_enum.variants.is_empty() || item_enum.variants.iter().any(variant_on_the_wire) {
+    if item_enum.variants.iter().any(variant_on_the_wire) {
         return Vec::new();
     }
     let name = &item_enum.ident;
-    let message = prefixed_guard_message(&format!(
-        "type `{name}`: every variant is under `#[serde(skip)]`, or under `skip_serializing` and \
-         `skip_deserializing` together, so serde writes no value of it and reads none, and no \
-         surface can describe it. Let serde write or read one of its variants."
-    ));
-    vec![syn::Error::new_spanned(name, message).to_compile_error()]
+    let message = if item_enum.variants.is_empty() {
+        format!(
+            "type `{name}`: declares no variant, so serde writes no value of it and reads none, \
+             and no surface can describe it. Declare a variant serde writes or reads."
+        )
+    } else {
+        format!(
+            "type `{name}`: every variant is under `#[serde(skip)]`, or under `skip_serializing` \
+             and `skip_deserializing` together, so serde writes no value of it and reads none, \
+             and no surface can describe it. Let serde write or read one of its variants."
+        )
+    };
+    vec![syn::Error::new_spanned(name, prefixed_guard_message(&message)).to_compile_error()]
 }
 
 /// The `compile_error!` tokens every list-form `rename(...)` / `rename_all(...)` the item carries
@@ -5207,11 +5226,13 @@ fn any_json_checks(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_macro2::Toke
 }
 
 /// Each type an item writes beside the subject a refusal of a JSON value names it by: every
-/// member, an alias's target, and each `default_types` filling.
+/// member serde writes or reads, an alias's target, and each `default_types` filling. serde writes
+/// and reads none of a member, or of a variant, taken off the wire in both directions.
 fn any_json_positions<'item>(
     item: &'item Item,
     args: &'item ModelSchemaArgs,
 ) -> Vec<(String, &'item syn::Type)> {
+    let carried = |field: &&Field| !parse_serde_key_omission(&field.attrs).absent_from_wire();
     let mut written: Vec<(String, &syn::Type)> = Vec::new();
     if let Item::Struct(item_struct) = item {
         written.extend(
@@ -5219,16 +5240,28 @@ fn any_json_positions<'item>(
                 .fields
                 .iter()
                 .enumerate()
+                .filter(|(_, field)| carried(field))
                 .map(|(index, field)| (preprocess::member_label(None, index, field), &field.ty)),
         );
     } else if let Item::Enum(item_enum) = item {
-        for variant in &item_enum.variants {
-            written.extend(variant.fields.iter().enumerate().map(|(index, field)| {
-                (
-                    preprocess::member_label(Some(variant), index, field),
-                    &field.ty,
-                )
-            }));
+        for variant in item_enum
+            .variants
+            .iter()
+            .filter(|variant| variant_on_the_wire(variant))
+        {
+            written.extend(
+                variant
+                    .fields
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, field)| carried(field))
+                    .map(|(index, field)| {
+                        (
+                            preprocess::member_label(Some(variant), index, field),
+                            &field.ty,
+                        )
+                    }),
+            );
         }
     } else if let Item::Type(item_type) = item {
         written.push(("the type it names".to_owned(), &item_type.ty));
@@ -5583,9 +5616,10 @@ const fn deferred_shape_refusals(
     Vec::new()
 }
 
-/// Every named field, tuple slot and (for an alias) target type an item declares, with the label
-/// its own refusal message names it by — [`field_label`] for a struct or enum-variant field,
-/// [`item_label`] for an alias's own target.
+/// Every named field, tuple slot and (for an alias) target type an item declares that serde writes
+/// or reads, with the label its own refusal message names it by — [`field_label`] for a struct or
+/// enum-variant field, [`item_label`] for an alias's own target. serde writes and reads none of a
+/// member, or of a variant, taken off the wire in both directions, so neither holds a width.
 #[cfg(feature = "swift")]
 fn swift_scanned_fields(item: &Item) -> Vec<(String, &syn::Type)> {
     if let Item::Struct(item_struct) = item {
@@ -5594,7 +5628,11 @@ fn swift_scanned_fields(item: &Item) -> Vec<(String, &syn::Type)> {
         found
     } else if let Item::Enum(item_enum) = item {
         let mut found = Vec::new();
-        for variant in &item_enum.variants {
+        for variant in item_enum
+            .variants
+            .iter()
+            .filter(|variant| variant_on_the_wire(variant))
+        {
             collect_swift_scanned_fields(&variant.fields, &mut found);
         }
         found
@@ -5610,22 +5648,15 @@ fn collect_swift_scanned_fields<'item>(
     fields: &'item syn::Fields,
     found: &mut Vec<(String, &'item syn::Type)>,
 ) {
-    match fields {
-        syn::Fields::Named(named) => {
-            for field in &named.named {
-                let raw_name = field
-                    .ident
-                    .as_ref()
-                    .map_or_else(String::new, ToString::to_string);
-                found.push((field_label(&raw_name), &field.ty));
-            }
-        }
-        syn::Fields::Unit => {}
-        syn::Fields::Unnamed(unnamed) => {
-            for field in &unnamed.unnamed {
-                found.push((field_label(""), &field.ty));
-            }
-        }
+    for field in fields
+        .iter()
+        .filter(|field| !parse_serde_key_omission(&field.attrs).absent_from_wire())
+    {
+        let raw_name = field
+            .ident
+            .as_ref()
+            .map_or_else(String::new, ToString::to_string);
+        found.push((field_label(&raw_name), &field.ty));
     }
 }
 
@@ -11728,8 +11759,8 @@ fn internally_tagged_guard_errors(
                     .to_compile_error(),
                 );
             }
-            // An empty tuple variant carries nothing: serde writes it as the tag alone, which is
-            // what the unit arm already describes.
+            // A tuple variant of no slot is refused ahead of every shape, in serde's words
+            // (`empty_tuple_variant_errors`).
             let field = unnamed.unnamed.first()?;
             if parse_serde_key_omission(&variant.attrs).absent_from_wire()
                 || parse_serde_key_omission(&field.attrs).absent_from_wire()
@@ -12758,6 +12789,7 @@ fn untagged_member_field_def(
         &written_def,
         field_name,
         &prop_meta,
+        ctx.on_the_wire,
         serde_guard_errors,
     );
     field_def.resolve_self_references(ctx.type_name, ctx.type_parameters);
@@ -17048,18 +17080,21 @@ fn field_guard_errors(
         .collect()
 }
 
-/// Every guard error the field violates: the two the type earns — the undescribable-std guard and
-/// the map-key guard, neither of which any attribute can hide — then everything the
-/// `model_schema_prop` attribute earned, then the serde-side guards when any fired.
+/// Every guard error the field violates: the ones its type earns (the undescribable-std, map-key,
+/// Kotlin width and flattened range guards) where serde writes or reads the member and its
+/// container, then everything the `model_schema_prop` attribute earned, then the serde-side guards
+/// when any fired. `on_the_wire` is whether serde writes or reads the container.
 fn collect_field_guard_errors(
     field: &Field,
     field_def: &FieldDef,
     written_def: &FieldDef,
     raw_field_ident: &str,
     prop_meta: &ModelSchemaPropMeta,
+    on_the_wire: bool,
     serde_guard_errors: Vec<proc_macro2::TokenStream>,
 ) -> Vec<proc_macro2::TokenStream> {
     let label = field_label(raw_field_ident);
+    let carried = on_the_wire && !parse_serde_key_omission(&field.attrs).absent_from_wire();
 
     #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     let map_key_error = check_map_key(field, field_def, &label)
@@ -17088,6 +17123,7 @@ fn collect_field_guard_errors(
         .chain(map_key_error)
         .chain(kotlin_width_error)
         .chain(flattened_range_error)
+        .filter(|_| carried)
         .chain(model_schema_prop_guard_errors(
             field,
             field_def,
@@ -17770,8 +17806,6 @@ fn process_field(
         // Held alive the same way, and for the reason `container_is_read_back` states: the only
         // reader of this flag is the read-hook writer, which this build does not compile.
         let _: bool = ctx.container_read_back;
-        // The key guards, its one reader, are serde's.
-        let _: bool = ctx.on_the_wire;
         Vec::new()
     };
 
@@ -17781,6 +17815,7 @@ fn process_field(
         &written_def,
         &raw_field_ident,
         &model_schema_prop_meta,
+        ctx.on_the_wire,
         serde_guard_errors,
     );
 

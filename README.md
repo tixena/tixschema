@@ -311,7 +311,7 @@ These build as they did, since no surface reads the member otherwise than serde 
 
 `Vec<T>` becomes `Array<T>`, and so does every other std wrapper serde writes as a JSON array of its element: `VecDeque<T>`, `BinaryHeap<T>`, `HashSet<T>`, and `BTreeSet<T>`. Under the [`indexmap` feature](#feature-flags), `indexmap::IndexSet<T>` is one more. Each is that array on the wire, so each is typed and validated as that array — the element decides what the array holds. A set is that array with its items distinct: see [A set holds each item once](#a-set-holds-each-item-once). Nesting is kept at whatever depth it is written: a `Vec<Vec<T>>` (or `HashSet<Vec<T>>`, or any other mix of those wrappers) writes an array of arrays, so it becomes `Array<Array<T>>`, `z.array(z.array(...))`, and a JSON schema whose `items` is itself an array.
 
-`LinkedList<T>` is the one std sequence left out. It writes that same array, so the covered spellings already describe every wire form it has, and a type written with one is refused at compile time with the rewrite named: use `Vec<T>`, or `VecDeque<T>` where values are pushed at both ends.
+`LinkedList<T>` is the one std sequence left out. It writes that same array, so the covered spellings already describe every wire form it has, and a type written with one is refused at compile time with the rewrite named: use `Vec<T>`, or `VecDeque<T>` where values are pushed at both ends. A member serde neither writes nor reads, and a member of a variant serde neither writes nor reads, is not refused: serde writes none of it.
 
 A fixed-size array `[T; N]` is that array too, with its length described. serde writes exactly `N` items and reads one back only at that length, so the two validating surfaces say so: the JSON schema pins the level with `"minItems": N` and `"maxItems": N`, and Zod appends `.length(N)`. The bound belongs to the level it was written at, so `Vec<[T; 3]>` is an unbounded array of 3-element arrays and `[Vec<T>; 3]` is a 3-element array of unbounded ones. TypeScript stays `Array<T>`: the fixed-length form its type system has is the N-element tuple, which has to be written out element by element and stops being readable long before `N` stops being legal. A length the macro cannot read — a const generic parameter, a `const` item, any computed expression — describes as an unbounded array, the macro running before there is a value to ask for; a slice `[T]` has no length to describe at all.
 
@@ -513,6 +513,8 @@ A member that holds `serde_json::Value` or `serde_json::Map` stops the build. Ei
 - a field, a slot of a tuple struct, and a member or a slot of a variant, flattened or not;
 - the value under an `Option`, a list, a map's key or value, a tuple, a `Result` and a type argument, at any depth: `Option<Vec<HashMap<String, Value>>>`, `(u32, Value)`, `Wrapper<Value>`;
 - the type an alias names, the value a brand holds, and a `default_types` filling.
+
+A member serde neither writes nor reads, under `#[serde(skip)]` or under `skip_serializing` and `skip_deserializing` together, and every member of a variant serde neither writes nor reads, is not refused for a JSON value it holds: serde writes none of it. A member under one of the two alone is refused as any other.
 
 ```rust
 #[model_schema()]
@@ -746,6 +748,12 @@ A tuple variant with no field, `Empty()`, is refused on every enum: serde writes
 
 ```text
 model_schema: variant `Empty`: `Empty()` is a tuple variant with no field, which serde writes with an empty `[]` payload, while every surface describes it as the unit variant `Empty`, so a value of it never crosses. Write `Empty` for a unit variant, or give it a field.
+```
+
+Under a `tag` with no `content`, serde's derive refuses the declaration, under `#[serde(skip)]` or not, as it refuses every tuple variant of no slot or of several there, and the refusal says so:
+
+```text
+model_schema: variant `Empty`: `Empty()` is a tuple variant with no field, and serde's derive refuses a tuple variant of no slot or of several under `#[serde(tag = "kind")]` with no `content`, under `#[serde(skip)]` or not: `#[serde(tag = "...")] cannot be used with tuple variants`. Write `Empty` for a unit variant.
 ```
 
 ```rust
@@ -1058,12 +1066,18 @@ const Skipped$RawSchema = z.discriminatedUnion("kind", [z.strictObject({
 
 The schema refuses `{"kind":"Closed","reason":"r"}`, as serde does. Whether an enum is a plain one is read off every variant it declares: `enum Cartage { Light, Heavy, #[serde(skip)] Bulk(String) }` is described as the externally tagged union of `"Light"` and `"Heavy"`, the payloads serde writes for it.
 
-What serde does not write or read is held to no rule of what it writes or reads. A skipped variant builds where the same variant written would be refused: a tuple variant of no slot, `Nothing()`, but under a tag alone, where Serde's derive refuses every tuple variant, skipped or not; a variant under a `content` key that declares one slot and takes it off the wire; a member that is a bare `Option` with no `skip_serializing_if`; a unit variant whose name breaks the enum's own `pattern`; a unit variant and a tuple variant of several slots of an untagged enum; and what it holds beside a tag (see [Internally Tagged Enums](#internally-tagged-enums-tag-with-no-content)). A holder that flattens the enum is refused for nothing such a variant holds. Its members are still held to their own `#[model_schema_prop]` keys, and `validate()` still checks a value of it built in Rust. A variant under `skip_serializing` alone, which serde reads, or under `skip_deserializing` alone, which serde writes, is described and held to every rule as any other variant.
+What serde does not write or read is held to no rule of what it writes or reads. A skipped variant builds where the same variant written would be refused: a tuple variant of no slot, `Nothing()`, but under a tag alone, where Serde's derive refuses every tuple variant of no slot or of several, skipped or not; a member that holds a `u64` or a `usize` under `swift` or `kotlin`, a `LinkedList` or an `OsString`, a map keyed by a value serde writes as no string, or a JSON value, as a member serde neither writes nor reads does; a variant under a `content` key that declares one slot and takes it off the wire; a member that is a bare `Option` with no `skip_serializing_if`; a unit variant whose name breaks the enum's own `pattern`; a unit variant and a tuple variant of several slots of an untagged enum; and what it holds beside a tag (see [Internally Tagged Enums](#internally-tagged-enums-tag-with-no-content)). A holder that flattens the enum is refused for nothing such a variant holds. Its members are still held to their own `#[model_schema_prop]` keys, and `validate()` still checks a value of it built in Rust. A variant under `skip_serializing` alone, which serde reads, or under `skip_deserializing` alone, which serde writes, is described and held to every rule as any other variant.
 
 An enum whose every variant serde neither writes nor reads has no value to describe, and does not build:
 
 ```text
 error: model_schema: type `Becalmed`: every variant is under `#[serde(skip)]`, or under `skip_serializing` and `skip_deserializing` together, so serde writes no value of it and reads none, and no surface can describe it. Let serde write or read one of its variants.
+```
+
+Nor does an enum that declares no variant, under a tag or not:
+
+```text
+error: model_schema: type `Becalm`: declares no variant, so serde writes no value of it and reads none, and no surface can describe it. Declare a variant serde writes or reads.
 ```
 
 #### A Check Written on the Enum
@@ -8395,7 +8409,7 @@ Supported Serde attributes:
 - `#[serde(flatten)]` -- flatten a field into the parent as an intersection type (`A & B`) / Zod `.and(...)`
 - `#[serde(transparent)]` -- transparent wrappers (used for branded newtypes)
 - `#[serde(skip_serializing_if = "...")]` -- the key is left out of the payload when the predicate fires: `roles: z.array(z.string()).optional(),` in Zod and no `required` entry in the JSON Schema. On a field that is not an `Option` the TypeScript member takes the optional key too, `roles?: Array<string>;`, there being no second spelling for it; an `Option` field keeps `T | undefined` unless [`ts_optional`](#ts_optional) asks otherwise
-- `#[serde(skip)]` -- the key is written into no payload and read out of none, so no surface describes the member at all: no TypeScript member, no Zod key, and neither a `properties` nor a `required` entry. On a tuple-struct or tuple-variant slot it takes the slot out of the described tuple, which shortens the arity -- and a variant declaring one slot becomes a unit variant, which is what serde writes for it. On a variant, the variant is described on no surface and read and written by no client: see [A Variant Serde Neither Writes Nor Reads](#a-variant-serde-neither-writes-nor-reads)
+- `#[serde(skip)]` -- the key is written into no payload and read out of none, so no surface describes the member at all: no TypeScript member, no Zod key, and neither a `properties` nor a `required` entry. No rule of what a surface describes is held to its type: a `u64` under `swift` or `kotlin`, a std type with no schema, a map keyed by a value serde writes as no string and a JSON value all build there. On a tuple-struct or tuple-variant slot it takes the slot out of the described tuple, which shortens the arity -- and a variant declaring one slot becomes a unit variant, which is what serde writes for it. On a variant, the variant is described on no surface and read and written by no client: see [A Variant Serde Neither Writes Nor Reads](#a-variant-serde-neither-writes-nor-reads)
 - `#[serde(skip_serializing)]` -- the write half of `skip`: the key is left out of every payload while a supplied one is still read, and every surface answers as it does for `skip_serializing_if`
 - `#[serde(skip_deserializing)]` -- the read half: the key is written into every payload while a supplied one is discarded, so the member keeps a required key
 - `#[serde(default)]` and `#[serde(default = "...")]`, on a field or on the struct -- a key the payload leaves out is read as the default on every surface, which is handed the default as JSON: see [A Key Read as Its Default](#a-key-read-as-its-default-serdedefault)
@@ -8492,6 +8506,19 @@ tixschema = { features = ["indexmap"] }
 ```
 
 A crate that declares a `#[model_schema()]` type of its own named `IndexMap` or `IndexSet`, above the type that holds it, is not refused: the name is that type.
+
+#### `u64` or `usize` Under `swift` or `kotlin`
+
+**Error:**
+
+```text
+error: model_schema: field `count`: `u64` has no Swift mapping; the Swift target refuses unsigned 64-bit and pointer-sized integers
+error: model_schema: field `count`: `u64` has no Kotlin mapping; the Kotlin target refuses unsigned 64-bit and pointer-sized integers
+```
+
+**Cause:** A member that reaches a `u64` or a `usize` at any depth, under the `swift` or the `kotlin` feature. The Swift and the Kotlin targets each refuse the two widths.
+
+**Solution:** Use `i64`, or `u32` where the range allows. A member serde neither writes nor reads, under `#[serde(skip)]` or under `skip_serializing` and `skip_deserializing` together, and every member of a variant serde neither writes nor reads, is not refused: serde writes none of it. A member under one of the two alone is.
 
 #### JSON Schema Method Missing
 
