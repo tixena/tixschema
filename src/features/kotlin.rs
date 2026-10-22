@@ -311,16 +311,20 @@ fn writes_a_bare_name(def: &FieldDef) -> bool {
     KOTLIN_BARE_NAMED.with(|noted| noted.borrow().contains(name))
 }
 
+/// The keys serde reads the struct a flattened member typed `def` holds from, where the emitter
+/// wrote that struct: `None` for any other type.
+fn recorded_keys(def: &FieldDef) -> Option<Vec<String>> {
+    let FieldDefType::SiblingType(name, _) = &def.field_type else {
+        return None;
+    };
+    KOTLIN_TAKEN_KEYS.with(|noted| noted.borrow().get(name).cloned())
+}
+
 /// The keys a flattened struct typed `def` takes off its holder's object, as a Kotlin set: those
 /// serde reads where the emitter wrote the struct, and the `elementNames` of the descriptor
 /// `serializer` answers for a struct it has not written.
 fn flattened_struct_keys(def: &FieldDef, serializer: &str) -> String {
-    let recorded = if let FieldDefType::SiblingType(name, _) = &def.field_type {
-        KOTLIN_TAKEN_KEYS.with(|noted| noted.borrow().get(name).cloned())
-    } else {
-        None
-    };
-    recorded.map_or_else(
+    recorded_keys(def).map_or_else(
         || format!("({serializer}).descriptor.elementNames.toSet()"),
         |keys| {
             if keys.is_empty() {
@@ -1390,9 +1394,10 @@ fn own_field_plan(
 
 /// One flattened *struct* (or `Option<Struct>`) field's own statements: the `serialize` merge, the
 /// `deserialize` read (leniently, off `rest`, the object serde hands the member, as the member's
-/// own `preprocess` then corrects it, and `null` where an optional field's own keys are all absent
-/// from `rest`), and the keys it takes, which the members flattened after it are handed the object
-/// without.
+/// own `preprocess` then corrects it), and the keys it takes, which the members flattened after it
+/// are handed the object without. An optional field is `null` where its own keys are all absent
+/// from `rest`, and, holding a struct the emitter wrote that takes no key and naming no function,
+/// wherever its read throws.
 fn flatten_struct_field_plan(
     field: &KotlinField,
     prop: &str,
@@ -1407,13 +1412,18 @@ fn flatten_struct_field_plan(
         "val {keys_ident} = {}",
         flattened_struct_keys(&base, &inner_serializer)
     );
-    let handed = preprocess::corrected(preprocess::of(&field.field_def), rest);
-    let decode = if field.field_def.is_optional() {
-        format!(
-            "val {prop} = if ({rest}.keys.any {{ it in {keys_ident} }}) lenient.decodeFromJsonElement({inner_serializer}, {handed}) else null"
-        )
+    let functions = preprocess::of(&field.field_def);
+    let decoded = format!(
+        "lenient.decodeFromJsonElement({inner_serializer}, {})",
+        preprocess::corrected(functions, rest)
+    );
+    let decode = if !field.field_def.is_optional() {
+        format!("val {prop} = {decoded}")
+    } else if functions.is_empty() && recorded_keys(&base).is_some_and(|keys| keys.is_empty()) {
+        // With no key to look for, the struct is held wherever it reads, as serde holds it.
+        format!("val {prop} = runCatching {{ {decoded} }}.getOrNull()")
     } else {
-        format!("val {prop} = lenient.decodeFromJsonElement({inner_serializer}, {handed})")
+        format!("val {prop} = if ({rest}.keys.any {{ it in {keys_ident} }}) {decoded} else null")
     };
     (serialize, format!("{key_read}; {decode}"), keys_ident)
 }

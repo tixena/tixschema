@@ -455,9 +455,10 @@ mod run_swift_flattened;
 /// A flattened `Option` beside a member of its holder's own, alone in its holder and in a variant
 /// under a tag key, of a struct of two keys, of a struct declared below its holder, of a model
 /// `validate()` walks, of a struct that reads the keys no member around it took and read from what
-/// a function answers, and a struct flattened bare beside a member of its holder's own.
+/// a function answers, and a struct flattened bare beside a member of its holder's own. The Kotlin
+/// run reads the last two as well.
 #[cfg(test)]
-#[cfg(feature = "swift")]
+#[cfg(any(feature = "swift", feature = "kotlin"))]
 #[path = "swift_tests/flattened_options_models.rs"]
 mod swift_flattened_options_models;
 

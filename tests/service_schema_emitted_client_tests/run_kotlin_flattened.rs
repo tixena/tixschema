@@ -5,7 +5,9 @@
 //! holder's own, is handed the keys serde hands it, and an externally tagged enum the one entry
 //! serde hands it, and is written as serde writes it, a unit variant as its name over `null`. An
 //! optional map, the one member, is read as `null` where serde reads `None`, and a map keyed by a
-//! plain enum under the names serde writes its variants under.
+//! plain enum under the names serde writes its variants under. An optional struct with a flattened
+//! member of its own is read wherever the struct reads, and as `null` wherever serde reads `None`,
+//! and one that takes a key is `null` where the key is absent and refuses a key that does not read.
 
 #![cfg(feature = "kotlin")]
 
@@ -18,19 +20,24 @@ use super::flattened_models::{
     BELTING, Belting, Bending, Brailing, CHOCKED, CLEATING, Cathead, Cleating, CorrectedLocker,
     Dipping, ENSIGN, EmptiedLocker, Gammoning, Gasketing, HEAVING, HITCHING, Hawsepipe, Heaving,
     Hitching, Knotting, LOCKER, Lanyarding, Luffing, MARLINE, Netting, Nipping, PAYLOAD,
-    ProbeLocker, Rousing, SCUDDING, SNUBBED, STOWING, STROPPING, STRUCK, Scudding, Seizing,
-    Slinging, Snubbing, Splicing, Stoppering, Stowing, Striking, Stropping, Tacking,
-    UNDER_AN_ALIAS, UNWRITTEN, Whipping, Yawing, belting_kotlin, bending_kotlin, brailing_kotlin,
-    bunting_kotlin, cathead_kotlin, chock_kotlin, cleating_kotlin, corrected_locker_kotlin,
-    dipping_kotlin, emptied_locker_kotlin, ensign_kotlin, gammoning_kotlin, gasketing_kotlin,
-    hawsepipe_kotlin, hawser_kotlin, heaving_kotlin, hitching_kotlin, jibing_kotlin,
-    knotting_kotlin, lanyarding_kotlin, luffing_kotlin, marline_kotlin, netting_kotlin,
-    nipping_kotlin, noting_kotlin, probe_locker_kotlin, quaying_kotlin, read_of, rousing_kotlin,
-    scudding_kotlin, seizing_kotlin, sheeting_kotlin, slinging_kotlin, snubbing_kotlin,
-    splicing_kotlin, stoppering_kotlin, stowing_kotlin, striking_kotlin, stropping_kotlin,
-    tacking_kotlin, ticketed_kotlin, unwritten_kotlin, whipping_kotlin, yawing_kotlin,
+    ProbeLocker, Rousing, SCARFING, SCUDDING, SNUBBED, STOWING, STROPPING, STRUCK, Scarfing,
+    Scudding, Seizing, Slinging, Snubbing, Splicing, Stoppering, Stowing, Striking, Stropping,
+    Tacking, UNDER_AN_ALIAS, UNWRITTEN, Whipping, Yawing, belting_kotlin, bending_kotlin,
+    brailing_kotlin, bunting_kotlin, cathead_kotlin, chock_kotlin, cleating_kotlin,
+    corrected_locker_kotlin, dipping_kotlin, emptied_locker_kotlin, ensign_kotlin,
+    gammoning_kotlin, gasketing_kotlin, hawsepipe_kotlin, hawser_kotlin, heaving_kotlin,
+    hitching_kotlin, jibing_kotlin, knotting_kotlin, lanyarding_kotlin, luffing_kotlin,
+    marline_kotlin, netting_kotlin, nipping_kotlin, noting_kotlin, probe_locker_kotlin,
+    quaying_kotlin, read_of, rousing_kotlin, scarfing_kotlin, scudding_kotlin, seizing_kotlin,
+    sheeting_kotlin, slinging_kotlin, snubbing_kotlin, splicing_kotlin, stoppering_kotlin,
+    stowing_kotlin, striking_kotlin, stropping_kotlin, tacking_kotlin, ticketed_kotlin,
+    unwritten_kotlin, whipping_kotlin, yawing_kotlin,
 };
 use super::runtime::ran_kotlin;
+use super::swift_flattened_options_models::{
+    Crowning, FLAKING, FLAKING_ABSENT, FLAKING_MISTYPED, Fidding, Flaking, LAPPING, LAPPING_ABSENT,
+    LAPPING_MISTYPED, crowning_kotlin, fidding_kotlin, flaking_kotlin, tabling_kotlin,
+};
 use super::tuple_variants_models::labelling_kotlin;
 
 const KOTLIN_IMPORTS: &str = "import kotlinx.serialization.*\n\
@@ -902,4 +909,113 @@ fn a_flattened_map_keyed_by_an_enum_reads_and_writes_in_kotlin_as_serde_does() {
         return;
     };
     assert_eq!(printed, expected);
+}
+
+/// An optional struct with a flattened member of its own, which takes no key, is read wherever
+/// the struct reads from the object and as `null` wherever it does not, as serde reads `None`: no
+/// key, a key the struct reads absent, and a key held as a type it does not read. An optional
+/// struct that takes a key is `null` where the key is absent and is read where it is there, so a
+/// key that does not read refuses the payload, as TypeScript and Zod refuse it, where serde reads
+/// `None`. Each holder is written back as serde writes it back, and the struct with a flattened
+/// member of its own is read and written as serde does.
+#[test]
+fn an_optional_struct_that_takes_no_key_reads_and_writes_in_kotlin_as_serde_does() {
+    let crowning = |json: &str| told_by_serde(json, |read: &Crowning| self::json(read));
+    let fidding = |json: &str| {
+        told_by_serde(json, |read: &Fidding| {
+            format!("{} {}", self::json(&read.crowning), self::json(read))
+        })
+    };
+    let scarfing = |json: &str| {
+        told_by_serde(json, |read: &Scarfing| {
+            format!("{} {}", self::json(&read.sheeting), self::json(read))
+        })
+    };
+    let flaking = |json: &str| {
+        told_by_serde(json, |read: &Flaking| {
+            format!("{} {}", self::json(&read.tabling), self::json(read))
+        })
+    };
+    let fidding_shown = "\"${Json.encodeToString(serializer<Crowning?>(), it.crowning)} \
+                         ${Json.encodeToString(Fidding.serializer(), it)}\"";
+    let scarfing_shown = "\"${Json.encodeToString(serializer<Sheeting?>(), it.sheeting)} \
+                          ${Json.encodeToString(Scarfing.serializer(), it)}\"";
+    let flaking_shown = "\"${Json.encodeToString(serializer<Tabling?>(), it.tabling)} \
+                         ${Json.encodeToString(Flaking.serializer(), it)}\"";
+    let mut rows = vec![EntryRow {
+        json: LAPPING,
+        read_as: "Crowning",
+        shown: "Json.encodeToString(Crowning.serializer(), it)",
+        told: crowning,
+    }];
+    rows.extend(
+        [LAPPING, FLAKING_ABSENT, LAPPING_ABSENT, LAPPING_MISTYPED].map(|json| EntryRow {
+            json,
+            read_as: "Fidding",
+            shown: fidding_shown,
+            told: fidding,
+        }),
+    );
+    rows.extend(SCARFING.map(|json| EntryRow {
+        json,
+        read_as: "Scarfing",
+        shown: scarfing_shown,
+        told: scarfing,
+    }));
+    rows.extend(
+        [FLAKING, FLAKING_ABSENT, FLAKING_MISTYPED].map(|json| EntryRow {
+            json,
+            read_as: "Flaking",
+            shown: flaking_shown,
+            told: flaking,
+        }),
+    );
+    let serde_told: Vec<String> = rows.iter().map(|row| (row.told)(row.json)).collect();
+    assert_eq!(
+        serde_told,
+        [
+            "{\"note\":\"n\",\"label\":\"north\"}",
+            "{\"note\":\"n\",\"label\":\"north\"} {\"note\":\"n\",\"label\":\"north\"}",
+            "null {}",
+            "null {}",
+            "null {}",
+            "{\"label\":\"n\"} {\"label\":\"n\"}",
+            "null {}",
+            "null {}",
+            "{\"label\":\"north\"} {\"label\":\"north\"}",
+            "null {}",
+            "null {}",
+        ],
+        "serde no longer reads each payload as it did"
+    );
+    let mut in_kotlin = serde_told;
+    // The key `Tabling` reads, held as a number: TypeScript and Zod refuse it.
+    in_kotlin[10] = "refused".to_owned();
+    let mut expected = String::new();
+    let mut main = String::from(ENTRY_READ);
+    main.push_str("fun main() {\n");
+    for (at, (row, told)) in rows.iter().zip(&in_kotlin).enumerate() {
+        let _ = writeln!(expected, "{at}: {told}");
+        let _ = writeln!(
+            main,
+            "    entry(\"{at}\", {}.serializer(), \"\"\"{}\"\"\") {{ {} }}",
+            row.read_as, row.json, row.shown
+        );
+    }
+    main.push_str("}\n");
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        tabling_kotlin::kotlin_definition(),
+        crowning_kotlin::kotlin_definition(),
+        fidding_kotlin::kotlin_definition(),
+        flaking_kotlin::kotlin_definition(),
+        labelling_kotlin::kotlin_definition(),
+        sheeting_kotlin::kotlin_definition(),
+        scarfing_kotlin::kotlin_definition(),
+        main,
+    ];
+    let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
+        return;
+    };
+    assert_eq!(printed, expected, "the Kotlin read is not the read above");
 }
