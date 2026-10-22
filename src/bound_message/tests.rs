@@ -15,6 +15,7 @@ use super::rust_violation;
 use super::swift_violation;
 #[cfg(feature = "zod")]
 use super::zod_error_arg;
+use crate::features::model_schema_prop::LiteralValue;
 
 #[cfg(feature = "serde")]
 use quote::quote;
@@ -24,6 +25,17 @@ use syn::Token;
 use syn::punctuated::Punctuated;
 #[cfg(all(feature = "serde", feature = "kotlin"))]
 use syn::{Expr, ExprLit, ExprMacro, ExprMethodCall, Lit};
+
+/// A literal of each kind, the string one holding what each spelling escapes.
+#[cfg(feature = "serde")]
+fn literals() -> [LiteralValue; 4] {
+    [
+        LiteralValue::Bool(true),
+        LiteralValue::Number(214.0),
+        LiteralValue::Number(-0.5),
+        LiteralValue::Str(r#"a"b\c$d`e"#.to_owned()),
+    ]
+}
 
 /// The tokens `rust_violation` builds, as one line with the spacing `quote!` prints.
 #[cfg(feature = "serde")]
@@ -213,7 +225,8 @@ fn kotlin_reports_each_bound_in_the_sentence_rust_reports_it_in() {
         Bound::Pattern("^[a-z]+$"),
         Bound::Pattern(r#"^\x41"x"$"#),
     ];
-    for bound in written {
+    let held = literals();
+    for bound in written.into_iter().chain(held.iter().map(Bound::Literal)) {
         for named in [Some("itemLabel"), None] {
             assert_eq!(kotlin_sentence(bound, named), rust_sentence(bound, named));
         }
@@ -241,7 +254,12 @@ fn every_sentence_opens_with_a_stem_the_list_spells_and_no_stem_is_unwritten() {
         Bound::Minimum(0.0),
         Bound::Pattern("^[a-z]+$"),
     ];
-    for bound in written {
+    let held = literals();
+    let stated_bounds: Vec<Bound<'_>> = written
+        .into_iter()
+        .chain(held.iter().map(Bound::Literal))
+        .collect();
+    for bound in stated_bounds.iter().copied() {
         let stated = bound.stated();
         assert!(
             super::VIOLATION_STEMS
@@ -252,7 +270,9 @@ fn every_sentence_opens_with_a_stem_the_list_spells_and_no_stem_is_unwritten() {
     }
     for stem in super::VIOLATION_STEMS {
         assert!(
-            written.iter().any(|bound| bound.stated().starts_with(stem)),
+            stated_bounds
+                .iter()
+                .any(|bound| bound.stated().starts_with(stem)),
             "no bound writes the stem: {stem}"
         );
     }
@@ -299,7 +319,9 @@ fn the_three_renderings_of_a_bound_hold_one_sentence() {
         Bound::Minimum(0.0),
         Bound::Pattern("^[a-z]+"),
     ];
-    for bound in written {
+    // A literal no spelling escapes: a string one is quoted, and each spelling escapes the quotes.
+    let held = [LiteralValue::Bool(false), LiteralValue::Number(214.0)];
+    for bound in written.into_iter().chain(held.iter().map(Bound::Literal)) {
         let stated = bound.stated();
         let rust = rendered(bound, Some("field"), &quote! { held });
         assert!(
@@ -366,6 +388,7 @@ fn swift_sentence(literal: &str) -> String {
 #[cfg(all(feature = "serde", feature = "swift"))]
 #[test]
 fn the_swift_sentence_is_the_one_rust_writes_for_each_bound() {
+    let held = literals();
     for bound in [
         Bound::MaxItems(3),
         Bound::MaxLength(50),
@@ -375,7 +398,10 @@ fn the_swift_sentence_is_the_one_rust_writes_for_each_bound() {
         Bound::Minimum(0.5),
         Bound::Pattern("^[a-z]+$"),
         Bound::Pattern("^\"[0-9A-Za-z_]+\\.txt\"$"),
-    ] {
+    ]
+    .into_iter()
+    .chain(held.iter().map(Bound::Literal))
+    {
         for place in [Some("itemLabel"), None] {
             assert_eq!(
                 swift_sentence(&swift_violation(bound, place, "observed")),
@@ -403,5 +429,55 @@ fn a_swift_sentence_is_one_string_literal() {
     assert_eq!(
         swift_violation(Bound::Pattern("^a\\.b\"$"), Some("slug"), "slug"),
         r#""'slug': does not match pattern '^a\\.b\"$'""#
+    );
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_literal_is_stated_as_the_zod_schema_writes_it_and_quotes_the_value_back() {
+    let fixed = LiteralValue::Str("fixed".to_owned());
+    assert_eq!(
+        rendered(Bound::Literal(&fixed), Some("kind"), &quote! { value }),
+        r#"format ! ("'{}': {}, got {}" , "kind" , "not the literal \"fixed\"" , value)"#
+    );
+    let whole = LiteralValue::Number(214.0);
+    assert_eq!(
+        rendered(Bound::Literal(&whole), None, &quote! { value }),
+        r#"format ! ("{}, got {}" , "not the literal 214" , value)"#
+    );
+    let quoted = LiteralValue::Str(r#"a"b"#.to_owned());
+    assert_eq!(
+        Bound::Literal(&quoted).stated(),
+        r#"not the literal "a\"b""#,
+        "a string literal is quoted as the Zod schema quotes it"
+    );
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn a_literal_reaches_the_zod_template_escaped() {
+    assert_eq!(
+        zod_error_arg(Bound::Literal(&LiteralValue::Bool(true))),
+        "{ error: (issue) => `not the literal true, got ${String(issue.input)}` }"
+    );
+    assert_eq!(
+        zod_error_arg(Bound::Literal(&LiteralValue::Str(
+            r#"a"b\c$d`e"#.to_owned()
+        ))),
+        r#"{ error: (issue) => `not the literal "a\\"b\\\\c\$d\`e", got ${String(issue.input)}` }"#,
+        "a template reads each backslash, backtick and dollar sign back as written"
+    );
+}
+
+#[cfg(feature = "dart")]
+#[test]
+fn a_literal_reaches_the_dart_string_escaped() {
+    assert_eq!(
+        dart_violation(
+            Bound::Literal(&LiteralValue::Str("$x".to_owned())),
+            Some("code"),
+            "code"
+        ),
+        r#""'code': not the literal \"\$x\", got ${code}""#
     );
 }

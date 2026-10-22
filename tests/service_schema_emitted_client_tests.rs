@@ -316,6 +316,26 @@ mod listed_maps_models;
 #[path = "service_schema_emitted_client_tests/run_swift_listed_maps.rs"]
 mod run_swift_listed_maps;
 
+/// The models a `literal` is written on, and what each payload of their table reads as.
+#[cfg(all(test, any(feature = "dart", feature = "swift", feature = "kotlin")))]
+#[path = "model_schema_prop_tests/literal_models.rs"]
+mod literal_models;
+
+/// A `literal` read by the emitted Dart types, against serde.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_literals.rs"]
+mod run_dart_literals;
+
+/// A `literal` read by the emitted Swift types, against serde.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_literals.rs"]
+mod run_swift_literals;
+
+/// A `literal` read by the emitted Kotlin types, against serde.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_literals.rs"]
+mod run_kotlin_literals;
+
 /// The models the four std ranges are written on, and the payloads serde writes and refuses.
 #[cfg(all(test, any(feature = "dart", feature = "swift", feature = "kotlin")))]
 #[path = "std_range_tests/models.rs"]

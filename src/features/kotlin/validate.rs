@@ -12,10 +12,12 @@ use core::cell::RefCell;
 use core::mem;
 use std::collections::HashMap;
 
-use super::{kotlin_name, kotlin_template_text, kotlin_typename, result_class};
+use super::{kotlin_name, kotlin_quoted, kotlin_template_text, kotlin_typename, result_class};
 use crate::bound_message::{Bound, kotlin_repeated, kotlin_violation};
-use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
-use crate::field_type::{FieldDef, FieldDefType, RESULT_ARMS, is_sequence_wrapper};
+use crate::features::model_schema_prop::{FunctionName, LiteralValue, ModelSchemaPropMeta};
+use crate::field_type::{
+    FieldDef, FieldDefType, RESULT_ARMS, format_number_literal, is_sequence_wrapper,
+};
 
 /// The list `validate()` collects its messages in.
 const VIOLATIONS: &str = "violations";
@@ -197,6 +199,10 @@ impl<'item> Rules<'item> {
             return Vec::new();
         };
         let place = member.place.as_deref();
+        if let Some(literal) = &meta.literal {
+            let depth = usize::from(member.def.is_optional());
+            return self.literal_statements(held, read, place, depth, literal);
+        }
         if held.is_list() {
             return count_statements(meta, read, place);
         }
@@ -406,6 +412,69 @@ impl<'item> Rules<'item> {
         } else {
             Some(format!("${entry}"))
         }
+    }
+
+    /// What `literal`, a member's only rule, adds for the value `def` describes at `read`: each
+    /// item of a list holds it, under its index, and a nullable where it holds a value. `depth`
+    /// numbers the names the walk binds.
+    fn literal_statements(
+        &mut self,
+        def: &FieldDef,
+        read: &str,
+        place: Option<&str>,
+        depth: usize,
+        literal: &LiteralValue,
+    ) -> Vec<String> {
+        let below = depth.saturating_add(1);
+        if def.is_optional() {
+            let held = bound_name("held", depth);
+            let inside = self.literal_statements(&present(def), &held, place, below, literal);
+            return wrapped(&inside, |inner| {
+                format!("{read}?.let {{ {held} -> {inner} }}")
+            });
+        }
+        if def.array_depth > 0 {
+            let (index, held) = (bound_name("index", depth), bound_name("held", depth));
+            let at = stepped(place, &format!("${index}"));
+            let inside = self.literal_statements(&item_of(def), &held, Some(&at), below, literal);
+            return wrapped(&inside, |inner| {
+                format!("{read}.forEachIndexed {{ {index}, {held} -> {inner} }}")
+            });
+        }
+        let mut shown = read.to_owned();
+        let broken = match literal {
+            LiteralValue::Bool(true) => format!("!{read}"),
+            LiteralValue::Bool(false) => read.to_owned(),
+            LiteralValue::Str(text) => format!("{read} != {}", kotlin_quoted(text)),
+            LiteralValue::Number(number) => {
+                let whole = format_number_literal(*number);
+                let held = &def.field_type;
+                // Kotlin compares two integers of one type alone, and warns of a conversion to the
+                // type a value already is.
+                match Number::of(held) {
+                    Some(kind @ (Number::Double | Number::Float)) => {
+                        self.helpers.insert(Helper::Shown);
+                        shown = kind.quoted(read);
+                        kind.compared(read, "!=", *number)
+                    }
+                    Some(Number::Unsigned) if matches!(held, FieldDefType::U32) => {
+                        format!("{read} != {whole}u")
+                    }
+                    Some(Number::Unsigned) => format!("{read}.toUInt() != {whole}u"),
+                    Some(Number::Signed) | None => {
+                        if matches!(held, FieldDefType::I64 | FieldDefType::Isize) {
+                            format!("{read} != {whole}L")
+                        } else if matches!(held, FieldDefType::I8 | FieldDefType::I16) {
+                            format!("{read}.toInt() != {whole}")
+                        } else {
+                            format!("{read} != {whole}")
+                        }
+                    }
+                }
+            }
+        };
+        let reported = kotlin_violation(Bound::Literal(literal), place, &shown);
+        vec![format!("if ({broken}) {VIOLATIONS}.add({reported})")]
     }
 
     /// What `member` adds: the repeat of a set it is, its bounds, what the value it holds reports

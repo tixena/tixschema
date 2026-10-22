@@ -279,6 +279,28 @@ struct NullableGeneric<IdType> {
     pub name: String,
 }
 
+/// A numeric literal: the read and `validate()` hold the member to it.
+#[cfg(all(feature = "serde", feature = "zod"))]
+#[model_schema()]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Fixed {
+    #[model_schema_prop(literal = 214)]
+    pub value: u8,
+}
+
+/// A string and a boolean literal beside a member held to a range.
+#[cfg(all(feature = "serde", feature = "zod"))]
+#[model_schema()]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Tagged {
+    #[model_schema_prop(minimum = 1)]
+    pub count: u8,
+    #[model_schema_prop(literal = "fixed")]
+    pub kind: String,
+    #[model_schema_prop(literal = true)]
+    pub on: bool,
+}
+
 /// The Rust side of the function a `preprocess` above names: a read of the type calls it, and it
 /// answers the payload as it is.
 #[cfg(all(
@@ -432,7 +454,10 @@ fn test_string_literal_typescript() {
 fn test_string_literal_zod() {
     let zod_schema = AccountContext::zod_schema();
 
-    assert!(zod_schema.contains("iss: z.literal(\"Tixena\")"));
+    assert!(zod_schema.contains(
+        "iss: z.literal(\"Tixena\", { error: (issue) => `not the literal \"Tixena\", got \
+         ${String(issue.input)}` })"
+    ));
 
     assert!(zod_schema.contains("aud: z.string()"));
 
@@ -487,8 +512,8 @@ fn test_multiple_literals_typescript() {
 fn test_multiple_literals_zod() {
     let zod_schema = MultipleLiterals::zod_schema();
 
-    assert!(zod_schema.contains("type_field: z.literal(\"fixed_type\")"));
-    assert!(zod_schema.contains("version: z.literal(\"v1.0\")"));
+    assert!(zod_schema.contains("type_field: z.literal(\"fixed_type\", { error: "));
+    assert!(zod_schema.contains("version: z.literal(\"v1.0\", { error: "));
 
     assert!(zod_schema.contains("id: z.string()"));
     assert!(zod_schema.contains("name: z.string()"));
@@ -510,7 +535,11 @@ fn test_optional_literal_zod() {
 
     assert!(zod_schema.contains(
         "optional_type: z.union([z.null().transform(() => undefined), \
-         z.literal(\"optional_literal\"), z.undefined()])"
+         z.literal(\"optional_literal\", { error: (issue) => `not the literal \
+         \"optional_literal\", got ${String(issue.input)}` }).check(z.superRefine((_, ctx) => {\n  \
+         for (const [at, issue] of ctx.issues.entries()) if (issue.code === \"invalid_value\") \
+         ctx.issues[at] = { ...issue, continue: true };\n}, { when: (payload) => typeof \
+         payload.value === \"string\" })), z.undefined()]).prefault(undefined)"
     ));
     assert!(zod_schema.contains("id: z.string()"));
 }
@@ -529,7 +558,7 @@ fn test_array_literal_typescript() {
 fn test_array_literal_zod() {
     let zod_schema = ArrayLiteral::zod_schema();
 
-    assert!(zod_schema.contains("literal_array: z.array(z.literal(\"array_item\"))"));
+    assert!(zod_schema.contains("literal_array: z.array(z.literal(\"array_item\", { error: "));
     assert!(zod_schema.contains("id: z.string()"));
 }
 
@@ -562,9 +591,12 @@ fn test_boolean_and_number_literal_typescript() {
 fn test_boolean_and_number_literal_zod() {
     let zod_schema = NonStringLiterals::zod_schema();
 
-    assert!(zod_schema.contains("is_active: z.literal(true)"));
-    assert!(zod_schema.contains("is_disabled: z.literal(false)"));
-    assert!(zod_schema.contains("priority: z.literal(214)"));
+    assert!(zod_schema.contains("is_active: z.literal(true, { error: "));
+    assert!(zod_schema.contains("is_disabled: z.literal(false, { error: "));
+    assert!(zod_schema.contains(
+        "priority: z.literal(214, { error: (issue) => `not the literal 214, got \
+         ${String(issue.input)}` })"
+    ));
 
     assert!(zod_schema.contains("id: z.string()"));
 }
@@ -673,7 +705,7 @@ fn test_combined_literal_minlength_typescript() {
 fn test_combined_literal_minlength_zod() {
     let zod_schema = CombinedTest::zod_schema();
 
-    assert!(zod_schema.contains("fixed_field: z.literal(\"fixed\")"));
+    assert!(zod_schema.contains("fixed_field: z.literal(\"fixed\", { error: "));
     assert!(zod_schema.contains("normal_field: z.string().min(1, { error: (issue) => `too short: minimum length is 1, got ${String(issue.input).length}` })"));
 }
 
@@ -728,7 +760,7 @@ fn an_enums_check_leaves_a_literal_field_alone_in_zod() {
     let zod_schema = LabelledLiteral::zod_schema();
 
     assert!(
-        zod_schema.contains("word: z.literal(\"x\")"),
+        zod_schema.contains("word: z.literal(\"x\", { error: "),
         "{zod_schema}"
     );
     assert!(zod_schema.contains("note: z.string().min(2, { error: (issue) => `too short: minimum length is 2, got ${String(issue.input).length}` })"), "{zod_schema}");
@@ -913,4 +945,66 @@ fn test_nullable_generic_zod() {
         zod.contains("id: z.union([idType, z.null()])"),
         "nullable should compose with the factory argument: {zod}"
     );
+}
+
+#[cfg(all(feature = "serde", feature = "zod"))]
+#[test]
+fn a_numeric_literal_refuses_every_other_value_of_its_type() {
+    assert!(
+        Fixed::zod_schema().contains("value: z.literal(214, "),
+        "the Zod schema no longer writes the literal"
+    );
+
+    let seven = Fixed { value: 7 };
+    assert_eq!(
+        seven.validate(),
+        Err(vec!["'value': not the literal 214, got 7".to_owned()])
+    );
+    assert_eq!(
+        serde_json::from_str::<Fixed>(r#"{"value":7}"#)
+            .unwrap_err()
+            .to_string(),
+        "'value': not the literal 214, got 7"
+    );
+
+    assert_eq!(Fixed { value: 214 }.validate(), Ok(()));
+    assert_eq!(
+        serde_json::from_str::<Fixed>(r#"{"value":214}"#)
+            .unwrap()
+            .value,
+        214
+    );
+}
+
+#[cfg(all(feature = "serde", feature = "zod"))]
+#[test]
+fn a_string_and_a_bool_literal_refuse_every_other_value_too() {
+    let zod = Tagged::zod_schema();
+    assert!(
+        zod.contains(r#"kind: z.literal("fixed", "#) && zod.contains("on: z.literal(true, "),
+        "the Zod schema no longer writes the literals: {zod}"
+    );
+
+    let other = Tagged {
+        count: 1,
+        kind: "other".to_owned(),
+        on: false,
+    };
+    assert_eq!(
+        other.validate(),
+        Err(vec![
+            "'kind': not the literal \"fixed\", got other".to_owned(),
+            "'on': not the literal true, got false".to_owned(),
+        ])
+    );
+    assert_eq!(
+        serde_json::from_str::<Tagged>(r#"{"kind":"other","on":false,"count":1}"#)
+            .unwrap_err()
+            .to_string(),
+        "'kind': not the literal \"fixed\", got other; 'on': not the literal true, got false"
+    );
+
+    let read = serde_json::from_str::<Tagged>(r#"{"kind":"fixed","on":true,"count":1}"#).unwrap();
+    assert_eq!((read.kind.as_str(), read.on), ("fixed", true));
+    assert_eq!(read.validate(), Ok(()));
 }

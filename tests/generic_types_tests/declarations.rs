@@ -84,6 +84,10 @@ mod quoted;
 #[path = "../skipped_variant_tests/models.rs"]
 mod skipped_variants;
 
+/// The models a `literal` is written on, and what each payload of their table reads as.
+#[path = "../model_schema_prop_tests/literal_models.rs"]
+mod literals;
+
 #[cfg(feature = "chrono")]
 use alloc::collections::BTreeSet;
 use core::fmt::Write as _;
@@ -732,6 +736,25 @@ for (const [name, schema, payload, judged] of PAYLOADS) {
   if (judged) {
     const said = read.error.issues.map((issue) => `    '${issue.path.join(".")}': ${issue.message}`);
     printed.push(...said.sort());
+  }
+}
+console.log(printed.join("\n"));
+"#;
+
+/// Prints each payload of the literal table as read through the Zod schema of its model: whether
+/// it is read, then each issue where the row names them.
+const LITERALS_DRIVER: &str = r#"import * as lib from "./lib/index.js";
+
+const printed = [];
+for (const [name, schema, payload, named] of PAYLOADS) {
+  const read = lib[`${schema}$Schema`].safeParse(JSON.parse(payload));
+  if (read.success) {
+    printed.push(`${name}: read`);
+    continue;
+  }
+  printed.push(`${name}: refused`);
+  if (named) {
+    printed.push(...read.error.issues.map((issue) => `    '${issue.path.join(".")}': ${issue.message}`));
   }
 }
 console.log(printed.join("\n"));
@@ -4391,5 +4414,55 @@ fn type_check_a_name_that_holds_a_quote_is_read_under_zod_as_serde_writes_it() {
     assert_eq!(
         read, expected,
         "Zod does not read what serde writes:\n{failed}"
+    );
+}
+
+/// A literal is a rule under Zod as it is in Rust: each payload of the table is read and refused
+/// as serde reads and refuses it, each issue in the sentence `validate()` reports.
+#[test]
+fn type_check_a_literal_refuses_under_zod_what_serde_refuses() {
+    let source = [
+        PREAMBLE.to_owned(),
+        literals::AdjacentAssay::ts_definition(),
+        literals::AdjacentAssay::zod_schema(),
+        literals::Assay::ts_definition(),
+        literals::Assay::zod_schema(),
+        literals::Bullion::ts_definition(),
+        literals::Bullion::zod_schema(),
+        literals::Hallmark::ts_definition(),
+        literals::Hallmark::zod_schema(),
+        literals::Ingot::ts_definition(),
+        literals::Ingot::zod_schema(),
+        literals::TaggedAssay::ts_definition(),
+        literals::TaggedAssay::zod_schema(),
+        literals::Touchmark::ts_definition(),
+        literals::Touchmark::zod_schema(),
+    ]
+    .join("\n\n");
+    let listed: Vec<(&str, &str, &str, bool)> = literals::LITERAL_READS
+        .iter()
+        .map(|row| {
+            assert_eq!(
+                literals::serde_read(row.held_by, row.payload).is_ok(),
+                matches!(row.answered, literals::Answered::Read),
+                "serde no longer reads {} as the table says",
+                row.name
+            );
+            (
+                row.name,
+                row.held_by,
+                row.payload,
+                literals::names_each_violation(row),
+            )
+        })
+        .collect();
+    let driver = LITERALS_DRIVER.replace("PAYLOADS", &serde_json::to_string(&listed).unwrap());
+    let Some((printed, failed)) = loaded_from("literals", &source, &driver) else {
+        return;
+    };
+    assert_eq!(
+        printed,
+        literals::literal_report(literals::names_each_violation).trim_end(),
+        "the Zod schemas do not refuse what a serde read refuses:\n{failed}"
     );
 }
