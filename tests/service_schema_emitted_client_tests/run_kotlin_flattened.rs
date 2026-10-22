@@ -3,7 +3,8 @@
 //! member beside a flattened one, beside its twin under `nullable`: each payload is written back
 //! as the serde read writes it back. A member flattened after a struct, or beside a member of its
 //! holder's own, is handed the keys serde hands it, and an externally tagged enum the one entry
-//! serde hands it. An optional map, the one member, is read as `null` where serde reads `None`.
+//! serde hands it, and is written as serde writes it, a unit variant as its name over `null`. An
+//! optional map, the one member, is read as `null` where serde reads `None`.
 
 #![cfg(feature = "kotlin")]
 
@@ -16,14 +17,14 @@ use super::flattened_models::{
     BELTING, Belting, Bending, Brailing, CLEATING, Cleating, CorrectedLocker, EmptiedLocker,
     Gasketing, HEAVING, HITCHING, Heaving, Hitching, Knotting, LOCKER, Lanyarding, Luffing,
     Netting, Nipping, PAYLOAD, ProbeLocker, Rousing, SCUDDING, STOWING, STROPPING, Scudding,
-    Seizing, Slinging, Splicing, Stoppering, Stowing, Stropping, UNDER_AN_ALIAS, UNWRITTEN,
-    Whipping, belting_kotlin, bending_kotlin, brailing_kotlin, bunting_kotlin, cleating_kotlin,
-    corrected_locker_kotlin, emptied_locker_kotlin, gasketing_kotlin, heaving_kotlin,
-    hitching_kotlin, jibing_kotlin, knotting_kotlin, lanyarding_kotlin, luffing_kotlin,
-    netting_kotlin, nipping_kotlin, noting_kotlin, probe_locker_kotlin, quaying_kotlin, read_of,
-    rousing_kotlin, scudding_kotlin, seizing_kotlin, sheeting_kotlin, slinging_kotlin,
-    splicing_kotlin, stoppering_kotlin, stowing_kotlin, stropping_kotlin, tacking_kotlin,
-    ticketed_kotlin, unwritten_kotlin, whipping_kotlin,
+    Seizing, Slinging, Splicing, Stoppering, Stowing, Stropping, Tacking, UNDER_AN_ALIAS,
+    UNWRITTEN, Whipping, Yawing, belting_kotlin, bending_kotlin, brailing_kotlin, bunting_kotlin,
+    cleating_kotlin, corrected_locker_kotlin, emptied_locker_kotlin, gasketing_kotlin,
+    heaving_kotlin, hitching_kotlin, jibing_kotlin, knotting_kotlin, lanyarding_kotlin,
+    luffing_kotlin, netting_kotlin, nipping_kotlin, noting_kotlin, probe_locker_kotlin,
+    quaying_kotlin, read_of, rousing_kotlin, scudding_kotlin, seizing_kotlin, sheeting_kotlin,
+    slinging_kotlin, splicing_kotlin, stoppering_kotlin, stowing_kotlin, stropping_kotlin,
+    tacking_kotlin, ticketed_kotlin, unwritten_kotlin, whipping_kotlin, yawing_kotlin,
 };
 use super::runtime::ran_kotlin;
 use super::tuple_variants_models::labelling_kotlin;
@@ -156,6 +157,15 @@ fun <T> entry(name: String, serializer: KSerializer<T>, payload: String, shown: 
         "refused"
     }
     println("$name: $told")
+}
+"#;
+
+/// What prints a row of a written holder of a flattened enum: the value built in Kotlin written,
+/// and the payload serde wrote read and written back.
+const WRITTEN: &str = r#"
+fun <T> written(name: String, serializer: KSerializer<T>, value: T, payload: String) {
+    val back = Json.encodeToString(serializer, Json.decodeFromString(serializer, payload))
+    println("$name: ${Json.encodeToString(serializer, value)} $back")
 }
 "#;
 
@@ -506,6 +516,104 @@ fn a_flattened_enum_reads_in_kotlin_the_entry_serde_hands_it() {
          17: {\"Bay\":{\"label\":\"n\"}} {\"label\":\"m\"} {\"keys\":[\"north\"]}\n"
     );
     let Some(printed) = ran_kotlin(&entry_source(main)) else {
+        return;
+    };
+    assert_eq!(printed, expected);
+}
+
+/// A flattened externally tagged enum is written as serde writes it, beside a member of its
+/// holder's own, optional and under a function: a variant that holds a value as its entry, and a
+/// unit variant as its name over `null`. What serde writes is read and written back as it was.
+#[test]
+fn a_flattened_enum_writes_in_kotlin_as_serde_writes_it() {
+    let tackings = [
+        (
+            Tacking::Bay {
+                label: "n".to_owned(),
+            },
+            "TackingBay(label = \"n\")",
+        ),
+        (Tacking::Calm, "TackingCalm"),
+        (
+            Tacking::Dock {
+                label: "s".to_owned(),
+            },
+            "TackingDock(label = \"s\")",
+        ),
+        (Tacking::Held("x".to_owned()), "TackingHeld(value = \"x\")"),
+    ];
+    let note = || "a".to_owned();
+    let mut rows = Vec::new();
+    for (tacking, built) in tackings {
+        let stowing = Stowing {
+            note: note(),
+            tacking: tacking.clone(),
+        };
+        let belting = Belting {
+            note: note(),
+            tacking: Some(tacking.clone()),
+        };
+        let yawing = Yawing {
+            note: note(),
+            tacking,
+        };
+        let written = [
+            ("Stowing", json(&stowing)),
+            ("Belting", json(&belting)),
+            ("Yawing", json(&yawing)),
+        ];
+        rows.extend(
+            written.map(|(holder, wrote)| (holder, wrote, format!("{holder}(\"a\", {built})"))),
+        );
+    }
+    let unheld = Belting {
+        note: note(),
+        tacking: None,
+    };
+    rows.push(("Belting", json(&unheld), "Belting(\"a\", null)".to_owned()));
+    let mut expected = String::new();
+    let mut main = String::from(WRITTEN);
+    main.push_str("fun main() {\n");
+    for (holder, serde_wrote, built) in &rows {
+        let _ = writeln!(expected, "{holder}: {serde_wrote} {serde_wrote}");
+        let _ = writeln!(
+            main,
+            "    written(\"{holder}\", {holder}.serializer(), {built}, \"\"\"{serde_wrote}\"\"\")"
+        );
+    }
+    main.push_str("}\n");
+    assert_eq!(
+        expected,
+        "Stowing: {\"note\":\"a\",\"Bay\":{\"label\":\"n\"}} \
+         {\"note\":\"a\",\"Bay\":{\"label\":\"n\"}}\n\
+         Belting: {\"note\":\"a\",\"Bay\":{\"label\":\"n\"}} \
+         {\"note\":\"a\",\"Bay\":{\"label\":\"n\"}}\n\
+         Yawing: {\"note\":\"a\",\"Bay\":{\"label\":\"n\"}} \
+         {\"note\":\"a\",\"Bay\":{\"label\":\"n\"}}\n\
+         Stowing: {\"note\":\"a\",\"Calm\":null} {\"note\":\"a\",\"Calm\":null}\n\
+         Belting: {\"note\":\"a\",\"Calm\":null} {\"note\":\"a\",\"Calm\":null}\n\
+         Yawing: {\"note\":\"a\",\"Calm\":null} {\"note\":\"a\",\"Calm\":null}\n\
+         Stowing: {\"note\":\"a\",\"Dock\":{\"label\":\"s\"}} \
+         {\"note\":\"a\",\"Dock\":{\"label\":\"s\"}}\n\
+         Belting: {\"note\":\"a\",\"Dock\":{\"label\":\"s\"}} \
+         {\"note\":\"a\",\"Dock\":{\"label\":\"s\"}}\n\
+         Yawing: {\"note\":\"a\",\"Dock\":{\"label\":\"s\"}} \
+         {\"note\":\"a\",\"Dock\":{\"label\":\"s\"}}\n\
+         Stowing: {\"note\":\"a\",\"Held\":\"x\"} {\"note\":\"a\",\"Held\":\"x\"}\n\
+         Belting: {\"note\":\"a\",\"Held\":\"x\"} {\"note\":\"a\",\"Held\":\"x\"}\n\
+         Yawing: {\"note\":\"a\",\"Held\":\"x\"} {\"note\":\"a\",\"Held\":\"x\"}\n\
+         Belting: {\"note\":\"a\"} {\"note\":\"a\"}\n"
+    );
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        tacking_kotlin::kotlin_definition(),
+        stowing_kotlin::kotlin_definition(),
+        belting_kotlin::kotlin_definition(),
+        yawing_kotlin::kotlin_definition(),
+        FUNCTIONS.to_owned(),
+        main,
+    ];
+    let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
         return;
     };
     assert_eq!(printed, expected);

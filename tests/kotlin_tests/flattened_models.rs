@@ -8,9 +8,10 @@
 //! neither its holder's own members nor a member flattened ahead of it took. An externally tagged
 //! enum takes the first entry under the name of a variant it reads, beside a member of its
 //! holder's own, ahead of a member that names a function and ahead of a struct, and one declared
-//! below its holder is read from the object. An optional map, the one member, serde reads as
-//! `None` wherever an entry does not read as a count, and under a function from what the function
-//! answers.
+//! below its holder is read from the object. serde writes such an enum's unit variant as an entry,
+//! its name over `null`, the enum optional and under a function too. An optional map, the one
+//! member, serde reads as `None` wherever an entry does not read as a count, and under a function
+//! from what the function answers.
 
 use alloc::collections::BTreeMap;
 use std::collections::HashMap;
@@ -356,6 +357,17 @@ pub struct Belting {
     pub note: String,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     pub tacking: Option<Tacking>,
+}
+
+/// [`Stowing`] with its enum under a function that answers the payload as it was handed, which
+/// serde writes as it writes [`Stowing`]'s.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Yawing {
+    pub note: String,
+    #[model_schema_prop(preprocess = ["asGiven"])]
+    #[serde(flatten)]
+    pub tacking: Tacking,
 }
 
 /// A member that names a function flattened after an externally tagged enum, where serde hands

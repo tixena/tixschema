@@ -17,7 +17,7 @@ mod validate;
 use core::cell::{Cell, RefCell};
 use core::fmt::Write as _;
 use core::iter::once;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -207,6 +207,9 @@ thread_local! {
     /// ident: the first entry of the holder's object under one of them is the enum's.
     static KOTLIN_VARIANT_NAMES: RefCell<HashMap<String, Vec<String>>> =
         RefCell::new(HashMap::new());
+    /// Each externally tagged enum the emitter wrote that writes a unit variant as its bare name,
+    /// by Rust ident: serde writes that variant flattened as an entry, its name over `null`.
+    static KOTLIN_BARE_NAMED: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
     /// The keys serde takes off its holder's object for each struct the emitter wrote a serializer
     /// for by hand, by Rust ident: the descriptor of that serializer declares no element.
     static KOTLIN_TAKEN_KEYS: RefCell<HashMap<String, Vec<String>>> =
@@ -290,6 +293,15 @@ fn flattened_variant_names(def: &FieldDef) -> Option<(&str, Vec<String>)> {
     }
     let names = KOTLIN_VARIANT_NAMES.with(|noted| noted.borrow().get(name).cloned())?;
     (!names.is_empty()).then_some((name.as_str(), names))
+}
+
+/// Whether a flattened member typed `def` may write a variant as its bare name: an externally
+/// tagged enum the emitter wrote with a unit variant, whatever function it names.
+fn writes_a_bare_name(def: &FieldDef) -> bool {
+    let FieldDefType::SiblingType(name, _) = &def.field_type else {
+        return false;
+    };
+    KOTLIN_BARE_NAMED.with(|noted| noted.borrow().contains(name))
 }
 
 /// The keys a flattened struct typed `def` takes off its holder's object, as a Kotlin set: those
@@ -1394,16 +1406,24 @@ fn flatten_struct_field_plan(
 }
 
 /// The `serialize` statement that merges a flattened member's own keys into its holder's object,
-/// read by `inner_serializer`; an optional member that holds no value merges none.
+/// read by `inner_serializer`; an optional member that holds no value merges none. A unit variant
+/// an enum writes as its bare name is merged as serde merges it: its name over `null`.
 fn flattened_merge(field: &KotlinField, prop: &str, inner_serializer: &str) -> String {
+    let merged = |held: &str| {
+        let written = format!("output.json.encodeToJsonElement({inner_serializer}, {held})");
+        if writes_a_bare_name(&field.field_def) {
+            format!(
+                "when (val written = {written}) {{ is JsonPrimitive -> put(written.content, JsonNull); else -> written.jsonObject.forEach {{ (k, v) -> put(k, v) }} }}"
+            )
+        } else {
+            format!("{written}.jsonObject.forEach {{ (k, v) -> put(k, v) }}")
+        }
+    };
     if field.field_def.is_optional() {
-        format!(
-            "value.{prop}?.let {{ flattened -> output.json.encodeToJsonElement({inner_serializer}, flattened).jsonObject.forEach {{ (k, v) -> put(k, v) }} }}"
-        )
+        let held = merged("flattened");
+        format!("value.{prop}?.let {{ flattened -> {held} }}")
     } else {
-        format!(
-            "output.json.encodeToJsonElement({inner_serializer}, value.{prop}).jsonObject.forEach {{ (k, v) -> put(k, v) }}"
-        )
+        merged(&format!("value.{prop}"))
     }
 }
 
@@ -1951,6 +1971,16 @@ fn enum_kotlin_tokens(item_enum: &ItemEnum, args: &KotlinArgs<'_>) -> TokenStrea
         KOTLIN_VARIANT_NAMES.with(|noted| {
             noted.borrow_mut().insert(rust_ident.clone(), names);
         });
+        let bare_named = writes_bare_variant_names
+            && item_enum
+                .variants
+                .iter()
+                .any(|variant| classify_variant(variant) == VariantKind::Unit);
+        if bare_named {
+            KOTLIN_BARE_NAMED.with(|noted| {
+                noted.borrow_mut().insert(rust_ident.clone());
+            });
+        }
         if tag_attrs.untagged {
             untagged_enum_kotlin_source(item_enum, &export_name, &tag_attrs, args, &defaults)
         } else {

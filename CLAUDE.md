@@ -960,6 +960,14 @@ the consumer's view; this is what a change has to keep.
   names a function on itself or on its member, and one the emitter has not written are read as a
   struct is, and take no key. The enum's own read takes no variant under an `alias`, so an entry
   under one is taken and refused: the README states both limits.
+- **A flattened enum's unit variant is written as its name over `null`** (`flattened_merge`), as
+  serde writes it, where the enum writes a bare name. `enum_kotlin_tokens` records in
+  `KOTLIN_BARE_NAMED` each externally tagged enum with a unit variant, whatever function it
+  names, and `writes_a_bare_name` reads it: the holder merges what such an enum writes through
+  `when (val written = ...)`, a `JsonPrimitive` as `put(written.content, JsonNull)` and an object
+  entry by entry, optional and under a function too. Every other flattened member merges its
+  object as it did, so an enum the emitter has not written throws on a unit variant: the README
+  states the limit. `run_kotlin_flattened.rs` writes each variant of `Tacking` against serde.
 - **An enum under a tag alone is written by hand as well.** The plugin refuses
   `@KeepGeneratedSerializer` on a sealed interface, so `dispatched_tagged_enum_kotlin_source`
   writes all three taggings, `Tagging::Unwrapped` being the tag alone there: the tag is taken off
