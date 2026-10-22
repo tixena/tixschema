@@ -3,8 +3,8 @@
 //! app implements — one service, one `emit()`, emitting both halves together.
 
 use super::dart_http_client::{dart_call, dart_parameter, message_type};
-use super::on_one_line;
 use super::result::result_name;
+use super::{left_to_http_rest, on_one_line};
 use crate::features::dart::{dart_json_decode, dart_json_encode, dart_typename, quoted};
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
@@ -35,7 +35,10 @@ struct DispatchNaming<'names> {
     wire: &'names str,
 }
 
-pub fn emit(service: &ServiceDef) -> Vec<String> {
+pub fn emit(declared: &ServiceDef) -> Vec<String> {
+    let methods_apart = left_to_http_rest(declared, "method", on_one_line);
+    let handlers_apart = left_to_http_rest(declared, "handler", on_one_line);
+    let service = &declared.enveloped();
     let named = service.ident.to_string();
     let fn_prefix = RenameRule::CamelCase.apply_to_variant(&named);
     let headered = declares_header_in(service);
@@ -43,15 +46,21 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
     if has_one_way(service) {
         published.push(refusal_class(&named));
     }
-    published.push(client_class(service, headered));
-    published.push(handlers_class(service));
+    published.push(client_class(service, headered, methods_apart.as_deref()));
+    published.push(handlers_class(service, handlers_apart.as_deref()));
     published.push(attach_dispatcher_fn(service));
     published.extend(fault_helpers(
         &named,
         &fn_prefix,
         declares_any_header(service),
+        !service.operations.is_empty(),
     ));
     published
+}
+
+/// `note` as one more line of a `///` comment, or nothing.
+fn noted(note: Option<&str>) -> String {
+    note.map_or_else(String::new, |said| format!("/// {said}\n"))
 }
 
 fn has_one_way(service: &ServiceDef) -> bool {
@@ -293,8 +302,18 @@ fn refusal_class(named: &str) -> String {
     )
 }
 
-fn client_class(service: &ServiceDef, headered: bool) -> String {
+fn client_class(service: &ServiceDef, headered: bool, apart: Option<&str>) -> String {
     let named = service.ident.to_string();
+    let note = noted(apart);
+    if service.operations.is_empty() {
+        return format!(
+            "/// A `{named}` caller over `ws_rpc`.\n\
+             {note}\
+             class {named}WsClient {{\n  \
+             {named}WsClient({named}WsTransport transport);\n\
+             }}"
+        );
+    }
     let methods = service
         .operations
         .iter()
@@ -303,6 +322,7 @@ fn client_class(service: &ServiceDef, headered: bool) -> String {
         .join("\n\n");
     format!(
         "/// A `{named}` caller over `ws_rpc`.\n\
+         {note}\
          class {named}WsClient {{\n  \
          {named}WsClient(this._transport);\n  \
          final {named}WsTransport _transport;\n\n\
@@ -660,8 +680,20 @@ fn handler_signature(operation: &OperationDef, shape: &HttpShape) -> String {
     }
 }
 
-fn handlers_class(service: &ServiceDef) -> String {
+fn handlers_class(service: &ServiceDef, apart: Option<&str>) -> String {
     let named = service.ident.to_string();
+    let note = noted(apart);
+    if service.operations.is_empty() {
+        return format!(
+            "/// What a `{named}` `ws_rpc` attachment dispatches an inbound frame to: one handler \
+             per\n\
+             /// declared operation.\n\
+             {note}\
+             class {named}Handlers<Ctx> {{\n  \
+             {named}Handlers();\n\
+             }}"
+        );
+    }
     let mut params = String::new();
     let mut fields = String::new();
     for operation in &service.operations {
@@ -674,6 +706,7 @@ fn handlers_class(service: &ServiceDef) -> String {
     format!(
         "/// What a `{named}` `ws_rpc` attachment dispatches an inbound frame to: one handler per\n\
          /// declared operation.\n\
+         {note}\
          class {named}Handlers<Ctx> {{\n  \
          {named}Handlers({{\n\
 {params}  \
@@ -1038,7 +1071,22 @@ fn reply_dispatch_arm(
     arm
 }
 
-fn fault_helpers(named: &str, fn_prefix: &str, headered: bool) -> Vec<String> {
+/// The faults the client and the attachment build. Of a service `ws_rpc` carries no operation of,
+/// the attachment answers every frame as an unknown operation, and nothing builds the others.
+fn fault_helpers(named: &str, fn_prefix: &str, headered: bool, answers: bool) -> Vec<String> {
+    let unknown_operation = fault_helper(
+        named,
+        fn_prefix,
+        "WsUnknownOperation",
+        "unknownOperation",
+        &format!(
+            "The fault a `{named}` `ws_rpc` attachment answers with when an inbound frame \
+             names an operation nothing on this service declares."
+        ),
+    );
+    if !answers {
+        return vec![unknown_operation];
+    }
     let failed_validation_doc = format!(
         "The fault a `{named}` `ws_rpc` reply answers with when it will not become the \
          operation's own declared type through that type's own codec."
@@ -1065,16 +1113,7 @@ fn fault_helpers(named: &str, fn_prefix: &str, headered: bool) -> Vec<String> {
                 &failed_validation_doc,
             )
         },
-        fault_helper(
-            named,
-            fn_prefix,
-            "WsUnknownOperation",
-            "unknownOperation",
-            &format!(
-                "The fault a `{named}` `ws_rpc` attachment answers with when an inbound frame \
-                 names an operation nothing on this service declares."
-            ),
-        ),
+        unknown_operation,
         fault_helper(
             named,
             fn_prefix,

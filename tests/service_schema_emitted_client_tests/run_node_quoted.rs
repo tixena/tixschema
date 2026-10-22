@@ -81,11 +81,12 @@ function carried(service, dispatch) {
         path: request.path,
         query: request.query,
         headers: request.headers,
-        body: new TextEncoder().encode(request.body),
+        body: request.body,
         ...(request.parts === undefined ? {} : { parts: request.parts }),
       });
-      sent.push({ service, request, answered: answeredOf(response) });
-      return { status: response.status, headers: response.headers, body: new TextDecoder().decode(response.body) };
+      const read = { ...request, body: new TextDecoder().decode(request.body) };
+      sent.push({ service, request: read, answered: answeredOf(response) });
+      return { status: response.status, headers: response.headers, body: response.body };
     },
   };
 }

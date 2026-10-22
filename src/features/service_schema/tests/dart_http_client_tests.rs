@@ -177,10 +177,16 @@ fn an_unbound_generated_field_builds_the_query_string_of_a_bodyless_method() {
         method.contains("final queryParts = <String>[];")
             && method.contains("final value = req.limit;")
             && method.contains("if (value != null) {")
-            && method.contains("queryParts.add('limit=' + Uri.encodeComponent('${value}'));")
+            && method.contains(
+                "queryParts.add('limit=' + \
+                 Uri.encodeComponent(_conversationClientServiceHttpWireText((switch (value) { \
+                 final number when number >= 0 && number <= 4294967295 => number, final number => \
+                 throw FormatException('expected an integer from 0 to 4294967295, found \
+                 $number') }))));"
+            )
             && method.contains("final query = queryParts.join('&');"),
         "a field the path does not bind is a query parameter, read off the message by its own \
-         type. Got: {method}"
+         type and written through its codec, held to its range. Got: {method}"
     );
     assert!(
         !method.contains("const query = '';"),

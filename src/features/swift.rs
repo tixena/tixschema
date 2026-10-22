@@ -1,7 +1,7 @@
 //! Swift type and `Codable`-codec generation.
 
 mod aliases;
-mod forms;
+pub mod forms;
 mod preprocess;
 mod read;
 mod validate;

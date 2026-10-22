@@ -45,7 +45,7 @@ func read<Read: Decodable>(_ type: Read.Type, _ payload: String) -> String {
 "#;
 
 /// The Swift value of `json`, as the model `held_by` holds it.
-fn swift_value(held_by: &str, json: &str) -> String {
+pub fn swift_value(held_by: &str, json: &str) -> String {
     let text = json.trim_matches('"');
     match held(held_by) {
         Held::Number(_) if json == "NaN" => "Double.nan".to_owned(),

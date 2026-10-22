@@ -36,6 +36,8 @@ mod ws_server;
 #[cfg(all(feature = "typescript", feature = "zod"))]
 mod ws_service;
 
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+use crate::service_schema::parse::OperationDef;
 use crate::service_schema::parse::ServiceDef;
 use crate::service_schema::support::exhaustiveness;
 #[cfg(any(feature = "typescript", feature = "dart"))]
@@ -333,6 +335,72 @@ fn on_one_line(text: &str) -> String {
         }
     }
     written
+}
+
+/// The sentence a `ws_rpc` or transport-agnostic client or dispatcher of `service` writes of the
+/// operations only `http_rest` carries, which it holds no `member` for, each named by its wire name
+/// as `escaped` writes it; `None` where there is none.
+#[cfg(any(
+    all(feature = "typescript", feature = "zod"),
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
+))]
+fn left_to_http_rest(
+    service: &ServiceDef,
+    member: &str,
+    escaped: fn(&str) -> String,
+) -> Option<String> {
+    let names: Vec<String> = service
+        .operations
+        .iter()
+        .filter(|operation| operation.carried_by_http_alone().is_some())
+        .map(|operation| format!("`{}`", escaped(&operation.wire_name)))
+        .collect();
+    let (verb, carried) = match names.len() {
+        0 => return None,
+        1 => ("has", "it"),
+        _ => ("have", "them"),
+    };
+    Some(format!(
+        "{} {verb} no {member} here: only `http_rest` carries {carried}.",
+        names.join(", ")
+    ))
+}
+
+/// The type of each value `operation` writes as text, where the macro sees it: a path
+/// placeholder's (a generated field's, or the whole message bound to the one placeholder), each
+/// field a query or a text part carries, and each `header_in`'s. A field of a named message, whose
+/// type no expansion here sees, is not among them.
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+fn text_types(operation: &OperationDef) -> Vec<syn::Type> {
+    use crate::service_schema::parse::{
+        BodyKind, HttpShape, OperationInputs, is_scalar_named_type, written,
+    };
+
+    let shape = HttpShape::of(operation);
+    let placeholders = shape.placeholder_names();
+    let mut types = Vec::new();
+    match &operation.inputs {
+        OperationInputs::Generated(fields) => {
+            let carried =
+                matches!(shape.body_kind, BodyKind::Multipart) || !shape.method.carries_a_body();
+            types.extend(
+                fields
+                    .iter()
+                    .filter(|(field, _)| carried || placeholders.contains(&written(field)))
+                    .map(|(_, ty)| ty.clone()),
+            );
+        }
+        OperationInputs::Named(declared) => {
+            if placeholders.len() == 1 && is_scalar_named_type(declared) {
+                types.push(declared.as_ref().clone());
+            }
+        }
+        OperationInputs::Empty => {}
+    }
+    types.extend(shape.header_in.into_iter().map(|header| header.ty));
+    types
 }
 
 fn registry_rustdoc(service: &str) -> Vec<String> {

@@ -12,7 +12,8 @@ use crate::utils::ts_quoted;
 use core::fmt::Write as _;
 use syn::Type;
 
-pub fn emit(service: &ServiceDef) -> Vec<String> {
+pub fn emit(declared: &ServiceDef) -> Vec<String> {
+    let service = &declared.enveloped();
     let named = service.ident.to_string();
     vec![
         socket_type(&named),
@@ -31,7 +32,7 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
 /// a unit success as `ok` alone, with no `value` to parse, so a table entry there would fail every
 /// valid reply against a schema nothing on the wire is meant to satisfy. A header tuple's `value`
 /// is its body alone, its headers riding the frame's own `headers`.
-fn success_type(operation: &OperationDef) -> Option<&Type> {
+fn success_type(operation: &OperationDef) -> Option<Type> {
     let OperationOutcome::Reply {
         success,
         error: _error,
@@ -39,19 +40,18 @@ fn success_type(operation: &OperationDef) -> Option<&Type> {
     else {
         return None;
     };
-    let body = message::body_type(HttpShape::of(operation).header_out.len(), success);
-    (!is_unit_type(body)).then_some(body)
+    let body = message::success_body(&HttpShape::of(operation), success);
+    (!is_unit_type(&body)).then_some(body)
 }
 
-fn error_type(operation: &OperationDef) -> Option<&Type> {
+fn error_type(operation: &OperationDef) -> Option<Type> {
     match &operation.outcome {
         OperationOutcome::Reply {
             error,
             success: _success,
-        } => Some(message::body_type(
-            HttpShape::of(operation).error_header_out.len(),
-            error,
-        )),
+        } => {
+            Some(message::body_type(HttpShape::of(operation).error_header_out.len(), error).clone())
+        }
         OperationOutcome::OneWay => None,
     }
 }
@@ -102,7 +102,7 @@ fn options_type(named: &str) -> String {
 fn schemas_table(
     service: &ServiceDef,
     direction: &str,
-    pick: impl Fn(&OperationDef) -> Option<&Type>,
+    pick: impl Fn(&OperationDef) -> Option<Type>,
 ) -> String {
     let named = service.ident.to_string();
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
@@ -116,7 +116,7 @@ fn schemas_table(
         let Some(ty) = pick(operation) else {
             continue;
         };
-        let schema = get_field_def(field, ty, "").zod_type();
+        let schema = get_field_def(field, &ty, "").zod_type();
         let _ = writeln!(entries, "  {}: {schema},", ts_quoted(&operation.wire_name));
     }
     let body = if entries.is_empty() {

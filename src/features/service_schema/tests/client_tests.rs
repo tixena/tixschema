@@ -5,7 +5,10 @@
 //! one-way method answers nothing and publishes the shape it throws instead. No TypeScript
 //! toolchain is reachable here, so none of them type-checks the bundle.
 
-use super::{MIXED_SERVICE, TS_HEADER_TUPLE_SERVICE, TS_UNIT_SUCCESS_SERVICE, client_of};
+use super::{
+    MIXED_SERVICE, SHELVING_SERVICE, STREAMING_ONLY_SERVICE, TS_HEADER_TUPLE_SERVICE,
+    TS_UNIT_SUCCESS_SERVICE, client_of,
+};
 
 #[test]
 fn a_one_way_method_answers_nothing_and_a_replying_one_answers_its_result() {
@@ -372,10 +375,31 @@ fn a_header_in_argument_is_sent_json_encoded_beside_the_message() {
     assert!(
         written.contains(
             "      const headers: Array<[string, string]> = [];\n      \
-             headers.push([\"x-tenant\", JSON.stringify(tenant)]);\n      \
-             headers.push([\"x-trace\", JSON.stringify(trace ?? null)]);\n"
+             {\n        \
+             const held = z.string().safeParse(tenant);\n"
+        ) && written.contains("        headers.push([\"x-tenant\", JSON.stringify(held.data)]);\n")
+            && written.contains(
+                "        const held = z.union([z.null().transform(() => undefined), \
+                 z.number().int().min(0).max(4294967295), \
+                 z.undefined()]).prefault(undefined).safeParse(trace);\n"
+            )
+            && written.contains(
+                "        headers.push([\"x-trace\", JSON.stringify(held.data ?? null)]);\n"
+            ),
+        "each header is parsed by its type's schema, then sent JSON-encoded. Got: {written}"
+    );
+    assert!(
+        written.contains(
+            "            fault: versionServiceOutboundFault(\"get\", \
+             held.error.issues.map((issue) => ({ path: [\"x-trace\", ...issue.path], message: \
+             issue.message }))),\n"
+        ) && written.contains(
+            "          throw versionServiceRefused(versionServiceOutboundFault(\"touch\", \
+             held.error.issues.map((issue) => ({ path: [\"x-tenant\", ...issue.path], message: \
+             issue.message }))));\n"
         ),
-        "got: {written}"
+        "a header its schema refuses is refused as the message is, under the header's name, \
+         before the transport is reached. Got: {written}"
     );
     assert!(
         written.contains("await transport.notify(\"touch\", validated.data, headers);"),
@@ -442,4 +466,30 @@ fn a_header_tuple_reply_is_rejoined_from_the_envelope_and_the_reply_headers() {
 fn a_service_with_no_header_tuple_publishes_no_reply_header_reader() {
     let written = client_of(MIXED_SERVICE);
     assert!(!written.contains("ReplyHeader"), "got: {written}");
+}
+
+/// Only `http_rest` carries a streamed reply and a file part: the client has no method for either,
+/// and says so where it says what it has a method for.
+#[test]
+fn the_client_has_no_method_for_an_operation_only_http_rest_carries() {
+    let written = client_of(SHELVING_SERVICE);
+    assert!(
+        written.contains(
+            " *\n * `fetch`, `shelve` have no method here: only `http_rest` carries them.\n * Every \
+             other operation the service declares has a method here"
+        ) && written.contains("  tally(req: string): Promise<ShelvingClientServiceTallyResult>;"),
+        "got: {written}"
+    );
+    assert!(
+        !written.contains("fetch(")
+            && !written.contains("shelve(")
+            && !written.contains("Streamed"),
+        "got: {written}"
+    );
+    let alone = client_of(STREAMING_ONLY_SERVICE);
+    assert!(
+        alone.contains("export type StreamingOnlyServiceClient = {\n\n};")
+            && alone.contains(" * `fetch` has no method here: only `http_rest` carries it.\n"),
+        "a service of no operation the client carries has a client of no method. Got: {alone}"
+    );
 }

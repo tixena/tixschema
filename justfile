@@ -181,6 +181,8 @@ test-emitted cfg="":
     TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" cargo test {{cfg}} --test service_schema_emitted_client_tests run_node_quoted
     @echo "Running the emitted ws_rpc headers against the Rust twins with $(command -v "${TIXSCHEMA_NODE:-node}")..."
     TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" cargo test {{cfg}} --test service_schema_emitted_client_tests run_node_ws_headers
+    @echo "Running the emitted TypeScript client's text positions against the Rust twin with $(command -v "${TIXSCHEMA_NODE:-node}")..."
+    TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" cargo test {{cfg}} --all-features --test service_schema_emitted_client_tests run_node_text_positions
     @command -v "${TIXSCHEMA_DART:-dart}" >/dev/null 2>&1 || { echo "No Dart SDK: put \`dart\` on PATH, or set TIXSCHEMA_DART to one." >&2; exit 1; }
     @echo "Running the emitted Dart client with $(command -v "${TIXSCHEMA_DART:-dart}")..."
     TIXSCHEMA_DART="$(command -v "${TIXSCHEMA_DART:-dart}")" cargo test {{cfg}} --all-features --test service_schema_emitted_client_tests run_dart
@@ -193,6 +195,8 @@ test-emitted cfg="":
     TIXSCHEMA_KOTLIN_LIBS="{{kotlin_libs}}" TIXSCHEMA_KOTLINC="$(command -v "${TIXSCHEMA_KOTLINC:-kotlinc}")" cargo test {{cfg}} --all-features --test service_schema_emitted_client_tests run_kotlin
     @echo "Running the service named after reserved words through the TypeScript, Dart, Swift and Kotlin clients..."
     TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" TIXSCHEMA_DART="$(command -v "${TIXSCHEMA_DART:-dart}")" TIXSCHEMA_SWIFT="$(command -v "${TIXSCHEMA_SWIFT:-swift}")" TIXSCHEMA_KOTLIN_LIBS="{{kotlin_libs}}" TIXSCHEMA_KOTLINC="$(command -v "${TIXSCHEMA_KOTLINC:-kotlinc}")" cargo test {{cfg}} --all-features --test service_schema_emitted_client_tests run_reserved
+    @echo "Running the services with operations only http_rest carries, and the dated service, through the TypeScript, Dart, Swift and Kotlin clients..."
+    TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" TIXSCHEMA_DART="$(command -v "${TIXSCHEMA_DART:-dart}")" TIXSCHEMA_SWIFT="$(command -v "${TIXSCHEMA_SWIFT:-swift}")" TIXSCHEMA_KOTLIN_LIBS="{{kotlin_libs}}" TIXSCHEMA_KOTLINC="$(command -v "${TIXSCHEMA_KOTLINC:-kotlinc}")" cargo test {{cfg}} --all-features --test service_schema_emitted_client_tests -- run_http_alone run_sundial
     @echo "✅ The emitted clients build the URLs they claim to!"
 
 # The tests that wait on a real clock compile only under `cfg(slow_tests)`, which no other

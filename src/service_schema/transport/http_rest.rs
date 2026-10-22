@@ -240,13 +240,18 @@ fn dispatcher_items(service: &ServiceDef) -> TokenStream {
         path_token_type(service_declares_a_placeholder(service))
     };
     // The query reader is one bodyless field's, unbound by any path placeholder; a service with
-    // none never reaches for it.
-    let query_helpers = if service
+    // none never reaches for it. A placeholder and a query value are both read percent-decoded.
+    let reads_a_query = service
         .operations
         .iter()
-        .any(|operation| has_query_fields(operation, &HttpShape::of(operation)))
-    {
-        query_parsing_helpers()
+        .any(|operation| has_query_fields(operation, &HttpShape::of(operation)));
+    let query_helpers = if reads_a_query {
+        query_parsing_helper()
+    } else {
+        TokenStream::new()
+    };
+    let decoding_helper = if reads_a_query || service_declares_a_placeholder(service) {
+        percent_decoding_helper()
     } else {
         TokenStream::new()
     };
@@ -262,6 +267,7 @@ fn dispatcher_items(service: &ServiceDef) -> TokenStream {
         #fault_handler
         #path_token
         #query_helpers
+        #decoding_helper
         #dispatch
     }
 }
@@ -440,9 +446,10 @@ fn outgoing_response_items(has_stream: bool, module: &Ident) -> TokenStream {
 }
 
 /// One piece of a path template at runtime: text written exactly as declared, or a `{field}`
-/// placeholder capturing up to the next `/`. Emitted only where at least one route exists to be
-/// matched against — a service declaring no operation has no arm to call `match_path` from. The
-/// `Placeholder` variant and its `match_path` arm are written only when `has_placeholder`.
+/// placeholder capturing up to the next `/`, percent-decoded as every client percent-encodes it.
+/// Emitted only where at least one route exists to be matched against — a service declaring no
+/// operation has no arm to call `match_path` from. The `Placeholder` variant and its `match_path`
+/// arm are written only when `has_placeholder`.
 fn path_token_type(has_placeholder: bool) -> TokenStream {
     let placeholder_variant = has_placeholder.then(|| quote! { Placeholder, });
     let placeholder_arm = has_placeholder.then(|| {
@@ -453,7 +460,7 @@ fn path_token_type(has_placeholder: bool) -> TokenStream {
                 if value.is_empty() {
                     return ::core::option::Option::None;
                 }
-                captured.push(value.to_owned());
+                captured.push(percent_decoded(value));
                 rest = remainder;
             }
         }
@@ -471,9 +478,10 @@ fn path_token_type(has_placeholder: bool) -> TokenStream {
             #placeholder_variant
         }
 
-        /// Matches `path` against `template` left to right, and answers what each placeholder
-        /// captured, in order - or `None` where a literal disagrees, a placeholder captures
-        /// nothing, or text remains once the template is exhausted.
+        /// Matches `path`, as the request carried it, against `template` left to right, and
+        /// answers what each placeholder captured, percent-decoded, in order - or `None` where a
+        /// literal disagrees, a placeholder captures nothing, or text remains once the template is
+        /// exhausted.
         fn match_path(template: &[PathToken], path: &str) -> ::core::option::Option<::std::vec::Vec<::std::string::String>> {
             let mut rest = path;
             #captured_binding
@@ -489,9 +497,8 @@ fn path_token_type(has_placeholder: bool) -> TokenStream {
 }
 
 /// The query-string reader: emitted only where at least one operation reads a query parameter, a
-/// bodyless method's field the path left unbound. A service with no such field never calls either
-/// function.
-fn query_parsing_helpers() -> TokenStream {
+/// bodyless method's field the path left unbound. A service with no such field never calls it.
+fn query_parsing_helper() -> TokenStream {
     quote! {
         /// A query string, read into its keys and values. Repeated keys keep the last value; a
         /// `%XX` escape decodes to the byte it names and anything else is read verbatim.
@@ -506,10 +513,16 @@ fn query_parsing_helpers() -> TokenStream {
             }
             parsed
         }
+    }
+}
 
+/// The percent-decoder a path placeholder and a query value are both read through: emitted only
+/// where an operation reads either.
+fn percent_decoding_helper() -> TokenStream {
+    quote! {
         /// `%XX` escapes decoded back to bytes and reassembled as text, lossily where the result is
-        /// not valid UTF-8 - a query value is a caller's own words, not this crate's to reject on
-        /// that alone.
+        /// not valid UTF-8 - a placeholder or a query value is a caller's own words, not this
+        /// crate's to reject on that alone.
         fn percent_decoded(raw: &str) -> ::std::string::String {
             let bytes = raw.as_bytes();
             let mut decoded = ::std::vec::Vec::with_capacity(bytes.len());
@@ -536,7 +549,7 @@ fn query_parsing_helpers() -> TokenStream {
 
 /// Whether `operation` reads at least one query parameter: a bodyless method carrying a field the
 /// path left unbound. Read identically by the dispatcher (to decide whether
-/// [`query_parsing_helpers`] is reachable) and the client (to decide whether it ever builds one).
+/// [`query_parsing_helper`] is reachable) and the client (to decide whether it ever builds one).
 fn has_query_fields(operation: &OperationDef, shape: &HttpShape) -> bool {
     if shape.method.carries_a_body() {
         return false;

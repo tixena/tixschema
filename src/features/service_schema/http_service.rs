@@ -5,6 +5,7 @@
 
 use super::message;
 use super::result::STREAMED_ANSWER_TS_TYPE;
+use super::service;
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
@@ -44,6 +45,7 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
         default_fault_handler_fn(&named, &prefix),
         fault_fn(&named, &prefix),
         match_path_fn(&prefix),
+        percent_decoded_fn(&prefix),
         parse_query_fn(&prefix),
         coerce_number_fn(&prefix),
     ];
@@ -240,7 +242,7 @@ fn fault_fn(named: &str, prefix: &str) -> String {
 fn match_path_fn(prefix: &str) -> String {
     format!(
         "/** Mirrors the Rust `match_path`: a literal token is stripped as a prefix, a \
-         placeholder takes one non-empty segment, and nothing may remain. */\n\
+         placeholder takes one non-empty segment, percent-decoded, and nothing may remain. */\n\
          function {prefix}HttpMatchPath(template: ReadonlyArray<string | null>, path: string): \
          Array<string> | undefined {{\n  \
          let rest = path;\n  \
@@ -253,11 +255,28 @@ fn match_path_fn(prefix: &str) -> String {
          const end = rest.indexOf(\"/\") === -1 ? rest.length : rest.indexOf(\"/\");\n      \
          const value = rest.slice(0, end);\n      \
          if (value === \"\") return undefined;\n      \
-         captured.push(value);\n      \
+         captured.push({prefix}HttpPercentDecoded(value));\n      \
          rest = rest.slice(end);\n    \
          }}\n  \
          }}\n  \
          return rest === \"\" ? captured : undefined;\n\
+         }}"
+    )
+}
+
+/// The decoder a path placeholder is read through: the Rust `percent_decoded`, which reads a
+/// malformed escape as it stands where `decodeURIComponent` throws.
+fn percent_decoded_fn(prefix: &str) -> String {
+    format!(
+        "/** Mirrors the Rust `percent_decoded`: each `%XX` escape decoded to the byte it names, \
+         anything else kept, and the bytes read as UTF-8, lossily. */\n\
+         function {prefix}HttpPercentDecoded(raw: string): string {{\n  \
+         const bytes: Array<number> = [];\n  \
+         for (const piece of raw.split(/(%[0-9A-Fa-f]{{2}})/)) {{\n    \
+         if (/^%[0-9A-Fa-f]{{2}}$/.test(piece)) bytes.push(parseInt(piece.slice(1), 16));\n    \
+         else bytes.push(...new TextEncoder().encode(piece));\n  \
+         }}\n  \
+         return new TextDecoder().decode(new Uint8Array(bytes));\n\
          }}"
     )
 }
@@ -527,6 +546,7 @@ fn dispatcher_fn(service: &ServiceDef, named: &str, prefix: &str) -> String {
         has_multipart: service_declares_multipart(service),
     };
     let answer = answer_fn(&ctx);
+    let dispatch = dispatch_stmt(service, named);
     let arms = service
         .operations
         .iter()
@@ -545,8 +565,8 @@ fn dispatcher_fn(service: &ServiceDef, named: &str, prefix: &str) -> String {
          export function create{named}HttpDispatcher<Ctx>(\n  \
          impl: {named}Impl<Ctx>,\n  \
          onFault: {named}HttpFaultHandler = {prefix}HttpDefaultFaultHandler,\n\
-         ): (ctx: Ctx, request: {named}HttpRequest) => Promise<{named}HttpResponse> {{\n  \
-         const dispatch = create{named}Dispatcher(impl);\n\
+         ): (ctx: Ctx, request: {named}HttpRequest) => Promise<{named}HttpResponse> {{\n\
+         {dispatch}\
          {answer}\n  \
          return async (ctx, request) => {{\n    \
          const {{ method, path }} = request;\n\
@@ -555,6 +575,38 @@ fn dispatcher_fn(service: &ServiceDef, named: &str, prefix: &str) -> String {
          service answers to no route by that method and path\"));\n  \
          }};\n\
          }}"
+    )
+}
+
+/// The `dispatch` every arm drives: `create{Service}Dispatcher`, and before it, where the service
+/// declares an operation only `http_rest` carries, a `switch` that answers that operation itself,
+/// that dispatcher taking no member for it.
+fn dispatch_stmt(service: &ServiceDef, named: &str) -> String {
+    let arms: Vec<String> = service
+        .operations
+        .iter()
+        .filter(|operation| operation.carried_by_http_alone().is_some())
+        .map(|operation| service::arm(service, operation))
+        .collect();
+    if arms.is_empty() {
+        return format!("  const dispatch = create{named}Dispatcher(impl);\n");
+    }
+    format!(
+        "  const enveloped = create{named}Dispatcher(impl);\n  \
+         const dispatch = async (\n    \
+         ctx: Ctx,\n    \
+         operation: string,\n    \
+         payload: unknown,\n    \
+         headers: ReadonlyArray<readonly [string, string]> = [],\n    \
+         parts: ReadonlyArray<readonly [string, unknown]> = [],\n  \
+         ): Promise<{named}Dispatched | undefined> => {{\n    \
+         switch (operation) {{\n\
+         {arms}\n      \
+         default:\n        \
+         return enveloped(ctx, operation, payload, headers, parts);\n    \
+         }}\n  \
+         }};\n",
+        arms = arms.join("\n"),
     )
 }
 

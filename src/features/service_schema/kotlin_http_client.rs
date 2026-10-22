@@ -4,8 +4,8 @@
 //! answer by status — mirroring [`super::dart_http_client`] statement for statement, since the URL,
 //! query and header rules it builds on were proven by execution on Dart.
 
-use super::on_one_line;
 use super::result::result_name;
+use super::{on_one_line, text_types};
 use crate::features::kotlin::{
     kotlin_bare, kotlin_declarations, kotlin_name, kotlin_property_name, kotlin_quoted,
     kotlin_read_serializer, kotlin_typename,
@@ -462,8 +462,8 @@ fn method(named: &str, fn_prefix: &str, operation: &OperationDef, has_multipart:
     let path_build = path_build_stmt(operation, &shape, fn_prefix);
     let query_build = query_build_stmt(operation, &shape, fn_prefix);
     let headers_build = header_in_build_stmt(named, fn_prefix, operation, &shape);
-    let body_build = body_build_stmt(&shape, &message_kotlin_typename(operation));
-    let parts_build = multipart_parts_build_stmt(operation, &shape, has_multipart);
+    let body_build = body_build_stmt(&shape, operation);
+    let parts_build = multipart_parts_build_stmt(fn_prefix, operation, &shape, has_multipart);
     let method_str = shape.method.name();
     let (signature, send, decode) = match &operation.outcome {
         OperationOutcome::OneWay => (
@@ -510,11 +510,11 @@ fn placeholder_value_kotlin_expr(
             .find(|(field, _)| written(field) == placeholder)
             .map_or_else(
                 || format!("\"${{req.{prop}}}\""),
-                |(_, ty)| kotlin_wire_text(ty, &format!("req.{prop}"), false),
+                |(_, ty)| kotlin_wire_text(fn_prefix, ty, &format!("req.{prop}"), false),
             ),
         OperationInputs::Named(declared) => {
             if shape.placeholder_names().len() == 1 && is_scalar_named_type(declared) {
-                kotlin_wire_text(declared, "req", true)
+                kotlin_wire_text(fn_prefix, declared, "req", true)
             } else {
                 format!("{}(req.{prop})", wire_text_call(fn_prefix))
             }
@@ -561,7 +561,7 @@ fn query_build_stmt(operation: &OperationDef, shape: &HttpShape, fn_prefix: &str
         let key = wire_key(field);
         let prop = kotlin_property_name(&field_name);
         let inner = option_inner(ty).unwrap_or(ty);
-        let rendered = kotlin_wire_text(inner, "value", true);
+        let rendered = kotlin_wire_text(fn_prefix, inner, "value", true);
         let _ = write!(
             pushes,
             "    req.{prop}?.let {{ value ->\n      \
@@ -601,7 +601,7 @@ fn header_in_build_stmt(
         );
         let refusal = outbound_refusal_stmt(named, operation, &fault_expr);
         if let Some(inner) = option_inner(&header.ty) {
-            let text = kotlin_wire_text(inner, &prop, true);
+            let text = kotlin_wire_text(fn_prefix, inner, &prop, true);
             let _ = writeln!(
                 stmt,
                 "    {prop}?.let {{\n      \
@@ -612,7 +612,7 @@ fn header_in_build_stmt(
                  }}"
             );
         } else {
-            let text = kotlin_wire_text(&header.ty, &prop, true);
+            let text = kotlin_wire_text(fn_prefix, &header.ty, &prop, true);
             let _ = writeln!(
                 stmt,
                 "    run {{\n      \
@@ -642,13 +642,20 @@ fn outbound_refusal_stmt(named: &str, operation: &OperationDef, fault_expr: &str
     }
 }
 
-fn body_build_stmt(shape: &HttpShape, req_type: &str) -> String {
+/// The message as a JSON body, through the serializer it is read with: a named type's own
+/// [`read_serializer`], a `char` and a date in the form serde writes.
+fn body_build_stmt(shape: &HttpShape, operation: &OperationDef) -> String {
     match shape.body_kind {
         BodyKind::Multipart => "    val body = ByteArray(0)\n".to_owned(),
         BodyKind::Bytes | BodyKind::Json | BodyKind::Stream => {
             if shape.method.carries_a_body() {
+                let serializer = if let OperationInputs::Named(declared) = &operation.inputs {
+                    read_serializer(declared)
+                } else {
+                    format!("serializer<{}>()", message_kotlin_typename(operation))
+                };
                 format!(
-                    "    val body = Json.encodeToString(serializer<{req_type}>(), req).encodeToByteArray()\n"
+                    "    val body = Json.encodeToString({serializer}, req).encodeToByteArray()\n"
                 )
             } else {
                 "    val body = ByteArray(0)\n".to_owned()
@@ -658,6 +665,7 @@ fn body_build_stmt(shape: &HttpShape, req_type: &str) -> String {
 }
 
 fn multipart_parts_build_stmt(
+    fn_prefix: &str,
     operation: &OperationDef,
     shape: &HttpShape,
     has_multipart: bool,
@@ -679,13 +687,13 @@ fn multipart_parts_build_stmt(
             let key = wire_key(field);
             let prop = kotlin_property_name(&field_name);
             if let Some(inner) = option_inner(ty) {
-                let text = kotlin_wire_text(inner, "it", true);
+                let text = kotlin_wire_text(fn_prefix, inner, "it", true);
                 let _ = writeln!(
                     stmt,
                     "    req.{prop}?.let {{ parts.add(\"{key}\" to {text}) }}"
                 );
             } else {
-                let text = kotlin_wire_text(ty, &format!("req.{prop}"), false);
+                let text = kotlin_wire_text(fn_prefix, ty, &format!("req.{prop}"), false);
                 let _ = writeln!(stmt, "    parts.add(\"{key}\" to {text})");
             }
         }
@@ -1044,6 +1052,13 @@ fn fault_helpers(service: &ServiceDef, named: &str, fn_prefix: &str) -> Vec<Stri
     if service.operations.iter().any(path_reads_a_named_field) {
         helpers.push(wire_text_fn(fn_prefix));
     }
+    if service.operations.iter().any(|operation| {
+        text_types(operation)
+            .iter()
+            .any(writes_through_its_serializer)
+    }) {
+        helpers.push(sent_text_fn(fn_prefix));
+    }
     helpers.extend([
         transport_failure_fn(named, fn_prefix),
         undeserializable_payload_fn(named, fn_prefix),
@@ -1165,6 +1180,23 @@ fn wire_text_call(fn_prefix: &str) -> String {
     format!("{fn_prefix}HttpWireText")
 }
 
+/// A value as the text a path segment, a query, a header or a part carries, written through
+/// `serializer`, the one it is read with: a string as itself, anything else as its JSON.
+fn sent_text_fn(fn_prefix: &str) -> String {
+    format!(
+        "private fun <T> {}(serializer: KSerializer<T>, value: T): String =\n  \
+         when (val encoded = Json.encodeToJsonElement(serializer, value)) {{\n    \
+         is JsonPrimitive -> encoded.content\n    \
+         else -> encoded.toString()\n  \
+         }}",
+        sent_text_call(fn_prefix)
+    )
+}
+
+fn sent_text_call(fn_prefix: &str) -> String {
+    format!("{fn_prefix}HttpSentText")
+}
+
 fn transport_failure_fn(named: &str, fn_prefix: &str) -> String {
     let fields = fault_fields_typescript_name(named);
     format!(
@@ -1240,42 +1272,49 @@ pub(super) fn read_serializer(ty: &Type) -> String {
     kotlin_read_serializer(&get_field_def("value", ty, ""))
 }
 
-/// Whether `ty` is a reference to another `#[model_schema()]` item — the one distinction
-/// [`kotlin_wire_text`] needs to decide whether a value must be read through its own JSON codec
-/// before it can be embedded as text.
-fn is_sibling_type(ty: &Type) -> bool {
-    matches!(
-        get_field_def("value", ty, "").field_type,
-        FieldDefType::SiblingType(_, _)
-    )
-}
-
 /// The Kotlin expression that renders `ty`'s value at `expr` as URL- or header-safe text: an
-/// `Option<T>` reads as the empty string when absent, a `List<T>` joins with a comma, and a
-/// sibling type is read through the JSON codec first. `promoted` marks `expr` already null-checked.
-fn kotlin_wire_text(ty: &Type, expr: &str, promoted: bool) -> String {
+/// `Option<T>` reads as the empty string when absent, a `List<T>` joins with a comma, a `String`
+/// and a `Boolean` interpolate as the text serde reads, and any other value is written through the
+/// serializer it is read with, as it is in a body: a `char` and a date in the form serde writes, a
+/// refusal thrown before the transport is reached. `promoted` marks `expr` already null-checked.
+fn kotlin_wire_text(fn_prefix: &str, ty: &Type, expr: &str, promoted: bool) -> String {
     if let Some(inner) = option_inner(ty) {
         let narrowed = if promoted {
             expr.to_owned()
         } else {
             format!("{expr}!!")
         };
-        let rendered = kotlin_wire_text(inner, &narrowed, promoted);
+        let rendered = kotlin_wire_text(fn_prefix, inner, &narrowed, promoted);
         return format!("(if ({expr} == null) \"\" else {rendered})");
     }
     if let Some(inner) = vec_inner(ty) {
-        let element = kotlin_wire_text(inner, "it", true);
+        let element = kotlin_wire_text(fn_prefix, inner, "it", true);
         return format!("({expr}).joinToString(\",\") {{ {element} }}");
     }
-    if is_sibling_type(ty) {
-        // A scalar sibling type serializes to a bare JSON primitive; reading `.jsonPrimitive.content`
-        // back off it gives the unquoted wire text a path or query value needs.
-        let element_ty = kotlin_type_of(ty);
+    if writes_through_its_serializer(ty) {
         return format!(
-            "Json.encodeToJsonElement(serializer<{element_ty}>(), {expr}).jsonPrimitive.content"
+            "{}({}, {expr})",
+            sent_text_call(fn_prefix),
+            read_serializer(ty)
         );
     }
     format!("\"${{{expr}}}\"")
+}
+
+/// Whether [`kotlin_wire_text`] writes a value of `ty` through its serializer: every value but a
+/// `String` and a `Boolean`, under an `Option` and a `List` alike.
+fn writes_through_its_serializer(ty: &Type) -> bool {
+    let base = option_inner(ty).unwrap_or(ty);
+    if let Some(inner) = vec_inner(base) {
+        return writes_through_its_serializer(inner);
+    }
+    !matches!(
+        get_field_def("value", base, "").field_type,
+        FieldDefType::String
+            | FieldDefType::StringLiteral(_)
+            | FieldDefType::Boolean
+            | FieldDefType::BooleanLiteral(_)
+    )
 }
 
 /// The expression that reads one `header_out` element's declared type back off `raw`. A number,

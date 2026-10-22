@@ -1482,6 +1482,84 @@ impl SpooledProbeService<()> for SpooledProbeBackEnd {
     }
 }
 
+/// A service whose one operation only `http_rest` carries: no `ws_rpc` or transport-agnostic
+/// client has a method for it.
+#[service_schema(transports = [])]
+pub trait StreamedProbeService<Ctx> {
+    #[service_schema_op(http(method = "GET", path = "/streamed/{id}", body = "stream"))]
+    async fn stream(
+        &self,
+        ctx: &Ctx,
+        id: String,
+    ) -> Result<streamed_probe_service_schema::StreamedAnswer, HeaderProbeError>;
+}
+
+/// The implementation of `StreamedProbeService` these tests call.
+pub struct StreamedProbeBackEnd;
+
+impl StreamedProbeService<()> for StreamedProbeBackEnd {
+    async fn stream(
+        &self,
+        _ctx: &(),
+        id: String,
+    ) -> Result<streamed_probe_service_schema::StreamedAnswer, HeaderProbeError> {
+        ready(()).await;
+        if id.is_empty() {
+            return Err(HeaderProbeError::Missing);
+        }
+        Ok(streamed_probe_service_schema::StreamedAnswer::Full {
+            source: Box::new(io::Cursor::new(id.into_bytes())),
+            content_type: "text/plain".to_owned(),
+        })
+    }
+}
+
+/// A `bytes` reply beside a `header_out` and an `error_header_out`, and one alone: the operations
+/// of `SpooledProbeService` every TypeScript client publishes a method for.
+#[service_schema(transports = [])]
+pub trait BytesProbeService<Ctx> {
+    #[service_schema_op(http(method = "GET", path = "/dumped/{id}", body = "bytes"))]
+    async fn dump(&self, ctx: &Ctx, id: String) -> Result<(Vec<u8>, String), HeaderProbeError>;
+
+    #[service_schema_op(http(
+        method = "GET",
+        path = "/spooled/{id}",
+        body = "bytes",
+        header_out("x-id"),
+        error_header_out("x-reason"),
+    ))]
+    async fn spool(
+        &self,
+        ctx: &Ctx,
+        id: String,
+    ) -> Result<(Vec<u8>, String, String), (HeaderProbeError, Option<String>)>;
+}
+
+/// The implementation of `BytesProbeService` these tests call.
+pub struct BytesProbeBackEnd;
+
+impl BytesProbeService<()> for BytesProbeBackEnd {
+    async fn dump(&self, _ctx: &(), id: String) -> Result<(Vec<u8>, String), HeaderProbeError> {
+        ready(()).await;
+        if id.is_empty() {
+            return Err(HeaderProbeError::Missing);
+        }
+        Ok((id.into_bytes(), "text/plain".to_owned()))
+    }
+
+    async fn spool(
+        &self,
+        _ctx: &(),
+        id: String,
+    ) -> Result<(Vec<u8>, String, String), (HeaderProbeError, Option<String>)> {
+        ready(()).await;
+        if id.is_empty() {
+            return Err((HeaderProbeError::Missing, None));
+        }
+        Ok((id.clone().into_bytes(), "text/plain".to_owned(), id))
+    }
+}
+
 /// One operation whose placeholder and header argument are named after words TypeScript refuses
 /// as a parameter or a local, and one whose are named after locals the emitted functions write
 /// themselves.
@@ -1769,6 +1847,29 @@ fn the_spooled_probe_service_is_still_implementable_and_callable() {
     let streamed = poll_once(SpooledProbeBackEnd.stream(&(), String::new())).unwrap();
     assert!(
         matches!(streamed, Err(HeaderProbeError::Missing)),
+        "the implementation answers another value"
+    );
+}
+
+#[test]
+fn the_streamed_probe_service_is_still_implementable_and_callable() {
+    let streamed = poll_once(StreamedProbeBackEnd.stream(&(), String::new())).unwrap();
+    assert!(
+        matches!(streamed, Err(HeaderProbeError::Missing)),
+        "the implementation answers another value"
+    );
+}
+
+#[test]
+fn the_bytes_probe_service_is_still_implementable_and_callable() {
+    let spooled = poll_once(BytesProbeBackEnd.spool(&(), "s".to_owned())).unwrap();
+    assert!(
+        matches!(&spooled, Ok((bytes, _, id)) if bytes == b"s" && id == "s"),
+        "got: {spooled:?}"
+    );
+    let dumped = poll_once(BytesProbeBackEnd.dump(&(), String::new())).unwrap();
+    assert!(
+        matches!(dumped, Err(HeaderProbeError::Missing)),
         "the implementation answers another value"
     );
 }

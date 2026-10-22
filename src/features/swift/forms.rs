@@ -47,8 +47,13 @@ pub fn read_call(form: TextForm, text: &str, coding_path: &str) -> String {
 
 /// The call that writes `text`, a `String` of `form`, as the client sends it.
 pub fn sent_call(form: TextForm, text: &str) -> String {
+    sent_call_at(form, text, "encoder.codingPath")
+}
+
+/// [`sent_call`], under the coding path `coding_path` names.
+pub fn sent_call_at(form: TextForm, text: &str, coding_path: &str) -> String {
     format!(
-        "(try Self.swiftSchemaSent{}({text}, codingPath: encoder.codingPath))",
+        "(try Self.swiftSchemaSent{}({text}, codingPath: {coding_path}))",
         named(form)
     )
 }

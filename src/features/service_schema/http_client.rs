@@ -5,6 +5,8 @@
 use super::fault;
 use super::message;
 use super::result::result_name;
+#[cfg(feature = "chrono")]
+use crate::field_type::FieldDefType;
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
@@ -30,9 +32,9 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
 }
 
 /// The one seam type a `{service}` client sends through: a request record in, a response record
-/// out, nothing service-specific in either. The request record carries `parts` only where the
-/// service declares a multipart operation, and the response record `bodyStream` only where it
-/// declares a streamed one.
+/// out, nothing service-specific in either, each body its bytes as the Dart, Swift and Kotlin
+/// seams carry it. The request record carries `parts` only where the service declares a multipart
+/// operation, and the response record `bodyStream` only where it declares a streamed one.
 fn transport_type(service: &str, has_stream: bool, has_multipart: bool) -> String {
     let parts_field = if has_multipart {
         "\n    parts: ReadonlyArray<readonly [string, unknown]>;"
@@ -52,7 +54,9 @@ fn transport_type(service: &str, has_stream: bool, has_multipart: bool) -> Strin
          carry\n \
          * nothing service-specific, so one hand-written implementation (built once, over any HTTP \
          stack)\n \
-         * satisfies every service's own alias of this type.\n \
+         * satisfies every service's own alias of this type. Each body crosses as its bytes, a \
+         JSON\n \
+         * body as its UTF-8 text.\n \
          */\n\
          export type {service}HttpTransport = {{\n  \
          send(request: {{\n    \
@@ -60,11 +64,11 @@ fn transport_type(service: &str, has_stream: bool, has_multipart: bool) -> Strin
          path: string;\n    \
          query: string;\n    \
          headers: ReadonlyArray<readonly [string, string]>;\n    \
-         body: string;{parts_field}\n  \
+         body: Uint8Array;{parts_field}\n  \
          }}): Promise<{{\n    \
          status: number;\n    \
          headers: ReadonlyArray<readonly [string, string]>;\n    \
-         body: string;{stream_field}\n  \
+         body: Uint8Array;{stream_field}\n  \
          }}>;\n\
          }};"
     )
@@ -168,11 +172,11 @@ fn method(service: &ServiceDef, operation: &OperationDef, has_multipart: bool) -
     let shape = HttpShape::of(operation);
     let params = method_params(operation, &shape);
     let validated = validation_stmt(&prefix, operation, wire);
-    let path_build = path_build_stmt(operation, &shape);
-    let query_build = query_build_stmt(operation, &shape);
+    let path_build = path_build_stmt(&prefix, operation, &shape);
+    let query_build = query_build_stmt(&prefix, operation, &shape);
     let headers_build = header_in_build_stmt(&prefix, operation, &shape);
     let body_build = body_build_stmt(&shape);
-    let parts_build = multipart_parts_build_stmt(operation, &shape, has_multipart);
+    let parts_build = multipart_parts_build_stmt(&prefix, operation, &shape, has_multipart);
     let send = send_stmt(&prefix, operation, wire, shape.method.name(), has_multipart);
     let decode = decode_stmt(&prefix, operation, &shape, wire);
     format!(
@@ -253,7 +257,39 @@ fn placeholder_value_expr(
     }
 }
 
-fn path_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
+/// The text a path segment, a query value, a header or a text part carries of `value`, a value
+/// its Zod schema gave back: a list's items each through [`wire_text_fn`], joined by commas, and
+/// any other value through it.
+fn wire_text_expr(prefix: &str, ty: &Type, value: &str) -> String {
+    vec_inner(ty).map_or_else(
+        || format!("{prefix}HttpWireText({value})"),
+        |inner| {
+            let element = wire_text_expr(prefix, inner, "element");
+            format!("{value}.map((element) => {element}).join(\",\")")
+        },
+    )
+}
+
+/// The type a path placeholder reads off `sending`, where the macro sees it: a generated field's,
+/// or the whole message bound to the one placeholder.
+fn placeholder_type<'operation>(
+    operation: &'operation OperationDef,
+    shape: &HttpShape,
+    placeholder: &str,
+) -> Option<&'operation Type> {
+    match &operation.inputs {
+        OperationInputs::Empty => None,
+        OperationInputs::Generated(fields) => fields
+            .iter()
+            .find(|(field, _)| written(field) == placeholder)
+            .map(|(_, ty)| ty),
+        OperationInputs::Named(declared) => (shape.placeholder_names().len() == 1
+            && is_scalar_named_type(declared))
+        .then_some(declared.as_ref()),
+    }
+}
+
+fn path_build_stmt(prefix: &str, operation: &OperationDef, shape: &HttpShape) -> String {
     let mut stmt = String::from("      let path = \"\";\n");
     for segment in &shape.path {
         match segment {
@@ -262,14 +298,18 @@ fn path_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
             }
             PathSegment::Placeholder(name) => {
                 let value = placeholder_value_expr(operation, shape, name);
-                let _ = writeln!(stmt, "      path += encodeURIComponent(String({value}));");
+                let rendered = placeholder_type(operation, shape, name).map_or_else(
+                    || format!("{prefix}HttpWireText({value})"),
+                    |ty| wire_text_expr(prefix, option_inner(ty).unwrap_or(ty), &value),
+                );
+                let _ = writeln!(stmt, "      path += encodeURIComponent({rendered});");
             }
         }
     }
     stmt
 }
 
-fn query_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
+fn query_build_stmt(prefix: &str, operation: &OperationDef, shape: &HttpShape) -> String {
     if shape.method.carries_a_body() {
         return "      const query = \"\";\n".to_owned();
     }
@@ -289,11 +329,12 @@ fn query_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
         }
         let key = wire_key(field);
         let inner = option_inner(ty).unwrap_or(ty);
+        let rendered = wire_text_expr(prefix, inner, &format!("sending.{key}"));
         if vec_inner(inner).is_some() {
             let _ = write!(
                 pushes,
                 "      if (sending.{key} !== undefined) {{\n        \
-                 const joined = sending.{key}.map((element) => String(element)).join(\",\");\n        \
+                 const joined = {rendered};\n        \
                  queryParts.push(`{key}=${{encodeURIComponent(joined)}}`);\n      \
                  }}\n"
             );
@@ -301,7 +342,7 @@ fn query_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
             let _ = write!(
                 pushes,
                 "      if (sending.{key} !== undefined) {{\n        \
-                 queryParts.push(`{key}=${{encodeURIComponent(String(sending.{key}))}}`);\n      \
+                 queryParts.push(`{key}=${{encodeURIComponent({rendered})}}`);\n      \
                  }}\n"
             );
         }
@@ -316,55 +357,85 @@ fn query_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
     )
 }
 
-/// Builds the outgoing header array, one entry per `header_in` binding - an optional binding
-/// holding `undefined` is pushed nowhere, and every rendered value is checked before it is pushed.
+/// Builds the outgoing header array, one entry per `header_in` binding: each value is parsed by
+/// its type's Zod schema first, as the message is, and refused as the message is; an optional
+/// binding holding `undefined` is pushed nowhere, and every rendered value is checked before it is
+/// pushed.
 fn header_in_build_stmt(prefix: &str, operation: &OperationDef, shape: &HttpShape) -> String {
     let mut stmt = String::from("      const headers: Array<[string, string]> = [];\n");
+    let wire = ts_quoted(&operation.wire_name);
     for header in &shape.header_in {
         let name = ts_quoted(&header.name);
         let parameter = message::parameter_name(&header.parameter);
-        let fault_expr = format!(
-            "{prefix}HttpOutboundFault({}, [{{ path: [{name}], message: \"a header \
-             value contains a character illegal in an HTTP header\" }}])",
-            ts_quoted(&operation.wire_name),
+        let schema = get_field_def(&parameter, &header.ty, "").zod_type();
+        let unparsed = outbound_fault_stmt(
+            prefix,
+            operation,
+            &format!(
+                "{prefix}HttpOutboundFault({wire}, {})",
+                header_issues(&name)
+            ),
         );
-        let refusal = outbound_fault_stmt(prefix, operation, &fault_expr);
+        let fault_expr = format!(
+            "{prefix}HttpOutboundFault({wire}, [{{ path: [{name}], message: \"a header \
+             value contains a character illegal in an HTTP header\" }}])",
+        );
+        let refusal = message::deeper(&outbound_fault_stmt(prefix, operation, &fault_expr), 2);
+        let inner = option_inner(&header.ty);
+        let rendered = wire_text_expr(prefix, inner.unwrap_or(&header.ty), "held.data");
         let checked = format!(
-            "        const rendered = String({parameter});\n        \
+            "        const rendered = {rendered};\n        \
              if (!{prefix}HttpLegalHeaderValue(rendered)) {{\n{refusal}        \
              }}\n        \
              headers.push([{name}, rendered]);\n"
         );
-        if option_inner(&header.ty).is_some() {
-            let _ = write!(
-                stmt,
-                "      if ({parameter} !== undefined) {{\n{checked}      \
-                 }}\n"
-            );
+        let pushed = if inner.is_some() {
+            format!(
+                "        if (held.data !== undefined) {{\n{}        }}\n",
+                message::deeper(&checked, 2)
+            )
         } else {
-            let _ = write!(stmt, "      {{\n{checked}      }}\n");
-        }
+            checked
+        };
+        let _ = write!(
+            stmt,
+            "      {{\n        \
+             const held = {schema}.safeParse({parameter});\n        \
+             if (!held.success) {{\n{}        \
+             }}\n\
+             {pushed}      }}\n",
+            message::deeper(&unparsed, 2)
+        );
     }
     stmt
 }
 
+/// The issues a `header_in` value its schema refused answers, each under the header's name, as
+/// the dispatcher names them.
+fn header_issues(name: &str) -> String {
+    format!(
+        "held.error.issues.map((issue) => ({{ path: [{name}, ...issue.path], message: \
+         issue.message }}))"
+    )
+}
+
 fn body_build_stmt(shape: &HttpShape) -> String {
-    if matches!(shape.body_kind, BodyKind::Multipart) {
-        "      const body = \"\";\n".to_owned()
-    } else if shape.method.carries_a_body() {
-        "      const body = JSON.stringify(sending);\n".to_owned()
+    if shape.method.carries_a_body() && !matches!(shape.body_kind, BodyKind::Multipart) {
+        "      const body = new TextEncoder().encode(JSON.stringify(sending));\n".to_owned()
     } else {
-        "      const body = \"\";\n".to_owned()
+        "      const body = new Uint8Array();\n".to_owned()
     }
 }
 
 /// The `parts` a `body = "multipart"` method sends: one text entry per carried `Generated` field
-/// not otherwise placeholder-bound (under its own wire key), then one entry per declared `part`
-/// binding (under its own declared name, its value the client's own extra argument, passed
-/// through untouched) - mirrors the Rust client's own `multipart_parts_build_stmt`. Every other
-/// body kind on a service that declares multipart still builds an empty `parts` so the request
-/// literal has a value for the field; a service with no multipart operation at all builds nothing.
+/// not otherwise placeholder-bound (under its own wire key, its text written as a path's is), then
+/// one entry per declared `part` binding (under its own declared name, its value the client's own
+/// extra argument, passed through untouched) - mirrors the Rust client's own
+/// `multipart_parts_build_stmt`. Every other body kind on a service that declares multipart still
+/// builds an empty `parts` so the request literal has a value for the field; a service with no
+/// multipart operation at all builds nothing.
 fn multipart_parts_build_stmt(
+    prefix: &str,
     operation: &OperationDef,
     shape: &HttpShape,
     has_multipart: bool,
@@ -385,18 +456,18 @@ fn multipart_parts_build_stmt(
             }
             let key = ts_quoted(&wire_key(field));
             let field_key = RenameRule::CamelCase.apply_to_field(&field_name);
-            if option_inner(ty).is_some() {
+            let inner = option_inner(ty);
+            let rendered =
+                wire_text_expr(prefix, inner.unwrap_or(ty), &format!("sending.{field_key}"));
+            if inner.is_some() {
                 let _ = write!(
                     stmt,
                     "      if (sending.{field_key} !== undefined) {{\n        \
-                     parts.push([{key}, String(sending.{field_key})]);\n      \
+                     parts.push([{key}, {rendered}]);\n      \
                      }}\n"
                 );
             } else {
-                let _ = writeln!(
-                    stmt,
-                    "      parts.push([{key}, String(sending.{field_key})]);"
-                );
+                let _ = writeln!(stmt, "      parts.push([{key}, {rendered}]);");
             }
         }
     }
@@ -621,12 +692,11 @@ fn success_decode_block(prefix: &str, wire: &str, shape: &HttpShape, success: &T
     stmt
 }
 
-/// A `body = "bytes"` operation's own success decode: the raw response body stands in for the
-/// bytes - the seam already carries it as a plain `string`, so there is no `JSON.parse` on the
-/// success path at all, mirroring the Rust client's own bytes decode, which reaches for no
-/// `serde_json` either - `content-type` read back from the response headers, then any declared
-/// `header_out` element after it, the same composition the JSON path performs, shifted one slot
-/// for the content type.
+/// A `body = "bytes"` operation's own success decode: the response's bytes, as the `Array<number>`
+/// the result declares, with no `JSON.parse` on the success path at all, mirroring the Rust
+/// client's own bytes decode, which reaches for no `serde_json` either - `content-type` read back
+/// from the response headers, then any declared `header_out` element after it, the same
+/// composition the JSON path performs, shifted one slot for the content type.
 fn bytes_success_decode_block(
     prefix: &str,
     wire: &str,
@@ -639,7 +709,9 @@ fn bytes_success_decode_block(
          )?.[1] ?? \"\";\n",
     );
     if shape.header_out.is_empty() {
-        stmt.push_str("        return { ok: true, value: [response.body, contentType] };\n");
+        stmt.push_str(
+            "        return { ok: true, value: [Array.from(response.body), contentType] };\n",
+        );
         return stmt;
     }
     let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
@@ -647,7 +719,7 @@ fn bytes_success_decode_block(
     stmt.push_str(&header_stmts);
     let _ = writeln!(
         stmt,
-        "        return {{ ok: true, value: [response.body, contentType, {}] }};",
+        "        return {{ ok: true, value: [Array.from(response.body), contentType, {}] }};",
         header_idents.join(", ")
     );
     stmt
@@ -875,6 +947,9 @@ fn header_out_value_expr(ty: &Type, raw: &str) -> String {
         let element = header_out_value_expr(inner, "piece");
         return format!("({raw}).split(\",\").map((piece: string) => {element})");
     }
+    if reads_a_date(base) {
+        return format!("new Date({raw})");
+    }
     match scalar_kind(base) {
         ScalarKind::Bool => format!("(({raw}) === \"true\")"),
         ScalarKind::Number => format!("Number({raw})"),
@@ -894,6 +969,9 @@ fn header_out_invalid_expr(ty: &Type, raw: &str) -> Option<String> {
             "({raw}).split(\",\").some((piece: string) => {inner_invalid})"
         ));
     }
+    if reads_a_date(base) {
+        return Some(format!("Number.isNaN(new Date({raw}).getTime())"));
+    }
     match scalar_kind(base) {
         ScalarKind::Bool => Some(format!("{raw} !== \"true\" && {raw} !== \"false\"")),
         ScalarKind::Number => {
@@ -908,6 +986,22 @@ fn header_out_invalid_expr(ty: &Type, raw: &str) -> Option<String> {
         }
         ScalarKind::Text => None,
     }
+}
+
+/// Whether `ty` is a `DateTime<Tz>`, which the result declares a `Date` of: read off the RFC 3339
+/// text the dispatcher writes, where every other text-shaped type is the text itself.
+#[cfg(feature = "chrono")]
+fn reads_a_date(ty: &Type) -> bool {
+    matches!(
+        get_field_def("value", ty, "").field_type,
+        FieldDefType::DateTime
+    )
+}
+
+/// No type is a `DateTime<Tz>` without `chrono`.
+#[cfg(not(feature = "chrono"))]
+const fn reads_a_date(_ty: &Type) -> bool {
+    false
 }
 
 /// Whether `ty` — already known to be [`ScalarKind::Number`] — is one of the integer primitives
@@ -958,7 +1052,38 @@ fn fault_helpers(service: &ServiceDef) -> Vec<String> {
     {
         helpers.push(legal_header_value_fn(&prefix));
     }
+    if service.operations.iter().any(writes_a_text) {
+        helpers.push(wire_text_fn(&prefix));
+    }
     helpers
+}
+
+/// Whether `operation` writes a value as text: into a path placeholder, a header, or a query value
+/// or a text part, which every field the path leaves is on a bodyless or multipart method.
+fn writes_a_text(operation: &OperationDef) -> bool {
+    let shape = HttpShape::of(operation);
+    if !shape.placeholder_names().is_empty() || !shape.header_in.is_empty() {
+        return true;
+    }
+    let OperationInputs::Generated(fields) = &operation.inputs else {
+        return false;
+    };
+    (matches!(shape.body_kind, BodyKind::Multipart) || !shape.method.carries_a_body())
+        && !fields.is_empty()
+}
+
+/// The text a value carries in a path, a query, a header or a part, as the Rust dispatcher reads
+/// it: a `Date` as the RFC 3339 text `JSON.stringify` writes for it, and anything else as
+/// `String` writes it.
+fn wire_text_fn(prefix: &str) -> String {
+    format!(
+        "/** The text a value carries in a path, a query, a header or a part: a `Date` as the \
+         RFC 3339\n \
+         * text `JSON.stringify` writes for it, anything else as `String` writes it. */\n\
+         function {prefix}HttpWireText(value: unknown): string {{\n  \
+         return value instanceof Date ? value.toISOString() : String(value);\n\
+         }}"
+    )
 }
 
 /// Whether every byte of `value` is legal as an HTTP header value: visible ASCII (`0x21`-`0x7E`),
@@ -1055,17 +1180,19 @@ fn undeserializable_payload_fn(named: &str, prefix: &str) -> String {
 fn parsed_fn(named: &str, prefix: &str) -> String {
     format!(
         "/**\n \
-         * Reads a `{named}` response body as the type `schema` declares. Text that is no JSON, \
-         or JSON\n \
-         * that is not that type, answers the fault instead, naming the first failing key.\n \
+         * Reads a `{named}` response body as the type `schema` declares. Bytes that are no \
+         UTF-8 JSON,\n \
+         * or JSON that is not that type, answer the fault instead, naming the first failing \
+         key.\n \
          */\n\
          function {prefix}HttpParsed<Parsed>(\n  \
          operation: string,\n  \
-         text: string,\n  \
+         body: Uint8Array,\n  \
          schema: ZodType<Parsed>,\n\
          ): {{ ok: true; value: Parsed }} | {{ ok: false; fault: {named}Fault }} {{\n  \
          let detail: string;\n  \
          try {{\n    \
+         const text = new TextDecoder(\"utf-8\", {{ fatal: true }}).decode(body);\n    \
          const parsed = schema.safeParse(JSON.parse(text));\n    \
          if (parsed.success) return {{ ok: true, value: parsed.data }};\n    \
          detail = parsed.error.issues\n      \
@@ -1096,9 +1223,10 @@ fn fault_from_body_fn(named: &str, prefix: &str) -> String {
          * A body that does not read as the fixed fault shape is itself a defect answered as \
          one.\n \
          */\n\
-         function {prefix}HttpFaultFromBody(operation: string, bodyText: string): {named}Fault {{\n  \
+         function {prefix}HttpFaultFromBody(operation: string, body: Uint8Array): {named}Fault {{\n  \
          try {{\n    \
-         const parsed = JSON.parse(bodyText) as {{\n      \
+         const text = new TextDecoder(\"utf-8\", {{ fatal: true }}).decode(body);\n    \
+         const parsed = JSON.parse(text) as {{\n      \
          detail?: unknown;\n      \
          field?: unknown;\n      \
          kind?: unknown;\n      \

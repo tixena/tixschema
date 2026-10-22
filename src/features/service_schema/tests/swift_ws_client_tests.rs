@@ -6,8 +6,9 @@
 //! Swift toolchain, against an in-memory socket, separately from this file's own assertions.
 
 use super::{
-    MIXED_SERVICE, RESERVED_WORD_SERVICE, SHADOWED_LOCAL_SERVICE, SWIFT_SEQUENCE_SERVICE,
-    SWIFT_UNIT_SUCCESS_SERVICE, SWIFT_WS_HEADERS_SERVICE, SWIFT_WS_SERVICE, swift_ws_client_of,
+    MIXED_SERVICE, RESERVED_WORD_SERVICE, SHADOWED_LOCAL_SERVICE, SHELVING_SERVICE,
+    STREAMING_ONLY_SERVICE, SWIFT_SEQUENCE_SERVICE, SWIFT_UNIT_SUCCESS_SERVICE,
+    SWIFT_WS_HEADERS_SERVICE, SWIFT_WS_SERVICE, swift_ws_client_of,
 };
 
 /// The body of one declaration, from its own start marker through the closing brace that ends
@@ -27,7 +28,7 @@ fn a_successful_reply_is_checked_against_the_declared_success() {
     let body = body_from(&written, "public func getAvailableBalance(");
     assert!(
         body.contains(
-            "JSONDecoder().decode(UsageServiceWsValueEnvelope<AvailableBalanceResponse>.self,"
+            "usageServiceWsDatedDecoder().decode(UsageServiceWsValueEnvelope<AvailableBalanceResponse>.self,"
         ),
         "a success the transport handed back is answered as an `AvailableBalanceResponse`, so it is \
          decoded as one first. Got: {body}"
@@ -39,7 +40,9 @@ fn a_failed_reply_is_checked_against_the_declared_error() {
     let written = swift_ws_client_of(MIXED_SERVICE);
     let body = body_from(&written, "public func getAvailableBalance(");
     assert!(
-        body.contains("JSONDecoder().decode(UsageServiceWsDeclaredEnvelope<BalanceError>.self,"),
+        body.contains(
+            "usageServiceWsDatedDecoder().decode(UsageServiceWsDeclaredEnvelope<BalanceError>.self,"
+        ),
         "a failure the transport handed back is answered as a `BalanceError`, so it is decoded \
          as one first. Got: {body}"
     );
@@ -237,14 +240,14 @@ fn a_reply_operation_answers_result_and_decodes_success_declared_error_or_fault(
     );
     assert!(
         method.contains(
-            "let decoded = try JSONDecoder().decode(ConversationClientServiceWsValueEnvelope<WindowPage>.self, from: raw)"
+            "let decoded = try conversationClientServiceWsDatedDecoder().decode(ConversationClientServiceWsValueEnvelope<WindowPage>.self, from: raw)"
         ) && method.contains("return .success(decoded.value)"),
         "a successful reply decodes through the generic value envelope into the success arm. \
          Got: {method}"
     );
     assert!(
         method.contains(
-            "let declared = try JSONDecoder().decode(ConversationClientServiceWsDeclaredEnvelope<WindowError>.self, from: raw)"
+            "let declared = try conversationClientServiceWsDatedDecoder().decode(ConversationClientServiceWsDeclaredEnvelope<WindowError>.self, from: raw)"
         ) && method.contains("return .failure(.declared(declared.error))"),
         "got: {method}"
     );
@@ -381,7 +384,7 @@ fn a_sequence_message_and_success_are_the_arrays_serde_writes() {
         "got: {method}"
     );
     assert!(
-        method.contains("JSONDecoder().decode(RosterClientServiceWsValueEnvelope<[String]>.self,"),
+        method.contains("rosterClientServiceWsDatedDecoder().decode(RosterClientServiceWsValueEnvelope<[String]>.self,"),
         "got: {method}"
     );
 }
@@ -406,10 +409,28 @@ fn a_header_in_binding_becomes_an_extra_parameter_and_a_built_dictionary() {
     let method = body_from(&written, "public func mark(_ req: String, tenant: String)");
     assert!(
         method.contains(
-            "let headers: [String: StampClientServiceWsHeaderIn]? = [\n      \"x-tenant\": \
-             StampClientServiceWsHeaderIn(tenant),\n    ]"
+            "    do {\n      let headers: [String: StampClientServiceWsHeaderIn]? = [\n        \
+             \"x-tenant\": StampClientServiceWsHeaderIn(tenant),\n      ]"
         ) && method.contains("try sendNotify(operation: \"mark\", payload: req, headers: headers)"),
         "got: {method}"
+    );
+}
+
+/// The carrier writes its value through a container, where `JSONEncoder` applies the date
+/// strategy the frame is encoded with: a `Date` called on directly writes a number.
+#[test]
+fn a_header_in_value_is_written_through_a_container() {
+    let written = swift_ws_client_of(SWIFT_WS_HEADERS_SERVICE);
+    assert!(
+        written.contains(
+            "  init<Value: Encodable>(_ value: Value) {\n    \
+             write = { encoder in\n      \
+             var container = encoder.singleValueContainer()\n      \
+             try container.encode(value)\n    \
+             }\n  \
+             }"
+        ) && !written.contains("try value.encode(to: encoder)"),
+        "got: {written}"
     );
 }
 
@@ -462,9 +483,9 @@ fn a_header_out_tuple_reads_the_body_and_a_dedicated_header_structure_back() {
     );
     assert!(
         method.contains(
-            "let decoded = try JSONDecoder().decode(StampClientServiceWsValueEnvelope<StampReceipt>.self, from: raw)"
+            "let decoded = try stampClientServiceWsDatedDecoder().decode(StampClientServiceWsValueEnvelope<StampReceipt>.self, from: raw)"
         ) && method.contains(
-            "let headerValues = try JSONDecoder().decode(StampClientServiceWsStampSuccessHeaders.self, from: raw)"
+            "let headerValues = try stampClientServiceWsDatedDecoder().decode(StampClientServiceWsStampSuccessHeaders.self, from: raw)"
         ) && method.contains(
             "return .success((decoded.value, headerValues.headerOut0, headerValues.headerOut1))"
         ),
@@ -539,9 +560,9 @@ fn a_declared_error_with_error_header_out_reads_the_head_and_its_own_headers_bac
     );
     assert!(
         method.contains(
-            "let declared = try JSONDecoder().decode(StampClientServiceWsDeclaredEnvelope<StampError>.self, from: raw)"
+            "let declared = try stampClientServiceWsDatedDecoder().decode(StampClientServiceWsDeclaredEnvelope<StampError>.self, from: raw)"
         ) && method.contains(
-            "let errorHeaderValues = try JSONDecoder().decode(StampClientServiceWsStampErrorHeaders.self, from: raw)"
+            "let errorHeaderValues = try stampClientServiceWsDatedDecoder().decode(StampClientServiceWsStampErrorHeaders.self, from: raw)"
         ) && method.contains(
             "return .failure(.declared((declared.error, errorHeaderValues.errorHeaderOut0)))"
         ),
@@ -581,4 +602,36 @@ fn an_argument_named_after_a_local_of_the_method_keeps_its_label_and_is_read_by_
     ] {
         assert!(written.contains(moved), "no `{moved}` in: {written}");
     }
+}
+
+/// Only `http_rest` carries a streamed reply and a file part: the actor has no method for either,
+/// and says so.
+#[test]
+fn the_actor_has_no_method_for_an_operation_only_http_rest_carries() {
+    let written = swift_ws_client_of(SHELVING_SERVICE);
+    assert!(
+        written.contains(
+            "/// REST client's own signatures.\n\
+             /// `fetch`, `shelve` have no method here: only `http_rest` carries them.\n\
+             public actor ShelvingClientServiceWsTransport {"
+        ) && written.contains(
+            "  public func tally(_ req: String) async -> Result<UInt32, \
+             ShelvingClientServiceTallyFailure> {"
+        ),
+        "got: {written}"
+    );
+    assert!(
+        !written.contains("func fetch")
+            && !written.contains("func shelve")
+            && !written.contains("Streamed"),
+        "got: {written}"
+    );
+    let alone = swift_ws_client_of(STREAMING_ONLY_SERVICE);
+    assert!(
+        alone.contains(
+            "/// `fetch` has no method here: only `http_rest` carries it.\n\
+             public actor StreamingOnlyServiceWsTransport {"
+        ) && !alone.contains("func fetch"),
+        "got: {alone}"
+    );
 }

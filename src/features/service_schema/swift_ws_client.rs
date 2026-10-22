@@ -3,21 +3,26 @@
 //! declared type, and settles every waiting call with a `transport-failure` fault when the socket
 //! closes — the TypeScript client's feature set, item for item, read at [`super::ws_client`].
 
-use crate::features::swift::{swift_quoted, swift_reference_type};
+use crate::features::swift::{forms, swift_quoted, swift_reference_type};
+use crate::features::text_forms::TextForm;
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationInputs, OperationOutcome, ServiceDef, is_unit_type,
-    option_inner, tuple_elements, written,
+    option_inner, tuple_elements, vec_inner, written,
 };
 use core::fmt::Write as _;
 use syn::Type;
 
-use super::on_one_line;
-use super::swift_http_client::{swift_call, swift_parameter, swift_parameter_declared};
+use super::swift_http_client::{
+    swift_call, swift_parameter, swift_parameter_declared, swift_sent_value,
+};
 use super::swift_type::swift_typename_of;
+use super::{left_to_http_rest, on_one_line};
 
-pub fn emit(service: &ServiceDef) -> Vec<String> {
+pub fn emit(declared: &ServiceDef) -> Vec<String> {
+    let apart = left_to_http_rest(declared, "method", on_one_line);
+    let service = &declared.enveloped();
     let named = service.ident.to_string();
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
     let has_header_in = declares_header_in(service);
@@ -31,12 +36,21 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
     }
     published.push(transport_failure_helper(&named, &prefix));
     published.push(failed_validation_helper(&named, &prefix));
+    published.push(dated_encoder_helper(&prefix));
+    if service
+        .operations
+        .iter()
+        .any(|operation| !matches!(operation.outcome, OperationOutcome::OneWay))
+    {
+        published.push(dated_decoder_helper(&prefix));
+    }
     let mut aux = Vec::new();
     published.push(transport_actor(
         service,
         &named,
         &prefix,
         has_header_in,
+        apart.as_deref(),
         &mut aux,
     ));
     published.extend(aux);
@@ -177,18 +191,94 @@ fn support_types(named: &str, has_header_in: bool) -> String {
 
 /// One outgoing `header_in` value, type-erased so operations with different header types share
 /// one dictionary; an `Optional` writes JSON `null` for `nil` rather than omitting the key.
+/// The value is written through a container, which is where `JSONEncoder` applies its date
+/// strategy: `Date.encode(to:)` called directly writes a number.
 fn header_in_type(named: &str) -> String {
     format!(
         "struct {named}WsHeaderIn: Encodable {{\n  \
          private let write: (Encoder) throws -> Void\n\n  \
          init<Value: Encodable>(_ value: Value) {{\n    \
-         write = {{ encoder in try value.encode(to: encoder) }}\n  \
+         write = {{ encoder in\n      \
+         var container = encoder.singleValueContainer()\n      \
+         try container.encode(value)\n    \
+         }}\n  \
          }}\n\n  \
          func encode(to encoder: Encoder) throws {{\n    \
          try write(encoder)\n  \
          }}\n\
          }}"
     )
+}
+
+/// The encoder a frame is written with: a `Date` the message or a header holds as the RFC 3339
+/// text with its fraction the model codec writes, where `JSONEncoder` alone writes a number.
+fn dated_encoder_helper(prefix: &str) -> String {
+    format!(
+        "/// A `JSONEncoder` that writes a `Date` as the RFC 3339 text serde reads.\n\
+         func {prefix}WsDatedEncoder() -> JSONEncoder {{\n  \
+         let encoder = JSONEncoder()\n  \
+         encoder.dateEncodingStrategy = .custom {{ date, encoder in\n    \
+         let formatter = ISO8601DateFormatter()\n    \
+         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]\n    \
+         var container = encoder.singleValueContainer()\n    \
+         try container.encode(formatter.string(from: date))\n  \
+         }}\n  \
+         return encoder\n\
+         }}"
+    )
+}
+
+/// The decoder a reply is read with: a `Date` from the RFC 3339 text serde writes, with a fraction
+/// or with none, where `JSONDecoder` alone reads a number.
+fn dated_decoder_helper(prefix: &str) -> String {
+    format!(
+        "/// A `JSONDecoder` that reads a `Date` from the RFC 3339 text serde writes.\n\
+         func {prefix}WsDatedDecoder() -> JSONDecoder {{\n  \
+         let decoder = JSONDecoder()\n  \
+         decoder.dateDecodingStrategy = .custom {{ decoder in\n    \
+         let container = try decoder.singleValueContainer()\n    \
+         let text = try container.decode(String.self)\n    \
+         let fractional = ISO8601DateFormatter()\n    \
+         fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]\n    \
+         let whole = ISO8601DateFormatter()\n    \
+         whole.formatOptions = [.withInternetDateTime]\n    \
+         guard let date = fractional.date(from: text) ?? whole.date(from: text) else {{\n      \
+         throw DecodingError.dataCorruptedError(in: container, debugDescription: \"expected a \
+         date and time with its zone, found \\(text)\")\n    \
+         }}\n    \
+         return date\n  \
+         }}\n  \
+         return decoder\n\
+         }}"
+    )
+}
+
+/// The forms of the texts a frame of the service carries as a `String` Swift holds, in a header or
+/// in the message, once each, in the order its operations first carry them.
+fn sent_forms(service: &ServiceDef) -> Vec<TextForm> {
+    let mut found = Vec::new();
+    for operation in &service.operations {
+        let mut carried: Vec<Type> = HttpShape::of(operation)
+            .header_in
+            .into_iter()
+            .map(|header| header.ty)
+            .collect();
+        if let OperationInputs::Named(declared) = &operation.inputs {
+            carried.push(declared.as_ref().clone());
+        }
+        for ty in carried {
+            let mut base = &ty;
+            while let Some(inner) = option_inner(base).or_else(|| vec_inner(base)) {
+                base = inner;
+            }
+            if let Some(form) = forms::held_as_text(&get_field_def("value", base, ""))
+                && !found.contains(&form)
+            {
+                found.push(form);
+            }
+        }
+    }
+    found
 }
 
 fn transport_failure_helper(named: &str, prefix: &str) -> String {
@@ -221,6 +311,7 @@ fn transport_actor(
     named: &str,
     prefix: &str,
     has_header_in: bool,
+    apart: Option<&str>,
     aux: &mut Vec<String>,
 ) -> String {
     let methods = service
@@ -229,28 +320,36 @@ fn transport_actor(
         .map(|operation| operation_method(named, prefix, operation, has_header_in, aux))
         .collect::<Vec<_>>()
         .join("\n\n");
+    let forms = forms::helpers(&sent_forms(service));
+    let texts = if forms.is_empty() {
+        String::new()
+    } else {
+        format!("  {}\n\n", forms.trim_end())
+    };
     format!(
-        "{header}{init}{close}{correlate}{notify}{handle_message}{heartbeat}{handle_close}\n\n\
+        "{header}{texts}{init}{close}{correlate}{notify}{handle_message}{heartbeat}{handle_close}\n\n\
          {methods}\n\
          }}",
-        header = actor_header(named),
+        header = actor_header(named, apart),
         init = actor_init(named),
         close = actor_close_method(),
-        correlate = actor_correlate(named, has_header_in),
-        notify = actor_send_notify(named, has_header_in),
+        correlate = actor_correlate(named, prefix, has_header_in),
+        notify = actor_send_notify(named, prefix, has_header_in),
         handle_message = actor_handle_message(named),
         heartbeat = actor_heartbeat_machinery(),
         handle_close = actor_handle_close(),
     )
 }
 
-fn actor_header(named: &str) -> String {
+fn actor_header(named: &str, apart: Option<&str>) -> String {
+    let note = apart.map_or_else(String::new, |said| format!("/// {said}\n"));
     format!(
         "/// A `{named}` transport over one `ws_rpc` socket, correlating requests to their \
          replies,\n\
          /// probing liveness on its own heartbeat, and settling every call still waiting with a\n\
          /// `transport-failure` fault once the socket closes. One method per operation, with the\n\
          /// REST client's own signatures.\n\
+         {note}\
          public actor {named}WsTransport {{\n  \
          private let socket: any {named}WsSocket\n  \
          private let heartbeat: {named}WsOptions.Heartbeat?\n  \
@@ -298,7 +397,7 @@ fn actor_close_method() -> String {
 /// closes first. Registering the pending continuation and writing the frame happen inside the
 /// same non-suspending closure, so no reply for this id can be read before it is recorded. Takes
 /// `headers` only where the service declares `header_in`.
-fn actor_correlate(named: &str, has_header_in: bool) -> String {
+fn actor_correlate(named: &str, prefix: &str, has_header_in: bool) -> String {
     let (headers_param, headers_arg) = if has_header_in {
         (
             format!("\n    headers: [String: {named}WsHeaderIn]?,"),
@@ -316,7 +415,7 @@ fn actor_correlate(named: &str, has_header_in: bool) -> String {
          next += 1\n    \
          let frame = {named}WsRequestFrame(id: id, service: \"{named}\", operation: operation, \
          payload: payload{headers_arg})\n    \
-         let data = try JSONEncoder().encode(frame)\n    \
+         let data = try {prefix}WsDatedEncoder().encode(frame)\n    \
          if closed {{\n      \
          return nil\n    \
          }}\n    \
@@ -330,7 +429,7 @@ fn actor_correlate(named: &str, has_header_in: bool) -> String {
     )
 }
 
-fn actor_send_notify(named: &str, has_header_in: bool) -> String {
+fn actor_send_notify(named: &str, prefix: &str, has_header_in: bool) -> String {
     let (headers_param, headers_arg) = if has_header_in {
         (
             format!(", headers: [String: {named}WsHeaderIn]?"),
@@ -344,7 +443,7 @@ fn actor_send_notify(named: &str, has_header_in: bool) -> String {
          Payload{headers_param}) throws {{\n    \
          let frame = {named}WsNotifyFrame(service: \"{named}\", operation: operation, payload: \
          payload{headers_arg})\n    \
-         let data = try JSONEncoder().encode(frame)\n    \
+         let data = try {prefix}WsDatedEncoder().encode(frame)\n    \
          let text = String(decoding: data, as: UTF8.self)\n    \
          socket.send(text)\n  \
          }}\n\n"
@@ -458,21 +557,34 @@ fn header_in_params(param_ty: &str, shape: &HttpShape) -> String {
 }
 
 /// The outgoing header dictionary, one entry per `header_in` binding, sent unconditionally so an
-/// `Option` holding `nil` crosses as JSON `null` rather than being left out.
+/// `Option` holding `nil` crosses as JSON `null` rather than being left out. A `char` and a date
+/// Swift holds as a `String` are written in the form serde writes, which throws for a text no
+/// rewrite turns into it: the dictionary is built inside the `do` that sends the frame.
 fn header_in_build_stmt(named: &str, shape: &HttpShape) -> String {
     if shape.header_in.is_empty() {
-        return format!("    let headers: [String: {named}WsHeaderIn]? = nil\n");
+        return format!("      let headers: [String: {named}WsHeaderIn]? = nil\n");
     }
     let mut entries = String::new();
     for header in &shape.header_in {
+        let parameter = swift_parameter(&header.parameter);
         let _ = writeln!(
             entries,
-            "      {}: {named}WsHeaderIn({}),",
+            "        {}: {named}WsHeaderIn({}),",
             swift_quoted(&header.name),
-            swift_parameter(&header.parameter)
+            swift_sent_value(&header.ty, &parameter).unwrap_or(parameter)
         );
     }
-    format!("    let headers: [String: {named}WsHeaderIn]? = [\n{entries}    ]\n")
+    format!("      let headers: [String: {named}WsHeaderIn]? = [\n{entries}      ]\n")
+}
+
+/// The message as the frame carries it: a `char` or a date Swift holds as a `String` in the form
+/// serde writes.
+fn sent_payload(operation: &OperationDef) -> String {
+    match &operation.inputs {
+        OperationInputs::Named(declared) => swift_sent_value(declared, "req"),
+        OperationInputs::Empty | OperationInputs::Generated(_) => None,
+    }
+    .unwrap_or_else(|| "req".to_owned())
 }
 
 fn one_way_method(
@@ -495,12 +607,13 @@ fn one_way_method(
     } else {
         (String::new(), "")
     };
+    let payload = sent_payload(operation);
     format!(
         "  /// Calls `{commented}` over `ws_rpc`.\n  \
-         public func {call}({params}) async throws {{\n\
-{headers_build}    \
-         do {{\n      \
-         try sendNotify(operation: {wire}, payload: req{headers_arg})\n    \
+         public func {call}({params}) async throws {{\n    \
+         do {{\n\
+{headers_build}      \
+         try sendNotify(operation: {wire}, payload: {payload}{headers_arg})\n    \
          }} catch {{\n      \
          throw {refusal}(fault: {prefix}WsFailedValidation({wire}, \"\\(error)\"))\n    \
          }}\n  \
@@ -617,9 +730,10 @@ fn success_block(
         let tuple_expr = tuple_parts.join(", ");
         let block = format!(
             "        do {{\n          \
-             let decoded = try JSONDecoder().decode({named}WsValueEnvelope<{body_ty}>.self, \
-             from: raw)\n          \
-             let headerValues = try JSONDecoder().decode({headers_ty}.self, from: raw)\n          \
+             let decoded = try {prefix}WsDatedDecoder().decode(\
+             {named}WsValueEnvelope<{body_ty}>.self, from: raw)\n          \
+             let headerValues = try {prefix}WsDatedDecoder().decode({headers_ty}.self, from: \
+             raw)\n          \
              return .success(({tuple_expr}))\n        \
              }} catch {{\n          \
              return .failure(.fault({prefix}WsFailedValidation({wire}, \"\\(error)\")))\n        \
@@ -642,8 +756,8 @@ fn success_block(
     aux.extend(success_aux);
     let block = format!(
         "        do {{\n          \
-         let decoded = try JSONDecoder().decode({named}WsValueEnvelope<{success_ty}>.self, \
-         from: raw)\n          \
+         let decoded = try {prefix}WsDatedDecoder().decode(\
+         {named}WsValueEnvelope<{success_ty}>.self, from: raw)\n          \
          return .success(decoded.value)\n        \
          }} catch {{\n          \
          return .failure(.fault({prefix}WsFailedValidation({wire}, \"\\(error)\")))\n        \
@@ -673,8 +787,8 @@ fn declared_error_block(
         aux.extend(error_aux);
         return format!(
             "    do {{\n      \
-             let declared = try JSONDecoder().decode({named}WsDeclaredEnvelope<{error_ty}>.self, \
-             from: raw)\n      \
+             let declared = try {prefix}WsDatedDecoder().decode(\
+             {named}WsDeclaredEnvelope<{error_ty}>.self, from: raw)\n      \
              return .failure(.declared(declared.error))\n    \
              }} catch {{\n      \
              return .failure(.fault({prefix}WsFailedValidation({wire}, \"\\(error)\")))\n    \
@@ -706,9 +820,10 @@ fn declared_error_block(
     let tuple_expr = tuple_parts.join(", ");
     format!(
         "    do {{\n      \
-         let declared = try JSONDecoder().decode({named}WsDeclaredEnvelope<{head_ty}>.self, \
-         from: raw)\n      \
-         let errorHeaderValues = try JSONDecoder().decode({headers_ty}.self, from: raw)\n      \
+         let declared = try {prefix}WsDatedDecoder().decode(\
+         {named}WsDeclaredEnvelope<{head_ty}>.self, from: raw)\n      \
+         let errorHeaderValues = try {prefix}WsDatedDecoder().decode({headers_ty}.self, from: \
+         raw)\n      \
          return .failure(.declared(({tuple_expr})))\n    \
          }} catch {{\n      \
          return .failure(.fault({prefix}WsFailedValidation({wire}, \"\\(error)\")))\n    \
@@ -741,13 +856,14 @@ fn reply_method(
     let (success_ty, success_block) =
         success_block(named, prefix, wire, operation, success, &shape, aux);
     let error_block = declared_error_block(named, prefix, wire, operation, error, &shape, aux);
+    let payload = sent_payload(operation);
     format!(
         "  /// Calls `{commented}` over `ws_rpc`.\n  \
-         public func {call}({params}) async -> Result<{success_ty}, {failure}> {{\n\
-{headers_build}    \
+         public func {call}({params}) async -> Result<{success_ty}, {failure}> {{\n    \
          let raw: Data?\n    \
-         do {{\n      \
-         raw = try await correlate(operation: {wire}, payload: req{headers_arg})\n    \
+         do {{\n\
+{headers_build}      \
+         raw = try await correlate(operation: {wire}, payload: {payload}{headers_arg})\n    \
          }} catch {{\n      \
          return .failure(.fault({prefix}WsFailedValidation({wire}, \"\\(error)\")))\n    \
          }}\n    \

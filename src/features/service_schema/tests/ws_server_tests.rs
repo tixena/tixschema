@@ -1,6 +1,6 @@
 //! The connection-accepting `ws_rpc` server, read off the emitted text.
 
-use super::{SINGLE_PLACEHOLDER_HTTP_SERVICE, ws_server_of};
+use super::{SHELVING_SERVICE, SINGLE_PLACEHOLDER_HTTP_SERVICE, ws_server_of};
 
 const EXPECTED: &str = r#"/** The seam a server accepts: the client seam plus an `error` listener, which both a platform WebSocket and the `ws` package expose. */
 export type ConversationClientServiceWsServerSocket = ConversationClientServiceWsSocket & {
@@ -232,5 +232,18 @@ fn close_all_closes_every_held_connection_through_the_seam_s_own_close() {
     assert!(
         written.contains("connections: () => [...connections],"),
         "a fresh array each call, so a caller cannot mutate the held set. Got: {written}"
+    );
+}
+
+/// The server drives an implementation without the members only `http_rest` carries.
+#[test]
+fn the_server_takes_no_member_for_an_operation_only_http_rest_carries() {
+    let written = ws_server_of(SHELVING_SERVICE);
+    assert!(
+        written.contains(
+            "export function createShelvingClientServiceWsServer<Ctx>(\n  \
+             impl: Omit<ShelvingClientServiceImpl<Ctx>, \"fetch\" | \"shelve\">,\n"
+        ),
+        "got: {written}"
     );
 }

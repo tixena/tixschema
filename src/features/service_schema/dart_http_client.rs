@@ -2,8 +2,8 @@
 //! that builds a plain-terms request from the operation's own message and decodes the answer by
 //! status.
 
-use super::on_one_line;
 use super::result::result_name;
+use super::{on_one_line, text_types};
 use crate::features::dart::{
     dart_field_member, dart_fields_of, dart_json_decode, dart_json_encode, dart_local,
     dart_typename, quoted,
@@ -269,10 +269,10 @@ fn method(named: &str, fn_prefix: &str, operation: &OperationDef) -> String {
     let params = method_params(operation, &shape);
     let returns = return_type(named, operation);
     let path_build = path_build_stmt(fn_prefix, operation, &shape);
-    let query_build = query_build_stmt(operation, &shape);
+    let query_build = query_build_stmt(fn_prefix, operation, &shape);
     let headers_build = header_in_build_stmt(named, fn_prefix, operation, &shape);
     let body_build = body_build_stmt(operation, &shape);
-    let parts_build = multipart_parts_build_stmt(operation, &shape);
+    let parts_build = multipart_parts_build_stmt(fn_prefix, operation, &shape);
     let method_str = shape.method.name();
     let (send, decode) = match &operation.outcome {
         OperationOutcome::OneWay => (
@@ -318,11 +318,11 @@ fn placeholder_value_dart_expr(
             .find(|(field, _)| written(field) == placeholder)
             .map_or_else(
                 || format!("'${{req.{member}}}'"),
-                |(_, ty)| dart_wire_text(ty, &format!("req.{member}"), false),
+                |(_, ty)| dart_wire_text(fn_prefix, ty, &format!("req.{member}"), false),
             ),
         OperationInputs::Named(declared) => {
             if shape.placeholder_names().len() == 1 && is_scalar_named_type(declared) {
-                dart_wire_text(declared, "req", true)
+                dart_wire_text(fn_prefix, declared, "req", true)
             } else {
                 format!("{}(req.{member})", wire_text_call(fn_prefix))
             }
@@ -346,7 +346,7 @@ fn path_build_stmt(fn_prefix: &str, operation: &OperationDef, shape: &HttpShape)
     stmt
 }
 
-fn query_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
+fn query_build_stmt(fn_prefix: &str, operation: &OperationDef, shape: &HttpShape) -> String {
     if shape.method.carries_a_body() {
         return "    const query = '';\n".to_owned();
     }
@@ -369,7 +369,7 @@ fn query_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
         // A bodyless method's own field, unbound to a placeholder, is always `Option<...>` — a
         // required field with nowhere else to go is refused at parse time.
         let inner = option_inner(ty).unwrap_or(ty);
-        let rendered = dart_wire_text(inner, "value", true);
+        let rendered = dart_wire_text(fn_prefix, inner, "value", true);
         let _ = write!(
             pushes,
             "    {{\n      final value = req.{member};\n      if (value != null) {{\n        \
@@ -410,7 +410,7 @@ fn header_in_build_stmt(
              headers.add(({name}, rendered));\n"
         );
         if let Some(inner) = option_inner(&header.ty) {
-            let text = dart_wire_text(inner, &parameter, true);
+            let text = dart_wire_text(fn_prefix, inner, &parameter, true);
             let _ = writeln!(
                 stmt,
                 "    if ({parameter} != null) {{\n      \
@@ -418,7 +418,7 @@ fn header_in_build_stmt(
                  }}"
             );
         } else {
-            let text = dart_wire_text(&header.ty, &parameter, true);
+            let text = dart_wire_text(fn_prefix, &header.ty, &parameter, true);
             let _ = writeln!(
                 stmt,
                 "    {{\n      final rendered = {text};\n{checked}    }}"
@@ -451,7 +451,11 @@ fn body_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
 /// `part` binding (under its own declared name, its value the method's own extra argument, passed
 /// through untouched) — mirrors the TypeScript client's own `multipart_parts_build_stmt`. Every
 /// other body kind builds an empty `parts`, the field riding on every request record.
-fn multipart_parts_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
+fn multipart_parts_build_stmt(
+    fn_prefix: &str,
+    operation: &OperationDef,
+    shape: &HttpShape,
+) -> String {
     if !matches!(shape.body_kind, BodyKind::Multipart) {
         return "    const parts = <(String, dynamic)>[];\n".to_owned();
     }
@@ -466,7 +470,7 @@ fn multipart_parts_build_stmt(operation: &OperationDef, shape: &HttpShape) -> St
             let key = wire_key(field);
             let member = request_member(operation, &field_name);
             if let Some(inner) = option_inner(ty) {
-                let text = dart_wire_text(inner, &format!("req.{member}!"), false);
+                let text = dart_wire_text(fn_prefix, inner, &format!("req.{member}!"), false);
                 let _ = write!(
                     stmt,
                     "    if (req.{member} != null) {{\n      \
@@ -474,7 +478,7 @@ fn multipart_parts_build_stmt(operation: &OperationDef, shape: &HttpShape) -> St
                      }}\n"
                 );
             } else {
-                let text = dart_wire_text(ty, &format!("req.{member}"), false);
+                let text = dart_wire_text(fn_prefix, ty, &format!("req.{member}"), false);
                 let _ = writeln!(stmt, "    parts.add(('{key}', {text}));");
             }
         }
@@ -912,7 +916,10 @@ fn fault_helpers(service: &ServiceDef, named: &str, fn_prefix: &str) -> Vec<Stri
     if reads_a_response_header(service) {
         helpers.push(find_header_fn(fn_prefix));
     }
-    if service.operations.iter().any(path_reads_a_named_field) {
+    if service.operations.iter().any(|operation| {
+        path_reads_a_named_field(operation)
+            || text_types(operation).iter().any(writes_through_its_codec)
+    }) {
         helpers.push(wire_text_fn(fn_prefix));
     }
     helpers.extend([
@@ -1016,8 +1023,9 @@ fn find_header_call(fn_prefix: &str) -> String {
     format!("_{fn_prefix}HttpFindHeader")
 }
 
-/// A named message's field as the text a path segment carries, as the Rust client writes it: a
-/// string as itself, anything else as its JSON. `jsonEncode` reaches a class through its `toJson`.
+/// A value as the text a path segment, a query, a header or a part carries, as the Rust client
+/// writes it: a string as itself, anything else as its JSON. `jsonEncode` reaches a class through
+/// its `toJson`.
 fn wire_text_fn(fn_prefix: &str) -> String {
     format!(
         "String {}(Object? value) {{\n  \
@@ -1106,42 +1114,50 @@ pub(super) fn dart_type_of(ty: &Type) -> String {
     dart_typename(&get_field_def("value", ty, ""))
 }
 
-/// Whether `ty` is a reference to another `#[model_schema()]` item (an author's own type, or one
-/// this crate generated) rather than a primitive this crate itself renders — the one distinction
-/// [`dart_wire_text`] needs to decide whether a value must be read through its own `toJson()`
-/// before it can be embedded as text.
-fn is_sibling_type(ty: &Type) -> bool {
-    matches!(
-        get_field_def("value", ty, "").field_type,
-        FieldDefType::SiblingType(_, _)
-    )
-}
-
 /// The Dart expression that renders `ty`'s value at `expr` as URL- or header-safe text: an
 /// `Option<T>` reads as the empty string when absent, a `Vec<T>` joins its elements' own text with
-/// a comma, and a sibling type is read through its own `toJson()` first — Dart's string
-/// interpolation would otherwise call `Object`'s default `toString()` on the class instance rather
-/// than on the value it wraps. A `String`, a `bool` and a number all interpolate correctly as
-/// themselves, which is what lets everything else fall through to plain interpolation.
-fn dart_wire_text(ty: &Type, expr: &str, promoted: bool) -> String {
+/// a comma, a `String` and a `bool` interpolate as the text serde reads, and any other value is
+/// written through its codec first, as it is in a body: an integer held to its range, a `char` and
+/// a date in the form serde writes, a refusal thrown before the transport is reached.
+fn dart_wire_text(fn_prefix: &str, ty: &Type, expr: &str, promoted: bool) -> String {
     if let Some(inner) = option_inner(ty) {
         let narrowed = if promoted {
             expr.to_owned()
         } else {
             format!("{expr}!")
         };
-        let rendered = dart_wire_text(inner, &narrowed, promoted);
+        let rendered = dart_wire_text(fn_prefix, inner, &narrowed, promoted);
         return format!("({expr} == null ? '' : {rendered})");
     }
     if let Some(inner) = vec_inner(ty) {
         // `e` is the closure's own parameter, which Dart narrows.
-        let element = dart_wire_text(inner, "e", true);
+        let element = dart_wire_text(fn_prefix, inner, "e", true);
         return format!("({expr}).map((e) => {element}).join(\",\")");
     }
-    if is_sibling_type(ty) {
-        return format!("'${{({expr}).toJson()}}'");
+    if writes_through_its_codec(ty) {
+        return format!(
+            "{}({})",
+            wire_text_call(fn_prefix),
+            dart_json_encode(ty, expr, true)
+        );
     }
     format!("'${{{expr}}}'")
+}
+
+/// Whether [`dart_wire_text`] writes a value of `ty` through its codec: every value but a `String`
+/// and a `bool`, under an `Option` and a `Vec` alike.
+fn writes_through_its_codec(ty: &Type) -> bool {
+    let base = option_inner(ty).unwrap_or(ty);
+    if let Some(inner) = vec_inner(base) {
+        return writes_through_its_codec(inner);
+    }
+    !matches!(
+        get_field_def("value", base, "").field_type,
+        FieldDefType::String
+            | FieldDefType::StringLiteral(_)
+            | FieldDefType::Boolean
+            | FieldDefType::BooleanLiteral(_)
+    )
 }
 
 /// The expression that reads one `header_out` element's declared type back off `raw` — a
@@ -1205,9 +1221,11 @@ fn dart_header_out_decode(ty: &Type, raw: &str) -> (String, bool) {
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => (raw.to_owned(), false),
         #[cfg(feature = "chrono")]
-        FieldDefType::NaiveDate
-        | FieldDefType::NaiveTime
-        | FieldDefType::NaiveDateTime
-        | FieldDefType::DateTime => (raw.to_owned(), false),
+        FieldDefType::NaiveDate | FieldDefType::NaiveTime | FieldDefType::NaiveDateTime => {
+            (raw.to_owned(), false)
+        }
+        // The `DateTime` the result declares, off the RFC 3339 text the dispatcher writes.
+        #[cfg(feature = "chrono")]
+        FieldDefType::DateTime => (format!("DateTime.tryParse({raw})"), true),
     }
 }

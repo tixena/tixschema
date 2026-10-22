@@ -236,12 +236,7 @@ fn multipart_envelope_refusal(
     service
         .operations
         .iter()
-        .filter(|operation| {
-            operation.http.as_ref().is_some_and(|binding| {
-                binding.body_kind == parse::BodyKind::Multipart
-                    && !binding.multipart_parts.is_empty()
-            })
-        })
+        .filter(|operation| operation.carried_by_http_alone() == Some(parse::HttpAlone::FilePart))
         .map(|operation| {
             syn::Error::new(
                 operation.ident.span(),
@@ -399,12 +394,7 @@ fn stream_envelope_refusal(
     service
         .operations
         .iter()
-        .filter(|operation| {
-            operation
-                .http
-                .as_ref()
-                .is_some_and(|binding| binding.body_kind == parse::BodyKind::Stream)
-        })
+        .filter(|operation| operation.carried_by_http_alone() == Some(parse::HttpAlone::Stream))
         .map(|operation| {
             syn::Error::new(
                 operation.ident.span(),

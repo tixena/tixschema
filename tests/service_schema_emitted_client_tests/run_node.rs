@@ -31,10 +31,10 @@ const DRIVER: &str = r#"
 const sent = [];
 const transport = {
   async send(request) {
-    sent.push(request);
+    sent.push({ ...request, body: new TextDecoder().decode(request.body) });
     return request.method === "DELETE"
-      ? { status: 204, headers: [], body: "" }
-      : { status: 200, headers: [], body: JSON.stringify({ items: [] }) };
+      ? { status: 204, headers: [], body: new Uint8Array() }
+      : { status: 200, headers: [], body: new TextEncoder().encode(JSON.stringify({ items: [] })) };
   },
 };
 const client = createConversationClientServiceHttpClient(transport);
@@ -44,9 +44,12 @@ await client.purgeConversation("652f1a3b4c5d6e7f8a9b0c1d");
 console.log(JSON.stringify(sent));
 "#;
 
-/// The schema stubs `StampClientServiceSchema::ts_http_client()` reads through.
+/// The schema stubs `StampClientServiceSchema::ts_http_client()` reads through, every schema a
+/// header's is built of through `z` among them.
 const STAMP_SCHEMA_STUB: &str =
-    "const z = { string: () => ({ safeParse: (value) => ({ success: true, data: value }) }) };
+    "const pass = { safeParse: (value) => ({ success: true, data: value }) };
+const built = () => new Proxy(pass, { get: (stub, key) => key in stub ? stub[key] : () => built() });
+const z = built();
 const StampReceipt$Schema = { safeParse: (value) => ({ success: true, data: value }) };
 const StampError$Schema = { safeParse: (value) => ({ success: true, data: value }) };
 ";
@@ -62,7 +65,7 @@ async function probeHeaders(headers) {
       return {
         status: 200,
         headers,
-        body: JSON.stringify({ label: "r1", tenant: "acme" }),
+        body: new TextEncoder().encode(JSON.stringify({ label: "r1", tenant: "acme" })),
       };
     },
   };
@@ -90,7 +93,7 @@ const errorTransport = {
     return {
       status: 409,
       headers: [["etag", "e1"]],
-      body: JSON.stringify({ errorCode: "refused" }),
+      body: new TextEncoder().encode(JSON.stringify({ errorCode: "refused" })),
     };
   },
 };

@@ -93,6 +93,29 @@ async function main() {
 main().catch((error) => { console.error(error); process.exit(1); });
 "#;
 
+/// A placeholder written percent-encoded, a malformed escape among it, handed straight to the
+/// exported dispatcher, whose `window` answers the conversation id it was handed.
+const ENCODED_PLACEHOLDER_DRIVER: &str = r#"
+const dispatch = createConversationClientServiceHttpDispatcher({
+  async purgeConversation() {},
+  async window(ctx, req) {
+    return { ok: true, value: { items: [req.conversationId] } };
+  },
+});
+
+async function main() {
+  const answered = await dispatch({}, {
+    method: "GET",
+    path: "/v1/conversations/a%20b%2Fc%25%C3%A9%ZZ/window",
+    query: "",
+    headers: [],
+    body: new Uint8Array(),
+  });
+  console.log(new TextDecoder().decode(answered.body));
+}
+main().catch((error) => { console.error(error); process.exit(1); });
+"#;
+
 /// One call per case, straight against the exported dispatcher — no listening server.
 const READER_FORMS_DRIVER: &str = r#"
 function req(method, path, body = new Uint8Array()) {
@@ -417,18 +440,19 @@ main().catch((error) => { console.error(error); process.exit(1); });
 /// A stub `Transport` answering by path alone, driving the emitted client's declared-error and
 /// `header_out` decode.
 const THUMBNAIL_CLIENT_DRIVER: &str = r#"
+const bytes = (text) => new TextEncoder().encode(text);
 const transport = {
   async send(request) {
     if (request.path === "/thumbnails/missing") {
-      return { status: 404, headers: [["x-thumbnail-reason", "archived"]], body: JSON.stringify({ errorCode: "not-found" }) };
+      return { status: 404, headers: [["x-thumbnail-reason", "archived"]], body: bytes(JSON.stringify({ errorCode: "not-found" })) };
     }
     if (request.path === "/thumbnails/gone") {
-      return { status: 404, headers: [], body: JSON.stringify({ errorCode: "not-found" }) };
+      return { status: 404, headers: [], body: bytes(JSON.stringify({ errorCode: "not-found" })) };
     }
     if (request.path === "/thumbnails/undeclared") {
-      return { status: 404, headers: [], body: JSON.stringify({ errorCode: "unheard-of" }) };
+      return { status: 404, headers: [], body: bytes(JSON.stringify({ errorCode: "unheard-of" })) };
     }
-    return { status: 200, headers: [["content-type", "image/png"]], body: "PNGDATA" };
+    return { status: 200, headers: [["content-type", "image/png"]], body: new Uint8Array([0x89, 0x50, 0x4e, 0x47]) };
   },
 };
 const client = createThumbnailClientServiceHttpClient(transport);
@@ -441,6 +465,73 @@ const results = {
 console.log(JSON.stringify(results));
 "#;
 
+/// The three TypeScript clients of `getThumbnail`, a `bytes` operation with a `header_out` and an
+/// `error_header_out`: the `http_rest` client bound to the TypeScript `http_rest` dispatcher and to
+/// each answer the Rust dispatcher wrote (`RUST`, which the Rust side writes above this), and the
+/// transport-agnostic client bound to the TypeScript dispatcher through a stand-in bus and through
+/// the `ws_rpc` transport over a pair of sockets the attachment answers on.
+const BYTES_CLIENTS_DRIVER: &str = r#"
+function fakeSocket(onSend) {
+  const listeners = { message: new Set(), close: new Set() };
+  return {
+    send(text) { onSend(text); },
+    close() { for (const listener of listeners.close) listener(); },
+    addEventListener(type, listener) { listeners[type].add(listener); },
+    removeEventListener(type, listener) { listeners[type].delete(listener); },
+    deliver(text) { for (const listener of listeners.message) listener({ data: text }); },
+  };
+}
+
+const impl = {
+  async getThumbnail(ctx, documentId) {
+    if (documentId === "missing") return { ok: false, error: [{ errorCode: "not-found" }, "archived"] };
+    if (documentId === "anon") return { ok: true, value: [[0x89, 0x50, 0x4e, 0x47], "image/png", null] };
+    return { ok: true, value: [[0x89, 0x50, 0x4e, 0x47], "image/png", `doc-${documentId}`] };
+  },
+};
+
+async function main() {
+  const served = createThumbnailClientServiceHttpDispatcher(impl);
+  const overHttp = createThumbnailClientServiceHttpClient({
+    async send(request) {
+      return served({}, request);
+    },
+  });
+  const overRust = createThumbnailClientServiceHttpClient({
+    async send(request) {
+      const answer = RUST[request.path];
+      return { status: answer.status, headers: answer.headers, body: new Uint8Array(answer.body) };
+    },
+  });
+  const dispatch = createThumbnailClientServiceDispatcher(impl);
+  const overBus = createThumbnailClientServiceClient({
+    async notify() {},
+    async request(operation, payload, headers) {
+      const answered = await dispatch({}, operation, JSON.parse(JSON.stringify(payload)), headers);
+      return JSON.parse(JSON.stringify(answered));
+    },
+  });
+  let serverSocket;
+  const clientSocket = fakeSocket((text) => queueMicrotask(() => serverSocket.deliver(text)));
+  serverSocket = fakeSocket((text) => queueMicrotask(() => clientSocket.deliver(text)));
+  attachThumbnailClientServiceWsDispatcher(serverSocket, {}, impl, () => {});
+  const socketTransport = createThumbnailClientServiceWsTransport(clientSocket, { heartbeat: false });
+  const overSocket = createThumbnailClientServiceClient(socketTransport);
+  const results = {};
+  for (const [named, client] of [["http", overHttp], ["rust", overRust], ["bus", overBus], ["socket", overSocket]]) {
+    results[named] = {
+      present: await client.getThumbnail("present"),
+      anon: await client.getThumbnail("anon"),
+      missing: await client.getThumbnail("missing"),
+    };
+  }
+  socketTransport.close();
+  console.log(JSON.stringify(results));
+  process.exit(0);
+}
+main().catch((error) => { console.error(error); process.exit(1); });
+"#;
+
 /// A stub `Transport` answering the streamed operation's declared `416` with the complete length in
 /// `content-range`, driving the emitted client's own error-side header decode.
 const CONTENT_CLIENT_DRIVER: &str = r#"
@@ -449,7 +540,7 @@ const transport = {
     return {
       status: 416,
       headers: [["content-range", "bytes */43"]],
-      body: JSON.stringify({ errorCode: "range-not-satisfiable" }),
+      body: new TextEncoder().encode(JSON.stringify({ errorCode: "range-not-satisfiable" })),
       bodyStream: new ReadableStream({ start(controller) { controller.close(); } }),
     };
   },
@@ -465,12 +556,12 @@ const empty = () => new ReadableStream({ start(controller) { controller.close();
 const transport = {
   async send(request) {
     if (request.path === "/files/present") {
-      return { status: 200, headers: [["content-type", "text/plain; charset=utf-8"]], body: "", bodyStream: empty() };
+      return { status: 200, headers: [["content-type", "text/plain; charset=utf-8"]], body: new Uint8Array(), bodyStream: empty() };
     }
     return {
       status: 206,
       headers: [["content-range", "bytes 4-8/43"], ["content-type", "text/plain; charset=utf-8"]],
-      body: "",
+      body: new Uint8Array(),
       bodyStream: empty(),
     };
   },
@@ -491,7 +582,7 @@ let sendCalled = false;
 const transport = {
   async send(request) {
     sendCalled = true;
-    return { status: 200, headers: [], body: JSON.stringify({ received: "unreachable" }) };
+    return { status: 200, headers: [], body: new TextEncoder().encode(JSON.stringify({ received: "unreachable" })) };
   },
 };
 const client = createEchoClientServiceHttpClient(transport);
@@ -506,7 +597,7 @@ let sentHeaders = null;
 const transport = {
   async send(request) {
     sentHeaders = request.headers;
-    return { status: 200, headers: [], body: JSON.stringify({ received: "unreachable" }) };
+    return { status: 200, headers: [], body: new TextEncoder().encode(JSON.stringify({ received: "unreachable" })) };
   },
 };
 const client = createEchoClientServiceHttpClient(transport);
@@ -623,6 +714,21 @@ fn conversation_emitted() -> String {
         ConversationClientServiceSchema::ts_http_service(),
     ]
     .join("\n\n")
+}
+
+/// The TypeScript dispatcher reads a placeholder percent-decoded, as the Rust one does: each escape
+/// is the byte it names, and a malformed one is read as it stands.
+#[test]
+fn a_placeholder_is_read_percent_decoded() {
+    let module = format!("{}\n\n{ENCODED_PLACEHOLDER_DRIVER}", conversation_emitted());
+    let Some(answered) = run_or_stand_down("http-service-encoded", "encoded.mts", &module) else {
+        return;
+    };
+    assert_eq!(
+        answered,
+        serde_json::json!({ "items": ["a b/c%\u{e9}%ZZ"] }),
+        "the dispatcher hands the implementation another text"
+    );
 }
 
 #[test]
@@ -978,7 +1084,7 @@ fn the_client_decodes_the_declared_errors_own_header_and_omits_a_none_header_out
     );
     assert_eq!(
         results["anon"],
-        serde_json::json!({"ok": true, "value": ["PNGDATA", "image/png", null]}),
+        serde_json::json!({"ok": true, "value": [[0x89_u8, 0x50_u8, 0x4e_u8, 0x47_u8], "image/png", null]}),
         "an absent `header_out` header must decode as the tuple's own `undefined`, not a \
          string. got: {results:#?}"
     );
@@ -987,6 +1093,115 @@ fn the_client_decodes_the_declared_errors_own_header_and_omits_a_none_header_out
         "a body that is not the declared error answers a fault rather than a value typed as \
          one. got: {results:#?}"
     );
+}
+
+fn thumbnail_clients_emitted() -> String {
+    [
+        "import { z } from \"zod\";".to_owned(),
+        ThumbnailError::ts_definition(),
+        ThumbnailError::zod_schema(),
+        ThumbnailClientServiceSchema::ts_definition(),
+        ThumbnailClientServiceSchema::ts_service(),
+        ThumbnailClientServiceSchema::ts_http_service(),
+        ThumbnailClientServiceSchema::ts_http_client(),
+        ThumbnailClientServiceSchema::ts_client(),
+        ThumbnailClientServiceSchema::ts_ws_client(),
+        ThumbnailClientServiceSchema::ts_ws_service(),
+    ]
+    .join("\n\n")
+}
+
+/// The answer the Rust dispatcher wrote for `document_id`, as the driver hands it to the client:
+/// the status, the headers as written and each byte of the body.
+fn rust_answer(document_id: &str) -> serde_json::Value {
+    let request = thumbnail_http_rest_transport::IncomingRequest::new(
+        "GET".to_owned(),
+        format!("/thumbnails/{document_id}"),
+        String::new(),
+        Vec::new(),
+        Vec::new(),
+    );
+    let response = poll_once(thumbnail_http_rest_transport::dispatch(
+        &ThumbnailBackEnd,
+        &(),
+        &request,
+        &thumbnail_http_rest_transport::DefaultFaultHandler,
+    ))
+    .unwrap();
+    serde_json::json!({
+        "status": response.status(),
+        "headers": response.headers(),
+        "body": response.body(),
+    })
+}
+
+/// The value of the header `named` in a recorded answer.
+fn header_of(answer: &serde_json::Value, named: &str) -> serde_json::Value {
+    answer["headers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|pair| pair[0] == named)
+        .map_or(serde_json::Value::Null, |pair| pair[1].clone())
+}
+
+/// A `bytes` reply is read as the `[Array<number>, string, ...]` its result declares by every
+/// TypeScript client: the `http_rest` client reads the bytes, the content type and the header the
+/// Rust and the TypeScript dispatchers write, byte for byte, and the transport-agnostic client
+/// reads the pair of the bytes and their content type the TypeScript dispatcher answers, over a
+/// bus and over `ws_rpc`.
+#[test]
+fn every_typescript_client_reads_a_bytes_reply_as_its_result_declares() {
+    let present = rust_answer("present");
+    let anon = rust_answer("anon");
+    let missing = rust_answer("missing");
+    let recorded = serde_json::json!({
+        "/thumbnails/present": present,
+        "/thumbnails/anon": anon,
+        "/thumbnails/missing": missing,
+    });
+    let module = format!(
+        "{}\n\nconst RUST = {recorded};\n{BYTES_CLIENTS_DRIVER}",
+        thumbnail_clients_emitted()
+    );
+    let Some(results) = run_or_stand_down("bytes-clients", "bytes-clients.mts", &module) else {
+        return;
+    };
+    let read_from_rust = serde_json::json!({
+        "ok": true,
+        "value": [present["body"], header_of(&present, "content-type"), header_of(&present, "x-document-id")],
+    });
+    assert_eq!(
+        results["rust"]["present"], read_from_rust,
+        "the http_rest client reads the bytes, the content type and the header the Rust \
+         dispatcher wrote, byte for byte. got: {results:#?}"
+    );
+    assert_eq!(
+        results["rust"]["anon"],
+        serde_json::json!({
+            "ok": true,
+            "value": [anon["body"], header_of(&anon, "content-type"), null],
+        }),
+        "an absent header is read as null beside the bytes. got: {results:#?}"
+    );
+    for named in ["http", "bus", "socket"] {
+        assert_eq!(
+            results[named]["present"], read_from_rust,
+            "the {named} client reads what the TypeScript dispatcher answers as the http_rest \
+             client reads the Rust dispatcher's answer. got: {results:#?}"
+        );
+        assert_eq!(
+            results[named]["anon"], results["rust"]["anon"],
+            "the {named} client reads an absent header as null. got: {results:#?}"
+        );
+    }
+    for named in ["http", "rust", "bus", "socket"] {
+        assert_eq!(
+            results[named]["missing"],
+            serde_json::json!({"ok": false, "error": [{"errorCode": "not-found"}, "archived"]}),
+            "the {named} client reads the declared error and its header. got: {results:#?}"
+        );
+    }
 }
 
 fn content_client_emitted() -> String {

@@ -2,6 +2,7 @@
 //! a service off a socket, drives the generated dispatcher, and answers a request with a reply
 //! frame.
 
+use super::service::enveloped_impl;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::ServiceDef;
 use crate::utils::ts_quoted;
@@ -20,6 +21,7 @@ fn attach_dispatcher_fn(service: &ServiceDef) -> String {
     let named = service.ident.to_string();
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
     let quoted = ts_quoted(&named);
+    let driven = enveloped_impl(service);
     format!(
         "/**\n \
          * Reads every `notify` and `request` frame naming `{named}` off `socket`, drives `impl` \
@@ -35,7 +37,7 @@ fn attach_dispatcher_fn(service: &ServiceDef) -> String {
          export function attach{named}WsDispatcher<Ctx>(\n  \
          socket: {named}WsSocket,\n  \
          ctx: Ctx,\n  \
-         impl: {named}Impl<Ctx>,\n  \
+         impl: {driven},\n  \
          onFault: (fault: {named}Fault) => void,\n\
          ): () => void {{\n  \
          const service = {quoted};\n  \

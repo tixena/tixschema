@@ -113,6 +113,11 @@ mod run_reserved;
 #[path = "service_schema_emitted_client_tests/run_quoted_service.rs"]
 mod run_quoted_service;
 
+/// A service with operations only `http_rest` carries: no `ws_rpc` client or dispatcher holds them.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_http_alone.rs"]
+mod run_http_alone;
+
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_swift.rs"]
 mod run_swift;
@@ -522,6 +527,96 @@ mod run_dart_wire_forms;
 #[path = "service_schema_emitted_client_tests/run_swift_wire_forms.rs"]
 mod run_swift_wire_forms;
 
+/// A service that takes each type of the table in a path, a query, a header and a part, and what
+/// each client is held to of each row handed there.
+#[cfg(test)]
+#[cfg(all(
+    feature = "chrono",
+    any(feature = "dart", feature = "kotlin", feature = "swift")
+))]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/text_position_rows.rs"]
+mod text_position_rows;
+
+/// The `http_rest` dispatcher for `TextPlacingClientService`, which reads each request the runs
+/// below record.
+#[cfg(test)]
+#[cfg(all(
+    feature = "chrono",
+    any(feature = "dart", feature = "kotlin", feature = "swift")
+))]
+#[path = "service_schema_emitted_client_tests/text_placing_http_rest_transport.rs"]
+mod text_placing_http_rest_transport;
+
+/// A service of a date message, a `char` and a date header in, and a date reply and header out.
+#[cfg(test)]
+#[cfg(all(
+    feature = "chrono",
+    any(
+        all(feature = "typescript", feature = "zod"),
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
+))]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/sundial_service.rs"]
+mod sundial_service;
+
+/// The `http_rest` dispatcher for `SundialClientService`.
+#[cfg(test)]
+#[cfg(all(
+    feature = "chrono",
+    any(
+        all(feature = "typescript", feature = "zod"),
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
+))]
+#[path = "service_schema_emitted_client_tests/sundial_http_rest_transport.rs"]
+mod sundial_http_rest_transport;
+
+/// The `ws_rpc` dispatcher for `SundialClientService`.
+#[cfg(test)]
+#[cfg(all(
+    feature = "chrono",
+    any(
+        all(feature = "typescript", feature = "zod"),
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
+))]
+#[path = "service_schema_emitted_client_tests/sundial_ws_rpc_transport.rs"]
+mod sundial_ws_rpc_transport;
+
+/// `SundialClientService` called through the clients of each language, against those dispatchers.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_sundial.rs"]
+mod run_sundial;
+
+/// Each value of the table, written in a path, a query, a header and a part by the emitted
+/// TypeScript client, beside the real `zod`.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_text_positions.rs"]
+mod run_node_text_positions;
+
+/// Those values, written by the emitted Dart client.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_text_positions.rs"]
+mod run_dart_text_positions;
+
+/// Those values, written by the emitted Swift client.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_text_positions.rs"]
+mod run_swift_text_positions;
+
+/// Those values, written by the emitted Kotlin client.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_text_positions.rs"]
+mod run_kotlin_text_positions;
+
 /// A bare date reply and a `char` header, read in their one form by the emitted Kotlin clients and
 /// dispatcher.
 #[cfg(test)]
@@ -832,6 +927,17 @@ use run_quoted_service::{
     TollingClientService, TollingUploadClientService, tolling_client_service_schema,
     tolling_upload_client_service_schema,
 };
+#[cfg(all(
+    test,
+    feature = "chrono",
+    any(
+        all(feature = "typescript", feature = "zod"),
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
+))]
+use sundial_service::{SundialClientService, sundial_client_service_schema};
 #[cfg(test)]
 use tests::{
     ArchiveClientService, ContentClientService, ConversationClientService, EchoClientService,
@@ -847,3 +953,9 @@ use tests::{
 };
 #[cfg(all(test, feature = "dart"))]
 use tests::{ShelfClientService, shelf_client_service_schema};
+#[cfg(all(
+    test,
+    feature = "chrono",
+    any(feature = "dart", feature = "kotlin", feature = "swift")
+))]
+use text_position_rows::{TextPlacingClientService, text_placing_client_service_schema};

@@ -27,7 +27,7 @@ fn a_successful_reply_is_checked_against_the_declared_success() {
     let written = swift_http_client_of(MIXED_SERVICE);
     let body = method_body(&written, "getAvailableBalance");
     assert!(
-        body.contains("JSONDecoder().decode(AvailableBalanceResponse.self,"),
+        body.contains("usageServiceDatedDecoder().decode(AvailableBalanceResponse.self,"),
         "a success the transport handed back is answered as an `AvailableBalanceResponse`, so it is \
          decoded as one first. Got: {body}"
     );
@@ -38,7 +38,7 @@ fn a_failed_reply_is_checked_against_the_declared_error() {
     let written = swift_http_client_of(MIXED_SERVICE);
     let body = method_body(&written, "getAvailableBalance");
     assert!(
-        body.contains("JSONDecoder().decode(BalanceError.self,"),
+        body.contains("usageServiceDatedDecoder().decode(BalanceError.self,"),
         "a failure the transport handed back is answered as a `BalanceError`, so it is decoded \
          as one first. Got: {body}"
     );
@@ -116,7 +116,7 @@ fn a_bodied_operation_fills_a_literal_path_and_encodes_the_message_as_the_body()
         "a bodied method carries no query string. Got: {method}"
     );
     assert!(
-        method.contains("body = try JSONEncoder().encode(req)"),
+        method.contains("body = try documentClientServiceDatedEncoder().encode(req)"),
         "the body is the message's own Codable encode, never re-derived. Got: {method}"
     );
     assert!(method.contains("method: \"POST\""), "got: {method}");
@@ -167,7 +167,9 @@ fn an_unbound_generated_field_builds_the_query_string_of_a_bodyless_method() {
     assert!(
         method.contains("var query: [(String, String)] = []")
             && method.contains("if let value = req.limit {")
-            && method.contains("query.append((\"limit\", \"\\(value)\"))"),
+            && method.contains(
+                "let rendered = \"\\(value)\"\n      query.append((\"limit\", rendered))"
+            ),
         "a field the path does not bind is a query parameter, read off the message by its own \
          type. Got: {method}"
     );
@@ -202,12 +204,13 @@ fn a_header_in_binding_becomes_an_extra_parameter_and_a_built_header() {
         method.contains("var headers: [(String, String)] = []")
             && method.contains(
                 "if let byte_range = byte_range {\n      \
-                 if !documentClientServiceLegalHeaderValue(\"\\(byte_range)\") {\n        \
+                 let rendered = \"\\(byte_range)\"\n      \
+                 if !documentClientServiceLegalHeaderValue(rendered) {\n        \
                  return .failure(.fault(documentClientServiceHttpOutboundFault(\"get-version\", \
                  \"range\", \"a header value contains a character illegal in an HTTP \
                  header\")))\n      \
                  }\n      \
-                 headers.append((\"range\", \"\\(byte_range)\"))\n    }"
+                 headers.append((\"range\", rendered))\n    }"
             ),
         "the header is built from the extra argument, never from the message, reads the \
          parameter the `if let` has already unwrapped, and checks the rendered value before it \
@@ -241,13 +244,14 @@ fn unbound_optional_fields_build_a_query_string_a_vec_joining_by_comma() {
     let method = method_body(&written, "searchDocuments");
     assert!(
         method.contains("if let value = req.q {")
-            && method.contains("query.append((\"q\", \"\\(value)\"))"),
+            && method
+                .contains("let rendered = \"\\(value)\"\n      query.append((\"q\", rendered))"),
         "a scalar optional field pushes its own wire key when present. Got: {method}"
     );
     assert!(
         method.contains("if let value = req.tags {")
             && method.contains(
-                "query.append((\"tags\", ((value).map { element in \"\\(element)\" }.joined(separator: \",\"))))"
+                "let rendered = ((value).map { element in \"\\(element)\" }.joined(separator: \",\"))\n      query.append((\"tags\", rendered))"
             ),
         "a Vec field joins its elements with a comma before it is percent-encoded. Got: {method}"
     );
@@ -260,7 +264,7 @@ fn the_declared_ok_status_decodes_into_the_success_type() {
     assert!(
         method.contains("if status == 200 {")
             && method.contains(
-                "value = try JSONDecoder().decode(CreateDocumentResponse.self, from: response.body)"
+                "value = try documentClientServiceDatedDecoder().decode(CreateDocumentResponse.self, from: response.body)"
             )
             && method.contains("return .success(value)"),
         "got: {method}"
@@ -274,7 +278,7 @@ fn a_mapped_error_status_decodes_into_the_declared_error_and_is_returned() {
     assert!(
         method.contains("if status == 409 {")
             && method.contains(
-                "declared = try JSONDecoder().decode(CreateDocumentError.self, from: response.body)"
+                "declared = try documentClientServiceDatedDecoder().decode(CreateDocumentError.self, from: response.body)"
             )
             && method.contains("return .failure(.declared(declared))"),
         "got: {method}"
@@ -335,7 +339,7 @@ fn a_header_out_tuple_success_reads_the_body_and_the_header_back() {
     let method = method_body(&written, "getVersion");
     assert!(
         method.contains(
-            "value = try JSONDecoder().decode(VersionResponse.self, from: response.body)"
+            "value = try documentClientServiceDatedDecoder().decode(VersionResponse.self, from: response.body)"
         ),
         "got: {method}"
     );
@@ -587,7 +591,7 @@ fn a_multipart_method_builds_one_text_part_per_field_and_one_file_part_per_bindi
         method.contains("var parts: [(String, any Sendable)] = []")
             && method.contains("parts.append((\"title\", \"\\(req.title)\"))")
             && method.contains(
-                "if let value = req.description {\n      parts.append((\"description\", \"\\(value)\"))\n    }"
+                "if let value = req.description {\n      let rendered = \"\\(value)\"\n      parts.append((\"description\", rendered))\n    }"
             )
             && method.contains("parts.append((\"file\", attachment))"),
         "one text part per carried field not otherwise placeholder-bound, then one file part per \
@@ -647,7 +651,7 @@ fn a_header_vec_of_options_narrows_its_element_without_a_forced_unwrap() {
     let method = method_body(&written, "listTags");
     assert!(
         method.contains(
-            "headers.append((\"x-tags\", ((tags).map { element in ((element).map { unwrapped in \"\\(unwrapped)\" } ?? \"\") }.joined(separator: \",\"))))"
+            "let rendered = ((tags).map { element in ((element).map { unwrapped in \"\\(unwrapped)\" } ?? \"\") }.joined(separator: \",\"))"
         ),
         "an absent element inside a present `Vec` renders as the empty string, through `.map`, \
          never a forced unwrap. Got: {method}"
@@ -671,9 +675,12 @@ fn a_unit_success_answers_void() {
 fn a_named_message_field_in_the_path_crosses_through_the_wire_text_helper() {
     let written = swift_http_client_of(NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE);
     assert!(
-        written.contains("mediaClientServiceWireText(req.sha256)")
+        written.contains("rendered = try mediaClientServiceWireText(req.sha256)")
             && written.contains(
-                "func mediaClientServiceWireText<Value: Encodable>(_ value: Value) -> String {"
+                "func mediaClientServiceWireText<Value: Encodable>(_ value: Value) throws -> String {"
+            )
+            && written.contains(
+                "formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]"
             ),
         "got: {written}"
     );
@@ -688,7 +695,7 @@ fn a_newtype_header_out_element_decodes_through_its_codable_and_faults_when_it_r
     let written = swift_http_client_of(NEWTYPE_HEADER_OUT_HTTP_SERVICE);
     assert!(
         written.contains(
-            "(try? JSONDecoder().decode(MediaId.self, from: JSONEncoder().encode(rawHeaderOut0)))"
+            "(try? mediaClientServiceDatedDecoder().decode(MediaId.self, from: JSONEncoder().encode(rawHeaderOut0)))"
         ) && written.contains("a response header did not match its declared type"),
         "got: {written}"
     );
