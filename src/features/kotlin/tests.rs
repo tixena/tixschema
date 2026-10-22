@@ -877,8 +877,9 @@ fn an_enum_under_its_variants_names_reads_what_a_variant_holds_unjudged() {
          put(\"Many\", output.json.encodeToJsonElement(ListSerializer(ParcelUnjudged), \
          value.value)) } }) };",
         "return when (tag) { \"Boxed\" -> \
-         FreightBoxed(input.json.decodeFromJsonElement(ParcelUnjudged, data)); \"Held\" -> \
-         FreightHeld; \"Many\" -> \
+         FreightBoxed(input.json.decodeFromJsonElement(ParcelUnjudged, data)); \"Held\" -> if \
+         (data is JsonNull) FreightHeld else throw SerializationException(\"Freight: \" + tag + \
+         \" takes no value\"); \"Many\" -> \
          FreightMany(input.json.decodeFromJsonElement(ListSerializer(ParcelUnjudged), data)) \
          else -> error(\"unknown tag \" + tag) } } }",
     ] {

@@ -31,7 +31,9 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
             "\"Berth\", \"Pier\" -> input.json.decodeFromJsonElement(serializer<SurgingBerth>(), \
              data.{NAME_AS_LABEL});"
         ),
-        "\"Calm\", \"Still\", \"Slack\" -> SurgingCalm;".to_owned(),
+        "\"Calm\", \"Still\", \"Slack\" -> if (data is JsonNull) SurgingCalm else throw \
+         SerializationException(\"Surging: \" + tag + \" takes no value\");"
+            .to_owned(),
         "\"Held\", \"Tied\" -> SurgingHeld(input.json.decodeFromJsonElement(serializer<String>(), \
          data))"
             .to_owned(),

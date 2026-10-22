@@ -2407,6 +2407,15 @@ fn dispatched_tagged_variant(
     };
     let own = || kotlin_subclass_serializer_expr(&subclass_name, ctx.type_parameters);
     let (content_expr, decode_expr) = match (&payload, &declared) {
+        // An entry under a unit variant's name reads it over `null` alone, as serde reads it.
+        (VariantPayload::Unit, _) if matches!(ctx.tagging, Tagging::External) => (
+            None,
+            format!(
+                "if (data is JsonNull) {subclass_name} else throw SerializationException(\"{}: \" \
+                 + tag + \" takes no value\")",
+                ctx.export_name
+            ),
+        ),
         (VariantPayload::Unit, _) => (None, subclass_name.clone()),
         (VariantPayload::Value(field_def), Some(held)) if !beside_the_tag => {
             let read_by = read::declared_serializer(field_def, held, ctx.type_parameters);

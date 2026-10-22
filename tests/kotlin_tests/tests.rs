@@ -617,8 +617,11 @@ fn test_external_tagged_unit_variant_round_trip_source() {
          got: {kotlin}"
     );
     assert!(
-        kotlin.contains("\"None\" -> SimpleChoiceNone"),
-        "got: {kotlin}"
+        kotlin.contains(
+            "\"None\" -> if (data is JsonNull) SimpleChoiceNone else throw \
+             SerializationException(\"SimpleChoice: \" + tag + \" takes no value\")"
+        ),
+        "a unit variant's entry reads it over `null` alone, as serde reads it. got: {kotlin}"
     );
     assert!(
         kotlin.contains(
