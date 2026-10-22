@@ -1,7 +1,7 @@
 //! The omission walk is compiled in every build, so its tests are too — nothing here may reach
 //! anything the `serde` feature gates.
 
-use super::{SerdeKeyOmission, has_serde_default, parse_serde_key_omission};
+use super::{SerdeKeyOmission, carries_untagged, has_serde_default, parse_serde_key_omission};
 
 fn field_attrs(item: &syn::ItemStruct) -> &[syn::Attribute] {
     &item.fields.iter().next().unwrap().attrs
@@ -117,4 +117,46 @@ fn test_skip_after_a_list_form_rename_is_still_read() {
         "skip is written after a list-form rename(...)"
     );
     assert!(omission(&item).skips_deserializing);
+}
+
+/// serde reads `untagged` wherever the list writes it, after a key with a value included.
+#[test]
+fn test_untagged_is_read_in_any_place_of_the_list() {
+    let written: [syn::ItemEnum; 4] = [
+        syn::parse_quote! {
+            #[serde(untagged, rename_all = "camelCase")]
+            enum E { FirstOne(String) }
+        },
+        syn::parse_quote! {
+            #[serde(rename_all = "camelCase", untagged)]
+            enum E { FirstOne(String) }
+        },
+        syn::parse_quote! {
+            #[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"), untagged)]
+            enum E { FirstOne(String) }
+        },
+        syn::parse_quote! {
+            #[serde(expecting = "a widget error", bound = "T: Clone", untagged)]
+            enum E<T> { FirstOne(T) }
+        },
+    ];
+    for item in &written {
+        assert!(
+            carries_untagged(&item.attrs),
+            "untagged is read in any place: {}",
+            quote::quote!(#item)
+        );
+    }
+}
+
+#[test]
+fn test_a_list_without_the_untagged_key_is_not_untagged() {
+    let tagged: syn::ItemEnum = syn::parse_quote! {
+        #[serde(rename_all = "camelCase", tag = "untagged")]
+        enum E { FirstOne(String) }
+    };
+    assert!(
+        !carries_untagged(&tagged.attrs),
+        "a value that reads `untagged` is no key"
+    );
 }
