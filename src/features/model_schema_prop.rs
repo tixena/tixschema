@@ -109,34 +109,33 @@ pub enum LiteralValue {
 ///
 /// ## Where a constraint is checked
 ///
-/// By the `validate()` the type publishes, and not as the payload is read.
-///
-/// A constraint describes the value, not the shape, so a payload carrying a value it rejects is
-/// still structurally the message it claims to be — every key present, every value of its field's
-/// declared type. Checking it on the read makes the two indistinguishable to whoever receives the
-/// failure: "I could not parse this at all" and "I parsed it and the value broke a rule" are
-/// different sentences that send a caller looking in different places. So the read admits the
-/// value and `validate()` refuses it, naming the field.
+/// By the `validate()` the type publishes, and by the type's read, which runs that `validate()`.
+/// The `Deserialize` `#[model_schema()]` writes for a type is the type's own read followed by its
+/// `validate()`, so serde's read refuses a payload whose value breaks a bound, in the message
+/// `validate()` answers, which names the value by its path in the payload:
+/// `serde_json::from_str::<Floor>(r#"{"credit_count":2}"#)` answers `'credit_count': too small:
+/// minimum is 10, got 2` for a `credit_count` under `minimum = 10`. A value built or changed in
+/// code is judged by calling `validate()`.
 ///
 /// A field still generates both helpers into the schema module — `validate_{field}_value()`, which
 /// `validate()` calls, and `deserialize_{field}`, a serde hook an author may hang on a field of
 /// their own accord. Only one position is hung with that hook automatically: a member of an
 /// `#[serde(untagged)]` enum, where whether the member is admissible is what chooses which variant
-/// the payload is. There the check is part of reading the value rather than part of judging it,
-/// exactly as it is under `anyOf` and `z.union` on the two schema surfaces the same type
-/// publishes, and `validate()` cannot stand in for it — by the time it runs the variant has
-/// already been chosen.
+/// the payload is. There the check runs as the member is read, exactly as it does under `anyOf`
+/// and `z.union` on the two schema surfaces the same type publishes: the enum's `validate()` runs
+/// once the variant has been chosen.
 ///
 /// A constrained *brand* is judged the same way. A message holding a branded field publishes a
 /// `validate()` that runs the brand's own validator and reports what it said under the field that
 /// held it — `'slug': too short: …`, the name being the message's to supply since the brand names
-/// none of its own. That is what holds a caller building a message in Rust, where no read ever
-/// ran. A member of an `#[serde(untagged)]` enum that holds a brand is held to the brand's bound as
-/// it is read, the bound choosing the variant.
+/// none of its own. A member of an `#[serde(untagged)]` enum that holds a brand is held to the
+/// brand's bound as it is read, the bound choosing the variant.
 ///
 /// The same reach applies to a field whose type is an ordinary `#[model_schema()]` type: the
-/// enclosing `validate()` runs the one that type published and writes its report under the field.
-/// Nothing else enforces a nested bound, the read carrying no check for one at all.
+/// enclosing `validate()` runs the one that type published and writes its report under the field,
+/// and the enclosing read, which runs that `validate()`, refuses a held value that breaks a bound:
+/// `'floor.credit_count': too small: minimum is 10, got 2` for the `Floor` above held under
+/// `floor`.
 ///
 /// ## Type overrides
 ///

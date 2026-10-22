@@ -547,9 +547,7 @@ fn serialized(attrs: &[Attribute], held: &TokenStream) -> TokenStream {
             .parse::<Path>()
             .ok()
             .map(|module| syn::parse_quote! { #module::serialize })
-    } else if hooks.deserialize_with.is_none()
-        && parse_model_schema_prop_attributes(attrs).as_number
-    {
+    } else if parse_model_schema_prop_attributes(attrs).as_number {
         Some(syn::parse_quote! { chrono::serde::ts_milliseconds::serialize })
     } else {
         None

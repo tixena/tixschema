@@ -209,13 +209,13 @@ fn a_date_under_as_number_in_a_slot_is_written_as_a_number() {
     }
 }
 
-/// serde writes the date of an untagged variant under `as_number` as its text, where the Swift read
-/// takes the number: the run leaves [`UntaggedCountedTide`] out for this.
+/// serde writes the date of an untagged variant under `as_number` as the number the Swift read
+/// takes, as it writes it under every other tagging.
 #[test]
-fn an_untagged_variant_writes_its_date_under_as_number_as_its_text() {
+fn an_untagged_variant_writes_its_date_under_as_number_as_a_number() {
     assert_eq!(
         read_back(&UntaggedCountedTide::Counted(first())),
-        r#""2024-01-02T03:04:05.678Z""#
+        "1704164645678"
     );
 }
 

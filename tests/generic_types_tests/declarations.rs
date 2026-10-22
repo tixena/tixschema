@@ -69,6 +69,12 @@ mod text_forms;
 #[path = "commented_models.rs"]
 mod commented;
 
+/// A date under `as_number` in a member of an untagged enum, and what serde and the Zod schema
+/// answer of each payload.
+#[cfg(feature = "chrono")]
+#[path = "../chrono_tests/untagged_millis_models.rs"]
+mod untagged_millis;
+
 /// A model per type the wire holds as a text, a number or a `bool`, and what each client sends of
 /// each value a caller hands it.
 #[cfg(feature = "chrono")]
@@ -2601,6 +2607,24 @@ fn text_forms_bundle() -> String {
     .join("\n\n")
 }
 
+/// The enums of [`untagged_millis::MILLIS_ROWS`]: a bundle of their own, compiled with `tsc
+/// --strict` before it is loaded.
+#[cfg(feature = "chrono")]
+fn untagged_millis_bundle() -> String {
+    [
+        PREAMBLE.to_owned(),
+        untagged_millis::MillisOrFlag::ts_definition(),
+        untagged_millis::MillisOrFlag::zod_schema(),
+        untagged_millis::MillisNamed::ts_definition(),
+        untagged_millis::MillisNamed::zod_schema(),
+        untagged_millis::MillisMaybe::ts_definition(),
+        untagged_millis::MillisMaybe::zod_schema(),
+        untagged_millis::MillisLater::ts_definition(),
+        untagged_millis::MillisLater::zod_schema(),
+    ]
+    .join("\n\n")
+}
+
 /// The models of [`wire_forms::WIRE_FORMS`]: a bundle of their own, compiled with `tsc --strict`
 /// before it is loaded, beside the consumer's own `ObjectId`.
 #[cfg(feature = "chrono")]
@@ -3653,6 +3677,49 @@ fn type_check_a_text_of_one_form_is_read_under_zod_where_the_table_states() {
         printed,
         serde_json::to_string(&taken).unwrap(),
         "the schemas do not read what the table states:\n{failed}"
+    );
+}
+
+/// The Zod schema of each enum of [`untagged_millis::MILLIS_ROWS`] parses each payload under `node`
+/// to what the table states, the epoch milliseconds serde writes among them. Its output is typed
+/// `ZodType` of the enum's TypeScript type, which `tsc --strict` holds it to as the bundle
+/// compiles.
+#[cfg(feature = "chrono")]
+#[test]
+fn type_check_an_untagged_member_under_as_number_is_parsed_as_the_number_serde_writes() {
+    let listed: Vec<(String, &str)> = untagged_millis::MILLIS_ROWS
+        .iter()
+        .map(|(read_as, json, written, _)| {
+            assert_eq!(
+                untagged_millis::serde_written(read_as, json).as_deref(),
+                *written,
+                "serde answers {json} read as {read_as} otherwise"
+            );
+            (format!("{read_as}$Schema"), *json)
+        })
+        .collect();
+    let expected: Vec<Option<&str>> = untagged_millis::MILLIS_ROWS
+        .iter()
+        .map(|(_, _, _, zod)| *zod)
+        .collect();
+    let driver = format!(
+        "import * as lib from \"./lib/index.js\";\n\n\
+         console.log(JSON.stringify({}.map(([schema, payload]) => {{\n  \
+         const read = lib[schema].safeParse(JSON.parse(payload));\n  \
+         return read.success ? JSON.stringify(read.data) : null;\n\
+         }})));\n",
+        serde_json::to_string(&listed).unwrap()
+    );
+    let Some((printed, failed)) =
+        loaded_from("untagged-millis", &untagged_millis_bundle(), &driver)
+    else {
+        return;
+    };
+    let parsed: Vec<Option<String>> = serde_json::from_str(&printed).unwrap_or_default();
+    assert_eq!(
+        parsed.iter().map(Option::as_deref).collect::<Vec<_>>(),
+        expected,
+        "the Zod schemas parse a payload otherwise than the table states:\n{failed}"
     );
 }
 

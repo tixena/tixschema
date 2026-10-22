@@ -911,6 +911,21 @@ mod skipped_slot_models;
 #[path = "service_schema_emitted_client_tests/run_skipped_slots.rs"]
 mod run_skipped_slots;
 
+/// A date under `as_number` in a member of an untagged enum.
+#[cfg(test)]
+#[cfg(all(
+    feature = "chrono",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
+#[path = "chrono_tests/untagged_millis_models.rs"]
+mod untagged_millis_models;
+
+/// That date, read and written back by each client beside serde.
+#[cfg(test)]
+#[cfg(feature = "chrono")]
+#[path = "service_schema_emitted_client_tests/run_untagged_millis.rs"]
+mod run_untagged_millis;
+
 // The transport's expansion reaches each service through `$crate`, which is this binary's root:
 // every trait and its schema module are named here for it to resolve.
 #[cfg(all(test, feature = "dart"))]

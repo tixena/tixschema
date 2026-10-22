@@ -23,6 +23,27 @@ mod epoch_seconds {
     }
 }
 
+/// An epoch-milliseconds hook, written by hand, to read or to write a date in one direction alone.
+mod epoch_millis {
+    use chrono::serde::ts_milliseconds;
+    use chrono::{DateTime, Utc};
+    use serde::{Deserializer, Serializer};
+
+    pub fn serialize<S>(dt: &DateTime<Utc>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        ts_milliseconds::serialize(dt, serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        ts_milliseconds::deserialize(deserializer)
+    }
+}
+
 use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use std::collections::HashMap;
 
@@ -35,6 +56,10 @@ use serde::de::DeserializeOwned;
 
 #[cfg(feature = "jsonschema")]
 use super::documents::admits;
+#[cfg(feature = "serde")]
+use super::untagged_millis_models::{
+    MILLIS_ROWS, MillisLater, MillisMaybe, MillisNamed, MillisOrFlag, serde_written,
+};
 
 /// The epoch milliseconds serde writes for `2024-01-02T03:04:05.678Z` under `as_number`.
 #[cfg(feature = "jsonschema")]
@@ -224,6 +249,60 @@ enum MillisEvent {
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 struct MillisPair(#[model_schema_prop(as_number)] DateTime<Utc>, u8);
+
+/// A date under `as_number` in an untagged member read through a hook of its author's own.
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(untagged)]
+enum SecondsOrFlag {
+    Flag(bool),
+    Seconds(
+        #[model_schema_prop(as_number)]
+        #[serde(with = "epoch_seconds")]
+        DateTime<Utc>,
+    ),
+}
+
+/// A date under `as_number` in an untagged member that names a check.
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(untagged)]
+enum CheckedMillis {
+    Flag(bool),
+    Millis(#[model_schema_prop(as_number, check = ["after_epoch"])] DateTime<Utc>),
+}
+
+/// A date under `as_number` its author reads, or writes, through a function of their own.
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+struct OneWayMillis {
+    #[model_schema_prop(as_number)]
+    #[serde(deserialize_with = "epoch_millis::deserialize")]
+    read_by_hand: DateTime<Utc>,
+    #[model_schema_prop(as_number)]
+    #[serde(serialize_with = "epoch_millis::serialize")]
+    written_by_hand: DateTime<Utc>,
+}
+
+/// A date under `as_number` in an `Option` that drops its key and names no `default`.
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+struct DroppedMillis {
+    #[model_schema_prop(as_number)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    later: Option<DateTime<Utc>>,
+    #[model_schema_prop(as_number, nullable)]
+    settled: Option<DateTime<Utc>>,
+}
+
+/// The check [`CheckedMillis`] names: a date after the epoch.
+fn after_epoch(value: &DateTime<Utc>) -> Result<(), Vec<String>> {
+    if value.timestamp_millis() > 0 {
+        Ok(())
+    } else {
+        Err(vec!["not after the epoch".to_owned()])
+    }
+}
 
 #[test]
 fn test_chrono_types_constructible() {
@@ -1026,4 +1105,194 @@ fn the_json_schema_of_each_chrono_type_admits_what_serde_writes_and_refuses_a_zo
         !admits(&tagged, &zoned_slot),
         "the JSON Schema admits {zoned_slot}, which serde refuses: {tagged}"
     );
+}
+
+/// serde writes and reads a date under `as_number` in an untagged enum's member as the integer of
+/// its epoch milliseconds, and refuses its text, as [`MILLIS_ROWS`] states.
+#[cfg(feature = "serde")]
+#[test]
+fn an_untagged_member_under_as_number_crosses_the_wire_as_epoch_milliseconds() {
+    let at = DateTime::from_timestamp_millis(1_704_164_645_678).unwrap();
+    assert_eq!(
+        serde_json::to_string(&MillisOrFlag::Millis(at)).unwrap(),
+        "1704164645678"
+    );
+    assert_eq!(
+        serde_json::to_string(&MillisNamed::Logged { at }).unwrap(),
+        r#"{"at":1704164645678}"#
+    );
+    for (read_as, json, written, _) in MILLIS_ROWS {
+        assert_eq!(
+            serde_written(read_as, json).as_deref(),
+            written,
+            "serde answers {json} read as {read_as} otherwise"
+        );
+    }
+}
+
+/// The JSON Schema of each enum of [`MILLIS_ROWS`] admits each payload serde reads, and refuses
+/// each one it refuses.
+#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[test]
+fn the_json_schema_of_an_untagged_member_under_as_number_admits_what_serde_reads() {
+    for (read_as, json, written, _) in MILLIS_ROWS {
+        let document = match read_as {
+            "MillisOrFlag" => MillisOrFlag::json_schema(),
+            "MillisNamed" => MillisNamed::json_schema(),
+            "MillisMaybe" => MillisMaybe::json_schema(),
+            _ => MillisLater::json_schema(),
+        };
+        let payload: serde_json::Value = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            admits(&document, &payload),
+            written.is_some(),
+            "the JSON Schema of {read_as} answers {json} otherwise than serde: {document}"
+        );
+    }
+}
+
+/// TypeScript and Zod describe the number serde writes for an untagged member under `as_number`.
+#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
+#[test]
+fn an_untagged_member_under_as_number_is_described_as_a_number() {
+    let flag = MillisOrFlag::ts_definition();
+    assert!(
+        flag.contains("export type MillisOrFlag = boolean | number;"),
+        "Got: {flag}"
+    );
+    let named = MillisNamed::ts_definition();
+    assert!(
+        named.contains("export type MillisNamed = boolean | { at: number };"),
+        "Got: {named}"
+    );
+    let zod = MillisOrFlag::zod_schema();
+    assert!(
+        zod.contains(
+            "z.union([z.boolean(), z.preprocess((arg) => { if (arg instanceof Date) return \
+             arg.getTime(); if (typeof arg === \"string\") return Date.parse(arg); return arg; }, \
+             z.number().int())])"
+        ),
+        "Got: {zod}"
+    );
+}
+
+/// An untagged member under `as_number` read through a hook of its author's keeps it, and one
+/// that names a check is read as the epoch milliseconds and held to the check.
+#[cfg(feature = "serde")]
+#[test]
+fn an_untagged_member_under_as_number_keeps_its_own_hook_and_its_check() {
+    let at = DateTime::from_timestamp(1_758_000_000, 0).unwrap();
+    let written = serde_json::to_string(&SecondsOrFlag::Seconds(at)).unwrap();
+    assert_eq!(
+        written, "1758000000",
+        "the author's own seconds hook must run, not the injected milliseconds one"
+    );
+    assert_eq!(
+        serde_json::from_str::<SecondsOrFlag>(&written).unwrap(),
+        SecondsOrFlag::Seconds(at)
+    );
+
+    let checked =
+        CheckedMillis::Millis(DateTime::from_timestamp_millis(1_758_000_000_000).unwrap());
+    let millis = serde_json::to_string(&checked).unwrap();
+    assert_eq!(millis, "1758000000000");
+    assert_eq!(
+        serde_json::from_str::<CheckedMillis>(&millis).unwrap(),
+        checked
+    );
+    let refused = serde_json::from_str::<CheckedMillis>("-5")
+        .unwrap_err()
+        .to_string();
+    assert!(
+        refused.contains("not after the epoch"),
+        "the read does not refuse the date the check refuses: {refused}"
+    );
+}
+
+/// A date under `as_number` its author reads, or writes, through a function of their own is
+/// written and read as the epoch milliseconds in the other direction, through the hook the key
+/// hangs there.
+#[cfg(feature = "serde")]
+#[test]
+fn a_date_under_as_number_with_a_hook_of_its_own_in_one_direction_is_written_as_a_number() {
+    let at = DateTime::from_timestamp_millis(1_758_000_000_000).unwrap();
+    let value = OneWayMillis {
+        read_by_hand: at,
+        written_by_hand: at,
+    };
+    let written = serde_json::to_string(&value).unwrap();
+    assert_eq!(
+        written,
+        r#"{"read_by_hand":1758000000000,"written_by_hand":1758000000000}"#
+    );
+    assert_eq!(
+        serde_json::from_str::<OneWayMillis>(&written).unwrap(),
+        value
+    );
+}
+
+/// An `Option` of a date under `as_number` serde drops the key of is read back from its absence,
+/// as an `Option` read by no hook is.
+#[cfg(feature = "serde")]
+#[test]
+fn an_absent_key_of_an_optional_date_under_as_number_is_read_as_none() {
+    let empty = DroppedMillis {
+        later: None,
+        settled: None,
+    };
+    let written = serde_json::to_string(&empty).unwrap();
+    assert_eq!(written, r#"{"settled":null}"#);
+    assert_eq!(
+        serde_json::from_str::<DroppedMillis>(&written).unwrap(),
+        empty
+    );
+    assert_eq!(
+        serde_json::from_str::<DroppedMillis>("{}").unwrap(),
+        empty,
+        "an absent key of the nullable date is not read as `None`"
+    );
+    let at = DateTime::from_timestamp_millis(1_758_000_000_000).unwrap();
+    assert_eq!(
+        serde_json::from_str::<DroppedMillis>(r#"{"later":1758000000000}"#).unwrap(),
+        DroppedMillis {
+            later: Some(at),
+            settled: None,
+        }
+    );
+}
+
+/// serde refuses a date read through chrono's millisecond hook beside a tag alone and flattened as
+/// the integer it writes, in the words the README quotes for a date under `as_number`.
+#[cfg(feature = "serde")]
+#[test]
+fn serde_refuses_a_date_in_milliseconds_beside_a_tag_and_flattened_as_an_integer() {
+    #[derive(Serialize)]
+    #[serde(tag = "kind")]
+    enum Stamping {
+        Stamp(#[serde(with = "chrono::serde::ts_milliseconds")] DateTime<Utc>),
+    }
+    #[derive(Serialize)]
+    struct FlatStamp {
+        id: u8,
+        #[serde(flatten, with = "chrono::serde::ts_milliseconds")]
+        stamp: DateTime<Utc>,
+    }
+    let at = DateTime::from_timestamp_millis(1_704_164_645_678).unwrap();
+    let readme = include_str!("../../README.md");
+    for (refused, said) in [
+        (
+            serde_json::to_string(&Stamping::Stamp(at)),
+            "cannot serialize tagged newtype variant Stamping::Stamp containing an integer",
+        ),
+        (
+            serde_json::to_string(&FlatStamp { id: 1, stamp: at }),
+            "can only flatten structs and maps (got an integer)",
+        ),
+    ] {
+        assert_eq!(refused.unwrap_err().to_string(), said);
+        assert!(
+            readme.contains(&format!("`{said}`")),
+            "the README no longer quotes `{said}`"
+        );
+    }
 }

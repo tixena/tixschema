@@ -908,7 +908,10 @@ pub fn mongodb_foundation(input: TokenStream) -> TokenStream {
 ///   and a member a serde attribute takes off the wire in both directions is described nowhere, so
 ///   the flag is refused on either.
 /// - `as_number` — on a `DateTime<Tz>` field, renders an epoch-millisecond `number` with an
-///   inline Zod coercer instead of the default `Date`.
+///   inline Zod coercer instead of the default `Date`. With the `serde` feature on, serde writes
+///   and reads that number through chrono's `ts_milliseconds` hook, hung in each direction the
+///   field's author writes or reads it through no function of their own, so the field is a
+///   `DateTime<Utc>` or an `Option` of one unless both directions are the author's.
 /// - `nullable` — on an `Option<T>` field, renders `T | null` with the key **required** on
 ///   TypeScript, Zod and JSON Schema, instead of the default `T | undefined` with the key
 ///   dropped for a `None`. Refused together with `ts_optional` — the two disagree about the key.
