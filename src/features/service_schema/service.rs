@@ -4,7 +4,7 @@
 
 use super::fault;
 use super::message;
-use super::result::result_name;
+use super::result::{result_name, stream_success_ts_type};
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
@@ -498,7 +498,13 @@ fn outcome_type(service: &str, operation: &OperationDef) -> Option<String> {
         return None;
     };
     let published = outcome_name(service, operation)?;
-    let success_arm = if is_unit_type(success) {
+    let shape = HttpShape::of(operation);
+    let success_arm = if matches!(shape.body_kind, BodyKind::Stream) {
+        format!(
+            "{{ ok: true; value: {} }}",
+            stream_success_ts_type(&shape, success)
+        )
+    } else if is_unit_type(success) {
         "{ ok: true }".to_owned()
     } else {
         let value = get_field_def("value", success, "").typescript_typename();

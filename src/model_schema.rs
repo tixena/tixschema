@@ -68,8 +68,8 @@ use crate::utils::escape_js_double_quoted;
 #[cfg(feature = "typescript")]
 use crate::utils::ts_generic_params;
 use crate::utils::{
-    constraining_pattern, emittable_pattern, portable_pattern, ts_quoted, type_parameters_in_scope,
-    written_type,
+    constraining_pattern, emittable_pattern, portable_pattern, ts_commented, ts_quoted,
+    type_parameters_in_scope, written_type,
 };
 
 #[cfg(feature = "zod")]
@@ -10009,12 +10009,13 @@ fn alias_jsdoc_body(docs_vec: Option<&[String]>, export_name: &str) -> String {
     ))
 }
 
-/// The `JSDoc` body a set of lines is written as: each prefixed with ` * `, the block closed by a
-/// bare ` * ` so it ends on an empty line. Ungated for the reason [`item_lines_or_name`] is.
+/// The `JSDoc` body a set of lines is written as: each prefixed with ` * ` and written through
+/// [`ts_commented`], the block closed by a bare ` * ` so it ends on an empty line. Ungated for the
+/// reason [`item_lines_or_name`] is.
 fn item_jsdoc_body(lines: &[String]) -> String {
     lines
         .iter()
-        .map(|l| format!(" * {l}"))
+        .map(|l| format!(" * {}", ts_commented(l)))
         .chain([" * ".to_owned()])
         .collect::<Vec<_>>()
         .join("\n")
@@ -10152,7 +10153,7 @@ fn build_plain_enum_type_code(enum_options: &[String], enum_variant_docs: &[Stri
                         if content.is_empty() {
                             "  *".to_owned()
                         } else {
-                            format!("  * {content}")
+                            format!("  * {}", ts_commented(content))
                         }
                     })
                     .collect::<Vec<_>>()
@@ -18514,7 +18515,10 @@ fn apply_constraint_docs(field_def: &mut FieldDef, final_name: &str) {
     if !constraint_docs.is_empty() {
         let extra_docs = constraint_docs.join("\n");
         field_def.docs = if field_def.docs.is_empty() {
-            format!(" * {final_name}\n * \n{extra_docs}")
+            format!(
+                "{}\n{extra_docs}",
+                item_jsdoc_body(&[final_name.to_owned()])
+            )
         } else {
             format!("{}\n{}", field_def.docs, extra_docs)
         };

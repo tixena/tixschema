@@ -9,9 +9,10 @@ use super::{
 };
 #[cfg(feature = "zod")]
 use super::{
-    HeaderProbeDocument, HeaderProbeError, HeaderProbeServiceSchema,
-    QuotedFilingProbeServiceSchema, QuotedProbeServiceSchema, ReservedProbeServiceSchema,
-    UnitPingError, UnitPingRequest, UnitPingServiceSchema,
+    HeaderProbeDocument, HeaderProbeError, HeaderProbeServiceSchema, LapsedProbeError,
+    LapsedProbeServiceSchema, QuotedFilingProbeServiceSchema, QuotedProbeServiceSchema,
+    ReservedProbeServiceSchema, SpooledProbeServiceSchema, UnitPingError, UnitPingRequest,
+    UnitPingServiceSchema,
 };
 use std::env;
 use std::env::temp_dir;
@@ -513,7 +514,8 @@ fn unit_ping_bundle() -> String {
     .join("\n\n")
 }
 
-/// `HeaderProbeService`'s types, client, dispatcher, and both `ws_rpc` surfaces.
+/// `HeaderProbeService`'s types, client, dispatcher, both `ws_rpc` surfaces and both `http_rest`
+/// ones.
 #[cfg(feature = "zod")]
 fn header_probe_bundle() -> String {
     [
@@ -527,6 +529,41 @@ fn header_probe_bundle() -> String {
         HeaderProbeServiceSchema::ts_ws_client(),
         HeaderProbeServiceSchema::ts_ws_service(),
         HeaderProbeServiceSchema::ts_http_client(),
+        HeaderProbeServiceSchema::ts_http_service(),
+    ]
+    .join("\n\n")
+}
+
+/// The `http_rest` server of `SpooledProbeService`, whose `bytes` and `stream` replies answer a
+/// declared error with no table, and the dispatcher it drives.
+#[cfg(feature = "zod")]
+fn spooled_probe_bundle() -> String {
+    [
+        HeaderProbeError::ts_definition(),
+        HeaderProbeError::zod_schema(),
+        SpooledProbeServiceSchema::ts_definition(),
+        SpooledProbeServiceSchema::ts_service(),
+        SpooledProbeServiceSchema::ts_http_service(),
+    ]
+    .join("\n\n")
+}
+
+/// Every surface of `LapsedProbeService`, whose untagged error answers one status whatever it
+/// holds.
+#[cfg(feature = "zod")]
+fn lapsed_probe_bundle() -> String {
+    [
+        HeaderProbeDocument::ts_definition(),
+        HeaderProbeDocument::zod_schema(),
+        LapsedProbeError::ts_definition(),
+        LapsedProbeError::zod_schema(),
+        LapsedProbeServiceSchema::ts_definition(),
+        LapsedProbeServiceSchema::ts_client(),
+        LapsedProbeServiceSchema::ts_service(),
+        LapsedProbeServiceSchema::ts_ws_client(),
+        LapsedProbeServiceSchema::ts_ws_service(),
+        LapsedProbeServiceSchema::ts_http_client(),
+        LapsedProbeServiceSchema::ts_http_service(),
     ]
     .join("\n\n")
 }
@@ -957,4 +994,51 @@ fn a_service_whose_names_hold_a_quote_type_checks_on_every_surface() {
         accepted,
         "a service whose names hold a quote does not compile:\n{said}"
     );
+}
+
+/// The `http_rest` dispatcher of an operation whose declared error answers one status whatever it
+/// holds compiles, and answers that status: 422 for `HeaderProbeService`'s `read` and for each
+/// operation of `SpooledProbeService`, which declare no table, as the Rust dispatcher answers with
+/// no table, and 410 for each operation of `LapsedProbeService`, whose untagged error every row of
+/// the table maps to it.
+#[cfg(feature = "zod")]
+#[test]
+fn a_declared_error_of_one_status_type_checks_at_the_http_dispatcher() {
+    for (named, written, answered) in [
+        (
+            "one-status-header",
+            header_probe_bundle(),
+            vec!["return headerProbeServiceHttpJson(422, headers, declaredError);"],
+        ),
+        (
+            "one-status-spooled",
+            spooled_probe_bundle(),
+            vec![
+                "return spooledProbeServiceHttpJson(422, headers, declaredError);",
+                "return spooledProbeServiceHttpJson(422, [], envelope.error);",
+            ],
+        ),
+        (
+            "one-status-untagged",
+            lapsed_probe_bundle(),
+            vec![
+                "return lapsedProbeServiceHttpJson(410, headers, declaredError);",
+                "return lapsedProbeServiceHttpJson(410, [], envelope.error);",
+            ],
+        ),
+    ] {
+        for line in answered {
+            assert!(
+                written.contains(line),
+                "the dispatcher does not answer `{line}`:\n{written}"
+            );
+        }
+        let Some((accepted, said)) = compiled(named, &bundled(written)) else {
+            return;
+        };
+        assert!(
+            accepted,
+            "a declared error of one status does not compile at the http dispatcher:\n{said}"
+        );
+    }
 }

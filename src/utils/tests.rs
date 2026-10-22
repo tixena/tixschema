@@ -1353,3 +1353,23 @@ fn a_name_is_written_as_a_typescript_literal_that_reads_back_as_the_name() {
         assert_eq!(ts_quoted(name), literal, "{name:?} is written another way");
     }
 }
+
+/// A text written into a TypeScript comment leaves the comment open: each `*/` it holds spelled
+/// `*\/`, and any other text kept, a line break and a lone `*` or `/` among it.
+#[test]
+fn a_text_in_a_comment_leaves_the_comment_open() {
+    let cases = [
+        ("a*/b", r"a*\/b"),
+        ("**/*/", r"**\/*\/"),
+        ("x */ y\nz", "x *\\/ y\nz"),
+        ("/* a * b / c", "/* a * b / c"),
+        ("get-available-balance", "get-available-balance"),
+    ];
+    for (text, commented) in cases {
+        assert_eq!(
+            ts_commented(text),
+            commented,
+            "{text:?} is written another way"
+        );
+    }
+}

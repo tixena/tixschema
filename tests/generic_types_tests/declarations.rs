@@ -64,6 +64,10 @@ mod shared_keys;
 #[path = "../kotlin_tests/text_forms_models.rs"]
 mod text_forms;
 
+/// Models whose names on the wire and doc comments hold the end of a comment, and what serde
+/// writes of each.
+#[path = "commented_models.rs"]
+mod commented;
 /// Models whose names on the wire hold a `$`, a quote, a double quote and a backslash, and what
 /// serde writes of each.
 #[path = "../dart_tests/quoted_models.rs"]
@@ -1757,6 +1761,29 @@ fn quoted_bundle() -> String {
     .join("\n\n")
 }
 
+/// The models whose names and doc comments hold the end of a comment: a bundle of their own,
+/// compiled with `tsc --strict` before it is loaded.
+fn commented_bundle() -> String {
+    [
+        PREAMBLE.to_owned(),
+        commented::Glossed::ts_definition(),
+        commented::Glossed::zod_schema(),
+        commented::Remarked::ts_definition(),
+        commented::Remarked::zod_schema(),
+        commented::Footnoted::ts_definition(),
+        commented::Footnoted::zod_schema(),
+        commented::Marginal::ts_definition(),
+        commented::Marginal::zod_schema(),
+        commented::Rubric::ts_definition(),
+        commented::Rubric::zod_schema(),
+        commented::Scholion::ts_definition(),
+        commented::Scholion::zod_schema(),
+        commented::marginalia_schema::Schema::ts_definition(),
+        commented::marginalia_schema::Schema::zod_schema(),
+    ]
+    .join("\n\n")
+}
+
 /// The types a std `Result` is written on: a bundle of its own, compiled with `tsc --strict` before
 /// it is loaded.
 fn results() -> String {
@@ -3289,6 +3316,45 @@ fn type_check_a_flattened_enum_under_a_function_takes_a_unit_variants_entry_over
         printed,
         serde_json::to_string(&stated).unwrap(),
         "the schema does not take what the rows state:\n{failed}"
+    );
+}
+
+/// The models whose names on the wire and doc comments hold the end of a comment compile under
+/// `tsc --strict`, each comment running on past it, and the Zod schema of each reads what serde
+/// writes of it as serde writes it.
+#[test]
+fn type_check_a_name_or_a_doc_that_ends_a_comment_is_read_under_zod_as_serde_writes_it() {
+    let bundle = commented_bundle();
+    for kept in [
+        " * a*\\/b",
+        " * A member doc that holds *\\/ the end of a comment, beside a bound.",
+        " * An item doc that holds *\\/ the end of a comment.",
+        "  * A variant doc that holds *\\/ the end of a comment.",
+        " * p*\\/q",
+        " * t*\\/u",
+        " * An alias whose doc holds *\\/ the end of a comment.",
+    ] {
+        assert!(
+            bundle.contains(kept),
+            "the comment does not hold `{kept}`:\n{bundle}"
+        );
+    }
+    let listed = commented::written();
+    let expected: Vec<serde_json::Value> = listed
+        .iter()
+        .map(|(_, written)| serde_json::from_str(written).unwrap())
+        .collect();
+    let driver = QUOTED_DRIVER.replace("PAYLOADS", &serde_json::to_string(&listed).unwrap());
+    let Some((printed, failed)) = loaded_from("commented", &bundle, &driver) else {
+        return;
+    };
+    let read: Vec<serde_json::Value> = printed
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(
+        read, expected,
+        "Zod does not read what serde writes:\n{failed}"
     );
 }
 

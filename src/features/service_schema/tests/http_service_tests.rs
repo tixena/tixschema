@@ -6,7 +6,62 @@ use super::{
     REQUIRED_HEADER_HTTP_SERVICE, RESERVED_WORD_SERVICE, SHADOWED_LOCAL_SERVICE,
     STREAM_HTTP_SERVICE, TS_UNIT_SUCCESS_SERVICE, http_service_of,
 };
-use crate::utils::record_wire_scalar;
+use crate::utils::{record_untagged_enum, record_wire_scalar};
+
+/// A service whose declared errors answer one status whatever they hold, the status written where
+/// the error is answered: a tagged enum with no table beside an `error_header_out`, and an untagged
+/// enum whose table maps every variant to one status, beside an `error_header_out` and beside a
+/// `header_out` alone. A tagged enum whose table a switch reads answers beside them.
+const ONE_STATUS_HTTP_SERVICE: &str = "
+    pub trait LapsedClientService<Ctx> {
+        #[service_schema_op(http(
+            method = \"POST\",
+            path = \"/held\",
+            error_header_out(\"x-reason\"),
+        ))]
+        async fn held(
+            &self,
+            ctx: &Ctx,
+            id: String,
+        ) -> Result<LapsedDocument, (HeldError, Option<String>)>;
+
+        #[service_schema_op(http(
+            method = \"POST\",
+            path = \"/lapsed\",
+            error_status(Busy = 410, Gone = 410),
+            error_header_out(\"x-reason\"),
+        ))]
+        async fn lapsed(
+            &self,
+            ctx: &Ctx,
+            id: String,
+        ) -> Result<LapsedDocument, (LapsedError, Option<String>)>;
+
+        #[service_schema_op(http(
+            method = \"POST\",
+            path = \"/stale\",
+            error_status(Busy = 410, Gone = 410),
+            header_out(\"etag\"),
+        ))]
+        async fn stale(
+            &self,
+            ctx: &Ctx,
+            id: String,
+        ) -> Result<(LapsedDocument, String), LapsedError>;
+
+        #[service_schema_op(http(
+            method = \"POST\",
+            path = \"/mapped\",
+            error_status(Missing = 404),
+            error_header_out(\"x-reason\"),
+        ))]
+        async fn mapped(
+            &self,
+            ctx: &Ctx,
+            id: String,
+        ) -> Result<LapsedDocument, (HeldError, Option<String>)>;
+    }
+";
 
 /// The expected emitted dispatcher text: the error status is read through the declared enum's
 /// own generated `WindowError$Variant` reader rather than an `errorCode` cast.
@@ -476,4 +531,32 @@ fn a_placeholder_named_after_a_local_of_the_dispatcher_is_held_under_another_nam
     ] {
         assert!(written.contains(moved), "no `{moved}` in: {written}");
     }
+}
+
+/// A declared error that answers one status whatever it holds is answered at that status, with no
+/// closure of no parameter handed the error, and a table a switch reads is still called with it.
+#[test]
+fn a_declared_error_of_one_status_is_answered_at_it_with_no_call() {
+    record_untagged_enum("LapsedError");
+    let written = http_service_of(ONE_STATUS_HTTP_SERVICE);
+    for answered in [
+        "return lapsedClientServiceHttpJson(422, headers, declaredError);",
+        "return lapsedClientServiceHttpJson(410, headers, declaredError);",
+        "return lapsedClientServiceHttpJson(410, [], envelope.error);",
+        "return lapsedClientServiceHttpJson(((error) => {\n          \
+         switch (HeldError$Variant(error)) {\n            \
+         case \"Missing\": return 404;\n            \
+         default: return 422;\n          \
+         }\n        \
+         })(declaredError), headers, declaredError);",
+    ] {
+        assert!(
+            written.contains(answered),
+            "the dispatcher does not answer `{answered}`. Got: {written}"
+        );
+    }
+    assert!(
+        !written.contains("(() =>"),
+        "no closure of no parameter is called. Got: {written}"
+    );
 }
