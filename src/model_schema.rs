@@ -856,13 +856,16 @@ enum TaggedContent {
     /// A named type: what it writes are members, and they are the ones that join the tag, unless
     /// it writes a map, which [`ranges::tagged_slot_map_error`] refuses.
     Flattened,
-    /// serde refuses to write it beside the tag, and names the shape the way this names it.
-    Refused(&'static str),
+    /// serde refuses to write it beside the tag: what the value is, and the shape serde's refusal
+    /// names it by.
+    Refused(&'static str, &'static str),
     /// `()`, which serde writes beside the tag as the tag alone.
     Unit,
     /// serde writes it, but its members are not a set the expansion can name, so no schema closed
     /// around the tag can admit them.
     Unnameable(&'static str),
+    /// serde writes the members it names beside the tag, where no surface describes the value.
+    WrittenBeside(&'static str, &'static str),
 }
 
 /// The lone slot of a newtype variant under a tag alone: its type as written, and the def it is
@@ -2227,13 +2230,16 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
     Surface::written(&alias_field_def, &type_parameters_in_scope(&alias.generics))
         .record(&rust_ident_str);
     // An alias *is* the type it names, so a merge that flattens it multiplies over exactly the
-    // members, or takes exactly the entries, the target's own name would have given it.
+    // members, or takes exactly the entries, the target's own name would have given it, in
+    // TypeScript as in Zod.
     #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
     let placed = alias_target_placed(&alias_field_def, &alias.generics);
     #[cfg(all(feature = "serde", feature = "zod"))]
     record_zod_union_members(&rust_ident_str, &placed.zod_union_members());
     #[cfg(all(feature = "zod", not(feature = "serde")))]
     record_zod_union_members(&rust_ident_str, &alias_field_def.zod_union_members());
+    #[cfg(all(feature = "serde", feature = "typescript"))]
+    record_ts_union_members(&rust_ident_str, &placed.ts_union_members());
     #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
     record_flatten_variants(&rust_ident_str, &placed.flatten_variants());
 
@@ -11910,25 +11916,34 @@ fn process_externally_tagged_enum(
     }
 }
 
-/// How an internally tagged newtype variant's inner value fares beside the tag.
+/// How an internally tagged newtype variant's inner value fares beside the tag, `written` being its
+/// type as written: a fixed-size array, whose length the def holds only where it is a literal, is
+/// a tuple to serde, and a numeric literal is the number its type is.
 #[cfg(feature = "serde")]
-fn tagged_content(inner: &FieldDef) -> TaggedContent {
+fn tagged_content(inner: &FieldDef, written: &syn::Type) -> TaggedContent {
+    let held = held_through_wrappers(written);
     if inner.is_optional() {
-        return TaggedContent::Refused("an optional");
+        return refused_as("an optional");
     }
-    if inner.array_depth > 0 {
-        return TaggedContent::Refused("a sequence");
+    if inner.is_list() {
+        return if matches!(held, syn::Type::Array(_)) {
+            TaggedContent::Refused("a fixed-size array", "a tuple")
+        } else {
+            refused_as("a sequence")
+        };
     }
     if inner.is_unit() {
         return TaggedContent::Unit;
     }
     match inner.field_type {
         FieldDefType::SiblingType(..) => TaggedContent::Flattened,
-        FieldDefType::Boolean | FieldDefType::BooleanLiteral(_) => {
-            TaggedContent::Refused("a boolean")
+        FieldDefType::Boolean | FieldDefType::BooleanLiteral(_) => refused_as("a boolean"),
+        FieldDefType::F32 | FieldDefType::F64 => refused_as("a float"),
+        FieldDefType::NumberLiteral(_) => {
+            let float = matches!(held, syn::Type::Path(path)
+                if path.path.is_ident("f32") || path.path.is_ident("f64"));
+            refused_as(if float { "a float" } else { "an integer" })
         }
-        FieldDefType::F32 | FieldDefType::F64 => TaggedContent::Refused("a float"),
-        FieldDefType::NumberLiteral(_) => TaggedContent::Refused("a number"),
         FieldDefType::I8
         | FieldDefType::I16
         | FieldDefType::I32
@@ -11938,23 +11953,47 @@ fn tagged_content(inner: &FieldDef) -> TaggedContent {
         | FieldDefType::U16
         | FieldDefType::U32
         | FieldDefType::U64
-        | FieldDefType::Usize => TaggedContent::Refused("an integer"),
-        FieldDefType::Char | FieldDefType::String | FieldDefType::StringLiteral(_) => {
-            TaggedContent::Refused("a string")
-        }
+        | FieldDefType::Usize => refused_as("an integer"),
+        FieldDefType::Char => refused_as("a char"),
+        FieldDefType::String | FieldDefType::StringLiteral(_) => refused_as("a string"),
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime
         | FieldDefType::NaiveDate
         | FieldDefType::NaiveDateTime
-        | FieldDefType::NaiveTime => TaggedContent::Refused("a string"),
-        FieldDefType::Tuple(_) => TaggedContent::Refused("a tuple"),
+        | FieldDefType::NaiveTime => refused_as("a string"),
+        FieldDefType::Tuple(_) => refused_as("a tuple"),
         FieldDefType::Map(..) => TaggedContent::Unnameable("a map"),
-        FieldDefType::Range(..) => TaggedContent::Unnameable("a range"),
-        FieldDefType::Result(..) => TaggedContent::Unnameable("a result"),
+        FieldDefType::Range(..) => TaggedContent::WrittenBeside("a range", "its bounds"),
+        FieldDefType::Result(..) => TaggedContent::WrittenBeside("a result", "the key of its arm"),
         #[cfg(feature = "mongodb")]
-        FieldDefType::ObjectId => TaggedContent::Unnameable("an ObjectId"),
+        FieldDefType::ObjectId => TaggedContent::WrittenBeside("an ObjectId", "its `$oid` key"),
         FieldDefType::TypeParam(_) => TaggedContent::Unnameable("a type parameter"),
         FieldDefType::Unknown => TaggedContent::Unnameable("a type the expansion cannot resolve"),
+    }
+}
+
+/// A value serde refuses beside the tag, named as serde's refusal names it.
+#[cfg(feature = "serde")]
+const fn refused_as(shape: &'static str) -> TaggedContent {
+    TaggedContent::Refused(shape, shape)
+}
+
+/// `written` read through references and the wrappers serde writes as the value they hold.
+#[cfg(feature = "serde")]
+fn held_through_wrappers(written: &syn::Type) -> &syn::Type {
+    let mut current = written_type(written);
+    loop {
+        if let syn::Type::Reference(reference) = current {
+            current = written_type(&reference.elem);
+        } else if let syn::Type::Path(path) = current
+            && let Some(last) = path.path.segments.last()
+            && is_transparent_wrapper(&last.ident.to_string())
+            && let Some(held) = type_arguments_of(&last.arguments).next()
+        {
+            current = written_type(held);
+        } else {
+            return current;
+        }
     }
 }
 
@@ -12002,7 +12041,7 @@ fn internally_tagged_guard_errors(
                 return None;
             }
             let inner = get_field_def("_inner", &field.ty, "");
-            let content = tagged_content(&inner);
+            let content = tagged_content(&inner, &field.ty);
             if matches!(content, TaggedContent::Flattened)
                 && let Some(refused) =
                     ranges::tagged_slot_map_error(item_enum, variant, field, tag_name)
@@ -12030,9 +12069,9 @@ fn internally_tagged_guard_errors(
                             tagged_non_object_message(variant_name, enum_name, tag_name, slot)
                         })?,
                 },
-                TaggedContent::Refused(shape) => format!(
+                TaggedContent::Refused(value, shape) => format!(
                     "model_schema: variant `{variant_name}` of internally tagged enum \
-                     `{enum_name}` wraps {shape}, which cannot sit beside the tag: `#[serde(tag \
+                     `{enum_name}` wraps {value}, which cannot sit beside the tag: `#[serde(tag \
                      = \"{tag_name}\")]` with no `content` writes the variant's data as members \
                      of the object the tag is written in, and only a value serde writes as an \
                      object has members to put there. serde refuses this one at run time — \
@@ -12054,6 +12093,14 @@ fn internally_tagged_guard_errors(
                      tag, and a schema closed around the tag alone rejects every one of them. \
                      Name a `content` key so the value gets an object of its own, or wrap it in a \
                      struct whose fields can sit beside the tag."
+                ),
+                TaggedContent::WrittenBeside(value, written) => format!(
+                    "model_schema: variant `{variant_name}` of internally tagged enum \
+                     `{enum_name}` wraps {value}: `#[serde(tag = \"{tag_name}\")]` with no \
+                     `content` writes {written} beside the tag, among the members of the object \
+                     the tag is written in, and no surface describes {value} there. Name a \
+                     `content` key so the value gets an object of its own, or wrap it in a struct \
+                     whose fields can sit beside the tag."
                 ),
             };
             Some(syn::Error::new_spanned(field, message).to_compile_error())
@@ -18923,9 +18970,12 @@ fn flatten_merged_source(fld: &FieldDef) -> MergedSource {
         };
     }
     // A map joins as its own description, as it is described under a key; a key no surface
-    // writes adds no key.
+    // writes adds no key. An `ObjectId` joins its `$oid` key, which serde writes among the
+    // object's.
     let (value, map) = if let FieldDefType::TypeParam(parameter) = &fld.field_type {
         (json_argument_value(parameter), false)
+    } else if let Some(object_id) = flattened_object_id(fld) {
+        (object_id, false)
     } else if let FieldDefType::Map(key, value) = &fld.field_type
         && fld.array_depth == 0
         && !matches!(map_key_path(key), MapKeyPath::Refused(_))
@@ -18944,6 +18994,20 @@ fn flatten_merged_source(fld: &FieldDef) -> MergedSource {
         unit_member: quote! { false },
         value,
     }
+}
+
+/// The `$oid` object a flattened `ObjectId` joins, under an `Option` or not, and `None` for every
+/// other source.
+#[cfg(all(feature = "jsonschema", feature = "mongodb"))]
+fn flattened_object_id(fld: &FieldDef) -> Option<proc_macro2::TokenStream> {
+    (matches!(fld.field_type, FieldDefType::ObjectId) && fld.array_depth == 0)
+        .then(|| object_id_json_schema_value(&object_id_hex_json_schema()))
+}
+
+/// No source is an `ObjectId` without `mongodb`.
+#[cfg(all(feature = "jsonschema", not(feature = "mongodb")))]
+const fn flattened_object_id(_fld: &FieldDef) -> Option<proc_macro2::TokenStream> {
+    None
 }
 
 /// Whether the type `name` stands for publishes the record of an untagged enum with a member
