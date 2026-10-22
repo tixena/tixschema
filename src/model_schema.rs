@@ -97,8 +97,9 @@ use crate::utils::{
     Declared, NonObjectWire, TrivialPattern, UnionParameter, WireLeaf, WrittenAs,
     forget_field_validators, is_recorded_plain_enum, record_declared, record_field_validator,
     record_flattened_beside_parameters, record_non_object_wire, record_open_map,
-    record_open_map_parameters, record_plain_enum, record_union_parameters, record_value_parameter,
-    recorded_non_object_wire, trivial_pattern, union_parameters, value_parameter,
+    record_open_map_parameters, record_plain_enum, record_text_key_parameters,
+    record_union_parameters, record_value_parameter, recorded_non_object_wire, trivial_pattern,
+    union_parameters, value_parameter,
 };
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
@@ -174,7 +175,7 @@ use crate::features::model_schema_prop::{
 
 #[cfg(feature = "jsonschema")]
 use crate::features::jsonschema::{
-    MergeDiagnostic, MergedSource, SchemaParameter,
+    MergeDiagnostic, MergedSource, SchemaParameter, UNIT_MEMBER_RECORD,
     generate_plain_enum_json_schema_method as generate_plain_enum_json_schema_method_impl,
     generate_struct_json_schema_method as generate_struct_json_schema_method_impl, in_flight_type,
     json_schema_methods, merged_object_value,
@@ -302,13 +303,15 @@ const FLATTENED_PLAIN_ENUM_SCOPE: &str = "This refusal holds in every build with
 const FLATTENED_IN_PLACE_SCOPE: &str = "This refusal holds in every build with serde.";
 
 /// What the refusal of a flattened union with a member over `()` says about its own reach: the
-/// JSON Schema merge reads the `null` of a member at the union's own level as the absence an
-/// `Option` offers.
+/// JSON Schema merge refuses a union declared below by the record the union publishes, which no
+/// member its expansion does not see as `()` sets.
 #[cfg(feature = "serde")]
 const FLATTENED_UNIT_MEMBER_SCOPE: &str = "This refusal holds in every build with serde, and only \
      a type declared above reaches it: one declared below, or in another crate, is not refused \
-     here, and where a schema surface is on it keeps its TypeScript and Zod intersection, and the \
-     JSON surface reads a member over `()` at the union's own level as no key when the merge runs.";
+     here, and where a schema surface is on it keeps its TypeScript and Zod intersection, and is \
+     refused by the JSON surface when the merge runs, but where the member is the union's own \
+     type parameter filled at `()`, or a type declared below the union that serde writes as `()`, \
+     which the JSON surface reads as no key.";
 
 /// What the refusal of a flattened type serde writes as no object says about its own reach.
 #[cfg(feature = "serde")]
@@ -1821,8 +1824,9 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
         return output;
     }
     // A map flattened beside a member that writes a key, or filling a type parameter flattened
-    // beside one, shares one level of the object with it, which no TypeScript type describes, so
-    // it is refused here, in every build with serde.
+    // beside one, shares one level of the object with it, which no TypeScript type describes, and
+    // serde reads no entry of a map keyed by a number or a `bool` below a flattened member, so
+    // both are refused here, in every build with serde.
     #[cfg(feature = "serde")]
     if let Some(output) = refused_item_output(&item, &flattened_map_errors(&item, &parsed_args)) {
         return output;
@@ -2107,6 +2111,10 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
     let ts_method = generate_alias_ts_definition_method(&alias, &export_name, &alias_field_def);
     let json_schema_method =
         generate_alias_json_schema_method(&alias, &export_name, &alias_field_def, args);
+    #[cfg(feature = "jsonschema")]
+    let unit_member = unit_member_record_item(&Item::Type(alias.clone()));
+    #[cfg(not(feature = "jsonschema"))]
+    let unit_member = proc_macro2::TokenStream::new();
     let zod_method = generate_alias_zod_method(
         &alias,
         &export_name,
@@ -2127,6 +2135,7 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
             impl Schema {
                 #ts_method
                 #json_schema_method
+                #unit_member
                 #zod_method
             }
         }
@@ -3680,6 +3689,7 @@ fn record_item(item: &Item) {
         let name = ident.to_string();
         record_open_map(&name, ranges::writes_an_open_map(item));
         record_open_map_parameters(&name, ranges::open_map_parameter_positions(item));
+        record_text_key_parameters(&name, ranges::text_key_parameters_of(item));
         record_flattened_beside_parameters(&name, ranges::flattened_beside_parameters_of(item));
         record_plain_enum(&name, written_as_a_variant_name(item));
         record_non_object_wire(&name, non_object_wire(item));
@@ -4060,18 +4070,29 @@ fn written_as_a_variant_name(item: &Item) -> bool {
 
 /// The refusal of each map `item` flattens beside another member that writes a key, or beside the
 /// tag serde writes at its level, in a struct and in each variant with named fields, spanned on the
-/// map, and of each map that fills a type parameter a type flattens beside a key.
+/// map, and of each map that fills a type parameter a type flattens beside a key; then of each map
+/// keyed by a number or a `bool` below a flattened member, written there or filling a type
+/// parameter read there.
 #[cfg(feature = "serde")]
 fn flattened_map_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_macro2::TokenStream> {
     let Some(generics) = item_generics(item) else {
         return Vec::new();
     };
+    let own = item_schema_ident(item).map(ToString::to_string);
     flattening_levels(item)
         .into_iter()
         .flat_map(|(subject, fields, tag)| {
-            ranges::flattened_map_beside_errors(&subject, fields, generics, tag.as_deref())
+            let mut errors =
+                ranges::flattened_map_beside_errors(&subject, fields, generics, tag.as_deref());
+            errors.extend(ranges::flattened_map_key_errors(
+                &subject,
+                fields,
+                own.as_deref(),
+            ));
+            errors
         })
         .chain(ranges::filled_map_errors(item, &args.default_types))
+        .chain(ranges::filled_text_key_errors(item, &args.default_types))
         .collect()
 }
 
@@ -8016,6 +8037,8 @@ fn process_tuple_struct(
             &tuple_struct_json_body(&item_name, &slots.shape),
             &schema_parameters(&item_struct.generics, args),
         ),
+        #[cfg(feature = "jsonschema")]
+        unit_member_record_item(&Item::Struct(item_struct.clone())),
         #[cfg(feature = "typescript")]
         build_tuple_struct_ts_definition_method(
             &build_jsdoc_body(docs_and_example.0.as_deref(), &item_name),
@@ -9583,6 +9606,8 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
     let schema_impl_items: Vec<proc_macro2::TokenStream> = vec![
         #[cfg(feature = "jsonschema")]
         json_schema_method,
+        #[cfg(feature = "jsonschema")]
+        unit_member_record_item(&Item::Struct(item_struct.clone())),
         #[cfg(feature = "typescript")]
         ts_definition_method,
         #[cfg(feature = "zod")]
@@ -13116,9 +13141,14 @@ fn build_untagged_schema_impl_items(
         &schema_code,
     );
 
+    #[cfg(feature = "jsonschema")]
+    let unit_member = unit_member_record_item(&Item::Enum(item_enum.clone()));
+
     vec![
         #[cfg(feature = "jsonschema")]
         json_schema_method,
+        #[cfg(feature = "jsonschema")]
+        unit_member,
         #[cfg(feature = "typescript")]
         ts_definition_method,
         #[cfg(feature = "zod")]
@@ -18389,11 +18419,13 @@ fn flatten_merged_source(fld: &FieldDef) -> MergedSource {
             label: name.clone(),
             map: false,
             optional: fld.is_optional(),
+            unit_member: unit_member_record(name, fld.type_span),
             value: sibling_json_schema_value(name, arguments, fld.type_span),
         };
     }
     // A map joins as its own description where its key is read as a string or a plain enum, and
-    // as no key for every other key, whose description says nothing of the values.
+    // as its values under the keys its key's text describes where that key is read from text; any
+    // other key adds no key, serde reading none of its entries.
     let (value, map) = if let FieldDefType::TypeParam(parameter) = &fld.field_type {
         (json_argument_value(parameter), false)
     } else if let FieldDefType::Map(key, value) = &fld.field_type
@@ -18406,6 +18438,23 @@ fn flatten_merged_source(fld: &FieldDef) -> MergedSource {
         let described = map_json_schema_value(key, value)
             .unwrap_or_else(|rejection| map_member_rejection_error(&fld.name, &rejection));
         (described, true)
+    } else if let FieldDefType::Map(key, value) = &fld.field_type
+        && fld.array_depth == 0
+        && let Some(names) = text_key_names(key)
+    {
+        let described = build_map_member_schema(value).map_or_else(
+            |rejection| map_member_rejection_error(&fld.name, &rejection),
+            |values| {
+                quote! {
+                    serde_json::json!({
+                        "type": "object",
+                        "additionalProperties": #values,
+                        "propertyNames": #names
+                    })
+                }
+            },
+        );
+        (described, true)
     } else {
         (quote! { serde_json::json!({ "type": "object" }) }, false)
     };
@@ -18414,7 +18463,139 @@ fn flatten_merged_source(fld: &FieldDef) -> MergedSource {
         label: fld.name.clone(),
         map,
         optional: fld.is_optional(),
+        unit_member: quote! { false },
         value,
+    }
+}
+
+/// Whether the type `name` stands for publishes the record of an untagged enum with a member
+/// serde writes as `()`, read where the merge runs: a type without it answers through the
+/// block-local trait, an inherent const being found ahead of a trait's.
+#[cfg(feature = "jsonschema")]
+fn unit_member_record(name: &str, span: proc_macro2::Span) -> proc_macro2::TokenStream {
+    let module_ident = sibling_schema_module_ident(name, span);
+    let record = Ident::new(UNIT_MEMBER_RECORD, proc_macro2::Span::call_site());
+    let recorded = quote_spanned! {span=> #module_ident::Schema::#record };
+    quote! {
+        {
+            trait WritesNoUnitMember {
+                const #record: bool = false;
+            }
+            impl<T: ?::core::marker::Sized> WritesNoUnitMember for T {}
+            <()>::#record || #recorded
+        }
+    }
+}
+
+/// The record [`unit_member_record`] reads, as an item of its schema module's `Schema`: an
+/// untagged enum with a member serde writes as `()` says so, and an alias, a brand or a struct of
+/// one slot whose value is a name, written bare, answers as that name does. Nothing for any other
+/// item.
+#[cfg(all(feature = "serde", feature = "jsonschema"))]
+fn unit_member_record_item(item: &Item) -> proc_macro2::TokenStream {
+    let record = Ident::new(UNIT_MEMBER_RECORD, proc_macro2::Span::call_site());
+    let value = if let Item::Enum(item_enum) = item {
+        let unit = matches!(Tagging::of(item_enum), Tagging::Untagged)
+            && non_object_wire(item)
+                .members
+                .iter()
+                .any(|leaf| leaf.branch.len() == 1 && leaf.written_as == Some(WrittenAs::Unit));
+        return if unit {
+            quote! { pub const #record: bool = true; }
+        } else {
+            proc_macro2::TokenStream::new()
+        };
+    } else if let Item::Struct(item_struct) = item {
+        written_as_its_slot(item_struct).map(|slot| &slot.ty)
+    } else if let Item::Type(alias) = item {
+        Some(&*alias.ty)
+    } else {
+        None
+    };
+    // A wrapper is left out: two types each over the other behind one would read each other's
+    // record.
+    let named = value.filter(|ty| {
+        let syn::Type::Path(path) = written_type(ty) else {
+            return false;
+        };
+        path.qself.is_none()
+            && path.path.segments.last().is_some_and(|last| {
+                let name = last.ident.to_string();
+                name != "Option" && !is_transparent_wrapper(&name)
+            })
+    });
+    let parameters = item_generics(item).map_or_else(Vec::new, type_parameters_in_scope);
+    let Some(def) = named.map(|ty| {
+        let mut def = get_field_def("_written", ty, "");
+        def.erase_type_parameters(&parameters);
+        def
+    }) else {
+        return proc_macro2::TokenStream::new();
+    };
+    if let FieldDefType::SiblingType(name, _) = &def.field_type
+        && def.array_depth == 0
+        && !def.is_optional()
+        && !is_sequence_wrapper(name)
+    {
+        let forwarded = unit_member_record(name, def.type_span);
+        return quote! { pub const #record: bool = #forwarded; };
+    }
+    proc_macro2::TokenStream::new()
+}
+
+/// Nothing, in a build that reads no `#[serde(flatten)]`.
+#[cfg(all(not(feature = "serde"), feature = "jsonschema"))]
+fn unit_member_record_item(_item: &Item) -> proc_macro2::TokenStream {
+    proc_macro2::TokenStream::new()
+}
+
+/// The description of the keys a flattened map is read under where serde reads its key from the
+/// text of each key and the key is no string: a `char`, a chrono date or time, and a type that
+/// writes one, which the description of that type states. `None` for every other key.
+#[cfg(feature = "jsonschema")]
+fn text_key_names(key: &FieldDef) -> Option<proc_macro2::TokenStream> {
+    if !matches!(map_key_path(key), MapKeyPath::Unnarrowed) {
+        return None;
+    }
+    match &key.field_type {
+        FieldDefType::Char => {
+            scalar_field_json_schema_item(key).map(|item| quote! { serde_json::json!(#item) })
+        }
+        #[cfg(feature = "chrono")]
+        FieldDefType::DateTime
+        | FieldDefType::NaiveDate
+        | FieldDefType::NaiveDateTime
+        | FieldDefType::NaiveTime => {
+            chrono_json_schema_item(&key.field_type).map(|item| quote! { serde_json::json!(#item) })
+        }
+        FieldDefType::SiblingType(name, arguments) => {
+            Some(sibling_json_schema_value(name, arguments, key.type_span))
+        }
+        FieldDefType::Boolean
+        | FieldDefType::BooleanLiteral(_)
+        | FieldDefType::F32
+        | FieldDefType::F64
+        | FieldDefType::I8
+        | FieldDefType::I16
+        | FieldDefType::I32
+        | FieldDefType::I64
+        | FieldDefType::Isize
+        | FieldDefType::Map(..)
+        | FieldDefType::NumberLiteral(_)
+        | FieldDefType::Range(..)
+        | FieldDefType::Result(..)
+        | FieldDefType::String
+        | FieldDefType::StringLiteral(_)
+        | FieldDefType::Tuple(..)
+        | FieldDefType::TypeParam(_)
+        | FieldDefType::U8
+        | FieldDefType::U16
+        | FieldDefType::U32
+        | FieldDefType::U64
+        | FieldDefType::Unknown
+        | FieldDefType::Usize => None,
+        #[cfg(feature = "mongodb")]
+        FieldDefType::ObjectId => None,
     }
 }
 

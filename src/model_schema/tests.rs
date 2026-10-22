@@ -20754,3 +20754,55 @@ fn a_brand_with_no_rule_gains_no_read_of_the_macros() {
         }
     }
 }
+
+/// An untagged enum with a member over `()` publishes the record the JSON Schema merge reads on
+/// its schema module's `Schema`, under the one name the merge asks for, and an alias, a brand and
+/// a struct of one slot over a name, written bare, forward that name's; nothing else carries it.
+#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[test]
+fn the_record_of_a_member_over_unit_is_published_under_its_one_name() {
+    assert_eq!(super::UNIT_MEMBER_RECORD, "WRITES_A_UNIT_MEMBER");
+    let published = |source: &str| {
+        expansion_over(&format!("#[derive(Serialize, Deserialize)] {source}"))
+            .to_string()
+            .contains("pub const WRITES_A_UNIT_MEMBER : bool =")
+    };
+    let declared = |source: &str| {
+        expansion_over(source)
+            .to_string()
+            .contains("pub const WRITES_A_UNIT_MEMBER : bool =")
+    };
+    assert!(
+        !published("pub struct ProbeRecordFields { pub a: String }"),
+        "a struct publishes the record"
+    );
+    assert!(
+        published(
+            "#[serde(untagged)] pub enum ProbeRecordUnit { Obj(ProbeRecordFields), Nothing(()) }"
+        ),
+        "an untagged enum with a member over `()` publishes no record"
+    );
+    assert!(
+        !published(
+            "#[serde(untagged)] pub enum ProbeRecordObjects { Obj(ProbeRecordFields), \
+             Named { b: String } }"
+        ),
+        "an untagged enum of objects publishes the record"
+    );
+    assert!(
+        declared("pub type ProbeRecordAlias = ProbeRecordUnit;"),
+        "an alias over a name forwards no record"
+    );
+    assert!(
+        published("pub struct ProbeRecordSlot(ProbeRecordUnit);"),
+        "a struct of one slot over a name forwards no record"
+    );
+    assert!(
+        !declared("pub type ProbeRecordMaybe = Option<ProbeRecordUnit>;"),
+        "an alias over an `Option` forwards the record"
+    );
+    assert!(
+        !published("pub struct ProbeRecordBoxed(Box<ProbeRecordUnit>);"),
+        "a struct of one slot behind a wrapper forwards the record"
+    );
+}

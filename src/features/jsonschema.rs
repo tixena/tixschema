@@ -4,6 +4,10 @@
 
 const DEFS_PREFIX: &str = "#/$defs/";
 
+/// The associated const an untagged enum with a member serde writes as `()` publishes on its
+/// schema module's `Schema`, which a holder that flattens the enum reads.
+pub const UNIT_MEMBER_RECORD: &str = "WRITES_A_UNIT_MEMBER";
+
 /// How a merge that cannot proceed names itself in the diagnostic it raises: `subject` is the
 /// frame that reads the merge, `edge` what the merged schema was reached through, and each remedy
 /// the way out in the spelling that applies where that edge was written. `beside_tag` is the
@@ -28,6 +32,9 @@ pub struct MergedSource {
     pub label: String,
     pub map: bool,
     pub optional: bool,
+    /// A `bool` expression: whether a `null` at the source's own level is a member over `()`,
+    /// which serde writes as no key and does not read back, rather than an `Option`'s absence.
+    pub unit_member: proc_macro2::TokenStream,
     pub value: proc_macro2::TokenStream,
 }
 
@@ -382,8 +389,9 @@ fn merge_readers() -> proc_macro2::TokenStream {
 /// it: every key the object does not name is held to the map's values.
 fn map_handing() -> proc_macro2::TokenStream {
     quote::quote! {
-        // The values of the maps merged so far, and those of `members` among them where it is a
-        // map or admits keys beyond its own: serde hands such a source every key no member takes.
+        // The maps merged so far, and `members` among them where it is a map or admits keys
+        // beyond its own: serde hands such a source every key no member takes. Each is its
+        // values, and the keys it names where it names some.
         fn handed_beside(
             handed: &[serde_json::Value],
             members: &serde_json::Map<::std::string::String, serde_json::Value>,
@@ -394,7 +402,12 @@ fn map_handing() -> proc_macro2::TokenStream {
                 .get("additionalProperties")
                 .filter(|value| map || value.as_bool() != ::core::option::Option::Some(false))
             {
-                maps.push(value.clone());
+                let mut held = serde_json::Map::new();
+                held.insert("additionalProperties".to_string(), value.clone());
+                if let ::core::option::Option::Some(names) = members.get("propertyNames") {
+                    held.insert("propertyNames".to_string(), names.clone());
+                }
+                maps.push(serde_json::Value::Object(held));
             }
             maps
         }
@@ -404,8 +417,12 @@ fn map_handing() -> proc_macro2::TokenStream {
             handed: &[serde_json::Value],
         ) -> serde_json::Map<::std::string::String, serde_json::Value> {
             // A map flattened beside another member or a tag is refused, so the object holds one.
-            if let ::core::option::Option::Some(first) = handed.first() {
-                members.insert("additionalProperties".to_string(), first.clone());
+            if let ::core::option::Option::Some(first) =
+                handed.first().and_then(serde_json::Value::as_object)
+            {
+                for (keyword, described) in first {
+                    members.insert(keyword.clone(), described.clone());
+                }
             }
             members
         }
@@ -441,7 +458,7 @@ fn absences() -> proc_macro2::TokenStream {
             handed: &[serde_json::Value],
         ) -> Merged {
             let mut maps = handed.to_vec();
-            maps.push(serde_json::Value::Bool(true));
+            maps.push(serde_json::json!({ "additionalProperties": true }));
             Merged::Object(merge_object_schemas(base, &serde_json::Map::new()), maps)
         }
     }
@@ -593,20 +610,9 @@ fn expansion_refusals(diagnostic: &MergeDiagnostic<'_>) -> proc_macro2::TokenStr
              the Zod schema intersect the object with `null`, which admits no value",
         )
     };
-    let tagged_null = beside_tag.map(|tagged| {
-        quote::quote! {
-            // serde's tag refuses an `Option` for `Some` and `None` alike, and `()` it writes as
-            // the tag alone, which it does not read back as a union member.
-            fn refuse_tagged_null(label: &str, position: &[usize]) -> ! {
-                panic!(
-                    "`{}`: {} `{}` writes a union member as `null` — its branch {} describes a `null`, which cannot sit beside the tag: where that `null` is an optional's, serde refuses every write of it at run time — `cannot serialize tagged newtype variant {} containing an optional` — and where it is `()`'s, serde writes the tag alone, which it does not read back as a union member; {}",
-                    #subject, #edge, label, branch_path(position), #tagged, #non_object_remedy,
-                );
-            }
-        }
-    });
+    let null_refusal = null_refusal(diagnostic);
     quote::quote! {
-        #tagged_null
+        #null_refusal
 
         // `whose` names whose variant name the schema describes: a plain enum's, or the unit
         // variant's of an externally tagged enum a union member holds.
@@ -687,6 +693,37 @@ fn expansion_refusals(diagnostic: &MergeDiagnostic<'_>) -> proc_macro2::TokenStr
     }
 }
 
+/// How the expansion refuses a `null` among the choices of what it merges, as the tokens that
+/// declare the refusal: beside a tag every such `null`, and flattened a member over `()` of a
+/// union declared below, whose `null` its record tells apart from an `Option`'s absence.
+fn null_refusal(diagnostic: &MergeDiagnostic<'_>) -> proc_macro2::TokenStream {
+    let (edge, non_object_remedy, subject) = (
+        diagnostic.edge,
+        diagnostic.non_object_remedy,
+        diagnostic.subject,
+    );
+    let Some(tagged) = diagnostic.beside_tag else {
+        return quote::quote! {
+            fn refuse_unit_member(label: &str, position: &[usize]) -> ! {
+                panic!(
+                    "`{}`: {} `{}` writes a union member as `()` — its branch {} describes a `null`, for which serde writes no key, and which it does not read back as that member; {}",
+                    #subject, #edge, label, branch_path(position), #non_object_remedy,
+                );
+            }
+        };
+    };
+    quote::quote! {
+        // serde's tag refuses an `Option` for `Some` and `None` alike, and `()` it writes as
+        // the tag alone, which it does not read back as a union member.
+        fn refuse_tagged_null(label: &str, position: &[usize]) -> ! {
+            panic!(
+                "`{}`: {} `{}` writes a union member as `null` — its branch {} describes a `null`, which cannot sit beside the tag: where that `null` is an optional's, serde refuses every write of it at run time — `cannot serialize tagged newtype variant {} containing an optional` — and where it is `()`'s, serde writes the tag alone, which it does not read back as a union member; {}",
+                #subject, #edge, label, branch_path(position), #tagged, #non_object_remedy,
+            );
+        }
+    }
+}
+
 /// The branch tree one merged schema contributes, as the tokens that declare how it is read.
 /// `beside_tag` says the schema is the content of a newtype variant under a tag alone, where serde
 /// refuses the `None` a flattened `Option` writes as no key.
@@ -694,7 +731,21 @@ fn branch_expansion(beside_tag: bool) -> proc_macro2::TokenStream {
     let offered_null = if beside_tag {
         quote::quote! { refuse_tagged_null(label, position); }
     } else {
-        quote::quote! { return ::core::option::Option::Some(Branches::Absent); }
+        quote::quote! {
+            if unit_member {
+                refuse_unit_member(label, position);
+            }
+            return ::core::option::Option::Some(Branches::Absent);
+        }
+    };
+    // Beside a tag every `null` of the content is refused, so no record is asked there.
+    let (unit_member, handed_on) = if beside_tag {
+        (quote::quote! {}, quote::quote! {})
+    } else {
+        (
+            quote::quote! { , unit_member: bool },
+            quote::quote! { , unit_member },
+        )
     };
     // The `null` of the content's own choice is refused ahead of every other branch, as serde's
     // tag refuses an `Option` before it reads what the `Option` holds.
@@ -719,7 +770,8 @@ fn branch_expansion(beside_tag: bool) -> proc_macro2::TokenStream {
             hoisted_defs: &'defs serde_json::Map<::std::string::String, serde_json::Value>,
             expanding: &mut ::std::vec::Vec<&'defs str>,
             position: &mut ::std::vec::Vec<usize>,
-            label: &str,
+            label: &str
+            #unit_member
         ) -> ::core::option::Option<Branches<'defs>> {
             let mut resolved = ::core::option::Option::None;
             let body = match deferred_name(schema) {
@@ -778,7 +830,9 @@ fn branch_expansion(beside_tag: bool) -> proc_macro2::TokenStream {
                 let below = match tagged {
                     ::core::option::Option::Some(name) if position.len() == 1 => ::core::option::Option::Some(Branches::Tagged(name)),
                     ::core::option::Option::Some(_) => refuse_variant_name(label, position, "the name of an externally tagged enum's unit variant"),
-                    ::core::option::Option::None => expanded_branches(branch, hoisted_defs, expanding, position, label),
+                    ::core::option::Option::None => expanded_branches(
+                        branch, hoisted_defs, expanding, position, label #handed_on
+                    ),
                 };
                 position.pop();
                 expanded.extend(below);
@@ -806,6 +860,29 @@ pub fn merged_object_value(
     let values = merged.iter().map(|source| &source.value);
     let readers = merge_readers();
     let tree = merged_tree();
+    // Beside a tag no record is asked, so none is carried.
+    let (flattened, read_as, unit_member) = if diagnostic.beside_tag.is_some() {
+        (
+            quote::quote! {
+                let flattened: ::std::vec::Vec<
+                    (&'static str, bool, bool, bool, serde_json::Value),
+                > = vec![ #((#labels, #optionals, #entries, #maps, #values)),* ];
+            },
+            quote::quote! { (label, optional, entries, map, fs) },
+            quote::quote! {},
+        )
+    } else {
+        let units = merged.iter().map(|source| &source.unit_member);
+        (
+            quote::quote! {
+                let flattened: ::std::vec::Vec<
+                    (&'static str, bool, bool, bool, bool, serde_json::Value),
+                > = vec![ #((#labels, #optionals, #entries, #maps, #units, #values)),* ];
+            },
+            quote::quote! { (label, optional, entries, map, unit_member, fs) },
+            quote::quote! { , *unit_member },
+        )
+    };
     quote::quote! {
         {
             #tree
@@ -813,16 +890,20 @@ pub fn merged_object_value(
             #refusals
             #expansion
 
-            let flattened: ::std::vec::Vec<(&'static str, bool, bool, bool, serde_json::Value)> =
-                vec![ #((#labels, #optionals, #entries, #maps, #values)),* ];
+            #flattened
 
             let mut described = Merged::Object(#base, ::std::vec::Vec::new());
-            for (label, optional, entries, map, fs) in &flattened {
+            for #read_as in &flattened {
                 let mut expanding: ::std::vec::Vec<&str> = ::std::vec::Vec::new();
                 let mut position: ::std::vec::Vec<usize> = ::std::vec::Vec::new();
-                if let ::core::option::Option::Some(source) =
-                    expanded_branches(fs, hoisted_defs, &mut expanding, &mut position, label)
-                {
+                if let ::core::option::Option::Some(source) = expanded_branches(
+                    fs,
+                    hoisted_defs,
+                    &mut expanding,
+                    &mut position,
+                    label
+                    #unit_member
+                ) {
                     // The absence is offered around whatever the source described as, so a union
                     // reached through an `Option` keeps its own spelling.
                     let offered = if *optional { source.or_absent() } else { source };

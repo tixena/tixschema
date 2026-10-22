@@ -687,6 +687,11 @@ thread_local! {
     /// build that reads `#[serde(flatten)]`.
     static OPEN_MAP_PARAMETERS: RefCell<HashMap<String, Vec<usize>>> =
         RefCell::new(HashMap::new());
+    /// The names `#[model_schema]` has been written on so far that read what fills a type
+    /// parameter, in a value of their own, below a flattened member, each with every such
+    /// parameter. Kept in every build that reads `#[serde(flatten)]`.
+    static TEXT_KEY_PARAMETERS: RefCell<HashMap<String, Vec<TextKeyParameter>>> =
+        RefCell::new(HashMap::new());
     /// The names `#[model_schema]` has been written on so far that flatten a type parameter beside
     /// a key serde writes at the same level, each with every such parameter. Kept in every build
     /// that reads `#[serde(flatten)]`.
@@ -754,6 +759,32 @@ pub struct FlattenedParameter {
     pub flattens: String,
     /// The parameter as the type that flattens it declares it.
     pub parameter: String,
+}
+
+/// A type parameter an item reads, in a value of its own, below a flattened member, as
+/// [`TEXT_KEY_PARAMETERS`] holds it: serde reads every key there as text, so where a number or a
+/// `bool` keys a map there, it reads no entry of it back.
+#[cfg(feature = "serde")]
+#[derive(Clone)]
+pub struct TextKeyParameter {
+    /// The parameter's position among the type parameters of the item that holds it.
+    pub at: usize,
+    /// The type that reads it so: the item itself, or a type the item holds it in.
+    pub flattens: String,
+    /// The parameter as the type that reads it declares it.
+    pub parameter: String,
+    /// Whether the parameter keys a map there, or is read there.
+    pub read: FlattenedRead,
+}
+
+/// How a type reads a type parameter below a flattened member.
+#[cfg(feature = "serde")]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum FlattenedRead {
+    /// Anywhere, so a map its filling holds is read there.
+    Below,
+    /// As the key of a map.
+    Key,
 }
 
 /// The key serde writes at one level with a flattened member.
@@ -1030,6 +1061,25 @@ pub fn record_union_parameters(rust_ident: &str, parameters: Vec<UnionParameter>
 pub fn flattened_beside_parameters(rust_ident: &str) -> Vec<FlattenedParameter> {
     FLATTENED_BESIDE_PARAMETERS
         .with(|names| names.borrow().get(rust_ident).cloned().unwrap_or_default())
+}
+
+/// The type parameters of `rust_ident` it reads below a flattened member. Empty for a name declared
+/// below the item asking.
+#[cfg(feature = "serde")]
+pub fn text_key_parameters(rust_ident: &str) -> Vec<TextKeyParameter> {
+    TEXT_KEY_PARAMETERS.with(|names| names.borrow().get(rust_ident).cloned().unwrap_or_default())
+}
+
+/// Records the parameters [`text_key_parameters`] answers for `rust_ident`.
+#[cfg(feature = "serde")]
+pub fn record_text_key_parameters(rust_ident: &str, parameters: Vec<TextKeyParameter>) {
+    TEXT_KEY_PARAMETERS.with(|names| {
+        if parameters.is_empty() {
+            names.borrow_mut().remove(rust_ident);
+        } else {
+            names.borrow_mut().insert(rust_ident.to_owned(), parameters);
+        }
+    });
 }
 
 /// Records the parameters [`flattened_beside_parameters`] answers for `rust_ident`.

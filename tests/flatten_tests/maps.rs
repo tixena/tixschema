@@ -13,7 +13,7 @@ use tixschema::model_schema;
 /// Every payload, one that serde reads and one with a count of the wrong type for each place a
 /// map is flattened. An optional map is read as `None` wherever an entry does not read, so serde
 /// reads every object its holder reads.
-pub const PAYLOADS: [Payload; 53] = [
+pub const PAYLOADS: [Payload; 57] = [
     Payload {
         json: r#"{"north":2}"#,
         name: "alone",
@@ -135,14 +135,34 @@ pub const PAYLOADS: [Payload; 53] = [
         read_as: "Windlass",
     },
     Payload {
-        json: "{}",
-        name: "optional and keyed by a number, no entry",
-        read_as: "Fathom",
+        json: r#"{"n":2}"#,
+        name: "keyed by a char",
+        read_as: "Ratlines",
     },
     Payload {
-        json: r#"{"7":2}"#,
-        name: "optional and keyed by a number, a count",
-        read_as: "Fathom",
+        json: r#"{"nn":2}"#,
+        name: "keyed by a char, a key of two chars",
+        read_as: "Ratlines",
+    },
+    Payload {
+        json: r#"{"n":"x"}"#,
+        name: "keyed by a char, a count of text",
+        read_as: "Ratlines",
+    },
+    Payload {
+        json: "{}",
+        name: "optional and keyed by a char, no entry",
+        read_as: "Deadeye",
+    },
+    Payload {
+        json: r#"{"n":2}"#,
+        name: "optional and keyed by a char, a count",
+        read_as: "Deadeye",
+    },
+    Payload {
+        json: r#"{"nn":2}"#,
+        name: "optional and keyed by a char, a key of two chars",
+        read_as: "Deadeye",
     },
     Payload {
         json: "{}",
@@ -282,7 +302,7 @@ pub const PAYLOADS: [Payload; 53] = [
 ];
 
 /// Each model a payload is read as, beside serde's read of a payload as it.
-const READS: [(&str, ReadAs); 18] = [
+const READS: [(&str, ReadAs); 19] = [
     ("Thwart", reads::<Thwart>),
     ("Gunwale", reads::<Gunwale>),
     ("Strake", reads::<Strake>),
@@ -292,7 +312,8 @@ const READS: [(&str, ReadAs); 18] = [
     ("Locker", reads::<Locker>),
     ("Scupper", reads::<Scupper>),
     ("Windlass", reads::<Windlass>),
-    ("Fathom", reads::<Fathom>),
+    ("Ratlines", reads::<Ratlines>),
+    ("Deadeye", reads::<Deadeye>),
     ("Sheave", reads::<Sheave>),
     ("Lazarette", reads::<Lazarette>),
     ("Pintle", reads::<Pintle>),
@@ -336,8 +357,14 @@ optional and keyed by an enum, no entry: read
 optional and keyed by an enum, a count: read
 optional and keyed by an enum, a count of text: read
 optional and keyed by an enum, a key it does not name: read
-optional and keyed by a number, no entry: read
-optional and keyed by a number, a count: read
+keyed by a char: read
+keyed by a char, a key of two chars: refused
+    Unrecognized key: \"nn\"
+keyed by a char, a count of text: refused
+    'n': Invalid input: expected number, received string
+optional and keyed by a char, no entry: read
+optional and keyed by a char, a count: read
+optional and keyed by a char, a key of two chars: read
 optional through an alias, no entry: read
 optional through an alias, a count: read
 optional through an alias, a count of text: read
@@ -495,13 +522,20 @@ pub enum Hawse {
     Starboard,
 }
 
-/// An optional map keyed by a number, whose keys serde reads none of once flattened: it reads
-/// every entry as `None`.
+/// A map keyed by a `char`, which serde reads from the text of each key.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Fathom {
+pub struct Ratlines {
+    #[serde(flatten)]
+    pub turns: BTreeMap<char, u8>,
+}
+
+/// [`Ratlines`]'s map optional: serde reads it as `None` where a key is no `char`.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Deadeye {
     #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
-    pub depths: Option<BTreeMap<u32, u8>>,
+    pub turns: Option<BTreeMap<char, u8>>,
 }
 
 /// A map under a name of its own.

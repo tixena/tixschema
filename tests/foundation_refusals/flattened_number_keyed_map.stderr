@@ -1,0 +1,6 @@
+error: model_schema: type `Soundings`: field `rest`: `#[serde(flatten)]` cannot hold a map keyed by `isize` — serde reads every key below a flattened member as text, and reads no number and no `bool` from text, so no entry of that map reads back. Key the map by a `String`, or write the field under a key of its own.
+  --> tests/foundation_refusals/flattened_number_keyed_map.rs:11:5
+   |
+11 | /     #[serde(flatten)]
+12 | |     pub rest: BTreeMap<isize, u8>,
+   | |_________________________________^

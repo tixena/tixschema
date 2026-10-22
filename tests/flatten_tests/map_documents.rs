@@ -1,6 +1,7 @@
 //! The JSON Schema of a struct a map is flattened into as the only member of its object: the map's
-//! values describe every key the object holds. An optional map's absence admits every key, with
-//! any value.
+//! values describe every key the object holds, and a key read from its text, a `char` or a date,
+//! names the keys by its own description. An optional map's absence admits every key, with any
+//! value.
 
 use alloc::collections::BTreeMap;
 
@@ -11,20 +12,36 @@ use tixschema::model_schema;
 
 use super::documents::admits;
 use super::maps::{
-    Bilge, Capstan, Coaming, Davit, Fairlead, Fathom, Gunwale, Hawser, Lazarette, Locker, PAYLOADS,
-    Pintle, Scupper, Sheave, Stanchion, Strake, Thole, Thwart, Transom, Windlass, serde_reads,
+    Bilge, Capstan, Coaming, Davit, Deadeye, Fairlead, Gunwale, Hawser, Lazarette, Locker,
+    PAYLOADS, Pintle, Ratlines, Scupper, Sheave, Stanchion, Strake, Thole, Thwart, Transom,
+    Windlass, serde_reads,
 };
 
 /// Payloads of the models declared here, each with whether serde reads it.
-const MORE_PAYLOADS: [(&str, &str, bool); 8] = [
+const MORE_PAYLOADS: [(&str, &str, bool); 5] = [
     ("Bitt", r#"{"Fore":2}"#, true),
     ("Bitt", r#"{"Port":2}"#, false),
     ("Bitt", r#"{"Fore":"x"}"#, false),
     ("Ballasted", r#"{"north":2}"#, true),
     ("Ballasted", r#"{"north":"x"}"#, false),
-    ("Plumbed", "{}", true),
-    ("Plumbed", r#"{"7":2}"#, false),
-    ("Plumbed", r#"{"north":2}"#, false),
+];
+
+/// Payloads of the models keyed by a date, each with whether serde reads it.
+#[cfg(feature = "chrono")]
+const DATED_PAYLOADS: [(&str, &str, bool); 6] = [
+    ("Tidemarks", r#"{"2026-10-21":2}"#, true),
+    ("Tidemarks", r#"{"x":2}"#, false),
+    ("Tidemarks", r#"{"2026-10-21":"x"}"#, false),
+    ("Tidedays", r#"{"2026-10-21":2}"#, true),
+    ("Tidedays", r#"{"x":2}"#, false),
+    ("Tidedays", r#"{"2026-10-21":"x"}"#, false),
+];
+
+/// Each model keyed by a date, beside its JSON Schema and serde's read of a payload as it.
+#[cfg(feature = "chrono")]
+const DATED: [(&str, Written, ReadAs); 2] = [
+    ("Tidemarks", Tidemarks::json_schema, reads::<Tidemarks>),
+    ("Tidedays", Tidedays::json_schema, reads::<Tidedays>),
 ];
 
 /// Each model a payload is read as, beside its JSON Schema.
@@ -38,7 +55,8 @@ const DOCUMENTS: [(&str, Written); 21] = [
     ("Locker", Locker::json_schema),
     ("Scupper", Scupper::json_schema),
     ("Windlass", Windlass::json_schema),
-    ("Fathom", Fathom::json_schema),
+    ("Ratlines", Ratlines::json_schema),
+    ("Deadeye", Deadeye::json_schema),
     ("Sheave", Sheave::json_schema),
     ("Lazarette", Lazarette::json_schema),
     ("Pintle", Pintle::json_schema),
@@ -49,15 +67,11 @@ const DOCUMENTS: [(&str, Written); 21] = [
     ("Capstan", Capstan::json_schema),
     ("Bitt", Bitt::json_schema),
     ("Ballasted", Ballasted::json_schema),
-    ("Plumbed", Plumbed::json_schema),
 ];
 
 /// Each model declared here, beside serde's read of a payload as it.
-const READS_HERE: [(&str, ReadAs); 3] = [
-    ("Bitt", reads::<Bitt>),
-    ("Ballasted", reads::<Ballasted>),
-    ("Plumbed", reads::<Plumbed>),
-];
+const READS_HERE: [(&str, ReadAs); 2] =
+    [("Bitt", reads::<Bitt>), ("Ballasted", reads::<Ballasted>)];
 
 /// The keys of a map a plain enum keys.
 #[model_schema()]
@@ -87,12 +101,29 @@ pub struct Ballasted {
     pub counts: HoldTallies,
 }
 
-/// A map keyed by a number, which serde reads no key of once flattened.
+/// A map keyed by a date, which serde reads from the text of each key.
+#[cfg(feature = "chrono")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Plumbed {
+pub struct Tidemarks {
     #[serde(flatten)]
-    pub depths: BTreeMap<u32, u8>,
+    pub entries: BTreeMap<chrono::NaiveDate, u8>,
+}
+
+/// A brand over a date, which keys [`Tidedays`].
+#[cfg(feature = "chrono")]
+#[model_schema()]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub struct Tideday(pub chrono::NaiveDate);
+
+/// A map keyed by a brand over a date, which serde reads from the text of each key.
+#[cfg(feature = "chrono")]
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Tidedays {
+    #[serde(flatten)]
+    pub entries: BTreeMap<Tideday, u8>,
 }
 
 /// A model's JSON Schema.
@@ -140,7 +171,7 @@ fn the_json_schema_admits_each_payload_serde_reads() {
 }
 
 #[test]
-fn a_map_keyed_by_an_enum_a_number_or_through_an_alias_admits_what_serde_reads() {
+fn a_map_keyed_by_an_enum_or_through_an_alias_admits_what_serde_reads() {
     for (model, json, read) in MORE_PAYLOADS {
         assert_eq!(
             serde_reads_here(model, json),
@@ -154,6 +185,36 @@ fn a_map_keyed_by_an_enum_a_number_or_through_an_alias_admits_what_serde_reads()
             document(model)
         );
     }
+}
+
+#[cfg(feature = "chrono")]
+#[test]
+fn a_map_keyed_by_a_date_or_a_brand_over_one_admits_what_serde_reads() {
+    for (model, json, read) in DATED_PAYLOADS {
+        let (_, written, reads_as) = DATED.iter().find(|(name, ..)| *name == model).unwrap();
+        assert_eq!(reads_as(json), read, "serde on {model} {json}");
+        assert_eq!(
+            admits(&written(), &serde_json::from_str(json).unwrap()),
+            read,
+            "the JSON Schema of {model} on {json}: {}",
+            written()
+        );
+    }
+}
+
+/// A map keyed by a `char` names its keys by the description of a `char`.
+#[test]
+fn a_map_keyed_by_a_char_names_its_keys() {
+    assert_eq!(
+        Ratlines::json_schema(),
+        json!({
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": { "type": "integer" },
+            "propertyNames": { "type": "string", "minLength": 1_u8, "maxLength": 1_u8 },
+        })
+    );
 }
 
 /// A map alone in its object describes every key.

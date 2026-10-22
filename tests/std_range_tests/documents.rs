@@ -1,4 +1,5 @@
-//! What a JSON Schema document admits, for the keywords the documents of the ranges write.
+//! What a JSON Schema document admits, for the keywords the documents of the ranges write, the
+//! keys a map names (`propertyNames`) and the `date` format.
 
 use serde_json::Value;
 
@@ -63,6 +64,9 @@ pub fn refusal(document: &Value, value: &Value) -> Option<Refusal> {
         if least.is_some_and(|bound| length < bound) || most.is_some_and(|bound| length > bound) {
             return Some(Refusal::Written);
         }
+        if document.get("format").and_then(Value::as_str) == Some("date") && !full_date(text) {
+            return Some(Refusal::Written);
+        }
     }
     match value {
         Value::Object(object) => object_refusal(document, object),
@@ -82,6 +86,13 @@ fn object_refusal(document: &Value, object: &serde_json::Map<String, Value>) -> 
         .iter()
         .filter_map(Value::as_str)
         .all(|key| object.contains_key(key))
+    {
+        return Some(Refusal::Written);
+    }
+    if let Some(names) = document.get("propertyNames")
+        && !object
+            .keys()
+            .all(|key| admits(names, &Value::String(key.clone())))
     {
         return Some(Refusal::Written);
     }
@@ -126,6 +137,19 @@ fn admits_items(document: &Value, items: &[Value]) -> bool {
             None => true,
         }
     })
+}
+
+/// Whether `text` is an RFC 3339 full-date, `YYYY-MM-DD`, which the `date` format names.
+fn full_date(text: &str) -> bool {
+    let shaped = text.len() == 10
+        && text.char_indices().all(|(at, written)| {
+            if at == 4 || at == 7 {
+                written == '-'
+            } else {
+                written.is_ascii_digit()
+            }
+        });
+    shaped && chrono::NaiveDate::parse_from_str(text, "%Y-%m-%d").is_ok()
 }
 
 /// Whether `value` is of the JSON type `kind` names.
