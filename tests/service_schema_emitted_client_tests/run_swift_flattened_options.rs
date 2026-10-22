@@ -8,7 +8,8 @@
 //! model it holds breaks its rule or the function answers what its type does not read. Where the
 //! object holds a key of the type that does not read, serde reads `None` and the Swift read
 //! refuses the payload, as TypeScript and Zod refuse it. A type whose keys are not known is read
-//! as `nil` there, as serde reads it. The map of dates absent is built in code.
+//! as `nil` there, as serde reads it, and so is the map of dates where an entry is no date. The
+//! map of dates absent is built in code.
 
 #![cfg(feature = "swift")]
 
@@ -29,7 +30,7 @@ use super::swift_flattened_options_models::{
     veering_swift,
 };
 #[cfg(feature = "chrono")]
-use super::swift_flattened_options_models::{SWAGING, Swaging, swaging_swift};
+use super::swift_flattened_options_models::{SWAGING, SWAGING_MISTYPED, Swaging, swaging_swift};
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
 const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
@@ -192,6 +193,7 @@ fn rows() -> Vec<Row> {
     #[cfg(feature = "chrono")]
     rows.extend([
         Row::read::<Swaging>("swaging", "Swaging", SWAGING),
+        Row::read::<Swaging>("swaging mistyped", "Swaging", SWAGING_MISTYPED),
         Row::built(
             "swaging absent",
             "Swaging(stamps: nil)",
@@ -257,7 +259,8 @@ fn printed(rows: &[Row]) -> Option<String> {
 /// the payload in serde's words; one that names a function is refused where its type does not
 /// read what the function answers. Where the object holds a key its type does not read, a key
 /// held as a number or one of two keys, serde reads `None` and the Swift read refuses the
-/// payload, but for a type whose keys are not known, read as `nil` as serde reads it.
+/// payload, but for a type whose keys are not known and a map of dates one of whose entries is no
+/// date, each read as `nil` as serde reads it.
 #[test]
 fn a_flattened_option_reads_and_writes_in_swift_what_serde_reads_and_writes() {
     let rows = rows();
@@ -298,6 +301,7 @@ fn a_flattened_option_reads_and_writes_in_swift_what_serde_reads_and_writes() {
          veering refused: missing field `label`\n";
     #[cfg(feature = "chrono")]
     let dates = "swaging: {\"north\":\"2024-01-02T03:04:05.678Z\"}\n\
+         swaging mistyped: {}\n\
          swaging absent: {}\n";
     #[cfg(not(feature = "chrono"))]
     let dates = "";

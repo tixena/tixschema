@@ -61,6 +61,10 @@ pub const SENNIT_MISTYPED: &str = r#"{"kind":"Laid","label":5,"note":"n"}"#;
 #[cfg(feature = "chrono")]
 pub const SWAGING: &str = r#"{"north":"2024-01-02T03:04:05.678Z"}"#;
 
+/// What [`Swaging`] is read from with an entry that is no date.
+#[cfg(feature = "chrono")]
+pub const SWAGING_MISTYPED: &str = r#"{"north":"x"}"#;
+
 /// The member the structs below flatten.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -339,13 +343,16 @@ fn serde_refuses_a_flattened_option_whose_function_answers_what_its_type_does_no
 }
 
 /// serde reads the flattened map of dates from every key, writes each date back as the text it
-/// read, and writes nothing for a map it does not hold.
+/// read, reads it as `None` where an entry is no date, and writes nothing for a map it does not
+/// hold.
 #[cfg(feature = "chrono")]
 #[test]
 fn serde_writes_a_flattened_option_of_dates_as_the_text_it_read() {
     let swaging: Swaging = serde_json::from_str(SWAGING).unwrap();
     assert_eq!(swaging.stamps.as_ref().map(BTreeMap::len), Some(1));
     assert_eq!(serde_json::to_string(&swaging).unwrap(), SWAGING);
+    let mistyped: Swaging = serde_json::from_str(SWAGING_MISTYPED).unwrap();
+    assert_eq!(mistyped, Swaging { stamps: None });
     let none = Swaging { stamps: None };
     assert_eq!(serde_json::to_string(&none).unwrap(), "{}");
 }

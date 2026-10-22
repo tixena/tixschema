@@ -7,7 +7,9 @@
 //! whose every member is flattened: a map, the one member of each, in each shape a map is read in,
 //! and a holder of flattened structs alone; and a member named after the container a written
 //! `encode(to:)` declares, of its holder's own and flattened; and what a variant under a tag alone
-//! holds as its one slot or flattens, which serde hands the object without the tag.
+//! holds as its one slot or flattens, which serde hands the object without the tag; and an
+//! optional map alone in its struct or in a variant under its name, under a content key or
+//! untagged, which serde reads as `None` wherever an entry does not read.
 
 #![cfg(feature = "swift")]
 
@@ -21,16 +23,20 @@ use serde_json::Value;
 use super::runtime::judged;
 use super::swift_flattened_models::{
     BALING, BOWSING, BOXING, Baling, Bowsing, Boxing, CLEWING, COUNTS, Clewing, FAKING, FRAPPING,
-    Faking, Frapping, GRAFTING_HELD, GRAFTING_SLOT, GRIPPING, Grafting, Gripping, HANKING, Hanking,
-    Kedging, LABEL, Marling, Marrying, Mousing, Notch, PARCELING, POINTING_HELD, POINTING_MARKED,
-    POINTING_NOTCHED, POINTING_NOTED, POINTING_SLOT, Parceling, Pennant, Plying, Pointing, SEAMING,
-    SNAKING, STOPPING, Seaming, Snaking, Splaying, Stopping, Stropping, TEXTS, Toggling, Twinning,
-    WORMING, Whipping, Worming, baling_swift, bowsing_swift, boxing_swift, clewing_swift,
+    Faking, Frapping, GRAFTING_HELD, GRAFTING_SLOT, GRIPPING, Grafting, Gripping, HALYARD,
+    HALYARD_EMPTY, HALYARD_MISTYPED, HANKING, Halyard, Hanking, Kedging, LABEL, Marling, Marrying,
+    Mousing, NO_ENTRY, Notch, PARCELING, POINTING_HELD, POINTING_MARKED, POINTING_NOTCHED,
+    POINTING_NOTED, POINTING_SLOT, Parceling, Pennant, Plying, Pointing, REELING_MISTYPED,
+    REELING_UNKEYED, Reeling, SEAMING, SNAKING, STOPPING, Seaming, Slacking, Snaking, Splaying,
+    Stopping, Stropping, TAILING, TAILING_MISTYPED, TEXTS, TRUSSING, TRUSSING_MISTYPED,
+    TRUSSING_PARTIAL, Tailing, Toggling, Trussing, Twinning, WINCHING_BROKEN, WINCHING_MISTYPED,
+    WORMING, Whipping, Winching, Worming, baling_swift, bowsing_swift, boxing_swift, clewing_swift,
     counting_swift, faking_swift, footing_swift, frapping_swift, grafting_swift, gripping_swift,
-    hanking_swift, kedging_swift, kinded_swift, marling_swift, marrying_swift, mousing_swift,
-    notch_swift, parceling_swift, pennant_swift, plying_swift, pointing_swift, quarter_swift,
-    reeving_swift, seaming_swift, snaking_swift, splaying_swift, stopping_swift, stropping_swift,
-    toggling_swift, twinning_swift, whipping_swift, worming_swift,
+    halyard_swift, hanking_swift, kedging_swift, kinded_swift, marling_swift, marrying_swift,
+    mousing_swift, notch_swift, parceling_swift, pennant_swift, plying_swift, pointing_swift,
+    quarter_swift, reeling_swift, reeving_swift, seaming_swift, slacking_swift, snaking_swift,
+    splaying_swift, stopping_swift, stropping_swift, tailing_swift, toggling_swift, trussing_swift,
+    twinning_swift, whipping_swift, winching_swift, worming_swift,
 };
 #[cfg(feature = "chrono")]
 use super::swift_flattened_models::{SERVING, Serving, serving_swift};
@@ -608,6 +614,151 @@ fn a_variant_under_a_tag_alone_reads_in_swift_without_the_tag() {
         kinded_swift::swift_definition(),
         grafting_swift::swift_definition(),
         pointing_swift::swift_definition(),
+    ];
+    let Some(printed) = printed_of(&definitions, &main_of(&rows)) else {
+        return;
+    };
+    assert_eq!(printed, expected);
+}
+
+/// Each optional map alone in its struct or in a variant, under its name, under a content key or
+/// untagged, under a key Swift wraps and of models, read from a payload with no entry, with
+/// entries that read and with one that does not, and one whose model breaks its rule.
+fn optional_map_rows() -> [Row; 18] {
+    let read_back = |name, read_as, json, told| Row {
+        json,
+        name,
+        read_as,
+        refused: false,
+        told,
+    };
+    [
+        read_back(
+            "trussing empty",
+            "Trussing",
+            NO_ENTRY,
+            written_back::<Trussing>,
+        ),
+        read_back("trussing", "Trussing", TRUSSING, written_back::<Trussing>),
+        read_back(
+            "trussing mistyped",
+            "Trussing",
+            TRUSSING_MISTYPED,
+            written_back::<Trussing>,
+        ),
+        read_back(
+            "trussing partial",
+            "Trussing",
+            TRUSSING_PARTIAL,
+            written_back::<Trussing>,
+        ),
+        read_back(
+            "halyard empty",
+            "Halyard",
+            HALYARD_EMPTY,
+            written_back::<Halyard>,
+        ),
+        read_back("halyard", "Halyard", HALYARD, written_back::<Halyard>),
+        read_back(
+            "halyard mistyped",
+            "Halyard",
+            HALYARD_MISTYPED,
+            written_back::<Halyard>,
+        ),
+        read_back("tailing", "Tailing", TAILING, written_back::<Tailing>),
+        read_back(
+            "tailing mistyped",
+            "Tailing",
+            TAILING_MISTYPED,
+            written_back::<Tailing>,
+        ),
+        read_back(
+            "slacking empty",
+            "Slacking",
+            NO_ENTRY,
+            written_back::<Slacking>,
+        ),
+        read_back("slacking", "Slacking", TRUSSING, written_back::<Slacking>),
+        read_back(
+            "slacking mistyped",
+            "Slacking",
+            TRUSSING_MISTYPED,
+            written_back::<Slacking>,
+        ),
+        read_back("reeling", "Reeling", PARCELING, written_back::<Reeling>),
+        read_back(
+            "reeling unkeyed",
+            "Reeling",
+            REELING_UNKEYED,
+            written_back::<Reeling>,
+        ),
+        read_back(
+            "reeling mistyped",
+            "Reeling",
+            REELING_MISTYPED,
+            written_back::<Reeling>,
+        ),
+        read_back("winching", "Winching", WORMING, written_back::<Winching>),
+        read_back(
+            "winching mistyped",
+            "Winching",
+            WINCHING_MISTYPED,
+            written_back::<Winching>,
+        ),
+        Row {
+            refused: true,
+            ..read_back(
+                "winching refused",
+                "Winching",
+                WINCHING_BROKEN,
+                refused::<Winching>,
+            )
+        },
+    ]
+}
+
+/// An optional map alone in its struct or in a variant, under its name, under a content key or
+/// untagged, under a key Swift wraps too and of models, is read from each payload and written back
+/// as serde writes it back: every entry where each reads, and `nil`, which writes nothing, wherever
+/// one does not. A model whose rule is broken is refused once, with its holder, under the place
+/// serde names.
+#[test]
+fn an_optional_map_reads_and_writes_in_swift_as_serde_does() {
+    let rows = optional_map_rows();
+    let expected = rows.iter().fold(String::new(), |mut expected, row| {
+        let _ = writeln!(expected, "{}: {}", row.name, (row.told)(row.json));
+        expected
+    });
+    assert_eq!(
+        expected,
+        "trussing empty: {}\n\
+         trussing: {\"north\":2}\n\
+         trussing mistyped: {}\n\
+         trussing partial: {}\n\
+         halyard empty: {\"Open\":{}}\n\
+         halyard: {\"Open\":{\"north\":2}}\n\
+         halyard mistyped: {\"Open\":{}}\n\
+         tailing: {\"held\":{\"north\":2},\"kind\":\"Open\"}\n\
+         tailing mistyped: {\"held\":{},\"kind\":\"Open\"}\n\
+         slacking empty: {}\n\
+         slacking: {\"north\":2}\n\
+         slacking mistyped: {}\n\
+         reeling: {\"North\":2}\n\
+         reeling unkeyed: {}\n\
+         reeling mistyped: {}\n\
+         winching: {\"north\":{\"mark\":\"x\"}}\n\
+         winching mistyped: {}\n\
+         winching refused: 'north.mark': too short: minimum length is 1, got 0\n"
+    );
+    let definitions = [
+        quarter_swift::swift_definition(),
+        notch_swift::swift_definition(),
+        trussing_swift::swift_definition(),
+        halyard_swift::swift_definition(),
+        tailing_swift::swift_definition(),
+        slacking_swift::swift_definition(),
+        reeling_swift::swift_definition(),
+        winching_swift::swift_definition(),
     ];
     let Some(printed) = printed_of(&definitions, &main_of(&rows)) else {
         return;
