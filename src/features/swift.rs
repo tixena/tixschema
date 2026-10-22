@@ -20,7 +20,7 @@ use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{
     brand_field, has_serde_skip_serializing, keys_taken_when_flattened, parse_serde_key_omission,
-    struct_tag, tag_and_content_when_flattened, variant_names_when_flattened,
+    struct_tag, tag_and_content_when_flattened, variant_names_when_flattened, variants_on_the_wire,
 };
 use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, classify_variant, get_field_def,
@@ -4202,7 +4202,10 @@ fn enum_validate(shape: &EnumShape<'_>, variants: &[(String, Vec<String>)]) -> S
 
 /// The Swift tokens an enum earns: a `String`-backed enum for an all-unit, untagged-by-default
 /// declaration; otherwise the tagging shape `process_enum` itself dispatches the declaration to.
-fn enum_swift_tokens(item_enum: &ItemEnum, args: &SwiftTypeArgs<'_>) -> TokenStream {
+fn enum_swift_tokens(declared: &ItemEnum, args: &SwiftTypeArgs<'_>) -> TokenStream {
+    // Plain or not as every variant declared reads, as `process_enum` dispatches it.
+    let plain = is_plain_enum(declared);
+    let item_enum = &variants_on_the_wire(declared);
     let rust_ident = item_enum.ident.to_string();
     let export_name = compute_item_export_name(&rust_ident, args.name_override);
     register_swift_name(&rust_ident, &export_name);
@@ -4224,7 +4227,7 @@ fn enum_swift_tokens(item_enum: &ItemEnum, args: &SwiftTypeArgs<'_>) -> TokenStr
         type_parameters: &type_parameters,
     };
     let mut aux = Vec::new();
-    let swift_source = if is_plain_enum(item_enum) && writes_bare_variant_names {
+    let swift_source = if plain && writes_bare_variant_names {
         plain_enum_swift_source(item_enum, &rust_ident, &export_name, args)
     } else if tag_attrs.untagged {
         untagged_enum_swift_source(&shape, &mut aux)
@@ -4242,7 +4245,7 @@ fn enum_swift_tokens(item_enum: &ItemEnum, args: &SwiftTypeArgs<'_>) -> TokenStr
         &rust_ident,
         tag_and_content_when_flattened(item_enum, args.preprocess),
     );
-    let externally_tagged = writes_bare_variant_names && !is_plain_enum(item_enum);
+    let externally_tagged = writes_bare_variant_names && !plain;
     note_unit_entries(
         &rust_ident,
         if externally_tagged {

@@ -478,6 +478,43 @@ three read a payload whose key holds the struct's name, and refuse one without t
 another value under it, as TypeScript and Zod refuse it, where serde reads past the key ("The Dart
 read refuses what `validate()` refuses", "The Swift read" and "The Kotlin client's read", below).
 
+A variant serde neither writes nor reads, under `skip` or under `skip_serializing` and
+`skip_deserializing` together, is described on no surface and read and written by no client, as a
+member taken off the wire in both directions is (`push_described_field`). A variant under one of
+the two alone is described as every variant is. `README.md`'s "A Variant Serde Neither Writes Nor
+Reads" section is the consumer's view; this is what a change has to keep.
+
+- **One question, in every build.** `variant_on_the_wire` in `src/features/serde.rs` reads it, as
+  `parse_serde_key_omission` reads a member's.
+- **The processors walk such a variant and describe nothing of it.** Each still walks its members
+  for `validate()` and takes their keys off, and leaves the variant out of what it describes:
+  `collect_plain_enum_options`, which `enum_members()` is written from,
+  `collect_discriminated_variants`, the untagged walk (`collect_untagged_members`),
+  `render_internal_variants`, the `$Variant` reader pairs (`plain_enum_reader_pairs`,
+  `discriminated_variant_reader_pairs`), and the records a holder reads,
+  `external_variant_wire_leaves` and the untagged branches of `non_object_wire` and
+  `union_parameters_of`, which number a branch among the variants on the wire.
+- **No guard of the wire reads it.** `FieldContext::on_the_wire` keeps `field_guard_errors` from
+  asking its members `check_optional_field_serialization` and `check_omitted_key_is_readable`, and
+  `check_variant_slot_wire_is_readable`, the flatten guards, `empty_tuple_variant_errors`,
+  `adjacent_collapsed_slot_guard_errors`, the refusals `render_untagged_variant` raises, which the
+  untagged walk does not call for it, and the enum's string check on a unit variant's name
+  (`written_with_no_data`) read past it. A member's own `#[model_schema_prop]` keys are still
+  judged.
+- **Plain or not is read off every variant declared.** `is_plain_enum` is asked of the item as
+  written, by `process_enum` and by each client, so an enum whose one variant holding data is
+  skipped is described as the externally tagged union of its unit variants.
+- **The clients write from `variants_on_the_wire`**, the item without such a variant, which
+  `enum_dart_tokens`, `enum_swift_tokens` and `enum_kotlin_tokens` hand every writer they call.
+- **An enum that declares variants and none on the wire is refused** at `exec_model_schema`, in
+  every build, by `no_variant_on_the_wire_errors`. An enum of no variant is not.
+- **The tests.** `tests/skipped_variant_tests/models.rs` holds the models under every tagging and
+  `ROWS`, what serde and Zod take of each payload; `tests/skipped_variant_tests/surfaces.rs` pins
+  each surface and holds the JSON Schema to the rows; `tests/generic_types_tests/declarations.rs`
+  holds Zod to them under `node`; `run_dart_skipped_variants.rs`, `run_swift_skipped_variants.rs`
+  and `run_kotlin_skipped_variants.rs` read each row under the toolchain, against serde; and
+  `src/model_schema/tests.rs` holds the refusal and each guard that reads past such a variant.
+
 ### 7. Field Validation Attributes (`#[model_schema_prop(...)]`)
 
 All validation constraints generate checks in **Zod, JSON Schema, Rust, Dart, Swift and Kotlin**. In Rust the check runs in `validate()`, which the type's own `Deserialize` calls on the value it read, so a serde read refuses what `validate()` refuses ("A read refuses what `validate()` refuses", below), and in the recovering decode of a type whose `enable` list holds `"decode_with"`, which lists the violations of each value as one issue. While the members are still being read it runs in one position only: a member of an untagged enum, where the check decides which variant the payload is. In Dart, Swift and Kotlin the check runs in the `validate()` every emitted type carries, which the type's read calls on the value it read: `fromJson`, `init(from:)` and `{Type}Serializer`.
@@ -3778,6 +3815,8 @@ tixschema/
 │   ├── preprocess_and_check_tests/       # The parcel the section declares, and the section held to the test of each language
 │   ├── serde_default_tests.rs            # A key under #[serde(default)]: the serde read, the text of every surface
 │   ├── serde_default_tests/              # The models and the table every surface is held to
+│   ├── skipped_variant_tests.rs          # A variant serde neither writes nor reads: every surface, and the models the client runs read
+│   ├── skipped_variant_tests/            # The models and the payloads every surface and client is held to
 │   ├── std_range_tests.rs                # The four std ranges: every surface, validate(), the read, the decode, the README
 │   ├── std_range_tests/                  # The models and payloads every surface and client is held to
 │   ├── declared_range_tests.rs           # A type of the crate's own named Range keeps its name

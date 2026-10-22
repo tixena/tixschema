@@ -126,7 +126,7 @@ use crate::features::serde::{
 };
 use crate::features::serde::{
     brand_field, has_serde_default, member_steps, parse_serde_key_omission,
-    transparent_fields_apart, variant_steps, written_and_read_by_the_author,
+    transparent_fields_apart, variant_on_the_wire, variant_steps, written_and_read_by_the_author,
 };
 
 #[cfg(all(
@@ -1191,6 +1191,9 @@ struct FieldContext<'ctx> {
     /// The steps serde writes on the way to each member of the container, by its place among the
     /// ones declared.
     member_steps: &'ctx [Vec<String>],
+    /// Whether serde writes or reads the container: a member of a variant it neither writes nor
+    /// reads has no key for a guard to read.
+    on_the_wire: bool,
     rename_all: Option<&'ctx str>,
     schema_module_name: Option<&'ctx str>,
     type_name: &'ctx str,
@@ -1847,6 +1850,10 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // `Foo()` and `Foo` are two wire shapes to serde and one to every surface, in every feature
     // combination, so it is refused here, ahead of every shape.
     if let Some(output) = refused_item_output(&item, &empty_tuple_variant_errors(&item)) {
+        return output;
+    }
+    // An enum serde writes and reads no variant of has no value to describe, in any build.
+    if let Some(output) = refused_item_output(&item, &no_variant_on_the_wire_errors(&item)) {
         return output;
     }
     // A doc example is compiled at one instantiation, and a const parameter takes no filling, so an
@@ -3718,10 +3725,11 @@ fn record_item(item: &Item) {
 /// What serde writes a value of `item` as, in the leaves the flatten refusal reads, read off the
 /// item as the leaves a schema surface records are read off what it publishes: a brand's or a
 /// struct of one slot's value, any other tuple struct's array, a plain enum's name, each variant
-/// of an externally tagged enum, each member of an untagged enum, and an alias's value. A brand's,
-/// a struct of one slot's and an alias's value is also recorded with the members of the untagged
-/// enum it names. A brand's, a struct of one slot's, an alias's value and an untagged member that
-/// names a generic type declared above is read at what fills its type parameter.
+/// serde writes or reads of an externally tagged enum and each such member of an untagged enum,
+/// and an alias's value. A brand's, a struct of one slot's and an alias's value is also recorded
+/// with the members of the untagged enum it names. A brand's, a struct of one slot's, an alias's
+/// value and an untagged member that names a generic type declared above is read at what fills
+/// its type parameter.
 #[cfg(feature = "serde")]
 fn non_object_wire(item: &Item) -> NonObjectWire {
     let parameters = item_generics(item).map_or_else(Vec::new, type_parameters_in_scope);
@@ -3760,6 +3768,7 @@ fn non_object_wire(item: &Item) -> NonObjectWire {
             wire.members = item_enum
                 .variants
                 .iter()
+                .filter(|variant| variant_on_the_wire(variant))
                 .enumerate()
                 .flat_map(|(index, variant)| {
                     let first = variant.fields.iter().next();
@@ -3964,6 +3973,7 @@ fn union_parameters_of(item: &Item) -> Vec<UnionParameter> {
         item_enum
             .variants
             .iter()
+            .filter(|variant| variant_on_the_wire(variant))
             .enumerate()
             .filter_map(|(index, variant)| {
                 match (variant_wire_kind(variant), variant.fields.iter().next()) {
@@ -4313,8 +4323,9 @@ fn item_attrs(item: &Item) -> &[syn::Attribute] {
     }
 }
 
-/// The `compile_error!` tokens for every enum variant written `Foo()`, which serde writes with an
-/// empty `[]` payload while every surface describes the unit variant `Foo`.
+/// The `compile_error!` tokens for every enum variant written `Foo()` that serde writes or reads,
+/// which serde writes with an empty `[]` payload while every surface describes the unit variant
+/// `Foo`.
 fn empty_tuple_variant_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
     let Item::Enum(item_enum) = item else {
         return Vec::new();
@@ -4322,6 +4333,7 @@ fn empty_tuple_variant_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
     item_enum
         .variants
         .iter()
+        .filter(|variant| variant_on_the_wire(variant))
         .filter(|variant| {
             matches!(&variant.fields, syn::Fields::Unnamed(slots) if slots.unnamed.is_empty())
         })
@@ -4339,6 +4351,24 @@ fn empty_tuple_variant_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
             .to_compile_error()
         })
         .collect()
+}
+
+/// The `compile_error!` tokens for an enum that declares variants and none serde writes or reads,
+/// which leaves no value for a surface to describe.
+fn no_variant_on_the_wire_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
+    let Item::Enum(item_enum) = item else {
+        return Vec::new();
+    };
+    if item_enum.variants.is_empty() || item_enum.variants.iter().any(variant_on_the_wire) {
+        return Vec::new();
+    }
+    let name = &item_enum.ident;
+    let message = prefixed_guard_message(&format!(
+        "type `{name}`: every variant is under `#[serde(skip)]`, or under `skip_serializing` and \
+         `skip_deserializing` together, so serde writes no value of it and reads none, and no \
+         surface can describe it. Let serde write or read one of its variants."
+    ));
+    vec![syn::Error::new_spanned(name, message).to_compile_error()]
 }
 
 /// The `compile_error!` tokens every list-form `rename(...)` / `rename_all(...)` the item carries
@@ -6328,6 +6358,7 @@ fn collect_struct_fields(
             container_read_back: container.read_back,
             enum_args: None,
             member_steps: &steps,
+            on_the_wire: true,
             rename_all,
             schema_module_name: module_name_opt,
             type_name,
@@ -6470,9 +6501,13 @@ fn enum_string_check_errors(
 /// field the check reaches.
 fn enum_check_reaches_nothing(item_enum: &syn::ItemEnum) -> bool {
     !item_enum.variants.iter().any(|variant| {
-        matches!(variant_wire_kind(variant), VariantKind::Unit)
-            || variant.fields.iter().any(reached_by_enums_check)
+        written_with_no_data(variant) || variant.fields.iter().any(reached_by_enums_check)
     })
+}
+
+/// Whether serde writes or reads `variant` under its name alone, with no data.
+fn written_with_no_data(variant: &syn::Variant) -> bool {
+    variant_on_the_wire(variant) && matches!(variant_wire_kind(variant), VariantKind::Unit)
 }
 
 /// Each name serde writes or reads for `variant`, the written one first, beside the direction it
@@ -6556,7 +6591,7 @@ fn unit_variant_name_errors(
         .and_then(|written| regex::Regex::new(written).ok());
     let mut errors: Vec<proc_macro2::TokenStream> = Vec::new();
     for variant in &item_enum.variants {
-        if !matches!(variant_wire_kind(variant), VariantKind::Unit) {
+        if !written_with_no_data(variant) {
             continue;
         }
         for (direction, name) in variant_wire_names(item_enum, variant) {
@@ -7577,6 +7612,7 @@ fn collect_tuple_slots(
                 container_read_back,
                 enum_args: None,
                 member_steps: &steps,
+                on_the_wire: true,
                 rename_all,
                 schema_module_name: Some(module_name),
                 type_name,
@@ -10019,7 +10055,8 @@ fn build_item_docs_and_description(
 }
 
 /// Collects a plain enum's serialized variant names (respecting serde renames) and per-variant
-/// doc strings (the latter only populated when the `typescript` feature is enabled).
+/// doc strings (the latter only populated when the `typescript` feature is enabled), of each
+/// variant serde writes or reads.
 fn collect_plain_enum_options(
     item_enum: &mut syn::ItemEnum,
     rename_all: Option<&str>,
@@ -10030,7 +10067,11 @@ fn collect_plain_enum_options(
     #[cfg(not(feature = "typescript"))]
     let enum_variant_docs: Vec<String> = Vec::new();
 
-    for item in &mut item_enum.variants {
+    for item in item_enum
+        .variants
+        .iter_mut()
+        .filter(|item| variant_on_the_wire(item))
+    {
         #[cfg(feature = "serde")]
         let field_rename = parse_serde_field_attributes(&item.attrs).rename;
         #[cfg(not(feature = "serde"))]
@@ -10107,7 +10148,8 @@ fn plain_enum_variant_reader(item_name: &str, pairs: &[(String, String)]) -> Str
     )
 }
 
-/// The `(wire name, Rust name)` pairs a unit-only enum's own reader switches on, one per variant.
+/// The `(wire name, Rust name)` pairs a unit-only enum's own reader switches on, one per variant
+/// serde writes or reads.
 #[cfg(feature = "typescript")]
 fn plain_enum_reader_pairs(
     item_enum: &syn::ItemEnum,
@@ -10116,6 +10158,7 @@ fn plain_enum_reader_pairs(
     item_enum
         .variants
         .iter()
+        .filter(|variant| variant_on_the_wire(variant))
         .map(|variant| {
             #[cfg(feature = "serde")]
             let field_rename = parse_serde_field_attributes(&variant.attrs).rename;
@@ -10172,7 +10215,8 @@ fn untagged_enum_variant_reader(item_name: &str) -> String {
 }
 
 /// The `(wire name, Rust name)` pairs a discriminated enum's own reader switches on, one per
-/// variant — computed straight off the declaration, which is all the reader needs.
+/// variant serde writes or reads — computed straight off the declaration, which is all the reader
+/// needs.
 #[cfg(feature = "typescript")]
 fn discriminated_variant_reader_pairs(
     item_enum: &syn::ItemEnum,
@@ -10181,6 +10225,7 @@ fn discriminated_variant_reader_pairs(
     item_enum
         .variants
         .iter()
+        .filter(|variant| variant_on_the_wire(variant))
         .map(|variant| {
             let (field_rename, _) = variant_serde_names(&variant.attrs, casing.variant_fields);
             let rust_ident = variant.ident.to_string();
@@ -10586,6 +10631,32 @@ const fn is_flattened_field(_field: &syn::Field) -> bool {
     false
 }
 
+/// The refusals of what serde writes or reads that a variant's member earns: a slot dropped in one
+/// direction alone, and a `#[serde(flatten)]` member's. None where serde neither writes nor reads
+/// the variant.
+fn variant_member_wire_errors(
+    on_the_wire: bool,
+    field: &Field,
+    index: usize,
+    variant_name: &str,
+    enum_type_name: &str,
+) -> Vec<proc_macro2::TokenStream> {
+    if !on_the_wire {
+        return Vec::new();
+    }
+    let omission = parse_serde_key_omission(&field.attrs);
+    let slot =
+        check_variant_slot_wire_is_readable(field, index, variant_name, enum_type_name, omission)
+            .err()
+            .map(|rejection| rejection.to_compile_error());
+    let flattened = if is_flattened_field(field) {
+        variant_flatten_guard_errors(field, enum_type_name)
+    } else {
+        Vec::new()
+    };
+    slot.into_iter().chain(flattened).collect()
+}
+
 /// The `compile_error!` tokens a variant's `#[serde(flatten)]` field is refused with, which are the
 /// two the struct-level split already reads a flattened field against: a variant's own position
 /// multiplies the key sets its sources write exactly as a struct's does.
@@ -10632,8 +10703,10 @@ const fn hand_serde_default(field_def: &mut FieldDef, at: Option<usize>) {
 const fn hand_serde_default(_field_def: &mut FieldDef, _at: Option<usize>) {}
 
 /// Processes each variant of a discriminated enum, returning per-variant field defs, doc strings,
-/// and variant kinds in declaration order, plus the collected serde validation functions and the
-/// `validate()` arms those functions are run from.
+/// and variant kinds in declaration order, for each variant serde writes or reads, plus the
+/// collected serde validation functions and the `validate()` arms those functions are run from.
+/// A variant serde neither writes nor reads is walked for `validate()` alone, and no guard of the
+/// wire reads it.
 fn collect_discriminated_variants(
     item_enum: &mut syn::ItemEnum,
     casing: EnumCasing<'_>,
@@ -10653,6 +10726,7 @@ fn collect_discriminated_variants(
     let default_at = variant_serde_defaults(item_enum);
 
     for (item, steps) in item_enum.variants.iter_mut().zip(&steps_by_variant) {
+        let on_the_wire = variant_on_the_wire(item);
         let (field_rename, variant_rename_all) =
             variant_serde_names(&item.attrs, casing.variant_fields);
         let variant_ident = item.ident.to_string();
@@ -10671,6 +10745,7 @@ fn collect_discriminated_variants(
             container_read_back: enum_read_back,
             enum_args: Some(args),
             member_steps: steps,
+            on_the_wire,
             rename_all: variant_rename_all.as_deref(),
             schema_module_name: enum_module_name_opt,
             type_name: &enum_type_name,
@@ -10685,22 +10760,16 @@ fn collect_discriminated_variants(
         for (index, field) in item.fields.iter_mut().enumerate() {
             let omission = parse_serde_key_omission(&field.attrs);
             let positional = field.ident.is_none();
-            if let Err(rejection) = check_variant_slot_wire_is_readable(
+            // Read before the field is processed, which strips the attributes the declaration
+            // carried.
+            let is_flatten = is_flattened_field(field);
+            guard_errors.extend(variant_member_wire_errors(
+                on_the_wire,
                 field,
                 index,
                 &variant_ident,
                 &enum_type_name,
-                omission,
-            ) {
-                guard_errors.push(rejection.to_compile_error());
-            }
-
-            // Read before the field is processed, which strips the attributes the declaration
-            // carried.
-            let is_flatten = is_flattened_field(field);
-            if is_flatten {
-                guard_errors.extend(variant_flatten_guard_errors(field, &enum_type_name));
-            }
+            ));
 
             let serde_default = default_at(&variant_ident, &field_ident_string(field));
             let (mut f_def, validation_fn, validate_body, field_guard_errors) =
@@ -10731,14 +10800,17 @@ fn collect_discriminated_variants(
             checks,
         ));
 
-        let discriminator_docs = build_jsdoc_body(get_variant_docs(item).as_deref(), &final_name);
-        variants.push(DiscriminatedVariant {
-            discriminator_value: final_name,
-            docs: discriminator_docs,
-            field_defs,
-            flattened_fields,
-            kind: wire_kind,
-        });
+        if on_the_wire {
+            let discriminator_docs =
+                build_jsdoc_body(get_variant_docs(item).as_deref(), &final_name);
+            variants.push(DiscriminatedVariant {
+                discriminator_value: final_name,
+                docs: discriminator_docs,
+                field_defs,
+                flattened_fields,
+                kind: wire_kind,
+            });
+        }
     }
 
     if guard_errors.is_empty() {
@@ -10803,8 +10875,9 @@ fn discriminated_main_schema_code(
     }
 }
 
-/// Refuses every variant of an adjacently tagged enum whose declared lone slot is off the wire in
-/// both directions, one error per offender so the expansion names them all.
+/// Refuses every variant serde writes or reads of an adjacently tagged enum whose declared lone
+/// slot is off the wire in both directions, one error per offender so the expansion names them
+/// all.
 #[cfg(feature = "serde")]
 fn adjacent_collapsed_slot_guard_errors(
     item_enum: &syn::ItemEnum,
@@ -10815,7 +10888,7 @@ fn adjacent_collapsed_slot_guard_errors(
     item_enum
         .variants
         .iter()
-        .filter(|variant| lone_slot_off_wire(variant))
+        .filter(|variant| variant_on_the_wire(variant) && lone_slot_off_wire(variant))
         .map(|variant| {
             let variant_name = &variant.ident;
             syn::Error::new_spanned(
@@ -11840,7 +11913,7 @@ fn tagged_optional_message(
 }
 
 /// Renders each variant of an internally tagged enum as a union member, beside the variant it was
-/// collected from: every variant is collected, in the order declared.
+/// collected from: every variant serde writes or reads is collected, in the order declared.
 #[cfg(feature = "serde")]
 fn render_internal_variants(
     variants: &[DiscriminatedVariant],
@@ -11850,7 +11923,12 @@ fn render_internal_variants(
     let enum_name = item_enum.ident.to_string();
     variants
         .iter()
-        .zip(&item_enum.variants)
+        .zip(
+            item_enum
+                .variants
+                .iter()
+                .filter(|variant| variant_on_the_wire(variant)),
+        )
         .map(|(variant, declared)| {
             render_internal_variant(variant, &declared.ident, tag_name, &enum_name)
         })
@@ -12596,6 +12674,7 @@ const fn untagged_variant_context<'ctx>(
         // That walk holds the member to its enum's check as well, ahead of this context.
         enum_args: None,
         member_steps,
+        on_the_wire: true,
         rename_all,
         schema_module_name,
         type_name: enum_type_name,
@@ -12660,7 +12739,7 @@ fn untagged_member_field_def(
         field_def.is_optional(),
         prop_meta.nullable,
         serde_field_meta,
-        ctx.container_defaulted,
+        ctx,
         field_validation_guard_error,
     );
     let member_guard_errors = collect_field_guard_errors(
@@ -12694,6 +12773,9 @@ fn collect_untagged_variant_members(
     steps: &[Vec<String>],
 ) -> UntaggedVariantMembers {
     let variant_name = variant.ident.to_string();
+    // Read as the discriminated walk reads it: no guard of the wire reads a variant serde neither
+    // writes nor reads.
+    let on_the_wire = variant_on_the_wire(variant);
     let variant_defaulted = has_serde_default(&variant.attrs);
     // An untagged variant has no name on the wire, so the rename the seam also resolves is unused
     // here.
@@ -12711,36 +12793,31 @@ fn collect_untagged_variant_members(
     for (index, field) in variant.fields.iter_mut().enumerate() {
         let omission = parse_serde_key_omission(&field.attrs);
         let positional = field.ident.is_none();
-        if let Err(rejection) = check_variant_slot_wire_is_readable(
+        // Read before the field is processed, which strips the attributes the declaration carried.
+        let is_flatten = is_flattened_field(field);
+        walked.guard_errors.extend(variant_member_wire_errors(
+            on_the_wire,
             field,
             index,
             &variant_name,
             enum_type_name,
-            omission,
-        ) {
-            walked.guard_errors.push(rejection.to_compile_error());
-        }
-
-        // Read before the field is processed, which strips the attributes the declaration carried.
-        let is_flatten = is_flattened_field(field);
-        if is_flatten {
-            walked
-                .guard_errors
-                .extend(variant_flatten_guard_errors(field, enum_type_name));
-        }
+        ));
 
         let field_name = field_ident_string(field);
         let prop_meta = member_prop_meta(field, Some(args));
         let serde_field_meta = parse_serde_field_attributes(&field.attrs);
-        let member_ctx = untagged_variant_context(
-            variant_defaulted,
-            variant_rename_all.as_deref(),
-            schema_module_name,
-            enum_type_name,
-            type_parameters,
-            &variant_name,
-            steps,
-        );
+        let member_ctx = FieldContext {
+            on_the_wire,
+            ..untagged_variant_context(
+                variant_defaulted,
+                variant_rename_all.as_deref(),
+                schema_module_name,
+                enum_type_name,
+                type_parameters,
+                &variant_name,
+                steps,
+            )
+        };
         // The wire key: field-level rename wins outright, otherwise the variant's own rename_all
         // cases the Rust ident — the same resolution `process_field` runs for a struct field.
         let wire_name = get_final_field_name(
@@ -12854,8 +12931,11 @@ fn collect_untagged_members(
         validation_fns.append(&mut walked.validation_fns);
         deferred_attrs.append(&mut walked.deferred_attrs);
 
-        match render_untagged_variant(&kind, variant, &walked, &enum_type_name) {
-            Ok((ts, zod, json_val)) => {
+        let rendered = variant_on_the_wire(variant)
+            .then(|| render_untagged_variant(&kind, variant, &walked, &enum_type_name));
+        match rendered {
+            None => {}
+            Some(Ok((ts, zod, json_val))) => {
                 #[cfg(feature = "zod")]
                 zod_merge_parts.extend(zod_merge_branches(
                     &kind,
@@ -12873,7 +12953,7 @@ fn collect_untagged_members(
                 zod_parts.push(zod);
                 json_parts.push(json_val);
             }
-            Err(err) => guard_errors.push(err.to_compile_error()),
+            Some(Err(err)) => guard_errors.push(err.to_compile_error()),
         }
 
         per_variant_checks.push((
@@ -13047,12 +13127,13 @@ fn published_wire_leaves(written: &FieldDef, leaves_of: LeavesOf) -> Vec<WireLea
     })
 }
 
-/// The leaves an externally tagged enum's variants write, one per variant and in the order the
-/// `oneOf` it publishes writes them.
+/// The leaves an externally tagged enum's variants write, one per variant serde writes or reads
+/// and in the order the `oneOf` it publishes writes them.
 #[cfg(feature = "serde")]
 fn external_variant_wire_leaves(variants: &Punctuated<syn::Variant, Token![,]>) -> Vec<WireLeaf> {
     variants
         .iter()
+        .filter(|variant| variant_on_the_wire(variant))
         .enumerate()
         .map(|(index, variant)| {
             let unit = matches!(variant_wire_kind(variant), VariantKind::Unit);
@@ -16919,20 +17000,32 @@ fn field_guard_errors(
     is_optional: bool,
     is_nullable: bool,
     serde_field_meta: &SerdeFieldMeta,
-    container_defaulted: bool,
+    container: &FieldContext<'_>,
     field_validation_guard_error: Option<proc_macro2::TokenStream>,
 ) -> Vec<proc_macro2::TokenStream> {
+    // A member of a variant serde neither writes nor reads has no key for either check to read.
+    let keyed = |check: Result<(), syn::Error>| {
+        if container.on_the_wire { check } else { Ok(()) }
+    };
     field_validation_guard_error
         .into_iter()
         .chain(serde_field_meta.cfg_attr_rejection.as_ref().map_or_else(
             || {
-                check_optional_field_serialization(field, is_optional, is_nullable)
-                    .and_then(|()| check_nullable_field_serialization(field, is_nullable))
-                    .and_then(|()| {
-                        check_omitted_key_is_readable(field, is_optional, container_defaulted)
-                    })
-                    .err()
-                    .map(|err| err.to_compile_error())
+                keyed(check_optional_field_serialization(
+                    field,
+                    is_optional,
+                    is_nullable,
+                ))
+                .and_then(|()| check_nullable_field_serialization(field, is_nullable))
+                .and_then(|()| {
+                    keyed(check_omitted_key_is_readable(
+                        field,
+                        is_optional,
+                        container.container_defaulted,
+                    ))
+                })
+                .err()
+                .map(|err| err.to_compile_error())
             },
             |rejection| {
                 Some(cfg_attr_guard_error(
@@ -17657,7 +17750,7 @@ fn process_field(
         field_def.is_optional(),
         model_schema_prop_meta.nullable,
         &serde_field_meta,
-        ctx.container_defaulted,
+        ctx,
         field_validation_guard_error,
     );
     #[cfg(not(feature = "serde"))]
@@ -17666,6 +17759,8 @@ fn process_field(
         // Held alive the same way, and for the reason `container_is_read_back` states: the only
         // reader of this flag is the read-hook writer, which this build does not compile.
         let _: bool = ctx.container_read_back;
+        // The key guards, its one reader, are serde's.
+        let _: bool = ctx.on_the_wire;
         Vec::new()
     };
 

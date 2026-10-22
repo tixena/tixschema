@@ -664,6 +664,28 @@ mod run_swift_unwritten;
 #[path = "service_schema_emitted_client_tests/run_kotlin_unwritten.rs"]
 mod run_kotlin_unwritten;
 
+/// Enums with a variant serde neither writes nor reads, under every tagging, and with a variant
+/// serde drops in one direction alone.
+#[cfg(test)]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+#[path = "skipped_variant_tests/models.rs"]
+mod skipped_variant_models;
+
+/// Those enums read and written back by the emitted Dart types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_skipped_variants.rs"]
+mod run_dart_skipped_variants;
+
+/// Those enums read and written back by the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_skipped_variants.rs"]
+mod run_swift_skipped_variants;
+
+/// Those enums read and written back by the emitted Kotlin types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_skipped_variants.rs"]
+mod run_kotlin_skipped_variants;
+
 /// A key no member reads, refused by the emitted Kotlin types under the default `Json` as Zod
 /// refuses it. Declared after the modules that declare the members its models flatten.
 #[cfg(test)]

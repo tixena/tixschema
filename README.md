@@ -170,6 +170,8 @@ A struct declaring a single slot keeps it whatever these attributes say: serde w
 
 A tuple *variant*'s slots read the same way, with one difference at the lone-slot arity. `enum E { One(#[serde(skip)] String, u32) }` holding `("s", 7)` writes `{"One":[7]}`, reads that back, and refuses `{"One":["s",7]}`, so the described tuple shrinks exactly as a struct's does — under the content key when one is named, and to `{"One":[]}` when every slot is dropped. Where a variant differs is that it has its own name to fall back on: a variant declaring one slot and dropping it is written as a unit variant, `"One"` externally, `{"type":"One"}` under a tag and `null` untagged, and each surface describes it as the unit it has become. Because serde does read a variant slot's attributes at every arity, the one-directional halves are refused there at every arity too — `One(#[serde(skip_serializing)] String)` writes `"One"` and reads only `{"One":"s"}`.
 
+A whole variant reads as a member does. One under `#[serde(skip)]`, or under `skip_serializing` and `skip_deserializing` together, is written into no payload and read out of none, so no surface describes it and no client reads or writes it; one under either half alone stays, described as every variant is. [A Variant Serde Neither Writes Nor Reads](#a-variant-serde-neither-writes-nor-reads) has the rest.
+
 Which key a field writes is read off the attribute in every build, `serde` feature or not — one declaration describes one wire under every toggle. What the feature buys is the renaming, the tagging and the guards.
 
 ```rust
@@ -1025,7 +1027,44 @@ A named type Serde writes as a map has no members to name either. A newtype vari
 error: model_schema: type `Filled`: variant `Counted`, field `0`: `Tally` writes a map, which cannot sit beside the tag `kind` — serde writes the tag and the map's entries at one level, and no TypeScript type describes both. Name a `content` key so the map gets an object of its own, or write the map under a key of its own.
 ```
 
-A variant under `#[serde(skip)]` is refused none of these: Serde neither writes nor reads it, so nothing it holds sits beside the tag, and `#[serde(tag = "kind")] pub enum Skipped { Open { note: String }, #[serde(skip)] Hidden(String) }` builds. Serde writes `Skipped::Open` as `{"kind":"Open","note":"a"}` and reads it back, and answers `unknown variant` for `{"kind":"Hidden"}`. A tuple variant of several slots is refused all the same, as Serde's derive refuses it skipped or not. A variant under `skip_serializing` alone, which Serde still reads beside the tag, or under `skip_deserializing` alone, which it still writes there, is refused as any other variant. The surfaces still describe a variant under `skip`, with what it holds, as they describe every variant.
+A variant under `#[serde(skip)]` is refused none of these: Serde neither writes nor reads it, so nothing it holds sits beside the tag, and `#[serde(tag = "kind")] pub enum Skipped { Open { note: String }, #[serde(skip)] Hidden(String) }` builds. Serde writes `Skipped::Open` as `{"kind":"Open","note":"a"}` and reads it back, and answers `unknown variant` for `{"kind":"Hidden"}`. A tuple variant of several slots is refused all the same, as Serde's derive refuses it skipped or not. A variant under `skip_serializing` alone, which Serde still reads beside the tag, or under `skip_deserializing` alone, which it still writes there, is refused as any other variant. No surface describes a variant under `skip`: see [A Variant Serde Neither Writes Nor Reads](#a-variant-serde-neither-writes-nor-reads).
+
+#### A Variant Serde Neither Writes Nor Reads
+
+A variant under `#[serde(skip)]`, or under `skip_serializing` and `skip_deserializing` together, is written into no payload and read out of none, under every tagging: serde answers `the enum variant Skipped::Closed cannot be serialized` for a write of it, and refuses its payload, with `unknown variant` under a name or a tag and `data did not match any variant` untagged. So it is described as a [member under `skip`](#optional-fields) is, on no surface. TypeScript writes no member of the union for it, Zod no branch, the JSON Schema no branch of its `oneOf` or `anyOf`, `{Enum}$Variant` answers `""` for its name, and a plain enum's `enum_members()` leaves it out. The Dart, Swift and Kotlin clients write no class and no case for it, so each refuses its payload, as serde does.
+
+```rust
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum Skipped {
+    Open { note: String },
+    #[serde(skip)]
+    Closed { reason: String },
+}
+```
+
+```typescript
+export type Skipped = {
+  kind: "Open";
+  note: string;
+};
+
+const Skipped$RawSchema = z.discriminatedUnion("kind", [z.strictObject({
+  kind: z.literal("Open"),
+  note: z.string(),
+})]);
+```
+
+The schema refuses `{"kind":"Closed","reason":"r"}`, as serde does. Whether an enum is a plain one is read off every variant it declares: `enum Cartage { Light, Heavy, #[serde(skip)] Bulk(String) }` is described as the externally tagged union of `"Light"` and `"Heavy"`, the payloads serde writes for it.
+
+What serde does not write or read is held to no rule of what it writes or reads. A skipped variant builds where the same variant written would be refused: a tuple variant of no slot, `Nothing()`, but under a tag alone, where Serde's derive refuses every tuple variant, skipped or not; a variant under a `content` key that declares one slot and takes it off the wire; a member that is a bare `Option` with no `skip_serializing_if`; a unit variant whose name breaks the enum's own `pattern`; a unit variant and a tuple variant of several slots of an untagged enum; and what it holds beside a tag (see [Internally Tagged Enums](#internally-tagged-enums-tag-with-no-content)). A holder that flattens the enum is refused for nothing such a variant holds. Its members are still held to their own `#[model_schema_prop]` keys, and `validate()` still checks a value of it built in Rust. A variant under `skip_serializing` alone, which serde reads, or under `skip_deserializing` alone, which serde writes, is described and held to every rule as any other variant.
+
+An enum whose every variant serde neither writes nor reads has no value to describe, and does not build:
+
+```text
+error: model_schema: type `Becalmed`: every variant is under `#[serde(skip)]`, or under `skip_serializing` and `skip_deserializing` together, so serde writes no value of it and reads none, and no surface can describe it. Let serde write or read one of its variants.
+```
 
 #### A Check Written on the Enum
 
@@ -8354,7 +8393,7 @@ Supported Serde attributes:
 - `#[serde(flatten)]` -- flatten a field into the parent as an intersection type (`A & B`) / Zod `.and(...)`
 - `#[serde(transparent)]` -- transparent wrappers (used for branded newtypes)
 - `#[serde(skip_serializing_if = "...")]` -- the key is left out of the payload when the predicate fires: `roles: z.array(z.string()).optional(),` in Zod and no `required` entry in the JSON Schema. On a field that is not an `Option` the TypeScript member takes the optional key too, `roles?: Array<string>;`, there being no second spelling for it; an `Option` field keeps `T | undefined` unless [`ts_optional`](#ts_optional) asks otherwise
-- `#[serde(skip)]` -- the key is written into no payload and read out of none, so no surface describes the member at all: no TypeScript member, no Zod key, and neither a `properties` nor a `required` entry. On a tuple-struct or tuple-variant slot it takes the slot out of the described tuple, which shortens the arity -- and a variant declaring one slot becomes a unit variant, which is what serde writes for it
+- `#[serde(skip)]` -- the key is written into no payload and read out of none, so no surface describes the member at all: no TypeScript member, no Zod key, and neither a `properties` nor a `required` entry. On a tuple-struct or tuple-variant slot it takes the slot out of the described tuple, which shortens the arity -- and a variant declaring one slot becomes a unit variant, which is what serde writes for it. On a variant, the variant is described on no surface and read and written by no client: see [A Variant Serde Neither Writes Nor Reads](#a-variant-serde-neither-writes-nor-reads)
 - `#[serde(skip_serializing)]` -- the write half of `skip`: the key is left out of every payload while a supplied one is still read, and every surface answers as it does for `skip_serializing_if`
 - `#[serde(skip_deserializing)]` -- the read half: the key is written into every payload while a supplied one is discarded, so the member keeps a required key
 - `#[serde(default)]` and `#[serde(default = "...")]`, on a field or on the struct -- a key the payload leaves out is read as the default on every surface, which is handed the default as JSON: see [A Key Read as Its Default](#a-key-read-as-its-default-serdedefault)
