@@ -148,6 +148,17 @@ const UNREAD_BRAND_FIELD_PROP_REFUSAL: &str = "`#[model_schema_prop]` is unread 
      of one field alone, and a brand publishes that field's own schema with a `.brand()` written \
      onto it, so no key written here reaches any surface. Drop the attribute.";
 
+/// What a map keyed by a tuple is refused with, after the place it is written in.
+#[cfg(feature = "jsonschema")]
+const TUPLE_KEY_REFUSAL: &str = "a map key must be a value serde writes as a string, which is what \
+                                 a JSON object key is \u{2014} serde writes `(_, _)` as a JSON \
+                                 array";
+
+/// The keys of a map keyed by an integer, as the description of the map names them.
+#[cfg(feature = "jsonschema")]
+const INTEGER_KEY_NAMES: &str =
+    r#"serde_json :: json ! ({ "type" : "string" , "pattern" : "^-?[0-9]+(\\.0+)?$" }))"#;
+
 /// A brand with named fields whose skipped marker carries a key, as a consumer writes it.
 const UNREAD_BRAND_FIELD_SOURCE: &str = "#[derive(Debug, Deserialize, Serialize)] \
      #[serde(transparent)] pub struct Label { pub text: String, \
@@ -1355,10 +1366,26 @@ fn untagged_member_holding_a_tuple_renders_the_arity_bounds() {
 
 #[cfg(all(feature = "serde", feature = "jsonschema"))]
 #[test]
-fn untagged_member_holding_an_unsupported_map_value_emits_only_the_compile_error() {
+fn untagged_member_holding_a_map_of_tuples_describes_each_value_as_its_array() {
     let values = untagged_member_values(syn::parse_quote! {
         enum Untagged {
             Rows { rows: HashMap<String, (String, u32)> },
+        }
+    });
+    assert!(!values[0].contains("compile_error !"), "got: {}", values[0]);
+    assert!(
+        values[0].contains(r#""additionalProperties" : serde_json :: json ! ({ "type" : "array""#),
+        "got: {}",
+        values[0]
+    );
+}
+
+#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[test]
+fn untagged_member_holding_an_unwritable_map_key_emits_only_the_compile_error() {
+    let values = untagged_member_values(syn::parse_quote! {
+        enum Untagged {
+            Rows { rows: HashMap<String, HashMap<(String, u32), u8>> },
         }
     });
     assert_eq!(
@@ -1368,7 +1395,7 @@ fn untagged_member_holding_an_unsupported_map_value_emits_only_the_compile_error
         values[0]
     );
     assert!(
-        values[0].contains("model_schema: field `rows`: a tuple is not supported as a map value"),
+        values[0].contains(&format!("model_schema: field `rows`: {TUPLE_KEY_REFUSAL}")),
         "got: {}",
         values[0]
     );
@@ -1384,7 +1411,13 @@ fn untagged_member_holding_an_unsupported_map_value_emits_only_the_compile_error
 fn an_external_variant_holding_an_unrenderable_content_is_refused() {
     let rendered = super::external_content_rejection_value(
         "rows",
-        &super::MapMemberRejection::Tuple(proc_macro2::Span::call_site()),
+        &super::MapMemberRejection::Key(
+            super::MapKeyRejection::Unwritable {
+                key_name: "(_, _)".to_owned(),
+                written_as: super::WRITTEN_AS_ARRAY,
+            },
+            proc_macro2::Span::call_site(),
+        ),
     )
     .to_string();
     assert!(
@@ -1392,7 +1425,9 @@ fn an_external_variant_holding_an_unrenderable_content_is_refused() {
         "got: {rendered}"
     );
     assert!(
-        rendered.contains("model_schema: variant `rows`: a tuple is not supported as a map value"),
+        rendered.contains(&format!(
+            "model_schema: variant `rows`: {TUPLE_KEY_REFUSAL}"
+        )),
         "got: {rendered}"
     );
 }
@@ -1418,8 +1453,8 @@ fn variant_field_defs(source: &str, variant_name: &str) -> Vec<super::FieldDef> 
 #[test]
 fn a_refused_external_content_points_at_the_written_content() {
     const SOURCE: &str = "enum Tagged { \
-        Rows(HashMap<String, (u32, u32)>), \
-        Multi(String, HashMap<String, (u32, u32)>) }";
+        Rows(HashMap<(u32, u32), u32>), \
+        Multi(String, HashMap<(u32, u32), u32>) }";
 
     let single = variant_field_defs(SOURCE, "Rows");
     let single_rejection = super::build_tuple_element_json_schema(&single[0]).unwrap_err();
@@ -1442,8 +1477,8 @@ fn a_refused_external_content_points_at_the_written_content() {
 #[test]
 fn a_refused_adjacent_content_points_at_the_written_content() {
     const SOURCE: &str = "enum Tagged { \
-        Rows(HashMap<String, (u32, u32)>), \
-        Multi(String, HashMap<String, (u32, u32)>) }";
+        Rows(HashMap<(u32, u32), u32>), \
+        Multi(String, HashMap<(u32, u32), u32>) }";
 
     let mut single_fields = Vec::new();
     super::push_single_tuple_json_field(
@@ -1479,9 +1514,9 @@ fn a_refused_adjacent_content_points_at_the_written_content() {
 #[test]
 fn a_refused_untagged_member_points_at_the_written_value() {
     for (member_type, context) in [
-        ("HashMap<String, (u32, u32)>", "an untagged map member"),
+        ("HashMap<(u32, u32), u32>", "an untagged map member"),
         (
-            "(String, HashMap<String, (u32, u32)>)",
+            "(String, HashMap<(u32, u32), u32>)",
             "an untagged tuple member",
         ),
     ] {
@@ -8455,7 +8490,7 @@ fn branded_json_schema_method_carries_no_cfg_attribute() {
 fn a_brand_over_an_unrenderable_slot_is_refused() {
     let inner = get_field_def(
         "_inner",
-        &syn::parse_str("HashMap<String, (u32, u32)>").unwrap(),
+        &syn::parse_str("HashMap<String, HashMap<(u32, u32), u32>>").unwrap(),
         "",
     );
     let rendered =
@@ -8466,7 +8501,7 @@ fn a_brand_over_an_unrenderable_slot_is_refused() {
         "got: {rendered}"
     );
     assert!(
-        rendered.contains("model_schema: `DocumentId`: a tuple is not supported as a map value"),
+        rendered.contains(&format!("model_schema: `DocumentId`: {TUPLE_KEY_REFUSAL}")),
         "got: {rendered}"
     );
 }
@@ -8475,7 +8510,8 @@ fn a_brand_over_an_unrenderable_slot_is_refused() {
 #[test]
 fn a_refused_brand_inner_points_at_the_written_inner() {
     let item: syn::ItemStruct =
-        syn::parse_str("pub struct DocumentId(pub HashMap<String, (u32, u32)>);").unwrap();
+        syn::parse_str("pub struct DocumentId(pub HashMap<String, HashMap<(u32, u32), u32>>);")
+            .unwrap();
     let field = item.fields.iter().next().unwrap();
     let inner = get_field_def("_inner", &field.ty, "");
     assert_points_only_at(
@@ -8618,9 +8654,9 @@ fn alias_json_schema_method_carries_no_cfg_attribute() {
 #[test]
 fn an_alias_of_an_unrenderable_target_emits_only_the_compile_error() {
     for alias_source in [
-        "pub type Rows = HashMap<String, (u32, u32)>;",
-        "pub type Rows = Vec<HashMap<String, (u32, u32)>>;",
-        "pub type Rows = (String, HashMap<String, (u32, u32)>);",
+        "pub type Rows = HashMap<String, HashMap<(u32, u32), u32>>;",
+        "pub type Rows = Vec<HashMap<String, HashMap<(u32, u32), u32>>>;",
+        "pub type Rows = (String, HashMap<(u32, u32), u32>);",
     ] {
         let alias: syn::ItemType = syn::parse_str(alias_source).unwrap();
         let field_def = super::get_field_def("RowsType", &alias.ty, "");
@@ -8636,9 +8672,9 @@ fn an_alias_of_an_unrenderable_target_emits_only_the_compile_error() {
             "for {alias_source}, got: {tokens}"
         );
         assert!(
-            tokens.contains(
-                "model_schema: type alias `Rows`: a tuple is not supported as a map value"
-            ),
+            tokens.contains(&format!(
+                "model_schema: type alias `Rows`: {TUPLE_KEY_REFUSAL}"
+            )),
             "for {alias_source}, got: {tokens}"
         );
         assert!(
@@ -8661,8 +8697,7 @@ fn an_alias_of_an_unrenderable_target_emits_only_the_compile_error() {
 #[cfg(feature = "jsonschema")]
 #[test]
 fn an_alias_rejection_points_at_the_written_target() {
-    let alias: syn::ItemType =
-        syn::parse_str("pub type Rows = HashMap<String, (u32, u32)>;").unwrap();
+    let alias: syn::ItemType = syn::parse_str("pub type Rows = HashMap<(u32, u32), u32>;").unwrap();
     let field_def = super::get_field_def("RowsType", &alias.ty, "");
     let tokens = super::generate_alias_json_schema_method(
         &alias,
@@ -8695,7 +8730,7 @@ fn a_reworded_refusal_keeps_both_ends_of_what_it_is_spanned_on() {
 #[test]
 fn a_data_suffixed_alias_rejection_names_its_written_ident() {
     let alias: syn::ItemType = syn::parse_quote! {
-        pub type RowsData = HashMap<String, (u32, u32)>;
+        pub type RowsData = HashMap<(u32, u32), u32>;
     };
     let field_def = super::get_field_def("RowsType", &alias.ty, "");
     let tokens = super::generate_alias_json_schema_method(
@@ -9049,9 +9084,10 @@ fn a_brand_over_a_writable_map_key_clears_the_guard() {
     }
 }
 
+/// A tuple as a map's value is described as its fixed array, as in every other position.
 #[cfg(feature = "jsonschema")]
 #[test]
-fn a_brand_over_a_map_with_a_tuple_value_is_refused() {
+fn a_brand_over_a_map_with_a_tuple_value_builds() {
     for inner in [
         quote::quote! { HashMap<String, (u32, u32)> },
         quote::quote! { Vec<HashMap<String, (u32, u32)>> },
@@ -9061,34 +9097,8 @@ fn a_brand_over_a_map_with_a_tuple_value_is_refused() {
             #[serde(transparent)]
             struct Wrap(pub #inner);
         });
-        assert_eq!(errors.len(), 1, "for {inner}, got: {errors:?}");
-        for needle in [
-            "compile_error",
-            "model_schema: type `Wrap`",
-            "a tuple is not supported as a map value",
-        ] {
-            assert!(
-                errors[0].contains(needle),
-                "{needle} missing for {inner}: {}",
-                errors[0]
-            );
-        }
+        assert!(errors.is_empty(), "for {inner}, got: {errors:?}");
     }
-}
-
-/// The refusal points at the tuple that earned it, not at the map or the whole inner.
-#[cfg(feature = "jsonschema")]
-#[test]
-fn a_brand_slot_value_refusal_is_spanned_on_the_tuple() {
-    let item: syn::ItemStruct =
-        syn::parse_str("#[serde(transparent)] struct Wrap(pub HashMap<String, (u32, u32)>);")
-            .unwrap();
-    let refusals = branded_guard_errors(&item, &super::ModelSchemaArgs::default());
-    assert_eq!(refusals.len(), 1, "got: {}", refusals.len());
-    assert_eq!(
-        refusals[0].span().source_text().as_deref(),
-        Some("(u32, u32)")
-    );
 }
 
 #[cfg(feature = "jsonschema")]
@@ -14829,9 +14839,9 @@ fn inserted_field_value(field_type: &str) -> String {
 #[test]
 fn an_unsupported_enum_keyed_map_value_emits_only_the_compile_error() {
     for map_type in [
-        "HashMap<Slot, (String, u32)>",
-        "HashMap<Slot, HashMap<String, (String, u32)>>",
-        "HashMap<Slot, Vec<HashMap<String, (String, u32)>>>",
+        "HashMap<Slot, HashMap<(String, u32), u8>>",
+        "HashMap<Slot, Vec<HashMap<(String, u32), u8>>>",
+        "HashMap<Slot, HashMap<String, HashMap<(String, u32), u8>>>",
     ] {
         let tokens = map_field_schema(map_type).to_string();
         assert!(
@@ -14847,7 +14857,7 @@ fn an_unsupported_enum_keyed_map_value_emits_only_the_compile_error() {
             "for {map_type}, got: {tokens}"
         );
         assert!(
-            tokens.contains("model_schema: field `m`: a tuple is not supported as a map value"),
+            tokens.contains(&format!("model_schema: field `m`: {TUPLE_KEY_REFUSAL}")),
             "for {map_type}, got: {tokens}"
         );
     }
@@ -15391,26 +15401,33 @@ fn an_opaque_string_keyed_map_value_stays_permissive() {
     );
 }
 
+/// A tuple as a map's value, under every key path, is the fixed array its own field position is.
 #[cfg(feature = "jsonschema")]
 #[test]
-fn an_unsupported_string_keyed_map_value_emits_only_the_compile_error() {
-    let tokens = map_field_schema("HashMap<String, (String, u32)>").to_string();
-    assert!(
-        tokens.starts_with(":: core :: compile_error !"),
-        "got: {tokens}"
-    );
-    assert!(!tokens.contains("properties . insert"), "got: {tokens}");
-    assert!(
-        tokens.contains("model_schema: field `m`: a tuple is not supported as a map value"),
-        "got: {tokens}"
-    );
+fn a_map_of_tuples_describes_each_value_as_its_array() {
+    for map_type in [
+        "HashMap<String, (String, u32)>",
+        "HashMap<Slot, (String, u32)>",
+        "HashMap<u32, (String, u32)>",
+        "HashMap<String, Vec<(String, u32)>>",
+    ] {
+        let tokens = map_field_schema(map_type).to_string();
+        assert!(
+            !tokens.contains("compile_error"),
+            "for {map_type}, got: {tokens}"
+        );
+        assert!(
+            tokens.contains(r#""type" : "array" , "prefixItems""#),
+            "for {map_type}, got: {tokens}"
+        );
+    }
 }
 
 /// The caret has to land on the tokens the author edits.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn a_refused_map_value_points_at_the_written_value() {
-    let tokens = sole_field_json_schema("pub struct Rows { pub m: HashMap<String, (u32, u32)> }");
+    let tokens = sole_field_json_schema("pub struct Rows { pub m: HashMap<(u32, u32), u32> }");
     assert_points_only_at(&tokens, "(u32, u32)", "a map value");
 }
 
@@ -15418,7 +15435,7 @@ fn a_refused_map_value_points_at_the_written_value() {
 #[test]
 fn a_refused_tuple_element_map_value_points_at_the_written_value() {
     let tokens =
-        sole_field_json_schema("pub struct Rows { pub t: (String, HashMap<String, (u32, u32)>) }");
+        sole_field_json_schema("pub struct Rows { pub t: (String, HashMap<(u32, u32), u32>) }");
     assert_points_only_at(&tokens, "(u32, u32)", "a tuple element map value");
 }
 
@@ -15761,20 +15778,26 @@ fn an_enum_keyed_map_renders_the_same_in_every_position() {
     }
 }
 
+/// A map under a key read from its text describes its values, nested in another map's value too,
+/// and names its keys by that text.
 #[cfg(feature = "jsonschema")]
 #[test]
-fn a_nested_map_under_an_unenumerable_key_still_renders_as_an_object() {
-    for map_type in [
-        "HashMap<String, HashMap<u32, String>>",
-        "HashMap<String, HashMap<Wrapper<Slot>, String>>",
+fn a_nested_map_under_a_key_read_from_its_text_describes_its_values() {
+    for (map_type, names) in [
+        (
+            "HashMap<String, HashMap<u32, String>>",
+            INTEGER_KEY_NAMES.to_owned(),
+        ),
+        (
+            "HashMap<String, HashMap<Wrapper<Slot>, String>>",
+            "({ let named_key : serde_json :: Value = ({ let arguments".to_owned(),
+        ),
     ] {
         let tokens = map_field_schema(map_type).to_string();
-        assert!(
-            tokens.contains(
-                r#""additionalProperties" : { "type" : "object" , "additionalProperties" : true }"#
-            ),
-            "for {map_type}, got: {tokens}"
+        let described = format!(
+            r#""additionalProperties" : serde_json :: json ! ({{ "type" : "object" , "additionalProperties" : {{ "type" : "string" }} , "propertyNames" : ({names}"#
         );
+        assert!(tokens.contains(&described), "for {map_type}, got: {tokens}");
     }
 }
 
@@ -15782,8 +15805,9 @@ fn a_nested_map_under_an_unenumerable_key_still_renders_as_an_object() {
 #[test]
 fn an_unsupported_nested_map_value_emits_only_the_compile_error() {
     for map_type in [
-        "HashMap<String, HashMap<String, (String, u32)>>",
-        "HashMap<String, Vec<HashMap<String, (String, u32)>>>",
+        "HashMap<String, HashMap<(String, u32), u32>>",
+        "HashMap<String, Vec<HashMap<(String, u32), u32>>>",
+        "HashMap<u32, HashMap<(String, u32), u32>>",
     ] {
         let tokens = map_field_schema(map_type).to_string();
         assert!(
@@ -15795,7 +15819,7 @@ fn an_unsupported_nested_map_value_emits_only_the_compile_error() {
             "for {map_type}, got: {tokens}"
         );
         assert!(
-            tokens.contains("model_schema: field `m`: a tuple is not supported as a map value"),
+            tokens.contains(&format!("model_schema: field `m`: {TUPLE_KEY_REFUSAL}")),
             "for {map_type}, got: {tokens}"
         );
     }
@@ -15883,7 +15907,7 @@ fn a_generic_sibling_string_keyed_map_value_emits_the_sibling_schema() {
 fn a_reference_site_argument_the_dispatch_cannot_render_is_refused() {
     let argument = get_field_def(
         "",
-        &syn::parse_str("HashMap<String, (u32, u32)>").unwrap(),
+        &syn::parse_str("HashMap<String, HashMap<(u32, u32), u32>>").unwrap(),
         "",
     );
     let rendered = super::argument_json_schema_value("IdType", &argument).to_string();
@@ -15892,7 +15916,7 @@ fn a_reference_site_argument_the_dispatch_cannot_render_is_refused() {
         "got: {rendered}"
     );
     assert!(
-        rendered.contains("model_schema: `IdType`: a tuple is not supported as a map value"),
+        rendered.contains(&format!("model_schema: `IdType`: {TUPLE_KEY_REFUSAL}")),
         "got: {rendered}"
     );
 }
@@ -15914,7 +15938,7 @@ fn sole_field_arguments(source: &str) -> Vec<super::FieldDef> {
 #[test]
 fn a_refused_reference_site_argument_points_at_the_written_argument() {
     let arguments =
-        sole_field_arguments("pub struct Holder { pub boxed: Boxed<HashMap<String, (u32, u32)>> }");
+        sole_field_arguments("pub struct Holder { pub boxed: Boxed<HashMap<(u32, u32), u32>> }");
     assert_points_only_at(
         &super::argument_json_schema_value("Boxed", &arguments[0]),
         "(u32, u32)",
@@ -15926,7 +15950,7 @@ fn a_refused_reference_site_argument_points_at_the_written_argument() {
 #[test]
 fn a_refused_declared_filling_points_at_the_written_filling() {
     let parameter: syn::Ident = syn::parse_str("IdType").unwrap();
-    let filling: syn::Type = syn::parse_str("HashMap<String, (u32, u32)>").unwrap();
+    let filling: syn::Type = syn::parse_str("HashMap<(u32, u32), u32>").unwrap();
     assert_points_only_at(
         &super::declared_filling_json_schema_value("IdType", &[(parameter, filling)]),
         "(u32, u32)",
@@ -16306,9 +16330,9 @@ fn tuple_field_schema(field_type: &str) -> String {
 #[test]
 fn a_tuple_element_holding_an_unrenderable_map_emits_only_the_compile_error() {
     for field_type in [
-        "(String, HashMap<String, (u32, u32)>)",
-        "(String, Vec<HashMap<String, (u32, u32)>>)",
-        "(String, (u32, HashMap<String, (u32, u32)>))",
+        "(String, HashMap<(u32, u32), u32>)",
+        "(String, Vec<HashMap<(u32, u32), u32>>)",
+        "(String, (u32, HashMap<(u32, u32), u32>))",
     ] {
         let tokens = tuple_field_schema(field_type);
         assert!(
@@ -16320,7 +16344,7 @@ fn a_tuple_element_holding_an_unrenderable_map_emits_only_the_compile_error() {
             "for {field_type}, got: {tokens}"
         );
         assert!(
-            tokens.contains("model_schema: field `t`: a tuple is not supported as a map value"),
+            tokens.contains(&format!("model_schema: field `t`: {TUPLE_KEY_REFUSAL}")),
             "for {field_type}, got: {tokens}"
         );
     }
@@ -16384,18 +16408,23 @@ fn a_sequence_of_optional_maps_admits_the_null_among_its_items() {
     );
 }
 
-/// A map named without a sequence wrapper describes exactly as it always has, on every key path.
+/// The description of a map of `u64` values keyed by an integer.
+#[cfg(feature = "jsonschema")]
+fn integer_keyed() -> String {
+    format!(
+        r#"serde_json :: json ! ({{ "type" : "object" , "additionalProperties" : {{ "type" : "integer" }} , "propertyNames" : ({INTEGER_KEY_NAMES} }})"#
+    )
+}
+
+/// A map named without a sequence wrapper describes its values on every key path.
 #[cfg(feature = "jsonschema")]
 #[test]
-fn an_unwrapped_map_field_keeps_the_object_it_has_always_described_as() {
+fn an_unwrapped_map_field_describes_its_values_on_every_key_path() {
     let string_keyed = r#"serde_json :: json ! ({ "type" : "object" , "additionalProperties" : { "type" : "integer" } })"#;
     for (map_type, expected) in [
-        ("HashMap<String, u64>", string_keyed),
-        ("BTreeMap<String, u64>", string_keyed),
-        (
-            "HashMap<u32, u64>",
-            r#"serde_json :: json ! ({ "type" : "object" , "additionalProperties" : true })"#,
-        ),
+        ("HashMap<String, u64>", string_keyed.to_owned()),
+        ("BTreeMap<String, u64>", string_keyed.to_owned()),
+        ("HashMap<u32, u64>", integer_keyed()),
     ] {
         assert_eq!(inserted_field_value(map_type), expected, "for {map_type}");
     }
@@ -16407,12 +16436,9 @@ fn an_optional_unwrapped_map_field_widens_the_object_with_null() {
     for (map_type, base) in [
         (
             "Option<HashMap<String, u64>>",
-            r#"serde_json :: json ! ({ "type" : "object" , "additionalProperties" : { "type" : "integer" } })"#,
+            r#"serde_json :: json ! ({ "type" : "object" , "additionalProperties" : { "type" : "integer" } })"#.to_owned(),
         ),
-        (
-            "Option<HashMap<u32, u64>>",
-            r#"serde_json :: json ! ({ "type" : "object" , "additionalProperties" : true })"#,
-        ),
+        ("Option<HashMap<u32, u64>>", integer_keyed()),
     ] {
         assert_eq!(
             inserted_field_value(map_type),
@@ -17684,8 +17710,8 @@ fn a_tuple_struct_describes_as_its_arity_in_json_schema() {
 #[test]
 fn a_tuple_struct_slot_the_dispatch_cannot_render_is_refused() {
     for shape in [
-        whole_tuple(&["HashMap<String, (u32, u32)>"]),
-        whole_tuple(&["String", "HashMap<String, (u32, u32)>"]),
+        whole_tuple(&["HashMap<(u32, u32), u32>"]),
+        whole_tuple(&["String", "HashMap<(u32, u32), u32>"]),
     ] {
         let rendered = tuple_struct_json_body("Pair", &shape).to_string();
         assert!(
@@ -17693,7 +17719,7 @@ fn a_tuple_struct_slot_the_dispatch_cannot_render_is_refused() {
             "Got: {rendered}"
         );
         assert!(
-            rendered.contains("model_schema: `Pair`: a tuple is not supported as a map value"),
+            rendered.contains(&format!("model_schema: `Pair`: {TUPLE_KEY_REFUSAL}")),
             "Got: {rendered}"
         );
         assert!(!rendered.contains("prefixItems"), "Got: {rendered}");
@@ -17704,7 +17730,7 @@ fn a_tuple_struct_slot_the_dispatch_cannot_render_is_refused() {
 #[test]
 fn a_refused_tuple_struct_slot_points_at_that_slot_alone() {
     let item: syn::ItemStruct =
-        syn::parse_str("pub struct Pair(pub String, pub HashMap<String, (u32, u32)>);").unwrap();
+        syn::parse_str("pub struct Pair(pub String, pub HashMap<(u32, u32), u32>);").unwrap();
     let slots: Vec<super::FieldDef> = item
         .fields
         .iter()

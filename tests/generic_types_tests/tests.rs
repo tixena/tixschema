@@ -959,11 +959,15 @@ mod jsonschema {
     }
 
     #[test]
-    fn a_stringified_concrete_key_keeps_its_open_object() {
+    fn a_stringified_concrete_key_describes_its_values_under_its_text() {
         let schema = KeyedByParameter::<String, u32>::json_schema();
         assert_eq!(
             schema["properties"]["stringified_number_key"],
-            serde_json::json!({ "type": "object", "additionalProperties": true })
+            serde_json::json!({
+                "type": "object",
+                "additionalProperties": { "type": "string" },
+                "propertyNames": { "type": "string", "pattern": "^-?[0-9]+(\\.0+)?$" }
+            })
         );
     }
 

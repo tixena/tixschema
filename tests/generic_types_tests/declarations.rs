@@ -37,6 +37,12 @@ mod sets;
 #[path = "../flatten_tests/maps.rs"]
 mod flattened_maps;
 
+/// The models of maps keyed by a value serde writes as text of its own, and the payloads serde
+/// reads and refuses for them.
+#[cfg(feature = "chrono")]
+#[path = "../collection_tests/keyed_maps.rs"]
+mod keyed_maps;
+
 /// The holders of an optional flattened member whose type the Kotlin emitter recorded no keys for,
 /// and whether TypeScript and Zod take each payload.
 #[path = "../kotlin_tests/unrecorded_options_models.rs"]
@@ -1672,6 +1678,28 @@ fn flattened_maps() -> String {
     .join("\n\n")
 }
 
+/// The models of maps keyed by a value serde writes as text of its own, each declared ahead of the
+/// one that names it: a bundle of their own, compiled with `tsc --strict` before it is loaded.
+#[cfg(feature = "chrono")]
+fn keyed_maps() -> String {
+    [
+        PREAMBLE.to_owned(),
+        keyed_maps::Baggywrinkle::ts_definition(),
+        keyed_maps::Baggywrinkle::zod_schema(),
+        keyed_maps::Futtock::ts_definition(),
+        keyed_maps::Futtock::zod_schema(),
+        keyed_maps::Gudgeon::ts_definition(),
+        keyed_maps::Gudgeon::zod_schema(),
+        keyed_maps::Marlinspike::ts_definition(),
+        keyed_maps::Marlinspike::zod_schema(),
+        keyed_maps::Scuttle::ts_definition(),
+        keyed_maps::Scuttle::zod_schema(),
+        keyed_maps::Trunnel::ts_definition(),
+        keyed_maps::Trunnel::zod_schema(),
+    ]
+    .join("\n\n")
+}
+
 /// The holders of an optional flattened member whose type the Kotlin emitter recorded no keys for:
 /// a bundle of their own, compiled with `tsc --strict` before it is loaded.
 fn unrecorded_options() -> String {
@@ -2663,6 +2691,35 @@ fn type_check_a_flattened_map_reads_under_zod_what_serde_reads() {
         flattened_maps::PRINTED,
         "the schemas do not read what serde reads:\n{failed}"
     );
+}
+
+/// Every payload of a map keyed by a value serde writes as text of its own is read by the Zod
+/// schema of its model under `node` as serde reads it, but where serde parts from Zod: the text of
+/// a number key Zod reads as the number, and an enum's content ahead of its tag.
+#[cfg(feature = "chrono")]
+#[test]
+fn type_check_a_map_keyed_by_text_reads_under_zod_what_serde_reads() {
+    let listed: Vec<(&str, String, &str)> = keyed_maps::PAYLOADS
+        .iter()
+        .map(|payload| {
+            (
+                payload.name,
+                format!("{}$Schema", payload.read_as),
+                payload.json,
+            )
+        })
+        .collect();
+    let driver =
+        FLATTENED_MAPS_DRIVER.replace("PAYLOADS", &serde_json::to_string(&listed).unwrap());
+    let Some((printed, failed)) = loaded_from("keyed-maps", &keyed_maps(), &driver) else {
+        return;
+    };
+    assert_eq!(
+        format!("{printed}\n"),
+        keyed_maps::PRINTED,
+        "the schemas do not read what they are stated to read:\n{failed}"
+    );
+    keyed_maps::assert_serde_reads_what_zod_reads();
 }
 
 /// An optional flattened struct is read by the Zod schema of its holder under `node` where it is

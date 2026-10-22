@@ -1,5 +1,5 @@
 //! What a JSON Schema document admits, for the keywords the documents of the ranges write, the
-//! keys a map names (`propertyNames`) and the `date` format.
+//! keys a map names (`propertyNames`), a `pattern` and the `date` format.
 
 use serde_json::Value;
 
@@ -65,6 +65,11 @@ pub fn refusal(document: &Value, value: &Value) -> Option<Refusal> {
             return Some(Refusal::Written);
         }
         if document.get("format").and_then(Value::as_str) == Some("date") && !full_date(text) {
+            return Some(Refusal::Written);
+        }
+        if let Some(pattern) = document.get("pattern").and_then(Value::as_str)
+            && !regex::Regex::new(pattern).unwrap().is_match(text)
+        {
             return Some(Refusal::Written);
         }
     }

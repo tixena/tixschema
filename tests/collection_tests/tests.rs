@@ -1,7 +1,7 @@
 //! Tests of collections: `Vec`, the sequence wrappers, and maps under every key type serde
 //! stringifies.
 
-use alloc::collections::{BTreeSet, BinaryHeap, VecDeque};
+use alloc::collections::{BTreeMap, BTreeSet, BinaryHeap, VecDeque};
 #[cfg(feature = "chrono")]
 use chrono::NaiveDate;
 #[cfg(all(
@@ -2081,6 +2081,28 @@ fn test_chrono_brand_keyed_maps_constructible() {
     assert_eq!(twin.by_day[&day], maps.by_day[&Day(day)]);
 }
 
+/// The keys of a map keyed by an integer, as the JSON Schema names them: the text serde writes.
+#[cfg(feature = "jsonschema")]
+fn integer_keys() -> Value {
+    serde_json::json!({ "type": "string", "pattern": "^-?[0-9]+(\\.0+)?$" })
+}
+
+/// The keys of a map keyed by a `bool`, as the JSON Schema names them.
+#[cfg(feature = "jsonschema")]
+fn bool_keys() -> Value {
+    serde_json::json!({ "type": "string", "pattern": "^(true|false)$" })
+}
+
+/// A map of `i64` counts under the keys `names` describes.
+#[cfg(feature = "jsonschema")]
+fn counts_under(names: &Value) -> Value {
+    serde_json::json!({
+        "type": "object",
+        "additionalProperties": { "type": "integer" },
+        "propertyNames": names
+    })
+}
+
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_scalar_brand_keyed_maps_describe_as_their_bare_inner_twin() {
@@ -2090,7 +2112,7 @@ fn test_scalar_brand_keyed_maps_describe_as_their_bare_inner_twin() {
     );
     assert_eq!(
         ScalarBrandKeyedMaps::json_schema()["properties"]["by_tick"],
-        serde_json::json!({ "type": "object", "additionalProperties": true })
+        counts_under(&integer_keys())
     );
 }
 
@@ -2285,7 +2307,7 @@ fn test_scalar_alias_keyed_maps_describe_as_their_bare_target_twin() {
     );
     assert_eq!(
         ScalarAliasKeyedMaps::json_schema()["properties"]["by_tick"],
-        serde_json::json!({ "type": "object", "additionalProperties": true })
+        counts_under(&integer_keys())
     );
 }
 
@@ -2546,11 +2568,13 @@ fn test_bool_keyed_maps_render_the_two_string_keys_on_zod() {
     }
 }
 
+/// Each map keyed by a `bool`, a brand or an alias over one, describes its values and names its
+/// keys `"true"` and `"false"`, the text serde writes.
 #[test]
 #[cfg(feature = "jsonschema")]
-fn test_bool_keyed_maps_describe_as_the_open_object() {
+fn test_bool_keyed_maps_describe_their_values_under_the_two_keys() {
     let schema = BoolKeyedMaps::json_schema();
-    let open = serde_json::json!({ "type": "object", "additionalProperties": true });
+    let counts = counts_under(&bool_keys());
     for field_name in [
         "alias_of_brand",
         "aliased",
@@ -2558,21 +2582,24 @@ fn test_bool_keyed_maps_describe_as_the_open_object() {
         "bare",
         "branded",
         "branded_chain",
-        "samples",
     ] {
-        assert_eq!(schema["properties"][field_name], open, "for {field_name}");
+        assert_eq!(schema["properties"][field_name], counts, "for {field_name}");
     }
     assert_eq!(
+        schema["properties"]["samples"]["propertyNames"],
+        bool_keys()
+    );
+    assert_eq!(
         schema["properties"]["optional"],
-        serde_json::json!({ "anyOf": [open, { "type": "null" }] })
+        serde_json::json!({ "anyOf": [counts, { "type": "null" }] })
     );
     assert_eq!(
         schema["properties"]["listed"],
-        serde_json::json!({ "type": "array", "items": open })
+        serde_json::json!({ "type": "array", "items": counts })
     );
     assert_eq!(
         schema["properties"]["nested"],
-        serde_json::json!({ "type": "object", "additionalProperties": open })
+        serde_json::json!({ "type": "object", "additionalProperties": counts })
     );
 }
 
@@ -2879,11 +2906,14 @@ fn test_date_time_keyed_maps_render_an_iso_string_key_on_zod() {
     }
 }
 
+/// Each map keyed by a `DateTime<Tz>`, a brand or an alias over one, describes its values and
+/// names its keys by the description of a `DateTime<Tz>`.
 #[test]
 #[cfg(all(feature = "chrono", feature = "jsonschema"))]
-fn test_date_time_keyed_maps_describe_as_the_open_object() {
+fn test_date_time_keyed_maps_describe_their_values_under_their_text() {
     let schema = DateTimeKeyedMaps::json_schema();
-    let open = serde_json::json!({ "type": "object", "additionalProperties": true });
+    let names = serde_json::json!({ "type": "string", "format": "date-time" });
+    let counts = counts_under(&names);
     for field_name in [
         "alias_of_brand",
         "aliased",
@@ -2891,21 +2921,21 @@ fn test_date_time_keyed_maps_describe_as_the_open_object() {
         "bare",
         "branded",
         "branded_chain",
-        "samples",
     ] {
-        assert_eq!(schema["properties"][field_name], open, "for {field_name}");
+        assert_eq!(schema["properties"][field_name], counts, "for {field_name}");
     }
+    assert_eq!(schema["properties"]["samples"]["propertyNames"], names);
     assert_eq!(
         schema["properties"]["optional"],
-        serde_json::json!({ "anyOf": [open, { "type": "null" }] })
+        serde_json::json!({ "anyOf": [counts, { "type": "null" }] })
     );
     assert_eq!(
         schema["properties"]["listed"],
-        serde_json::json!({ "type": "array", "items": open })
+        serde_json::json!({ "type": "array", "items": counts })
     );
     assert_eq!(
         schema["properties"]["nested"],
-        serde_json::json!({ "type": "object", "additionalProperties": open })
+        serde_json::json!({ "type": "object", "additionalProperties": counts })
     );
 }
 
@@ -3212,7 +3242,7 @@ fn test_unwrapped_map_fields_keep_the_object_they_describe_as() {
     );
     assert_eq!(
         properties["raw_keyed_counts"],
-        serde_json::json!({ "type": "object", "additionalProperties": true })
+        counts_under(&integer_keys())
     );
     assert_eq!(properties["bucket_counts"], bucket_keyed_count_map());
     assert_eq!(
@@ -4128,5 +4158,47 @@ fn test_a_doc_comment_reaches_ts_from_a_collapsed_wrapper_field() {
         "   * undocumented_vec\n   * \n   */\n  undocumented_vec: Array<string>;",
     ] {
         assert!(ts.contains(spelling), "Got: {ts}");
+    }
+}
+
+/// serde reads no map keyed by a number in an untagged enum, nor in an enum under a tag alone,
+/// though it writes one: it reads each from a copy of the payload it buffers, where every key is
+/// text. The README quotes both refusals.
+#[test]
+fn serde_reads_no_number_key_in_an_enum_it_buffers() {
+    #[derive(Debug, Deserialize, Serialize)]
+    #[serde(untagged)]
+    enum Leadlines {
+        Lines(BTreeMap<u32, u8>),
+    }
+
+    #[derive(Debug, Deserialize, Serialize)]
+    #[serde(tag = "kind")]
+    enum Plumbed {
+        Named { depths: BTreeMap<u32, u8> },
+    }
+
+    let lines = serde_json::to_string(&Leadlines::Lines(BTreeMap::from([(7, 2)]))).unwrap();
+    assert_eq!(lines, r#"{"7":2}"#);
+    let named = serde_json::to_string(&Plumbed::Named {
+        depths: BTreeMap::from([(7, 2)]),
+    })
+    .unwrap();
+    assert_eq!(named, r#"{"kind":"Named","depths":{"7":2}}"#);
+    for (written, refused) in [
+        (
+            format!("`{lines}` and refuses it on the way back"),
+            serde_json::from_str::<Leadlines>(&lines).unwrap_err(),
+        ),
+        (
+            format!("`{named}` and refuses it"),
+            serde_json::from_str::<Plumbed>(&named).unwrap_err(),
+        ),
+    ] {
+        let stated = format!("{written} (`{refused}`)");
+        assert!(
+            include_str!("../../README.md").contains(&stated),
+            "the README no longer states: {stated}"
+        );
     }
 }

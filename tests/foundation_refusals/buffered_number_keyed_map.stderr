@@ -1,0 +1,11 @@
+error: model_schema: type `Leadlines`: variant `Lines`, field `0`: an untagged enum cannot hold a map keyed by `u32` — serde reads an untagged enum from a copy of the payload it buffers, where every key is text, and reads no number and no `bool` from text, so no entry of that map reads back. Key the map by a `String`.
+  --> tests/foundation_refusals/buffered_number_keyed_map.rs:13:11
+   |
+13 |     Lines(BTreeMap<u32, u8>),
+   |           ^^^^^^^^^^^^^^^^^
+
+error: model_schema: type `Plumbed`: variant `Named`, field `depths`: an enum under a tag alone cannot hold a map keyed by `u32` — serde reads an enum under a tag alone from a copy of the payload it buffers, where every key is text, and reads no number and no `bool` from text, so no entry of that map reads back. Key the map by a `String`, or name a `content` key: serde writes the tag ahead of the content, and reads the content that follows it without a copy.
+  --> tests/foundation_refusals/buffered_number_keyed_map.rs:20:13
+   |
+20 |     Named { depths: BTreeMap<u32, u8> },
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^
