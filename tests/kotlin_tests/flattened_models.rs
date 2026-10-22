@@ -9,7 +9,9 @@
 //! nor a member flattened ahead of it took. An externally tagged enum takes the first entry under
 //! the name of a variant it reads, beside a member of its holder's own, ahead of a member that
 //! names a function and ahead of a struct, and one declared below its holder is read from the
-//! object. serde writes such an enum's unit variant as an entry, its name over `null`, the enum
+//! object; entries under two of its names TypeScript and Zod refuse. An enum under a tag and a
+//! content key takes both keys, ahead of a member that names a function and of a struct. serde
+//! writes an externally tagged enum's unit variant as an entry, its name over `null`, the enum
 //! optional and under a function too. An optional struct with a flattened member of its own, the
 //! one member, serde reads wherever the struct reads and as `None` wherever it does not. An
 //! optional map, the one member, serde reads as `None` wherever an entry does not read as a count,
@@ -51,6 +53,25 @@ pub const STOWING: [&str; 7] = [
     r#"{"Calm":null,"note":"a"}"#,
     r#"{"Held":"x","note":"a"}"#,
     r#"{"note":"a"}"#,
+];
+
+/// What [`Stowing`] is read from with entries under two names: two variants' names in each order,
+/// and a variant's name beside its alias. serde reads the first entry in the object's order, and
+/// TypeScript and Zod refuse each.
+pub const UNDER_TWO_NAMES: [&str; 3] = [
+    r#"{"note":"a","Bay":{"label":"n"},"Dock":{"label":"s"}}"#,
+    r#"{"note":"a","Dock":{"label":"s"},"Bay":{"label":"n"}}"#,
+    r#"{"note":"a","Dock":{"label":"s"},"Quay":{"label":"n"}}"#,
+];
+
+/// What [`Chafing`] is read from.
+pub const CHAFING: &str = r#"{"kind":"Rope","held":{"label":"n"},"north":2}"#;
+
+/// What [`Fraying`] is read from: a key its struct reads beside the tag and the content, and a key
+/// no member reads as well.
+pub const FRAYING: [&str; 2] = [
+    r#"{"kind":"Rope","held":{"label":"n"},"label":"m"}"#,
+    r#"{"kind":"Rope","held":{"label":"n"},"label":"m","north":2}"#,
 ];
 
 /// What [`Belting`] is read from: a variant's entry, and no variant's entry, of a key no variant is
@@ -662,6 +683,38 @@ pub struct Heaving {
     #[model_schema_prop(preprocess = ["withItsKeys"])]
     #[serde(flatten)]
     pub tally: Bunting,
+}
+
+/// An enum under a tag and a content key, which serde reads flattened as a struct of the two keys,
+/// taking both.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", content = "held")]
+pub enum Snubber {
+    Rope { label: String },
+}
+
+/// [`Snubber`] flattened ahead of a member that names a function: serde hands the function every
+/// key but the tag and the content.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Chafing {
+    #[serde(flatten)]
+    pub fairlead: Snubber,
+    #[model_schema_prop(preprocess = ["withItsKeys"])]
+    #[serde(flatten)]
+    pub tally: Bunting,
+}
+
+/// [`Snubber`] flattened ahead of a struct, which serde hands every key but the tag and the
+/// content.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Fraying {
+    #[serde(flatten)]
+    pub fairlead: Snubber,
+    #[serde(flatten)]
+    pub labelling: Labelling,
 }
 
 /// An externally tagged enum whose variants are written under the enum's `rename_all` and under a

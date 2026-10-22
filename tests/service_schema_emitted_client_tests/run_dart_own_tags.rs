@@ -153,15 +153,14 @@ fn the_dart_read_of_a_struct_under_its_own_tag_checks_the_tag_ahead_of_its_membe
             pennant_dart::dart_definition(),
             format!(
                 "factory Pennant.fromJsonUnjudged(Map<String, dynamic> json) {{ {} return \
-                 Pennant(labelling: Labelling.fromJsonUnjudged(({{...json}}..remove('note'))),\
-                 note: json['note'] as String,); }}",
+                 Pennant(labelling: Labelling.fromJsonUnjudged(json),note: json['note'] as \
+                 String,); }}",
                 tag_held("json", "Pennant")
             ),
         ),
         (
             dressing_dart::dart_definition(),
-            "Dressing(ensign: Ensign.fromJsonUnjudged(({...json}..remove('north'))),north: \
-             json['north'] as int,)"
+            "Dressing(ensign: Ensign.fromJsonUnjudged(json),north: json['north'] as int,)"
                 .to_owned(),
         ),
         (

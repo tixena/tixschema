@@ -504,8 +504,8 @@ fn the_serializer_the_emitter_writes_for_each_struct_shape_is_its_unjudged_one()
              val id = input.json.decodeFromJsonElement(serializer<String>(), (obj[\"id\"] ?: \
              throw SerializationException(\"missing field `id`\"))); \
              val stampKeys = setOf(\"created_at\", \"updated_at\"); val stamp = \
-             input.json.decodeFromJsonElement(StampUnjudged, JsonObject(JsonObject(obj - \
-             setOf(\"id\")).filterKeys { it in setOf(\"created_at\", \"updated_at\") })); \
+             input.json.decodeFromJsonElement(StampUnjudged, JsonObject(obj.filterKeys { it in \
+             setOf(\"created_at\", \"updated_at\") })); \
              if (!input.json.configuration.ignoreUnknownKeys) (obj - setOf(\"id\") - \
              setOf(\"created_at\", \"updated_at\")).keys.firstOrNull()?.let { throw \
              SerializationException(\"Encountered an unknown key '\" + it + \"'\") }; return \

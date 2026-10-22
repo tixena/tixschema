@@ -470,8 +470,8 @@ fn a_member_the_emitter_reads_is_corrected_in_place() {
          trimmed((obj[\"dock\"] ?: throw SerializationException(\"missing field `dock`\"))));",
         "val note = obj[\"note\"]?.let { input.json.decodeFromJsonElement(serializer<String?>(), \
          lowered(trimmed(it))) };",
-        "val parcel = input.json.decodeFromJsonElement(ParcelUnjudged, JsonObject(JsonObject(obj \
-         - setOf(\"dock\", \"note\")).filterKeys { it in setOf(\"label\") }));",
+        "val parcel = input.json.decodeFromJsonElement(ParcelUnjudged, JsonObject(obj.filterKeys \
+         { it in setOf(\"label\") }));",
     ] {
         assert!(kotlin.contains(held), "no `{held}` in: {kotlin}");
     }
@@ -489,10 +489,11 @@ fn a_member_the_emitter_reads_is_corrected_in_place() {
     );
 }
 
-/// Every flattened member is handed the keys neither its holder's own members nor a struct
-/// flattened ahead of it take: a type that names no function, one its type names, one the member
-/// names, and one of a type the emitter has not written. A type that names a function, and one the
-/// emitter has not written, take none of the keys they read.
+/// A flattened member is handed the keys neither its holder's own members nor a struct flattened
+/// ahead of it take where a function reads it, its type's or its own, or its type is one the
+/// emitter has not written. A struct the emitter wrote that names no function is read from the
+/// whole object, as TypeScript and Zod read it. A type that names a function, and one the emitter
+/// has not written, take none of the keys they read.
 #[cfg(feature = "serde")]
 #[test]
 fn every_flattened_member_is_handed_what_no_member_ahead_of_it_takes() {
@@ -519,19 +520,14 @@ fn every_flattened_member_is_handed_what_no_member_ahead_of_it_takes() {
         }
     };
     let kotlin = plain(&fastened);
-    let own = "JsonObject(obj - setOf(\"dock\", \"gate\"))";
     let rest = "JsonObject(obj - setOf(\"dock\", \"gate\") - baseKeys)";
+    let whole = "val base = input.json.decodeFromJsonElement(BaseUnjudged, \
+                 JsonObject(obj.filterKeys { it in setOf(\"name\") }));";
     for held in [
-        format!(
-            "val base = input.json.decodeFromJsonElement(BaseUnjudged, \
-             JsonObject({own}.filterKeys {{ it in setOf(\"name\") }}));"
-        ),
+        whole.to_owned(),
         format!("val keyed = lenient.decodeFromJsonElement(KeyedUnjudged, {rest});"),
         format!("val later = lenient.decodeFromJsonElement(serializer<Later>(), {rest});"),
-        format!(
-            "val again = input.json.decodeFromJsonElement(BaseUnjudged, \
-             JsonObject({rest}.filterKeys {{ it in setOf(\"name\") }}));"
-        ),
+        whole.replace("val base", "val again"),
     ] {
         assert!(kotlin.contains(&held), "no `{held}` in: {kotlin}");
     }

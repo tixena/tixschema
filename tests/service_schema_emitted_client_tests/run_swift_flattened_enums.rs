@@ -24,10 +24,11 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use super::flattened_models::{
-    BELTING, Belting, CLEATING, Cleating, HEAVING, Heaving, Luffing, SCUDDING, STOWING, Scudding,
-    Stowing, Tacking, UNDER_AN_ALIAS, Yawing, belting_swift, bunting_swift, cleating_swift,
-    heaving_swift, jibing_swift, luffing_swift, quaying_swift, scudding_swift, stowing_swift,
-    tacking_swift, yawing_swift,
+    BELTING, Belting, CHAFING, CLEATING, Chafing, Cleating, FRAYING, Fraying, HEAVING, Heaving,
+    Luffing, SCUDDING, STOWING, Scudding, Stowing, Tacking, UNDER_AN_ALIAS, Yawing, belting_swift,
+    bunting_swift, chafing_swift, cleating_swift, fraying_swift, heaving_swift, jibing_swift,
+    luffing_swift, quaying_swift, scudding_swift, snubber_swift, stowing_swift, tacking_swift,
+    yawing_swift,
 };
 use super::run_kotlin_refusals::{Becalming, becalming_swift};
 use super::runtime::judged;
@@ -230,11 +231,7 @@ fn tacking_rows() -> Vec<EntryRow> {
         }),
     }));
     rows.extend(HEAVING.into_iter().enumerate().map(|(at, json)| {
-        let apart = match at {
-            1 | 2 => Some(("Tacking", "Bay, Dock")),
-            3 => Some(("Tacking", "Bay, Quay")),
-            _ => None,
-        };
+        let apart = matches!(at, 1..=3).then_some(("Tacking", "Bay, Dock"));
         heaving(json, apart)
     }));
     rows.extend(CLEATING.map(|json| EntryRow {
@@ -302,7 +299,7 @@ fn careen_rows() -> Vec<EntryRow> {
         shown: CAREEN_AND_NOTE,
         told: told(
             json,
-            (at == 3).then_some(("Careen", "Bay, Quay")),
+            (at == 3).then_some(("Careen", "Bay, Dock")),
             |read: &Fending| format!("{} {}", self::json(&read.careen), read.note),
         ),
     }));
@@ -332,6 +329,9 @@ fn printed(main: &str) -> Option<String> {
         dredging_swift::swift_definition(),
         fending_swift::swift_definition(),
         becalming_swift::swift_definition(),
+        snubber_swift::swift_definition(),
+        chafing_swift::swift_definition(),
+        fraying_swift::swift_definition(),
         HELPERS.to_owned(),
         main.to_owned(),
     ]
@@ -358,9 +358,9 @@ fn printed(main: &str) -> Option<String> {
 /// ahead of a function and of a struct, under a `rename`, the enum's `rename_all` and an `alias`,
 /// a unit variant over `null`, and optional. A payload with no such entry is refused, and an
 /// optional enum reads `nil`. A model the holder judges is judged once, with the holder. Entries
-/// under two names are refused at the holder's coding path, the names in the order the enum
-/// declares its variants, on every run. An enum declared below its holder is read from the object
-/// the holder hands it.
+/// under two names are refused at the holder's coding path, naming each variant they belong to
+/// once, in the order the enum declares them, on every run. An enum declared below its holder is
+/// read from the object the holder hands it.
 #[test]
 fn a_flattened_enum_reads_in_swift_the_one_entry_under_a_variants_name() {
     let mut rows = tacking_rows();
@@ -395,7 +395,7 @@ fn a_flattened_enum_reads_in_swift_the_one_entry_under_a_variants_name() {
          10: {\"Bay\":{\"label\":\"n\"}} {\"keys\":[\"north\"]}\n\
          11: more than one variant of enum Tacking found in flattened data: Bay, Dock\n\
          12: more than one variant of enum Tacking found in flattened data: Bay, Dock\n\
-         13: more than one variant of enum Tacking found in flattened data: Bay, Quay\n\
+         13: more than one variant of enum Tacking found in flattened data: Bay, Dock\n\
          14: {\"pier\":{\"label\":\"n\"}} {\"keys\":[\"north\"]}\n\
          15: {\"open_bay\":{\"label\":\"n\"}} {\"keys\":[\"north\"]}\n\
          16: no variant of enum Jibing found in flattened data\n\
@@ -412,7 +412,7 @@ fn a_flattened_enum_reads_in_swift_the_one_entry_under_a_variants_name() {
          27: null a\n\
          28: {\"Bay\":{\"label\":\"n\"}} a\n\
          29: 'Bay.label': too short: minimum length is 1, got 0\n\
-         30: more than one variant of enum Careen found in flattened data: Bay, Quay\n\
+         30: more than one variant of enum Careen found in flattened data: Bay, Dock\n\
          path: Index 1\n"
     );
     for run in ["first", "second", "third"] {
@@ -499,8 +499,7 @@ fn a_holder_of_a_flattened_enum_writes_back_in_swift_what_serde_writes_back() {
 /// A flattened externally tagged enum built in Swift is written as serde writes it, beside a
 /// member of its holder's own, optional and under a function: a variant that holds a value as its
 /// entry, and a unit variant as its name over `null`. What serde writes is read and written back
-/// as it was, but a unit variant's entry under a function: the enum's own read takes it, and
-/// refuses it, as the Zod schema refuses it.
+/// as it was, a unit variant's entry under a function among it, as the Zod schema reads it.
 #[test]
 fn a_flattened_enum_writes_in_swift_as_serde_writes_it() {
     let tackings = [
@@ -522,7 +521,6 @@ fn a_flattened_enum_writes_in_swift_as_serde_writes_it() {
     let note = || "a".to_owned();
     let mut rows = Vec::new();
     for (tacking, built) in tackings {
-        let unit = tacking == Tacking::Calm;
         let stowing = Stowing {
             note: note(),
             tacking: tacking.clone(),
@@ -536,30 +534,21 @@ fn a_flattened_enum_writes_in_swift_as_serde_writes_it() {
             tacking,
         };
         rows.extend([
-            ("Stowing", json(&stowing), built, None),
-            ("Belting", json(&belting), built, None),
-            (
-                "Yawing",
-                json(&yawing),
-                built,
-                unit.then_some("unknown tag Calm"),
-            ),
+            ("Stowing", json(&stowing), built),
+            ("Belting", json(&belting), built),
+            ("Yawing", json(&yawing), built),
         ]);
     }
     let unheld = Belting {
         note: note(),
         tacking: None,
     };
-    rows.push(("Belting", json(&unheld), "nil", None));
+    rows.push(("Belting", json(&unheld), "nil"));
     let mut expected = String::new();
     let mut main = String::new();
-    for (holder, serde_wrote, built, refused) in &rows {
+    for (holder, serde_wrote, built) in &rows {
         let sorted = written_back::<Value>(serde_wrote);
-        let _ = writeln!(
-            expected,
-            "{holder}: {sorted} {}",
-            refused.unwrap_or(&sorted)
-        );
+        let _ = writeln!(expected, "{holder}: {sorted} {sorted}");
         let _ = writeln!(
             main,
             "print(\"{holder}: \\(written({holder}(note: \"a\", tacking: {built}))) \
@@ -576,7 +565,7 @@ fn a_flattened_enum_writes_in_swift_as_serde_writes_it() {
          {\"Bay\":{\"label\":\"n\"},\"note\":\"a\"}\n\
          Stowing: {\"Calm\":null,\"note\":\"a\"} {\"Calm\":null,\"note\":\"a\"}\n\
          Belting: {\"Calm\":null,\"note\":\"a\"} {\"Calm\":null,\"note\":\"a\"}\n\
-         Yawing: {\"Calm\":null,\"note\":\"a\"} unknown tag Calm\n\
+         Yawing: {\"Calm\":null,\"note\":\"a\"} {\"Calm\":null,\"note\":\"a\"}\n\
          Stowing: {\"Dock\":{\"label\":\"s\"},\"note\":\"a\"} \
          {\"Dock\":{\"label\":\"s\"},\"note\":\"a\"}\n\
          Belting: {\"Dock\":{\"label\":\"s\"},\"note\":\"a\"} \
@@ -744,4 +733,37 @@ fn an_enum_declared_below_its_holder_is_refused_in_swift_beside_another_key() {
             "the {run} run"
         );
     }
+}
+
+/// An enum under a tag and a content key flattened into its holder takes both keys, as serde reads
+/// it as a struct of the two: a member that names a function flattened after it is handed every
+/// other key, and a struct flattened after it reads the whole object. Each holder is written back
+/// as serde writes it back.
+#[test]
+fn an_enum_under_a_tag_and_a_content_key_takes_both_keys_in_swift() {
+    let chafing: Chafing = serde_json::from_str(CHAFING).unwrap();
+    let fraying: Fraying = serde_json::from_str(FRAYING[0]).unwrap();
+    let expected = format!(
+        "chafing: {} {}\nfraying: {} {}\n",
+        json(&chafing.tally.keys),
+        written_back::<Chafing>(CHAFING),
+        json(&fraying.labelling),
+        written_back::<Fraying>(FRAYING[0])
+    );
+    assert_eq!(
+        expected,
+        "chafing: [\"north\"] {\"held\":{\"label\":\"n\"},\"keys\":[\"north\"],\"kind\":\"Rope\"}\n\
+         fraying: {\"label\":\"m\"} {\"held\":{\"label\":\"n\"},\"kind\":\"Rope\",\"label\":\"m\"}\n"
+    );
+    let main = format!(
+        "let chafing = try! JSONDecoder().decode(Chafing.self, from: Data(#\"{CHAFING}\"#.utf8))\n\
+         print(\"chafing: \\(written(chafing.tally.keys)) \\(written(chafing))\")\n\
+         let fraying = try! JSONDecoder().decode(Fraying.self, from: Data(#\"{}\"#.utf8))\n\
+         print(\"fraying: \\(written(fraying.labelling)) \\(written(fraying))\")\n",
+        FRAYING[0]
+    );
+    let Some(printed) = printed(&main) else {
+        return;
+    };
+    assert_eq!(printed, expected);
 }

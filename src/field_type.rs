@@ -616,13 +616,21 @@ impl FieldDef {
     /// spliced in the name's place has to be the whole of what the operand validates.
     #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
     pub fn flatten_variants(&self) -> Vec<FlattenVariant> {
-        if self.array_depth > 0 || self.is_written_around() {
+        if self.is_written_around() {
             return Vec::new();
         }
-        let FieldDefType::SiblingType(name, _) = &self.field_type else {
+        self.recorded_flatten_variants()
+    }
+
+    /// [`Self::flatten_variants`] of a field that names a function its schema is written around,
+    /// which an operand writes around the variants in place of the name: the enum's own binding
+    /// takes a unit variant as its bare name, which serde writes flattened as an entry over `null`.
+    #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+    pub fn flatten_variants_written_around(&self) -> Vec<FlattenVariant> {
+        if !self.is_written_around() {
             return Vec::new();
-        };
-        lookup_alias_info(name).map_or_else(Vec::new, |info| info.flatten_variants)
+        }
+        self.recorded_flatten_variants()
     }
 
     #[cfg(feature = "chrono")]
@@ -1101,6 +1109,18 @@ impl FieldDef {
             | FieldDefType::NaiveDateTime
             | FieldDefType::DateTime => false,
         }
+    }
+
+    /// What the externally tagged enum this field names recorded for each of its variants.
+    #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+    fn recorded_flatten_variants(&self) -> Vec<FlattenVariant> {
+        if self.array_depth > 0 {
+            return Vec::new();
+        }
+        let FieldDefType::SiblingType(name, _) = &self.field_type else {
+            return Vec::new();
+        };
+        lookup_alias_info(name).map_or_else(Vec::new, |info| info.flatten_variants)
     }
 
     /// The name of the first `is_refused_sequence_wrapper` this field reaches, at any depth.
@@ -1668,8 +1688,43 @@ impl FieldDef {
     /// The same value on the Zod surface, for the same reason: what a merged source validates, with
     /// the outermost `Option` left to whatever assembles the merge. See
     /// [`Self::typescript_merged_typename`].
+    /// A field written around a function whose type is an externally tagged enum joins the
+    /// function around its variants, each as a flattened enum is joined, where the enum's own
+    /// binding is not the one schema that calls a function of its own or replaces a default.
     #[cfg(feature = "zod")]
     pub fn zod_merged_schema(&self) -> String {
+        #[cfg(feature = "serde")]
+        {
+            let variants = self.flatten_variants_written_around();
+            if !variants.is_empty()
+                && !self.zod_names_a_preprocess()
+                && !variants
+                    .iter()
+                    .any(|variant| holds_a_placeholder(&variant.zod))
+            {
+                let choice = format!(
+                    "z.union([{}])",
+                    variants
+                        .iter()
+                        .map(|variant| variant.zod.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                // A check takes the enum's value, where a unit variant is its bare name.
+                let value = variants
+                    .iter()
+                    .rev()
+                    .filter_map(|variant| variant.unit.as_deref())
+                    .fold("ctx.value".to_owned(), |rest, key| {
+                        format!("\"{key}\" in ctx.value ? \"{key}\" : {rest}")
+                    });
+                return self.zod_preprocess_wrap(zod_check_wrap_handing(
+                    choice,
+                    self.checks(),
+                    &value,
+                ));
+            }
+        }
         self.zod_base()
     }
 
@@ -1886,13 +1941,30 @@ pub fn zod_preprocess_wrap(schema: String, functions: &[FunctionName]) -> String
 /// `typescript` writes the same text.
 #[cfg(feature = "zod")]
 pub fn zod_check_wrap(schema: String, checks: &[FunctionName]) -> String {
+    zod_check_wrap_handing(schema, checks, "ctx.value")
+}
+
+/// [`zod_check_wrap`], handing each function `value`, an expression over `ctx.value`, as the
+/// value and as the payload's. It is written in both places so the function's own parameter
+/// types it, and a variant's bare name stays the literal the type names.
+#[cfg(feature = "zod")]
+pub fn zod_check_wrap_handing(schema: String, checks: &[FunctionName], value: &str) -> String {
     checks.iter().fold(schema, |wrapped, check| {
-        format!(
-            "{wrapped}.check((ctx) => {{\n  const own = {{ value: ctx.value, issues: \
-             ctx.issues.slice(0, 0) }};\n  {}(own.value, own);\n  for (const issue of own.issues) \
-             ctx.issues.push({{ ...issue, continue: true }});\n}})",
-            check.name
-        )
+        if value == "ctx.value" {
+            format!(
+                "{wrapped}.check((ctx) => {{\n  const own = {{ value: ctx.value, issues: \
+                 ctx.issues.slice(0, 0) }};\n  {}(own.value, own);\n  for (const issue of \
+                 own.issues) ctx.issues.push({{ ...issue, continue: true }});\n}})",
+                check.name
+            )
+        } else {
+            format!(
+                "{wrapped}.check((ctx) => {{\n  const own = {{ issues: ctx.issues.slice(0, 0) \
+                 }};\n  {}({value}, {{ ...own, value: {value} }});\n  for (const issue of \
+                 own.issues) ctx.issues.push({{ ...issue, continue: true }});\n}})",
+                check.name
+            )
+        }
     })
 }
 

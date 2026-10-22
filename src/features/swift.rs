@@ -20,7 +20,7 @@ use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{
     brand_field, has_serde_skip_serializing, keys_taken_when_flattened, parse_serde_key_omission,
-    struct_tag, variant_names_when_flattened,
+    struct_tag, tag_and_content_when_flattened, variant_names_when_flattened,
 };
 use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, classify_variant, get_field_def,
@@ -323,6 +323,7 @@ impl VariantPayload {
                     plain: preprocess::Plain::Declared,
                     real_type: held,
                     stem: from.stem,
+                    units: &[],
                     walked: self.walked.is_some(),
                 },
                 self.converted.as_ref(),
@@ -1321,6 +1322,7 @@ fn tuple_shape(elements: &[FieldDef], name_hint: &str, aux: &mut Vec<String>) ->
                         plain: preprocess::Plain::Declared,
                         real_type: &element_type,
                         stem: &stem,
+                        units: &[],
                         walked,
                     },
                     Some(&slot),
@@ -2081,7 +2083,7 @@ fn present_statement(
         return flattened_option(field, source, withheld, container, locals, twins);
     }
     let beside = field.flatten && preprocess::beside(&field.field_def);
-    if field.flatten && withheld && !beside {
+    if field.flatten && withheld && !beside && !preprocess::reads_the_whole(&field.field_def) {
         // A type that reads its holder's decoder sees every key, so it is read from the payload
         // without the keys taken.
         return corrected_field(field, &[], walked, source, None, twins);
@@ -2134,6 +2136,7 @@ fn flattened_enum(
             plain: preprocess::Plain::Declared,
             real_type,
             stem: swift_bare(&field.swift_name),
+            units: &[],
             walked: validate::walks(&def, false),
         },
         entries,
@@ -2165,7 +2168,7 @@ fn flattened_entries(item_enum: &ItemEnum, preprocess: &[FunctionName]) -> Vec<p
                     variant: variant_name.clone(),
                 })
         })
-        .filter(|entry| read.contains(&entry.name))
+        .filter(|entry| read.iter().flatten().any(|name| *name == entry.name))
         .collect()
 }
 
@@ -2204,7 +2207,10 @@ fn flattened_option(
     if keys.is_empty() {
         return format!("do {{ {read} }} catch {{ {absent} }}");
     }
-    let without = if withheld && let read::Source::Beside(taken) = source {
+    let without = if withheld
+        && !preprocess::reads_the_whole(&field.field_def)
+        && let read::Source::Beside(taken) = source
+    {
         Some(taken.as_str())
     } else {
         None
@@ -2338,6 +2344,7 @@ fn default_statement(field: &SwiftField, at: &str, path: &str, twins: &mut Vec<S
             plain,
             real_type: &field.real_type,
             stem: &stem,
+            units: &[],
             walked: validate::walks(&field.field_def, false),
         },
         at,
@@ -2362,6 +2369,11 @@ fn corrected_field(
     let convert = |local: &str| converted(field, local);
     let shaped = field.shaped();
     let plain = plain_read(&shaped, &wire, &convert);
+    let units = if field.flatten {
+        preprocess::units_of(&field.field_def)
+    } else {
+        Vec::new()
+    };
     let member = preprocess::Member {
         def: &field.field_def,
         functions,
@@ -2370,6 +2382,7 @@ fn corrected_field(
         plain,
         real_type: &field.real_type,
         stem: swift_bare(&field.swift_name),
+        units: &units,
         walked,
     };
     let sink = |held: &str| format!("self.{} = {held}", field.swift_name);
@@ -3210,6 +3223,7 @@ fn lone_slot_read(
                 plain: preprocess::Plain::Declared,
                 real_type,
                 stem: "value",
+                units: &[],
                 walked,
             },
             Some(shaped),
@@ -3503,10 +3517,14 @@ fn slot_payload(
         && preprocess::beside(&field_def);
     let walked = (validate::walks(&field_def, runs_both) || handed_keys)
         .then(|| (field_def.clone(), hint.clone()));
-    // Under a tag alone a type that takes no keys is read from the object without the tag.
+    // Under a tag alone a type that takes no keys is read from the object without the tag, but a
+    // struct or an enum under a tag key written above, which reads the tag as TypeScript and Zod
+    // read it.
     let corrected = (!preprocess::functions(&field_def).is_empty()
-        || (shape.tag_attrs.tag_alone() && !handed_keys))
-        .then(|| (field_def.clone(), hint));
+        || (shape.tag_attrs.tag_alone()
+            && !handed_keys
+            && !preprocess::reads_the_whole(&field_def)))
+    .then(|| (field_def.clone(), hint));
     VariantPayload {
         bound,
         converted: (slot.converts() || read::holds_a_length(&slot.def)).then_some(slot),
@@ -4178,6 +4196,10 @@ fn enum_swift_tokens(item_enum: &ItemEnum, args: &SwiftTypeArgs<'_>) -> TokenStr
     preprocess::note(&rust_ident, read::takes_keys(&swift_source));
     preprocess::note_entries(&rust_ident, flattened_entries(item_enum, args.preprocess));
     preprocess::note_tag_keys(&rust_ident, tag_keys(&tag_attrs, args.preprocess));
+    preprocess::note_tag_and_content(
+        &rust_ident,
+        tag_and_content_when_flattened(item_enum, args.preprocess),
+    );
     let externally_tagged = writes_bare_variant_names && !is_plain_enum(item_enum);
     note_unit_entries(
         &rust_ident,

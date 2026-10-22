@@ -562,10 +562,10 @@ mod run_swift_own_tags;
 #[path = "swift_tests/flattened_models.rs"]
 mod swift_flattened_models;
 
-/// A struct with a flattened member of its own that reads a key a member of its holder's own, or a
-/// struct flattened ahead of it, took.
+/// A flattened struct that reads a key a member of its holder's own, a struct flattened ahead of
+/// it or the tag of the variant that flattens it took, read by the Dart, Kotlin and Swift runs.
 #[cfg(test)]
-#[cfg(feature = "swift")]
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
 #[path = "swift_tests/shared_key_models.rs"]
 mod shared_key_models;
 

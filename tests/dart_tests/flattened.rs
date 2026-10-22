@@ -15,6 +15,9 @@ use super::flattened_models::{
     spare_dart, steeving_dart, trimming_dart, twin_dart,
 };
 
+/// The names of each variant of `Hatching`, as the read of a flattened one lists them.
+const HATCHING: &str = "['Bay'], ['Dock', 'Quay']";
+
 /// The read of a map of `u8` values from the object `source` names.
 fn counts_from(source: &str) -> String {
     format!(
@@ -28,11 +31,15 @@ fn keyed_from(source: &str) -> String {
     format!("Keying.fromJsonUnjudged(withItsKeys({source}))")
 }
 
-/// An object of the first entry of the object `source` names under one of `names`, in the
-/// object's order.
-fn first_of(source: &str, names: &str) -> String {
+/// An object of the one entry of the object `source` names under one of `names`, refused where it
+/// holds entries under two of them, naming once each variant of the enum `enum_name` they belong
+/// to, each a list of `variants`.
+fn first_of(source: &str, enum_name: &str, names: &str, variants: &str) -> String {
     format!(
-        "(switch ({source}) {{ final whole => {{ for (final key in \
+        "(switch ({source}) {{ final whole => whole.keys.where(const [{names}].contains).length > \
+         1 ? throw FormatException('more than one variant of enum {enum_name} found in flattened \
+         data: ' + [for (final variant in const [{variants}]) if \
+         (variant.any(whole.containsKey)) variant.first].join(', ')) : {{ for (final key in \
          whole.keys.where(const [{names}].contains).take(1)) key: whole[key] }} }})"
     )
 }
@@ -67,14 +74,15 @@ fn a_map_alone_is_read_from_every_key() {
 
 /// A member that names a function flattened after a struct is handed the object without the keys
 /// the struct took, and beside a member of its holder's own without that member's key too. The
-/// struct is read as it was.
+/// struct is read from the whole object, as TypeScript and Zod read it, and so is a struct
+/// flattened after it.
 #[test]
 fn a_function_after_a_flattened_struct_is_handed_the_object_without_the_keys_the_struct_took() {
     assert_written(
         &clamping_dart::dart_definition(),
         &format!(
-            "Clamping(marking: Marking.fromJsonUnjudged(({{...json}}..remove('note'))),note: \
-             json['note'] as String,other: {},);",
+            "Clamping(marking: Marking.fromJsonUnjudged(json),note: json['note'] as String,other: \
+             {},);",
             keyed_from("({...json}..remove('note')..remove('label'))")
         ),
     );
@@ -95,7 +103,7 @@ fn a_function_after_a_flattened_struct_is_handed_the_object_without_the_keys_the
     assert_written(
         &doubling_dart::dart_definition(),
         "Doubling(marking: Marking.fromJsonUnjudged(json),twice: \
-         Marking.fromJsonUnjudged(({...json}..remove('label'))),);",
+         Marking.fromJsonUnjudged(json),);",
     );
 }
 
@@ -134,13 +142,13 @@ fn a_function_ahead_of_every_struct_or_after_a_member_that_takes_no_key_is_hande
     );
 }
 
-/// A flattened externally tagged enum is read from the first entry under the name of a variant
-/// serde reads, or an alias of one, each as serde reads it, and a member that names a function
-/// flattened after it is handed the object without that entry, and a member after both without
-/// the keys the second took as well.
+/// A flattened externally tagged enum is read from the one entry under the name of a variant serde
+/// reads, or an alias of one, each as serde reads it, and a member that names a function flattened
+/// after it is handed the object without that entry, and a member after both without the keys the
+/// second took as well. A struct flattened after it is read from the whole object.
 #[test]
 fn a_function_after_a_flattened_externally_tagged_enum_is_handed_no_entry_of_the_variant() {
-    let hatching = first_of("json", "'Bay', 'Dock', 'Quay'");
+    let hatching = first_of("json", "Hatching", "'Bay', 'Dock', 'Quay'", HATCHING);
     assert_written(
         &loading_dart::dart_definition(),
         &format!(
@@ -152,7 +160,12 @@ fn a_function_after_a_flattened_externally_tagged_enum_is_handed_no_entry_of_the
         &kedging_dart::dart_definition(),
         &format!(
             "Kedging(kedge: Warping.fromJsonUnjudged({}),rest: {},);",
-            first_of("json", "'pier', 'open_bay'"),
+            first_of(
+                "json",
+                "Warping",
+                "'pier', 'open_bay'",
+                "['pier'], ['open_bay']"
+            ),
             keyed_from(&without_first("json", "'pier', 'open_bay'"))
         ),
     );
@@ -161,7 +174,7 @@ fn a_function_after_a_flattened_externally_tagged_enum_is_handed_no_entry_of_the
         &trimming_dart::dart_definition(),
         &format!(
             "Trimming(hatching: Hatching.fromJsonUnjudged({hatching}),marking: \
-             Marking.fromJsonUnjudged({after_the_enum}),rest: {},);",
+             Marking.fromJsonUnjudged(json),rest: {},);",
             keyed_from(&format!("({{...{after_the_enum}}}..remove('label'))"))
         ),
     );
@@ -176,7 +189,12 @@ fn a_flattened_externally_tagged_enum_is_read_from_its_variants_entry() {
         &battening_dart::dart_definition(),
         &format!(
             "Battening(hatching: Hatching.fromJsonUnjudged({}),note: json['note'] as String,);",
-            first_of("({...json}..remove('note'))", "'Bay', 'Dock', 'Quay'")
+            first_of(
+                "({...json}..remove('note'))",
+                "Hatching",
+                "'Bay', 'Dock', 'Quay'",
+                HATCHING
+            )
         ),
     );
     assert_written(
@@ -195,7 +213,12 @@ fn an_optional_flattened_externally_tagged_enum_is_null_where_no_entry_is() {
         &format!(
             "Caulking(hatching: (switch ({}) {{ final entry => entry.isEmpty ? null : \
              Hatching.fromJsonUnjudged(entry) }}),note: json['note'] as String,);",
-            first_of("({...json}..remove('note'))", "'Bay', 'Dock', 'Quay'")
+            first_of(
+                "({...json}..remove('note'))",
+                "Hatching",
+                "'Bay', 'Dock', 'Quay'",
+                HATCHING
+            )
         ),
     );
 }

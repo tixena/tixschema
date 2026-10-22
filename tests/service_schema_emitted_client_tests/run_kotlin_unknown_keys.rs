@@ -58,6 +58,11 @@ fun <T> unknown(at: String, serializer: KSerializer<T>, payload: String) {
 }
 "#;
 
+/// What the Kotlin read answers of a flattened enum's entries under two variants' names, under
+/// either `Json`, as TypeScript and Zod refuse them.
+const TWO_VARIANTS: &str =
+    "refused: more than one variant of enum Tacking found in flattened data: Bay, Dock";
+
 /// Every payload, beside what serde, Zod and the Kotlin read answer of it: a key no member reads
 /// in a struct, in a variant under each tagging and beside a flattened struct, where the struct
 /// and the struct it flattens are under their own tag, and beside a flattened enum; the payloads
@@ -156,9 +161,9 @@ const ROWS: [Row; 34] = [
         zod: "refused",
     },
     Row {
-        ignoring: "read {\"note\":\"a\",\"Bay\":{\"label\":\"n\"}}",
+        ignoring: TWO_VARIANTS,
         json: STOWING[3],
-        kotlin: "refused: Encountered an unknown key 'Dock'",
+        kotlin: TWO_VARIANTS,
         named: "Stowing",
         serde: written_back::<Stowing>,
         zod: "refused",

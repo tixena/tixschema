@@ -39,9 +39,10 @@ fn plain_args() -> DartTypeArgs<'static> {
 }
 
 /// A flattened `Option` of an enum under a tag key whose class was emitted above is looked for by
-/// its tag, then its content key, and takes neither off the object the members after it are
-/// handed. One that names a function on itself has no key to be looked for by, and is `null`
-/// wherever its read throws.
+/// its tag, then its content key, in the whole object its holder reads, as TypeScript and Zod read
+/// it. One under a tag alone takes no key off the object the members after it are handed, and one
+/// under a tag and a content key takes both, as serde reads it. One that names a function on itself
+/// has no key to be looked for by, and is `null` wherever its read throws.
 #[cfg(feature = "serde")]
 #[test]
 fn a_flattened_option_of_an_enum_under_a_tag_key_is_looked_for_by_its_tag() {
@@ -84,12 +85,12 @@ fn a_flattened_option_of_an_enum_under_a_tag_key_is_looked_for_by_its_tag() {
         )),
     ];
     assert_eq!(written.len(), 3, "each enum is written ahead of its holder");
-    let handed = "({...json}..remove('note'))";
+    let handed = "({...json}..remove('note')..remove('kind')..remove('body'))";
     let expected = format!(
-        "Belaying(cleat: ({handed}.keys.any(const ['kind'].contains) ? \
-         Cleat.fromJsonUnjudged({handed}) : null),bollard: ({handed}.keys.any(const ['kind', \
-         'body'].contains) ? Bollard.fromJsonUnjudged({handed}) : null),bitt: (() {{ try {{ \
-         return Bitt.fromJsonUnjudged({handed}); }} catch (_) {{ return null; }} }})(),note: \
+        "Belaying(cleat: (json.keys.any(const ['kind'].contains) ? Cleat.fromJsonUnjudged(json) : \
+         null),bollard: (json.keys.any(const ['kind', 'body'].contains) ? \
+         Bollard.fromJsonUnjudged(json) : null),bitt: (() {{ try {{ return \
+         Bitt.fromJsonUnjudged({handed}); }} catch (_) {{ return null; }} }})(),note: \
          json['note'] as String,);"
     );
     let dart = definition(struct_dart_tokens(&item, &plain_args()));

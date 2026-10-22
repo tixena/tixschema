@@ -95,14 +95,16 @@ fn a_variant_with_a_member_serde_never_writes_names_the_serializer_the_emitter_w
             )),
             "got: {kotlin}"
         );
+        // Under a tag alone the variant is handed the whole object, which holds the tag too.
+        let tag = if name == "Wearing" { ", \"kind\"" } else { "" };
         assert!(
             kotlin.contains(&format!(
                 "val spare = obj[\"spare\"]?.let {{ \
                  input.json.decodeFromJsonElement(serializer<UInt?>(), it) }}; if \
                  (!input.json.configuration.ignoreUnknownKeys) (obj - setOf(\"label\", \
-                 \"spare\")).keys.firstOrNull()?.let {{ throw SerializationException(\"Encountered \
-                 an unknown key '\" + it + \"'\") }}; return {name}Furled(label = label, spare = \
-                 spare) }} }}"
+                 \"spare\"{tag})).keys.firstOrNull()?.let {{ throw \
+                 SerializationException(\"Encountered an unknown key '\" + it + \"'\") }}; return \
+                 {name}Furled(label = label, spare = spare) }} }}"
             )),
             "got: {kotlin}"
         );
@@ -132,14 +134,13 @@ fn a_flattened_member_serde_never_writes_merges_nothing() {
         flemishing.contains(written),
         "no `{written}` in: {flemishing}"
     );
-    let read = "val braiding = if (JsonObject(obj - setOf(\"note\")).keys.any { it in \
-                braidingKeys })";
+    let read = "val braiding = if (obj.keys.any { it in braidingKeys })";
     assert!(flemishing.contains(read), "no `{read}` in: {flemishing}");
     let splaying = splaying_kotlin::kotlin_definition();
     for held in [
         "data class Splaying(val braiding: Braiding, val note: String)",
         "val braiding = input.json.decodeFromJsonElement(BraidingUnjudged, \
-         JsonObject(JsonObject(obj - setOf(\"note\")).filterKeys { it in setOf(\"label\") }));",
+         JsonObject(obj.filterKeys { it in setOf(\"label\") }));",
         written,
     ] {
         assert!(splaying.contains(held), "no `{held}` in: {splaying}");

@@ -633,10 +633,43 @@ pub const fn keys_taken_when_flattened(
     Vec::new()
 }
 
-/// The names serde reads the variant of an externally tagged enum flattened into a holder under:
-/// the name each variant it reads is read under, and each alias, its `VARIANTS`. serde takes the
-/// first entry of the holder's object, in its order, under one of them. An enum under a tag key, an
-/// untagged one and one that names a function on itself (`preprocess`) answer none.
+/// The keys serde takes off a holder's object for an enum under a tag and a content key flattened
+/// into it, which it reads as a struct of the two: the tag, then the content key. An enum under
+/// any other tagging, and one that names a function on itself (`preprocess`), answer none.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
+pub fn tag_and_content_when_flattened(
+    item_enum: &ItemEnum,
+    preprocess: &[FunctionName],
+) -> Vec<String> {
+    if let Tagging::Adjacent { content, tag } = Tagging::of(item_enum)
+        && preprocess.is_empty()
+    {
+        vec![tag, content]
+    } else {
+        Vec::new()
+    }
+}
+
+/// Without `serde` no member is flattened, so no enum takes a key.
+#[cfg(all(
+    not(feature = "serde"),
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
+pub const fn tag_and_content_when_flattened(
+    _item_enum: &ItemEnum,
+    _preprocess: &[FunctionName],
+) -> Vec<String> {
+    Vec::new()
+}
+
+/// The names serde reads the variant of an externally tagged enum flattened into a holder under,
+/// one list per variant it reads: the name the variant is read under, then each alias, which
+/// together are its `VARIANTS`. serde takes the first entry of the holder's object, in its order,
+/// under one of them. An enum under a tag key, an untagged one and one that names a function on
+/// itself (`preprocess`) answer none.
 #[cfg(all(
     feature = "serde",
     any(feature = "dart", feature = "swift", feature = "kotlin")
@@ -644,7 +677,7 @@ pub const fn keys_taken_when_flattened(
 pub fn variant_names_when_flattened(
     item_enum: &ItemEnum,
     preprocess: &[FunctionName],
-) -> Vec<String> {
+) -> Vec<Vec<String>> {
     if !preprocess.is_empty()
         || !matches!(Tagging::of(item_enum), Tagging::External | Tagging::Plain)
     {
@@ -655,11 +688,13 @@ pub fn variant_names_when_flattened(
         .variants
         .iter()
         .filter(|variant| !parse_serde_key_omission(&variant.attrs).skips_deserializing)
-        .flat_map(|variant| {
+        .map(|variant| {
             let read_as = parse_read_renames(&variant.attrs)
                 .rename
                 .unwrap_or_else(|| rule.apply_to_variant(&variant.ident.unraw().to_string()));
-            once(read_as).chain(parse_serde_field_attributes(&variant.attrs).aliases)
+            once(read_as)
+                .chain(parse_serde_field_attributes(&variant.attrs).aliases)
+                .collect()
         })
         .collect()
 }
@@ -672,7 +707,7 @@ pub fn variant_names_when_flattened(
 pub const fn variant_names_when_flattened(
     _item_enum: &ItemEnum,
     _preprocess: &[FunctionName],
-) -> Vec<String> {
+) -> Vec<Vec<String>> {
     Vec::new()
 }
 

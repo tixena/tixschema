@@ -15,26 +15,27 @@ use tixschema::model_schema;
 #[cfg(feature = "serde")]
 use super::corrected_options_models::{moused_kotlin, reeved_kotlin, wormed_kotlin};
 use super::flattened_models::{
-    BELTING, BOWLINING, BROACHING, Belting, Bending, Bowlining, Brailing, Broaching, CHOCKED,
-    CLEATING, Cathead, Chock, Cleating, CorrectedLocker, DRESSING, DRESSING_TAGS, Dipping,
-    Dressing, ENSIGN, EmptiedLocker, Ensign, FLAG, FLAG_TAGS, Flag, GAFFING, GONFALON, Gaffing,
-    Gammoning, Gasketing, Gonfalon, HEAVING, HITCHING, Hawsepipe, Heaving, Hitching, Jibing,
-    Knotting, LOCKER, Lanyarding, Luffing, MARLINE, Netting, Nipping, PAYLOAD, PENNANT_TAGS,
-    Pennant, ProbeLocker, Quaying, Rousing, SCARFING, SCUDDING, SEMAPHORE, SNUBBED, STOWING,
-    STROPPING, STRUCK, SWAYING, Scarfing, Scudding, Seizing, Semaphore, Sheeting, Slinging,
-    Snubbing, Splicing, Stoppering, Stowing, Striking, Stropping, Swaying, Tacking, UNDER_AN_ALIAS,
-    UNWRITTEN, WHELPING, Whelping, Whipping, Yawing, read_of,
+    BELTING, BOWLINING, BROACHING, Belting, Bending, Bowlining, Brailing, Broaching, CHAFING,
+    CHOCKED, CLEATING, Cathead, Chafing, Chock, Cleating, CorrectedLocker, DRESSING, DRESSING_TAGS,
+    Dipping, Dressing, ENSIGN, EmptiedLocker, Ensign, FLAG, FLAG_TAGS, FRAYING, Flag, Fraying,
+    GAFFING, GONFALON, Gaffing, Gammoning, Gasketing, Gonfalon, HEAVING, HITCHING, Hawsepipe,
+    Heaving, Hitching, Jibing, Knotting, LOCKER, Lanyarding, Luffing, MARLINE, Netting, Nipping,
+    PAYLOAD, PENNANT_TAGS, Pennant, ProbeLocker, Quaying, Rousing, SCARFING, SCUDDING, SEMAPHORE,
+    SNUBBED, STOWING, STROPPING, STRUCK, SWAYING, Scarfing, Scudding, Seizing, Semaphore, Sheeting,
+    Slinging, Snubbing, Splicing, Stoppering, Stowing, Striking, Stropping, Swaying, Tacking,
+    UNDER_AN_ALIAS, UNDER_TWO_NAMES, UNWRITTEN, WHELPING, Whelping, Whipping, Yawing, read_of,
 };
 #[cfg(feature = "serde")]
 use super::flattened_models::{
     belting_kotlin, bending_kotlin, bowlining_kotlin, brailing_kotlin, broaching_kotlin,
-    cathead_kotlin, cleating_kotlin, corrected_locker_kotlin, dipping_kotlin, dressing_kotlin,
-    emptied_locker_kotlin, flag_kotlin, gaffing_kotlin, gammoning_kotlin, gasketing_kotlin,
-    gonfalon_kotlin, hawsepipe_kotlin, heaving_kotlin, hitching_kotlin, knotting_kotlin,
-    luffing_kotlin, netting_kotlin, nipping_kotlin, pennant_kotlin, probe_locker_kotlin,
-    quaying_kotlin, rousing_kotlin, scarfing_kotlin, scudding_kotlin, seizing_kotlin,
-    semaphore_kotlin, slinging_kotlin, splicing_kotlin, stoppering_kotlin, stowing_kotlin,
-    striking_kotlin, swaying_kotlin, whelping_kotlin, whipping_kotlin, yawing_kotlin,
+    cathead_kotlin, chafing_kotlin, cleating_kotlin, corrected_locker_kotlin, dipping_kotlin,
+    dressing_kotlin, emptied_locker_kotlin, flag_kotlin, fraying_kotlin, gaffing_kotlin,
+    gammoning_kotlin, gasketing_kotlin, gonfalon_kotlin, hawsepipe_kotlin, heaving_kotlin,
+    hitching_kotlin, knotting_kotlin, luffing_kotlin, netting_kotlin, nipping_kotlin,
+    pennant_kotlin, probe_locker_kotlin, quaying_kotlin, rousing_kotlin, scarfing_kotlin,
+    scudding_kotlin, seizing_kotlin, semaphore_kotlin, slinging_kotlin, splicing_kotlin,
+    stoppering_kotlin, stowing_kotlin, striking_kotlin, swaying_kotlin, whelping_kotlin,
+    whipping_kotlin, yawing_kotlin,
 };
 use super::read::{kept, serializers};
 use super::tuple_variants_models::Labelling;
@@ -1264,12 +1265,11 @@ fn an_optional_member_beside_a_flattened_one_is_written_only_where_it_holds_a_va
     );
 }
 
-/// Every flattened member is read from the object without the keys its holder's own members take
-/// and those each struct flattened ahead of it took, as serde hands it them: a function after a
-/// struct, a struct after a struct that reads the same key, a struct beside a member of its
-/// holder's own, and an optional struct, whose own keys are looked for in that object. A member a
-/// function reads takes none of the keys it reads, and one flattened first beside no member of its
-/// holder's own reads the whole object, as before.
+/// A member that names a function is read from the object without the keys its holder's own
+/// members take and those each struct flattened ahead of it took, as serde hands it them, and a
+/// member a function reads takes none of the keys it reads. A struct is read from the whole object
+/// its holder reads, as TypeScript and Zod read it: after a struct that reads the same key, beside
+/// a member of its holder's own, and optional, its own keys looked for in that object.
 #[test]
 #[cfg(feature = "serde")]
 fn a_flattened_member_is_read_without_the_keys_taken_ahead_of_it() {
@@ -1287,8 +1287,7 @@ fn a_flattened_member_is_read_without_the_keys_taken_ahead_of_it() {
         (
             hitching_kotlin::kotlin_definition(),
             "val labelling = input.json.decodeFromJsonElement(LabellingUnjudged, \
-             JsonObject(JsonObject(obj - setOf(\"note\")).filterKeys { it in setOf(\"label\") \
-             }));"
+             JsonObject(obj.filterKeys { it in setOf(\"label\") }));"
                 .to_owned(),
         ),
         (
@@ -1307,21 +1306,20 @@ fn a_flattened_member_is_read_without_the_keys_taken_ahead_of_it() {
         (
             stoppering_kotlin::kotlin_definition(),
             "val twice = input.json.decodeFromJsonElement(LabellingUnjudged, \
-             JsonObject(JsonObject(obj - labellingKeys).filterKeys { it in setOf(\"label\") }));"
+             JsonObject(obj.filterKeys { it in setOf(\"label\") }));"
                 .to_owned(),
         ),
         (
             nipping_kotlin::kotlin_definition(),
             "val labelling = input.json.decodeFromJsonElement(LabellingUnjudged, \
-             JsonObject(JsonObject(obj - setOf(\"label\")).filterKeys { it in setOf(\"label\") \
-             }));"
+             JsonObject(obj.filterKeys { it in setOf(\"label\") }));"
                 .to_owned(),
         ),
         (
             slinging_kotlin::kotlin_definition(),
-            "val spare = if (JsonObject(obj - labellingKeys).keys.any { it in spareKeys }) \
-             input.json.decodeFromJsonElement(LabellingUnjudged, JsonObject(JsonObject(obj - \
-             labellingKeys).filterKeys { it in setOf(\"label\") })) else null;"
+            "val spare = if (obj.keys.any { it in spareKeys }) \
+             input.json.decodeFromJsonElement(LabellingUnjudged, JsonObject(obj.filterKeys { it \
+             in setOf(\"label\") })) else null;"
                 .to_owned(),
         ),
     ] {
@@ -1350,7 +1348,7 @@ fn a_flattened_struct_takes_the_keys_serde_takes_of_it() {
         (
             gasketing_kotlin::kotlin_definition(),
             "val labelling = input.json.decodeFromJsonElement(LabellingUnjudged, \
-             JsonObject(JsonObject(obj - hauledKeys).filterKeys { it in setOf(\"label\") }));",
+             JsonObject(obj.filterKeys { it in setOf(\"label\") }));",
         ),
         (
             brailing_kotlin::kotlin_definition(),
@@ -1379,8 +1377,8 @@ fn a_flattened_struct_takes_the_keys_serde_takes_of_it() {
         ),
         (
             striking_kotlin::kotlin_definition(),
-            "val ensignKeys = setOf(\"label\"); val ensign = if (JsonObject(obj - \
-             setOf(\"note\")).keys.any { it in ensignKeys })",
+            "val ensignKeys = setOf(\"label\"); val ensign = if (obj.keys.any { it in \
+             ensignKeys })",
         ),
     ] {
         assert!(kotlin.contains(held), "no `{held}` in: {kotlin}");
@@ -1466,28 +1464,37 @@ fn an_optional_type_of_no_recorded_key_is_read_where_its_descriptor_names_no_ele
     }
 }
 
-/// An optional flattened enum under a tag key the emitter wrote is `null` where the object it is
-/// handed holds neither its tag nor its content key, and is read where it holds one, so a read
-/// that throws refuses the payload. It still takes the keys its descriptor names.
+/// An optional flattened enum under a tag key the emitter wrote is `null` where the whole object
+/// its holder reads holds neither its tag nor its content key, and is read where it holds one, as
+/// TypeScript and Zod read it, so a read that throws refuses the payload. One under a tag alone
+/// takes the keys its descriptor names, and one under a tag and a content key takes both.
 #[test]
 #[cfg(feature = "serde")]
 fn an_optional_enum_under_a_tag_key_is_looked_for_by_its_tag_and_its_content_key() {
-    let read = |prop: &str, serializer: &str, keys: &str| {
-        let rest = "JsonObject(obj - setOf(\"note\"))";
+    let read = |prop: &str, serializer: &str, taken: &str, keys: &str| {
         format!(
-            "val {prop}Keys = ({serializer}).descriptor.elementNames.toSet(); val {prop} = if \
-             ({rest}.keys.any {{ it in setOf({keys}) }}) \
-             lenient.decodeFromJsonElement({serializer}, {rest}) else null;"
+            "val {prop}Keys = {taken}; val {prop} = if (obj.keys.any {{ it in setOf({keys}) }}) \
+             lenient.decodeFromJsonElement({serializer}, obj) else null;"
         )
     };
     for (kotlin, held) in [
         (
             snagging_kotlin::kotlin_definition(),
-            read("hitched", "HitchedUnjudged", "\"kind\""),
+            read(
+                "hitched",
+                "HitchedUnjudged",
+                "(HitchedUnjudged).descriptor.elementNames.toSet()",
+                "\"kind\"",
+            ),
         ),
         (
             bridling_kotlin::kotlin_definition(),
-            read("bridled", "BridledUnjudged", "\"kind\", \"held\""),
+            read(
+                "bridled",
+                "BridledUnjudged",
+                "setOf(\"kind\", \"held\")",
+                "\"kind\", \"held\"",
+            ),
         ),
     ] {
         assert!(kotlin.contains(&held), "no `{held}` in: {kotlin}");
@@ -1648,22 +1655,109 @@ fn serde_hands_a_flattened_enum_the_first_entry_under_a_variants_name() {
     );
 }
 
-/// A flattened externally tagged enum is read from the first entry, in the object's order, under
-/// a name a variant is read under, its `rename`, the enum's `rename_all` and an alias included:
-/// the holder is refused without one, and an optional enum reads no value. Every member flattened
-/// after it is handed the object without that entry. An enum declared below its holder is read
-/// from the object without the holder's own keys, as before.
+/// What serde reads of a flattened enum under a tag and a content key, which it reads as a struct
+/// of the two keys: a function after it is handed every other key, and a struct after it reads its
+/// own. Of entries under two names of a flattened externally tagged enum, serde reads the first.
+#[test]
+fn serde_takes_both_keys_of_a_flattened_enum_under_a_content_key_and_the_first_of_two_entries() {
+    let chafing: Chafing = serde_json::from_str(CHAFING).unwrap();
+    assert_eq!(chafing.tally.keys, ["north"]);
+    let frayed = FRAYING.map(|payload| {
+        let read: Fraying = serde_json::from_str(payload).unwrap();
+        read.labelling.label
+    });
+    assert_eq!(frayed, ["m", "m"]);
+    let stowed =
+        UNDER_TWO_NAMES.map(|payload| serde_json::from_str::<Stowing>(payload).unwrap().tacking);
+    let named = |label: &str| label.to_owned();
+    assert_eq!(
+        stowed,
+        [
+            Tacking::Bay { label: named("n") },
+            Tacking::Dock { label: named("s") },
+            Tacking::Dock { label: named("s") }
+        ]
+    );
+}
+
+/// A flattened enum under a tag and a content key takes both keys: a function after it is handed
+/// the object without them, and a struct after it reads the whole object.
 #[test]
 #[cfg(feature = "serde")]
-fn a_flattened_enum_is_read_from_the_first_entry_under_a_variants_name() {
-    let tacking_names = "setOf(\"Bay\", \"Calm\", \"Dock\", \"Quay\", \"Held\")";
+fn a_flattened_enum_under_a_content_key_takes_both_keys_in_kotlin() {
+    for (kotlin, held) in [
+        (
+            chafing_kotlin::kotlin_definition(),
+            "val fairleadKeys = setOf(\"kind\", \"held\"); val fairlead = \
+             lenient.decodeFromJsonElement(SnubberUnjudged, obj); val tallyKeys = setOf(\"keys\"); \
+             val tally = lenient.decodeFromJsonElement(BuntingUnjudged, \
+             withItsKeys(JsonObject(obj - fairleadKeys)));",
+        ),
+        (
+            fraying_kotlin::kotlin_definition(),
+            "val labelling = input.json.decodeFromJsonElement(LabellingUnjudged, \
+             JsonObject(obj.filterKeys { it in setOf(\"label\") })); if \
+             (!input.json.configuration.ignoreUnknownKeys) (obj - setOf(\"kind\", \"held\") - \
+             setOf(\"label\")).keys.firstOrNull()?.let { throw SerializationException(\"Encountered \
+             an unknown key '\" + it + \"'\") };",
+        ),
+    ] {
+        assert!(kotlin.contains(held), "no `{held}` in: {kotlin}");
+    }
+}
+
+/// The read of the one entry of `rest` under one of `variants`' names, which a flattened enum
+/// `named` held by `prop` is read from: entries under two names are refused, naming each variant
+/// once.
+fn one_entry(rest: &str, prop: &str, named: &str, variants: &[&[&str]]) -> String {
+    let quoted = |names: &[&str]| {
+        names
+            .iter()
+            .map(|name| format!("\"{name}\""))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let listed = quoted(&variants.concat());
+    let found = variants
+        .iter()
+        .map(|names| {
+            format!(
+                "if ({prop}Entries.any {{ it.key in setOf({}) }}) \"{}\" else null",
+                quoted(names),
+                names[0]
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "{rest}.entries.filter {{ it.key in setOf({listed}) }}.also {{ {prop}Entries -> if \
+         ({prop}Entries.size > 1) throw SerializationException(\"more than one variant of enum \
+         {named} found in flattened data: \" + listOfNotNull({found}).joinToString(\", \")) \
+         }}.firstOrNull()"
+    )
+}
+
+/// A flattened externally tagged enum is read from the one entry under a name a variant is read
+/// under, its `rename`, the enum's `rename_all` and an alias included: the holder is refused
+/// without one, and with entries under two, and an optional enum reads no value. Every member
+/// flattened after it but a struct is handed the object without that entry. An enum declared below
+/// its holder is read from the object without the holder's own keys, as before.
+#[test]
+#[cfg(feature = "serde")]
+fn a_flattened_enum_is_read_from_the_one_entry_under_a_variants_name() {
+    let tacking: &[&[&str]] = &[&["Bay"], &["Calm"], &["Dock", "Quay"], &["Held"]];
+    let beside_a_note = one_entry(
+        "JsonObject(obj - setOf(\"note\"))",
+        "tacking",
+        "Tacking",
+        tacking,
+    );
     for (kotlin, held) in [
         (
             stowing_kotlin::kotlin_definition(),
             format!(
-                "val tackingEntry = JsonObject(obj - setOf(\"note\")).entries.firstOrNull {{ \
-                 it.key in {tacking_names} }} ?: throw SerializationException(\"no variant of \
-                 enum Tacking found in flattened data\"); val tacking = \
+                "val tackingEntry = {beside_a_note} ?: throw SerializationException(\"no variant \
+                 of enum Tacking found in flattened data\"); val tacking = \
                  input.json.decodeFromJsonElement(TackingUnjudged, \
                  JsonObject(mapOf(tackingEntry.toPair())));"
             ),
@@ -1671,18 +1765,18 @@ fn a_flattened_enum_is_read_from_the_first_entry_under_a_variants_name() {
         (
             belting_kotlin::kotlin_definition(),
             format!(
-                "val tackingEntry = JsonObject(obj - setOf(\"note\")).entries.firstOrNull {{ \
-                 it.key in {tacking_names} }}; val tacking = tackingEntry?.let {{ \
+                "val tackingEntry = {beside_a_note}; val tacking = tackingEntry?.let {{ \
                  input.json.decodeFromJsonElement(TackingUnjudged, JsonObject(mapOf(it.toPair()))) \
                  }};"
             ),
         ),
         (
             cleating_kotlin::kotlin_definition(),
-            "val jibingEntry = obj.entries.firstOrNull { it.key in setOf(\"pier\", \"open_bay\") \
-             } ?: throw SerializationException(\"no variant of enum Jibing found in flattened \
-             data\");"
-                .to_owned(),
+            format!(
+                "val jibingEntry = {} ?: throw SerializationException(\"no variant of enum Jibing \
+                 found in flattened data\");",
+                one_entry("obj", "jibing", "Jibing", &[&["pier"], &["open_bay"]])
+            ),
         ),
         (
             heaving_kotlin::kotlin_definition(),
@@ -1693,8 +1787,7 @@ fn a_flattened_enum_is_read_from_the_first_entry_under_a_variants_name() {
         (
             scudding_kotlin::kotlin_definition(),
             "val labelling = input.json.decodeFromJsonElement(LabellingUnjudged, \
-             JsonObject(JsonObject(obj - hatchEntry.key).filterKeys { it in setOf(\"label\") \
-             }));"
+             JsonObject(obj.filterKeys { it in setOf(\"label\") }));"
                 .to_owned(),
         ),
         (
@@ -1907,7 +2000,7 @@ fn a_variant_with_a_flattened_member_is_read_by_a_serializer_of_its_own() {
         (
             whelping_kotlin::kotlin_definition(),
             "\"Hoisted\" -> input.json.decodeFromJsonElement(serializer<WhelpingHoisted>(), \
-             JsonObject(obj - \"kind\"));",
+             obj);",
         ),
         (
             broaching_kotlin::kotlin_definition(),
@@ -2138,9 +2231,9 @@ fn test_generic_flatten_generic_sibling() {
     assert!(
         kotlin.contains(
             "val body = input.json.decodeFromJsonElement(WrapperUnjudged(tSerializer), \
-             JsonObject(JsonObject(obj - setOf(\"id\")).filterKeys { it in setOf(\"value\") }))"
+             JsonObject(obj.filterKeys { it in setOf(\"value\") }))"
         ),
-        "a flattened member is read from the object without its holder's own keys. got: {kotlin}"
+        "a flattened struct is read from the whole object its holder reads. got: {kotlin}"
     );
 }
 

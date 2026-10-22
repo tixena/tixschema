@@ -31,29 +31,36 @@ use super::corrected_options_models::{
     CORRECTED, frapped_kotlin, moused_kotlin, reeved_kotlin, tholepin_kotlin, wormed_kotlin,
 };
 use super::flattened_models::{
-    BELTING, BOWLINING, BROACHING, Belting, Bending, Bowlining, Brailing, Broaching, CHOCKED,
-    CLEATING, Cathead, Cleating, CorrectedLocker, DRESSING, DRESSING_TAGS, Dipping, Dressing,
-    ENSIGN, EmptiedLocker, FLAG, FLAG_TAGS, Flag, GAFFING, GONFALON, Gaffing, Gammoning, Gasketing,
-    Gonfalon, HEAVING, HITCHING, Hawsepipe, Heaving, Hitching, Knotting, LOCKER, Lanyarding,
-    Luffing, MARLINE, Netting, Nipping, PAYLOAD, PENNANT_TAGS, Pennant, ProbeLocker, Rousing,
-    SCARFING, SCUDDING, SEMAPHORE, SNUBBED, STOWING, STROPPING, STRUCK, SWAYING, Scarfing,
-    Scudding, Seizing, Semaphore, Slinging, Snubbing, Splicing, Stoppering, Stowing, Striking,
-    Stropping, Swaying, Tacking, UNDER_AN_ALIAS, UNWRITTEN, WHELPING, Whelping, Whipping, Yawing,
-    belting_kotlin, bending_kotlin, bowlining_kotlin, brailing_kotlin, broaching_kotlin,
-    bunting_kotlin, cathead_kotlin, chock_kotlin, cleating_kotlin, corrected_locker_kotlin,
+    BELTING, BOWLINING, BROACHING, Belting, Bending, Bowlining, Brailing, Broaching, CHAFING,
+    CHOCKED, CLEATING, Cathead, Chafing, Cleating, CorrectedLocker, DRESSING, DRESSING_TAGS,
+    Dipping, Dressing, ENSIGN, EmptiedLocker, FLAG, FLAG_TAGS, FRAYING, Flag, Fraying, GAFFING,
+    GONFALON, Gaffing, Gammoning, Gasketing, Gonfalon, HEAVING, HITCHING, Hawsepipe, Heaving,
+    Hitching, Knotting, LOCKER, Lanyarding, Luffing, MARLINE, Netting, Nipping, PAYLOAD,
+    PENNANT_TAGS, Pennant, ProbeLocker, Rousing, SCARFING, SCUDDING, SEMAPHORE, SNUBBED, STOWING,
+    STROPPING, STRUCK, SWAYING, Scarfing, Scudding, Seizing, Semaphore, Slinging, Snubbing,
+    Splicing, Stoppering, Stowing, Striking, Stropping, Swaying, Tacking, UNDER_AN_ALIAS,
+    UNDER_TWO_NAMES, UNWRITTEN, WHELPING, Whelping, Whipping, Yawing, belting_kotlin,
+    bending_kotlin, bowlining_kotlin, brailing_kotlin, broaching_kotlin, bunting_kotlin,
+    cathead_kotlin, chafing_kotlin, chock_kotlin, cleating_kotlin, corrected_locker_kotlin,
     dipping_kotlin, dressing_kotlin, emptied_locker_kotlin, ensign_kotlin, flag_kotlin,
-    gaffing_kotlin, gammoning_kotlin, gasketing_kotlin, gonfalon_kotlin, hawsepipe_kotlin,
-    hawser_kotlin, heaving_kotlin, hitching_kotlin, jibing_kotlin, knotting_kotlin,
-    lanyarding_kotlin, luffing_kotlin, marline_kotlin, netting_kotlin, nipping_kotlin,
-    noting_kotlin, pennant_kotlin, probe_locker_kotlin, quaying_kotlin, read_of, rousing_kotlin,
-    scarfing_kotlin, scudding_kotlin, seizing_kotlin, semaphore_kotlin, sheeting_kotlin,
-    slinging_kotlin, snubbing_kotlin, splicing_kotlin, stoppering_kotlin, stowing_kotlin,
-    striking_kotlin, stropping_kotlin, swaying_kotlin, tacking_kotlin, ticketed_kotlin,
-    unwritten_kotlin, whelping_kotlin, whipping_kotlin, yawing_kotlin,
+    fraying_kotlin, gaffing_kotlin, gammoning_kotlin, gasketing_kotlin, gonfalon_kotlin,
+    hawsepipe_kotlin, hawser_kotlin, heaving_kotlin, hitching_kotlin, jibing_kotlin,
+    knotting_kotlin, lanyarding_kotlin, luffing_kotlin, marline_kotlin, netting_kotlin,
+    nipping_kotlin, noting_kotlin, pennant_kotlin, probe_locker_kotlin, quaying_kotlin, read_of,
+    rousing_kotlin, scarfing_kotlin, scudding_kotlin, seizing_kotlin, semaphore_kotlin,
+    sheeting_kotlin, slinging_kotlin, snubber_kotlin, snubbing_kotlin, splicing_kotlin,
+    stoppering_kotlin, stowing_kotlin, striking_kotlin, stropping_kotlin, swaying_kotlin,
+    tacking_kotlin, ticketed_kotlin, unwritten_kotlin, whelping_kotlin, whipping_kotlin,
+    yawing_kotlin,
 };
 use super::runtime::ran_kotlin;
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use super::runtime::{node_modules, ran_with_modules, stand_down_modules};
+use super::shared_key_models::{
+    SHARED_KEYS, bitts_kotlin, bowline_kotlin, clinching_kotlin, earring_kotlin, gantline_kotlin,
+    garnet_kotlin, gudgeon_kotlin, halliard_kotlin, parrel_kotlin, rubrail_kotlin, snotter_kotlin,
+    spritsail_kotlin, toggled_kotlin,
+};
 use super::swift_flattened_options_models::{
     Crowning, Easing, FLAKING, FLAKING_ABSENT, FLAKING_MISTYPED, Fidding, Flaking, HEELING,
     Heeling, LAPPING, LAPPING_ABSENT, LAPPING_MISTYPED, LOWERING, Lowering, PITCHING, Pitching,
@@ -283,6 +290,41 @@ const VARIANT_READ_PAST: [(&str, &str); 3] = [
     (SWAYING[5], "SwayingSpare {}"),
     (WHELPING[3], "refused"),
 ];
+
+/// What prints a [`Stowing`] read from each payload and written back, or the refusal of its read.
+const UNDER_TWO_NAMES_READ: &str = r#"
+fun stowing(at: Int, payload: String) {
+    val told = try {
+        Json.encodeToString(Stowing.serializer(), Json.decodeFromString(Stowing.serializer(), payload))
+    } catch (refused: SerializationException) {
+        "refused: " + refused.message
+    }
+    println("$at: $told")
+}
+"#;
+
+/// What prints each holder of an enum under a tag and a content key read from each payload: the
+/// keys its function was handed or the struct after it, and the holder written back, or the
+/// refusal of its read.
+const TAG_AND_CONTENT_READ: &str = r#"
+fun <T> held(at: Int, serializer: KSerializer<T>, payload: String, shown: (T) -> String) {
+    val told = try {
+        val read = Json.decodeFromString(serializer, payload)
+        "${shown(read)} ${Json.encodeToString(serializer, read)}"
+    } catch (refused: SerializationException) {
+        "refused: " + refused.message
+    }
+    println("$at: $told")
+}
+"#;
+
+/// What prints each holder of [`SHARED_KEYS`] read from its payload and written back, and the
+/// optional struct of `Rubrail`.
+const SHARED_KEYS_READ: &str = r#"
+fun <T> shared(name: String, serializer: KSerializer<T>, payload: String) {
+    println("$name: ${Json.encodeToString(serializer, Json.decodeFromString(serializer, payload))}")
+}
+"#;
 
 /// A payload, the type it is read as, and what serde writes back of it.
 struct Row {
@@ -847,12 +889,13 @@ fn entry_source(main: String) -> String {
     .join("\n\n")
 }
 
-/// A flattened externally tagged enum is handed the first entry, in the object's order, under the
-/// name a variant is read under, and every member after it the object without that entry, as serde
-/// hands them: beside a member of its holder's own, ahead of a function and of a struct, under a
-/// `rename`, the enum's `rename_all` and an `alias`, and optional. A payload with no such entry is
-/// refused, and an optional enum reads no value. A key no member reads, a second variant's entry
-/// among them, is refused, as Zod refuses it, where serde reads past it.
+/// A flattened externally tagged enum is handed the one entry under the name a variant is read
+/// under, and every member after it the object without that entry, as serde hands them: beside a
+/// member of its holder's own, ahead of a function and of a struct, under a `rename`, the enum's
+/// `rename_all` and an `alias`, and optional. A payload with no such entry is refused, and an
+/// optional enum reads no value. A key no member reads is refused, as Zod refuses it, where serde
+/// reads past it, and so are entries under two names, as TypeScript and Zod refuse them, where
+/// serde reads the first.
 #[test]
 fn a_flattened_enum_reads_in_kotlin_the_entry_serde_hands_it() {
     let rows = entry_rows();
@@ -891,11 +934,12 @@ fn a_flattened_enum_reads_in_kotlin_the_entry_serde_hands_it() {
          18: {\"Dock\":{\"label\":\"s\"}} a\n\
          19: {\"Dock\":{\"label\":\"s\"}} {\"keys\":[\"north\"]}\n"
     );
-    // `run_kotlin_unknown_keys.rs` holds Zod's refusal of each.
-    let read_past = [STOWING[2], STOWING[3], BELTING[1]];
+    // `run_kotlin_unknown_keys.rs` holds Zod's refusal of a key no member reads.
+    let read_past = [STOWING[2], BELTING[1]];
+    let under_two_names = [STOWING[3], HEAVING[1], HEAVING[2], HEAVING[3]];
     let mut kotlin = String::new();
     for (at, row) in rows.iter().enumerate() {
-        let told = if read_past.contains(&row.json) {
+        let told = if read_past.contains(&row.json) || under_two_names.contains(&row.json) {
             "refused".to_owned()
         } else {
             (row.told)(row.json)
@@ -906,6 +950,167 @@ fn a_flattened_enum_reads_in_kotlin_the_entry_serde_hands_it() {
         return;
     };
     assert_eq!(printed, kotlin);
+}
+
+/// A flattened externally tagged enum with entries under two of its names is refused, as
+/// TypeScript and Zod refuse it, where serde reads the first, under two variants' names in each
+/// order and under a variant's name beside its alias, naming each variant once, in the order the
+/// enum declares them. One entry, a unit variant's over `null`, an entry under an alias and no
+/// entry are read and refused as serde reads and refuses them.
+#[test]
+fn a_flattened_enum_with_entries_under_two_names_is_refused_in_kotlin() {
+    let refused = |variants: &str| {
+        format!(
+            "refused: more than one variant of enum Tacking found in flattened data: {variants}"
+        )
+    };
+    let mut rows: Vec<(&str, String)> = UNDER_TWO_NAMES
+        .iter()
+        .zip([refused("Bay, Dock"), refused("Bay, Dock"), refused("Dock")])
+        .map(|(&json, told)| {
+            assert!(
+                serde_json::from_str::<Stowing>(json).is_ok(),
+                "serde reads the first entry of {json}"
+            );
+            (json, told)
+        })
+        .collect();
+    for json in [STOWING[1], STOWING[4], UNDER_AN_ALIAS[0], STOWING[6]] {
+        let told = serde_json::from_str::<Stowing>(json).map_or_else(
+            |refusal| {
+                let said = refusal.to_string();
+                let (unplaced, _position) = said.split_once(" at line").unwrap_or((&said, ""));
+                format!("refused: {unplaced}")
+            },
+            |read| serde_json::to_string(&read).unwrap(),
+        );
+        rows.push((json, told));
+    }
+    let mut expected = String::new();
+    let mut main = format!("{UNDER_TWO_NAMES_READ}\nfun main() {{\n");
+    for (at, (json, told)) in rows.iter().enumerate() {
+        let _ = writeln!(expected, "{at}: {told}");
+        let _ = writeln!(main, "    stowing({at}, \"\"\"{json}\"\"\")");
+    }
+    main.push_str("}\n");
+    assert_eq!(
+        expected,
+        "0: refused: more than one variant of enum Tacking found in flattened data: Bay, Dock\n\
+         1: refused: more than one variant of enum Tacking found in flattened data: Bay, Dock\n\
+         2: refused: more than one variant of enum Tacking found in flattened data: Dock\n\
+         3: {\"note\":\"a\",\"Bay\":{\"label\":\"n\"}}\n\
+         4: {\"note\":\"a\",\"Calm\":null}\n\
+         5: {\"note\":\"a\",\"Dock\":{\"label\":\"s\"}}\n\
+         6: refused: no variant of enum Tacking found in flattened data\n"
+    );
+    let Some(printed) = ran_kotlin(&entry_source(main)) else {
+        return;
+    };
+    assert_eq!(printed, expected);
+}
+
+/// An enum under a tag and a content key flattened into its holder takes both keys, as serde reads
+/// it as a struct of the two: a member that names a function flattened after it is handed every
+/// other key, and a struct flattened after it reads the whole object. Each holder is written back
+/// as serde writes it back, and a key no member reads is refused, as Zod refuses it, where serde
+/// reads past it.
+#[test]
+fn an_enum_under_a_tag_and_a_content_key_takes_both_keys_in_kotlin() {
+    let chafing: Chafing = serde_json::from_str(CHAFING).unwrap();
+    let fraying: Fraying = serde_json::from_str(FRAYING[0]).unwrap();
+    let past: Fraying = serde_json::from_str(FRAYING[1]).unwrap();
+    assert_eq!(past, fraying, "serde reads past a key no member reads");
+    let expected = format!(
+        "0: {} {}\n1: {} {}\n2: refused: Encountered an unknown key 'north'\n",
+        serde_json::to_string(&chafing.tally).unwrap(),
+        serde_json::to_string(&chafing).unwrap(),
+        serde_json::to_string(&fraying.labelling).unwrap(),
+        serde_json::to_string(&fraying).unwrap(),
+    );
+    assert_eq!(
+        expected,
+        "0: {\"keys\":[\"north\"]} {\"kind\":\"Rope\",\"held\":{\"label\":\"n\"},\"keys\":[\"north\"]}\n\
+         1: {\"label\":\"m\"} {\"kind\":\"Rope\",\"held\":{\"label\":\"n\"},\"label\":\"m\"}\n\
+         2: refused: Encountered an unknown key 'north'\n"
+    );
+    let main = format!(
+        "{TAG_AND_CONTENT_READ}\nfun main() {{\n    held(0, Chafing.serializer(), \"\"\"{CHAFING}\"\"\") \
+         {{ Json.encodeToString(Bunting.serializer(), it.tally) }}\n    held(1, \
+         Fraying.serializer(), \"\"\"{}\"\"\") {{ Json.encodeToString(Labelling.serializer(), \
+         it.labelling) }}\n    held(2, Fraying.serializer(), \"\"\"{}\"\"\") {{ \
+         Json.encodeToString(Labelling.serializer(), it.labelling) }}\n}}\n",
+        FRAYING[0], FRAYING[1]
+    );
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        labelling_kotlin::kotlin_definition(),
+        bunting_kotlin::kotlin_definition(),
+        snubber_kotlin::kotlin_definition(),
+        chafing_kotlin::kotlin_definition(),
+        fraying_kotlin::kotlin_definition(),
+        FUNCTIONS.to_owned(),
+        main,
+    ]
+    .join("\n\n");
+    let Some(printed) = ran_kotlin(&source) else {
+        return;
+    };
+    assert_eq!(printed, expected);
+}
+
+/// A flattened struct reads a key a member of its holder's own, a struct flattened ahead of it or
+/// the tag of the variant that flattens it took, from the whole object, as TypeScript and Zod read
+/// it, where serde refuses the payload; an optional one is read where that key is there, where
+/// serde reads `None`; and its holder writes that key once.
+#[test]
+fn a_flattened_struct_reads_in_kotlin_a_key_taken_around_it_as_zod_reads_it() {
+    let mut expected = SHARED_KEYS.iter().fold(String::new(), |mut expected, row| {
+        let zod: serde_json::Value = serde_json::from_str(row.zod).unwrap();
+        let _ = writeln!(expected, "{}: {zod}", row.holder);
+        expected
+    });
+    expected.push_str("Rubrail flag: n\n");
+    let mut main = format!("{SHARED_KEYS_READ}\nfun main() {{\n");
+    for row in &SHARED_KEYS {
+        let _ = writeln!(
+            main,
+            "    shared(\"{}\", {}.serializer(), \"\"\"{}\"\"\")",
+            row.holder, row.holder, row.json
+        );
+    }
+    main.push_str(
+        "    println(\"Rubrail flag: ${Json.decodeFromString(Rubrail.serializer(), \
+         \"\"\"{\"label\":\"n\"}\"\"\").flag?.label}\")\n}\n",
+    );
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        earring_kotlin::kotlin_definition(),
+        spritsail_kotlin::kotlin_definition(),
+        bowline_kotlin::kotlin_definition(),
+        gantline_kotlin::kotlin_definition(),
+        clinching_kotlin::kotlin_definition(),
+        garnet_kotlin::kotlin_definition(),
+        parrel_kotlin::kotlin_definition(),
+        gudgeon_kotlin::kotlin_definition(),
+        rubrail_kotlin::kotlin_definition(),
+        toggled_kotlin::kotlin_definition(),
+        halliard_kotlin::kotlin_definition(),
+        snotter_kotlin::kotlin_definition(),
+        bitts_kotlin::kotlin_definition(),
+        main,
+    ]
+    .join("\n\n");
+    let Some(printed) = ran_kotlin(&source) else {
+        return;
+    };
+    let read = printed.lines().fold(String::new(), |mut read, line| {
+        let (holder, written) = line.split_once(": ").unwrap();
+        let value = serde_json::from_str::<serde_json::Value>(written)
+            .map_or_else(|_| written.to_owned(), |value| value.to_string());
+        let _ = writeln!(read, "{holder}: {value}");
+        read
+    });
+    assert_eq!(read, expected);
 }
 
 /// A flattened externally tagged enum is written as serde writes it, beside a member of its
@@ -1722,15 +1927,15 @@ fn option_rows() -> Vec<OptionRow> {
 }
 
 /// A flattened `Option` of an enum under a tag key the emitter wrote is looked for by its tag, then
-/// its content key, in the object it is handed: `null` where neither is there, and the enum read
-/// where one is, so a read that throws refuses the payload.
+/// its content key, in the whole object its holder reads, as TypeScript and Zod read it: `null`
+/// where neither is there, and the enum read where one is, so a read that throws refuses the
+/// payload.
 #[test]
 fn a_flattened_option_of_an_enum_under_a_tag_key_is_looked_for_by_its_tag_in_kotlin() {
     let looked_for = |kotlin: &str, prop: &str, read_as: &str, keys: &str| {
-        let rest = "JsonObject(obj - setOf(\"note\"))";
         let held = format!(
-            "val {prop} = if ({rest}.keys.any {{ it in setOf({keys}) }}) \
-             lenient.decodeFromJsonElement({read_as}Unjudged, {rest}) else null;"
+            "val {prop} = if (obj.keys.any {{ it in setOf({keys}) }}) \
+             lenient.decodeFromJsonElement({read_as}Unjudged, obj) else null;"
         );
         assert!(kotlin.contains(&held), "no `{held}` in: {kotlin}");
     };

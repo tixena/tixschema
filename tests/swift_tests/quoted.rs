@@ -68,7 +68,7 @@ fn an_enums_names_are_escaped_in_its_swift_text() {
         &levied_swift::swift_definition(),
         &[
             r#"case swiftSchemaTag = "ki'nd""#,
-            r#"case "He\"ld": let heldPayload = try SwiftSchemaPayload(from: decoder, without: taken + ["ki'nd"]).value;"#,
+            r#"case "He\"ld": self = .held(try Leveed(from: decoder));"#,
             r#"case .still: try container.encode("Calm\\", forKey: .swiftSchemaTag);"#,
         ],
     );

@@ -54,8 +54,7 @@ fn a_flattened_member_serde_never_writes_is_read_and_not_encoded() {
                         container.encode(self.note, forKey: .note) };";
     let flemishing = flemishing_swift::swift_definition();
     for held in [
-        "self.braiding = try SwiftSchemaPayload.read(Braiding.self, from: braidingPayload, at: \
-         decoder.codingPath)",
+        "self.braiding = try Braiding(from: decoder) } else { self.braiding = nil }",
         encoded_note,
     ] {
         assert!(flemishing.contains(held), "no `{held}` in: {flemishing}");
@@ -63,9 +62,7 @@ fn a_flattened_member_serde_never_writes_is_read_and_not_encoded() {
     let splaying = splaying_swift::swift_definition();
     for held in [
         "public let braiding: Braiding;",
-        "let braidingPayload = try SwiftSchemaPayload(from: decoder, without: taken + \
-         [\"note\"]).value; self.braiding = try SwiftSchemaPayload.read(Braiding.self, from: \
-         braidingPayload, at: decoder.codingPath);",
+        "self.braiding = try Braiding(from: decoder);",
         encoded_note,
     ] {
         assert!(splaying.contains(held), "no `{held}` in: {splaying}");
