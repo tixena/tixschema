@@ -3,17 +3,18 @@
 //! member of its struct, a flattened struct beside a member of its own, and an optional member
 //! beside a flattened one, with its twin under `nullable`. Beside them, a flattened member after
 //! a struct and beside a member of its holder's own. serde reads the members in the order
-//! declared: a struct takes the keys it reads, one with a member serde never writes among them, a
-//! member that names a function takes none, and every flattened member is handed the entries
-//! neither its holder's own members nor a member flattened ahead of it took. An externally tagged
-//! enum takes the first entry under the name of a variant it reads, beside a member of its
-//! holder's own, ahead of a member that names a function and ahead of a struct, and one declared
-//! below its holder is read from the object. serde writes such an enum's unit variant as an entry,
-//! its name over `null`, the enum optional and under a function too. An optional map, the one
-//! member, serde reads as `None` wherever an entry does not read as a count, and under a function
-//! from what the function answers. A map keyed by a plain enum serde writes and reads under the
-//! name each variant is written under, and refuses, or reads as `None` where it is optional, a key
-//! no variant is written under.
+//! declared: a struct takes the keys it reads, one with a member serde never writes among them,
+//! and not its own tag or the key of a member serde never reads, a member that names a function
+//! takes none, and every flattened member is handed the entries neither its holder's own members
+//! nor a member flattened ahead of it took. An externally tagged enum takes the first entry under
+//! the name of a variant it reads, beside a member of its holder's own, ahead of a member that
+//! names a function and ahead of a struct, and one declared below its holder is read from the
+//! object. serde writes such an enum's unit variant as an entry, its name over `null`, the enum
+//! optional and under a function too. An optional map, the one member, serde reads as `None`
+//! wherever an entry does not read as a count, and under a function from what the function
+//! answers. A map keyed by a plain enum serde writes and reads under the name each variant is
+//! written under, and refuses, or reads as `None` where it is optional, a key no variant is written
+//! under.
 
 use alloc::collections::BTreeMap;
 use std::collections::HashMap;
@@ -75,6 +76,15 @@ pub const CLEATING: [&str; 3] = [
 /// What [`Rousing`] and [`Gasketing`] are read from: the key of the member [`Unwritten`] reads and
 /// never writes among them.
 pub const UNWRITTEN: &str = r#"{"label":"n","hidden":1,"north":2}"#;
+
+/// What [`Dipping`] is read from: the tag of [`Ensign`] among the keys.
+pub const ENSIGN: &str = r#"{"kind":"Ensign","label":"n","north":2}"#;
+
+/// What [`Striking`] is read from: the tag of [`Ensign`] alone, which serde reads no value from.
+pub const STRUCK: &str = r#"{"kind":"Ensign","note":"a"}"#;
+
+/// What [`Gammoning`] is read from: the key of the member [`Marline`] never reads among them.
+pub const MARLINE: &str = r#"{"label":"n","north":2,"spare":1}"#;
 
 /// What [`Scudding`] is read from.
 pub const SCUDDING: &str = r#"{"Bay":{"label":"n"},"label":"m","north":2}"#;
@@ -339,6 +349,56 @@ pub struct Gasketing {
     pub hauled: Unwritten,
     #[serde(flatten)]
     pub labelling: Labelling,
+}
+
+/// A struct under its own tag, which serde writes, and reads past without taking its key.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind")]
+pub struct Ensign {
+    pub label: String,
+}
+
+/// A member that names a function flattened after [`Ensign`]: serde hands the function the tag.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Dipping {
+    #[serde(flatten)]
+    pub ensign: Ensign,
+    #[model_schema_prop(preprocess = ["withItsKeys"])]
+    #[serde(flatten)]
+    pub tally: Bunting,
+}
+
+/// [`Ensign`] optional, beside a member of its holder's own: serde reads no value where the object
+/// holds its tag and none of the keys it reads.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Striking {
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub ensign: Option<Ensign>,
+    pub note: String,
+}
+
+/// A struct with a member serde writes and never reads, which does not take that member's key.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Marline {
+    pub label: String,
+    #[serde(skip_deserializing)]
+    pub spare: u8,
+}
+
+/// A member that names a function flattened after [`Marline`]: serde hands the function the key
+/// of the member the struct never reads.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Gammoning {
+    #[serde(flatten)]
+    pub marline: Marline,
+    #[model_schema_prop(preprocess = ["withItsKeys"])]
+    #[serde(flatten)]
+    pub tally: Bunting,
 }
 
 /// A struct flattened after a struct that reads other keys, which serde reads.

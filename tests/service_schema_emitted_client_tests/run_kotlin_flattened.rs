@@ -16,18 +16,19 @@ use serde::de::DeserializeOwned;
 
 use super::flattened_models::{
     BELTING, Belting, Bending, Brailing, CHOCKED, CLEATING, Cathead, Cleating, CorrectedLocker,
-    EmptiedLocker, Gasketing, HEAVING, HITCHING, Hawsepipe, Heaving, Hitching, Knotting, LOCKER,
-    Lanyarding, Luffing, Netting, Nipping, PAYLOAD, ProbeLocker, Rousing, SCUDDING, SNUBBED,
-    STOWING, STROPPING, Scudding, Seizing, Slinging, Snubbing, Splicing, Stoppering, Stowing,
-    Stropping, Tacking, UNDER_AN_ALIAS, UNWRITTEN, Whipping, Yawing, belting_kotlin,
-    bending_kotlin, brailing_kotlin, bunting_kotlin, cathead_kotlin, chock_kotlin, cleating_kotlin,
-    corrected_locker_kotlin, emptied_locker_kotlin, gasketing_kotlin, hawsepipe_kotlin,
-    hawser_kotlin, heaving_kotlin, hitching_kotlin, jibing_kotlin, knotting_kotlin,
-    lanyarding_kotlin, luffing_kotlin, netting_kotlin, nipping_kotlin, noting_kotlin,
-    probe_locker_kotlin, quaying_kotlin, read_of, rousing_kotlin, scudding_kotlin, seizing_kotlin,
-    sheeting_kotlin, slinging_kotlin, snubbing_kotlin, splicing_kotlin, stoppering_kotlin,
-    stowing_kotlin, stropping_kotlin, tacking_kotlin, ticketed_kotlin, unwritten_kotlin,
-    whipping_kotlin, yawing_kotlin,
+    Dipping, ENSIGN, EmptiedLocker, Gammoning, Gasketing, HEAVING, HITCHING, Hawsepipe, Heaving,
+    Hitching, Knotting, LOCKER, Lanyarding, Luffing, MARLINE, Netting, Nipping, PAYLOAD,
+    ProbeLocker, Rousing, SCUDDING, SNUBBED, STOWING, STROPPING, STRUCK, Scudding, Seizing,
+    Slinging, Snubbing, Splicing, Stoppering, Stowing, Striking, Stropping, Tacking,
+    UNDER_AN_ALIAS, UNWRITTEN, Whipping, Yawing, belting_kotlin, bending_kotlin, brailing_kotlin,
+    bunting_kotlin, cathead_kotlin, chock_kotlin, cleating_kotlin, corrected_locker_kotlin,
+    dipping_kotlin, emptied_locker_kotlin, ensign_kotlin, gammoning_kotlin, gasketing_kotlin,
+    hawsepipe_kotlin, hawser_kotlin, heaving_kotlin, hitching_kotlin, jibing_kotlin,
+    knotting_kotlin, lanyarding_kotlin, luffing_kotlin, marline_kotlin, netting_kotlin,
+    nipping_kotlin, noting_kotlin, probe_locker_kotlin, quaying_kotlin, read_of, rousing_kotlin,
+    scudding_kotlin, seizing_kotlin, sheeting_kotlin, slinging_kotlin, snubbing_kotlin,
+    splicing_kotlin, stoppering_kotlin, stowing_kotlin, striking_kotlin, stropping_kotlin,
+    tacking_kotlin, ticketed_kotlin, unwritten_kotlin, whipping_kotlin, yawing_kotlin,
 };
 use super::runtime::ran_kotlin;
 use super::tuple_variants_models::labelling_kotlin;
@@ -102,7 +103,7 @@ fun withItsKeys(payload: JsonElement): JsonElement =
 
 /// What prints a row of a holder of a member flattened after or beside another: the value read,
 /// as `shown` tells it, or that the read is refused.
-const HANDED: &str = r#"
+const HANDED_ROW: &str = r#"
 fun <T> handed(name: String, serializer: KSerializer<T>, payload: String, shown: (T) -> String) {
     val told = try {
         shown(Json.decodeFromString(serializer, payload))
@@ -111,7 +112,10 @@ fun <T> handed(name: String, serializer: KSerializer<T>, payload: String, shown:
     }
     println("$name: $told")
 }
+"#;
 
+/// The rows of each holder of a member flattened after or beside another.
+const HANDED: &str = r#"
 fun main() {
     handed("after a struct", Whipping.serializer(), """PAYLOAD""") {
         Json.encodeToString(Whipping.serializer(), it)
@@ -146,6 +150,22 @@ fun main() {
     handed("an optional struct after one of the same key", Slinging.serializer(), """PAYLOAD""") {
         val spare = Json.encodeToString(serializer<Labelling?>(), it.spare)
         "${Json.encodeToString(Slinging.serializer(), it)} $spare"
+    }
+}
+"#;
+
+/// The rows of each holder of a member flattened after a struct whose own tag, or whose member
+/// serde never reads, is in the object.
+const HANDED_ON: &str = r#"
+fun main() {
+    handed("after a struct under its own tag", Dipping.serializer(), """ENSIGN""") {
+        "${it.ensign.label} ${Json.encodeToString(Bunting.serializer(), it.tally)}"
+    }
+    handed("after a struct with a member it never reads", Gammoning.serializer(), """MARLINE""") {
+        "${it.marline.label} ${Json.encodeToString(Bunting.serializer(), it.tally)}"
+    }
+    handed("an optional struct under its own tag, its tag alone", Striking.serializer(), """STRUCK""") {
+        Json.encodeToString(Striking.serializer(), it)
     }
 }
 "#;
@@ -357,6 +377,60 @@ fn a_member_flattened_after_a_struct_reads_in_kotlin_the_keys_serde_hands_it() {
         nipping_kotlin::kotlin_definition(),
         slinging_kotlin::kotlin_definition(),
         FUNCTIONS.to_owned(),
+        HANDED_ROW.to_owned(),
+        main,
+    ];
+    let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
+        return;
+    };
+    assert_eq!(printed, expected);
+}
+
+/// A member flattened after a struct is handed the struct's own tag and the key of a member the
+/// struct never reads, as serde hands them, and an optional struct whose tag alone is in the
+/// object reads no value, as serde reads none.
+#[test]
+fn a_member_flattened_after_a_struct_reads_in_kotlin_the_tag_and_the_keys_serde_hands_on() {
+    let dipping: Dipping = serde_json::from_str(ENSIGN).unwrap();
+    let gammoning: Gammoning = serde_json::from_str(MARLINE).unwrap();
+    let expected = [
+        format!(
+            "after a struct under its own tag: {} {}",
+            dipping.ensign.label,
+            serde_json::to_string(&dipping.tally).unwrap()
+        ),
+        format!(
+            "after a struct with a member it never reads: {} {}",
+            gammoning.marline.label,
+            serde_json::to_string(&gammoning.tally).unwrap()
+        ),
+        format!(
+            "an optional struct under its own tag, its tag alone: {}",
+            read_of::<Striking>(STRUCK)
+        ),
+    ]
+    .map(|line| format!("{line}\n"))
+    .concat();
+    assert_eq!(
+        expected,
+        "after a struct under its own tag: n {\"keys\":[\"kind\",\"north\"]}\n\
+         after a struct with a member it never reads: n {\"keys\":[\"north\",\"spare\"]}\n\
+         an optional struct under its own tag, its tag alone: {\"note\":\"a\"}\n"
+    );
+    let main = HANDED_ON
+        .replace("ENSIGN", ENSIGN)
+        .replace("MARLINE", MARLINE)
+        .replace("STRUCK", STRUCK);
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        bunting_kotlin::kotlin_definition(),
+        ensign_kotlin::kotlin_definition(),
+        dipping_kotlin::kotlin_definition(),
+        marline_kotlin::kotlin_definition(),
+        gammoning_kotlin::kotlin_definition(),
+        striking_kotlin::kotlin_definition(),
+        FUNCTIONS.to_owned(),
+        HANDED_ROW.to_owned(),
         main,
     ];
     let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
