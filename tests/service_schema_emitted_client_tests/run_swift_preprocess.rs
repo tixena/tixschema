@@ -676,22 +676,20 @@ a flattened brand over the type: [\"tag\"]
 }
 
 /// A type declared below the type that reads it is not known to take the keys taken where its
-/// reader is written, so its function is handed the whole object of its holder, where the Rust
-/// read hands it the keys the holder's own members leave.
+/// reader is written, so it is read, flattened, from the payload without the keys its holder's own
+/// members take, and its function is handed the keys the Rust read hands it.
 #[test]
-fn a_type_declared_below_its_holder_is_handed_the_whole_object() {
+fn a_type_declared_below_its_holder_is_handed_the_keys_its_holder_leaves() {
     let flat = r#"{"dock":"north","tag":"t"}"#;
-    assert_eq!(
-        rust_keys::<Ahead>("declared below", flat, &|held| listed(&held.behind.keys)),
-        "declared below: [\"tag\"]\n"
-    );
+    let expected = rust_keys::<Ahead>("declared below", flat, &|held| listed(&held.behind.keys));
+    assert_eq!(expected, "declared below: [\"tag\"]\n");
     let lines = format!(
         "attempt(\"declared below\", Ahead.self, #\"{flat}\"#) {{ \"\\($0.behind.keys)\" }}"
     );
     let Some(swift) = printed(&lines) else {
         return;
     };
-    assert_eq!(swift, "declared below: [\"dock\", \"tag\"]\n");
+    assert_eq!(swift, expected);
 }
 
 /// A parcel labelled `label`, with no fragile code written.

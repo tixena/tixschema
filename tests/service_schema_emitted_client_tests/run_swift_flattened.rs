@@ -1,11 +1,13 @@
 //! A member that names a function, beside a member of its holder's own, ahead of a struct and
 //! after each member that takes none of the keys it reads, and, after a struct, a struct with a
 //! flattened member of its own, a member that names a function, a model with a rule and a struct
-//! that reads the same key, each read and written back by the emitted Swift types compiled with
-//! warnings as errors, against what serde reads and writes back. Every holder has a member of its
-//! own: the read and the write of a struct whose every member is flattened declare a container
+//! that reads the same key, and a struct flattened first, plain and naming a function, beside a
+//! member of its holder's own, each read and written back by the emitted Swift types compiled
+//! with warnings as errors, against what serde reads and writes back. Every holder has a member of
+//! its own: the read and the write of a struct whose every member is flattened declare a container
 //! they do not use, which `-warnings-as-errors` refuses, so a map, the one member of its struct,
-//! is pinned by its text alone in `tests/swift_tests/flattened.rs`.
+//! and a holder of no member of its own are pinned by their text alone in
+//! `tests/swift_tests/flattened.rs`.
 
 #![cfg(feature = "swift")]
 
@@ -17,11 +19,11 @@ use serde_json::Value;
 
 use super::runtime::judged;
 use super::swift_flattened_models::{
-    BOWSING, Bowsing, FRAPPING, Frapping, GRIPPING, Gripping, Kedging, Marling, Mousing, Notch,
-    Pennant, Plying, STOPPING, Splaying, TEXTS, Twinning, bowsing_swift, counting_swift,
-    footing_swift, frapping_swift, gripping_swift, hanking_swift, kedging_swift, marling_swift,
-    mousing_swift, notch_swift, pennant_swift, plying_swift, reeving_swift, splaying_swift,
-    twinning_swift,
+    BOWSING, Bowsing, FRAPPING, Frapping, GRIPPING, Gripping, HANKING, Hanking, Kedging, LABEL,
+    Marling, Marrying, Mousing, Notch, Pennant, Plying, STOPPING, Splaying, TEXTS, Twinning,
+    Whipping, bowsing_swift, counting_swift, footing_swift, frapping_swift, gripping_swift,
+    hanking_swift, kedging_swift, marling_swift, marrying_swift, mousing_swift, notch_swift,
+    pennant_swift, plying_swift, reeving_swift, splaying_swift, twinning_swift, whipping_swift,
 };
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -65,7 +67,8 @@ func refusal<Read: Decodable>(_ type: Read.Type, _ payload: String) -> String {
 
 /// What prints the keys each function was handed, then its holder written back; then each member
 /// flattened after a struct, and what a read of a struct after a struct that reads the same key
-/// says.
+/// says; then a struct flattened first beside a member of its holder's own, and what a read of
+/// one that reads the key of that member says.
 const MAIN: &str = r##"
 let frapping = read(Frapping.self, #"FRAPPING"#)
 print("frapping: \(written(frapping.tally.keys)) \(written(frapping))")
@@ -85,6 +88,9 @@ let gripping = read(Gripping.self, #"GRIPPING"#)
 print("gripping: \(written(gripping.notch)) \(written(gripping))")
 print("gripping refused: \(refusal(Gripping.self, #"BROKEN_GRIPPING"#))")
 print("plying refused: \(refusal(Plying.self, #"STOPPING"#))")
+print("hanking: \(written(read(Hanking.self, #"HANKING"#)))")
+print("whipping refused: \(refusal(Whipping.self, #"LABEL"#))")
+print("marrying refused: \(refusal(Marrying.self, #"LABEL"#))")
 "##;
 
 /// A [`Gripping`] whose model breaks its rule.
@@ -123,6 +129,8 @@ fn with_payloads(main: &str) -> String {
         ("TEXTS", TEXTS),
         ("BOWSING", BOWSING),
         ("GRIPPING", GRIPPING),
+        ("HANKING", HANKING),
+        ("LABEL", LABEL),
     ]
     .into_iter()
     .fold(main.to_owned(), |held, (named, payload)| {
@@ -149,6 +157,8 @@ fn printed() -> Option<String> {
         twinning_swift::swift_definition(),
         gripping_swift::swift_definition(),
         plying_swift::swift_definition(),
+        whipping_swift::swift_definition(),
+        marrying_swift::swift_definition(),
     ];
     let source = [
         "import Foundation".to_owned(),
@@ -229,13 +239,32 @@ fn after_a_struct() -> String {
     )
 }
 
-/// Each member that names a function, and each member flattened after a struct, is read from the
-/// keys serde hands it, and each holder is written back as serde writes it back. A model a holder
-/// holds is judged once, with its holder, under the place serde names, and a struct after a struct
-/// that reads the same key is refused, as serde refuses it.
+/// A struct flattened first beside a member of its holder's own whose key it does not read, read
+/// and written back, then what serde says of a struct flattened first, plain and naming a
+/// function, beside a member that reads its key, ahead of the position it says it at.
+fn first() -> String {
+    let refused = |text: String| {
+        let (refused, _position) = text.split_once(" at line").unwrap();
+        refused.to_owned()
+    };
+    let whipping = serde_json::from_str::<Whipping>(LABEL).unwrap_err();
+    let marrying = serde_json::from_str::<Marrying>(LABEL).unwrap_err();
+    format!(
+        "hanking: {}\nwhipping refused: {}\nmarrying refused: {}\n",
+        written(&read::<Hanking>(HANKING)),
+        refused(whipping.to_string()),
+        refused(marrying.to_string()),
+    )
+}
+
+/// Each member that names a function, each member flattened after a struct and each struct
+/// flattened first is read from the keys serde hands it, and each holder is written back as serde
+/// writes it back. A model a holder holds is judged once, with its holder, under the place serde
+/// names, and a struct that reads a key its holder or a struct ahead of it took is refused, as
+/// serde refuses it.
 #[test]
 fn a_flattened_member_reads_in_swift_the_keys_serde_hands_it() {
-    let expected = format!("{}{}", handed(), after_a_struct());
+    let expected = format!("{}{}{}", handed(), after_a_struct(), first());
     assert_eq!(
         expected,
         "frapping: [\"north\"] {\"keys\":[\"north\"],\"note\":\"a\"}\n\
@@ -248,7 +277,10 @@ fn a_flattened_member_reads_in_swift_the_keys_serde_hands_it() {
          twinning: [\"north\"] {\"keys\":[\"north\"],\"label\":\"n\",\"note\":\"a\"}\n\
          gripping: {\"mark\":\"x\"} {\"label\":\"n\",\"mark\":\"x\",\"note\":\"a\"}\n\
          gripping refused: 'mark': too short: minimum length is 1, got 0\n\
-         plying refused: missing field `label`\n"
+         plying refused: missing field `label`\n\
+         hanking: {\"label\":\"n\",\"marker\":\"m\"}\n\
+         whipping refused: missing field `label`\n\
+         marrying refused: missing field `label`\n"
     );
     let Some(printed) = printed() else {
         return;
