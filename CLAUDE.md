@@ -454,10 +454,11 @@ ident, or the container's `rename`); `with_struct_tag` puts the pair ahead of th
 as a required string literal and refuses a field that writes the same key, which serde would write
 twice. Dart writes it into `toJson`, Swift encodes it under `SwiftSchemaTagCodingKeys`, and Kotlin
 holds it in an `@EncodeDefault` property outside the constructor, which the plugin writes after the
-members and `{Type}Unjudged` moves ahead of them (`read::tag_first`), where serde writes it. Dart
-and Swift read a payload with the key or without it, whatever value it holds, as serde does. Kotlin
-reads one whose key holds the struct's name, and refuses one without the key or with another value
-under it, as TypeScript and Zod refuse it ("The Kotlin client's read", below).
+members and `{Type}Unjudged` moves ahead of them (`read::tag_first`), where serde writes it. Swift
+reads a payload with the key or without it, whatever value it holds, as serde does. Dart and Kotlin
+read one whose key holds the struct's name, and refuse one without the key or with another value
+under it, as TypeScript and Zod refuse it ("The Dart read refuses what `validate()` refuses" and
+"The Kotlin client's read", below).
 
 ### 7. Field Validation Attributes (`#[model_schema_prop(...)]`)
 
@@ -1673,6 +1674,19 @@ consumer's view; this is what a change has to keep.
   variant as its tag alone. `run_dart_unit_entries.rs` reads `Becalming`, of
   `run_kotlin_refusals.rs`, under the toolchain, with serde's answer and the Zod schema's text
   pinned beside each payload.
+- **A struct under its own tag reads its name under the tag alone**, as TypeScript and Zod read
+  it (`kind: z.literal("Flag")`), where serde reads past the tag whatever it holds, and where it
+  is absent. `own_tag_held` in `src/features/dart.rs` writes the check, inline, ahead of the
+  constructor: ``FormatException('missing field `{key}`')`` for an object without the key, and
+  `FormatException('expected tag "{name}", found ' + jsonEncode(...))` for another value under it,
+  `null` among it. `tag_checked_reads`, the struct's `class_reads`, writes it over the object the
+  members are read from: what the type's functions answer where it names one, and `named` where a
+  member has an alias. A holder that flattens such a struct hands it the tag, so the holder
+  refuses the same payloads. `toJson` writes the tag ahead of the members either way, as serde
+  writes it. `run_dart_own_tags.rs` reads `FLAG_TAGS`, `PENNANT_TAGS` and `DRESSING_TAGS` of
+  `tests/kotlin_tests/flattened_models.rs` under the Dart SDK, with serde's write-back pinned
+  beside each row, and pins the text of each read; `src/features/dart/tests.rs` pins the check
+  under a function and an alias.
 - **A name serde reads beside the one it writes is read too.** `read_aliases` reads the
   `#[serde(alias)]` names of a field and of a variant, none for one serde never reads, and
   `DartField::aliases` holds a member's. A tagged enum takes a variant under its written name or

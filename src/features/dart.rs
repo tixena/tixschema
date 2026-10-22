@@ -2713,24 +2713,54 @@ fn class_reads(
     codec: &GenericCodec,
     corrects: &Corrects<'_>,
 ) -> String {
+    tag_checked_reads(class_name, fields, tag_key, None, codec, corrects)
+}
+
+/// [`class_reads`], which, handed `own_tag`, a struct's own tag key and the struct's name, refuses
+/// an object that holds any other value under the key, or none, ahead of the members.
+fn tag_checked_reads(
+    class_name: &str,
+    fields: &[DartField],
+    tag_key: Option<&str>,
+    own_tag: Option<&(String, String)>,
+    codec: &GenericCodec,
+    corrects: &Corrects<'_>,
+) -> String {
     let named = declared("named");
-    let answer = named_by_aliases(fields, &corrects.json, &named).map_or_else(
-        || {
-            let arguments = constructor_arguments(fields, &corrects.json, tag_key);
-            Answer::Value(format!("{class_name}({arguments})"))
-        },
-        |naming| {
-            let arguments = constructor_arguments(fields, &named, tag_key);
-            Answer::Statements(format!("{naming} return {class_name}({arguments});"))
-        },
+    let (naming, read_from) = named_by_aliases(fields, &corrects.json, &named).map_or_else(
+        || (String::new(), corrects.json.as_str()),
+        |naming| (format!("{naming} "), named.as_str()),
     );
+    let arguments = constructor_arguments(fields, read_from, tag_key);
+    let answer = match own_tag {
+        Some((key, held)) => Answer::Statements(format!(
+            "{naming}{} return {class_name}({arguments});",
+            own_tag_held(read_from, key, held)
+        )),
+        None if naming.is_empty() => Answer::Value(format!("{class_name}({arguments})")),
+        None => Answer::Statements(format!("{naming}return {class_name}({arguments});")),
+    };
     let unjudged = unjudged_read(
         corrects,
         " as Map<String, dynamic>",
-        !fields.is_empty(),
+        !fields.is_empty() || own_tag.is_some(),
         &answer,
     );
     read_pair(class_name, "Map<String, dynamic>", codec, &unjudged)
+}
+
+/// The statements that refuse the object `object` names where it holds no `key`, or holds another
+/// value than `named` under it: the tag of a struct under its own tag, which TypeScript and Zod
+/// refuse in the same places, where serde reads past it.
+fn own_tag_held(object: &str, key: &str, named: &str) -> String {
+    let key_text = dart_escaped(key, '\'');
+    let name_text = dart_escaped(named, '\'');
+    format!(
+        "if (!{object}.containsKey('{key_text}')) throw FormatException('missing field \
+         `{key_text}`'); if ({object}['{key_text}'] != '{name_text}') throw \
+         FormatException('expected tag \"{name_text}\", found ' + \
+         jsonEncode({object}['{key_text}']));"
+    )
 }
 
 /// What copies the object `json` names into `named`, each entry under an alias of a member of
@@ -2844,9 +2874,11 @@ fn struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -> Toke
     );
     let generic_params = dart_generic_params(&item_struct.generics);
     let codec = generic_codec(&type_parameters);
-    // A struct's own tag is written ahead of its fields and read past, as serde does both.
-    let own_tag: Vec<String> = struct_tag(item_struct)
-        .into_iter()
+    // A struct's own tag is written ahead of its fields, as serde writes it, and read under the
+    // struct's name alone, as TypeScript and Zod read it, where serde reads past it.
+    let own_tag = struct_tag(item_struct);
+    let tag_written: Vec<String> = own_tag
+        .iter()
         .map(|(key, named)| format!("'{key}': '{named}',"))
         .collect();
     let mut helpers = Helpers::default();
@@ -2857,9 +2889,16 @@ fn struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -> Toke
         &export_name,
         &generic_params,
         &fields,
-        &own_tag,
+        &tag_written,
         &codec,
-        &class_reads(&export_name, &fields, None, &codec, &corrects),
+        &tag_checked_reads(
+            &export_name,
+            &fields,
+            None,
+            own_tag.as_ref(),
+            &codec,
+            &corrects,
+        ),
         &validate_members(&rules, &helpers, false),
     );
     let typedef = ident_typedef(&rust_ident, &export_name, &generic_params);

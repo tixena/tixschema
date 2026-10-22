@@ -484,6 +484,13 @@ mod run_swift_aliased;
 #[path = "service_schema_emitted_client_tests/run_dart_unit_entries.rs"]
 mod run_dart_unit_entries;
 
+/// A struct under its own tag, alone, with a parameter, with a member under its alias, with a
+/// flattened member and flattened into a holder, read by the emitted Dart types under its name
+/// alone, as TypeScript and Zod read it.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_own_tags.rs"]
+mod run_dart_own_tags;
+
 /// A map that is the one member of its object, under a key Swift wraps, of models, of dates and
 /// naming a function, and a member that names a function at each place a member can be handed
 /// fewer keys than its object holds.
