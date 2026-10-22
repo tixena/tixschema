@@ -3549,6 +3549,156 @@ fn an_untagged_enum_filled_at_an_object_at_its_own_parameter_or_declared_below_i
     }
 }
 
+/// No local build is of the clients alone, so the gates are read off the sources.
+#[test]
+fn the_refusals_of_a_slot_over_an_untagged_enum_are_compiled_in_every_build_with_serde() {
+    let with_serde = quote::quote!(cfg(feature = "serde")).to_string();
+    let expansion = include_str!("../model_schema.rs");
+    let registry = include_str!("../utils.rs");
+    for (source, named) in [
+        (expansion, "non_object_wire"),
+        (expansion, "written_as_its_slot"),
+        (expansion, "filled_union_members"),
+        (expansion, "written_union_members"),
+        (expansion, "written_non_object"),
+        (expansion, "flatten_edge_guard_error"),
+        (expansion, "tagged_non_object_message"),
+        (registry, "record_non_object_wire"),
+        (registry, "recorded_non_object_wire"),
+    ] {
+        assert_eq!(
+            gates_above(source, named),
+            [with_serde.as_str()],
+            "for `{named}`"
+        );
+    }
+}
+
+/// Declares, beside the types [`declare_own_members`] declares, the structs of one slot and the
+/// brands over an untagged enum: with a member written as text, through a generic type declared
+/// above, at the enum's own parameter, with every member an object, and over an enum declared
+/// below; and an untagged enum with a member over one of them.
+#[cfg(feature = "serde")]
+fn declare_slot_members() {
+    declare_own_members();
+    for (args, declared) in [
+        ("no_display", "pub struct ProbeSlotText(ProbeTextMember);"),
+        (
+            "no_display",
+            "#[serde(transparent)] pub struct ProbeBrandText(ProbeTextMember);",
+        ),
+        (
+            "no_display",
+            "pub struct ProbeSlotFilled(ProbeWrap<ProbeTextMember>);",
+        ),
+        (
+            "no_display",
+            "pub struct ProbeSlotOwn(ProbeOwnMember<String>);",
+        ),
+        (
+            "no_display",
+            "pub struct ProbeSlotObjects(ProbeFieldsMember);",
+        ),
+        (
+            "no_display",
+            "#[serde(transparent)] pub struct ProbeBrandObjects(ProbeFieldsMember);",
+        ),
+        ("no_display", "pub struct ProbeSlotBelow(ProbeUnionBelow);"),
+        (
+            "",
+            "#[serde(untagged)] pub enum ProbeNestedSlotMember { Obj { a: String }, \
+             Inner(ProbeSlotText) }",
+        ),
+    ] {
+        let expanded = serialized_under(args, declared);
+        assert_eq!(
+            compile_error_count(&expanded),
+            0,
+            "for {declared}, got: {expanded}"
+        );
+    }
+}
+
+/// A struct of one slot and a brand over an untagged enum with a member written as text, flattened
+/// beside a member and held by a newtype variant under a tag alone, each refused with the branch
+/// an alias of the same enum is refused with, and named as written.
+#[cfg(feature = "serde")]
+#[test]
+fn a_slot_over_an_untagged_enum_with_a_member_that_is_no_object_is_refused_in_every_build_with_serde()
+ {
+    declare_slot_members();
+    assert_eq!(
+        flattened_and_held("TextAlias", "ProbeTextAlias"),
+        branch_refusals("TextAlias", "ProbeTextAlias", "2", "string"),
+        "the alias of the same enum"
+    );
+    for holder in ["SlotText", "BrandText"] {
+        let inner = format!("Probe{holder}");
+        assert_eq!(
+            flattened_and_held(holder, &inner),
+            branch_refusals(holder, &inner, "2", "string"),
+            "for {inner}"
+        );
+    }
+    for quoted in branch_refusals("SlotText", "ProbeSlotText", "2", "string") {
+        let answered = format!("error: {}", quoted[0]);
+        assert!(
+            include_str!("../../README.md").contains(&answered),
+            "the README no longer quotes: {answered}"
+        );
+    }
+}
+
+/// A struct of one slot over an untagged enum through a generic type declared above and at the
+/// enum's own parameter, a generic type declared above filled at a struct of one slot over one,
+/// and an untagged enum with a member over one, each flattened and held under a tag alone,
+/// refused with the branch the enum the slot holds is refused with.
+#[cfg(feature = "serde")]
+#[test]
+fn a_slot_over_an_untagged_enum_through_a_generic_type_or_held_by_one_is_refused_as_the_enum() {
+    declare_slot_members();
+    for (index, (held, branch)) in [
+        ("ProbeSlotFilled", "2"),
+        ("ProbeSlotOwn", "2"),
+        ("ProbeWrap<ProbeSlotText>", "2"),
+        ("ProbeNestedSlotMember", "2.2"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let holder = format!("Slot{index}");
+        assert_eq!(
+            flattened_and_held(&holder, held),
+            branch_refusals(&holder, held, branch, "string"),
+            "for {held}"
+        );
+    }
+}
+
+/// The holders left alone: a struct of one slot and a brand over an untagged enum whose every
+/// member is an object, a struct of one slot over an enum declared below, and a holder declared
+/// below, flattened and held under a tag alone.
+#[cfg(feature = "serde")]
+#[test]
+fn a_slot_over_an_untagged_enum_of_objects_or_declared_below_is_accepted() {
+    declare_slot_members();
+    for (index, held) in [
+        "ProbeSlotObjects",
+        "ProbeBrandObjects",
+        "ProbeSlotBelow",
+        "ProbeSlotUnseen",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        assert_eq!(
+            flattened_and_held(&format!("SlotAccepted{index}"), held),
+            [Vec::<String>::new(), Vec::new()],
+            "for {held}"
+        );
+    }
+}
+
 /// What the record every build with serde writes proves of each flattened type is what the record
 /// a Zod surface writes proves, so the refusal reads the same with a schema surface and without.
 #[cfg(all(feature = "serde", feature = "zod"))]
