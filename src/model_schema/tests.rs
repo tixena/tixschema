@@ -2048,7 +2048,7 @@ fn the_flattened_plain_enum_refusal_is_compiled_in_every_build_with_serde() {
     let registry = include_str!("../utils.rs");
     for (source, named) in [
         (expansion, "FLATTENED_PLAIN_ENUM_SCOPE"),
-        (expansion, "flattened_plain_enum"),
+        (expansion, "written_as_a_plain_enum"),
         (expansion, "flattened_field_guard_error"),
         (expansion, "internally_tagged_guard_errors"),
         (expansion, "written_as_a_variant_name"),
@@ -2137,6 +2137,231 @@ fn a_flattened_plain_enum_declared_above_is_refused_in_every_build_with_serde() 
          #[serde(flatten)] pub weather: Outlook }",
     );
     assert_eq!(compile_error_count(&unseen), 0, "got: {unseen}");
+}
+
+/// Declares the plain enum and the types declared above that serde writes as its variant name:
+/// a struct of one slot, a brand, a generic struct of one slot whose value is its type parameter,
+/// a struct of one slot over that struct, and a struct of one slot and an alias over an `Option` of
+/// the enum.
+#[cfg(feature = "serde")]
+fn declare_plain_enum_values() {
+    for (args, declared) in [
+        ("", "pub enum ProbeMood { Calm, Tense }"),
+        ("no_display", "pub struct ProbeMoodSlot(ProbeMood);"),
+        (
+            "no_display",
+            "#[serde(transparent)] pub struct ProbeMoodBrand(ProbeMood);",
+        ),
+        (
+            "no_display, default_types(T = String)",
+            "pub struct ProbeWrap<T>(T);",
+        ),
+        ("no_display", "pub struct ProbeMoodAgain(ProbeMoodSlot);"),
+        (
+            "no_display",
+            "pub struct ProbeMaybeMoodSlot(Option<ProbeMood>);",
+        ),
+        ("", "pub type ProbeMaybeMood = Option<ProbeMood>;"),
+    ] {
+        let expanded = serialized_under(args, declared);
+        assert_eq!(
+            compile_error_count(&expanded),
+            0,
+            "for {declared}, got: {expanded}"
+        );
+    }
+}
+
+/// The refusal of field `field` of `holder` flattened over `inner`, which serde writes as a plain
+/// enum's variant name.
+#[cfg(feature = "serde")]
+fn flattened_plain_enum_refusal(field: &str, holder: &str, inner: &str) -> String {
+    format!(
+        "model_schema: field `{field}` of `{holder}` carries `#[serde(flatten)]` over `{inner}`, \
+         which serde does not write as an object: a plain enum writes its own variant name, so it \
+         contributes no members to the object being written \u{2014} serde writes that name as a \
+         key holding null, which a schema closed around the remaining fields rejects. Write the \
+         field as a named member so the value gets a key of its own, or flatten a type serde \
+         writes as an object. {}",
+        super::FLATTENED_PLAIN_ENUM_SCOPE
+    )
+}
+
+/// The refusal of the slot of variant `Held` of `holder`, under the tag `kind`, over `inner`,
+/// which serde writes as a plain enum's variant name.
+#[cfg(feature = "serde")]
+fn tagged_plain_enum_refusal(holder: &str, inner: &str) -> String {
+    format!(
+        "model_schema: variant `Held` of internally tagged enum `{holder}` wraps `{inner}`, which \
+         serde does not write as an object: a plain enum writes its own variant name, so nothing \
+         of it joins the tag \u{2014} serde writes that name as a key holding null, which a schema \
+         closed around the tag rejects. Name a `content` key so the value gets an object of its \
+         own, or wrap it in a struct whose fields can sit beside the tag. {}",
+        super::FLATTENED_PLAIN_ENUM_SCOPE
+    )
+}
+
+/// A value serde writes as a plain enum's variant name by way of a type declared above, flattened
+/// into a struct and into a variant's members: a struct of one slot and a generic type filled at
+/// the enum, each refused with the refusal of the plain enum itself, named as written. serde writes
+/// `{"id":"i","Calm":null}` for each and reads it back, so neither is told its write does not join
+/// the object.
+#[cfg(feature = "serde")]
+#[test]
+fn a_flattened_value_serde_writes_as_a_plain_enum_is_refused_as_the_plain_enum_is() {
+    declare_plain_enum_values();
+    let flattened = |holder: &str, inner: &str| {
+        refusal_texts(&serialized_under(
+            "",
+            &format!("pub struct {holder} {{ pub id: String, #[serde(flatten)] pub m: {inner} }}"),
+        ))
+    };
+    let slot = flattened("ProbeM1", "ProbeMoodSlot");
+    assert_eq!(
+        slot,
+        [flattened_plain_enum_refusal(
+            "m",
+            "ProbeM1",
+            "ProbeMoodSlot"
+        )]
+    );
+    let filled = flattened("ProbeM3", "ProbeWrap<ProbeMood>");
+    assert_eq!(
+        filled,
+        [flattened_plain_enum_refusal(
+            "m",
+            "ProbeM3",
+            "ProbeWrap<ProbeMood>"
+        )]
+    );
+    for refused in [&slot, &filled] {
+        let answered = format!("error: {}", refused[0]);
+        assert!(
+            include_str!("../../README.md").contains(&answered),
+            "the README no longer quotes: {answered}"
+        );
+    }
+    assert_eq!(
+        refusal_texts(&serialized_under(
+            "",
+            "pub enum ProbeMoodLog { Noted { note: String, #[serde(flatten)] m: \
+             ProbeWrap<ProbeMood> } }",
+        )),
+        [flattened_plain_enum_refusal(
+            "m",
+            "ProbeMoodLog",
+            "ProbeWrap<ProbeMood>"
+        )]
+    );
+}
+
+/// The plain enum itself and under an `Option`, and a value serde writes as its variant name by
+/// way of a brand, a `Box`, a chain of types declared above, and an `Option` of each or in each,
+/// flattened, every one refused with the refusal of the plain enum itself, named as written.
+/// serde writes a `Some` as the key naming the variant, holding null, and a `None` as no key.
+#[cfg(feature = "serde")]
+#[test]
+fn a_flattened_value_over_a_plain_enum_through_a_chain_or_an_option_is_refused_as_the_plain_enum_is()
+ {
+    declare_plain_enum_values();
+    for (holder, flattened, named) in [
+        ("ProbeMoodItself", "ProbeMood", "ProbeMood"),
+        ("ProbeMoodMaybeItself", "Option<ProbeMood>", "ProbeMood"),
+        ("ProbeMoodBranded", "ProbeMoodBrand", "ProbeMoodBrand"),
+        ("ProbeMoodBoxed", "Box<ProbeMoodSlot>", "ProbeMoodSlot"),
+        ("ProbeMoodChained", "ProbeMoodAgain", "ProbeMoodAgain"),
+        (
+            "ProbeMoodWrapped",
+            "ProbeWrap<ProbeMoodSlot>",
+            "ProbeWrap<ProbeMoodSlot>",
+        ),
+        (
+            "ProbeMoodMaybeSlot",
+            "Option<ProbeMoodSlot>",
+            "ProbeMoodSlot",
+        ),
+        (
+            "ProbeMoodMaybeFilled",
+            "Option<ProbeWrap<ProbeMood>>",
+            "ProbeWrap<ProbeMood>",
+        ),
+        (
+            "ProbeMoodSlotOfMaybe",
+            "ProbeMaybeMoodSlot",
+            "ProbeMaybeMoodSlot",
+        ),
+        (
+            "ProbeMoodFilledMaybe",
+            "ProbeWrap<Option<ProbeMood>>",
+            "ProbeWrap<Option<ProbeMood>>",
+        ),
+        ("ProbeMoodAliasOfMaybe", "ProbeMaybeMood", "ProbeMaybeMood"),
+    ] {
+        assert_eq!(
+            flattened_beside_an_id(holder, flattened),
+            [flattened_plain_enum_refusal("wrap", holder, named)],
+            "for {flattened}"
+        );
+    }
+}
+
+/// A newtype variant under a tag alone over a value serde writes as a plain enum's variant name
+/// by way of a type declared above: a struct of one slot, a brand, a generic type filled at the
+/// enum and a chain of them, each refused with the refusal of the plain enum itself, named as
+/// written. serde writes `{"kind":"Held","Calm":null}` for each and reads it back, so none is told
+/// it cannot sit beside the tag. One that writes an `Option` of the enum is refused as an
+/// `Option`, serde refusing every write of it there.
+#[cfg(feature = "serde")]
+#[test]
+fn a_tagged_newtype_variant_over_a_value_serde_writes_as_a_plain_enum_is_refused_as_the_plain_enum_is()
+ {
+    declare_plain_enum_values();
+    let slot = held_under_tag("ProbeM2", "ProbeMoodSlot");
+    assert_eq!(
+        slot,
+        [tagged_plain_enum_refusal("ProbeM2", "ProbeMoodSlot")]
+    );
+    let filled = held_under_tag("ProbeM4", "ProbeWrap<ProbeMood>");
+    assert_eq!(
+        filled,
+        [tagged_plain_enum_refusal("ProbeM4", "ProbeWrap<ProbeMood>")]
+    );
+    for refused in [&slot, &filled] {
+        let answered = format!("error: {}", refused[0]);
+        assert!(
+            include_str!("../../README.md").contains(&answered),
+            "the README no longer quotes: {answered}"
+        );
+    }
+    for (holder, inner, named) in [
+        ("ProbeMoodItselfHeld", "ProbeMood", "ProbeMood"),
+        ("ProbeMoodBrandHeld", "ProbeMoodBrand", "ProbeMoodBrand"),
+        ("ProbeMoodBoxedHeld", "Box<ProbeMoodSlot>", "ProbeMoodSlot"),
+        ("ProbeMoodAgainHeld", "ProbeMoodAgain", "ProbeMoodAgain"),
+        (
+            "ProbeMoodWrappedHeld",
+            "ProbeWrap<ProbeMoodBrand>",
+            "ProbeWrap<ProbeMoodBrand>",
+        ),
+    ] {
+        assert_eq!(
+            held_under_tag(holder, inner),
+            [tagged_plain_enum_refusal(holder, named)],
+            "for {inner}"
+        );
+    }
+    for (holder, inner) in [
+        ("ProbeMoodSlotOfMaybeHeld", "ProbeMaybeMoodSlot"),
+        ("ProbeMoodFilledMaybeHeld", "ProbeWrap<Option<ProbeMood>>"),
+        ("ProbeMoodAliasOfMaybeHeld", "ProbeMaybeMood"),
+        ("ProbeMoodWrappedMaybeHeld", "ProbeWrap<ProbeMaybeMoodSlot>"),
+    ] {
+        assert_eq!(
+            held_under_tag(holder, inner),
+            [tagged_optional_refusal(holder, inner)],
+            "for {inner}"
+        );
+    }
 }
 
 /// No local build is of the clients alone, so the gates are read off the sources.

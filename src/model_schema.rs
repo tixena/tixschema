@@ -820,6 +820,18 @@ struct TaggedSlot<'slot> {
 
 #[cfg(feature = "serde")]
 impl<'slot> TaggedSlot<'slot> {
+    /// The name a refusal quotes the slot's type by, with the arguments written for it, where
+    /// serde writes its value as the bare name of a plain enum's variant with no `Option` on the
+    /// way: a key holding null beside the tag. `None` for every other slot.
+    fn plain_enum(self) -> Option<String> {
+        let FieldDefType::SiblingType(inner_name, _) = &self.inner.field_type else {
+            return None;
+        };
+        let written = value_filling(self.inner).unwrap_or(self.inner);
+        (written_as_a_plain_enum(self.inner) && !writes_an_optional(written))
+            .then(|| filled_spelling(self.written, inner_name))
+    }
+
     /// The name a refusal quotes the slot's type by, beside the filling serde writes its value as:
     /// the type's [`union_spelling`] and no filling, or, where serde writes the type as what fills
     /// its type parameter, the type with the arguments written for it beside that filling. `None`
@@ -1924,16 +1936,19 @@ fn alias_undescribable_std_error(
     Some(syn::Error::new_spanned(&alias.ty, message).to_compile_error())
 }
 
-/// The name of a flattened value's type when the registry proves that type is a plain enum.
+/// Whether serde writes a value of `def` as the bare name of a plain enum's variant, or as an
+/// `Option` of one: `def` names a type the registry records as one, itself, under an `Option`, or
+/// at what fills a generic type declared above.
 #[cfg(feature = "serde")]
-fn flattened_plain_enum(inner: &FieldDef) -> Option<&str> {
-    let FieldDefType::SiblingType(name, generic_args) = &inner.field_type else {
-        return None;
-    };
-    if !generic_args.is_empty() || inner.array_depth > 0 {
-        return None;
+fn written_as_a_plain_enum(def: &FieldDef) -> bool {
+    let bare = without_its_option(def);
+    if let Some(filling) = value_filling(&bare) {
+        return written_as_a_plain_enum(filling);
     }
-    is_recorded_plain_enum(name).then_some(name.as_str())
+    let FieldDefType::SiblingType(name, _) = &bare.field_type else {
+        return false;
+    };
+    bare.array_depth == 0 && is_recorded_plain_enum(name)
 }
 
 /// The alias schema module is referenced by all three schema features — `typescript` and `zod`
@@ -3904,18 +3919,27 @@ fn member_parameter_leaves(fld: &FieldDef, parameters: &[String]) -> Vec<UnionPa
     named_union_parameters(name, arguments, parameters)
 }
 
-/// Whether serde writes `item` as the bare name of one of its variants: a plain enum, and an
-/// alias of one declared above.
+/// Whether serde writes `item` as the bare name of a plain enum's variant, or as an `Option` of
+/// one: a plain enum, and a brand, a struct of one slot or an alias whose value
+/// [`written_as_a_plain_enum`] answers for.
 #[cfg(feature = "serde")]
 fn written_as_a_variant_name(item: &Item) -> bool {
-    if let Item::Enum(item_enum) = item {
-        matches!(Tagging::of(item_enum), Tagging::Plain)
+    let value = if let Item::Enum(item_enum) = item {
+        return matches!(Tagging::of(item_enum), Tagging::Plain);
+    } else if let Item::Struct(item_struct) = item {
+        let Some(slot) = written_as_its_slot(item_struct) else {
+            return false;
+        };
+        &slot.ty
     } else if let Item::Type(alias) = item {
-        let target = get_field_def("_aliased", &alias.ty, "");
-        !target.is_optional() && flattened_plain_enum(&target).is_some()
+        &*alias.ty
     } else {
-        false
-    }
+        return false;
+    };
+    let parameters = item_generics(item).map_or_else(Vec::new, type_parameters_in_scope);
+    let mut def = get_field_def("_written", value, "");
+    def.erase_type_parameters(&parameters);
+    written_as_a_plain_enum(&def)
 }
 
 /// The refusal of each map `item` flattens beside another member that writes a key, or beside the
@@ -5837,16 +5861,23 @@ fn branded_guard_errors(
         .collect()
 }
 
-/// The `compile_error!` tokens for a `#[serde(flatten)]` field the registry proves is a plain enum,
-/// or `None` for every other field. Read from the declaration, not the collected field, so the
-/// diagnostic keeps the span of the type it rejects.
+/// The `compile_error!` tokens for a `#[serde(flatten)]` field the registry proves serde writes as
+/// a plain enum's variant name, [`written_as_a_plain_enum`], or `None` for every other field. Read
+/// from the declaration, not the collected field, so the diagnostic keeps the span of the type it
+/// rejects, and names that type with the arguments written for it.
 #[cfg(feature = "serde")]
 fn flattened_field_guard_error(
     field: &syn::Field,
     type_name: &str,
 ) -> Option<proc_macro2::TokenStream> {
     let inner = get_field_def("_flattened", &field.ty, "");
-    let inner_name = flattened_plain_enum(&inner)?;
+    let FieldDefType::SiblingType(name, _) = &inner.field_type else {
+        return None;
+    };
+    if !written_as_a_plain_enum(&inner) {
+        return None;
+    }
+    let inner_name = filled_spelling(&field.ty, name);
     let field_name = field_label(
         &field
             .ident
@@ -5929,10 +5960,10 @@ fn apply_deferred_field_attrs<'field>(
 }
 
 /// The `compile_error!` tokens for a `#[serde(flatten)]` field whose recorded wire proves serde
-/// does not write an object where the merge needs one, or `None` for every other field. A generic
-/// type declared above that serde writes as what fills its type parameter is read at that filling,
-/// and named with the arguments written for it; any other type is read by its name, and quoted by
-/// its [`union_spelling`].
+/// does not write an object where the merge needs one, or `None` for every other field and for one
+/// [`flattened_field_guard_error`] refuses. A generic type declared above that serde writes as what
+/// fills its type parameter is read at that filling, and named with the arguments written for it;
+/// any other type is read by its name, and quoted by its [`union_spelling`].
 #[cfg(feature = "serde")]
 fn flatten_edge_guard_error(
     field: &syn::Field,
@@ -5942,6 +5973,9 @@ fn flatten_edge_guard_error(
     let FieldDefType::SiblingType(name, _) = &inner.field_type else {
         return None;
     };
+    if written_as_a_plain_enum(&inner) {
+        return None;
+    }
     let (inner_name, non_object) = value_filling(&without_its_option(&inner)).map_or_else(
         || {
             (
@@ -6052,7 +6086,7 @@ fn written_union_members(def: &FieldDef) -> Vec<WireLeaf> {
 /// everywhere the declaration is left as it stands.
 #[cfg(feature = "serde")]
 fn flattened_name_non_object_wire(inner: &FieldDef, leaves_of: LeavesOf) -> Option<&'static str> {
-    if inner.array_depth > 0 || flattened_plain_enum(inner).is_some() {
+    if inner.array_depth > 0 || written_as_a_plain_enum(inner) {
         return None;
     }
     let FieldDefType::SiblingType(name, _) = &inner.field_type else {
@@ -6065,7 +6099,7 @@ fn flattened_name_non_object_wire(inner: &FieldDef, leaves_of: LeavesOf) -> Opti
 /// branch describes as — and `None` for every name whose leaves prove no such branch.
 #[cfg(feature = "serde")]
 fn flattened_name_refused_branch(inner: &FieldDef, leaves_of: LeavesOf) -> Option<NonObject> {
-    if inner.array_depth > 0 || flattened_plain_enum(inner).is_some() {
+    if inner.array_depth > 0 || written_as_a_plain_enum(inner) {
         return None;
     }
     let FieldDefType::SiblingType(name, _) = &inner.field_type else {
@@ -11433,7 +11467,7 @@ fn internally_tagged_guard_errors(
                 written: &field.ty,
             };
             let message = match content {
-                TaggedContent::Flattened => match flattened_plain_enum(&inner) {
+                TaggedContent::Flattened => match slot.plain_enum() {
                     Some(inner_name) => format!(
                         "model_schema: variant `{variant_name}` of internally tagged enum \
                          `{enum_name}` wraps `{inner_name}`, which serde does not write as an \
