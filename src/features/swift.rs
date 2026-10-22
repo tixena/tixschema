@@ -3636,6 +3636,17 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
     format!("{body}{}{typealias}", enum_date_helpers(shape, &slots))
 }
 
+/// The arm that reads a unit variant under a tag and a content key from an object with no content
+/// key alone, as Zod reads it: its schema of the variant is a strict object of the tag alone, so a
+/// content is refused, `null` among it, which serde reads.
+fn adjacent_unit_arm(names: &str, case_name: &str, export_name: &str) -> String {
+    format!(
+        "case {names}: guard !container.contains(.swiftSchemaContent) else {{ throw \
+         DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
+         debugDescription: \"{export_name}: \\(tag) takes no value\")) }}; self = .{case_name}; "
+    )
+}
+
 /// The Swift tokens the adjacently tagged shape earns (`tag = "...", content = "..."`): the tag
 /// and the payload sit at two keys of the same object, so a variant's own payload decodes and
 /// encodes through the `content` key directly, needing no shared-decoder trick.
@@ -3699,12 +3710,11 @@ fn adjacent_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
             )
             .unwrap();
         } else {
-            write!(
-                decode_arms,
-                "case {}: self = .{case_name}; ",
-                aliases::case_names(&wire_tag, &aliases::written_on(&variant.attrs))
-            )
-            .unwrap();
+            decode_arms.push_str(&adjacent_unit_arm(
+                &aliases::case_names(&wire_tag, &aliases::written_on(&variant.attrs)),
+                &case_name,
+                export_name,
+            ));
             write!(
                 encode_arms,
                 "case .{case_name}: try container.encode(\"{wire_tag}\", forKey: .swiftSchemaTag); "

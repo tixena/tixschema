@@ -10,8 +10,9 @@
 //! function, is written as serde writes it: a unit variant as an entry of its name over `null`. The
 //! enum read alone is refused where its object holds other than one key, as serde refuses it, and
 //! so is an enum declared below its holder where the object it is handed holds another key, which
-//! serde reads past. The holders of `kotlin_tests/flattened_models.rs` are declared where the
-//! Kotlin client is built.
+//! serde reads past. A unit variant under a tag and a content key is read from an object with no
+//! content key alone, as Zod reads it. The holders of `kotlin_tests/flattened_models.rs` and the
+//! enum of `run_kotlin_refusals.rs` are declared where the Kotlin client is built.
 
 #![cfg(all(feature = "swift", feature = "kotlin"))]
 
@@ -28,6 +29,7 @@ use super::flattened_models::{
     heaving_swift, jibing_swift, luffing_swift, quaying_swift, scudding_swift, stowing_swift,
     tacking_swift, yawing_swift,
 };
+use super::run_kotlin_refusals::{Becalming, becalming_swift};
 use super::runtime::judged;
 use super::swift_flattened_models::{
     ANCHORING, Anchoring, DREDGING, Dredging, FENDING, Fending, anchoring_swift, careen_swift,
@@ -98,6 +100,32 @@ const LISTED: &str = concat!(
     r#"[{"Bay":{"label":"n"},"note":"a"},"#,
     r#"{"Bay":{"label":"n"},"Dock":{"label":"s"},"note":"a"}]"#
 );
+
+/// [`Becalming`]'s unit variant with no content, with `null` for one and with a value for one,
+/// and its variant that holds a value: each payload, what serde reads of it written back with its
+/// keys sorted or its refusal, and what the Swift read answers of it.
+const UNDER_A_CONTENT_KEY: [(&str, &str, &str); 4] = [
+    (
+        r#"{"kind":"Lull"}"#,
+        r#"{"kind":"Lull"}"#,
+        r#"{"kind":"Lull"}"#,
+    ),
+    (
+        r#"{"kind":"Lull","held":null}"#,
+        r#"{"kind":"Lull"}"#,
+        "Becalming: Lull takes no value",
+    ),
+    (
+        r#"{"kind":"Lull","held":5}"#,
+        "invalid type: integer `5`, expected unit variant Becalming::Lull at line 1 column 23",
+        "Becalming: Lull takes no value",
+    ),
+    (
+        r#"{"kind":"Breeze","held":true}"#,
+        r#"{"held":true,"kind":"Breeze"}"#,
+        r#"{"held":true,"kind":"Breeze"}"#,
+    ),
+];
 
 /// The enum and the note of a [`Stowing`], as the Swift run prints them.
 const ENUM_AND_NOTE: &str = r#""\(written($0.tacking)) \($0.note)""#;
@@ -303,6 +331,7 @@ fn printed(main: &str) -> Option<String> {
         anchoring_swift::swift_definition(),
         dredging_swift::swift_definition(),
         fending_swift::swift_definition(),
+        becalming_swift::swift_definition(),
         HELPERS.to_owned(),
         main.to_owned(),
     ]
@@ -625,6 +654,64 @@ fn an_externally_tagged_enum_reads_in_swift_an_object_of_one_key_alone() {
             return;
         };
         assert_eq!(printed, expected, "the {run} run");
+    }
+}
+
+/// A unit variant under a tag and a content key is read in Swift where the object holds no content
+/// key, and an object that holds one is refused with `DecodingError.dataCorrupted`, `null` among
+/// its values, as Zod refuses it: its schema of the variant is a strict object of the tag alone.
+/// serde reads the variant over `null`. The variant that holds a value reads as it did.
+#[test]
+fn a_unit_variant_under_a_content_key_is_read_in_swift_where_the_object_holds_no_content() {
+    let serde_told = UNDER_A_CONTENT_KEY.map(|(payload, _, _)| {
+        serde_json::from_str::<Becalming>(payload).map_or_else(
+            |refusal| refusal.to_string(),
+            |read| written_back::<Value>(&json(&read)),
+        )
+    });
+    assert_eq!(
+        serde_told,
+        UNDER_A_CONTENT_KEY.map(|(_, serde, _)| serde.to_owned()),
+        "serde no longer answers each payload as it did"
+    );
+    let zod = Becalming::zod_schema();
+    assert!(
+        zod.contains("z.strictObject({\n  kind: z.literal(\"Lull\"),\n})"),
+        "Zod no longer reads the unit variant as an object of its tag alone: {zod}"
+    );
+    let mut expected = String::new();
+    let mut main = String::new();
+    for (at, (payload, _, swift)) in UNDER_A_CONTENT_KEY.into_iter().enumerate() {
+        let _ = writeln!(expected, "{at}: {swift}");
+        let _ = writeln!(
+            main,
+            "entry({at}, Becalming.self, #\"{payload}\"#) {{ written($0) }}"
+        );
+    }
+    let Some(printed) = printed(&main) else {
+        return;
+    };
+    assert_eq!(printed, expected, "the Swift read is not the answer above");
+}
+
+/// The README's sentence on the Swift read of a unit variant under a content key shows the
+/// payloads and the refusal the run above measures.
+#[test]
+fn the_readme_shows_the_swift_read_of_a_unit_variant_under_a_content_key() {
+    let section = include_str!("../../README.md")
+        .split_once("#### A Swift read refuses what `validate()` refuses")
+        .and_then(|(_, rest)| rest.split_once("### Literal Values"))
+        .map(|(section, _)| section)
+        .unwrap();
+    for (payload, _, swift) in &UNDER_A_CONTENT_KEY[..3] {
+        assert!(
+            section.contains(&format!("`{payload}`")),
+            "not in the README: {payload}"
+        );
+        assert!(
+            swift.starts_with('{') || section.contains(&format!("`{swift}`")),
+            "not in the README: {swift}"
+        );
     }
 }
 

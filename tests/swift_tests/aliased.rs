@@ -19,8 +19,8 @@ const LABEL_OR_NAME: &str = "let aliased = try decoder.container(keyedBy: \
      SwiftSchemaAnyKey(stringValue: \"label\")!; self.label = try aliased.decode(String.self, \
      forKey: labelKey)";
 
-/// An enum reads a variant under each of its aliases, under each tagging, and writes it under the
-/// name serde writes.
+/// An enum reads a variant under each of its aliases, under each tagging, a unit variant under a
+/// content key from an object with no content, and writes it under the name serde writes.
 #[test]
 fn a_tagged_enum_reads_a_variant_under_each_alias() {
     let surging = surging_swift::swift_definition();
@@ -43,7 +43,9 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
     let scending = scending_swift::swift_definition();
     for held in [
         "case \"Berth\", \"Pier\": _ = try container.decodeNil(forKey: .swiftSchemaContent);",
-        "case \"Calm\", \"Still\": self = .calm;",
+        "case \"Calm\", \"Still\": guard !container.contains(.swiftSchemaContent) else { throw \
+         DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
+         debugDescription: \"Scending: \\(tag) takes no value\")) }; self = .calm;",
         "case \"Held\", \"Tied\": self = .held(",
         "case .held(let payload): try container.encode(\"Held\", forKey: .swiftSchemaTag);",
     ] {

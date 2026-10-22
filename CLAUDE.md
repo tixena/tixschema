@@ -2130,6 +2130,14 @@ to keep.
   `tests/swift_tests/read.rs` pins the guard, and `run_swift_flattened_enums.rs` reads `Tacking`
   alone and `Luffing`, which flattens an enum declared below it beside another key, against
   serde, three times.
+- **An enum under a tag and a content key reads a unit variant from an object with no content
+  key**, as Zod's strict object of the tag alone reads it (`adjacent_unit_arm`): the arm guards
+  `!container.contains(.swiftSchemaContent)` and throws `DecodingError.dataCorrupted` with
+  ``{Enum}: \(tag) takes no value`` otherwise, a content of `null` among it, which serde reads.
+  serde writes the variant as its tag alone.
+  `tests/swift_tests/tests.rs` pins the arm, and `run_swift_flattened_enums.rs` reads `Becalming`,
+  of `run_kotlin_refusals.rs`, under the toolchain, with serde's answer and the Zod schema's text
+  pinned beside each payload.
 - **What a variant under a tag alone holds is handed the object without the tag**, as serde
   hands it. `EnumTagAttrs::tag_alone` is the one question. `named_payload` hands
   `struct_declaration` `around` under it, so the struct written for a variant whose every member
