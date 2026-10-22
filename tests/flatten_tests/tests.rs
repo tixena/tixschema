@@ -777,6 +777,51 @@ struct ExtBareDirectHolder {
     own: String,
 }
 
+/// A tagged enum that declares a parameter, of a unit variant and a variant that holds it.
+#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+#[model_schema(default_types(Load = String))]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+enum MemberExtCarried<Load> {
+    Bare,
+    Carried(Load),
+}
+
+/// That enum written with an argument and flattened: each variant's entry is its own with the
+/// parameter filled by the argument.
+#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct ExtCarriedHolder {
+    #[serde(flatten)]
+    ext: MemberExtCarried<u32>,
+    own: String,
+}
+
+/// That enum flattened at its holder's own parameter, which the holder's factory binds.
+#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+#[model_schema(default_types(Held = bool))]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct ExtCarriedOwnHolder<Held> {
+    #[serde(flatten)]
+    ext: MemberExtCarried<Held>,
+    own: String,
+}
+
+/// An alias of that enum that declares a parameter of its own.
+#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+#[model_schema(default_types(Stowed = String))]
+type MemberExtCarriedOf<Stowed> = MemberExtCarried<Stowed>;
+
+/// The alias written with an argument and flattened.
+#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct ExtCarriedAliasHolder {
+    #[serde(flatten)]
+    ext: MemberExtCarriedOf<bool>,
+    own: String,
+}
+
 /// And a tagged enum whose every variant carries data, which serde writes as the object its name
 /// tags in every case — admitted where it always was, on every surface.
 #[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
@@ -3571,6 +3616,173 @@ fn test_an_all_object_tagged_direct_flatten_type_closes_each_variant_against_the
         declared,
         "export type ExtObjDirectHolder = {\n  /**\n   * own\n   * \n   */\n  own: string;\n} & ({\n  /**\n   * One\n   * \n   */\n  \"One\": FlatFirst;\n  \"Two\"?: never;\n} | {\n  /**\n   * Two\n   * \n   */\n  \"Two\": FlatSecond;\n  \"One\"?: never;\n});"
     );
+}
+
+#[test]
+#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+fn test_a_flattened_enum_written_with_an_argument_round_trips_every_variant() {
+    for (ext, expected) in [
+        (
+            MemberExtCarried::Bare,
+            serde_json::json!({ "Bare": null, "own": "o" }),
+        ),
+        (
+            MemberExtCarried::Carried(7),
+            serde_json::json!({ "Carried": 7_u32, "own": "o" }),
+        ),
+    ] {
+        let holder = ExtCarriedHolder {
+            ext,
+            own: "o".to_owned(),
+        };
+        let written = serde_json::to_value(&holder).unwrap();
+        assert_eq!(written, expected);
+        let back: ExtCarriedHolder = serde_json::from_value(written).unwrap();
+        assert_eq!(back, holder);
+    }
+}
+
+/// Each holder of [`MemberExtCarried`] filled with an argument, beside the TypeScript and the Zod
+/// text the argument is written as in the variant that holds the parameter.
+#[cfg(any(feature = "zod", feature = "typescript"))]
+fn carried_holders() -> [(&'static str, String, String, &'static str, &'static str); 3] {
+    #[cfg(feature = "typescript")]
+    let ts = [
+        ExtCarriedHolder::ts_definition(),
+        ExtCarriedOwnHolder::<bool>::ts_definition(),
+        ExtCarriedAliasHolder::ts_definition(),
+    ];
+    #[cfg(not(feature = "typescript"))]
+    let ts = [String::new(), String::new(), String::new()];
+    #[cfg(feature = "zod")]
+    let zod = [
+        ExtCarriedHolder::zod_schema(),
+        ExtCarriedOwnHolder::<bool>::zod_schema(),
+        ExtCarriedAliasHolder::zod_schema(),
+    ];
+    #[cfg(not(feature = "zod"))]
+    let zod = [String::new(), String::new(), String::new()];
+    let [own_ts, held_ts, alias_ts] = ts;
+    let [own_zod, held_zod, alias_zod] = zod;
+    [
+        (
+            "ExtCarriedHolder",
+            own_ts,
+            own_zod,
+            "number",
+            "z.number().int()",
+        ),
+        ("ExtCarriedOwnHolder", held_ts, held_zod, "Held", "held"),
+        (
+            "ExtCarriedAliasHolder",
+            alias_ts,
+            alias_zod,
+            "boolean",
+            "z.boolean()",
+        ),
+    ]
+}
+
+/// TypeScript joins each variant's entry of an enum written with an argument, the parameter
+/// written as the argument, and names no parameter the holder does not declare.
+#[test]
+#[cfg(feature = "typescript")]
+fn test_a_flattened_enum_written_with_an_argument_types_each_entry_at_the_argument() {
+    for (holder, ts, _, argument, _) in carried_holders() {
+        assert!(
+            ts.contains(&format!(
+                "}} & ({{\n  /**\n   * Bare\n   * \n   */\n  \"Bare\": null;\n  \"Carried\"?: \
+                 never;\n}} | {{\n  /**\n   * Carried\n   * \n   */\n  \"Carried\": \
+                 {argument};\n  \"Bare\"?: never;\n}});"
+            )),
+            "{holder}: expected one key set per variant, got: {ts}"
+        );
+        for unbound in ["Load", "Stowed", "__tixschema_parameter_"] {
+            assert!(!ts.contains(unbound), "{holder} names `{unbound}`: {ts}");
+        }
+    }
+}
+
+/// Zod joins each variant's entry of an enum written with an argument, the parameter written as
+/// the argument, and names no parameter the holder's factory does not bind.
+#[test]
+#[cfg(feature = "zod")]
+fn test_a_flattened_enum_written_with_an_argument_parses_each_entry_at_the_argument() {
+    for (holder, _, zod, _, argument) in carried_holders() {
+        for entry in [
+            "z.strictObject({\n  \"Bare\": z.null(),\n})".to_owned(),
+            format!("z.strictObject({{\n  \"Carried\": {argument},\n}})"),
+        ] {
+            assert!(
+                zod.contains(&format!(".and(z.lazy(() => {entry}))")),
+                "{holder}: no operand `{entry}` in: {zod}"
+            );
+        }
+        for unbound in [
+            "load",
+            "stowed",
+            "__tixschema_parameter_",
+            "MemberExtCarried$Schema",
+        ] {
+            assert!(!zod.contains(unbound), "{holder} names `{unbound}`: {zod}");
+        }
+    }
+}
+
+/// The enum's own text names its own parameter, as it did before any holder filled it.
+#[test]
+#[cfg(all(feature = "zod", feature = "typescript"))]
+fn test_a_generic_enum_flattened_with_an_argument_keeps_its_own_text() {
+    let ts = MemberExtCarried::<String>::ts_definition();
+    assert!(
+        ts.contains("\"Carried\": Load;") && !ts.contains("__tixschema_parameter_"),
+        "Got: {ts}"
+    );
+    let zod = MemberExtCarried::<String>::zod_schema();
+    assert!(
+        zod.contains("z.union([z.literal(\"Bare\"), z.strictObject({\n  \"Carried\": load,\n})])")
+            && !zod.contains("__tixschema_parameter_"),
+        "Got: {zod}"
+    );
+}
+
+/// The JSON Schema of each holder admits each variant's entry at the argument, and refuses the
+/// holder's own member alone, two entries and an entry of another type.
+#[test]
+#[cfg(feature = "jsonschema")]
+fn test_a_flattened_enum_written_with_an_argument_documents_each_entry_at_the_argument() {
+    for (schema, carried, other) in [
+        (
+            ExtCarriedHolder::json_schema(),
+            serde_json::json!(7_u32),
+            serde_json::json!(true),
+        ),
+        (
+            ExtCarriedAliasHolder::json_schema(),
+            serde_json::json!(true),
+            serde_json::json!(7_u32),
+        ),
+    ] {
+        for payload in [
+            serde_json::json!({ "Bare": null, "own": "o" }),
+            serde_json::json!({ "Carried": carried, "own": "o" }),
+        ] {
+            assert!(
+                super::documents::admits(&schema, &payload),
+                "{payload} is rejected by {schema}"
+            );
+        }
+        for payload in [
+            serde_json::json!({ "own": "o" }),
+            serde_json::json!({ "Bare": null, "Carried": carried, "own": "o" }),
+            serde_json::json!({ "Carried": other, "own": "o" }),
+        ] {
+            assert!(
+                !super::documents::admits(&schema, &payload),
+                "{payload} is accepted by {schema}"
+            );
+        }
+    }
 }
 
 #[test]

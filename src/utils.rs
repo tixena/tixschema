@@ -64,6 +64,12 @@ const ASTRAL_DIVERGENCE: &str = "a character outside the Basic Multilingual Plan
                                  the two code units it is written from -- so the set is the same \
                                  and the count is not, and no spelling of the class closes that";
 
+/// What a [`parameter_placeholder`] opens with, ahead of the position.
+pub const PLACEHOLDER_OPENS: &str = "__tixschema_parameter_";
+
+/// What a [`parameter_placeholder`] closes with, after the position.
+pub const PLACEHOLDER_CLOSES: &str = "__";
+
 /// Why a construct cannot reach the JavaScript surfaces as the author wrote it. The three are
 /// different failures and the rejection says which one it is.
 #[derive(Clone, Copy)]
@@ -696,10 +702,9 @@ thread_local! {
     /// such parameter. Kept in every build that reads `#[serde(flatten)]`.
     static TEXT_KEY_PARAMETERS: RefCell<HashMap<String, Vec<TextKeyParameter>>> =
         RefCell::new(HashMap::new());
-    /// The names `#[model_schema]` has been written on so far that flatten a type parameter beside
-    /// a key serde writes at the same level, each with every such parameter. Kept in every build
-    /// that reads `#[serde(flatten)]`.
-    static FLATTENED_BESIDE_PARAMETERS: RefCell<HashMap<String, Vec<FlattenedParameter>>> =
+    /// The names `#[model_schema]` has been written on so far that flatten a type parameter, each
+    /// with every such parameter. Kept in every build that reads `#[serde(flatten)]`.
+    static FLATTENED_PARAMETERS: RefCell<HashMap<String, Vec<FlattenedParameter>>> =
         RefCell::new(HashMap::new());
     /// The names `#[model_schema]` has been written on so far whose value serde writes as the
     /// bare name of a plain enum's variant, or as an `Option` of one: a plain enum, and a brand, a
@@ -749,16 +754,16 @@ pub struct NonObjectWire {
     pub optional: bool,
 }
 
-/// A type parameter an item flattens beside a key serde writes at the same level, as
-/// [`FLATTENED_BESIDE_PARAMETERS`] holds it: where it is filled with a map, serde writes the map's
-/// entries at one level with that key.
+/// A type parameter an item flattens, as [`FLATTENED_PARAMETERS`] holds it: where it is filled
+/// with a map, serde writes the map's entries at one level with the key beside it, and where it is
+/// filled with an enum, a unit variant as an entry of its name over `null`.
 #[cfg(feature = "serde")]
 #[derive(Clone)]
 pub struct FlattenedParameter {
     /// The parameter's position among the type parameters of the item that holds it.
     pub at: usize,
-    /// The key serde writes beside it.
-    pub beside: FlattenedBeside,
+    /// The key serde writes beside it, where it writes one.
+    pub beside: Option<FlattenedBeside>,
     /// The type that flattens it: the item itself, or a type the item holds it in.
     pub flattens: String,
     /// The parameter as the type that flattens it declares it.
@@ -1073,12 +1078,10 @@ pub fn record_union_parameters(rust_ident: &str, parameters: Vec<UnionParameter>
     });
 }
 
-/// The type parameters `rust_ident` flattens beside a key serde writes at the same level. Empty for
-/// a name declared below the item asking.
+/// The type parameters `rust_ident` flattens. Empty for a name declared below the item asking.
 #[cfg(feature = "serde")]
-pub fn flattened_beside_parameters(rust_ident: &str) -> Vec<FlattenedParameter> {
-    FLATTENED_BESIDE_PARAMETERS
-        .with(|names| names.borrow().get(rust_ident).cloned().unwrap_or_default())
+pub fn flattened_parameters(rust_ident: &str) -> Vec<FlattenedParameter> {
+    FLATTENED_PARAMETERS.with(|names| names.borrow().get(rust_ident).cloned().unwrap_or_default())
 }
 
 /// The type parameters of `rust_ident` it reads where serde reads every key as text. Empty for a
@@ -1100,10 +1103,10 @@ pub fn record_text_key_parameters(rust_ident: &str, parameters: Vec<TextKeyParam
     });
 }
 
-/// Records the parameters [`flattened_beside_parameters`] answers for `rust_ident`.
+/// Records the parameters [`flattened_parameters`] answers for `rust_ident`.
 #[cfg(feature = "serde")]
-pub fn record_flattened_beside_parameters(rust_ident: &str, parameters: Vec<FlattenedParameter>) {
-    FLATTENED_BESIDE_PARAMETERS.with(|names| {
+pub fn record_flattened_parameters(rust_ident: &str, parameters: Vec<FlattenedParameter>) {
+    FLATTENED_PARAMETERS.with(|names| {
         if parameters.is_empty() {
             names.borrow_mut().remove(rust_ident);
         } else {
@@ -1605,6 +1608,30 @@ pub fn ident_reexport_zod(rust_ident: &str, export_name: &str, binding_suffix: &
     ident_reexport_name(rust_ident, export_name).map_or_else(String::new, |referenced| {
         format!("\n\nexport const {referenced}{binding_suffix} = {export_name}{binding_suffix};")
     })
+}
+
+/// What an item's own type parameter at position `at` is spelled as where what a holder fills it
+/// with is written in its place: the maps it keys, and the variants an externally tagged enum
+/// records for an object that flattens it.
+pub fn parameter_placeholder(at: usize) -> String {
+    format!("{PLACEHOLDER_OPENS}{at}{PLACEHOLDER_CLOSES}")
+}
+
+/// `described` with each [`parameter_placeholder`] in it replaced by what `filling` answers for its
+/// position, or `None` where `filling` answers nothing for one.
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+pub fn placeholders_filled<F>(described: &str, filling: F) -> Option<String>
+where
+    F: Fn(usize) -> Option<String>,
+{
+    let mut pieces = described.split(PLACEHOLDER_OPENS);
+    let mut filled = pieces.next().unwrap_or_default().to_owned();
+    for piece in pieces {
+        let (written_at, rest) = piece.split_once(PLACEHOLDER_CLOSES)?;
+        filled.push_str(&filling(written_at.parse::<usize>().ok()?)?);
+        filled.push_str(rest);
+    }
+    Some(filled)
 }
 
 /// The identifier a factory binds one type parameter's schema argument to — `idType` for `IdType`,

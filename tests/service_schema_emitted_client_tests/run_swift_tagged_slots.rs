@@ -12,10 +12,10 @@ use serde_json::Value;
 
 use super::runtime::judged;
 use super::tagged_slot_models::{
-    ENTRIES_REFUSED, WRITTEN, ballast_swift, bunkered_swift, demurrage_swift, docketed_swift,
-    dray_swift, drayage_swift, freighted_swift, lashing_swift, lighter_swift, lightering_swift,
-    palleted_swift, serde_told, stevedore_swift, tonnage_swift, trussed_swift, waybilled_swift,
-    wharfage_swift,
+    ENTRIES_REFUSED, WRITTEN, ballast_swift, bunkered_swift, cradled_swift, demurrage_swift,
+    docketed_swift, dray_swift, drayage_swift, freighted_swift, lashing_swift, lighter_swift,
+    lightering_swift, palleted_swift, serde_told, stevedore_swift, swaddled_swift, tonnage_swift,
+    trussed_swift, waybilled_swift, wharfage_swift,
 };
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -97,6 +97,8 @@ fn a_slot_beside_the_tag_is_read_and_written_back_by_swift_as_serde_writes_it() 
         palleted_swift::swift_definition(),
         lashing_swift::swift_definition(),
         trussed_swift::swift_definition(),
+        cradled_swift::swift_definition(),
+        swaddled_swift::swift_definition(),
         dray_swift::swift_definition(),
         stevedore_swift::swift_definition(),
         freighted_swift::swift_definition(),

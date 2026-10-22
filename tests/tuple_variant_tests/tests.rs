@@ -18,6 +18,22 @@ const EXTERNAL_REFUSED_BESIDE_THE_TAG: [&str; 3] = [
     r#"{"type":"Held","Calm":1}"#,
 ];
 
+/// Each payload serde writes for a bare tag over an externally tagged enum written with an
+/// argument, and reads back: the variant's entry at the argument beside the tag, a unit variant's
+/// over `null`.
+const CARRIED_BESIDE_THE_TAG: [&str; 2] = [
+    r#"{"type":"Held","Carried":7}"#,
+    r#"{"type":"Held","Bare":null}"#,
+];
+
+/// Each payload of a bare tag over an externally tagged enum written with an argument serde
+/// refuses: the tag alone, the entries of two variants, and an entry of another type.
+const CARRIED_REFUSED_BESIDE_THE_TAG: [&str; 3] = [
+    r#"{"type":"Held"}"#,
+    r#"{"type":"Held","Carried":7,"Bare":null}"#,
+    r#"{"type":"Held","Carried":"x"}"#,
+];
+
 /// A generated schema module reaches its siblings through the enclosing module, and a function body
 /// is not one, so a type another type references is declared here rather than inside a test.
 #[model_schema()]
@@ -221,6 +237,24 @@ pub enum InternalTack {
 #[serde(tag = "type")]
 pub enum InternalOverExternal {
     Held(InternalTack),
+}
+
+/// An externally tagged enum that declares a parameter, of a unit variant and a variant that holds
+/// it.
+#[model_schema(default_types(Load = String))]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum InternalCarried<Load> {
+    Bare,
+    Carried(Load),
+}
+
+/// A bare tag over that enum written with an argument: serde writes its variant beside the tag as
+/// an entry, over `null` for the unit variant.
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(tag = "type")]
+pub enum InternalOverCarried {
+    Held(InternalCarried<u32>),
 }
 
 /// The same wrapping over a union declared below it with one member serde writes as a string. Only
@@ -2094,6 +2128,86 @@ fn test_bare_tag_over_an_external_enum_json_schema_admits_what_serde_reads() {
         );
     }
     for json in EXTERNAL_REFUSED_BESIDE_THE_TAG {
+        assert!(
+            !super::documents::admits(&schema, &serde_json::from_str(json).unwrap()),
+            "{json} is admitted by {schema}"
+        );
+    }
+}
+
+#[test]
+fn test_bare_tag_over_an_enum_written_with_an_argument_writes_each_variant_as_its_entry() {
+    let written = [
+        InternalOverCarried::Held(InternalCarried::Carried(7)),
+        InternalOverCarried::Held(InternalCarried::Bare),
+    ];
+    for (value, json) in written.into_iter().zip(CARRIED_BESIDE_THE_TAG) {
+        assert_eq!(serde_json::to_string(&value).unwrap(), json);
+        assert_eq!(
+            serde_json::from_str::<InternalOverCarried>(json).unwrap(),
+            value,
+            "serde no longer reads {json} back"
+        );
+    }
+    for json in CARRIED_REFUSED_BESIDE_THE_TAG {
+        assert!(
+            serde_json::from_str::<InternalOverCarried>(json).is_err(),
+            "serde reads {json}"
+        );
+    }
+}
+
+/// TypeScript joins the tag's object with each variant's entry of an enum written with an
+/// argument, the enum's parameter written as the argument.
+#[test]
+fn test_bare_tag_over_an_enum_written_with_an_argument_typescript_joins_each_entry() {
+    let ts = InternalOverCarried::ts_definition();
+    assert!(
+        ts.contains(
+            "type: \"Held\";\n} & ({\n  /**\n   * Bare\n   * \n   */\n  \"Bare\": null;\n  \
+             \"Carried\"?: never;\n} | {\n  /**\n   * Carried\n   * \n   */\n  \"Carried\": \
+             number;\n  \"Bare\"?: never;\n});"
+        ),
+        "expected one key set per variant, got: {ts}"
+    );
+    for unbound in ["& InternalCarried", "Load", "__tixschema_parameter_"] {
+        assert!(!ts.contains(unbound), "`{unbound}` is written in: {ts}");
+    }
+}
+
+/// Zod joins the tag's object with each variant's entry of an enum written with an argument, the
+/// enum's parameter written as the argument.
+#[cfg(feature = "zod")]
+#[test]
+fn test_bare_tag_over_an_enum_written_with_an_argument_zod_joins_each_entry() {
+    let zod = InternalOverCarried::zod_schema();
+    assert!(
+        zod.contains(
+            "z.union([\n  z.strictObject({\n  type: z.literal(\"Held\"),\n}).and(z.lazy(() => \
+             z.strictObject({\n  \"Bare\": z.null(),\n}))),\n  z.strictObject({\n  type: \
+             z.literal(\"Held\"),\n}).and(z.lazy(() => z.strictObject({\n  \"Carried\": \
+             z.number().int(),\n}))),\n])"
+        ),
+        "expected one operand per variant, got: {zod}"
+    );
+    for unbound in ["InternalCarried$Schema", "load", "__tixschema_parameter_"] {
+        assert!(!zod.contains(unbound), "`{unbound}` is written in: {zod}");
+    }
+}
+
+/// The JSON Schema admits each payload serde writes for a bare tag over an enum written with an
+/// argument, and refuses each one serde refuses.
+#[cfg(feature = "jsonschema")]
+#[test]
+fn test_bare_tag_over_an_enum_written_with_an_argument_json_schema_admits_what_serde_reads() {
+    let schema = InternalOverCarried::json_schema();
+    for json in CARRIED_BESIDE_THE_TAG {
+        assert!(
+            super::documents::admits(&schema, &serde_json::from_str(json).unwrap()),
+            "{json} is refused by {schema}"
+        );
+    }
+    for json in CARRIED_REFUSED_BESIDE_THE_TAG {
         assert!(
             !super::documents::admits(&schema, &serde_json::from_str(json).unwrap()),
             "{json} is admitted by {schema}"

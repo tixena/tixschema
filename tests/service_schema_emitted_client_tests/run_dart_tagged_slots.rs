@@ -9,10 +9,10 @@ use core::fmt::Write as _;
 
 use super::run_dart_validate::{dart, module};
 use super::tagged_slot_models::{
-    ENTRIES_REFUSED, WRITTEN, ballast_dart, bunkered_dart, demurrage_dart, docketed_dart,
-    dray_dart, drayage_dart, freighted_dart, lashing_dart, lighter_dart, lightering_dart,
-    palleted_dart, serde_told, stevedore_dart, tonnage_dart, trussed_dart, waybilled_dart,
-    wharfage_dart,
+    ENTRIES_REFUSED, WRITTEN, ballast_dart, bunkered_dart, cradled_dart, demurrage_dart,
+    docketed_dart, dray_dart, drayage_dart, freighted_dart, lashing_dart, lighter_dart,
+    lightering_dart, palleted_dart, serde_told, stevedore_dart, swaddled_dart, tonnage_dart,
+    trussed_dart, waybilled_dart, wharfage_dart,
 };
 
 /// The function `Docketed::Trimmed` and `Docketed::Pared` name, and what prints a row: the value
@@ -36,7 +36,7 @@ void told(String at, Object? Function() read) {
 
 /// What `told` prints of `json` read as `read_as` and written back.
 fn told(at: usize, read_as: &str, json: &str) -> String {
-    if read_as == "Docketed" || read_as == "Trussed" {
+    if ["Docketed", "Swaddled", "Trussed"].contains(&read_as) {
         format!("  told('{at}', () => {read_as}.fromJson(jsonDecode(r'''{json}''')).toJson());\n")
     } else {
         format!(
@@ -80,6 +80,8 @@ fn a_slot_beside_the_tag_is_read_and_written_back_by_dart_as_serde_writes_it() {
             palleted_dart::dart_definition(),
             lashing_dart::dart_definition(),
             trussed_dart::dart_definition(),
+            cradled_dart::dart_definition(),
+            swaddled_dart::dart_definition(),
             dray_dart::dart_definition(),
             stevedore_dart::dart_definition(),
             freighted_dart::dart_definition(),

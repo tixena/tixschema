@@ -14,14 +14,15 @@ use super::runtime::ran_kotlin;
 use super::runtime::{node_modules, ran_with_modules, stand_down_modules};
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use super::tagged_slot_models::{
-    Ballast, Bunkered, Demurrage, Docketed, Dray, Freighted, Lighter, Lightering, Palleted,
-    Stevedore, Tonnage, Trussed, Waybilled, Wharfage, drayage_schema, lashing_schema,
+    Ballast, Bunkered, Cradled, Demurrage, Docketed, Dray, Freighted, Lighter, Lightering,
+    Palleted, Stevedore, Swaddled, Tonnage, Trussed, Waybilled, Wharfage, drayage_schema,
+    lashing_schema,
 };
 use super::tagged_slot_models::{
-    ENTRIES_REFUSED, WRITTEN, ballast_kotlin, bunkered_kotlin, demurrage_kotlin, docketed_kotlin,
-    dray_kotlin, drayage_kotlin, freighted_kotlin, lashing_kotlin, lighter_kotlin,
-    lightering_kotlin, palleted_kotlin, serde_told, stevedore_kotlin, tonnage_kotlin,
-    trussed_kotlin, waybilled_kotlin, wharfage_kotlin,
+    ENTRIES_REFUSED, WRITTEN, ballast_kotlin, bunkered_kotlin, cradled_kotlin, demurrage_kotlin,
+    docketed_kotlin, dray_kotlin, drayage_kotlin, freighted_kotlin, lashing_kotlin, lighter_kotlin,
+    lightering_kotlin, palleted_kotlin, serde_told, stevedore_kotlin, swaddled_kotlin,
+    tonnage_kotlin, trussed_kotlin, waybilled_kotlin, wharfage_kotlin,
 };
 
 const KOTLIN_IMPORTS: &str = "import kotlinx.serialization.*\n\
@@ -243,6 +244,8 @@ fn a_slot_beside_the_tag_is_read_and_written_by_kotlin_as_serde_and_zod_read_it(
         palleted_kotlin::kotlin_definition(),
         lashing_kotlin::kotlin_definition(),
         trussed_kotlin::kotlin_definition(),
+        cradled_kotlin::kotlin_definition(),
+        swaddled_kotlin::kotlin_definition(),
         dray_kotlin::kotlin_definition(),
         stevedore_kotlin::kotlin_definition(),
         freighted_kotlin::kotlin_definition(),
@@ -322,6 +325,10 @@ fn zod_module() -> String {
         lashing_schema::Schema::zod_schema(),
         Trussed::ts_definition(),
         Trussed::zod_schema(),
+        Cradled::<String>::ts_definition(),
+        Cradled::<String>::zod_schema(),
+        Swaddled::ts_definition(),
+        Swaddled::zod_schema(),
         Dray::ts_definition(),
         Dray::zod_schema(),
         Stevedore::ts_definition(),
@@ -341,6 +348,7 @@ fn zod_module() -> String {
         let schema = match row.read_as {
             "Docketed" => "Docketed$Schema",
             "Trussed" => "Trussed$Schema",
+            "Swaddled" => "Swaddled$Schema",
             _ => "Waybilled$SchemaDefault",
         };
         let _ = writeln!(

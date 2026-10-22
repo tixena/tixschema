@@ -30,7 +30,7 @@ use crate::utils::{
 };
 
 #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
-use crate::utils::FlattenVariant;
+use crate::utils::{FlattenVariant, parameter_placeholder, placeholders_filled};
 
 #[cfg(feature = "chrono")]
 use crate::features::chrono;
@@ -1005,6 +1005,21 @@ impl FieldDef {
         }
     }
 
+    /// Rewrites each of the enclosing item's own type parameters, `parameters`, into the
+    /// [`parameter_placeholder`] of its position, which a holder fills with its own argument.
+    #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+    pub fn place_type_parameters(&mut self, parameters: &[String]) {
+        if let FieldDefType::TypeParam(name) = &self.field_type
+            && let Some(at) = parameters.iter().position(|parameter| parameter == name)
+        {
+            self.field_type = FieldDefType::TypeParam(parameter_placeholder(at));
+            return;
+        }
+        for nested in self.nested_type_positions() {
+            nested.place_type_parameters(parameters);
+        }
+    }
+
     /// The first name this field reaches, at any depth, that `refused` answers for. A name is only
     /// ever written where a type is, so the walk descends the positions holding written types and
     /// stops at every value the parser resolved to something of its own.
@@ -1111,16 +1126,36 @@ impl FieldDef {
         }
     }
 
-    /// What the externally tagged enum this field names recorded for each of its variants.
+    /// What the externally tagged enum this field names recorded for each of its variants, each of
+    /// the enum's own type parameters filled with the argument written at its position as a
+    /// reference to the enum writes it. Nothing where a position the variants name has no argument.
     #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
     fn recorded_flatten_variants(&self) -> Vec<FlattenVariant> {
         if self.array_depth > 0 {
             return Vec::new();
         }
-        let FieldDefType::SiblingType(name, _) = &self.field_type else {
+        let FieldDefType::SiblingType(name, arguments) = &self.field_type else {
             return Vec::new();
         };
-        lookup_alias_info(name).map_or_else(Vec::new, |info| info.flatten_variants)
+        let recorded = lookup_alias_info(name).map_or_else(Vec::new, |info| info.flatten_variants);
+        recorded
+            .into_iter()
+            .map(|variant| {
+                Some(FlattenVariant {
+                    #[cfg(feature = "typescript")]
+                    typescript: placeholders_filled(&variant.typescript, |at| {
+                        arguments.get(at).map(Self::typescript_typename)
+                    })?,
+                    #[cfg(feature = "zod")]
+                    unit: variant.unit,
+                    #[cfg(feature = "zod")]
+                    zod: placeholders_filled(&variant.zod, |at| {
+                        arguments.get(at).map(Self::zod_type)
+                    })?,
+                })
+            })
+            .collect::<Option<Vec<FlattenVariant>>>()
+            .unwrap_or_default()
     }
 
     /// The name of the first `is_refused_sequence_wrapper` this field reaches, at any depth.

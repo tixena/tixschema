@@ -33,7 +33,8 @@ use super::prefixed_guard_message;
 use super::{
     KeyAsked, RefusedKey, bson_refused_keys, flattening_levels, forwarded_parameter_position,
     is_bson_refused_key, item_generics, item_label, item_schema_ident, placed_tokens,
-    refused_member_named, type_arguments_of, written_spelling,
+    refused_member_named, type_arguments_of, writes_an_optional, written_as_an_entry,
+    written_spelling,
 };
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
 use super::{WRITTEN_AS_OBJECT, unwritable_map_key_message};
@@ -53,7 +54,7 @@ use crate::field_type::{
 #[cfg(feature = "serde")]
 use crate::utils::{
     FlattenedBeside, FlattenedParameter, FlattenedRead, TextKeyParameter, TextKeysRead,
-    flattened_beside_parameters, is_open_map, open_map_parameters, text_key_parameters,
+    flattened_parameters, is_open_map, open_map_parameters, text_key_parameters,
 };
 
 /// What every refusal of a key serde reads below a flattened member says of serde.
@@ -1007,10 +1008,11 @@ pub fn def_writes_a_map(def: &FieldDef) -> bool {
     matches!(def.field_type, FieldDefType::Map(_, _))
 }
 
-/// The type parameters `item` flattens beside a key serde writes at the same level: at each of its
-/// own levels, and where it fills, with one of them, a type that flattens a parameter so.
+/// The type parameters `item` flattens, each with the key serde writes beside it at the same level
+/// where it writes one: at each of its own levels, and where it fills, with one of them, a type
+/// that flattens a parameter.
 #[cfg(feature = "serde")]
-pub fn flattened_beside_parameters_of(item: &Item) -> Vec<FlattenedParameter> {
+pub fn flattened_parameters_of(item: &Item) -> Vec<FlattenedParameter> {
     let (Some(ident), Some(generics)) = (item_schema_ident(item), item_generics(item)) else {
         return Vec::new();
     };
@@ -1040,13 +1042,10 @@ pub fn flattened_beside_parameters_of(item: &Item) -> Vec<FlattenedParameter> {
                 .and_then(|(_, other)| other.ident.as_ref())
                 .map(|member| FlattenedBeside::Member(member.unraw().to_string()))
                 .or_else(|| tag.clone().map(FlattenedBeside::Tag));
-            let Some(written_beside) = beside else {
-                continue;
-            };
             for at in parameters_written_as(item, &field.ty) {
                 held.push(FlattenedParameter {
                     at,
-                    beside: written_beside.clone(),
+                    beside: beside.clone(),
                     flattens: flattens.clone(),
                     parameter: parameters[at].clone(),
                 });
@@ -1058,12 +1057,12 @@ pub fn flattened_beside_parameters_of(item: &Item) -> Vec<FlattenedParameter> {
         if name == flattens {
             own.clone()
         } else {
-            flattened_beside_parameters(name)
+            flattened_parameters(name)
         }
     };
     let mut fillings = Vec::new();
     for (_, ty) in written_types(item) {
-        flattened_fillings(ty, &recorded, beside_at, &mut fillings);
+        flattened_fillings(ty, &recorded, flattened_at, &mut fillings);
     }
     for (argument, filled) in fillings {
         for at in parameters_written_as(item, argument) {
@@ -1073,14 +1072,76 @@ pub fn flattened_beside_parameters_of(item: &Item) -> Vec<FlattenedParameter> {
             });
         }
     }
-    // One record per parameter: a map that fills it is refused once.
-    let mut seen: Vec<usize> = Vec::new();
-    held.retain(|filled| {
-        let first = !seen.contains(&filled.at);
-        seen.push(filled.at);
-        first
-    });
-    held
+    // One record per parameter, one beside a key ahead of one alone: a filling is refused once,
+    // and a map that fills it wherever it sits beside a key.
+    let mut kept: Vec<FlattenedParameter> = Vec::new();
+    for filled in held {
+        match kept.iter_mut().find(|other| other.at == filled.at) {
+            None => kept.push(filled),
+            Some(other) if other.beside.is_none() && filled.beside.is_some() => *other = filled,
+            Some(_) => {}
+        }
+    }
+    kept
+}
+
+/// Each argument that fills, in a type `item` writes, a type parameter a type flattens, where
+/// `refuses` answers for it, beside the subject its refusal opens with, what is recorded of the
+/// parameter and the answer: in its members, in an alias's value, and in each of `default_types`,
+/// where the entry fills the item's own parameter.
+#[cfg(feature = "serde")]
+fn refused_fillings<'item, T, R>(
+    item: &'item Item,
+    default_types: &'item [(Ident, Type)],
+    refuses: R,
+) -> Vec<(String, &'item Type, FlattenedParameter, T)>
+where
+    R: Fn(&Type, &[String], &FlattenedParameter) -> Option<T>,
+{
+    let Some(generics) = item_generics(item) else {
+        return Vec::new();
+    };
+    let parameters = parameter_names(generics);
+    let label = item_label(item);
+    let flattens = item_schema_ident(item).map(ToString::to_string);
+    let own = flattened_parameters_of(item);
+    let recorded = |name: &str| {
+        if flattens.as_deref() == Some(name) {
+            own.clone()
+        } else {
+            flattened_parameters(name)
+        }
+    };
+    let mut answered = Vec::new();
+    let mut refuse = |subject: &str, argument: &'item Type, filled: FlattenedParameter| {
+        if let Some(answer) = refuses(argument, &parameters, &filled) {
+            answered.push((subject.to_owned(), argument, filled, answer));
+        }
+    };
+    for (member, ty) in written_types(item) {
+        let subject = member.map_or_else(
+            || format!("{label}: "),
+            |named| format!("{label}: {named}: "),
+        );
+        let mut fillings = Vec::new();
+        flattened_fillings(ty, &recorded, flattened_at, &mut fillings);
+        for (argument, filled) in fillings {
+            refuse(&subject, argument, filled);
+        }
+    }
+    for (entry, filling) in default_types {
+        let subject = format!("{label}: `default_types` entry `{entry}`: ");
+        let at = parameters.iter().position(|parameter| entry == parameter);
+        for filled in own.iter().filter(|filled| Some(filled.at) == at) {
+            refuse(&subject, filling, filled.clone());
+        }
+        let mut fillings = Vec::new();
+        flattened_fillings(filling, &recorded, flattened_at, &mut fillings);
+        for (argument, filled) in fillings {
+            refuse(&subject, argument, filled);
+        }
+    }
+    answered
 }
 
 /// The refusal of each map that fills, in a type `item` writes, a type parameter a type flattens
@@ -1088,72 +1149,32 @@ pub fn flattened_beside_parameters_of(item: &Item) -> Vec<FlattenedParameter> {
 /// value, and in each of `default_types`, where the entry fills the item's own parameter.
 #[cfg(feature = "serde")]
 pub fn filled_map_errors(item: &Item, default_types: &[(Ident, Type)]) -> Vec<TokenStream> {
-    let Some(generics) = item_generics(item) else {
-        return Vec::new();
-    };
-    let parameters = parameter_names(generics);
-    let label = item_label(item);
-    let flattens = item_schema_ident(item).map(ToString::to_string);
-    let own = flattened_beside_parameters_of(item);
-    let recorded = |name: &str| {
-        if flattens.as_deref() == Some(name) {
-            own.clone()
-        } else {
-            flattened_beside_parameters(name)
-        }
-    };
-    let mut refused: Vec<(String, &Type, FlattenedParameter)> = Vec::new();
-    for (member, ty) in written_types(item) {
-        let subject = member.map_or_else(
-            || format!("{label}: "),
-            |named| format!("{label}: {named}: "),
-        );
-        let mut fillings = Vec::new();
-        flattened_fillings(ty, &recorded, beside_at, &mut fillings);
-        refused.extend(
-            fillings
-                .into_iter()
-                .filter(|(argument, _)| writes_a_map(argument, &parameters))
-                .map(|(argument, filled)| (subject.clone(), argument, filled)),
-        );
-    }
-    for (entry, filling) in default_types {
-        let subject = format!("{label}: `default_types` entry `{entry}`: ");
-        let at = parameters.iter().position(|parameter| entry == parameter);
-        if writes_a_map(filling, &parameters) {
-            refused.extend(
-                own.iter()
-                    .filter(|filled| Some(filled.at) == at)
-                    .map(|filled| (subject.clone(), filling, filled.clone())),
-            );
-        }
-        let mut fillings = Vec::new();
-        flattened_fillings(filling, &recorded, beside_at, &mut fillings);
-        refused.extend(
-            fillings
-                .into_iter()
-                .filter(|(argument, _)| writes_a_map(argument, &parameters))
-                .map(|(argument, filled)| (subject.clone(), argument, filled)),
-        );
-    }
-    refused
-        .into_iter()
-        .map(|(subject, argument, filled)| {
-            let message = filled_map_message(&subject, argument, &filled);
-            syn::Error::new_spanned(argument, prefixed_guard_message(&message)).to_compile_error()
-        })
-        .collect()
+    refused_fillings(item, default_types, |argument, parameters, filled| {
+        let beside = filled.beside.clone()?;
+        writes_a_map(argument, parameters).then_some(beside)
+    })
+    .into_iter()
+    .map(|(subject, argument, filled, beside)| {
+        let message = filled_map_message(&subject, argument, &filled, &beside);
+        syn::Error::new_spanned(argument, prefixed_guard_message(&message)).to_compile_error()
+    })
+    .collect()
 }
 
-/// The refusal of `argument`, a map, filling the parameter `filled` holds.
+/// The refusal of `argument`, a map, filling the parameter `filled` holds `beside` a key.
 #[cfg(feature = "serde")]
-fn filled_map_message(subject: &str, argument: &Type, filled: &FlattenedParameter) -> String {
+fn filled_map_message(
+    subject: &str,
+    argument: &Type,
+    filled: &FlattenedParameter,
+    beside: &FlattenedBeside,
+) -> String {
     let flattened = format!(
         "{subject}`{}` flattens its type parameter `{}`",
         filled.flattens, filled.parameter
     );
     let filling = written_spelling(argument);
-    match &filled.beside {
+    match beside {
         FlattenedBeside::Member(member) => format!(
             "{flattened} beside `{member}`, and `{filling}` fills it with a map \u{2014} serde \
              writes the map's entries at one level with `{member}`, and no TypeScript type \
@@ -1165,6 +1186,61 @@ fn filled_map_message(subject: &str, argument: &Type, filled: &FlattenedParamete
              describes both. Write the map under a key of its own."
         ),
     }
+}
+
+/// The refusal of each enum serde writes a variant of as an entry of its name over `null` that
+/// fills, in a type `item` writes, a type parameter a type flattens, spanned on the enum: in its
+/// members, in an alias's value, and in each of `default_types`. The type's description is
+/// written once for every filling, and takes the enum's own value, the variant's bare name. An
+/// `Option` beside a tag is left to serde, which refuses every write of one there.
+#[cfg(feature = "serde")]
+pub fn filled_entry_errors(item: &Item, default_types: &[(Ident, Type)]) -> Vec<TokenStream> {
+    refused_fillings(item, default_types, |argument, parameters, filled| {
+        let mut def = get_field_def("", argument, "");
+        def.erase_type_parameters(parameters);
+        if matches!(filled.beside, Some(FlattenedBeside::Tag(_))) && writes_an_optional(&def) {
+            return None;
+        }
+        written_as_an_entry(&def)
+    })
+    .into_iter()
+    .map(|(subject, argument, filled, named)| {
+        let message = filled_entry_message(&subject, argument, &filled, named);
+        syn::Error::new_spanned(argument, prefixed_guard_message(&message)).to_compile_error()
+    })
+    .collect()
+}
+
+/// The refusal of `argument`, a value serde writes a variant of as an entry of its name over
+/// `null`, filling the parameter `filled` holds. `named` says the value is an externally tagged
+/// enum, which every surface describes by its entries where it is named in the parameter's place.
+#[cfg(feature = "serde")]
+fn filled_entry_message(
+    subject: &str,
+    argument: &Type,
+    filled: &FlattenedParameter,
+    named: bool,
+) -> String {
+    let flattens = &filled.flattens;
+    let beside = match &filled.beside {
+        Some(FlattenedBeside::Member(member)) => format!(" beside `{member}`"),
+        Some(FlattenedBeside::Tag(key)) => format!(" beside the tag `{key}`"),
+        None => String::new(),
+    };
+    let filling = written_spelling(argument);
+    let advice = if named {
+        "Name the enum where the type parameter stands, which every surface describes by its \
+         entries, or write it under a key of its own."
+    } else {
+        "Write it under a key of its own."
+    };
+    format!(
+        "{subject}`{flattens}` flattens its type parameter `{}`{beside}, and `{filling}` fills it \
+         with a value serde writes a variant of there as an entry of its name over null \u{2014} \
+         the TypeScript type and the Zod schema of `{flattens}`, written once for every filling, \
+         describe that variant as its bare name. {advice}",
+        filled.parameter
+    )
 }
 
 /// Each type `item` writes, beside the member that writes it: every member on the wire of a struct
@@ -1256,9 +1332,9 @@ fn flattened_fillings<'ty, R>(
     }
 }
 
-/// The position a record of a parameter flattened beside a key holds.
+/// The position a record of a flattened parameter holds.
 #[cfg(feature = "serde")]
-const fn beside_at(filled: &FlattenedParameter) -> usize {
+const fn flattened_at(filled: &FlattenedParameter) -> usize {
     filled.at
 }
 
