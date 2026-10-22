@@ -429,18 +429,6 @@ struct Whole {
     title: String,
 }
 
-/// Internally tagged, with a struct variant that flattens a type that takes every key.
-#[model_schema(enable = ["decode_with", "mongodb"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-#[serde(tag = "kind")]
-enum Tabled {
-    Gone,
-    Made {
-        #[serde(flatten)]
-        counts: Counts,
-    },
-}
-
 /// An optional flattened enum, internally tagged.
 #[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -583,19 +571,6 @@ struct Moody {
 enum Slot {
     Empty,
     Held(Mood),
-}
-
-/// Internally tagged, with a struct variant that flattens a type that takes every key it is
-/// handed.
-#[model_schema(enable = ["decode_with", "mongodb"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-#[serde(tag = "kind")]
-enum Booked {
-    Gone,
-    Made {
-        #[serde(flatten)]
-        counts: Counts,
-    },
 }
 
 /// A flattened `Option` of a type that takes every key it is handed.
@@ -1480,28 +1455,6 @@ fn a_flattened_untagged_enum_no_variant_reads_holds_what_the_enum_was_handed() {
 }
 
 #[test]
-fn a_variants_flattened_type_that_flattens_a_map_is_handed_no_tag() {
-    let made = Tabled::Made {
-        counts: Counts {
-            by_name: HashMap::from([("a".to_owned(), 1_i32)]),
-        },
-    };
-    assert_eq!(written(&made), doc! { "kind": "Made", "a": 1_i32 });
-    let mut calls = 0_u32;
-    assert_eq!(
-        read_counting!(Tabled, tabled_schema, written(&made), calls),
-        Ok(made)
-    );
-    assert_eq!(calls, 0);
-    let stored_row = doc! { "a": "x", "kind": "Made" };
-    assert!(!serde_reads::<Tabled>(&stored_row));
-    assert_eq!(
-        listed!(Tabled, tabled_schema, stored_row),
-        [invalid("a", "I32", string("x"))]
-    );
-}
-
-#[test]
 fn a_flattened_optional_enum_that_is_absent_is_no_issue() {
     let mut calls = 0_u32;
     let painted = Painted {
@@ -1760,14 +1713,8 @@ where
 }
 
 #[test]
-fn a_variant_or_an_option_that_flattens_a_type_that_takes_every_key_reads_what_serde_wrote() {
+fn an_option_that_flattens_a_type_that_takes_every_key_reads_what_serde_wrote() {
     let mut calls = 0_u32;
-    let made = Booked::Made { counts: counts() };
-    assert_eq!(
-        read_counting!(Booked, booked_schema, written(&made), calls),
-        Ok(made)
-    );
-
     let optioned = Optioned {
         counts: Some(counts()),
     };

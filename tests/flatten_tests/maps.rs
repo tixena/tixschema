@@ -1,8 +1,7 @@
 //! The models a map is flattened into as the only member of its object, and the payloads serde
-//! reads and refuses for them. A map flattened beside another member stops the build, so a map is
-//! handed every key of its object: its holder's own tag too, and none of the tag an internally
-//! tagged enum reads ahead of the variant. An optional map is read as `None` wherever an entry it
-//! is handed does not read, and leaves the entry in the object.
+//! reads and refuses for them. A map flattened beside another member or beside a tag stops the
+//! build, so a map is handed every key of its object. An optional map is read as `None` wherever
+//! an entry it is handed does not read, and leaves the entry in the object.
 
 use alloc::collections::BTreeMap;
 
@@ -13,7 +12,7 @@ use tixschema::model_schema;
 /// Every payload, one that serde reads and one with a count of the wrong type for each place a
 /// map is flattened. An optional map is read as `None` wherever an entry does not read, so serde
 /// reads every object its holder reads.
-pub const PAYLOADS: [Payload; 56] = [
+pub const PAYLOADS: [Payload; 46] = [
     Payload {
         json: r#"{"north":2}"#,
         name: "alone",
@@ -23,16 +22,6 @@ pub const PAYLOADS: [Payload; 56] = [
         json: r#"{"north":"x"}"#,
         name: "alone, a count of text",
         read_as: "Thwart",
-    },
-    Payload {
-        json: r#"{"kind":"TaggedThwart","north":"2"}"#,
-        name: "under its holder's tag",
-        read_as: "TaggedThwart",
-    },
-    Payload {
-        json: r#"{"kind":"TaggedThwart","north":2}"#,
-        name: "under its holder's tag, a count of a number",
-        read_as: "TaggedThwart",
     },
     Payload {
         json: r#"{"north":2}"#,
@@ -63,16 +52,6 @@ pub const PAYLOADS: [Payload; 56] = [
         json: r#"{"Open":{"north":"x"}}"#,
         name: "in a variant, a count of text",
         read_as: "Coaming",
-    },
-    Payload {
-        json: r#"{"kind":"Open","north":2}"#,
-        name: "in a variant under a tag",
-        read_as: "Keelson",
-    },
-    Payload {
-        json: r#"{"kind":"Open","north":"x"}"#,
-        name: "in a variant under a tag, a count of text",
-        read_as: "Keelson",
     },
     Payload {
         json: r#"{"kind":"Open","held":{"north":2}}"#,
@@ -210,16 +189,6 @@ pub const PAYLOADS: [Payload; 56] = [
         read_as: "Pintle",
     },
     Payload {
-        json: r#"{"kind":"Taffrail"}"#,
-        name: "optional under its holder's tag",
-        read_as: "Taffrail",
-    },
-    Payload {
-        json: r#"{"kind":"Taffrail","north":2}"#,
-        name: "optional under its holder's tag, a count",
-        read_as: "Taffrail",
-    },
-    Payload {
         json: r#"{"Open":{}}"#,
         name: "optional in a variant, no entry",
         read_as: "Fairlead",
@@ -233,26 +202,6 @@ pub const PAYLOADS: [Payload; 56] = [
         json: r#"{"Open":{"north":"x"}}"#,
         name: "optional in a variant, a count of text",
         read_as: "Fairlead",
-    },
-    Payload {
-        json: r#"{"kind":"Open"}"#,
-        name: "optional in a variant under a tag, no entry",
-        read_as: "Chock",
-    },
-    Payload {
-        json: r#"{"kind":"Open","north":2}"#,
-        name: "optional in a variant under a tag, a count",
-        read_as: "Chock",
-    },
-    Payload {
-        json: r#"{"kind":"Open","north":"x"}"#,
-        name: "optional in a variant under a tag, a count of text",
-        read_as: "Chock",
-    },
-    Payload {
-        json: r#"{"north":2}"#,
-        name: "optional in a variant under a tag, no tag",
-        read_as: "Chock",
     },
     Payload {
         json: r#"{"kind":"Open","held":{}}"#,
@@ -297,13 +246,11 @@ pub const PAYLOADS: [Payload; 56] = [
 ];
 
 /// Each model a payload is read as, beside serde's read of a payload as it.
-const READS: [(&str, ReadAs); 20] = [
+const READS: [(&str, ReadAs); 16] = [
     ("Thwart", reads::<Thwart>),
-    ("TaggedThwart", reads::<TaggedThwart>),
     ("Gunwale", reads::<Gunwale>),
     ("Strake", reads::<Strake>),
     ("Coaming", reads::<Coaming>),
-    ("Keelson", reads::<Keelson>),
     ("Transom", reads::<Transom>),
     ("Bilge", reads::<Bilge>),
     ("Locker", reads::<Locker>),
@@ -313,9 +260,7 @@ const READS: [(&str, ReadAs); 20] = [
     ("Sheave", reads::<Sheave>),
     ("Lazarette", reads::<Lazarette>),
     ("Pintle", reads::<Pintle>),
-    ("Taffrail", reads::<Taffrail>),
     ("Fairlead", reads::<Fairlead>),
-    ("Chock", reads::<Chock>),
     ("Davit", reads::<Davit>),
     ("Capstan", reads::<Capstan>),
 ];
@@ -325,9 +270,6 @@ pub const PRINTED: &str = "\
 alone: read
 alone, a count of text: refused
     'north': Invalid input: expected number, received string
-under its holder's tag: read
-under its holder's tag, a count of a number: refused
-    'north': Invalid input: expected string, received number
 beside a member serde skips: read
 beside a member serde skips, a count of text: refused
     'north': Invalid input: expected number, received string
@@ -337,9 +279,6 @@ keyed by a brand, a count of text: refused
 in a variant: read
 in a variant, a count of text: refused
     'Open.north': Invalid input: expected number, received string
-in a variant under a tag: read
-in a variant under a tag, a count of text: refused
-    'north': Invalid input: expected number, received string
 in a variant under a content key: read
 in a variant under a content key, a count of text: refused
     'held.north': Invalid input: expected number, received string
@@ -370,16 +309,9 @@ made optional by its alias, a count of text: read
 an optional brand, no entry: read
 an optional brand, a count: read
 an optional brand, a count of text: read
-optional under its holder's tag: read
-optional under its holder's tag, a count: read
 optional in a variant, no entry: read
 optional in a variant, a count: read
 optional in a variant, a count of text: read
-optional in a variant under a tag, no entry: read
-optional in a variant under a tag, a count: read
-optional in a variant under a tag, a count of text: read
-optional in a variant under a tag, no tag: refused
-    Invalid input
 optional in a variant under a content key, no entry: read
 optional in a variant under a content key, a count: read
 optional in a variant under a content key, a count of text: read
@@ -398,16 +330,6 @@ optional in an untagged variant, a number: refused
 pub struct Thwart {
     #[serde(flatten)]
     pub counts: BTreeMap<String, u8>,
-}
-
-/// A map in a struct written under its own tag, which serde hands the map: its values are text,
-/// as the tag is.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(tag = "kind")]
-pub struct TaggedThwart {
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, String>,
 }
 
 /// A map beside a member serde neither writes nor reads.
@@ -438,18 +360,6 @@ pub struct Strake {
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Coaming {
-    Open {
-        #[serde(flatten)]
-        counts: BTreeMap<String, u8>,
-    },
-}
-
-/// A map in a variant under a tag, which serde reads ahead of the variant and hands the map none
-/// of.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(tag = "kind")]
-pub enum Keelson {
     Open {
         #[serde(flatten)]
         counts: BTreeMap<String, u8>,
@@ -559,32 +469,10 @@ pub struct Pintle {
     pub counts: Option<PintleCounts>,
 }
 
-/// An optional map in a struct written under its own tag, which serde hands the map: a count of
-/// text, so the map reads as `None` wherever the tag is written.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(tag = "kind")]
-pub struct Taffrail {
-    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
-    pub counts: Option<BTreeMap<String, u8>>,
-}
-
 /// An optional map in a variant written under its name.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Fairlead {
-    Open {
-        #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
-        counts: Option<BTreeMap<String, u8>>,
-    },
-}
-
-/// An optional map in a variant under a tag, which serde reads ahead of the variant and hands the
-/// map none of.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(tag = "kind")]
-pub enum Chock {
     Open {
         #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
         counts: Option<BTreeMap<String, u8>>,

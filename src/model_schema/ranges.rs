@@ -1,7 +1,7 @@
 //! The std ranges and the std `Result` an item writes: the check, beside the item, that one
 //! written by its bare name is the std type every surface describes, the refusal of one under
 //! `#[serde(flatten)]`, and that of one as a map key in a build whose map key guard does not run.
-//! Beside them, the refusal of a map under `#[serde(flatten)]` beside another member.
+//! Beside them, the refusal of a map under `#[serde(flatten)]` beside another member or a tag.
 
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, quote_spanned};
@@ -199,13 +199,15 @@ pub fn flattened_range_error(
 }
 
 /// Refuses each map under `#[serde(flatten)]` among `fields` beside another member that writes a
-/// key: serde writes the map's entries at one level with that key, which no TypeScript type
-/// describes. `subject` leads each message; `generics` are the item's own.
+/// key, or beside `tag`, the tag serde writes at the level of `fields`: serde writes the map's
+/// entries at one level with that key, which no TypeScript type describes. `subject` leads each
+/// message; `generics` are the item's own.
 #[cfg(feature = "serde")]
 pub fn flattened_map_beside_errors(
     subject: &str,
     fields: &Fields,
     generics: &syn::Generics,
+    tag: Option<&str>,
 ) -> Vec<TokenStream> {
     let parameters = parameter_names(generics);
     let written: Vec<&syn::Field> = fields
@@ -217,19 +219,28 @@ pub fn flattened_map_beside_errors(
         .enumerate()
         .filter(|(_, field)| flattened_map(field, &parameters))
         .filter_map(|(index, field)| {
+            let ident = field.ident.as_ref()?;
             let beside = written
                 .iter()
                 .enumerate()
                 .find(|(other, _)| *other != index)
-                .and_then(|(_, other)| other.ident.as_ref())?;
-            let ident = field.ident.as_ref()?;
-            let message = format!(
-                "{subject}field `{}`: `#[serde(flatten)]` cannot hold a map beside other members \
-                 \u{2014} serde writes the map's entries at one level with `{}`, and no TypeScript \
-                 type describes both. Write the map under a key of its own.",
-                ident.unraw(),
-                beside.unraw()
-            );
+                .and_then(|(_, other)| other.ident.as_ref());
+            let message = match (beside, tag) {
+                (Some(member), _) => format!(
+                    "{subject}field `{}`: `#[serde(flatten)]` cannot hold a map beside other \
+                     members \u{2014} serde writes the map's entries at one level with `{}`, and \
+                     no TypeScript type describes both. Write the map under a key of its own.",
+                    ident.unraw(),
+                    member.unraw()
+                ),
+                (None, Some(key)) => format!(
+                    "{subject}field `{}`: `#[serde(flatten)]` cannot hold a map beside the tag \
+                     `{key}` \u{2014} serde writes the tag and the map's entries at one level, \
+                     and no TypeScript type describes both. Write the map under a key of its own.",
+                    ident.unraw()
+                ),
+                (None, None) => return None,
+            };
             Some(
                 syn::Error::new_spanned(field, prefixed_guard_message(&message)).to_compile_error(),
             )

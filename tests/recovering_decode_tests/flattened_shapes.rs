@@ -288,19 +288,6 @@ struct Felt {
     id: String,
 }
 
-/// Internally tagged, with a struct variant that flattens a type that takes every key it is
-/// handed.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-#[serde(tag = "kind")]
-enum Booked {
-    Gone,
-    Made {
-        #[serde(flatten)]
-        counts: Counts,
-    },
-}
-
 /// Externally tagged, with a variant that holds a type that takes every key it is handed.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -520,7 +507,6 @@ flagged! {
     Ledgered => ledgered_schema,
     Tallied => tallied_schema,
     Scored => scored_schema,
-    Booked => booked_schema,
     Boxed => boxed_schema,
     Crated => crated_schema,
     Optioned => optioned_schema,
@@ -882,7 +868,6 @@ fn every_place_a_type_is_handed_an_object_hands_it_what_serde_hands_it() {
     assert!(agrees::<Ledgered>(&held));
     assert!(agrees::<Scored>(&held));
 
-    assert!(agrees::<Booked>(&json!({ "a": 1_i32, "kind": "Made" })));
     assert!(agrees::<Optioned>(&held));
     assert!(agrees::<Optioned>(&json!({})));
 }

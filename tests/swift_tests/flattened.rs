@@ -66,8 +66,9 @@ fn assert_no_keyed_container(definition: &str) {
 }
 
 /// A map that is the one member of its struct is read from every key the types around it did not
-/// take, and written at its place. In a variant under a tag key the enum hands it the tag as taken.
-/// Neither reads or writes a key of its own, so neither declares a container of its keys.
+/// take, and written at its place. In a variant written under its name the enum hands it the
+/// variant's object. Neither reads or writes a key of its own, so neither declares a container of
+/// its keys.
 #[test]
 fn a_map_alone_is_read_without_the_keys_the_types_around_its_holder_took() {
     let stopping = stopping_swift::swift_definition();
@@ -102,8 +103,8 @@ fn a_map_alone_is_read_without_the_keys_the_types_around_its_holder_took() {
     assert_no_keyed_container(&clewing);
     assert_written(
         &clewing,
-        "case \"Held\": self = .held(try ClewingHeldPayload(swiftSchemaUnjudged: decoder, \
-         swiftSchemaWithout: taken + [\"kind\"]));",
+        "case \"Held\": self = .held(try ClewingHeldPayload(swiftSchemaUnjudged: \
+         container.superDecoder(forKey: key)));",
     );
 }
 

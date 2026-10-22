@@ -1,6 +1,6 @@
 //! The models of the flattened Swift reads `swift_tests/flattened.rs` pins and
 //! `service_schema_emitted_client_tests/run_swift_flattened.rs` runs: a map that is the one member
-//! of its struct and of a variant under a tag key, under a key Swift wraps, in a type that
+//! of its struct and of a variant written under its name, under a key Swift wraps, in a type that
 //! declares no parameter and in one that declares one, of models, of dates and one that names a
 //! function; and a member that names a function, beside a member of its holder's own, ahead of a
 //! struct and after each member that takes none of the keys it reads; and, after a struct, a
@@ -38,7 +38,7 @@ pub const TEXTS: &str = r#"{"label":"n","north":"s","note":"a"}"#;
 pub const BOWSING: &str = r#"{"label":"n","marker":"m","north":"s","note":"a"}"#;
 
 /// What [`Clewing`] is read from.
-pub const CLEWING: &str = r#"{"kind":"Held","north":2}"#;
+pub const CLEWING: &str = r#"{"Held":{"north":2}}"#;
 
 /// What [`Parceling`] and [`Toggling`] are read from.
 pub const PARCELING: &str = r#"{"North":2}"#;
@@ -113,10 +113,10 @@ pub struct Stopping {
     pub rest: BTreeMap<String, u8>,
 }
 
-/// A map, the one member of a variant under a tag key, which serde hands every key but the tag.
+/// A map, the one member of a variant written under its name, which serde hands every key of the
+/// variant's object.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(tag = "kind")]
 pub enum Clewing {
     Held {
         #[serde(flatten)]
@@ -420,10 +420,10 @@ where
     serde_json::from_str(text).unwrap()
 }
 
-/// A map that is the one member of its struct holds every key, and one in a variant under a tag
-/// key every key but the tag, in each shape a map is read in.
+/// A map that is the one member of its struct or of a variant written under its name holds every
+/// key, in each shape a map is read in.
 #[test]
-fn serde_hands_a_map_alone_every_key_but_a_tag_read_ahead_of_it() {
+fn serde_hands_a_map_alone_every_key() {
     assert_eq!(written(&read::<Stopping>(COUNTS).rest), COUNTS);
     let Clewing::Held { rest } = read::<Clewing>(CLEWING);
     assert_eq!(written(&rest), r#"{"north":2}"#);
