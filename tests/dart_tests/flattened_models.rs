@@ -1,13 +1,12 @@
 //! The models of the flattened Dart reads `dart_tests/flattened.rs` pins and
 //! `service_schema_emitted_client_tests/run_dart_flattened.rs` runs: a map that is the one member
-//! of its struct, and of a variant under a tag key; and a member that names a function, which is
-//! handed the keys serde hands it, after a struct, beside a member of its holder's own and in a
-//! variant under a tag key, ahead of a struct, after each member that takes none of the keys it
-//! reads, and after an externally tagged enum, an enum under a tag key and an untagged one. serde
-//! reads the members in the order declared: a struct takes the keys it reads, an externally tagged
-//! enum the first entry under the name of a variant it reads, and every flattened member is handed
-//! every entry no member ahead of it took. A struct after a struct that reads the same key is
-//! refused.
+//! of its struct; and a member that names a function, which is handed the keys serde hands it,
+//! after a struct, beside a member of its holder's own and in a variant under a tag key, ahead of a
+//! struct, after each member that takes none of the keys it reads, and after an externally tagged
+//! enum, an enum under a tag key and an untagged one. serde reads the members in the order
+//! declared: a struct takes the keys it reads, an externally tagged enum the first entry under the
+//! name of a variant it reads, and every flattened member is handed every entry no member ahead of
+//! it took. A struct after a struct that reads the same key is refused.
 
 use alloc::collections::BTreeMap;
 
@@ -26,9 +25,6 @@ pub const CLAMPING: &str = r#"{"label":"n","north":2,"note":"a"}"#;
 
 /// What [`Fastening`] is read from.
 pub const FASTENING: &str = r#"{"north":2,"note":"a"}"#;
-
-/// What [`Tethering`] is read from.
-pub const TETHERING: &str = r#"{"kind":"Held","north":2}"#;
 
 /// What [`Loading`] is read from: one variant's entry, two variants' entries in each order, a
 /// variant's entry under its alias, and an alias after a variant's entry.
@@ -74,17 +70,6 @@ pub struct Keying {
 pub struct Spare {
     #[serde(flatten)]
     pub rest: BTreeMap<String, u8>,
-}
-
-/// A map, the one member of a variant under a tag key, which serde hands every key but the tag.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(tag = "kind")]
-pub enum Tethering {
-    Held {
-        #[serde(flatten)]
-        rest: BTreeMap<String, u8>,
-    },
 }
 
 /// A member that names a function flattened after a struct, with a member of its holder's own
@@ -328,14 +313,11 @@ where
     serde_json::to_string(value).unwrap()
 }
 
-/// A map that is the one member of its struct holds every key, and one in a variant under a tag
-/// key every key but the tag.
+/// A map that is the one member of its struct holds every key.
 #[test]
-fn serde_hands_a_map_alone_every_key_but_a_tag_read_ahead_of_it() {
+fn serde_hands_a_map_alone_every_key() {
     let spare: Spare = serde_json::from_str(SPARE).unwrap();
     assert_eq!(written(&spare.rest), SPARE);
-    let Tethering::Held { rest } = serde_json::from_str(TETHERING).unwrap();
-    assert_eq!(written(&rest), r#"{"north":2}"#);
 }
 
 /// A function after a struct is handed the keys neither the struct nor its holder took, and one

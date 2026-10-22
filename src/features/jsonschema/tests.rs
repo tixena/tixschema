@@ -32,7 +32,6 @@ fn test_json_schema_method_flatten_emits_merge() {
             map: false,
             optional: false,
             value: quote::quote! { serde_json::json!({ "type": "object" }) },
-            withheld: Vec::new(),
         }],
         "Node",
         &[],
@@ -54,7 +53,6 @@ fn test_the_merge_wraps_branches_in_the_spelling_its_source_used() {
             map: false,
             optional: false,
             value: quote::quote! { serde_json::json!({ "type": "object" }) },
-            withheld: Vec::new(),
         }],
         "Node",
         &[],
@@ -90,7 +88,6 @@ fn test_an_optional_merged_source_carries_its_absence_into_the_merge() {
                 map: false,
                 optional,
                 value: quote::quote! { serde_json::json!({ "type": "object" }) },
-                withheld: Vec::new(),
             }],
             "Node",
             &[],
@@ -129,7 +126,6 @@ fn test_the_absence_of_a_source_read_as_entries_admits_the_keys_it_leaves() {
             map: true,
             optional: true,
             value: quote::quote! { serde_json::json!({ "type": "object" }) },
-            withheld: Vec::new(),
         }],
         "Node",
         &[],
@@ -137,7 +133,7 @@ fn test_the_absence_of_a_source_read_as_entries_admits_the_keys_it_leaves() {
     .to_string();
 
     assert!(
-        merge.contains("(\"counts\" , true , true , true , & [] ,"),
+        merge.contains("(\"counts\" , true , true , true ,"),
         "{merge}"
     );
     assert!(
@@ -149,38 +145,7 @@ fn test_the_absence_of_a_source_read_as_entries_admits_the_keys_it_leaves() {
         "{merge}"
     );
     assert!(
-        merge.contains("value : serde_json :: Value :: Bool (true)"),
-        "{merge}"
-    );
-}
-
-#[test]
-fn test_a_merged_source_carries_the_keys_serde_hands_it_none_of() {
-    let merge = generate_struct_json_schema_method(
-        &[],
-        &[MergedSource {
-            entries: false,
-            label: "counts".to_owned(),
-            map: true,
-            optional: false,
-            value: quote::quote! { serde_json::json!({ "type": "object" }) },
-            withheld: vec!["kind".to_owned()],
-        }],
-        "Node",
-        &[],
-    )
-    .to_string();
-
-    assert!(
-        merge.contains("(\"counts\" , false , false , true , & [\"kind\"] ,"),
-        "{merge}"
-    );
-    assert!(
-        merge.contains("described = described . multiplied (& offered , (* map , * withheld))"),
-        "{merge}"
-    );
-    assert!(
-        merge.contains("serde_json :: Value :: Object (handed_out (members , & handed))"),
+        merge.contains("maps . push (serde_json :: Value :: Bool (true))"),
         "{merge}"
     );
 }
@@ -195,7 +160,6 @@ fn test_the_merge_expands_branches_to_a_fixed_point_under_a_path_terminator() {
             map: false,
             optional: false,
             value: quote::quote! { serde_json::json!({ "type": "object" }) },
-            withheld: Vec::new(),
         }],
         "Node",
         &[],
@@ -228,7 +192,6 @@ fn test_the_merge_reads_a_tagged_unit_variant_at_the_edges_own_depth() {
             map: false,
             optional: false,
             value: quote::quote! { serde_json::json!({ "type": "object" }) },
-            withheld: Vec::new(),
         }],
         "Node",
         &[],

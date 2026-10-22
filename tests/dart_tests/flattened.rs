@@ -1,13 +1,13 @@
 //! What the Dart emitter reads of a flattened member: the object at its place, without the keys
 //! the holder's own members take and the entries each member flattened ahead of it took, as serde
-//! hands it. A map is the one member of its object, and is read from every key but the tag of an
-//! enum under a tag key. `toJson` writes each flattened member at its place. The reads are run
+//! hands it. A map is the one member of its object, and is read from every key. `toJson` writes
+//! each flattened member at its place. The reads are run
 //! under the Dart SDK in `tests/service_schema_emitted_client_tests/run_dart_flattened.rs`.
 
 use super::flattened_models::{
     belaying_dart, clamping_dart, doubling_dart, fastening_dart, hoisting_dart, kedging_dart,
-    lacing_dart, loading_dart, mousing_dart, rigging_dart, shoring_dart, spare_dart,
-    tethering_dart, trimming_dart, twin_dart,
+    lacing_dart, loading_dart, mousing_dart, rigging_dart, shoring_dart, spare_dart, trimming_dart,
+    twin_dart,
 };
 
 /// The read of a map of `u8` values from the object `source` names.
@@ -39,23 +39,15 @@ fn assert_written(definition: &str, fragment: &str) {
     );
 }
 
-/// A map that is the one member of its struct is read from every key, and one in a variant under
-/// a tag key from every key but the tag. Each is written entry by entry.
+/// A map that is the one member of its struct is read from every key, and written entry by entry.
 #[test]
-fn a_map_alone_is_read_from_every_key_but_the_tag() {
+fn a_map_alone_is_read_from_every_key() {
     let spare = spare_dart::dart_definition();
     assert_written(&spare, &format!("Spare(rest: {},);", counts_from("json")));
     assert_written(
         &spare,
         "toJson() => { ...(Map<String, dynamic>.fromEntries((rest).entries.map((e) => \
          MapEntry((e.key) as String, e.value))) as Map<String, dynamic>), };",
-    );
-    assert_written(
-        &tethering_dart::dart_definition(),
-        &format!(
-            "TetheringHeld(rest: {},);",
-            counts_from("({...json}..remove('kind'))")
-        ),
     );
 }
 

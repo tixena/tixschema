@@ -382,6 +382,116 @@ fn a_variant_that_flattens_a_map_beside_a_member_is_refused_under_each_tagging()
     }
 }
 
+#[cfg(feature = "serde")]
+#[test]
+fn a_map_flattened_alone_beside_a_tag_is_refused_naming_the_tag() {
+    assert_eq!(
+        refused(
+            "#[serde(tag = \"kind\")] pub enum Keelson { Open { #[serde(flatten)] \
+             counts: BTreeMap<String, u8> } }"
+        ),
+        vec![
+            "model_schema: type `Keelson`: variant `Open`, field `counts`: `#[serde(flatten)]` \
+             cannot hold a map beside the tag `kind` \u{2014} serde writes the tag and the map's \
+             entries at one level, and no TypeScript type describes both. Write the map under a \
+             key of its own."
+                .to_owned()
+        ]
+    );
+    assert_eq!(
+        refused(
+            "#[serde(tag = \"kind\")] pub struct Hull { #[serde(flatten)] \
+             counts: BTreeMap<String, u8> }"
+        ),
+        vec![
+            "model_schema: type `Hull`: field `counts`: `#[serde(flatten)]` cannot hold a map \
+             beside the tag `kind` \u{2014} serde writes the tag and the map's entries at one \
+             level, and no TypeScript type describes both. Write the map under a key of its own."
+                .to_owned()
+        ]
+    );
+}
+
+/// The README quotes the refusal of a map beside a tag as the build answers it, as it quotes the
+/// refusal of a map beside a member.
+#[cfg(feature = "serde")]
+#[test]
+fn the_readme_states_the_refusal_of_a_map_beside_a_tag_as_the_build_answers_it() {
+    let messages = refused(
+        "#[serde(tag = \"kind\")] pub enum Keelson { Open { #[serde(flatten)] \
+         counts: BTreeMap<String, u8> } }",
+    );
+    assert_eq!(messages.len(), 1, "{messages:?}");
+    let answered = format!("error: {}", messages[0]);
+    assert_eq!(
+        include_str!("../../../README.md")
+            .matches(&answered)
+            .count(),
+        2,
+        "the README no longer quotes: {answered}"
+    );
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_map_flattened_alone_beside_a_tag_is_refused_whatever_it_holds() {
+    assert_eq!(
+        refused("pub struct Spare { #[serde(flatten)] pub rest: BTreeMap<String, u8> }"),
+        NONE
+    );
+    for (source, refused_field) in [
+        (
+            "#[serde(tag = \"kind\")] pub enum Keelson { Open { #[serde(flatten)] \
+             counts: Option<BTreeMap<String, u8>> } }",
+            "variant `Open`, field `counts`",
+        ),
+        (
+            "#[serde(tag = \"kind\")] pub enum Keelson { Open { #[serde(flatten)] \
+             spare: Spare } }",
+            "variant `Open`, field `spare`",
+        ),
+        (
+            "#[serde(tag = \"kind\")] pub struct Label { #[serde(flatten)] \
+             words: BTreeMap<String, String> }",
+            "field `words`",
+        ),
+        (
+            "#[serde(tag = \"kind\")] pub struct Hull { #[serde(flatten)] \
+             counts: BTreeMap<String, u8>, #[serde(skip)] cache: u32 }",
+            "field `counts`",
+        ),
+    ] {
+        let messages = refused(source);
+        assert_eq!(messages.len(), 1, "{source}: {messages:?}");
+        assert!(
+            messages[0].contains(&format!(
+                ": {refused_field}: `#[serde(flatten)]` cannot hold a map beside the tag `kind`"
+            )),
+            "{source}: {}",
+            messages[0]
+        );
+    }
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_map_flattened_alone_where_serde_writes_no_tag_beside_it_builds() {
+    let _: Vec<String> = refused("pub struct ShelfMark { pub label: String }");
+    for source in [
+        "#[serde(tag = \"kind\", content = \"held\")] pub enum Transom { Open { \
+         #[serde(flatten)] counts: BTreeMap<String, u8> } }",
+        "pub enum Coaming { Open { #[serde(flatten)] counts: BTreeMap<String, u8> } }",
+        "#[serde(untagged)] pub enum Bilge { Open { #[serde(flatten)] \
+         counts: BTreeMap<String, u8> } }",
+        "pub struct Thwart { #[serde(flatten)] pub counts: BTreeMap<String, u8> }",
+        "#[serde(tag = \"kind\")] pub struct Marked { #[serde(flatten)] pub marking: ShelfMark }",
+        "#[serde(tag = \"kind\")] pub enum Marking { Open { #[serde(flatten)] \
+         marking: ShelfMark } }",
+    ] {
+        assert_eq!(refused(source), NONE, "{source}");
+    }
+}
+
 #[test]
 fn a_result_written_by_its_bare_name_is_checked_wherever_it_is_written() {
     for (field, checks) in [

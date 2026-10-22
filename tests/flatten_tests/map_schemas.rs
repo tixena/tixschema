@@ -1,10 +1,9 @@
 //! The Zod schema of a struct a map is flattened into as the only member of its object: the map's
-//! record takes every key, but the tag an internally tagged enum reads ahead of the variant. An
-//! optional map's absence takes every key too, with any value.
+//! record takes every key. An optional map's absence takes every key too, with any value.
 
 use super::maps::assert_serde_reads_what_zod_reads;
 #[cfg(feature = "zod")]
-use super::maps::{Bilge, Chock, Coaming, Keelson, Locker, Sheave, TaggedThwart, Thwart, Transom};
+use super::maps::{Bilge, Coaming, Locker, Sheave, Thwart, Transom};
 
 #[test]
 fn serde_reads_each_payload_zod_reads() {
@@ -23,19 +22,11 @@ fn a_map_alone_writes_a_record_of_every_key() {
     assert_eq!(Thwart::zod_schema(), EXPECTED);
 }
 
-/// The record of a map in a variant under a tag refuses the tag as a key, which serde reads ahead
-/// of the variant; every other place hands the map every key, a struct's own tag included.
+/// The record of a map in a variant takes every key, whatever the variant is written under.
 #[cfg(feature = "zod")]
 #[test]
-fn only_a_map_in_a_variant_under_a_tag_refuses_a_key() {
-    assert!(
-        Keelson::zod_schema()
-            .contains("z.record(z.string().refine((key) => ![\"kind\"].includes(key)), "),
-        "{}",
-        Keelson::zod_schema()
-    );
+fn a_map_in_a_variant_writes_a_record_of_every_key() {
     for zod in [
-        TaggedThwart::zod_schema(),
         Coaming::zod_schema(),
         Transom::zod_schema(),
         Bilge::zod_schema(),
@@ -51,28 +42,18 @@ fn only_a_map_in_a_variant_under_a_tag_refuses_a_key() {
 #[test]
 fn an_optional_map_is_the_map_or_every_key_dropped() {
     #[cfg(feature = "typescript")]
-    const EXPECTED: &str = "const Locker$OwnSchema = z.strictObject({\n});\n\nconst Locker$RawSchema = z.union([\n  Locker$OwnSchema.and(z.lazy(() => z.record(z.string(), z.number().int()))),\n  Locker$OwnSchema.and(z.record(z.string(), z.unknown()).transform((): Record<string, never> => ({}))),\n]);\n\nexport const Locker$Schema: ZodType<Locker> = Locker$RawSchema.meta({\n  examples: []\n});";
+    const EXPECTED: &str = "const Locker$OwnSchema = z.strictObject({\n});\n\nconst Locker$RawSchema = z.union([\n  Locker$OwnSchema.and(z.lazy(() => z.record(z.string(), z.number().int()))),\n  Locker$OwnSchema.and(z.record(z.string(), z.unknown()).transform(() => ({}))),\n]);\n\nexport const Locker$Schema: ZodType<Locker> = Locker$RawSchema.meta({\n  examples: []\n});";
     #[cfg(not(feature = "typescript"))]
-    const EXPECTED: &str = "const Locker$OwnSchema = z.strictObject({\n});\n\nexport const Locker$Schema = z.union([\n  Locker$OwnSchema.and(z.lazy(() => z.record(z.string(), z.number().int()))),\n  Locker$OwnSchema.and(z.record(z.string(), z.unknown()).transform((): Record<string, never> => ({}))),\n]).meta({\n  examples: []\n});";
+    const EXPECTED: &str = "const Locker$OwnSchema = z.strictObject({\n});\n\nexport const Locker$Schema = z.union([\n  Locker$OwnSchema.and(z.lazy(() => z.record(z.string(), z.number().int()))),\n  Locker$OwnSchema.and(z.record(z.string(), z.unknown()).transform(() => ({}))),\n]).meta({\n  examples: []\n});";
 
     assert_eq!(Locker::zod_schema(), EXPECTED);
 }
 
-/// The absence of an optional map refuses no key, the tag an internally tagged enum reads ahead of
-/// the variant included, which the variant's own object holds; a map named through an alias is
-/// dropped the same way.
+/// The absence of an optional map named through an alias is dropped as the map's own is.
 #[cfg(feature = "zod")]
 #[test]
-fn the_absence_of_an_optional_map_refuses_no_key() {
-    let dropped =
-        ".and(z.record(z.string(), z.unknown()).transform((): Record<string, never> => ({})))";
-    let chock = Chock::zod_schema();
-    assert!(
-        chock.contains(&format!(
-            "z.strictObject({{\n  kind: z.literal(\"Open\"),\n}}){dropped}"
-        )),
-        "{chock}"
-    );
+fn the_absence_of_an_optional_map_named_through_an_alias_is_dropped() {
+    let dropped = ".and(z.record(z.string(), z.unknown()).transform(() => ({})))";
     let sheave = Sheave::zod_schema();
     assert!(
         sheave.contains(&format!("  Sheave$OwnSchema{dropped},\n")),
@@ -84,7 +65,7 @@ fn the_absence_of_an_optional_map_refuses_no_key() {
 #[cfg(feature = "zod")]
 #[test]
 fn the_readme_quotes_the_absence_of_an_optional_map_as_it_is_written() {
-    let absence = "Locker$OwnSchema.and(z.record(z.string(), z.unknown()).transform((): Record<string, never> => ({})))";
+    let absence = "Locker$OwnSchema.and(z.record(z.string(), z.unknown()).transform(() => ({})))";
     assert!(
         Locker::zod_schema().contains(absence),
         "{}",

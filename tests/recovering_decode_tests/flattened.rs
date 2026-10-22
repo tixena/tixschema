@@ -382,18 +382,6 @@ struct Whole {
     title: String,
 }
 
-/// Internally tagged, with a struct variant that flattens a type that takes every key.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-#[serde(tag = "kind")]
-enum Tabled {
-    Gone,
-    Made {
-        #[serde(flatten)]
-        counts: Counts,
-    },
-}
-
 /// An optional flattened enum, internally tagged.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -1295,29 +1283,6 @@ fn a_flattened_untagged_enum_no_variant_reads_holds_what_the_enum_was_handed() {
                 ]
             ),
         ]
-    );
-}
-
-#[test]
-fn a_variants_flattened_type_that_flattens_a_map_is_handed_no_tag() {
-    let made = Tabled::Made {
-        counts: Counts {
-            by_name: HashMap::from([("a".to_owned(), 1_i32)]),
-        },
-    };
-    let written = serde_json::to_value(&made).unwrap();
-    assert_eq!(written, json!({ "a": 1_i32, "kind": "Made" }));
-    let mut calls = 0_u32;
-    assert_eq!(
-        read_counting!(Tabled, tabled_schema, written, calls),
-        Ok(made)
-    );
-    assert_eq!(calls, 0);
-    let stored = json!({ "a": "x", "kind": "Made" });
-    assert!(!serde_reads::<Tabled>(&stored));
-    assert_eq!(
-        listed!(Tabled, tabled_schema, stored),
-        ["a: invalid: expected I32, found String(\"x\"): invalid type: string \"x\", expected i32"]
     );
 }
 

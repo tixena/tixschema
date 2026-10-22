@@ -1,8 +1,8 @@
-//! A map that is the one member of its struct and of a variant under a tag key, and a member that
-//! names a function, flattened after a struct, beside a member of its holder's own, ahead of a
-//! struct, after a member that takes none of the keys it reads, and after an externally tagged
-//! enum, an enum under a tag key and an untagged one, each read and written back by the emitted
-//! Dart types under the Dart VM, against what serde reads and writes back.
+//! A map that is the one member of its struct, and a member that names a function, flattened after
+//! a struct, beside a member of its holder's own, ahead of a struct, after a member that takes none
+//! of the keys it reads, and after an externally tagged enum, an enum under a tag key and an
+//! untagged one, each read and written back by the emitted Dart types under the Dart VM, against
+//! what serde reads and writes back.
 
 #![cfg(feature = "dart")]
 
@@ -12,11 +12,11 @@ use serde::{Deserialize, Serialize};
 
 use super::dart_flattened_models::{
     Belaying, CLAMPING, Clamping, Doubling, FASTENING, Fastening, Hoisting, KEDGING, Kedging,
-    LOADING, Lacing, Loading, MOUSING, Mousing, PAYLOAD, Rigging, SPARE, Shoring, Spare, TETHERING,
-    TRIMMING, Tethering, Trimming, Twin, belaying_dart, bracing_dart, chocking_dart, clamping_dart,
-    doubling_dart, fastening_dart, frapping_dart, hatching_dart, hoisting_dart, kedging_dart,
-    keying_dart, lacing_dart, loading_dart, marking_dart, mousing_dart, rigging_dart, shoring_dart,
-    spare_dart, tethering_dart, ticketing_dart, trimming_dart, twin_dart, warping_dart,
+    LOADING, Lacing, Loading, MOUSING, Mousing, PAYLOAD, Rigging, SPARE, Shoring, Spare, TRIMMING,
+    Trimming, Twin, belaying_dart, bracing_dart, chocking_dart, clamping_dart, doubling_dart,
+    fastening_dart, frapping_dart, hatching_dart, hoisting_dart, kedging_dart, keying_dart,
+    lacing_dart, loading_dart, marking_dart, mousing_dart, rigging_dart, shoring_dart, spare_dart,
+    ticketing_dart, trimming_dart, twin_dart, warping_dart,
 };
 use super::run_dart_validate::{dart, module};
 
@@ -27,13 +27,11 @@ const AS_GIVEN: &str = "dynamic asGiven(dynamic payload) => payload;";
 const WITH_ITS_KEYS: &str = "dynamic withItsKeys(dynamic payload) => \
      {'keys': (payload as Map<String, dynamic>).keys.toList()};";
 
-/// What prints the map each holder read, and what it writes back.
+/// What prints the map the holder read, and what it writes back.
 const ALONE: &str = "
 void main() {
   final spare = Spare.fromJson(jsonDecode(r'SPARE'));
   print('spare: ${jsonEncode(spare.rest)} ${jsonEncode(spare.toJson())}');
-  final tethering = Tethering.fromJson(jsonDecode(r'TETHERING')) as TetheringHeld;
-  print('tethering: ${jsonEncode(tethering.rest)} ${jsonEncode(tethering.toJson())}');
 }
 ";
 
@@ -126,7 +124,6 @@ fn with_payloads(main: &str) -> String {
     main.replace("PAYLOAD", PAYLOAD)
         .replace("SPARE", SPARE)
         .replace("CLAMPING", CLAMPING)
-        .replace("TETHERING", TETHERING)
         .replace("FASTENING", FASTENING)
         .replace("LOADING", &listed(&LOADING))
         .replace("KEDGING", &listed(&KEDGING))
@@ -154,34 +151,17 @@ fn printed(named: &str, definitions: &[String], main: &str) -> Option<String> {
     Some(printed)
 }
 
-/// A map that is the one member of its struct holds every key, and one in a variant under a tag
-/// key every key but the tag, as serde hands them, and each holder is written back as serde writes
-/// it back.
+/// A map that is the one member of its struct holds every key, as serde hands them, and the
+/// holder is written back as serde writes it back.
 #[test]
 fn a_map_alone_reads_in_dart_the_keys_serde_hands_it() {
     let spare: Spare = serde_json::from_str(SPARE).unwrap();
-    let tethering: Tethering = serde_json::from_str(TETHERING).unwrap();
-    let Tethering::Held { rest } = &tethering;
-    let expected = format!(
-        "spare: {} {}\ntethering: {} {}\n",
-        written(&spare.rest),
-        written(&spare),
-        written(rest),
-        written(&tethering),
-    );
+    let expected = format!("spare: {} {}\n", written(&spare.rest), written(&spare));
     assert_eq!(
         expected,
-        "spare: {\"north\":2,\"south\":3} {\"north\":2,\"south\":3}\n\
-         tethering: {\"north\":2} {\"kind\":\"Held\",\"north\":2}\n"
+        "spare: {\"north\":2,\"south\":3} {\"north\":2,\"south\":3}\n"
     );
-    let Some(printed) = printed(
-        "flattened-alone",
-        &[
-            spare_dart::dart_definition(),
-            tethering_dart::dart_definition(),
-        ],
-        ALONE,
-    ) else {
+    let Some(printed) = printed("flattened-alone", &[spare_dart::dart_definition()], ALONE) else {
         return;
     };
     assert_eq!(printed, expected);

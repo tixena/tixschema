@@ -446,7 +446,7 @@ fn a_type_of_flattened_members_alone_reads_and_writes_in_swift_as_serde_does() {
         expected
     });
     let shared = "stopping: {\"north\":2,\"south\":3}\n\
-         clewing: {\"kind\":\"Held\",\"north\":2}\n\
+         clewing: {\"Held\":{\"north\":2}}\n\
          parceling: {\"North\":2}\n\
          toggling: {\"North\":2}\n\
          worming: {\"north\":{\"mark\":\"x\"}}\n\
