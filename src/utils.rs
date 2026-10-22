@@ -688,6 +688,22 @@ thread_local! {
     /// fills their type parameter at the position held. Kept in every build that reads
     /// `#[serde(tag)]`.
     static VALUE_PARAMETERS: RefCell<HashMap<String, usize>> = RefCell::new(HashMap::new());
+    /// The untagged enums `#[model_schema]` has been written on so far with a member serde writes
+    /// as what fills one of their type parameters, with each such member. Kept in every build
+    /// that reads `#[serde(flatten)]`.
+    static UNION_PARAMETERS: RefCell<HashMap<String, Vec<UnionParameter>>> =
+        RefCell::new(HashMap::new());
+}
+
+/// A leaf of the members of an untagged enum that serde writes as what fills one of the enum's
+/// type parameters, as [`UNION_PARAMETERS`] holds it.
+#[cfg(feature = "serde")]
+#[derive(Clone)]
+pub struct UnionParameter {
+    /// The parameter's position among the enum's type parameters.
+    pub at: usize,
+    /// The leaf's branch among [`NonObjectWire::members`].
+    pub branch: Vec<usize>,
 }
 
 /// What serde writes a value of a name as, in the leaves the flatten refusal reads, as
@@ -966,6 +982,25 @@ pub fn record_value_parameter(rust_ident: &str, position: Option<usize>) {
             names.borrow_mut().insert(rust_ident.to_owned(), at);
         } else {
             names.borrow_mut().remove(rust_ident);
+        }
+    });
+}
+
+/// The leaves of the members of `rust_ident`, an untagged enum, that serde writes as what fills
+/// one of its type parameters. Empty for a name declared below the item asking.
+#[cfg(feature = "serde")]
+pub fn union_parameters(rust_ident: &str) -> Vec<UnionParameter> {
+    UNION_PARAMETERS.with(|names| names.borrow().get(rust_ident).cloned().unwrap_or_default())
+}
+
+/// Records the leaves [`union_parameters`] answers for `rust_ident`.
+#[cfg(feature = "serde")]
+pub fn record_union_parameters(rust_ident: &str, parameters: Vec<UnionParameter>) {
+    UNION_PARAMETERS.with(|names| {
+        if parameters.is_empty() {
+            names.borrow_mut().remove(rust_ident);
+        } else {
+            names.borrow_mut().insert(rust_ident.to_owned(), parameters);
         }
     });
 }
