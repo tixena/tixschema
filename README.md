@@ -2532,6 +2532,8 @@ async fn can_generate(
 
 It exists for one reason: services already ship wire names nobody would derive from the method. An operation a caller knows as `canGenerate` may dispatch today as `usage-generation-request`, the two sharing no substring, so without the override no such service could adopt this construct without changing bytes. A greenfield operation writes no attribute at all. The override replaces the derived name rather than adding a second one -- after it, nothing answers to `can-generate`.
 
+The TypeScript client and dispatcher carry a wire name, a path, a part name and a header name exactly as declared, whatever they hold: each is written into the generated code as an escaped string literal, so `message = "le$vy'it\"q\\x"` with `path = "/le$vy'it\"q\\x/{label}"`, and a multipart operation's `part("fi$le'x\"q\\" = attachment)`, compile under `tsc --strict`, and the client sends the path `/le$vy'it"q\x/a` and the part `fi$le'x"q\`, which the Rust dispatcher reads.
+
 #### Service Errors
 
 An operation's `Result` names **one** type in its error position. That type is normally an enum, which is a union, so "an operation's errors" is one `#[model_schema()]` type with several variants rather than several types.
@@ -8401,6 +8403,8 @@ Supported Serde attributes:
 - `#[serde(deserialize_with = "...")]`, `#[serde(serialize_with = "...")]` and `#[serde(with = "...")]` -- the field's own functions, which the [recovering decode](#recovering-decode-decode_with) reads a value through and writes it back through, as serde's derive does
 
 The three `skip` spellings are three different wires, and [Optional Fields](#optional-fields) reads each one in both directions, positional slots included.
+
+The TypeScript type and the Zod schema write a key, a tag, a variant's name, a plain enum's value and a `literal` as an escaped string literal, so a name holding a `"` or a `\` describes exactly what serde writes: `#[serde(rename = "say \"hi\"")]` is the key `"say \"hi\""`, and `#[serde(rename = "C:\\Path")]` the variant `"C:\\Path"`.
 
 If the `serde` feature is disabled but serde attributes are present, you will see compile-time warnings and field names will not be transformed.
 

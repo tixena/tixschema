@@ -63,10 +63,12 @@ use crate::bound_message::rust_violation;
 #[cfg(feature = "zod")]
 use crate::bound_message::zod_error_arg;
 
+#[cfg(any(feature = "typescript", feature = "zod"))]
+use crate::utils::escape_js_double_quoted;
 #[cfg(feature = "typescript")]
 use crate::utils::ts_generic_params;
 use crate::utils::{
-    constraining_pattern, emittable_pattern, portable_pattern, type_parameters_in_scope,
+    constraining_pattern, emittable_pattern, portable_pattern, ts_quoted, type_parameters_in_scope,
     written_type,
 };
 
@@ -10015,7 +10017,7 @@ fn ts_member_key(key: &str) -> String {
     {
         return key.to_owned();
     }
-    format!("\"{}\"", key.replace('\\', "\\\\").replace('"', "\\\""))
+    ts_quoted(key)
 }
 
 /// The one-line description a set of lines is published as, escaped for the `description: "…"` it
@@ -10023,7 +10025,11 @@ fn ts_member_key(key: &str) -> String {
 /// spell an identifier, which cannot contain a quote.
 #[cfg(any(feature = "typescript", feature = "zod"))]
 fn describe_item_lines(lines: &[String]) -> String {
-    lines.join("\\n").replace('"', "\\\"")
+    lines
+        .iter()
+        .map(|line| escape_js_double_quoted(line))
+        .collect::<Vec<_>>()
+        .join("\\n")
 }
 
 /// The escaped one-line description an item publishes, falling back to the exported name when it
@@ -10103,8 +10109,9 @@ fn build_plain_enum_type_code(enum_options: &[String], enum_variant_docs: &[Stri
         .enumerate()
         .map(|(idx, v)| {
             let docs = &enum_variant_docs[idx];
+            let quoted = ts_quoted(v);
             if docs.is_empty() {
-                format!("  | \"{v}\"")
+                format!("  | {quoted}")
             } else {
                 let formatted_docs = docs
                     .lines()
@@ -10119,7 +10126,7 @@ fn build_plain_enum_type_code(enum_options: &[String], enum_variant_docs: &[Stri
                     })
                     .collect::<Vec<_>>()
                     .join("\n");
-                format!("  /*\n{formatted_docs}\n  */\n  | \"{v}\"")
+                format!("  /*\n{formatted_docs}\n  */\n  | {quoted}")
             }
         })
         .collect::<Vec<_>>()
@@ -10132,7 +10139,7 @@ fn build_plain_enum_type_code(enum_options: &[String], enum_variant_docs: &[Stri
 fn variant_reader_case_arms(pairs: &[(String, String)]) -> String {
     pairs
         .iter()
-        .map(|(wire, rust)| format!("    case \"{wire}\": return \"{rust}\";"))
+        .map(|(wire, rust)| format!("    case {}: return \"{rust}\";", ts_quoted(wire)))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -10348,7 +10355,7 @@ fn process_plain_enum(
     #[cfg(feature = "zod")]
     let schema_code = enum_options
         .iter()
-        .map(|v| format!("\"{v}\""))
+        .map(|v| ts_quoted(v))
         .collect::<Vec<_>>()
         .join(", ");
 
@@ -10917,7 +10924,8 @@ fn adjacent_collapsed_slot_guard_errors(
 #[cfg(feature = "zod")]
 fn discriminated_zod_schema_code(tag_name: &str, members: &[String]) -> String {
     format!(
-        "z.discriminatedUnion(\"{tag_name}\", [{}])",
+        "z.discriminatedUnion({}, [{}])",
+        ts_quoted(tag_name),
         members
             .iter()
             .map(|member| format!("z.strictObject({member})"))
@@ -11239,6 +11247,7 @@ fn render_external_variant(
     self_type_name: &str,
 ) -> (String, String, proc_macro2::TokenStream) {
     let key = &variant.discriminator_value;
+    let quoted = ts_quoted(key);
     let docs = &variant.docs;
 
     if matches!(variant.kind, VariantKind::Unit) {
@@ -11248,8 +11257,8 @@ fn render_external_variant(
         let json = quote! {};
 
         return (
-            format!("{}\n  \"{key}\"", member_jsdoc_block(docs)),
-            format!("z.literal(\"{key}\")"),
+            format!("{}\n  {quoted}", member_jsdoc_block(docs)),
+            format!("z.literal({quoted})"),
             json,
         );
     }
@@ -11266,9 +11275,9 @@ fn render_external_variant(
                 .iter()
                 .any(|fld| fld.contains_type_reference(self_type_name));
         if defer_key {
-            format!("z.strictObject({{\n  get \"{key}\"() {{ return {content_zod}; }},\n}})")
+            format!("z.strictObject({{\n  get {quoted}() {{ return {content_zod}; }},\n}})")
         } else {
-            format!("z.strictObject({{\n  \"{key}\": {content_zod},\n}})")
+            format!("z.strictObject({{\n  {quoted}: {content_zod},\n}})")
         }
     };
     #[cfg(not(feature = "zod"))]
@@ -11312,7 +11321,7 @@ fn render_external_variant(
 
     (
         format!(
-            "{{\n{}\n  \"{key}\": {content_ts};\n}}",
+            "{{\n{}\n  {quoted}: {content_ts};\n}}",
             member_jsdoc_block(docs)
         ),
         zod,
@@ -11350,8 +11359,9 @@ fn record_external_flatten_operands(
             let typescript = {
                 let tagged = if unit {
                     format!(
-                        "{{\n{}\n  \"{key}\": null;\n}}",
-                        member_jsdoc_block(&variant.docs)
+                        "{{\n{}\n  {}: null;\n}}",
+                        member_jsdoc_block(&variant.docs),
+                        ts_quoted(key)
                     )
                 } else {
                     member.0.clone()
@@ -11363,9 +11373,9 @@ fn record_external_flatten_operands(
             #[cfg(feature = "zod")]
             let zod = if unit {
                 zod_check_wrap_handing(
-                    format!("z.strictObject({{\n  \"{key}\": z.null(),\n}})"),
+                    format!("z.strictObject({{\n  {}: z.null(),\n}})", ts_quoted(key)),
                     checks,
-                    &format!("\"{key}\""),
+                    &ts_quoted(key),
                 )
             } else {
                 zod_check_wrap(member.1.clone(), checks)
@@ -11418,7 +11428,7 @@ fn close_tagged_flatten_member(member: &str, excluded: &[String]) -> String {
     };
     let mut closed = keys.to_owned();
     for key in excluded {
-        let _ = write!(closed, "\n  \"{key}\"?: never;");
+        let _ = write!(closed, "\n  {}?: never;", ts_quoted(key));
     }
     closed.push_str("\n}");
     closed
@@ -12087,7 +12097,7 @@ fn join_internal_union(
         if members.iter().any(|&(_, _, _, flattened)| flattened) {
             format!("z.union([{joined}])")
         } else {
-            format!("z.discriminatedUnion(\"{tag_name}\", [{joined}])")
+            format!("z.discriminatedUnion({}, [{joined}])", ts_quoted(tag_name))
         }
     };
     #[cfg(not(feature = "zod"))]
@@ -13389,11 +13399,12 @@ fn tagged_variant_parts(
     discriminator_docs: &str,
 ) -> VariantParts {
     let tag_key = ts_member_key(tag_name);
+    let value = ts_quoted(discriminator_value);
     VariantParts {
         json_fields: Vec::new(),
-        schema_code: format!("{{\n  {tag_key}: z.literal(\"{discriminator_value}\"),\n"),
+        schema_code: format!("{{\n  {tag_key}: z.literal({value}),\n"),
         type_code: format!(
-            "{{\n{}\n  {tag_key}: \"{discriminator_value}\";\n",
+            "{{\n{}\n  {tag_key}: {value};\n",
             member_jsdoc_block(discriminator_docs)
         ),
     }
@@ -18750,7 +18761,7 @@ fn ts_merged_operands(own_keys: &[String], operands: &[MergedOperand]) -> Vec<St
         .map(|(at, operand)| {
             let beside: Vec<String> = own_keys
                 .iter()
-                .map(|key| format!("\"{}\"", key.replace('\\', "\\\\").replace('"', "\\\"")))
+                .map(|key| ts_quoted(key))
                 .chain(
                     operands
                         .iter()

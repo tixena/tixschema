@@ -14,7 +14,7 @@ use crate::service_schema::parse::{
     type_leaf_name, vec_inner, wire_key, written,
 };
 use crate::service_schema::support::fault_fields_typescript_name;
-use crate::utils::is_recorded_untagged_enum;
+use crate::utils::{is_recorded_untagged_enum, ts_quoted};
 use core::fmt::Write as _;
 use syn::Type;
 
@@ -136,12 +136,12 @@ fn route_row(operation: &OperationDef) -> String {
         .collect::<Vec<_>>()
         .join(", ");
     format!(
-        "  {{ errorStatuses: [{codes}], method: \"{}\", okStatus: {}, operation: \"{}\", path: \
-         \"{}\" }},",
+        "  {{ errorStatuses: [{codes}], method: \"{}\", okStatus: {}, operation: {}, path: \
+         {} }},",
         shape.method.name(),
         shape.ok_status,
-        operation.wire_name,
-        shape.path_template(),
+        ts_quoted(&operation.wire_name),
+        ts_quoted(&shape.path_template()),
     )
 }
 
@@ -311,7 +311,12 @@ fn error_status_closure(shape: &HttpShape, error_type: &Type) -> String {
     let arms = shape
         .error_status
         .iter()
-        .map(|(variant, code)| format!("            case \"{variant}\": return {code};"))
+        .map(|(variant, code)| {
+            format!(
+                "            case {}: return {code};",
+                ts_quoted(&variant.to_string())
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n");
     format!(
@@ -346,7 +351,7 @@ fn whole_body_message_stmt(wire: &str, prefix: &str) -> String {
          try {{\n          \
          message = JSON.parse(new TextDecoder().decode(request.body));\n        \
          }} catch (rejected) {{\n          \
-         return onFault({prefix}HttpFault(\"undeserializable-payload\", \"{wire}\", \
+         return onFault({prefix}HttpFault(\"undeserializable-payload\", {wire}, \
          String(rejected)));\n        \
          }}\n"
     )
@@ -377,7 +382,7 @@ fn empty_message_build(
 ) -> (String, String) {
     if bodied && !multipart {
         return (
-            whole_body_message_stmt(&operation.wire_name, prefix),
+            whole_body_message_stmt(&ts_quoted(&operation.wire_name), prefix),
             "message".to_owned(),
         );
     }
@@ -394,7 +399,7 @@ fn named_message_build(
 ) -> (String, String) {
     if placeholder_names.is_empty() {
         return (
-            whole_body_message_stmt(&operation.wire_name, prefix),
+            whole_body_message_stmt(&ts_quoted(&operation.wire_name), prefix),
             "message".to_owned(),
         );
     }
@@ -412,7 +417,8 @@ fn named_message_build(
     for name in placeholder_names {
         let _ = writeln!(
             setup,
-            "        message[\"{name}\"] = {};",
+            "        message[{}] = {};",
+            ts_quoted(name),
             message::placeholder_local(name)
         );
     }
@@ -421,22 +427,24 @@ fn named_message_build(
 
 fn query_field_insert(key: &str, ty: &Type, prefix: &str) -> String {
     let decode = message::decode_ts_expr(ty, "raw", prefix);
+    let quoted = ts_quoted(key);
     format!(
         "        {{\n          \
-         const raw = queryMap.get(\"{key}\");\n          \
-         message[\"{key}\"] = raw === undefined ? null : {decode};\n        \
+         const raw = queryMap.get({quoted});\n          \
+         message[{quoted}] = raw === undefined ? null : {decode};\n        \
          }}\n"
     )
 }
 
 fn multipart_field_insert(key: &str, ty: &Type, prefix: &str) -> String {
     let decode = message::decode_ts_expr(ty, "raw", prefix);
+    let quoted = ts_quoted(key);
     format!(
         "        {{\n          \
-         const found = request.parts.find(([name]) => name === \"{key}\");\n          \
+         const found = request.parts.find(([name]) => name === {quoted});\n          \
          const raw = found !== undefined && typeof found[1] === \"string\" ? found[1] : \
          undefined;\n          \
-         message[\"{key}\"] = raw === undefined ? null : {decode};\n        \
+         message[{quoted}] = raw === undefined ? null : {decode};\n        \
          }}\n"
     )
 }
@@ -478,7 +486,7 @@ fn generated_message_build(
         if is_placeholder {
             let decode =
                 message::decode_ts_expr(ty, &message::placeholder_local(&field_name), prefix);
-            let _ = writeln!(setup, "        message[\"{key}\"] = {decode};");
+            let _ = writeln!(setup, "        message[{}] = {decode};", ts_quoted(&key));
         } else if multipart {
             setup.push_str(&multipart_field_insert(&key, ty, prefix));
         } else {
@@ -571,7 +579,7 @@ fn answer_fn(ctx: &DispatcherContext) -> String {
 fn path_token_list(path: &[PathSegment]) -> String {
     path.iter()
         .map(|segment| match segment {
-            PathSegment::Literal(text) => format!("\"{text}\""),
+            PathSegment::Literal(text) => ts_quoted(text),
             PathSegment::Placeholder(_) => "null".to_owned(),
         })
         .collect::<Vec<_>>()
@@ -623,18 +631,18 @@ fn header_in_encode_stmt(shape: &HttpShape, prefix: &str) -> String {
     }
     let mut stmt = String::from("        const headersIn: Array<[string, string]> = [];\n");
     for header in &shape.header_in {
-        let name = &header.name;
+        let name = ts_quoted(&header.name);
         let text = format!(
             "{}Text",
             RenameRule::CamelCase.apply_to_field(&written(&header.parameter))
         );
-        let lower = name.to_lowercase();
+        let lower = ts_quoted(&header.name.to_lowercase());
         let decode = message::decode_ts_expr(&header.ty, &text, prefix);
         let _ = write!(
             stmt,
             "        const {text} = request.headers.find(([name]) => name.toLowerCase() === \
-             \"{lower}\")?.[1];\n        \
-             if ({text} !== undefined) headersIn.push([\"{name}\", JSON.stringify({decode})]);\n"
+             {lower})?.[1];\n        \
+             if ({text} !== undefined) headersIn.push([{name}, JSON.stringify({decode})]);\n"
         );
     }
     stmt
@@ -661,9 +669,10 @@ fn arm_body(
     let extras = dispatch_extras(shape, ctx.has_multipart);
     let OperationOutcome::Reply { error, success } = &operation.outcome else {
         return format!(
-            "        return answer(ctx, \"{}\", {message_expr}, {extras}, {}, () => \
+            "        return answer(ctx, {}, {message_expr}, {extras}, {}, () => \
              {DEFAULT_BINDING_ERROR_STATUS});\n",
-            operation.wire_name, shape.ok_status,
+            ts_quoted(&operation.wire_name),
+            shape.ok_status,
         );
     };
     let plain_json = shape.header_out.is_empty()
@@ -672,17 +681,18 @@ fn arm_body(
     if plain_json {
         let closure = error_status_closure(shape, error);
         return format!(
-            "        return answer(ctx, \"{}\", {message_expr}, {extras}, {}, {closure});\n",
-            operation.wire_name, shape.ok_status,
+            "        return answer(ctx, {}, {message_expr}, {extras}, {}, {closure});\n",
+            ts_quoted(&operation.wire_name),
+            shape.ok_status,
         );
     }
     custom_reply_block(operation, shape, message_expr, error, success, ctx)
 }
 
 fn arm_comment(operation: &OperationDef, shape: &HttpShape) -> String {
-    let wire = &operation.wire_name;
+    let wire = message::commented(&operation.wire_name);
     let method = shape.method.name();
-    let path = shape.path_template();
+    let path = message::commented(&shape.path_template());
     let lines = assembly_rule_lines(operation, shape);
     let mut out = String::new();
     for (index, line) in lines.iter().enumerate() {
@@ -800,9 +810,9 @@ fn dispatch_envelope_preamble(
     format!(
         "        let dispatched: {named}Dispatched | undefined;\n        \
          try {{\n          \
-         dispatched = await dispatch(ctx, \"{wire}\", {message_expr}, {extras});\n        \
+         dispatched = await dispatch(ctx, {wire}, {message_expr}, {extras});\n        \
          }} catch (thrown) {{\n          \
-         return onFault({prefix}HttpFault(\"handler-panic\", \"{wire}\", thrown instanceof \
+         return onFault({prefix}HttpFault(\"handler-panic\", {wire}, thrown instanceof \
          Error ? thrown.message : String(thrown)));\n        \
          }}\n        \
          const envelope = dispatched?.answered as {{ ok: true; value: {body_ty} }} | {{ ok: \
@@ -874,8 +884,9 @@ fn replied_header_reads(
         let element_ty = get_field_def("value", ty, "").typescript_typename();
         let _ = writeln!(
             stmt,
-            "{indent}const {ident} = {prefix}HttpRepliedHeader(replied, \"{name}\") as \
-             {element_ty};"
+            "{indent}const {ident} = {prefix}HttpRepliedHeader(replied, {}) as \
+             {element_ty};",
+            ts_quoted(name)
         );
     }
     stmt
@@ -940,11 +951,12 @@ fn checked_header_push_stmt(prefix: &str, wire: &str, name: &str, value_expr: &s
         "{{\n            \
          const rendered = {value_expr};\n            \
          if (!{prefix}HttpLegalResponseHeaderValue(rendered)) {{\n              \
-         return onFault({prefix}HttpFault(\"handler-panic\", \"{wire}\", \"a response header \
+         return onFault({prefix}HttpFault(\"handler-panic\", {wire}, \"a response header \
          value contained a character illegal in an HTTP header\"));\n            \
          }}\n            \
-         headers.push([\"{name}\", rendered]);\n          \
-         }}"
+         headers.push([{}, rendered]);\n          \
+         }}",
+        ts_quoted(name)
     )
 }
 
@@ -960,7 +972,7 @@ fn bytes_reply_block(
     success: &Type,
     ctx: &DispatcherContext,
 ) -> String {
-    let wire = &operation.wire_name;
+    let wire = &ts_quoted(&operation.wire_name);
     let pair = tuple_elements(success)
         .into_iter()
         .flatten()
@@ -1000,7 +1012,7 @@ fn stream_reply_block(
     success: &Type,
     ctx: &DispatcherContext,
 ) -> String {
-    let wire = &operation.wire_name;
+    let wire = &ts_quoted(&operation.wire_name);
     let mut out = dispatch_envelope_preamble(
         wire,
         message_expr,
@@ -1043,7 +1055,7 @@ fn header_out_json_reply_block(
     success: &Type,
     ctx: &DispatcherContext,
 ) -> String {
-    let wire = &operation.wire_name;
+    let wire = &ts_quoted(&operation.wire_name);
     let body = message::body_type(shape.header_out.len(), success);
     let body_ty = get_field_def("value", body, "").typescript_typename();
     let mut out = dispatch_envelope_preamble(wire, message_expr, &body_ty, shape, error, ctx);

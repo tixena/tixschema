@@ -11,6 +11,7 @@ use crate::service_schema::parse::{
     BodyKind, HttpShape, OperationDef, OperationOutcome, ServiceDef, is_unit_type, option_inner,
     written,
 };
+use crate::utils::ts_quoted;
 use core::fmt::Write as _;
 use syn::Type;
 
@@ -47,7 +48,10 @@ impl SplitSide<'_> {
             self.tuple,
         );
         for ((name, ty), ident) in self.names.iter().zip(&self.types).zip(&idents) {
-            let push = format!("replied.push([\"{name}\", JSON.stringify({ident})]);");
+            let push = format!(
+                "replied.push([{}, JSON.stringify({ident})]);",
+                ts_quoted(name)
+            );
             if option_inner(ty).is_some() {
                 let _ = writeln!(stmt, "{margin}if ({ident} != null) {push}");
             } else {
@@ -81,7 +85,7 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
 /// part, then call. An implementation may assume its message is valid and every bound value
 /// present or `undefined` as declared, because neither ever reaches it otherwise.
 fn arm(service: &ServiceDef, operation: &OperationDef) -> String {
-    let wire = &operation.wire_name;
+    let wire = ts_quoted(&operation.wire_name);
     let call = &operation.ts_name;
     let received = payload_check(service, operation);
     let shape = HttpShape::of(operation);
@@ -107,7 +111,7 @@ fn arm(service: &ServiceDef, operation: &OperationDef) -> String {
             format!("        return {{ answered: await impl.{call}({call_args}), headers: [] }};")
         }
     };
-    format!("      case \"{wire}\": {{\n{received}{bindings}{answering}\n      }}")
+    format!("      case {wire}: {{\n{received}{bindings}{answering}\n      }}")
 }
 
 /// Splits an outcome whose success or declared error is a header tuple: the body answers as the
@@ -156,7 +160,7 @@ fn binding_reads(
 ) -> (String, Vec<String>) {
     let named = service.ident.to_string();
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
-    let wire = &operation.wire_name;
+    let wire = ts_quoted(&operation.wire_name);
     let mut stmt = String::new();
     let mut bound = Vec::new();
     for header in &shape.header_in {
@@ -165,12 +169,12 @@ fn binding_reads(
         let schema = get_field_def(&name, &header.ty, "").zod_type();
         let _ = write!(
             stmt,
-            "        const {read} = {prefix}RequestHeader(\"{wire}\", headers, \"{header_name}\", \
+            "        const {read} = {prefix}RequestHeader({wire}, headers, {header_name}, \
              {schema});\n        \
              if (!{read}.ok) {{\n          \
              return {prefix}Framed({read}.fault);\n        \
              }}\n",
-            header_name = header.name,
+            header_name = ts_quoted(&header.name),
         );
         bound.push(format!("{read}.value"));
     }
@@ -178,17 +182,17 @@ fn binding_reads(
         let name = message::parameter_name(&part.parameter);
         let _ = writeln!(
             stmt,
-            "        const {name} = parts.find(([name]) => name === \"{part_name}\")?.[1];",
-            part_name = part.name,
+            "        const {name} = parts.find(([name]) => name === {part_name})?.[1];",
+            part_name = ts_quoted(&part.name),
         );
         let _ = write!(
             stmt,
             "        if ({name} === undefined) {{\n          \
-             return {prefix}Framed({prefix}InboundFault(\"{wire}\", [{{ path: \
-             [\"{part_name}\"], message: \"a required multipart part was not carried\" \
+             return {prefix}Framed({prefix}InboundFault({wire}, [{{ path: \
+             [{part_name}], message: \"a required multipart part was not carried\" \
              }}]));\n        \
              }}\n",
-            part_name = part.name,
+            part_name = ts_quoted(&part.name),
         );
         bound.push(name);
     }
@@ -456,7 +460,7 @@ fn implementation_answers(service: &str, operation: &OperationDef) -> String {
 
 /// A one-line summary for the member's own `JSDoc`.
 fn method_summary(service: &str, operation: &OperationDef) -> String {
-    let wire = &operation.wire_name;
+    let wire = message::commented(&operation.wire_name);
     match &operation.outcome {
         OperationOutcome::OneWay => {
             format!("Handles `{wire}` on `{service}`, which expects no reply.")
@@ -523,12 +527,12 @@ fn outcome_type(service: &str, operation: &OperationDef) -> Option<String> {
 fn payload_check(service: &ServiceDef, operation: &OperationDef) -> String {
     let named = service.ident.to_string();
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
-    let wire = &operation.wire_name;
+    let wire = ts_quoted(&operation.wire_name);
     let schema = message::schema(operation);
     format!(
         "        const received = {schema}.safeParse(payload);\n        \
          if (!received.success) {{\n          \
-         return {prefix}Framed({prefix}InboundFault(\"{wire}\", received.error.issues));\n        \
+         return {prefix}Framed({prefix}InboundFault({wire}, received.error.issues));\n        \
          }}\n"
     )
 }

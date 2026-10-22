@@ -13,6 +13,7 @@ use crate::service_schema::parse::{
     option_inner, scalar_kind, service_declares_a_stream, service_declares_multipart,
     tuple_elements, vec_inner, wire_key, written,
 };
+use crate::utils::ts_quoted;
 use core::fmt::Write as _;
 use syn::Type;
 
@@ -151,9 +152,9 @@ fn method_params(operation: &OperationDef, shape: &HttpShape) -> String {
 fn method_doc(operation: &OperationDef, shape: &HttpShape) -> String {
     format!(
         "  /** Calls `{}` over `{} {}`. */",
-        operation.wire_name,
+        message::commented(&operation.wire_name),
         shape.method.name(),
-        shape.path_template()
+        message::commented(&shape.path_template())
     )
 }
 
@@ -162,7 +163,7 @@ fn method_doc(operation: &OperationDef, shape: &HttpShape) -> String {
 fn method(service: &ServiceDef, operation: &OperationDef, has_multipart: bool) -> String {
     let named = service.ident.to_string();
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
-    let wire = &operation.wire_name;
+    let wire = &ts_quoted(&operation.wire_name);
     let call = &operation.ts_name;
     let shape = HttpShape::of(operation);
     let params = method_params(operation, &shape);
@@ -217,7 +218,7 @@ fn outbound_fault_stmt(prefix: &str, operation: &OperationDef, fault_expr: &str)
 /// named, exactly as the AMQP client's own outbound check does.
 fn validation_stmt(prefix: &str, operation: &OperationDef, wire: &str) -> String {
     let schema = message::schema(operation);
-    let fault_expr = format!("{prefix}HttpOutboundFault(\"{wire}\", validated.error.issues)");
+    let fault_expr = format!("{prefix}HttpOutboundFault({wire}, validated.error.issues)");
     let refusal = outbound_fault_stmt(prefix, operation, &fault_expr);
     format!(
         "      const validated = {schema}.safeParse(req);\n      \
@@ -257,7 +258,7 @@ fn path_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
     for segment in &shape.path {
         match segment {
             PathSegment::Literal(text) => {
-                let _ = writeln!(stmt, "      path += \"{text}\";");
+                let _ = writeln!(stmt, "      path += {};", ts_quoted(text));
             }
             PathSegment::Placeholder(name) => {
                 let value = placeholder_value_expr(operation, shape, name);
@@ -320,19 +321,19 @@ fn query_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
 fn header_in_build_stmt(prefix: &str, operation: &OperationDef, shape: &HttpShape) -> String {
     let mut stmt = String::from("      const headers: Array<[string, string]> = [];\n");
     for header in &shape.header_in {
-        let name = &header.name;
+        let name = ts_quoted(&header.name);
         let parameter = message::parameter_name(&header.parameter);
         let fault_expr = format!(
-            "{prefix}HttpOutboundFault(\"{}\", [{{ path: [\"{name}\"], message: \"a header \
+            "{prefix}HttpOutboundFault({}, [{{ path: [{name}], message: \"a header \
              value contains a character illegal in an HTTP header\" }}])",
-            operation.wire_name,
+            ts_quoted(&operation.wire_name),
         );
         let refusal = outbound_fault_stmt(prefix, operation, &fault_expr);
         let checked = format!(
             "        const rendered = String({parameter});\n        \
              if (!{prefix}HttpLegalHeaderValue(rendered)) {{\n{refusal}        \
              }}\n        \
-             headers.push([\"{name}\", rendered]);\n"
+             headers.push([{name}, rendered]);\n"
         );
         if option_inner(&header.ty).is_some() {
             let _ = write!(
@@ -382,27 +383,27 @@ fn multipart_parts_build_stmt(
             if placeholders.contains(&field_name) {
                 continue;
             }
-            let key = wire_key(field);
+            let key = ts_quoted(&wire_key(field));
             let field_key = RenameRule::CamelCase.apply_to_field(&field_name);
             if option_inner(ty).is_some() {
                 let _ = write!(
                     stmt,
                     "      if (sending.{field_key} !== undefined) {{\n        \
-                     parts.push([\"{key}\", String(sending.{field_key})]);\n      \
+                     parts.push([{key}, String(sending.{field_key})]);\n      \
                      }}\n"
                 );
             } else {
                 let _ = writeln!(
                     stmt,
-                    "      parts.push([\"{key}\", String(sending.{field_key})]);"
+                    "      parts.push([{key}, String(sending.{field_key})]);"
                 );
             }
         }
     }
     for part in &shape.multipart_parts {
-        let name = &part.name;
+        let name = ts_quoted(&part.name);
         let parameter = message::parameter_name(&part.parameter);
-        let _ = writeln!(stmt, "      parts.push([\"{name}\", {parameter}]);");
+        let _ = writeln!(stmt, "      parts.push([{name}, {parameter}]);");
     }
     stmt
 }
@@ -417,7 +418,7 @@ fn send_stmt(
     let failure = match &operation.outcome {
         OperationOutcome::OneWay => format!(
             "        throw {prefix}HttpRefused(\n          \
-             {prefix}HttpTransportFailure(\"{wire}\", String(uncarried)),\n        \
+             {prefix}HttpTransportFailure({wire}, String(uncarried)),\n        \
              );\n"
         ),
         OperationOutcome::Reply {
@@ -428,7 +429,7 @@ fn send_stmt(
              ok: false,\n          \
              error: {{\n            \
              isServiceFault: true,\n            \
-             fault: {prefix}HttpTransportFailure(\"{wire}\", String(uncarried)),\n          \
+             fault: {prefix}HttpTransportFailure({wire}, String(uncarried)),\n          \
              }},\n        \
              }};\n"
         ),
@@ -472,11 +473,11 @@ fn one_way_decode_stmt(prefix: &str, shape: &HttpShape, wire: &str) -> String {
          return;\n      \
          }}\n      \
          if (status === 400 || status === 404 || status === 500) {{\n        \
-         throw {prefix}HttpRefused({prefix}HttpFaultFromBody(\"{wire}\", response.body));\n      \
+         throw {prefix}HttpRefused({prefix}HttpFaultFromBody({wire}, response.body));\n      \
          }}\n      \
          throw {prefix}HttpRefused(\n        \
          {prefix}HttpUndeserializablePayload(\n          \
-         \"{wire}\",\n          \
+         {wire},\n          \
          `an unexpected status (${{status}}) answered`,\n        \
          ),\n      \
          );\n"
@@ -536,7 +537,7 @@ fn error_decode_block(prefix: &str, wire: &str, shape: &HttpShape, error: &Type)
 fn parsed_body_stmt(prefix: &str, wire: &str, local: &str, ty: &Type) -> String {
     let schema = get_field_def(local, ty, "").zod_type();
     format!(
-        "        const {local} = {prefix}HttpParsed(\"{wire}\", response.body, {schema});\n        \
+        "        const {local} = {prefix}HttpParsed({wire}, response.body, {schema});\n        \
          if (!{local}.ok) {{\n          \
          return {{ ok: false, error: {{ isServiceFault: true, fault: {local}.fault }} }};\n        \
          }}\n"
@@ -572,7 +573,7 @@ fn reply_decode_stmt(
          ok: false,\n          \
          error: {{\n            \
          isServiceFault: true,\n            \
-         fault: {prefix}HttpFaultFromBody(\"{wire}\", response.body),\n          \
+         fault: {prefix}HttpFaultFromBody({wire}, response.body),\n          \
          }},\n        \
          }};\n      \
          }}\n      \
@@ -581,7 +582,7 @@ fn reply_decode_stmt(
          error: {{\n          \
          isServiceFault: true,\n          \
          fault: {prefix}HttpUndeserializablePayload(\n            \
-         \"{wire}\",\n            \
+         {wire},\n            \
          `an unexpected status (${{status}}) answered`,\n          \
          ),\n        \
          }},\n      \
@@ -685,7 +686,7 @@ fn stream_reply_decode_stmt(
          ok: false,\n          \
          error: {{\n            \
          isServiceFault: true,\n            \
-         fault: {prefix}HttpFaultFromBody(\"{wire}\", response.body),\n          \
+         fault: {prefix}HttpFaultFromBody({wire}, response.body),\n          \
          }},\n        \
          }};\n      \
          }}\n      \
@@ -694,7 +695,7 @@ fn stream_reply_decode_stmt(
          error: {{\n          \
          isServiceFault: true,\n          \
          fault: {prefix}HttpUndeserializablePayload(\n            \
-         \"{wire}\",\n            \
+         {wire},\n            \
          `an unexpected status (${{status}}) answered`,\n          \
          ),\n        \
          }},\n      \
@@ -782,7 +783,7 @@ fn header_fault_return_stmt(
          error: {{\n{indent}      \
          isServiceFault: true,\n{indent}      \
          fault: {prefix}HttpUndeserializablePayload(\n{indent}        \
-         \"{wire}\",\n{indent}        \
+         {wire},\n{indent}        \
          \"{detail}\",\n{indent}      \
          ),\n{indent}    \
          }},\n{indent}  \
@@ -815,8 +816,9 @@ fn header_value_read_stmts(
         let _ = writeln!(
             stmt,
             "        const {raw_ident} = response.headers.find(\n          \
-             ([name]) => name.toLowerCase() === \"{name}\",\n        \
-             );"
+             ([name]) => name.toLowerCase() === {},\n        \
+             );",
+            ts_quoted(name)
         );
         let raw_text = format!("{raw_ident}[1]");
         let value_expr = header_out_value_expr(element_ty, &raw_text);

@@ -1336,3 +1336,20 @@ fn test_the_shapes_already_classified_still_clear_the_guard() {
         );
     }
 }
+
+/// A name is written as a TypeScript string literal that reads back exactly the name: a quote, a
+/// backslash, a line terminator, a tab and every other control character escaped, and any other
+/// character kept.
+#[test]
+fn a_name_is_written_as_a_typescript_literal_that_reads_back_as_the_name() {
+    let cases = [
+        ("get-available-balance", r#""get-available-balance""#),
+        ("le$vy'it\"q\\x", r#""le$vy'it\"q\\x""#),
+        ("a\nb\rc\u{2028}d\u{2029}e", r#""a\nb\rc\u2028d\u2029e""#),
+        ("a\tb\u{0}c\u{7f}d\u{85}e", r#""a\tb\u0000c\u007Fd\u0085e""#),
+        ("caf\u{e9} \u{2713}", "\"caf\u{e9} \u{2713}\""),
+    ];
+    for (name, literal) in cases {
+        assert_eq!(ts_quoted(name), literal, "{name:?} is written another way");
+    }
+}

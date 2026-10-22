@@ -4,6 +4,7 @@
 
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::ServiceDef;
+use crate::utils::ts_quoted;
 
 pub fn emit(service: &ServiceDef) -> Vec<String> {
     vec![attach_dispatcher_fn(service)]
@@ -18,6 +19,7 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
 fn attach_dispatcher_fn(service: &ServiceDef) -> String {
     let named = service.ident.to_string();
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
+    let quoted = ts_quoted(&named);
     format!(
         "/**\n \
          * Reads every `notify` and `request` frame naming `{named}` off `socket`, drives `impl` \
@@ -36,7 +38,7 @@ fn attach_dispatcher_fn(service: &ServiceDef) -> String {
          impl: {named}Impl<Ctx>,\n  \
          onFault: (fault: {named}Fault) => void,\n\
          ): () => void {{\n  \
-         const service = \"{named}\";\n  \
+         const service = {quoted};\n  \
          const dispatch = create{named}Dispatcher(impl);\n  \
          const onMessage = (event: {{ data: unknown }}) => {{\n    \
          let frame: unknown;\n    \

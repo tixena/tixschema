@@ -2,6 +2,7 @@
 //! items, and the checks a `pattern` goes through.
 
 use core::cell::RefCell;
+use core::fmt::Write as _;
 #[cfg(feature = "zod")]
 use core::mem;
 use core::ops::Range;
@@ -1929,7 +1930,6 @@ pub fn strip_examples_from_docs(docs: &[String]) -> Vec<String> {
 /// The escape body a JavaScript regex literal spells a line terminator with, i.e. what follows
 /// the backslash. The literal grammar excludes a raw line terminator outright, both on its own
 /// and as the character a backslash escapes, so these are the only spellings available.
-#[cfg(feature = "zod")]
 const fn js_line_terminator_escape(ch: char) -> Option<&'static str> {
     match ch {
         '\n' => Some("n"),
@@ -2218,22 +2218,33 @@ pub fn escape_js_regex_literal(pattern: &str) -> String {
     result
 }
 
-/// Escapes text for splicing between the `"` delimiters of a JavaScript string literal.
-#[cfg(feature = "zod")]
+/// Escapes text for splicing between the `"` delimiters of a JavaScript string literal: a quote, a
+/// backslash, a line terminator and every other control character, so the literal reads back
+/// exactly `text`.
 pub fn escape_js_double_quoted(text: &str) -> String {
     let mut result = String::with_capacity(text.len());
     for ch in text.chars() {
         if let Some(escape) = js_line_terminator_escape(ch) {
             result.push('\\');
             result.push_str(escape);
+        } else if matches!(ch, '\\' | '"') {
+            result.push('\\');
+            result.push(ch);
+        } else if ch == '\t' {
+            result.push_str("\\t");
+        } else if ch.is_control() {
+            let _ = write!(result, "\\u{:04X}", u32::from(ch));
         } else {
-            if matches!(ch, '\\' | '"') {
-                result.push('\\');
-            }
             result.push(ch);
         }
     }
     result
+}
+
+/// `text` as a TypeScript string literal: the one writer of a name the TypeScript surfaces place
+/// between quotes, a key, a tag, a variant's name, a path, a message name and a header name.
+pub fn ts_quoted(text: &str) -> String {
+    format!("\"{}\"", escape_js_double_quoted(text))
 }
 
 #[cfg(test)]

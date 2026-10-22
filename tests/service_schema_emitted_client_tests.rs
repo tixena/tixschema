@@ -692,12 +692,35 @@ mod run_kotlin_skipped_variants;
 #[path = "service_schema_emitted_client_tests/run_kotlin_unknown_keys.rs"]
 mod run_kotlin_unknown_keys;
 
+/// Services whose message names, paths, part name and header names hold a quote, called through
+/// the emitted TypeScript clients and dispatchers under node, beside the Rust dispatchers.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/run_node_quoted.rs"]
+mod run_node_quoted;
+
+/// The `http_rest` dispatcher for `ImpostClientService`, the Rust twin each request the node run
+/// writes is read by.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/impost_http_rest_transport.rs"]
+mod impost_http_rest_transport;
+
+/// The `http_rest` dispatcher for `ImpostFilingClientService`.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/impost_filing_http_rest_transport.rs"]
+mod impost_filing_http_rest_transport;
+
 // The transport's expansion reaches each service through `$crate`, which is this binary's root:
 // every trait and its schema module are named here for it to resolve.
 #[cfg(all(test, feature = "dart"))]
 use run_dart_preprocess::{IntakeClientService, intake_client_service_schema};
 #[cfg(all(test, feature = "dart"))]
 use run_dart_read::{ParcelClientService, parcel_client_service_schema};
+#[cfg(test)]
+use run_node_quoted::{
+    ImpostClientService, ImpostFilingClientService, impost_client_service_schema,
+    impost_filing_client_service_schema,
+};
 #[cfg(all(test, any(feature = "dart", feature = "swift", feature = "kotlin")))]
 use run_quoted_service::{
     TollingClientService, TollingUploadClientService, tolling_client_service_schema,

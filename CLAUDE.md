@@ -161,6 +161,17 @@ fails.
    - `swift_http_client()`/`swift_ws_client()`: the Swift `http_rest` and `ws_rpc` clients -- one method per operation answering `Result<Success, Failure>`, a one-way method throwing the shared `{Service}Refusal`
    - `kotlin_http_client()`/`kotlin_ws_client()`: the Kotlin `http_rest` and `ws_rpc` clients -- one method per operation answering the sealed `{Service}{Operation}Result`; the WebSocket one also carries the mini server, `attach{Service}WsDispatcher(frames, handlers, onFault)`, and its `share`
    - The module itself is gated on `serde` alone. `typescript` gates only the `ts_*` accessors (and `zod` narrows further, to the client and dispatcher seam); `dart`, `swift` and `kotlin` each gate their own accessors independently, under `serde` plus that language's own feature -- none of the four needs any of the others on
+   - Every name the TypeScript service code writes between quotes -- a path's literal piece, a
+     message name, a part name, a header name and the service's own name -- is written by
+     `ts_quoted` in `src/utils.rs`, the one writer of a TypeScript string literal, which escapes a
+     `"`, a `\`, a line terminator and every other control character. Each emitter binds a message
+     name once as that literal (`wire`). A name written into a comment goes through
+     `message::commented`, which spells a line terminator as its escape and `*/` as `*\/`. A name
+     with none of those characters is written as it was.
+     `a_service_whose_names_hold_a_quote_type_checks_on_every_surface` in
+     `tests/service_schema_typescript_tests/type_check.rs` compiles every surface of such a service
+     under `tsc --strict`, and `run_node_quoted.rs` calls one through the `http_rest` and `ws_rpc`
+     clients and dispatchers under node, each request read by the Rust dispatcher too
 
 ### Key Data Structures
 
@@ -514,6 +525,15 @@ Reads" section is the consumer's view; this is what a change has to keep.
   holds Zod to them under `node`; `run_dart_skipped_variants.rs`, `run_swift_skipped_variants.rs`
   and `run_kotlin_skipped_variants.rs` read each row under the toolchain, against serde; and
   `src/model_schema/tests.rs` holds the refusal and each guard that reads past such a variant.
+
+A name serde writes -- a member's key, a tag, a variant's name, a plain enum's value, a struct's own
+tag name -- and a `literal` value are written into the TypeScript type and the Zod schema by
+`ts_quoted` in `src/utils.rs`, the writer the service code's names go through too. A key that is
+an identifier stays bare (`ts_member_key`), and `describe_item_lines` escapes a `description`
+through the same `escape_js_double_quoted`. A name with no `"`, `\` or control character is written
+as it was. `type_check_a_name_that_holds_a_quote_is_read_under_zod_as_serde_writes_it` in
+`tests/generic_types_tests/declarations.rs` compiles the models of
+`tests/dart_tests/quoted_models.rs` under `tsc --strict` and parses every payload serde writes.
 
 ### 7. Field Validation Attributes (`#[model_schema_prop(...)]`)
 

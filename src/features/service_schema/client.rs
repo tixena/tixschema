@@ -53,6 +53,7 @@ use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationOutcome, ServiceDef, is_unit_type, option_inner,
 };
+use crate::utils::ts_quoted;
 use core::fmt::Write as _;
 use core::iter::once;
 use syn::Type;
@@ -79,10 +80,11 @@ impl Rejoined<'_> {
         let mut joined = vec![self.body.to_owned()];
         for (index, (name, ty)) in self.names.iter().zip(&self.types).enumerate() {
             let ident = format!("{}{index}", self.ident_prefix);
+            let quoted = ts_quoted(name);
             let schema = get_field_def("value", ty, "").zod_slot_type();
             let _ = write!(
                 stmt,
-                "{margin}const {ident} = {prefix}ReplyHeader(\"{wire}\", replied, \"{name}\", \
+                "{margin}const {ident} = {prefix}ReplyHeader({wire}, replied, {quoted}, \
                  {schema});\n\
                  {margin}if (!{ident}.ok) {{\n\
                  {margin}  return {{ ok: false, error: {{ isServiceFault: true, fault: \
@@ -296,7 +298,7 @@ fn answers(service: &str, operation: &OperationDef) -> String {
 fn method(service: &ServiceDef, operation: &OperationDef) -> String {
     let named = service.ident.to_string();
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
-    let wire = &operation.wire_name;
+    let wire = &ts_quoted(&operation.wire_name);
     let call = &operation.ts_name;
     let shape = HttpShape::of(operation);
     let arguments = once("req".to_owned())
@@ -312,7 +314,7 @@ fn method(service: &ServiceDef, operation: &OperationDef) -> String {
     let (headers_build, headers) = header_in_build_stmt(&shape);
     let sending = match &operation.outcome {
         OperationOutcome::OneWay => {
-            format!("      await transport.notify(\"{wire}\", validated.data, {headers});")
+            format!("      await transport.notify({wire}, validated.data, {headers});")
         }
         OperationOutcome::Reply { error, success }
             if !shape.header_out.is_empty() || !shape.error_header_out.is_empty() =>
@@ -320,7 +322,7 @@ fn method(service: &ServiceDef, operation: &OperationDef) -> String {
             header_tuple_answer(&named, &prefix, wire, &shape, error, success, &headers)
         }
         OperationOutcome::Reply { error, success } => format!(
-            "      const {{ answered }} = await transport.request<{result}>(\"{wire}\", \
+            "      const {{ answered }} = await transport.request<{result}>({wire}, \
              validated.data, {headers});\n\
              {succeeded}{failed}",
             result = answers(&named, operation),
@@ -354,7 +356,7 @@ fn header_in_build_stmt(shape: &HttpShape) -> (String, String) {
     }
     let mut stmt = String::from("      const headers: Array<[string, string]> = [];\n");
     for header in &shape.header_in {
-        let name = &header.name;
+        let name = ts_quoted(&header.name);
         let parameter = message::parameter_name(&header.parameter);
         let value = if option_inner(&header.ty).is_some() {
             format!("{parameter} ?? null")
@@ -363,7 +365,7 @@ fn header_in_build_stmt(shape: &HttpShape) -> (String, String) {
         };
         let _ = writeln!(
             stmt,
-            "      headers.push([\"{name}\", JSON.stringify({value})]);"
+            "      headers.push([{name}, JSON.stringify({value})]);"
         );
     }
     (stmt, "headers".to_owned())
@@ -393,7 +395,7 @@ fn header_tuple_answer(
         "      const {{ answered, headers: replied }} = await transport.request<\n        \
          | {{ ok: true; value: {value_ty} }}\n        \
          | {{ ok: false; error: {error_ty} | {{ isServiceFault: true; fault: {named}Fault }} }}\n      \
-         >(\"{wire}\", validated.data, {headers});\n"
+         >({wire}, validated.data, {headers});\n"
     );
     stmt.push_str(&success_stmt(prefix, wire, shape, success));
     stmt.push_str(&failure_stmt(prefix, wire, shape, error));
@@ -418,7 +420,7 @@ fn success_stmt(prefix: &str, wire: &str, shape: &HttpShape, success: &Type) -> 
              ok: false,\n            \
              error: {{\n              \
              isServiceFault: true,\n              \
-             fault: {prefix}ReplyFault(\"{wire}\", parsed.error.issues),\n            \
+             fault: {prefix}ReplyFault({wire}, parsed.error.issues),\n            \
              }},\n          \
              }};\n        \
              }}\n"
@@ -455,7 +457,7 @@ fn failure_stmt(prefix: &str, wire: &str, shape: &HttpShape, error: &Type) -> St
          ok: false,\n          \
          error: {{\n            \
          isServiceFault: true,\n            \
-         fault: {prefix}ReplyFault(\"{wire}\", declared.error.issues),\n          \
+         fault: {prefix}ReplyFault({wire}, declared.error.issues),\n          \
          }},\n        \
          }};\n      \
          }}\n"
@@ -489,7 +491,7 @@ fn method_doc(service: &str, operation: &OperationDef) -> String {
 /// A one-line summary for the method's own `JSDoc`, so a bundle reader learns what a method sends
 /// without opening the trait.
 fn method_summary(service: &str, operation: &OperationDef) -> String {
-    let wire = &operation.wire_name;
+    let wire = message::commented(&operation.wire_name);
     match &operation.outcome {
         OperationOutcome::OneWay => {
             format!("Sends `{wire}` on `{service}`, which expects no reply.")
@@ -508,11 +510,11 @@ fn method_summary(service: &str, operation: &OperationDef) -> String {
 fn validation(service: &ServiceDef, operation: &OperationDef) -> String {
     let named = service.ident.to_string();
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
-    let wire = &operation.wire_name;
+    let wire = ts_quoted(&operation.wire_name);
     let schema = message::schema(operation);
     let refusal = match &operation.outcome {
         OperationOutcome::OneWay => format!(
-            "        throw {prefix}Refused({prefix}OutboundFault(\"{wire}\", \
+            "        throw {prefix}Refused({prefix}OutboundFault({wire}, \
              validated.error.issues));"
         ),
         OperationOutcome::Reply {
@@ -523,7 +525,7 @@ fn validation(service: &ServiceDef, operation: &OperationDef) -> String {
              ok: false,\n          \
              error: {{\n            \
              isServiceFault: true,\n            \
-             fault: {prefix}OutboundFault(\"{wire}\", validated.error.issues),\n          \
+             fault: {prefix}OutboundFault({wire}, validated.error.issues),\n          \
              }},\n        \
              }};"
         ),

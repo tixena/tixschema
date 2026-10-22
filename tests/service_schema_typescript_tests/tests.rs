@@ -946,6 +946,7 @@ use crate::amqp_transport;
 use core::future::{Future, ready};
 use core::pin::pin;
 use core::task::{Context as PollContext, Poll, Waker};
+use std::io;
 #[cfg(feature = "typescript")]
 use std::sync::Mutex;
 use tixschema::{model_schema, service_schema};
@@ -1438,6 +1439,98 @@ impl ReservedProbeService<()> for ReservedProbeBackEnd {
     }
 }
 
+/// Message names, a path, a header in and out that hold a `$`, a quote, a double quote and a
+/// backslash, and a message name that holds a line break and the end of a comment, which names the
+/// path of its one-way operation too.
+#[service_schema(transports = [])]
+pub trait QuotedProbeService<Ctx> {
+    #[service_schema_op(
+        message = "le$vy'it\"q\\x",
+        http(
+            method = "POST",
+            path = "/le$vy'it\"q\\x/{label}",
+            header_in("x-it's" = trace),
+            header_out("x-ag$e"),
+            error_status(Missing = 409),
+            error_header_out("x-rea$on"),
+        )
+    )]
+    async fn levy(
+        &self,
+        ctx: &Ctx,
+        label: String,
+        note: String,
+        trace: Option<u32>,
+    ) -> Result<(HeaderProbeDocument, String), (HeaderProbeError, Option<String>)>;
+
+    #[service_schema_op(message = "no*/te\n\\", one_way)]
+    async fn note(&self, ctx: &Ctx, label: String);
+}
+
+/// A multipart operation whose path, message name and part name hold a quote.
+#[service_schema(transports = [])]
+pub trait QuotedFilingProbeService<Ctx> {
+    #[service_schema_op(
+        message = "fi\"l'ed\\",
+        http(
+            method = "POST",
+            path = "/fi\"le/{label}",
+            body = "multipart",
+            part("fi$le'x\"q\\" = attachment),
+        )
+    )]
+    async fn file(
+        &self,
+        ctx: &Ctx,
+        label: String,
+        title: String,
+        attachment: Box<dyn quoted_filing_probe_service_schema::BodySource + Send>,
+    ) -> Result<HeaderProbeDocument, HeaderProbeError>;
+}
+
+/// The implementation of `QuotedProbeService` and `QuotedFilingProbeService` these tests call.
+pub struct QuotedProbeBackEnd;
+
+impl QuotedProbeService<()> for QuotedProbeBackEnd {
+    async fn levy(
+        &self,
+        _ctx: &(),
+        label: String,
+        note: String,
+        trace: Option<u32>,
+    ) -> Result<(HeaderProbeDocument, String), (HeaderProbeError, Option<String>)> {
+        ready(()).await;
+        if label.is_empty() {
+            return Err((HeaderProbeError::Missing, trace.map(|at| at.to_string())));
+        }
+        Ok((
+            HeaderProbeDocument {
+                title: format!("{label}|{note}"),
+            },
+            trace.map_or_else(String::new, |at| at.to_string()),
+        ))
+    }
+
+    async fn note(&self, _ctx: &(), _label: String) {
+        ready(()).await;
+    }
+}
+
+impl QuotedFilingProbeService<()> for QuotedProbeBackEnd {
+    async fn file(
+        &self,
+        _ctx: &(),
+        label: String,
+        title: String,
+        _attachment: Box<dyn quoted_filing_probe_service_schema::BodySource + Send>,
+    ) -> Result<HeaderProbeDocument, HeaderProbeError> {
+        ready(()).await;
+        Ok(HeaderProbeDocument {
+            title: format!("{label}|{title}"),
+        })
+    }
+}
+
 /// The probe never suspends, so one poll answers it; `None` says an assumption about the bodies
 /// above stopped holding rather than that the runtime is missing.
 fn poll_once<Answered>(answering: Answered) -> Option<Answered::Output>
@@ -1615,4 +1708,29 @@ fn dispatched(operation: &str, payload: &[u8], logger_name: &str) -> Vec<u8> {
     ));
     assert!(settled.is_some(), "the probe never suspends");
     capture.only()
+}
+
+#[test]
+fn a_service_whose_names_hold_a_quote_is_still_implementable_and_callable() {
+    let levied = poll_once(QuotedProbeBackEnd.levy(&(), "a".to_owned(), "n".to_owned(), Some(7)))
+        .unwrap()
+        .map(|(document, age)| (document.title, age));
+    assert_eq!(
+        levied.ok(),
+        Some(("a|n".to_owned(), "7".to_owned())),
+        "the implementation answers another value"
+    );
+    poll_once(QuotedProbeBackEnd.note(&(), "c".to_owned())).unwrap();
+    let filed = poll_once(QuotedProbeBackEnd.file(
+        &(),
+        "f".to_owned(),
+        "t".to_owned(),
+        Box::new(io::Cursor::new(Vec::new())),
+    ))
+    .unwrap();
+    assert_eq!(
+        filed.map(|document| document.title).ok(),
+        Some("f|t".to_owned()),
+        "the implementation answers another value"
+    );
 }
