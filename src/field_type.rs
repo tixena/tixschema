@@ -689,7 +689,14 @@ impl FieldDef {
         self.set_levels.contains(&level)
     }
 
-    /// Whether the field is `()` itself, which serde writes as `null`.
+    /// Whether the field is `()` itself, which serde writes as `null`, and which every surface
+    /// describes as `null`.
+    #[cfg(any(
+        feature = "serde",
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    ))]
     pub const fn is_unit(&self) -> bool {
         self.array_depth == 0
             && self.nullable_levels.is_empty()
@@ -1197,6 +1204,7 @@ impl FieldDef {
                 range_object(*kind, |member| format!("{member}: {held}"), "; ")
             }
             FieldDefType::Result(ok, err) => typescript_result(ok, err),
+            FieldDefType::Tuple(lst) if lst.is_empty() => "null".to_owned(),
             FieldDefType::Tuple(lst) => {
                 let elements = lst
                     .iter()
@@ -1444,15 +1452,11 @@ impl FieldDef {
             }
             FieldDefType::Result(ok, err) => {
                 let arms = result_union(ok, err, |arm, held| {
-                    let written = if held.is_unit() {
-                        "z.null()".to_owned()
-                    } else {
-                        held.zod_slot_type()
-                    };
-                    format!("z.strictObject({{ {arm}: {written} }})")
+                    format!("z.strictObject({{ {arm}: {} }})", held.zod_slot_type())
                 });
                 format!("z.union([{}])", arms.join(", "))
             }
+            FieldDefType::Tuple(lst) if lst.is_empty() => "z.null()".to_owned(),
             FieldDefType::Tuple(lst) => {
                 let elements = lst
                     .iter()
@@ -1836,12 +1840,7 @@ impl FieldDef {
 /// The TypeScript union of the two objects a `Result` of the arms `ok` and `err` is written as.
 fn typescript_result(ok: &FieldDef, err: &FieldDef) -> String {
     result_union(ok, err, |arm, held| {
-        let written = if held.is_unit() {
-            "null".to_owned()
-        } else {
-            held.typescript_slot_typename()
-        };
-        format!("{{ {arm}: {written} }}")
+        format!("{{ {arm}: {} }}", held.typescript_slot_typename())
     })
     .join(" | ")
 }

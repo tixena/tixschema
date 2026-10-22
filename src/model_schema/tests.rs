@@ -2372,7 +2372,10 @@ fn the_flattened_non_object_refusal_is_compiled_in_every_build_with_serde() {
     let registry = include_str!("../utils.rs");
     for (source, named) in [
         (expansion, "FLATTENED_NON_OBJECT_SCOPE"),
+        (expansion, "FLATTENED_IN_PLACE_SCOPE"),
+        (expansion, "FLATTENED_UNIT_MEMBER_SCOPE"),
         (expansion, "flatten_edge_guard_error"),
+        (expansion, "written_in_place"),
         (expansion, "written_non_object"),
         (expansion, "written_union_members"),
         (expansion, "flattened_name_non_object_wire"),
@@ -2413,6 +2416,20 @@ fn whole_non_object_refusal(holder: &str, inner: &str, named: &str) -> String {
     )
 }
 
+/// The refusal of a flattened `inner` of `holder` whose union member at `branch` serde writes as
+/// a plain enum's variant name.
+#[cfg(feature = "serde")]
+fn flattened_variant_name_refusal(holder: &str, inner: &str, branch: &str) -> String {
+    format!(
+        "model_schema: `{holder}`: `#[serde(flatten)]` of `{inner}` writes a union member as a \
+         plain enum's variant name \u{2014} its branch {branch} describes a `string`, and serde \
+         writes that name as a key holding null, which a schema closed around the remaining \
+         fields rejects; write the field as a named member so the value gets a key of its own. \
+         {}",
+        super::FLATTENED_PLAIN_ENUM_SCOPE
+    )
+}
+
 /// A brand over text, a tuple struct and an untagged enum with a member over a plain enum, each
 /// flattened where it is declared above, in a struct and in a variant's members, and a brand
 /// declared below, which no expansion sees.
@@ -2450,18 +2467,18 @@ fn a_flattened_type_serde_writes_as_no_object_declared_above_is_refused_in_every
         )),
         [whole_non_object_refusal("Paired", "Pair", "array")]
     );
+    let felt = refusal_texts(&expansion_over(
+        "#[derive(Serialize, Deserialize)] pub struct Felt { #[serde(flatten)] pub feeling: \
+         Feeling, pub id: String }",
+    ));
     assert_eq!(
-        refusal_texts(&expansion_over(
-            "#[derive(Serialize, Deserialize)] pub struct Felt { #[serde(flatten)] pub feeling: \
-             Feeling, pub id: String }",
-        )),
-        [format!(
-            "model_schema: `Felt`: `#[serde(flatten)]` of `Feeling` writes a union member that is \
-             not an object \u{2014} its branch 1 describes a `string`, which has no members to \
-             merge, and what serde writes for that member does not join the object being \
-             written; write the field as a named member so the value gets a key of its own. {}",
-            super::FLATTENED_NON_OBJECT_SCOPE
-        )]
+        felt,
+        [flattened_variant_name_refusal("Felt", "Feeling", "1")]
+    );
+    let answered_felt = format!("error: {}", felt[0]);
+    assert!(
+        include_str!("../../README.md").contains(&answered_felt),
+        "the README no longer quotes: {answered_felt}"
     );
     assert_eq!(
         refusal_texts(&expansion_over(
@@ -2489,6 +2506,7 @@ fn the_tagged_non_object_refusal_is_compiled_in_every_build_with_serde() {
         "process_internally_tagged_enum",
         "written_non_object",
         "FLATTENED_NON_OBJECT_SCOPE",
+        "TAGGED_UNIT_WRITTEN",
     ] {
         assert_eq!(
             gates_above(expansion, named),
@@ -2589,6 +2607,86 @@ fn a_tagged_newtype_variant_over_a_type_serde_writes_as_no_object_is_refused_in_
             "for {accepted}, got: {expanded}"
         );
     }
+}
+
+/// A newtype variant under a tag alone over an untagged enum declared above with a member serde
+/// writes as a variant's name beside the tag, a plain enum's and an externally tagged enum's unit
+/// variant's, and the same enums flattened.
+#[cfg(feature = "serde")]
+#[test]
+fn a_union_member_written_as_a_variant_name_is_refused_with_the_key_serde_writes_for_it() {
+    for declared in [
+        "#[derive(Serialize, Deserialize)] pub enum ProbeMood { Calm, Tense }",
+        "#[derive(Serialize, Deserialize)] #[serde(untagged)] pub enum ProbeFeeling { \
+         Mood(ProbeMood), Named { name: String } }",
+        "#[derive(Serialize, Deserialize)] pub enum ProbeTack { Bare, Wrapped { b: bool } }",
+        "#[derive(Serialize, Deserialize)] #[serde(untagged)] pub enum ProbeTackEither { \
+         Named { name: String }, Tack(ProbeTack) }",
+    ] {
+        let expanded = expansion_over(declared);
+        assert_eq!(compile_error_count(&expanded), 0, "got: {expanded}");
+    }
+    let held = |holder: &str, inner: &str, member: &str, branch: &str, scope: &str| {
+        format!(
+            "model_schema: variant `Held` of internally tagged enum `{holder}` wraps `{inner}`, \
+             which writes a union member as {member} \u{2014} its branch {branch} describes a \
+             `string`, and serde writes that name beside the tag as a key holding null, which a \
+             schema closed around the tag rejects. Name a `content` key so the value gets an \
+             object of its own, or wrap it in a struct whose fields can sit beside the tag. \
+             {scope}"
+        )
+    };
+    assert_eq!(
+        refusal_texts(&expansion_over(
+            "#[derive(Serialize, Deserialize)] #[serde(tag = \"kind\")] pub enum ProbeM9 { \
+             Held(ProbeFeeling) }",
+        )),
+        [held(
+            "ProbeM9",
+            "ProbeFeeling",
+            "a plain enum's variant name",
+            "1",
+            super::FLATTENED_PLAIN_ENUM_SCOPE
+        )]
+    );
+    assert_eq!(
+        refusal_texts(&expansion_over(
+            "#[derive(Serialize, Deserialize)] #[serde(tag = \"kind\")] pub enum ProbeTacked { \
+             Held(ProbeTackEither) }",
+        )),
+        [held(
+            "ProbeTacked",
+            "ProbeTackEither",
+            "the name of an externally tagged enum's unit variant",
+            "2.1",
+            super::FLATTENED_NON_OBJECT_SCOPE
+        )]
+    );
+    assert_eq!(
+        refusal_texts(&expansion_over(
+            "#[derive(Serialize, Deserialize)] pub struct ProbeM8 { pub id: String, \
+             #[serde(flatten)] pub feeling: ProbeFeeling }",
+        )),
+        [flattened_variant_name_refusal(
+            "ProbeM8",
+            "ProbeFeeling",
+            "1"
+        )]
+    );
+    assert_eq!(
+        refusal_texts(&expansion_over(
+            "#[derive(Serialize, Deserialize)] pub struct ProbeTackFlat { pub id: String, \
+             #[serde(flatten)] pub tack: ProbeTackEither }",
+        )),
+        [format!(
+            "model_schema: `ProbeTackFlat`: `#[serde(flatten)]` of `ProbeTackEither` writes a \
+             union member as the name of an externally tagged enum's unit variant \u{2014} its \
+             branch 2.1 describes a `string`, and serde writes that name as a key holding null, \
+             which a schema closed around the remaining fields rejects; write the field as a \
+             named member so the value gets a key of its own. {}",
+            super::FLATTENED_NON_OBJECT_SCOPE
+        )]
+    );
 }
 
 /// No local build is of the clients alone, so the gates are read off the sources.
@@ -2706,6 +2804,166 @@ fn a_tagged_newtype_variant_over_a_type_serde_writes_as_an_optional_is_refused_i
             "for {accepted}, got: {expanded}"
         );
     }
+}
+
+/// The refusal of a flattened `inner` of `holder` whose union member at `branch` serde writes as
+/// a `named` value.
+#[cfg(feature = "serde")]
+fn flattened_branch_refusal(holder: &str, inner: &str, branch: &str, named: &str) -> String {
+    format!(
+        "model_schema: `{holder}`: `#[serde(flatten)]` of `{inner}` writes a union member that is \
+         not an object \u{2014} its branch {branch} describes a `{named}`, which has no members to \
+         merge, and what serde writes for that member does not join the object being written; \
+         write the field as a named member so the value gets a key of its own. {}",
+        super::FLATTENED_NON_OBJECT_SCOPE
+    )
+}
+
+/// A newtype variant under a tag alone over a type declared above that serde writes as an
+/// `Option` of a value with a leaf written as no object is refused as an `Option`, which serde's
+/// tag refuses before it reads the value, and the same type flattened is refused with its branch.
+#[cfg(feature = "serde")]
+#[test]
+fn a_tagged_optional_of_a_value_written_as_no_object_is_refused_as_an_optional() {
+    for declared in [
+        "#[derive(Serialize, Deserialize)] #[serde(untagged)] pub enum ProbeTextMember { Obj { \
+         a: String }, Text(String) }",
+        "#[derive(Serialize, Deserialize)] pub struct ProbeMaybeCountSlot(Option<u32>);",
+        "pub type ProbeMaybeTextAlias = Option<ProbeTextMember>;",
+        "#[derive(Serialize, Deserialize)] pub struct ProbeSlotMaybeText(Option<ProbeTextMember>);",
+    ] {
+        let expanded = expansion_over(declared);
+        assert_eq!(compile_error_count(&expanded), 0, "got: {expanded}");
+    }
+    for (holder, inner, branch, named) in [
+        ("ProbeHeldMaybeCount", "ProbeMaybeCountSlot", "1", "integer"),
+        ("ProbeHeldMaybeText", "ProbeMaybeTextAlias", "2", "string"),
+        (
+            "ProbeHeldSlotMaybeText",
+            "ProbeSlotMaybeText",
+            "2",
+            "string",
+        ),
+    ] {
+        assert_eq!(
+            refusal_texts(&expansion_over(&format!(
+                "#[derive(Serialize, Deserialize)] #[serde(tag = \"kind\")] pub enum {holder} {{ \
+                 Held({inner}) }}"
+            ))),
+            [tagged_optional_refusal(holder, inner)],
+            "for {inner}"
+        );
+        let flattened = format!("{holder}Flat");
+        assert_eq!(
+            refusal_texts(&expansion_over(&format!(
+                "#[derive(Serialize, Deserialize)] pub struct {flattened} {{ pub id: String, \
+                 #[serde(flatten)] pub held: {inner} }}"
+            ))),
+            [flattened_branch_refusal(&flattened, inner, branch, named)],
+            "for {inner} flattened"
+        );
+    }
+}
+
+/// `()` beside a tag and flattened, in each way it is reached: written in place, through a struct
+/// of one slot over it, through a generic type filled at it, and as a member of an untagged enum.
+/// serde writes it as the tag alone, or as no key, and reads neither back as a union member.
+#[cfg(feature = "serde")]
+#[test]
+fn a_unit_beside_a_tag_or_flattened_is_refused_in_the_words_of_what_serde_writes() {
+    for declared in [
+        "#[derive(Serialize, Deserialize)] pub struct ProbeFields { pub note: String }",
+        "#[derive(Serialize, Deserialize)] pub struct ProbeUnitHeld(());",
+        "#[derive(Serialize, Deserialize)] #[serde(untagged)] pub enum ProbeUnitMember { \
+         Obj(ProbeFields), Nothing(()) }",
+    ] {
+        let expanded = expansion_over(declared);
+        assert_eq!(compile_error_count(&expanded), 0, "got: {expanded}");
+    }
+    let wrap = serialized_under(
+        "no_display, default_types(T = String)",
+        "pub struct ProbeWrap<T>(T);",
+    );
+    assert_eq!(compile_error_count(&wrap), 0, "got: {wrap}");
+    let tagged = |source: &str| {
+        refusal_texts(&expansion_over(&format!(
+            "#[derive(Serialize, Deserialize)] #[serde(tag = \"kind\")] pub enum ProbeUnitTagged \
+             {{ Held({source}) }}"
+        )))
+    };
+    let written_beside_the_tag = "beside the tag serde writes the variant as the tag alone, and \
+         reads it back, while the TypeScript type and the Zod schema of the variant intersect the \
+         tag's object with `null`, which admits no value.";
+    let in_place = tagged("()");
+    assert_eq!(
+        in_place,
+        [format!(
+            "model_schema: variant `Held` of internally tagged enum `ProbeUnitTagged` wraps `()`, \
+             which serde writes as `null`: {written_beside_the_tag} Name a `content` key so the \
+             value gets an object of its own, or write `Held` as a unit variant, which serde \
+             writes as the tag alone as well."
+        )]
+    );
+    let answered = format!("error: {}", in_place[0]);
+    assert!(
+        include_str!("../../README.md").contains(&answered),
+        "the README no longer quotes: {answered}"
+    );
+    for inner in ["ProbeUnitHeld", "ProbeWrap<()>"] {
+        assert_eq!(
+            tagged(inner),
+            [format!(
+                "model_schema: variant `Held` of internally tagged enum `ProbeUnitTagged` wraps \
+                 `{inner}`, which serde writes as `()` \u{2014} its schema describes a `null`: \
+                 {written_beside_the_tag} Name a `content` key so the value gets an object of its \
+                 own, or write `Held` as a unit variant, which serde writes as the tag alone as \
+                 well. {}",
+                super::FLATTENED_NON_OBJECT_SCOPE
+            )],
+            "for {inner}"
+        );
+    }
+    assert_eq!(
+        tagged("ProbeUnitMember"),
+        [format!(
+            "model_schema: variant `Held` of internally tagged enum `ProbeUnitTagged` wraps \
+             `ProbeUnitMember`, which writes a union member as `()` \u{2014} its branch 2 \
+             describes a `null`, for which serde writes the tag alone, and which it does not read \
+             back as that member. Name a `content` key so the value gets an object of its own, or \
+             wrap it in a struct whose fields can sit beside the tag. {}",
+            super::FLATTENED_NON_OBJECT_SCOPE
+        )]
+    );
+    let flattened = |source: &str| {
+        refusal_texts(&expansion_over(&format!(
+            "#[derive(Serialize, Deserialize)] pub struct ProbeUnitFlat {{ pub id: String, \
+             #[serde(flatten)] pub held: {source} }}"
+        )))
+    };
+    for inner in ["ProbeUnitHeld", "ProbeWrap<()>"] {
+        assert_eq!(
+            flattened(inner),
+            [format!(
+                "model_schema: `ProbeUnitFlat`: `#[serde(flatten)]` of `{inner}` is written as \
+                 `()` \u{2014} its schema describes a `null`: serde writes no key for it, and \
+                 reads the object back, while the TypeScript type and the Zod schema intersect the \
+                 object with `null`, which admits no value; write the field as a named member so \
+                 the value gets a key of its own. {}",
+                super::FLATTENED_NON_OBJECT_SCOPE
+            )],
+            "for {inner}"
+        );
+    }
+    assert_eq!(
+        flattened("ProbeUnitMember"),
+        [format!(
+            "model_schema: `ProbeUnitFlat`: `#[serde(flatten)]` of `ProbeUnitMember` writes a \
+             union member as `()` \u{2014} its branch 2 describes a `null`, for which serde writes \
+             no key, and which it does not read back as that member; write the field as a named \
+             member so the value gets a key of its own. {}",
+            super::FLATTENED_UNIT_MEMBER_SCOPE
+        )]
+    );
 }
 
 /// No local build is of the clients alone, so the gates are read off the sources.
@@ -13282,7 +13540,11 @@ fn a_filling_reaching_an_unwritable_map_key_is_refused_at_the_entry() {
             "Holder<HashMap<Vec<String>, u32>>",
             "is a sequence of `String`",
         ),
-        ("HashMap<(u8, u8), u32>", "serde writes `(_, _)`"),
+        (
+            "HashMap<(u8, u8), u32>",
+            "serde writes `(_, _)` as a JSON array",
+        ),
+        ("HashMap<(), u32>", "serde writes `()` as null, and refuses"),
     ] {
         let messages = default_types_messages(
             "pub struct Probe<ValueType> { pub held: ValueType }",
@@ -18073,6 +18335,7 @@ fn seed_registered_wire(rust_ident: &str, kind: AliasKind, wire: Option<&'static
         &[WireLeaf {
             branch: Vec::new(),
             non_object: wire,
+            written_as: None,
         }],
     );
 }
@@ -18316,13 +18579,13 @@ fn flattening_a_registered_string_boolean_or_array_wire_is_refused_by_its_own_ke
 
 #[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
-fn a_direct_flatten_of_an_object_an_unregistered_name_or_an_array_stays_admitted() {
+fn a_direct_flatten_of_an_object_or_an_unregistered_name_stays_admitted() {
     seed_registered_wire("DirectDoc", AliasKind::NoEnumMembers, None);
-    seed_registered_wire("DirectCount", AliasKind::NoEnumMembers, Some("integer"));
     for admitted in [
         syn::parse_quote! { #[serde(flatten)] base: DirectDoc },
         syn::parse_quote! { #[serde(flatten)] base: NeverRegisteredDirectly },
-        syn::parse_quote! { #[serde(flatten)] counts: Vec<DirectCount> },
+        syn::parse_quote! { #[serde(flatten)] counts: HashMap<String, u32> },
+        syn::parse_quote! { #[serde(flatten)] counts: Option<BTreeMap<String, u32>> },
     ] {
         let field: syn::Field = admitted;
         assert!(
@@ -18331,6 +18594,69 @@ fn a_direct_flatten_of_an_object_an_unregistered_name_or_an_array_stays_admitted
             quote::ToTokens::to_token_stream(&field)
         );
     }
+}
+
+/// A flattened value written in place, which no name stands for: serde refuses every write of a
+/// list, a tuple, text and a number flattened, and writes `()` as no key.
+#[cfg(all(feature = "serde", feature = "zod"))]
+#[test]
+fn a_direct_flatten_of_a_value_written_in_place_is_refused_by_its_own_keyword() {
+    seed_registered_wire("DirectCount", AliasKind::NoEnumMembers, Some("integer"));
+    for (written, spelled, keyword) in [
+        (
+            syn::parse_quote! { #[serde(flatten)] counts: Vec<DirectCount> },
+            "Vec<DirectCount>",
+            "array",
+        ),
+        (
+            syn::parse_quote! { #[serde(flatten)] counts: VecDeque<u32> },
+            "VecDeque<u32>",
+            "array",
+        ),
+        (
+            syn::parse_quote! { #[serde(flatten)] pair: (String, u32) },
+            "(String, u32)",
+            "array",
+        ),
+        (
+            syn::parse_quote! { #[serde(flatten)] count: Option<u32> },
+            "Option<u32>",
+            "integer",
+        ),
+        (
+            syn::parse_quote! { #[serde(flatten)] label: String },
+            "String",
+            "string",
+        ),
+    ] {
+        let field: syn::Field = written;
+        let refused = format!(
+            "model_schema: `Host`: `#[serde(flatten)]` of `{spelled}` is not written as an object \
+             \u{2014} its schema describes a `{keyword}`, which has no members to merge, and what \
+             serde writes for it does not join the object being written; write the field as a \
+             named member so the value gets a key of its own. {}",
+            super::FLATTENED_IN_PLACE_SCOPE
+        );
+        let error = direct_flatten_error(&field).unwrap_or_default();
+        assert!(error.contains(&refused), "for {spelled}, got: {error}");
+        if spelled == "(String, u32)" {
+            let answered = format!("error: {refused}");
+            assert!(
+                include_str!("../../README.md").contains(&answered),
+                "the README no longer quotes: {answered}"
+            );
+        }
+    }
+    let refused = format!(
+        "model_schema: `Host`: `#[serde(flatten)]` of `()` is written as `()` \u{2014} its schema \
+         describes a `null`: serde writes no key for it, and reads the object back, while the \
+         TypeScript type and the Zod schema intersect the object with `null`, which admits no \
+         value; write the field as a named member so the value gets a key of its own. {}",
+        super::FLATTENED_IN_PLACE_SCOPE
+    );
+    let error = direct_flatten_error(&syn::parse_quote! { #[serde(flatten)] nothing: () })
+        .unwrap_or_default();
+    assert!(error.contains(&refused), "got: {error}");
 }
 
 #[cfg(all(feature = "serde", feature = "zod"))]
@@ -18698,12 +19024,11 @@ fn flattening_a_union_with_a_tagged_enum_member_is_refused_naming_the_trail() {
     )
     .unwrap();
     assert!(
-        refusal
-            .contains("`#[serde(flatten)]` of `WireExtFlatChoice` writes a union member that is"),
-        "got: {refusal}"
-    );
-    assert!(
-        refusal.contains("its branch 2.1 describes a `string`, which has no members to merge"),
+        refusal.contains(
+            "`#[serde(flatten)]` of `WireExtFlatChoice` writes a union member as the name of an \
+             externally tagged enum's unit variant \u{2014} its branch 2.1 describes a `string`, \
+             and serde writes that name as a key holding null"
+        ),
         "got: {refusal}"
     );
     seed_external_registration(&syn::parse_quote! {

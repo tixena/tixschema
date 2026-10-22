@@ -198,14 +198,18 @@ fn test_the_merge_reads_a_tagged_unit_variant_at_the_edges_own_depth() {
     )
     .to_string();
 
+    assert!(merge.contains("(spelling == \"oneOf\")"), "{merge}");
     assert!(
-        merge.contains("(position . len () == 1 && spelling == \"oneOf\")"),
+        merge.contains(
+            ":: core :: option :: Option :: Some (name) if position . len () == 1 => :: core :: \
+             option :: Option :: Some (Branches :: Tagged (name))"
+        ),
         "{merge}"
     );
     assert!(
         merge.contains(
-            ":: core :: option :: Option :: Some (name) => :: core :: option :: Option :: Some \
-             (Branches :: Tagged (name))"
+            ":: core :: option :: Option :: Some (_) => refuse_variant_name (label , position , \
+             \"the name of an externally tagged enum's unit variant\")"
         ),
         "{merge}"
     );

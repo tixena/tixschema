@@ -94,8 +94,8 @@ use crate::utils::{
 
 #[cfg(feature = "serde")]
 use crate::utils::{
-    Declared, NonObjectWire, TrivialPattern, UnionParameter, WireLeaf, forget_field_validators,
-    is_recorded_plain_enum, record_declared, record_field_validator,
+    Declared, NonObjectWire, TrivialPattern, UnionParameter, WireLeaf, WrittenAs,
+    forget_field_validators, is_recorded_plain_enum, record_declared, record_field_validator,
     record_flattened_beside_parameters, record_non_object_wire, record_open_map,
     record_open_map_parameters, record_plain_enum, record_union_parameters, record_value_parameter,
     recorded_non_object_wire, trivial_pattern, union_parameters, value_parameter,
@@ -296,6 +296,20 @@ const FLATTENED_PLAIN_ENUM_SCOPE: &str = "This refusal holds in every build with
      refused here, and where a schema surface is on it keeps its TypeScript and Zod \
      intersection, and is refused by the JSON surface when the merge runs.";
 
+/// What the refusal of a flattened value written in place, which no name stands for, says about
+/// its own reach.
+#[cfg(feature = "serde")]
+const FLATTENED_IN_PLACE_SCOPE: &str = "This refusal holds in every build with serde.";
+
+/// What the refusal of a flattened union with a member over `()` says about its own reach: the
+/// JSON Schema merge reads the `null` of a member at the union's own level as the absence an
+/// `Option` offers.
+#[cfg(feature = "serde")]
+const FLATTENED_UNIT_MEMBER_SCOPE: &str = "This refusal holds in every build with serde, and only \
+     a type declared above reaches it: one declared below, or in another crate, is not refused \
+     here, and where a schema surface is on it keeps its TypeScript and Zod intersection, and the \
+     JSON surface reads a member over `()` at the union's own level as no key when the merge runs.";
+
 /// What the refusal of a flattened type serde writes as no object says about its own reach.
 #[cfg(feature = "serde")]
 const FLATTENED_NON_OBJECT_SCOPE: &str = "This refusal holds in every build with serde, and only a \
@@ -303,12 +317,17 @@ const FLATTENED_NON_OBJECT_SCOPE: &str = "This refusal holds in every build with
      here, and where a schema surface is on it keeps its TypeScript and Zod intersection, and is \
      refused by the JSON surface when the merge runs.";
 
-/// What the refusal of a tagged newtype variant over a type serde writes as an `Option` says
-/// about its own reach.
+/// What a refusal of a newtype variant under a tag alone over a value serde writes as `()` says
+/// serde and the surfaces make of it.
 #[cfg(feature = "serde")]
-const TAGGED_OPTIONAL_SCOPE: &str = "This refusal holds in every build with serde, and only a \
-     type declared above reaches it: one declared below, or in another crate, is not refused \
-     here, and no surface refuses it.";
+const TAGGED_UNIT_WRITTEN: &str = "beside the tag serde writes the variant as the tag alone, and \
+     reads it back, while the TypeScript type and the Zod schema of the variant intersect the \
+     tag's object with `null`, which admits no value.";
+
+/// What the refusal of a tagged newtype variant over a type serde writes as an `Option` says
+/// about its own reach, which is the reach of the refusal of a value written as no object.
+#[cfg(feature = "serde")]
+const TAGGED_OPTIONAL_SCOPE: &str = FLATTENED_NON_OBJECT_SCOPE;
 
 /// The list `validate()` collects each message in.
 const VALIDATE_SINK: &str = "errors";
@@ -340,6 +359,8 @@ const INDEXMAP_NAMES: [(&str, &str, usize); 2] =
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 const WRITTEN_AS_ARRAY: &str = "a JSON array";
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+const WRITTEN_AS_NULL: &str = "null";
 const WRITTEN_AS_OBJECT: &str = "a JSON object";
 
 /// What the object joins in place of a source read as the entries of a map, where serde reads it
@@ -804,6 +825,8 @@ enum TaggedContent {
     Flattened,
     /// serde refuses to write it beside the tag, and names the shape the way this names it.
     Refused(&'static str),
+    /// `()`, which serde writes beside the tag as the tag alone.
+    Unit,
     /// serde writes it, but its members are not a set the expansion can name, so no schema closed
     /// around the tag can admit them.
     Unnameable(&'static str),
@@ -982,6 +1005,79 @@ enum RecordedWire {
 enum NonObject {
     Branch(String, &'static str),
     Whole(&'static str),
+    /// A union member at a branch that serde writes as [`WrittenAs`] says, which a refusal names.
+    Written(String, WrittenAs),
+}
+
+/// What a refusal says of a union member serde writes as one [`WrittenAs`], flattened or held
+/// beside a tag: the member, the keyword its branch describes, what serde writes for it there,
+/// and the scope sentence the refusal closes with.
+#[cfg(feature = "serde")]
+struct WrittenWords {
+    keyword: &'static str,
+    member: &'static str,
+    scope: &'static str,
+    serde_writes: &'static str,
+}
+
+#[cfg(feature = "serde")]
+impl WrittenWords {
+    const fn of(written: WrittenAs, beside_tag: bool) -> Self {
+        let named = if beside_tag {
+            "and serde writes that name beside the tag as a key holding null, which a schema \
+             closed around the tag rejects"
+        } else {
+            "and serde writes that name as a key holding null, which a schema closed around the \
+             remaining fields rejects"
+        };
+        match written {
+            WrittenAs::PlainEnumName => Self {
+                keyword: "string",
+                member: "a plain enum's variant name",
+                scope: FLATTENED_PLAIN_ENUM_SCOPE,
+                serde_writes: named,
+            },
+            WrittenAs::UnitVariantName => Self {
+                keyword: "string",
+                member: "the name of an externally tagged enum's unit variant",
+                scope: FLATTENED_NON_OBJECT_SCOPE,
+                serde_writes: named,
+            },
+            WrittenAs::Unit => Self {
+                keyword: "null",
+                member: "`()`",
+                scope: if beside_tag {
+                    FLATTENED_NON_OBJECT_SCOPE
+                } else {
+                    FLATTENED_UNIT_MEMBER_SCOPE
+                },
+                serde_writes: if beside_tag {
+                    "for which serde writes the tag alone, and which it does not read back as \
+                     that member"
+                } else {
+                    "for which serde writes no key, and which it does not read back as that \
+                     member"
+                },
+            },
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl NonObject {
+    /// The union member at `branch` that is no object, where `non_object` names its JSON type
+    /// keyword, and `None` for a member that is an object.
+    fn member(
+        branch: &str,
+        non_object: Option<&'static str>,
+        written_as: Option<WrittenAs>,
+    ) -> Option<Self> {
+        let named = non_object?;
+        Some(written_as.map_or_else(
+            || Self::Branch(branch.to_owned(), named),
+            |written| Self::Written(branch.to_owned(), written),
+        ))
+    }
 }
 
 /// Where the leaves a name publishes are read from: the record a schema surface writes, or the one
@@ -1292,6 +1388,20 @@ impl Surface {
     }
 
     /// The bare string a plain unit enum writes its member name as.
+    #[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
+    fn enumerated() -> Self {
+        Self {
+            shape: PublishedShape::Flat(Some("enumerated")),
+            wire: RecordedWire::Leaves(vec![WireLeaf {
+                branch: Vec::new(),
+                non_object: Some("string"),
+                written_as: Some(WrittenAs::PlainEnumName),
+            }]),
+        }
+    }
+
+    /// The same string where no merge reads its leaves.
+    #[cfg(not(all(feature = "serde", any(feature = "zod", feature = "typescript"))))]
     const fn enumerated() -> Self {
         Self::named(Some("enumerated"), Some("string"))
     }
@@ -1341,6 +1451,7 @@ impl Surface {
                 &[WireLeaf {
                     branch: Vec::new(),
                     non_object,
+                    written_as: None,
                 }],
             ),
         }
@@ -3603,6 +3714,7 @@ fn non_object_wire(item: &Item) -> NonObjectWire {
             wire.leaves = vec![WireLeaf {
                 branch: Vec::new(),
                 non_object: Some("array"),
+                written_as: None,
             }];
         } else {
             // serde writes the members under keys of their own.
@@ -3613,6 +3725,7 @@ fn non_object_wire(item: &Item) -> NonObjectWire {
             wire.leaves = vec![WireLeaf {
                 branch: Vec::new(),
                 non_object: Some("string"),
+                written_as: Some(WrittenAs::PlainEnumName),
             }];
         } else if matches!(tagging, Tagging::External) {
             wire.leaves = external_variant_wire_leaves(&item_enum.variants);
@@ -3630,6 +3743,7 @@ fn non_object_wire(item: &Item) -> NonObjectWire {
                         _ => vec![WireLeaf {
                             branch: Vec::new(),
                             non_object: None,
+                            written_as: None,
                         }],
                     };
                     leaves.into_iter().map(move |mut leaf| {
@@ -3730,6 +3844,7 @@ fn under_an_option(mut leaves: Vec<WireLeaf>) -> Vec<WireLeaf> {
     leaves.push(WireLeaf {
         branch: vec![2],
         non_object: Some("null"),
+        written_as: None,
     });
     leaves
 }
@@ -3793,6 +3908,7 @@ fn member_written_leaves(fld: &FieldDef) -> Vec<WireLeaf> {
         vec![WireLeaf {
             branch: Vec::new(),
             non_object: written_non_object_wire(fld, written_leaves),
+            written_as: fld.is_unit().then_some(WrittenAs::Unit),
         }]
     })
 }
@@ -5616,11 +5732,16 @@ fn written_leaves(rust_ident: &str) -> Option<Vec<WireLeaf>> {
     recorded_non_object_wire(rust_ident).map(|wire| wire.leaves)
 }
 
-/// The JSON type keyword a value one keyword describes writes, and `None` for every type that
-/// writes a document no single keyword names — a composite, a name, an `ObjectId`'s `$oid` object,
-/// an opaque value.
+/// The JSON type keyword a value one keyword describes writes, `null` for `()`, and `None` for
+/// every type that writes a document no single keyword names — a composite, a name, an
+/// `ObjectId`'s `$oid` object, an opaque value.
 #[cfg(any(feature = "jsonschema", feature = "serde"))]
 const fn scalar_json_type_keyword(field_type: &FieldDefType) -> Option<&'static str> {
+    if let FieldDefType::Tuple(elements) = field_type
+        && elements.is_empty()
+    {
+        return Some("null");
+    }
     match *field_type {
         FieldDefType::Boolean | FieldDefType::BooleanLiteral(_) => Some("boolean"),
         FieldDefType::F32 | FieldDefType::F64 | FieldDefType::NumberLiteral(_) => Some("number"),
@@ -5970,43 +6091,82 @@ fn flatten_edge_guard_error(
     type_name: &str,
 ) -> Option<proc_macro2::TokenStream> {
     let inner = get_field_def("_flattened", &field.ty, "");
-    let FieldDefType::SiblingType(name, _) = &inner.field_type else {
-        return None;
+    let (inner_name, non_object, scope) = if let FieldDefType::SiblingType(name, _) =
+        &inner.field_type
+        && !written_in_place(&inner)
+    {
+        if written_as_a_plain_enum(&inner) {
+            return None;
+        }
+        let (inner_name, non_object) = value_filling(&without_its_option(&inner)).map_or_else(
+            || {
+                (
+                    union_spelling(&field.ty, name),
+                    flattened_name_non_object(&inner),
+                )
+            },
+            |filling| {
+                (
+                    filled_spelling(&field.ty, name),
+                    flattened_filling_non_object(filling),
+                )
+            },
+        );
+        (inner_name, non_object, FLATTENED_NON_OBJECT_SCOPE)
+    } else {
+        let bare = without_its_option(&inner);
+        (
+            written_spelling(&field.ty),
+            written_non_object_wire(&bare, written_leaves).map(NonObject::Whole),
+            FLATTENED_IN_PLACE_SCOPE,
+        )
     };
-    if written_as_a_plain_enum(&inner) {
-        return None;
-    }
-    let (inner_name, non_object) = value_filling(&without_its_option(&inner)).map_or_else(
-        || {
-            (
-                union_spelling(&field.ty, name),
-                flattened_name_non_object(&inner),
-            )
-        },
-        |filling| {
-            (
-                filled_spelling(&field.ty, name),
-                flattened_filling_non_object(filling),
-            )
-        },
-    );
     let message = match non_object? {
         NonObject::Branch(branch, named) => format!(
             "model_schema: `{type_name}`: `#[serde(flatten)]` of `{inner_name}` writes a \
              union member that is not an object — its branch {branch} describes a `{named}`, \
              which has no members to merge, and what serde writes for that member does not \
              join the object being written; write the field as a named member so the value \
-             gets a key of its own. {FLATTENED_NON_OBJECT_SCOPE}"
+             gets a key of its own. {scope}"
+        ),
+        NonObject::Written(branch, written) => {
+            let words = WrittenWords::of(written, false);
+            format!(
+                "model_schema: `{type_name}`: `#[serde(flatten)]` of `{inner_name}` writes a \
+                 union member as {} — its branch {branch} describes a `{}`, {}; write the field \
+                 as a named member so the value gets a key of its own. {}",
+                words.member, words.keyword, words.serde_writes, words.scope
+            )
+        }
+        NonObject::Whole("null") => format!(
+            "model_schema: `{type_name}`: `#[serde(flatten)]` of `{inner_name}` is written as \
+             `()` — its schema describes a `null`: serde writes no key for it, and reads the \
+             object back, while the TypeScript type and the Zod schema intersect the object \
+             with `null`, which admits no value; write the field as a named member so the \
+             value gets a key of its own. {scope}"
         ),
         NonObject::Whole(named) => format!(
             "model_schema: `{type_name}`: `#[serde(flatten)]` of `{inner_name}` is not written \
              as an object — its schema describes a `{named}`, which has no members to merge, \
              and what serde writes for it does not join the object being written; write the \
-             field as a named member so the value gets a key of its own. \
-             {FLATTENED_NON_OBJECT_SCOPE}"
+             field as a named member so the value gets a key of its own. {scope}"
         ),
     };
     Some(syn::Error::new_spanned(&field.ty, message).to_compile_error())
+}
+
+/// Whether a flattened field's type, under its `Option`, is written in place rather than named: a
+/// list, a sequence or anything but a name, which [`written_non_object_wire`] answers for.
+#[cfg(feature = "serde")]
+fn written_in_place(inner: &FieldDef) -> bool {
+    let bare = without_its_option(inner);
+    if bare.array_depth > 0 {
+        return true;
+    }
+    let FieldDefType::SiblingType(name, _) = &bare.field_type else {
+        return true;
+    };
+    is_sequence_wrapper(name)
 }
 
 /// What a flattened field's type writes as no object, read by its name: what every build with serde
@@ -6029,9 +6189,7 @@ fn surfaced_non_object(inner: &FieldDef) -> Option<NonObject> {
         .zod_union_members()
         .into_iter()
         .find_map(|member| {
-            member
-                .non_object
-                .map(|named| NonObject::Branch(member.branch_path(), named))
+            NonObject::member(&member.branch_path(), member.non_object, member.written_as)
         })
         .or_else(|| flattened_name_refused_branch(inner, surfaced_leaves))
         .or_else(|| flattened_name_non_object_wire(inner, surfaced_leaves).map(NonObject::Whole))
@@ -6044,9 +6202,7 @@ fn written_non_object(inner: &FieldDef) -> Option<NonObject> {
     written_union_members(inner)
         .into_iter()
         .find_map(|member| {
-            member
-                .non_object
-                .map(|named| NonObject::Branch(member.branch_path(), named))
+            NonObject::member(&member.branch_path(), member.non_object, member.written_as)
         })
         .or_else(|| flattened_name_refused_branch(inner, written_leaves))
         .or_else(|| flattened_name_non_object_wire(inner, written_leaves).map(NonObject::Whole))
@@ -6121,7 +6277,7 @@ fn refused_branch(leaves: &[WireLeaf]) -> Option<NonObject> {
         return None;
     }
     let first = values.first()?;
-    Some(NonObject::Branch(first.branch_path(), first.non_object?))
+    NonObject::member(&first.branch_path(), first.non_object, first.written_as)
 }
 
 /// What a flattened generic type declared above writes as no object, read at `filling`, the
@@ -10880,6 +11036,7 @@ fn variant_merged_json_value(
         base,
         &flatten_merged_sources(flattened_fields),
         &MergeDiagnostic {
+            beside_tag: None,
             cycle_remedy: "write the field as a named member so the cycle defers through a reference",
             edge: &format!("`#[serde(flatten)]` in variant `{variant_name}` of"),
             non_object_remedy: "write the field as a named member so the value gets a key of its own",
@@ -11378,6 +11535,9 @@ fn tagged_content(inner: &FieldDef) -> TaggedContent {
     if inner.array_depth > 0 {
         return TaggedContent::Refused("a sequence");
     }
+    if inner.is_unit() {
+        return TaggedContent::Unit;
+    }
     match inner.field_type {
         FieldDefType::SiblingType(..) => TaggedContent::Flattened,
         FieldDefType::Boolean | FieldDefType::BooleanLiteral(_) => {
@@ -11477,9 +11637,10 @@ fn internally_tagged_guard_errors(
                          object of its own, or wrap it in a struct whose fields can sit beside the \
                          tag. {FLATTENED_PLAIN_ENUM_SCOPE}"
                     ),
-                    None => tagged_non_object_message(variant_name, enum_name, tag_name, slot)
+                    // serde's tag refuses an `Option` before it reads what the `Option` holds.
+                    None => tagged_optional_message(variant_name, enum_name, tag_name, slot)
                         .or_else(|| {
-                            tagged_optional_message(variant_name, enum_name, tag_name, slot)
+                            tagged_non_object_message(variant_name, enum_name, tag_name, slot)
                         })?,
                 },
                 TaggedContent::Refused(shape) => format!(
@@ -11491,6 +11652,13 @@ fn internally_tagged_guard_errors(
                      `cannot serialize tagged newtype variant {enum_name}::{variant_name} \
                      containing {shape}`. Name a `content` key so the value gets an object of its \
                      own, or wrap it in a struct whose fields can sit beside the tag."
+                ),
+                TaggedContent::Unit => format!(
+                    "model_schema: variant `{variant_name}` of internally tagged enum \
+                     `{enum_name}` wraps `()`, which serde writes as `null`: \
+                     {TAGGED_UNIT_WRITTEN} Name a `content` key so the value gets an object of \
+                     its own, or write `{variant_name}` as a unit variant, which serde writes as \
+                     the tag alone as well."
                 ),
                 TaggedContent::Unnameable(shape) => format!(
                     "model_schema: variant `{variant_name}` of internally tagged enum \
@@ -11573,6 +11741,25 @@ fn tagged_non_object_message(
             "writes a union member that is not an object — its branch {branch} describes a \
              `{named}`"
         ),
+        NonObject::Written(branch, written) => {
+            let words = WrittenWords::of(written, true);
+            return Some(format!(
+                "model_schema: variant `{variant_name}` of internally tagged enum `{enum_name}` \
+                 wraps `{inner_name}`, which writes a union member as {} — its branch {branch} \
+                 describes a `{}`, {}. Name a `content` key so the value gets an object of its \
+                 own, or wrap it in a struct whose fields can sit beside the tag. {}",
+                words.member, words.keyword, words.serde_writes, words.scope
+            ));
+        }
+        NonObject::Whole("null") => {
+            return Some(format!(
+                "model_schema: variant `{variant_name}` of internally tagged enum `{enum_name}` \
+                 wraps `{inner_name}`, which serde writes as `()` — its schema describes a \
+                 `null`: {TAGGED_UNIT_WRITTEN} Name a `content` key so the value gets an object \
+                 of its own, or write `{variant_name}` as a unit variant, which serde writes as \
+                 the tag alone as well. {FLATTENED_NON_OBJECT_SCOPE}"
+            ));
+        }
         NonObject::Whole(named) => {
             format!("is not written as an object — its schema describes a `{named}`")
         }
@@ -11613,13 +11800,35 @@ fn tagged_optional_message(
     })
 }
 
+/// Renders each variant of an internally tagged enum as a union member, beside the variant it was
+/// collected from: every variant is collected, in the order declared.
+#[cfg(feature = "serde")]
+fn render_internal_variants(
+    variants: &[DiscriminatedVariant],
+    item_enum: &syn::ItemEnum,
+    tag_name: &str,
+) -> Vec<(String, String, proc_macro2::TokenStream, bool)> {
+    let enum_name = item_enum.ident.to_string();
+    variants
+        .iter()
+        .zip(&item_enum.variants)
+        .map(|(variant, declared)| {
+            render_internal_variant(variant, &declared.ident, tag_name, &enum_name)
+        })
+        .collect()
+}
+
 /// Renders one variant of an internally tagged enum as a union member.
 #[cfg(feature = "serde")]
 fn render_internal_variant(
     variant: &DiscriminatedVariant,
+    variant_ident: &syn::Ident,
     tag_name: &str,
     self_type_name: &str,
 ) -> (String, String, proc_macro2::TokenStream, bool) {
+    // Only the JSON Schema merge names the variant as serde's refusal names it.
+    #[cfg(not(feature = "jsonschema"))]
+    let _: &syn::Ident = variant_ident;
     let mut parts = tagged_variant_parts(tag_name, &variant.discriminator_value, &variant.docs);
     match variant.kind {
         VariantKind::Named => {
@@ -11685,6 +11894,7 @@ fn render_internal_variant(
             // members join the object being written.
             &[flatten_merged_source(inner)],
             &MergeDiagnostic {
+                beside_tag: Some(&format!("{self_type_name}::{variant_ident}")),
                 cycle_remedy: "name a `content` key so the content gets an object of its own",
                 edge: &format!("the content of variant `{variant_name}`,"),
                 non_object_remedy: "name a `content` key so the content gets an object of its own",
@@ -11806,11 +12016,7 @@ fn process_internally_tagged_enum(
     }
     let decode_with = enum_decode_with(&item_enum, args);
 
-    let members: Vec<(String, String, proc_macro2::TokenStream, bool)> = variants
-        .0
-        .iter()
-        .map(|variant| render_internal_variant(variant, tag_name, &item_enum.ident.to_string()))
-        .collect();
+    let members = render_internal_variants(&variants.0, &item_enum, tag_name);
 
     let (main_schema_code, type_code, schema_code) = join_internal_union(&members, tag_name);
     #[cfg(not(feature = "jsonschema"))]
@@ -12692,6 +12898,7 @@ fn zod_merge_branches(
             branch: Vec::new(),
             non_object: None,
             spelling: rendered.to_owned(),
+            written_as: None,
         }],
     };
     leaves
@@ -12703,6 +12910,7 @@ fn zod_merge_branches(
                 branch: trail,
                 non_object: leaf.non_object,
                 spelling: leaf.spelling,
+                written_as: leaf.written_as,
             }
         })
         .collect()
@@ -12731,6 +12939,7 @@ fn zod_member_leaves(fld: &FieldDef, rendered: &str) -> Vec<ZodUnionMember> {
                 branch: leaf.branch,
                 non_object: leaf.non_object,
                 spelling: rendered.to_owned(),
+                written_as: leaf.written_as,
             })
             .collect()
     } else {
@@ -12738,6 +12947,7 @@ fn zod_member_leaves(fld: &FieldDef, rendered: &str) -> Vec<ZodUnionMember> {
             branch: Vec::new(),
             non_object: written_non_object_wire(fld, surfaced_leaves),
             spelling: rendered.to_owned(),
+            written_as: fld.is_unit().then_some(WrittenAs::Unit),
         }]
     };
     if fld.is_optional() {
@@ -12748,6 +12958,7 @@ fn zod_member_leaves(fld: &FieldDef, rendered: &str) -> Vec<ZodUnionMember> {
             branch: vec![2],
             non_object: Some("null"),
             spelling: rendered.to_owned(),
+            written_as: None,
         });
     }
     leaves
@@ -12761,8 +12972,8 @@ fn written_non_object_wire(fld: &FieldDef, leaves_of: LeavesOf) -> Option<&'stat
     if fld.array_depth > 0 {
         return Some("array");
     }
-    if matches!(fld.field_type, FieldDefType::Tuple(_)) {
-        return Some("array");
+    if let FieldDefType::Tuple(elements) = &fld.field_type {
+        return Some(if elements.is_empty() { "null" } else { "array" });
     }
     if let FieldDefType::SiblingType(name, _) = &fld.field_type {
         return is_sequence_wrapper(name)
@@ -12789,6 +13000,7 @@ fn published_wire_leaves(written: &FieldDef, leaves_of: LeavesOf) -> Vec<WireLea
         vec![WireLeaf {
             branch: Vec::new(),
             non_object: written_non_object_wire(written, leaves_of),
+            written_as: written.is_unit().then_some(WrittenAs::Unit),
         }]
     })
 }
@@ -12800,9 +13012,13 @@ fn external_variant_wire_leaves(variants: &Punctuated<syn::Variant, Token![,]>) 
     variants
         .iter()
         .enumerate()
-        .map(|(index, variant)| WireLeaf {
-            branch: vec![index + 1],
-            non_object: matches!(variant_wire_kind(variant), VariantKind::Unit).then_some("string"),
+        .map(|(index, variant)| {
+            let unit = matches!(variant_wire_kind(variant), VariantKind::Unit);
+            WireLeaf {
+                branch: vec![index + 1],
+                non_object: unit.then_some("string"),
+                written_as: unit.then_some(WrittenAs::UnitVariantName),
+            }
         })
         .collect()
 }
@@ -13838,11 +14054,14 @@ fn bounded_slot_json_schema(
 }
 
 /// The fixed-arity array a tuple describes as — the form serde writes it in — or the rejection when
-/// any element holds a value the dispatch cannot render.
+/// any element holds a value the dispatch cannot render. `()` is the `null` serde writes for it.
 #[cfg(feature = "jsonschema")]
 fn tuple_json_schema_value(
     elements: &[FieldDef],
 ) -> Result<proc_macro2::TokenStream, MapMemberRejection> {
+    if elements.is_empty() {
+        return Ok(quote! { serde_json::json!({ "type": "null" }) });
+    }
     tuple_json_schema_of(elements, build_tuple_element_json_schema)
 }
 
@@ -13876,11 +14095,7 @@ fn result_json_schema_value(
 ) -> Result<proc_macro2::TokenStream, MapMemberRejection> {
     let mut arms = Vec::new();
     for (key, held) in RESULT_ARMS.into_iter().zip([ok, err]) {
-        let value = if held.is_unit() {
-            quote! { serde_json::json!({ "type": "null" }) }
-        } else {
-            build_tuple_element_json_schema(held)?
-        };
+        let value = build_tuple_element_json_schema(held)?;
         arms.push(quote! {
             {
                 "type": "object",
@@ -13967,6 +14182,9 @@ fn map_key_path(key: &FieldDef) -> MapKeyPath<'_> {
                 _ => MapKeyPath::Enumerated(key_type_name.as_str()),
             }
         }
+        FieldDefType::Tuple(elements) if elements.is_empty() => {
+            MapKeyPath::Refused(unwritable_key(key, WRITTEN_AS_NULL))
+        }
         FieldDefType::Tuple(..) => MapKeyPath::Refused(unwritable_key(key, WRITTEN_AS_ARRAY)),
         FieldDefType::Map(..) | FieldDefType::Range(..) | FieldDefType::Result(..) => {
             MapKeyPath::Refused(unwritable_key(key, WRITTEN_AS_OBJECT))
@@ -14052,6 +14270,7 @@ fn map_key_element_name(key: &FieldDef) -> String {
         FieldDefType::Map(..) => "HashMap<_, _>".to_owned(),
         FieldDefType::Range(kind, _) => format!("{}<_>", kind.name()),
         FieldDefType::Result(..) => "Result<_, _>".to_owned(),
+        FieldDefType::Tuple(elements) if elements.is_empty() => "()".to_owned(),
         FieldDefType::Tuple(..) => "(_, _)".to_owned(),
         // A type written as no path, a function pointer or a macro among them.
         FieldDefType::Unknown => "_".to_owned(),

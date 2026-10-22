@@ -440,6 +440,37 @@ enum MemberHueEither {
     Hue(MemberHue),
 }
 
+/// A struct of one slot over `()` flattened by a struct declared above it: serde writes no key for
+/// it and reads the object back, and the JSON-schema merge answers for it at run time.
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct FlatOverLaterNothing {
+    #[serde(flatten)]
+    nothing: LaterNothing,
+    own: String,
+}
+
+#[model_schema(no_display)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct LaterNothing(());
+
+/// A plain enum flattened by a struct declared above it, which the struct's expansion does not
+/// see: the JSON-schema merge answers for it at run time.
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct FlatOverLaterHue {
+    #[serde(flatten)]
+    hue: LaterHue,
+    own: String,
+}
+
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+enum LaterHue {
+    Calm,
+    Tense,
+}
+
 /// And the same brand member in a union declared below the object, which keeps the fallback: a
 /// name the recording holds nothing for is named as the one operand it is, whatever the registry
 /// could have said about the members.
@@ -2024,10 +2055,56 @@ fn test_a_named_boolean_member_of_a_flattened_untagged_enum_is_refused_by_the_me
 #[test]
 #[cfg(feature = "jsonschema")]
 #[should_panic(
-    expected = "`FlatOverMemberHueUntagged`: `#[serde(flatten)]` of `MemberHueEither` writes a union member that is not an object — its branch 2 describes a `string`"
+    expected = "`FlatOverMemberHueUntagged`: `#[serde(flatten)]` of `MemberHueEither` writes a union member as a plain enum's variant name — its branch 2 describes a `string`, and serde writes that name as a key holding null, which a schema closed around the remaining fields rejects; write the field as a named member so the value gets a key of its own"
 )]
 fn test_a_named_enumerated_member_of_a_flattened_untagged_enum_is_refused_by_the_merge() {
     assert!(FlatOverMemberHueUntagged::json_schema().is_object());
+}
+
+#[test]
+#[cfg(feature = "jsonschema")]
+#[should_panic(
+    expected = "`FlatOverLaterHue`: `#[serde(flatten)]` of `LaterHue` is written as a plain enum's variant name — its schema describes a `string`, and serde writes that name as a key holding null, which a schema closed around the remaining fields rejects; write the field as a named member so the value gets a key of its own"
+)]
+fn test_a_plain_enum_flattened_below_its_holder_is_refused_by_the_merge() {
+    assert!(FlatOverLaterHue::json_schema().is_object());
+}
+
+#[test]
+#[cfg(feature = "jsonschema")]
+#[should_panic(
+    expected = "`FlatOverLaterNothing`: `#[serde(flatten)]` of `LaterNothing` is written as `()` — its schema describes a `null`: serde writes no key for it, and reads the object back, while the TypeScript type and the Zod schema intersect the object with `null`, which admits no value; write the field as a named member so the value gets a key of its own"
+)]
+fn test_a_unit_flattened_below_its_holder_is_refused_by_the_merge() {
+    assert!(FlatOverLaterNothing::json_schema().is_object());
+}
+
+#[test]
+fn test_a_unit_flattened_below_its_holder_is_written_as_no_key() {
+    let holder = FlatOverLaterNothing {
+        nothing: LaterNothing(()),
+        own: "o".to_owned(),
+    };
+    let written = serde_json::to_value(&holder).unwrap();
+    assert_eq!(written, serde_json::json!({ "own": "o" }));
+    assert_eq!(
+        serde_json::from_value::<FlatOverLaterNothing>(written).unwrap(),
+        holder
+    );
+}
+
+#[test]
+fn test_a_plain_enum_flattened_below_its_holder_is_written_as_a_key_holding_null() {
+    let holder = FlatOverLaterHue {
+        hue: LaterHue::Calm,
+        own: "o".to_owned(),
+    };
+    let written = serde_json::to_value(&holder).unwrap();
+    assert_eq!(written, serde_json::json!({ "Calm": null, "own": "o" }));
+    assert_eq!(
+        serde_json::from_value::<FlatOverLaterHue>(written).unwrap(),
+        holder
+    );
 }
 
 #[test]
@@ -3065,7 +3142,7 @@ fn test_a_tagged_enum_member_writes_the_unit_variant_as_a_bare_name() {
 #[test]
 #[cfg(feature = "jsonschema")]
 #[should_panic(
-    expected = "`FlatOverMemberExtBareUntagged`: `#[serde(flatten)]` of `MemberExtBareEither` writes a union member that is not an object — its branch 2.1 describes a `string`"
+    expected = "`FlatOverMemberExtBareUntagged`: `#[serde(flatten)]` of `MemberExtBareEither` writes a union member as the name of an externally tagged enum's unit variant — its branch 2.1 describes a `string`, and serde writes that name as a key holding null, which a schema closed around the remaining fields rejects"
 )]
 fn test_a_tagged_enum_member_of_a_flattened_untagged_enum_is_refused_by_the_merge() {
     assert!(FlatOverMemberExtBareUntagged::json_schema().is_object());
@@ -3074,7 +3151,7 @@ fn test_a_tagged_enum_member_of_a_flattened_untagged_enum_is_refused_by_the_merg
 #[test]
 #[cfg(feature = "jsonschema")]
 #[should_panic(
-    expected = "`FlatOverLaterMemberExtBareUntagged`: `#[serde(flatten)]` of `LaterMemberExtBareEither` writes a union member that is not an object — its branch 2.1 describes a `string`"
+    expected = "`FlatOverLaterMemberExtBareUntagged`: `#[serde(flatten)]` of `LaterMemberExtBareEither` writes a union member as the name of an externally tagged enum's unit variant — its branch 2.1 describes a `string`, and serde writes that name as a key holding null, which a schema closed around the remaining fields rejects"
 )]
 fn test_a_tagged_enum_member_of_a_later_flattened_untagged_enum_is_refused_by_the_merge() {
     assert!(FlatOverLaterMemberExtBareUntagged::json_schema().is_object());
