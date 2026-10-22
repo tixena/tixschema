@@ -4,7 +4,7 @@
 //! unit variant's entry over a value and its content under a content key, an externally tagged
 //! enum read from an object of no key or of several, a payload no variant of an untagged enum
 //! reads, a name no variant of a plain enum has, a range of a key it does not write, a `Result` of
-//! both keys, and a tuple of another length, a longer one among them.
+//! both keys, and a tuple and a fixed array of another length, a longer one among them.
 
 #![cfg(all(feature = "dart", feature = "serde"))]
 
@@ -39,9 +39,10 @@ void told(String at, Object? Function() read) {
 /// a tag and a content key beside a unit variant's content; a payload no variant of an untagged
 /// enum reads; a name no variant of a plain enum has; a range of a key it does not write; a
 /// `Result` of both keys; an externally tagged enum read from an object of several keys and of
-/// none; and a tuple of another length, a variant's, a tuple struct's and a member's, the outer
-/// and the inner of a tuple that holds a tuple.
-const ROWS: [Row; 18] = [
+/// none; a tuple of another length, a variant's, a tuple struct's and a member's, the outer and
+/// the inner of a tuple that holds a tuple; and a fixed array of another length, longer and
+/// shorter, the inner and the outer of a fixed array of fixed arrays.
+const ROWS: [Row; 22] = [
     Row {
         json: r#""Gale""#,
         read_as: "Drizzling",
@@ -153,12 +154,37 @@ const ROWS: [Row; 18] = [
         serde: serde_told::<Frosting>,
         thrown: "invalid length 1, expected 2",
     },
+    Row {
+        json: r#"{"pair":[1,2,3]}"#,
+        read_as: "Clenching",
+        serde: serde_told::<Clenching>,
+        thrown: "invalid length 3, expected 2",
+    },
+    Row {
+        json: r#"{"pair":[1]}"#,
+        read_as: "Clenching",
+        serde: serde_told::<Clenching>,
+        thrown: "invalid length 1, expected 2",
+    },
+    Row {
+        json: r#"{"grid":[[1,2],[3,4,5],[6,7]]}"#,
+        read_as: "Clasping",
+        serde: serde_told::<Clasping>,
+        thrown: "invalid length 3, expected 2",
+    },
+    Row {
+        json: r#"{"grid":[[1,2],[3,4]]}"#,
+        read_as: "Clasping",
+        serde: serde_told::<Clasping>,
+        thrown: "invalid length 2, expected 3",
+    },
 ];
 
 /// Payloads each type reads, as serde reads them: an externally tagged enum from an object of one
-/// key, a tuple from an array of its length, and an enum declared below its holder from the
-/// object of its entry alone.
-const READ: [Readable; 5] = [
+/// key, a tuple from an array of its length, an enum declared below its holder from the object of
+/// its entry alone, a fixed array from an array of its length at each level, and a list from an
+/// array of any length.
+const READ: [Readable; 9] = [
     Readable {
         json: r#"{"Boxed":"a"}"#,
         read_as: "Fogging",
@@ -183,6 +209,26 @@ const READ: [Readable; 5] = [
         json: r#"{"note":"a","Bay":{"label":"n"}}"#,
         read_as: "Overcast",
         serde: serde_written::<Overcast>,
+    },
+    Readable {
+        json: r#"{"pair":[1,2]}"#,
+        read_as: "Clenching",
+        serde: serde_written::<Clenching>,
+    },
+    Readable {
+        json: r#"{"grid":[[1,2],[3,4],[5,6]]}"#,
+        read_as: "Clasping",
+        serde: serde_written::<Clasping>,
+    },
+    Readable {
+        json: r#"{"held":[1,2,3]}"#,
+        read_as: "Grasping",
+        serde: serde_written::<Grasping>,
+    },
+    Readable {
+        json: r#"{"held":[]}"#,
+        read_as: "Grasping",
+        serde: serde_written::<Grasping>,
     },
 ];
 
@@ -272,6 +318,27 @@ pub enum Hazing {
     Bay { label: String },
 }
 
+/// A member of a fixed length.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Clenching {
+    pub pair: [u8; 2],
+}
+
+/// A member of fixed lengths at two levels.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Clasping {
+    pub grid: [[u8; 2]; 3],
+}
+
+/// A member of any length.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Grasping {
+    pub held: Vec<u8>,
+}
+
 /// One payload a type reads, the type and what serde writes back of it.
 struct Readable {
     json: &'static str,
@@ -327,6 +394,9 @@ fn definitions() -> Vec<String> {
         frosting_dart::dart_definition(),
         overcast_dart::dart_definition(),
         hazing_dart::dart_definition(),
+        clenching_dart::dart_definition(),
+        clasping_dart::dart_definition(),
+        grasping_dart::dart_definition(),
     ]
 }
 
@@ -372,6 +442,10 @@ fn each_refusal_the_dart_read_writes_is_a_format_exception() {
             "invalid length 1, expected tuple struct Thawing with 2 elements at line 1 column 5",
             "trailing characters at line 1 column 20",
             "invalid length 1, expected a tuple of size 2 at line 1 column 20",
+            "trailing characters at line 1 column 14",
+            "invalid length 1, expected an array of length 2 at line 1 column 11",
+            "trailing characters at line 1 column 21",
+            "invalid length 2, expected an array of length 3 at line 1 column 21",
         ],
         "serde no longer refuses each payload as it did"
     );
@@ -387,9 +461,10 @@ fn each_refusal_the_dart_read_writes_is_a_format_exception() {
     assert_eq!(printed, expected, "the Dart read is not the refusal above");
 }
 
-/// An externally tagged enum is read from an object of one key, a tuple from an array of its
-/// length, and an enum declared below its holder from the object of its entry alone, as serde
-/// reads each, and each is written back as serde writes it.
+/// An externally tagged enum is read from an object of one key, a tuple and a fixed array from an
+/// array of its length, an enum declared below its holder from the object of its entry alone, and
+/// a list from an array of any length, as serde reads each, and each is written back as serde
+/// writes it.
 #[test]
 fn an_object_of_one_key_and_a_tuple_of_its_length_are_read_as_serde_reads_them() {
     let serde_read: Vec<String> = READ.iter().map(|row| (row.serde)(row.json)).collect();
@@ -401,6 +476,10 @@ fn an_object_of_one_key_and_a_tuple_of_its_length_are_read_as_serde_reads_them()
             r#"read ["b",1]"#,
             r#"read {"reading":[["b",1],3]}"#,
             r#"read {"note":"a","Bay":{"label":"n"}}"#,
+            r#"read {"pair":[1,2]}"#,
+            r#"read {"grid":[[1,2],[3,4],[5,6]]}"#,
+            r#"read {"held":[1,2,3]}"#,
+            r#"read {"held":[]}"#,
         ],
         "serde no longer reads each payload as it did"
     );
@@ -449,6 +528,8 @@ fn the_readme_shows_refusals_the_run_measures() {
         "`enum Fogging { Boxed(String), Split(String, u32) }`",
         "`struct Overcast { note: String, #[serde(flatten)] stratus: Hazing }`",
         "`enum Hazing { Bay { label: String } }`",
+        "`struct Clenching { pair: [u8; 2] }`",
+        "`[[u8; 2]; 3]`",
     ] {
         assert!(
             section.contains(declared),
@@ -463,6 +544,8 @@ fn the_readme_shows_refusals_the_run_measures() {
         ("Fogging", "{}"),
         ("Fogging", r#"{"Split":["b",1,2]}"#),
         ("Fogging", r#"{"Split":["b"]}"#),
+        ("Clenching", r#"{"pair":[1,2,3]}"#),
+        ("Clenching", r#"{"pair":[1]}"#),
     ] {
         assert!(
             ROWS.iter()
@@ -500,7 +583,7 @@ fn the_readme_shows_refusals_the_run_measures() {
     }
 }
 
-/// The analyzer passes the enums, the tuples and the holder the rows read.
+/// The analyzer passes the enums, the tuples, the fixed arrays and the holders the rows read.
 #[test]
 fn the_emitted_enums_have_no_issue() {
     let source = module(
@@ -515,6 +598,9 @@ fn the_emitted_enums_have_no_issue() {
             frosting_dart::dart_definition(),
             overcast_dart::dart_definition(),
             hazing_dart::dart_definition(),
+            clenching_dart::dart_definition(),
+            clasping_dart::dart_definition(),
+            grasping_dart::dart_definition(),
         ],
         &[TOLD],
         "void main() => told('calm', () => Drizzling.fromJson(jsonDecode('\"Calm\"')).toJson());\n",

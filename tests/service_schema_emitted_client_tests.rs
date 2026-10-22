@@ -506,7 +506,7 @@ mod run_dart_own_tags;
 /// A payload serde refuses, refused by the emitted Dart types with a `FormatException`: a tag no
 /// variant has under every tagging, a unit variant's value, an externally tagged object of no key
 /// or of several, a payload no variant of an untagged enum reads, a range of a key it does not
-/// write, a `Result` of both keys and a tuple of another length.
+/// write, a `Result` of both keys, and a tuple and a fixed array of another length.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_dart_refusals.rs"]
 mod run_dart_refusals;

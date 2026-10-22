@@ -1168,7 +1168,8 @@ fn dart_decode_expr(field: &FieldDef, expr: &str, read: Read) -> String {
 
 /// [`dart_decode_expr`] before the outer optionality: peels `level` `List<dynamic>` levels off
 /// `expr`, an inner level's own nullability read off [`FieldDef::is_nullable_at`], then dispatches
-/// on [`FieldDef::field_type`] at level `0`.
+/// on [`FieldDef::field_type`] at level `0`. A level written as `[T; N]` binds its array once,
+/// under a name the read declares, and refuses one of another length, as serde and Zod refuse it.
 fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String {
     if level > 0 {
         let inner_level = level - 1;
@@ -1178,7 +1179,15 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
         } else {
             format!("(e) => {inner}")
         };
-        return format!("({expr} as List<dynamic>).map({mapper}).toList()");
+        let Some(length) = field.fixed_length_at(inner_level) else {
+            return format!("({expr} as List<dynamic>).map({mapper}).toList()");
+        };
+        let array = declared("array");
+        return format!(
+            "switch ({expr} as List<dynamic>) {{ final {array} when {array}.length == {length} => \
+             {array}.map({mapper}).toList(), final {array} => throw FormatException('invalid \
+             length ${{{array}.length}}, expected {length}') }}"
+        );
     }
     match &field.field_type {
         // An opaque type parameter (`FieldDef::opaque_parameters`), and a type written as no path.

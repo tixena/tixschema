@@ -183,10 +183,11 @@ among the array's items, rendered `Array<T | null>` — while `Option<Vec<T>>` r
 `Array<T> | null` in a slot. `is_optional()` asks the question of the outermost level, the only
 one whose rendering depends on where the field sits.
 
-`array_lengths` numbers levels the same way: `[[T; 2]; 3]` records `(0, 2)` and `(1, 3)`. Only the
-validating surfaces spend it — `minItems`/`maxItems` in the JSON schema, `.length(N)` in Zod —
-while TypeScript stays `Array<T>`. A length the expansion cannot read (const generic, `const`
-item, computed expression) records nothing and describes as an unbounded array.
+`array_lengths` numbers levels the same way: `[[T; 2]; 3]` records `(0, 2)` and `(1, 3)`. The
+validating surfaces spend it — `minItems`/`maxItems` in the JSON schema, `.length(N)` in Zod — and
+so does the Dart read, which refuses an array of another length (`dart_decode_at`), while
+TypeScript stays `Array<T>`. A length the expansion cannot read (const generic, `const` item,
+computed expression) records nothing and describes as an unbounded array.
 
 **FieldDefType** (type categories):
 - Primitives: `Boolean`, `String`, `U8-U64`, `I8-I64`, `F32`, `F64`, `Usize`, `Isize`
@@ -1595,7 +1596,9 @@ consumer's view; this is what a change has to keep.
   {kind}: {keys}`; `result_decode` `Not a Result: {keys}`; `tuple_decode`, the read of every
   tuple (a member's, a tuple struct's, a variant's slots), `invalid length {n}, expected {m}`
   for an array of another length, a longer one among them, as serde and Zod refuse it;
-  `own_tag_held` a struct's own tag; and `named_by_aliases` a member under two of its names. A
+  `dart_decode_at` the same words for a level written as `[T; N]` (`FieldDef::fixed_length_at`),
+  at each level, before it maps the items, where a level of no recorded length is read as it
+  was; `own_tag_held` a struct's own tag; and `named_by_aliases` a member under two of its names. A
   cast's `TypeError`, and every other error a Dart operation throws on its own, are the
   language's. So an enum declared below its holder, handed the object without the holder's own
   keys, is refused where that object holds another key beside its entry, which serde reads.
@@ -1823,11 +1826,11 @@ resort; this is what a change has to keep.
   function the item's reads call (`called_by`, `DART_CALLED`), and `declared` numbers a name
   where one is called under it (`json2`): `json`, `payload`, `map`, `tag` and `read`, which
   `Corrects` holds, `corrected` where a flattened `Option` holds what its functions answer
-  (`corrected_option`), `range`, `result` and `tuple`, the value a range, a `Result` and a tuple
-  are read from (`range_decode`, `result_decode`, `tuple_decode`), and the converter of a type
-  parameter (`from_json_argument`), in the signature of both reads and where a value behind the
-  parameter is read. A member of the type still hides a function of its name, as it hides a
-  check's, and the documents say so.
+  (`corrected_option`), `range`, `result`, `tuple` and `array`, the value a range, a `Result`, a
+  tuple and a fixed array are read from (`range_decode`, `result_decode`, `tuple_decode`,
+  `dart_decode_at`), and the converter of a type parameter (`from_json_argument`), in the
+  signature of both reads and where a value behind the parameter is read. A member of the type
+  still hides a function of its name, as it hides a check's, and the documents say so.
 - **The payload a type's function takes is typed as its read types it**: a
   `Map<String, dynamic>` for a class and an enum under a tag key, a `String` for a plain enum,
   `dynamic` for a wrapper and any other enum. A payload of another kind is refused ahead of the
