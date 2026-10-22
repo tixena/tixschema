@@ -5,7 +5,10 @@
 #![cfg(feature = "dart")]
 
 use super::run_dart_validate::{dart, module};
-use super::unwritten_models::{PAYLOAD, WRITTEN, braiding_dart, furling_dart, reefing_dart};
+use super::unwritten_models::{
+    FLATTENED, PAYLOAD, REFUSED, WRITTEN, braiding_dart, flemishing_dart, furling_dart,
+    ranging_dart, reefing_dart, splaying_dart,
+};
 #[cfg(feature = "serde")]
 use super::unwritten_models::{
     VARIANTS, dousing_dart, ratcheting_dart, shackling_dart, wearing_dart,
@@ -20,6 +23,40 @@ void main() {
   print('beside a flattened member: read ${reefing.spare}, written ${jsonEncode(reefing.toJson())}');
 }
 ";
+
+/// What prints each struct of [`FLATTENED`] read from its payload: what its flattened member read
+/// holds, and the value written back, and whether each payload of [`REFUSED`] is refused.
+const FLATTENED_MAIN: &str = "
+bool refused(void Function() read) {
+  try {
+    read();
+    return false;
+  } catch (_) {
+    return true;
+  }
+}
+
+void main() {
+  final flemishing = Flemishing.fromJson(jsonDecode(r'PAYLOAD_FLEMISHING'));
+  print('Flemishing: read ${flemishing.braiding?.label}, written ${jsonEncode(flemishing.toJson())}');
+  final splaying = Splaying.fromJson(jsonDecode(r'PAYLOAD_SPLAYING'));
+  print('Splaying: read ${splaying.braiding.label}, written ${jsonEncode(splaying.toJson())}');
+  final ranging = Ranging.fromJson(jsonDecode(r'PAYLOAD_RANGING'));
+  print('Ranging: read ${ranging.counts['north']}, written ${jsonEncode(ranging.toJson())}');
+  print('Splaying refused: ${refused(() => Splaying.fromJson(jsonDecode(r'REFUSED_SPLAYING')))}');
+  print('Ranging refused: ${refused(() => Ranging.fromJson(jsonDecode(r'REFUSED_RANGING')))}');
+}
+";
+
+/// [`FLATTENED_MAIN`] with each payload of [`FLATTENED`] and [`REFUSED`] in its place.
+fn flattened_main() -> String {
+    FLATTENED_MAIN
+        .replace("PAYLOAD_FLEMISHING", FLATTENED[0].1)
+        .replace("PAYLOAD_SPLAYING", FLATTENED[1].1)
+        .replace("PAYLOAD_RANGING", FLATTENED[2].1)
+        .replace("REFUSED_SPLAYING", REFUSED[0].1)
+        .replace("REFUSED_RANGING", REFUSED[1].1)
+}
 
 /// Each struct reads the member and writes it back as serde does: never.
 #[test]
@@ -43,6 +80,35 @@ fn a_member_serde_never_writes_is_read_and_not_written_in_dart() {
             "in a struct of its own: read 3, written {WRITTEN}\n\
              beside a flattened member: read 3, written {WRITTEN}\n"
         )
+    );
+}
+
+/// A flattened struct and a flattened map serde never writes are read, and written as serde
+/// writes them: never.
+#[test]
+fn a_flattened_member_serde_never_writes_is_read_and_not_written_in_dart() {
+    let source = module(
+        &[
+            braiding_dart::dart_definition(),
+            flemishing_dart::dart_definition(),
+            splaying_dart::dart_definition(),
+            ranging_dart::dart_definition(),
+        ],
+        &[],
+        &flattened_main(),
+    );
+    let Some((ran, printed)) = dart("unwritten-flattened", &[], &source) else {
+        return;
+    };
+    assert!(ran, "{printed}");
+    assert_eq!(
+        printed,
+        format!(
+            "Flemishing: read north, written {}\nSplaying: read north, written {}\nRanging: \
+             read 2, written {}\nSplaying refused: true\nRanging refused: true\n",
+            FLATTENED[0].2, FLATTENED[1].2, FLATTENED[2].2
+        ),
+        "each flattened member is read and not written"
     );
 }
 

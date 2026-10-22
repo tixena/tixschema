@@ -6,7 +6,10 @@
 #![cfg(feature = "kotlin")]
 
 use super::runtime::ran_kotlin;
-use super::unwritten_models::{PAYLOAD, WRITTEN, braiding_kotlin, furling_kotlin, reefing_kotlin};
+use super::unwritten_models::{
+    FLATTENED, PAYLOAD, REFUSED, WRITTEN, braiding_kotlin, flemishing_kotlin, furling_kotlin,
+    ranging_kotlin, reefing_kotlin, splaying_kotlin,
+};
 #[cfg(feature = "serde")]
 use super::unwritten_models::{
     VARIANTS, dousing_kotlin, ratcheting_kotlin, shackling_kotlin, wearing_kotlin,
@@ -28,6 +31,31 @@ fun main() {
 }
 "#;
 
+/// What prints each struct of [`FLATTENED`] read from its payload: what its flattened member read
+/// holds, and the value written back, and whether each payload of [`REFUSED`] is refused.
+const FLATTENED_MAIN: &str = r#"
+fun main() {
+    val flemishing = Json.decodeFromString(Flemishing.serializer(), """PAYLOAD_FLEMISHING""")
+    println("Flemishing: read ${flemishing.braiding?.label}, written ${Json.encodeToString(Flemishing.serializer(), flemishing)}")
+    val splaying = Json.decodeFromString(Splaying.serializer(), """PAYLOAD_SPLAYING""")
+    println("Splaying: read ${splaying.braiding.label}, written ${Json.encodeToString(Splaying.serializer(), splaying)}")
+    val ranging = Json.decodeFromString(Ranging.serializer(), """PAYLOAD_RANGING""")
+    println("Ranging: read ${ranging.counts["north"]}, written ${Json.encodeToString(Ranging.serializer(), ranging)}")
+    println("Splaying refused: ${runCatching { Json.decodeFromString(Splaying.serializer(), """REFUSED_SPLAYING""") }.isFailure}")
+    println("Ranging refused: ${runCatching { Json.decodeFromString(Ranging.serializer(), """REFUSED_RANGING""") }.isFailure}")
+}
+"#;
+
+/// [`FLATTENED_MAIN`] with each payload of [`FLATTENED`] and [`REFUSED`] in its place.
+fn flattened_main() -> String {
+    FLATTENED_MAIN
+        .replace("PAYLOAD_FLEMISHING", FLATTENED[0].1)
+        .replace("PAYLOAD_SPLAYING", FLATTENED[1].1)
+        .replace("PAYLOAD_RANGING", FLATTENED[2].1)
+        .replace("REFUSED_SPLAYING", REFUSED[0].1)
+        .replace("REFUSED_RANGING", REFUSED[1].1)
+}
+
 /// Each struct reads the member and writes it back as serde does: never.
 #[test]
 fn a_member_serde_never_writes_is_read_and_not_written_in_kotlin() {
@@ -47,6 +75,32 @@ fn a_member_serde_never_writes_is_read_and_not_written_in_kotlin() {
             "in a struct of its own: read 3, written {WRITTEN}\n\
              beside a flattened member: read 3, written {WRITTEN}\n"
         )
+    );
+}
+
+/// A flattened struct and a flattened map serde never writes are read, and written as serde
+/// writes them: never.
+#[test]
+fn a_flattened_member_serde_never_writes_is_read_and_not_written_in_kotlin() {
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        braiding_kotlin::kotlin_definition(),
+        flemishing_kotlin::kotlin_definition(),
+        splaying_kotlin::kotlin_definition(),
+        ranging_kotlin::kotlin_definition(),
+        flattened_main(),
+    ];
+    let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
+        return;
+    };
+    assert_eq!(
+        printed,
+        format!(
+            "Flemishing: read north, written {}\nSplaying: read north, written {}\nRanging: \
+             read 2, written {}\nSplaying refused: true\nRanging refused: true\n",
+            FLATTENED[0].2, FLATTENED[1].2, FLATTENED[2].2
+        ),
+        "each flattened member is read and not written"
     );
 }
 

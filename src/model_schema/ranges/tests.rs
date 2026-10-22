@@ -1020,6 +1020,73 @@ fn a_type_parameter_in_a_lone_slot_under_a_tag_alone_is_refused_where_a_map_fill
     );
 }
 
+/// serde neither writes nor reads a variant under `#[serde(skip)]`, so what it holds sits beside
+/// no tag and no member: each shape refused there in a variant under a tag alone, or beside a
+/// member under any tagging, builds. Under `skip_serializing` alone serde still reads the variant,
+/// and under `skip_deserializing` alone still writes it: both are refused as before.
+#[cfg(feature = "serde")]
+#[test]
+fn a_variant_serde_neither_writes_nor_reads_is_refused_nothing_it_holds() {
+    assert_eq!(
+        refused("pub struct Tally { #[serde(flatten)] counts: BTreeMap<String, u8> }"),
+        NONE,
+        "a struct of one flattened map builds"
+    );
+    let held = [
+        ("Text", "Hidden(String)"),
+        (
+            "Map",
+            "Spare { #[serde(flatten)] counts: BTreeMap<String, u8> }",
+        ),
+        ("Slot", "Counted(Tally)"),
+    ];
+    for (shape, variant) in held {
+        for (attribute, refused_count) in [
+            ("skip", 0),
+            ("skip_serializing", 1),
+            ("skip_deserializing", 1),
+        ] {
+            let holder = format!("Skipped{shape}{}", attribute.replace('_', ""));
+            let source = format!(
+                "#[serde(tag = \"kind\")] pub enum {holder} {{ Open {{ note: String }}, \
+                 #[serde({attribute})] {variant} }}"
+            );
+            assert_eq!(refused(&source).len(), refused_count, "{source}");
+        }
+    }
+    for source in [
+        "pub enum SkippedBeside { Open { note: String }, #[serde(skip)] Spare { \
+         #[serde(flatten)] counts: BTreeMap<String, u8>, note: String } }",
+        "#[serde(untagged)] pub enum SkippedLoose { Open { note: String }, #[serde(skip)] \
+         Spare { #[serde(flatten)] counts: BTreeMap<String, u8>, note: String } }",
+    ] {
+        assert_eq!(refused(source), NONE, "{source}");
+    }
+    assert_eq!(
+        refused_generic(
+            "#[serde(tag = \"kind\")] pub enum SkippedHold<T> { Open { note: String }, \
+             #[serde(skip)] Counted(T) }"
+        ),
+        NONE,
+        "a skipped variant over the type parameter builds"
+    );
+    assert_eq!(
+        refused("pub struct SkippedDock { pub hold: SkippedHold<HashMap<String, i32>> }"),
+        NONE,
+        "a map fills a parameter no variant serde writes holds"
+    );
+    // serde's derive refuses a tuple variant under a tag alone, skipped or not.
+    assert_eq!(
+        refused(
+            "#[serde(tag = \"kind\")] pub enum SkippedPair { Open { note: String }, \
+             #[serde(skip)] Pair(String, u8) }"
+        )
+        .len(),
+        1,
+        "a skipped tuple variant is refused under a tag alone"
+    );
+}
+
 /// The README quotes the refusal of a lone slot that writes a map beside a tag as the build answers
 /// it: where an internally tagged enum is described, and in the list of what an upgrade asks of a
 /// crate.

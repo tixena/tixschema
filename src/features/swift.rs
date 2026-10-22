@@ -2641,13 +2641,14 @@ fn collect_swift_fields(
         let wire_name = wire_field_name(&rust_name, rename_override(&field.attrs).as_deref(), rule);
         let mut field_def = member_def(args, &rust_name, field);
         field_def.erase_type_parameters(type_parameters);
-        if omission.omits_key && !field_def.is_optional() {
+        let flatten = field_is_flatten(&field.attrs);
+        // A flattened member has no key to leave out, and serde reads it whatever it writes.
+        if omission.omits_key && !field_def.is_optional() && !flatten {
             field_def.nullable_levels.push(field_def.array_depth);
         }
         let swift_name = RenameRule::CamelCase.apply_to_field(&rust_name);
         let field_hint = format!("{name_hint}{}", swift_upper_camel(&swift_name));
         let (real_type, shape) = swift_resolve(&field_def, &field_hint, aux);
-        let flatten = field_is_flatten(&field.attrs);
         if flatten {
             aux.extend(flattened_wrapper_read(&field_def, &field_hint));
         }
@@ -2773,7 +2774,7 @@ fn struct_body_content(
     let encode_method = if needs_encode {
         let statements = fields
             .iter()
-            .filter(|field| field.flatten || !field.never_written)
+            .filter(|field| !field.never_written)
             .map(|field| encode_statement(field, "container"))
             .collect::<Vec<_>>()
             .join("; ");

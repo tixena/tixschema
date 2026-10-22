@@ -4098,7 +4098,7 @@ fn flattened_map_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_macro2:
 
 /// Each level of `item` serde writes a flattened member's entries at, with the subject a refusal
 /// there opens with and the tag serde writes at that level: a struct, with its own tag, and each
-/// variant of an enum, with the enum's tag where it writes no content key.
+/// variant of an enum serde writes or reads, with the enum's tag where it writes no content key.
 #[cfg(feature = "serde")]
 fn flattening_levels(item: &Item) -> Vec<(String, &syn::Fields, Option<String>)> {
     let label = item_label(item);
@@ -4120,6 +4120,7 @@ fn flattening_levels(item: &Item) -> Vec<(String, &syn::Fields, Option<String>)>
         item_enum
             .variants
             .iter()
+            .filter(|variant| !parse_serde_key_omission(&variant.attrs).absent_from_wire())
             .map(|variant| {
                 (
                     format!("{label}: variant `{}`, ", variant.ident),
@@ -11601,7 +11602,8 @@ fn tagged_content(inner: &FieldDef) -> TaggedContent {
 
 /// The `compile_error!` tokens for every variant an internally tagged enum cannot carry. Collected
 /// from the declaration, not the collected variants, so each diagnostic keeps the span of the
-/// thing it rejects.
+/// thing it rejects. A variant serde neither writes nor reads holds nothing beside the tag; a tuple
+/// variant is refused all the same, as serde's derive refuses it.
 #[cfg(feature = "serde")]
 fn internally_tagged_guard_errors(
     item_enum: &syn::ItemEnum,
@@ -11636,7 +11638,9 @@ fn internally_tagged_guard_errors(
             // An empty tuple variant carries nothing: serde writes it as the tag alone, which is
             // what the unit arm already describes.
             let field = unnamed.unnamed.first()?;
-            if parse_serde_key_omission(&field.attrs).absent_from_wire() {
+            if parse_serde_key_omission(&variant.attrs).absent_from_wire()
+                || parse_serde_key_omission(&field.attrs).absent_from_wire()
+            {
                 return None;
             }
             let inner = get_field_def("_inner", &field.ty, "");

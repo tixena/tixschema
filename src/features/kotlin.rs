@@ -180,7 +180,8 @@ struct FlattenedMember {
     deserialize: String,
     /// Whether the member is read under `lenient`, which reads past a key no member reads.
     lenient: bool,
-    serialize: String,
+    /// The merge of what it writes, and nothing for a member serde never writes.
+    serialize: Option<String>,
     /// The Kotlin term of the keys it takes, which the members flattened after it are not handed.
     taken: String,
 }
@@ -189,7 +190,7 @@ impl FlattenPlan {
     /// Adds the statements of a flattened `member`.
     fn push(&mut self, member: FlattenedMember) {
         self.needs_lenient |= member.lenient;
-        self.serialize_stmts.push(member.serialize);
+        self.serialize_stmts.extend(member.serialize);
         self.deserialize_stmts.push(member.deserialize);
     }
 }
@@ -699,7 +700,8 @@ fn has_as_number(field: &FieldDef) -> bool {
 
 /// Walks a named-field struct's or a struct-shaped enum variant's fields into [`KotlinField`]s,
 /// dropping any field a serde attribute takes off the wire in both directions. A field dropped
-/// from serialization only is pushed a nullable level, since kotlinx has no "absent key" spelling.
+/// from serialization only is pushed a nullable level, since kotlinx has no "absent key" spelling,
+/// but for a flattened one, which writes no key.
 fn collect_kotlin_fields(
     fields: &Fields,
     rule: RenameRule,
@@ -723,11 +725,12 @@ fn collect_kotlin_fields(
         let wire_name = wire_field_name(&rust_name, rename_override(&field.attrs).as_deref(), rule);
         let mut field_def = field_def_with_prop_meta(&rust_name, field, args);
         field_def.erase_type_parameters(type_parameters);
-        if omission.omits_key && !field_def.is_optional() {
+        let flatten = field_is_flatten(&field.attrs);
+        // A flattened member has no key to leave out, and serde reads it whatever it writes.
+        if omission.omits_key && !field_def.is_optional() && !flatten {
             field_def.nullable_levels.push(field_def.array_depth);
         }
         let defaulted = default_at(&rust_name);
-        let flatten = field_is_flatten(&field.attrs);
         collected.push(KotlinField {
             aliases: if flatten || omission.skips_deserializing {
                 Vec::new()
@@ -1763,9 +1766,13 @@ fn read_or_judged(serializer: &str, payload: &str) -> String {
 }
 
 /// The `serialize` statement that merges a flattened member's own keys into its holder's object,
-/// read by `inner_serializer`; an optional member that holds no value merges none. A unit variant
-/// an enum writes as its bare name is merged as serde merges it: its name over `null`.
-fn flattened_merge(field: &KotlinField, prop: &str, inner_serializer: &str) -> String {
+/// read by `inner_serializer`; an optional member that holds no value merges none, and a member
+/// serde never writes has no statement. A unit variant an enum writes as its bare name is merged
+/// as serde merges it: its name over `null`.
+fn flattened_merge(field: &KotlinField, prop: &str, inner_serializer: &str) -> Option<String> {
+    if field.never_written {
+        return None;
+    }
     let merged = |held: &str| {
         let written = format!("output.json.encodeToJsonElement({inner_serializer}, {held})");
         if writes_a_bare_name(&field.field_def) {
@@ -1776,12 +1783,12 @@ fn flattened_merge(field: &KotlinField, prop: &str, inner_serializer: &str) -> S
             format!("{written}.jsonObject.forEach {{ (k, v) -> put(k, v) }}")
         }
     };
-    if field.field_def.is_optional() {
+    Some(if field.field_def.is_optional() {
         let held = merged("flattened");
         format!("value.{prop}?.let {{ flattened -> {held} }}")
     } else {
         merged(&format!("value.{prop}"))
-    }
+    })
 }
 
 /// One flattened externally tagged enum's own statements, as [`flatten_struct_field_plan`] writes
@@ -1930,7 +1937,9 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
                 (key_serializer.as_deref(), &value_serializer),
                 preprocess::of(&field.field_def),
             );
-            plan.serialize_stmts.push(serialize);
+            if !field.never_written {
+                plan.serialize_stmts.push(serialize);
+            }
             plan.deserialize_stmts.push(decode);
             members_read = None;
         } else {

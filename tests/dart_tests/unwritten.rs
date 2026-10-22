@@ -3,7 +3,7 @@
 
 use super::unwritten_models::furling_dart;
 #[cfg(feature = "serde")]
-use super::unwritten_models::reefing_dart;
+use super::unwritten_models::{flemishing_dart, ranging_dart, reefing_dart, splaying_dart};
 
 /// The member is read, and `toJson` writes no key for it.
 #[test]
@@ -35,4 +35,35 @@ fn a_member_serde_never_writes_beside_a_flattened_one_has_no_entry() {
         ),
         "got: {reefing}"
     );
+}
+
+/// A flattened struct and a flattened map serde never writes are read, and `toJson` spreads
+/// nothing of them. One that is no `Option` is read as a flattened member is, its key being none
+/// to leave out.
+#[cfg(feature = "serde")]
+#[test]
+fn a_flattened_member_serde_never_writes_is_read_and_spread_nowhere() {
+    let flemishing = flemishing_dart::dart_definition();
+    for held in [
+        "braiding: (({...json}..remove('note')).keys.any(const ['label'].contains) ? \
+         Braiding.fromJsonUnjudged(({...json}..remove('note'))) : null)",
+        "Map<String, dynamic> toJson() => { 'note': note, };",
+    ] {
+        assert!(flemishing.contains(held), "no `{held}` in: {flemishing}");
+    }
+    let splaying = splaying_dart::dart_definition();
+    for held in [
+        "const Splaying({required this.braiding,required this.note,});",
+        "Splaying(braiding: Braiding.fromJsonUnjudged(({...json}..remove('note'))),",
+        "Map<String, dynamic> toJson() => { 'note': note, };",
+    ] {
+        assert!(splaying.contains(held), "no `{held}` in: {splaying}");
+    }
+    let ranging = ranging_dart::dart_definition();
+    for held in [
+        "const Ranging({required this.counts,}); final Map<String, int> counts;",
+        "Map<String, dynamic> toJson() => {  };",
+    ] {
+        assert!(ranging.contains(held), "no `{held}` in: {ranging}");
+    }
 }

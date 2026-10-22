@@ -1,5 +1,7 @@
 //! The wire is the arbiter, read in both directions before any surface is asserted.
 
+use alloc::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
@@ -65,6 +67,33 @@ enum SkippedUntaggedField {
     },
 }
 
+/// What a variant of [`SkippedVariants`] holds: a map's entries, which no tag sits beside.
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct SkippedTally {
+    #[serde(flatten)]
+    counts: BTreeMap<String, u8>,
+}
+
+/// Variants serde neither writes nor reads, each holding what cannot sit beside a tag alone.
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(tag = "kind")]
+enum SkippedVariants {
+    #[serde(skip)]
+    Counted(SkippedTally),
+    #[serde(skip)]
+    Hidden(String),
+    Open {
+        note: String,
+    },
+    #[serde(skip)]
+    Spare {
+        #[serde(flatten)]
+        counts: BTreeMap<String, u8>,
+    },
+}
+
 fn skipped_field() -> SkippedField {
     SkippedField {
         id: "1".to_owned(),
@@ -83,6 +112,56 @@ fn the_skipped_key_is_written_in_no_payload_and_read_out_of_none() {
     assert_eq!(supplied.internal, Vec::<String>::new());
     let absent = serde_json::from_str::<SkippedField>(r#"{"id":"1"}"#).unwrap();
     assert_eq!(absent.internal, Vec::<String>::new());
+}
+
+/// serde writes and reads the variant it does not skip, and neither writes nor reads the others:
+/// what they hold sits beside no tag, so the enum builds.
+#[test]
+fn a_skipped_variant_is_written_in_no_payload_and_read_out_of_none() {
+    let open = SkippedVariants::Open {
+        note: "a".to_owned(),
+    };
+    assert_eq!(
+        serde_json::to_string(&open).unwrap(),
+        r#"{"kind":"Open","note":"a"}"#,
+        "serde writes the variant it does not skip"
+    );
+    assert_eq!(
+        serde_json::from_str::<SkippedVariants>(r#"{"kind":"Open","note":"a"}"#).unwrap(),
+        open,
+        "serde reads the variant it does not skip"
+    );
+    let skipped = [
+        SkippedVariants::Hidden("h".to_owned()),
+        SkippedVariants::Spare {
+            counts: BTreeMap::from([("north".to_owned(), 2)]),
+        },
+        SkippedVariants::Counted(SkippedTally {
+            counts: BTreeMap::new(),
+        }),
+    ];
+    for value in skipped {
+        assert!(
+            serde_json::to_string(&value)
+                .unwrap_err()
+                .to_string()
+                .ends_with("cannot be serialized"),
+            "serde writes no {value:?}"
+        );
+    }
+    for payload in [
+        r#"{"kind":"Hidden"}"#,
+        r#"{"kind":"Spare","north":2}"#,
+        r#"{"kind":"Counted"}"#,
+    ] {
+        assert!(
+            serde_json::from_str::<SkippedVariants>(payload)
+                .unwrap_err()
+                .to_string()
+                .starts_with("unknown variant"),
+            "serde reads no {payload}"
+        );
+    }
 }
 
 /// The halves written side by side produce that same pair, so they owe the same surfaces.
