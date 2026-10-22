@@ -97,7 +97,8 @@ use crate::utils::{
     Declared, NonObjectWire, TrivialPattern, WireLeaf, forget_field_validators,
     is_recorded_plain_enum, record_declared, record_field_validator,
     record_flattened_beside_parameters, record_non_object_wire, record_open_map,
-    record_open_map_parameters, record_plain_enum, recorded_non_object_wire, trivial_pattern,
+    record_open_map_parameters, record_plain_enum, record_value_parameter,
+    recorded_non_object_wire, trivial_pattern, value_parameter,
 };
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
@@ -806,6 +807,32 @@ enum TaggedContent {
     /// serde writes it, but its members are not a set the expansion can name, so no schema closed
     /// around the tag can admit them.
     Unnameable(&'static str),
+}
+
+/// The lone slot of a newtype variant under a tag alone: its type as written, and the def it is
+/// read as.
+#[cfg(feature = "serde")]
+#[derive(Clone, Copy)]
+struct TaggedSlot<'slot> {
+    inner: &'slot FieldDef,
+    written: &'slot syn::Type,
+}
+
+#[cfg(feature = "serde")]
+impl<'slot> TaggedSlot<'slot> {
+    /// The name a refusal quotes the slot's type by, beside the filling serde writes its value as:
+    /// the type's name and no filling, or, where serde writes the type as what fills its type
+    /// parameter, the type with the arguments written for it beside that filling. `None` for a
+    /// slot that names no type.
+    fn read(self) -> Option<(String, Option<&'slot FieldDef>)> {
+        let FieldDefType::SiblingType(inner_name, _) = &self.inner.field_type else {
+            return None;
+        };
+        Some(value_filling(self.inner).map_or_else(
+            || (inner_name.clone(), None),
+            |filling| (filled_spelling(self.written, inner_name), Some(filling)),
+        ))
+    }
 }
 
 /// What `decode_with` adds to an item, both empty without the flag.
@@ -3530,6 +3557,7 @@ fn record_item(item: &Item) {
         record_flattened_beside_parameters(&name, ranges::flattened_beside_parameters_of(item));
         record_plain_enum(&name, written_as_a_variant_name(item));
         record_non_object_wire(&name, non_object_wire(item));
+        record_value_parameter(&name, value_parameter_position(item));
     }
 }
 
@@ -3547,11 +3575,7 @@ fn non_object_wire(item: &Item) -> NonObjectWire {
     };
     let mut wire = NonObjectWire::default();
     if let Item::Struct(item_struct) = item {
-        let held = brand_field(item_struct).or_else(|| match &item_struct.fields {
-            syn::Fields::Unnamed(slots) if slots.unnamed.len() == 1 => slots.unnamed.first(),
-            syn::Fields::Named(_) | syn::Fields::Unnamed(_) | syn::Fields::Unit => None,
-        });
-        if let Some(slot) = held {
+        if let Some(slot) = written_as_its_slot(item_struct) {
             let value = written(&slot.ty);
             wire.leaves = published_wire_leaves(&value, written_leaves);
             wire.optional = writes_an_optional(&value);
@@ -3606,6 +3630,65 @@ fn non_object_wire(item: &Item) -> NonObjectWire {
         // Nothing else is expanded.
     }
     wire
+}
+
+/// The field serde writes a value of `item_struct` as: a brand's, or the one slot of a tuple
+/// struct.
+#[cfg(feature = "serde")]
+fn written_as_its_slot(item_struct: &syn::ItemStruct) -> Option<&syn::Field> {
+    brand_field(item_struct).or_else(|| match &item_struct.fields {
+        syn::Fields::Unnamed(slots) if slots.unnamed.len() == 1 => slots.unnamed.first(),
+        syn::Fields::Named(_) | syn::Fields::Unnamed(_) | syn::Fields::Unit => None,
+    })
+}
+
+/// The position among `item`'s type parameters of the one serde writes a value of `item` as: a
+/// brand's, a struct of one slot's or an alias's value that is that parameter under the
+/// transparent wrappers, or a type declared above filled with it where [`value_parameter`] holds.
+#[cfg(feature = "serde")]
+fn value_parameter_position(item: &Item) -> Option<usize> {
+    let value = if let Item::Struct(item_struct) = item {
+        &written_as_its_slot(item_struct)?.ty
+    } else if let Item::Type(alias) = item {
+        &*alias.ty
+    } else {
+        return None;
+    };
+    let parameters = item_generics(item).map_or_else(Vec::new, type_parameters_in_scope);
+    let mut def = get_field_def("_written", value, "");
+    def.erase_type_parameters(&parameters);
+    let filling = value_filling(&def).unwrap_or(&def);
+    if filling.is_optional() || filling.array_depth > 0 {
+        return None;
+    }
+    let FieldDefType::TypeParam(name) = &filling.field_type else {
+        return None;
+    };
+    parameters.iter().position(|parameter| parameter == name)
+}
+
+/// What fills the type parameter of the type declared above that `def` names, where serde writes
+/// a value of that type as the parameter's filling, read on through each such type the filling
+/// names in turn, and `None` for a `def` that names no such type.
+#[cfg(feature = "serde")]
+fn value_filling(def: &FieldDef) -> Option<&FieldDef> {
+    let mut filling = filled_argument(def)?;
+    while let Some(deeper) = filled_argument(filling) {
+        filling = deeper;
+    }
+    Some(filling)
+}
+
+/// The argument `def` fills the type it names with, at the position [`value_parameter`] records.
+#[cfg(feature = "serde")]
+fn filled_argument(def: &FieldDef) -> Option<&FieldDef> {
+    if def.is_optional() || def.array_depth > 0 {
+        return None;
+    }
+    let FieldDefType::SiblingType(name, arguments) = &def.field_type else {
+        return None;
+    };
+    arguments.get(value_parameter(name)?)
 }
 
 /// Whether serde writes a value of `def` as an `Option`: `def` is one, or names a type declared
@@ -11119,6 +11202,10 @@ fn internally_tagged_guard_errors(
             {
                 return Some(refused);
             }
+            let slot = TaggedSlot {
+                inner: &inner,
+                written: &field.ty,
+            };
             let message = match content {
                 TaggedContent::Flattened => match flattened_plain_enum(&inner) {
                     Some(inner_name) => format!(
@@ -11130,9 +11217,9 @@ fn internally_tagged_guard_errors(
                          object of its own, or wrap it in a struct whose fields can sit beside the \
                          tag. {FLATTENED_PLAIN_ENUM_SCOPE}"
                     ),
-                    None => tagged_non_object_message(variant_name, enum_name, tag_name, &inner)
+                    None => tagged_non_object_message(variant_name, enum_name, tag_name, slot)
                         .or_else(|| {
-                            tagged_optional_message(variant_name, enum_name, tag_name, &inner)
+                            tagged_optional_message(variant_name, enum_name, tag_name, slot)
                         })?,
                 },
                 TaggedContent::Refused(shape) => format!(
@@ -11159,20 +11246,57 @@ fn internally_tagged_guard_errors(
         .collect()
 }
 
+/// The type `written` names under its transparent wrappers and references, spelled with the
+/// arguments its author fills it with, and `named` where no path is written there.
+#[cfg(feature = "serde")]
+fn filled_spelling(written: &syn::Type, named: &str) -> String {
+    let mut current = written_type(written);
+    loop {
+        if let syn::Type::Reference(reference) = current {
+            current = written_type(&reference.elem);
+        } else if let syn::Type::Path(path) = current
+            && let Some(last) = path.path.segments.last()
+        {
+            if is_transparent_wrapper(&last.ident.to_string())
+                && let Some(held) = type_arguments_of(&last.arguments).next()
+            {
+                current = written_type(held);
+            } else {
+                return written_spelling(last);
+            }
+        } else {
+            return named.to_owned();
+        }
+    }
+}
+
+/// How serde writes `filling`, the argument a generic type writes as its own value, where it
+/// writes it as no object: a name as [`written_non_object`] reads it, and a string, a number, a
+/// `bool`, a list or a tuple by its JSON type keyword. `None` for an `Option`, which
+/// [`tagged_optional_message`] answers.
+#[cfg(feature = "serde")]
+fn filled_non_object(filling: &FieldDef) -> Option<NonObject> {
+    if filling.is_optional() {
+        return None;
+    }
+    written_non_object(filling)
+        .or_else(|| written_non_object_wire(filling, written_leaves).map(NonObject::Whole))
+}
+
 /// The refusal of a newtype variant under a tag alone whose slot names a type declared above that
 /// `NON_OBJECT_WIRES` proves serde writes as no object, read as [`flatten_edge_guard_error`] reads
-/// it, and `None` for every other slot.
+/// it, or a generic type declared above that serde writes as what fills its type parameter,
+/// filled there with a value serde writes as no object. `None` for every other slot.
 #[cfg(feature = "serde")]
 fn tagged_non_object_message(
     variant_name: &syn::Ident,
     enum_name: &syn::Ident,
     tag_name: &str,
-    inner: &FieldDef,
+    slot: TaggedSlot<'_>,
 ) -> Option<String> {
-    let FieldDefType::SiblingType(inner_name, _) = &inner.field_type else {
-        return None;
-    };
-    let written = match written_non_object(inner)? {
+    let (inner_name, filling) = slot.read()?;
+    let non_object = filling.map_or_else(|| written_non_object(slot.inner), filled_non_object);
+    let written = match non_object? {
         NonObject::Branch(branch, named) => format!(
             "writes a union member that is not an object — its branch {branch} describes a \
              `{named}`"
@@ -11192,19 +11316,18 @@ fn tagged_non_object_message(
 }
 
 /// The refusal of a newtype variant under a tag alone whose slot names a type declared above that
-/// serde writes as an `Option`, which the tag refuses for `Some` and `None` alike, and `None` for
-/// every other slot.
+/// serde writes as an `Option`, or a generic type declared above that serde writes as what fills
+/// its type parameter, filled there with an `Option` or such a type, which the tag refuses for
+/// `Some` and `None` alike. `None` for every other slot.
 #[cfg(feature = "serde")]
 fn tagged_optional_message(
     variant_name: &syn::Ident,
     enum_name: &syn::Ident,
     tag_name: &str,
-    inner: &FieldDef,
+    slot: TaggedSlot<'_>,
 ) -> Option<String> {
-    let FieldDefType::SiblingType(inner_name, _) = &inner.field_type else {
-        return None;
-    };
-    writes_an_optional(inner).then(|| {
+    let (inner_name, filling) = slot.read()?;
+    writes_an_optional(filling.unwrap_or(slot.inner)).then(|| {
         format!(
             "model_schema: variant `{variant_name}` of internally tagged enum `{enum_name}` wraps \
              `{inner_name}`, which serde writes as an optional, which cannot sit beside the tag: \
