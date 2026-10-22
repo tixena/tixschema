@@ -1301,7 +1301,7 @@ fn range_decode(kind: RangeKind, bound: &FieldDef, expr: &str, read: Read) -> St
         .join(", ");
     format!(
         "switch ({expr} as Map<String, dynamic>) {{ final {object} when {object}.keys.every((key) \
-         => {written}) => ({rendered}), final {object} => throw ArgumentError('Unknown key of a \
+         => {written}) => ({rendered}), final {object} => throw FormatException('Unknown key of a \
          {}: ${{{object}.keys}}') }}",
         kind.name()
     )
@@ -1392,7 +1392,7 @@ fn result_decode(ok: &FieldDef, err: &FieldDef, expr: &str, read: Read) -> Strin
     });
     format!(
         "switch ({expr} as Map<String, dynamic>) {{ {}, final {object} => throw \
-         ArgumentError('Not a Result: ${{{object}.keys}}') }}",
+         FormatException('Not a Result: ${{{object}.keys}}') }}",
         arms.collect::<Vec<_>>().join(", ")
     )
 }
@@ -3405,7 +3405,7 @@ fn tagged_enum_dart_source(
             // it writes flattened.
             map_dispatch_arms.push(format!(
                 "case {}: return {map}[{tag}] == null ? {from_json} : throw \
-                 ArgumentError('{export_name}: ' + {tag} + ' takes no value');",
+                 FormatException('{export_name}: ' + {tag} + ' takes no value');",
                 any_of(&names),
                 map = corrects.map,
                 tag = corrects.tag,
@@ -3425,10 +3425,10 @@ fn tagged_enum_dart_source(
             "",
             format!(
                 "if ({json} is String) {{ switch ({json}) \
-                 {{ {} default: throw ArgumentError('Unknown {export_name}: ' + {json}); }} }} \
+                 {{ {} default: throw FormatException('Unknown {export_name}: ' + {json}); }} }} \
                  final {map} = {json} as Map<String, dynamic>; final {tag} = {map}.keys.first; \
                  switch ({tag}) \
-                 {{ {} default: throw ArgumentError('Unknown {export_name}: ' + {tag}); }}",
+                 {{ {} default: throw FormatException('Unknown {export_name}: ' + {tag}); }}",
                 is_string_dispatch_arms.join(" "),
                 map_dispatch_arms.join(" "),
             ),
@@ -3439,7 +3439,7 @@ fn tagged_enum_dart_source(
             " as Map<String, dynamic>",
             format!(
                 "final {tag} = {json}['{tag_key}'] as String; switch ({tag}) {{ {} default: \
-                 throw ArgumentError('Unknown {export_name}: ' + {tag}); }}",
+                 throw FormatException('Unknown {export_name}: ' + {tag}); }}",
                 map_dispatch_arms.join(" "),
             ),
         )
@@ -3551,7 +3551,7 @@ fn untagged_enum_dart_source(
         "",
         true,
         &Answer::Statements(format!(
-            "{} throw ArgumentError('No variant of {export_name} matched');",
+            "{} throw FormatException('No variant of {export_name} matched');",
             attempts.join(" ")
         )),
     );
@@ -3624,7 +3624,7 @@ fn plain_enum_dart_source(
         " as String",
         true,
         &Answer::Value(format!(
-            "switch ({json}) {{ {match_arms} _ => throw ArgumentError('Unknown {export_name}: ' \
+            "switch ({json}) {{ {match_arms} _ => throw FormatException('Unknown {export_name}: ' \
              + {json}) }}"
         )),
     );

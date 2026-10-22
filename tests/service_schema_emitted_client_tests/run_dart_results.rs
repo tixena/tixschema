@@ -11,17 +11,18 @@ use super::result_models::{
     masthead_dart, missive_dart, notebook_dart, postbox_dart, reply_dart, ruling_dart,
     settlement_dart, summary_dart, turn_dart, unparsed_dart,
 };
-use super::result_rows::{declares_a_parameter, expected, rows};
+use super::result_rows::{declares_a_parameter, expected, judged, rows};
 use super::run_dart_validate::{dart, module};
 
 /// What prints a row: the value read, written back, or `refused`, with each message of what
-/// `validate()` refused.
+/// `validate()` refused where the type judges a model or a brand it holds.
 const ROW: &str = "
-void row(String name, Object? Function() written) {
+void row(String name, bool judged, Object? Function() written) {
   try {
     print('$name: read ${jsonEncode(written())}');
   } on FormatException catch (refused) {
     print('$name: refused');
+    if (!judged) return;
     for (final violation in refused.message.split('; ')) {
       print('    $violation');
     }
@@ -46,8 +47,11 @@ fn source() -> String {
         };
         let _ = writeln!(
             written,
-            "  row('{}', () => {}.fromJson(jsonDecode(r'{}'){converted}).toJson({write}));",
-            row.name, row.read_as, row.json
+            "  row('{}', {}, () => {}.fromJson(jsonDecode(r'{}'){converted}).toJson({write}));",
+            row.name,
+            judged(row.read_as),
+            row.read_as,
+            row.json
         );
         written
     });
@@ -110,7 +114,7 @@ fn the_emitted_results_have_no_issue() {
     let analyzed = module(
         &analyzed_definitions(),
         &[ROW],
-        "void main() => row('a list', () => jsonDecode('[]'));\n",
+        "void main() => row('a list', false, () => jsonDecode('[]'));\n",
     );
     let Some((clean, said)) = dart("results-analyze", &["analyze"], &analyzed) else {
         return;
