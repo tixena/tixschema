@@ -162,7 +162,7 @@ enum Wrapped {
     },
     /// The one slot of a tuple struct that declares one, which serde writes as the struct.
     Slot,
-    /// The tuple of a tuple struct of several slots.
+    /// The tuple of a tuple struct of several slots, or of none, which serde writes as `[]`.
     Tuple,
 }
 
@@ -704,7 +704,7 @@ pub fn swift_member(name: &str) -> String {
 
 /// `name`, a key or a name serde writes, as a Swift string literal, which reads `\` as an escape
 /// and `"` as its end.
-fn swift_quoted(name: &str) -> String {
+pub fn swift_quoted(name: &str) -> String {
     format!("\"{}\"", swift_literal_text(name))
 }
 
@@ -1201,12 +1201,21 @@ fn tuple_struct(
             acc
         });
     let length = elements.len();
+    // The struct of a tuple struct of no slot reads and writes nothing through its container.
+    let (read_through, written) = if elements.is_empty() {
+        ("let", "_ = encoder.unkeyedContainer();".to_owned())
+    } else {
+        (
+            "var",
+            format!("var container = encoder.unkeyedContainer(); {encode_calls}"),
+        )
+    };
     let both = read::both(
         &format!(
-            "var container = try decoder.unkeyedContainer(); if let count = container.count, \
-             count != {length} {{ throw DecodingError.dataCorrupted(DecodingError.Context(\
-             codingPath: container.codingPath, debugDescription: \"invalid length \\(count), \
-             expected {length}\")) }}; {reads}"
+            "{read_through} container = try decoder.unkeyedContainer(); if let count = \
+             container.count, count != {length} {{ throw DecodingError.dataCorrupted(\
+             DecodingError.Context(codingPath: container.codingPath, debugDescription: \"invalid \
+             length \\(count), expected {length}\")) }}; {reads}"
         ),
         &preprocess::Written {
             named: struct_name,
@@ -1220,9 +1229,33 @@ fn tuple_struct(
          public init({ctor_params}) {{ {ctor_assigns} }}; \
          {both}\
          public func encode(to encoder: Encoder) throws {{ \
-         var container = encoder.unkeyedContainer(); \
-         {encode_calls} }}; {validate} }};"
+         {written} }}; {validate} }};"
     )
+}
+
+/// The struct `{name_hint}Tuple` a `()` leaf is held as: read from the `null` serde writes for
+/// `()` and from nothing else, and written as `null`.
+fn unit_shape(name_hint: &str, aux: &mut Vec<String>) -> SwiftFieldShape {
+    let struct_name = format!("{name_hint}Tuple");
+    let both = read::both(
+        "let unit = try decoder.singleValueContainer(); guard unit.decodeNil() else { let found \
+         = try JSONSerialization.data(withJSONObject: SwiftSchemaPayload(from: decoder).value, \
+         options: [.fragmentsAllowed, .sortedKeys, .withoutEscapingSlashes]); throw \
+         DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
+         debugDescription: \"invalid type: \\(String(decoding: found, as: UTF8.self)), expected \
+         unit\")) }",
+        &preprocess::Written {
+            named: &struct_name,
+            ..preprocess::Written::default()
+        },
+    );
+    aux.push(format!(
+        "public struct {struct_name}: Codable, Sendable {{ public init() {{}}; {both}\
+         public func encode(to encoder: Encoder) throws {{ var container = \
+         encoder.singleValueContainer(); try container.encodeNil() }}; {} }};",
+        validate::method(&[])
+    ));
+    direct_shape(struct_name)
 }
 
 /// `field`'s shape before array/optional wrapping: the property type, the type a `container` call
@@ -1233,6 +1266,7 @@ fn swift_field_shape(field: &FieldDef, name_hint: &str, aux: &mut Vec<String>) -
         // A type written as no path, a function pointer or a macro among them.
         FieldDefType::Unknown => direct_shape("String".to_owned()),
         FieldDefType::TypeParam(name) => direct_shape(name.clone()),
+        FieldDefType::Tuple(elements) if elements.is_empty() => unit_shape(name_hint, aux),
         FieldDefType::Tuple(elements) => tuple_shape(elements, name_hint, aux),
         FieldDefType::Range(kind, bound) => range_shape(*kind, bound, name_hint, aux),
         FieldDefType::Result(ok, err) => result_shape(ok, err, name_hint, aux),
@@ -3132,7 +3166,15 @@ fn value_wrapper_tokens(
     let (real_type, shaped) = if matches!(wrapped, Wrapped::Slot) {
         slot_resolve(value_field, &export_name, &mut aux)
     } else {
-        let (real_type, shape) = swift_resolve(value_field, &export_name, &mut aux);
+        let (real_type, shape) = match (wrapped, &value_field.field_type) {
+            // The slots of a tuple struct are read from an array, an empty one where there are
+            // none, which is not the `null` of `()`.
+            (Wrapped::Tuple, FieldDefType::Tuple(slots)) => {
+                let shape = tuple_shape(slots, &export_name, &mut aux);
+                (shape.real_leaf.clone(), shape)
+            }
+            _ => swift_resolve(value_field, &export_name, &mut aux),
+        };
         (
             real_type,
             Shaped {

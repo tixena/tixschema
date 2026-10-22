@@ -139,6 +139,15 @@ enum VariantPayload {
     Value(Box<FieldDef>),
 }
 
+/// What the class [`value_wrapper_tokens`] writes holds as its `value`.
+enum Held<'held> {
+    /// The slots of a tuple struct that is no brand, read from and written as the array serde
+    /// writes them in, an empty one for a struct of no slot.
+    Slots(&'held [FieldDef]),
+    /// A value, read and written as its type is.
+    Value(&'held FieldDef),
+}
+
 /// The generic converter parameters a `fromJson`/`toJson` pair threads through, beyond its own
 /// primary argument — one pair per type parameter, since a Dart function value cannot itself be
 /// generic the way the class it decodes can be. Shared by every generic struct, branded newtype,
@@ -423,6 +432,11 @@ thread_local! {
     /// variant as its bare name: what a holder that flattens one writes as an entry over `null`.
     static DART_WRITES_A_NAME: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
 
+    /// Each brand and alias a class has been emitted for whose value is `()`, or another such
+    /// type, and each untagged enum with a variant over one: its read takes the `null` an absent
+    /// key reads as, which its holder refuses.
+    static DART_READS_A_UNIT: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+
     /// The name of each function the reads of the item being emitted call: what its `preprocess`
     /// names, and that of each of its members.
     static DART_CALLED: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
@@ -661,7 +675,7 @@ fn any_of(names: &[String]) -> String {
 
 /// `name`, a key or a name serde writes, as a Dart string literal between single quotes, which
 /// reads `$` as an interpolation and `\` as an escape.
-fn quoted(name: &str) -> String {
+pub fn quoted(name: &str) -> String {
     format!("'{}'", dart_escaped(name, '\''))
 }
 
@@ -766,6 +780,31 @@ fn record_writes_a_name(rust_ident: &str) {
     DART_WRITES_A_NAME.with(|recorded| {
         recorded.borrow_mut().insert(rust_ident.to_owned());
     });
+}
+
+/// Records whether the class emitted for `rust_ident` reads a value `reads_a_unit` answers for.
+fn note_reads_a_unit(rust_ident: &str, reads: bool) {
+    DART_READS_A_UNIT.with(|recorded| {
+        if reads {
+            recorded.borrow_mut().insert(rust_ident.to_owned());
+        } else {
+            recorded.borrow_mut().remove(rust_ident);
+        }
+    });
+}
+
+/// Whether a value typed `def` is `()`, or a type emitted above that `DART_READS_A_UNIT` notes:
+/// its read takes `null`, and so the `null` an absent key reads as.
+fn reads_a_unit(def: &FieldDef) -> bool {
+    def.is_unit()
+        || matches!(
+            &def.field_type,
+            FieldDefType::SiblingType(name, generics)
+                if generics.is_empty()
+                    && def.array_depth == 0
+                    && def.nullable_levels.is_empty()
+                    && DART_READS_A_UNIT.with(|recorded| recorded.borrow().contains(name))
+        )
 }
 
 /// Whether a member typed `def`, flattened into its holder, writes a unit variant as its bare name,
@@ -972,18 +1011,7 @@ fn dart_base(field: &FieldDef) -> String {
         // An opaque type parameter (`FieldDef::opaque_parameters`), and a type written as no path.
         FieldDefType::Unknown => "dynamic".to_owned(),
         FieldDefType::TypeParam(name) => name.clone(),
-        FieldDefType::Tuple(elements) => {
-            let rendered = elements
-                .iter()
-                .map(dart_typename)
-                .collect::<Vec<_>>()
-                .join(", ");
-            if elements.len() == 1 {
-                format!("({rendered},)")
-            } else {
-                format!("({rendered})")
-            }
-        }
+        FieldDefType::Tuple(elements) => tuple_typename(elements),
         FieldDefType::Range(kind, bound) => {
             let held = dart_typename(bound);
             let rendered = kind
@@ -1062,6 +1090,20 @@ fn dart_base(field: &FieldDef) -> String {
         };
         format!("List<{item}>")
     })
+}
+
+/// The Dart record of `elements`, one position each: `()` for none, which is `()`'s type.
+fn tuple_typename(elements: &[FieldDef]) -> String {
+    let rendered = elements
+        .iter()
+        .map(dart_typename)
+        .collect::<Vec<_>>()
+        .join(", ");
+    if elements.len() == 1 {
+        format!("({rendered},)")
+    } else {
+        format!("({rendered})")
+    }
 }
 
 /// The key type a `Map<…>` is written with — the key's own semantic Dart type, since (unlike
@@ -1247,6 +1289,7 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
         // An opaque type parameter (`FieldDef::opaque_parameters`), and a type written as no path.
         FieldDefType::Unknown => expr.to_owned(),
         FieldDefType::TypeParam(name) => format!("{}({expr})", from_json_argument(name)),
+        FieldDefType::Tuple(elements) if elements.is_empty() => unit_decode(expr),
         FieldDefType::Tuple(elements) => tuple_decode(elements, expr, read),
         FieldDefType::Range(kind, bound) => range_decode(*kind, bound, expr, read),
         FieldDefType::Result(ok, err) => result_decode(ok, err, expr, read),
@@ -1346,6 +1389,48 @@ fn tuple_decode(elements: &[FieldDef], expr: &str, read: Read) -> String {
         "switch ({expr} as List<dynamic>) {{ final {array} when {array}.length == {length} => \
          {record}, final {array} => throw FormatException('invalid length ${{{array}.length}}, \
          expected {length}') }}"
+    )
+}
+
+/// The array the record `expr` of `elements` is written as, each position written as its element.
+fn tuple_encode(elements: &[FieldDef], expr: &str) -> String {
+    let rendered = elements
+        .iter()
+        .enumerate()
+        .map(|(index, element)| {
+            dart_encode_expr(element, &format!("({expr}).${}", index + 1), false)
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("[{rendered}]")
+}
+
+/// `decode`, the read of `field` under `key` of an object, refused where the object does not hold
+/// `key` (`held`) and `field` reads a `()`: an absent key reads as the `null` `()` is read from,
+/// where serde refuses it. A read under no key is `decode` as it is.
+fn keyed_decode(field: &FieldDef, decode: String, held: Option<&str>, key: Option<&str>) -> String {
+    match (held, key) {
+        (Some(holds), Some(named)) if reads_a_unit(field) => format!(
+            "({holds} ? {decode} : throw FormatException('missing field `{}`'))",
+            dart_escaped(named, '\'')
+        ),
+        _ => decode,
+    }
+}
+
+/// The read of a variant's one value from `source`, under the content key `key` where it has one:
+/// [`member_decode`], held to the key by [`keyed_decode`].
+fn content_decode(field: &FieldDef, source: &str, held: Option<&str>, key: Option<&str>) -> String {
+    let read = member_decode(field, source, held, Read::Unjudged.of_member(field));
+    keyed_decode(field, read, held, key)
+}
+
+/// `()` read from `expr`: the `null` serde writes for it, and nothing else, as serde reads it.
+fn unit_decode(expr: &str) -> String {
+    let unit = declared("unit");
+    format!(
+        "switch ({expr}) {{ null => (), final {unit} => throw FormatException('invalid type: \
+         ${{jsonEncode({unit})}}, expected unit') }}"
     )
 }
 
@@ -1683,17 +1768,8 @@ fn dart_encode_at(field: &FieldDef, level: u8, expr: &str) -> String {
         // An opaque type parameter (`FieldDef::opaque_parameters`), and a type written as no path.
         FieldDefType::Unknown => expr.to_owned(),
         FieldDefType::TypeParam(name) => format!("{}({expr})", dart_to_json_argument(name)),
-        FieldDefType::Tuple(elements) => {
-            let rendered = elements
-                .iter()
-                .enumerate()
-                .map(|(index, element)| {
-                    dart_encode_expr(element, &format!("({expr}).${}", index + 1), false)
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!("[{rendered}]")
-        }
+        FieldDefType::Tuple(elements) if elements.is_empty() => "null".to_owned(),
+        FieldDefType::Tuple(elements) => tuple_encode(elements, expr),
         FieldDefType::Range(kind, bound) => {
             let rendered = kind
                 .members()
@@ -2730,7 +2806,12 @@ fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>
                         dart_decode_expr(&field.field_def, &format!("jsonDecode('{at}')"), read);
                     format!("{held} ? ({present}) : ({absent})")
                 }
-                None => present,
+                None => keyed_decode(
+                    &field.field_def,
+                    present,
+                    Some(&held),
+                    Some(&field.wire_name),
+                ),
             }
         };
         write!(acc, "{}: {decode},", field.member).unwrap();
@@ -2929,7 +3010,7 @@ fn struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -> Toke
             &item_struct.ident,
             &item_struct.generics,
             args.name_override,
-            &value_field,
+            &Held::Value(&value_field),
             Read::Judged,
             &Corrects::of(args.preprocess),
             &brand_validate(&value_field, args),
@@ -3028,15 +3109,15 @@ fn brand_value_field(
 }
 
 /// The Dart tokens for a value that carries one wrapped value on the wire: a branded newtype, a
-/// single-slot tuple struct, or a type alias. Each publishes a class wrapping `value`, whose
-/// reads and `toJson` delegate to `value_field`'s own, and whose `validate()` is `validate`.
+/// tuple struct, or a type alias. Each publishes a class wrapping `value`, whose reads and
+/// `toJson` delegate to what `held` reads and writes, and whose `validate()` is `validate`.
 /// `read` is how a declared type the value holds is read, which is unjudged where `validate`
 /// runs it. The unjudged read calls what `corrects` names on the payload it takes.
 fn value_wrapper_tokens(
     ident: &Ident,
     generics: &syn::Generics,
     name_override: Option<&str>,
-    value_field: &FieldDef,
+    held: &Held<'_>,
     read: Read,
     corrects: &Corrects<'_>,
     validate: &str,
@@ -3044,13 +3125,26 @@ fn value_wrapper_tokens(
     let rust_ident = ident.to_string();
     let export_name = compute_item_export_name(&rust_ident, name_override);
     register_dart_name(&rust_ident, &export_name);
+    note_reads_a_unit(
+        &rust_ident,
+        matches!(held, Held::Value(value_field) if reads_a_unit(value_field)),
+    );
 
     let generic_params = dart_generic_params(generics);
     let parameters = type_parameters_in_scope(generics);
     let codec = generic_codec(&parameters);
-    let decode = dart_decode_expr(value_field, &corrects.json, read);
-    let encode = dart_encode_expr(value_field, "value", false);
-    let value_ty = dart_typename(value_field);
+    let (value_ty, decode, encode) = match held {
+        Held::Slots(slots) => (
+            tuple_typename(slots),
+            tuple_decode(slots, &corrects.json, read),
+            tuple_encode(slots, "value"),
+        ),
+        Held::Value(value_field) => (
+            dart_typename(value_field),
+            dart_decode_expr(value_field, &corrects.json, read),
+            dart_encode_expr(value_field, "value", false),
+        ),
+    };
     let unjudged = unjudged_read(
         corrects,
         "",
@@ -3076,7 +3170,7 @@ fn value_wrapper_tokens(
 
 /// The Dart tokens for a non-branded tuple struct: the single-slot ("bare value") shape shares
 /// [`value_wrapper_tokens`] with a branded newtype; a wider tuple struct wraps the fixed-size Dart
-/// record its slots describe.
+/// record its slots describe, and one of no slot the empty record, read from the empty array.
 fn tuple_struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -> TokenStream {
     let type_parameters = type_parameters_in_scope(&item_struct.generics);
     let Fields::Unnamed(unnamed) = &item_struct.fields else {
@@ -3100,27 +3194,11 @@ fn tuple_struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -
         slot_elements(&slots, "value", &[], 0, Asked::Rules, &mut helpers)
     };
     rules.extend(own_check_elements(args.check));
-    let tuple_field = FieldDef {
-        absent_from_wire: false,
-        array_depth: 0,
-        array_lengths: Vec::new(),
-        docs: String::new(),
-        field_type: FieldDefType::Tuple(slots),
-        model_schema_prop_meta: None,
-        name: "value".to_owned(),
-        nullable_levels: Vec::new(),
-        omits_value: false,
-        #[cfg(any(feature = "zod", feature = "jsonschema"))]
-        serde_default: None,
-        set_levels: Vec::new(),
-        #[cfg(feature = "jsonschema")]
-        type_span: proc_macro2::Span::call_site(),
-    };
     value_wrapper_tokens(
         &item_struct.ident,
         &item_struct.generics,
         args.name_override,
-        &tuple_field,
+        &Held::Slots(&slots),
         Read::Unjudged,
         &Corrects::of(args.preprocess),
         &validate_members(&rules, &helpers, false),
@@ -3147,7 +3225,7 @@ fn alias_dart_tokens(item_type: &ItemType, name_override: Option<&str>) -> Token
         &item_type.ident,
         &item_type.generics,
         Some(&export_name),
-        &target,
+        &Held::Value(&target),
         if named { Read::Unjudged } else { Read::Judged },
         // An alias is refused a `preprocess`: it has no read of its own.
         &Corrects::of(&[]),
@@ -3418,12 +3496,7 @@ fn tagged_variant_tokens(
             } else {
                 payload_expr
             };
-            let decode = member_decode(
-                field_def,
-                &source,
-                held.as_deref(),
-                Read::Unjudged.of_member(field_def),
-            );
+            let decode = content_decode(field_def, &source, held.as_deref(), shape.content_key);
             let own_encode = dart_encode_expr(field_def, "value", false);
             let wrapped_encode = if shape.merge_tag_into_object {
                 // Internal tagging with a non-`Named` payload: serde admits only an object-shaped
@@ -3591,10 +3664,12 @@ fn untagged_enum_dart_source(
 
     let mut subclasses = Vec::new();
     let mut attempts = Vec::new();
+    let mut reads_unit = false;
     for variant in &item_enum.variants {
         let variant_rust_name = variant.ident.to_string();
         let subclass_name = format!("{export_name}{variant_rust_name}");
         let payload = variant_payload(variant, field_rule, &type_parameters, args, defaults);
+        reads_unit |= matches!(&payload, VariantPayload::Value(held) if reads_a_unit(held));
         let bounds = variant_bounds(&payload);
         // serde writes an untagged variant as its value, so no step leads to its members.
         let validate = format!(
@@ -3659,6 +3734,7 @@ fn untagged_enum_dart_source(
         });
     }
 
+    note_reads_a_unit(rust_ident, reads_unit);
     let unjudged = unjudged_read(
         &corrects,
         "",

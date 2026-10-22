@@ -5,7 +5,7 @@
 use super::result::result_name;
 use crate::features::dart::{
     dart_field_member, dart_fields_of, dart_json_decode, dart_json_encode, dart_local,
-    dart_typename,
+    dart_typename, quoted,
 };
 use crate::field_type::{FieldDefType, get_field_def};
 use crate::rename_rule::RenameRule;
@@ -263,7 +263,7 @@ pub(super) fn carries_no_value(operation: &OperationDef, shape: &HttpShape) -> b
 
 fn method(named: &str, fn_prefix: &str, operation: &OperationDef) -> String {
     let shape = HttpShape::of(operation);
-    let wire = &operation.wire_name;
+    let wire = &quoted(&operation.wire_name);
     let call = dart_call(operation);
     let params = method_params(operation, &shape);
     let returns = return_type(named, operation);
@@ -395,18 +395,18 @@ fn header_in_build_stmt(
     }
     let mut stmt = String::from("    final headers = <(String, String)>[];\n");
     for header in &shape.header_in {
-        let name = &header.name;
+        let name = quoted(&header.name);
         let parameter = dart_parameter(&header.parameter);
         let fault_expr = format!(
-            "_{fn_prefix}HttpOutboundFault('{}', '{name}', 'a header value contains a \
+            "_{fn_prefix}HttpOutboundFault({}, {name}, 'a header value contains a \
              character illegal in an HTTP header')",
-            operation.wire_name,
+            quoted(&operation.wire_name),
         );
         let refusal = outbound_refusal_stmt(named, operation, &fault_expr);
         let checked = format!(
             "      if (!_{fn_prefix}HttpLegalHeaderValue(rendered)) {{\n        {refusal}\n      \
              }}\n      \
-             headers.add(('{name}', rendered));\n"
+             headers.add(({name}, rendered));\n"
         );
         if let Some(inner) = option_inner(&header.ty) {
             let text = dart_wire_text(inner, &parameter, true);
@@ -479,9 +479,9 @@ fn multipart_parts_build_stmt(operation: &OperationDef, shape: &HttpShape) -> St
         }
     }
     for part in &shape.multipart_parts {
-        let name = &part.name;
+        let name = quoted(&part.name);
         let parameter = dart_parameter(&part.parameter);
-        let _ = writeln!(stmt, "    parts.add(('{name}', {parameter}));");
+        let _ = writeln!(stmt, "    parts.add(({name}, {parameter}));");
     }
     stmt
 }
@@ -499,7 +499,7 @@ fn send_stmt_one_way(named: &str, fn_prefix: &str, wire: &str, method_str: &str)
          try {{\n      \
          response = {send};\n    \
          }} catch (uncarried) {{\n      \
-         throw {named}HttpRefusal(_{fn_prefix}HttpTransportFailure('{wire}', '$uncarried'));\n    \
+         throw {named}HttpRefusal(_{fn_prefix}HttpTransportFailure({wire}, '$uncarried'));\n    \
          }}\n",
         send = send_expr(method_str),
     )
@@ -512,7 +512,7 @@ fn send_stmt_reply(result: &str, fn_prefix: &str, wire: &str, method_str: &str) 
          try {{\n      \
          response = {send};\n    \
          }} catch (uncarried) {{\n      \
-         return {result}Fault(_{fn_prefix}HttpTransportFailure('{wire}', '$uncarried'));\n    \
+         return {result}Fault(_{fn_prefix}HttpTransportFailure({wire}, '$uncarried'));\n    \
          }}\n",
         send = send_expr(method_str),
     )
@@ -524,10 +524,10 @@ fn one_way_decode_stmt(named: &str, fn_prefix: &str, shape: &HttpShape, wire: &s
         "    final status = response.status;\n    \
          if (status == {ok_status}) {{\n      return;\n    }}\n    \
          if (status == 400 || status == 404 || status == 500) {{\n      \
-         throw {named}HttpRefusal(_{fn_prefix}HttpFaultFromBody('{wire}', response.body));\n    \
+         throw {named}HttpRefusal(_{fn_prefix}HttpFaultFromBody({wire}, response.body));\n    \
          }}\n    \
          throw {named}HttpRefusal(\n      \
-         _{fn_prefix}HttpUndeserializablePayload('{wire}', 'an unexpected status ($status) answered'),\n    \
+         _{fn_prefix}HttpUndeserializablePayload({wire}, 'an unexpected status ($status) answered'),\n    \
          );\n"
     )
 }
@@ -566,10 +566,10 @@ fn reply_decode_stmt(
          if ({error_condition}) {{\n{error_block}    \
          }}\n    \
          if (status == 400 || status == 404 || status == 500) {{\n      \
-         return {result}Fault(_{fn_prefix}HttpFaultFromBody('{wire}', response.body));\n    \
+         return {result}Fault(_{fn_prefix}HttpFaultFromBody({wire}, response.body));\n    \
          }}\n    \
          return {result}Fault(\n      \
-         _{fn_prefix}HttpUndeserializablePayload('{wire}', 'an unexpected status ($status) answered'),\n    \
+         _{fn_prefix}HttpUndeserializablePayload({wire}, 'an unexpected status ($status) answered'),\n    \
          );\n"
     )
 }
@@ -599,10 +599,10 @@ fn stream_reply_decode_stmt(
          if ({error_condition}) {{\n{error_block}    \
          }}\n    \
          if (status == 400 || status == 404 || status == 500) {{\n      \
-         return {result}Fault(_{fn_prefix}HttpFaultFromBody('{wire}', response.body));\n    \
+         return {result}Fault(_{fn_prefix}HttpFaultFromBody({wire}, response.body));\n    \
          }}\n    \
          return {result}Fault(\n      \
-         _{fn_prefix}HttpUndeserializablePayload('{wire}', 'an unexpected status ($status) answered'),\n    \
+         _{fn_prefix}HttpUndeserializablePayload({wire}, 'an unexpected status ($status) answered'),\n    \
          );\n"
     )
 }
@@ -688,11 +688,12 @@ fn header_value_read_stmts(
     let mut stmt = String::new();
     let mut idents = Vec::new();
     let capitalized_prefix = RenameRule::PascalCase.apply_to_field(ident_prefix);
-    for (index, (name, element_ty)) in names
+    for (index, (header, element_ty)) in names
         .iter()
         .zip(elements.iter().skip(body_elements))
         .enumerate()
     {
+        let name = quoted(header);
         let raw_ident = format!("raw{capitalized_prefix}{index}");
         let ident = format!("{ident_prefix}{index}");
         let (decode, fallible) = dart_header_out_decode(element_ty, &raw_ident);
@@ -707,17 +708,17 @@ fn header_value_read_stmts(
         if optional {
             let _ = write!(
                 stmt,
-                "      final {raw_ident} = {find_header}(response.headers, '{name}');\n      \
+                "      final {raw_ident} = {find_header}(response.headers, {name});\n      \
                  final {ident} = {raw_ident} == null ? null : {decode};\n\
 {malformed_check}",
             );
         } else {
             let _ = write!(
                 stmt,
-                "      final {raw_ident} = {find_header}(response.headers, '{name}');\n      \
+                "      final {raw_ident} = {find_header}(response.headers, {name});\n      \
                  if ({raw_ident} == null) {{\n        \
                  return {result}Fault(\n          \
-                 _{fn_prefix}HttpUndeserializablePayload('{wire}', 'a declared response header was missing'),\n        \
+                 _{fn_prefix}HttpUndeserializablePayload({wire}, 'a declared response header was missing'),\n        \
                  );\n      \
                  }}\n      \
                  final {ident} = {decode};\n\
@@ -747,7 +748,7 @@ fn malformed_header_check(
     format!(
         "      if ({condition}) {{\n        \
          return {result}Fault(\n          \
-         _{fn_prefix}HttpUndeserializablePayload('{wire}', 'a response header did not match its declared type'),\n        \
+         _{fn_prefix}HttpUndeserializablePayload({wire}, 'a response header did not match its declared type'),\n        \
          );\n      \
          }}\n"
     )
@@ -771,7 +772,7 @@ fn error_decode_block(
              declared = {decoded};\n      \
              }} catch (rejected) {{\n        \
              return {result}Fault(\n          \
-             _{fn_prefix}HttpUndeserializablePayload('{wire}', '$rejected'),\n        \
+             _{fn_prefix}HttpUndeserializablePayload({wire}, '$rejected'),\n        \
              );\n      \
              }}\n      \
              return {result}Operation(declared);\n"
@@ -787,7 +788,7 @@ fn error_decode_block(
          declaredHead = {decoded};\n      \
          }} catch (rejected) {{\n        \
          return {result}Fault(\n          \
-         _{fn_prefix}HttpUndeserializablePayload('{wire}', '$rejected'),\n        \
+         _{fn_prefix}HttpUndeserializablePayload({wire}, '$rejected'),\n        \
          );\n      \
          }}\n"
     );
@@ -839,7 +840,7 @@ fn success_decode_block(
              value = {decoded};\n      \
              }} catch (rejected) {{\n        \
              return {result}Fault(\n          \
-             _{fn_prefix}HttpUndeserializablePayload('{wire}', '$rejected'),\n        \
+             _{fn_prefix}HttpUndeserializablePayload({wire}, '$rejected'),\n        \
              );\n      \
              }}\n      \
              return {result}Ok(value);\n"
@@ -857,7 +858,7 @@ fn success_decode_block(
          value = {decoded};\n      \
          }} catch (rejected) {{\n        \
          return {result}Fault(\n          \
-         _{fn_prefix}HttpUndeserializablePayload('{wire}', '$rejected'),\n        \
+         _{fn_prefix}HttpUndeserializablePayload({wire}, '$rejected'),\n        \
          );\n      \
          }}\n"
     );

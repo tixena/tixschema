@@ -10,7 +10,7 @@ use core::cell::RefCell;
 use core::fmt::Write as _;
 use std::collections::HashMap;
 
-use super::{KotlinField, field_reaches_type_parameter, kotlin_name, kotlin_template_text, read};
+use super::{KotlinField, field_reaches_type_parameter, kotlin_name, kotlin_quoted, read};
 use crate::features::model_schema_prop::FunctionName;
 use crate::field_type::{FieldDef, FieldDefType};
 use crate::rename_rule::RenameRule;
@@ -91,8 +91,8 @@ pub fn keyed(payload: &str, members: &[(String, Vec<FunctionName>)]) -> String {
         .fold(String::new(), |mut written, (key, functions)| {
             let _ = write!(
                 written,
-                "\"{}\" -> {}; ",
-                kotlin_template_text(key),
+                "{} -> {}; ",
+                kotlin_quoted(key),
                 corrected(functions, "held")
             );
             written

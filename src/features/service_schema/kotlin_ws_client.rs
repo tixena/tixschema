@@ -6,7 +6,8 @@
 use super::kotlin_http_client::{held_copies, kotlin_held, read_serializer};
 use super::result::result_name;
 use crate::features::kotlin::{
-    kotlin_bare, kotlin_declarations, kotlin_name, kotlin_property_name, kotlin_typename,
+    kotlin_bare, kotlin_declarations, kotlin_name, kotlin_property_name, kotlin_quoted,
+    kotlin_typename,
 };
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
@@ -386,19 +387,19 @@ fn client_headers_build_stmt(shape: &HttpShape) -> String {
     stmt.push_str("    val headers = buildJsonObject {\n");
     for header in &shape.header_in {
         let prop = kotlin_held(&header.parameter);
-        let name = &header.name;
+        let name = kotlin_quoted(&header.name);
         if let Some(inner) = option_inner(&header.ty) {
             let inner_ty = kotlin_type_of(inner);
             let _ = writeln!(
                 stmt,
-                "      put(\"{name}\", {prop}?.let {{ \
+                "      put({name}, {prop}?.let {{ \
                  Json.encodeToJsonElement(serializer<{inner_ty}>(), it) }} ?: JsonNull)"
             );
         } else {
             let ty = kotlin_type_of(&header.ty);
             let _ = writeln!(
                 stmt,
-                "      put(\"{name}\", Json.encodeToJsonElement(serializer<{ty}>(), {prop}))"
+                "      put({name}, Json.encodeToJsonElement(serializer<{ty}>(), {prop}))"
             );
         }
     }
@@ -412,12 +413,12 @@ fn client_method(
     operation: &OperationDef,
     has_headers: bool,
 ) -> String {
-    let wire = &operation.wire_name;
+    let wire = &kotlin_quoted(&operation.wire_name);
     let call = kotlin_name(&operation.ts_name);
     let req_ty = message_kotlin_typename(operation);
     let shape = HttpShape::of(operation);
     let params = client_method_params(&shape, &req_ty);
-    let doc = format!("  /// Calls `{wire}` over `ws_rpc`.");
+    let doc = format!("  /// Calls `{}` over `ws_rpc`.", operation.wire_name);
     let (headers_build, headers_arg) = if has_headers {
         (client_headers_build_stmt(&shape), ", headers")
     } else {
@@ -429,9 +430,9 @@ fn client_method(
              suspend fun {call}({params}) {{\n\
 {headers_build}    \
              try {{\n      \
-             transport.notify(\"{wire}\", Json.encodeToJsonElement(serializer<{req_ty}>(), req){headers_arg})\n    \
+             transport.notify({wire}, Json.encodeToJsonElement(serializer<{req_ty}>(), req){headers_arg})\n    \
              }} catch (uncarried: Throwable) {{\n      \
-             throw {named}WsRefusal({fn_prefix}WsTransportFailure(\"{wire}\", uncarried.toString()))\n    \
+             throw {named}WsRefusal({fn_prefix}WsTransportFailure({wire}, uncarried.toString()))\n    \
              }}\n  \
              }}"
         ),
@@ -443,13 +444,13 @@ fn client_method(
                  suspend fun {call}({params}): {result} {{\n\
 {headers_build}    \
                  val reply = try {{\n      \
-                 transport.request(\"{wire}\", Json.encodeToJsonElement(serializer<{req_ty}>(), req){headers_arg})\n    \
+                 transport.request({wire}, Json.encodeToJsonElement(serializer<{req_ty}>(), req){headers_arg})\n    \
                  }} catch (uncarried: Throwable) {{\n      \
-                 return {result}.Fault({fn_prefix}WsTransportFailure(\"{wire}\", uncarried.toString()))\n    \
+                 return {result}.Fault({fn_prefix}WsTransportFailure({wire}, uncarried.toString()))\n    \
                  }}\n    \
                  if (reply == null) {{\n      \
                  return {result}.Fault(\n        \
-                 {fn_prefix}WsTransportFailure(\"{wire}\", \"the connection closed before a reply arrived\"),\n      \
+                 {fn_prefix}WsTransportFailure({wire}, \"the connection closed before a reply arrived\"),\n      \
                  )\n    \
                  }}\n\
 {decode}\
@@ -485,7 +486,7 @@ fn reply_decode_stmt(
          Json.decodeFromJsonElement(serializer<{fields}>(), error.getValue(\"fault\")),\n        \
          )\n      \
          }} catch (rejected: Throwable) {{\n        \
-         {result}.Fault({fn_prefix}WsFailedValidation(\"{wire}\", rejected.toString()))\n      \
+         {result}.Fault({fn_prefix}WsFailedValidation({wire}, rejected.toString()))\n      \
          }}\n    \
          }}\n\
 {error_block}"
@@ -508,7 +509,7 @@ fn success_decode_block(
             "      return try {{\n        \
              {result}.Ok(Json.decodeFromJsonElement({read_by}, reply.getValue(\"value\")))\n      \
              }} catch (rejected: Throwable) {{\n        \
-             {result}.Fault({fn_prefix}WsFailedValidation(\"{wire}\", rejected.toString()))\n      \
+             {result}.Fault({fn_prefix}WsFailedValidation({wire}, rejected.toString()))\n      \
              }}\n"
         );
     }
@@ -519,7 +520,7 @@ fn success_decode_block(
          val value = try {{\n        \
          Json.decodeFromJsonElement({read_by}, reply.getValue(\"value\"))\n      \
          }} catch (rejected: Throwable) {{\n        \
-         return {result}.Fault({fn_prefix}WsFailedValidation(\"{wire}\", rejected.toString()))\n      \
+         return {result}.Fault({fn_prefix}WsFailedValidation({wire}, rejected.toString()))\n      \
          }}\n"
     );
     let (header_stmts, idents) =
@@ -546,7 +547,7 @@ fn error_decode_block(
             "    return try {{\n      \
              {result}.Declared(Json.decodeFromJsonElement({read_by}, error ?: JsonNull))\n    \
              }} catch (rejected: Throwable) {{\n      \
-             {result}.Fault({fn_prefix}WsFailedValidation(\"{wire}\", rejected.toString()))\n    \
+             {result}.Fault({fn_prefix}WsFailedValidation({wire}, rejected.toString()))\n    \
              }}\n"
         );
     }
@@ -557,7 +558,7 @@ fn error_decode_block(
          val declaredHead = try {{\n      \
          Json.decodeFromJsonElement({read_by}, error ?: JsonNull)\n    \
          }} catch (rejected: Throwable) {{\n      \
-         return {result}.Fault({fn_prefix}WsFailedValidation(\"{wire}\", rejected.toString()))\n    \
+         return {result}.Fault({fn_prefix}WsFailedValidation({wire}, rejected.toString()))\n    \
          }}\n"
     );
     let (header_stmts, idents) =
@@ -585,19 +586,19 @@ fn header_out_decode_stmts(
     let mut idents = Vec::new();
     for field in extra {
         let raw_ident = format!("{}Raw", field.kotlin_prop);
-        let header_name = &field.wire_name;
+        let header_name = kotlin_quoted(&field.wire_name);
         let prop = &field.kotlin_prop;
         if let Some(inner) = option_inner(&field.ty) {
             let read_by = read_serializer(inner);
             let _ = write!(
                 stmt,
-                "{margin}val {raw_ident} = {headers_var}[\"{header_name}\"]\n\
+                "{margin}val {raw_ident} = {headers_var}[{header_name}]\n\
                  {margin}val {prop} = {raw_ident}?.let {{ raw ->\n\
                  {margin}  try {{\n\
                  {margin}    Json.decodeFromJsonElement({read_by}, raw)\n\
                  {margin}  }} catch (rejected: Throwable) {{\n\
                  {margin}    return {result}.Fault(\n\
-                 {margin}      {fn_prefix}WsFailedValidation(\"{wire}\", rejected.toString(), field = \"{header_name}\"),\n\
+                 {margin}      {fn_prefix}WsFailedValidation({wire}, rejected.toString(), field = {header_name}),\n\
                  {margin}    )\n\
                  {margin}  }}\n\
                  {margin}}}\n",
@@ -606,19 +607,19 @@ fn header_out_decode_stmts(
             let read_by = read_serializer(&field.ty);
             let _ = write!(
                 stmt,
-                "{margin}val {raw_ident} = {headers_var}[\"{header_name}\"]\n\
+                "{margin}val {raw_ident} = {headers_var}[{header_name}]\n\
                  {margin}  ?: return {result}.Fault(\n\
                  {margin}    {fn_prefix}WsFailedValidation(\n\
-                 {margin}      \"{wire}\",\n\
+                 {margin}      {wire},\n\
                  {margin}      \"a declared response header was missing\",\n\
-                 {margin}      field = \"{header_name}\",\n\
+                 {margin}      field = {header_name},\n\
                  {margin}    ),\n\
                  {margin}  )\n\
                  {margin}val {prop} = try {{\n\
                  {margin}  Json.decodeFromJsonElement({read_by}, {raw_ident})\n\
                  {margin}}} catch (rejected: Throwable) {{\n\
                  {margin}  return {result}.Fault(\n\
-                 {margin}    {fn_prefix}WsFailedValidation(\"{wire}\", rejected.toString(), field = \"{header_name}\"),\n\
+                 {margin}    {fn_prefix}WsFailedValidation({wire}, rejected.toString(), field = {header_name}),\n\
                  {margin}  )\n\
                  {margin}}}\n",
             );
@@ -818,21 +819,21 @@ fn header_in_read_stmt(
     let mut idents = Vec::new();
     for header in &shape.header_in {
         let prop = kotlin_held(&header.parameter);
-        let name = &header.name;
+        let name = kotlin_quoted(&header.name);
         let raw_ident = format!("{}Raw", kotlin_bare(&prop));
         if let Some(inner) = option_inner(&header.ty) {
             let read_by = read_serializer(inner);
             let decode_fault = fault_reply_stmt(named, "fault");
             let _ = write!(
                 stmt,
-                "      val {raw_ident} = incomingHeaders[\"{name}\"]\n      \
+                "      val {raw_ident} = incomingHeaders[{name}]\n      \
                  val {prop} = if ({raw_ident} == null || {raw_ident} is JsonNull) {{\n        \
                  null\n      \
                  }} else {{\n        \
                  try {{\n          \
                  Json.decodeFromJsonElement({read_by}, {raw_ident})\n        \
                  }} catch (rejected: Throwable) {{\n          \
-                 val fault = {fn_prefix}WsFailedValidation(\"{wire}\", rejected.toString(), field = \"{name}\")\n          \
+                 val fault = {fn_prefix}WsFailedValidation({wire}, rejected.toString(), field = {name})\n          \
                  onFault(fault)\n\
 {decode_fault}          \
                  return\n        \
@@ -845,9 +846,9 @@ fn header_in_read_stmt(
             let decode_fault = fault_reply_stmt(named, "fault");
             let _ = write!(
                 stmt,
-                "      val {raw_ident} = incomingHeaders[\"{name}\"]\n      \
+                "      val {raw_ident} = incomingHeaders[{name}]\n      \
                  if ({raw_ident} == null) {{\n        \
-                 val fault = {fn_prefix}WsFailedValidation(\"{wire}\", \"a required header was not carried\", field = \"{name}\")\n        \
+                 val fault = {fn_prefix}WsFailedValidation({wire}, \"a required header was not carried\", field = {name})\n        \
                  onFault(fault)\n\
 {missing_fault}        \
                  return\n      \
@@ -855,7 +856,7 @@ fn header_in_read_stmt(
                  val {prop} = try {{\n        \
                  Json.decodeFromJsonElement({read_by}, {raw_ident})\n      \
                  }} catch (rejected: Throwable) {{\n        \
-                 val fault = {fn_prefix}WsFailedValidation(\"{wire}\", rejected.toString(), field = \"{name}\")\n        \
+                 val fault = {fn_prefix}WsFailedValidation({wire}, rejected.toString(), field = {name})\n        \
                  onFault(fault)\n\
 {decode_fault}        \
                  return\n      \
@@ -873,19 +874,19 @@ fn header_write_stmt(extra: &[HeaderElement], accessor_root: &str) -> String {
     let mut stmt = String::from("            val replyHeaders = buildJsonObject {\n");
     for field in extra {
         let accessor = format!("{accessor_root}.{}", field.kotlin_prop);
-        let name = &field.wire_name;
+        let name = kotlin_quoted(&field.wire_name);
         if let Some(inner) = option_inner(&field.ty) {
             let inner_ty = kotlin_type_of(inner);
             let _ = writeln!(
                 stmt,
-                "              {accessor}?.let {{ put(\"{name}\", \
+                "              {accessor}?.let {{ put({name}, \
                  Json.encodeToJsonElement(serializer<{inner_ty}>(), it)) }}"
             );
         } else {
             let ty = kotlin_type_of(&field.ty);
             let _ = writeln!(
                 stmt,
-                "              put(\"{name}\", Json.encodeToJsonElement(serializer<{ty}>(), {accessor}))"
+                "              put({name}, Json.encodeToJsonElement(serializer<{ty}>(), {accessor}))"
             );
         }
     }
@@ -974,17 +975,17 @@ fn declared_arm(named: &str, result: &str, shape: &HttpShape, error: &Type) -> S
 }
 
 fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> String {
-    let wire = &operation.wire_name;
+    let wire = &kotlin_quoted(&operation.wire_name);
     let read_by = message_serializer(operation);
     let shape = HttpShape::of(operation);
     let decode_fault = fault_reply_stmt(named, "fault");
     let (header_reads, header_idents) = header_in_read_stmt(named, fn_prefix, wire, &shape);
     let mut arm = format!(
-        "    \"{wire}\" -> {{\n      \
+        "    {wire} -> {{\n      \
          val decoded = try {{\n        \
          Json.decodeFromJsonElement({read_by}, payload ?: JsonNull)\n      \
          }} catch (rejected: Throwable) {{\n        \
-         val fault = {fn_prefix}WsFailedValidation(\"{wire}\", rejected.toString())\n        \
+         val fault = {fn_prefix}WsFailedValidation({wire}, rejected.toString())\n        \
          onFault(fault)\n\
 {decode_fault}        \
          return\n      \
@@ -1004,7 +1005,7 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
                 "      try {{\n        \
                  handlers.{call}({call_args})\n      \
                  }} catch (unexpected: Throwable) {{\n        \
-                 val fault = {fn_prefix}WsHandlerPanic(\"{wire}\", unexpected.toString())\n        \
+                 val fault = {fn_prefix}WsHandlerPanic({wire}, unexpected.toString())\n        \
                  onFault(fault)\n\
 {panic_fault}        \
                  return\n      \
@@ -1026,7 +1027,7 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
                 "      val answered = try {{\n        \
                  handlers.{call}({call_args})\n      \
                  }} catch (unexpected: Throwable) {{\n        \
-                 val fault = {fn_prefix}WsHandlerPanic(\"{wire}\", unexpected.toString())\n        \
+                 val fault = {fn_prefix}WsHandlerPanic({wire}, unexpected.toString())\n        \
                  onFault(fault)\n\
 {panic_fault}        \
                  return\n      \

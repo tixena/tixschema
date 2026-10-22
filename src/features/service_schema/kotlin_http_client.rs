@@ -6,8 +6,8 @@
 
 use super::result::result_name;
 use crate::features::kotlin::{
-    kotlin_bare, kotlin_declarations, kotlin_name, kotlin_property_name, kotlin_read_serializer,
-    kotlin_typename,
+    kotlin_bare, kotlin_declarations, kotlin_name, kotlin_property_name, kotlin_quoted,
+    kotlin_read_serializer, kotlin_typename,
 };
 use crate::field_type::{FieldDefType, get_field_def};
 use crate::rename_rule::RenameRule;
@@ -448,7 +448,7 @@ pub(super) fn held_copies<'parameters>(
 
 fn method(named: &str, fn_prefix: &str, operation: &OperationDef, has_multipart: bool) -> String {
     let shape = HttpShape::of(operation);
-    let wire = &operation.wire_name;
+    let wire = &kotlin_quoted(&operation.wire_name);
     let call = kotlin_name(&operation.ts_name);
     let params = method_params(operation, &shape);
     let copies = held_copies(
@@ -591,12 +591,12 @@ fn header_in_build_stmt(
     // `?.let`/`run` are inline, so the `return` written inside either answers this method's own
     // caller rather than just the block.
     for header in &shape.header_in {
-        let name = &header.name;
+        let name = kotlin_quoted(&header.name);
         let prop = kotlin_held(&header.parameter);
         let fault_expr = format!(
-            "{fn_prefix}HttpOutboundFault(\"{}\", \"{name}\", \"a header value contains a \
+            "{fn_prefix}HttpOutboundFault({}, {name}, \"a header value contains a \
              character illegal in an HTTP header\")",
-            operation.wire_name,
+            kotlin_quoted(&operation.wire_name),
         );
         let refusal = outbound_refusal_stmt(named, operation, &fault_expr);
         if let Some(inner) = option_inner(&header.ty) {
@@ -607,7 +607,7 @@ fn header_in_build_stmt(
                  val rendered = {text}\n      \
                  if (!{fn_prefix}HttpLegalHeaderValue(rendered)) {{\n        {refusal}\n      \
                  }}\n      \
-                 headers.add(\"{name}\" to rendered)\n    \
+                 headers.add({name} to rendered)\n    \
                  }}"
             );
         } else {
@@ -618,7 +618,7 @@ fn header_in_build_stmt(
                  val rendered = {text}\n      \
                  if (!{fn_prefix}HttpLegalHeaderValue(rendered)) {{\n        {refusal}\n      \
                  }}\n      \
-                 headers.add(\"{name}\" to rendered)\n    \
+                 headers.add({name} to rendered)\n    \
                  }}"
             );
         }
@@ -690,9 +690,9 @@ fn multipart_parts_build_stmt(
         }
     }
     for part in &shape.multipart_parts {
-        let name = &part.name;
+        let name = kotlin_quoted(&part.name);
         let prop = kotlin_held(&part.parameter);
-        let _ = writeln!(stmt, "    parts.add(\"{name}\" to {prop})");
+        let _ = writeln!(stmt, "    parts.add({name} to {prop})");
     }
     stmt
 }
@@ -713,7 +713,7 @@ fn send_stmt_one_way(
 ) -> String {
     format!(
         "    val response = try {{\n      {send}\n    }} catch (thrown: Throwable) {{\n      \
-         throw {named}Refusal({fn_prefix}HttpTransportFailure(\"{wire}\", thrown.toString()))\n    \
+         throw {named}Refusal({fn_prefix}HttpTransportFailure({wire}, thrown.toString()))\n    \
          }}\n",
         send = send_expr(named, method_str, has_multipart),
     )
@@ -729,7 +729,7 @@ fn send_stmt_reply(
 ) -> String {
     format!(
         "    val response = try {{\n      {send}\n    }} catch (thrown: Throwable) {{\n      \
-         return {result}.Fault({fn_prefix}HttpTransportFailure(\"{wire}\", thrown.toString()))\n    \
+         return {result}.Fault({fn_prefix}HttpTransportFailure({wire}, thrown.toString()))\n    \
          }}\n",
         send = send_expr(named, method_str, has_multipart),
     )
@@ -741,10 +741,10 @@ fn one_way_decode_stmt(named: &str, fn_prefix: &str, shape: &HttpShape, wire: &s
         "    val status = response.status\n    \
          if (status == {ok_status}) {{\n      return\n    }}\n    \
          if (status == 400 || status == 404 || status == 500) {{\n      \
-         throw {named}Refusal({fn_prefix}HttpFaultFromBody(\"{wire}\", response))\n    \
+         throw {named}Refusal({fn_prefix}HttpFaultFromBody({wire}, response))\n    \
          }}\n    \
          throw {named}Refusal(\n      \
-         {fn_prefix}HttpUndeserializablePayload(\"{wire}\", \"an unexpected status ($status) answered\"),\n    \
+         {fn_prefix}HttpUndeserializablePayload({wire}, \"an unexpected status ($status) answered\"),\n    \
          )\n"
     )
 }
@@ -777,7 +777,7 @@ fn error_decode_block(
             "      return try {{\n        \
              {result}.Declared(Json.decodeFromString({read_by}, response.body.decodeToString()))\n      \
              }} catch (rejected: Throwable) {{\n        \
-             {result}.Fault({fn_prefix}HttpUndeserializablePayload(\"{wire}\", rejected.toString()))\n      \
+             {result}.Fault({fn_prefix}HttpUndeserializablePayload({wire}, rejected.toString()))\n      \
              }}\n"
         );
     }
@@ -787,7 +787,7 @@ fn error_decode_block(
         "      val declaredHead = try {{\n        \
          Json.decodeFromString({read_by}, response.body.decodeToString())\n      \
          }} catch (rejected: Throwable) {{\n        \
-         return {result}.Fault({fn_prefix}HttpUndeserializablePayload(\"{wire}\", rejected.toString()))\n      \
+         return {result}.Fault({fn_prefix}HttpUndeserializablePayload({wire}, rejected.toString()))\n      \
          }}\n"
     );
     let (header_stmts, header_idents) = header_out_read_stmts(result, fn_prefix, wire, &extra);
@@ -821,10 +821,10 @@ fn reply_decode_stmt(
          if ({error_condition}) {{\n{error_block}    \
          }}\n    \
          if (status == 400 || status == 404 || status == 500) {{\n      \
-         return {result}.Fault({fn_prefix}HttpFaultFromBody(\"{wire}\", response))\n    \
+         return {result}.Fault({fn_prefix}HttpFaultFromBody({wire}, response))\n    \
          }}\n    \
          return {result}.Fault(\n      \
-         {fn_prefix}HttpUndeserializablePayload(\"{wire}\", \"an unexpected status ($status) answered\"),\n    \
+         {fn_prefix}HttpUndeserializablePayload({wire}, \"an unexpected status ($status) answered\"),\n    \
          )\n"
     )
 }
@@ -849,10 +849,10 @@ fn stream_reply_decode_stmt(
          if ({error_condition}) {{\n{error_block}    \
          }}\n    \
          if (status == 400 || status == 404 || status == 500) {{\n      \
-         return {result}.Fault({fn_prefix}HttpFaultFromBody(\"{wire}\", response))\n    \
+         return {result}.Fault({fn_prefix}HttpFaultFromBody({wire}, response))\n    \
          }}\n    \
          return {result}.Fault(\n      \
-         {fn_prefix}HttpUndeserializablePayload(\"{wire}\", \"an unexpected status ($status) answered\"),\n    \
+         {fn_prefix}HttpUndeserializablePayload({wire}, \"an unexpected status ($status) answered\"),\n    \
          )\n"
     )
 }
@@ -909,7 +909,7 @@ fn header_out_read_stmts(
     for field in extra {
         let raw_ident = format!("raw{}", capitalize(&field.kotlin_prop));
         let malformed = format!(
-            "{fn_prefix}HttpUndeserializablePayload(\"{wire}\", \"a response header did not match its declared type\")"
+            "{fn_prefix}HttpUndeserializablePayload({wire}, \"a response header did not match its declared type\")"
         );
         let fallible = kotlin_header_out_decode_is_fallible(&field.ty);
         // An `Option<T>` field reads a missing header as `null`; a present one that will not decode
@@ -923,10 +923,10 @@ fn header_out_read_stmts(
             };
             let _ = write!(
                 stmt,
-                "      val {raw_ident} = {find_header}(response.headers, \"{header_name}\")\n      \
+                "      val {raw_ident} = {find_header}(response.headers, {header_name})\n      \
                  val {prop} = {raw_ident}?.let {{ raw -> {decode} }}\n",
                 find_header = find_header_call(fn_prefix),
-                header_name = field.wire_name,
+                header_name = kotlin_quoted(&field.wire_name),
                 prop = field.kotlin_prop,
             );
         } else {
@@ -938,13 +938,13 @@ fn header_out_read_stmts(
             };
             let _ = write!(
                 stmt,
-                "      val {raw_ident} = {find_header}(response.headers, \"{header_name}\")\n      \
+                "      val {raw_ident} = {find_header}(response.headers, {header_name})\n      \
                  ?: return {result}.Fault(\n        \
-                 {fn_prefix}HttpUndeserializablePayload(\"{wire}\", \"a declared response header was missing\"),\n      \
+                 {fn_prefix}HttpUndeserializablePayload({wire}, \"a declared response header was missing\"),\n      \
                  )\n      \
                  val {prop} = {decode}\n",
                 find_header = find_header_call(fn_prefix),
-                header_name = field.wire_name,
+                header_name = kotlin_quoted(&field.wire_name),
                 prop = field.kotlin_prop,
             );
         }
@@ -983,7 +983,7 @@ fn success_decode_block(
             "      return try {{\n        \
              {result}.Ok(Json.decodeFromString({read_by}, response.body.decodeToString()))\n      \
              }} catch (rejected: Throwable) {{\n        \
-             {result}.Fault({fn_prefix}HttpUndeserializablePayload(\"{wire}\", rejected.toString()))\n      \
+             {result}.Fault({fn_prefix}HttpUndeserializablePayload({wire}, rejected.toString()))\n      \
              }}\n"
         );
     }
@@ -993,7 +993,7 @@ fn success_decode_block(
         "      val value = try {{\n        \
          Json.decodeFromString({read_by}, response.body.decodeToString())\n      \
          }} catch (rejected: Throwable) {{\n        \
-         return {result}.Fault({fn_prefix}HttpUndeserializablePayload(\"{wire}\", rejected.toString()))\n      \
+         return {result}.Fault({fn_prefix}HttpUndeserializablePayload({wire}, rejected.toString()))\n      \
          }}\n"
     );
     let (header_stmts, header_idents) = header_out_read_stmts(result, fn_prefix, wire, &extra);

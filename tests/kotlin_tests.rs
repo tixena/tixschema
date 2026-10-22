@@ -106,3 +106,27 @@ mod text_forms_models;
 #[cfg(all(feature = "kotlin", feature = "chrono"))]
 #[path = "kotlin_tests/text_forms.rs"]
 mod text_forms;
+
+/// `()` held in each place a value is, and a tuple struct of no slot beside it.
+#[cfg(test)]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[path = "service_schema_emitted_client_tests/unit_models.rs"]
+mod unit_models;
+
+/// What the Kotlin emitter reads and writes of `()`.
+#[cfg(test)]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[path = "kotlin_tests/units.rs"]
+mod units;
+
+/// Models whose names on the wire hold a character a Kotlin string literal reads apart from text.
+#[cfg(test)]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[path = "dart_tests/quoted_models.rs"]
+mod quoted_models;
+
+/// What the Kotlin emitter writes of a name on the wire that holds such a character.
+#[cfg(test)]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[path = "kotlin_tests/quoted.rs"]
+mod quoted;

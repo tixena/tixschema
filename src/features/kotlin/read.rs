@@ -6,9 +6,9 @@
 use super::texts::{self, TextForm};
 use super::{arrays, validate};
 use super::{
-    innermost, kotlin_base, kotlin_serializer_expr, kotlin_serializer_param_name, kotlin_typename,
-    listed_serializer, lookup_kotlin_name, range_serializer, range_typename, result_serializer,
-    result_typename, sibling_typename, tuple_wrapper_typename,
+    innermost, kotlin_base, kotlin_quoted, kotlin_serializer_expr, kotlin_serializer_param_name,
+    kotlin_typename, listed_serializer, lookup_kotlin_name, range_serializer, range_typename,
+    result_serializer, result_typename, sibling_typename, tuple_wrapper_typename,
 };
 use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
 
@@ -392,9 +392,10 @@ pub fn transform(correction: &str) -> String {
 /// What a serializer that writes a struct's own tag, under `key`, ahead of the struct's members
 /// overrides: the plugin writes the property that holds the tag after the constructor's.
 pub fn tag_first(key: &str) -> String {
+    let written = kotlin_quoted(key);
     format!(
         "override fun transformSerialize(element: JsonElement): JsonElement = \
-         JsonObject(mapOf(\"{key}\" to element.jsonObject.getValue(\"{key}\")) + \
+         JsonObject(mapOf({written} to element.jsonObject.getValue({written})) + \
          element.jsonObject)"
     )
 }

@@ -3,7 +3,7 @@
 //! declared type, and settles every waiting call with a `transport-failure` fault when the socket
 //! closes — the TypeScript client's feature set, item for item, read at [`super::ws_client`].
 
-use crate::features::swift::swift_reference_type;
+use crate::features::swift::{swift_quoted, swift_reference_type};
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
@@ -466,8 +466,8 @@ fn header_in_build_stmt(named: &str, shape: &HttpShape) -> String {
     for header in &shape.header_in {
         let _ = writeln!(
             entries,
-            "      \"{}\": {named}WsHeaderIn({}),",
-            header.name,
+            "      {}: {named}WsHeaderIn({}),",
+            swift_quoted(&header.name),
             swift_parameter(&header.parameter)
         );
     }
@@ -482,7 +482,8 @@ fn one_way_method(
     aux: &mut Vec<String>,
 ) -> String {
     let call = swift_call(operation);
-    let wire = &operation.wire_name;
+    let wire_name = &operation.wire_name;
+    let wire = &swift_quoted(wire_name);
     let (param_ty, param_aux) = message_swift_type(operation);
     aux.extend(param_aux);
     let refusal = refusal_name(named);
@@ -494,13 +495,13 @@ fn one_way_method(
         (String::new(), "")
     };
     format!(
-        "  /// Calls `{wire}` over `ws_rpc`.\n  \
+        "  /// Calls `{wire_name}` over `ws_rpc`.\n  \
          public func {call}({params}) async throws {{\n\
 {headers_build}    \
          do {{\n      \
-         try sendNotify(operation: \"{wire}\", payload: req{headers_arg})\n    \
+         try sendNotify(operation: {wire}, payload: req{headers_arg})\n    \
          }} catch {{\n      \
-         throw {refusal}(fault: {prefix}WsFailedValidation(\"{wire}\", \"\\(error)\"))\n    \
+         throw {refusal}(fault: {prefix}WsFailedValidation({wire}, \"\\(error)\"))\n    \
          }}\n  \
          }}"
     )
@@ -528,7 +529,7 @@ fn header_read_struct(
     for (ident, name, ty) in &entries {
         let full_ty = swift_typename_of(ty);
         let _ = writeln!(properties, "  let {ident}: {full_ty}");
-        let _ = writeln!(coding_keys, "    case {ident} = \"{name}\"");
+        let _ = writeln!(coding_keys, "    case {ident} = {}", swift_quoted(name));
         if let Some(inner) = option_inner(ty) {
             let inner_ty = swift_typename_of(inner);
             let accessor = if has_required { "headers" } else { "headers?" };
@@ -620,7 +621,7 @@ fn success_block(
              let headerValues = try JSONDecoder().decode({headers_ty}.self, from: raw)\n          \
              return .success(({tuple_expr}))\n        \
              }} catch {{\n          \
-             return .failure(.fault({prefix}WsFailedValidation(\"{wire}\", \"\\(error)\")))\n        \
+             return .failure(.fault({prefix}WsFailedValidation({wire}, \"\\(error)\")))\n        \
              }}\n"
         );
         return (success_ty, block);
@@ -644,7 +645,7 @@ fn success_block(
          from: raw)\n          \
          return .success(decoded.value)\n        \
          }} catch {{\n          \
-         return .failure(.fault({prefix}WsFailedValidation(\"{wire}\", \"\\(error)\")))\n        \
+         return .failure(.fault({prefix}WsFailedValidation({wire}, \"\\(error)\")))\n        \
          }}\n"
     );
     (success_ty, block)
@@ -675,7 +676,7 @@ fn declared_error_block(
              from: raw)\n      \
              return .failure(.declared(declared.error))\n    \
              }} catch {{\n      \
-             return .failure(.fault({prefix}WsFailedValidation(\"{wire}\", \"\\(error)\")))\n    \
+             return .failure(.fault({prefix}WsFailedValidation({wire}, \"\\(error)\")))\n    \
              }}\n"
         );
     }
@@ -709,7 +710,7 @@ fn declared_error_block(
          let errorHeaderValues = try JSONDecoder().decode({headers_ty}.self, from: raw)\n      \
          return .failure(.declared(({tuple_expr})))\n    \
          }} catch {{\n      \
-         return .failure(.fault({prefix}WsFailedValidation(\"{wire}\", \"\\(error)\")))\n    \
+         return .failure(.fault({prefix}WsFailedValidation({wire}, \"\\(error)\")))\n    \
          }}\n"
     )
 }
@@ -724,7 +725,8 @@ fn reply_method(
     aux: &mut Vec<String>,
 ) -> String {
     let call = swift_call(operation);
-    let wire = &operation.wire_name;
+    let wire_name = &operation.wire_name;
+    let wire = &swift_quoted(wire_name);
     let (param_ty, param_aux) = message_swift_type(operation);
     aux.extend(param_aux);
     let failure = failure_name(named, operation).unwrap();
@@ -739,24 +741,24 @@ fn reply_method(
         success_block(named, prefix, wire, operation, success, &shape, aux);
     let error_block = declared_error_block(named, prefix, wire, operation, error, &shape, aux);
     format!(
-        "  /// Calls `{wire}` over `ws_rpc`.\n  \
+        "  /// Calls `{wire_name}` over `ws_rpc`.\n  \
          public func {call}({params}) async -> Result<{success_ty}, {failure}> {{\n\
 {headers_build}    \
          let raw: Data?\n    \
          do {{\n      \
-         raw = try await correlate(operation: \"{wire}\", payload: req{headers_arg})\n    \
+         raw = try await correlate(operation: {wire}, payload: req{headers_arg})\n    \
          }} catch {{\n      \
-         return .failure(.fault({prefix}WsFailedValidation(\"{wire}\", \"\\(error)\")))\n    \
+         return .failure(.fault({prefix}WsFailedValidation({wire}, \"\\(error)\")))\n    \
          }}\n    \
          guard let raw else {{\n      \
-         return .failure(.fault({prefix}WsTransportFailure(\"{wire}\", \"the socket closed \
+         return .failure(.fault({prefix}WsTransportFailure({wire}, \"the socket closed \
          before the reply arrived\")))\n    \
          }}\n    \
          let ok: Bool\n    \
          do {{\n      \
          ok = try JSONDecoder().decode({named}WsOkProbe.self, from: raw).ok\n    \
          }} catch {{\n      \
-         return .failure(.fault({prefix}WsFailedValidation(\"{wire}\", \"\\(error)\")))\n    \
+         return .failure(.fault({prefix}WsFailedValidation({wire}, \"\\(error)\")))\n    \
          }}\n    \
          if ok {{\n\
          {success_block}    \

@@ -4,7 +4,7 @@
 
 use super::dart_http_client::{dart_call, dart_parameter, message_type};
 use super::result::result_name;
-use crate::features::dart::{dart_json_decode, dart_json_encode, dart_typename};
+use crate::features::dart::{dart_json_decode, dart_json_encode, dart_typename, quoted};
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
@@ -344,7 +344,7 @@ fn header_in_build_stmt(shape: &HttpShape) -> String {
     let mut entries = String::new();
     for header in &shape.header_in {
         let encoded = dart_json_encode(&header.ty, &dart_parameter(&header.parameter), true);
-        let _ = writeln!(entries, "      '{}': {encoded},", header.name);
+        let _ = writeln!(entries, "      {}: {encoded},", quoted(&header.name));
     }
     format!("    final headers = <String, dynamic>{{\n{entries}    }};\n")
 }
@@ -352,10 +352,10 @@ fn header_in_build_stmt(shape: &HttpShape) -> String {
 fn client_method(named: &str, operation: &OperationDef, headered: bool) -> String {
     let fn_prefix = RenameRule::CamelCase.apply_to_variant(named);
     let shape = HttpShape::of(operation);
-    let wire = &operation.wire_name;
+    let wire = &quoted(&operation.wire_name);
     let call = dart_call(operation);
     let returns = return_type(named, operation);
-    let doc = format!("  /// Calls `{wire}` over `ws_rpc`.");
+    let doc = format!("  /// Calls `{}` over `ws_rpc`.", operation.wire_name);
     let sent = message_encode(operation);
     if !headered {
         let params = message_dart_typename(operation);
@@ -364,9 +364,9 @@ fn client_method(named: &str, operation: &OperationDef, headered: bool) -> Strin
                 "{doc}\n  \
                  {returns} {call}({params} req) async {{\n    \
                  try {{\n      \
-                 await _transport.notify('{wire}', {sent});\n    \
+                 await _transport.notify({wire}, {sent});\n    \
                  }} catch (uncarried) {{\n      \
-                 throw {named}WsRefusal(_{fn_prefix}WsTransportFailure('{wire}', '$uncarried'));\n    \
+                 throw {named}WsRefusal(_{fn_prefix}WsTransportFailure({wire}, '$uncarried'));\n    \
                  }}\n  \
                  }}"
             ),
@@ -381,13 +381,13 @@ fn client_method(named: &str, operation: &OperationDef, headered: bool) -> Strin
                      {returns} {call}({params} req) async {{\n    \
                      final Map<String, dynamic>? reply;\n    \
                      try {{\n      \
-                     reply = await _transport.request('{wire}', {sent});\n    \
+                     reply = await _transport.request({wire}, {sent});\n    \
                      }} catch (uncarried) {{\n      \
-                     return {result}Fault(_{fn_prefix}WsTransportFailure('{wire}', '$uncarried'));\n    \
+                     return {result}Fault(_{fn_prefix}WsTransportFailure({wire}, '$uncarried'));\n    \
                      }}\n    \
                      if (reply == null) {{\n      \
                      return {result}Fault(\n        \
-                     _{fn_prefix}WsTransportFailure('{wire}', 'the connection closed before a reply arrived'),\n      \
+                     _{fn_prefix}WsTransportFailure({wire}, 'the connection closed before a reply arrived'),\n      \
                      );\n    \
                      }}\n\
 {decode}\
@@ -404,9 +404,9 @@ fn client_method(named: &str, operation: &OperationDef, headered: bool) -> Strin
              {returns} {call}({params}) async {{\n\
 {headers_build}    \
              try {{\n      \
-             await _transport.notify('{wire}', {sent}, headers);\n    \
+             await _transport.notify({wire}, {sent}, headers);\n    \
              }} catch (uncarried) {{\n      \
-             throw {named}WsRefusal(_{fn_prefix}WsTransportFailure('{wire}', '$uncarried'));\n    \
+             throw {named}WsRefusal(_{fn_prefix}WsTransportFailure({wire}, '$uncarried'));\n    \
              }}\n  \
              }}"
         ),
@@ -422,13 +422,13 @@ fn client_method(named: &str, operation: &OperationDef, headered: bool) -> Strin
 {headers_build}    \
                  final Map<String, dynamic>? reply;\n    \
                  try {{\n      \
-                 reply = await _transport.request('{wire}', {sent}, headers);\n    \
+                 reply = await _transport.request({wire}, {sent}, headers);\n    \
                  }} catch (uncarried) {{\n      \
-                 return {result}Fault(_{fn_prefix}WsTransportFailure('{wire}', '$uncarried'));\n    \
+                 return {result}Fault(_{fn_prefix}WsTransportFailure({wire}, '$uncarried'));\n    \
                  }}\n    \
                  if (reply == null) {{\n      \
                  return {result}Fault(\n        \
-                 _{fn_prefix}WsTransportFailure('{wire}', 'the connection closed before a reply arrived'),\n      \
+                 _{fn_prefix}WsTransportFailure({wire}, 'the connection closed before a reply arrived'),\n      \
                  );\n    \
                  }}\n\
 {decode}\
@@ -464,7 +464,7 @@ fn reply_decode_stmt(
          try {{\n        \
          fault = {fields}.fromJson(error['fault'] as Map<String, dynamic>);\n      \
          }} catch (rejected) {{\n        \
-         return {result}Fault(_{fn_prefix}WsFailedValidation('{wire}', '$rejected'));\n      \
+         return {result}Fault(_{fn_prefix}WsFailedValidation({wire}, '$rejected'));\n      \
          }}\n      \
          return {result}Fault(fault);\n    \
          }}\n\
@@ -489,10 +489,11 @@ fn header_value_decode_stmts(
     } = naming;
     let mut stmt = String::new();
     let mut locals = Vec::new();
-    for (index, (name, ty)) in names.iter().zip(element_types).enumerate() {
+    for (index, (header, ty)) in names.iter().zip(element_types).enumerate() {
+        let name = quoted(header);
         let local = format!("{local_prefix}{index}");
         let dart_ty = dart_type_of(ty);
-        let decode = dart_json_decode(ty, &format!("{headers_expr}?['{name}']"));
+        let decode = dart_json_decode(ty, &format!("{headers_expr}?[{name}]"));
         let _ = write!(
             stmt,
             "{margin}late final {dart_ty} {local};\n\
@@ -500,7 +501,7 @@ fn header_value_decode_stmts(
              {margin}  {local} = {decode};\n\
              {margin}}} catch (rejected) {{\n\
              {margin}  return {result}Fault(\n\
-             {margin}    _{fn_prefix}WsFailedValidation('{wire}', '$rejected', field: '{name}'),\n\
+             {margin}    _{fn_prefix}WsFailedValidation({wire}, '$rejected', field: {name}),\n\
              {margin}  );\n\
              {margin}}}\n"
         );
@@ -527,7 +528,7 @@ fn success_decode_block(
             "      try {{\n        \
              return {result}Ok({decoded});\n      \
              }} catch (rejected) {{\n        \
-             return {result}Fault(_{fn_prefix}WsFailedValidation('{wire}', '$rejected'));\n      \
+             return {result}Fault(_{fn_prefix}WsFailedValidation({wire}, '$rejected'));\n      \
              }}\n"
         );
     }
@@ -543,7 +544,7 @@ fn success_decode_block(
          try {{\n        \
          value = {decoded};\n      \
          }} catch (rejected) {{\n        \
-         return {result}Fault(_{fn_prefix}WsFailedValidation('{wire}', '$rejected'));\n      \
+         return {result}Fault(_{fn_prefix}WsFailedValidation({wire}, '$rejected'));\n      \
          }}\n"
     );
     let element_types: Vec<&Type> = elements.iter().skip(1).copied().collect();
@@ -585,7 +586,7 @@ fn declared_error_decode_stmts(
              try {{\n      \
              declared = {decoded};\n    \
              }} catch (rejected) {{\n      \
-             return {result}Fault(_{fn_prefix}WsFailedValidation('{wire}', '$rejected'));\n    \
+             return {result}Fault(_{fn_prefix}WsFailedValidation({wire}, '$rejected'));\n    \
              }}\n    \
              return {result}Operation(declared);\n"
         );
@@ -600,7 +601,7 @@ fn declared_error_decode_stmts(
          try {{\n      \
          declaredHead = {decoded};\n    \
          }} catch (rejected) {{\n      \
-         return {result}Fault(_{fn_prefix}WsFailedValidation('{wire}', '$rejected'));\n    \
+         return {result}Fault(_{fn_prefix}WsFailedValidation({wire}, '$rejected'));\n    \
          }}\n"
     );
     let element_types: Vec<&Type> = elements.iter().skip(1).copied().collect();
@@ -742,18 +743,19 @@ fn split_reply_record(
 }
 
 /// One push into a header map: unconditional, or guarded on non-`null` for an `Option` element.
-fn header_out_push_stmt(local: &str, name: &str, ident: &str, ty: &Type) -> String {
+fn header_out_push_stmt(local: &str, header: &str, ident: &str, ty: &Type) -> String {
+    let name = quoted(header);
     option_inner(ty).map_or_else(
         || {
             format!(
-                "            {local}['{name}'] = {};\n",
+                "            {local}[{name}] = {};\n",
                 dart_json_encode(ty, ident, true)
             )
         },
         |inner| {
             format!(
                 "            if ({ident} != null) {{\n              \
-                 {local}['{name}'] = {};\n            \
+                 {local}[{name}] = {};\n            \
                  }}\n",
                 dart_json_encode(inner, ident, true)
             )
@@ -831,10 +833,10 @@ fn header_in_read_stmts(
         "          final headersIn = frame['headers'] as Map<String, dynamic>?;\n".to_owned();
     let mut idents = Vec::new();
     for header in &shape.header_in {
-        let name = &header.name;
+        let name = quoted(&header.name);
         let parameter = dart_parameter(&header.parameter);
         let dart_ty = dart_type_of(&header.ty);
-        let decode = dart_json_decode(&header.ty, &format!("headersIn?['{name}']"));
+        let decode = dart_json_decode(&header.ty, &format!("headersIn?[{name}]"));
         let _ = write!(
             stmt,
             "          final {dart_ty} {parameter};\n          \
@@ -842,9 +844,9 @@ fn header_in_read_stmts(
              {parameter} = {decode};\n          \
              }} catch (rejected) {{\n            \
              final fault = _{fn_prefix}WsFailedValidation(\n              \
-             '{wire}',\n              \
+             {wire},\n              \
              '$rejected',\n              \
-             field: '{name}',\n            \
+             field: {name},\n            \
              );\n            \
              onFault(fault);\n"
         );
@@ -871,18 +873,18 @@ fn header_call_args(header_locals: &[String]) -> String {
 
 fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> String {
     let shape = HttpShape::of(operation);
-    let wire = &operation.wire_name;
+    let wire = &quoted(&operation.wire_name);
     let call = dart_call(operation);
     let req_ty = message_dart_typename(operation);
     let received = message_decode(operation, "frame['payload']");
     let mut arm = format!(
-        "      case '{wire}':\n        \
+        "      case {wire}:\n        \
          {{\n          \
          final {req_ty} decoded;\n          \
          try {{\n            \
          decoded = {received};\n          \
          }} catch (rejected) {{\n            \
-         final fault = _{fn_prefix}WsFailedValidation('{wire}', '$rejected');\n            \
+         final fault = _{fn_prefix}WsFailedValidation({wire}, '$rejected');\n            \
          onFault(fault);\n"
     );
     arm.push_str(&reply_write_stmt(
@@ -941,7 +943,7 @@ fn one_way_dispatch_arm(
     let _ = write!(
         arm,
         "          }} catch (unexpected) {{\n            \
-         final fault = _{fn_prefix}WsHandlerPanic('{wire}', '$unexpected');\n            \
+         final fault = _{fn_prefix}WsHandlerPanic({wire}, '$unexpected');\n            \
          onFault(fault);\n"
     );
     arm.push_str(&reply_write_stmt(
@@ -1018,7 +1020,7 @@ fn reply_dispatch_arm(
     let _ = write!(
         arm,
         "          }} catch (unexpected) {{\n            \
-         final fault = _{fn_prefix}WsHandlerPanic('{wire}', '$unexpected');\n            \
+         final fault = _{fn_prefix}WsHandlerPanic({wire}, '$unexpected');\n            \
          onFault(fault);\n"
     );
     arm.push_str(&reply_write_stmt(

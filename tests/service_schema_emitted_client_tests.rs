@@ -101,6 +101,12 @@ mod run_dart_read;
 #[path = "service_schema_emitted_client_tests/run_reserved.rs"]
 mod run_reserved;
 
+/// A service whose header names, part names, message names and paths hold a character a mobile
+/// client's string literal reads apart from text, called through each mobile client.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_quoted_service.rs"]
+mod run_quoted_service;
+
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_swift.rs"]
 mod run_swift;
@@ -539,6 +545,33 @@ mod run_dart_quoted;
 #[path = "service_schema_emitted_client_tests/run_swift_quoted.rs"]
 mod run_swift_quoted;
 
+/// Those models, read and written back by the emitted Kotlin types. The models are declared where
+/// the Dart client is built.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_quoted.rs"]
+mod run_kotlin_quoted;
+
+/// `()` held in each place a value is, and a tuple struct of no slot beside it.
+#[cfg(test)]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+#[path = "service_schema_emitted_client_tests/unit_models.rs"]
+mod unit_models;
+
+/// `()`, read and written back by the emitted Dart types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_units.rs"]
+mod run_dart_units;
+
+/// `()`, read and written back by the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_units.rs"]
+mod run_swift_units;
+
+/// `()`, read and written back by the emitted Kotlin types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_units.rs"]
+mod run_kotlin_units;
+
 /// A fixed array and a tuple of another length, refused by the emitted Swift types in serde's
 /// words, in each place a value is held, and read from an array of their length as serde reads
 /// them. The fixed arrays and the tuples of `run_dart_refusals.rs` are declared where the Dart
@@ -643,6 +676,11 @@ mod run_kotlin_unknown_keys;
 use run_dart_preprocess::{IntakeClientService, intake_client_service_schema};
 #[cfg(all(test, feature = "dart"))]
 use run_dart_read::{ParcelClientService, parcel_client_service_schema};
+#[cfg(all(test, any(feature = "dart", feature = "swift", feature = "kotlin")))]
+use run_quoted_service::{
+    TollingClientService, TollingUploadClientService, tolling_client_service_schema,
+    tolling_upload_client_service_schema,
+};
 #[cfg(test)]
 use tests::{
     ArchiveClientService, ContentClientService, ConversationClientService, EchoClientService,
