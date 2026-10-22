@@ -511,6 +511,30 @@ mod run_dart_own_tags;
 #[path = "service_schema_emitted_client_tests/run_dart_refusals.rs"]
 mod run_dart_refusals;
 
+/// Models whose names on the wire hold a `$`, a quote, a double quote and a backslash.
+#[cfg(all(test, feature = "serde", feature = "dart"))]
+#[path = "dart_tests/quoted_models.rs"]
+mod quoted_models;
+
+/// Those models, read and written back by the emitted Dart types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_quoted.rs"]
+mod run_dart_quoted;
+
+/// Those models, read and written back by the emitted Swift types. The models are declared where
+/// the Dart client is built.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_quoted.rs"]
+mod run_swift_quoted;
+
+/// A fixed array and a tuple of another length, refused by the emitted Swift types in serde's
+/// words, in each place a value is held, and read from an array of their length as serde reads
+/// them. The fixed arrays and the tuples of `run_dart_refusals.rs` are declared where the Dart
+/// client is built.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_refusals.rs"]
+mod run_swift_refusals;
+
 /// A struct under its own tag, alone, with a parameter, with a member under its alias, naming a
 /// function on itself, with a flattened member and flattened into a holder, read by the emitted
 /// Swift types under its name alone, as TypeScript and Zod read it.

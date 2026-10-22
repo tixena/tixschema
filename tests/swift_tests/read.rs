@@ -165,6 +165,15 @@ pub enum Rating {
     Low,
 }
 
+/// A member of a fixed length, one of fixed lengths at two levels, and a list of any length.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Jaws {
+    pub grid: [[u8; 2]; 3],
+    pub listed: Vec<u8>,
+    pub pair: [u8; 2],
+}
+
 fn with_a_rating(value: &Rating) -> Result<(), Vec<String>> {
     if matches!(value, Rating::Low) {
         return Err(vec!["a low rating is not carried".to_owned()]);
@@ -514,6 +523,9 @@ fn a_model_in_a_map_under_a_number_and_in_a_tuple_is_read_unjudged() {
             ),
             concat!(
                 "{ var container = try decoder.unkeyedContainer(); ",
+                "if let count = container.count, count != 2 { throw DecodingError.dataCorrupted(",
+                "DecodingError.Context(codingPath: container.codingPath, debugDescription: ",
+                r#""invalid length \(count), expected 2")) }; "#,
                 "slot0 = try container.decode(String.self); ",
                 "slot1 = try Parcel(swiftSchemaUnjudged: container.superDecoder());  }; ",
             ),
@@ -619,6 +631,9 @@ fn a_tuple_struct_reads_its_slots_unjudged() {
             concat!(
                 "public init(swiftSchemaUnjudged decoder: Decoder) throws { ",
                 "var container = try decoder.unkeyedContainer(); ",
+                "if let count = container.count, count != 2 { throw DecodingError.dataCorrupted(",
+                "DecodingError.Context(codingPath: container.codingPath, debugDescription: ",
+                r#""invalid length \(count), expected 2")) }; "#,
                 "slot0 = try container.decode(String.self); ",
                 "slot1 = try Parcel(swiftSchemaUnjudged: container.superDecoder());  }; ",
             ),
@@ -979,5 +994,47 @@ fn the_untagged_enum_that_holds_a_bounded_brand_is_built_and_written_by_serde() 
         ])
         .unwrap()[5],
         "ABCDEF"
+    );
+}
+
+/// A level written as `[T; N]` is read item by item and refused where it holds another number of
+/// items, at each level, at the coding path of the array. A list of any length is read as it was.
+#[test]
+fn a_fixed_array_is_read_from_an_array_of_its_length() {
+    let jaws = Jaws {
+        grid: [[1, 2]; 3],
+        listed: vec![3],
+        pair: [4, 5],
+    };
+    assert_eq!(
+        serde_json::to_string(&jaws).unwrap(),
+        r#"{"grid":[[1,2],[1,2],[1,2]],"listed":[3],"pair":[4,5]}"#,
+        "serde no longer writes a fixed array as an array of its items"
+    );
+    holds(
+        &jaws_swift::swift_definition(),
+        &[
+            concat!(
+                "var listed = try container.nestedUnkeyedContainer(forKey: .grid); ",
+                "var items: [[UInt8]] = []; while !listed.isAtEnd { ",
+                "var listed1 = try listed.nestedUnkeyedContainer(); var items1: [UInt8] = []; ",
+                "while !listed1.isAtEnd { items1.append(try listed1.decode(UInt8.self)) }; ",
+                "guard items1.count == 2 else { throw DecodingError.dataCorrupted(",
+                "DecodingError.Context(codingPath: listed1.codingPath, debugDescription: ",
+                r#""invalid length \(items1.count), expected 2")) }; items.append(items1) }; "#,
+                "guard items.count == 3 else { throw DecodingError.dataCorrupted(",
+                "DecodingError.Context(codingPath: listed.codingPath, debugDescription: ",
+                r#""invalid length \(items.count), expected 3")) }; self.grid = items; "#,
+            ),
+            "self.listed = try container.decode([UInt8].self, forKey: .listed); ",
+            concat!(
+                "var listed2 = try container.nestedUnkeyedContainer(forKey: .pair); ",
+                "var items2: [UInt8] = []; while !listed2.isAtEnd { ",
+                "items2.append(try listed2.decode(UInt8.self)) }; ",
+                "guard items2.count == 2 else { throw DecodingError.dataCorrupted(",
+                "DecodingError.Context(codingPath: listed2.codingPath, debugDescription: ",
+                r#""invalid length \(items2.count), expected 2")) }; self.pair = items2 }; "#,
+            ),
+        ],
     );
 }

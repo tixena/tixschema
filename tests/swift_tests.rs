@@ -190,3 +190,15 @@ mod aliased_members_models;
 #[cfg(all(feature = "swift", feature = "serde"))]
 #[path = "swift_tests/aliased.rs"]
 mod aliased;
+
+/// Models whose names on the wire hold a character a Swift string literal reads apart from text.
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde"))]
+#[path = "dart_tests/quoted_models.rs"]
+mod quoted_models;
+
+/// What the Swift emitter writes of a name on the wire that holds such a character.
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde"))]
+#[path = "swift_tests/quoted.rs"]
+mod quoted;
