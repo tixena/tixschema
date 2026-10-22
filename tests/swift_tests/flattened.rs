@@ -2,11 +2,12 @@
 //! types around its holder took, as serde hands it, an optional one `nil` wherever an entry does
 //! not read, and any other member without the keys its holder's own members, the structs
 //! flattened ahead of it and the types around its holder took. An externally tagged enum is read
-//! from the one entry under a variant's name, which no member flattened after it is handed. Each
-//! flattened member is written at its place. What a variant under a tag alone holds as its one
-//! slot or flattens beside no member of its own is read from the object without the tag. The reads
-//! are run under the Swift toolchain in `tests/service_schema_emitted_client_tests/`, in
-//! `run_swift_flattened.rs` and `run_swift_flattened_enums.rs`.
+//! from the one entry under a variant's name, which no member flattened after it is handed, and
+//! writes a unit variant as an entry of its name over `null`. Each flattened member is written at
+//! its place. What a variant under a tag alone holds as its one slot or flattens beside no member
+//! of its own is read from the object without the tag. The reads are run under the Swift toolchain
+//! in `tests/service_schema_emitted_client_tests/`, in `run_swift_flattened.rs` and
+//! `run_swift_flattened_enums.rs`.
 
 #[cfg(feature = "chrono")]
 use super::flattened_models::serving_swift;
@@ -606,4 +607,62 @@ fn a_flattened_enum_is_read_from_the_one_entry_under_a_variants_name() {
             careen_found("taken + [\"note\"]")
         ),
     );
+}
+
+/// The statement that writes `held`, a flattened `Careen`, through the holder's encoder: its unit
+/// variant as an entry of its name over `null`.
+fn careen_written(held: &str) -> String {
+    format!(
+        "switch {held} {{ case .calm: var entry = encoder.container(keyedBy: \
+         SwiftSchemaAnyKey.self); try entry.encodeNil(forKey: SwiftSchemaAnyKey(stringValue: \
+         \"Calm\")!); default: try {held}.encode(to: encoder) }}"
+    )
+}
+
+/// A flattened externally tagged enum writes its unit variant as an entry of its name over `null`
+/// beside its holder's own members, as serde writes it, and every other variant through the
+/// holder's encoder: optional, and with no member of its holder's own written under a key. The
+/// key type the entry is written under is declared once in the holder.
+#[test]
+fn a_flattened_enum_writes_its_unit_variant_as_its_name_over_null() {
+    let anchoring = anchoring_swift::swift_definition();
+    assert_written(
+        &anchoring,
+        &format!(
+            "public func encode(to encoder: Encoder) throws {{ var container = \
+             encoder.container(keyedBy: CodingKeys.self); {}; try container.encode(self.note, \
+             forKey: .note) }}",
+            careen_written("self.careen")
+        ),
+    );
+    assert_written(
+        &dredging_swift::swift_definition(),
+        &format!(
+            "public func encode(to encoder: Encoder) throws {{ {}; \
+             try self.tally.encode(to: encoder) }}",
+            careen_written("self.careen")
+        ),
+    );
+    assert_written(
+        &fending_swift::swift_definition(),
+        &format!(
+            "public func encode(to encoder: Encoder) throws {{ var container = \
+             encoder.container(keyedBy: CodingKeys.self); if let held = self.careen {{ {} }}; \
+             try container.encode(self.note, forKey: .note) }}",
+            careen_written("held")
+        ),
+    );
+    for definition in [
+        anchoring,
+        dredging_swift::swift_definition(),
+        fending_swift::swift_definition(),
+    ] {
+        assert_eq!(
+            definition
+                .matches("private struct SwiftSchemaAnyKey")
+                .count(),
+            1,
+            "the key type is declared once in: {definition}"
+        );
+    }
 }

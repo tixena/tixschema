@@ -5,11 +5,13 @@
 //! `null`, optional, and with a model its holder judges. Every member flattened after it is handed
 //! the object without that entry. Entries under two names are refused, as TypeScript and Zod
 //! refuse them, where serde reads the first: Swift keeps no order of an object's keys, so the run
-//! is made three times. Each holder that reads is written back as serde writes it back. The enum
-//! read alone is refused where its object holds other than one key, as serde refuses it, and so is
-//! an enum declared below its holder where the object it is handed holds another key, which serde
-//! reads past. The holders of `kotlin_tests/flattened_models.rs` are declared where the Kotlin
-//! client is built.
+//! is made three times. Each holder that reads is written back as serde writes it back, and each
+//! variant of the enum, built in Swift beside a member of its holder's own, optional and under a
+//! function, is written as serde writes it: a unit variant as an entry of its name over `null`. The
+//! enum read alone is refused where its object holds other than one key, as serde refuses it, and
+//! so is an enum declared below its holder where the object it is handed holds another key, which
+//! serde reads past. The holders of `kotlin_tests/flattened_models.rs` are declared where the
+//! Kotlin client is built.
 
 #![cfg(all(feature = "swift", feature = "kotlin"))]
 
@@ -22,8 +24,9 @@ use serde_json::Value;
 
 use super::flattened_models::{
     BELTING, Belting, CLEATING, Cleating, HEAVING, Heaving, Luffing, SCUDDING, STOWING, Scudding,
-    Stowing, Tacking, UNDER_AN_ALIAS, belting_swift, bunting_swift, cleating_swift, heaving_swift,
-    jibing_swift, luffing_swift, quaying_swift, scudding_swift, stowing_swift, tacking_swift,
+    Stowing, Tacking, UNDER_AN_ALIAS, Yawing, belting_swift, bunting_swift, cleating_swift,
+    heaving_swift, jibing_swift, luffing_swift, quaying_swift, scudding_swift, stowing_swift,
+    tacking_swift, yawing_swift,
 };
 use super::runtime::judged;
 use super::swift_flattened_models::{
@@ -36,18 +39,32 @@ use super::tuple_variants_models::labelling_swift;
 const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
 
 /// What the run declares beside the emitted types: the function the holders after an enum name,
-/// answering the keys of the object it is handed, the text of a value written with its keys
-/// sorted, what prints a row read, and the coding path a refusal is thrown at.
+/// answering the keys of the object it is handed, the function `Yawing` names, answering the
+/// payload as it was handed, the text of a value written with its keys sorted, the text of a value
+/// read and written back or the refusal of its read, what prints a row read, and the coding path a
+/// refusal is thrown at.
 const HELPERS: &str = r#"
 func withItsKeys(_ payload: Any) -> Any {
   guard let object = payload as? [String: Any] else { return payload }
   return ["keys": object.keys.sorted()]
 }
 
+func asGiven(_ payload: Any) -> Any { payload }
+
 func written<Read: Encodable>(_ value: Read) -> String {
   let encoder = JSONEncoder()
   encoder.outputFormatting = [.sortedKeys]
   return String(data: try! encoder.encode(value), encoding: .utf8)!
+}
+
+func writtenBack<Read: Codable>(_ type: Read.Type, _ payload: String) -> String {
+  do {
+    return written(try JSONDecoder().decode(type, from: Data(payload.utf8)))
+  } catch DecodingError.dataCorrupted(let context) {
+    return context.debugDescription
+  } catch {
+    return "\(error)"
+  }
 }
 
 func entry<Read: Decodable>(
@@ -275,6 +292,7 @@ fn printed(main: &str) -> Option<String> {
         jibing_swift::swift_definition(),
         stowing_swift::swift_definition(),
         belting_swift::swift_definition(),
+        yawing_swift::swift_definition(),
         heaving_swift::swift_definition(),
         cleating_swift::swift_definition(),
         scudding_swift::swift_definition(),
@@ -376,8 +394,8 @@ fn a_flattened_enum_reads_in_swift_the_one_entry_under_a_variants_name() {
     }
 }
 
-/// Each holder of a flattened externally tagged enum that reads a variant holding a value, or no
-/// variant where the enum is optional, is written back as serde writes it back.
+/// Each holder of a flattened externally tagged enum that reads is written back as serde writes it
+/// back, a unit variant as an entry of its name over `null`.
 #[test]
 fn a_holder_of_a_flattened_enum_writes_back_in_swift_what_serde_writes_back() {
     let held = |read_as, json, written| WrittenRow {
@@ -405,6 +423,8 @@ fn a_holder_of_a_flattened_enum_writes_back_in_swift_what_serde_writes_back() {
         held("Fending", FENDING[0], written_back::<Fending>),
         held("Fending", FENDING[1], written_back::<Fending>),
         held("Luffing", STOWING[0], written_back::<Luffing>),
+        held("Stowing", STOWING[4], written_back::<Stowing>),
+        held("Anchoring", ANCHORING[2], written_back::<Anchoring>),
     ];
     let mut expected = String::new();
     let mut main = String::new();
@@ -437,7 +457,107 @@ fn a_holder_of_a_flattened_enum_writes_back_in_swift_what_serde_writes_back() {
          15: {\"Dock\":{\"label\":\"s\"},\"keys\":[\"north\"]}\n\
          16: {\"note\":\"a\"}\n\
          17: {\"Bay\":{\"label\":\"n\"},\"note\":\"a\"}\n\
-         18: {\"Bay\":{\"label\":\"n\"},\"note\":\"a\"}\n"
+         18: {\"Bay\":{\"label\":\"n\"},\"note\":\"a\"}\n\
+         19: {\"Calm\":null,\"note\":\"a\"}\n\
+         20: {\"Calm\":null,\"note\":\"a\"}\n"
+    );
+    let Some(printed) = printed(&main) else {
+        return;
+    };
+    assert_eq!(printed, expected);
+}
+
+/// A flattened externally tagged enum built in Swift is written as serde writes it, beside a
+/// member of its holder's own, optional and under a function: a variant that holds a value as its
+/// entry, and a unit variant as its name over `null`. What serde writes is read and written back
+/// as it was, but a unit variant's entry under a function: the enum's own read takes it, and
+/// refuses it, as the Zod schema refuses it.
+#[test]
+fn a_flattened_enum_writes_in_swift_as_serde_writes_it() {
+    let tackings = [
+        (
+            Tacking::Bay {
+                label: "n".to_owned(),
+            },
+            ".bay(TackingBayPayload(label: \"n\"))",
+        ),
+        (Tacking::Calm, ".calm"),
+        (
+            Tacking::Dock {
+                label: "s".to_owned(),
+            },
+            ".dock(TackingDockPayload(label: \"s\"))",
+        ),
+        (Tacking::Held("x".to_owned()), ".held(\"x\")"),
+    ];
+    let note = || "a".to_owned();
+    let mut rows = Vec::new();
+    for (tacking, built) in tackings {
+        let unit = tacking == Tacking::Calm;
+        let stowing = Stowing {
+            note: note(),
+            tacking: tacking.clone(),
+        };
+        let belting = Belting {
+            note: note(),
+            tacking: Some(tacking.clone()),
+        };
+        let yawing = Yawing {
+            note: note(),
+            tacking,
+        };
+        rows.extend([
+            ("Stowing", json(&stowing), built, None),
+            ("Belting", json(&belting), built, None),
+            (
+                "Yawing",
+                json(&yawing),
+                built,
+                unit.then_some("unknown tag Calm"),
+            ),
+        ]);
+    }
+    let unheld = Belting {
+        note: note(),
+        tacking: None,
+    };
+    rows.push(("Belting", json(&unheld), "nil", None));
+    let mut expected = String::new();
+    let mut main = String::new();
+    for (holder, serde_wrote, built, refused) in &rows {
+        let sorted = written_back::<Value>(serde_wrote);
+        let _ = writeln!(
+            expected,
+            "{holder}: {sorted} {}",
+            refused.unwrap_or(&sorted)
+        );
+        let _ = writeln!(
+            main,
+            "print(\"{holder}: \\(written({holder}(note: \"a\", tacking: {built}))) \
+             \\(writtenBack({holder}.self, #\"{serde_wrote}\"#))\")"
+        );
+    }
+    assert_eq!(
+        expected,
+        "Stowing: {\"Bay\":{\"label\":\"n\"},\"note\":\"a\"} \
+         {\"Bay\":{\"label\":\"n\"},\"note\":\"a\"}\n\
+         Belting: {\"Bay\":{\"label\":\"n\"},\"note\":\"a\"} \
+         {\"Bay\":{\"label\":\"n\"},\"note\":\"a\"}\n\
+         Yawing: {\"Bay\":{\"label\":\"n\"},\"note\":\"a\"} \
+         {\"Bay\":{\"label\":\"n\"},\"note\":\"a\"}\n\
+         Stowing: {\"Calm\":null,\"note\":\"a\"} {\"Calm\":null,\"note\":\"a\"}\n\
+         Belting: {\"Calm\":null,\"note\":\"a\"} {\"Calm\":null,\"note\":\"a\"}\n\
+         Yawing: {\"Calm\":null,\"note\":\"a\"} unknown tag Calm\n\
+         Stowing: {\"Dock\":{\"label\":\"s\"},\"note\":\"a\"} \
+         {\"Dock\":{\"label\":\"s\"},\"note\":\"a\"}\n\
+         Belting: {\"Dock\":{\"label\":\"s\"},\"note\":\"a\"} \
+         {\"Dock\":{\"label\":\"s\"},\"note\":\"a\"}\n\
+         Yawing: {\"Dock\":{\"label\":\"s\"},\"note\":\"a\"} \
+         {\"Dock\":{\"label\":\"s\"},\"note\":\"a\"}\n\
+         Stowing: {\"Held\":\"x\",\"note\":\"a\"} {\"Held\":\"x\",\"note\":\"a\"}\n\
+         Belting: {\"Held\":\"x\",\"note\":\"a\"} {\"Held\":\"x\",\"note\":\"a\"}\n\
+         Yawing: {\"Held\":\"x\",\"note\":\"a\"} {\"Held\":\"x\",\"note\":\"a\"}\n\
+         Belting: {\"note\":\"a\"} {\"note\":\"a\"}\n"
     );
     let Some(printed) = printed(&main) else {
         return;

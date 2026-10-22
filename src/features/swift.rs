@@ -14,6 +14,7 @@ use quote::quote;
 use syn::ext::IdentExt as _;
 use syn::{Field, Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
 
+use crate::bound_message::swift_literal_text;
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{
@@ -358,6 +359,63 @@ thread_local! {
     /// needs. Swift resolves a reference across the whole file regardless of declaration order, so
     /// this carries no forward-reference bookkeeping.
     static SWIFT_NAMES: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+
+    /// The unit variants of each externally tagged enum the emitter wrote, by Rust ident: serde
+    /// writes such a variant flattened as an entry of its holder's object, its name over `null`.
+    static UNIT_ENTRIES: RefCell<HashMap<String, Vec<UnitEntry>>> = RefCell::new(HashMap::new());
+}
+
+/// A unit variant of an externally tagged enum: the case Swift declares it as, and the name serde
+/// writes it under.
+#[derive(Clone)]
+struct UnitEntry {
+    case_name: String,
+    name: String,
+}
+
+/// Records `entries`, the unit variants of the enum `rust_ident`, for a holder written after it
+/// that flattens it: none for an enum of any other shape.
+fn note_unit_entries(rust_ident: &str, entries: Vec<UnitEntry>) {
+    UNIT_ENTRIES.with(|recorded| {
+        if entries.is_empty() {
+            recorded.borrow_mut().remove(rust_ident);
+        } else {
+            recorded.borrow_mut().insert(rust_ident.to_owned(), entries);
+        }
+    });
+}
+
+/// The case Swift declares `variant` as, and the name serde writes it under: its `rename`, or the
+/// enum's `rule`.
+fn variant_names(variant: &Variant, rule: RenameRule) -> (String, String) {
+    let rust_name = variant.ident.to_string();
+    let case_name = swift_member(&RenameRule::CamelCase.apply_to_variant(&rust_name));
+    let wire_name =
+        rename_override(&variant.attrs).unwrap_or_else(|| rule.apply_to_variant(&rust_name));
+    (case_name, wire_name)
+}
+
+/// The unit variants of `item_enum`, an externally tagged enum, which it writes as their names.
+fn unit_entries(item_enum: &ItemEnum, tag_attrs: &EnumTagAttrs) -> Vec<UnitEntry> {
+    let rule = resolve_rename_rule(tag_attrs.rename_all.as_deref());
+    item_enum
+        .variants
+        .iter()
+        .filter(|variant| classify_variant(variant) == VariantKind::Unit)
+        .map(|variant| {
+            let (case_name, name) = variant_names(variant, rule);
+            UnitEntry { case_name, name }
+        })
+        .collect()
+}
+
+/// The unit variants of the externally tagged enum a flattened member `def` describes, under an
+/// `Option` or not, where the emitter wrote it above: none for any other type.
+fn unit_entries_of(def: &FieldDef) -> Vec<UnitEntry> {
+    let FieldDefType::SiblingType(name, _) = &def.field_type else {
+        return Vec::new();
+    };
+    UNIT_ENTRIES.with(|recorded| recorded.borrow().get(name).cloned().unwrap_or_default())
 }
 
 /// The Swift tokens `item` earns, given what `#[model_schema(...)]` says of it. Dispatches on the
@@ -2192,25 +2250,27 @@ fn keyed_read(field: &SwiftField, container: &str, absent_is_nil: bool) -> Strin
 
 /// The `try container.encode...` statement a field earns inside a hand-written `encode(to:)`. The
 /// property is read through `self.`, so a member named after a local of the method (`container`,
-/// `tagged`, `held`, a `wire{Member}`) or its parameter, `encoder`, is never read as either.
+/// `tagged`, `held`, `entry`, a `wire{Member}`) or its parameter, `encoder`, is never read as
+/// either.
 fn encode_statement(field: &SwiftField, container: &str) -> String {
     let property = format!("self.{}", field.swift_name);
     if field.flatten && field.field_def.is_optional() {
         // `Optional`'s own `encode(to:)` writes a single value over the holder's keys, and `null`
         // for `nil`, where serde writes the held value's keys beside them, and nothing for `None`.
-        let held = encode_conversion(
+        let written = encode_conversion(
             &field.field_def,
             &field.shape,
             field.field_def.array_depth,
             "held",
         );
-        return format!("if let held = {property} {{ try {held}.encode(to: encoder) }}");
+        return format!(
+            "if let held = {property} {{ {} }}",
+            flattened_write(&field.field_def, "held", &written)
+        );
     }
     if field.flatten {
-        return format!(
-            "try {}.encode(to: encoder)",
-            written_from(&field.field_def, &field.shape, &property)
-        );
+        let written = written_from(&field.field_def, &field.shape, &property);
+        return flattened_write(&field.field_def, &property, &written);
     }
     let source = if matches!(field.shape.leaf_conversion, LeafConversion::None) {
         property
@@ -2240,6 +2300,29 @@ fn encode_statement(field: &SwiftField, container: &str) -> String {
             swift = field.swift_name
         )
     }
+}
+
+/// The statement that writes `held`, a flattened value of `def`, as `written` through the holder's
+/// encoder. A unit variant of an externally tagged enum written above is an entry of its name over
+/// `null`, as serde writes it: the bare name the enum writes is dropped by the holder's object.
+fn flattened_write(def: &FieldDef, held: &str, written: &str) -> String {
+    let whole = format!("try {written}.encode(to: encoder)");
+    let entries = unit_entries_of(def);
+    if entries.is_empty() {
+        return whole;
+    }
+    let cases = entries.iter().fold(String::new(), |mut cases, entry| {
+        write!(
+            cases,
+            "case .{}: var entry = encoder.container(keyedBy: SwiftSchemaAnyKey.self); \
+             try entry.encodeNil(forKey: SwiftSchemaAnyKey(stringValue: \"{}\")!); ",
+            entry.case_name,
+            swift_literal_text(&entry.name)
+        )
+        .unwrap();
+        cases
+    });
+    format!("switch {held} {{ {cases}default: {whole} }}")
 }
 
 /// The per-struct static helpers a `DateTime` field's decode/encode calls into — a formatter with
@@ -2479,8 +2562,10 @@ fn struct_body_content(
                  try tagged.encode(\"{named}\", forKey: .swiftSchemaTag); "
             )
         });
+        let key = read::any_key_written(&reads, &statements);
         format!(
-            "public func encode(to encoder: Encoder) throws {{ {tag}{container}{statements} }}; "
+            "{key}public func encode(to encoder: Encoder) throws {{ \
+             {tag}{container}{statements} }}; "
         )
     } else {
         String::new()
@@ -3305,10 +3390,7 @@ fn external_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
     let mut slots: Vec<SwiftFieldShape> = Vec::new();
     let mut twins = Vec::new();
     for variant in &item_enum.variants {
-        let rust_name = variant.ident.to_string();
-        let case_name = swift_member(&RenameRule::CamelCase.apply_to_variant(&rust_name));
-        let wire_tag = rename_override(&variant.attrs)
-            .unwrap_or_else(|| variant_rule.apply_to_variant(&rust_name));
+        let (case_name, wire_tag) = variant_names(variant, variant_rule);
         let payload =
             resolve_variant_payload(shape, variant, field_rule, Some(wire_tag.as_str()), aux);
         ruled.push((case_name.clone(), payload.rules.clone()));
@@ -3760,6 +3842,15 @@ fn enum_swift_tokens(item_enum: &ItemEnum, args: &SwiftTypeArgs<'_>) -> TokenStr
     preprocess::note(&rust_ident, read::takes_keys(&swift_source));
     preprocess::note_entries(&rust_ident, flattened_entries(item_enum, args.preprocess));
     preprocess::note_tag_keys(&rust_ident, tag_keys(&tag_attrs, args.preprocess));
+    let externally_tagged = writes_bare_variant_names && !is_plain_enum(item_enum);
+    note_unit_entries(
+        &rust_ident,
+        if externally_tagged {
+            unit_entries(item_enum, &tag_attrs)
+        } else {
+            Vec::new()
+        },
+    );
     let full_source = if aux.is_empty() {
         swift_source
     } else {
