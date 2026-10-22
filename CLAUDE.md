@@ -166,12 +166,22 @@ fails.
      `ts_quoted` in `src/utils.rs`, the one writer of a TypeScript string literal, which escapes a
      `"`, a `\`, a line terminator and every other control character. Each emitter binds a message
      name once as that literal (`wire`). A name written into a comment goes through
-     `message::commented`, which spells a line terminator as its escape and `*/` as `*\/`. A name
-     with none of those characters is written as it was.
+     `message::commented`, which spells a line terminator as its escape and hands the rest to
+     `ts_commented` in `src/utils.rs`, which spells `*/` as `*\/`. A name with none of those
+     characters is written as it was.
      `a_service_whose_names_hold_a_quote_type_checks_on_every_surface` in
      `tests/service_schema_typescript_tests/type_check.rs` compiles every surface of such a service
      under `tsc --strict`, and `run_node_quoted.rs` calls one through the `http_rest` and `ws_rpc`
      clients and dispatchers under node, each request read by the Rust dispatcher too
+   - The `http_rest` TypeScript dispatcher answers a declared error that takes one status whatever
+     it holds at that status, written as a number (`fixed_error_status`, `error_status_of` in
+     `src/features/service_schema/http_service.rs`): 422 where the operation declares no
+     `error_status` table, as the Rust dispatcher does, and the one status an untagged enum's table
+     maps every variant to. Only a table a switch reads is a closure called with the error. A
+     streamed operation's outcome in `ts_service()` names the record its result names
+     (`stream_success_ts_type`). `a_declared_error_of_one_status_type_checks_at_the_http_dispatcher`
+     in `tests/service_schema_typescript_tests/type_check.rs` compiles each shape under
+     `tsc --strict`
 
 ### Key Data Structures
 
@@ -545,6 +555,15 @@ through the same `escape_js_double_quoted`. A name with no `"`, `\` or control c
 as it was. `type_check_a_name_that_holds_a_quote_is_read_under_zod_as_serde_writes_it` in
 `tests/generic_types_tests/declarations.rs` compiles the models of
 `tests/dart_tests/quoted_models.rs` under `tsc --strict` and parses every payload serde writes.
+
+A text the TypeScript surfaces write into a comment goes through `ts_commented` in `src/utils.rs`,
+which spells `*/` as `*\/`, so the comment runs on: each line `item_jsdoc_body` writes (an item's
+doc, a member's, a variant's, an alias's, and the name serde writes for a member or a variant with
+none), the name `apply_constraint_docs` falls back to, a plain enum's variant doc, and every name
+`message::commented` writes into the service code's comments. A text with no `*/` is written as it
+was. `type_check_a_name_or_a_doc_that_ends_a_comment_is_read_under_zod_as_serde_writes_it`
+compiles the models of `tests/generic_types_tests/commented_models.rs` under `tsc --strict` and
+parses every payload serde writes of them.
 
 ### 7. Field Validation Attributes (`#[model_schema_prop(...)]`)
 

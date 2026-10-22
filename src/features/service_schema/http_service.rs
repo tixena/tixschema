@@ -292,20 +292,44 @@ fn coerce_number_fn(prefix: &str) -> String {
     )
 }
 
-/// Turns a declared error into a status: the fixed default with no table, a constant where every
-/// mapped variant shares one status, or a switch over the error enum's own `{Enum}$Variant`.
-fn error_status_closure(shape: &HttpShape, error_type: &Type) -> String {
+/// The one status a declared error answers whatever it holds: the fixed default with no table,
+/// and the status every mapped variant of an untagged enum shares. `None` where a switch reads it.
+fn fixed_error_status(shape: &HttpShape, error_type: &Type) -> Option<u16> {
     if shape.error_status.is_empty() {
-        return format!("() => {DEFAULT_BINDING_ERROR_STATUS}");
+        return Some(DEFAULT_BINDING_ERROR_STATUS);
     }
     // The parser already refuses a multi-status table on an untagged enum, so what remains
     // maps every variant to one status.
     if is_recorded_untagged_enum(error_type) {
-        let single = distinct_error_statuses(shape)
-            .first()
-            .copied()
-            .unwrap_or(DEFAULT_BINDING_ERROR_STATUS);
-        return format!("() => {single}");
+        return Some(
+            distinct_error_statuses(shape)
+                .first()
+                .copied()
+                .unwrap_or(DEFAULT_BINDING_ERROR_STATUS),
+        );
+    }
+    None
+}
+
+/// The status of the declared error `error_expr` holds: the fixed status itself, which calls no
+/// closure, or the call of the switch that reads it off the error.
+fn error_status_of(shape: &HttpShape, error_type: &Type, error_expr: &str) -> String {
+    fixed_error_status(shape, error_type).map_or_else(
+        || {
+            format!(
+                "({})({error_expr})",
+                error_status_closure(shape, error_type)
+            )
+        },
+        |code| code.to_string(),
+    )
+}
+
+/// Turns a declared error into a status: a constant where [`fixed_error_status`] answers one, or
+/// a switch over the error enum's own `{Enum}$Variant`.
+fn error_status_closure(shape: &HttpShape, error_type: &Type) -> String {
+    if let Some(code) = fixed_error_status(shape, error_type) {
+        return format!("() => {code}");
     }
     let enum_name = type_leaf_name(error_type);
     let arms = shape
@@ -838,11 +862,11 @@ fn declared_error_response_stmt(
     ctx: &DispatcherContext,
 ) -> String {
     let error_head = error_declared_type(shape.error_header_out.len(), error);
-    let closure = error_status_closure(shape, error_head);
     if shape.error_header_out.is_empty() {
         return format!(
-            "          return {}HttpJson(({closure})(envelope.error), [], envelope.error);\n",
-            ctx.prefix
+            "          return {}HttpJson({}, [], envelope.error);\n",
+            ctx.prefix,
+            error_status_of(shape, error_head, "envelope.error"),
         );
     }
     let idents = error_header_out_idents(shape);
@@ -865,8 +889,9 @@ fn declared_error_response_stmt(
     }
     let _ = writeln!(
         stmt,
-        "          return {}HttpJson(({closure})(declaredError), headers, declaredError);",
+        "          return {}HttpJson({}, headers, declaredError);",
         ctx.prefix,
+        error_status_of(shape, error_head, "declaredError"),
     );
     stmt
 }

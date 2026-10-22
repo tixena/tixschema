@@ -1357,6 +1357,131 @@ impl HeaderProbeService<()> for HeaderProbeBackEnd {
     }
 }
 
+/// An error serde writes as the value one of its variants holds, which carries no name to read a
+/// status off.
+#[model_schema()]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+pub enum LapsedProbeError {
+    Busy(u32),
+    Gone(String),
+}
+
+/// An untagged error whose table maps every variant to one status, beside an `error_header_out`
+/// and beside a `header_out` alone.
+#[service_schema(transports = [])]
+pub trait LapsedProbeService<Ctx> {
+    #[service_schema_op(http(
+        method = "POST",
+        path = "/lapsed",
+        error_status(Busy = 410, Gone = 410),
+        error_header_out("x-reason"),
+    ))]
+    async fn lapse(
+        &self,
+        ctx: &Ctx,
+        id: String,
+    ) -> Result<HeaderProbeDocument, (LapsedProbeError, Option<String>)>;
+
+    #[service_schema_op(http(
+        method = "POST",
+        path = "/stale",
+        error_status(Busy = 410, Gone = 410),
+        header_out("etag"),
+    ))]
+    async fn stale(
+        &self,
+        ctx: &Ctx,
+        id: String,
+    ) -> Result<(HeaderProbeDocument, String), LapsedProbeError>;
+}
+
+/// The implementation of `LapsedProbeService` these tests call.
+pub struct LapsedProbeBackEnd;
+
+impl LapsedProbeService<()> for LapsedProbeBackEnd {
+    async fn lapse(
+        &self,
+        _ctx: &(),
+        id: String,
+    ) -> Result<HeaderProbeDocument, (LapsedProbeError, Option<String>)> {
+        ready(()).await;
+        if id.is_empty() {
+            return Err((LapsedProbeError::Gone(id), None));
+        }
+        Ok(HeaderProbeDocument { title: id })
+    }
+
+    async fn stale(
+        &self,
+        _ctx: &(),
+        id: String,
+    ) -> Result<(HeaderProbeDocument, String), LapsedProbeError> {
+        ready(()).await;
+        if id.is_empty() {
+            return Err(LapsedProbeError::Busy(1));
+        }
+        Ok((HeaderProbeDocument { title: id.clone() }, id))
+    }
+}
+
+/// A `bytes` and a `stream` reply whose declared error has no table: one beside an
+/// `error_header_out`, one alone.
+#[service_schema(transports = [])]
+pub trait SpooledProbeService<Ctx> {
+    #[service_schema_op(http(
+        method = "GET",
+        path = "/spooled/{id}",
+        body = "bytes",
+        header_out("x-id"),
+        error_header_out("x-reason"),
+    ))]
+    async fn spool(
+        &self,
+        ctx: &Ctx,
+        id: String,
+    ) -> Result<(Vec<u8>, String, String), (HeaderProbeError, Option<String>)>;
+
+    #[service_schema_op(http(method = "GET", path = "/streamed/{id}", body = "stream"))]
+    async fn stream(
+        &self,
+        ctx: &Ctx,
+        id: String,
+    ) -> Result<spooled_probe_service_schema::StreamedAnswer, HeaderProbeError>;
+}
+
+/// The implementation of `SpooledProbeService` these tests call.
+pub struct SpooledProbeBackEnd;
+
+impl SpooledProbeService<()> for SpooledProbeBackEnd {
+    async fn spool(
+        &self,
+        _ctx: &(),
+        id: String,
+    ) -> Result<(Vec<u8>, String, String), (HeaderProbeError, Option<String>)> {
+        ready(()).await;
+        if id.is_empty() {
+            return Err((HeaderProbeError::Missing, None));
+        }
+        Ok((id.clone().into_bytes(), "text/plain".to_owned(), id))
+    }
+
+    async fn stream(
+        &self,
+        _ctx: &(),
+        id: String,
+    ) -> Result<spooled_probe_service_schema::StreamedAnswer, HeaderProbeError> {
+        ready(()).await;
+        if id.is_empty() {
+            return Err(HeaderProbeError::Missing);
+        }
+        Ok(spooled_probe_service_schema::StreamedAnswer::Full {
+            source: Box::new(io::Cursor::new(id.into_bytes())),
+            content_type: "text/plain".to_owned(),
+        })
+    }
+}
+
 /// One operation whose placeholder and header argument are named after words TypeScript refuses
 /// as a parameter or a local, and one whose are named after locals the emitted functions write
 /// themselves.
@@ -1617,6 +1742,34 @@ fn the_header_probe_service_is_still_implementable_and_callable() {
     assert!(
         matches!(&answered, Err((HeaderProbeError::Missing, Some(tenant))) if tenant == "acme"),
         "got: {answered:?}"
+    );
+}
+
+#[test]
+fn the_lapsed_probe_service_is_still_implementable_and_callable() {
+    let lapsed = poll_once(LapsedProbeBackEnd.lapse(&(), String::new())).unwrap();
+    assert!(
+        matches!(&lapsed, Err((LapsedProbeError::Gone(held), None)) if held.is_empty()),
+        "got: {lapsed:?}"
+    );
+    let stale = poll_once(LapsedProbeBackEnd.stale(&(), "s".to_owned())).unwrap();
+    assert!(
+        matches!(&stale, Ok((document, etag)) if document.title == "s" && etag == "s"),
+        "got: {stale:?}"
+    );
+}
+
+#[test]
+fn the_spooled_probe_service_is_still_implementable_and_callable() {
+    let spooled = poll_once(SpooledProbeBackEnd.spool(&(), "s".to_owned())).unwrap();
+    assert!(
+        matches!(&spooled, Ok((bytes, _, id)) if bytes == b"s" && id == "s"),
+        "got: {spooled:?}"
+    );
+    let streamed = poll_once(SpooledProbeBackEnd.stream(&(), String::new())).unwrap();
+    assert!(
+        matches!(streamed, Err(HeaderProbeError::Missing)),
+        "the implementation answers another value"
     );
 }
 

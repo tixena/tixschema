@@ -1492,6 +1492,32 @@ fn the_result_composes_header_out_onto_the_streamed_record_in_a_tuple() {
     );
 }
 
+/// What an implementation of a streamed operation answers is the streamed record its result
+/// declares, alone and ahead of each `header_out` value, and never the Rust-only seam type, which
+/// no TypeScript declares.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+#[test]
+fn the_outcome_answers_the_streamed_record_rather_than_the_undescribable_rust_type() {
+    let written = service_of(STREAM_HTTP_SERVICE);
+    for outcome in [
+        "export type ContentClientServiceGetFileOutcome =\n  \
+         | { ok: true; value: { contentRange: string | undefined; contentType: string; body: \
+         ReadableStream<Uint8Array> } }",
+        "export type ContentClientServiceGetTaggedFileOutcome =\n  \
+         | { ok: true; value: [{ contentRange: string | undefined; contentType: string; body: \
+         ReadableStream<Uint8Array> }, string] }",
+    ] {
+        assert!(
+            written.contains(outcome),
+            "the outcome is written another way. Got: {written}"
+        );
+    }
+    assert!(
+        !written.contains("StreamedAnswer"),
+        "the Rust-only seam type never reaches the outcome. Got: {written}"
+    );
+}
+
 #[cfg(feature = "typescript")]
 #[test]
 fn the_result_takes_its_name_from_the_service_and_the_operation() {

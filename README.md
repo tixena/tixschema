@@ -8463,7 +8463,7 @@ The JSON Schema lists `kind` in `required` as `{"type": "string", "const": "Tagg
 
 6. **Complex Nesting**: The crate supports deeply nested structures including `HashMap<String, Vec<HashMap<String, T>>>` and similar patterns.
 
-7. **Doc Comments**: Rust doc comments on types and fields are carried through to the generated TypeScript as JSDoc comments.
+7. **Doc Comments**: Rust doc comments on types and fields are carried through to the generated TypeScript as JSDoc comments. A member with no doc comment is documented by the name serde writes for it. A `*/` in a doc comment or in such a name is written `*\/`, so the comment runs on past it.
 
 8. **Built-in Type Mappings**: Besides the primitives, `String` and `std::path::PathBuf` both map to `string` (`z.string()`). MongoDB `ObjectId` and the `chrono` date/time types are supported behind their respective feature flags. A member that holds `serde_json::Value` or `serde_json::Map` stops the build, and so does a service operation that takes or answers one: see [A JSON value is no member](#a-json-value-is-no-member).
 

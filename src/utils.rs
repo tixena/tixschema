@@ -2247,6 +2247,12 @@ pub fn ts_quoted(text: &str) -> String {
     format!("\"{}\"", escape_js_double_quoted(text))
 }
 
+/// `text` as the inside of a TypeScript comment can hold it: `*/` spelled `*\/`, so the comment
+/// runs on. The one writer of a text the TypeScript surfaces place in a comment, a doc and a name.
+pub fn ts_commented(text: &str) -> String {
+    text.replace("*/", "*\\/")
+}
+
 #[cfg(test)]
 #[cfg(any(feature = "typescript", feature = "zod"))]
 mod tests;
