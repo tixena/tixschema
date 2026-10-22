@@ -514,6 +514,21 @@ error: model_schema: type `Holding`: field `v` reaches `serde_json::Value`, whic
 
 The two names are read by their last segment, so a `Value` or a `Map` brought into scope with `use serde_json::{Map, Value};` is refused as well. A type the crate declares with `#[model_schema()]` under either name, above the type that names it, is that type, and so is one of the item's own type parameters and the item itself.
 
+A [service](#services) operation that takes or answers either type stops the build the same way, at each type it puts on the wire, in every build with the `serde` feature, spanned on the type as written. The error names the operation and the position: `the request`, the one message the operation takes; `the reply` and `the fault`, the two arms of its `Result`; ``request header `name` ``, ``reply header `name` `` and ``fault header `name` ``, a `header_in`, `header_out` and `error_header_out` binding; and ``request part `name` ``, a `part` binding. The message declared from several arguments is a `#[model_schema()]` struct, so an argument there is refused as a field of it.
+
+```rust
+#[service_schema()]
+pub trait RawService<Ctx> {
+    async fn fetch(&self, ctx: &Ctx, req: serde_json::Value) -> Result<Balance, FetchError>;
+}
+```
+
+```text
+error: service_schema: operation `fetch`: the request reaches `serde_json::Value`, which holds any JSON value, so no target can describe it. Declare the shape that value takes as a type of its own, and write that type in its place.
+```
+
+A context named `Value` or `Map` is the service's context, and a type the crate declares with `#[model_schema()]` under either name, above the service, is that type.
+
 The functions tixschema writes that take or answer a `serde_json::Value` are unchanged: the function a [`preprocess`](#preprocessing-preprocess) names, `from_value_with` and `from_value_piped`, `schema_examples()`, and the archie conversions.
 
 ### Pointers and Borrowed Values
@@ -4184,7 +4199,7 @@ Rust, Dart, Swift and Kotlin print them from the `validate()` of each value, and
 Six rules meet a crate that upgrades. Each is stated with what a build or a read answers:
 
 - **A map under `#[serde(flatten)]` beside another member that writes a key stops the build**, on a struct and on a variant of an enum: `pub struct Stocktake { #[serde(flatten)] pub counts: BTreeMap<String, u8>, pub note: String }` answers ``error: model_schema: type `Stocktake`: field `counts`: `#[serde(flatten)]` cannot hold a map beside other members — serde writes the map's entries at one level with `note`, and no TypeScript type describes both. Write the map under a key of its own.`` Write the map under a key of its own, `pub counts: BTreeMap<String, u8>`. See [Intersection Types](#intersection-types-serdeflatten).
-- **A member that holds `serde_json::Value` or `serde_json::Map` stops the build**, at any depth: a `pub v: serde_json::Value` on `Holding` answers ``error: model_schema: type `Holding`: field `v` reaches `serde_json::Value`, which holds any JSON value, so no target can describe it. Declare the shape that value takes as a type of its own, and write that type in its place.`` See [A JSON value is no member](#a-json-value-is-no-member).
+- **A member that holds `serde_json::Value` or `serde_json::Map` stops the build**, at any depth: a `pub v: serde_json::Value` on `Holding` answers ``error: model_schema: type `Holding`: field `v` reaches `serde_json::Value`, which holds any JSON value, so no target can describe it. Declare the shape that value takes as a type of its own, and write that type in its place.`` A service operation whose message, reply, fault, header or part reaches one stops the build too, the error naming the operation and the position. See [A JSON value is no member](#a-json-value-is-no-member).
 - **Every language the crate builds for calls the function a `preprocess` names**, on a field and on a type. A build stops until a function under that name is in scope in that language:
 
   | | The build answers |
@@ -8087,7 +8102,7 @@ The JSON Schema lists `kind` in `required` as `{"type": "string", "const": "Tagg
 
 7. **Doc Comments**: Rust doc comments on types and fields are carried through to the generated TypeScript as JSDoc comments.
 
-8. **Built-in Type Mappings**: Besides the primitives, `String` and `std::path::PathBuf` both map to `string` (`z.string()`). MongoDB `ObjectId` and the `chrono` date/time types are supported behind their respective feature flags. A member that holds `serde_json::Value` or `serde_json::Map` stops the build: see [A JSON value is no member](#a-json-value-is-no-member).
+8. **Built-in Type Mappings**: Besides the primitives, `String` and `std::path::PathBuf` both map to `string` (`z.string()`). MongoDB `ObjectId` and the `chrono` date/time types are supported behind their respective feature flags. A member that holds `serde_json::Value` or `serde_json::Map` stops the build, and so does a service operation that takes or answers one: see [A JSON value is no member](#a-json-value-is-no-member).
 
 ## Error Handling & Troubleshooting
 

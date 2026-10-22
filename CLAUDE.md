@@ -360,9 +360,16 @@ unaffected at every position: a stringified key describes as `{"type": "object",
   surface; this one is asked once, ungated, because no build may describe it.
   `FieldDef::any_json_name` reads the two names by their last segment through `reached_name`, at
   any depth, and keeps a name the crate declared (`is_declared_ident`), one of the item's own type
-  parameters and the item's own. tixschema's own APIs that take or answer a `serde_json::Value` (a
-  `preprocess` function, `from_value_with`, `from_value_piped`, `schema_examples()`, the archie
-  conversions) are untouched
+  parameters and the item's own. A `#[service_schema]` operation is refused the same way:
+  `any_json_refusals` in `src/service_schema/parse.rs`, gathered by `service_refusals`, asks it of
+  each type `json_positions` lists (the one message the operation names, each `header_in` and
+  `part`, and both arms of the reply, a tuple that carries `header_out` or `error_header_out` taken
+  apart), keeps the context and a declared name, and words the error through
+  `undescribable_std_message`: ``service_schema: operation `fetch`: the request reaches
+  `serde_json::Value`, ...``. The message declared from several arguments is a `#[model_schema()]`
+  struct, refused by that expansion. tixschema's own APIs that take or answer a
+  `serde_json::Value` (a `preprocess` function, `from_value_with`, `from_value_piped`,
+  `schema_examples()`, the archie conversions) are untouched
 
 ### 5. Zod v4 Requirements
 

@@ -732,9 +732,10 @@ enum MapKeyRejection {
 /// A type this crate describes no schema for that a written type reaches, at any depth. Every
 /// position that reads a written type asks this, and each spans and names its own subject.
 #[derive(Debug)]
-enum UndescribableStd<'name> {
+pub enum UndescribableStd<'name> {
     /// `serde_json::Value` and `serde_json::Map`: any JSON value, which no target can describe.
-    /// Asked of every member and filling of an item, ahead of every shape ([`any_json_errors`]).
+    /// Asked of every member and filling of an item, ahead of every shape ([`any_json_errors`]),
+    /// and of each type a service operation puts on the wire.
     AnyJson(&'name str),
     /// `OsString`/`OsStr`: serde writes an externally tagged enum naming the target platform.
     PlatformString(&'name str),
@@ -16450,9 +16451,9 @@ fn undescribable_std_rejection(written: &FieldDef) -> Option<UndescribableStd<'_
 }
 
 /// What a written type reaching a std type this crate has no schema for is reported as. The
-/// `subject` names where it was written — a field, an alias, a brand, a `default_types` entry —
-/// which is all that differs between the positions.
-fn undescribable_std_message(subject: &str, rejection: &UndescribableStd<'_>) -> String {
+/// `subject` names where it was written — a field, an alias, a brand, a `default_types` entry, a
+/// service operation's message — which is all that differs between the positions.
+pub fn undescribable_std_message(subject: &str, rejection: &UndescribableStd<'_>) -> String {
     match *rejection {
         UndescribableStd::AnyJson(name) => format!(
             "{subject} reaches `serde_json::{name}`, which holds any JSON value, so no target can \
