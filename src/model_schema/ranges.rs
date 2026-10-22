@@ -4,8 +4,9 @@
 //! Beside them, the refusal of a map under `#[serde(flatten)]` beside another member or a tag, or
 //! as the lone slot of a variant under a tag alone, written there or filling a type parameter a
 //! type flattens there, of a map keyed by a number or a `bool` at any depth below a flattened
-//! member, written there or filling a type parameter read there, and `serde_json`'s `Value` and
-//! `Map`: refused by their full path, and checked beside the item by their bare name.
+//! member or in a variant of an enum serde buffers, written there or filling a type parameter read
+//! there, and `serde_json`'s `Value` and `Map`: refused by their full path, and checked beside the
+//! item by their bare name.
 
 #[cfg(feature = "serde")]
 use core::ptr;
@@ -51,7 +52,7 @@ use crate::field_type::{
 };
 #[cfg(feature = "serde")]
 use crate::utils::{
-    FlattenedBeside, FlattenedParameter, FlattenedRead, TextKeyParameter,
+    FlattenedBeside, FlattenedParameter, FlattenedRead, TextKeyParameter, TextKeysRead,
     flattened_beside_parameters, is_open_map, open_map_parameters, text_key_parameters,
 };
 
@@ -60,12 +61,33 @@ use crate::utils::{
 const KEYS_BELOW_A_FLATTEN: &str = "serde reads every key below a flattened member as text, and \
      reads no number and no `bool` from text, so no entry of that map reads back.";
 
+/// What every refusal of a key serde reads in an untagged enum says of serde.
+#[cfg(feature = "serde")]
+const KEYS_IN_AN_UNTAGGED_ENUM: &str = "serde reads an untagged enum from a copy of the payload \
+     it buffers, where every key is text, and reads no number and no `bool` from text, so no \
+     entry of that map reads back.";
+
+/// What every refusal of a key serde reads in an enum under a tag alone says of serde.
+#[cfg(feature = "serde")]
+const KEYS_IN_A_TAGGED_ENUM: &str = "serde reads an enum under a tag alone from a copy of the \
+     payload it buffers, where every key is text, and reads no number and no `bool` from text, \
+     so no entry of that map reads back.";
+
 /// A `serde_json` type that holds any JSON value, where a written type reaches it.
 enum AnyJson<'ty> {
     /// `Value` with no arguments or `Map` with arguments, written by its bare name.
     Bare(&'static str, &'ty Type),
     /// `serde_json::Value` or `serde_json::Map`, written by its full path.
     Named(&'static str),
+}
+
+/// A member of an item that serde reads with every key as text.
+#[cfg(feature = "serde")]
+struct TextReadMember<'item> {
+    field: &'item syn::Field,
+    /// The item, the variant and the member, as a refusal of the member opens.
+    subject: String,
+    under: TextKeysRead,
 }
 
 /// One check per std range and std `Result` `item` writes by a path other than the std module that
@@ -452,26 +474,21 @@ pub fn flattened_map_beside_errors(
         .collect()
 }
 
-/// Refuses each member under `#[serde(flatten)]` among `fields` that holds, at any depth, a map
-/// keyed by a number or a `bool`: serde reads what a flattened member holds with every key as
-/// text. `subject` leads each message, and `own` is the item's name: a member that holds the item
-/// itself reaches no map its own members do not.
+/// Refuses each member of `item` serde reads with every key as text, a member under
+/// `#[serde(flatten)]` and a member of a variant of an untagged enum or of an enum under a tag
+/// alone, that holds, at any depth, a map keyed by a number or a `bool`. A member that holds the
+/// item itself reaches no map its own members do not.
 #[cfg(feature = "serde")]
-pub fn flattened_map_key_errors(
-    subject: &str,
-    fields: &Fields,
-    own: Option<&str>,
-) -> Vec<TokenStream> {
+pub fn text_read_map_key_errors(item: &Item) -> Vec<TokenStream> {
+    let own = item_schema_ident(item).map(ToString::to_string);
     let is_own = |key: &RefusedKey<'_>| match key {
-        RefusedKey::Held(held) => Some(held.model.as_str()) == own,
+        RefusedKey::Held(held) => Some(&held.model) == own.as_ref(),
         RefusedKey::Written(_) => false,
     };
-    fields
-        .iter()
-        .filter(|field| read_flattened(field))
-        .filter_map(|field| {
-            let ident = field.ident.as_ref()?;
-            let held = match bson_refused_keys(&field.ty, KeyAsked::Refused)
+    text_read_members(item)
+        .into_iter()
+        .filter_map(|member| {
+            let held = match bson_refused_keys(&member.field.ty, KeyAsked::Refused)
                 .into_iter()
                 .find(|key| !is_own(key))?
             {
@@ -481,21 +498,114 @@ pub fn flattened_map_key_errors(
                     held.model, held.described
                 ),
             };
+            let holder = match member.under {
+                TextKeysRead::Flattened => "`#[serde(flatten)]`",
+                TextKeysRead::TaggedAlone => "an enum under a tag alone",
+                TextKeysRead::Untagged => "an untagged enum",
+            };
             let message = format!(
-                "{subject}field `{}`: `#[serde(flatten)]` cannot hold {held} \u{2014} \
-                 {KEYS_BELOW_A_FLATTEN} Key the map by a `String`, or write the field under a key \
-                 of its own.",
-                ident.unraw()
+                "{}: {holder} cannot hold {held} \u{2014} {}",
+                member.subject,
+                text_keys_refused(member.under, "field")
             );
             Some(
-                syn::Error::new_spanned(field, prefixed_guard_message(&message)).to_compile_error(),
+                syn::Error::new_spanned(member.field, prefixed_guard_message(&message))
+                    .to_compile_error(),
             )
         })
         .collect()
 }
 
-/// The type parameters `item` reads, in a value of its own, below a member under
-/// `#[serde(flatten)]`, as a map key or anywhere else: at each of its own levels, and where it
+/// What a refusal of a map keyed by a number or a `bool` says after its dash, where serde reads
+/// the map `under` that: why no entry reads back, and what to write instead of the `member`.
+#[cfg(feature = "serde")]
+fn text_keys_refused(under: TextKeysRead, member: &str) -> String {
+    match under {
+        TextKeysRead::Flattened => format!(
+            "{KEYS_BELOW_A_FLATTEN} Key the map by a `String`, or write the {member} under a key \
+             of its own."
+        ),
+        TextKeysRead::TaggedAlone => format!(
+            "{KEYS_IN_A_TAGGED_ENUM} Key the map by a `String`, or name a `content` key: serde \
+             writes the tag ahead of the content, and reads the content that follows it without \
+             a copy."
+        ),
+        TextKeysRead::Untagged => format!("{KEYS_IN_AN_UNTAGGED_ENUM} Key the map by a `String`."),
+    }
+}
+
+/// Each member of `item` serde reads with every key as text: a member under `#[serde(flatten)]`,
+/// and every other member of a variant of an untagged enum or of an enum under a tag alone, which
+/// serde reads from a copy of the payload it buffers. A member or a variant serde does not read,
+/// and a member read through its author's hook, is not one.
+#[cfg(feature = "serde")]
+fn text_read_members(item: &Item) -> Vec<TextReadMember<'_>> {
+    let label = item_label(item);
+    let (levels, buffered): (Vec<(Option<&Ident>, &Fields)>, _) =
+        if let Item::Struct(item_struct) = item {
+            (vec![(None, &item_struct.fields)], None)
+        } else if let Item::Enum(item_enum) = item {
+            let buffered = match Tagging::of(item_enum) {
+                Tagging::Internal { tag: _tag } => Some(TextKeysRead::TaggedAlone),
+                Tagging::Untagged => Some(TextKeysRead::Untagged),
+                Tagging::Adjacent {
+                    content: _content,
+                    tag: _adjacent,
+                } => None,
+                Tagging::External | Tagging::Plain => None,
+            };
+            let levels = item_enum
+                .variants
+                .iter()
+                .filter(|variant| read_by_serde(&variant.attrs))
+                .map(|variant| (Some(&variant.ident), &variant.fields))
+                .collect();
+            (levels, buffered)
+        } else {
+            return Vec::new();
+        };
+    let parameters = item_generics(item).map_or_default(parameter_names);
+    let mut members = Vec::new();
+    for (variant, fields) in levels {
+        // The lone slot of a variant under a tag alone that writes a map is refused beside the
+        // tag, whatever keys it.
+        let beside_the_tag = buffered == Some(TextKeysRead::TaggedAlone)
+            && matches!(fields, Fields::Unnamed(slots) if slots.unnamed.len() == 1);
+        for (position, field) in fields.iter().enumerate() {
+            if !read_by_serde(&field.attrs)
+                || (beside_the_tag && writes_a_map(&field.ty, &parameters))
+            {
+                continue;
+            }
+            let under = if parse_serde_field_attributes(&field.attrs).flatten {
+                TextKeysRead::Flattened
+            } else if let Some(under) = buffered {
+                under
+            } else {
+                continue;
+            };
+            members.push(TextReadMember {
+                field,
+                subject: format!(
+                    "{label}: {}",
+                    refused_member_named(variant, position, field)
+                ),
+                under,
+            });
+        }
+    }
+    members
+}
+
+/// Whether serde reads the variant or the member `attrs` are written on, and reads it itself
+/// rather than through a function of its author's.
+#[cfg(feature = "serde")]
+fn read_by_serde(attrs: &[syn::Attribute]) -> bool {
+    !parse_serde_key_omission(attrs).skips_deserializing && !has_serde_read_hook(attrs)
+}
+
+/// The type parameters `item` reads, in a value of its own, where serde reads every key as text,
+/// as a map key or anywhere else: in each member [`text_read_members`] answers, and where it
 /// fills, with one of them, a type that reads a parameter so.
 #[cfg(feature = "serde")]
 pub fn text_key_parameters_of(item: &Item) -> Vec<TextKeyParameter> {
@@ -507,21 +617,20 @@ pub fn text_key_parameters_of(item: &Item) -> Vec<TextKeyParameter> {
         return Vec::new();
     }
     let flattens = ident.to_string();
-    let named = |at: usize, read: FlattenedRead| TextKeyParameter {
+    let named = |at: usize, read: FlattenedRead, under: TextKeysRead| TextKeyParameter {
         at,
         flattens: flattens.clone(),
         parameter: parameters[at].clone(),
         read,
+        under,
     };
     let mut held = Vec::new();
-    for (_, fields, _) in flattening_levels(item) {
-        for field in fields.iter().filter(|field| read_flattened(field)) {
-            held.extend(
-                parameters_read_below(&field.ty, generics)
-                    .into_iter()
-                    .map(|(at, read)| named(at, read)),
-            );
-        }
+    for member in text_read_members(item) {
+        held.extend(
+            parameters_read_below(&member.field.ty, generics)
+                .into_iter()
+                .map(|(at, read)| named(at, read, member.under)),
+        );
     }
     let own = held.clone();
     let recorded = |name: &str| {
@@ -553,7 +662,7 @@ pub fn text_key_parameters_of(item: &Item) -> Vec<TextKeyParameter> {
                     ..filled.clone()
                 }
             } else {
-                named(at, read)
+                named(at, read, filled.under)
             });
         }
     }
@@ -567,17 +676,9 @@ pub fn text_key_parameters_of(item: &Item) -> Vec<TextKeyParameter> {
     held
 }
 
-/// Whether serde reads `field` flattened: under `#[serde(flatten)]`, read, and read by serde
-/// rather than by a function of its author's.
-#[cfg(feature = "serde")]
-fn read_flattened(field: &syn::Field) -> bool {
-    parse_serde_field_attributes(&field.attrs).flatten
-        && !parse_serde_key_omission(&field.attrs).skips_deserializing
-        && !has_serde_read_hook(&field.attrs)
-}
-
-/// The positions of the type parameters of `generics` that `ty`, read below a flattened member,
-/// holds: as the key of a map, as the BSON walk finds one at any depth, and anywhere at all.
+/// The positions of the type parameters of `generics` that `ty`, read where serde reads every key
+/// as text, holds: as the key of a map, as the BSON walk finds one at any depth, and anywhere at
+/// all.
 #[cfg(feature = "serde")]
 fn parameters_read_below(ty: &Type, generics: &syn::Generics) -> Vec<(usize, FlattenedRead)> {
     let declared: Vec<&Ident> = generics
@@ -622,10 +723,10 @@ fn key_parameter(key: &Type, parameters: &[String]) -> Option<usize> {
     }
 }
 
-/// The refusal of each filling, in a type `item` writes, of a type parameter a type reads below a
-/// flattened member, where it keys a map with a number or a `bool`, or holds a map so keyed,
-/// spanned on the filling: in its members serde reads unflattened, which
-/// [`flattened_map_key_errors`] leaves to this, in an alias's value, and in each of
+/// The refusal of each filling, in a type `item` writes, of a type parameter a type reads where
+/// serde reads every key as text, where it keys a map with a number or a `bool`, or holds a map so
+/// keyed, spanned on the filling: in its members serde reads otherwise, which
+/// [`text_read_map_key_errors`] leaves to this, in an alias's value, and in each of
 /// `default_types`, where the entry fills the item's own parameter.
 #[cfg(feature = "serde")]
 pub fn filled_text_key_errors(item: &Item, default_types: &[(Ident, Type)]) -> Vec<TokenStream> {
@@ -666,11 +767,11 @@ pub fn filled_text_key_errors(item: &Item, default_types: &[(Ident, Type)]) -> V
                 })
         }
     };
-    let flattened = flattened_members(item);
+    let text_read = text_read_member_types(item);
     let mut refused: Vec<(String, &Type, TextKeyParameter, String)> = Vec::new();
     for (member, ty) in written_types(item)
         .into_iter()
-        .filter(|(_, ty)| !flattened.iter().any(|flat| ptr::eq(*flat, *ty)))
+        .filter(|(_, ty)| !text_read.iter().any(|read| ptr::eq(*read, *ty)))
     {
         let subject = member.map_or_else(
             || format!("{label}: "),
@@ -707,27 +808,31 @@ pub fn filled_text_key_errors(item: &Item, default_types: &[(Ident, Type)]) -> V
                 FlattenedRead::Key => "as the key of a map ",
                 FlattenedRead::Below => "",
             };
+            let read_where = match filled.under {
+                TextKeysRead::Flattened => "below `#[serde(flatten)]`",
+                TextKeysRead::TaggedAlone => "in an enum under a tag alone",
+                TextKeysRead::Untagged => "in an untagged enum",
+            };
             let message = format!(
-                "{subject}`{}` reads its type parameter `{}` {reads}below `#[serde(flatten)]`, and \
-                 `{}` fills it{filled_with} \u{2014} {KEYS_BELOW_A_FLATTEN} Key the map by a \
-                 `String`, or write the member under a key of its own.",
+                "{subject}`{}` reads its type parameter `{}` {reads}{read_where}, and `{}` fills \
+                 it{filled_with} \u{2014} {}",
                 filled.flattens,
                 filled.parameter,
-                written_spelling(argument)
+                written_spelling(argument),
+                text_keys_refused(filled.under, "member")
             );
             syn::Error::new_spanned(argument, prefixed_guard_message(&message)).to_compile_error()
         })
         .collect()
 }
 
-/// The type of each member of `item` serde reads flattened, which [`flattened_map_key_errors`]
-/// answers for whole.
+/// The type of each member of `item` serde reads with every key as text, which
+/// [`text_read_map_key_errors`] answers for whole.
 #[cfg(feature = "serde")]
-fn flattened_members(item: &Item) -> Vec<&Type> {
-    flattening_levels(item)
+fn text_read_member_types(item: &Item) -> Vec<&Type> {
+    text_read_members(item)
         .into_iter()
-        .flat_map(|(_, fields, _)| fields.iter().filter(|field| read_flattened(field)))
-        .map(|field| &field.ty)
+        .map(|member| &member.field.ty)
         .collect()
 }
 

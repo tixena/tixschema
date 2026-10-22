@@ -22,6 +22,9 @@ use super::date_map_keys_models::{
     untagged_watch_swift, watch_swift,
 };
 use super::text_map_keys_models::{almanac_swift, ephemeris_swift, gazetteer_swift};
+// The JSON Schema of `Roll` describes each value of its map keyed by a number by `Sailing`'s own.
+#[cfg(feature = "jsonschema")]
+use super::date_map_keys_models::sailing_schema;
 
 /// The formatter a wrapper of a date key declares ahead of its coding key.
 const FORMATTER: &str = "private static var isoFormatterForKeys: ISO8601DateFormatter { \

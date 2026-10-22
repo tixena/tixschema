@@ -688,8 +688,8 @@ thread_local! {
     static OPEN_MAP_PARAMETERS: RefCell<HashMap<String, Vec<usize>>> =
         RefCell::new(HashMap::new());
     /// The names `#[model_schema]` has been written on so far that read what fills a type
-    /// parameter, in a value of their own, below a flattened member, each with every such
-    /// parameter. Kept in every build that reads `#[serde(flatten)]`.
+    /// parameter, in a value of their own, where serde reads every key as text, each with every
+    /// such parameter. Kept in every build that reads `#[serde(flatten)]`.
     static TEXT_KEY_PARAMETERS: RefCell<HashMap<String, Vec<TextKeyParameter>>> =
         RefCell::new(HashMap::new());
     /// The names `#[model_schema]` has been written on so far that flatten a type parameter beside
@@ -761,9 +761,9 @@ pub struct FlattenedParameter {
     pub parameter: String,
 }
 
-/// A type parameter an item reads, in a value of its own, below a flattened member, as
-/// [`TEXT_KEY_PARAMETERS`] holds it: serde reads every key there as text, so where a number or a
-/// `bool` keys a map there, it reads no entry of it back.
+/// A type parameter an item reads, in a value of its own, where serde reads every key as text, as
+/// [`TEXT_KEY_PARAMETERS`] holds it: where a number or a `bool` keys a map there, serde reads no
+/// entry of it back.
 #[cfg(feature = "serde")]
 #[derive(Clone)]
 pub struct TextKeyParameter {
@@ -775,9 +775,23 @@ pub struct TextKeyParameter {
     pub parameter: String,
     /// Whether the parameter keys a map there, or is read there.
     pub read: FlattenedRead,
+    /// Where serde reads it with every key as text.
+    pub under: TextKeysRead,
 }
 
-/// How a type reads a type parameter below a flattened member.
+/// Where serde reads every key of a member as text.
+#[cfg(feature = "serde")]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum TextKeysRead {
+    /// Below a member under `#[serde(flatten)]`.
+    Flattened,
+    /// In a variant of an enum under a tag alone, from the copy of the payload serde buffers.
+    TaggedAlone,
+    /// In a variant of an untagged enum, from the copy of the payload serde buffers.
+    Untagged,
+}
+
+/// How a type reads a type parameter where serde reads every key as text.
 #[cfg(feature = "serde")]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum FlattenedRead {
@@ -1063,8 +1077,8 @@ pub fn flattened_beside_parameters(rust_ident: &str) -> Vec<FlattenedParameter> 
         .with(|names| names.borrow().get(rust_ident).cloned().unwrap_or_default())
 }
 
-/// The type parameters of `rust_ident` it reads below a flattened member. Empty for a name declared
-/// below the item asking.
+/// The type parameters of `rust_ident` it reads where serde reads every key as text. Empty for a
+/// name declared below the item asking.
 #[cfg(feature = "serde")]
 pub fn text_key_parameters(rust_ident: &str) -> Vec<TextKeyParameter> {
     TEXT_KEY_PARAMETERS.with(|names| names.borrow().get(rust_ident).cloned().unwrap_or_default())

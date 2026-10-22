@@ -283,6 +283,19 @@ const BSON_REFUSED_KEY_TYPES: [&str; 15] = [
     "u128", "usize",
 ];
 
+/// The text an integer map key is read from, as Zod's record reads it: digits under an optional
+/// sign, then a fraction of zeros at most, which Zod reads as that integer.
+#[cfg(feature = "jsonschema")]
+const INTEGER_KEY_PATTERN: &str = "^-?[0-9]+(\\.0+)?$";
+
+/// The text a floating-point map key is read from, as Zod's record reads it.
+#[cfg(feature = "jsonschema")]
+const NUMBER_KEY_PATTERN: &str = "^-?[0-9]+(\\.[0-9]+)?$";
+
+/// The text a `bool` map key is read from.
+#[cfg(feature = "jsonschema")]
+const BOOLEAN_KEY_PATTERN: &str = "^(true|false)$";
+
 /// What a [`parameter_placeholder`] opens with, ahead of the position.
 const PLACEHOLDER_OPENS: &str = "__tixschema_parameter_";
 
@@ -708,18 +721,15 @@ enum MapMemberItem {
     Value(proc_macro2::TokenStream),
 }
 
-/// Why a value in a slot has no rendering, and where it was written. Each shape carries its own
-/// diagnostic, and the field name the message needs belongs to the caller rather than to the
-/// dispatch, so the reason travels out and the message is formatted once at the top. The span
-/// travels with it because the callers that format it hold a slice of slots and cannot tell which
-/// one the dispatch refused.
+/// Why a value in a slot has no rendering, and where it was written: a map key with no rendering,
+/// whatever reason it has and at whatever depth the value walk reached it. The field name the
+/// message needs belongs to the caller rather than to the dispatch, so the reason travels out and
+/// the message is formatted once at the top. The span travels with it because the callers that
+/// format it hold a slice of slots and cannot tell which one the dispatch refused.
 #[cfg(feature = "jsonschema")]
 #[derive(Debug)]
 enum MapMemberRejection {
-    /// A map key with no rendering, whatever reason it has and at whatever depth the value walk
-    /// reached it.
     Key(MapKeyRejection, proc_macro2::Span),
-    Tuple(proc_macro2::Span),
 }
 
 #[cfg(feature = "jsonschema")]
@@ -731,13 +741,14 @@ impl MapMemberRejection {
     /// position draws that caret.
     const fn span(&self) -> proc_macro2::Span {
         match *self {
-            Self::Key(_, span) | Self::Tuple(span) => span,
+            Self::Key(_, span) => span,
         }
     }
 }
 
-/// What a map key opens: an open member set, the members it enumerates, nothing this expansion can
-/// narrow, or no object at all — read the same way at every position a map is written in.
+/// What a map key opens: an open member set, the members it enumerates, members under the text the
+/// key is written as, or no object at all — read the same way at every position a map is written
+/// in.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 enum MapKeyPath<'key> {
     /// A key named by a type path, whose `enum_members()` become the object's keys.
@@ -747,7 +758,8 @@ enum MapKeyPath<'key> {
     Open,
     /// A key with no object for any surface to describe, carrying the reason.
     Refused(MapKeyRejection),
-    /// A key this expansion cannot narrow, leaving the members unconstrained.
+    /// A key serde writes as text of its own, which enumerates no member: a number, a `bool`, a
+    /// `char`, a date, and a name over one.
     Unnarrowed,
 }
 
@@ -1825,8 +1837,8 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     }
     // A map flattened beside a member that writes a key, or filling a type parameter flattened
     // beside one, shares one level of the object with it, which no TypeScript type describes, and
-    // serde reads no entry of a map keyed by a number or a `bool` below a flattened member, so
-    // both are refused here, in every build with serde.
+    // serde reads no entry of a map keyed by a number or a `bool` below a flattened member or in an
+    // enum it buffers, so both are refused here, in every build with serde.
     #[cfg(feature = "serde")]
     if let Some(output) = refused_item_output(&item, &flattened_map_errors(&item, &parsed_args)) {
         return output;
@@ -4071,27 +4083,21 @@ fn written_as_a_variant_name(item: &Item) -> bool {
 /// The refusal of each map `item` flattens beside another member that writes a key, or beside the
 /// tag serde writes at its level, in a struct and in each variant with named fields, spanned on the
 /// map, and of each map that fills a type parameter a type flattens beside a key; then of each map
-/// keyed by a number or a `bool` below a flattened member, written there or filling a type
-/// parameter read there.
+/// keyed by a number or a `bool` where serde reads every key as text, below a flattened member and
+/// in a variant of an untagged enum or of an enum under a tag alone, written there or filling a
+/// type parameter read there.
 #[cfg(feature = "serde")]
 fn flattened_map_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_macro2::TokenStream> {
     let Some(generics) = item_generics(item) else {
         return Vec::new();
     };
-    let own = item_schema_ident(item).map(ToString::to_string);
     flattening_levels(item)
         .into_iter()
         .flat_map(|(subject, fields, tag)| {
-            let mut errors =
-                ranges::flattened_map_beside_errors(&subject, fields, generics, tag.as_deref());
-            errors.extend(ranges::flattened_map_key_errors(
-                &subject,
-                fields,
-                own.as_deref(),
-            ));
-            errors
+            ranges::flattened_map_beside_errors(&subject, fields, generics, tag.as_deref())
         })
         .chain(ranges::filled_map_errors(item, &args.default_types))
+        .chain(ranges::text_read_map_key_errors(item))
         .chain(ranges::filled_text_key_errors(item, &args.default_types))
         .collect()
 }
@@ -5931,50 +5937,11 @@ fn branded_map_key_error(name: &Ident, inner_field: &Field) -> Option<proc_macro
     Some(syn::Error::new_spanned(&inner_field.ty, message).to_compile_error())
 }
 
-/// The `compile_error!` tokens for a branded newtype whose inner the JSON slot dispatch cannot
-/// render, or `None` when it renders. Gated on `jsonschema` because that is the only surface the
-/// rejection stands on: a tuple map value renders as a Zod tuple and a TypeScript tuple, and an
-/// ungated guard would newly refuse brands every jsonschema-off build accepts today.
-#[cfg(feature = "jsonschema")]
-fn branded_slot_value_error(
-    generics: &syn::Generics,
-    name: &Ident,
-    inner_field: &Field,
-) -> Option<proc_macro2::TokenStream> {
-    let inner = branded_inner_value_surface(generics, inner_field);
-    let BrandedJsonInner::Slot(slot) = branded_json_inner(&inner) else {
-        return None;
-    };
-    let rejection = build_tuple_element_json_schema(&slot).err()?;
-    // Every key reason this walk can reach is already worded by `branded_map_key_error`, at every
-    // depth, so reporting one here would refuse the same inner twice.
-    if matches!(rejection, MapMemberRejection::Key(..)) {
-        return None;
-    }
-    let message = prefixed_guard_message(&map_member_rejection_message(
-        &format!("type `{name}`"),
-        &rejection,
-    ));
-    Some(syn::Error::new(rejection.span(), message).to_compile_error())
-}
-
-#[cfg(all(
-    not(feature = "jsonschema"),
-    any(feature = "typescript", feature = "zod")
-))]
-const fn branded_slot_value_error(
-    _generics: &syn::Generics,
-    _name: &Ident,
-    _inner_field: &Field,
-) -> Option<proc_macro2::TokenStream> {
-    None
-}
-
 /// The `compile_error!` tokens for every guard a branded newtype violates: a `cfg_attr`-wrapped
 /// serde attribute on the type or on its inner slot, an `Option` inner type, string constraints
 /// over an inner type that cannot carry them, a `pattern` that is not a regex, a std type the inner
-/// reaches that serde has no wire form for, a map key the inner reaches that no surface can write,
-/// and an inner the JSON slot dispatch cannot render.
+/// reaches that serde has no wire form for, and a map key the inner reaches that no surface can
+/// write.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn branded_guard_errors(
     item_struct: &syn::ItemStruct,
@@ -5996,11 +5963,6 @@ fn branded_guard_errors(
             inner_field,
         ))
         .chain(branded_map_key_error(&item_struct.ident, inner_field))
-        .chain(branded_slot_value_error(
-            &item_struct.generics,
-            &item_struct.ident,
-            inner_field,
-        ))
         .collect()
 }
 
@@ -8900,8 +8862,11 @@ fn branded_json_inner(inner: &FieldDef) -> BrandedJsonInner {
         return BrandedJsonInner::Chrono(format);
     }
     // A name is not a shape, so it is deferred to the type it names, through the reference every
-    // other position defers it through.
-    if matches!(inner.field_type, FieldDefType::SiblingType(..)) {
+    // other position defers it through. A `char` is the one-character string it is everywhere.
+    if matches!(
+        inner.field_type,
+        FieldDefType::SiblingType(..) | FieldDefType::Char
+    ) {
         return BrandedJsonInner::Slot(Box::new(inner.clone()));
     }
     // Every shape the shared mapping leaves unanswered has been returned above, so the fallback
@@ -13834,17 +13799,6 @@ fn scalar_field_json_schema_item(fld: &FieldDef) -> Option<proc_macro2::TokenStr
     Some(item_schema)
 }
 
-/// [`build_map_member_item`] for a tuple element, which differs for exactly one value type: a
-/// tuple renders as the fixed-arity array its own field position renders — the one value the map
-/// path has no renderer for.
-#[cfg(feature = "jsonschema")]
-fn build_tuple_element_item(value: &FieldDef) -> Result<MapMemberItem, MapMemberRejection> {
-    if let FieldDefType::Tuple(elements) = &value.field_type {
-        return Ok(MapMemberItem::Value(tuple_json_schema_value(elements)?));
-    }
-    build_map_member_item(value)
-}
-
 /// Builds the base JSON schema for a tuple element, ignoring `is_optional`, or `None` when the
 /// element holds a value the dispatch cannot render.
 #[cfg(feature = "jsonschema")]
@@ -13852,7 +13806,7 @@ fn build_tuple_element_base_json_schema(
     fld: &FieldDef,
 ) -> Result<proc_macro2::TokenStream, MapMemberRejection> {
     let value = normalized_slot_value(fld);
-    let item = build_tuple_element_item(&value)?;
+    let item = build_map_member_item(&value)?;
     Ok(arrayed_json_schema_value(&value, item.into_value()))
 }
 
@@ -14447,20 +14401,31 @@ fn check_map_key(field: &Field, field_def: &FieldDef, label: &str) -> Result<(),
     ))
 }
 
-/// The `json!` literal a map whose keys cannot be narrowed describes as: an object, with nothing
-/// said about its members. Written once so field and slot positions state the same thing.
+/// The object a map whose key serde writes as text of its own describes as, as a standalone
+/// `serde_json::Value` expression, or the rejection when the value type has no rendering here: the
+/// value's rendering for every member, and the keys by [`text_key_names`] where it states them.
 #[cfg(feature = "jsonschema")]
-fn unnarrowed_key_map_json_schema_item() -> proc_macro2::TokenStream {
-    quote! { { "type": "object", "additionalProperties": true } }
-}
-
-/// [`unnarrowed_key_map_json_schema_item`] as a standalone `serde_json::Value` expression, for the
-/// positions that hold a map as a value rather than writing it into a literal.
-#[cfg(feature = "jsonschema")]
-fn unnarrowed_key_map_json_schema_value(key: &FieldDef) -> proc_macro2::TokenStream {
-    log::trace!("Map Key Type {:?}", key.field_type);
-    let item = unnarrowed_key_map_json_schema_item();
-    quote! { serde_json::json!(#item) }
+fn text_key_map_json_schema_value(
+    key: &FieldDef,
+    value: &FieldDef,
+) -> Result<proc_macro2::TokenStream, MapMemberRejection> {
+    let value_schema = build_map_member_schema(value)?;
+    Ok(text_key_names(key).map_or_else(
+        || {
+            quote! {
+                serde_json::json!({ "type": "object", "additionalProperties": #value_schema })
+            }
+        },
+        |names| {
+            quote! {
+                serde_json::json!({
+                    "type": "object",
+                    "additionalProperties": #value_schema,
+                    "propertyNames": (#names)
+                })
+            }
+        },
+    ))
 }
 
 /// The rendering a map whose value is itself a map carries, dispatched on the inner key exactly as
@@ -14484,7 +14449,9 @@ fn build_nested_map_member_item(
                 quote! { { "type": "object", "additionalProperties": #inner_member } },
             )
         }
-        MapKeyPath::Unnarrowed => MapMemberItem::Fragment(unnarrowed_key_map_json_schema_item()),
+        MapKeyPath::Unnarrowed => {
+            MapMemberItem::Value(text_key_map_json_schema_value(inner_key, inner_value)?)
+        }
         MapKeyPath::Refused(rejection) => {
             return Err(MapMemberRejection::Key(rejection, inner_key.type_span));
         }
@@ -14557,8 +14524,8 @@ fn build_map_member_item(value: &FieldDef) -> Result<MapMemberItem, MapMemberRej
         FieldDefType::Result(ok, err) => MapMemberItem::Value(result_json_schema_value(ok, err)?),
         // A type written as no path, a function pointer or a macro among them.
         FieldDefType::Unknown => MapMemberItem::Fragment(quote! { {} }),
-        // The shared mapping renders every type named here except a tuple, which is the lone
-        // `None`.
+        // The fixed-arity array its own field position describes, and `null` for `()`.
+        FieldDefType::Tuple(elements) => MapMemberItem::Value(tuple_json_schema_value(elements)?),
         FieldDefType::Boolean
         | FieldDefType::BooleanLiteral(_)
         | FieldDefType::Char
@@ -14572,25 +14539,24 @@ fn build_map_member_item(value: &FieldDef) -> Result<MapMemberItem, MapMemberRej
         | FieldDefType::NumberLiteral(_)
         | FieldDefType::String
         | FieldDefType::StringLiteral(_)
-        | FieldDefType::Tuple(..)
         | FieldDefType::U8
         | FieldDefType::U16
         | FieldDefType::U32
         | FieldDefType::U64
-        | FieldDefType::Usize => MapMemberItem::Fragment(scalar_slot_item(value)?),
+        | FieldDefType::Usize => MapMemberItem::Fragment(scalar_slot_item(value)),
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime
         | FieldDefType::NaiveDate
         | FieldDefType::NaiveDateTime
-        | FieldDefType::NaiveTime => MapMemberItem::Fragment(scalar_slot_item(value)?),
+        | FieldDefType::NaiveTime => MapMemberItem::Fragment(scalar_slot_item(value)),
     })
 }
 
-/// [`scalar_field_json_schema_item`] for a slot, where a tuple is the one type reaching it with no
-/// inline rendering — every other type the scalar mapping names renders there.
+/// [`scalar_field_json_schema_item`] for a slot, which [`build_map_member_item`] hands only the
+/// types the scalar mapping renders.
 #[cfg(feature = "jsonschema")]
-fn scalar_slot_item(fld: &FieldDef) -> Result<proc_macro2::TokenStream, MapMemberRejection> {
-    scalar_field_json_schema_item(fld).ok_or(MapMemberRejection::Tuple(fld.type_span))
+fn scalar_slot_item(fld: &FieldDef) -> proc_macro2::TokenStream {
+    scalar_field_json_schema_item(fld).unwrap()
 }
 
 /// The `additionalProperties` schema every member of a `String`-keyed map carries, or the rejection
@@ -14612,9 +14578,6 @@ fn map_member_rejection_message(subject: &str, rejection: &MapMemberRejection) -
         MapMemberRejection::Key(key_rejection, _) => {
             map_key_rejection_message(subject, key_rejection)
         }
-        MapMemberRejection::Tuple(_) => format!(
-            "{subject}: a tuple is not supported as a map value — give the value a `#[model_schema()]` struct instead"
-        ),
     }
 }
 
@@ -14698,7 +14661,7 @@ fn map_json_schema_value(
             enum_key_map_json_schema_value(key_type_name, key.type_span, value)
         }
         MapKeyPath::Open => string_key_map_json_schema_value(value),
-        MapKeyPath::Unnarrowed => Ok(unnarrowed_key_map_json_schema_value(key)),
+        MapKeyPath::Unnarrowed => text_key_map_json_schema_value(key, value),
         MapKeyPath::Refused(rejection) => Err(MapMemberRejection::Key(rejection, key.type_span)),
     }
 }
@@ -18427,37 +18390,16 @@ fn flatten_merged_source(fld: &FieldDef) -> MergedSource {
             value: sibling_json_schema_value(name, arguments, fld.type_span),
         };
     }
-    // A map joins as its own description where its key is read as a string or a plain enum, and
-    // as its values under the keys its key's text describes where that key is read from text; any
-    // other key adds no key, serde reading none of its entries.
+    // A map joins as its own description, as it is described under a key; a key no surface
+    // writes adds no key.
     let (value, map) = if let FieldDefType::TypeParam(parameter) = &fld.field_type {
         (json_argument_value(parameter), false)
     } else if let FieldDefType::Map(key, value) = &fld.field_type
         && fld.array_depth == 0
-        && matches!(
-            map_key_path(key),
-            MapKeyPath::Open | MapKeyPath::Enumerated(_)
-        )
+        && !matches!(map_key_path(key), MapKeyPath::Refused(_))
     {
         let described = map_json_schema_value(key, value)
             .unwrap_or_else(|rejection| map_member_rejection_error(&fld.name, &rejection));
-        (described, true)
-    } else if let FieldDefType::Map(key, value) = &fld.field_type
-        && fld.array_depth == 0
-        && let Some(names) = text_key_names(key)
-    {
-        let described = build_map_member_schema(value).map_or_else(
-            |rejection| map_member_rejection_error(&fld.name, &rejection),
-            |values| {
-                quote! {
-                    serde_json::json!({
-                        "type": "object",
-                        "additionalProperties": #values,
-                        "propertyNames": #names
-                    })
-                }
-            },
-        );
         (described, true)
     } else {
         (quote! { serde_json::json!({ "type": "object" }) }, false)
@@ -18553,37 +18495,48 @@ fn unit_member_record_item(_item: &Item) -> proc_macro2::TokenStream {
     proc_macro2::TokenStream::new()
 }
 
-/// The description of the keys a flattened map is read under where serde reads its key from the
-/// text of each key and the key is no string: a `char`, a chrono date or time, and a type that
-/// writes one, which the description of that type states. `None` for every other key.
+/// The description of the keys of a map whose key serde writes as the text of a value that is no
+/// string: a `char` and a chrono date or time by their own descriptions, a number and a `bool` by
+/// the pattern of their text, and a type that writes one by its own description, read as that
+/// text. `None` for every other key.
 #[cfg(feature = "jsonschema")]
 fn text_key_names(key: &FieldDef) -> Option<proc_macro2::TokenStream> {
     if !matches!(map_key_path(key), MapKeyPath::Unnarrowed) {
         return None;
     }
-    match &key.field_type {
+    let pattern = match &key.field_type {
         FieldDefType::Char => {
-            scalar_field_json_schema_item(key).map(|item| quote! { serde_json::json!(#item) })
+            return scalar_field_json_schema_item(key)
+                .map(|item| quote! { serde_json::json!(#item) });
         }
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime
         | FieldDefType::NaiveDate
         | FieldDefType::NaiveDateTime
         | FieldDefType::NaiveTime => {
-            chrono_json_schema_item(&key.field_type).map(|item| quote! { serde_json::json!(#item) })
+            return chrono_json_schema_item(&key.field_type)
+                .map(|item| quote! { serde_json::json!(#item) });
         }
         FieldDefType::SiblingType(name, arguments) => {
-            Some(sibling_json_schema_value(name, arguments, key.type_span))
+            return Some(named_key_text(&sibling_json_schema_value(
+                name,
+                arguments,
+                key.type_span,
+            )));
         }
-        FieldDefType::Boolean
-        | FieldDefType::BooleanLiteral(_)
-        | FieldDefType::F32
-        | FieldDefType::F64
-        | FieldDefType::I8
+        FieldDefType::Boolean => BOOLEAN_KEY_PATTERN,
+        FieldDefType::I8
         | FieldDefType::I16
         | FieldDefType::I32
         | FieldDefType::I64
         | FieldDefType::Isize
+        | FieldDefType::U8
+        | FieldDefType::U16
+        | FieldDefType::U32
+        | FieldDefType::U64
+        | FieldDefType::Usize => INTEGER_KEY_PATTERN,
+        FieldDefType::F32 | FieldDefType::F64 => NUMBER_KEY_PATTERN,
+        FieldDefType::BooleanLiteral(_)
         | FieldDefType::Map(..)
         | FieldDefType::NumberLiteral(_)
         | FieldDefType::Range(..)
@@ -18592,14 +18545,39 @@ fn text_key_names(key: &FieldDef) -> Option<proc_macro2::TokenStream> {
         | FieldDefType::StringLiteral(_)
         | FieldDefType::Tuple(..)
         | FieldDefType::TypeParam(_)
-        | FieldDefType::U8
-        | FieldDefType::U16
-        | FieldDefType::U32
-        | FieldDefType::U64
-        | FieldDefType::Unknown
-        | FieldDefType::Usize => None,
+        | FieldDefType::Unknown => return None,
         #[cfg(feature = "mongodb")]
-        FieldDefType::ObjectId => None,
+        FieldDefType::ObjectId => return None,
+    };
+    Some(quote! { serde_json::json!({ "type": "string", "pattern": #pattern }) })
+}
+
+/// `described`, the description of a type a map is keyed by, as the text serde writes the key as:
+/// a number's and a `bool`'s by the pattern of that text, any other as it stands. Read where the
+/// description is built, which states what a brand, an alias or a type filled at its arguments is.
+#[cfg(feature = "jsonschema")]
+fn named_key_text(described: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+    let text =
+        |pattern: &str| quote! { serde_json::json!({ "type": "string", "pattern": #pattern }) };
+    let (integer, number, boolean) = (
+        text(INTEGER_KEY_PATTERN),
+        text(NUMBER_KEY_PATTERN),
+        text(BOOLEAN_KEY_PATTERN),
+    );
+    quote! {
+        ({
+            let named_key: serde_json::Value = #described;
+            let named_key_type = named_key.get("type").and_then(serde_json::Value::as_str);
+            if named_key_type == ::core::option::Option::Some("integer") {
+                #integer
+            } else if named_key_type == ::core::option::Option::Some("number") {
+                #number
+            } else if named_key_type == ::core::option::Option::Some("boolean") {
+                #boolean
+            } else {
+                named_key
+            }
+        })
     }
 }
 

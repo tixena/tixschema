@@ -169,26 +169,39 @@ enum BucketTreeUnion {
     Nested(HashMap<Bucket, Self>),
 }
 
-// The self-naming map member whose key spells as `number`: the index signature has a parameter
-// type for it, so it keeps that spelling rather than the mapped one.
+// The self-naming map member whose key spells as `string`, a `char`: the index signature has a
+// parameter type for it, so it keeps that spelling rather than the mapped one. serde reads no
+// number key in an untagged enum, which it reads from a copy of the payload it buffers.
 #[cfg(feature = "typescript")]
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 enum CodeTreeUnion {
     Leaf(String),
-    Nested(HashMap<u32, Self>),
+    Nested(HashMap<char, Self>),
 }
 
-// A self-naming map member keyed by a `bool`. serde writes `"true"`/`"false"`, and a literal type
-// cannot be an index signature parameter (TS1337), so the deferral is carried by the mapped type.
+// The keys of `FlagTreeUnion`, written `"true"` and `"false"` as a `bool` key is, which serde
+// reads in an untagged enum where it reads no `bool` key.
+#[cfg(feature = "typescript")]
+#[model_schema()]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum FlagKey {
+    False,
+    True,
+}
+
+// A self-naming map member keyed by a plain enum written `"true"`/`"false"`. A key that is no
+// TypeScript property key cannot be an index signature parameter, so the deferral is carried by
+// the mapped type.
 #[cfg(feature = "typescript")]
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 enum FlagTreeUnion {
     Leaf(String),
-    Nested(HashMap<bool, Self>),
+    Nested(HashMap<FlagKey, Self>),
 }
 
 // The `DateTime<Tz>` twin: the key spells as `string`, which the index signature does have a
@@ -750,13 +763,10 @@ fn test_recursive_enum_keyed_map_member_typescript_uses_mapped_type() {
 
 #[test]
 #[cfg(feature = "typescript")]
-fn test_recursive_bool_keyed_map_member_typescript_uses_mapped_type() {
+fn test_recursive_flag_keyed_map_member_typescript_uses_mapped_type() {
     let ts = FlagTreeUnion::ts_definition();
     assert!(
-        ts.contains(
-            "export type FlagTreeUnion = string | { [key in \"true\" | \"false\"]?: \
-             FlagTreeUnion };"
-        ),
+        ts.contains("export type FlagTreeUnion = string | { [key in FlagKey]?: FlagTreeUnion };"),
         "Got:\n{ts}"
     );
     assert!(!ts.contains("[key: "), "Got:\n{ts}");
@@ -777,17 +787,19 @@ fn test_recursive_date_time_keyed_map_member_typescript_keeps_index_signature() 
 
 #[test]
 #[cfg(feature = "typescript")]
-fn test_recursive_bool_keyed_map_member_writes_the_two_string_keys() {
+fn test_recursive_flag_keyed_map_member_writes_and_reads_the_two_string_keys() {
     let flags = FlagTreeUnion::Nested(HashMap::from([(
-        true,
+        FlagKey::True,
         FlagTreeUnion::Nested(HashMap::from([(
-            false,
+            FlagKey::False,
             FlagTreeUnion::Leaf("x".to_owned()),
         )])),
     )]));
+    let written = serde_json::to_string(&flags).unwrap();
+    assert_eq!(written, r#"{"true":{"false":"x"}}"#);
     assert_eq!(
-        serde_json::to_string(&flags).unwrap(),
-        r#"{"true":{"false":"x"}}"#
+        serde_json::from_str::<FlagTreeUnion>(&written).unwrap(),
+        flags
     );
 }
 
@@ -809,11 +821,11 @@ fn test_recursive_date_time_keyed_map_member_round_trips() {
 
 #[test]
 #[cfg(feature = "typescript")]
-fn test_recursive_number_keyed_map_member_typescript_keeps_index_signature() {
+fn test_recursive_char_keyed_map_member_typescript_keeps_index_signature() {
     let ts = CodeTreeUnion::ts_definition();
     assert!(
         ts.contains(
-            "export type CodeTreeUnion = string | { [key: number]: CodeTreeUnion | undefined };"
+            "export type CodeTreeUnion = string | { [key: string]: CodeTreeUnion | undefined };"
         ),
         "Got:\n{ts}"
     );

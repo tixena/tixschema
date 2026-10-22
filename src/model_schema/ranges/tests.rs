@@ -1582,3 +1582,237 @@ fn a_type_parameter_read_below_a_flatten_is_refused_where_its_filling_holds_a_nu
         assert_eq!(refused(source), NONE, "{source}");
     }
 }
+
+/// The refusal of a member of a variant serde reads from the copy of the payload it buffers, where
+/// `subject` names the member and `held` what it holds: `tagged` for an enum under a tag alone, an
+/// untagged enum otherwise.
+#[cfg(feature = "serde")]
+fn buffered(subject: &str, held: &str, tagged: bool) -> String {
+    let (enum_is, closing) = if tagged {
+        (
+            "an enum under a tag alone",
+            "Key the map by a `String`, or name a `content` key: serde writes the tag ahead of \
+             the content, and reads the content that follows it without a copy.",
+        )
+    } else {
+        ("an untagged enum", "Key the map by a `String`.")
+    };
+    format!(
+        "model_schema: {subject}: {enum_is} cannot hold {held} \u{2014} serde reads {enum_is} \
+         from a copy of the payload it buffers, where every key is text, and reads no number and \
+         no `bool` from text, so no entry of that map reads back. {closing}"
+    )
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn an_untagged_enum_or_one_under_a_tag_alone_with_a_map_keyed_by_a_number_is_refused() {
+    let _: Vec<String> = refused("#[serde(transparent)] pub struct Fathoms(pub u32);");
+    for (written, key) in [
+        ("BTreeMap<u32, u8>", "u32"),
+        ("Option<HashMap<bool, u8>>", "bool"),
+        ("Vec<BTreeMap<i64, String>>", "i64"),
+        ("Box<BTreeMap<Fathoms, u8>>", "Fathoms"),
+        ("BTreeMap<String, BTreeMap<u8, u8>>", "u8"),
+    ] {
+        assert_eq!(
+            refused(&format!(
+                "#[serde(untagged)] pub enum Soundings {{ Lines({written}), Named {{ depths: \
+                 {written} }} }}"
+            )),
+            vec![
+                buffered(
+                    "type `Soundings`: variant `Lines`, field `0`",
+                    &format!("a map keyed by `{key}`"),
+                    false
+                ),
+                buffered(
+                    "type `Soundings`: variant `Named`, field `depths`",
+                    &format!("a map keyed by `{key}`"),
+                    false
+                ),
+            ],
+            "{written}"
+        );
+        assert_eq!(
+            refused(&format!(
+                "#[serde(tag = \"kind\")] pub enum Plumbed {{ Named {{ depths: {written} }} }}"
+            )),
+            vec![buffered(
+                "type `Plumbed`: variant `Named`, field `depths`",
+                &format!("a map keyed by `{key}`"),
+                true
+            )],
+            "{written}"
+        );
+    }
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn an_enum_serde_buffers_that_holds_a_type_declared_above_with_such_a_map_is_refused() {
+    let _: Vec<String> = refused("pub struct Charted { pub marks: Vec<BTreeMap<i16, u8>> }");
+    let _: Vec<String> = refused("pub struct Keyed<T> { pub marks: BTreeMap<T, u8> }");
+    let _: Vec<String> = refused_generic("pub struct Over<T> { pub held: T }");
+    let charted = "`Charted`, which holds a map keyed by a number or a `bool` (field `marks`, a \
+                   map keyed by `i16`)";
+    assert_eq!(
+        refused("#[serde(untagged)] pub enum Leadline { Charted(Charted), Plain(String) }"),
+        vec![buffered(
+            "type `Leadline`: variant `Charted`, field `0`",
+            charted,
+            false
+        )]
+    );
+    assert_eq!(
+        refused("#[serde(tag = \"kind\")] pub enum Fathomed { Charted(Charted) }"),
+        vec![buffered(
+            "type `Fathomed`: variant `Charted`, field `0`",
+            charted,
+            true
+        )]
+    );
+    assert_eq!(
+        refused("#[serde(untagged)] pub enum Overheld { Held { over: Over<BTreeMap<u8, u8>> } }"),
+        vec![buffered(
+            "type `Overheld`: variant `Held`, field `over`",
+            "`Over<BTreeMap<u8, u8>>`, which holds a map keyed by a number or a `bool` (a map \
+             keyed by `u8`)",
+            false
+        )]
+    );
+    assert_eq!(
+        refused("#[serde(untagged)] pub enum Keying { Keyed(Keyed<u32>) }"),
+        vec![buffered(
+            "type `Keying`: variant `Keyed`, field `0`",
+            "`Keyed<u32>`, which holds a map keyed by a number or a `bool` (field `marks`, a map \
+             keyed by `u32`)",
+            false
+        )]
+    );
+}
+
+/// The refusal of `filling` filling the parameter `T` that `reads` reads in an enum serde buffers,
+/// as the key of a map where `keying`, and `filled_with` after "fills it".
+#[cfg(feature = "serde")]
+fn read_buffered(subject: &str, reads: &str, keying: bool, filling: &str) -> String {
+    let as_key = if keying { "as the key of a map " } else { "" };
+    let filled_with = if keying {
+        String::new()
+    } else {
+        format!(" with a map keyed by `{}`", &filling[9..12])
+    };
+    format!(
+        "model_schema: {subject}`{reads}` reads its type parameter `T` {as_key}in an untagged \
+         enum, and `{filling}` fills it{filled_with} \u{2014} serde reads an untagged enum from a \
+         copy of the payload it buffers, where every key is text, and reads no number and no \
+         `bool` from text, so no entry of that map reads back. Key the map by a `String`."
+    )
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_type_parameter_an_enum_serde_buffers_reads_is_refused_where_a_number_fills_it() {
+    assert_eq!(
+        refused_generic("#[serde(untagged)] pub enum Lines<T> { Keyed(BTreeMap<T, u8>) }"),
+        NONE
+    );
+    assert_eq!(
+        refused_generic("#[serde(untagged)] pub enum OneOrMore<T> { One(T), More(Vec<T>) }"),
+        NONE
+    );
+    assert_eq!(
+        refused_generic("pub struct Handed<T> { pub lines: Lines<T> }"),
+        NONE
+    );
+    assert_eq!(
+        refused("pub struct Dock { pub lines: Option<Lines<u32>> }"),
+        vec![read_buffered(
+            "type `Dock`: field `lines`: ",
+            "Lines",
+            true,
+            "u32"
+        )]
+    );
+    assert_eq!(
+        refused("pub struct Slip { pub handed: Handed<bool> }"),
+        vec![read_buffered(
+            "type `Slip`: field `handed`: ",
+            "Lines",
+            true,
+            "bool"
+        )]
+    );
+    assert_eq!(
+        refused("pub struct Pier { pub some: OneOrMore<BTreeMap<u16, u8>> }"),
+        vec![read_buffered(
+            "type `Pier`: field `some`: ",
+            "OneOrMore",
+            false,
+            "BTreeMap<u16, u8>"
+        )]
+    );
+    for source in [
+        "pub struct Wharf { pub lines: Lines<String> }",
+        "pub struct Mole { pub lines: Lines<char> }",
+        "pub struct Quay { pub some: OneOrMore<BTreeMap<String, u8>> }",
+    ] {
+        assert_eq!(refused(source), NONE, "{source}");
+    }
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn an_enum_serde_reads_such_a_map_in_builds() {
+    for source in [
+        "pub enum Bearing { Lines { depths: BTreeMap<u32, u8> }, Held(BTreeMap<bool, u8>) }",
+        "#[serde(tag = \"kind\", content = \"body\")] pub enum Hauled { Lines { depths: \
+         BTreeMap<u32, u8> }, Held(BTreeMap<bool, u8>) }",
+        "#[serde(untagged)] pub enum Lettered { Lines(BTreeMap<char, u8>), Named(BTreeMap<String, \
+         u8>) }",
+        "#[serde(untagged)] pub enum Unread { Lines { #[serde(skip_deserializing)] depths: \
+         BTreeMap<u32, u8>, count: u8 } }",
+        "#[serde(untagged)] pub enum ReadByHand { Lines { #[serde(deserialize_with = \
+         \"read_lines\")] depths: BTreeMap<u32, u8> } }",
+        "#[serde(untagged)] pub enum Skipped { Text(String), #[serde(skip_deserializing)] \
+         Lines(BTreeMap<u32, u8>) }",
+        "#[serde(untagged)] pub enum Below { Lines(DepthsBelow) }",
+    ] {
+        assert_eq!(refused(source), NONE, "{source}");
+    }
+    assert_eq!(
+        refused_generic("#[serde(untagged)] pub enum Keyed<T> { Lines(BTreeMap<T, u8>) }"),
+        NONE
+    );
+}
+
+/// The lone slot of a variant under a tag alone that is a map keyed by a number is refused beside
+/// the tag, once.
+#[cfg(feature = "serde")]
+#[test]
+fn a_lone_map_beside_a_tag_is_refused_as_a_map_and_not_for_its_key() {
+    let messages = refused("#[serde(tag = \"kind\")] pub enum Lined { Lines(BTreeMap<u32, u8>) }");
+    assert_eq!(messages.len(), 1, "{messages:?}");
+    assert!(
+        !messages[0].contains("buffers"),
+        "the lone map is refused for its key: {messages:?}"
+    );
+}
+
+/// The README quotes the refusal as the build answers it.
+#[cfg(feature = "serde")]
+#[test]
+fn the_readme_states_the_refusal_of_a_map_keyed_by_a_number_in_a_buffered_enum() {
+    for source in [
+        "#[serde(untagged)] pub enum Leadlines { Lines(BTreeMap<u32, u8>) }",
+        "#[serde(tag = \"kind\")] pub enum Plumbed { Named { depths: BTreeMap<u32, u8> } }",
+    ] {
+        let messages = refused(source);
+        assert_eq!(messages.len(), 1, "{source}: {messages:?}");
+        let answered = format!("error: {}", messages[0]);
+        assert!(
+            include_str!("../../../README.md").contains(&answered),
+            "the README no longer quotes: {answered}"
+        );
+    }
+}
