@@ -55,3 +55,22 @@ mod flattened_models;
 #[cfg(all(feature = "dart", feature = "serde"))]
 #[path = "dart_tests/flattened.rs"]
 mod flattened;
+
+/// The models a name serde reads beside the one it writes is read under.
+#[cfg(test)]
+#[cfg(all(feature = "dart", feature = "serde"))]
+#[path = "kotlin_tests/aliased_models.rs"]
+mod aliased_models;
+
+/// The enums of those models flattened, each beside a member of its holder's own. Declared after
+/// the module that declares the enums.
+#[cfg(test)]
+#[cfg(all(feature = "dart", feature = "serde"))]
+#[path = "dart_tests/flattened_aliased_models.rs"]
+mod flattened_aliased_models;
+
+/// What the Dart emitter reads of a variant and a member under the `alias` serde reads them under.
+#[cfg(test)]
+#[cfg(all(feature = "dart", feature = "serde"))]
+#[path = "dart_tests/aliased.rs"]
+mod aliased;

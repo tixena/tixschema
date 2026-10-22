@@ -1,16 +1,14 @@
-//! The models a name serde reads beside the one it writes is read under: a variant under its
-//! `alias`, under each tagging and in a plain enum, and a member under its `alias`, in a struct
-//! the plugin reads, in one the emitter reads by hand, flattened, and in a variant of each
-//! tagging. serde reads each name, writes the one it writes, and refuses a member read under two
-//! of its names.
+//! The models a name serde reads beside the one it writes is read under, which the Kotlin and the
+//! Dart clients are held to: a variant under its `alias`, under each tagging and in a plain enum,
+//! and a member under its `alias`, in a struct the Kotlin plugin reads, in one the Kotlin emitter
+//! reads by hand, flattened, and in a variant of each tagging. serde reads each name, writes the
+//! one it writes, and refuses a member read under two of its names.
 
 use alloc::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tixschema::model_schema;
-
-use super::flattened_models::{Bunting, bunting_schema};
 
 /// What [`Surging`] is read from: each variant under its name, under each alias and as an entry
 /// over `null`, a member under its alias, and a member under its name and its alias, which serde
@@ -200,6 +198,13 @@ pub struct Gybing<LabelType> {
     pub note: Option<String>,
 }
 
+/// The keys a function was handed, which the members below that name one read.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Pennon {
+    pub keys: Vec<String>,
+}
+
 /// A member under an alias beside a member that names a function flattened after it: serde hands
 /// the function the keys the member did not take.
 #[model_schema()]
@@ -209,7 +214,7 @@ pub struct Fairleading {
     pub label: String,
     #[model_schema_prop(preprocess = ["withItsKeys"])]
     #[serde(flatten)]
-    pub tally: Bunting,
+    pub tally: Pennon,
 }
 
 /// [`Hawsing`] flattened ahead of a member that names a function: serde hands the function the
@@ -221,7 +226,7 @@ pub struct Fothering {
     pub hawsing: Hawsing,
     #[model_schema_prop(preprocess = ["withItsKeys"])]
     #[serde(flatten)]
-    pub tally: Bunting,
+    pub tally: Pennon,
 }
 
 /// The keys of the object `payload`, under `keys`.
@@ -254,4 +259,93 @@ where
         |_| "refused".to_owned(),
         |read| serde_json::to_string(&read).unwrap(),
     )
+}
+
+/// What serde reads of each payload: a name it reads beside the one it writes is read as that
+/// variant or member, written back under the name serde writes, and a member under two of its
+/// names is refused.
+#[test]
+fn serde_reads_a_variant_and_a_member_under_each_alias() {
+    let surging = SURGING.map(written_back::<Surging>);
+    assert_eq!(
+        surging,
+        [
+            r#"{"Berth":{"label":"n"}}"#,
+            r#"{"Berth":{"label":"n"}}"#,
+            r#"{"Berth":{"label":"n"}}"#,
+            "refused",
+            r#""Calm""#,
+            r#""Calm""#,
+            r#""Calm""#,
+            r#""Calm""#,
+            r#"{"Held":"x"}"#,
+            r#"{"Held":"x"}"#,
+        ]
+    );
+    let careening = CAREENING.map(written_back::<Careening>);
+    assert_eq!(
+        careening,
+        [
+            r#"{"kind":"Berth","label":"n"}"#,
+            r#"{"kind":"Berth","label":"n"}"#,
+            r#"{"kind":"Berth","label":"n"}"#,
+            "refused",
+            r#"{"kind":"Calm"}"#,
+            r#"{"kind":"Calm"}"#,
+        ]
+    );
+    let scending = SCENDING.map(written_back::<Scending>);
+    assert_eq!(
+        scending,
+        [
+            r#"{"kind":"Berth","data":{"label":"n"}}"#,
+            r#"{"kind":"Berth","data":{"label":"n"}}"#,
+            r#"{"kind":"Berth","data":{"label":"n"}}"#,
+            r#"{"kind":"Calm"}"#,
+            r#"{"kind":"Calm"}"#,
+            r#"{"kind":"Held","data":"x"}"#,
+            r#"{"kind":"Held","data":"x"}"#,
+        ]
+    );
+    let swell = SWELL.map(written_back::<Swell>);
+    assert_eq!(
+        swell,
+        [r#""Flood""#, r#""Ebb""#, r#""Ebb""#, r#""Ebb""#, "refused"]
+    );
+    assert_eq!(
+        LULLING.map(written_back::<Lulling>),
+        [r#""Ebb""#, r#""Ebb""#, r#""Flood""#]
+    );
+    assert_eq!(
+        written_back::<Tiding>(TIDING),
+        r#"{"by_swell":{"Ebb":1,"Flood":2},"swells":["Ebb","Flood"]}"#
+    );
+    let veering = VEERING.map(written_back::<Veering>);
+    assert_eq!(
+        veering,
+        [r#"{"label":"n"}"#, r#"{"label":"n"}"#, "refused", "3"]
+    );
+    let hawsing = HAWSING.map(written_back::<Hawsing>);
+    let held = [
+        r#"{"label":"n"}"#,
+        r#"{"label":"n"}"#,
+        r#"{"label":"n","note":"r"}"#,
+        "refused",
+        "refused",
+    ];
+    assert_eq!(hawsing, held);
+    assert_eq!(HAWSING.map(written_back::<Gybing<String>>), held);
+    assert_eq!(
+        serde_json::from_str::<Hawsing>(HAWSING[3])
+            .unwrap_err()
+            .to_string(),
+        "duplicate field `label` at line 1 column 19"
+    );
+    let tallied = [
+        r#"{"label":"n","keys":["north"]}"#,
+        r#"{"label":"n","keys":["north"]}"#,
+        "refused",
+    ];
+    assert_eq!(FAIRLEADING.map(written_back::<Fairleading>), tallied);
+    assert_eq!(FAIRLEADING.map(written_back::<Fothering>), tallied);
 }

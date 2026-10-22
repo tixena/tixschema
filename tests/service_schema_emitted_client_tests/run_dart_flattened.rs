@@ -118,10 +118,6 @@ void main() {
 }
 ";
 
-/// The payload of [`LOADING`] that holds a variant's entry under its alias: Dart reads no variant
-/// under an alias, and refuses what serde reads.
-const UNDER_AN_ALIAS: usize = 3;
-
 /// The text of `value` as serde writes it.
 fn written<T>(value: &T) -> String
 where
@@ -259,10 +255,10 @@ fn a_function_reads_in_dart_the_keys_serde_hands_it() {
 }
 
 /// An externally tagged enum flattened ahead of a member that names a function is read from the
-/// first entry under a variant's name wherever it is in the object, and the function is handed
-/// every entry but that one, as serde reads them. A struct after the enum is handed every entry
-/// but that one. A function after an enum under a tag key alone, or after an untagged one, is
-/// handed every key. Each holder is written back as serde writes it back.
+/// first entry under a variant's name or an alias of one, wherever it is in the object, and the
+/// function is handed every entry but that one, as serde reads them. A struct after the enum is
+/// handed every entry but that one. A function after an enum under a tag key alone, or after an
+/// untagged one, is handed every key. Each holder is written back as serde writes it back.
 #[test]
 fn a_function_after_a_flattened_enum_reads_in_dart_the_entries_serde_hands_it() {
     let loaded: Vec<String> = LOADING
@@ -334,9 +330,6 @@ fn a_function_after_a_flattened_enum_reads_in_dart_the_entries_serde_hands_it() 
          {\"kind\":\"Rope\",\"label\":\"n\",\"keys\":[\"kind\",\"label\",\"north\"]}\n\
          shoring: [\"label\",\"north\"] {\"label\":\"n\",\"keys\":[\"label\",\"north\"]}\n"
     );
-    let mut in_dart = loaded;
-    in_dart[UNDER_AN_ALIAS] = "refused".to_owned();
-    let expected_in_dart = format!("{}{after_loading}", rows("loading", &in_dart));
     let Some(printed) = printed(
         "flattened-after-an-enum",
         &[
@@ -356,7 +349,7 @@ fn a_function_after_a_flattened_enum_reads_in_dart_the_entries_serde_hands_it() 
     ) else {
         return;
     };
-    assert_eq!(printed, expected_in_dart);
+    assert_eq!(printed, expected);
 }
 
 /// An externally tagged enum flattened beside a member of its holder's own is read from the first

@@ -11,11 +11,10 @@ use core::fmt::Write as _;
 use super::aliased_models::{
     CAREENING, Careening, FAIRLEADING, Fairleading, Fothering, Gybing, HAWSING, Hawsing, LULLING,
     Lulling, SCENDING, SURGING, SWELL, Scending, Surging, Swell, TIDING, Tiding, VEERING, Veering,
-    careening_kotlin, fairleading_kotlin, fothering_kotlin, gybing_kotlin, hawsing_kotlin,
-    lulling_kotlin, scending_kotlin, surging_kotlin, swell_kotlin, tiding_kotlin, veering_kotlin,
-    written_back,
+    careening_kotlin, pennon_kotlin, fairleading_kotlin, fothering_kotlin, gybing_kotlin,
+    hawsing_kotlin, lulling_kotlin, scending_kotlin, surging_kotlin, swell_kotlin, tiding_kotlin,
+    veering_kotlin, written_back,
 };
-use super::flattened_models::bunting_kotlin;
 use super::runtime::ran_kotlin;
 
 const KOTLIN_IMPORTS: &str = "import kotlinx.serialization.*\n\
@@ -149,7 +148,7 @@ fn a_name_serde_reads_beside_the_one_it_writes_is_read_in_kotlin() {
     );
     let source = [
         KOTLIN_IMPORTS.to_owned(),
-        bunting_kotlin::kotlin_definition(),
+        pennon_kotlin::kotlin_definition(),
         surging_kotlin::kotlin_definition(),
         careening_kotlin::kotlin_definition(),
         scending_kotlin::kotlin_definition(),

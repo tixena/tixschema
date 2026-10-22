@@ -4,10 +4,8 @@
 //! written under the name serde writes.
 
 use super::aliased_models::{
-    CAREENING, Careening, FAIRLEADING, Fairleading, Fothering, Gybing, HAWSING, Hawsing, LULLING,
-    Lulling, SCENDING, SURGING, SWELL, Scending, Surging, Swell, TIDING, Tiding, VEERING, Veering,
     careening_kotlin, fairleading_kotlin, fothering_kotlin, gybing_kotlin, hawsing_kotlin,
-    lulling_kotlin, scending_kotlin, surging_kotlin, swell_kotlin, veering_kotlin, written_back,
+    lulling_kotlin, scending_kotlin, surging_kotlin, swell_kotlin, veering_kotlin,
 };
 
 /// What reads a payload's key `name` as `label`, and refuses the two together.
@@ -22,95 +20,6 @@ const HAWSING_NAMES: &str = "element.let { whole: JsonElement -> if (whole is Js
      (key) { \"name\" -> \"label\"; \"title\" -> \"label\"; \"remark\" -> \"note\"; else -> key }; \
      if (put(named, held) != null) throw SerializationException(\"duplicate field `$named`\") } \
      }) else whole }";
-
-/// What serde reads of each payload: a name it reads beside the one it writes is read as that
-/// variant or member, written back under the name serde writes, and a member under two of its
-/// names is refused.
-#[test]
-fn serde_reads_a_variant_and_a_member_under_each_alias() {
-    let surging = SURGING.map(written_back::<Surging>);
-    assert_eq!(
-        surging,
-        [
-            r#"{"Berth":{"label":"n"}}"#,
-            r#"{"Berth":{"label":"n"}}"#,
-            r#"{"Berth":{"label":"n"}}"#,
-            "refused",
-            r#""Calm""#,
-            r#""Calm""#,
-            r#""Calm""#,
-            r#""Calm""#,
-            r#"{"Held":"x"}"#,
-            r#"{"Held":"x"}"#,
-        ]
-    );
-    let careening = CAREENING.map(written_back::<Careening>);
-    assert_eq!(
-        careening,
-        [
-            r#"{"kind":"Berth","label":"n"}"#,
-            r#"{"kind":"Berth","label":"n"}"#,
-            r#"{"kind":"Berth","label":"n"}"#,
-            "refused",
-            r#"{"kind":"Calm"}"#,
-            r#"{"kind":"Calm"}"#,
-        ]
-    );
-    let scending = SCENDING.map(written_back::<Scending>);
-    assert_eq!(
-        scending,
-        [
-            r#"{"kind":"Berth","data":{"label":"n"}}"#,
-            r#"{"kind":"Berth","data":{"label":"n"}}"#,
-            r#"{"kind":"Berth","data":{"label":"n"}}"#,
-            r#"{"kind":"Calm"}"#,
-            r#"{"kind":"Calm"}"#,
-            r#"{"kind":"Held","data":"x"}"#,
-            r#"{"kind":"Held","data":"x"}"#,
-        ]
-    );
-    let swell = SWELL.map(written_back::<Swell>);
-    assert_eq!(
-        swell,
-        [r#""Flood""#, r#""Ebb""#, r#""Ebb""#, r#""Ebb""#, "refused"]
-    );
-    assert_eq!(
-        LULLING.map(written_back::<Lulling>),
-        [r#""Ebb""#, r#""Ebb""#, r#""Flood""#]
-    );
-    assert_eq!(
-        written_back::<Tiding>(TIDING),
-        r#"{"by_swell":{"Ebb":1,"Flood":2},"swells":["Ebb","Flood"]}"#
-    );
-    let veering = VEERING.map(written_back::<Veering>);
-    assert_eq!(
-        veering,
-        [r#"{"label":"n"}"#, r#"{"label":"n"}"#, "refused", "3"]
-    );
-    let hawsing = HAWSING.map(written_back::<Hawsing>);
-    let held = [
-        r#"{"label":"n"}"#,
-        r#"{"label":"n"}"#,
-        r#"{"label":"n","note":"r"}"#,
-        "refused",
-        "refused",
-    ];
-    assert_eq!(hawsing, held);
-    assert_eq!(HAWSING.map(written_back::<Gybing<String>>), held);
-    assert_eq!(
-        serde_json::from_str::<Hawsing>(HAWSING[3])
-            .unwrap_err()
-            .to_string(),
-        "duplicate field `label` at line 1 column 19"
-    );
-    let tallied = [
-        r#"{"label":"n","keys":["north"]}"#,
-        r#"{"label":"n","keys":["north"]}"#,
-        "refused",
-    ];
-    assert_eq!(FAIRLEADING.map(written_back::<Fairleading>), tallied);
-    assert_eq!(FAIRLEADING.map(written_back::<Fothering>), tallied);
-}
 
 /// An enum reads a variant under each of its aliases, under each tagging, and writes it under the
 /// name serde writes. A member of a variant is read under its alias.
@@ -240,7 +149,7 @@ fn a_struct_read_by_hand_reads_a_member_under_its_alias() {
         "val obj = input.decodeJsonElement().{NAME_AS_LABEL}.jsonObject; val label = \
          input.json.decodeFromJsonElement(serializer<String>(), obj.getValue(\"label\")); \
          val tallyKeys = setOf(\"keys\"); val tally = \
-         lenient.decodeFromJsonElement(BuntingUnjudged, withItsKeys(JsonObject(obj - \
+         lenient.decodeFromJsonElement(PennonUnjudged, withItsKeys(JsonObject(obj - \
          setOf(\"label\"))));"
     );
     assert!(fairleading.contains(&held), "no `{held}` in: {fairleading}");

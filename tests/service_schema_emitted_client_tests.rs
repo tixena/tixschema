@@ -402,9 +402,9 @@ mod flattened_models;
 #[path = "service_schema_emitted_client_tests/run_kotlin_flattened.rs"]
 mod run_kotlin_flattened;
 
-/// The models a name serde reads beside the one it writes is read under. Declared after the
-/// module that declares the member they flatten.
-#[cfg(all(test, feature = "kotlin", feature = "serde"))]
+/// The models a name serde reads beside the one it writes is read under.
+#[cfg(test)]
+#[cfg(all(feature = "serde", any(feature = "dart", feature = "kotlin")))]
 #[path = "kotlin_tests/aliased_models.rs"]
 mod aliased_models;
 
@@ -425,6 +425,19 @@ mod dart_flattened_models;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_dart_flattened.rs"]
 mod run_dart_flattened;
+
+/// The enums of the models a name serde reads beside the one it writes is read under, flattened,
+/// each beside a member of its holder's own. Declared after the module that declares the enums.
+#[cfg(test)]
+#[cfg(all(feature = "dart", feature = "serde"))]
+#[path = "dart_tests/flattened_aliased_models.rs"]
+mod dart_flattened_aliased_models;
+
+/// A variant and a member under the `alias` serde reads them under, read by the emitted Dart
+/// types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_aliased.rs"]
+mod run_dart_aliased;
 
 /// A map that is the one member of its object, under a key Swift wraps, of models, of dates and
 /// naming a function, and a member that names a function at each place a member can be handed
