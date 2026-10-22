@@ -147,6 +147,9 @@ pub struct ZodUnionMember {
     #[cfg(feature = "serde")]
     pub non_object: Option<&'static str>,
     pub spelling: String,
+    /// What [`WireLeaf::written_as`] says of the member.
+    #[cfg(feature = "serde")]
+    pub written_as: Option<WrittenAs>,
 }
 
 #[cfg(all(feature = "serde", feature = "zod"))]
@@ -168,6 +171,20 @@ impl ZodUnionMember {
 pub struct WireLeaf {
     pub branch: Vec<usize>,
     pub non_object: Option<&'static str>,
+    /// What serde writes the leaf as, where a refusal of it names more than its keyword.
+    pub written_as: Option<WrittenAs>,
+}
+
+/// What serde writes a [`WireLeaf`] as, where it is flattened or held beside a tag.
+#[cfg(feature = "serde")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WrittenAs {
+    /// A plain enum's variant name, as a key holding null.
+    PlainEnumName,
+    /// `()`: no key flattened, and the tag alone beside a tag.
+    Unit,
+    /// An externally tagged enum's unit variant's name, as a key holding null.
+    UnitVariantName,
 }
 
 #[cfg(feature = "serde")]

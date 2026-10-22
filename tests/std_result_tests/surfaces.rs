@@ -138,15 +138,15 @@ fn an_arm_of_unit_is_null_on_every_surface() {
 }
 
 #[test]
-fn unit_outside_an_arm_is_described_as_it_was() {
+fn unit_outside_an_arm_is_described_as_the_null_an_arm_is() {
     let typescript = Bare::ts_definition();
     assert!(
         typescript.contains("armed: { Ok: null } | { Err: number };"),
         "{typescript}"
     );
-    assert!(typescript.contains("unit: [];"), "{typescript}");
+    assert!(typescript.contains("unit: null;"), "{typescript}");
     let zod = Bare::zod_schema();
-    assert!(zod.contains("unit: z.tuple([]),"), "{zod}");
+    assert!(zod.contains("unit: z.null(),"), "{zod}");
     assert!(
         zod.contains("armed: z.union([z.strictObject({ Ok: z.null() }), z.strictObject({ Err: z.number().int() })]),"),
         "{zod}"
@@ -156,7 +156,7 @@ fn unit_outside_an_arm_is_described_as_it_was() {
         document["properties"]["armed"]["oneOf"][0]["properties"]["Ok"],
         json!({ "type": "null" })
     );
-    assert_ne!(document["properties"]["unit"], json!({ "type": "null" }));
+    assert_eq!(document["properties"]["unit"], json!({ "type": "null" }));
 }
 
 #[test]

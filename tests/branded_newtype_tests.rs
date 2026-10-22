@@ -33,3 +33,8 @@ mod tests;
 #[cfg(test)]
 #[path = "branded_newtype_tests/transparent_key.rs"]
 mod transparent_key;
+
+#[cfg(test)]
+#[cfg(feature = "serde")]
+#[path = "branded_newtype_tests/unit_value.rs"]
+mod unit_value;

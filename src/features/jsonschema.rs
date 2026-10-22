@@ -6,8 +6,11 @@ const DEFS_PREFIX: &str = "#/$defs/";
 
 /// How a merge that cannot proceed names itself in the diagnostic it raises: `subject` is the
 /// frame that reads the merge, `edge` what the merged schema was reached through, and each remedy
-/// the way out in the spelling that applies where that edge was written.
+/// the way out in the spelling that applies where that edge was written. `beside_tag` is the
+/// `Enum::Variant` serde names where the merged schema is the content of a newtype variant under a
+/// tag alone, and `None` where it is flattened.
 pub struct MergeDiagnostic<'msg> {
+    pub beside_tag: Option<&'msg str>,
     pub cycle_remedy: &'msg str,
     pub edge: &'msg str,
     pub non_object_remedy: &'msg str,
@@ -570,12 +573,63 @@ fn merged_tree() -> proc_macro2::TokenStream {
 /// How the expansion refuses a schema it cannot merge, as the tokens that declare the refusals.
 fn expansion_refusals(diagnostic: &MergeDiagnostic<'_>) -> proc_macro2::TokenStream {
     let MergeDiagnostic {
+        beside_tag,
         cycle_remedy,
         edge,
         non_object_remedy,
         subject,
     } = *diagnostic;
+    let (named_written, unit_written) = if beside_tag.is_some() {
+        (
+            "beside the tag as a key holding null, which a schema closed around the tag rejects",
+            "beside the tag serde writes the variant as the tag alone, and reads it back, while \
+             the TypeScript type and the Zod schema of the variant intersect the tag's object \
+             with `null`, which admits no value",
+        )
+    } else {
+        (
+            "as a key holding null, which a schema closed around the remaining fields rejects",
+            "serde writes no key for it, and reads the object back, while the TypeScript type and \
+             the Zod schema intersect the object with `null`, which admits no value",
+        )
+    };
+    let tagged_null = beside_tag.map(|tagged| {
+        quote::quote! {
+            // serde's tag refuses an `Option` for `Some` and `None` alike, and `()` it writes as
+            // the tag alone, which it does not read back as a union member.
+            fn refuse_tagged_null(label: &str, position: &[usize]) -> ! {
+                panic!(
+                    "`{}`: {} `{}` writes a union member as `null` — its branch {} describes a `null`, which cannot sit beside the tag: where that `null` is an optional's, serde refuses every write of it at run time — `cannot serialize tagged newtype variant {} containing an optional` — and where it is `()`'s, serde writes the tag alone, which it does not read back as a union member; {}",
+                    #subject, #edge, label, branch_path(position), #tagged, #non_object_remedy,
+                );
+            }
+        }
+    });
     quote::quote! {
+        #tagged_null
+
+        // `whose` names whose variant name the schema describes: a plain enum's, or the unit
+        // variant's of an externally tagged enum a union member holds.
+        fn refuse_variant_name(label: &str, position: &[usize], whose: &str) -> ! {
+            if position.is_empty() {
+                panic!(
+                    "`{}`: {} `{}` is written as {} — its schema describes a `string`, and serde writes that name {}; {}",
+                    #subject, #edge, label, whose, #named_written, #non_object_remedy,
+                );
+            }
+            panic!(
+                "`{}`: {} `{}` writes a union member as {} — its branch {} describes a `string`, and serde writes that name {}; {}",
+                #subject, #edge, label, whose, branch_path(position), #named_written, #non_object_remedy,
+            );
+        }
+
+        fn refuse_unit(label: &str) -> ! {
+            panic!(
+                "`{}`: {} `{}` is written as `()` — its schema describes a `null`: {}; {}",
+                #subject, #edge, label, #unit_written, #non_object_remedy,
+            );
+        }
+
         fn branch_path(position: &[usize]) -> ::std::string::String {
             position
                 .iter()
@@ -634,7 +688,31 @@ fn expansion_refusals(diagnostic: &MergeDiagnostic<'_>) -> proc_macro2::TokenStr
 }
 
 /// The branch tree one merged schema contributes, as the tokens that declare how it is read.
-fn branch_expansion() -> proc_macro2::TokenStream {
+/// `beside_tag` says the schema is the content of a newtype variant under a tag alone, where serde
+/// refuses the `None` a flattened `Option` writes as no key.
+fn branch_expansion(beside_tag: bool) -> proc_macro2::TokenStream {
+    let offered_null = if beside_tag {
+        quote::quote! { refuse_tagged_null(label, position); }
+    } else {
+        quote::quote! { return ::core::option::Option::Some(Branches::Absent); }
+    };
+    // The `null` of the content's own choice is refused ahead of every other branch, as serde's
+    // tag refuses an `Option` before it reads what the `Option` holds.
+    let null_first = beside_tag.then(|| {
+        quote::quote! {
+            let offered_null = if position.is_empty() {
+                branches
+                    .iter()
+                    .position(|branch| described_type(branch) == ::core::option::Option::Some("null"))
+            } else {
+                ::core::option::Option::None
+            };
+            if let ::core::option::Option::Some(index) = offered_null {
+                position.push(index + 1);
+                refuse_tagged_null(label, position);
+            }
+        }
+    });
     quote::quote! {
         fn expanded_branches<'defs>(
             schema: &'defs serde_json::Value,
@@ -663,9 +741,16 @@ fn branch_expansion() -> proc_macro2::TokenStream {
 
             if let ::core::option::Option::Some(named) = described_type(body) {
                 // A `null` among the choices the flatten edge itself offers is the absence, not a
-                // refusal: the source is nullable. Below that level the refusal stands.
+                // refusal: the source is nullable. Beside a tag, and below that level, it is
+                // refused.
                 if named == "null" && position.len() == 1 {
-                    return ::core::option::Option::Some(Branches::Absent);
+                    #offered_null
+                }
+                if named == "null" && position.is_empty() {
+                    refuse_unit(label);
+                }
+                if named == "string" && body.get("enum").is_some() {
+                    refuse_variant_name(label, position, "a plain enum's variant name");
                 }
                 if named != "object" {
                     refuse_non_object(label, position, named);
@@ -675,6 +760,7 @@ fn branch_expansion() -> proc_macro2::TokenStream {
             let ::core::option::Option::Some((spelling, branches)) = union_branches(body) else {
                 return body.as_object().map(Branches::Object);
             };
+            #null_first
 
             // The name guards what is below it and nothing else, so it joins the path only for the
             // descent and leaves it before the level that resolved it answers.
@@ -685,12 +771,13 @@ fn branch_expansion() -> proc_macro2::TokenStream {
             for (index, branch) in branches.iter().enumerate() {
                 position.push(index + 1);
                 // A unit variant of the choice the flatten edge itself offers is a key set like any
-                // other; one level down it joins nothing, and the refusal stands.
-                let tagged = (position.len() == 1 && spelling == "oneOf")
+                // other; one level down no surface describes the key it writes, and it is refused.
+                let tagged = (spelling == "oneOf")
                     .then(|| tagged_unit_variant(branch))
                     .flatten();
                 let below = match tagged {
-                    ::core::option::Option::Some(name) => ::core::option::Option::Some(Branches::Tagged(name)),
+                    ::core::option::Option::Some(name) if position.len() == 1 => ::core::option::Option::Some(Branches::Tagged(name)),
+                    ::core::option::Option::Some(_) => refuse_variant_name(label, position, "the name of an externally tagged enum's unit variant"),
                     ::core::option::Option::None => expanded_branches(branch, hoisted_defs, expanding, position, label),
                 };
                 position.pop();
@@ -711,7 +798,7 @@ pub fn merged_object_value(
     diagnostic: &MergeDiagnostic<'_>,
 ) -> proc_macro2::TokenStream {
     let refusals = expansion_refusals(diagnostic);
-    let expansion = branch_expansion();
+    let expansion = branch_expansion(diagnostic.beside_tag.is_some());
     let labels = merged.iter().map(|source| source.label.as_str());
     let optionals = merged.iter().map(|source| source.optional);
     let entries = merged.iter().map(|source| source.entries);
@@ -776,6 +863,7 @@ fn flattened_object_body(
         &base,
         flatten_json_schemas,
         &MergeDiagnostic {
+            beside_tag: None,
             cycle_remedy: "write the field as a named member so the cycle defers through a reference",
             edge: "`#[serde(flatten)]` of",
             non_object_remedy: "write the field as a named member so the value gets a key of its own",

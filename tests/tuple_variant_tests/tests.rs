@@ -210,6 +210,57 @@ pub enum InternalScalarEither {
     Text(String),
 }
 
+/// A bare tag over a struct of one slot over an `Option`, declared below it, which the enum's
+/// expansion does not see: serde refuses every write of the variant, and the merge refuses the
+/// declaration. A struct flattening the same type merges its `None` as no key.
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(tag = "type")]
+pub enum InternalOverLaterMaybe {
+    Held(InternalLaterMaybe),
+}
+
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct FlatOverLaterMaybe {
+    pub id: String,
+    #[serde(flatten)]
+    pub maybe: InternalLaterMaybe,
+}
+
+#[model_schema(no_display)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct InternalLaterMaybe(Option<InternalFirst>);
+
+/// A bare tag over a struct of one slot over `()`, and over an untagged enum with a member over
+/// `()`, each declared below it: serde writes the tag alone for both, and reads it back for the
+/// first alone.
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(tag = "type")]
+pub enum InternalOverLaterNothing {
+    Held(InternalLaterNothing),
+}
+
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(tag = "type")]
+pub enum InternalOverLaterUnitMember {
+    Member(InternalLaterUnitEither),
+}
+
+#[model_schema(no_display)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct InternalLaterNothing(());
+
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum InternalLaterUnitEither {
+    Nothing(()),
+    Obj(InternalFirst),
+}
+
 /// A recursive enum with no tagging attributes: what sits under a key is the enum itself. Only the
 /// Zod surface spells the deferral, so the fixture is declared where it is read.
 #[cfg(feature = "zod")]
@@ -2038,6 +2089,116 @@ fn test_bare_tag_over_an_untagged_enum_requires_every_key_serde_writes() {
 )]
 fn test_a_string_member_of_a_tagged_untagged_enum_is_refused_by_the_merge() {
     assert!(InternalOverScalarUntagged::json_schema().is_object());
+}
+
+#[test]
+fn test_bare_tag_over_a_later_optional_is_unserializable_for_some_and_none() {
+    for held in [
+        InternalLaterMaybe(Some(InternalFirst { a: "x".to_owned() })),
+        InternalLaterMaybe(None),
+    ] {
+        let refusal = serde_json::to_value(InternalOverLaterMaybe::Held(held))
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            refusal,
+            "cannot serialize tagged newtype variant InternalOverLaterMaybe::Held containing an \
+             optional"
+        );
+    }
+}
+
+#[cfg(feature = "jsonschema")]
+#[test]
+#[should_panic(
+    expected = "`InternalOverLaterMaybe`: the content of variant `Held`, `InternalLaterMaybe` writes a union member as `null` — its branch 2 describes a `null`, which cannot sit beside the tag: where that `null` is an optional's, serde refuses every write of it at run time — `cannot serialize tagged newtype variant InternalOverLaterMaybe::Held containing an optional` — and where it is `()`'s, serde writes the tag alone, which it does not read back as a union member; name a `content` key so the content gets an object of its own"
+)]
+fn test_bare_tag_over_a_later_optional_is_refused_by_the_merge() {
+    assert!(InternalOverLaterMaybe::json_schema().is_object());
+}
+
+/// serde writes a flattened `None` as no key and reads it back, and the merge offers both.
+#[test]
+fn test_a_flattened_later_optional_merges_its_none_as_no_key() {
+    let none = FlatOverLaterMaybe {
+        id: "i".to_owned(),
+        maybe: InternalLaterMaybe(None),
+    };
+    assert_eq!(
+        serde_json::to_value(&none).unwrap(),
+        serde_json::json!({ "id": "i" })
+    );
+    assert_eq!(
+        serde_json::from_value::<FlatOverLaterMaybe>(serde_json::json!({ "id": "i" })).unwrap(),
+        none
+    );
+    #[cfg(feature = "jsonschema")]
+    assert_eq!(
+        FlatOverLaterMaybe::json_schema(),
+        serde_json::json!({
+            "type": "object",
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": { "id": { "type": "string" }, "a": { "type": "string" } },
+                    "required": ["id", "a"],
+                    "additionalProperties": false
+                },
+                {
+                    "type": "object",
+                    "properties": { "id": { "type": "string" } },
+                    "required": ["id"],
+                    "additionalProperties": false
+                }
+            ]
+        })
+    );
+}
+
+#[test]
+fn test_bare_tag_over_a_later_unit_writes_the_tag_alone() {
+    let held = InternalOverLaterNothing::Held(InternalLaterNothing(()));
+    assert_eq!(
+        serde_json::to_value(&held).unwrap(),
+        serde_json::json!({ "type": "Held" })
+    );
+    assert_eq!(
+        serde_json::from_value::<InternalOverLaterNothing>(serde_json::json!({ "type": "Held" }))
+            .unwrap(),
+        held
+    );
+    assert_eq!(
+        serde_json::to_value(InternalOverLaterUnitMember::Member(
+            InternalLaterUnitEither::Nothing(())
+        ))
+        .unwrap(),
+        serde_json::json!({ "type": "Member" })
+    );
+    assert!(
+        serde_json::from_value::<InternalOverLaterUnitMember>(
+            serde_json::json!({ "type": "Member" })
+        )
+        .is_err(),
+        "serde does not read the tag alone back as the untagged enum's unit member"
+    );
+}
+
+#[cfg(feature = "jsonschema")]
+#[test]
+#[should_panic(
+    expected = "`InternalOverLaterUnitMember`: the content of variant `Member`, `InternalLaterUnitEither` writes a union member as `null` — its branch 1 describes a `null`, which cannot sit beside the tag: where that `null` is an optional's, serde refuses every write of it at run time — `cannot serialize tagged newtype variant InternalOverLaterUnitMember::Member containing an optional` — and where it is `()`'s, serde writes the tag alone, which it does not read back as a union member"
+)]
+fn test_bare_tag_over_a_later_unit_member_is_refused_by_the_merge() {
+    assert!(InternalOverLaterUnitMember::json_schema().is_object());
+}
+
+#[cfg(feature = "jsonschema")]
+#[test]
+#[should_panic(
+    expected = "`InternalOverLaterNothing`: the content of variant `Held`, `InternalLaterNothing` is written as `()` — its schema describes a `null`: beside the tag serde writes the variant as the tag alone, and reads it back, while the TypeScript type and the Zod schema of the variant intersect the tag's object with `null`, which admits no value; name a `content` key so the content gets an object of its own"
+)]
+fn test_bare_tag_over_a_later_unit_is_refused_by_the_merge() {
+    assert!(InternalOverLaterNothing::json_schema().is_object());
 }
 
 #[test]

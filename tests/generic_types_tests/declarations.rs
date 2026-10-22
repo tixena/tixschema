@@ -678,6 +678,49 @@ for (const [name, schema, payload, judged] of PAYLOADS) {
 console.log(printed.join("\n"));
 "#;
 
+/// Each payload of a `()`, by the model it is read as: `null`, which serde writes for it, and the
+/// empty array serde refuses, in each place `DeclaredUnits` holds one.
+const UNITS: [(&str, &str, &str); 7] = [
+    ("brand of null", "DeclaredNothing", "null"),
+    ("brand of an empty array", "DeclaredNothing", "[]"),
+    (
+        "held as null",
+        "DeclaredUnits",
+        r#"{"listed":[null],"nothing":null,"paired":[1,null],"unit":null}"#,
+    ),
+    (
+        "member of an empty array",
+        "DeclaredUnits",
+        r#"{"listed":[],"nothing":null,"paired":[1,null],"unit":[]}"#,
+    ),
+    (
+        "item of an empty array",
+        "DeclaredUnits",
+        r#"{"listed":[[]],"nothing":null,"paired":[1,null],"unit":null}"#,
+    ),
+    (
+        "position of an empty array",
+        "DeclaredUnits",
+        r#"{"listed":[],"nothing":null,"paired":[1,[]],"unit":null}"#,
+    ),
+    (
+        "brand member of an empty array",
+        "DeclaredUnits",
+        r#"{"listed":[],"nothing":[],"paired":[1,null],"unit":null}"#,
+    ),
+];
+
+/// Parses each payload of [`UNITS`] through the Zod schema of its model.
+const UNITS_DRIVER: &str = r#"import * as lib from "./lib/index.js";
+
+const printed = [];
+for (const [name, schema, payload] of PAYLOADS) {
+  const read = lib[`${schema}$Schema`].safeParse(JSON.parse(payload));
+  printed.push(`${name}: ${read.success ? "read" : "refused"}`);
+}
+console.log(printed.join("\n"));
+"#;
+
 /// Parses each payload of a struct that declares a parameter through the schema of its declared
 /// default, and each payload of `Harbour` that leaves out a key it requires.
 const FILLED_DRIVER: &str = r#"import * as lib from "./lib/index.js";
@@ -1012,6 +1055,22 @@ pub struct DeclaredStamped {
     #[model_schema_prop(nullable)]
     pub paused: Option<DateTime<Utc>>,
     pub seen: Vec<Option<DateTime<Utc>>>,
+}
+
+/// `()` as a brand's value, which serde writes as `null`.
+#[model_schema(no_display)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct DeclaredNothing(());
+
+/// `()` in each place a value is held: a member, a list's item, a tuple's position and a brand.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeclaredUnits {
+    pub listed: Vec<()>,
+    pub nothing: DeclaredNothing,
+    pub paired: (u32, ()),
+    pub unit: (),
 }
 
 /// A struct that writes no example.
@@ -2426,6 +2485,68 @@ fn type_check_a_result_parses_under_zod_what_serde_writes() {
     }
     let driver = RESULTS_DRIVER.replace("PAYLOADS", &serde_json::to_string(&listed).unwrap());
     let Some((printed, failed)) = loaded_from("results", &results(), &driver) else {
+        return;
+    };
+    assert_eq!(
+        printed,
+        expected.join("\n"),
+        "the schemas do not read what a serde read reads:\n{failed}"
+    );
+}
+
+/// The JSON Schema of the model of [`UNITS`] named `read_as`.
+#[cfg(feature = "jsonschema")]
+fn unit_document(read_as: &str) -> serde_json::Value {
+    if read_as == "DeclaredNothing" {
+        DeclaredNothing::json_schema()
+    } else {
+        DeclaredUnits::json_schema()
+    }
+}
+
+/// `()` is read under Zod as serde reads it, `null` in every place it is held and no empty array,
+/// and the JSON Schema of each model admits what serde reads.
+#[test]
+fn type_check_a_unit_parses_under_zod_what_serde_reads() {
+    let mut expected = Vec::new();
+    for (name, read_as, payload) in UNITS {
+        let reads = if read_as == "DeclaredNothing" {
+            serde_json::from_str::<DeclaredNothing>(payload).is_ok()
+        } else {
+            serde_json::from_str::<DeclaredUnits>(payload).is_ok()
+        };
+        #[cfg(feature = "jsonschema")]
+        assert_eq!(
+            documents::admits(
+                &unit_document(read_as),
+                &serde_json::from_str(payload).unwrap()
+            ),
+            reads,
+            "the JSON Schema of {read_as} and serde disagree on {name}: {payload}"
+        );
+        expected.push(format!(
+            "{name}: {}",
+            if reads { "read" } else { "refused" }
+        ));
+    }
+    assert_eq!(
+        expected
+            .iter()
+            .filter(|line| line.ends_with(": read"))
+            .count(),
+        2,
+        "serde reads `null` alone: {expected:?}"
+    );
+    let source = [
+        PREAMBLE.to_owned(),
+        DeclaredNothing::ts_definition(),
+        DeclaredNothing::zod_schema(),
+        DeclaredUnits::ts_definition(),
+        DeclaredUnits::zod_schema(),
+    ]
+    .join("\n\n");
+    let driver = UNITS_DRIVER.replace("PAYLOADS", &serde_json::to_string(&UNITS).unwrap());
+    let Some((printed, failed)) = loaded_from("units", &source, &driver) else {
         return;
     };
     assert_eq!(
