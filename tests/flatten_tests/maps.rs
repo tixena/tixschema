@@ -1,7 +1,8 @@
 //! The models a map is flattened into as the only member of its object, and the payloads serde
 //! reads and refuses for them. A map flattened beside another member or beside a tag stops the
 //! build, so a map is handed every key of its object. An optional map is read as `None` wherever
-//! an entry it is handed does not read, and leaves the entry in the object.
+//! an entry it is handed does not read, and leaves the entry in the object. An optional struct is
+//! read as `None` wherever its keys do not read, a payload Zod refuses.
 
 use alloc::collections::BTreeMap;
 
@@ -368,6 +369,34 @@ optional in an untagged variant, a number: refused
     Invalid input
 ";
 
+/// Each payload of [`Hawser`]: its name, the JSON, and what serde reads of it. serde reads every
+/// one, the struct as `None` where its key does not read.
+pub const OPTIONAL_STRUCT_PAYLOADS: [(&str, &str, &str); 3] = [
+    (
+        "an optional struct, no key",
+        "{}",
+        "Hawser { burgee: None }",
+    ),
+    (
+        "an optional struct, a label",
+        r#"{"label":"a"}"#,
+        r#"Hawser { burgee: Some(Burgee { label: "a" }) }"#,
+    ),
+    (
+        "an optional struct, a label of a number",
+        r#"{"label":3}"#,
+        "Hawser { burgee: None }",
+    ),
+];
+
+/// What Zod prints for [`OPTIONAL_STRUCT_PAYLOADS`]: it refuses the key serde drops.
+pub const OPTIONAL_STRUCT_PRINTED: &str = "\
+an optional struct, no key: read
+an optional struct, a label: read
+an optional struct, a label of a number: refused
+    Unrecognized key: \"label\"
+";
+
 /// A map that is the only member of its object.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -583,6 +612,22 @@ pub enum Capstan {
     },
 }
 
+/// The struct the README flattens through an `Option`.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Burgee {
+    pub label: String,
+}
+
+/// An optional struct alone in its object: serde reads it as `None` wherever its key does not
+/// read, and drops the key.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Hawser {
+    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
+    pub burgee: Option<Burgee>,
+}
+
 /// Whether serde reads a payload as one model.
 type ReadAs = fn(&str) -> bool;
 
@@ -625,6 +670,23 @@ pub fn assert_serde_reads_what_zod_reads() {
             printed == read,
             "serde and Zod part on `{}`: Zod prints `{printed}`",
             payload.name
+        );
+    }
+}
+
+/// Holds serde's read of each of [`OPTIONAL_STRUCT_PAYLOADS`] to the value it states, and the
+/// verdict [`OPTIONAL_STRUCT_PRINTED`] states for it: Zod refuses exactly the payloads serde does
+/// not write back as they were, the key it dropped.
+pub fn assert_zod_refuses_each_key_serde_drops() {
+    for (name, json, read) in OPTIONAL_STRUCT_PAYLOADS {
+        let value: Hawser = serde_json::from_str(json).unwrap();
+        assert_eq!(format!("{value:?}"), read, "serde on `{name}`");
+        assert_eq!(
+            OPTIONAL_STRUCT_PRINTED
+                .lines()
+                .any(|line| *line == format!("{name}: refused")),
+            serde_json::to_string(&value).unwrap() != json,
+            "serde and Zod part on `{name}`: serde writes {value:?} back"
         );
     }
 }

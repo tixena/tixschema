@@ -566,9 +566,9 @@ for (const [name, schema, payload] of PAYLOADS) {
 console.log(printed.join("\n"));
 "#;
 
-/// Parses each payload of a flattened map through the schema of the type it is read as, the
-/// declared default of one that declares a parameter, and prints what each read answers: `read`,
-/// or the refusal with each issue under its path.
+/// Parses each payload of a flattened map or an optional flattened struct through the schema of
+/// the type it is read as, the declared default of one that declares a parameter, and prints what
+/// each read answers: `read`, or the refusal with each issue under its path.
 const FLATTENED_MAPS_DRIVER: &str = r#"import * as lib from "./lib/index.js";
 
 const printed = [];
@@ -1493,8 +1493,8 @@ fn sets() -> String {
     .join("\n\n")
 }
 
-/// The types a map is flattened into: a bundle of its own, compiled with `tsc --strict` before it
-/// is loaded.
+/// The types a map, or an optional struct, is flattened into: a bundle of its own, compiled with
+/// `tsc --strict` before it is loaded.
 fn flattened_maps() -> String {
     [
         PREAMBLE.to_owned(),
@@ -1550,6 +1550,10 @@ fn flattened_maps() -> String {
         flattened_maps::Davit::zod_schema(),
         flattened_maps::Capstan::ts_definition(),
         flattened_maps::Capstan::zod_schema(),
+        flattened_maps::Burgee::ts_definition(),
+        flattened_maps::Burgee::zod_schema(),
+        flattened_maps::Hawser::ts_definition(),
+        flattened_maps::Hawser::zod_schema(),
     ]
     .join("\n\n")
 }
@@ -2362,5 +2366,27 @@ fn type_check_a_flattened_map_reads_under_zod_what_serde_reads() {
         format!("{printed}\n"),
         flattened_maps::PRINTED,
         "the schemas do not read what serde reads:\n{failed}"
+    );
+}
+
+/// An optional flattened struct is read by the Zod schema of its holder under `node` where it is
+/// absent and where its key reads, and refused where its key does not read, a payload serde reads
+/// as `None`, dropping the key.
+#[test]
+fn type_check_an_optional_flattened_struct_refuses_under_zod_a_key_serde_drops() {
+    flattened_maps::assert_zod_refuses_each_key_serde_drops();
+    let listed: Vec<(&str, &str, &str)> = flattened_maps::OPTIONAL_STRUCT_PAYLOADS
+        .iter()
+        .map(|&(name, json, _)| (name, "Hawser$Schema", json))
+        .collect();
+    let driver =
+        FLATTENED_MAPS_DRIVER.replace("PAYLOADS", &serde_json::to_string(&listed).unwrap());
+    let Some((printed, failed)) = loaded_from("optional-struct", &flattened_maps(), &driver) else {
+        return;
+    };
+    assert_eq!(
+        format!("{printed}\n"),
+        flattened_maps::OPTIONAL_STRUCT_PRINTED,
+        "the schema does not read what it is stated to read:\n{failed}"
     );
 }
