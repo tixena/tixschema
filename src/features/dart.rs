@@ -3,7 +3,7 @@
 use core::cell::{Cell, RefCell};
 use core::fmt::Write as _;
 use core::iter::once;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -406,6 +406,10 @@ thread_local! {
     /// for, read flattened.
     static DART_TAKEN_KEYS: RefCell<HashMap<String, Taken>> = RefCell::new(HashMap::new());
 
+    /// Each externally tagged enum a class has been emitted for whose `toJson` writes a unit
+    /// variant as its bare name: what a holder that flattens one writes as an entry over `null`.
+    static DART_WRITES_A_NAME: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+
     /// The name of each function the reads of the item being emitted call: what its `preprocess`
     /// names, and that of each of its members.
     static DART_CALLED: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
@@ -695,6 +699,23 @@ fn record_taken_keys(rust_ident: &str, taken: Taken) {
     DART_TAKEN_KEYS.with(|recorded| {
         recorded.borrow_mut().insert(rust_ident.to_owned(), taken);
     });
+}
+
+/// Records that the externally tagged enum `rust_ident` writes a unit variant as its bare name, for
+/// a holder emitted after it.
+fn record_writes_a_name(rust_ident: &str) {
+    DART_WRITES_A_NAME.with(|recorded| {
+        recorded.borrow_mut().insert(rust_ident.to_owned());
+    });
+}
+
+/// Whether a member typed `def`, flattened into its holder, writes a unit variant as its bare name,
+/// which the holder writes as an entry of that name over `null`, as serde writes it.
+fn writes_a_name(def: &FieldDef) -> bool {
+    let FieldDefType::SiblingType(name, _) = &def.field_type else {
+        return false;
+    };
+    DART_WRITES_A_NAME.with(|recorded| recorded.borrow().contains(name))
 }
 
 /// What a member typed `def`, flattened into its holder, takes off the object serde hands it:
@@ -2527,13 +2548,18 @@ fn class_body_parts(fields: &[DartField], extra_to_json: &[String]) -> ClassBody
         .map(|field| {
             let encode = dart_encode_expr(&field.field_def, &field.member, false);
             if field.flatten {
-                if field.field_def.is_optional() {
+                let entries = if writes_a_name(&field.field_def) {
                     format!(
-                        "if ({} != null) ...({encode} as Map<String, dynamic>),",
-                        field.member
+                        "(switch ({encode}) {{ final String name => {{name: null}}, final written \
+                         => written as Map<String, dynamic> }})"
                     )
                 } else {
-                    format!("...({encode} as Map<String, dynamic>),")
+                    format!("({encode} as Map<String, dynamic>)")
+                };
+                if field.field_def.is_optional() {
+                    format!("if ({} != null) ...{entries},", field.member)
+                } else {
+                    format!("...{entries},")
                 }
             } else if field.required {
                 format!("'{}': {encode},", field.wire_name)
@@ -3200,9 +3226,21 @@ fn tagged_enum_dart_source(
         let arm = format!("case {}: return {from_json};", any_of(&names));
         if is_external && matches!(payload, VariantPayload::Unit) {
             is_string_dispatch_arms.push(arm);
+            // serde reads a unit variant from an entry of its name over `null` as well, the one
+            // it writes flattened.
+            map_dispatch_arms.push(format!(
+                "case {}: return {map}[{tag}] == null ? {from_json} : throw \
+                 ArgumentError('{export_name}: ' + {tag} + ' takes no value');",
+                any_of(&names),
+                map = corrects.map,
+                tag = corrects.tag,
+            ));
         } else {
             map_dispatch_arms.push(arm);
         }
+    }
+    if is_external && !is_string_dispatch_arms.is_empty() {
+        record_writes_a_name(rust_ident);
     }
 
     let (json, map, tag) = (&corrects.json, &corrects.map, &corrects.tag);

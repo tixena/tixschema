@@ -297,7 +297,9 @@ fn a_tagged_enum_dispatches_unjudged_and_judges_once() {
             "{}{{ if (json is String) {{ switch (json) {{ case 'Held': return FreightHeld(); \
              default: throw ArgumentError('Unknown Freight: ' + json); }} }} final map = json as \
              Map<String, dynamic>; final tag = map.keys.first; switch (tag) {{ case 'Boxed': \
-             return FreightBoxed(Parcel.fromJsonUnjudged(map['Boxed'])); case 'Loose': return \
+             return FreightBoxed(Parcel.fromJsonUnjudged(map['Boxed'])); case 'Held': return \
+             map[tag] == null ? FreightHeld() : throw ArgumentError('Freight: ' + tag + ' takes no \
+             value'); case 'Loose': return \
              FreightLoose.fromJsonUnjudged(map['Loose']); case 'Split': return \
              FreightSplit(((map['Split'] as List<dynamic>)[0] as String, (map['Split'] as \
              List<dynamic>)[1] as int)); default: throw ArgumentError('Unknown Freight: ' + tag); \

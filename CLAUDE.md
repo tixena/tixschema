@@ -1520,6 +1520,16 @@ consumer's view; this is what a change has to keep.
   takes none, so a member after a struct declared below its holder is handed the struct's keys,
   and the README states the limit. `toJson` writes each flattened member at its place: a key two
   of them hold is written once, with the last value, where serde writes it twice.
+- **A unit variant of an externally tagged enum is an entry of its name over `null`** where the
+  enum is flattened, as serde writes and reads it. The enum's `toJson` writes the bare name, so
+  `tagged_enum_dart_source` records every externally tagged enum with a unit variant in
+  `DART_WRITES_A_NAME`, and `class_body_parts` spreads a member `writes_a_name` answers for
+  through a `switch` that writes a `String` as `{name: null}` and a map as it was, the member
+  optional or under a function too. A holder of any other flattened member, and of an enum
+  declared below it, writes the spread it wrote. The enum's map branch reads a unit variant from
+  its entry, under each of its names, where the value is `null`, and refuses any other value: the
+  Zod schema takes the entry over `null` alone, where serde's flattened read takes an empty
+  object too. So does the enum read alone, as serde reads it.
 - **A name serde reads beside the one it writes is read too.** `read_aliases` reads the
   `#[serde(alias)]` names of a field and of a variant, none for one serde never reads, and
   `DartField::aliases` holds a member's. A tagged enum takes a variant under its written name or
@@ -1548,9 +1558,10 @@ consumer's view; this is what a change has to keep.
   models of `tests/kotlin_tests/aliased_models.rs` and of
   `tests/dart_tests/flattened_aliased_models.rs`, which flattens each tagged enum of the first
   beside a member and pins what serde reads of it, and `run_dart_aliased.rs` reads and writes
-  each payload back under the Dart SDK, against serde. A unit variant's entry over `null` is the
-  one payload it holds apart (`UNIT_ENTRY`): the Dart read of an enum has no case for that entry,
-  under any of the variant's names.
+  each payload back under the Dart SDK, against serde. `run_dart_unit_entries.rs` reads and
+  writes back each variant of `Tacking`, of `tests/kotlin_tests/flattened_models.rs`, flattened
+  in `Stowing`, `Belting` and `Yawing`, in either order, against serde: those models are compiled
+  with `kotlin`, so the run is too.
 
 #### A `preprocess` in the Dart read
 

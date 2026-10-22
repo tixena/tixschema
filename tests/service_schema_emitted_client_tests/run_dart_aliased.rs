@@ -11,8 +11,8 @@ use core::fmt::Write as _;
 use super::aliased_models::{
     CAREENING, Careening, FAIRLEADING, Fairleading, Fothering, Gybing, HAWSING, Hawsing, LULLING,
     Lulling, SCENDING, SURGING, SWELL, Scending, Surging, Swell, TIDING, Tiding, VEERING, Veering,
-    careening_dart, pennon_dart, fairleading_dart, fothering_dart, gybing_dart, hawsing_dart,
-    lulling_dart, scending_dart, surging_dart, swell_dart, tiding_dart, veering_dart, written_back,
+    careening_dart, fairleading_dart, fothering_dart, gybing_dart, hawsing_dart, lulling_dart,
+    pennon_dart, scending_dart, surging_dart, swell_dart, tiding_dart, veering_dart, written_back,
 };
 use super::dart_flattened_aliased_models::{
     DRIFTING, Drifting, RIDING, Riding, SWINGING, Swinging, drifting_dart, riding_dart,
@@ -39,11 +39,6 @@ const FUNCTIONS: [&str; 2] = [
     "dynamic withItsKeys(dynamic payload) => \
      {'keys': (payload as Map<String, dynamic>).keys.toList()};",
 ];
-
-/// The row of [`SURGING`] that holds a unit variant's entry over `null`, under an alias: the Dart
-/// read of an enum has no case for a unit variant's entry, under any of its names, and refuses
-/// what serde reads.
-const UNIT_ENTRY: &str = r#"{"Slack":null}"#;
 
 /// Each payload with the name it is printed under, the Dart that reads it and writes it back, and
 /// what serde writes back of it.
@@ -87,22 +82,16 @@ fn rows() -> Vec<(&'static str, &'static str, &'static str, String)> {
     rows
 }
 
-/// Each payload is read under each name serde reads it under, written back under the name serde
-/// writes, and refused where serde refuses it, but for [`UNIT_ENTRY`]. A member under two of its
-/// names is refused with the words serde refuses it with.
+/// Each payload is read under each name serde reads it under, a unit variant's entry over `null`
+/// among them, written back under the name serde writes, and refused where serde refuses it. A
+/// member under two of its names is refused with the words serde refuses it with.
 #[test]
 fn a_name_serde_reads_beside_the_one_it_writes_is_read_in_dart() {
     let rows = rows();
     let mut expected = String::new();
     let mut main = String::from("void main() {\n");
     for (named, told, payload, serde) in &rows {
-        let told_in_dart = if *payload == UNIT_ENTRY {
-            assert_eq!(serde, r#""Calm""#, "serde reads the unit variant's entry");
-            "refused"
-        } else {
-            serde.as_str()
-        };
-        let _ = writeln!(expected, "{named} {payload}: {told_in_dart}");
+        let _ = writeln!(expected, "{named} {payload}: {serde}");
         let _ = writeln!(
             main,
             "  row('{named}', r'{payload}', (json) => {});",

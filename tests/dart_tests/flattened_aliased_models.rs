@@ -11,11 +11,13 @@ use super::aliased_models::{
 };
 
 /// What [`Riding`] is read from: a variant's entry under its alias with a member under its alias,
-/// a variant of one value under its alias after the holder's member, and a member under its name
-/// and its alias, which serde refuses.
-pub const RIDING: [&str; 3] = [
+/// a variant of one value under its alias after the holder's member, a unit variant's entry over
+/// `null` under its alias after the holder's member, and a member under its name and its alias,
+/// which serde refuses.
+pub const RIDING: [&str; 4] = [
     r#"{"Pier":{"name":"n"},"note":"a"}"#,
     r#"{"note":"a","Tied":"x"}"#,
+    r#"{"note":"a","Slack":null}"#,
     r#"{"Berth":{"label":"n","name":"m"},"note":"a"}"#,
 ];
 
@@ -72,6 +74,7 @@ fn serde_reads_a_flattened_variant_under_each_alias() {
         [
             r#"{"note":"a","Berth":{"label":"n"}}"#,
             r#"{"note":"a","Held":"x"}"#,
+            r#"{"note":"a","Calm":null}"#,
             "refused",
         ]
     );

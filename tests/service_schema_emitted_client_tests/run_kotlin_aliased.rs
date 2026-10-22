@@ -11,8 +11,8 @@ use core::fmt::Write as _;
 use super::aliased_models::{
     CAREENING, Careening, FAIRLEADING, Fairleading, Fothering, Gybing, HAWSING, Hawsing, LULLING,
     Lulling, SCENDING, SURGING, SWELL, Scending, Surging, Swell, TIDING, Tiding, VEERING, Veering,
-    careening_kotlin, pennon_kotlin, fairleading_kotlin, fothering_kotlin, gybing_kotlin,
-    hawsing_kotlin, lulling_kotlin, scending_kotlin, surging_kotlin, swell_kotlin, tiding_kotlin,
+    careening_kotlin, fairleading_kotlin, fothering_kotlin, gybing_kotlin, hawsing_kotlin,
+    lulling_kotlin, pennon_kotlin, scending_kotlin, surging_kotlin, swell_kotlin, tiding_kotlin,
     veering_kotlin, written_back,
 };
 use super::runtime::ran_kotlin;
