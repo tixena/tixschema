@@ -94,9 +94,10 @@ use crate::utils::{
 
 #[cfg(feature = "serde")]
 use crate::utils::{
-    Declared, TrivialPattern, forget_field_validators, is_recorded_plain_enum, record_declared,
-    record_field_validator, record_flattened_beside_parameters, record_open_map,
-    record_open_map_parameters, record_plain_enum, trivial_pattern,
+    Declared, NonObjectWire, TrivialPattern, WireLeaf, forget_field_validators,
+    is_recorded_plain_enum, record_declared, record_field_validator,
+    record_flattened_beside_parameters, record_non_object_wire, record_open_map,
+    record_open_map_parameters, record_plain_enum, recorded_non_object_wire, trivial_pattern,
 };
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
@@ -225,7 +226,7 @@ use crate::utils::record_zod_union_members;
 use crate::utils::ZodUnionMember;
 
 #[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
-use crate::utils::{FlattenVariant, WireLeaf, record_flatten_variants, record_wire_leaves};
+use crate::utils::{FlattenVariant, record_flatten_variants, record_wire_leaves};
 
 #[cfg(all(feature = "serde", feature = "typescript"))]
 use crate::utils::record_ts_union_members;
@@ -293,6 +294,13 @@ const FLATTENED_PLAIN_ENUM_SCOPE: &str = "This refusal holds in every build with
      plain enum declared above reaches it: one declared below, or in another crate, is not \
      refused here, and where a schema surface is on it keeps its TypeScript and Zod \
      intersection, and is refused by the JSON surface when the merge runs.";
+
+/// What the refusal of a flattened type serde writes as no object says about its own reach.
+#[cfg(feature = "serde")]
+const FLATTENED_NON_OBJECT_SCOPE: &str = "This refusal holds in every build with serde, and only a \
+     type declared above reaches it: one declared below, or in another crate, is not refused \
+     here, and where a schema surface is on it keeps its TypeScript and Zod intersection, and is \
+     refused by the JSON surface when the merge runs.";
 
 /// The list `validate()` collects each message in.
 const VALIDATE_SINK: &str = "errors";
@@ -921,6 +929,20 @@ enum RecordedWire {
     Named(Option<&'static str>),
 }
 
+/// What a flattened field's type writes as no object, in the words the flatten refusal names it
+/// by: the JSON type keyword of the whole value, or of the union member at a branch.
+#[cfg(feature = "serde")]
+#[derive(Debug, PartialEq, Eq)]
+enum NonObject {
+    Branch(String, &'static str),
+    Whole(&'static str),
+}
+
+/// Where the leaves a name publishes are read from: the record a schema surface writes, or the one
+/// every build with serde writes.
+#[cfg(feature = "serde")]
+type LeavesOf = fn(&str) -> Option<Vec<WireLeaf>>;
+
 /// What a tuple struct publishes, which is not always the tuple of its declared slots.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 enum TupleStructShape {
@@ -1290,7 +1312,7 @@ impl Surface {
         Self {
             shape: published_value_shape(written, parameters),
             #[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
-            wire: RecordedWire::Leaves(published_wire_leaves(written)),
+            wire: RecordedWire::Leaves(published_wire_leaves(written, surfaced_leaves)),
         }
     }
 }
@@ -2630,7 +2652,7 @@ fn flattened_ts_spelling(fld: &FieldDef) -> String {
         .map(|variant| variant.typescript)
         .collect();
     if !variants.is_empty() {
-        return if variants.len() > 1 || named_wire_leaves(fld).is_some() {
+        return if variants.len() > 1 || named_wire_leaves(fld, surfaced_leaves).is_some() {
             format!("({})", variants.join(" | "))
         } else {
             named
@@ -3500,7 +3522,108 @@ fn record_item(item: &Item) {
         record_open_map_parameters(&name, ranges::open_map_parameter_positions(item));
         record_flattened_beside_parameters(&name, ranges::flattened_beside_parameters_of(item));
         record_plain_enum(&name, written_as_a_variant_name(item));
+        record_non_object_wire(&name, non_object_wire(item));
     }
+}
+
+/// What serde writes a value of `item` as, in the leaves the flatten refusal reads, read off the
+/// item as the leaves a schema surface records are read off what it publishes: a brand's or a
+/// struct of one slot's value, any other tuple struct's array, a plain enum's name, each variant
+/// of an externally tagged enum, each member of an untagged enum, and an alias's value.
+#[cfg(feature = "serde")]
+fn non_object_wire(item: &Item) -> NonObjectWire {
+    let parameters = item_generics(item).map_or_else(Vec::new, type_parameters_in_scope);
+    let written = |ty: &syn::Type| {
+        let mut def = get_field_def("_written", ty, "");
+        def.erase_type_parameters(&parameters);
+        def
+    };
+    let mut wire = NonObjectWire::default();
+    if let Item::Struct(item_struct) = item {
+        let held = brand_field(item_struct).or_else(|| match &item_struct.fields {
+            syn::Fields::Unnamed(slots) if slots.unnamed.len() == 1 => slots.unnamed.first(),
+            syn::Fields::Named(_) | syn::Fields::Unnamed(_) | syn::Fields::Unit => None,
+        });
+        if let Some(value) = held {
+            wire.leaves = published_wire_leaves(&written(&value.ty), written_leaves);
+        } else if matches!(item_struct.fields, syn::Fields::Unnamed(_)) {
+            wire.leaves = vec![WireLeaf {
+                branch: Vec::new(),
+                non_object: Some("array"),
+            }];
+        } else {
+            // serde writes the members under keys of their own.
+        }
+    } else if let Item::Enum(item_enum) = item {
+        let tagging = Tagging::of(item_enum);
+        if matches!(tagging, Tagging::Plain) {
+            wire.leaves = vec![WireLeaf {
+                branch: Vec::new(),
+                non_object: Some("string"),
+            }];
+        } else if matches!(tagging, Tagging::External) {
+            wire.leaves = external_variant_wire_leaves(&item_enum.variants);
+        } else if matches!(tagging, Tagging::Untagged) {
+            wire.members = item_enum
+                .variants
+                .iter()
+                .enumerate()
+                .flat_map(|(index, variant)| {
+                    let first = variant.fields.iter().next();
+                    let leaves = match (variant_wire_kind(variant), first) {
+                        (VariantKind::TupleSingle, Some(slot)) => {
+                            member_written_leaves(&written(&slot.ty))
+                        }
+                        _ => vec![WireLeaf {
+                            branch: Vec::new(),
+                            non_object: None,
+                        }],
+                    };
+                    leaves.into_iter().map(move |mut leaf| {
+                        leaf.branch.insert(0, index + 1);
+                        leaf
+                    })
+                })
+                .collect();
+        } else {
+            // serde writes each variant under a tag key, in an object.
+        }
+    } else if let Item::Type(alias) = item {
+        let value = written(&alias.ty);
+        wire.leaves = published_wire_leaves(&value, written_leaves);
+        wire.members = written_union_members(&value);
+    } else {
+        // Nothing else is expanded.
+    }
+    wire
+}
+
+/// What one untagged member written as `fld` contributes below its own position, as the Zod
+/// surface's leaves of a member are read: the members of the union it names, the leaves of the
+/// name, or the member itself, and under an `Option` both the value's choice and the absence's.
+#[cfg(feature = "serde")]
+fn member_written_leaves(fld: &FieldDef) -> Vec<WireLeaf> {
+    let nested = written_union_members(fld);
+    let mut leaves = if nested.is_empty() {
+        named_wire_leaves(fld, written_leaves).unwrap_or_else(|| {
+            vec![WireLeaf {
+                branch: Vec::new(),
+                non_object: written_non_object_wire(fld, written_leaves),
+            }]
+        })
+    } else {
+        nested
+    };
+    if fld.is_optional() {
+        for leaf in &mut leaves {
+            leaf.branch.insert(0, 1);
+        }
+        leaves.push(WireLeaf {
+            branch: vec![2],
+            non_object: Some("null"),
+        });
+    }
+    leaves
 }
 
 /// Whether serde writes `item` as the bare name of one of its variants: a plain enum, and an
@@ -5169,23 +5292,32 @@ fn instantiated_value_shape(rust_ident: &str, arguments: &[FieldDef]) -> Option<
     }
 }
 
-/// The JSON type keyword a registered name's wire describes as, when the registry proves that wire
-/// is no object, and `None` for every name it cannot prove one way or the other.
-#[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
-fn registered_non_object_wire(rust_ident: &str) -> Option<&'static str> {
-    match lookup_alias_info(rust_ident)?.wire.as_slice() {
+/// The JSON type keyword a recorded name's wire describes as, when the leaves `leaves_of` reads
+/// prove that wire is no object, and `None` for every name they cannot prove one way or the other.
+#[cfg(feature = "serde")]
+fn registered_non_object_wire(rust_ident: &str, leaves_of: LeavesOf) -> Option<&'static str> {
+    match leaves_of(rust_ident)?.as_slice() {
         [only] => only.non_object,
         _ => None,
     }
 }
 
+/// The leaves a schema surface recorded for `rust_ident`.
+#[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
+fn surfaced_leaves(rust_ident: &str) -> Option<Vec<WireLeaf>> {
+    lookup_alias_info(rust_ident).map(|info| info.wire)
+}
+
+/// The leaves every build with serde recorded for `rust_ident`.
+#[cfg(feature = "serde")]
+fn written_leaves(rust_ident: &str) -> Option<Vec<WireLeaf>> {
+    recorded_non_object_wire(rust_ident).map(|wire| wire.leaves)
+}
+
 /// The JSON type keyword a value one keyword describes writes, and `None` for every type that
 /// writes a document no single keyword names — a composite, a name, an `ObjectId`'s `$oid` object,
 /// an opaque value.
-#[cfg(any(
-    feature = "jsonschema",
-    all(feature = "serde", any(feature = "zod", feature = "typescript"))
-))]
+#[cfg(any(feature = "jsonschema", feature = "serde"))]
 const fn scalar_json_type_keyword(field_type: &FieldDefType) -> Option<&'static str> {
     match *field_type {
         FieldDefType::Boolean | FieldDefType::BooleanLiteral(_) => Some("boolean"),
@@ -5519,8 +5651,10 @@ fn apply_deferred_field_attrs<'field>(
 }
 
 /// The `compile_error!` tokens for a `#[serde(flatten)]` field whose recorded wire proves serde
-/// does not write an object where the merge needs one, or `None` for every other field.
-#[cfg(all(feature = "serde", feature = "zod"))]
+/// does not write an object where the merge needs one, or `None` for every other field. What a
+/// Zod surface recorded is read first, then what every build with serde records, which proves the
+/// same of every name both hold.
+#[cfg(feature = "serde")]
 fn flatten_edge_guard_error(
     field: &syn::Field,
     type_name: &str,
@@ -5529,56 +5663,98 @@ fn flatten_edge_guard_error(
     let FieldDefType::SiblingType(inner_name, _) = &inner.field_type else {
         return None;
     };
-    let refused = inner
-        .zod_union_members()
-        .into_iter()
-        .find_map(|member| member.non_object.map(|named| (member.branch_path(), named)))
-        .or_else(|| flattened_name_refused_branch(&inner));
-    let message = if let Some((branch, named)) = refused {
-        format!(
+    #[cfg(feature = "zod")]
+    let surfaced = surfaced_non_object(&inner);
+    #[cfg(not(feature = "zod"))]
+    let surfaced = None;
+    let message = match surfaced.or_else(|| written_non_object(&inner))? {
+        NonObject::Branch(branch, named) => format!(
             "model_schema: `{type_name}`: `#[serde(flatten)]` of `{inner_name}` writes a \
              union member that is not an object — its branch {branch} describes a `{named}`, \
              which has no members to merge, and what serde writes for that member does not \
              join the object being written; write the field as a named member so the value \
-             gets a key of its own."
-        )
-    } else {
-        let named = flattened_name_non_object_wire(&inner)?;
-        format!(
+             gets a key of its own. {FLATTENED_NON_OBJECT_SCOPE}"
+        ),
+        NonObject::Whole(named) => format!(
             "model_schema: `{type_name}`: `#[serde(flatten)]` of `{inner_name}` is not written \
              as an object — its schema describes a `{named}`, which has no members to merge, \
              and what serde writes for it does not join the object being written; write the \
-             field as a named member so the value gets a key of its own."
-        )
+             field as a named member so the value gets a key of its own. \
+             {FLATTENED_NON_OBJECT_SCOPE}"
+        ),
     };
     Some(syn::Error::new_spanned(&field.ty, message).to_compile_error())
 }
 
-/// The JSON type keyword the item a flattened field names publishes, where the name is the whole of
-/// what the field writes and the registry proves that wire is no object — and `None` everywhere the
-/// declaration is left as it stands.
+/// What a flattened field's type writes as no object, as the registry a Zod surface writes proves
+/// it.
 #[cfg(all(feature = "serde", feature = "zod"))]
-fn flattened_name_non_object_wire(inner: &FieldDef) -> Option<&'static str> {
-    if inner.is_array() || flattened_plain_enum(inner).is_some() {
+fn surfaced_non_object(inner: &FieldDef) -> Option<NonObject> {
+    inner
+        .zod_union_members()
+        .into_iter()
+        .find_map(|member| {
+            member
+                .non_object
+                .map(|named| NonObject::Branch(member.branch_path(), named))
+        })
+        .or_else(|| flattened_name_refused_branch(inner, surfaced_leaves))
+        .or_else(|| flattened_name_non_object_wire(inner, surfaced_leaves).map(NonObject::Whole))
+}
+
+/// What a flattened field's type writes as no object, as the record every build with serde writes
+/// proves it.
+#[cfg(feature = "serde")]
+fn written_non_object(inner: &FieldDef) -> Option<NonObject> {
+    written_union_members(inner)
+        .into_iter()
+        .find_map(|member| {
+            member
+                .non_object
+                .map(|named| NonObject::Branch(member.branch_path(), named))
+        })
+        .or_else(|| flattened_name_refused_branch(inner, written_leaves))
+        .or_else(|| flattened_name_non_object_wire(inner, written_leaves).map(NonObject::Whole))
+}
+
+/// The members of the untagged union `def` names, as every build with serde records them, and
+/// nothing for a def that names no such union.
+#[cfg(feature = "serde")]
+fn written_union_members(def: &FieldDef) -> Vec<WireLeaf> {
+    if def.array_depth > 0 {
+        return Vec::new();
+    }
+    let FieldDefType::SiblingType(name, _) = &def.field_type else {
+        return Vec::new();
+    };
+    recorded_non_object_wire(name).map_or_else(Vec::new, |wire| wire.members)
+}
+
+/// The JSON type keyword the item a flattened field names publishes, where the name is the whole of
+/// what the field writes and the leaves `leaves_of` reads prove that wire is no object — and `None`
+/// everywhere the declaration is left as it stands.
+#[cfg(feature = "serde")]
+fn flattened_name_non_object_wire(inner: &FieldDef, leaves_of: LeavesOf) -> Option<&'static str> {
+    if inner.array_depth > 0 || flattened_plain_enum(inner).is_some() {
         return None;
     }
     let FieldDefType::SiblingType(name, _) = &inner.field_type else {
         return None;
     };
-    registered_non_object_wire(name)
+    registered_non_object_wire(name, leaves_of)
 }
 
 /// The branch a flattened field's own name proves is no object, beside the JSON type keyword that
 /// branch describes as — and `None` for every name whose leaves prove no such branch.
-#[cfg(all(feature = "serde", feature = "zod"))]
-fn flattened_name_refused_branch(inner: &FieldDef) -> Option<(String, &'static str)> {
-    if inner.is_array() || flattened_plain_enum(inner).is_some() {
+#[cfg(feature = "serde")]
+fn flattened_name_refused_branch(inner: &FieldDef, leaves_of: LeavesOf) -> Option<NonObject> {
+    if inner.array_depth > 0 || flattened_plain_enum(inner).is_some() {
         return None;
     }
     let FieldDefType::SiblingType(name, _) = &inner.field_type else {
         return None;
     };
-    let leaves = lookup_alias_info(name)?.wire;
+    let leaves = leaves_of(name)?;
     let (absences, values): (Vec<&WireLeaf>, Vec<&WireLeaf>) =
         leaves.iter().partition(|leaf| leaf.is_published_absence());
     if absences.len() != 1 {
@@ -5588,7 +5764,7 @@ fn flattened_name_refused_branch(inner: &FieldDef) -> Option<(String, &'static s
         return None;
     }
     let first = values.first()?;
-    Some((first.branch_path(), first.non_object?))
+    Some(NonObject::Branch(first.branch_path(), first.non_object?))
 }
 
 /// The [`FieldContext::container_read_back`] every walk hands its fields: whether the item they
@@ -5630,10 +5806,6 @@ fn collect_struct_fields(
         #[cfg(feature = "serde")]
         if is_flatten {
             guard_errors.extend(flattened_field_guard_error(field, type_name));
-        }
-
-        #[cfg(all(feature = "serde", feature = "zod"))]
-        if is_flatten {
             guard_errors.extend(flatten_edge_guard_error(field, type_name));
         }
 
@@ -9901,19 +10073,17 @@ fn variant_flatten_guard_errors(
     enum_type_name: &str,
 ) -> Vec<proc_macro2::TokenStream> {
     #[cfg(feature = "serde")]
-    let named = [flattened_field_guard_error(field, enum_type_name)];
+    let refused = [
+        flattened_field_guard_error(field, enum_type_name),
+        flatten_edge_guard_error(field, enum_type_name),
+    ];
     #[cfg(not(feature = "serde"))]
-    let named = {
+    let refused: [Option<proc_macro2::TokenStream>; 0] = {
         let _: (&_, &_) = (&field, &enum_type_name);
-        [None]
+        []
     };
 
-    #[cfg(all(feature = "serde", feature = "zod"))]
-    let edges = [flatten_edge_guard_error(field, enum_type_name)];
-    #[cfg(not(all(feature = "serde", feature = "zod")))]
-    let edges = [None];
-
-    named.into_iter().chain(edges).flatten().collect()
+    refused.into_iter().flatten().collect()
 }
 
 /// Where the default serde reads for the absent key of a member, by variant and member, sits among
@@ -12070,7 +12240,7 @@ fn zod_member_leaves(fld: &FieldDef, rendered: &str) -> Vec<ZodUnionMember> {
     };
     let mut leaves = if !nested.is_empty() {
         nested
-    } else if let Some(published) = named_wire_leaves(fld) {
+    } else if let Some(published) = named_wire_leaves(fld, surfaced_leaves) {
         // The name stands for a choice of its own.
         published
             .into_iter()
@@ -12083,7 +12253,7 @@ fn zod_member_leaves(fld: &FieldDef, rendered: &str) -> Vec<ZodUnionMember> {
     } else {
         vec![ZodUnionMember {
             branch: Vec::new(),
-            non_object: written_non_object_wire(fld),
+            non_object: written_non_object_wire(fld, surfaced_leaves),
             spelling: rendered.to_owned(),
         }]
     };
@@ -12103,9 +12273,9 @@ fn zod_member_leaves(fld: &FieldDef, rendered: &str) -> Vec<ZodUnionMember> {
 /// What serde writes a written type as, when that type proves it is not an object, and `None` when
 /// nothing here proves it. Asked of an untagged union's member and of the whole surface an item
 /// publishes alike, which is what keeps a member and the name standing for it on one answer.
-#[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
-fn written_non_object_wire(fld: &FieldDef) -> Option<&'static str> {
-    if fld.is_array() {
+#[cfg(feature = "serde")]
+fn written_non_object_wire(fld: &FieldDef, leaves_of: LeavesOf) -> Option<&'static str> {
+    if fld.array_depth > 0 {
         return Some("array");
     }
     if matches!(fld.field_type, FieldDefType::Tuple(_)) {
@@ -12114,7 +12284,7 @@ fn written_non_object_wire(fld: &FieldDef) -> Option<&'static str> {
     if let FieldDefType::SiblingType(name, _) = &fld.field_type {
         return is_sequence_wrapper(name)
             .then_some("array")
-            .or_else(|| registered_non_object_wire(name));
+            .or_else(|| registered_non_object_wire(name, leaves_of));
     }
     // Everything the two structural questions above leave is a value one keyword describes or
     // nothing here can name, which is exactly what the shared mapping answers.
@@ -12124,13 +12294,13 @@ fn written_non_object_wire(fld: &FieldDef) -> Option<&'static str> {
 /// What a `#[model_schema()]` item publishes, as leaves in the merge's vocabulary — the answer
 /// [`crate::utils::record_wire_leaves`] stores for every name a flattened member can then reach
 /// through.
-#[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
-fn published_wire_leaves(written: &FieldDef) -> Vec<WireLeaf> {
+#[cfg(feature = "serde")]
+fn published_wire_leaves(written: &FieldDef, leaves_of: LeavesOf) -> Vec<WireLeaf> {
     if written.is_optional() {
         let mut bare = written.clone();
         bare.nullable_levels
             .retain(|&level| level != bare.array_depth);
-        let mut leaves = published_wire_leaves(&bare);
+        let mut leaves = published_wire_leaves(&bare, leaves_of);
         for leaf in &mut leaves {
             leaf.branch.insert(0, 1);
         }
@@ -12140,17 +12310,17 @@ fn published_wire_leaves(written: &FieldDef) -> Vec<WireLeaf> {
         });
         return leaves;
     }
-    named_wire_leaves(written).unwrap_or_else(|| {
+    named_wire_leaves(written, leaves_of).unwrap_or_else(|| {
         vec![WireLeaf {
             branch: Vec::new(),
-            non_object: written_non_object_wire(written),
+            non_object: written_non_object_wire(written, leaves_of),
         }]
     })
 }
 
 /// The leaves an externally tagged enum's variants write, one per variant and in the order the
 /// `oneOf` it publishes writes them.
-#[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
+#[cfg(feature = "serde")]
 fn external_variant_wire_leaves(variants: &Punctuated<syn::Variant, Token![,]>) -> Vec<WireLeaf> {
     variants
         .iter()
@@ -12165,15 +12335,15 @@ fn external_variant_wire_leaves(variants: &Punctuated<syn::Variant, Token![,]>) 
 /// The leaves the item a field names published, where the field's whole wire *is* that name's and
 /// one of those leaves proves serde writes no object at its position — and `None` everywhere the
 /// one-leaf dispatch already answers.
-#[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
-fn named_wire_leaves(written: &FieldDef) -> Option<Vec<WireLeaf>> {
-    if written.is_array() {
+#[cfg(feature = "serde")]
+fn named_wire_leaves(written: &FieldDef, leaves_of: LeavesOf) -> Option<Vec<WireLeaf>> {
+    if written.array_depth > 0 {
         return None;
     }
     let FieldDefType::SiblingType(name, _) = &written.field_type else {
         return None;
     };
-    let leaves = lookup_alias_info(name)?.wire;
+    let leaves = leaves_of(name)?;
     leaves
         .iter()
         .any(|leaf| leaf.non_object.is_some())

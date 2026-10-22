@@ -285,24 +285,24 @@ struct Scored {
     tallied: Tallied,
 }
 
-/// Untagged, with a variant that holds a plain enum. A schema surface refuses the declaration
-/// that flattens it.
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-#[serde(untagged)]
-enum Feeling {
-    Mood(Mood),
-    Named { name: String },
-}
-
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+/// A flattened untagged enum declared below, with a variant that holds a plain enum: one declared
+/// above is refused in every build with serde.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Felt {
     #[serde(flatten)]
     feeling: Feeling,
     id: String,
+}
+
+/// Untagged, with a variant that holds a plain enum, declared below the type that flattens it, so
+/// no expansion of that type sees it.
+#[model_schema(enable = ["decode_with"])]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(untagged)]
+enum Feeling {
+    Mood(Mood),
+    Named { name: String },
 }
 
 /// Externally tagged, with a variant that holds a type that takes every key it is handed.
@@ -543,10 +543,6 @@ flagged! {
     ThroughHook => through_hook_schema,
     MapThroughHook => map_through_hook_schema,
     MaybeCounted => maybe_counted_schema,
-}
-
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-flagged! {
     Felt => felt_schema,
 }
 
@@ -882,7 +878,6 @@ fn every_place_a_type_is_handed_an_object_hands_it_what_serde_hands_it() {
     assert!(agrees::<Optioned>(&json!({})));
 }
 
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
 #[test]
 fn a_flattened_untagged_variant_over_a_plain_enum_claims_the_key_naming_its_variant() {
     let felt = Felt {

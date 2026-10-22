@@ -28,7 +28,10 @@ use super::{
 };
 
 #[cfg(all(feature = "serde", feature = "zod"))]
-use super::{WireLeaf, flatten_edge_guard_error, record_wire_leaves, record_zod_union_members};
+use super::{
+    NonObject, WireLeaf, flatten_edge_guard_error, record_wire_leaves, record_zod_union_members,
+    surfaced_non_object, written_non_object,
+};
 
 #[cfg(feature = "zod")]
 use super::{MergedOperand, SourceAbsence};
@@ -2134,6 +2137,182 @@ fn a_flattened_plain_enum_declared_above_is_refused_in_every_build_with_serde() 
          #[serde(flatten)] pub weather: Outlook }",
     );
     assert_eq!(compile_error_count(&unseen), 0, "got: {unseen}");
+}
+
+/// No local build is of the clients alone, so the gates are read off the sources.
+#[test]
+fn the_flattened_non_object_refusal_is_compiled_in_every_build_with_serde() {
+    let with_serde = quote::quote!(cfg(feature = "serde")).to_string();
+    let expansion = include_str!("../model_schema.rs");
+    let registry = include_str!("../utils.rs");
+    for (source, named) in [
+        (expansion, "FLATTENED_NON_OBJECT_SCOPE"),
+        (expansion, "flatten_edge_guard_error"),
+        (expansion, "written_non_object"),
+        (expansion, "written_union_members"),
+        (expansion, "flattened_name_non_object_wire"),
+        (expansion, "flattened_name_refused_branch"),
+        (expansion, "registered_non_object_wire"),
+        (expansion, "written_leaves"),
+        (expansion, "non_object_wire"),
+        (expansion, "member_written_leaves"),
+        (expansion, "published_wire_leaves"),
+        (expansion, "named_wire_leaves"),
+        (expansion, "written_non_object_wire"),
+        (expansion, "external_variant_wire_leaves"),
+        (registry, "record_non_object_wire"),
+        (registry, "recorded_non_object_wire"),
+    ] {
+        assert_eq!(
+            gates_above(source, named),
+            [with_serde.as_str()],
+            "for `{named}`"
+        );
+    }
+    assert_eq!(
+        gates_above(expansion, "variant_flatten_guard_errors"),
+        Vec::<String>::new(),
+        "for `variant_flatten_guard_errors`"
+    );
+}
+
+/// The refusal of a flattened `inner` of `holder` that serde writes as a `named` value.
+#[cfg(feature = "serde")]
+fn whole_non_object_refusal(holder: &str, inner: &str, named: &str) -> String {
+    format!(
+        "model_schema: `{holder}`: `#[serde(flatten)]` of `{inner}` is not written as an object \
+         \u{2014} its schema describes a `{named}`, which has no members to merge, and what serde \
+         writes for it does not join the object being written; write the field as a named member \
+         so the value gets a key of its own. {}",
+        super::FLATTENED_NON_OBJECT_SCOPE
+    )
+}
+
+/// A brand over text, a tuple struct and an untagged enum with a member over a plain enum, each
+/// flattened where it is declared above, in a struct and in a variant's members, and a brand
+/// declared below, which no expansion sees.
+#[cfg(feature = "serde")]
+#[test]
+fn a_flattened_type_serde_writes_as_no_object_declared_above_is_refused_in_every_build_with_serde()
+{
+    for declared in [
+        "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct RecordId(String);",
+        "#[derive(Serialize, Deserialize)] pub struct Pair(String, u32);",
+        "#[derive(Serialize, Deserialize)] pub enum Mood { Calm, Tense }",
+        "#[derive(Serialize, Deserialize)] #[serde(untagged)] pub enum Feeling { Mood(Mood), \
+         Named { name: String } }",
+    ] {
+        let expanded = expansion_over(declared);
+        assert_eq!(compile_error_count(&expanded), 0, "got: {expanded}");
+    }
+    let carded = refusal_texts(&expansion_over(
+        "#[derive(Serialize, Deserialize)] pub struct Carded { #[serde(flatten)] pub id: \
+         RecordId, pub name: String }",
+    ));
+    assert_eq!(
+        carded,
+        [whole_non_object_refusal("Carded", "RecordId", "string")]
+    );
+    let answered = format!("error: {}", carded[0]);
+    assert!(
+        include_str!("../../README.md").contains(&answered),
+        "the README no longer quotes: {answered}"
+    );
+    assert_eq!(
+        refusal_texts(&expansion_over(
+            "#[derive(Serialize, Deserialize)] pub struct Paired { pub name: String, \
+             #[serde(flatten)] pub pair: Pair }",
+        )),
+        [whole_non_object_refusal("Paired", "Pair", "array")]
+    );
+    assert_eq!(
+        refusal_texts(&expansion_over(
+            "#[derive(Serialize, Deserialize)] pub struct Felt { #[serde(flatten)] pub feeling: \
+             Feeling, pub id: String }",
+        )),
+        [format!(
+            "model_schema: `Felt`: `#[serde(flatten)]` of `Feeling` writes a union member that is \
+             not an object \u{2014} its branch 1 describes a `string`, which has no members to \
+             merge, and what serde writes for that member does not join the object being \
+             written; write the field as a named member so the value gets a key of its own. {}",
+            super::FLATTENED_NON_OBJECT_SCOPE
+        )]
+    );
+    assert_eq!(
+        refusal_texts(&expansion_over(
+            "#[derive(Serialize, Deserialize)] pub enum Logbook { Noted { note: String, \
+             #[serde(flatten)] id: RecordId } }",
+        )),
+        [whole_non_object_refusal("Logbook", "RecordId", "string")]
+    );
+    let unseen = expansion_over(
+        "#[derive(Serialize, Deserialize)] pub struct Clipped { #[serde(flatten)] pub id: \
+         ClipId, pub name: String }",
+    );
+    assert_eq!(compile_error_count(&unseen), 0, "got: {unseen}");
+}
+
+/// What the record every build with serde writes proves of each flattened type is what the record
+/// a Zod surface writes proves, so the refusal reads the same with a schema surface and without.
+#[cfg(all(feature = "serde", feature = "zod"))]
+#[test]
+fn the_record_every_build_with_serde_writes_proves_what_the_zod_surface_proves() {
+    for declared in [
+        "#[derive(Serialize, Deserialize)] pub struct Plain { pub a: String }",
+        "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct Slug(String);",
+        "#[derive(Serialize, Deserialize)] pub struct Flag(bool);",
+        "#[derive(Serialize, Deserialize)] pub struct Pair(String, u32);",
+        "#[derive(Serialize, Deserialize)] pub struct Bag(Vec<String>);",
+        "#[derive(Serialize, Deserialize)] pub struct MaybeCount(Option<i64>);",
+        "#[derive(Serialize, Deserialize)] pub struct MaybePlain(Option<Plain>);",
+        "#[derive(Serialize, Deserialize)] pub enum Hue { Blue, Red }",
+        "#[derive(Serialize, Deserialize)] pub enum Bare { Empty, Held(Plain) }",
+        "#[derive(Serialize, Deserialize)] #[serde(tag = \"kind\")] pub enum Tagged { One(Plain) }",
+        "#[derive(Serialize, Deserialize)] #[serde(untagged)] pub enum Scalar { Obj(Plain), \
+         Text(String) }",
+        "#[derive(Serialize, Deserialize)] #[serde(untagged)] pub enum Nullable { Obj(Plain), \
+         Maybe(Option<Plain>) }",
+        "#[derive(Serialize, Deserialize)] #[serde(untagged)] pub enum Named { Obj(Plain), \
+         Slug(Slug), Hue(Hue), Bare(Bare), Bag(Bag), Maybe(MaybePlain) }",
+        "#[derive(Serialize, Deserialize)] #[serde(untagged)] pub enum Nested { Inner(Scalar), \
+         Obj(Plain) }",
+        "#[derive(Serialize, Deserialize)] #[serde(untagged)] pub enum Objects { First(Plain), \
+         Second(Plain) }",
+        "pub type SlugAlias = Slug;",
+        "pub type ScalarAlias = Scalar;",
+        "pub type Ids = Vec<String>;",
+    ] {
+        let expanded = expansion_over(declared);
+        assert_eq!(compile_error_count(&expanded), 0, "got: {expanded}");
+    }
+    let branch = |at: &str, named| Some(NonObject::Branch(at.to_owned(), named));
+    for (flattened, proved) in [
+        ("Plain", None),
+        ("Slug", Some(NonObject::Whole("string"))),
+        ("Flag", Some(NonObject::Whole("boolean"))),
+        ("Pair", Some(NonObject::Whole("array"))),
+        ("Bag", Some(NonObject::Whole("array"))),
+        ("MaybeCount", branch("1", "integer")),
+        ("MaybePlain", None),
+        ("Hue", None),
+        ("Bare", None),
+        ("Tagged", None),
+        ("Scalar", branch("2", "string")),
+        ("Nullable", branch("2.2", "null")),
+        ("Named", branch("2", "string")),
+        ("Nested", branch("1.2", "string")),
+        ("Objects", None),
+        ("SlugAlias", Some(NonObject::Whole("string"))),
+        ("ScalarAlias", branch("2", "string")),
+        ("Ids", Some(NonObject::Whole("array"))),
+        ("Option<Slug>", Some(NonObject::Whole("string"))),
+        ("Vec<Slug>", None),
+        ("Unseen", None),
+    ] {
+        let inner = get_field_def("_flattened", &syn::parse_str(flattened).unwrap(), "");
+        assert_eq!(written_non_object(&inner), proved, "for `{flattened}`");
+        assert_eq!(surfaced_non_object(&inner), proved, "for `{flattened}`");
+    }
 }
 
 /// The struct a build of the clients alone took, each client naming `both_ways`, a key serde

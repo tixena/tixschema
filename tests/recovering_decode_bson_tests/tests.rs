@@ -406,16 +406,22 @@ struct Referenced {
     status: StatusRef,
 }
 
-/// A flattened brand over text, which serde refuses to flatten at every read. A schema surface
-/// refuses the declaration.
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+/// A flattened brand over text declared below, which serde refuses to flatten at every read: one
+/// declared above is refused in every build with serde.
 #[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Carded {
     #[serde(flatten)]
-    id: RecordId,
+    id: CardCode,
     name: String,
 }
+
+/// A brand over text declared below the type that flattens it, so no expansion of that type sees
+/// it.
+#[model_schema(enable = ["decode_with", "mongodb"])]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct CardCode(String);
 
 /// A `transparent` struct with a named field over an id: serde writes it as the id it holds.
 #[model_schema(enable = ["decode_with", "mongodb"])]
@@ -2234,7 +2240,6 @@ fn a_brand_over_text_and_a_tuple_struct_list_nothing_in_a_document_and_return_no
     }
 }
 
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
 #[test]
 fn a_struct_flattening_a_type_serde_cannot_flatten_lists_nothing_for_it_beside_serdes_refusal() {
     let stored_row = doc! { "name": "n" };
