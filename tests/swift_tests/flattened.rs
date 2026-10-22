@@ -1,19 +1,20 @@
 //! What the Swift emitter reads of a flattened member: a map entry by entry, without the keys the
-//! types around its holder took, as serde hands it, and any other member without the keys its
-//! holder's own members, the structs flattened ahead of it and the types around its holder took.
-//! Each flattened member is written at its place. What a variant under a tag alone holds as its one
-//! slot or flattens beside no member of its own is read from the object without the tag. The reads
-//! are run under the Swift toolchain in
-//! `tests/service_schema_emitted_client_tests/run_swift_flattened.rs`.
+//! types around its holder took, as serde hands it, an optional one `nil` wherever an entry does
+//! not read, and any other member without the keys its holder's own members, the structs
+//! flattened ahead of it and the types around its holder took. Each flattened member is written
+//! at its place. What a variant under a tag alone holds as its one slot or flattens beside no
+//! member of its own is read from the object without the tag. The reads are run under the Swift
+//! toolchain in `tests/service_schema_emitted_client_tests/run_swift_flattened.rs`.
 
 #[cfg(feature = "chrono")]
 use super::flattened_models::serving_swift;
 use super::flattened_models::{
     baling_swift, bowsing_swift, boxing_swift, clewing_swift, faking_swift, footing_swift,
-    frapping_swift, grafting_swift, gripping_swift, hanking_swift, kedging_swift, marling_swift,
-    marrying_swift, mousing_swift, parceling_swift, plying_swift, pointing_swift, ratlining_swift,
-    seaming_swift, snaking_swift, splaying_swift, stopping_swift, stropping_swift, toggling_swift,
-    twinning_swift, whipping_swift, worming_swift,
+    frapping_swift, grafting_swift, gripping_swift, halyard_swift, hanking_swift, kedging_swift,
+    marling_swift, marrying_swift, mousing_swift, parceling_swift, plying_swift, pointing_swift,
+    ratlining_swift, reeling_swift, seaming_swift, slacking_swift, snaking_swift, splaying_swift,
+    stopping_swift, stropping_swift, tailing_swift, toggling_swift, trussing_swift, twinning_swift,
+    whipping_swift, winching_swift, worming_swift,
 };
 
 /// The read a holder takes the keys the types around it took with.
@@ -467,4 +468,70 @@ fn what_a_variant_under_a_tag_alone_holds_is_read_without_the_tag() {
             .replace("decoder.codingPath))", "decoder.codingPath).value)"),
     );
     assert_written(&pointing, &without_the_tag("Slot", "slot", "Pennant.self"));
+}
+
+/// An optional map, the one member of its struct or of a variant under its name, under a content
+/// key or untagged, is read entry by entry as a map is, and is `nil` wherever an entry does not
+/// read: under a key Swift wraps too, and of models read with no judgement. `nil` writes nothing.
+#[test]
+fn an_optional_map_is_nil_wherever_an_entry_does_not_read() {
+    let trussing = trussing_swift::swift_definition();
+    let counts = format!(
+        "{TAKING} {{ do {{ {} }} catch {{ self.counts = nil }} }}",
+        entries_read(
+            "counts",
+            "UInt8",
+            "try keyed.decode(UInt8.self, forKey: entry)",
+        )
+    );
+    assert_written(&trussing, &counts);
+    assert_written(
+        &trussing,
+        "public func encode(to encoder: Encoder) throws { _ = encoder.container(keyedBy: \
+         CodingKeys.self); if let held = self.counts { try held.encode(to: encoder) } }",
+    );
+    let halyard = halyard_swift::swift_definition();
+    assert_written(&halyard, &counts);
+    assert_written(
+        &halyard,
+        "case \"Open\": self = .open(try HalyardOpenPayload(swiftSchemaUnjudged: \
+         container.superDecoder(forKey: key)));",
+    );
+    let tailing = tailing_swift::swift_definition();
+    assert_written(&tailing, &counts);
+    assert_written(
+        &tailing,
+        "self = .open(try TailingOpenPayload(swiftSchemaUnjudged: \
+         container.superDecoder(forKey: .swiftSchemaContent)));",
+    );
+    let slacking = slacking_swift::swift_definition();
+    assert_written(&slacking, &counts);
+    assert_written(
+        &slacking,
+        "if let value = try? SlackingOpenPayload(swiftSchemaUnjudged: decoder, \
+         swiftSchemaWithout: taken) { self = .open(value); return };",
+    );
+    let reeling = reeling_swift::swift_definition();
+    assert_written(
+        &reeling,
+        &format!(
+            "{TAKING} {{ do {{ self.counts = try ReelingCountsKeyedMap(swiftSchemaUnjudged: \
+             decoder, swiftSchemaWithout: taken).storage }} catch {{ self.counts = nil }} }}"
+        ),
+    );
+    assert_written(
+        &reeling,
+        "if let held = self.counts { try ReelingCountsKeyedMap(storage: held).encode(to: encoder) }",
+    );
+    assert_written(
+        &winching_swift::swift_definition(),
+        &format!(
+            "{TAKING} {{ do {{ {} }} catch {{ self.notches = nil }} }}",
+            entries_read(
+                "notches",
+                "Notch",
+                "try Notch(swiftSchemaUnjudged: keyed.superDecoder(forKey: entry))",
+            )
+        ),
+    );
 }

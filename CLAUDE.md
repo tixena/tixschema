@@ -1855,9 +1855,14 @@ to keep.
   members and the members flattened ahead of it take no key of it. A map under a key Swift wraps
   is read by its wrapper, through the `init(swiftSchemaUnjudged:swiftSchemaWithout:)`
   `flattened_wrapper_read` writes in an extension of the wrapper for the flattened member alone.
-  `run_swift_flattened.rs` runs a map alone in each shape, and `tests/swift_tests/flattened.rs`
-  pins its text. What a struct takes is `preprocess::keys_taken_by`: the keys
-  `struct_swift_tokens` records for its type (`preprocess::note_keys`), serde's own list from
+  An optional map is read behind `do { ... } catch { self.{member} = nil }`, a wrapped one too, so
+  it is `nil` wherever an entry does not read as its key and value, as
+  `FlatMapDeserializer::deserialize_option` answers `None` for any error of the map's read; a
+  model it holds is read unjudged, and one that breaks its rule refuses the payload through
+  `validate()`, as the Rust read refuses it. `run_swift_flattened.rs` runs a map alone in each
+  shape, optional or not, and `tests/swift_tests/flattened.rs` pins its text. What a struct takes
+  is `preprocess::keys_taken_by`: the keys `struct_swift_tokens` records for its type
+  (`preprocess::note_keys`), serde's own list from
   `keys_taken_when_flattened`, and none for a member that names a function. A struct that names a
   `preprocess` on itself is read by serde as a value, and one with a flattened member of its own
   as a map: each records none. A type the emitter has not written takes none, and the README

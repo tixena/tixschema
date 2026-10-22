@@ -16,6 +16,9 @@
 //! [`Grafting`] and [`Pointing`] are enums under a tag alone whose variants hold a struct as their
 //! one slot and flatten one beside no member of their own, and in [`Pointing`] beside one: serde
 //! takes the tag off the object first, so a struct that reads a key named as the tag is refused.
+//! [`Trussing`], [`Halyard`], [`Tailing`], [`Slacking`], [`Reeling`] and [`Winching`] each hold an
+//! optional map as the one member of their struct or variant, which serde reads as `None` wherever
+//! an entry does not read.
 
 use alloc::collections::BTreeMap;
 
@@ -99,6 +102,45 @@ pub const POINTING_MARKED: &str = r#"{"kind":"Marked","mark":"x"}"#;
 
 /// What [`Pointing`] is read from under the variant that holds [`Notch`] as its one slot.
 pub const POINTING_NOTCHED: &str = r#"{"kind":"Notched","mark":"x"}"#;
+
+/// What [`Trussing`], [`Slacking`], [`Reeling`] and [`Winching`] are read from with no entry.
+pub const NO_ENTRY: &str = "{}";
+
+/// What [`Trussing`] and [`Slacking`] are read from: one entry.
+pub const TRUSSING: &str = r#"{"north":2}"#;
+
+/// What [`Trussing`] and [`Slacking`] are read from with an entry that is no number.
+pub const TRUSSING_MISTYPED: &str = r#"{"north":"x"}"#;
+
+/// What [`Trussing`] is read from with one entry that reads and one that does not.
+pub const TRUSSING_PARTIAL: &str = r#"{"north":2,"south":"x"}"#;
+
+/// What [`Halyard`] is read from with no entry.
+pub const HALYARD_EMPTY: &str = r#"{"Open":{}}"#;
+
+/// What [`Halyard`] is read from: one entry.
+pub const HALYARD: &str = r#"{"Open":{"north":2}}"#;
+
+/// What [`Halyard`] is read from with an entry that is no number.
+pub const HALYARD_MISTYPED: &str = r#"{"Open":{"north":"x"}}"#;
+
+/// What [`Tailing`] is read from: one entry.
+pub const TAILING: &str = r#"{"kind":"Open","held":{"north":2}}"#;
+
+/// What [`Tailing`] is read from with an entry that is no number.
+pub const TAILING_MISTYPED: &str = r#"{"kind":"Open","held":{"north":"x"}}"#;
+
+/// What [`Reeling`] is read from with a key that is no [`Quarter`].
+pub const REELING_UNKEYED: &str = r#"{"West":2}"#;
+
+/// What [`Reeling`] is read from with an entry that is no number.
+pub const REELING_MISTYPED: &str = r#"{"North":"x"}"#;
+
+/// What [`Winching`] is read from with a model whose rule is broken.
+pub const WINCHING_BROKEN: &str = r#"{"north":{"mark":""}}"#;
+
+/// What [`Winching`] is read from with a model that does not read.
+pub const WINCHING_MISTYPED: &str = r#"{"north":{"mark":5}}"#;
 
 /// A plain enum a map is keyed by, which Swift reads through a wrapper.
 #[model_schema()]
@@ -456,6 +498,62 @@ pub enum Pointing {
     Slot(Pennant),
 }
 
+/// An optional map, the one member of its struct.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Trussing {
+    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
+    pub counts: Option<BTreeMap<String, u8>>,
+}
+
+/// An optional map, the one member of a variant written under its name.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum Halyard {
+    Open {
+        #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
+        counts: Option<BTreeMap<String, u8>>,
+    },
+}
+
+/// An optional map, the one member of a variant under a content key.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", content = "held")]
+pub enum Tailing {
+    Open {
+        #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
+        counts: Option<BTreeMap<String, u8>>,
+    },
+}
+
+/// An optional map, the one member of an untagged variant.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum Slacking {
+    Open {
+        #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
+        counts: Option<BTreeMap<String, u8>>,
+    },
+}
+
+/// An optional map under a key Swift wraps.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Reeling {
+    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
+    pub counts: Option<BTreeMap<Quarter, u8>>,
+}
+
+/// An optional map of models with a rule.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Winching {
+    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
+    pub notches: Option<BTreeMap<String, Notch>>,
+}
+
 /// The payload as it was handed.
 const fn as_given(payload: Value) -> Value {
     payload
@@ -641,4 +739,55 @@ fn serde_hands_what_a_variant_under_a_tag_alone_holds_the_object_without_the_tag
         assert_eq!(read::<Pointing>(text), read_as);
         assert_eq!(written(&read_as), text);
     }
+}
+
+/// An optional map alone in its struct or in a variant, under its name, under a content key or
+/// untagged, holds every entry where each reads, and is `None` wherever one does not: a value that
+/// is no number, a key that is no [`Quarter`] and a model that does not read. A model whose rule is
+/// broken is read with no judgement and refused with its holder, under the place serde names.
+/// serde writes nothing for `None`.
+#[test]
+fn serde_reads_an_optional_map_as_none_wherever_an_entry_does_not_read() {
+    let trussed = |read: Trussing| read.counts;
+    assert_eq!(trussed(read(NO_ENTRY)), Some(BTreeMap::new()));
+    assert_eq!(
+        trussed(read(TRUSSING)),
+        Some(BTreeMap::from([("north".to_owned(), 2)]))
+    );
+    for json in [TRUSSING_MISTYPED, TRUSSING_PARTIAL] {
+        assert_eq!(trussed(read(json)), None, "{json}");
+    }
+    assert_eq!(written(&Trussing { counts: None }), NO_ENTRY);
+    let open = |read: Halyard| {
+        let Halyard::Open { counts } = read;
+        counts
+    };
+    assert_eq!(open(read(HALYARD_EMPTY)), Some(BTreeMap::new()));
+    assert_eq!(written(&read::<Halyard>(HALYARD)), HALYARD);
+    assert_eq!(open(read(HALYARD_MISTYPED)), None);
+    assert_eq!(written(&Halyard::Open { counts: None }), HALYARD_EMPTY);
+    assert_eq!(written(&read::<Tailing>(TAILING)), TAILING);
+    assert_eq!(
+        written(&read::<Tailing>(TAILING_MISTYPED)),
+        r#"{"kind":"Open","held":{}}"#
+    );
+    let slack = |read: Slacking| {
+        let Slacking::Open { counts } = read;
+        counts
+    };
+    assert_eq!(slack(read(NO_ENTRY)), Some(BTreeMap::new()));
+    assert_eq!(written(&read::<Slacking>(TRUSSING)), TRUSSING);
+    assert_eq!(slack(read(TRUSSING_MISTYPED)), None);
+    assert_eq!(written(&read::<Reeling>(PARCELING)), PARCELING);
+    for json in [REELING_UNKEYED, REELING_MISTYPED] {
+        assert_eq!(read::<Reeling>(json).counts, None, "{json}");
+    }
+    assert_eq!(written(&read::<Winching>(WORMING)), WORMING);
+    assert_eq!(read::<Winching>(WINCHING_MISTYPED).notches, None);
+    assert_eq!(
+        serde_json::from_str::<Winching>(WINCHING_BROKEN)
+            .unwrap_err()
+            .to_string(),
+        "'north.mark': too short: minimum length is 1, got 0"
+    );
 }

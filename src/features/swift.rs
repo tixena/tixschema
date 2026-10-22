@@ -1887,7 +1887,8 @@ fn held_map(def: &FieldDef) -> Option<FieldDef> {
 /// The statements that read from `source` the map the flattened `field` holds, entry by entry and
 /// without the keys the types around its holder took, the tag of a variant under a tag key among
 /// them: `None` for a field that holds no map. A map under a key Swift wraps is read by its
-/// wrapper, through the read [`flattened_wrapper_read`] gives it.
+/// wrapper, through the read [`flattened_wrapper_read`] gives it. An optional map is `nil`
+/// wherever an entry does not read, as serde reads it.
 fn flattened_map(
     field: &SwiftField,
     walked: bool,
@@ -1902,32 +1903,38 @@ fn flattened_map(
         return None;
     };
     let member = |held: &str| format!("self.{} = {held}", field.swift_name);
-    if matches!(map_keys(key), MapKeys::Wrapped) {
+    let read = if matches!(map_keys(key), MapKeys::Wrapped) {
         let (wrapper, generic_params) = keyed_map_wrapper(&field.hint, key, value);
-        return read::beside(source, &held_at(&wrapper, &generic_params), &|read| {
+        read::beside(source, &held_at(&wrapper, &generic_params), &|read| {
             member(&format!("{read}.storage"))
-        });
-    }
-    let value_hint = format!("{}Value", field.hint);
-    let held = arrayed((**value).clone());
-    let (value_type, shape) = swift_resolve(&held, &value_hint, &mut Vec::new());
-    let entry = Shaped { def: held, shape };
-    let stem = format!("{}Entry", swift_bare(&field.swift_name));
-    Some(read::read_entries(
-        key,
-        &swift_full_real_type(&def, &field.hint, &mut Vec::new()),
-        source,
-        true,
-        &|under, put, nested| {
-            if walked {
-                read::unjudged(value, &value_hint, under, put, nested)
-            } else {
-                entry.read(&value_type, &stem, under, put)
-            }
-        },
-        &member,
-        locals,
-    ))
+        })?
+    } else {
+        let value_hint = format!("{}Value", field.hint);
+        let held = arrayed((**value).clone());
+        let (value_type, shape) = swift_resolve(&held, &value_hint, &mut Vec::new());
+        let entry = Shaped { def: held, shape };
+        let stem = format!("{}Entry", swift_bare(&field.swift_name));
+        read::read_entries(
+            key,
+            &swift_full_real_type(&def, &field.hint, &mut Vec::new()),
+            source,
+            true,
+            &|under, put, nested| {
+                if walked {
+                    read::unjudged(value, &value_hint, under, put, nested)
+                } else {
+                    entry.read(&value_type, &stem, under, put)
+                }
+            },
+            &member,
+            locals,
+        )
+    };
+    Some(if field.field_def.is_optional() {
+        format!("do {{ {read} }} catch {{ {} }}", member("nil"))
+    } else {
+        read
+    })
 }
 
 /// The statements that read `field` from the JSON of its default, written at `at`: as it is read
