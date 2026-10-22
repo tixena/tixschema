@@ -832,13 +832,15 @@ fn number_kind(leaf: &FieldDefType) -> Option<Number> {
         FieldDefType::I8 => whole_in(i128::from(i8::MIN), i128::from(i8::MAX)),
         FieldDefType::I16 => whole_in(i128::from(i16::MIN), i128::from(i16::MAX)),
         FieldDefType::I32 => whole_in(i128::from(i32::MIN), i128::from(i32::MAX)),
-        FieldDefType::I64 | FieldDefType::Isize => {
+        FieldDefType::I64 | FieldDefType::I64Digits | FieldDefType::Isize => {
             whole_in(i128::from(i64::MIN), i128::from(i64::MAX))
         }
         FieldDefType::U8 => whole_in(0, i128::from(u8::MAX)),
         FieldDefType::U16 => whole_in(0, i128::from(u16::MAX)),
         FieldDefType::U32 => whole_in(0, i128::from(u32::MAX)),
-        FieldDefType::U64 | FieldDefType::Usize => whole_in(0, i128::from(u64::MAX)),
+        FieldDefType::U64 | FieldDefType::U64Digits | FieldDefType::Usize => {
+            whole_in(0, i128::from(u64::MAX))
+        }
         FieldDefType::Boolean
         | FieldDefType::BooleanLiteral(_)
         | FieldDefType::Char

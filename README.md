@@ -569,6 +569,73 @@ A context named `Value` or `Map` is the service's context, and a type the crate 
 
 The functions tixschema writes that take or answer a `serde_json::Value` are unchanged: the function a [`preprocess`](#preprocessing-preprocess) names, `from_value_with` and `from_value_piped`, `schema_examples()`, and the archie conversions.
 
+### `i128`, `u128`, `f16` and `f128` are no member
+
+A member that holds an `i128`, a `u128`, an `f16` or an `f128` stops the build. No surface describes any of the four: no TypeScript, Zod, JSON Schema, Dart, Swift or Kotlin type is written for it. The type is refused by a compile error at expansion, in every build, one for each member and alias that writes it, at any depth: under an `Option`, a list, a map's key or value, a tuple and a type argument, and as the lone slot of a variant. A member serde neither writes nor reads is not refused, and neither is a name the item declares as a type parameter or the crate declares a type under above the item.
+
+```rust
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+pub struct FieldWide {
+    pub x: i128,
+}
+```
+
+```text
+error: model_schema: type `FieldWide`: field `x` reaches `i128`, which no surface describes: no TypeScript, Zod, JSON Schema, Dart, Swift or Kotlin type is written for it. Hold the value as an `i64` or a `u64`, or as a `#[model_schema]` brand over `String` that carries its digits.
+```
+
+### A `u64` and an `i64` travel as their digits
+
+A `u64` or an `i64` a member holds is written as the string of its decimal digits, small values too: `-7` is written `"-7"`. A JavaScript `number` holds an integer exactly only up to `2^53 - 1` in size, and the string keeps every value of both types on every target. serde writes the string, and reads the string and a number back alike; a digit string outside the type's range, and a text of no digits, is refused:
+
+```rust
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+pub struct Tally {
+    pub listed: Vec<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maybe: Option<i64>,
+    pub signed: i64,
+}
+```
+
+```json
+{"listed":["0","9223372036854775807"],"maybe":"-9223372036854775808","signed":"-1152921504606846976"}
+```
+
+```text
+invalid value: string "9223372036854775808", expected an i64 as a string of its decimal digits
+```
+
+| Target | `i64` | `u64` |
+|---|---|---|
+| TypeScript | `bigint` | `bigint` |
+| Zod | `z.codec(z.string().regex(/^-?(0\|[1-9][0-9]*)$/), z.bigint().min(-9223372036854775808n).max(9223372036854775807n), { decode: (text) => BigInt(text), encode: (value) => value.toString() })` | the same over `/^(0\|[1-9][0-9]*)$/`, `.min(0n).max(18446744073709551615n)` |
+| JSON Schema | `{"type": "string", "pattern": "^-?(0\|[1-9][0-9]*)$"}` | `{"type": "string", "pattern": "^(0\|[1-9][0-9]*)$"}` |
+| Dart | `int`, on the Dart VM | `BigInt` |
+| Swift | `Int64` | refused, as every `u64` is: see [`u64` or `usize` Under `swift` or `kotlin`](#u64-or-usize-under-swift-or-kotlin) |
+| Kotlin | `Long` | refused, as in Swift |
+
+Each client reads a digit string within the type's range, and refuses one outside it, and a text of no digits, with `expected an i64 as a string of its decimal digits, found "9223372036854775808"`: a Dart `FormatException`, a Swift `DecodingError.dataCorrupted` and a Kotlin `SerializationException`. A number is refused where a client reads text, as the language refuses it. Each client writes the string.
+
+- **A bound holds the integer.** `minimum` and `maximum` are compared with the integer by `validate()` and by each client, and Zod writes them as `bigint` bounds in the sentence `validate()` writes: `#[model_schema_prop(maximum = 5)]` refuses `"6"` with `too large: maximum is 5, got 6`. The JSON Schema states the pattern alone: a bound on a string has no keyword.
+- **The TypeScript clients write each `bigint` as its digits.** A client checks the message and each header in the form it sends, each `bigint` written as the string of its digits, and sends that form over every transport. A dispatcher answers each `bigint` an implementation returns as its digits, and a client reads a reply back into the `bigint`.
+- **A member of a message a service declares** reads an `i64` and a `u64` from the text of a path placeholder, a query parameter and a text part as its digits, which is the text each client writes of the integer.
+- **An untagged enum** tries its members in their order: a member that holds an `i64` takes a digit string before a member that holds a `String` after it.
+- **MongoDB stores the integer.** The row an operation writes, and the value a filter or an update writes, hold an `Int64`, and a row is read from an `Int64` and from a digit string alike. `bson::to_document` of a model writes the digits, as serde writes them for every human-readable serializer: write rows through the operations. See [What a row stores](#what-a-row-stores).
+- **The recovering decode** reads a digit string and a number alike, with no issue, and lists a digit string outside the type's range as one `Invalid` at the member that holds it.
+
+The number stays where the member is not written by a function the macro hangs on it, which writes it through the impl of the type that holds it:
+
+- a map's key, a range's bound and an arm of a `Result`;
+- what fills a type parameter: an argument of another type, `Wrap<i64>`, and the item's own default, `default_types(T = i64)`;
+- a member typed with an alias of one, `pub type Revision = i64;`;
+- a member whose type names the item's own type parameter, `Self` or a lifetime other than `'static`;
+- a member behind a reference, and a member whose `RefCell`, `Mutex` or `RwLock` sits below a list, a map, an `Option` or a tuple;
+- a member under `literal`, `as`, `#[serde(flatten)]`, or a `with`, a `serialize_with` or a `deserialize_with` of your own;
+- the message, a header and the reply of a service that is a bare `i64` or `u64`, which no member holds.
+
 ### Pointers and Borrowed Values
 
 `Box<T>`, `Rc<T>`, `Arc<T>` and `Cow<'_, T>` describe as `T`. serde writes each of them as the value it holds, with nothing of its own around it, so a field written under one is the field its inner type is — on every surface, and wherever the wrapper was written: `Box<Option<T>>` is the `Option<T>` field, optional; `Vec<Rc<T>>` is the `Vec<T>` field; `Box<str>`, `Rc<str>` and `Cow<'_, str>` are `String` fields, `str` being what a `String` writes.
@@ -768,7 +835,7 @@ pub enum FixedValue {
     // Single-element tuple: { type: "Text", value: string }
     Text(String),
     // Multi-element tuple: { type: "Pair", value: [string, number] }
-    Pair(String, i64),
+    Pair(String, u32),
     // Named struct variant (existing behavior)
     Named { field_a: String, field_b: bool },
 }
@@ -805,7 +872,7 @@ export const FixedValue$Schema: ZodType<FixedValue> = z.discriminatedUnion("type
   }),
   z.strictObject({
     type: z.literal("Pair"),
-    value: z.tuple([z.string(), z.number().int()]),
+    value: z.tuple([z.string(), z.number().int().min(0).max(4294967295)]),
   }),
   z.strictObject({
     type: z.literal("Named"),
@@ -1411,7 +1478,7 @@ pub struct DateString(pub String);
 #[derive(Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum DateValue {
-    N(i64),
+    N(f64),
     S(DateString),
 }
 ```
@@ -1425,7 +1492,7 @@ export type DateValue = number | DateString;
 Generated Zod:
 
 ```typescript
-const DateValue$RawSchema = z.union([z.number().int(), DateString$Schema]);
+const DateValue$RawSchema = z.union([z.number(), DateString$Schema]);
 export const DateValue$Schema: ZodType<DateValue> = DateValue$RawSchema.meta({
   examples: []
 });
@@ -1435,7 +1502,7 @@ Generated JSON Schema:
 
 ```json
 { "anyOf": [
-  { "type": "integer" },
+  { "type": "number" },
   { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }
 ] }
 ```
@@ -1450,7 +1517,7 @@ Named-struct variants render each member as a closed object:
 #[serde(untagged)]
 pub enum NamedUnion {
     A { x: String },
-    B { y: i64 },
+    B { y: u32 },
 }
 ```
 
@@ -1458,7 +1525,7 @@ pub enum NamedUnion {
 // TypeScript
 export type NamedUnion = { x: string } | { y: number };
 // Zod
-z.union([z.strictObject({ x: z.string(), }), z.strictObject({ y: z.number().int(), })])
+z.union([z.strictObject({ x: z.string(), }), z.strictObject({ y: z.number().int().min(0).max(4294967295), })])
 // JSON Schema: { "anyOf": [ <object>, <object> ] }  — each branch has additionalProperties: false
 ```
 
@@ -1582,7 +1649,7 @@ pub enum DynamicValue {
     #[serde(rename = "string")]
     String(String),
     #[serde(rename = "integer")]
-    Integer(i64),
+    Integer(i32),
     #[serde(rename = "array")]
     Array(Vec<DynamicValue>),
     #[serde(rename = "object")]
@@ -1600,7 +1667,7 @@ export const DynamicValue$Schema: ZodType<DynamicValue> = z.discriminatedUnion("
   }),
   z.strictObject({
     type: z.literal("integer"),
-    value: z.number().int(),
+    value: z.number().int().min(-2147483648).max(2147483647),
   }),
   z.strictObject({
     type: z.literal("array"),
@@ -2660,7 +2727,7 @@ Outbound, the generated client validates the message it is about to send, so a m
 
 ```typescript
     async expireCredit(req) {
-      const validated = ExpireCreditRequest$Schema.safeParse(req);
+      const validated = ExpireCreditRequest$Schema.safeParse(usageServiceSent(req));
       if (!validated.success) {
         return {
           ok: false,
@@ -2670,7 +2737,7 @@ Outbound, the generated client validates the message it is about to send, so a m
           },
         };
       }
-      const { answered } = await transport.request<UsageServiceExpireCreditResult>("expire-credit", validated.data, []);
+      const { answered } = await transport.request<UsageServiceExpireCreditResult>("expire-credit", usageServiceSent(validated.data), []);
       if (answered.ok) {
         const parsed = AvailableBalanceResponse$Schema.safeParse(answered.value);
         if (!parsed.success) {
@@ -2706,11 +2773,11 @@ A one-way method runs the same check and has nowhere to put the result of it, so
 
 ```typescript
     async applyBundle(req) {
-      const validated = AvailableBalanceRequest$Schema.safeParse(req);
+      const validated = AvailableBalanceRequest$Schema.safeParse(usageServiceSent(req));
       if (!validated.success) {
         throw usageServiceRefused(usageServiceOutboundFault("apply-bundle", validated.error.issues));
       }
-      await transport.notify("apply-bundle", validated.data, []);
+      await transport.notify("apply-bundle", usageServiceSent(validated.data), []);
     },
 ```
 
@@ -3727,7 +3794,7 @@ A value already in that form is sent as it is, so no payload a client sent befor
 
 What a client cannot hold is left as it is:
 
-- **An integer a JavaScript `number` does not hold exactly**: an `i64`, an `isize`, a `u64` or a `usize` beyond `2^53 - 1` in size. serde writes `1152921504606846976`, `JSON.parse` reads `9007199254740993` as `9007199254740992`, and `z.number().int()` refuses any integer beyond `Number.MAX_SAFE_INTEGER`, `1152921504606846976` among them. Dart, on the Dart VM, Swift and Kotlin send it as it is, and a build with `swift` or `kotlin` refuses `u64` and `usize`.
+- **An integer a JavaScript `number` does not hold exactly**: an `isize` or a `usize` beyond `2^53 - 1` in size, and an `i64` or a `u64` where it keeps the number, a map's key and what fills a type parameter among them (see [A `u64` and an `i64` travel as their digits](#a-u64-and-an-i64-travel-as-their-digits)). serde writes `1152921504606846976`, `JSON.parse` reads `9007199254740993` as `9007199254740992`, and `z.number().int()` refuses any integer beyond `Number.MAX_SAFE_INTEGER`, `1152921504606846976` among them. Dart, on the Dart VM, Swift and Kotlin send it as it is, and a build with `swift` or `kotlin` refuses `u64` and `usize`. Every other `i64` and `u64` is sent as the string of its digits, which a TypeScript client holds as a `bigint`.
 - **A year outside 0000 to 9999 and a leap second.**
 
 `tests/wire_forms_tests/models.rs` holds the table, `WIRE_FORMS`: each value a caller hands a client, what serde answers of it, and what each client sends of it, or that it refuses it. Each client's run sends every row through its own codec, serde reads every payload any client sends, and the Zod schema and the JSON Schema read each one.
@@ -4589,7 +4656,7 @@ Rust, Dart, Swift and Kotlin print them from the `validate()` of each value, and
 
 #### What an upgrade asks of your crate
 
-Thirty-three rules meet a crate that upgrades. Each is stated with what a build or a read answers:
+Thirty-five rules meet a crate that upgrades. Each is stated with what a build or a read answers:
 
 - **A map under `#[serde(flatten)]` beside another member that writes a key stops the build**, on a struct and on a variant of an enum: `pub struct Stocktake { #[serde(flatten)] pub counts: BTreeMap<String, u8>, pub note: String }` answers ``error: model_schema: type `Stocktake`: field `counts`: `#[serde(flatten)]` cannot hold a map beside other members — serde writes the map's entries at one level with `note`, and no TypeScript type describes both. Write the map under a key of its own.`` Write the map under a key of its own, `pub counts: BTreeMap<String, u8>`. See [Intersection Types](#intersection-types-serdeflatten).
 - **A map keyed by a number or a `bool` below a `#[serde(flatten)]` member stops the build**, at any depth, on a struct and on a variant of an enum, as does a type declared above that holds one there, and a type parameter read there filled with a number, a `bool` or a map keyed by one: serde reads no entry of such a map back. `pub struct Soundings { #[serde(flatten)] pub rest: BTreeMap<isize, u8> }` answers ``error: model_schema: type `Soundings`: field `rest`: `#[serde(flatten)]` cannot hold a map keyed by `isize` — serde reads every key below a flattened member as text, and reads no number and no `bool` from text, so no entry of that map reads back. Key the map by a `String`, or write the field under a key of its own.`` Key the map by a `String`, or write it under a key of its own, `pub rest: BTreeMap<isize, u8>`. See [Intersection Types](#intersection-types-serdeflatten).
@@ -4605,6 +4672,8 @@ Thirty-three rules meet a crate that upgrades. Each is stated with what a build 
 - **An alias of an untagged enum, flattened, is described in TypeScript by the enum's members**, each closed to the others' keys, with a type parameter of its own or with none, where it was described by its name: with `#[serde(untagged)] pub enum Skiff { Rowed { oars: u32 }, Sailed { sail: String } }` and `pub type SkiffAlias = Skiff;`, a value of the type of `pub struct Dinghy { pub note: String, #[serde(flatten)] pub skiff: SkiffAlias }` that holds the keys of both members, `{ note: "n", oars: 2, sail: "s" }`, which `tsc --strict` took and the Zod schema refuses, answers ``error TS2322: Type '{ note: string; oars: number; sail: string; }' is not assignable to type 'Dinghy'.`` See [Intersection Types](#intersection-types-serdeflatten).
 - **A newtype variant under a `tag` with no `content` that wraps a `HashSet`, a `BTreeSet`, a `VecDeque`, a `BinaryHeap` or an `IndexSet` stops the build with the refusal of a sequence**, as one that wraps a `Vec` does, where it stopped it with ``error[E0433]: cannot find module or crate `hash_set_schema` in this scope``: `#[serde(tag = "kind")] pub enum Tagged { Held(HashSet<u32>) }` answers ``error: model_schema: variant `Held` of internally tagged enum `Tagged` wraps a sequence, which cannot sit beside the tag: ...``, quoting serde's `cannot serialize tagged newtype variant Tagged::Held containing a sequence`. See [Internally Tagged Enums](#internally-tagged-enums-tag-with-no-content).
 - **A member that holds `serde_json::Value` or `serde_json::Map` stops the build**, at any depth: a `pub v: serde_json::Value` on `Holding` answers ``error: model_schema: type `Holding`: field `v` reaches `serde_json::Value`, which holds any JSON value, so no target can describe it. Declare the shape that value takes as a type of its own, and write that type in its place.`` A bare `Value` or `Map<K, V>` that names `serde_json`'s type stops it at a check the compiler evaluates beside the item, with `error[E0080]: evaluation panicked:` and the same message, and a crate that writes either bare name in a member lists `serde_json` among its dependencies, which the check names. A service operation whose message, reply, fault, header or part reaches one stops the build too, the error naming the operation and the position. See [A JSON value is no member](#a-json-value-is-no-member).
+- **A `u64` and an `i64` a member holds travel as the string of their digits**, small values too: serde writes `{"signed":"-7"}` where it wrote `{"signed":-7}`, and reads both. TypeScript holds the value as a `bigint` where it held a `number`, Zod reads it through `z.codec` from the string, the JSON Schema describes `{"type": "string", "pattern": "^-?(0|[1-9][0-9]*)$"}` where it described `{"type": "integer"}`, a Dart `u64` is a `BigInt`, and each client reads and sends the string and refuses a number. A payload a client built from the old description, and a stored JSON value that holds the number, is still read by serde; MongoDB still stores the integer. See [A `u64` and an `i64` travel as their digits](#a-u64-and-an-i64-travel-as-their-digits).
+- **A member that holds an `i128`, a `u128`, an `f16` or an `f128` stops the build with a refusal that names it**, at any depth, where it stopped it with ``error[E0433]: cannot find module or crate `i128_schema` in this scope``: `pub struct FieldWide { pub x: i128 }` answers ``error: model_schema: type `FieldWide`: field `x` reaches `i128`, which no surface describes: no TypeScript, Zod, JSON Schema, Dart, Swift or Kotlin type is written for it. Hold the value as an `i64` or a `u64`, or as a `#[model_schema]` brand over `String` that carries its digits.`` See [`i128`, `u128`, `f16` and `f128` are no member](#i128-u128-f16-and-f128-are-no-member).
 - **A plain enum under `#[serde(flatten)]` stops the build with `serde` and no schema surface**, as it stops one with a surface: a build of the Dart, Swift and Kotlin clients alone took it, and no client wrote or read it as serde does. With `pub enum Weather { Calm, Gale }` declared above it, `pub struct Logged { pub note: String, #[serde(flatten)] pub weather: Weather }` answers ``error: model_schema: field `weather` of `Logged` carries `#[serde(flatten)]` over `Weather`, which serde does not write as an object: a plain enum writes its own variant name, so it contributes no members to the object being written — serde writes that name as a key holding null, which a schema closed around the remaining fields rejects. Write the field as a named member so the value gets a key of its own, or flatten a type serde writes as an object. This refusal holds in every build with serde, and only a plain enum declared above reaches it: one declared below, or in another crate, is not refused here, and where a schema surface is on it keeps its TypeScript and Zod intersection, and is refused by the JSON surface when the merge runs.`` An alias of a plain enum is refused the same way, and so is a variant that holds one beside the tag `#[serde(tag = "...")]` writes. So are a [brand](#branded-newtypes) or a struct of one slot over a plain enum, a generic type declared above filled at one (`ProbeWrap<ProbeMood>` over `pub struct ProbeWrap<T>(T);`), a type whose value is one of those, and, flattened, an `Option` of any of them or in any of them, each named as written: ``carries `#[serde(flatten)]` over `ProbeWrap<ProbeMood>`, which serde does not write as an object``. They were refused with the error of a value Serde writes as no object, which said what Serde writes does not join the object, or cannot sit beside the tag; Serde writes each as the key naming the variant, holding `null`, and reads it back. A newtype variant beside the tag over one that writes an `Option` of a plain enum on the way is refused with the error of an `Option`. See [Intersection Types](#intersection-types-serdeflatten) and [Internally Tagged Enums](#internally-tagged-enums-tag-with-no-content).
 - **A flattened type serde writes as no object stops the build with `serde` and no schema surface**, as it stops one with Zod on: a build of the Dart, Swift and Kotlin clients alone, and one with TypeScript or the JSON Schema alone, took it, and serde refuses every read of a brand over text and of a tuple struct flattened. A brand or a struct of one slot over text, a number, a `bool` or a list, a tuple struct, an alias of one, and an `#[serde(untagged)]` enum with such a member, declared above the type that flattens it, are refused, and so are a generic brand, struct of one slot or alias declared above whose value is its own type parameter, filled at one of those, and a type declared above whose value is one: `#[serde(flatten)] pub wrap: ProbeWrap<String>` over `pub struct ProbeWrap<T>(T);` is refused. With `#[serde(transparent)] pub struct RecordId(String);` declared above it, `pub struct Carded { #[serde(flatten)] pub id: RecordId, pub name: String }` answers ``error: model_schema: `Carded`: `#[serde(flatten)]` of `RecordId` is not written as an object — its schema describes a `string`, which has no members to merge, and what serde writes for it does not join the object being written; write the field as a named member so the value gets a key of its own. This refusal holds in every build with serde, and only a type declared above reaches it: one declared below, or in another crate, is not refused here, and where a schema surface is on it keeps its TypeScript and Zod intersection, and is refused by the JSON surface when the merge runs.`` An untagged enum is refused with the branch of the member named. A member Serde writes as a plain enum's variant name is a key holding `null` in the object, which Serde reads back: with `pub enum Mood { Calm, Tense }` and `#[serde(untagged)] pub enum Feeling { Mood(Mood), Named { name: String } }` declared above it, Serde writes `{"Calm":null,"id":"i"}` for `pub struct Felt { #[serde(flatten)] pub feeling: Feeling, pub id: String }`, which answers ``error: model_schema: `Felt`: `#[serde(flatten)]` of `Feeling` writes a union member as a plain enum's variant name — its branch 1 describes a `string`, and serde writes that name as a key holding null, which a schema closed around the remaining fields rejects; write the field as a named member so the value gets a key of its own. This refusal holds in every build with serde, and only a plain enum declared above reaches it: one declared below, or in another crate, is not refused here, and where a schema surface is on it keeps its TypeScript and Zod intersection, and is refused by the JSON surface when the merge runs.`` A member that names a generic type of those shapes, filled, is read at its filling: `Text(ProbeWrap<String>)` is refused as `Text(String)` is. A member that is the enum's own type parameter is read at the enum's argument: `ProbeOwnMember<String>`, with the member `Held(X)`, is refused as an enum with `Held(String)` is, and named with its arguments. A brand or a struct of one slot over such an enum is refused as an alias of it is: `ProbeSlotText`, over `ProbeTextMember` with the member `Text(String)`, is refused with that member's branch. A generic alias, struct of one slot or brand whose value is `ProbeOwnMember<T>`, filled at its own parameter, is read at what fills it: `ProbeOwnAliasOf<String>`, over `pub type ProbeOwnAliasOf<T> = ProbeOwnMember<T>;`, is refused as `ProbeOwnMember<String>` is, and named with its arguments. Write the field as a named member. See [Intersection Types](#intersection-types-serdeflatten).
 - **A newtype variant under a `tag` with no `content` whose value serde writes as no object stops the build**, in every build with `serde`: a brand or a struct of one slot over text, a number, a `bool` or a list, a tuple struct, an alias of one, and an `#[serde(untagged)]` enum with such a member, declared above the enum, and a generic brand, struct of one slot or alias declared above whose value is its own type parameter, filled at one of those, and a type declared above whose value is one: `Held(ProbeWrap<String>)` over `pub struct ProbeWrap<T>(T);`, `Held(ProbeTextFilled)` over `pub struct ProbeTextFilled(ProbeWrap<String>);`, `Held(ProbeWrapMember)` over an untagged `ProbeWrapMember` with the member `Text(ProbeWrap<String>)`, `Held(ProbeOwnMember<String>)` over an untagged `ProbeOwnMember<X>` with the member `Held(X)`, `Held(ProbeSlotText)` over `pub struct ProbeSlotText(ProbeTextMember);` with the member `Text(String)`, and `Held(ProbeOwnAliasOf<String>)` over `pub type ProbeOwnAliasOf<T> = ProbeOwnMember<T>;`, are refused. serde refuses every write and every read of a brand over text and of a tuple struct there. With `#[serde(transparent)] pub struct ProbeId(String);` declared above it, `#[serde(tag = "kind")] pub enum ProbeReading { Held(ProbeId) }` answers ``error: model_schema: variant `Held` of internally tagged enum `ProbeReading` wraps `ProbeId`, which is not written as an object — its schema describes a `string`, which cannot sit beside the tag: `#[serde(tag = "kind")]` with no `content` writes the variant's data as members of the object the tag is written in, and only a value serde writes as an object has members to put there. Name a `content` key so the value gets an object of its own, or wrap it in a struct whose fields can sit beside the tag. This refusal holds in every build with serde, and only a type declared above reaches it: one declared below, or in another crate, is not refused here, and where a schema surface is on it keeps its TypeScript and Zod intersection, and is refused by the JSON surface when the merge runs.`` Name a `content` key so the value gets an object of its own, or wrap it in a struct whose fields can sit beside the tag. See [Internally Tagged Enums](#internally-tagged-enums-tag-with-no-content).
@@ -8203,6 +8272,8 @@ the row without an _id does not read as expected: address: invalid: expected Unk
 ```
 
 `ObjectId`, `bson::DateTime` and `bson::Uuid` are stored in one form by both serializers.
+
+**A `u64` and an `i64` are stored as the integer.** JSON holds them as the string of their digits ([A `u64` and an `i64` travel as their digits](#a-u64-and-an-i64-travel-as-their-digits)), and `bson::Serializer::new()` calls itself human-readable, so the generated writes take each one out of the digits it is written as and store the `Int64`: a row `insert_one` writes, `mongo_written_row()`, and the value of a filter and of an update. A typed `Collection<T>` of the driver stores the `Int64` too. `bson::to_document` and `bson::to_bson` of a model store the digits. The generated read takes the `Int64` and the digits alike, and a `u64` beyond `i64::MAX` is refused as a value BSON cannot hold, as before.
 
 **A map whose key is not text does not build.** tixschema takes a map keyed by a number or a `bool`, because serde writes such a key as text into JSON, and into JSON only. BSON document keys are always text: the `bson` library refuses to write such a key, and hands a stored one back to the key's type as text, which the type refuses. So a type that lists `"mongodb"` and holds such a map is refused where it is declared, in every build:
 

@@ -88,11 +88,11 @@ fn swift_base(field: &FieldDef) -> String {
         FieldDefType::U8 => "UInt8".to_owned(),
         FieldDefType::U16 => "UInt16".to_owned(),
         FieldDefType::U32 => "UInt32".to_owned(),
-        FieldDefType::U64 => "UInt64".to_owned(),
+        FieldDefType::U64 | FieldDefType::U64Digits => "UInt64".to_owned(),
         FieldDefType::I8 => "Int8".to_owned(),
         FieldDefType::I16 => "Int16".to_owned(),
         FieldDefType::I32 => "Int32".to_owned(),
-        FieldDefType::I64 => "Int64".to_owned(),
+        FieldDefType::I64 | FieldDefType::I64Digits => "Int64".to_owned(),
         FieldDefType::Usize | FieldDefType::Isize => "Int".to_owned(),
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => "ObjectId".to_owned(),

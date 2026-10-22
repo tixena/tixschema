@@ -447,7 +447,7 @@ impl<'item> Emitter<'item> {
             quote! {
                 #[doc = #told]
                 fn #writer(value: #value) -> ::core::result::Result<bson::Bson, #module::WriteError> {
-                    #write(#handed, bson::Serializer::new())
+                    #write(#handed, #module::BsonIntegers(bson::Serializer::new()))
                 }
             },
         ));

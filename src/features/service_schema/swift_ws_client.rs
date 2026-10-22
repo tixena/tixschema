@@ -320,7 +320,7 @@ fn transport_actor(
         .map(|operation| operation_method(named, prefix, operation, has_header_in, aux))
         .collect::<Vec<_>>()
         .join("\n\n");
-    let forms = forms::helpers(&sent_forms(service));
+    let forms = forms::helpers(&sent_forms(service), false);
     let texts = if forms.is_empty() {
         String::new()
     } else {

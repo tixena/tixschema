@@ -239,13 +239,15 @@ fn js_template_text(text: &str) -> String {
 }
 
 /// The check a set's Zod array is written with: an array whose parsed items write one JSON text
-/// twice is refused with [`REPEATED_ITEM`]. The issue carries `continue: true`, as each issue a
-/// written check copies does.
+/// twice, each `bigint` written as its digits as a client sends it, is refused with
+/// [`REPEATED_ITEM`]. The issue carries `continue: true`, as each issue a written check copies
+/// does.
 #[cfg(feature = "zod")]
 pub fn zod_repeat_check() -> String {
     format!(
         ".check((ctx) => {{\n  const seen = new Set<string>();\n  for (const item of ctx.value) \
-         {{\n    const text = JSON.stringify(item);\n    if (seen.has(text)) {{\n      \
+         {{\n    const text = JSON.stringify(item, (_, held) => (typeof held === \"bigint\" ? \
+         held.toString() : held));\n    if (seen.has(text)) {{\n      \
          ctx.issues.push({{ code: \"custom\", message: \"{}\", input: ctx.value, continue: true \
          }});\n      return;\n    }}\n    seen.add(text);\n  }}\n}})",
         escape_js_double_quoted(REPEATED_ITEM)

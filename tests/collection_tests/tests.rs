@@ -23,12 +23,18 @@ use tixschema::model_schema;
 #[cfg(any(feature = "typescript", feature = "zod"))]
 const SEQUENCE_WRAPPERS: [&str; 4] = ["BTreeSet", "BinaryHeap", "HashSet", "VecDeque"];
 
+/// The Zod schema of an `i64`: the string of its digits, decoded into a `bigint`.
+#[cfg(feature = "zod")]
+const I64_ZOD: &str = "z.codec(z.string().regex(/^-?(0|[1-9][0-9]*)$/), \
+                       z.bigint().min(-9223372036854775808n).max(9223372036854775807n), { decode: \
+                       (text) => BigInt(text), encode: (value) => value.toString() })";
+
 /// The check Zod writes on the array of a set, which refuses an array that repeats an item.
 #[cfg(feature = "zod")]
 const REPEAT_CHECK: &str = ".check((ctx) => {
   const seen = new Set<string>();
   for (const item of ctx.value) {
-    const text = JSON.stringify(item);
+    const text = JSON.stringify(item, (_, held) => (typeof held === \"bigint\" ? held.toString() : held));
     if (seen.has(text)) {
       ctx.issues.push({ code: \"custom\", message: \"repeats an item: a set holds each item \
                             once\", input: ctx.value, continue: true });
@@ -102,7 +108,7 @@ struct EnumKeyedSiblingValueMaps {
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct EnumKeyedNestedMapValues {
-    counts: HashMap<MetricSlot, HashMap<String, i64>>,
+    counts: HashMap<MetricSlot, HashMap<String, isize>>,
     labels: HashMap<MetricSlot, HashMap<String, String>>,
     rows: HashMap<MetricSlot, Vec<HashMap<String, String>>>,
     samples: HashMap<MetricSlot, HashMap<String, MetricSample>>,
@@ -111,7 +117,7 @@ struct EnumKeyedNestedMapValues {
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct StringKeyedNestedMapValues {
-    counts: HashMap<String, HashMap<String, i64>>,
+    counts: HashMap<String, HashMap<String, isize>>,
     labels: HashMap<String, HashMap<String, String>>,
     rows: HashMap<String, Vec<HashMap<String, String>>>,
     samples: HashMap<String, HashMap<String, MetricSample>>,
@@ -129,7 +135,7 @@ enum MetricBucket {
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct BucketKeyedMap {
-    counts: HashMap<MetricBucket, i64>,
+    counts: HashMap<MetricBucket, isize>,
     samples: HashMap<MetricBucket, MetricSample>,
 }
 
@@ -138,11 +144,11 @@ struct BucketKeyedMap {
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct NestedEnumKeyedMapValues {
-    arrayed: HashMap<String, Vec<HashMap<MetricBucket, i64>>>,
-    enum_keyed_outer: HashMap<MetricSlot, HashMap<MetricBucket, i64>>,
-    optional: HashMap<String, Option<HashMap<MetricBucket, i64>>>,
+    arrayed: HashMap<String, Vec<HashMap<MetricBucket, isize>>>,
+    enum_keyed_outer: HashMap<MetricSlot, HashMap<MetricBucket, isize>>,
+    optional: HashMap<String, Option<HashMap<MetricBucket, isize>>>,
     siblings: HashMap<MetricSlot, HashMap<MetricBucket, MetricSample>>,
-    string_keyed_outer: HashMap<String, HashMap<MetricBucket, i64>>,
+    string_keyed_outer: HashMap<String, HashMap<MetricBucket, isize>>,
 }
 
 /// A `#[serde(transparent)]` brand over a `String`: serde writes it as the bare string its inner
@@ -163,18 +169,18 @@ struct TraceId(CorrelationId);
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct BrandKeyedMaps {
-    chained: HashMap<TraceId, i64>,
-    counts: HashMap<CorrelationId, i64>,
-    nested: HashMap<CorrelationId, HashMap<CorrelationId, i64>>,
+    chained: HashMap<TraceId, isize>,
+    counts: HashMap<CorrelationId, isize>,
+    nested: HashMap<CorrelationId, HashMap<CorrelationId, isize>>,
     samples: HashMap<CorrelationId, MetricSample>,
 }
 
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct StringKeyedBrandTwin {
-    chained: HashMap<String, i64>,
-    counts: HashMap<String, i64>,
-    nested: HashMap<String, HashMap<String, i64>>,
+    chained: HashMap<String, isize>,
+    counts: HashMap<String, isize>,
+    nested: HashMap<String, HashMap<String, isize>>,
     samples: HashMap<String, MetricSample>,
 }
 
@@ -200,22 +206,22 @@ type PathKey = PathBuf;
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct AliasKeyedMaps {
-    branded: HashMap<CorrelationRef, i64>,
-    chained: HashMap<SlotKeyRef, i64>,
-    counts: HashMap<SlotKey, i64>,
-    nested: HashMap<SlotKey, HashMap<SlotKey, i64>>,
-    paths: HashMap<PathKey, i64>,
+    branded: HashMap<CorrelationRef, isize>,
+    chained: HashMap<SlotKeyRef, isize>,
+    counts: HashMap<SlotKey, isize>,
+    nested: HashMap<SlotKey, HashMap<SlotKey, isize>>,
+    paths: HashMap<PathKey, isize>,
     samples: HashMap<SlotKey, MetricSample>,
 }
 
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct StringKeyedAliasKeyTwin {
-    branded: HashMap<String, i64>,
-    chained: HashMap<String, i64>,
-    counts: HashMap<String, i64>,
-    nested: HashMap<String, HashMap<String, i64>>,
-    paths: HashMap<String, i64>,
+    branded: HashMap<String, isize>,
+    chained: HashMap<String, isize>,
+    counts: HashMap<String, isize>,
+    nested: HashMap<String, HashMap<String, isize>>,
+    paths: HashMap<String, isize>,
     samples: HashMap<String, MetricSample>,
 }
 
@@ -248,34 +254,34 @@ struct SlotBrand(MetricSlot);
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ScalarBrandKeyedMaps {
-    by_enabled: HashMap<Enabled, i64>,
-    by_tick: HashMap<Tick, i64>,
-    chained: HashMap<TickRef, i64>,
-    nested: HashMap<Tick, HashMap<Enabled, i64>>,
+    by_enabled: HashMap<Enabled, isize>,
+    by_tick: HashMap<Tick, isize>,
+    chained: HashMap<TickRef, isize>,
+    nested: HashMap<Tick, HashMap<Enabled, isize>>,
     samples: HashMap<Tick, MetricSample>,
 }
 
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ScalarKeyedBrandTwin {
-    by_enabled: HashMap<bool, i64>,
-    by_tick: HashMap<u32, i64>,
-    chained: HashMap<u32, i64>,
-    nested: HashMap<u32, HashMap<bool, i64>>,
+    by_enabled: HashMap<bool, isize>,
+    by_tick: HashMap<u32, isize>,
+    chained: HashMap<u32, isize>,
+    nested: HashMap<u32, HashMap<bool, isize>>,
     samples: HashMap<u32, MetricSample>,
 }
 
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct EnumBrandKeyedMaps {
-    counts: HashMap<SlotBrand, i64>,
+    counts: HashMap<SlotBrand, isize>,
     samples: HashMap<SlotBrand, MetricSample>,
 }
 
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct StringKeyedEnumBrandTwin {
-    counts: HashMap<String, i64>,
+    counts: HashMap<String, isize>,
     samples: HashMap<String, MetricSample>,
 }
 
@@ -308,17 +314,17 @@ type SlotBrandAliasKey = SlotBrand;
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct EnumeratedKeyedMaps {
-    alias_of_brand: HashMap<SlotBrandAliasKey, i64>,
-    aliased: HashMap<SlotAliasKey, i64>,
-    aliased_chain: HashMap<SlotAliasKeyRef, i64>,
-    bare: HashMap<MetricSlot, i64>,
-    branded: HashMap<SlotBrand, i64>,
-    branded_chain: HashMap<SlotBrandRef, i64>,
-    forward: HashMap<LaterSlot, i64>,
-    listed: Vec<HashMap<MetricSlot, i64>>,
-    nested: HashMap<MetricSlot, HashMap<MetricSlot, i64>>,
+    alias_of_brand: HashMap<SlotBrandAliasKey, isize>,
+    aliased: HashMap<SlotAliasKey, isize>,
+    aliased_chain: HashMap<SlotAliasKeyRef, isize>,
+    bare: HashMap<MetricSlot, isize>,
+    branded: HashMap<SlotBrand, isize>,
+    branded_chain: HashMap<SlotBrandRef, isize>,
+    forward: HashMap<LaterSlot, isize>,
+    listed: Vec<HashMap<MetricSlot, isize>>,
+    nested: HashMap<MetricSlot, HashMap<MetricSlot, isize>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    optional: Option<HashMap<MetricSlot, i64>>,
+    optional: Option<HashMap<MetricSlot, isize>>,
     samples: HashMap<MetricSlot, MetricSample>,
 }
 
@@ -345,14 +351,14 @@ struct Day(NaiveDate);
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ChronoBrandKeyedMaps {
-    by_day: HashMap<Day, i64>,
+    by_day: HashMap<Day, isize>,
 }
 
 #[cfg(feature = "chrono")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ChronoKeyedBrandTwin {
-    by_day: HashMap<NaiveDate, i64>,
+    by_day: HashMap<NaiveDate, isize>,
 }
 
 /// An alias of a stringifying scalar. A type path resolves straight through it, so serde writes a
@@ -376,22 +382,22 @@ type EnabledKey = bool;
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ScalarAliasKeyedMaps {
-    branded: HashMap<TickBrandKey, i64>,
-    by_enabled: HashMap<EnabledKey, i64>,
-    by_tick: HashMap<TickKey, i64>,
-    chained: HashMap<TickKeyRef, i64>,
-    nested: HashMap<TickKey, HashMap<EnabledKey, i64>>,
+    branded: HashMap<TickBrandKey, isize>,
+    by_enabled: HashMap<EnabledKey, isize>,
+    by_tick: HashMap<TickKey, isize>,
+    chained: HashMap<TickKeyRef, isize>,
+    nested: HashMap<TickKey, HashMap<EnabledKey, isize>>,
     samples: HashMap<TickKey, MetricSample>,
 }
 
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ScalarKeyedAliasTwin {
-    branded: HashMap<Tick, i64>,
-    by_enabled: HashMap<bool, i64>,
-    by_tick: HashMap<u32, i64>,
-    chained: HashMap<u32, i64>,
-    nested: HashMap<u32, HashMap<bool, i64>>,
+    branded: HashMap<Tick, isize>,
+    by_enabled: HashMap<bool, isize>,
+    by_tick: HashMap<u32, isize>,
+    chained: HashMap<u32, isize>,
+    nested: HashMap<u32, HashMap<bool, isize>>,
     samples: HashMap<u32, MetricSample>,
 }
 
@@ -405,14 +411,14 @@ type DayKey = NaiveDate;
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ChronoAliasKeyedMaps {
-    by_day: HashMap<DayKey, i64>,
+    by_day: HashMap<DayKey, isize>,
 }
 
 #[cfg(feature = "chrono")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ChronoKeyedAliasTwin {
-    by_day: HashMap<NaiveDate, i64>,
+    by_day: HashMap<NaiveDate, isize>,
 }
 
 /// A brand over that brand: every link of the chain carries the same `"true"`/`"false"` wire.
@@ -438,16 +444,16 @@ type EnabledBrandKey = Enabled;
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct BoolKeyedMaps {
-    alias_of_brand: HashMap<EnabledBrandKey, i64>,
-    aliased: HashMap<EnabledKey, i64>,
-    aliased_chain: HashMap<EnabledKeyRef, i64>,
-    bare: HashMap<bool, i64>,
-    branded: HashMap<Enabled, i64>,
-    branded_chain: HashMap<EnabledRef, i64>,
-    listed: Vec<HashMap<bool, i64>>,
-    nested: HashMap<String, HashMap<bool, i64>>,
+    alias_of_brand: HashMap<EnabledBrandKey, isize>,
+    aliased: HashMap<EnabledKey, isize>,
+    aliased_chain: HashMap<EnabledKeyRef, isize>,
+    bare: HashMap<bool, isize>,
+    branded: HashMap<Enabled, isize>,
+    branded_chain: HashMap<EnabledRef, isize>,
+    listed: Vec<HashMap<bool, isize>>,
+    nested: HashMap<String, HashMap<bool, isize>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    optional: Option<HashMap<bool, i64>>,
+    optional: Option<HashMap<bool, isize>>,
     samples: HashMap<bool, MetricSample>,
 }
 
@@ -500,13 +506,13 @@ type StampBrandKey = Stamp;
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct PropertyKeyedMaps {
-    chars: HashMap<char, i64>,
-    dates: HashMap<NaiveDate, i64>,
-    datetimes: HashMap<NaiveDateTime, i64>,
-    numbers: HashMap<u32, i64>,
-    slots: HashMap<MetricSlot, i64>,
-    strings: HashMap<String, i64>,
-    times: HashMap<NaiveTime, i64>,
+    chars: HashMap<char, isize>,
+    dates: HashMap<NaiveDate, isize>,
+    datetimes: HashMap<NaiveDateTime, isize>,
+    numbers: HashMap<u32, isize>,
+    slots: HashMap<MetricSlot, isize>,
+    strings: HashMap<String, isize>,
+    times: HashMap<NaiveTime, isize>,
 }
 
 /// The `DateTime<Tz>` counterpart of [`BoolKeyedMaps`]. serde writes the key as the RFC 3339 string
@@ -519,16 +525,16 @@ struct PropertyKeyedMaps {
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct DateTimeKeyedMaps {
-    alias_of_brand: HashMap<StampBrandKey, i64>,
-    aliased: HashMap<StampKey, i64>,
-    aliased_chain: HashMap<StampKeyRef, i64>,
-    bare: HashMap<DateTime<Utc>, i64>,
-    branded: HashMap<Stamp, i64>,
-    branded_chain: HashMap<StampRef, i64>,
-    listed: Vec<HashMap<DateTime<Utc>, i64>>,
-    nested: HashMap<String, HashMap<DateTime<Utc>, i64>>,
+    alias_of_brand: HashMap<StampBrandKey, isize>,
+    aliased: HashMap<StampKey, isize>,
+    aliased_chain: HashMap<StampKeyRef, isize>,
+    bare: HashMap<DateTime<Utc>, isize>,
+    branded: HashMap<Stamp, isize>,
+    branded_chain: HashMap<StampRef, isize>,
+    listed: Vec<HashMap<DateTime<Utc>, isize>>,
+    nested: HashMap<String, HashMap<DateTime<Utc>, isize>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    optional: Option<HashMap<DateTime<Utc>, i64>>,
+    optional: Option<HashMap<DateTime<Utc>, isize>>,
     samples: HashMap<DateTime<Utc>, MetricSample>,
 }
 
@@ -568,16 +574,16 @@ struct OptionalMapValues {
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct WrappedMapFields {
-    bucket_counts: HashMap<MetricBucket, i64>,
+    bucket_counts: HashMap<MetricBucket, isize>,
     labels: HashMap<String, String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     optional_labels: Option<HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     optional_wrapped_labels: Option<Vec<HashMap<String, String>>>,
-    raw_keyed_counts: HashMap<u32, i64>,
-    wrapped_bucket_counts: Vec<HashMap<MetricBucket, i64>>,
+    raw_keyed_counts: HashMap<u32, isize>,
+    wrapped_bucket_counts: Vec<HashMap<MetricBucket, isize>>,
     wrapped_labels: Vec<HashMap<String, String>>,
-    wrapped_raw_keyed_counts: VecDeque<HashMap<u32, i64>>,
+    wrapped_raw_keyed_counts: VecDeque<HashMap<u32, isize>>,
 }
 
 #[model_schema()]
@@ -814,6 +820,12 @@ struct DocumentedSequenceFields {
 /// calls it, and it answers the payload as it is.
 const fn trim(payload: Value) -> Value {
     payload
+}
+
+/// The JSON Schema of an `i64`: the string of its digits.
+#[cfg(feature = "jsonschema")]
+fn i64_json_schema() -> Value {
+    serde_json::json!({ "type": "string", "pattern": "^-?(0|[1-9][0-9]*)$" })
 }
 
 /// `zod` with the repeat check of each set taken out: what a set writes beside what its `Vec`
@@ -1153,14 +1165,14 @@ fn test_comprehensive_hashmap_json_schema() {
     let properties = schema["properties"].as_object().unwrap();
 
     assert_hashmap_primitive_type(properties, "string_value", "string");
-    assert_hashmap_primitive_type(properties, "u64_value", "integer");
-    assert_hashmap_primitive_type(properties, "i64_value", "integer");
+    assert_hashmap_primitive_type(properties, "u64_value", "string");
+    assert_hashmap_primitive_type(properties, "i64_value", "string");
     assert_hashmap_primitive_type(properties, "f64_value", "number");
     assert_hashmap_primitive_type(properties, "bool_value", "boolean");
 
     assert_hashmap_array_type(properties, "string_array", "string");
-    assert_hashmap_array_type(properties, "u64_array", "integer");
-    assert_hashmap_array_type(properties, "i64_array", "integer");
+    assert_hashmap_array_type(properties, "u64_array", "string");
+    assert_hashmap_array_type(properties, "i64_array", "string");
     assert_hashmap_array_type(properties, "f64_array", "number");
     assert_hashmap_array_type(properties, "bool_array", "boolean");
 
@@ -1168,13 +1180,13 @@ fn test_comprehensive_hashmap_json_schema() {
     // because the `Option` is the outer one in `Option<Vec<T>>`.
     assert_eq!(
         properties["optional_u64"]["additionalProperties"],
-        serde_json::json!({ "anyOf": [{ "type": "integer" }, { "type": "null" }] })
+        serde_json::json!({ "anyOf": [i64_json_schema(), { "type": "null" }] })
     );
     assert_eq!(
         properties["optional_u64_array"]["additionalProperties"],
         serde_json::json!({
             "anyOf": [
-                { "type": "array", "items": { "type": "integer" } },
+                { "type": "array", "items": i64_json_schema() },
                 { "type": "null" }
             ]
         })
@@ -1187,49 +1199,55 @@ fn test_comprehensive_hashmap_typescript_generation() {
     let ts_definition = ComprehensiveHashMapTest::ts_definition();
 
     assert!(ts_definition.contains("string_value: Partial<Record<string, string>>;"));
-    assert!(ts_definition.contains("u64_value: Partial<Record<string, number>>;"));
-    assert!(ts_definition.contains("i64_value: Partial<Record<string, number>>;"));
+    assert!(ts_definition.contains("u64_value: Partial<Record<string, bigint>>;"));
+    assert!(ts_definition.contains("i64_value: Partial<Record<string, bigint>>;"));
     assert!(ts_definition.contains("f64_value: Partial<Record<string, number>>;"));
     assert!(ts_definition.contains("bool_value: Partial<Record<string, boolean>>;"));
 
     assert!(ts_definition.contains("string_array: Partial<Record<string, Array<string>>>;"));
-    assert!(ts_definition.contains("u64_array: Partial<Record<string, Array<number>>>;"));
-    assert!(ts_definition.contains("i64_array: Partial<Record<string, Array<number>>>;"));
+    assert!(ts_definition.contains("u64_array: Partial<Record<string, Array<bigint>>>;"));
+    assert!(ts_definition.contains("i64_array: Partial<Record<string, Array<bigint>>>;"));
     assert!(ts_definition.contains("f64_array: Partial<Record<string, Array<number>>>;"));
     assert!(ts_definition.contains("bool_array: Partial<Record<string, Array<boolean>>>;"));
 
     let zod_schema = ComprehensiveHashMapTest::zod_schema();
     assert!(zod_schema.contains("string_value: z.record(z.string(), z.string())"));
-    assert!(zod_schema.contains("u64_value: z.record(z.string(), z.number().int())"));
-    assert!(zod_schema.contains("i64_value: z.record(z.string(), z.number().int())"));
+    assert!(zod_schema.contains(&format!("u64_value: z.record(z.string(), {I64_ZOD})")));
+    assert!(zod_schema.contains(&format!("i64_value: z.record(z.string(), {I64_ZOD})")));
     assert!(zod_schema.contains("f64_value: z.record(z.string(), z.number())"));
     assert!(zod_schema.contains("bool_value: z.record(z.string(), z.boolean())"));
 
     assert!(zod_schema.contains("string_array: z.record(z.string(), z.array(z.string()))"));
-    assert!(zod_schema.contains("u64_array: z.record(z.string(), z.array(z.number().int()))"));
-    assert!(zod_schema.contains("i64_array: z.record(z.string(), z.array(z.number().int()))"));
+    assert!(zod_schema.contains(&format!(
+        "u64_array: z.record(z.string(), z.array({I64_ZOD}))"
+    )));
+    assert!(zod_schema.contains(&format!(
+        "i64_array: z.record(z.string(), z.array({I64_ZOD}))"
+    )));
     assert!(zod_schema.contains("f64_array: z.record(z.string(), z.array(z.number()))"));
     assert!(zod_schema.contains("bool_array: z.record(z.string(), z.array(z.boolean()))"));
 
     // An `Option` map value is null-flavored, not undefined-flavored: the entry it sits in cannot
     // be dropped, so serde writes the `None` as `null`.
     assert!(
-        ts_definition.contains("optional_u64: Partial<Record<string, number | null>>;"),
+        ts_definition.contains("optional_u64: Partial<Record<string, bigint | null>>;"),
         "Got: {ts_definition}"
     );
     assert!(
         ts_definition
-            .contains("optional_u64_array: Partial<Record<string, Array<number> | null>>;"),
+            .contains("optional_u64_array: Partial<Record<string, Array<bigint> | null>>;"),
         "Got: {ts_definition}"
     );
     assert!(
-        zod_schema.contains("optional_u64: z.record(z.string(), z.nullable(z.number().int()))"),
+        zod_schema.contains(&format!(
+            "optional_u64: z.record(z.string(), z.nullable({I64_ZOD}))"
+        )),
         "Got: {zod_schema}"
     );
     assert!(
-        zod_schema.contains(
-            "optional_u64_array: z.record(z.string(), z.nullable(z.array(z.number().int())))"
-        ),
+        zod_schema.contains(&format!(
+            "optional_u64_array: z.record(z.string(), z.nullable(z.array({I64_ZOD})))"
+        )),
         "Got: {zod_schema}"
     );
 }
@@ -1268,16 +1286,8 @@ fn test_enum_keyed_scalar_value_maps_json_schema() {
         "string_value",
         &serde_json::json!({ "type": "string" }),
     );
-    assert_enum_keyed_map_value(
-        properties,
-        "u64_value",
-        &serde_json::json!({ "type": "integer" }),
-    );
-    assert_enum_keyed_map_value(
-        properties,
-        "i64_value",
-        &serde_json::json!({ "type": "integer" }),
-    );
+    assert_enum_keyed_map_value(properties, "u64_value", &i64_json_schema());
+    assert_enum_keyed_map_value(properties, "i64_value", &i64_json_schema());
     assert_enum_keyed_map_value(
         properties,
         "f64_value",
@@ -1305,7 +1315,7 @@ fn test_enum_keyed_scalar_value_maps_typescript_generation() {
         "Got: {ts_definition}"
     );
     assert!(
-        ts_definition.contains("u64_value: Partial<Record<MetricSlot, number>>;"),
+        ts_definition.contains("u64_value: Partial<Record<MetricSlot, bigint>>;"),
         "Got: {ts_definition}"
     );
     assert!(
@@ -1323,7 +1333,9 @@ fn test_enum_keyed_scalar_value_maps_typescript_generation() {
         "Got: {zod_schema}"
     );
     assert!(
-        zod_schema.contains("u64_value: z.partialRecord(MetricSlot$Schema, z.number().int())"),
+        zod_schema.contains(&format!(
+            "u64_value: z.partialRecord(MetricSlot$Schema, {I64_ZOD})"
+        )),
         "Got: {zod_schema}"
     );
     assert!(
@@ -1539,13 +1551,13 @@ fn test_nested_enum_keyed_map_values_constructible() {
         arrayed: HashMap::new(),
         enum_keyed_outer: HashMap::from([(
             MetricSlot::Daily,
-            HashMap::from([(MetricBucket::Low, 3_i64)]),
+            HashMap::from([(MetricBucket::Low, 3_isize)]),
         )]),
         optional: HashMap::from([("a".to_owned(), None)]),
         siblings: HashMap::new(),
         string_keyed_outer: HashMap::from([(
             "a".to_owned(),
-            HashMap::from([(MetricBucket::High, 7_i64)]),
+            HashMap::from([(MetricBucket::High, 7_isize)]),
         )]),
     };
     assert_eq!(
@@ -1556,7 +1568,7 @@ fn test_nested_enum_keyed_map_values_constructible() {
     assert_eq!(nested.optional["a"], None);
 
     let field_position = BucketKeyedMap {
-        counts: HashMap::from([(MetricBucket::High, 7_i64)]),
+        counts: HashMap::from([(MetricBucket::High, 7_isize)]),
         samples: HashMap::new(),
     };
     assert_eq!(field_position.counts[&MetricBucket::High], 7);
@@ -1617,7 +1629,7 @@ fn test_nested_enum_keyed_map_members_match_the_serialized_keys() {
         siblings: HashMap::new(),
         string_keyed_outer: HashMap::from([(
             "a".to_owned(),
-            HashMap::from([(MetricBucket::High, 7_i64)]),
+            HashMap::from([(MetricBucket::High, 7_isize)]),
         )]),
     };
     let payload = serde_json::to_value(&nested).unwrap();
@@ -3164,14 +3176,14 @@ fn wrapped_map_fields_properties() -> serde_json::Map<String, serde_json::Value>
 
 fn wrapped_map_fields() -> WrappedMapFields {
     WrappedMapFields {
-        bucket_counts: HashMap::from([(MetricBucket::High, 7_i64)]),
+        bucket_counts: HashMap::from([(MetricBucket::High, 7_isize)]),
         labels: HashMap::from([("a".to_owned(), "one".to_owned())]),
         optional_labels: None,
         optional_wrapped_labels: Some(vec![HashMap::from([("a".to_owned(), "one".to_owned())])]),
-        raw_keyed_counts: HashMap::from([(3_u32, 4_i64)]),
-        wrapped_bucket_counts: vec![HashMap::from([(MetricBucket::Low, 2_i64)])],
+        raw_keyed_counts: HashMap::from([(3_u32, 4_isize)]),
+        wrapped_bucket_counts: vec![HashMap::from([(MetricBucket::Low, 2_isize)])],
         wrapped_labels: vec![HashMap::from([("b".to_owned(), "two".to_owned())])],
-        wrapped_raw_keyed_counts: once(HashMap::from([(6_u32, 8_i64)])).collect(),
+        wrapped_raw_keyed_counts: once(HashMap::from([(6_u32, 8_isize)])).collect(),
     }
 }
 
@@ -3311,14 +3323,14 @@ fn test_hashmap_with_64bit_json_schema() {
 
     assert_eq!(properties["u64_map"]["type"], "object");
     assert_eq!(
-        properties["u64_map"]["additionalProperties"]["type"],
-        "integer"
+        properties["u64_map"]["additionalProperties"],
+        i64_json_schema()
     );
 
     assert_eq!(properties["i64_map"]["type"], "object");
     assert_eq!(
-        properties["i64_map"]["additionalProperties"]["type"],
-        "integer"
+        properties["i64_map"]["additionalProperties"],
+        i64_json_schema()
     );
 
     assert_eq!(properties["mixed_map"]["type"], "object");
@@ -3327,8 +3339,8 @@ fn test_hashmap_with_64bit_json_schema() {
         "array"
     );
     assert_eq!(
-        properties["mixed_map"]["additionalProperties"]["items"]["type"],
-        "integer"
+        properties["mixed_map"]["additionalProperties"]["items"],
+        i64_json_schema()
     );
 }
 
@@ -3337,14 +3349,16 @@ fn test_hashmap_with_64bit_json_schema() {
 fn test_hashmap_with_64bit_ts_definition() {
     let ts_definition = HashMapWith64Bit::ts_definition();
 
-    assert!(ts_definition.contains("u64_map: Partial<Record<string, number>>;"));
-    assert!(ts_definition.contains("i64_map: Partial<Record<string, number>>;"));
-    assert!(ts_definition.contains("mixed_map: Partial<Record<string, Array<number>>>;"));
+    assert!(ts_definition.contains("u64_map: Partial<Record<string, bigint>>;"));
+    assert!(ts_definition.contains("i64_map: Partial<Record<string, bigint>>;"));
+    assert!(ts_definition.contains("mixed_map: Partial<Record<string, Array<bigint>>>;"));
 
     let zod_schema = HashMapWith64Bit::zod_schema();
-    assert!(zod_schema.contains("u64_map: z.record(z.string(), z.number().int())"));
-    assert!(zod_schema.contains("i64_map: z.record(z.string(), z.number().int())"));
-    assert!(zod_schema.contains("mixed_map: z.record(z.string(), z.array(z.number().int()))"));
+    assert!(zod_schema.contains(&format!("u64_map: z.record(z.string(), {I64_ZOD})")));
+    assert!(zod_schema.contains(&format!("i64_map: z.record(z.string(), {I64_ZOD})")));
+    assert!(zod_schema.contains(&format!(
+        "mixed_map: z.record(z.string(), z.array({I64_ZOD}))"
+    )));
 }
 
 #[test]
@@ -3393,18 +3407,17 @@ fn test_set_element_json_schema() {
     let schema = SetElementFields::json_schema();
     let properties = schema["properties"].as_object().unwrap();
 
-    for numeric in ["big_ids", "small_ids"] {
+    for (numeric, item) in [
+        ("big_ids", i64_json_schema()),
+        ("small_ids", serde_json::json!({ "type": "integer" })),
+    ] {
         let field = &properties[numeric];
         assert_eq!(
             field["type"],
             json_type_name(&payload[numeric]),
             "in: {field}"
         );
-        assert_eq!(
-            field["items"],
-            serde_json::json!({ "type": "integer" }),
-            "in: {field}"
-        );
+        assert_eq!(field["items"], item, "in: {field}");
     }
 
     assert_eq!(
@@ -3526,7 +3539,7 @@ fn test_set_element_typescript_generation() {
     let ts_definition = SetElementFields::ts_definition();
     for spelling in [
         "aliased_tags: Array<MetricTagRefType>;",
-        "big_ids: Array<number>;",
+        "big_ids: Array<bigint>;",
         "constrained_labels: Array<string>;",
         "labels: Array<string>;",
         "preprocessed_labels: Array<string>;",
@@ -3543,7 +3556,7 @@ fn test_set_element_zod_generation() {
     let zod_schema = SetElementFields::zod_schema();
     for spelling in [
         format!("aliased_tags: z.array(MetricTagRefType$Schema){REPEAT_CHECK},"),
-        format!("big_ids: z.array(z.number().int()){REPEAT_CHECK},"),
+        format!("big_ids: z.array({I64_ZOD}){REPEAT_CHECK},"),
         format!(
             "constrained_labels: z.array(z.string()).min(3, {{ error: (issue) => `too short: \
              minimum length is 3, got ${{Array.isArray(issue.input) ? issue.input.length : 0}}` \

@@ -442,9 +442,9 @@ fn test_string_literal_typescript() {
     assert!(ts_definition.contains("sub: string;"));
     assert!(ts_definition.contains("jti: string;"));
 
-    assert!(ts_definition.contains("exp: number;"));
-    assert!(ts_definition.contains("iat: number;"));
-    assert!(ts_definition.contains("nbf: number;"));
+    assert!(ts_definition.contains("exp: bigint;"));
+    assert!(ts_definition.contains("iat: bigint;"));
+    assert!(ts_definition.contains("nbf: bigint;"));
 
     assert!(ts_definition.contains("Minimum length: 1"));
 }
@@ -464,9 +464,9 @@ fn test_string_literal_zod() {
     assert!(zod_schema.contains("sub: z.string().min(1, { error: (issue) => `too short: minimum length is 1, got ${String(issue.input).length}` })"));
     assert!(zod_schema.contains("jti: z.string().min(1, { error: (issue) => `too short: minimum length is 1, got ${String(issue.input).length}` })"));
 
-    assert!(zod_schema.contains("exp: z.number().int()"));
-    assert!(zod_schema.contains("iat: z.number().int()"));
-    assert!(zod_schema.contains("nbf: z.number().int()"));
+    assert!(zod_schema.contains("exp: z.codec(z.string().regex("));
+    assert!(zod_schema.contains("iat: z.codec(z.string().regex("));
+    assert!(zod_schema.contains("nbf: z.codec(z.string().regex("));
 }
 
 #[test]

@@ -123,6 +123,10 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     ];
     // The readers land ahead of the factory that calls them, a bundle being read top to bottom.
     published.extend(fault_helpers(service));
+    published.push(message::wire_fn(&format!(
+        "{}Sent",
+        RenameRule::CamelCase.apply_to_variant(&service.ident.to_string())
+    )));
     published.push(factory(service));
     published
 }
@@ -330,7 +334,9 @@ fn method(service: &ServiceDef, operation: &OperationDef) -> String {
     let (headers_build, headers) = header_in_build_stmt(&prefix, operation);
     let sending = match &operation.outcome {
         OperationOutcome::OneWay => {
-            format!("      await transport.notify({wire}, validated.data, {headers});")
+            format!(
+                "      await transport.notify({wire}, {prefix}Sent(validated.data), {headers});"
+            )
         }
         OperationOutcome::Reply { error, success }
             if !shape.header_out.is_empty() || !shape.error_header_out.is_empty() =>
@@ -339,7 +345,7 @@ fn method(service: &ServiceDef, operation: &OperationDef) -> String {
         }
         OperationOutcome::Reply { error, success } => format!(
             "      const {{ answered }} = await transport.request<{result}>({wire}, \
-             validated.data, {headers});\n\
+             {prefix}Sent(validated.data), {headers});\n\
              {succeeded}{failed}",
             result = answers(&named, operation),
             succeeded = success_stmt(&prefix, wire, &shape, success),
@@ -396,10 +402,10 @@ fn header_in_build_stmt(prefix: &str, operation: &OperationDef) -> (String, Stri
         let _ = write!(
             stmt,
             "      {{\n        \
-             const held = {schema}.safeParse({parameter});\n        \
+             const held = {schema}.safeParse({prefix}Sent({parameter}));\n        \
              if (!held.success) {{\n{}        \
              }}\n        \
-             headers.push([{name}, JSON.stringify({value})]);\n      \
+             headers.push([{name}, JSON.stringify({prefix}Sent({value}))]);\n      \
              }}\n",
             message::deeper(&refusal, 2)
         );
@@ -431,7 +437,7 @@ fn header_tuple_answer(
         "      const {{ answered, headers: replied }} = await transport.request<\n        \
          | {{ ok: true; value: {value_ty} }}\n        \
          | {{ ok: false; error: {error_ty} | {{ isServiceFault: true; fault: {named}Fault }} }}\n      \
-         >({wire}, validated.data, {headers});\n"
+         >({wire}, {prefix}Sent(validated.data), {headers});\n"
     );
     stmt.push_str(&success_stmt(prefix, wire, shape, success));
     stmt.push_str(&failure_stmt(prefix, wire, shape, error));
@@ -557,7 +563,7 @@ fn validation(service: &ServiceDef, operation: &OperationDef) -> String {
     let schema = message::schema(operation);
     let refusal = outbound_refusal(&prefix, operation, &wire, "validated.error.issues");
     format!(
-        "      const validated = {schema}.safeParse(req);\n      \
+        "      const validated = {schema}.safeParse({prefix}Sent(req));\n      \
          if (!validated.success) {{\n{refusal}\n      \
          }}\n"
     )

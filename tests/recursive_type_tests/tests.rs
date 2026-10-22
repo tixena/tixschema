@@ -560,7 +560,7 @@ fn test_recursive_enum_with_hashmap() {
     );
 
     assert!(
-        zod.contains("value: z.number()"),
+        zod.contains("value: z.codec("),
         "Non-recursive Number variant should use normal property syntax. Got: {zod}"
     );
 }
@@ -597,7 +597,7 @@ fn test_complex_dynamic_value() {
         "String variant should use normal syntax"
     );
     assert!(
-        zod.contains("value: z.number().int()"),
+        zod.contains("value: z.codec("),
         "Integer variant should use normal syntax"
     );
     assert!(

@@ -2009,15 +2009,15 @@ fn test_the_union_member_cycle_refusal_names_the_remedy() {
 fn test_non_recursive_flatten_documents_are_byte_identical() {
     assert_eq!(
         serde_json::to_string(&DataElementSampleValueEntry::json_schema()).unwrap(),
-        r#"{"type":"object","oneOf":[{"type":"object","properties":{"dataElementId":{"type":"string"},"dataType":{"type":"string","const":"Alphanumeric"},"sampleValues":{"type":"array","items":{"type":"string"}}},"required":["dataElementId","dataType","sampleValues"],"additionalProperties":false},{"type":"object","properties":{"dataElementId":{"type":"string"},"dataType":{"type":"string","const":"Logical"},"sampleValues":{"type":"array","items":{"type":"boolean"}}},"required":["dataElementId","dataType","sampleValues"],"additionalProperties":false},{"type":"object","properties":{"dataElementId":{"type":"string"},"dataType":{"type":"string","const":"Numeric"},"sampleValues":{"type":"array","items":{"type":"integer"}}},"required":["dataElementId","dataType","sampleValues"],"additionalProperties":false}]}"#
+        r#"{"type":"object","oneOf":[{"type":"object","properties":{"dataElementId":{"type":"string"},"dataType":{"type":"string","const":"Alphanumeric"},"sampleValues":{"type":"array","items":{"type":"string"}}},"required":["dataElementId","dataType","sampleValues"],"additionalProperties":false},{"type":"object","properties":{"dataElementId":{"type":"string"},"dataType":{"type":"string","const":"Logical"},"sampleValues":{"type":"array","items":{"type":"boolean"}}},"required":["dataElementId","dataType","sampleValues"],"additionalProperties":false},{"type":"object","properties":{"dataElementId":{"type":"string"},"dataType":{"type":"string","const":"Numeric"},"sampleValues":{"type":"array","items":{"type":"string","pattern":"^-?(0|[1-9][0-9]*)$"}}},"required":["dataElementId","dataType","sampleValues"],"additionalProperties":false}]}"#
     );
     assert_eq!(
         serde_json::to_string(&MultiFlatten::json_schema()).unwrap(),
-        r#"{"type":"object","properties":{"id":{"type":"string"},"owner":{"type":"string"},"priority":{"type":"integer"}},"required":["id","owner","priority"],"additionalProperties":false}"#
+        r#"{"type":"object","properties":{"id":{"type":"string"},"owner":{"type":"string"},"priority":{"type":"string","pattern":"^-?(0|[1-9][0-9]*)$"}},"required":["id","owner","priority"],"additionalProperties":false}"#
     );
     assert_eq!(
         serde_json::to_string(&FlattenOnly::json_schema()).unwrap(),
-        r#"{"type":"object","oneOf":[{"type":"object","properties":{"dataType":{"type":"string","const":"Alphanumeric"},"sampleValues":{"type":"array","items":{"type":"string"}}},"required":["dataType","sampleValues"],"additionalProperties":false},{"type":"object","properties":{"dataType":{"type":"string","const":"Logical"},"sampleValues":{"type":"array","items":{"type":"boolean"}}},"required":["dataType","sampleValues"],"additionalProperties":false},{"type":"object","properties":{"dataType":{"type":"string","const":"Numeric"},"sampleValues":{"type":"array","items":{"type":"integer"}}},"required":["dataType","sampleValues"],"additionalProperties":false}]}"#
+        r#"{"type":"object","oneOf":[{"type":"object","properties":{"dataType":{"type":"string","const":"Alphanumeric"},"sampleValues":{"type":"array","items":{"type":"string"}}},"required":["dataType","sampleValues"],"additionalProperties":false},{"type":"object","properties":{"dataType":{"type":"string","const":"Logical"},"sampleValues":{"type":"array","items":{"type":"boolean"}}},"required":["dataType","sampleValues"],"additionalProperties":false},{"type":"object","properties":{"dataType":{"type":"string","const":"Numeric"},"sampleValues":{"type":"array","items":{"type":"string","pattern":"^-?(0|[1-9][0-9]*)$"}}},"required":["dataType","sampleValues"],"additionalProperties":false}]}"#
     );
     assert_eq!(
         serde_json::to_string(&NoFlatten::json_schema()).unwrap(),
@@ -2045,10 +2045,7 @@ fn test_flatten_serialization_is_flat() {
     let json = serde_json::to_value(&entry).unwrap();
     assert_eq!(json["dataElementId"], "abc");
     assert_eq!(json["dataType"], "Numeric");
-    assert_eq!(
-        json["sampleValues"],
-        serde_json::json!([1_i64, 2_i64, 3_i64])
-    );
+    assert_eq!(json["sampleValues"], serde_json::json!(["1", "2", "3"]));
     assert!(json.get("variant").is_none());
 
     let back: DataElementSampleValueEntry = serde_json::from_value(json).unwrap();
@@ -3128,7 +3125,7 @@ fn test_flattening_a_nullable_scalar_writes_the_absence_and_refuses_the_value() 
 #[test]
 #[cfg(feature = "jsonschema")]
 #[should_panic(
-    expected = "`MaybeCountHolder`: `#[serde(flatten)]` of `MaybeCount` writes a union member that is not an object — its branch 1 describes a `integer`"
+    expected = "`MaybeCountHolder`: `#[serde(flatten)]` of `MaybeCount` writes a union member that is not an object — its branch 1 describes a `string`"
 )]
 fn test_flattening_a_nullable_scalar_is_refused_by_the_merge() {
     assert!(MaybeCountHolder::json_schema().is_object());
@@ -3137,7 +3134,7 @@ fn test_flattening_a_nullable_scalar_is_refused_by_the_merge() {
 #[test]
 #[cfg(feature = "jsonschema")]
 #[should_panic(
-    expected = "`LaterMaybeCountHolder`: `#[serde(flatten)]` of `LaterMaybeCount` writes a union member that is not an object — its branch 1 describes a `integer`"
+    expected = "`LaterMaybeCountHolder`: `#[serde(flatten)]` of `LaterMaybeCount` writes a union member that is not an object — its branch 1 describes a `string`"
 )]
 fn test_flattening_a_later_nullable_scalar_is_refused_by_the_merge() {
     assert!(LaterMaybeCountHolder::json_schema().is_object());
@@ -4454,7 +4451,7 @@ fn test_a_flattened_variant_field_writes_its_members_into_the_variants_content()
             x: "y".to_owned(),
         })
         .unwrap(),
-        serde_json::json!({ "Named": { "note": "n", "rank": 3_i64, "x": "y" } })
+        serde_json::json!({ "Named": { "note": "n", "rank": "3", "x": "y" } })
     );
 }
 
@@ -4651,7 +4648,7 @@ fn test_a_flattened_untagged_variant_field_writes_its_members_beside_the_variant
             x: "y".to_owned(),
         })
         .unwrap(),
-        serde_json::json!({ "note": "n", "rank": 3_i64, "x": "y" })
+        serde_json::json!({ "note": "n", "rank": "3", "x": "y" })
     );
 }
 
@@ -4869,7 +4866,7 @@ fn test_a_multi_branch_variant_source_writes_one_key_set_per_branch() {
             x: "y".to_owned(),
         })
         .unwrap(),
-        serde_json::json!({ "Named": { "right": 3_i64, "x": "y" } })
+        serde_json::json!({ "Named": { "right": "3", "x": "y" } })
     );
     assert_eq!(
         serde_json::to_value(InternalChoiceVariant::Named {
@@ -4887,7 +4884,7 @@ fn test_a_multi_branch_variant_source_writes_one_key_set_per_branch() {
             x: "y".to_owned(),
         })
         .unwrap(),
-        serde_json::json!({ "kind": "Named", "data": { "right": 3_i64, "x": "y" } })
+        serde_json::json!({ "kind": "Named", "data": { "right": "3", "x": "y" } })
     );
     assert_eq!(
         serde_json::to_value(UntaggedChoiceVariant::Named {
@@ -4914,7 +4911,7 @@ fn test_a_multi_branch_variant_source_reads_back_every_key_set() {
             },
         ),
         (
-            serde_json::json!({ "Named": { "right": 3_i64, "x": "y" } }),
+            serde_json::json!({ "Named": { "right": "3", "x": "y" } }),
             ExternalChoiceVariant::Named {
                 choice: VariantChoice::Right(ChoiceRight { right: 3 }),
                 x: "y".to_owned(),
@@ -5084,7 +5081,7 @@ fn test_a_three_branch_variant_source_writes_three_key_sets() {
                 choice: ThreeBranchChoice::Right(ChoiceRight { right: 3 }),
                 x: "y".to_owned(),
             },
-            serde_json::json!({ "Named": { "right": 3_i64, "x": "y" } }),
+            serde_json::json!({ "Named": { "right": "3", "x": "y" } }),
         ),
     ] {
         assert_eq!(serde_json::to_value(&value).unwrap(), written);
@@ -5186,7 +5183,7 @@ fn test_two_variant_sources_write_their_cross_product() {
                 }),
                 x: "y".to_owned(),
             },
-            serde_json::json!({ "Named": { "right": 3_i64, "down": "d", "x": "y" } }),
+            serde_json::json!({ "Named": { "right": "3", "down": "d", "x": "y" } }),
         ),
     ] {
         assert_eq!(serde_json::to_value(&value).unwrap(), written);

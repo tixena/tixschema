@@ -80,10 +80,16 @@ fn held(pattern: Option<String>, text: &str) -> String {
     )
 }
 
-/// The private static functions that read and send each of `forms`, and the text a refusal quotes
-/// a value in. Nothing where `forms` is empty.
-pub fn helpers(forms: &[TextForm]) -> String {
-    if forms.is_empty() {
+/// The call that reads `text`, a `String` the decoder read, as the `Int64` its digits hold.
+pub fn digits_read_call(text: &str, coding_path: &str) -> String {
+    format!("try Self.swiftSchemaReadDigits({text}, codingPath: {coding_path})")
+}
+
+/// The private static functions that read and send each of `forms`, that read the digits of an
+/// integer where `digits` holds, and the text a refusal quotes a value in. Nothing where neither is
+/// read.
+pub fn helpers(forms: &[TextForm], digits: bool) -> String {
+    if forms.is_empty() && !digits {
         return String::new();
     }
     let mut written = String::from(
@@ -121,6 +127,19 @@ pub fn helpers(forms: &[TextForm]) -> String {
             name = named(form),
             read = held(form.read(), "text"),
             sent = held(form.sent(), "sent"),
+        )
+        .unwrap();
+    }
+    if digits {
+        write!(
+            written,
+            "private static func swiftSchemaReadDigits(_ text: String, codingPath: [CodingKey]) \
+             throws -> Int64 {{ guard text.range(of: {}, options: .regularExpression) != nil, \
+             let number = Int64(text) else {{ throw DecodingError.dataCorrupted(\
+             DecodingError.Context(codingPath: codingPath, debugDescription: \"expected an i64 \
+             as a string of its decimal digits, found \\(swiftSchemaQuoted(text))\")) }}; return \
+             number }}; ",
+            whole("-?(0|[1-9][0-9]*)")
         )
         .unwrap();
     }

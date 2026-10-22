@@ -533,6 +533,17 @@ pub fn scalar_kind(ty: &Type) -> ScalarKind {
     }
 }
 
+/// Whether `ty` is a `u64` or an `i64`, which a member of a message the macro declares reads from
+/// the text of its digits.
+pub fn reads_its_digits(ty: &Type) -> bool {
+    let Type::Path(named) = ty else {
+        return false;
+    };
+    named.path.segments.last().is_some_and(|leaf| {
+        leaf.arguments.is_none() && matches!(leaf.ident.to_string().as_str(), "u64" | "i64")
+    })
+}
+
 /// Whether a Named type's own declared type is one serde writes as a bare wire scalar — the only
 /// case a whole message may be read back from a single path placeholder rather than an object.
 ///

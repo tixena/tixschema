@@ -566,6 +566,10 @@ fn no_emitted_check_is_left_to_report_in_zods_own_words() {
         declarations::Major::zod_schema(),
         declarations::OrganizationId::zod_schema(),
     ] {
+        // The range of an `i64` is its type's, which no declaration writes.
+        let declared = schema
+            .replace(".min(-9223372036854775808n)", "")
+            .replace(".max(9223372036854775807n)", "");
         let checks = [
             ".min(",
             ".max(",
@@ -575,7 +579,7 @@ fn no_emitted_check_is_left_to_report_in_zods_own_words() {
             "z.literal(",
         ]
         .iter()
-        .map(|check| schema.matches(check).count())
+        .map(|check| declared.matches(check).count())
         .sum::<usize>();
         assert_eq!(
             checks,

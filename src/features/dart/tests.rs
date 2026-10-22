@@ -2,8 +2,11 @@
 
 use proc_macro2::TokenTree;
 
+use quote::ToTokens as _;
+
 use super::*;
 use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
+use crate::model_schema::digits;
 
 /// The class of a struct whose one field is named after the unjudged read, which
 /// `tests/service_schema_emitted_client_tests/run_dart_read.rs` runs under the Dart SDK.
@@ -95,6 +98,39 @@ fn a_flattened_option_of_an_enum_under_a_tag_key_is_looked_for_by_its_tag() {
     );
     let dart = definition(struct_dart_tokens(&item, &plain_args()));
     assert!(dart.contains(&expected), "missing `{expected}` in: {dart}");
+}
+
+/// A `u64` is held as a `BigInt`, read from the string of its digits within the range of a
+/// `u64` and written as them, and an `i64` as an `int`. A build with Swift or Kotlin refuses a
+/// `u64` in a member, so no integration test declares one beside the Dart client's runs.
+#[cfg(feature = "serde")]
+#[test]
+fn a_u64_is_a_big_int_read_from_its_digits_and_written_as_them() {
+    let declared: Item = syn::parse_quote! {
+        #[derive(Serialize, Deserialize)]
+        pub struct Wide {
+            pub big: u64,
+            pub signed: i64,
+        }
+    };
+    digits::record(&declared);
+    let item: ItemStruct = syn::parse2(digits::marked(&declared).to_token_stream()).unwrap();
+    let dart = definition(struct_dart_tokens(&item, &plain_args()));
+    for expected in [
+        "final BigInt big;",
+        "final int signed;",
+        "big: (switch (json['big'] as String) { final digits when \
+         RegExp(r'^(?:(0|[1-9][0-9]*))$').hasMatch(digits) && BigInt.parse(digits) <= \
+         BigInt.parse('18446744073709551615') => BigInt.parse(digits), final digits => throw \
+         FormatException('expected a u64 as a string of its decimal digits, found \
+         ${jsonEncode(digits)}') }),",
+        "'big': (switch (big) { final number when number >= BigInt.zero && number <= \
+         BigInt.parse('18446744073709551615') => number.toString(), final number => throw \
+         FormatException('expected a u64, found $number') }),",
+        "'signed': (signed).toString(),",
+    ] {
+        assert!(dart.contains(expected), "missing `{expected}` in: {dart}");
+    }
 }
 
 /// A field of that name is no snake case, which the lints of an integration test refuse. Dart

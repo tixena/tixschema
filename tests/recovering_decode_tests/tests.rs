@@ -32,6 +32,7 @@ mod across_modules;
 mod aliased;
 mod bounds;
 mod checks;
+mod digits;
 mod enum_shapes;
 mod flattened;
 mod flattened_shapes;

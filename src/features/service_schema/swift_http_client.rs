@@ -218,7 +218,7 @@ fn client_struct(
         .map(|operation| method(named, fn_prefix, operation, has_multipart))
         .collect::<Vec<_>>()
         .join("\n\n");
-    let forms = forms::helpers(&text_forms(service));
+    let forms = forms::helpers(&text_forms(service), false);
     let texts = if forms.is_empty() {
         String::new()
     } else {
@@ -971,10 +971,12 @@ fn header_read_is_fallible(bare_ty: &Type) -> bool {
             | FieldDefType::U16
             | FieldDefType::U32
             | FieldDefType::U64
+            | FieldDefType::U64Digits
             | FieldDefType::I8
             | FieldDefType::I16
             | FieldDefType::I32
             | FieldDefType::I64
+            | FieldDefType::I64Digits
             | FieldDefType::Usize
             | FieldDefType::Isize
             | FieldDefType::F32
@@ -1574,10 +1576,12 @@ fn swift_header_out_decode(fn_prefix: &str, ty: &Type, raw: &str) -> String {
         | FieldDefType::U16
         | FieldDefType::U32
         | FieldDefType::U64
+        | FieldDefType::U64Digits
         | FieldDefType::I8
         | FieldDefType::I16
         | FieldDefType::I32
         | FieldDefType::I64
+        | FieldDefType::I64Digits
         | FieldDefType::Usize
         | FieldDefType::Isize
         | FieldDefType::F32

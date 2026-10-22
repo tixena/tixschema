@@ -5,6 +5,7 @@
 extern crate alloc;
 
 pub mod checks;
+pub mod digits;
 pub mod judged_read;
 pub mod preprocess;
 pub mod ranges;
@@ -1954,6 +1955,11 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     if let Some(output) = refused_item_output(&item, &any_json_errors(&item, &parsed_args)) {
         return output;
     }
+    // Nor is one that holds a primitive no surface has a type for, which the field walk would
+    // otherwise take for a type declared elsewhere.
+    if let Some(output) = refused_item_output(&item, &undescribable_primitive_errors(&item)) {
+        return output;
+    }
     // A `default_types` declaration is read against the item's own parameters, which the parser
     // never sees, so both directions are answered here, ahead of every shape.
     if let Some(output) =
@@ -2029,6 +2035,9 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     {
         return output;
     }
+    // Which members write a `u64` or an `i64` as its digit string is read off the item as its
+    // author wrote it, before the walk takes any attribute off a member.
+    digits::record(&item);
     // Which Zod binding this item publishes turns on whether it declares type parameters, and a
     // field written at the item's own name reads that answer back the way any other reference does.
     record_item(&item);
@@ -2048,7 +2057,9 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     let swift_refusals = swift_width_refusals(&item);
     // Same independence as the Dart and Swift tokens above.
     let kotlin_tokens = kotlin_suffix_tokens(&item, &parsed_args);
-    let expanded = process_item(item, &parsed_args);
+    let processed = process_item(item, &parsed_args);
+    let written_digits = digits::take_written();
+    let expanded = quote! { #processed #written_digits };
     let deferred = with_prefixed_tokens(expanded, &deferred_shape_refusals(registering.as_ref()));
     let bound = with_prefixed_tokens(deferred, &filling_bound_checks);
     let width_checked = with_prefixed_tokens(bound, &swift_refusals);
@@ -2094,8 +2105,9 @@ fn process_shape(item: Item, args: &ModelSchemaArgs) -> TokenStream {
 fn dart_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
     // An enum's own string check is the one that reaches its members.
     let reaching = matches!(item, Item::Enum(_)).then_some(args);
+    let marked = digits::marked(item);
     dart_schema_dispatch(
-        item,
+        &marked,
         &DartTypeArgs {
             check: &args.check,
             default_types: &args.default_types,
@@ -2121,8 +2133,9 @@ fn dart_suffix_tokens(_item: &Item, _args: &ModelSchemaArgs) -> TokenStream {
 #[cfg(feature = "swift")]
 fn swift_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
     let enum_args = matches!(item, Item::Enum(_)).then_some(args);
+    let marked = digits::marked(item);
     swift_schema_dispatch(
-        item,
+        &marked,
         &SwiftTypeArgs {
             check: &args.check,
             default_types: &args.default_types,
@@ -2148,8 +2161,9 @@ fn swift_suffix_tokens(_item: &Item, _args: &ModelSchemaArgs) -> TokenStream {
 #[cfg(feature = "kotlin")]
 fn kotlin_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
     let enum_args = matches!(item, Item::Enum(_)).then_some(args);
+    let marked = digits::marked(item);
     kotlin_schema_dispatch(
-        item,
+        &marked,
         &KotlinArgs {
             check: &args.check,
             default_types: &args.default_types,
@@ -3874,7 +3888,10 @@ fn non_object_wire(item: &Item) -> NonObjectWire {
     let mut wire = NonObjectWire::default();
     if let Item::Struct(item_struct) = item {
         if let Some(slot) = written_as_its_slot(item_struct) {
-            let value = member(slot);
+            let mut value = member(slot);
+            if digits::written_by_the_struct() {
+                value = value.with_digit_leaves();
+            }
             wire.leaves = filled_wire_leaves(&value);
             wire.members = filled_union_members(&value);
             wire.optional = writes_an_optional(value_filling(&value).unwrap_or(&value));
@@ -3907,7 +3924,12 @@ fn non_object_wire(item: &Item) -> NonObjectWire {
                     let first = variant.fields.iter().next();
                     let leaves = match (variant_wire_kind(variant), first) {
                         (VariantKind::TupleSingle, Some(slot)) => {
-                            member_written_leaves(&member(slot))
+                            let held = member(slot);
+                            if digits::written_as_digits(Some(&variant.ident.to_string()), 0) {
+                                member_written_leaves(&held.with_digit_leaves())
+                            } else {
+                                member_written_leaves(&held)
+                            }
                         }
                         _ => vec![WireLeaf {
                             branch: Vec::new(),
@@ -5466,12 +5488,26 @@ fn any_json_checks(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_macro2::Toke
 }
 
 /// Each type an item writes beside the subject a refusal of a JSON value names it by: every
-/// member serde writes or reads, an alias's target, and each `default_types` filling. serde writes
-/// and reads none of a member, or of a variant, taken off the wire in both directions.
+/// member serde writes or reads, an alias's target, and each `default_types` filling.
 fn any_json_positions<'item>(
     item: &'item Item,
     args: &'item ModelSchemaArgs,
 ) -> Vec<(String, &'item syn::Type)> {
+    let mut written = written_positions(item);
+    if matches!(item, Item::Struct(_) | Item::Enum(_) | Item::Type(_)) {
+        written.extend(
+            args.default_types
+                .iter()
+                .map(|(name, filling)| (format!("`default_types` entry `{name}`"), filling)),
+        );
+    }
+    written
+}
+
+/// Each type an item writes beside the subject a refusal names it by: every member serde writes or
+/// reads, and an alias's target. serde writes and reads none of a member, or of a variant, taken
+/// off the wire in both directions.
+fn written_positions(item: &Item) -> Vec<(String, &syn::Type)> {
     let carried = |field: &&Field| !parse_serde_key_omission(&field.attrs).absent_from_wire();
     let mut written: Vec<(String, &syn::Type)> = Vec::new();
     if let Item::Struct(item_struct) = item {
@@ -5506,13 +5542,8 @@ fn any_json_positions<'item>(
     } else if let Item::Type(item_type) = item {
         written.push(("the type it names".to_owned(), &item_type.ty));
     } else {
-        return Vec::new();
+        // `#[model_schema]` is written on nothing else.
     }
-    written.extend(
-        args.default_types
-            .iter()
-            .map(|(name, filling)| (format!("`default_types` entry `{name}`"), filling)),
-    );
     written
 }
 
@@ -5521,6 +5552,53 @@ fn any_json_positions<'item>(
 fn any_json_message(label: &str, subject: &str, name: &str) -> String {
     let message = undescribable_std_message(subject, &UndescribableStd::AnyJson(name));
     prefixed_guard_message(&format!("{label}: {message}"))
+}
+
+/// The refusal an item earns for each member and alias target that reaches a primitive no surface
+/// describes, `i128`, `u128`, `f16` or `f128`, at any depth, spanned on the type as written. Asked
+/// ahead of every shape, so every build refuses it. A name the item declares as a type parameter
+/// and one the crate declared a type under above are that type.
+fn undescribable_primitive_rejections(item: &Item) -> Vec<syn::Error> {
+    let declared: Vec<String> = item_generics(item).map_or_else(Vec::new, |generics| {
+        generics
+            .type_params()
+            .map(|parameter| parameter.ident.to_string())
+            .collect()
+    });
+    let kept =
+        |name: &str| declared.iter().any(|parameter| parameter == name) || is_declared_ident(name);
+    let label = item_label(item);
+    written_positions(item)
+        .into_iter()
+        .filter_map(|(subject, ty)| {
+            let primitive = ranges::undescribable_primitive_reached(ty, &kept)?;
+            let message = undescribable_primitive_message(&label, &subject, primitive);
+            Some(syn::Error::new_spanned(ty, message))
+        })
+        .collect()
+}
+
+/// The `compile_error!` tokens of [`undescribable_primitive_rejections`].
+fn undescribable_primitive_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
+    undescribable_primitive_rejections(item)
+        .iter()
+        .map(syn::Error::to_compile_error)
+        .collect()
+}
+
+/// The refusal of `primitive`, one of the primitives no surface describes, reached at `subject` of
+/// the item `label` names.
+fn undescribable_primitive_message(label: &str, subject: &str, primitive: &str) -> String {
+    let instead = if primitive.starts_with('f') {
+        "Hold the value as an `f32` or an `f64`."
+    } else {
+        "Hold the value as an `i64` or a `u64`, or as a `#[model_schema]` brand over `String` that \
+         carries its digits."
+    };
+    prefixed_guard_message(&format!(
+        "{label}: {subject} reaches `{primitive}`, which no surface describes: no TypeScript, Zod, \
+         JSON Schema, Dart, Swift or Kotlin type is written for it. {instead}"
+    ))
 }
 
 /// Every name of [`INDEXMAP_NAMES`] `written` holds at any depth, written with the type arguments
@@ -5932,6 +6010,7 @@ fn swift_refused_primitive_name(field_def: &FieldDef) -> Option<&'static str> {
         | FieldDefType::I16
         | FieldDefType::I32
         | FieldDefType::I64
+        | FieldDefType::I64Digits
         | FieldDefType::I8
         | FieldDefType::Isize
         | FieldDefType::NumberLiteral(_)
@@ -5941,6 +6020,7 @@ fn swift_refused_primitive_name(field_def: &FieldDef) -> Option<&'static str> {
         | FieldDefType::U16
         | FieldDefType::U32
         | FieldDefType::U64
+        | FieldDefType::U64Digits
         | FieldDefType::U8
         | FieldDefType::Unknown
         | FieldDefType::Usize => None,
@@ -6012,10 +6092,12 @@ fn non_string_inner_shape(inner: &FieldDef) -> Option<&'static str> {
         | FieldDefType::U16
         | FieldDefType::U32
         | FieldDefType::U64
+        | FieldDefType::U64Digits
         | FieldDefType::I8
         | FieldDefType::I16
         | FieldDefType::I32
         | FieldDefType::I64
+        | FieldDefType::I64Digits
         | FieldDefType::Usize
         | FieldDefType::Isize
         | FieldDefType::F32
@@ -6091,9 +6173,11 @@ const fn scalar_json_type_keyword(field_type: &FieldDefType) -> Option<&'static 
         | FieldDefType::U32
         | FieldDefType::U64
         | FieldDefType::Usize => Some("integer"),
-        FieldDefType::Char | FieldDefType::String | FieldDefType::StringLiteral(_) => {
-            Some("string")
-        }
+        FieldDefType::Char
+        | FieldDefType::String
+        | FieldDefType::StringLiteral(_)
+        | FieldDefType::U64Digits
+        | FieldDefType::I64Digits => Some("string"),
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime
         | FieldDefType::NaiveDate
@@ -6190,7 +6274,18 @@ fn branded_pattern_error(name: &Ident, args: &ModelSchemaArgs) -> Option<proc_ma
 /// this one call, so what a brand is refused for and what it records cannot come apart.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn branded_inner_value_surface(generics: &syn::Generics, inner_field: &Field) -> FieldDef {
-    surface_field_def(generics, &get_field_def("_inner", &inner_field.ty, ""))
+    surface_field_def(generics, &branded_inner_def(&inner_field.ty))
+}
+
+/// The value a brand writes, its integers read as digit strings where the brand writes them so.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+fn branded_inner_def(inner_ty: &syn::Type) -> FieldDef {
+    let inner = get_field_def("_inner", inner_ty, "");
+    if digits::written_by_the_struct() {
+        inner.with_digit_leaves()
+    } else {
+        inner
+    }
 }
 
 /// What the registry records for a brand.
@@ -7380,6 +7475,8 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
 
     // Read after the fields carry every serde attribute generation hangs on them, so the walker
     // reads each one through the function serde's derive will call for it.
+    #[cfg(feature = "serde")]
+    digits::hang_on_struct(&mut item_struct);
     let decode_with = struct_decode_with(&item_struct, args);
 
     #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
@@ -8278,10 +8375,13 @@ fn build_tuple_struct_zod_schema_method(
 fn tuple_struct_surface(fields: &syn::Fields, parameters: &[String]) -> Surface {
     let mut slots = fields.iter();
     match (slots.next(), slots.next()) {
-        (Some(slot), None) => Surface::written(
-            &with_as_number(get_field_def("_slot", &slot.ty, ""), &slot.attrs),
-            parameters,
-        ),
+        (Some(slot), None) => {
+            let mut written = with_as_number(get_field_def("_slot", &slot.ty, ""), &slot.attrs);
+            if digits::written_as_digits(None, 0) {
+                written = written.with_digit_leaves();
+            }
+            Surface::written(&written, parameters)
+        }
         _ => Surface::array(),
     }
 }
@@ -8381,6 +8481,8 @@ fn process_tuple_struct(
     );
 
     // Read after every slot carries the serde attributes generation hangs on it.
+    #[cfg(feature = "serde")]
+    digits::hang_on_struct(&mut item_struct);
     let decode_with = struct_decode_with(&item_struct, args);
 
     struct_output_with_unit_impls(
@@ -9151,7 +9253,7 @@ fn branded_value_inner(
     inner_ty: &syn::Type,
     args: &ModelSchemaArgs,
 ) -> FieldDef {
-    let mut inner = surface_field_def(generics, &get_field_def("_inner", inner_ty, ""));
+    let mut inner = surface_field_def(generics, &branded_inner_def(inner_ty));
     if held_as_a_list(inner_ty) && (args.min_length.is_some() || args.max_length.is_some()) {
         inner.model_schema_prop_meta = Some(ModelSchemaPropMeta {
             max_items: args.max_length,
@@ -9168,7 +9270,7 @@ fn branded_ts_type_and_generics(
     generic_params: &[String],
     inner_ty: &syn::Type,
 ) -> (String, String) {
-    let inner = get_field_def("_inner", inner_ty, "");
+    let inner = branded_inner_def(inner_ty);
     let written = inner.typescript_typename();
     // The brand is an intersection, which binds tighter than the union a `Result` is written as.
     let ts_inner_type =
@@ -9301,6 +9403,7 @@ fn branded_inner_is_composite(inner: &FieldDef) -> bool {
         | FieldDefType::I16
         | FieldDefType::I32
         | FieldDefType::I64
+        | FieldDefType::I64Digits
         | FieldDefType::Isize
         | FieldDefType::NumberLiteral(_)
         | FieldDefType::SiblingType(..)
@@ -9310,6 +9413,7 @@ fn branded_inner_is_composite(inner: &FieldDef) -> bool {
         | FieldDefType::U16
         | FieldDefType::U32
         | FieldDefType::U64
+        | FieldDefType::U64Digits
         | FieldDefType::Usize => false,
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => false,
@@ -9975,6 +10079,8 @@ fn branded_read(
     publishes_validate: bool,
     bounded: bool,
 ) -> (DecodeWithParts, syn::ItemStruct) {
+    #[cfg(feature = "serde")]
+    digits::hang_on_struct(&mut brand);
     let mut beside = brand_decode_with(&brand, args, bounded);
     let judged = judged_read::of_struct(&mut brand, publishes_validate);
     beside.type_impl.extend(judged);
@@ -11277,6 +11383,8 @@ fn process_discriminated_enum(
     let rendered = render_discriminated_variants(tag_name, content_name, item_name, &variants.0);
     #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
     let _: &_ = &(name, &rendered);
+    #[cfg(feature = "serde")]
+    digits::hang_on_enum(&mut item_enum);
     let decode_with = enum_decode_with(&item_enum, args);
 
     #[cfg(feature = "jsonschema")]
@@ -11878,6 +11986,8 @@ fn process_externally_tagged_enum(
     if let Some(output) = guard_failure_output(&item_enum, Some(&item_enum.ident), &variants.2) {
         return output;
     }
+    #[cfg(feature = "serde")]
+    digits::hang_on_enum(&mut item_enum);
     let decode_with = enum_decode_with(&item_enum, args);
     let members = external_members(
         &item_enum.ident,
@@ -12009,6 +12119,10 @@ fn tagged_content(inner: &FieldDef, written: &syn::Type) -> TaggedContent {
         | FieldDefType::U32
         | FieldDefType::U64
         | FieldDefType::Usize => refused_as("an integer"),
+        // The macro writes it as its digit string, which serde's tag refuses as a string.
+        FieldDefType::U64Digits | FieldDefType::I64Digits => {
+            TaggedContent::Refused("an integer written as a string of its digits", "a string")
+        }
         FieldDefType::Char => refused_as("a char"),
         FieldDefType::String | FieldDefType::StringLiteral(_) => refused_as("a string"),
         #[cfg(feature = "chrono")]
@@ -12097,7 +12211,10 @@ fn internally_tagged_guard_errors(
             {
                 return None;
             }
-            let inner = with_as_number(get_field_def("_inner", &field.ty, ""), &field.attrs);
+            let mut inner = with_as_number(get_field_def("_inner", &field.ty, ""), &field.attrs);
+            if digits::written_as_digits(Some(&variant_name.to_string()), 0) {
+                inner = inner.with_digit_leaves();
+            }
             let content = tagged_content(&inner, &field.ty);
             if matches!(content, TaggedContent::Flattened)
                 && let Some(refused) =
@@ -12557,6 +12674,8 @@ fn process_internally_tagged_enum(
     if let Some(output) = guard_failure_output(&item_enum, Some(&item_enum.ident), &variants.2) {
         return output;
     }
+    #[cfg(feature = "serde")]
+    digits::hang_on_enum(&mut item_enum);
     let decode_with = enum_decode_with(&item_enum, args);
 
     let members = render_internal_variants(&variants.0, &item_enum, tag_name);
@@ -13027,6 +13146,10 @@ fn field_json_schema_value(fld: &FieldDef) -> proc_macro2::TokenStream {
         FieldDefType::NumberLiteral(value) => {
             quote! { serde_json::json!({ "type": "number", "const": #value }) }
         }
+        FieldDefType::U64Digits | FieldDefType::I64Digits => {
+            let pattern = digits_json_pattern(&fld.field_type);
+            quote! { serde_json::json!({ "type": "string", "pattern": #pattern }) }
+        }
         FieldDefType::U8
         | FieldDefType::U16
         | FieldDefType::U32
@@ -13179,7 +13302,7 @@ fn read_untagged_member_unjudged(
 #[cfg(feature = "serde")]
 fn untagged_member_field_def(
     ctx: &FieldContext<'_>,
-    field: &Field,
+    (field, index): (&Field, usize),
     field_name: &str,
     final_field_name: &str,
     prop_meta: ModelSchemaPropMeta,
@@ -13188,6 +13311,9 @@ fn untagged_member_field_def(
 ) -> (FieldDef, Vec<proc_macro2::TokenStream>) {
     let (mut field_def, written_def) =
         untagged_member_field_defs(field, final_field_name, ctx.type_parameters);
+    if digits::written_as_digits(ctx.variant_ident, index) {
+        field_def = field_def.with_digit_leaves();
+    }
     apply_serde_key_omission(&mut field_def, field);
     let serde_guard_errors = field_guard_errors(
         field,
@@ -13314,7 +13440,7 @@ fn collect_untagged_variant_members(
 
         let (mut member_def, member_guard_errors) = untagged_member_field_def(
             &member_ctx,
-            field,
+            (field, index),
             &field_name,
             &wire_name,
             prop_meta,
@@ -13785,6 +13911,8 @@ fn process_untagged_enum(
 
     #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
     let _: &_ = &(name, item_name, &ts_parts, &zod_parts, &json_parts);
+    #[cfg(feature = "serde")]
+    digits::hang_on_enum(&mut item_enum);
     let decode_with = enum_decode_with(&item_enum, args);
 
     #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
@@ -14323,6 +14451,7 @@ fn chrono_json_schema_text(field_type: &FieldDefType) -> Option<ChronoText> {
         | FieldDefType::I16
         | FieldDefType::I32
         | FieldDefType::I64
+        | FieldDefType::I64Digits
         | FieldDefType::Isize
         | FieldDefType::Map(..)
         | FieldDefType::NumberLiteral(_)
@@ -14337,6 +14466,7 @@ fn chrono_json_schema_text(field_type: &FieldDefType) -> Option<ChronoText> {
         | FieldDefType::U16
         | FieldDefType::U32
         | FieldDefType::U64
+        | FieldDefType::U64Digits
         | FieldDefType::Unknown
         | FieldDefType::Usize => None,
         #[cfg(feature = "mongodb")]
@@ -14392,6 +14522,10 @@ fn scalar_field_json_schema_item(fld: &FieldDef) -> Option<proc_macro2::TokenStr
         }
         FieldDefType::NumberLiteral(value) => {
             quote! { { "type": "number", "const": #value } }
+        }
+        FieldDefType::U64Digits | FieldDefType::I64Digits => {
+            let pattern = digits_json_pattern(&fld.field_type);
+            quote! { { "type": "string", "pattern": #pattern } }
         }
         FieldDefType::U8
         | FieldDefType::U16
@@ -14820,10 +14954,12 @@ fn map_key_path(key: &FieldDef) -> MapKeyPath<'_> {
         | FieldDefType::U16
         | FieldDefType::U32
         | FieldDefType::U64
+        | FieldDefType::U64Digits
         | FieldDefType::I8
         | FieldDefType::I16
         | FieldDefType::I32
         | FieldDefType::I64
+        | FieldDefType::I64Digits
         | FieldDefType::Usize
         | FieldDefType::Isize
         | FieldDefType::F32
@@ -14876,11 +15012,11 @@ fn map_key_element_name(key: &FieldDef) -> String {
         FieldDefType::U8 => "u8".to_owned(),
         FieldDefType::U16 => "u16".to_owned(),
         FieldDefType::U32 => "u32".to_owned(),
-        FieldDefType::U64 => "u64".to_owned(),
+        FieldDefType::U64 | FieldDefType::U64Digits => "u64".to_owned(),
         FieldDefType::I8 => "i8".to_owned(),
         FieldDefType::I16 => "i16".to_owned(),
         FieldDefType::I32 => "i32".to_owned(),
-        FieldDefType::I64 => "i64".to_owned(),
+        FieldDefType::I64 | FieldDefType::I64Digits => "i64".to_owned(),
         FieldDefType::Usize => "usize".to_owned(),
         FieldDefType::Isize => "isize".to_owned(),
         FieldDefType::F32 => "f32".to_owned(),
@@ -14948,10 +15084,12 @@ fn map_key_rejection(fld: &FieldDef) -> Option<MapKeyRejection> {
         | FieldDefType::U16
         | FieldDefType::U32
         | FieldDefType::U64
+        | FieldDefType::U64Digits
         | FieldDefType::I8
         | FieldDefType::I16
         | FieldDefType::I32
         | FieldDefType::I64
+        | FieldDefType::I64Digits
         | FieldDefType::Usize
         | FieldDefType::Isize
         | FieldDefType::F32
@@ -15165,6 +15303,7 @@ fn build_map_member_item(value: &FieldDef) -> Result<MapMemberItem, MapMemberRej
         | FieldDefType::I16
         | FieldDefType::I32
         | FieldDefType::I64
+        | FieldDefType::I64Digits
         | FieldDefType::Isize
         | FieldDefType::NumberLiteral(_)
         | FieldDefType::String
@@ -15173,6 +15312,7 @@ fn build_map_member_item(value: &FieldDef) -> Result<MapMemberItem, MapMemberRej
         | FieldDefType::U16
         | FieldDefType::U32
         | FieldDefType::U64
+        | FieldDefType::U64Digits
         | FieldDefType::Usize => MapMemberItem::Fragment(scalar_slot_item(value)),
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime
@@ -15453,6 +15593,34 @@ fn build_numeric_field_schema(
     }
 }
 
+/// Builds the JSON schema for a `u64` or an `i64` field written as its digit string. A declared
+/// bound has no keyword on a string, and the schema states the digits alone.
+#[cfg(feature = "jsonschema")]
+fn build_digits_field_schema(fld: &FieldDef, field_name_str: &str) -> proc_macro2::TokenStream {
+    let pattern = digits_json_pattern(&fld.field_type);
+    let schema = nullable_slot_json_schema_value(
+        fld,
+        arrayed_json_schema_value(
+            fld,
+            quote! { serde_json::json!({ "type": "string", "pattern": #pattern }) },
+        ),
+    );
+    quote! {
+        properties.insert(#field_name_str.to_string(), { #schema });
+    }
+}
+
+/// The pattern the digit string of a `u64` or an `i64` matches: an optional sign for an `i64`,
+/// then `0` or digits that start with no `0`.
+#[cfg(feature = "jsonschema")]
+const fn digits_json_pattern(field_type: &FieldDefType) -> &'static str {
+    if matches!(field_type, FieldDefType::I64Digits) {
+        "^-?(0|[1-9][0-9]*)$"
+    } else {
+        "^(0|[1-9][0-9]*)$"
+    }
+}
+
 /// Builds the JSON schema for a `bool` field.
 #[cfg(feature = "jsonschema")]
 fn build_boolean_field_schema(fld: &FieldDef, field_name_str: &str) -> proc_macro2::TokenStream {
@@ -15666,6 +15834,9 @@ fn build_field_type_schema(fld: &FieldDef, field_name_str: &str) -> proc_macro2:
             // The arm has matched exactly the types the mapping answers a keyword for.
             let keyword = scalar_json_type_keyword(field_type).unwrap();
             build_numeric_field_schema(fld, field_name_str, keyword)
+        }
+        FieldDefType::U64Digits | FieldDefType::I64Digits => {
+            build_digits_field_schema(fld, field_name_str)
         }
         FieldDefType::Boolean => build_boolean_field_schema(fld, field_name_str),
         FieldDefType::Char => build_char_field_schema(fld, field_name_str),
@@ -16667,7 +16838,7 @@ fn generate_numeric_validation_code(
     rust_type_str: &str,
     meta: &ModelSchemaPropMeta,
     shape: &ConstrainedShape,
-    field_ty: &syn::Type,
+    (field_ty, digit_shape): (&syn::Type, Option<&digits::Held>),
 ) -> FieldValidationCode {
     let wraps: &[ConstraintWrap] = &shape.wraps;
     let validate_value_fn_name = format!("validate_{}_value", member.stem);
@@ -16707,6 +16878,14 @@ fn generate_numeric_validation_code(
 
     let deserializer = if ends_on_a_borrow(wraps) {
         quote! {}
+    } else if let Some(held) = digit_shape {
+        digits_bound_hook(
+            &deserialize_fn_ident,
+            &validate_value_fn_ident,
+            field_ty,
+            wraps,
+            held,
+        )
     } else if wraps.is_empty() {
         let refusal = refusal_from_violations();
         quote! {
@@ -16841,6 +17020,38 @@ fn list_hook_header(wraps: &[ConstraintWrap]) -> Option<ListHookHeader> {
     })
 }
 
+/// The serde hook of a member of type `field_ty` whose integers are written as digit strings, held
+/// as `digit_shape`: the member read from its digits, then each value its bound reaches under
+/// `wraps` held to `validator`.
+#[cfg(feature = "serde")]
+fn digits_bound_hook(
+    deserializer: &proc_macro2::Ident,
+    validator: &proc_macro2::Ident,
+    field_ty: &syn::Type,
+    wraps: &[ConstraintWrap],
+    digit_shape: &digits::Held,
+) -> proc_macro2::TokenStream {
+    let head = wrap_binding(0);
+    let leaf = constraint_leaf(CheckSink::Fail, &walked_value(wraps), validator);
+    let walk = walk_wraps(wraps, &head, 1, &leaf);
+    let refusal = refusal_from_violations();
+    let read = digits::read_block(digit_shape, field_ty, &quote! { deserializer });
+    quote! {
+        pub fn #deserializer<'de, D>(deserializer: D) -> ::core::result::Result<#field_ty, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            let read: #field_ty = #read;
+            let check = |#head: &#field_ty| -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
+                #walk
+                ::core::result::Result::Ok(())
+            };
+            check(&read).map_err(#refusal)?;
+            ::core::result::Result::Ok(read)
+        }
+    }
+}
+
 /// The serde hook of a list written under `wraps`, or nothing for one a reference borrows.
 #[cfg(feature = "serde")]
 fn list_deserializer(
@@ -16886,6 +17097,7 @@ fn generate_list_validation_code(
     member: &CheckedMember,
     meta: &ModelSchemaPropMeta,
     wraps: &[ConstraintWrap],
+    (field_ty, digit_shape): (&syn::Type, Option<&digits::Held>),
 ) -> FieldValidationCode {
     let validator = proc_macro2::Ident::new(
         &format!("validate_{}_value", member.stem),
@@ -16901,7 +17113,10 @@ fn generate_list_validation_code(
         meta.max_length,
         member.reported.as_deref(),
     );
-    let deserialize_fn = list_deserializer(&deserializer, &validator, wraps);
+    let deserialize_fn = digit_shape.map_or_else(
+        || list_deserializer(&deserializer, &validator, wraps),
+        |held| digits_bound_hook(&deserializer, &validator, field_ty, wraps, held),
+    );
     FieldValidationCode {
         module_items: quote! {
             #validate_fn
@@ -18358,11 +18573,10 @@ fn process_field(
 
     field.attrs = new_attrs;
 
-    let field_type: &syn::Type = &field.ty;
-
     let field_docs = build_jsdoc_body(get_field_docs(field).as_deref(), &final_name);
 
-    let mut field_def = get_field_def(&final_name, field_type, &field_docs);
+    let mut field_def = get_field_def(&final_name, &field.ty, &field_docs)
+        .with_digit_leaves_where(digits::written_as_digits(ctx.variant_ident, index));
 
     // Resolve `Self` references to the concrete type name so recursive fields (e.g. `Vec<Self>`)
     // are treated exactly like `Vec<EnclosingType>`.
@@ -18572,6 +18786,10 @@ fn member_read_hook(
     own_bound: Option<&proc_macro2::TokenStream>,
     reported: Option<&str>,
 ) -> Option<(proc_macro2::TokenStream, Vec<syn::Attribute>)> {
+    // The member's digit strings are read by a function of their own, and serde admits one.
+    if digits::written_as_digits(ctx.variant_ident, index) {
+        return None;
+    }
     // A member's own bound stands in for what its type declares, a list's count apart, and a
     // flattened member is walked whatever it writes.
     let walked_below = own_bound.is_none() || field_def.is_list() || is_flattened_field(field);
@@ -19256,9 +19474,17 @@ fn generate_field_validation(
 
     let counts_items =
         model_schema_prop_meta.min_length.is_some() || model_schema_prop_meta.max_length.is_some();
+    // A member that writes its integers as digit strings reads them through its own hook as well.
+    let digit_shape = digits::recorded(ctx.variant_ident, index).map(|written| written.held);
     let generated = match &shape.leaf {
-        ConstraintLeaf::List => counts_items
-            .then(|| generate_list_validation_code(&member, model_schema_prop_meta, &shape.wraps)),
+        ConstraintLeaf::List => counts_items.then(|| {
+            generate_list_validation_code(
+                &member,
+                model_schema_prop_meta,
+                &shape.wraps,
+                (&field.ty, digit_shape.as_ref()),
+            )
+        }),
         ConstraintLeaf::Named(_) | ConstraintLeaf::Path | ConstraintLeaf::Str => {
             has_string_constraints.then(|| {
                 generate_string_validation_code(&member, model_schema_prop_meta, &shape, &field.ty)
@@ -19270,7 +19496,7 @@ fn generate_field_validation(
                 rust_type,
                 model_schema_prop_meta,
                 &shape,
-                &field.ty,
+                (&field.ty, digit_shape.as_ref()),
             )
         }),
     };
@@ -19622,11 +19848,13 @@ fn text_key_names(key: &FieldDef) -> Option<proc_macro2::TokenStream> {
         | FieldDefType::I16
         | FieldDefType::I32
         | FieldDefType::I64
+        | FieldDefType::I64Digits
         | FieldDefType::Isize
         | FieldDefType::U8
         | FieldDefType::U16
         | FieldDefType::U32
         | FieldDefType::U64
+        | FieldDefType::U64Digits
         | FieldDefType::Usize => INTEGER_KEY_PATTERN,
         FieldDefType::F32 | FieldDefType::F64 => NUMBER_KEY_PATTERN,
         FieldDefType::BooleanLiteral(_)

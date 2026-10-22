@@ -538,8 +538,8 @@ fn an_untagged_enum_takes_the_variant_serde_takes() {
     let rows = [
         stuck("a labelled carton", r#"{"label":"A"}"#),
         stuck("an unlabelled carton", r#"{"label":""}"#),
-        stuck("a number the bound holds", "3"),
-        stuck("a number the bound refuses", "0"),
+        stuck("a number the bound holds", r#""3""#),
+        stuck("a number the bound refuses", r#""0""#),
         stuck("a tray", r#""TR""#),
         stuck("a text the bound of a tray refuses", r#""T""#),
         stuck("a tray its check refuses", r#""XX""#),

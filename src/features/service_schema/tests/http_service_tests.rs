@@ -1,8 +1,8 @@
 //! `ts_http_service()`, read off the emitted text.
 
 use super::{
-    BYTES_HTTP_SERVICE, EMITTED_CLIENT_TEST_SERVICE, MIXED_HTTP_SERVICE, MIXED_SERVICE,
-    MULTIPART_HTTP_SERVICE, PATH_BOUND_HTTP_SERVICE, QUERY_HTTP_SERVICE,
+    BYTES_HTTP_SERVICE, DIGIT_QUERY_HTTP_SERVICE, EMITTED_CLIENT_TEST_SERVICE, MIXED_HTTP_SERVICE,
+    MIXED_SERVICE, MULTIPART_HTTP_SERVICE, PATH_BOUND_HTTP_SERVICE, QUERY_HTTP_SERVICE,
     REQUIRED_HEADER_HTTP_SERVICE, RESERVED_WORD_SERVICE, SHADOWED_LOCAL_SERVICE,
     STREAM_HTTP_SERVICE, TS_UNIT_SUCCESS_SERVICE, http_service_of,
 };
@@ -99,8 +99,18 @@ export type ConversationClientServiceHttpResponse = {
 /** Decides what one fault answers with. The default: 404 unknown-operation, 500 handler-panic, 400 otherwise, the fault as JSON. */
 export type ConversationClientServiceHttpFaultHandler = (fault: ConversationClientServiceFault) => ConversationClientServiceHttpResponse;
 
+/** `value` as it is written to the wire: each `bigint` as the string of its decimal digits. */
+function conversationClientServiceHttpAnswered(value: unknown): unknown {
+  if (typeof value === \"bigint\") return value.toString();
+  if (Array.isArray(value)) return value.map((held) => conversationClientServiceHttpAnswered(held));
+  if (typeof value === \"object\" && value !== null && Object.getPrototypeOf(value) === Object.prototype) {
+    return Object.fromEntries(Object.entries(value).map(([key, held]) => [key, conversationClientServiceHttpAnswered(held)]));
+  }
+  return value;
+}
+
 function conversationClientServiceHttpJson(status: number, headers: ReadonlyArray<readonly [string, string]>, value: unknown): ConversationClientServiceHttpResponse {
-  return { status, headers: [...headers, [\"content-type\", \"application/json\"]], body: new TextEncoder().encode(JSON.stringify(value)) };
+  return { status, headers: [...headers, [\"content-type\", \"application/json\"]], body: new TextEncoder().encode(JSON.stringify(conversationClientServiceHttpAnswered(value))) };
 }
 
 export function conversationClientServiceHttpDefaultFaultHandler(fault: ConversationClientServiceFault): ConversationClientServiceHttpResponse {
@@ -352,6 +362,45 @@ fn a_generated_bodyless_message_reads_its_unbound_fields_off_the_query_with_thei
     );
 }
 
+/// A generated message's `i64` is read from the string of its digits, so the path and the query
+/// hand it their text, where a `u32` is coerced to a number.
+#[test]
+fn a_generated_messages_i64_is_handed_the_text_of_the_path_and_the_query() {
+    let written = http_service_of(DIGIT_QUERY_HTTP_SERVICE);
+    for expected in [
+        "message[\"tally\"] = tally;",
+        "message[\"limit\"] = raw === undefined ? null : raw;",
+        "message[\"ids\"] = raw === undefined ? null : (raw).split(\",\").map((piece: string) => \
+         piece);",
+        "message[\"page\"] = raw === undefined ? null : tallyClientServiceHttpCoerceNumber(raw);",
+    ] {
+        assert!(
+            written.contains(expected),
+            "missing {expected}. Got: {written}"
+        );
+    }
+}
+
+/// What the dispatcher answers is written as each client writes a message: each `bigint` as the
+/// string of its digits.
+#[test]
+fn the_answer_is_written_with_each_bigint_as_its_digits() {
+    let written = http_service_of(QUERY_HTTP_SERVICE);
+    assert!(
+        written.contains(
+            "function searchClientServiceHttpAnswered(value: unknown): unknown {\n  \
+             if (typeof value === \"bigint\") return value.toString();"
+        ),
+        "got: {written}"
+    );
+    assert!(
+        written.contains(
+            "body: new TextEncoder().encode(JSON.stringify(searchClientServiceHttpAnswered(value)))"
+        ),
+        "got: {written}"
+    );
+}
+
 #[test]
 fn a_fully_path_bound_generated_message_reads_no_query_beside_one_that_does() {
     let written = http_service_of(PATH_BOUND_HTTP_SERVICE);
@@ -493,8 +542,8 @@ fn a_multipart_operation_reads_its_own_fields_off_parts_and_hands_a_bound_part_t
                 .contains("const attachment = parts.find(([name]) => name === \"file\")?.[1];")
             && dispatched.contains("\"a required multipart part was not carried\"")
             && dispatched.contains(
-                "return { answered: await impl.uploadDocument(ctx, received.data, attachment), \
-                 headers: [] };"
+                "return { answered: uploadClientServiceAnswered(await impl.uploadDocument(ctx, \
+                 received.data, attachment)), headers: [] };"
             )
             && dispatched.contains("return enveloped(ctx, operation, payload, headers, parts);"),
         "the operation is answered by this module's own `dispatch`, which reads and checks the \

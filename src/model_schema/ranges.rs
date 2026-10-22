@@ -20,7 +20,8 @@ use syn::{Fields, GenericArgument, Item, PathArguments, Type, TypePath};
 use super::judged_read::unclaimed_parameter;
 use crate::features::serde::parse_serde_key_omission;
 use crate::field_type::{
-    RangeKind, names_std_ops, names_std_result, written_std_range, written_std_result,
+    RangeKind, names_std_ops, names_std_result, undescribable_primitive, written_std_range,
+    written_std_result,
 };
 use crate::utils::{written_names, written_type};
 
@@ -209,6 +210,76 @@ fn result_identity_check(path: &TypePath) -> Option<TokenStream> {
             is_std_result::<(), ()>
         };
     })
+}
+
+/// The first primitive [`undescribable_primitive`] names that `ty` reaches at any depth, written
+/// by its bare name, where `kept` does not answer for that name, or under `core::primitive` or
+/// `std::primitive`.
+pub fn undescribable_primitive_reached<F>(ty: &Type, kept: &F) -> Option<&'static str>
+where
+    F: Fn(&str) -> bool,
+{
+    let written = written_type(ty);
+    if let Type::Path(path) = written {
+        if path.qself.is_none()
+            && let Some(named) = undescribable_primitive_path(&path.path, kept)
+        {
+            return Some(named);
+        }
+        path.path
+            .segments
+            .iter()
+            .filter_map(|segment| match &segment.arguments {
+                PathArguments::AngleBracketed(arguments) => Some(&arguments.args),
+                PathArguments::None | PathArguments::Parenthesized(_) => None,
+            })
+            .flatten()
+            .find_map(|argument| {
+                if let GenericArgument::Type(held) = argument {
+                    undescribable_primitive_reached(held, kept)
+                } else {
+                    None
+                }
+            })
+    } else if let Type::Reference(reference) = written {
+        undescribable_primitive_reached(&reference.elem, kept)
+    } else if let Type::Array(array) = written {
+        undescribable_primitive_reached(&array.elem, kept)
+    } else if let Type::Slice(slice) = written {
+        undescribable_primitive_reached(&slice.elem, kept)
+    } else if let Type::Tuple(tuple) = written {
+        tuple
+            .elems
+            .iter()
+            .find_map(|position| undescribable_primitive_reached(position, kept))
+    } else if let Type::Paren(paren) = written {
+        undescribable_primitive_reached(&paren.elem, kept)
+    } else {
+        None
+    }
+}
+
+/// The primitive [`undescribable_primitive`] names that `path` is, written alone or under
+/// `core::primitive` or `std::primitive`.
+fn undescribable_primitive_path<F>(path: &syn::Path, kept: &F) -> Option<&'static str>
+where
+    F: Fn(&str) -> bool,
+{
+    let segments: Vec<&syn::PathSegment> = path.segments.iter().collect();
+    match segments.as_slice() {
+        [only] if path.leading_colon.is_none() && only.arguments.is_none() => {
+            let name = only.ident.unraw().to_string();
+            undescribable_primitive(&name).filter(|_| !kept(&name))
+        }
+        [owner, module, last]
+            if (owner.ident == "core" || owner.ident == "std")
+                && module.ident == "primitive"
+                && last.arguments.is_none() =>
+        {
+            undescribable_primitive(&last.ident.unraw().to_string())
+        }
+        _ => None,
+    }
 }
 
 /// The first of `serde_json`'s two types that hold any JSON value, `Value` and `Map`, `ty` reaches

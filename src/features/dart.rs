@@ -26,6 +26,7 @@ use crate::field_type::{
     dart_lower_camel, dart_to_json_argument, format_number_literal, get_field_def, is_plain_enum,
     is_sequence_wrapper,
 };
+use crate::model_schema::digits;
 use crate::model_schema::variant_wire_kind;
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
 use crate::utils::{
@@ -207,6 +208,7 @@ impl ClassBodyParts {
 pub struct DartTypeArgs<'args> {
     /// The functions `check` names, in the order written.
     pub check: &'args [FunctionName],
+    /// The members whose `u64` and `i64` are written as digit strings.
     /// The default type declared per type parameter, which the string check of a brand over one
     /// of its own parameters holds.
     pub default_types: &'args [(Ident, syn::Type)],
@@ -632,7 +634,7 @@ fn dart_generic_params(generics: &syn::Generics) -> String {
 /// `ts_optional`, `as_number`, a bound or a check needs this filled in separately, exactly as
 /// `process_field` does for the other three surfaces.
 fn field_def_with_prop_meta(name: &str, member: &Field, args: &DartTypeArgs<'_>) -> FieldDef {
-    let mut field_def = get_field_def(name, &member.ty, "");
+    let mut field_def = digits::member_def(member, get_field_def(name, &member.ty, ""));
     field_def.model_schema_prop_meta = Some((args.member_meta)(member));
     field_def
 }
@@ -1084,7 +1086,9 @@ fn dart_base(field: &FieldDef) -> String {
         | FieldDefType::I32
         | FieldDefType::I64
         | FieldDefType::Usize
-        | FieldDefType::Isize => "int".to_owned(),
+        | FieldDefType::Isize
+        | FieldDefType::I64Digits => "int".to_owned(),
+        FieldDefType::U64Digits => "BigInt".to_owned(),
         FieldDefType::F32 | FieldDefType::F64 => "double".to_owned(),
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => "ObjectId".to_owned(),
@@ -1158,10 +1162,12 @@ fn dart_map_key_decode(key: &FieldDef, expr: &str) -> String {
             | FieldDefType::U16
             | FieldDefType::U32
             | FieldDefType::U64
+            | FieldDefType::U64Digits
             | FieldDefType::I8
             | FieldDefType::I16
             | FieldDefType::I32
             | FieldDefType::I64
+            | FieldDefType::I64Digits
             | FieldDefType::Usize
             | FieldDefType::Isize => {
                 let read = format!("int.parse({expr})");
@@ -1209,10 +1215,12 @@ fn dart_map_key_encode(key: &FieldDef, expr: &str) -> String {
             | FieldDefType::U16
             | FieldDefType::U32
             | FieldDefType::U64
+            | FieldDefType::U64Digits
             | FieldDefType::I8
             | FieldDefType::I16
             | FieldDefType::I32
             | FieldDefType::I64
+            | FieldDefType::I64Digits
             | FieldDefType::Usize
             | FieldDefType::Isize
             | FieldDefType::F32
@@ -1368,6 +1376,9 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
         | FieldDefType::Isize => {
             let taken = format!("{expr} as int");
             forms::number_held(&field.field_type, &taken).unwrap_or(taken)
+        }
+        FieldDefType::U64Digits | FieldDefType::I64Digits => {
+            forms::digits_read(&field.field_type, expr)
         }
         FieldDefType::F32 | FieldDefType::F64 => {
             let taken = format!("({expr} as num).toDouble()");
@@ -1862,6 +1873,9 @@ fn dart_encode_at(field: &FieldDef, level: u8, expr: &str) -> String {
         | FieldDefType::F32 => {
             forms::number_held(&field.field_type, expr).unwrap_or_else(|| expr.to_owned())
         }
+        FieldDefType::U64Digits | FieldDefType::I64Digits => {
+            forms::digits_sent(&field.field_type, expr)
+        }
         FieldDefType::Char => forms::text_sent(TextForm::Char, expr),
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => format!("({expr}).toJson()"),
@@ -2033,6 +2047,27 @@ fn count_elements(list: &str, named: Option<&str>, bounds: &Bounds<'_>) -> Vec<S
     elements
 }
 
+/// The range `bounds` hold `number`, a `BigInt`, to, each bound compared as the integer the Rust
+/// validator casts it to.
+fn whole_range_elements(number: &str, named: Option<&str>, bounds: &Bounds<'_>) -> Vec<String> {
+    let mut elements = Vec::new();
+    if let Some(least) = bounds.minimum {
+        let said = dart_violation(Bound::Minimum(least), named, number);
+        elements.push(format!(
+            "if ({number} < BigInt.parse('{:.0}')) {said}",
+            least.trunc()
+        ));
+    }
+    if let Some(most) = bounds.maximum {
+        let said = dart_violation(Bound::Maximum(most), named, number);
+        elements.push(format!(
+            "if ({number} > BigInt.parse('{:.0}')) {said}",
+            most.trunc()
+        ));
+    }
+    elements
+}
+
 /// The range `bounds` hold `number` to, quoted back as `shown` writes it.
 fn range_elements(
     number: &str,
@@ -2084,7 +2119,9 @@ fn measured_elements(
         | FieldDefType::I32
         | FieldDefType::I64
         | FieldDefType::Usize
-        | FieldDefType::Isize => range_elements(value, value, named, bounds),
+        | FieldDefType::Isize
+        | FieldDefType::I64Digits => range_elements(value, value, named, bounds),
+        FieldDefType::U64Digits => whole_range_elements(value, named, bounds),
         FieldDefType::F32 | FieldDefType::F64 | FieldDefType::NumberLiteral(_) => {
             let elements = range_elements(value, &format!("_number({value})"), named, bounds);
             if !elements.is_empty() {
@@ -2331,6 +2368,7 @@ fn held_at(
         | FieldDefType::I16
         | FieldDefType::I32
         | FieldDefType::I64
+        | FieldDefType::I64Digits
         | FieldDefType::Isize
         | FieldDefType::NumberLiteral(_)
         | FieldDefType::String
@@ -2340,6 +2378,7 @@ fn held_at(
         | FieldDefType::U16
         | FieldDefType::U32
         | FieldDefType::U64
+        | FieldDefType::U64Digits
         | FieldDefType::Unknown
         | FieldDefType::Usize => Vec::new(),
         #[cfg(feature = "mongodb")]
