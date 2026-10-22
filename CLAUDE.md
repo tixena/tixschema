@@ -1849,17 +1849,25 @@ to keep.
   one value over its holder's keys. A holder with no member written under a key opens its object
   all the same. `tests/swift_tests/flattened_options.rs` pins the text, and
   `run_swift_flattened_options.rs` runs it against serde.
-- **A flattened `Option` is read as `nil` wherever the type it holds does not read**, as serde
-  reads `None`: `FlatMapDeserializer::deserialize_option` answers `None` for any error of the
-  type's read, a key absent or held as a type it does not read. `flattened_option`, from
-  `present_statement`, reads the type under the `Option` as a flattened member of that type is
-  read, unjudged where `validate()` walks it and handed the keys taken where it takes them, inside
-  `do { ... } catch { self.{member} = nil }`, which covers a read of any number of statements. A
-  model it holds that breaks its rule still refuses the payload through `validate()`, as the Rust
-  read refuses it. A member that names a function is read from what its functions answer, and
-  refused where its type does not read the answer, as the Rust read refuses it, and a flattened
-  map, optional or not, by `flattened_map`. `tests/swift_tests/flattened_options.rs` pins the
-  text, and `run_swift_flattened_options.rs` reads each payload against serde.
+- **A flattened `Option` is read as `nil` where the object it is handed holds none of its type's
+  keys, and a key there that does not read refuses the payload**, as TypeScript and Zod refuse
+  it and Kotlin's `flatten_struct_field_plan` reads it. serde reads `None` there,
+  `FlatMapDeserializer::deserialize_option` answering `None` for any error of the type's read.
+  `flattened_option`, from `present_statement`, reads the type under the `Option` as a flattened
+  member of that type is read, unjudged where `validate()` walks it and handed the keys taken
+  where it takes them, behind `if {test} { ... } else { self.{member} = nil }`. The test is
+  `preprocess::holds_one_of`: one of the keys `preprocess::keys_taken_by` answers for the type, in
+  `decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys`, less the `Handed` keys where the
+  member is withheld, so the key type is the one `read::both` writes into the holder. A type
+  `keys_taken_by` answers no key for keeps `do { ... } catch { self.{member} = nil }`, which reads
+  `nil` wherever its read throws: a struct declared below its holder or in another crate, one with
+  a flattened member of its own or that names a function on itself, an enum, an alias and a type
+  parameter. A model it holds that breaks its rule still refuses the payload through `validate()`,
+  as the Rust read refuses it. A member that names a function is read from what its functions
+  answer, and refused where its type does not read the answer, as the Rust read refuses it, and a
+  flattened map, optional or not, by `flattened_map`. `tests/swift_tests/flattened_options.rs`
+  pins the text, and `run_swift_flattened_options.rs` reads each payload against serde, the rows
+  serde reads as `None` and the Swift read refuses held to the refusal it prints.
 - **Every flattened member is handed the keys its holder withholds, the first one included.**
   `member_reads` hands each a `Handed`: the `taken + [...]` of the holder's own keys and those
   each member flattened ahead took, and `withheld`, whether any key can be withheld: the holder

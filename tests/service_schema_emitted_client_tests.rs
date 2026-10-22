@@ -440,16 +440,16 @@ mod swift_flattened_models;
 mod run_swift_flattened;
 
 /// A flattened `Option` beside a member of its holder's own, alone in its holder and in a variant
-/// under a tag key, of a model `validate()` walks, of a struct that reads the keys no member
-/// around it took and read from what a function answers, and a struct flattened bare beside a
-/// member of its holder's own.
+/// under a tag key, of a struct of two keys, of a struct declared below its holder, of a model
+/// `validate()` walks, of a struct that reads the keys no member around it took and read from what
+/// a function answers, and a struct flattened bare beside a member of its holder's own.
 #[cfg(test)]
 #[cfg(feature = "swift")]
 #[path = "swift_tests/flattened_options_models.rs"]
 mod swift_flattened_options_models;
 
-/// Those members, held, absent and unread by their type, read and written back by the emitted
-/// Swift types.
+/// Those members, held, absent and held with a key their type does not read, read and written
+/// back by the emitted Swift types.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_swift_flattened_options.rs"]
 mod run_swift_flattened_options;

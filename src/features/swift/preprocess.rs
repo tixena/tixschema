@@ -165,6 +165,26 @@ pub(super) fn taken_with<'own>(own: impl Iterator<Item = &'own str>) -> String {
     }
 }
 
+/// Whether the object a flattened member reads from `decoder` holds one of `keys`, as a Swift
+/// condition: the object less `without`, the keys it is read without, where it is handed fewer
+/// keys than its holder's object holds.
+pub(super) fn holds_one_of(keys: &[String], without: Option<&str>) -> String {
+    let listed: Vec<String> = keys
+        .iter()
+        .map(|key| format!("\"{}\"", swift_literal_text(key)))
+        .collect();
+    let handed = match without {
+        Some("taken") => " && !taken.contains($0.stringValue)".to_owned(),
+        Some(taken) => format!(" && !({taken}).contains($0.stringValue)"),
+        None => String::new(),
+    };
+    format!(
+        "try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys.contains(where: {{ \
+         [{}].contains($0.stringValue){handed} }})",
+        listed.join(", ")
+    )
+}
+
 /// The functions the member `def` describes names, in the order written.
 pub(super) fn functions(def: &FieldDef) -> &[FunctionName] {
     def.model_schema_prop_meta

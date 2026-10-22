@@ -1,12 +1,13 @@
 //! The models of the flattened `Option` members `swift_tests/flattened_options.rs` pins and
 //! `service_schema_emitted_client_tests/run_swift_flattened_options.rs` runs: a struct beside a
-//! member of its holder's own, alone in its holder and in a variant under a tag key, a map of
-//! dates alone in its holder, a struct flattened bare beside a member of its holder's own, a
-//! model `validate()` walks alone and beside a member of its holder's own, a struct that reads the
-//! keys no member around it took, and a struct read from what a function answers. serde writes
-//! the keys of a flattened member that holds a value beside its holder's own, and nothing for one
-//! that holds none, and reads one that names no function as `None` wherever the type it holds
-//! does not read from the object it is handed.
+//! member of its holder's own, alone in its holder and in a variant under a tag key, a struct of
+//! two keys, a struct declared below its holder, a map of dates alone in its holder, a struct
+//! flattened bare beside a member of its holder's own, a model `validate()` walks alone and beside
+//! a member of its holder's own, a struct that reads the keys no member around it took, and a
+//! struct read from what a function answers. serde writes the keys of a flattened member that
+//! holds a value beside its holder's own, and nothing for one that holds none, and reads one that
+//! names no function as `None` wherever the type it holds does not read from the object it is
+//! handed.
 
 #[cfg(feature = "chrono")]
 use alloc::collections::BTreeMap;
@@ -23,15 +24,23 @@ pub const LAPPING: &str = r#"{"label":"north","note":"n"}"#;
 /// What [`Lapping`] is read from with the flattened struct absent.
 pub const LAPPING_ABSENT: &str = r#"{"note":"n"}"#;
 
-/// What [`Flaking`] and [`Kinking`] are read from: the flattened struct held.
+/// What [`Lapping`] and [`Tarring`] are read from with the flattened struct's key held as a
+/// number, which its struct does not read.
+pub const LAPPING_MISTYPED: &str = r#"{"label":5,"note":"n"}"#;
+
+/// What [`Flaking`], [`Kinking`] and [`Ratline`] are read from: the flattened struct held. What
+/// [`Painter`] is read from with one of its flattened struct's two keys.
 pub const FLAKING: &str = r#"{"label":"north"}"#;
 
 /// What [`Flaking`], [`Kinking`] and [`Fidding`] are read from with the flattened struct absent.
 pub const FLAKING_ABSENT: &str = "{}";
 
-/// What [`Flaking`] and [`Kinking`] are read from with the flattened struct's key held as a
-/// number, which its struct does not read.
+/// What [`Flaking`], [`Kinking`] and [`Ratline`] are read from with the flattened struct's key
+/// held as a number, which its struct does not read.
 pub const FLAKING_MISTYPED: &str = r#"{"label":5}"#;
+
+/// What [`Painter`] is read from: the flattened struct held, both its keys.
+pub const PAINTER: &str = r#"{"label":"north","turns":2}"#;
 
 /// What [`Kinking`] is read from with a label its rule refuses.
 pub const KINKING_SHORT: &str = r#"{"label":"n"}"#;
@@ -44,6 +53,9 @@ pub const SENNIT: &str = r#"{"kind":"Laid","label":"north","note":"n"}"#;
 
 /// What [`Sennit`] is read from with the flattened struct absent.
 pub const SENNIT_ABSENT: &str = r#"{"kind":"Laid","note":"n"}"#;
+
+/// What [`Sennit`] is read from with the flattened struct's key held as a number.
+pub const SENNIT_MISTYPED: &str = r#"{"kind":"Laid","label":5,"note":"n"}"#;
 
 /// What [`Swaging`] is read from: a date under a key of the flattened map.
 #[cfg(feature = "chrono")]
@@ -83,6 +95,37 @@ pub enum Sennit {
         tabling: Option<Tabling>,
         note: String,
     },
+}
+
+/// The member [`Painter`] flattens, which reads two keys.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Gasket {
+    pub label: String,
+    pub turns: u32,
+}
+
+/// A flattened `Option` of a struct of two keys, the one member of its holder.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Painter {
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    pub gasket: Option<Gasket>,
+}
+
+/// A flattened `Option` of [`Nippering`], declared below it, whose keys its read does not know.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Ratline {
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    pub nippering: Option<Nippering>,
+}
+
+/// The member [`Ratline`] flattens, declared below it.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Nippering {
+    pub label: String,
 }
 
 /// A flattened `Option` of a map of dates, the one member of its holder, which Swift writes as
@@ -194,25 +237,53 @@ fn serde_writes_a_flattened_option_only_where_it_holds_a_value() {
 }
 
 /// serde reads a flattened `Option` as `None` wherever the type it holds does not read from the
-/// object it is handed: a key it reads absent, or held as a type it does not read. A model
-/// `validate()` walks is read with no judgement where its keys are held, and its holder's read
-/// refuses one that breaks its rule.
+/// object it is handed: a key it reads absent, held as a type it does not read, or one of two keys
+/// with the other absent. A model `validate()` walks is read with no judgement where its keys are
+/// held, and its holder's read refuses one that breaks its rule.
 #[test]
 fn serde_reads_a_flattened_option_as_none_wherever_its_type_does_not_read() {
-    let lapping: Lapping = serde_json::from_str(LAPPING_ABSENT).unwrap();
-    assert_eq!(
-        lapping,
-        Lapping {
-            note: "n".to_owned(),
-            tabling: None,
-        }
-    );
+    for json in [LAPPING_ABSENT, LAPPING_MISTYPED] {
+        let lapping: Lapping = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            lapping,
+            Lapping {
+                note: "n".to_owned(),
+                tabling: None,
+            },
+            "{json}"
+        );
+    }
     for json in [FLAKING_ABSENT, FLAKING_MISTYPED] {
         let flaking: Flaking = serde_json::from_str(json).unwrap();
-        assert_eq!(flaking, Flaking { tabling: None });
+        assert_eq!(flaking, Flaking { tabling: None }, "{json}");
         let kinking: Kinking = serde_json::from_str(json).unwrap();
-        assert_eq!(kinking, Kinking { plaiting: None });
+        assert_eq!(kinking, Kinking { plaiting: None }, "{json}");
+        let ratline: Ratline = serde_json::from_str(json).unwrap();
+        assert_eq!(ratline, Ratline { nippering: None }, "{json}");
     }
+    let sennit: Sennit = serde_json::from_str(SENNIT_MISTYPED).unwrap();
+    assert_eq!(
+        sennit,
+        Sennit::Laid {
+            tabling: None,
+            note: "n".to_owned(),
+        }
+    );
+    let painter = |json: &str| serde_json::from_str::<Painter>(json).unwrap().gasket;
+    assert_eq!(painter(FLAKING), None);
+    assert_eq!(
+        painter(PAINTER),
+        Some(Gasket {
+            label: "north".to_owned(),
+            turns: 2,
+        })
+    );
+    assert_eq!(
+        serde_json::from_str::<Ratline>(FLAKING).unwrap().nippering,
+        Some(Nippering {
+            label: "north".to_owned(),
+        })
+    );
     let plaiting = Some(Plaiting {
         label: "north".to_owned(),
     });
@@ -222,6 +293,7 @@ fn serde_reads_a_flattened_option_as_none_wherever_its_type_does_not_read() {
         plaiting
     );
     assert_eq!(read_tarring(LAPPING_ABSENT), None);
+    assert_eq!(read_tarring(LAPPING_MISTYPED), None);
     assert_eq!(read_tarring(LAPPING), plaiting);
     for (json, refused) in [
         (
