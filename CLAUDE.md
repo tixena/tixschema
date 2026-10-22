@@ -1489,11 +1489,13 @@ consumer's view; this is what a change has to keep.
     `variant_names_when_flattened` in `src/features/serde.rs`: the name each variant serde reads
     is read under and each alias, serde's `VARIANTS`. serde's
     `FlatMapDeserializer::deserialize_enum` takes the first entry, in the object's order, under one
-    of them, and `without_first` removes that one entry from the object a `jsonDecode` answers in
-    the order written: a `switch` of one arm whose variable,
-    `rest`, calls no function. The entry depends on what is left to the enum, so the keys taken
-    ahead of it are removed first and the keys taken after it from what `without_first` answers
-    (`source`, `removed`); a holder with no flattened enum is written as it was.
+    of them, wherever it is. `first_of` hands the enum an object of that one entry, and of none
+    where no entry is, and `without_first` removes it from the object a `jsonDecode` answers in
+    the order written, for the members after the enum: each a `switch` of one arm whose variable,
+    `whole` or `rest`, calls no function. The entry depends on what is left to the enum, so the
+    keys taken ahead of it are removed first and the keys taken after it from what
+    `without_first` answers (`source`, `removed`); a holder with no flattened enum is written as
+    it was.
   - Nothing, for an enum under a tag key, an untagged one and one that names a function on
     itself. serde reads an enum under a tag alone and an untagged one as a map, which takes no
     key; it reads one under a tag and a content key as a struct of the two, which takes both,
@@ -1552,12 +1554,13 @@ resort; this is what a change has to keep.
 - **One read calls each function once.** A read that names its payload more than once, an
   optional and a tuple, holds the corrected payload under `corrected`, the variable of a `switch`
   of one arm; any other read is written around the call itself.
-- **A flattened member is read from the keys serde hands it** (`without`, `without_first`): the
-  object without the keys of the members beside it and the entries the members flattened ahead
-  of it took, and without the tag where the holder is a variant under a tag key
-  (`constructor_arguments`' `tag_key`). A
-  function the member names, and one the type it holds names, is handed those keys. A holder
-  with no member of its own hands its first flattened member `json` as it was. A struct's own
+- **A flattened member is read from the keys serde hands it** (`without`, `without_first`,
+  `first_of`): the object without the keys of the members beside it and the entries the members
+  flattened ahead of it took, and without the tag where the holder is a variant under a tag key
+  (`constructor_arguments`' `tag_key`), and an externally tagged enum the one entry of it under
+  a variant's name. A function the member names, and one the type it holds names, is handed
+  those keys. A holder with no member of its own hands its first flattened member `json` as it
+  was, an externally tagged enum apart. A struct's own
   tag is not taken out: serde hands it on too. The slot of a variant under a
   tag key is read from the object without the tag where the slot names a function, and from
   `json` as it was where it names none, so a type such a slot holds is handed the tag, where

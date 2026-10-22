@@ -3,10 +3,11 @@
 //! of its struct; and a member that names a function, which is handed the keys serde hands it,
 //! after a struct, beside a member of its holder's own and in a variant under a tag key, ahead of a
 //! struct, after each member that takes none of the keys it reads, and after an externally tagged
-//! enum, an enum under a tag key and an untagged one. serde reads the members in the order
-//! declared: a struct takes the keys it reads, an externally tagged enum the first entry under the
-//! name of a variant it reads, and every flattened member is handed every entry no member ahead of
-//! it took. A struct after a struct that reads the same key is refused.
+//! enum, an enum under a tag key and an untagged one; and an externally tagged enum beside a member
+//! of its holder's own. serde reads the members in the order declared: a struct takes the keys it
+//! reads, an externally tagged enum the first entry under the name of a variant it reads, wherever
+//! it is, and every flattened member is handed every entry no member ahead of it took. A struct
+//! after a struct that reads the same key is refused.
 
 use alloc::collections::BTreeMap;
 
@@ -27,13 +28,25 @@ pub const CLAMPING: &str = r#"{"label":"n","north":2,"note":"a"}"#;
 pub const FASTENING: &str = r#"{"north":2,"note":"a"}"#;
 
 /// What [`Loading`] is read from: one variant's entry, two variants' entries in each order, a
-/// variant's entry under its alias, and an alias after a variant's entry.
-pub const LOADING: [&str; 5] = [
+/// variant's entry under its alias, an alias after a variant's entry, a key ahead of a variant's
+/// entry, and two keys ahead of two variants' entries.
+pub const LOADING: [&str; 7] = [
     r#"{"Bay":{"label":"n"},"north":2}"#,
     r#"{"Bay":{"label":"n"},"Dock":{"label":"s"},"north":2}"#,
     r#"{"Dock":{"label":"s"},"Bay":{"label":"n"},"north":2}"#,
     r#"{"Quay":{"label":"s"},"north":2}"#,
     r#"{"Bay":{"label":"n"},"Quay":{"label":"s"},"north":2}"#,
+    r#"{"north":2,"Bay":{"label":"n"}}"#,
+    r#"{"north":2,"south":3,"Dock":{"label":"s"},"Bay":{"label":"n"}}"#,
+];
+
+/// What [`Battening`] is read from: a key no member reads ahead of a variant's entry, two such
+/// keys, the holder's own key and another ahead of two variants' entries, and no variant's entry.
+pub const BATTENING: [&str; 4] = [
+    r#"{"north":2,"Bay":{"label":"n"},"note":"a"}"#,
+    r#"{"north":2,"south":3,"Bay":{"label":"n"},"note":"a"}"#,
+    r#"{"note":"a","north":2,"Dock":{"label":"s"},"Bay":{"label":"n"}}"#,
+    r#"{"north":2,"note":"a"}"#,
 ];
 
 /// What [`Kedging`] is read from: a variant under its `rename`, one under the enum's `rename_all`,
@@ -208,6 +221,17 @@ pub struct Loading {
     pub rest: Keying,
 }
 
+/// An externally tagged enum flattened beside a member of its holder's own, which serde reads from
+/// the first entry under a variant's name wherever it is in the object, ignoring every key no
+/// member reads.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Battening {
+    #[serde(flatten)]
+    pub hatching: Hatching,
+    pub note: String,
+}
+
 /// An externally tagged enum whose variants are written under the enum's `rename_all` and under a
 /// `rename` of their own.
 #[model_schema()]
@@ -376,6 +400,8 @@ fn serde_hands_a_function_after_an_externally_tagged_enum_every_entry_but_the_va
             r#"{"Dock":{"label":"s"}} ["Bay", "north"]"#,
             r#"{"Dock":{"label":"s"}} ["north"]"#,
             r#"{"Bay":{"label":"n"}} ["Quay", "north"]"#,
+            r#"{"Bay":{"label":"n"}} ["north"]"#,
+            r#"{"Dock":{"label":"s"}} ["north", "south", "Bay"]"#,
         ]
     );
     let kedged: Vec<String> = KEDGING
@@ -397,6 +423,29 @@ fn serde_hands_a_function_after_an_externally_tagged_enum_every_entry_but_the_va
     let trimming: Trimming = serde_json::from_str(TRIMMING).unwrap();
     assert_eq!(trimming.marking.label, "m");
     assert_eq!(trimming.rest.keys, ["north"]);
+}
+
+/// An externally tagged enum beside a member of its holder's own is read from the first entry
+/// under a variant's name, after any key no member reads, and refused where no entry is under one.
+#[test]
+fn serde_reads_a_flattened_externally_tagged_enum_from_its_variants_entry_wherever_it_is() {
+    let battened: Vec<String> = BATTENING
+        .iter()
+        .map(|payload| {
+            read_of(payload, |battening: &Battening| {
+                format!("{} {}", written(&battening.hatching), battening.note)
+            })
+        })
+        .collect();
+    assert_eq!(
+        battened,
+        [
+            r#"{"Bay":{"label":"n"}} a"#,
+            r#"{"Bay":{"label":"n"}} a"#,
+            r#"{"Dock":{"label":"s"}} a"#,
+            "refused",
+        ]
+    );
 }
 
 /// A function after an enum under a tag key alone, or after an untagged one, is handed every key.
