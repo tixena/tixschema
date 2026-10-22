@@ -87,3 +87,15 @@ mod quoted_models;
 #[cfg(all(feature = "dart", feature = "serde"))]
 #[path = "dart_tests/quoted.rs"]
 mod quoted;
+
+/// `()` held in each place a value is, and a tuple struct of no slot beside it.
+#[cfg(test)]
+#[cfg(all(feature = "dart", feature = "serde"))]
+#[path = "service_schema_emitted_client_tests/unit_models.rs"]
+mod unit_models;
+
+/// What the Dart emitter reads and writes of `()`.
+#[cfg(test)]
+#[cfg(all(feature = "dart", feature = "serde"))]
+#[path = "dart_tests/units.rs"]
+mod units;

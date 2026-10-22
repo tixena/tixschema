@@ -7,7 +7,7 @@ use core::iter::once;
 
 use syn::Attribute;
 
-use super::{KotlinField, kotlin_template_text};
+use super::{KotlinField, kotlin_quoted};
 #[cfg(feature = "serde")]
 use crate::features::serde::parse_serde_field_attributes;
 
@@ -44,9 +44,9 @@ fn arms(renamed: &[(String, String)], answer: &dyn Fn(&str) -> String) -> String
         .fold(String::new(), |mut written, (alias, name)| {
             let _ = write!(
                 written,
-                "\"{}\" -> {}; ",
-                kotlin_template_text(alias),
-                answer(&format!("\"{}\"", kotlin_template_text(name)))
+                "{} -> {}; ",
+                kotlin_quoted(alias),
+                answer(&kotlin_quoted(name))
             );
             written
         })
@@ -91,9 +91,7 @@ pub fn plain_enum_serializer(
 ) -> String {
     let written = variants
         .iter()
-        .map(|(name, wire, _)| {
-            format!("{export_name}.{name} -> \"{}\"", kotlin_template_text(wire))
-        })
+        .map(|(name, wire, _)| format!("{export_name}.{name} -> {}", kotlin_quoted(wire)))
         .collect::<Vec<_>>()
         .join("; ");
     let read = variants
@@ -101,7 +99,7 @@ pub fn plain_enum_serializer(
         .map(|(name, wire, aliases)| {
             let names = once(wire)
                 .chain(aliases)
-                .map(|read_under| format!("\"{}\"", kotlin_template_text(read_under)))
+                .map(|read_under| kotlin_quoted(read_under))
                 .collect::<Vec<_>>()
                 .join(", ");
             format!("{names} -> {export_name}.{name}")

@@ -1,7 +1,7 @@
 //! The Swift `http_rest` client: one transport seam the app implements, one `async` method per
 //! operation, mirroring the Dart client's request grammar statement for statement.
 
-use crate::features::swift::{swift_field_member, swift_member};
+use crate::features::swift::{swift_field_member, swift_member, swift_quoted};
 use crate::field_type::{FieldDefType, get_field_def};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
@@ -338,7 +338,7 @@ fn return_type(named: &str, operation: &OperationDef) -> String {
 
 fn method(named: &str, fn_prefix: &str, operation: &OperationDef, has_multipart: bool) -> String {
     let shape = HttpShape::of(operation);
-    let wire = &operation.wire_name;
+    let wire = &swift_quoted(&operation.wire_name);
     let call = swift_call(operation);
     let params = method_params(operation, &shape);
     let returns = return_type(named, operation);
@@ -466,12 +466,12 @@ fn header_in_build_stmt(
     }
     let mut stmt = String::from("    var headers: [(String, String)] = []\n");
     for header in &shape.header_in {
-        let name = &header.name;
+        let name = swift_quoted(&header.name);
         let parameter = swift_parameter(&header.parameter);
         let fault_expr = format!(
-            "{fn_prefix}HttpOutboundFault(\"{}\", \"{name}\", \"a header value contains a \
+            "{fn_prefix}HttpOutboundFault({}, {name}, \"a header value contains a \
              character illegal in an HTTP header\")",
-            operation.wire_name,
+            swift_quoted(&operation.wire_name),
         );
         let refusal = outbound_refusal_stmt(named, operation, &fault_expr);
         // `text` is substituted twice (check, then append) rather than bound to a `let` first: a
@@ -483,7 +483,7 @@ fn header_in_build_stmt(
                 "    if let {parameter} = {parameter} {{\n      \
                  if !{fn_prefix}LegalHeaderValue({text}) {{\n        {refusal}\n      \
                  }}\n      \
-                 headers.append((\"{name}\", {text}))\n    \
+                 headers.append(({name}, {text}))\n    \
                  }}"
             );
         } else {
@@ -492,7 +492,7 @@ fn header_in_build_stmt(
                 stmt,
                 "    if !{fn_prefix}LegalHeaderValue({text}) {{\n      {refusal}\n    \
                  }}\n    \
-                 headers.append((\"{name}\", {text}))"
+                 headers.append(({name}, {text}))"
             );
         }
     }
@@ -553,7 +553,7 @@ fn encode_failure_recovery(
     wire: &str,
     outcome: &OperationOutcome,
 ) -> String {
-    let fault = format!("{fn_prefix}UndeserializablePayload(\"{wire}\", \"\\(error)\")");
+    let fault = format!("{fn_prefix}UndeserializablePayload({wire}, \"\\(error)\")");
     match outcome {
         OperationOutcome::OneWay => {
             format!("      throw {named}Refusal(fault: {fault})\n")
@@ -606,9 +606,9 @@ fn multipart_parts_build_stmt(
         }
     }
     for part in &shape.multipart_parts {
-        let name = &part.name;
+        let name = swift_quoted(&part.name);
         let parameter = swift_parameter(&part.parameter);
-        let _ = writeln!(stmt, "    parts.append((\"{name}\", {parameter}))");
+        let _ = writeln!(stmt, "    parts.append(({name}, {parameter}))");
     }
     stmt
 }
@@ -636,7 +636,7 @@ fn send_stmt_one_way(
          do {{\n      \
          response = {send}\n    \
          }} catch {{\n      \
-         throw {named}Refusal(fault: {fn_prefix}TransportFailure(\"{wire}\", \"\\(error)\"))\n    \
+         throw {named}Refusal(fault: {fn_prefix}TransportFailure({wire}, \"\\(error)\"))\n    \
          }}\n"
     )
 }
@@ -654,7 +654,7 @@ fn send_stmt_reply(
          do {{\n      \
          response = {send}\n    \
          }} catch {{\n      \
-         return .failure(.fault({fn_prefix}TransportFailure(\"{wire}\", \"\\(error)\")))\n    \
+         return .failure(.fault({fn_prefix}TransportFailure({wire}, \"\\(error)\")))\n    \
          }}\n"
     )
 }
@@ -665,11 +665,11 @@ fn one_way_decode_stmt(named: &str, fn_prefix: &str, shape: &HttpShape, wire: &s
         "    let status = response.status\n    \
          if status == {ok_status} {{ return }}\n    \
          if status == 400 || status == 404 || status == 500 {{\n      \
-         throw {named}Refusal(fault: {fn_prefix}FaultFromBody(\"{wire}\", response.body))\n    \
+         throw {named}Refusal(fault: {fn_prefix}FaultFromBody({wire}, response.body))\n    \
          }}\n    \
          throw {named}Refusal(\n      \
          fault: {fn_prefix}UndeserializablePayload(\n        \
-         \"{wire}\", \"an unexpected status (\\(status)) answered\"\n      \
+         {wire}, \"an unexpected status (\\(status)) answered\"\n      \
          )\n    \
          )\n"
     )
@@ -708,11 +708,11 @@ fn reply_decode_stmt(
          if {error_condition} {{\n{error_block}    \
          }}\n    \
          if status == 400 || status == 404 || status == 500 {{\n      \
-         return .failure(.fault({fn_prefix}FaultFromBody(\"{wire}\", response.body)))\n    \
+         return .failure(.fault({fn_prefix}FaultFromBody({wire}, response.body)))\n    \
          }}\n    \
          return .failure(.fault(\n      \
          {fn_prefix}UndeserializablePayload(\n        \
-         \"{wire}\", \"an unexpected status (\\(status)) answered\"\n      \
+         {wire}, \"an unexpected status (\\(status)) answered\"\n      \
          )\n    \
          ))\n"
     )
@@ -740,11 +740,11 @@ fn stream_reply_decode_stmt(
          if {error_condition} {{\n{error_block}    \
          }}\n    \
          if status == 400 || status == 404 || status == 500 {{\n      \
-         return .failure(.fault({fn_prefix}FaultFromBody(\"{wire}\", response.body)))\n    \
+         return .failure(.fault({fn_prefix}FaultFromBody({wire}, response.body)))\n    \
          }}\n    \
          return .failure(.fault(\n      \
          {fn_prefix}UndeserializablePayload(\n        \
-         \"{wire}\", \"an unexpected status (\\(status)) answered\"\n      \
+         {wire}, \"an unexpected status (\\(status)) answered\"\n      \
          )\n    \
          ))\n"
     )
@@ -825,11 +825,12 @@ fn header_value_read_stmts(
     let mut stmt = String::new();
     let mut idents = Vec::new();
     let capitalized_prefix = RenameRule::PascalCase.apply_to_field(ident_prefix);
-    for (index, (name, element_ty)) in names
+    for (index, (header, element_ty)) in names
         .iter()
         .zip(elements.iter().skip(body_elements))
         .enumerate()
     {
+        let name = &swift_quoted(header);
         let ident = format!("{ident_prefix}{index}");
         let raw_ident = format!("raw{capitalized_prefix}{index}");
         let bare_ty = option_inner(element_ty).unwrap_or(element_ty);
@@ -843,17 +844,17 @@ fn header_value_read_stmts(
             let decode = swift_header_out_decode(element_ty, "raw");
             let _ = write!(
                 stmt,
-                "      let {raw_ident} = {fn_prefix}FindHeader(response.headers, \"{name}\")\n      \
+                "      let {raw_ident} = {fn_prefix}FindHeader(response.headers, {name})\n      \
                  let {ident} = {raw_ident}.map {{ raw in {decode} }}\n",
             );
         } else {
             let decode = swift_header_out_decode(element_ty, &raw_ident);
             let _ = write!(
                 stmt,
-                "      guard let {raw_ident} = {fn_prefix}FindHeader(response.headers, \"{name}\") \
+                "      guard let {raw_ident} = {fn_prefix}FindHeader(response.headers, {name}) \
                  else {{\n        \
                  return .failure(.fault(\n          \
-                 {fn_prefix}UndeserializablePayload(\"{wire}\", \"a declared response header was missing\")\n        \
+                 {fn_prefix}UndeserializablePayload({wire}, \"a declared response header was missing\")\n        \
                  ))\n      \
                  }}\n      \
                  let {ident} = {decode}\n",
@@ -901,7 +902,7 @@ fn fallible_header_read_stmt(
 ) -> String {
     let bad_type_fault = format!(
         "return .failure(.fault(\n          \
-         {fn_prefix}UndeserializablePayload(\"{wire}\", \"a response header did not match its \
+         {fn_prefix}UndeserializablePayload({wire}, \"a response header did not match its \
          declared type\")\n        \
          ))"
     );
@@ -910,7 +911,7 @@ fn fallible_header_read_stmt(
         let full_ty = swift_typename_of(element_ty);
         let assign = fallible_assign_stmt(ident, bare_ty, raw_ident, &bad_type_fault, false);
         format!(
-            "      let {raw_ident} = {fn_prefix}FindHeader(response.headers, \"{name}\")\n      \
+            "      let {raw_ident} = {fn_prefix}FindHeader(response.headers, {name})\n      \
              let {ident}: {full_ty}\n      \
              if let {raw_ident} {{\n\
 {assign}      \
@@ -921,10 +922,10 @@ fn fallible_header_read_stmt(
     } else {
         let assign = fallible_assign_stmt(ident, bare_ty, raw_ident, &bad_type_fault, true);
         format!(
-            "      guard let {raw_ident} = {fn_prefix}FindHeader(response.headers, \"{name}\") \
+            "      guard let {raw_ident} = {fn_prefix}FindHeader(response.headers, {name}) \
              else {{\n        \
              return .failure(.fault(\n          \
-             {fn_prefix}UndeserializablePayload(\"{wire}\", \"a declared response header was \
+             {fn_prefix}UndeserializablePayload({wire}, \"a declared response header was \
              missing\")\n        \
              ))\n      \
              }}\n\
@@ -986,7 +987,7 @@ fn error_decode_block(fn_prefix: &str, wire: &str, shape: &HttpShape, error: &Ty
              declared = try JSONDecoder().decode({error_ty}.self, from: response.body)\n      \
              }} catch {{\n        \
              return .failure(.fault(\n          \
-             {fn_prefix}UndeserializablePayload(\"{wire}\", \"\\(error)\")\n        \
+             {fn_prefix}UndeserializablePayload({wire}, \"\\(error)\")\n        \
              ))\n      \
              }}\n      \
              return .failure(.declared(declared))\n"
@@ -1002,7 +1003,7 @@ fn error_decode_block(fn_prefix: &str, wire: &str, shape: &HttpShape, error: &Ty
          declaredHead = try JSONDecoder().decode({head_ty}.self, from: response.body)\n      \
          }} catch {{\n        \
          return .failure(.fault(\n          \
-         {fn_prefix}UndeserializablePayload(\"{wire}\", \"\\(error)\")\n        \
+         {fn_prefix}UndeserializablePayload({wire}, \"\\(error)\")\n        \
          ))\n      \
          }}\n"
     );
@@ -1041,7 +1042,7 @@ fn success_decode_block(fn_prefix: &str, wire: &str, shape: &HttpShape, success:
              value = try JSONDecoder().decode({success_ty}.self, from: response.body)\n      \
              }} catch {{\n        \
              return .failure(.fault(\n          \
-             {fn_prefix}UndeserializablePayload(\"{wire}\", \"\\(error)\")\n        \
+             {fn_prefix}UndeserializablePayload({wire}, \"\\(error)\")\n        \
              ))\n      \
              }}\n      \
              return .success(value)\n"
@@ -1059,7 +1060,7 @@ fn success_decode_block(fn_prefix: &str, wire: &str, shape: &HttpShape, success:
          value = try JSONDecoder().decode({body_ty}.self, from: response.body)\n      \
          }} catch {{\n        \
          return .failure(.fault(\n          \
-         {fn_prefix}UndeserializablePayload(\"{wire}\", \"\\(error)\")\n        \
+         {fn_prefix}UndeserializablePayload({wire}, \"\\(error)\")\n        \
          ))\n      \
          }}\n"
     );

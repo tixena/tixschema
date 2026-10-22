@@ -505,7 +505,7 @@ fn kotlin_set_of(keys: &[String]) -> String {
     } else {
         let listed = keys
             .iter()
-            .map(|key| format!("\"{}\"", kotlin_template_text(key)))
+            .map(|key| kotlin_quoted(key))
             .collect::<Vec<_>>()
             .join(", ");
         format!("setOf({listed})")
@@ -648,6 +648,12 @@ pub fn kotlin_template_text(text: &str) -> String {
     written
 }
 
+/// `name`, a key or a name serde writes, as a Kotlin string literal, which reads `$` as a template,
+/// `\` as an escape and `"` as its end.
+pub fn kotlin_quoted(name: &str) -> String {
+    format!("\"{}\"", kotlin_template_text(name))
+}
+
 /// `held`, the Kotlin variable of a `JsonElement`, read as `kind`: any other kind is refused with
 /// `SerializationException`, which every refusal of a serializer this module writes throws.
 fn read_as(held: &str, kind: JsonKind) -> String {
@@ -683,6 +689,15 @@ fn own_tag_held(object: &str, key: &str, named: &str) -> String {
          SerializationException(\"missing field `{key_text}`\"); else -> throw \
          SerializationException(\"expected tag \\\"{name_text}\\\", found \" + \
          {object}[\"{key_text}\"]) }}"
+    )
+}
+
+/// The property a struct under its own tag holds its name `named` in, written under `key`.
+fn own_tag_property(key: &str, named: &str) -> String {
+    format!(
+        "@SerialName({}) @EncodeDefault val kotlinSchemaTag: String = {}; ",
+        kotlin_quoted(key),
+        kotlin_quoted(named)
     )
 }
 
@@ -1087,8 +1102,12 @@ fn kotlin_subclass_serializer_expr(subclass_name: &str, type_parameters: &[Strin
 /// `KSerializer` that reads and writes it as a JSON array, once per shape in the item being
 /// expanded. Monotonically numbered so two fields named alike in two different items never
 /// collide. `walked` says the tuple is held where a `validate()` walks its positions, so a model
-/// in one is read unjudged, which makes it a shape of its own.
+/// in one is read unjudged, which makes it a shape of its own. A tuple of no element is `()`,
+/// which [`unit_typename`] writes.
 fn tuple_wrapper_typename(elements: &[FieldDef], walked: bool) -> String {
+    if elements.is_empty() {
+        return unit_typename();
+    }
     let declared_by = |element: &FieldDef| {
         if walked {
             read::position_typename(element)
@@ -1166,6 +1185,42 @@ fn tuple_wrapper_typename(elements: &[FieldDef], walked: bool) -> String {
         tuples.borrow_mut().push((shape, wrapper_name.clone()));
     });
     wrapper_name
+}
+
+/// The Kotlin type of `()`: an object, declared once per item beside the serializer that writes
+/// it as the `null` serde writes for `()` and reads that `null` alone. It is noted among the tuple
+/// shapes under the empty shape, which no tuple of an element writes.
+fn unit_typename() -> String {
+    if let Some(named) = KOTLIN_TUPLES.with(|tuples| {
+        tuples
+            .borrow()
+            .iter()
+            .find(|(declared, _)| declared.is_empty())
+            .map(|(_, named)| named.clone())
+    }) {
+        return named;
+    }
+    let index = KOTLIN_TUPLE_COUNTER.with(|counter| {
+        let next = counter.get() + 1;
+        counter.set(next);
+        next
+    });
+    let named = format!("KotlinUnit{index}");
+    let serializer = format!("{named}Serializer");
+    let declared = format!(
+        "@Serializable(with = {serializer}::class) object {named} \
+         object {serializer} : KSerializer<{named}> {{ \
+         override val descriptor: SerialDescriptor = buildClassSerialDescriptor(\"{named}\"); \
+         override fun serialize(encoder: Encoder, value: {named}) {{ \
+         (encoder as JsonEncoder).encodeJsonElement(JsonNull) }}; \
+         override fun deserialize(decoder: Decoder): {named} {{ \
+         val payload = (decoder as JsonDecoder).decodeJsonElement(); if (payload !is JsonNull) \
+         throw SerializationException(\"invalid type: \" + payload + \", expected unit\"); \
+         return {named} }} }}"
+    );
+    KOTLIN_TUPLE_AUX.with(|aux| aux.borrow_mut().push(declared));
+    KOTLIN_TUPLES.with(|tuples| tuples.borrow_mut().push((String::new(), named.clone())));
+    named
 }
 
 /// The `@Serializable` data class a std range of `kind` is read and written through, declared
@@ -1601,7 +1656,7 @@ fn property_declaration(field: &KotlinField, plugin: Option<&Plugin<'_>>) -> Str
     let annotation = if kotlin_bare(&prop_name) == field.wire_name {
         String::new()
     } else {
-        format!("@SerialName(\"{}\") ", field.wire_name)
+        format!("@SerialName({}) ", kotlin_quoted(&field.wire_name))
     };
     let (unjudged, ty) = plugin.map_or_else(
         || (String::new(), read::declared_typename(&field.field_def)),
@@ -1667,10 +1722,9 @@ fn own_field_plan(
     type_parameters: &[String],
 ) -> (Option<String>, String) {
     let field_serializer = read::member_serializer(&field.field_def, type_parameters);
-    let put = format!(
-        "put(\"{}\", output.json.encodeToJsonElement({field_serializer}, value.{prop}))",
-        field.wire_name
-    );
+    let key = kotlin_quoted(&field.wire_name);
+    let put =
+        format!("put({key}, output.json.encodeToJsonElement({field_serializer}, value.{prop}))");
     let serialize = if field.never_written {
         None
     } else if field.field_def.is_optional() && !is_nullable_flag(&field.field_def) {
@@ -1681,15 +1735,13 @@ fn own_field_plan(
     let functions = preprocess::of(&field.field_def);
     let decode_expr = if field.field_def.is_optional() {
         format!(
-            "obj[\"{}\"]?.let {{ input.json.decodeFromJsonElement({field_serializer}, {}) }}",
-            field.wire_name,
+            "obj[{key}]?.let {{ input.json.decodeFromJsonElement({field_serializer}, {}) }}",
             preprocess::corrected(functions, "it")
         )
     } else if let Some(at) = &field.default_at {
         format!(
-            "obj[\"{}\"]?.let {{ input.json.decodeFromJsonElement({field_serializer}, {}) }} \
+            "obj[{key}]?.let {{ input.json.decodeFromJsonElement({field_serializer}, {}) }} \
              ?: input.json.decodeFromString({field_serializer}, \"{at}\")",
-            field.wire_name,
             preprocess::corrected(functions, "it")
         )
     } else {
@@ -1697,7 +1749,7 @@ fn own_field_plan(
             "input.json.decodeFromJsonElement({field_serializer}, {})",
             preprocess::corrected(
                 functions,
-                &present(&format!("obj[\"{}\"]", field.wire_name), &field.wire_name)
+                &present(&format!("obj[{key}]"), &field.wire_name)
             )
         )
     };
@@ -1856,9 +1908,9 @@ fn flatten_enum_field_plan(
         .iter()
         .filter_map(|variant| {
             Some(format!(
-                "if ({entries_ident}.any {{ it.key in {} }}) \"{}\" else null",
+                "if ({entries_ident}.any {{ it.key in {} }}) {} else null",
                 kotlin_set_of(variant),
-                kotlin_template_text(variant.first()?)
+                kotlin_quoted(variant.first()?)
             ))
         })
         .collect::<Vec<_>>()
@@ -1965,8 +2017,8 @@ fn flatten_plan(
     let own_wire_keys: Vec<String> = fields
         .iter()
         .filter(|field| !field.flatten)
-        .map(|field| format!("\"{}\"", field.wire_name))
-        .chain(beside.map(|key| format!("\"{}\"", kotlin_template_text(key))))
+        .map(|field| kotlin_quoted(&field.wire_name))
+        .chain(beside.map(kotlin_quoted))
         .collect();
     // Kotlin infers no element type from an empty `setOf()`.
     let own_literal = if own_wire_keys.is_empty() {
@@ -2074,8 +2126,10 @@ fn flatten_merging_serializer(
     let mut plan = flatten_plan(fields, type_parameters, beside);
     // A struct's own tag is written ahead of everything merged into the object.
     if let Some((key, named)) = own_tag {
-        plan.serialize_stmts
-            .insert(0, format!("put(\"{key}\", \"{named}\")"));
+        plan.serialize_stmts.insert(
+            0,
+            format!("put({}, {})", kotlin_quoted(key), kotlin_quoted(named)),
+        );
     }
 
     let lenient_field = if plan.needs_lenient {
@@ -2093,9 +2147,7 @@ fn flatten_merging_serializer(
         format!("{}; ", own_tag_held("obj", key, named))
     });
     let unknown = plan.read.map_or_else(String::new, |read| {
-        let tag = own_tag.map_or_else(String::new, |(key, _)| {
-            format!(" - \"{}\"", kotlin_template_text(key))
-        });
+        let tag = own_tag.map_or_else(String::new, |(key, _)| format!(" - {}", kotlin_quoted(key)));
         format!(
             "{}; ",
             unknown_key_refused(&format!("(obj{read}{tag}).keys"))
@@ -2250,11 +2302,9 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
         // A struct's own tag: a property outside the constructor, always written and holding the
         // struct's name. The unjudged serializer refuses a payload that holds any other value
         // under the key, or none, and moves the tag ahead of the members, where serde writes it.
-        let tag = own_tag.as_ref().map_or_else(String::new, |(key, named)| {
-            format!(
-                "@SerialName(\"{key}\") @EncodeDefault val kotlinSchemaTag: String = \"{named}\"; "
-            )
-        });
+        let tag = own_tag
+            .as_ref()
+            .map_or_else(String::new, |(key, named)| own_tag_property(key, named));
         format!(
             "{} {body} {{ {tag}{validated} }} {} {}{alias}",
             read::kept(&export_name),
@@ -2426,9 +2476,15 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
     rules.own(args.check);
     let validated = rules.written("");
     let alias = ident_typealias(&rust_ident, &export_name, &generic_params);
+    // kotlinc refuses a data class of no property: a struct of no slot is a plain class.
+    let class = if slots.is_empty() {
+        "class"
+    } else {
+        "data class"
+    };
     let kotlin_source = format!(
         "@Serializable(with = {serializer_name}::class) \
-         data class {export_name}{generic_params}({params}) {{ {validated} }} \
+         {class} {export_name}{generic_params}({params}) {{ {validated} }} \
          {serializer_head} : KSerializer<{export_name}{generic_params}> {{ \
          override val descriptor: SerialDescriptor = buildClassSerialDescriptor(\"{export_name}\"); \
          override fun serialize(encoder: Encoder, value: {export_name}{generic_params}) {{ \
@@ -2697,8 +2753,9 @@ fn variant_subclass(
     payload: &VariantPayload,
 ) -> (String, Option<String>) {
     let subclass_name = plugin.owner;
-    let annotation =
-        serial_name.map_or_else(String::new, |wire| format!("@SerialName(\"{wire}\") "));
+    let annotation = serial_name.map_or_else(String::new, |wire| {
+        format!("@SerialName({}) ", kotlin_quoted(wire))
+    });
     match payload {
         VariantPayload::Unit => (
             format!(
@@ -2786,7 +2843,7 @@ fn unit_variant_read(
         Tagging::Adjacent(_) => "data == null",
         Tagging::External => "data is JsonNull",
         Tagging::Unwrapped => {
-            let left = format!("(obj - \"{}\").keys", kotlin_template_text(tag_key));
+            let left = format!("(obj - {}).keys", kotlin_quoted(tag_key));
             return format!("{{ {}; {subclass_name} }}", unknown_key_refused(&left));
         }
     };
@@ -2849,7 +2906,7 @@ fn dispatched_tagged_variant(
         Tagging::Adjacent(content) => present("data", content),
         Tagging::External => "data".to_owned(),
         Tagging::Unwrapped if written_by_hand(&payload) => "obj".to_owned(),
-        Tagging::Unwrapped => format!("JsonObject(obj - \"{tag_key}\")"),
+        Tagging::Unwrapped => format!("JsonObject(obj - {})", kotlin_quoted(tag_key)),
     };
     let own = || kotlin_subclass_serializer_expr(&subclass_name, ctx.type_parameters);
     let (content_expr, decode_expr) = match (&payload, &declared) {
@@ -2883,27 +2940,27 @@ fn dispatched_tagged_variant(
         ),
     };
 
+    let (key, tag) = (kotlin_quoted(tag_key), kotlin_quoted(&wire_tag));
     let serialize_arm = match (ctx.tagging, &content_expr) {
         (Tagging::Adjacent(content), Some(expr)) => format!(
-            "is {subclass_name} -> buildJsonObject {{ put(\"{tag_key}\", \"{wire_tag}\"); put(\"{content}\", {expr}) }}"
+            "is {subclass_name} -> buildJsonObject {{ put({key}, {tag}); put({}, {expr}) }}",
+            kotlin_quoted(content)
         ),
         (Tagging::External, Some(expr)) => {
-            format!("is {subclass_name} -> buildJsonObject {{ put(\"{wire_tag}\", {expr}) }}")
+            format!("is {subclass_name} -> buildJsonObject {{ put({tag}, {expr}) }}")
         }
         (Tagging::Unwrapped, Some(expr)) => format!(
-            "is {subclass_name} -> buildJsonObject {{ put(\"{tag_key}\", \"{wire_tag}\"); \
+            "is {subclass_name} -> buildJsonObject {{ put({key}, {tag}); \
              {expr}.jsonObject.forEach {{ (k, v) -> put(k, v) }} }}"
         ),
         (Tagging::Adjacent(_) | Tagging::Unwrapped, None) => {
-            format!(
-                "is {subclass_name} -> buildJsonObject {{ put(\"{tag_key}\", \"{wire_tag}\") }}"
-            )
+            format!("is {subclass_name} -> buildJsonObject {{ put({key}, {tag}) }}")
         }
-        (Tagging::External, None) => format!("is {subclass_name} -> JsonPrimitive(\"{wire_tag}\")"),
+        (Tagging::External, None) => format!("is {subclass_name} -> JsonPrimitive({tag})"),
     };
-    let mut read_under = format!("\"{wire_tag}\"");
+    let mut read_under = tag;
     for alias in aliases::written_on(&variant.attrs) {
-        let _ = write!(read_under, ", \"{}\"", kotlin_template_text(&alias));
+        let _ = write!(read_under, ", {}", kotlin_quoted(&alias));
     }
     let deserialize_arm = format!("{read_under} -> {decode_expr}");
 
@@ -2966,19 +3023,14 @@ fn dispatched_tagged_enum_kotlin_source(
     let whole = preprocess::corrected(args.preprocess, "input.decodeJsonElement()");
     let obj = payload_read_as(&whole, JsonKind::Object);
     let unknown = "throw SerializationException(\"unknown tag \" + tag)";
+    let key = kotlin_quoted(tag_key);
     let deserialize_body = match tagging {
         Tagging::Adjacent(content) => format!(
-            "val obj = {obj}; val tag = {}.content; val data = obj[\"{content}\"]; {}; \
+            "val obj = {obj}; val tag = {}.content; val data = obj[{}]; {}; \
              return when (tag) {{ {arms} else -> {unknown} }}",
-            payload_read_as(
-                &present(&format!("obj[\"{tag_key}\"]"), tag_key),
-                JsonKind::Text
-            ),
-            unknown_key_refused(&format!(
-                "(obj - \"{}\" - \"{}\").keys",
-                kotlin_template_text(tag_key),
-                kotlin_template_text(content)
-            ))
+            payload_read_as(&present(&format!("obj[{key}]"), tag_key), JsonKind::Text),
+            kotlin_quoted(content),
+            unknown_key_refused(&format!("(obj - {key} - {}).keys", kotlin_quoted(content)))
         ),
         Tagging::External => format!(
             "val element = {whole}; \
@@ -2989,7 +3041,7 @@ fn dispatched_tagged_enum_kotlin_source(
             read_as("element", JsonKind::Object)
         ),
         Tagging::Unwrapped => format!(
-            "val obj = {obj}; val tag = (obj[\"{tag_key}\"] as? JsonPrimitive)?.content; \
+            "val obj = {obj}; val tag = (obj[{key}] as? JsonPrimitive)?.content; \
              return when (tag) {{ {arms} else -> {unknown} }}"
         ),
     };
@@ -3150,7 +3202,7 @@ fn plain_enum_kotlin_source(
             if name == wire {
                 name.clone()
             } else {
-                format!("@SerialName(\"{wire}\") {name}")
+                format!("@SerialName({}) {name}", kotlin_quoted(wire))
             }
         })
         .collect::<Vec<_>>()
