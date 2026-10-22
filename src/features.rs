@@ -22,7 +22,12 @@ pub mod object_id;
 #[cfg(feature = "chrono")]
 pub mod chrono;
 
-#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+#[cfg(any(
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin",
+    all(feature = "jsonschema", feature = "chrono")
+))]
 pub mod text_forms;
 
 #[cfg(feature = "dart")]

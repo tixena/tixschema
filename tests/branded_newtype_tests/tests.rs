@@ -2187,12 +2187,16 @@ mod branded_sibling_inner_tests {
 
 /// The surfaces of a brand whose inner is a chrono type, pinned against what serde writes for it.
 /// `#[serde(transparent)]` puts the chrono value on the wire by itself, so the brand writes the
-/// same string and carries the same `"format"` keyword — reaching it through the TypeScript name
-/// every chrono type shares with `String` is what once dropped the keyword.
+/// same string and is held to the same form, by its `"format"` or by the pattern of the text serde
+/// writes — reaching it through the TypeScript name every chrono type shares with `String` is what
+/// once dropped the keyword.
 #[cfg(all(feature = "chrono", feature = "jsonschema", feature = "serde"))]
 mod branded_chrono_inner_tests {
     use super::*;
     use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
+
+    /// The pattern a `NaiveTime` is held to: the text serde writes, its seconds written.
+    const TIME_PATTERN: &str = r"^(?:(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\.[0-9]+)?)$";
 
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2219,6 +2223,11 @@ mod branded_chrono_inner_tests {
     #[serde(transparent)]
     pub struct IsoStamp(pub NaiveDate);
 
+    #[model_schema(maxLength = 8, pattern = "^0")]
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(transparent)]
+    pub struct EarlyClock(pub NaiveTime);
+
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct HoldsChrono {
@@ -2242,18 +2251,23 @@ mod branded_chrono_inner_tests {
     }
 
     #[test]
-    fn a_chrono_brand_carries_the_format_keyword() {
+    fn a_chrono_brand_is_held_to_its_form() {
         assert_eq!(
             Stamp::json_schema(),
             serde_json::json!({ "type": "string", "format": "date" })
         );
         assert_eq!(
             Clock::json_schema(),
-            serde_json::json!({ "type": "string", "format": "time" })
+            serde_json::json!({ "type": "string", "pattern": TIME_PATTERN })
         );
         assert_eq!(
-            Moment::json_schema(),
-            serde_json::json!({ "type": "string", "format": "date-time" })
+            Moment::json_schema()["type"],
+            "string",
+            "a date and time with no zone is a string"
+        );
+        assert!(
+            Moment::json_schema().get("format").is_none(),
+            "no format names a date and time with no zone"
         );
         assert_eq!(
             Instant::json_schema(),
@@ -2268,6 +2282,19 @@ mod branded_chrono_inner_tests {
         assert_eq!(Clock::json_schema(), holder["properties"]["clock"]);
         assert_eq!(Moment::json_schema(), holder["properties"]["moment"]);
         assert_eq!(Instant::json_schema(), holder["properties"]["instant"]);
+    }
+
+    #[test]
+    fn a_constrained_brand_over_a_time_layers_its_own_pattern_beside_the_form() {
+        assert_eq!(
+            EarlyClock::json_schema(),
+            serde_json::json!({
+                "type": "string",
+                "pattern": TIME_PATTERN,
+                "maxLength": 8_u32,
+                "allOf": [{ "pattern": "^0" }]
+            })
+        );
     }
 
     #[test]

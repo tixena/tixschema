@@ -1,6 +1,6 @@
 //! What a JSON Schema document admits, for the keywords the documents of the ranges write, the
-//! keys a map names (`propertyNames`), a `pattern`, the `date` format and the names a plain enum
-//! lists (`enum`).
+//! keys a map names (`propertyNames`), a `pattern`, the `date`, `date-time` and `time` formats and
+//! the names a plain enum lists (`enum`).
 
 use serde_json::Value;
 
@@ -72,7 +72,9 @@ pub fn refusal(document: &Value, value: &Value) -> Option<Refusal> {
         if least.is_some_and(|bound| length < bound) || most.is_some_and(|bound| length > bound) {
             return Some(Refusal::Written);
         }
-        if document.get("format").and_then(Value::as_str) == Some("date") && !full_date(text) {
+        if let Some(format) = document.get("format").and_then(Value::as_str)
+            && !formatted(format, text)
+        {
             return Some(Refusal::Written);
         }
         if let Some(pattern) = document.get("pattern").and_then(Value::as_str)
@@ -150,6 +152,21 @@ fn admits_items(document: &Value, items: &[Value]) -> bool {
             None => true,
         }
     })
+}
+
+/// Whether `text` is of the RFC 3339 form `format` names: a full-date for `date`, a date-time for
+/// `date-time` and a full-time for `time`, the last two with their zone. Any other format holds a
+/// text to nothing here.
+fn formatted(format: &str, text: &str) -> bool {
+    match format {
+        "date" => full_date(text),
+        "date-time" => {
+            full_date(text.get(..10).unwrap_or_default())
+                && chrono::DateTime::parse_from_rfc3339(text).is_ok()
+        }
+        "time" => chrono::DateTime::parse_from_rfc3339(&format!("2000-01-01T{text}")).is_ok(),
+        _ => true,
+    }
 }
 
 /// Whether `text` is an RFC 3339 full-date, `YYYY-MM-DD`, which the `date` format names.
