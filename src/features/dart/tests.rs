@@ -110,3 +110,39 @@ fn a_field_named_after_the_unjudged_read_keeps_its_name_and_its_key() {
         LEDGER.trim_end()
     );
 }
+
+/// A struct under its own tag refuses an object without the tag, or with another value under it,
+/// ahead of its members: the object its functions answer where it names one, and the copy its
+/// aliases are read from where a member has one.
+#[cfg(feature = "serde")]
+#[test]
+fn a_struct_under_its_own_tag_checks_the_object_its_members_are_read_from() {
+    let item: ItemStruct = syn::parse_quote! {
+        #[serde(tag = "kind")]
+        struct Halyard {
+            #[serde(alias = "name")]
+            label: String,
+        }
+    };
+    let functions = [FunctionName {
+        name: "asGiven".to_owned(),
+        written_at: proc_macro2::Span::call_site(),
+    }];
+    let dart = definition(struct_dart_tokens(
+        &item,
+        &DartTypeArgs {
+            preprocess: &functions,
+            ..plain_args()
+        },
+    ));
+    let expected = "factory Halyard.fromJsonUnjudged(Map<String, dynamic> payload) { final json = \
+                    asGiven(payload) as Map<String, dynamic>; final named = <String, dynamic>{}; \
+                    for (final entry in json.entries) { final key = switch (entry.key) { 'name' => \
+                    'label', final other => other }; if (named.containsKey(key)) throw \
+                    FormatException('duplicate field `$key`'); named[key] = entry.value; } if \
+                    (!named.containsKey('kind')) throw FormatException('missing field `kind`'); if \
+                    (named['kind'] != 'Halyard') throw FormatException('expected tag \"Halyard\", \
+                    found ' + jsonEncode(named['kind'])); return Halyard(label: named['label'] as \
+                    String,); }";
+    assert!(dart.contains(expected), "missing `{expected}` in: {dart}");
+}

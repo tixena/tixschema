@@ -133,8 +133,8 @@ mod on_a_schema_surface {
     }
 }
 
-/// Each of the three languages writes the key with the struct's name. Dart and Swift read a payload
-/// with it or without it, as serde does, and Kotlin reads the struct's name alone under it, as
+/// Each of the three languages writes the key with the struct's name. Swift reads a payload with it
+/// or without it, as serde does, and Dart and Kotlin read the struct's name alone under it, as
 /// TypeScript and Zod do.
 #[cfg(all(
     feature = "serde",
@@ -165,7 +165,7 @@ mod on_a_mobile_surface {
 
     #[cfg(feature = "dart")]
     #[test]
-    fn dart_writes_the_tag_ahead_of_the_fields() {
+    fn dart_reads_the_tag_at_the_structs_name_and_writes_it_ahead_of_the_fields() {
         let definition = tagged_mobile_dart::dart_definition();
         assert!(
             definition.contains(
@@ -174,7 +174,13 @@ mod on_a_mobile_surface {
             "got: {definition}"
         );
         assert!(
-            definition.contains("=> TaggedMobile(name: json['name'] as String,);"),
+            definition.contains(
+                "factory TaggedMobile.fromJsonUnjudged(Map<String, dynamic> json) { if \
+                 (!json.containsKey('kind')) throw FormatException('missing field `kind`'); if \
+                 (json['kind'] != 'TaggedMobile') throw FormatException('expected tag \
+                 \"TaggedMobile\", found ' + jsonEncode(json['kind'])); return \
+                 TaggedMobile(name: json['name'] as String,); }"
+            ),
             "got: {definition}"
         );
     }
