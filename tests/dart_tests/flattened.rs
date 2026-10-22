@@ -164,7 +164,8 @@ fn a_function_after_a_flattened_externally_tagged_enum_is_handed_no_entry_of_the
 }
 
 /// A flattened externally tagged enum beside a member of its holder's own is read from the first
-/// entry under the name of a variant in the object without the member's key, wherever it is.
+/// entry under the name of a variant in the object without the member's key, wherever it is. An
+/// enum with no unit variant writes an object, which the holder spreads into its own.
 #[test]
 fn a_flattened_externally_tagged_enum_is_read_from_its_variants_entry() {
     assert_written(
@@ -173,6 +174,11 @@ fn a_flattened_externally_tagged_enum_is_read_from_its_variants_entry() {
             "Battening(hatching: Hatching.fromJsonUnjudged({}),note: json['note'] as String,);",
             first_of("({...json}..remove('note'))", "'Bay', 'Dock', 'Quay'")
         ),
+    );
+    assert_written(
+        &battening_dart::dart_definition(),
+        "Map<String, dynamic> toJson() => { ...((hatching).toJson() as Map<String, dynamic>),'note': \
+         note, };",
     );
 }
 

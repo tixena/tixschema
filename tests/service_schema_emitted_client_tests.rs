@@ -439,6 +439,12 @@ mod dart_flattened_aliased_models;
 #[path = "service_schema_emitted_client_tests/run_dart_aliased.rs"]
 mod run_dart_aliased;
 
+/// An externally tagged enum flattened beside a member, each variant read and written back by the
+/// emitted Dart types, a unit variant as an entry of its name over `null`.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_unit_entries.rs"]
+mod run_dart_unit_entries;
+
 /// A map that is the one member of its object, under a key Swift wraps, of models, of dates and
 /// naming a function, and a member that names a function at each place a member can be handed
 /// fewer keys than its object holds.

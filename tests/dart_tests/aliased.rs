@@ -31,9 +31,9 @@ fn holds_each(definition: &str, pieces: &[String]) {
 }
 
 /// An enum takes a variant under each of its aliases, under each tagging, and an externally
-/// tagged one reads the value of a variant read under an alias too from the entry it took. Each
-/// variant is written under the name serde writes, and a member of a variant is read under its
-/// alias.
+/// tagged one reads the value of a variant read under an alias too from the entry it took, a unit
+/// variant from its entry over `null`. Each variant is written under the name serde writes, and a
+/// member of a variant is read under its alias.
 #[test]
 fn a_tagged_enum_reads_a_variant_under_each_alias() {
     holds_each(
@@ -43,9 +43,10 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
              throw ArgumentError('Unknown Surging: ' + json); }"
                 .to_owned(),
             "switch (tag) { case 'Berth' || 'Pier': return \
-             SurgingBerth.fromJsonUnjudged(map[tag]); case 'Held' || 'Tied': return \
-             SurgingHeld(map[tag] as String); default: throw ArgumentError('Unknown Surging: ' + \
-             tag); }"
+             SurgingBerth.fromJsonUnjudged(map[tag]); case 'Calm' || 'Still' || 'Slack': return \
+             map[tag] == null ? SurgingCalm() : throw ArgumentError('Surging: ' + tag + ' takes no \
+             value'); case 'Held' || 'Tied': return SurgingHeld(map[tag] as String); default: \
+             throw ArgumentError('Unknown Surging: ' + tag); }"
                 .to_owned(),
             format!(
                 "factory SurgingBerth.fromJsonUnjudged(Map<String, dynamic> json) {{ \
@@ -85,7 +86,8 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
 }
 
 /// A flattened externally tagged enum takes the first entry under a variant's name or an alias of
-/// one, and reads the variant from it.
+/// one, and reads the variant from it. The holder writes a unit variant, which the enum writes as
+/// its name, as an entry of that name over `null`.
 #[test]
 fn a_flattened_enum_takes_the_entry_of_a_variant_under_an_alias() {
     holds_each(
@@ -94,6 +96,10 @@ fn a_flattened_enum_takes_the_entry_of_a_variant_under_an_alias() {
             "surging: Surging.fromJsonUnjudged((switch (({...json}..remove('note'))) { final \
            whole => { for (final key in whole.keys.where(const ['Berth', 'Pier', 'Calm', 'Still', \
            'Slack', 'Held', 'Tied'].contains).take(1)) key: whole[key] } })),"
+                .to_owned(),
+            "Map<String, dynamic> toJson() => { 'note': note,...(switch ((surging).toJson()) { \
+             final String name => {name: null}, final written => written as Map<String, dynamic> \
+             }), };"
                 .to_owned(),
         ],
     );
