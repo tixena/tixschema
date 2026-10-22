@@ -405,9 +405,9 @@ mod unrecorded_options_models;
 
 /// An optional flattened member that names a function: a struct the Kotlin emitter recorded keys
 /// for, under a function that answers the payload as it was handed and under one that answers
-/// `null`, and an enum under a tag alone.
+/// `null`, and an enum under a tag alone, read by the Kotlin run and by the Swift run.
 #[cfg(test)]
-#[cfg(feature = "kotlin")]
+#[cfg(any(feature = "kotlin", feature = "swift"))]
 #[path = "kotlin_tests/corrected_options_models.rs"]
 mod corrected_options_models;
 
@@ -518,7 +518,8 @@ mod run_swift_flattened_enums;
 mod swift_flattened_options_models;
 
 /// Those members, held, absent and held with a key their type does not read, read and written
-/// back by the emitted Swift types.
+/// back by the emitted Swift types, and the optional members that name a function, read as Zod
+/// reads them.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_swift_flattened_options.rs"]
 mod run_swift_flattened_options;

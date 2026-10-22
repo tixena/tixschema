@@ -1901,7 +1901,10 @@ fn present_statement(
     let walked = validate::walks(&field.field_def, false);
     let functions = preprocess::functions(&field.field_def);
     if !functions.is_empty() {
-        return corrected_field(field, functions, walked, source, twins);
+        if field.flatten && field.field_def.is_optional() && held_map(&field.field_def).is_none() {
+            return corrected_option(field, functions, source, twins);
+        }
+        return corrected_field(field, functions, walked, source, None, twins);
     }
     if field.flatten
         && let read::Source::Beside(taken) = source
@@ -1921,7 +1924,7 @@ fn present_statement(
     if field.flatten && withheld && !beside {
         // A type that reads its holder's decoder sees every key, so it is read from the payload
         // without the keys taken.
-        return corrected_field(field, &[], walked, source, twins);
+        return corrected_field(field, &[], walked, source, None, twins);
     }
     if walked || beside {
         return read::unjudged(&field.field_def, &field.hint, source, &member, locals);
@@ -2030,23 +2033,7 @@ fn flattened_option(
     locals: &mut read::Locals,
     twins: &mut Vec<String>,
 ) -> String {
-    let held = SwiftField {
-        aliases: Vec::new(),
-        default_at: None,
-        field_def: validate::under_option(&field.field_def),
-        flatten: true,
-        hint: field.hint.clone(),
-        never_written: field.never_written,
-        real_type: field
-            .real_type
-            .strip_suffix('?')
-            .unwrap_or(&field.real_type)
-            .to_owned(),
-        required: field.required,
-        shape: field.shape.clone(),
-        swift_name: field.swift_name.clone(),
-        wire_name: field.wire_name.clone(),
-    };
+    let held = flattened_under_option(field);
     let read = present_statement(&held, source, withheld, false, container, locals, twins);
     let absent = format!("self.{} = nil", field.swift_name);
     let keys = preprocess::keys_standing_for(&field.field_def);
@@ -2062,6 +2049,44 @@ fn flattened_option(
         "if {} {{ {read} }} else {{ {absent} }}",
         preprocess::holds_one_of(&keys, without)
     )
+}
+
+/// The member the flattened `Option` `field` holds, under the same name: what its read reads.
+fn flattened_under_option(field: &SwiftField) -> SwiftField {
+    SwiftField {
+        aliases: Vec::new(),
+        default_at: None,
+        field_def: validate::under_option(&field.field_def),
+        flatten: true,
+        hint: field.hint.clone(),
+        never_written: field.never_written,
+        real_type: field
+            .real_type
+            .strip_suffix('?')
+            .unwrap_or(&field.real_type)
+            .to_owned(),
+        required: field.required,
+        shape: field.shape.clone(),
+        swift_name: field.swift_name.clone(),
+        wire_name: field.wire_name.clone(),
+    }
+}
+
+/// The statements that read from `source` the flattened `Option` `field`, which names `functions`
+/// and holds no map, as its holder's Zod schema reads it: the type it holds, read from what the
+/// functions answer, and where that read throws, `nil` where the object they are handed holds none
+/// of a struct's keys, or no key at all for a type whose keys are not known, and refused otherwise.
+/// An enum's tag stands for none of its variants' members, so its keys are not known.
+fn corrected_option(
+    field: &SwiftField,
+    functions: &[FunctionName],
+    source: &read::Source,
+    twins: &mut Vec<String>,
+) -> String {
+    let held = flattened_under_option(field);
+    let keys = preprocess::struct_keys(&held.field_def);
+    let walked = validate::walks(&held.field_def, false);
+    corrected_field(&held, functions, walked, source, Some(&keys), twins)
 }
 
 /// The map a member `def` describes holds, read through an `Option`, or `None` for a member that
@@ -2161,12 +2186,14 @@ fn default_statement(field: &SwiftField, at: &str, path: &str, twins: &mut Vec<S
 }
 
 /// The statements that read from `source` a field that names `functions`, from what they answer:
-/// as its own type, or as the type it is written as, turned into its own.
+/// as its own type, or as the type it is written as, turned into its own. `absent` holds, for the
+/// type a flattened `Option` holds, the keys [`preprocess::optional`] tests where its read throws.
 fn corrected_field(
     field: &SwiftField,
     functions: &[FunctionName],
     walked: bool,
     source: &read::Source,
+    absent: Option<&[String]>,
     twins: &mut Vec<String>,
 ) -> String {
     let wire = wire_type(&field.field_def, &field.shape);
@@ -2179,21 +2206,21 @@ fn corrected_field(
             wire: &wire,
         }
     };
-    preprocess::member(
-        &preprocess::Member {
-            def: &field.field_def,
-            functions,
-            hint: &field.hint,
-            keys: "CodingKeys",
-            plain,
-            real_type: &field.real_type,
-            stem: swift_bare(&field.swift_name),
-            walked,
-        },
-        source,
-        &|held| format!("self.{} = {held}", field.swift_name),
-        twins,
-    )
+    let member = preprocess::Member {
+        def: &field.field_def,
+        functions,
+        hint: &field.hint,
+        keys: "CodingKeys",
+        plain,
+        real_type: &field.real_type,
+        stem: swift_bare(&field.swift_name),
+        walked,
+    };
+    let sink = |held: &str| format!("self.{} = {held}", field.swift_name);
+    match absent {
+        Some(keys) => preprocess::optional(&member, source, keys, &sink, twins),
+        None => preprocess::member(&member, source, &sink, twins),
+    }
 }
 
 /// [`preprocess::member`] for `member`, a slot: read as it is declared, or as the type it is

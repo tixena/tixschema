@@ -160,6 +160,12 @@ pub(super) fn keys_taken_by(def: &FieldDef) -> Vec<String> {
     if !functions(def).is_empty() {
         return Vec::new();
     }
+    struct_keys(def)
+}
+
+/// The keys serde reads the struct a member `def` describes under, whatever function the member
+/// names: those of a struct written above, and none for any other type.
+pub(super) fn struct_keys(def: &FieldDef) -> Vec<String> {
     let FieldDefType::SiblingType(name, _) = &def.field_type else {
         return Vec::new();
     };
@@ -386,6 +392,40 @@ pub(super) fn member(
         ),
         None => read_where_held,
     }
+}
+
+/// The statements that read `member`, the type a flattened `Option` holds, from `source` through
+/// its functions, and hand the value to `sink`, as the holder's Zod schema reads it. Where the read
+/// throws, an answer of `null` among it, the value is `nil` where the object the functions are
+/// handed holds none of `keys`, or no key at all where `keys` is empty, and the read's error is
+/// thrown where it holds one.
+pub(super) fn optional(
+    member: &Member<'_>,
+    source: &Source,
+    keys: &[String],
+    sink: &dyn Fn(&str) -> String,
+    twins: &mut Vec<String>,
+) -> String {
+    let stem = member.stem;
+    let (handed, path) = source.payload(stem, member.keys);
+    let object = format!("({stem}Payload as? [String: Any] ?? [:])");
+    let held = if keys.is_empty() {
+        format!("!{object}.isEmpty")
+    } else {
+        let listed: Vec<String> = keys
+            .iter()
+            .map(|key| format!("\"{}\"", swift_literal_text(key)))
+            .collect();
+        format!(
+            "[{}].contains(where: {{ {object}[$0] != nil }})",
+            listed.join(", ")
+        )
+    };
+    format!(
+        "{handed}do {{ {} }} catch {{ if {held} {{ throw error }}; {} }}",
+        value(member, &path, sink, twins),
+        sink("nil")
+    )
 }
 
 /// The statements that read `member` from the JSON of its default, written between the quotes

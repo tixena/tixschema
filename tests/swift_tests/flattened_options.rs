@@ -4,10 +4,12 @@
 //! struct's, the names an externally tagged enum's variants are read under, or the tag and the
 //! content key of an enum under a tag key, and the value its type reads from the object otherwise,
 //! a read that throws refusing the payload; and, for a type whose keys are not known, `nil`
-//! wherever its read throws. A struct flattened bare writes and reads what it did. The writes and
+//! wherever its read throws. One that names a function reads as the Zod schema of its holder
+//! reads it. A struct flattened bare writes and reads what it did. The writes and
 //! the reads are run under the Swift toolchain in
 //! `tests/service_schema_emitted_client_tests/run_swift_flattened_options.rs`.
 
+use super::corrected_options_models::{moused_swift, reeved_swift, wormed_swift};
 #[cfg(feature = "chrono")]
 use super::flattened_options_models::swaging_swift;
 use super::flattened_options_models::{
@@ -242,16 +244,43 @@ fn a_flattened_option_of_an_enum_reads_nil_where_none_of_its_keys_is_there() {
     );
 }
 
-/// A flattened `Option` that names a function reads its type from what the function answers, and
-/// a read that throws refuses the payload.
+/// A flattened `Option` that names a function reads its type from what the function answers, an
+/// answer of `null` among it, and where that read throws is `nil` where the object the function is
+/// handed holds none of its struct's keys, or no key at all for an enum, whose keys are not known,
+/// and refuses the payload where it holds one, as the Zod schema of its holder reads it.
 #[test]
-fn a_flattened_option_that_names_a_function_reads_what_it_answers() {
+fn a_flattened_option_that_names_a_function_reads_what_it_answers_as_zod_does() {
     assert_written(
         &veering_swift::swift_definition(),
         "self.note = try container.decode(String.self, forKey: .note); let tablingPayload = try \
-         SwiftSchemaPayload(from: decoder, without: taken + [\"note\"]).value; self.tabling = try \
-         SwiftSchemaPayload.read(Tabling?.self, from: asGiven(tablingPayload), at: \
-         decoder.codingPath) };",
+         SwiftSchemaPayload(from: decoder, without: taken + [\"note\"]).value; do { self.tabling \
+         = try SwiftSchemaPayload.read(Tabling.self, from: asGiven(tablingPayload), at: \
+         decoder.codingPath) } catch { if [\"label\"].contains(where: { (tablingPayload as? \
+         [String: Any] ?? [:])[$0] != nil }) { throw error }; self.tabling = nil } };",
+    );
+    assert_written(
+        &reeved_swift::swift_definition(),
+        "self.note = try container.decode(String.self, forKey: .note); let tholepinPayload = try \
+         SwiftSchemaPayload(from: decoder, without: taken + [\"note\"]).value; do { \
+         self.tholepin = try SwiftSchemaPayload.read(Tholepin.self, from: \
+         asGiven(tholepinPayload), at: decoder.codingPath) } catch { if \
+         [\"label\"].contains(where: { (tholepinPayload as? [String: Any] ?? [:])[$0] != nil }) { \
+         throw error }; self.tholepin = nil } };",
+    );
+    assert_written(
+        &wormed_swift::swift_definition(),
+        "do { self.tholepin = try SwiftSchemaPayload.read(Tholepin.self, from: \
+         asNull(tholepinPayload), at: decoder.codingPath) } catch { if \
+         [\"label\"].contains(where: { (tholepinPayload as? [String: Any] ?? [:])[$0] != nil }) { \
+         throw error }; self.tholepin = nil } };",
+    );
+    assert_written(
+        &moused_swift::swift_definition(),
+        "let frappedPayload = try SwiftSchemaPayload(from: decoder, without: taken + \
+         [\"note\"]).value; do { self.frapped = try SwiftSchemaPayload.read(Frapped.self, from: \
+         asGiven(frappedPayload), at: decoder.codingPath) } catch { if !(frappedPayload as? \
+         [String: Any] ?? [:]).isEmpty { throw error }; self.frapped = nil }; self.note = try \
+         container.decode(String.self, forKey: .note) };",
     );
 }
 
