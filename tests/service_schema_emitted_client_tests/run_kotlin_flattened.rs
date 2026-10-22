@@ -1,7 +1,7 @@
 //! A map flattened as the one member of its struct, and a flattened struct beside a member of its
 //! own, read and written by the emitted Kotlin types compiled with `-Werror`, and an optional
-//! member beside a flattened one, beside its twin under `nullable`: each payload is written back
-//! as the serde read writes it back. A member flattened after a struct, or beside a member of its
+//! member beside a flattened one, beside its twin under `nullable`: each payload is written back as
+//! the serde read writes it back. A member flattened after a struct, or beside a member of its
 //! holder's own, is handed the keys serde hands it, and an externally tagged enum the one entry
 //! serde hands it, and is written as serde writes it, a unit variant as its name over `null`. An
 //! optional map, the one member, is read as `null` where serde reads `None`, and a map keyed by a
@@ -9,8 +9,10 @@
 //! member of its own is read wherever the struct reads, and as `null` wherever serde reads `None`,
 //! and one that takes a key is `null` where the key is absent and refuses a key that does not read.
 //! An optional type the emitter recorded no keys for is read as the first where its serializer
-//! declares no property, and as the second where it declares some. A variant reads and writes a
-//! flattened member at its own level, under every tagging. An optional member that names a
+//! declares no property, and as the second where it declares some. An optional enum under a tag key
+//! is `null` where neither its tag nor its content key is there, and is read where one is, so one
+//! that does not read refuses the payload, as TypeScript and Zod refuse it. A variant reads and
+//! writes a flattened member at its own level, under every tagging. An optional member that names a
 //! function is read from what the function answers, as the Zod schema of its holder reads it.
 
 #![cfg(feature = "kotlin")]
@@ -45,14 +47,17 @@ use super::flattened_models::{
 };
 use super::runtime::ran_kotlin;
 use super::swift_flattened_options_models::{
-    Crowning, FLAKING, FLAKING_ABSENT, FLAKING_MISTYPED, Fidding, Flaking, LAPPING, LAPPING_ABSENT,
-    LAPPING_MISTYPED, Ratline, crowning_kotlin, fidding_kotlin, flaking_kotlin, nippering_kotlin,
-    ratline_kotlin, tabling_kotlin,
+    Crowning, FLAKING, FLAKING_ABSENT, FLAKING_MISTYPED, Fidding, Flaking, HEELING, Heeling,
+    LAPPING, LAPPING_ABSENT, LAPPING_MISTYPED, LOWERING, Lowering, PITCHING, Pitching, Ratline,
+    SQUARING, Squaring, becket_kotlin, crowning_kotlin, fidding_kotlin, flaking_kotlin,
+    grommet_kotlin, heeling_kotlin, lowering_kotlin, nippering_kotlin, pitching_kotlin,
+    ratline_kotlin, shackle_kotlin, squaring_kotlin, tabling_kotlin, toggle_kotlin,
 };
 use super::tuple_variants_models::labelling_kotlin;
 use super::unrecorded_options_models::{
-    READ_BACK, UNRECORDED, bight_kotlin, bridled_kotlin, bridling_kotlin, crowned_kotlin,
-    fiddling_kotlin, hitched_kotlin, slipped_kotlin, slipping_kotlin, snagging_kotlin,
+    CLAPPING, CLAPPING_READ_BACK, Clapping, READ_BACK, UNRECORDED, bight_kotlin, bridled_kotlin,
+    bridling_kotlin, clapped_kotlin, clapping_kotlin, crowned_kotlin, fiddling_kotlin,
+    hitched_kotlin, slipped_kotlin, slipping_kotlin, snagging_kotlin,
 };
 
 const KOTLIN_IMPORTS: &str = "import kotlinx.serialization.*\n\
@@ -228,6 +233,20 @@ fun <T : Any> variant(serializer: KSerializer<T>, payload: String) {
 }
 "#;
 
+/// What prints a row of a holder of a flattened `Option` of an enum: the holder read and written
+/// back, or the class and the first line of what its read throws, an enum's read throwing more
+/// than `SerializationException`.
+const TOLD_OR_REFUSED: &str = r#"
+fun <T> told(name: String, serializer: KSerializer<T>, payload: String) {
+    val told = try {
+        Json.encodeToString(serializer, Json.decodeFromString(serializer, payload))
+    } catch (refused: Exception) {
+        "refused: ${refused::class.simpleName}: ${(refused.message ?: "").lines().first()}"
+    }
+    println("$name: $told")
+}
+"#;
+
 /// A payload, the type it is read as, and what serde writes back of it.
 struct Row {
     json: &'static str,
@@ -243,6 +262,13 @@ struct EntryRow {
     read_as: &'static str,
     shown: &'static str,
     told: fn(&str) -> String,
+}
+
+/// A holder of a flattened `Option` of an enum, a payload, and what serde writes back of it.
+struct OptionRow {
+    holder: &'static str,
+    json: &'static str,
+    serde: String,
 }
 
 /// What serde writes back of `json`, read as `T`.
@@ -1050,12 +1076,15 @@ fn an_optional_struct_that_takes_no_key_reads_and_writes_in_kotlin_as_serde_does
 }
 
 /// An optional member whose type the emitter recorded no keys for and whose serializer is written
-/// by hand, a struct declared below its holder with a flattened member of its own and an enum
-/// under each tagging but serde's own, is read wherever its read succeeds and is `null` wherever
-/// it throws, as serde reads it, and is written back as serde writes it back. A struct declared
-/// below its holder whose serializer the plugin writes is looked for by the keys its descriptor
-/// names: `null` where none is there, and a key that does not read refuses the payload, as
-/// TypeScript and Zod refuse it, where serde reads `None`.
+/// by hand, a struct declared below its holder with a flattened member of its own, an untagged
+/// enum and an enum under a tag alone that names a function on itself, is read wherever its read
+/// succeeds and is `null` wherever it throws, as serde reads it, and is written back as serde
+/// writes it back. An enum under a tag key the emitter wrote is `null` where neither its tag nor
+/// its content key is there, and its tag beside no member refuses the payload, as TypeScript and
+/// Zod refuse it, where serde reads `None`. A struct declared below its holder whose serializer
+/// the plugin writes is looked for by the keys its descriptor names: `null` where none is there,
+/// and a key that does not read refuses the payload, as TypeScript and Zod refuse it, where serde
+/// reads `None`.
 #[test]
 fn an_optional_type_of_no_recorded_key_reads_and_writes_in_kotlin_as_serde_does() {
     let serde_told: Vec<String> = UNRECORDED
@@ -1064,6 +1093,12 @@ fn an_optional_type_of_no_recorded_key_reads_and_writes_in_kotlin_as_serde_does(
         .collect();
     assert_eq!(
         serde_told, READ_BACK,
+        "serde no longer reads each payload as it did"
+    );
+    let clapping_told =
+        CLAPPING.map(|json| told_by_serde(json, |read: &Clapping| self::json(read)));
+    assert_eq!(
+        clapping_told, CLAPPING_READ_BACK,
         "serde no longer reads each payload as it did"
     );
     let looked_for = [FLAKING, FLAKING_ABSENT, FLAKING_MISTYPED];
@@ -1077,22 +1112,39 @@ fn an_optional_type_of_no_recorded_key_reads_and_writes_in_kotlin_as_serde_does(
     let rows = UNRECORDED
         .iter()
         .map(|row| (row.holder, row.json))
-        .chain(looked_for.map(|json| ("Ratline", json)));
-    // The key `Nippering` reads, held as a number: TypeScript and Zod refuse it.
-    let in_kotlin = READ_BACK.into_iter().chain([
-        ratline_told[0].as_str(),
-        ratline_told[1].as_str(),
-        "refused",
-    ]);
+        .chain(looked_for.map(|json| ("Ratline", json)))
+        .chain(CLAPPING.map(|json| ("Clapping", json)));
+    let mut in_kotlin: Vec<&str> = READ_BACK
+        .into_iter()
+        .chain([ratline_told[0].as_str(), ratline_told[1].as_str()])
+        .chain(["refused"])
+        .chain(CLAPPING_READ_BACK)
+        .collect();
+    // TypeScript and Zod refuse each: the tag of `Hitched` and of `Bridled` beside no member, and
+    // the key `Nippering` reads held as a number.
+    for (at, refused) in [
+        (
+            6,
+            "refused: MissingFieldException: Field 'label' is required for type with serial name \
+             'Bay', but it was missing at path: $",
+        ),
+        (10, "refused: NullPointerException: "),
+        (
+            16,
+            "refused: JsonDecodingException: String literal for value of key 'label' should be \
+             quoted at path: $.label",
+        ),
+    ] {
+        in_kotlin[at] = refused;
+    }
     let mut expected = String::new();
-    let mut main = String::from(ENTRY_READ);
+    let mut main = String::from(TOLD_OR_REFUSED);
     main.push_str("fun main() {\n");
     for (at, ((holder, json), told)) in rows.zip(in_kotlin).enumerate() {
         let _ = writeln!(expected, "{at}: {told}");
         let _ = writeln!(
             main,
-            "    entry(\"{at}\", {holder}.serializer(), \"\"\"{json}\"\"\") {{ \
-             Json.encodeToString({holder}.serializer(), it) }}"
+            "    told(\"{at}\", {holder}.serializer(), \"\"\"{json}\"\"\")"
         );
     }
     main.push_str("}\n");
@@ -1109,6 +1161,9 @@ fn an_optional_type_of_no_recorded_key_reads_and_writes_in_kotlin_as_serde_does(
         slipping_kotlin::kotlin_definition(),
         ratline_kotlin::kotlin_definition(),
         nippering_kotlin::kotlin_definition(),
+        clapped_kotlin::kotlin_definition(),
+        clapping_kotlin::kotlin_definition(),
+        FUNCTIONS.to_owned(),
         main,
     ];
     let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
@@ -1269,6 +1324,143 @@ fn a_variant_reads_and_writes_a_flattened_member_in_kotlin_as_serde_does() {
         whelping_kotlin::kotlin_definition(),
         broaching_kotlin::kotlin_definition(),
         FUNCTIONS.to_owned(),
+        main,
+    ];
+    let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
+        return;
+    };
+    assert_eq!(printed, expected, "the Kotlin read is not the read above");
+}
+
+/// Each payload of each holder of a flattened `Option` of an enum, beside what serde writes back
+/// of it: an enum under a tag alone, one under a tag and a content key, an untagged one and an
+/// externally tagged one declared below its holder.
+fn option_rows() -> Vec<OptionRow> {
+    fn rows<T, const N: usize>(holder: &'static str, payloads: [&'static str; N]) -> Vec<OptionRow>
+    where
+        T: DeserializeOwned + Serialize,
+    {
+        payloads
+            .into_iter()
+            .map(|json| OptionRow {
+                holder,
+                json,
+                serde: written_back::<T>(json),
+            })
+            .collect()
+    }
+    [
+        rows::<Lowering, 6>("Lowering", LOWERING),
+        rows::<Squaring, 6>("Squaring", SQUARING),
+        rows::<Heeling, 3>("Heeling", HEELING),
+        rows::<Pitching, 3>("Pitching", PITCHING),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
+}
+
+/// A flattened `Option` of an enum under a tag key the emitter wrote is looked for by its tag, then
+/// its content key, in the object it is handed: `null` where neither is there, and the enum read
+/// where one is, so a read that throws refuses the payload.
+#[test]
+fn a_flattened_option_of_an_enum_under_a_tag_key_is_looked_for_by_its_tag_in_kotlin() {
+    let looked_for = |kotlin: &str, prop: &str, read_as: &str, keys: &str| {
+        let rest = "JsonObject(obj - setOf(\"note\"))";
+        let held = format!(
+            "val {prop} = if ({rest}.keys.any {{ it in setOf({keys}) }}) \
+             lenient.decodeFromJsonElement({read_as}Unjudged, {rest}) else null;"
+        );
+        assert!(kotlin.contains(&held), "no `{held}` in: {kotlin}");
+    };
+    looked_for(
+        &lowering_kotlin::kotlin_definition(),
+        "grommet",
+        "Grommet",
+        "\"kind\"",
+    );
+    looked_for(
+        &squaring_kotlin::kotlin_definition(),
+        "becket",
+        "Becket",
+        "\"kind\", \"body\"",
+    );
+}
+
+/// Each payload of each holder of a flattened `Option` of an enum reads in Kotlin as serde reads
+/// it, but where the object holds the tag or the content key of an enum under a tag key and the
+/// enum does not read it: TypeScript and Zod refuse each of those, and so does the Kotlin read,
+/// with what the enum's read throws, where serde reads `None`. A variant's member with no tag
+/// reads `null`, as serde reads it. An untagged enum and one declared below its holder, which have
+/// no key to be looked for by, are `null` wherever their read throws, as serde reads `None`.
+#[test]
+fn a_flattened_option_of_an_enum_reads_in_kotlin_as_zod_does_where_its_keys_are_there() {
+    let rows = option_rows();
+    let serde_told: Vec<String> = rows
+        .iter()
+        .map(|row| format!("{}: {}", row.json, row.serde))
+        .collect();
+    assert_eq!(
+        serde_told,
+        [
+            r#"{"note":"n"}: {"note":"n"}"#,
+            r#"{"kind":"Round","note":"n","turns":2}: {"kind":"Round","turns":2,"note":"n"}"#,
+            r#"{"kind":"Calm","note":"n"}: {"kind":"Calm","note":"n"}"#,
+            r#"{"kind":"Round","note":"n","turns":"x"}: {"note":"n"}"#,
+            r#"{"kind":"Gale","note":"n"}: {"note":"n"}"#,
+            r#"{"note":"n","turns":2}: {"note":"n"}"#,
+            r#"{"note":"n"}: {"note":"n"}"#,
+            r#"{"body":{"turns":2},"kind":"Round","note":"n"}: {"kind":"Round","body":{"turns":2},"note":"n"}"#,
+            r#"{"kind":"Calm","note":"n"}: {"kind":"Calm","note":"n"}"#,
+            r#"{"body":{"turns":"x"},"kind":"Round","note":"n"}: {"note":"n"}"#,
+            r#"{"kind":"Gale","note":"n"}: {"note":"n"}"#,
+            r#"{"body":{"turns":2},"note":"n"}: {"note":"n"}"#,
+            r#"{"note":"n"}: {"note":"n"}"#,
+            r#"{"note":"n","turns":2}: {"note":"n","turns":2}"#,
+            r#"{"note":"n","turns":"x"}: {"note":"n"}"#,
+            r#"{"note":"n"}: {"note":"n"}"#,
+            r#"{"Round":{"turns":2},"note":"n"}: {"note":"n","Round":{"turns":2}}"#,
+            r#"{"Round":{"turns":"x"},"note":"n"}: {"note":"n"}"#,
+        ],
+        "serde no longer reads each payload as it did"
+    );
+    let mut in_kotlin: Vec<String> = rows.iter().map(|row| row.serde.clone()).collect();
+    let mistyped = "JsonDecodingException: Unexpected JSON token at offset 1: Failed to parse \
+                    type 'UInt' for input 'x' at path: $";
+    for (at, refused) in [
+        (3, mistyped),
+        (4, "SerializationException: unknown tag Gale"),
+        (9, mistyped),
+        (10, "IllegalStateException: unknown tag Gale"),
+        (
+            11,
+            "NoSuchElementException: Key kind is missing in the map.",
+        ),
+    ] {
+        in_kotlin[at] = format!("refused: {refused}");
+    }
+    let mut expected = String::new();
+    let mut main = String::from(TOLD_OR_REFUSED);
+    main.push_str("fun main() {\n");
+    for (at, (row, told)) in rows.iter().zip(&in_kotlin).enumerate() {
+        let _ = writeln!(expected, "{at}: {told}");
+        let _ = writeln!(
+            main,
+            "    told(\"{at}\", {}.serializer(), \"\"\"{}\"\"\")",
+            row.holder, row.json
+        );
+    }
+    main.push_str("}\n");
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        grommet_kotlin::kotlin_definition(),
+        lowering_kotlin::kotlin_definition(),
+        becket_kotlin::kotlin_definition(),
+        squaring_kotlin::kotlin_definition(),
+        toggle_kotlin::kotlin_definition(),
+        heeling_kotlin::kotlin_definition(),
+        pitching_kotlin::kotlin_definition(),
+        shackle_kotlin::kotlin_definition(),
         main,
     ];
     let Some(printed) = ran_kotlin(&source.join("\n\n")) else {

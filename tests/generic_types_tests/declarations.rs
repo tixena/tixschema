@@ -2480,10 +2480,10 @@ fn type_check_an_optional_flattened_struct_refuses_under_zod_a_key_serde_drops()
     );
 }
 
-/// An optional flattened member whose type the Kotlin emitter recorded no keys for is taken by
-/// TypeScript and by the Zod schema of its holder under `node` where it is absent and where its
-/// type reads, and refused where a key of its type does not read, a payload serde reads as `None`,
-/// dropping the key.
+/// An optional flattened member whose type the Kotlin emitter recorded no struct's keys for is
+/// taken by TypeScript and by the Zod schema of its holder under `node` where it is absent and
+/// where its type reads, and refused where a key of its type does not read, a payload serde reads
+/// as `None`, dropping the key.
 #[test]
 fn type_check_an_optional_flattened_type_is_refused_where_a_key_of_it_does_not_read() {
     let taken: Vec<bool> = unrecorded::UNRECORDED
