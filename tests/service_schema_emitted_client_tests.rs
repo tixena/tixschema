@@ -386,17 +386,18 @@ mod tuple_variants_models;
 #[path = "service_schema_emitted_client_tests/run_kotlin_tuple_variants.rs"]
 mod run_kotlin_tuple_variants;
 
-/// A map flattened as the one member of its struct, optional or not, a flattened struct beside a
-/// member of its own, an optional member beside a flattened one with its twin under `nullable`,
-/// and a member flattened after a struct or beside a member of its holder's own. Declared after
-/// the module that declares the member they flatten.
+/// A map flattened as the one member of its struct, optional or not and keyed by a plain enum, a
+/// flattened struct beside a member of its own, an optional member beside a flattened one with its
+/// twin under `nullable`, and a member flattened after a struct or beside a member of its holder's
+/// own. Declared after the module that declares the member they flatten.
 #[cfg(all(test, feature = "kotlin"))]
 #[path = "kotlin_tests/flattened_models.rs"]
 mod flattened_models;
 
-/// A map flattened as the one member of its struct, optional or not, a flattened struct beside a
-/// member of its own, an optional member beside a flattened one, and a member flattened after a
-/// struct or beside a member of its holder's own, read and written by the emitted Kotlin types.
+/// A map flattened as the one member of its struct, optional or not and keyed by a plain enum, a
+/// flattened struct beside a member of its own, an optional member beside a flattened one, and a
+/// member flattened after a struct or beside a member of its holder's own, read and written by
+/// the emitted Kotlin types.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin_flattened.rs"]
 mod run_kotlin_flattened;

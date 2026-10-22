@@ -4,7 +4,8 @@
 //! as the serde read writes it back. A member flattened after a struct, or beside a member of its
 //! holder's own, is handed the keys serde hands it, and an externally tagged enum the one entry
 //! serde hands it, and is written as serde writes it, a unit variant as its name over `null`. An
-//! optional map, the one member, is read as `null` where serde reads `None`.
+//! optional map, the one member, is read as `null` where serde reads `None`, and a map keyed by a
+//! plain enum under the names serde writes its variants under.
 
 #![cfg(feature = "kotlin")]
 
@@ -14,17 +15,19 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::flattened_models::{
-    BELTING, Belting, Bending, Brailing, CLEATING, Cleating, CorrectedLocker, EmptiedLocker,
-    Gasketing, HEAVING, HITCHING, Heaving, Hitching, Knotting, LOCKER, Lanyarding, Luffing,
-    Netting, Nipping, PAYLOAD, ProbeLocker, Rousing, SCUDDING, STOWING, STROPPING, Scudding,
-    Seizing, Slinging, Splicing, Stoppering, Stowing, Stropping, Tacking, UNDER_AN_ALIAS,
-    UNWRITTEN, Whipping, Yawing, belting_kotlin, bending_kotlin, brailing_kotlin, bunting_kotlin,
-    cleating_kotlin, corrected_locker_kotlin, emptied_locker_kotlin, gasketing_kotlin,
-    heaving_kotlin, hitching_kotlin, jibing_kotlin, knotting_kotlin, lanyarding_kotlin,
-    luffing_kotlin, netting_kotlin, nipping_kotlin, noting_kotlin, probe_locker_kotlin,
-    quaying_kotlin, read_of, rousing_kotlin, scudding_kotlin, seizing_kotlin, sheeting_kotlin,
-    slinging_kotlin, splicing_kotlin, stoppering_kotlin, stowing_kotlin, stropping_kotlin,
-    tacking_kotlin, ticketed_kotlin, unwritten_kotlin, whipping_kotlin, yawing_kotlin,
+    BELTING, Belting, Bending, Brailing, CHOCKED, CLEATING, Cathead, Cleating, CorrectedLocker,
+    EmptiedLocker, Gasketing, HEAVING, HITCHING, Hawsepipe, Heaving, Hitching, Knotting, LOCKER,
+    Lanyarding, Luffing, Netting, Nipping, PAYLOAD, ProbeLocker, Rousing, SCUDDING, SNUBBED,
+    STOWING, STROPPING, Scudding, Seizing, Slinging, Snubbing, Splicing, Stoppering, Stowing,
+    Stropping, Tacking, UNDER_AN_ALIAS, UNWRITTEN, Whipping, Yawing, belting_kotlin,
+    bending_kotlin, brailing_kotlin, bunting_kotlin, cathead_kotlin, chock_kotlin, cleating_kotlin,
+    corrected_locker_kotlin, emptied_locker_kotlin, gasketing_kotlin, hawsepipe_kotlin,
+    hawser_kotlin, heaving_kotlin, hitching_kotlin, jibing_kotlin, knotting_kotlin,
+    lanyarding_kotlin, luffing_kotlin, netting_kotlin, nipping_kotlin, noting_kotlin,
+    probe_locker_kotlin, quaying_kotlin, read_of, rousing_kotlin, scudding_kotlin, seizing_kotlin,
+    sheeting_kotlin, slinging_kotlin, snubbing_kotlin, splicing_kotlin, stoppering_kotlin,
+    stowing_kotlin, stropping_kotlin, tacking_kotlin, ticketed_kotlin, unwritten_kotlin,
+    whipping_kotlin, yawing_kotlin,
 };
 use super::runtime::ran_kotlin;
 use super::tuple_variants_models::labelling_kotlin;
@@ -739,6 +742,86 @@ fn an_optional_flattened_map_reads_and_writes_in_kotlin_as_serde_does() {
         corrected_locker_kotlin::kotlin_definition(),
         emptied_locker_kotlin::kotlin_definition(),
         FUNCTIONS.to_owned(),
+        main,
+    ];
+    let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
+        return;
+    };
+    assert_eq!(printed, expected);
+}
+
+/// A map keyed by a plain enum, the one member, is read and written back as serde reads and
+/// writes it: each key as the name its variant is written under, its `rename` and the enum's
+/// `rename_all` among them, and a key no variant is written under refused, or read as `null`
+/// where the map is optional, which writes no entry.
+#[test]
+fn a_flattened_map_keyed_by_an_enum_reads_and_writes_in_kotlin_as_serde_does() {
+    let rows = [
+        (
+            "Cathead",
+            "Map<Chock, UByte>",
+            CHOCKED
+                .map(|json| locker_told(json, |read: &Cathead| self::json(&read.lines)))
+                .to_vec(),
+            CHOCKED.as_slice(),
+        ),
+        (
+            "Hawsepipe",
+            "Map<Chock, UByte>?",
+            CHOCKED
+                .map(|json| locker_told(json, |read: &Hawsepipe| self::json(&read.lines)))
+                .to_vec(),
+            CHOCKED.as_slice(),
+        ),
+        (
+            "Snubbing",
+            "Map<Hawser, UByte>",
+            SNUBBED
+                .map(|json| locker_told(json, |read: &Snubbing| self::json(&read.lines)))
+                .to_vec(),
+            SNUBBED.as_slice(),
+        ),
+    ];
+    let mut expected = String::new();
+    let mut main = String::from(ENTRY_READ);
+    main.push_str("fun main() {\n");
+    for (read_as, lines, told, payloads) in &rows {
+        for (json, serde_told) in payloads.iter().zip(told) {
+            let _ = writeln!(expected, "{read_as} {json}: {serde_told}");
+            let _ = writeln!(
+                main,
+                "    entry(\"\"\"{read_as} {json}\"\"\", {read_as}.serializer(), \"\"\"{json}\"\"\") {{ \
+                 \"${{Json.encodeToString(serializer<{lines}>(), it.lines)}} \
+                 ${{Json.encodeToString({read_as}.serializer(), it)}}\" }}"
+            );
+        }
+    }
+    main.push_str("}\n");
+    assert_eq!(
+        expected,
+        "Cathead {}: {} {}\n\
+         Cathead {\"Port\":2}: {\"Port\":2} {\"Port\":2}\n\
+         Cathead {\"Port\":2,\"Starboard\":3}: {\"Port\":2,\"Starboard\":3} \
+         {\"Port\":2,\"Starboard\":3}\n\
+         Cathead {\"Bow\":2}: refused\n\
+         Cathead {\"Port\":\"x\"}: refused\n\
+         Hawsepipe {}: {} {}\n\
+         Hawsepipe {\"Port\":2}: {\"Port\":2} {\"Port\":2}\n\
+         Hawsepipe {\"Port\":2,\"Starboard\":3}: {\"Port\":2,\"Starboard\":3} \
+         {\"Port\":2,\"Starboard\":3}\n\
+         Hawsepipe {\"Bow\":2}: null {}\n\
+         Hawsepipe {\"Port\":\"x\"}: null {}\n\
+         Snubbing {\"bow\":2}: {\"bow\":2} {\"bow\":2}\n\
+         Snubbing {\"open_water\":2}: {\"open_water\":2} {\"open_water\":2}\n\
+         Snubbing {\"OpenWater\":2}: refused\n"
+    );
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        chock_kotlin::kotlin_definition(),
+        hawser_kotlin::kotlin_definition(),
+        cathead_kotlin::kotlin_definition(),
+        hawsepipe_kotlin::kotlin_definition(),
+        snubbing_kotlin::kotlin_definition(),
         main,
     ];
     let Some(printed) = ran_kotlin(&source.join("\n\n")) else {

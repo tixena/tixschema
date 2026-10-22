@@ -963,6 +963,17 @@ the consumer's view; this is what a change has to keep.
   one with a flattened member of its own, which serde reads as a map. A struct the plugin writes
   the serializer of takes the `descriptor.elementNames` of its unjudged serializer, and its text
   is what it was. A map is the one member of its object (section 4).
+- **A flattened map's key is written and read through the key's own serializer**
+  (`flatten_map_field_plan`), where the key's Kotlin type (`kotlin_typename`) is no `String`: it
+  is written as `output.json.encodeToJsonElement(<key>, k).jsonPrimitive.content` and read over
+  `entries.associate` through `input.json.decodeFromJsonElement(<key>, JsonPrimitive(k))`, the
+  serializer `kotlin_serializer_expr` answers, so a key that serializer refuses refuses the entry
+  and reads an optional map as `null`. A plain enum's key is the name serde writes, its `rename`
+  and the enum's `rename_all` among them. A `String` key, a `char` and a date among them, is
+  written and read as it was. A number or a `bool` key is read from its text, where serde reads
+  none. `tests/kotlin_tests/flattened_models.rs` holds `Cathead`, `Hawsepipe` and `Snubbing` and
+  serde's reads of `CHOCKED` and `SNUBBED`, and `run_kotlin_flattened.rs` holds the Kotlin read
+  of each to serde's.
 - **An optional flattened map is `null` where serde reads `None`** (`flatten_map_field_plan`):
   written through `value.{member}?.forEach`, so `null` writes no entry, and read inside
   `runCatching { ... }.getOrNull()`, so an entry that throws as the map's value reads the map as

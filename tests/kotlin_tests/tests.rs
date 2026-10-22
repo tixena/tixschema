@@ -13,19 +13,21 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::flattened_models::{
-    BELTING, Belting, Bending, Brailing, CLEATING, Cleating, CorrectedLocker, EmptiedLocker,
-    Gasketing, HEAVING, HITCHING, Heaving, Hitching, Jibing, Knotting, LOCKER, Lanyarding, Luffing,
-    Netting, Nipping, PAYLOAD, ProbeLocker, Quaying, Rousing, SCUDDING, STOWING, STROPPING,
-    Scudding, Seizing, Slinging, Splicing, Stoppering, Stowing, Stropping, Tacking, UNDER_AN_ALIAS,
-    UNWRITTEN, Whipping, Yawing, read_of,
+    BELTING, Belting, Bending, Brailing, CHOCKED, CLEATING, Cathead, Chock, Cleating,
+    CorrectedLocker, EmptiedLocker, Gasketing, HEAVING, HITCHING, Hawsepipe, Heaving, Hitching,
+    Jibing, Knotting, LOCKER, Lanyarding, Luffing, Netting, Nipping, PAYLOAD, ProbeLocker, Quaying,
+    Rousing, SCUDDING, SNUBBED, STOWING, STROPPING, Scudding, Seizing, Slinging, Snubbing,
+    Splicing, Stoppering, Stowing, Stropping, Tacking, UNDER_AN_ALIAS, UNWRITTEN, Whipping, Yawing,
+    read_of,
 };
 #[cfg(feature = "serde")]
 use super::flattened_models::{
-    belting_kotlin, bending_kotlin, brailing_kotlin, cleating_kotlin, corrected_locker_kotlin,
-    emptied_locker_kotlin, gasketing_kotlin, heaving_kotlin, hitching_kotlin, knotting_kotlin,
-    luffing_kotlin, netting_kotlin, nipping_kotlin, probe_locker_kotlin, rousing_kotlin,
-    scudding_kotlin, seizing_kotlin, slinging_kotlin, splicing_kotlin, stoppering_kotlin,
-    stowing_kotlin, whipping_kotlin, yawing_kotlin,
+    belting_kotlin, bending_kotlin, brailing_kotlin, cathead_kotlin, cleating_kotlin,
+    corrected_locker_kotlin, emptied_locker_kotlin, gasketing_kotlin, hawsepipe_kotlin,
+    heaving_kotlin, hitching_kotlin, knotting_kotlin, luffing_kotlin, netting_kotlin,
+    nipping_kotlin, probe_locker_kotlin, rousing_kotlin, scudding_kotlin, seizing_kotlin,
+    slinging_kotlin, splicing_kotlin, stoppering_kotlin, stowing_kotlin, whipping_kotlin,
+    yawing_kotlin,
 };
 use super::read::{kept, serializers};
 use super::tuple_variants_models::Labelling;
@@ -959,6 +961,91 @@ fn an_optional_flattened_map_is_read_as_null_where_an_entry_does_not_read() {
             format!(
                 "val counts = asNull(obj).let {{ if (it is JsonNull) null else \
                  it.jsonObject.{entries} }}; return EmptiedLocker(counts = counts) }}"
+            ),
+        ),
+    ] {
+        assert!(kotlin.contains(&held), "no `{held}` in: {kotlin}");
+    }
+}
+
+/// What serde reads of a map keyed by a plain enum, the one member, from each of [`CHOCKED`] and
+/// [`SNUBBED`]: a key a variant is written under, its `rename` and the enum's `rename_all`
+/// among them, written back as it was read, and a key no variant is written under refused, or
+/// read as `None` where the map is optional.
+#[test]
+fn serde_reads_a_flattened_map_keyed_by_an_enum_under_the_names_its_variants_are_written_under() {
+    assert_eq!(
+        CHOCKED.map(read_of::<Cathead>),
+        [
+            "{}",
+            r#"{"Port":2}"#,
+            r#"{"Port":2,"Starboard":3}"#,
+            "refused",
+            "refused"
+        ]
+    );
+    assert_eq!(
+        serde_json::from_str::<Cathead>(CHOCKED[3])
+            .unwrap_err()
+            .to_string(),
+        "unknown variant `Bow`, expected `Port` or `Starboard` at line 1 column 9"
+    );
+    let read = CHOCKED.map(|payload| serde_json::from_str::<Hawsepipe>(payload).unwrap().lines);
+    assert_eq!(
+        read,
+        [
+            Some(BTreeMap::new()),
+            Some(BTreeMap::from([(Chock::Port, 2)])),
+            Some(BTreeMap::from([(Chock::Port, 2), (Chock::Starboard, 3)])),
+            None,
+            None
+        ]
+    );
+    assert_eq!(
+        CHOCKED.map(read_of::<Hawsepipe>),
+        [
+            "{}",
+            r#"{"Port":2}"#,
+            r#"{"Port":2,"Starboard":3}"#,
+            "{}",
+            "{}"
+        ]
+    );
+    assert_eq!(
+        SNUBBED.map(read_of::<Snubbing>),
+        [r#"{"bow":2}"#, r#"{"open_water":2}"#, "refused"]
+    );
+}
+
+/// A flattened map keyed by a plain enum, the one member, writes each key as the text the key's
+/// serializer writes and reads it back through that serializer, optional or not.
+#[test]
+#[cfg(feature = "serde")]
+fn a_flattened_map_keyed_by_an_enum_writes_and_reads_each_key_through_its_serializer() {
+    let entry_written = "forEach { (k, v) -> put(output.json.encodeToJsonElement(\
+                         serializer<Chock>(), k).jsonPrimitive.content, \
+                         output.json.encodeToJsonElement(serializer<UByte>(), v)) }";
+    let entries = "entries.associate { (k, v) -> input.json.decodeFromJsonElement(\
+                   serializer<Chock>(), JsonPrimitive(k)) to \
+                   input.json.decodeFromJsonElement(serializer<UByte>(), v) }";
+    for (kotlin, held) in [
+        (
+            cathead_kotlin::kotlin_definition(),
+            format!("buildJsonObject {{ value.lines.{entry_written} }}"),
+        ),
+        (
+            cathead_kotlin::kotlin_definition(),
+            format!("val lines = obj.{entries}; return Cathead(lines = lines) }}"),
+        ),
+        (
+            hawsepipe_kotlin::kotlin_definition(),
+            format!("buildJsonObject {{ value.lines?.{entry_written} }}"),
+        ),
+        (
+            hawsepipe_kotlin::kotlin_definition(),
+            format!(
+                "val lines = runCatching {{ obj.{entries} }}.getOrNull(); \
+                 return Hawsepipe(lines = lines) }}"
             ),
         ),
     ] {
