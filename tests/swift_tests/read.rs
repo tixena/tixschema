@@ -344,7 +344,7 @@ fn a_type_keeps_the_encode_it_had() {
         &[concat!(
             "public func encode(to encoder: Encoder) throws { ",
             "var container = encoder.container(keyedBy: CodingKeys.self); ",
-            "try container.encode(note, forKey: .note) }; ",
+            "try container.encode(self.note, forKey: .note) }; ",
         )],
     );
     holds(
@@ -352,7 +352,7 @@ fn a_type_keeps_the_encode_it_had() {
         &[concat!(
             "public func encode(to encoder: Encoder) throws { ",
             "var container = encoder.container(keyedBy: CodingKeys.self); ",
-            "try extra.encode(to: encoder); try container.encode(id, forKey: .id) }; ",
+            "try self.extra.encode(to: encoder); try container.encode(self.id, forKey: .id) }; ",
         )],
     );
 }

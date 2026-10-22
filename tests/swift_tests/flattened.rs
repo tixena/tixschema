@@ -7,10 +7,11 @@
 #[cfg(feature = "chrono")]
 use super::flattened_models::serving_swift;
 use super::flattened_models::{
-    bowsing_swift, clewing_swift, faking_swift, footing_swift, frapping_swift, gripping_swift,
-    hanking_swift, kedging_swift, marling_swift, marrying_swift, mousing_swift, parceling_swift,
-    plying_swift, ratlining_swift, seaming_swift, snaking_swift, splaying_swift, stopping_swift,
-    stropping_swift, toggling_swift, twinning_swift, whipping_swift, worming_swift,
+    baling_swift, bowsing_swift, boxing_swift, clewing_swift, faking_swift, footing_swift,
+    frapping_swift, gripping_swift, hanking_swift, kedging_swift, marling_swift, marrying_swift,
+    mousing_swift, parceling_swift, plying_swift, ratlining_swift, seaming_swift, snaking_swift,
+    splaying_swift, stopping_swift, stropping_swift, toggling_swift, twinning_swift,
+    whipping_swift, worming_swift,
 };
 
 /// The read a holder takes the keys the types around it took with.
@@ -81,7 +82,7 @@ fn a_map_alone_is_read_without_the_keys_the_types_around_its_holder_took() {
     assert_written(&stopping, &format!("{TAKING} {{ let keyed = "));
     assert_written(
         &stopping,
-        "public func encode(to encoder: Encoder) throws { try rest.encode(to: encoder) }",
+        "public func encode(to encoder: Encoder) throws { try self.rest.encode(to: encoder) }",
     );
     assert_no_keyed_container(&stopping);
     let clewing = clewing_swift::swift_definition();
@@ -96,7 +97,7 @@ fn a_map_alone_is_read_without_the_keys_the_types_around_its_holder_took() {
     assert_written(&clewing, &format!("{TAKING} {{ let keyed = "));
     assert_written(
         &clewing,
-        "public func encode(to encoder: Encoder) throws { try rest.encode(to: encoder) }",
+        "public func encode(to encoder: Encoder) throws { try self.rest.encode(to: encoder) }",
     );
     assert_no_keyed_container(&clewing);
     assert_written(
@@ -133,7 +134,7 @@ fn a_map_under_a_key_swift_wraps_is_read_by_its_wrapper_without_the_keys_taken()
     );
     assert_written(
         &parceling,
-        "try ParcelingRestKeyedMap(storage: rest).encode(to: encoder)",
+        "try ParcelingRestKeyedMap(storage: self.rest).encode(to: encoder)",
     );
     let toggling = toggling_swift::swift_definition();
     assert_written(
@@ -183,7 +184,7 @@ fn a_map_of_dates_is_read_and_written_through_the_text_serde_writes() {
     );
     assert_written(
         &serving,
-        "try rest.mapValues { Self.swiftSchemaFormatIso8601Date($0) }.encode(to: encoder)",
+        "try self.rest.mapValues { Self.swiftSchemaFormatIso8601Date($0) }.encode(to: encoder)",
     );
 }
 
@@ -218,8 +219,8 @@ fn a_function_is_handed_every_key_but_its_holders_own_where_no_member_ahead_took
     );
     assert_written(
         &kedging,
-        "try extra.encode(to: encoder); try container.encode(note, forKey: .note); \
-         try pennant.encode(to: encoder)",
+        "try self.extra.encode(to: encoder); try container.encode(self.note, forKey: .note); \
+         try self.pennant.encode(to: encoder)",
     );
     for definition in [
         marling_swift::swift_definition(),
@@ -286,7 +287,7 @@ fn a_member_after_a_flattened_struct_is_read_without_the_keys_the_struct_took() 
     );
     for definition in [splaying, twinning, gripping, plying] {
         assert_written(&definition, TAKING);
-        assert_written(&definition, "try flag.encode(to: encoder); try ");
+        assert_written(&definition, "try self.flag.encode(to: encoder); try ");
     }
 }
 
@@ -340,7 +341,7 @@ fn a_struct_flattened_first_is_read_without_its_holders_own_keys() {
     assert_written(
         &stropping,
         "public func encode(to encoder: Encoder) throws { \
-         try flag.encode(to: encoder); try tally.encode(to: encoder) }",
+         try self.flag.encode(to: encoder); try self.tally.encode(to: encoder) }",
     );
     assert_no_keyed_container(&stropping);
     assert_written(
@@ -370,7 +371,26 @@ fn a_struct_of_flattened_structs_alone_declares_no_container_of_its_keys() {
     assert_written(
         &seaming,
         "public func encode(to encoder: Encoder) throws { \
-         try flag.encode(to: encoder); try notch.encode(to: encoder) }",
+         try self.flag.encode(to: encoder); try self.notch.encode(to: encoder) }",
     );
     assert_no_keyed_container(&seaming);
+}
+
+/// A member named after the container a written `encode(to:)` declares is read through `self.`,
+/// a member of the holder's own as the value it encodes and a flattened one as what it encodes
+/// through, so the method never reads the container in its place.
+#[test]
+fn a_member_named_after_the_container_is_written_through_self() {
+    assert_written(
+        &boxing_swift::swift_definition(),
+        "public func encode(to encoder: Encoder) throws { var container = \
+         encoder.container(keyedBy: CodingKeys.self); try container.encode(self.container, \
+         forKey: .container); try self.flag.encode(to: encoder) }",
+    );
+    assert_written(
+        &baling_swift::swift_definition(),
+        "public func encode(to encoder: Encoder) throws { var container = \
+         encoder.container(keyedBy: CodingKeys.self); try self.container.encode(to: encoder); \
+         try container.encode(self.note, forKey: .note) }",
+    );
 }

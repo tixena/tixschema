@@ -11,7 +11,8 @@
 //! struct. serde reads the members in the order declared: a struct takes the keys it reads, and
 //! every flattened member is handed every key neither its holder's own members nor a member ahead
 //! of it took. Every holder of a member that names a function has a member of its own, whose key
-//! no flattened member is handed, but [`Stropping`].
+//! no flattened member is handed, but [`Stropping`]. [`Boxing`] and [`Baling`] each hold a member
+//! named after the container their written `encode(to:)` declares, of their own and flattened.
 
 use alloc::collections::BTreeMap;
 
@@ -67,6 +68,12 @@ pub const LABEL: &str = r#"{"label":"n"}"#;
 
 /// What [`Seaming`] is read from.
 pub const SEAMING: &str = r#"{"label":"n","mark":"x"}"#;
+
+/// What [`Boxing`] is read from.
+pub const BOXING: &str = r#"{"container":"c","label":"n"}"#;
+
+/// What [`Baling`] is read from.
+pub const BALING: &str = r#"{"label":"n","note":"a"}"#;
 
 /// A plain enum a map is keyed by, which Swift reads through a wrapper.
 #[model_schema()]
@@ -360,6 +367,26 @@ pub struct Seaming {
     pub notch: Notch,
 }
 
+/// A member of its own named after the container its written `encode(to:)` declares, beside a
+/// flattened struct.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Boxing {
+    pub container: String,
+    #[serde(flatten)]
+    pub flag: Pennant,
+}
+
+/// A flattened struct named after the container its holder's written `encode(to:)` declares,
+/// beside a member of its holder's own.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Baling {
+    #[serde(flatten)]
+    pub container: Pennant,
+    pub note: String,
+}
+
 /// The payload as it was handed.
 const fn as_given(payload: Value) -> Value {
     payload
@@ -497,4 +524,16 @@ fn serde_hands_the_second_of_two_flattened_structs_the_keys_the_first_did_not_ta
     let seaming = read::<Seaming>(SEAMING);
     assert_eq!(seaming.notch.mark, "x");
     assert_eq!(written(&seaming), SEAMING);
+}
+
+/// A member named after a container, of its holder's own or flattened, is read and written back
+/// as any other.
+#[test]
+fn serde_reads_and_writes_a_member_named_container_as_any_other() {
+    let boxing = read::<Boxing>(BOXING);
+    assert_eq!(boxing.container, "c");
+    assert_eq!(written(&boxing), BOXING);
+    let baling = read::<Baling>(BALING);
+    assert_eq!(baling.container.label, "n");
+    assert_eq!(written(&baling), BALING);
 }

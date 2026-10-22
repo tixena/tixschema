@@ -347,9 +347,9 @@ fn every_type_position_names_the_helper_at_its_parameters() {
             "let wireListed = try container.decode([StackListedKeyedMap<Stowed>].self, \
              forKey: .listed); self.listed = wireListed.map { $0.storage }; ",
             "self.pair = try container.decode(StackPairTuple<Stowed>.self, forKey: .pair); ",
-            "let wireByCask = StackByCaskKeyedMap<Stowed>(storage: byCask); ",
-            "let wireByNumber = StackByNumberKeyedMap<Stowed>(storage: byNumber); ",
-            "let wireListed = listed.map { StackListedKeyedMap<Stowed>(storage: $0) }; ",
+            "let wireByCask = StackByCaskKeyedMap<Stowed>(storage: self.byCask); ",
+            "let wireByNumber = StackByNumberKeyedMap<Stowed>(storage: self.byNumber); ",
+            "let wireListed = self.listed.map { StackListedKeyedMap<Stowed>(storage: $0) }; ",
         ],
     );
 }
@@ -404,7 +404,7 @@ fn a_helper_whose_members_reach_no_parameter_keeps_its_text() {
         &[
             "let wireByCount = try container.decode(StackByCountKeyedMap.self, forKey: .byCount); ",
             "self.marks = try container.decode(StackMarksTuple.self, forKey: .marks); ",
-            "let wireByCount = StackByCountKeyedMap(storage: byCount); ",
+            "let wireByCount = StackByCountKeyedMap(storage: self.byCount); ",
         ],
     );
 }
@@ -419,7 +419,7 @@ fn the_key_of_a_map_reaches_the_parameter() {
             "public let byStowed: [String: UInt32]; ",
             "let wireByStowed = try container.decode(RankedByStowedKeyedMap<Stowed>.self, \
              forKey: .byStowed); ",
-            "let wireByStowed = RankedByStowedKeyedMap<Stowed>(storage: byStowed); ",
+            "let wireByStowed = RankedByStowedKeyedMap<Stowed>(storage: self.byStowed); ",
         ],
     );
 }
@@ -530,7 +530,7 @@ fn a_variant_holds_its_helper_at_the_parameters_it_declares_under_a_tag_alone() 
             "public let byDeck: [Deck: Stowed]; \
              public let pair: TaggedSplitStackedPayloadPairTuple<Stowed>; ",
             "let wireByDeck = \
-             TaggedSplitStackedPayloadByDeckKeyedMap<Stowed>(storage: byDeck); ",
+             TaggedSplitStackedPayloadByDeckKeyedMap<Stowed>(storage: self.byDeck); ",
         ],
     );
 }

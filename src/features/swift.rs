@@ -2026,8 +2026,11 @@ fn keyed_read(field: &SwiftField, container: &str, absent_is_nil: bool) -> Strin
     )
 }
 
-/// The `try container.encode...` statement a field earns inside a hand-written `encode(to:)`.
+/// The `try container.encode...` statement a field earns inside a hand-written `encode(to:)`. The
+/// property is read through `self.`, so a member named after a local of the method (`container`,
+/// `tagged`, `held`, a `wire{Member}`) or its parameter, `encoder`, is never read as either.
 fn encode_statement(field: &SwiftField, container: &str) -> String {
+    let property = format!("self.{}", field.swift_name);
     if field.flatten && field.field_def.is_optional() {
         // `Optional`'s own `encode(to:)` writes a single value over the holder's keys, and `null`
         // for `nil`, where serde writes the held value's keys beside them, and nothing for `None`.
@@ -2037,21 +2040,18 @@ fn encode_statement(field: &SwiftField, container: &str) -> String {
             field.field_def.array_depth,
             "held",
         );
-        return format!(
-            "if let held = {} {{ try {held}.encode(to: encoder) }}",
-            field.swift_name
-        );
+        return format!("if let held = {property} {{ try {held}.encode(to: encoder) }}");
     }
     if field.flatten {
         return format!(
             "try {}.encode(to: encoder)",
-            written_from(&field.field_def, &field.shape, &field.swift_name)
+            written_from(&field.field_def, &field.shape, &property)
         );
     }
     let source = if matches!(field.shape.leaf_conversion, LeafConversion::None) {
-        field.swift_name.clone()
+        property
     } else {
-        let convert = written_from(&field.field_def, &field.shape, &field.swift_name);
+        let convert = written_from(&field.field_def, &field.shape, &property);
         let local = format!("wire{}", swift_upper_camel(swift_bare(&field.swift_name)));
         return if field.required {
             format!(

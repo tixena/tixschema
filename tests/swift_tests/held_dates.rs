@@ -303,13 +303,13 @@ fn a_map_swift_keys_natively_turns_each_date_it_holds() {
              forKey: .maybeByName); self.maybeByName = try wireMaybeByName.mapValues { \
              try $0.map { try Self.swiftSchemaParseIso8601Date($0, codingPath: decoder.codingPath) } }; "
                 .to_owned(),
-            "let wireByName = byName.mapValues { Self.swiftSchemaFormatIso8601Date($0) }; \
+            "let wireByName = self.byName.mapValues { Self.swiftSchemaFormatIso8601Date($0) }; \
              try container.encode(wireByName, forKey: .byName); "
                 .to_owned(),
-            "let wireMarksByName = marksByName.mapValues { \
+            "let wireMarksByName = self.marksByName.mapValues { \
              $0.map { Self.swiftSchemaFormatIso8601Date($0) } }; "
                 .to_owned(),
-            "let wireMaybeByName = maybeByName.mapValues { \
+            "let wireMaybeByName = self.maybeByName.mapValues { \
              $0.map { Self.swiftSchemaFormatIso8601Date($0) } }; "
                 .to_owned(),
         ],
@@ -518,7 +518,7 @@ fn a_type_argument_holds_its_date_in_a_wrapper_that_reads_and_writes_its_text() 
             "self.dated = try container.decode(Pannier<PannierArgument0Date>.self, \
              forKey: .dated); "
                 .to_owned(),
-            "try container.encode(dated, forKey: .dated); ".to_owned(),
+            "try container.encode(self.dated, forKey: .dated); ".to_owned(),
         ],
     );
     holds(
@@ -596,7 +596,7 @@ fn a_date_a_field_a_member_and_a_brand_hold_is_read_as_it_was() {
             "let wireAt = try container.decode(String.self, forKey: .at); \
              self.at = try Self.swiftSchemaParseIso8601Date(wireAt, codingPath: decoder.codingPath); "
                 .to_owned(),
-            "let wireAt = Self.swiftSchemaFormatIso8601Date(at); \
+            "let wireAt = Self.swiftSchemaFormatIso8601Date(self.at); \
              try container.encode(wireAt, forKey: .at); "
                 .to_owned(),
         ],

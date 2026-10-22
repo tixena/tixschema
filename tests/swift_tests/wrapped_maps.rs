@@ -328,12 +328,12 @@ fn a_map_reads_and_writes_a_map_it_holds_through_the_wrapper() {
                  container.decode([String: @heldNumbersByNameValueKeyedMap@p].self, \
                  forKey: .numbersByName); \
                  self.numbersByName = wireNumbersByName.mapValues { $0.storage }; ",
-                "let wireNumbersByName = numbersByName.mapValues { \
+                "let wireNumbersByName = self.numbersByName.mapValues { \
                  @heldNumbersByNameValueKeyedMap@p(storage: $0) }; ",
                 "entries[entry.stringValue] = try \
                  @heldSatchelsByNameValueKeyedMap(swiftSchemaUnjudged: \
                  keyed.superDecoder(forKey: entry)).storage }; ",
-                "let wireSatchelsByName = satchelsByName.mapValues { \
+                "let wireSatchelsByName = self.satchelsByName.mapValues { \
                  @heldSatchelsByNameValueKeyedMap(storage: $0) }; ",
             ],
         );
