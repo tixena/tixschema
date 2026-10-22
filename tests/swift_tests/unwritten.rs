@@ -17,8 +17,8 @@ fn a_member_serde_never_writes_is_read_and_not_encoded() {
     assert!(
         furling.contains(
             "public func encode(to encoder: Encoder) throws { var container = \
-             encoder.container(keyedBy: CodingKeys.self); try container.encode(label, forKey: \
-             .label) };"
+             encoder.container(keyedBy: CodingKeys.self); try container.encode(self.label, \
+             forKey: .label) };"
         ),
         "got: {furling}"
     );
@@ -37,7 +37,7 @@ fn a_member_serde_never_writes_beside_a_flattened_one_is_not_encoded() {
     assert!(
         reefing.contains(
             "public func encode(to encoder: Encoder) throws { _ = encoder.container(keyedBy: \
-             CodingKeys.self); try braiding.encode(to: encoder) };"
+             CodingKeys.self); try self.braiding.encode(to: encoder) };"
         ),
         "got: {reefing}"
     );

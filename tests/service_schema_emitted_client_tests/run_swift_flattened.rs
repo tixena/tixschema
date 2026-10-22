@@ -5,7 +5,8 @@
 //! member of its holder's own, each read and written back by the emitted Swift types compiled
 //! with warnings as errors, against what serde reads and writes back; and a struct and a variant
 //! whose every member is flattened: a map, the one member of each, in each shape a map is read in,
-//! and a holder of flattened structs alone.
+//! and a holder of flattened structs alone; and a member named after the container a written
+//! `encode(to:)` declares, of its holder's own and flattened.
 
 #![cfg(feature = "swift")]
 
@@ -18,15 +19,15 @@ use serde_json::Value;
 
 use super::runtime::judged;
 use super::swift_flattened_models::{
-    BOWSING, Bowsing, CLEWING, COUNTS, Clewing, FAKING, FRAPPING, Faking, Frapping, GRIPPING,
-    Gripping, HANKING, Hanking, Kedging, LABEL, Marling, Marrying, Mousing, Notch, PARCELING,
-    Parceling, Pennant, Plying, SEAMING, SNAKING, STOPPING, Seaming, Snaking, Splaying, Stopping,
-    Stropping, TEXTS, Toggling, Twinning, WORMING, Whipping, Worming, bowsing_swift, clewing_swift,
-    counting_swift, faking_swift, footing_swift, frapping_swift, gripping_swift, hanking_swift,
-    kedging_swift, marling_swift, marrying_swift, mousing_swift, notch_swift, parceling_swift,
-    pennant_swift, plying_swift, quarter_swift, reeving_swift, seaming_swift, snaking_swift,
-    splaying_swift, stopping_swift, stropping_swift, toggling_swift, twinning_swift,
-    whipping_swift, worming_swift,
+    BALING, BOWSING, BOXING, Baling, Bowsing, Boxing, CLEWING, COUNTS, Clewing, FAKING, FRAPPING,
+    Faking, Frapping, GRIPPING, Gripping, HANKING, Hanking, Kedging, LABEL, Marling, Marrying,
+    Mousing, Notch, PARCELING, Parceling, Pennant, Plying, SEAMING, SNAKING, STOPPING, Seaming,
+    Snaking, Splaying, Stopping, Stropping, TEXTS, Toggling, Twinning, WORMING, Whipping, Worming,
+    baling_swift, bowsing_swift, boxing_swift, clewing_swift, counting_swift, faking_swift,
+    footing_swift, frapping_swift, gripping_swift, hanking_swift, kedging_swift, marling_swift,
+    marrying_swift, mousing_swift, notch_swift, parceling_swift, pennant_swift, plying_swift,
+    quarter_swift, reeving_swift, seaming_swift, snaking_swift, splaying_swift, stopping_swift,
+    stropping_swift, toggling_swift, twinning_swift, whipping_swift, worming_swift,
 };
 #[cfg(feature = "chrono")]
 use super::swift_flattened_models::{SERVING, Serving, serving_swift};
@@ -311,7 +312,13 @@ fn printed_alone(rows: &[Row]) -> Option<String> {
     ];
     #[cfg(feature = "chrono")]
     definitions.push(serving_swift::swift_definition());
-    let main = rows.iter().fold(String::new(), |mut main, row| {
+    printed_of(&definitions, &main_of(rows))
+}
+
+/// What prints each of `rows` read as its type: the value written back, or what the read that
+/// refuses it says.
+fn main_of(rows: &[Row]) -> String {
+    rows.iter().fold(String::new(), |mut main, row| {
         let payload = format!("({}.self, #\"{}\"#)", row.read_as, row.json);
         let told = if row.refused {
             format!("refusal{payload}")
@@ -320,8 +327,7 @@ fn printed_alone(rows: &[Row]) -> Option<String> {
         };
         let _ = writeln!(main, "print(\"{}: \\({told})\")", row.name);
         main
-    });
-    printed_of(&definitions, &main)
+    })
 }
 
 /// The keys each function was handed, as serde hands them, then its holder written back.
@@ -456,6 +462,42 @@ fn a_type_of_flattened_members_alone_reads_and_writes_in_swift_as_serde_does() {
     let dates = "";
     assert_eq!(expected, format!("{shared}{dates}"));
     let Some(printed) = printed_alone(&rows) else {
+        return;
+    };
+    assert_eq!(printed, expected);
+}
+
+/// A member named after the container a written `encode(to:)` declares, of its holder's own beside
+/// a flattened struct and flattened beside a member of its holder's own, is read from its payload
+/// and written back as serde writes it back.
+#[test]
+fn a_member_named_after_the_container_reads_and_writes_in_swift_as_serde_does() {
+    let read_back = |name, read_as, json, told| Row {
+        json,
+        name,
+        read_as,
+        refused: false,
+        told,
+    };
+    let rows = [
+        read_back("boxing", "Boxing", BOXING, written_back::<Boxing>),
+        read_back("baling", "Baling", BALING, written_back::<Baling>),
+    ];
+    let expected = rows.iter().fold(String::new(), |mut expected, row| {
+        let _ = writeln!(expected, "{}: {}", row.name, (row.told)(row.json));
+        expected
+    });
+    assert_eq!(
+        expected,
+        "boxing: {\"container\":\"c\",\"label\":\"n\"}\n\
+         baling: {\"label\":\"n\",\"note\":\"a\"}\n"
+    );
+    let definitions = [
+        pennant_swift::swift_definition(),
+        boxing_swift::swift_definition(),
+        baling_swift::swift_definition(),
+    ];
+    let Some(printed) = printed_of(&definitions, &main_of(&rows)) else {
         return;
     };
     assert_eq!(printed, expected);

@@ -22,14 +22,14 @@ fn a_flattened_option_writes_the_value_it_holds_beside_its_holders_own_members()
     assert_written(
         &lapping_swift::swift_definition(),
         "public func encode(to encoder: Encoder) throws { var container = \
-         encoder.container(keyedBy: CodingKeys.self); try container.encode(note, forKey: .note); \
-         if let held = tabling { try held.encode(to: encoder) } }",
+         encoder.container(keyedBy: CodingKeys.self); try container.encode(self.note, forKey: \
+         .note); if let held = self.tabling { try held.encode(to: encoder) } }",
     );
     assert_written(
         &sennit_swift::swift_definition(),
         "public func encode(to encoder: Encoder) throws { var container = \
-         encoder.container(keyedBy: CodingKeys.self); if let held = tabling { try \
-         held.encode(to: encoder) }; try container.encode(note, forKey: .note) }",
+         encoder.container(keyedBy: CodingKeys.self); if let held = self.tabling { try \
+         held.encode(to: encoder) }; try container.encode(self.note, forKey: .note) }",
     );
 }
 
@@ -40,13 +40,13 @@ fn a_flattened_option_alone_opens_its_holders_object() {
     assert_written(
         &flaking_swift::swift_definition(),
         "public func encode(to encoder: Encoder) throws { _ = encoder.container(keyedBy: \
-         CodingKeys.self); if let held = tabling { try held.encode(to: encoder) } }",
+         CodingKeys.self); if let held = self.tabling { try held.encode(to: encoder) } }",
     );
     #[cfg(feature = "chrono")]
     assert_written(
         &swaging_swift::swift_definition(),
         "public func encode(to encoder: Encoder) throws { _ = encoder.container(keyedBy: \
-         CodingKeys.self); if let held = stamps { try held.mapValues { \
+         CodingKeys.self); if let held = self.stamps { try held.mapValues { \
          Self.swiftSchemaFormatIso8601Date($0) }.encode(to: encoder) } }",
     );
 }
@@ -58,7 +58,7 @@ fn a_struct_flattened_bare_writes_what_it_wrote() {
     assert_written(
         &crowning_swift::swift_definition(),
         "public func encode(to encoder: Encoder) throws { var container = \
-         encoder.container(keyedBy: CodingKeys.self); try container.encode(note, forKey: .note); \
-         try tabling.encode(to: encoder) }",
+         encoder.container(keyedBy: CodingKeys.self); try container.encode(self.note, forKey: \
+         .note); try self.tabling.encode(to: encoder) }",
     );
 }

@@ -441,7 +441,7 @@ fn a_nullable_field_always_writes_its_key_even_when_nil() {
     let swift = with_nullable_swift::swift_definition();
     assert!(swift.contains("public let note: String?"), "got: {swift}");
     assert!(
-        swift.contains("try container.encode(note, forKey: .note)"),
+        swift.contains("try container.encode(self.note, forKey: .note)"),
         "got: {swift}"
     );
     assert!(
@@ -463,7 +463,7 @@ fn a_flattened_field_decodes_without_its_holders_keys_and_encodes_through_the_sa
         "got: {swift}"
     );
     assert!(
-        swift.contains("try extra.encode(to: encoder)"),
+        swift.contains("try self.extra.encode(to: encoder)"),
         "got: {swift}"
     );
 }

@@ -1743,7 +1743,11 @@ to keep.
 - **Nothing is shared between two emitted types.** `SwiftSchemaAnyKey`, the key type a map is read
   entry by entry under, is private to each type whose read names it (`any_key`). `Locals` numbers
   what one initializer declares (`listed`, `items`, `keyed`, `entries`, `entry`, `number`), and a
-  property is assigned through `self.` alone, so one named after a local is never read as it.
+  property is assigned through `self.` alone, so one named after a local is never read as it. A
+  written `encode(to:)` reads each property through `self.` too (`encode_statement`), so a member
+  named after one of its locals (`container`, `tagged`, `held`, a `wire{Member}`) or its
+  parameter, `encoder`, is never read as either. `run_swift_flattened.rs` runs a member named
+  `container`, of its holder's own and flattened, against serde.
 - **A map under a key Swift reads through a wrapper** (`MapKeys::Wrapped`) is read by the wrapper,
   which gains an `init(swiftSchemaUnjudged:)` where its values are walked.
 - **A flattened map is read entry by entry** (`flattened_map`, from `member_reads`,

@@ -403,9 +403,10 @@ fn a_field_hands_on_the_storage_of_each_map_with_no_try() {
                  from: verbatim(verbatimListsPayload), at: container.codingPath + \
                  [CodingKeys.verbatimLists]); \
                  self.verbatimLists = wireVerbatimLists.map { $0.storage } }",
-                "let wireFlagListsOrNone = flagListsOrNone.map { $0.map { \
+                "let wireFlagListsOrNone = self.flagListsOrNone.map { $0.map { \
                  @heldFlagListsOrNoneKeyedMap@p(storage: $0) } }; ",
-                "let wireMaybeFlags = maybeFlags.map { @heldMaybeFlagsKeyedMap@p(storage: $0) }; ",
+                "let wireMaybeFlags = self.maybeFlags.map { \
+                 @heldMaybeFlagsKeyedMap@p(storage: $0) }; ",
             ],
         );
     }
