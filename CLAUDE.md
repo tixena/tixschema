@@ -1791,11 +1791,20 @@ to keep.
   `corrected_field` with no function: `SwiftSchemaPayload(from:without:)`, then the type, a model
   `validate()` walks through `SwiftSchemaRead{Member}`, unjudged. A struct that reads a key of
   the holder's own members or one a struct ahead took is then refused, as serde refuses it. A
-  holder of no member of its own is handed keys only where one of its reads names `taken`, so
-  `handed_reads` writes its reads twice there, the second time with every member withheld from;
-  one whose reads name none reads its members from its decoder, as before. An enum under a tag
-  alone hands the tag only to a payload that takes keys, so a struct flattened into a variant of
-  no member of its own, where no read of the variant names `taken`, still reads the tag.
+  holder of no member of its own is handed keys where the types around it hand some (`around`,
+  which `struct_declaration` takes) or where one of its reads names `taken`, so `handed_reads`
+  writes its reads twice there, the second time with every member withheld from; one whose
+  reads name none, and that nothing around hands keys, reads its members from its decoder.
+- **What a variant under a tag alone holds is handed the object without the tag**, as serde
+  hands it. `EnumTagAttrs::tag_alone` is the one question. `named_payload` hands
+  `struct_declaration` `around` under it, so the struct written for a variant whose every member
+  is flattened withholds keys from each, takes the keys itself and is read by `read::beside` with
+  `taken + [tag]`; a struct with a member of its own is written as it was. `slot_payload` reads a
+  slot whose type takes no keys (`preprocess::beside`) through `VariantPayload::corrected` with no
+  function: `corrected_member` reads it from `SwiftSchemaPayload(from:without:)`, a model
+  `validate()` walks through `SwiftSchemaRead{Case}`, unjudged. A slot whose type takes keys is
+  read through its taking initializer, as before. `tests/swift_tests/flattened.rs` pins the text
+  of `Grafting` and `Pointing`, and `run_swift_flattened.rs` runs both against serde.
 - **An untagged enum takes the variant serde takes.** `validate::bound_alone` is what chooses: a
   member's own bounds, and `held_walk` under `Walk::Bound`, which asks each brand the member
   holds for `swiftSchemaValidateBound()`, the member the wrapper of a bounded brand declares
@@ -1844,11 +1853,13 @@ change to the emitter has to keep.
   (`preprocess::functions`). Nothing reads the item's derives: the Swift type is read whether or
   not the Rust one derives `Deserialize`.
 - **`src/features/swift/preprocess.rs` holds what is written.** `PAYLOAD` is the private
-  `SwiftSchemaPayload`, written into each type that names a function and into no other
-  (`read::both` adds it where the statements or `Written::own` name it). It reads any JSON value
-  from a `Decoder`, reads a type back from one through `JSONSerialization` and a `JSONDecoder` of
-  its own, and writes the coding path of the value into each `DecodingError` of that read. An
-  answer `JSONSerialization.isValidJSONObject` refuses is a `dataCorrupted`, never an exception.
+  `SwiftSchemaPayload`, written into each type that names a function and into each that reads a
+  member from its object without some keys, a flattened member or what a variant under a tag
+  alone holds, and into no other (`read::both` adds it where the statements or `Written::own`
+  name it). It reads any JSON value from a `Decoder`, reads a type back from one through
+  `JSONSerialization` and a `JSONDecoder` of its own, and writes the coding path of the value
+  into each `DecodingError` of that read. An answer `JSONSerialization.isValidJSONObject` refuses
+  is a `dataCorrupted`, never an exception.
 - **A member's functions are called in the read the member had.** `preprocess::member` is the one
   writer, called from `decode_statement` (a field), `tuple_shape` (a slot of a tuple) and
   `VariantPayload::read` (the one slot of a variant). `Source::payload` answers the payload and
@@ -1886,10 +1897,10 @@ change to the emitter has to keep.
   from the enum's decoder and the value of a brand are read through that initializer where the
   type takes keys, and through the read they had everywhere else, so a type that names no
   function and reads none is written as it was, a flattened member its holder withholds keys from
-  apart. A struct written for a variant's members
+  and the slot of a variant under a tag alone apart. A struct written for a variant's members
   answers through `VariantPayload::takes_keys`. A type declared below its holder is not known
   to take keys, and is read from the holder's whole object, or, flattened where its holder
-  withholds keys, from the payload without them.
+  withholds keys and as the slot of a variant under a tag alone, from the payload without them.
 - **An untagged enum hands its readers the keys.** A `swiftSchemaRead{Variant}` whose statements
   name `taken` takes it as a second parameter, and `Written::beside` hands `both` the readers,
   which name the payload type and the key type the enum declares ahead of them.

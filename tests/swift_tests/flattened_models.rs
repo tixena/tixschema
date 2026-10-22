@@ -13,6 +13,9 @@
 //! of it took. Every holder of a member that names a function has a member of its own, whose key
 //! no flattened member is handed, but [`Stropping`]. [`Boxing`] and [`Baling`] each hold a member
 //! named after the container their written `encode(to:)` declares, of their own and flattened.
+//! [`Grafting`] and [`Pointing`] are enums under a tag alone whose variants hold a struct as their
+//! one slot and flatten one beside no member of their own, and in [`Pointing`] beside one: serde
+//! takes the tag off the object first, so a struct that reads a key named as the tag is refused.
 
 use alloc::collections::BTreeMap;
 
@@ -74,6 +77,28 @@ pub const BOXING: &str = r#"{"container":"c","label":"n"}"#;
 
 /// What [`Baling`] is read from.
 pub const BALING: &str = r#"{"label":"n","note":"a"}"#;
+
+/// What [`Grafting`] is read from under the variant that flattens [`Kinded`].
+pub const GRAFTING_HELD: &str = r#"{"kind":"Held"}"#;
+
+/// What [`Grafting`] is read from under the variant that holds [`Kinded`] as its one slot.
+pub const GRAFTING_SLOT: &str = r#"{"kind":"Slot"}"#;
+
+/// What [`Pointing`] is read from under the variant that flattens [`Pennant`].
+pub const POINTING_HELD: &str = r#"{"kind":"Held","label":"n"}"#;
+
+/// What [`Pointing`] is read from under the variant that holds [`Pennant`] as its one slot.
+pub const POINTING_SLOT: &str = r#"{"kind":"Slot","label":"n"}"#;
+
+/// What [`Pointing`] is read from under the variant that flattens [`Pennant`] beside a member of
+/// its own.
+pub const POINTING_NOTED: &str = r#"{"kind":"Noted","label":"n","note":"a"}"#;
+
+/// What [`Pointing`] is read from under the variant that flattens [`Notch`].
+pub const POINTING_MARKED: &str = r#"{"kind":"Marked","mark":"x"}"#;
+
+/// What [`Pointing`] is read from under the variant that holds [`Notch`] as its one slot.
+pub const POINTING_NOTCHED: &str = r#"{"kind":"Notched","mark":"x"}"#;
 
 /// A plain enum a map is keyed by, which Swift reads through a wrapper.
 #[model_schema()]
@@ -387,6 +412,50 @@ pub struct Baling {
     pub note: String,
 }
 
+/// A struct that reads a key named as the tag of [`Grafting`].
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Kinded {
+    pub kind: String,
+}
+
+/// [`Kinded`] flattened into a variant of no member of its own and held as a variant's one slot,
+/// under a tag alone: serde hands neither the tag.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind")]
+pub enum Grafting {
+    Held {
+        #[serde(flatten)]
+        flag: Kinded,
+    },
+    Slot(Kinded),
+}
+
+/// [`Pennant`] and [`Notch`], which read keys other than the tag, flattened into a variant of no
+/// member of its own and held as a variant's one slot, under a tag alone, and [`Pennant`]
+/// flattened beside a member of its variant's own.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind")]
+pub enum Pointing {
+    Held {
+        #[serde(flatten)]
+        flag: Pennant,
+    },
+    Marked {
+        #[serde(flatten)]
+        notch: Notch,
+    },
+    Notched(Notch),
+    Noted {
+        #[serde(flatten)]
+        flag: Pennant,
+        note: String,
+    },
+    Slot(Pennant),
+}
+
 /// The payload as it was handed.
 const fn as_given(payload: Value) -> Value {
     payload
@@ -536,4 +605,40 @@ fn serde_reads_and_writes_a_member_named_container_as_any_other() {
     let baling = read::<Baling>(BALING);
     assert_eq!(baling.container.label, "n");
     assert_eq!(written(&baling), BALING);
+}
+
+/// A struct a variant under a tag alone holds as its one slot or flattens beside no member of its
+/// own is handed the object without the tag, so one that reads a key named as the tag is refused,
+/// and one that reads another key is read.
+#[test]
+fn serde_hands_what_a_variant_under_a_tag_alone_holds_the_object_without_the_tag() {
+    let refusal = |text: &str| {
+        serde_json::from_str::<Grafting>(text)
+            .unwrap_err()
+            .to_string()
+    };
+    assert_eq!(refusal(GRAFTING_HELD), "missing field `kind`");
+    assert_eq!(refusal(GRAFTING_SLOT), "missing field `kind`");
+    let label = || Pennant {
+        label: "n".to_owned(),
+    };
+    let mark = || Notch {
+        mark: "x".to_owned(),
+    };
+    for (text, read_as) in [
+        (POINTING_HELD, Pointing::Held { flag: label() }),
+        (POINTING_SLOT, Pointing::Slot(label())),
+        (
+            POINTING_NOTED,
+            Pointing::Noted {
+                flag: label(),
+                note: "a".to_owned(),
+            },
+        ),
+        (POINTING_MARKED, Pointing::Marked { notch: mark() }),
+        (POINTING_NOTCHED, Pointing::Notched(mark())),
+    ] {
+        assert_eq!(read::<Pointing>(text), read_as);
+        assert_eq!(written(&read_as), text);
+    }
 }

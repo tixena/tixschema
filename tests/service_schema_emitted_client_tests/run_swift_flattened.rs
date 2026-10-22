@@ -6,7 +6,8 @@
 //! with warnings as errors, against what serde reads and writes back; and a struct and a variant
 //! whose every member is flattened: a map, the one member of each, in each shape a map is read in,
 //! and a holder of flattened structs alone; and a member named after the container a written
-//! `encode(to:)` declares, of its holder's own and flattened.
+//! `encode(to:)` declares, of its holder's own and flattened; and what a variant under a tag alone
+//! holds as its one slot or flattens, which serde hands the object without the tag.
 
 #![cfg(feature = "swift")]
 
@@ -20,14 +21,16 @@ use serde_json::Value;
 use super::runtime::judged;
 use super::swift_flattened_models::{
     BALING, BOWSING, BOXING, Baling, Bowsing, Boxing, CLEWING, COUNTS, Clewing, FAKING, FRAPPING,
-    Faking, Frapping, GRIPPING, Gripping, HANKING, Hanking, Kedging, LABEL, Marling, Marrying,
-    Mousing, Notch, PARCELING, Parceling, Pennant, Plying, SEAMING, SNAKING, STOPPING, Seaming,
-    Snaking, Splaying, Stopping, Stropping, TEXTS, Toggling, Twinning, WORMING, Whipping, Worming,
-    baling_swift, bowsing_swift, boxing_swift, clewing_swift, counting_swift, faking_swift,
-    footing_swift, frapping_swift, gripping_swift, hanking_swift, kedging_swift, marling_swift,
-    marrying_swift, mousing_swift, notch_swift, parceling_swift, pennant_swift, plying_swift,
-    quarter_swift, reeving_swift, seaming_swift, snaking_swift, splaying_swift, stopping_swift,
-    stropping_swift, toggling_swift, twinning_swift, whipping_swift, worming_swift,
+    Faking, Frapping, GRAFTING_HELD, GRAFTING_SLOT, GRIPPING, Grafting, Gripping, HANKING, Hanking,
+    Kedging, LABEL, Marling, Marrying, Mousing, Notch, PARCELING, POINTING_HELD, POINTING_MARKED,
+    POINTING_NOTCHED, POINTING_NOTED, POINTING_SLOT, Parceling, Pennant, Plying, Pointing, SEAMING,
+    SNAKING, STOPPING, Seaming, Snaking, Splaying, Stopping, Stropping, TEXTS, Toggling, Twinning,
+    WORMING, Whipping, Worming, baling_swift, bowsing_swift, boxing_swift, clewing_swift,
+    counting_swift, faking_swift, footing_swift, frapping_swift, grafting_swift, gripping_swift,
+    hanking_swift, kedging_swift, kinded_swift, marling_swift, marrying_swift, mousing_swift,
+    notch_swift, parceling_swift, pennant_swift, plying_swift, pointing_swift, quarter_swift,
+    reeving_swift, seaming_swift, snaking_swift, splaying_swift, stopping_swift, stropping_swift,
+    toggling_swift, twinning_swift, whipping_swift, worming_swift,
 };
 #[cfg(feature = "chrono")]
 use super::swift_flattened_models::{SERVING, Serving, serving_swift};
@@ -107,6 +110,12 @@ const BROKEN_WORMING: &str = r#"{"north":{"mark":""}}"#;
 
 /// A [`Seaming`] whose model breaks its rule.
 const BROKEN_SEAMING: &str = r#"{"label":"n","mark":""}"#;
+
+/// A [`Pointing`] whose flattened model breaks its rule.
+const BROKEN_POINTING_MARKED: &str = r#"{"kind":"Marked","mark":""}"#;
+
+/// A [`Pointing`] whose slot breaks its rule.
+const BROKEN_POINTING_NOTCHED: &str = r#"{"kind":"Notched","mark":""}"#;
 
 /// A payload of a type whose every member is flattened, the type it is read as, and what serde
 /// tells of it: the value read, written back, or what the read that refuses it says.
@@ -496,6 +505,109 @@ fn a_member_named_after_the_container_reads_and_writes_in_swift_as_serde_does() 
         pennant_swift::swift_definition(),
         boxing_swift::swift_definition(),
         baling_swift::swift_definition(),
+    ];
+    let Some(printed) = printed_of(&definitions, &main_of(&rows)) else {
+        return;
+    };
+    assert_eq!(printed, expected);
+}
+
+/// What a variant under a tag alone holds as its one slot or flattens beside no member of its own
+/// is read from the object without the tag, so a struct that reads a key named as the tag is
+/// refused, as serde refuses it, and one that reads another key is read and written back as serde
+/// writes it back, beside a variant with a member of its own. A model whose rule is broken is
+/// refused once, with its holder, under the place serde names.
+#[test]
+fn a_variant_under_a_tag_alone_reads_in_swift_without_the_tag() {
+    let read_back = |name, read_as, json, told| Row {
+        json,
+        name,
+        read_as,
+        refused: false,
+        told,
+    };
+    let refusing = |name, read_as, json, told| Row {
+        refused: true,
+        ..read_back(name, read_as, json, told)
+    };
+    let rows = [
+        refusing(
+            "grafting held refused",
+            "Grafting",
+            GRAFTING_HELD,
+            refused::<Grafting>,
+        ),
+        refusing(
+            "grafting slot refused",
+            "Grafting",
+            GRAFTING_SLOT,
+            refused::<Grafting>,
+        ),
+        read_back(
+            "pointing held",
+            "Pointing",
+            POINTING_HELD,
+            written_back::<Pointing>,
+        ),
+        read_back(
+            "pointing slot",
+            "Pointing",
+            POINTING_SLOT,
+            written_back::<Pointing>,
+        ),
+        read_back(
+            "pointing noted",
+            "Pointing",
+            POINTING_NOTED,
+            written_back::<Pointing>,
+        ),
+        read_back(
+            "pointing marked",
+            "Pointing",
+            POINTING_MARKED,
+            written_back::<Pointing>,
+        ),
+        read_back(
+            "pointing notched",
+            "Pointing",
+            POINTING_NOTCHED,
+            written_back::<Pointing>,
+        ),
+        refusing(
+            "pointing marked refused",
+            "Pointing",
+            BROKEN_POINTING_MARKED,
+            refused::<Pointing>,
+        ),
+        refusing(
+            "pointing notched refused",
+            "Pointing",
+            BROKEN_POINTING_NOTCHED,
+            refused::<Pointing>,
+        ),
+    ];
+    let expected = rows.iter().fold(String::new(), |mut expected, row| {
+        let _ = writeln!(expected, "{}: {}", row.name, (row.told)(row.json));
+        expected
+    });
+    assert_eq!(
+        expected,
+        "grafting held refused: missing field `kind`\n\
+         grafting slot refused: missing field `kind`\n\
+         pointing held: {\"kind\":\"Held\",\"label\":\"n\"}\n\
+         pointing slot: {\"kind\":\"Slot\",\"label\":\"n\"}\n\
+         pointing noted: {\"kind\":\"Noted\",\"label\":\"n\",\"note\":\"a\"}\n\
+         pointing marked: {\"kind\":\"Marked\",\"mark\":\"x\"}\n\
+         pointing notched: {\"kind\":\"Notched\",\"mark\":\"x\"}\n\
+         pointing marked refused: 'mark': too short: minimum length is 1, got 0\n\
+         pointing notched refused: 'mark': too short: minimum length is 1, got 0\n"
+    );
+    let definitions = [
+        pennant_swift::swift_definition(),
+        notch_swift::swift_definition(),
+        kinded_swift::swift_definition(),
+        grafting_swift::swift_definition(),
+        pointing_swift::swift_definition(),
     ];
     let Some(printed) = printed_of(&definitions, &main_of(&rows)) else {
         return;
