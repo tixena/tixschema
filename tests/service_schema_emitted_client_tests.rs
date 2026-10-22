@@ -510,8 +510,7 @@ mod run_swift_flattened_enums;
 /// function answers, and of an enum of each tagging and one declared below its holder, and a
 /// struct flattened bare beside a member of its holder's own. The Kotlin run reads the struct
 /// flattened bare, the one that reads the keys no member around it took and the enums but the
-/// externally tagged one declared above its holder as well, and the Dart run all but the map and
-/// the enums.
+/// externally tagged one declared above its holder as well, and the Dart run all but the map.
 #[cfg(test)]
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 #[path = "swift_tests/flattened_options_models.rs"]
@@ -524,7 +523,8 @@ mod swift_flattened_options_models;
 #[path = "service_schema_emitted_client_tests/run_swift_flattened_options.rs"]
 mod run_swift_flattened_options;
 
-/// Those members, read and written back by the emitted Dart types.
+/// Those members, and an enum under a tag key that names a function on itself, read and written
+/// back by the emitted Dart types.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_dart_flattened_options.rs"]
 mod run_dart_flattened_options;
