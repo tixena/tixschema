@@ -1,15 +1,18 @@
 //! A flattened `Option` member beside a member of its holder's own, alone in its holder and in a
 //! variant under a tag key, a struct of two keys, a struct declared below its holder, a map of
 //! dates alone in its holder, a struct flattened bare beside a member of its holder's own, a model
-//! `validate()` walks and a struct that reads the keys no member around it took, and a struct read
-//! from what a function answers, each read and written back by the emitted Swift types compiled
-//! with warnings as errors, against what serde reads and writes: read from serde's payload where
-//! the member holds a value and where it holds none of its type's keys, and refused where the
-//! model it holds breaks its rule or the function answers what its type does not read. Where the
-//! object holds a key of the type that does not read, serde reads `None` and the Swift read
-//! refuses the payload, as TypeScript and Zod refuse it. A type whose keys are not known is read
-//! as `nil` there, as serde reads it, and so is the map of dates where an entry is no date. The
-//! map of dates absent is built in code.
+//! `validate()` walks and a struct that reads the keys no member around it took, a struct read from
+//! what a function answers, and an enum of each tagging and one declared below its holder, each
+//! read and written back by the emitted Swift types compiled with warnings as errors, against what
+//! serde reads and writes: read from serde's payload where the member holds a value and where it
+//! holds none of its type's keys, and refused where the model it holds breaks its rule or the
+//! function answers what its type does not read. Where the object holds a key of the type that
+//! does not read, serde reads `None` and the Swift read refuses the payload, as TypeScript and Zod
+//! refuse it: a struct's key, an entry under a name an externally tagged enum's variant is read
+//! under, and the tag or the content key of an enum under a tag key. A type whose keys are not
+//! known, an untagged enum and an enum declared below its holder among them, is read as `nil`
+//! there, as serde reads it, and so is the map of dates where an entry is no date. The map of
+//! dates absent is built in code.
 
 #![cfg(feature = "swift")]
 
@@ -22,12 +25,14 @@ use serde_json::Value;
 
 use super::runtime::judged;
 use super::swift_flattened_options_models::{
-    Crowning, FLAKING, FLAKING_ABSENT, FLAKING_MISTYPED, Fidding, Flaking, KINKING_SHORT, Kinking,
-    LAPPING, LAPPING_ABSENT, LAPPING_MISTYPED, Lapping, PAINTER, Painter, Ratline, SENNIT,
-    SENNIT_ABSENT, SENNIT_MISTYPED, Sennit, TARRING_SHORT, Tarring, Veering, crowning_swift,
-    fidding_swift, flaking_swift, gasket_swift, kinking_swift, lapping_swift, nippering_swift,
-    painter_swift, plaiting_swift, ratline_swift, sennit_swift, tabling_swift, tarring_swift,
-    veering_swift,
+    Crowning, EASING, Easing, FLAKING, FLAKING_ABSENT, FLAKING_MISTYPED, Fidding, Flaking, HEELING,
+    Heeling, KINKING_SHORT, Kinking, LAPPING, LAPPING_ABSENT, LAPPING_MISTYPED, LOWERING, Lapping,
+    Lowering, PAINTER, PITCHING, Painter, Pitching, Ratline, SENNIT, SENNIT_ABSENT,
+    SENNIT_MISTYPED, SQUARING, Sennit, Squaring, TARRING_SHORT, Tarring, Veering, becket_swift,
+    crowning_swift, easing_swift, fidding_swift, flaking_swift, gasket_swift, grommet_swift,
+    heeling_swift, kinking_swift, lapping_swift, lowering_swift, nippering_swift, painter_swift,
+    pitching_swift, plaiting_swift, ratline_swift, sennit_swift, shackle_swift, squaring_swift,
+    tabling_swift, tarring_swift, thimble_swift, toggle_swift, veering_swift,
 };
 #[cfg(feature = "chrono")]
 use super::swift_flattened_options_models::{SWAGING, SWAGING_MISTYPED, Swaging, swaging_swift};
@@ -149,9 +154,73 @@ where
     serde_json::to_string(&keyed).unwrap()
 }
 
+/// Each holder of an enum read from each payload of its own: the enum absent, held, and there with
+/// what it does not read.
+fn enum_rows() -> Vec<Row> {
+    vec![
+        Row::read::<Easing>("easing absent", "Easing", EASING[0]),
+        Row::read::<Easing>("easing", "Easing", EASING[1]),
+        Row::decided::<Easing>(
+            "easing mistyped",
+            "Easing",
+            EASING[2],
+            "mismatch at 'Round.turns'",
+        ),
+        Row::decided::<Easing>(
+            "easing unit mistyped",
+            "Easing",
+            EASING[3],
+            "unknown tag Calm",
+        ),
+        Row::read::<Lowering>("lowering absent", "Lowering", LOWERING[0]),
+        Row::read::<Lowering>("lowering", "Lowering", LOWERING[1]),
+        Row::read::<Lowering>("lowering unit", "Lowering", LOWERING[2]),
+        Row::decided::<Lowering>(
+            "lowering mistyped",
+            "Lowering",
+            LOWERING[3],
+            "mismatch at 'turns'",
+        ),
+        Row::decided::<Lowering>(
+            "lowering unnamed",
+            "Lowering",
+            LOWERING[4],
+            "unknown tag Gale",
+        ),
+        Row::read::<Lowering>("lowering untagged", "Lowering", LOWERING[5]),
+        Row::read::<Squaring>("squaring absent", "Squaring", SQUARING[0]),
+        Row::read::<Squaring>("squaring", "Squaring", SQUARING[1]),
+        Row::read::<Squaring>("squaring unit", "Squaring", SQUARING[2]),
+        Row::decided::<Squaring>(
+            "squaring mistyped",
+            "Squaring",
+            SQUARING[3],
+            "mismatch at 'body.turns'",
+        ),
+        Row::decided::<Squaring>(
+            "squaring unnamed",
+            "Squaring",
+            SQUARING[4],
+            "unknown tag Gale",
+        ),
+        Row::decided::<Squaring>(
+            "squaring untagged",
+            "Squaring",
+            SQUARING[5],
+            "missing field `kind`",
+        ),
+        Row::read::<Heeling>("heeling absent", "Heeling", HEELING[0]),
+        Row::read::<Heeling>("heeling", "Heeling", HEELING[1]),
+        Row::read::<Heeling>("heeling mistyped", "Heeling", HEELING[2]),
+        Row::read::<Pitching>("pitching absent", "Pitching", PITCHING[0]),
+        Row::read::<Pitching>("pitching", "Pitching", PITCHING[1]),
+        Row::read::<Pitching>("pitching mistyped", "Pitching", PITCHING[2]),
+    ]
+}
+
 /// Each holder read from a payload that holds the flattened member, then from one that holds
 /// none of its type's keys, then from one that holds a key its type does not read, and each whose
-/// model breaks its rule.
+/// model breaks its rule; then each holder of an enum.
 fn rows() -> Vec<Row> {
     let mistyped = "mismatch at 'label'";
     let mut rows = vec![
@@ -190,6 +259,7 @@ fn rows() -> Vec<Row> {
         Row::refused::<Tarring>("tarring refused", "Tarring", TARRING_SHORT),
         Row::refused::<Veering>("veering refused", "Veering", LAPPING_ABSENT),
     ];
+    rows.extend(enum_rows());
     #[cfg(feature = "chrono")]
     rows.extend([
         Row::read::<Swaging>("swaging", "Swaging", SWAGING),
@@ -221,6 +291,16 @@ fn printed(rows: &[Row]) -> Option<String> {
         tarring_swift::swift_definition(),
         fidding_swift::swift_definition(),
         veering_swift::swift_definition(),
+        thimble_swift::swift_definition(),
+        grommet_swift::swift_definition(),
+        becket_swift::swift_definition(),
+        toggle_swift::swift_definition(),
+        easing_swift::swift_definition(),
+        lowering_swift::swift_definition(),
+        squaring_swift::swift_definition(),
+        heeling_swift::swift_definition(),
+        pitching_swift::swift_definition(),
+        shackle_swift::swift_definition(),
     ];
     #[cfg(feature = "chrono")]
     definitions.push(swaging_swift::swift_definition());
@@ -258,9 +338,11 @@ fn printed(rows: &[Row]) -> Option<String> {
 /// none of its type's keys, as serde reads it, and a model it holds that breaks its rule refuses
 /// the payload in serde's words; one that names a function is refused where its type does not
 /// read what the function answers. Where the object holds a key its type does not read, a key
-/// held as a number or one of two keys, serde reads `None` and the Swift read refuses the
-/// payload, but for a type whose keys are not known and a map of dates one of whose entries is no
-/// date, each read as `nil` as serde reads it.
+/// held as a number or one of two keys, a variant's entry, tag or content that does not read, or
+/// a content with no tag, serde reads `None` and the Swift read refuses the payload, but for a
+/// type whose keys are not known and a map of dates one of whose entries is no date, each read as
+/// `nil` as serde reads it: an untagged enum and an enum declared below its holder among them. An
+/// enum under a tag key alone is `nil` where its tag is absent, a member of a variant there or not.
 #[test]
 fn a_flattened_option_reads_and_writes_in_swift_what_serde_reads_and_writes() {
     let rows = rows();
@@ -298,7 +380,29 @@ fn a_flattened_option_reads_and_writes_in_swift_what_serde_reads_and_writes() {
          painter partial: {}\n\
          kinking refused: 'label': too short: minimum length is 2, got 1\n\
          tarring refused: 'label': too short: minimum length is 2, got 1\n\
-         veering refused: missing field `label`\n";
+         veering refused: missing field `label`\n\
+         easing absent: {\"note\":\"n\"}\n\
+         easing: {\"Round\":{\"turns\":2},\"note\":\"n\"}\n\
+         easing mistyped: {\"note\":\"n\"}\n\
+         easing unit mistyped: {\"note\":\"n\"}\n\
+         lowering absent: {\"note\":\"n\"}\n\
+         lowering: {\"kind\":\"Round\",\"note\":\"n\",\"turns\":2}\n\
+         lowering unit: {\"kind\":\"Calm\",\"note\":\"n\"}\n\
+         lowering mistyped: {\"note\":\"n\"}\n\
+         lowering unnamed: {\"note\":\"n\"}\n\
+         lowering untagged: {\"note\":\"n\"}\n\
+         squaring absent: {\"note\":\"n\"}\n\
+         squaring: {\"body\":{\"turns\":2},\"kind\":\"Round\",\"note\":\"n\"}\n\
+         squaring unit: {\"kind\":\"Calm\",\"note\":\"n\"}\n\
+         squaring mistyped: {\"note\":\"n\"}\n\
+         squaring unnamed: {\"note\":\"n\"}\n\
+         squaring untagged: {\"note\":\"n\"}\n\
+         heeling absent: {\"note\":\"n\"}\n\
+         heeling: {\"note\":\"n\",\"turns\":2}\n\
+         heeling mistyped: {\"note\":\"n\"}\n\
+         pitching absent: {\"note\":\"n\"}\n\
+         pitching: {\"Round\":{\"turns\":2},\"note\":\"n\"}\n\
+         pitching mistyped: {\"note\":\"n\"}\n";
     #[cfg(feature = "chrono")]
     let dates = "swaging: {\"north\":\"2024-01-02T03:04:05.678Z\"}\n\
          swaging mistyped: {}\n\

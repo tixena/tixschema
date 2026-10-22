@@ -2,7 +2,8 @@
 //! payload ahead of the value read from it. A type that names one on itself reads the keys the
 //! types around it did not take, and so does a type that reads one from its own decoder. The keys
 //! a struct takes where it is flattened, and the names an externally tagged enum takes its one
-//! entry under, are noted here too: a member flattened after either is not handed them.
+//! entry under, are noted here too: a member flattened after either is not handed them. So are the
+//! tag and the content key of an enum under a tag key, which a flattened `Option` is tested by.
 
 use core::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -121,6 +122,10 @@ thread_local! {
     /// The names each externally tagged enum the emitter has written takes its one entry of its
     /// holder's object under, read flattened.
     static ENTRIES: RefCell<HashMap<String, Vec<Entry>>> = RefCell::new(HashMap::new());
+
+    /// The tag, then the content key where it has one, of each enum under a tag key the emitter
+    /// has written.
+    static TAG_KEYS: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
 }
 
 /// Records whether the type `rust_ident` names reads the keys the types around it took.
@@ -161,6 +166,32 @@ pub(super) fn keys_taken_by(def: &FieldDef) -> Vec<String> {
     TAKEN_KEYS.with(|recorded| recorded.borrow().get(name).cloned().unwrap_or_default())
 }
 
+/// Records `keys`, the tag and the content key of the enum `rust_ident`, for a holder written after
+/// it: none for an enum under no tag key, or one that names a function on itself.
+pub(super) fn note_tag_keys(rust_ident: &str, keys: Vec<String>) {
+    TAG_KEYS.with(|recorded| {
+        if keys.is_empty() {
+            recorded.borrow_mut().remove(rust_ident);
+        } else {
+            recorded.borrow_mut().insert(rust_ident.to_owned(), keys);
+        }
+    });
+}
+
+/// The keys a flattened `Option` of `def` is tested by, in the object it is handed: those of a
+/// struct written above, and the tag and the content key of an enum under a tag key written above.
+/// None for any other type, and for a member that names a function.
+pub(super) fn keys_standing_for(def: &FieldDef) -> Vec<String> {
+    let keys = keys_taken_by(def);
+    if !keys.is_empty() || !functions(def).is_empty() {
+        return keys;
+    }
+    let FieldDefType::SiblingType(name, _) = &def.field_type else {
+        return Vec::new();
+    };
+    TAG_KEYS.with(|recorded| recorded.borrow().get(name).cloned().unwrap_or_default())
+}
+
 /// Records `entries`, the names the enum `rust_ident` takes its entry under where it is flattened,
 /// for a holder written after it: none for an enum serde does not read from one entry.
 pub(super) fn note_entries(rust_ident: &str, entries: Vec<Entry>) {
@@ -197,9 +228,9 @@ pub(super) fn found(stem: &str) -> String {
 /// The statements that read `member`, the enum `named` flattened into its holder, from the one
 /// entry of the object without `taken` under one of `entries`' names, at the holder's coding path,
 /// and hand it to `sink`. No entry is refused, as serde refuses it, but where `optional`, which
-/// reads `nil` there and wherever the enum's read throws. Swift keeps no order of an object's
-/// keys, so the first of two entries is not known: entries under two names are refused, as
-/// TypeScript and Zod refuse them.
+/// reads `nil` there; an entry the enum does not read refuses the payload, as TypeScript and Zod
+/// refuse it. Swift keeps no order of an object's keys, so the first of two entries is not known:
+/// entries under two names are refused, as TypeScript and Zod refuse them.
 pub(super) fn entry(
     member: &Member<'_>,
     (named, entries): (&str, &[Entry]),
@@ -239,8 +270,7 @@ pub(super) fn entry(
         value(member, "decoder.codingPath", sink, twins)
     );
     if optional {
-        let absent = sink("nil");
-        format!("{opened}if {held} {{ do {{ {read} }} catch {{ {absent} }} }} else {{ {absent} }}")
+        format!("{opened}if {held} {{ {read} }} else {{ {} }}", sink("nil"))
     } else {
         format!(
             "{opened}guard {held} else {{ {} }}; {read}",

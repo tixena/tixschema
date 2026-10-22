@@ -150,8 +150,9 @@ mod flattened;
 
 /// A flattened `Option` beside a member of its holder's own, alone in its holder and in a variant
 /// under a tag key, of a struct of two keys, of a struct declared below its holder, of a model
-/// `validate()` walks, of a struct that reads the keys no member around it took and read from what
-/// a function answers, and a struct flattened bare beside a member of its holder's own.
+/// `validate()` walks, of a struct that reads the keys no member around it took, read from what a
+/// function answers, and of an enum of each tagging and one declared below its holder, and a
+/// struct flattened bare beside a member of its holder's own.
 #[cfg(test)]
 #[cfg(all(feature = "swift", feature = "serde"))]
 #[path = "swift_tests/flattened_options_models.rs"]

@@ -1942,19 +1942,27 @@ to keep.
   `flattened_option`, from `present_statement`, reads the type under the `Option` as a flattened
   member of that type is read, unjudged where `validate()` walks it and handed the keys taken
   where it takes them, behind `if {test} { ... } else { self.{member} = nil }`. The test is
-  `preprocess::holds_one_of`: one of the keys `preprocess::keys_taken_by` answers for the type, in
-  `decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys`, less the `Handed` keys where the
-  member is withheld, so the key type is the one `read::both` writes into the holder. A type
-  `keys_taken_by` answers no key for keeps `do { ... } catch { self.{member} = nil }`, which reads
-  `nil` wherever its read throws: a struct declared below its holder or in another crate, one with
-  a flattened member of its own or that names a function on itself, an enum that takes no entry
-  (below), an alias and a type parameter. A model it holds that breaks its rule still refuses the
-  payload through `validate()`, as the Rust read refuses it. A member that names a function is
+  `preprocess::holds_one_of`: one of the keys `preprocess::keys_standing_for` answers for the type,
+  in `decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys`, less the `Handed` keys where
+  the member is withheld, so the key type is the one `read::both` writes into the holder. Those
+  keys are a struct's, `preprocess::keys_taken_by`, and an enum under a tag key's: its tag, then
+  its content key where it has one, which `enum_swift_tokens` records for an enum written above
+  its holder (`preprocess::note_tag_keys`, from `tag_keys`), none for one that names a function
+  on itself. So an enum under a tag key alone is `nil` where its tag is absent, a member of a
+  variant there or not, and one under a content key too where the content is absent, and is
+  refused where one is there and the enum does not read, as Zod refuses it. A type
+  `keys_standing_for` answers no key for keeps `do { ... } catch { self.{member} = nil }`, which
+  reads `nil` wherever its read throws: a struct declared below its holder or in another crate,
+  one with a flattened member of its own or that names a function on itself, an untagged enum, an
+  enum declared below its holder or that names a function on itself, an alias and a type
+  parameter. An externally tagged enum written above is read from its one entry (below). A model
+  it holds that breaks its rule still refuses the payload through `validate()`, as the Rust read
+  refuses it. A member that names a function is
   read from what its functions answer, and refused where its type does not read the answer, as
   the Rust read refuses it, and a flattened map, optional or not, by `flattened_map`.
   `tests/swift_tests/flattened_options.rs` pins the text, and `run_swift_flattened_options.rs`
   reads each payload against serde, the rows serde reads as `None` and the Swift read refuses held
-  to the refusal it prints.
+  to the refusal it prints, an enum of each tagging and one declared below its holder among them.
 - **Every flattened member is handed the keys its holder withholds, the first one included.**
   `member_reads` hands each a `Handed`: the `taken + [...]` of the holder's own keys and those
   each member flattened ahead took, and `withheld`, whether any key can be withheld: the holder
@@ -1984,8 +1992,9 @@ to keep.
   data: {names}``, as TypeScript and Zod refuse the payload, where serde reads the first in the
   object's order: Swift keeps no order of an object's keys (`allKeys` and `JSONSerialization`
   answer them in another order on each run). No entry is refused with ``no variant of enum {Enum}
-  found in flattened data``, as serde refuses it; an optional enum is `nil` there and wherever
-  its read throws. `handed_reads` adds `{member}Found` to the keys each member flattened after it
+  found in flattened data``, as serde refuses it; an optional enum is `nil` there, and an entry
+  the enum does not read refuses the payload, as TypeScript and Zod refuse it, where serde reads
+  `None`. `handed_reads` adds `{member}Found` to the keys each member flattened after it
   is handed (`taken + [...] + {member}Found`). An enum declared below its holder is read as any
   other flattened member is, and is refused where the object it is handed holds another key.
   `tests/swift_tests/flattened.rs` pins the text of `Anchoring`, `Dredging` and `Fending`, and
