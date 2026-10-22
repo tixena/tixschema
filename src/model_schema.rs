@@ -3565,8 +3565,8 @@ fn record_item(item: &Item) {
 /// item as the leaves a schema surface records are read off what it publishes: a brand's or a
 /// struct of one slot's value, any other tuple struct's array, a plain enum's name, each variant
 /// of an externally tagged enum, each member of an untagged enum, and an alias's value. A brand's,
-/// a struct of one slot's and an alias's value that names a generic type declared above is read at
-/// what fills its type parameter.
+/// a struct of one slot's, an alias's value and an untagged member that names a generic type
+/// declared above is read at what fills its type parameter.
 #[cfg(feature = "serde")]
 fn non_object_wire(item: &Item) -> NonObjectWire {
     let parameters = item_generics(item).map_or_else(Vec::new, type_parameters_in_scope);
@@ -3757,30 +3757,26 @@ fn writes_an_optional(def: &FieldDef) -> bool {
 
 /// What one untagged member written as `fld` contributes below its own position, as the Zod
 /// surface's leaves of a member are read: the members of the union it names, the leaves of the
-/// name, or the member itself, and under an `Option` both the value's choice and the absence's.
+/// name, or the member itself, and under an `Option` both the value's choice and the absence's. A
+/// generic type declared above that it names is read at its [`value_filling`].
 #[cfg(feature = "serde")]
 fn member_written_leaves(fld: &FieldDef) -> Vec<WireLeaf> {
-    let nested = written_union_members(fld);
-    let mut leaves = if nested.is_empty() {
-        named_wire_leaves(fld, written_leaves).unwrap_or_else(|| {
-            vec![WireLeaf {
-                branch: Vec::new(),
-                non_object: written_non_object_wire(fld, written_leaves),
-            }]
-        })
-    } else {
-        nested
-    };
     if fld.is_optional() {
-        for leaf in &mut leaves {
-            leaf.branch.insert(0, 1);
-        }
-        leaves.push(WireLeaf {
-            branch: vec![2],
-            non_object: Some("null"),
-        });
+        return under_an_option(member_written_leaves(&without_its_option(fld)));
     }
-    leaves
+    if let Some(filling) = value_filling(fld) {
+        return member_written_leaves(filling);
+    }
+    let nested = written_union_members(fld);
+    if !nested.is_empty() {
+        return nested;
+    }
+    named_wire_leaves(fld, written_leaves).unwrap_or_else(|| {
+        vec![WireLeaf {
+            branch: Vec::new(),
+            non_object: written_non_object_wire(fld, written_leaves),
+        }]
+    })
 }
 
 /// Whether serde writes `item` as the bare name of one of its variants: a plain enum, and an
@@ -5848,15 +5844,16 @@ fn flatten_edge_guard_error(
     Some(syn::Error::new_spanned(&field.ty, message).to_compile_error())
 }
 
-/// What a flattened field's type writes as no object, read by its name: what a Zod surface recorded
-/// first, then what every build with serde records, which proves the same of every name both hold.
+/// What a flattened field's type writes as no object, read by its name: what every build with serde
+/// records, which reads an untagged member at its generic filling, ahead of what a Zod surface
+/// recorded, so the branch named is the same in every build.
 #[cfg(feature = "serde")]
 fn flattened_name_non_object(inner: &FieldDef) -> Option<NonObject> {
     #[cfg(feature = "zod")]
-    let surfaced = surfaced_non_object(inner);
+    let surfaced = || surfaced_non_object(inner);
     #[cfg(not(feature = "zod"))]
-    let surfaced = None;
-    surfaced.or_else(|| written_non_object(inner))
+    let surfaced = || None;
+    written_non_object(inner).or_else(surfaced)
 }
 
 /// What a flattened field's type writes as no object, as the registry a Zod surface writes proves

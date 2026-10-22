@@ -3088,6 +3088,208 @@ fn a_generic_type_filled_at_an_object_is_accepted_flattened_and_held() {
     }
 }
 
+/// No local build is of the clients alone, so the gates are read off the sources.
+#[test]
+fn the_filled_untagged_member_refusals_are_compiled_in_every_build_with_serde() {
+    let with_serde = quote::quote!(cfg(feature = "serde")).to_string();
+    let expansion = include_str!("../model_schema.rs");
+    for named in [
+        "non_object_wire",
+        "member_written_leaves",
+        "without_its_option",
+        "under_an_option",
+        "value_filling",
+        "written_union_members",
+        "written_non_object",
+        "flatten_edge_guard_error",
+        "tagged_non_object_message",
+    ] {
+        assert_eq!(
+            gates_above(expansion, named),
+            [with_serde.as_str()],
+            "for `{named}`"
+        );
+    }
+}
+
+/// Declares, beside the types [`declare_filled_probes`] declares, the untagged enums with an object
+/// member and a newtype member: over a generic type declared above filled at text, a number, an
+/// `Option` and a struct, over one declared below, and over each filling itself.
+#[cfg(feature = "serde")]
+fn declare_filled_members() {
+    declare_filled_probes();
+    for declared in [
+        "pub enum ProbeTextMember { Obj { a: String }, Text(String) }",
+        "pub enum ProbeWrapMember { Obj { a: String }, Text(ProbeWrap<String>) }",
+        "pub enum ProbeCountMember { Obj { a: String }, Count(f64) }",
+        "pub enum ProbeChainMember { Obj { a: String }, Count(Box<ProbeOuter<f64>>) }",
+        "pub enum ProbeMaybeCountMember { Obj { a: String }, Count(Option<u32>) }",
+        "pub enum ProbeMaybeWrapMember { Obj { a: String }, Count(ProbeWrap<Option<u32>>) }",
+        "pub enum ProbeWrapMaybeMember { Obj { a: String }, Count(Option<ProbeWrap<u32>>) }",
+        "pub enum ProbeFieldsMember { Obj { a: String }, Fields(ProbeWrap<ProbeFields>) }",
+        "pub enum ProbeLaterMember { Obj { a: String }, Later(ProbeWrapUnseen<String>) }",
+    ] {
+        let untagged = format!("#[serde(untagged)] {declared}");
+        let expanded = serialized_under("", &untagged);
+        assert_eq!(
+            compile_error_count(&expanded),
+            0,
+            "for {declared}, got: {expanded}"
+        );
+    }
+}
+
+/// An untagged enum with a member over a generic type declared above filled at text, flattened
+/// beside a member and held by a newtype variant under a tag alone, each refused with the branch
+/// the enum with the member over text itself is refused with.
+#[cfg(feature = "serde")]
+#[test]
+fn an_untagged_member_over_a_generic_type_filled_at_no_object_is_refused_in_every_build_with_serde()
+{
+    declare_filled_members();
+    let flattened = refusal_texts(&serialized_under(
+        "",
+        "pub struct ProbeM5 { pub id: String, #[serde(flatten)] pub m: ProbeWrapMember }",
+    ));
+    assert_eq!(
+        flattened,
+        [branch_non_object_refusal(
+            "ProbeM5",
+            "ProbeWrapMember",
+            "2",
+            "string"
+        )]
+    );
+    assert_eq!(
+        flattened_beside_an_id("ProbeFlatTextMember", "ProbeTextMember"),
+        [branch_non_object_refusal(
+            "ProbeFlatTextMember",
+            "ProbeTextMember",
+            "2",
+            "string"
+        )],
+        "the enum with the member over text itself"
+    );
+    let branch = "writes a union member that is not an object \u{2014} its branch 2 describes a \
+                  `string`";
+    assert_eq!(
+        held_under_tag("ProbeM6", "ProbeWrapMember"),
+        [tagged_non_object_refusal(
+            "ProbeM6",
+            "ProbeWrapMember",
+            branch
+        )]
+    );
+    assert_eq!(
+        held_under_tag("ProbeHeldTextMember", "ProbeTextMember"),
+        [tagged_non_object_refusal(
+            "ProbeHeldTextMember",
+            "ProbeTextMember",
+            branch
+        )],
+        "the enum with the member over text itself"
+    );
+    for quoted in [
+        branch_non_object_refusal("ProbeFlatWrapMember", "ProbeWrapMember", "2", "string"),
+        tagged_non_object_refusal("ProbeHeldWrapMember", "ProbeWrapMember", branch),
+    ] {
+        let answered = format!("error: {quoted}");
+        assert!(
+            include_str!("../../README.md").contains(&answered),
+            "the README no longer quotes: {answered}"
+        );
+    }
+    assert_eq!(
+        flattened_beside_an_id("ProbeFlatWrapMember", "ProbeWrapMember"),
+        [branch_non_object_refusal(
+            "ProbeFlatWrapMember",
+            "ProbeWrapMember",
+            "2",
+            "string"
+        )],
+        "the README's flattened holder"
+    );
+    assert_eq!(
+        held_under_tag("ProbeHeldWrapMember", "ProbeWrapMember"),
+        [tagged_non_object_refusal(
+            "ProbeHeldWrapMember",
+            "ProbeWrapMember",
+            branch
+        )],
+        "the README's tagged holder"
+    );
+}
+
+/// An untagged member over a generic type declared above filled at a number through a chain and
+/// under `Box`, and at an `Option` of one, flattened and held under a tag alone, each refused with
+/// the branch the member over that filling itself is refused with.
+#[cfg(feature = "serde")]
+#[test]
+fn an_untagged_member_over_a_generic_type_filled_through_a_chain_or_at_an_option_is_refused_as_its_filling()
+ {
+    declare_filled_members();
+    for (filled, itself, branch, named) in [
+        ("ProbeChainMember", "ProbeCountMember", "2", "number"),
+        (
+            "ProbeMaybeWrapMember",
+            "ProbeMaybeCountMember",
+            "2.1",
+            "integer",
+        ),
+        (
+            "ProbeWrapMaybeMember",
+            "ProbeMaybeCountMember",
+            "2.1",
+            "integer",
+        ),
+    ] {
+        for held in [filled, itself] {
+            let flat = format!("ProbeFlat{held}");
+            assert_eq!(
+                flattened_beside_an_id(&flat, held),
+                [branch_non_object_refusal(&flat, held, branch, named)],
+                "for {held} flattened"
+            );
+            let tagged = format!("ProbeHeld{held}");
+            assert_eq!(
+                held_under_tag(&tagged, held),
+                [tagged_non_object_refusal(
+                    &tagged,
+                    held,
+                    &format!(
+                        "writes a union member that is not an object \u{2014} its branch \
+                         {branch} describes a `{named}`"
+                    )
+                )],
+                "for {held} under a tag"
+            );
+        }
+    }
+}
+
+/// The untagged members left alone: one over a generic type filled at a struct, and one over a
+/// generic type declared below, flattened and held under a tag alone.
+#[cfg(feature = "serde")]
+#[test]
+fn an_untagged_member_over_a_generic_type_filled_at_an_object_or_declared_below_is_accepted() {
+    declare_filled_members();
+    for held in ["ProbeFieldsMember", "ProbeLaterMember"] {
+        for accepted in [
+            format!(
+                "pub struct ProbeFlat{held} {{ pub id: String, #[serde(flatten)] pub m: {held} }}"
+            ),
+            format!("#[serde(tag = \"kind\")] pub enum ProbeHeld{held} {{ Held({held}) }}"),
+        ] {
+            let expanded = serialized_under("", &accepted);
+            assert_eq!(
+                compile_error_count(&expanded),
+                0,
+                "for {accepted}, got: {expanded}"
+            );
+        }
+    }
+}
+
 /// What the record every build with serde writes proves of each flattened type is what the record
 /// a Zod surface writes proves, so the refusal reads the same with a schema surface and without.
 #[cfg(all(feature = "serde", feature = "zod"))]
