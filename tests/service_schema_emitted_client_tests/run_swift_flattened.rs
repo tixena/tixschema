@@ -3,15 +3,14 @@
 //! flattened member of its own, a member that names a function, a model with a rule and a struct
 //! that reads the same key, and a struct flattened first, plain and naming a function, beside a
 //! member of its holder's own, each read and written back by the emitted Swift types compiled
-//! with warnings as errors, against what serde reads and writes back. Every holder has a member of
-//! its own: the read and the write of a struct whose every member is flattened declare a container
-//! they do not use, which `-warnings-as-errors` refuses, so a map, the one member of its struct,
-//! and a holder of no member of its own are pinned by their text alone in
-//! `tests/swift_tests/flattened.rs`.
+//! with warnings as errors, against what serde reads and writes back; and a struct and a variant
+//! whose every member is flattened: a map, the one member of each, in each shape a map is read in,
+//! and a holder of flattened structs alone.
 
 #![cfg(feature = "swift")]
 
 use alloc::collections::BTreeMap;
+use core::fmt::Write as _;
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -19,12 +18,18 @@ use serde_json::Value;
 
 use super::runtime::judged;
 use super::swift_flattened_models::{
-    BOWSING, Bowsing, FRAPPING, Frapping, GRIPPING, Gripping, HANKING, Hanking, Kedging, LABEL,
-    Marling, Marrying, Mousing, Notch, Pennant, Plying, STOPPING, Splaying, TEXTS, Twinning,
-    Whipping, bowsing_swift, counting_swift, footing_swift, frapping_swift, gripping_swift,
-    hanking_swift, kedging_swift, marling_swift, marrying_swift, mousing_swift, notch_swift,
-    pennant_swift, plying_swift, reeving_swift, splaying_swift, twinning_swift, whipping_swift,
+    BOWSING, Bowsing, CLEWING, COUNTS, Clewing, FAKING, FRAPPING, Faking, Frapping, GRIPPING,
+    Gripping, HANKING, Hanking, Kedging, LABEL, Marling, Marrying, Mousing, Notch, PARCELING,
+    Parceling, Pennant, Plying, SEAMING, SNAKING, STOPPING, Seaming, Snaking, Splaying, Stopping,
+    Stropping, TEXTS, Toggling, Twinning, WORMING, Whipping, Worming, bowsing_swift, clewing_swift,
+    counting_swift, faking_swift, footing_swift, frapping_swift, gripping_swift, hanking_swift,
+    kedging_swift, marling_swift, marrying_swift, mousing_swift, notch_swift, parceling_swift,
+    pennant_swift, plying_swift, quarter_swift, reeving_swift, seaming_swift, snaking_swift,
+    splaying_swift, stopping_swift, stropping_swift, toggling_swift, twinning_swift,
+    whipping_swift, worming_swift,
 };
+#[cfg(feature = "chrono")]
+use super::swift_flattened_models::{SERVING, Serving, serving_swift};
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
 const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
@@ -96,6 +101,102 @@ print("marrying refused: \(refusal(Marrying.self, #"LABEL"#))")
 /// A [`Gripping`] whose model breaks its rule.
 const BROKEN_GRIPPING: &str = r#"{"label":"n","mark":"","note":"a"}"#;
 
+/// A [`Worming`] whose model breaks its rule.
+const BROKEN_WORMING: &str = r#"{"north":{"mark":""}}"#;
+
+/// A [`Seaming`] whose model breaks its rule.
+const BROKEN_SEAMING: &str = r#"{"label":"n","mark":""}"#;
+
+/// A payload of a type whose every member is flattened, the type it is read as, and what serde
+/// tells of it: the value read, written back, or what the read that refuses it says.
+struct Row {
+    json: &'static str,
+    name: &'static str,
+    read_as: &'static str,
+    refused: bool,
+    told: fn(&str) -> String,
+}
+
+/// What serde writes back of `json`, read as `T`, its keys sorted.
+fn written_back<T>(json: &str) -> String
+where
+    T: DeserializeOwned + Serialize,
+{
+    written(&read::<T>(json))
+}
+
+/// What serde says of `json`, read as `T`, ahead of any position it says it at.
+fn refused<T>(json: &str) -> String
+where
+    T: DeserializeOwned,
+{
+    let refusal = serde_json::from_str::<T>(json).err().unwrap().to_string();
+    refusal.split_once(" at line").map_or_else(
+        || refusal.clone(),
+        |(refused, _position)| refused.to_owned(),
+    )
+}
+
+/// Each type whose every member is flattened, read from its payload: each map alone, the struct
+/// that names a function among them, a holder of flattened structs alone, and two whose model
+/// breaks its rule.
+fn alone_rows() -> Vec<Row> {
+    let row = |name, read_as, json, told| Row {
+        json,
+        name,
+        read_as,
+        refused: false,
+        told,
+    };
+    let mut rows = vec![
+        row("stopping", "Stopping", COUNTS, written_back::<Stopping>),
+        row("clewing", "Clewing", CLEWING, written_back::<Clewing>),
+        row(
+            "parceling",
+            "Parceling",
+            PARCELING,
+            written_back::<Parceling>,
+        ),
+        row(
+            "toggling",
+            "Toggling<UInt8>",
+            PARCELING,
+            written_back::<Toggling<u8>>,
+        ),
+        row("worming", "Worming", WORMING, written_back::<Worming>),
+        row("faking", "Faking", FAKING, written_back::<Faking>),
+        row("snaking", "Snaking", SNAKING, written_back::<Snaking>),
+        row(
+            "stropping",
+            "Stropping",
+            STOPPING,
+            written_back::<Stropping>,
+        ),
+        row("seaming", "Seaming", SEAMING, written_back::<Seaming>),
+        Row {
+            refused: true,
+            ..row(
+                "worming refused",
+                "Worming",
+                BROKEN_WORMING,
+                refused::<Worming>,
+            )
+        },
+        Row {
+            refused: true,
+            ..row(
+                "seaming refused",
+                "Seaming",
+                BROKEN_SEAMING,
+                refused::<Seaming>,
+            )
+        },
+    ];
+    #[cfg(feature = "chrono")]
+    rows.push(row("serving", "Serving", SERVING, written_back::<Serving>));
+    rows
+}
+
 /// `text` read as `T`.
 fn read<T>(text: &str) -> T
 where
@@ -138,6 +239,32 @@ fn with_payloads(main: &str) -> String {
     })
 }
 
+/// What `swift -warnings-as-errors` prints of `main` over `definitions` and [`HELPERS`], or `None`
+/// where no toolchain is reachable.
+fn printed_of(definitions: &[String], main: &str) -> Option<String> {
+    let source = [
+        "import Foundation".to_owned(),
+        definitions.join("\n\n"),
+        HELPERS.to_owned(),
+        main.to_owned(),
+    ]
+    .join("\n\n");
+    let run = judged(
+        "swift-flattened",
+        RUNTIME_VAR,
+        "swift",
+        &["-warnings-as-errors"],
+        "main.swift",
+        &source,
+    )?;
+    assert!(
+        run.succeeded,
+        "`swift -warnings-as-errors main.swift` failed.\n--- stdout ---\n{}\n--- stderr ---\n{}\n--- source ---\n{source}",
+        run.stdout, run.stderr
+    );
+    Some(run.stdout)
+}
+
 /// What `swift -warnings-as-errors` prints of [`MAIN`] over the emitted definitions, or `None`
 /// where no toolchain is reachable.
 fn printed() -> Option<String> {
@@ -160,27 +287,41 @@ fn printed() -> Option<String> {
         whipping_swift::swift_definition(),
         marrying_swift::swift_definition(),
     ];
-    let source = [
-        "import Foundation".to_owned(),
-        definitions.join("\n\n"),
-        HELPERS.to_owned(),
-        with_payloads(MAIN),
-    ]
-    .join("\n\n");
-    let run = judged(
-        "swift-flattened",
-        RUNTIME_VAR,
-        "swift",
-        &["-warnings-as-errors"],
-        "main.swift",
-        &source,
-    )?;
-    assert!(
-        run.succeeded,
-        "`swift -warnings-as-errors main.swift` failed.\n--- stdout ---\n{}\n--- stderr ---\n{}\n--- source ---\n{source}",
-        run.stdout, run.stderr
-    );
-    Some(run.stdout)
+    printed_of(&definitions, &with_payloads(MAIN))
+}
+
+/// What `swift -warnings-as-errors` prints of `rows`, each read as its type over the emitted
+/// definitions of the types whose every member is flattened, or `None` where no toolchain is
+/// reachable.
+fn printed_alone(rows: &[Row]) -> Option<String> {
+    let mut definitions = vec![
+        pennant_swift::swift_definition(),
+        notch_swift::swift_definition(),
+        counting_swift::swift_definition(),
+        quarter_swift::swift_definition(),
+        stopping_swift::swift_definition(),
+        clewing_swift::swift_definition(),
+        parceling_swift::swift_definition(),
+        toggling_swift::swift_definition(),
+        worming_swift::swift_definition(),
+        faking_swift::swift_definition(),
+        snaking_swift::swift_definition(),
+        stropping_swift::swift_definition(),
+        seaming_swift::swift_definition(),
+    ];
+    #[cfg(feature = "chrono")]
+    definitions.push(serving_swift::swift_definition());
+    let main = rows.iter().fold(String::new(), |mut main, row| {
+        let payload = format!("({}.self, #\"{}\"#)", row.read_as, row.json);
+        let told = if row.refused {
+            format!("refusal{payload}")
+        } else {
+            format!("written(read{payload})")
+        };
+        let _ = writeln!(main, "print(\"{}: \\({told})\")", row.name);
+        main
+    });
+    printed_of(&definitions, &main)
 }
 
 /// The keys each function was handed, as serde hands them, then its holder written back.
@@ -283,6 +424,38 @@ fn a_flattened_member_reads_in_swift_the_keys_serde_hands_it() {
          marrying refused: missing field `label`\n"
     );
     let Some(printed) = printed() else {
+        return;
+    };
+    assert_eq!(printed, expected);
+}
+
+/// Each struct and variant whose every member is flattened, a map alone in each shape a map is
+/// read in and flattened structs alone, is read from its payload and written back as serde writes
+/// it back, and one whose model breaks its rule is refused as serde refuses it.
+#[test]
+fn a_type_of_flattened_members_alone_reads_and_writes_in_swift_as_serde_does() {
+    let rows = alone_rows();
+    let expected = rows.iter().fold(String::new(), |mut expected, row| {
+        let _ = writeln!(expected, "{}: {}", row.name, (row.told)(row.json));
+        expected
+    });
+    let shared = "stopping: {\"north\":2,\"south\":3}\n\
+         clewing: {\"kind\":\"Held\",\"north\":2}\n\
+         parceling: {\"North\":2}\n\
+         toggling: {\"North\":2}\n\
+         worming: {\"north\":{\"mark\":\"x\"}}\n\
+         faking: {\"North\":{\"mark\":\"x\"}}\n\
+         snaking: {\"north\":\"s\"}\n\
+         stropping: {\"keys\":[\"north\",\"note\"],\"label\":\"n\"}\n\
+         seaming: {\"label\":\"n\",\"mark\":\"x\"}\n\
+         worming refused: 'north.mark': too short: minimum length is 1, got 0\n\
+         seaming refused: 'mark': too short: minimum length is 1, got 0\n";
+    #[cfg(feature = "chrono")]
+    let dates = "serving: {\"north\":\"2024-01-02T03:04:05.678Z\"}\n";
+    #[cfg(not(feature = "chrono"))]
+    let dates = "";
+    assert_eq!(expected, format!("{shared}{dates}"));
+    let Some(printed) = printed_alone(&rows) else {
         return;
     };
     assert_eq!(printed, expected);
