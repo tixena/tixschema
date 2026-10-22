@@ -1,5 +1,6 @@
 //! Swift type and `Codable`-codec generation.
 
+mod aliases;
 mod preprocess;
 mod read;
 mod validate;
@@ -95,6 +96,9 @@ const SWIFT_RESERVED: [&str; 51] = [
 /// reaches the wire, whether it is a `#[serde(flatten)]` source, and the shape that drives its
 /// decode/encode statements.
 struct SwiftField {
+    /// The names serde reads the member under beside its wire name, its aliases: none for a
+    /// flattened member or one serde never reads.
+    aliases: Vec<String>,
     /// Where the JSON of the default serde reads for an absent key is written.
     default_at: Option<String>,
     field_def: FieldDef,
@@ -250,6 +254,22 @@ struct Handed {
     /// Whether it can be handed fewer keys than the object holds: its holder has a member of its
     /// own, a member flattened ahead of it took some, or the types around its holder took some.
     withheld: bool,
+}
+
+impl SwiftField {
+    /// The container the member is read from under its key, and that key, as Swift expressions:
+    /// `container` under `.{name}`, or, for a member serde reads under an alias too, the container
+    /// of every key under the name the payload holds it under.
+    fn keyed_at(&self, container: &str) -> (String, String) {
+        if self.aliases.is_empty() {
+            (container.to_owned(), format!(".{}", self.swift_name))
+        } else {
+            (
+                "aliased".to_owned(),
+                aliases::key(swift_bare(&self.swift_name)),
+            )
+        }
+    }
 }
 
 impl EnumTagAttrs {
@@ -1233,6 +1253,7 @@ fn range_shape(
             let mut field_def = arrayed(bound.clone());
             (*member).clone_into(&mut field_def.name);
             SwiftField {
+                aliases: Vec::new(),
                 default_at: None,
                 field_def,
                 flatten: false,
@@ -1798,9 +1819,10 @@ fn wire_type(def: &FieldDef, shape: &SwiftFieldShape) -> String {
 }
 
 /// The statements that read a field in the type's own read, ending on `self.{name} = ...`. A
-/// field `validate()` walks is read unjudged, and one that names a function from what it
-/// answers. `synthesized` says Swift wrote the read before the emitter did, where an optional
-/// member took an absent key as `nil` whether its key is required or not.
+/// field `validate()` walks is read unjudged, one that names a function from what it answers, and
+/// one serde reads under an alias too under the name the payload holds it under. `synthesized`
+/// says Swift wrote the read before the emitter did, where an optional member took an absent key
+/// as `nil` whether its key is required or not.
 fn decode_statement(
     field: &SwiftField,
     container: &str,
@@ -1810,12 +1832,13 @@ fn decode_statement(
     twins: &mut Vec<String>,
 ) -> String {
     let absent_is_nil = field.field_def.is_optional() && (synthesized || !field.required);
+    let (keyed, key) = field.keyed_at(container);
     let source = if field.flatten {
         read::Source::Beside(handed.taken.clone())
     } else {
         read::Source::Keyed {
-            container: container.to_owned(),
-            key: format!(".{}", field.swift_name),
+            container: keyed.clone(),
+            key: key.clone(),
             presence: if absent_is_nil {
                 read::Presence::Nil
             } else {
@@ -1832,13 +1855,34 @@ fn decode_statement(
         locals,
         twins,
     );
-    match &field.default_at {
-        Some(at) => format!(
-            "if {container}.contains(.{name}) {{ {present} }} else {{ {} }}",
-            default_statement(field, at, container, twins),
-            name = field.swift_name,
-        ),
+    let read = match &field.default_at {
+        Some(at) => {
+            let path_key = key
+                .strip_prefix('.')
+                .map_or_else(|| key.clone(), |name| format!("CodingKeys.{name}"));
+            format!(
+                "if {keyed}.contains({key}) {{ {present} }} else {{ {} }}",
+                default_statement(
+                    field,
+                    at,
+                    &format!("{keyed}.codingPath + [{path_key}]"),
+                    twins
+                ),
+            )
+        }
         None => present,
+    };
+    if field.aliases.is_empty() {
+        read
+    } else {
+        format!(
+            "{}{read}",
+            aliases::lookup(
+                swift_bare(&field.swift_name),
+                &field.wire_name,
+                &field.aliases
+            )
+        )
     }
 }
 
@@ -1947,7 +1991,7 @@ fn flattened_entries(item_enum: &ItemEnum, preprocess: &[FunctionName]) -> Vec<p
                 .unwrap_or_else(|| rule.apply_to_variant(&variant.ident.to_string()));
             let unit = matches!(variant.fields, Fields::Unit);
             iter::once(variant_name.clone())
-                .chain(variant_aliases(&variant.attrs))
+                .chain(aliases::written_on(&variant.attrs))
                 .map(move |name| preprocess::Entry {
                     name,
                     unit,
@@ -1973,17 +2017,6 @@ fn tag_keys(tag_attrs: &EnumTagAttrs, preprocess: &[FunctionName]) -> Vec<String
         .collect()
 }
 
-/// The `#[serde(alias = "...")]` names a variant is read under beside its own.
-#[cfg(feature = "serde")]
-fn variant_aliases(attrs: &[syn::Attribute]) -> Vec<String> {
-    parse_serde_field_attributes(attrs).aliases
-}
-
-#[cfg(not(feature = "serde"))]
-const fn variant_aliases(_attrs: &[syn::Attribute]) -> Vec<String> {
-    Vec::new()
-}
-
 /// The statements that read from `source` the flattened `Option` `field`, which names no function
 /// and holds no map: `nil` where the object it is handed holds none of its type's keys, a struct's
 /// or the tag and the content key of an enum under a tag key, and the type otherwise, read as a
@@ -1998,6 +2031,7 @@ fn flattened_option(
     twins: &mut Vec<String>,
 ) -> String {
     let held = SwiftField {
+        aliases: Vec::new(),
         default_at: None,
         field_def: validate::under_option(&field.field_def),
         flatten: true,
@@ -2094,14 +2128,9 @@ fn flattened_map(
     })
 }
 
-/// The statements that read `field` from the JSON of its default, written at `at`: as it is read
-/// from a payload under its key, with no function called for it.
-fn default_statement(
-    field: &SwiftField,
-    at: &str,
-    container: &str,
-    twins: &mut Vec<String>,
-) -> String {
+/// The statements that read `field` from the JSON of its default, written at `at`, at the coding
+/// path `path`: as it is read from a payload under its key, with no function called for it.
+fn default_statement(field: &SwiftField, at: &str, path: &str, twins: &mut Vec<String>) -> String {
     let wire = swift_wire_array_type(&field.field_def, &field.shape);
     let convert = |local: &str| converted(field, local);
     let plain = if matches!(field.shape.leaf_conversion, LeafConversion::None) {
@@ -2125,7 +2154,7 @@ fn default_statement(
             walked: validate::walks(&field.field_def, false),
         },
         at,
-        &format!("{container}.codingPath + [CodingKeys.{}]", field.swift_name),
+        path,
         &|held| format!("self.{} = {held}", field.swift_name),
         twins,
     )
@@ -2200,9 +2229,11 @@ fn converted(field: &SwiftField, local: &str) -> String {
     converted_from(&field.field_def, &field.shape, local)
 }
 
-/// The statements that read under its key a field `validate()` walks nothing of: as its own type,
-/// or as the type it is written as, turned into its own.
-fn keyed_read(field: &SwiftField, container: &str, absent_is_nil: bool) -> String {
+/// The statements that read under its key, from `own`, the container of the type's own keys, or
+/// from the container a member under an alias is read from, a field `validate()` walks nothing of:
+/// as its own type, or as the type it is written as, turned into its own.
+fn keyed_read(field: &SwiftField, own: &str, absent_is_nil: bool) -> String {
+    let (container, key) = field.keyed_at(own);
     if matches!(field.shape.leaf_conversion, LeafConversion::None) {
         return if absent_is_nil {
             let inner = field
@@ -2210,12 +2241,12 @@ fn keyed_read(field: &SwiftField, container: &str, absent_is_nil: bool) -> Strin
                 .strip_suffix('?')
                 .unwrap_or(&field.real_type);
             format!(
-                "self.{swift} = try {container}.decodeIfPresent({inner}.self, forKey: .{swift})",
+                "self.{swift} = try {container}.decodeIfPresent({inner}.self, forKey: {key})",
                 swift = field.swift_name
             )
         } else {
             format!(
-                "self.{swift} = try {container}.decode({real_type}.self, forKey: .{swift})",
+                "self.{swift} = try {container}.decode({real_type}.self, forKey: {key})",
                 swift = field.swift_name,
                 real_type = field.real_type,
             )
@@ -2224,21 +2255,12 @@ fn keyed_read(field: &SwiftField, container: &str, absent_is_nil: bool) -> Strin
     let wire_array = swift_wire_array_type(&field.field_def, &field.shape);
     let read = if field.required {
         if field.field_def.is_optional() {
-            format!(
-                "try {container}.decode({wire_array}?.self, forKey: .{swift})",
-                swift = field.swift_name
-            )
+            format!("try {container}.decode({wire_array}?.self, forKey: {key})")
         } else {
-            format!(
-                "try {container}.decode({wire_array}.self, forKey: .{swift})",
-                swift = field.swift_name
-            )
+            format!("try {container}.decode({wire_array}.self, forKey: {key})")
         }
     } else {
-        format!(
-            "try {container}.decodeIfPresent({wire_array}.self, forKey: .{swift})",
-            swift = field.swift_name
-        )
+        format!("try {container}.decodeIfPresent({wire_array}.self, forKey: {key})")
     };
     let local = format!("wire{}", swift_upper_camel(swift_bare(&field.swift_name)));
     format!(
@@ -2431,6 +2453,11 @@ fn collect_swift_fields(
             aux.extend(flattened_wrapper_read(&field_def, &field_hint));
         }
         collected.push(SwiftField {
+            aliases: if flatten || omission.skips_deserializing {
+                Vec::new()
+            } else {
+                aliases::written_on(&field.attrs)
+            },
             default_at: default_at(&rust_name),
             field_def,
             flatten,
@@ -2528,8 +2555,13 @@ fn struct_body_content(
     } else {
         ""
     };
+    let aliased = if fields.iter().any(|field| !field.aliases.is_empty()) {
+        aliases::CONTAINER
+    } else {
+        ""
+    };
     let reads = read::both(
-        &format!("{keyed}{members}"),
+        &format!("{keyed}{aliased}{members}"),
         &preprocess::Written {
             beside: "",
             named: owner,
@@ -2622,7 +2654,7 @@ fn handed_reads(fields: &[SwiftField], synthesized: bool, around: bool) -> (Stri
     let mut taken_ahead: Vec<String> = fields
         .iter()
         .filter(|field| !field.flatten)
-        .map(|field| field.wire_name.clone())
+        .flat_map(|field| iter::once(&field.wire_name).chain(&field.aliases).cloned())
         .collect();
     // The local of each flattened enum ahead, which holds the name of the entry it took.
     let mut found_ahead: Vec<String> = Vec::new();
@@ -3321,17 +3353,21 @@ fn plain_enum_swift_source(
 ) -> String {
     let checks = args.check;
     let rule = container_rename_rule(&item_enum.attrs);
-    let cases = item_enum
+    let variants: Vec<(String, String, Vec<String>)> = item_enum
         .variants
         .iter()
-        .fold(String::new(), |mut acc, variant| {
-            let rust_name = variant.ident.to_string();
-            let case_name = swift_member(&RenameRule::CamelCase.apply_to_variant(&rust_name));
-            let wire = rename_override(&variant.attrs)
-                .unwrap_or_else(|| rule.apply_to_variant(&rust_name));
+        .map(|variant| {
+            let (case_name, wire) = variant_names(variant, rule);
+            (case_name, wire, aliases::written_on(&variant.attrs))
+        })
+        .collect();
+    let mut cases = variants
+        .iter()
+        .fold(String::new(), |mut acc, (case_name, wire, _)| {
             write!(acc, "case {case_name} = \"{wire}\"; ").unwrap();
             acc
         });
+    cases.push_str(&aliases::raw_value_init(&variants));
     validate::note(rust_ident, None, !checks.is_empty());
     let validate = validate::method(&validate::own_checks(checks));
     // With no check and no function there is nothing to judge or to call, and the read stays the
@@ -3412,7 +3448,12 @@ fn external_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
                 &|held| format!("self = .{case_name}({held})"),
                 &mut twins,
             );
-            write!(object_decode_arms, "case \"{wire_tag}\": {read}; ").unwrap();
+            write!(
+                object_decode_arms,
+                "case {}: {read}; ",
+                aliases::case_names(&wire_tag, &aliases::written_on(&variant.attrs))
+            )
+            .unwrap();
             write!(
                 encode_arms,
                 "case .{case_name}(let payload): var container = encoder.container(keyedBy: SwiftSchemaExternalCodingKey.self); \
@@ -3423,7 +3464,8 @@ fn external_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
         } else {
             write!(
                 unit_decode_arms,
-                "case \"{wire_tag}\": self = .{case_name}; return; "
+                "case {}: self = .{case_name}; return; ",
+                aliases::case_names(&wire_tag, &aliases::written_on(&variant.attrs))
             )
             .unwrap();
             write!(
@@ -3511,7 +3553,12 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
                 &|held| format!("self = .{case_name}({held})"),
                 &mut twins,
             );
-            write!(decode_arms, "case \"{wire_tag}\": {read}; ").unwrap();
+            write!(
+                decode_arms,
+                "case {}: {read}; ",
+                aliases::case_names(&wire_tag, &aliases::written_on(&variant.attrs))
+            )
+            .unwrap();
             write!(
                 encode_arms,
                 "case .{case_name}(let payload): try container.encode(\"{wire_tag}\", forKey: .swiftSchemaTag); \
@@ -3520,7 +3567,12 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
             )
             .unwrap();
         } else {
-            write!(decode_arms, "case \"{wire_tag}\": self = .{case_name}; ").unwrap();
+            write!(
+                decode_arms,
+                "case {}: self = .{case_name}; ",
+                aliases::case_names(&wire_tag, &aliases::written_on(&variant.attrs))
+            )
+            .unwrap();
             write!(
                 encode_arms,
                 "case .{case_name}: try container.encode(\"{wire_tag}\", forKey: .swiftSchemaTag); "
@@ -3606,7 +3658,12 @@ fn adjacent_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
                 &|held| format!("self = .{case_name}({held})"),
                 &mut twins,
             );
-            write!(decode_arms, "case \"{wire_tag}\": {read}; ").unwrap();
+            write!(
+                decode_arms,
+                "case {}: {read}; ",
+                aliases::case_names(&wire_tag, &aliases::written_on(&variant.attrs))
+            )
+            .unwrap();
             write!(
                 encode_arms,
                 "case .{case_name}(let payload): try container.encode(\"{wire_tag}\", forKey: .swiftSchemaTag); \
@@ -3615,7 +3672,12 @@ fn adjacent_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
             )
             .unwrap();
         } else {
-            write!(decode_arms, "case \"{wire_tag}\": self = .{case_name}; ").unwrap();
+            write!(
+                decode_arms,
+                "case {}: self = .{case_name}; ",
+                aliases::case_names(&wire_tag, &aliases::written_on(&variant.attrs))
+            )
+            .unwrap();
             write!(
                 encode_arms,
                 "case .{case_name}: try container.encode(\"{wire_tag}\", forKey: .swiftSchemaTag); "
