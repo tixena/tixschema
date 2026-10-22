@@ -419,6 +419,12 @@ mod corrected_options_models;
 #[path = "service_schema_emitted_client_tests/run_kotlin_flattened.rs"]
 mod run_kotlin_flattened;
 
+/// A payload serde refuses, refused by a serializer the Kotlin emitter writes with
+/// `SerializationException`.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_refusals.rs"]
+mod run_kotlin_refusals;
+
 /// The models a name serde reads beside the one it writes is read under.
 #[cfg(test)]
 #[cfg(all(

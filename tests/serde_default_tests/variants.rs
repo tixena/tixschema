@@ -624,8 +624,9 @@ fn an_enum_with_no_default_writes_the_kotlin_text_it_wrote() {
          put(\"kind\", \"Ebbing\"); output.json.encodeToJsonElement(serializer<TideEbbing>(), \
          value).jsonObject.forEach { (k, v) -> put(k, v) } }; is TideSlack -> buildJsonObject { \
          put(\"kind\", \"Slack\") } }) }; override fun deserialize(decoder: Decoder): Tide { val \
-         input = decoder as JsonDecoder; val obj = input.decodeJsonElement().jsonObject; val tag \
-         = (obj[\"kind\"] as? JsonPrimitive)?.content; return when (tag) { \"Ebbing\" -> \
+         input = decoder as JsonDecoder; val obj = input.decodeJsonElement().let { it as? \
+         JsonObject ?: throw SerializationException(\"expected an object, found \" + it) }; val \
+         tag = (obj[\"kind\"] as? JsonPrimitive)?.content; return when (tag) { \"Ebbing\" -> \
          input.json.decodeFromJsonElement(serializer<TideEbbing>(), JsonObject(obj - \"kind\")); \
          \"Slack\" -> TideSlack else -> throw SerializationException(\"unknown tag \" + tag) } } \
          } object TideSerializer : KSerializer<Tide> { override val descriptor: SerialDescriptor \

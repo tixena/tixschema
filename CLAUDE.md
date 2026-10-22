@@ -943,6 +943,21 @@ the consumer's view; this is what a change has to keep.
   `kept_inline`), and their `{Type}Unjudged` delegates to `generatedSerializer()` (`generated`).
   The serializer the emitter writes for a struct with a flattened member, a tuple struct and an
   enum is the unjudged one, under `written_head`.
+- **Every refusal a serializer the emitter writes makes as it reads is a `SerializationException`**,
+  checked inline in the read, with no declaration shared at file scope. Four writers in
+  `src/features/kotlin.rs` word it: `read_as` and `payload_read_as` read a payload as an object, an
+  array or a tag's string (`JsonKind`) and refuse any other kind with `expected {kind}, found
+  {payload}`, `present` refuses a key the object does not hold with serde's ``missing field
+  `{key}` ``, and `tuple_array` refuses the array of a tuple of another length, a longer one among
+  them, as serde and Zod refuse it, with `invalid length {n}, expected {m}`.
+  `flatten_merging_serializer`, `own_field_plan`, `flatten_map_field_plan`,
+  `tuple_wrapper_typename` and `tuple_struct_kotlin_tokens` call them, and so do
+  `dispatched_tagged_enum_kotlin_source` and `dispatched_tagged_variant` for the tag and the
+  content. An externally tagged object of no entry or of several is `expected an object of one
+  key, found {payload}`, a tag no variant has `unknown tag {tag}` under every tagging, and a
+  payload no variant of an untagged enum reads `No variant of {Enum} matched`. The `.jsonObject` of
+  a write is the write's. `run_kotlin_refusals.rs` reads each refusal under the toolchain, beside
+  serde's refusal of the same payload.
 - **A struct's member serde never writes is read and has no `put`.** `KotlinField::never_written`
   is `has_serde_skip_serializing`: `skip_serializing`, never `skip_serializing_if`. The plugin
   writes every property, so `struct_kotlin_tokens` hands a struct with such a member to
@@ -1020,10 +1035,9 @@ the consumer's view; this is what a change has to keep.
   written through `value.{member}?.forEach`, so `null` writes no entry, and read inside
   `runCatching { ... }.getOrNull()`, so an entry that throws as the map's value reads the map as
   `null`, as serde's untagged read of an `Option` reads `None`. The decode of an entry throws
-  `SerializationException`, `IndexOutOfBoundsException` for a list or an object where a text or
-  a number is read, and an enum's read `IllegalStateException`, so the read catches whatever is
-  thrown, as the untagged enum's `recoverCatching` chain does. A map that is not optional is
-  read as it was.
+  `SerializationException`, and `IndexOutOfBoundsException` for a list or an object where a text
+  or a number is read, so the read catches whatever is thrown, as the untagged enum's
+  `recoverCatching` chain does. A map that is not optional is read as it was.
   `tests/kotlin_tests/flattened_models.rs` holds `ProbeLocker` and serde's reads of `LOCKER`, and
   `run_kotlin_flattened.rs` holds the Kotlin read of each to serde's.
 - **A flattened externally tagged enum takes one entry** (`flatten_enum_field_plan`): the first

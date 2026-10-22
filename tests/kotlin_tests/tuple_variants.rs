@@ -229,7 +229,7 @@ fn the_slots_under_a_content_key_are_written_and_read_by_the_wrapper_declared() 
     assert!(
         racking.contains(&format!(
             "\"Split\" -> RackingSplit(input.json.decodeFromJsonElement(serializer<{wrapper}>(), \
-             data!!))"
+             (data ?: throw SerializationException(\"missing field `held`\"))))"
         )),
         "got: {racking}"
     );
@@ -357,7 +357,7 @@ fn a_tuple_beside_a_flattened_member_is_declared_and_read_by_one_wrapper() {
         ),
         format!(
             "val pair = input.json.decodeFromJsonElement(serializer<{wrapper}>(), \
-             obj.getValue(\"pair\"))"
+             (obj[\"pair\"] ?: throw SerializationException(\"missing field `pair`\")))"
         ),
     ] {
         assert!(bundling.contains(&held), "no `{held}` in: {bundling}");
@@ -446,7 +446,7 @@ fn a_tuple_holding_a_model_beside_a_flattened_member_is_declared_and_read_by_one
         ),
         format!(
             "val pair = input.json.decodeFromJsonElement(serializer<{wrapper}>(), \
-             obj.getValue(\"pair\"))"
+             (obj[\"pair\"] ?: throw SerializationException(\"missing field `pair`\")))"
         ),
     ] {
         assert!(banding.contains(&held), "no `{held}` in: {banding}");
@@ -553,7 +553,7 @@ fn tuples_holding_a_model_in_an_option_and_a_list_are_declared_and_read_by_one_w
         format!(
             "val pairs = \
              input.json.decodeFromJsonElement(ListSerializer(serializer<{wrapper}>()), \
-             obj.getValue(\"pairs\"))"
+             (obj[\"pairs\"] ?: throw SerializationException(\"missing field `pairs`\")))"
         ),
     ] {
         assert!(spooling.contains(&held), "no `{held}` in: {spooling}");
