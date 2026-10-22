@@ -169,6 +169,9 @@ enum Wrapped {
 /// One variant's payload: the type its case holds, what the case adds to `validate()`, and how
 /// the payload is read.
 struct VariantPayload {
+    /// The externally tagged enum the one slot of a variant under a tag alone holds, which serde
+    /// writes beside the tag as it writes it flattened.
+    beside: SlotEntries,
     /// What chooses the variant in an untagged enum: the bounds of its own members, on `payload`.
     bound: Vec<String>,
     /// The one slot of the variant, where it is read and written as the type it is written as, or
@@ -187,6 +190,18 @@ struct VariantPayload {
     walked: Option<(FieldDef, String)>,
     /// Whether the payload is a type written for the variant.
     written: bool,
+}
+
+/// The unit variants of an externally tagged enum written above, held by the one slot of a
+/// variant under a tag alone: serde writes such a variant beside the tag as an entry of its name
+/// over `null`. Empty for any other slot.
+#[derive(Default)]
+struct SlotEntries {
+    /// The unit variants the enum's own read takes from an entry over `null` in the object
+    /// without the tag, or in what the slot's functions answer of it.
+    units: Vec<preprocess::Entry>,
+    /// The unit variants written as an entry of their names over `null`.
+    written: Vec<UnitEntry>,
 }
 
 /// Where the payload of one variant is read from, and what its read is named from.
@@ -323,7 +338,7 @@ impl VariantPayload {
                     plain: preprocess::Plain::Declared,
                     real_type: held,
                     stem: from.stem,
-                    units: &[],
+                    units: &self.beside.units,
                     walked: self.walked.is_some(),
                 },
                 self.converted.as_ref(),
@@ -349,6 +364,13 @@ impl VariantPayload {
         self.converted
             .as_ref()
             .map_or_else(|| payload.to_owned(), |slot| slot.written(payload))
+    }
+
+    /// The statement that writes the payload `payload` names beside the tag, through the enum's
+    /// encoder: a unit variant of the enum [`Self::beside`] holds as an entry of its name over
+    /// `null`.
+    fn written_beside(&self, payload: &str) -> String {
+        unit_entries_write(&self.beside.written, payload, &self.written(payload))
     }
 }
 
@@ -487,8 +509,9 @@ fn unit_entries(item_enum: &ItemEnum, tag_attrs: &EnumTagAttrs) -> Vec<UnitEntry
         .collect()
 }
 
-/// The unit variants of the externally tagged enum a flattened member `def` describes, under an
-/// `Option` or not, where the emitter wrote it above: none for any other type.
+/// The unit variants of the externally tagged enum `def` describes, a flattened member or the slot
+/// of a variant under a tag alone, under an `Option` or not, where the emitter wrote it above: none
+/// for any other type.
 fn unit_entries_of(def: &FieldDef) -> Vec<UnitEntry> {
     let FieldDefType::SiblingType(name, _) = &def.field_type else {
         return Vec::new();
@@ -2574,8 +2597,14 @@ fn encode_statement(field: &SwiftField, container: &str) -> String {
 /// encoder. A unit variant of an externally tagged enum written above is an entry of its name over
 /// `null`, as serde writes it: the bare name the enum writes is dropped by the holder's object.
 fn flattened_write(def: &FieldDef, held: &str, written: &str) -> String {
+    unit_entries_write(&unit_entries_of(def), held, written)
+}
+
+/// The statement that writes `held`, a value of an enum whose unit variants are `entries`, as
+/// `written` through the encoder of the object it joins: a unit variant as an entry of its name
+/// over `null`.
+fn unit_entries_write(entries: &[UnitEntry], held: &str, written: &str) -> String {
     let whole = format!("try {written}.encode(to: encoder)");
-    let entries = unit_entries_of(def);
     if entries.is_empty() {
         return whole;
     }
@@ -3400,6 +3429,14 @@ fn alias_swift_tokens(item_type: &ItemType, name_override: Option<&str>) -> Toke
         &item_type.ident.to_string(),
         !target.is_optional() && preprocess::beside(&target),
     );
+    // The alias of an externally tagged enum is read and written by the enum's entries.
+    if !target.is_list() && !target.is_optional() {
+        note_unit_entries(&item_type.ident.to_string(), unit_entries_of(&target));
+        preprocess::note_entries(
+            &item_type.ident.to_string(),
+            preprocess::entries_of(&target).map_or_else(Vec::new, |(_, entries)| entries),
+        );
+    }
     let counted = (type_parameters.is_empty() && read::holds_a_length(&target)).then(|| {
         through_alias(&target).map_or_else(
             || (target.clone(), export_name.clone()),
@@ -3439,6 +3476,7 @@ fn resolve_variant_payload(
 ) -> VariantPayload {
     match classify_variant(variant) {
         VariantKind::Unit => VariantPayload {
+            beside: SlotEntries::default(),
             bound: Vec::new(),
             converted: None,
             corrected: None,
@@ -3518,6 +3556,7 @@ fn named_payload(
         })
         .collect();
     VariantPayload {
+        beside: SlotEntries::default(),
         bound,
         converted: None,
         corrected: None,
@@ -3567,7 +3606,16 @@ fn slot_payload(
             && !handed_keys
             && !preprocess::reads_the_whole(&field_def)))
     .then(|| (field_def.clone(), hint));
+    let beside = if shape.tag_attrs.tag_alone() {
+        SlotEntries {
+            units: preprocess::units_of(&field_def),
+            written: unit_entries_of(&field_def),
+        }
+    } else {
+        SlotEntries::default()
+    };
     VariantPayload {
+        beside,
         bound,
         converted: (slot.converts() || read::holds_a_length(&slot.def)).then_some(slot),
         corrected,
@@ -3630,6 +3678,7 @@ fn slots_payload(
     };
     let hint = format!("{export_name}{}", variant.ident);
     VariantPayload {
+        beside: SlotEntries::default(),
         bound,
         converted: None,
         corrected: None,
@@ -3895,7 +3944,7 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
                 aliases::case_names(&wire_tag, &aliases::written_on(&variant.attrs))
             )
             .unwrap();
-            let then = format!("try {}.encode(to: encoder); ", payload.written("payload"));
+            let then = format!("{}; ", payload.written_beside("payload"));
             encode_arms.push_str(&tagged_encode_arm(&case_name, &wire_tag, Some(&then)));
         } else {
             write!(
@@ -3929,9 +3978,10 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
          var container = encoder.container(keyedBy: SwiftSchemaTagCodingKeys.self); \
          switch self {{ {encode_arms} }} }};"
     );
+    let key = read::any_key_written(&reads, &encode_method);
     let validate = enum_validate(shape, &ruled);
     let body = format!(
-        "public enum {export_name}{generic_params}: Codable, Sendable {{ {cases} {tag_coding_key} {reads}{encode_method} {validate} }}"
+        "public enum {export_name}{generic_params}: Codable, Sendable {{ {cases} {tag_coding_key} {reads}{key}{encode_method} {validate} }}"
     );
     let typealias = ident_typealias(rust_ident, export_name, generic_params);
     format!("{body}{}{typealias}", enum_date_helpers(shape, &slots))

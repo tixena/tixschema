@@ -2531,6 +2531,12 @@ fn alias_kotlin_tokens(item_type: &ItemType, name_override: Option<&str>) -> Tok
     if type_parameters.is_empty() {
         texts::note_alias(&rust_ident, &target);
     }
+    // The alias of an enum that writes a unit variant as its bare name writes it so as well.
+    if !target.is_list() && !target.is_optional() && writes_a_bare_name(&target) {
+        KOTLIN_BARE_NAMED.with(|noted| {
+            noted.borrow_mut().insert(rust_ident.clone());
+        });
+    }
     let generic_params = kotlin_generic_params(&item_type.generics);
     let target_type = read::with_text_forms(&target);
     let alias = ident_typealias(&rust_ident, &export_name, &generic_params);

@@ -15,13 +15,13 @@ use super::runtime::{node_modules, ran_with_modules, stand_down_modules};
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use super::tagged_slot_models::{
     Ballast, Bunkered, Demurrage, Docketed, Dray, Freighted, Lighter, Lightering, Palleted,
-    Stevedore, Tonnage, Waybilled, Wharfage, drayage_schema,
+    Stevedore, Tonnage, Trussed, Waybilled, Wharfage, drayage_schema, lashing_schema,
 };
 use super::tagged_slot_models::{
-    UNIT_ENTRY, WRITTEN, ballast_kotlin, bunkered_kotlin, demurrage_kotlin, docketed_kotlin,
-    dray_kotlin, drayage_kotlin, freighted_kotlin, lighter_kotlin, lightering_kotlin,
-    palleted_kotlin, serde_told, stevedore_kotlin, tonnage_kotlin, waybilled_kotlin,
-    wharfage_kotlin,
+    ENTRIES_REFUSED, WRITTEN, ballast_kotlin, bunkered_kotlin, demurrage_kotlin, docketed_kotlin,
+    dray_kotlin, drayage_kotlin, freighted_kotlin, lashing_kotlin, lighter_kotlin,
+    lightering_kotlin, palleted_kotlin, serde_told, stevedore_kotlin, tonnage_kotlin,
+    trussed_kotlin, waybilled_kotlin, wharfage_kotlin,
 };
 
 const KOTLIN_IMPORTS: &str = "import kotlinx.serialization.*\n\
@@ -30,9 +30,9 @@ const KOTLIN_IMPORTS: &str = "import kotlinx.serialization.*\n\
      import kotlinx.serialization.encoding.*\n\
      import kotlinx.serialization.builtins.*";
 
-/// The function `Docketed::Trimmed` names, and what prints a row: the read under the default
-/// `Json`, then under one that ignores unknown keys, each the value written back or the first line
-/// of the message of the `SerializationException` the read throws.
+/// The function `Docketed::Trimmed` and `Docketed::Pared` name, and what prints a row: the read
+/// under the default `Json`, then under one that ignores unknown keys, each the value written back
+/// or the first line of the message of the `SerializationException` the read throws.
 const READ: &str = r#"
 fun lightened(payload: JsonElement): JsonElement =
     if (payload is JsonObject) JsonObject(payload - "spare") else payload
@@ -51,7 +51,7 @@ fun <T> told(at: Int, serializer: KSerializer<T>, payload: String) {
 }
 "#;
 
-/// The function `Docketed::Trimmed` names, for the Zod schema.
+/// The function `Docketed::Trimmed` and `Docketed::Pared` name, for the Zod schema.
 #[cfg(all(feature = "zod", feature = "typescript"))]
 const LIGHTENED: &str = "function lightened(payload: unknown): unknown {\n  \
      if (typeof payload !== \"object\" || payload === null || Array.isArray(payload)) return \
@@ -61,11 +61,11 @@ const LIGHTENED: &str = "function lightened(payload: unknown): unknown {\n  \
 /// What the default `Json` throws for the key `other`, in the words of the plugin's serializer.
 const UNKNOWN_AT: &str = "refused: Encountered an unknown key 'other' at path: $";
 
-/// What a payload no row of [`WRITTEN`] holds is read as by each side: the slot under a `value`
-/// key, which serde and Zod refuse; a key the slot does not read, which serde reads past and Zod
-/// refuses; a key the function of the slot drops; entries of two variants of an externally tagged
-/// slot; and a struct under its own tag with no tag.
-const ROWS: [Row; 10] = [
+/// What a payload no row of [`WRITTEN`] or of [`ENTRIES_REFUSED`] holds is read as by each side:
+/// the slot under a `value` key, which serde and Zod refuse; a key the slot does not read, which
+/// serde reads past and Zod refuses; a key the function of the slot drops; and a struct under its
+/// own tag with no tag.
+const ROWS: [Row; 9] = [
     Row {
         ignoring: "refused: Field 'cost' is required for type with serial name 'Tonnage', but \
                    it was missing at path: $",
@@ -133,16 +133,6 @@ const ROWS: [Row; 10] = [
         zod: "read {\"kind\":\"Trimmed\",\"cost\":\"c\"}",
     },
     Row {
-        ignoring: "refused: expected an object of one key, found \
-                   {\"Stacked\":{\"layers\":5},\"Loose\":null}",
-        json: r#"{"kind":"External","Stacked":{"layers":5},"Loose":null}"#,
-        kotlin: "refused: expected an object of one key, found \
-                 {\"Stacked\":{\"layers\":5},\"Loose\":null}",
-        read_as: "Docketed",
-        serde: "refused",
-        zod: "refused",
-    },
-    Row {
         ignoring: "refused: missing field `sort`",
         json: r#"{"kind":"Sorted","weight":3}"#,
         kotlin: "refused: missing field `sort`",
@@ -178,8 +168,8 @@ struct Told {
 }
 
 /// Every payload, beside what serde, Zod and both Kotlin reads answer of it: each payload serde
-/// writes, read and written back as serde writes it, its unit entry among them, which Zod refuses,
-/// and then [`ROWS`].
+/// writes, read and written back as serde writes it, its unit entry among them, then [`ROWS`], and
+/// then each payload of [`ENTRIES_REFUSED`], which all of them refuse.
 fn every_row() -> Vec<Told> {
     let written = WRITTEN.iter().map(|&(read_as, json)| {
         let read = format!("read {json}");
@@ -189,11 +179,7 @@ fn every_row() -> Vec<Told> {
             kotlin: read.clone(),
             read_as,
             serde: read.clone(),
-            zod: if json == UNIT_ENTRY {
-                "refused".to_owned()
-            } else {
-                read
-            },
+            zod: read,
         }
     });
     let pinned = ROWS.iter().map(|row| Told {
@@ -204,7 +190,15 @@ fn every_row() -> Vec<Told> {
         serde: row.serde.to_owned(),
         zod: row.zod.to_owned(),
     });
-    written.chain(pinned).collect()
+    let refused = ENTRIES_REFUSED.iter().map(|row| Told {
+        ignoring: row.kotlin.to_owned(),
+        json: row.json,
+        kotlin: row.kotlin.to_owned(),
+        read_as: "Docketed",
+        serde: "refused".to_owned(),
+        zod: "refused".to_owned(),
+    });
+    written.chain(pinned).chain(refused).collect()
 }
 
 /// serde reads each payload it writes and writes it back, and answers each row as pinned.
@@ -247,6 +241,8 @@ fn a_slot_beside_the_tag_is_read_and_written_by_kotlin_as_serde_and_zod_read_it(
         demurrage_kotlin::kotlin_definition(),
         bunkered_kotlin::kotlin_definition(),
         palleted_kotlin::kotlin_definition(),
+        lashing_kotlin::kotlin_definition(),
+        trussed_kotlin::kotlin_definition(),
         dray_kotlin::kotlin_definition(),
         stevedore_kotlin::kotlin_definition(),
         freighted_kotlin::kotlin_definition(),
@@ -322,6 +318,10 @@ fn zod_module() -> String {
         Bunkered::zod_schema(),
         Palleted::ts_definition(),
         Palleted::zod_schema(),
+        lashing_schema::Schema::ts_definition(),
+        lashing_schema::Schema::zod_schema(),
+        Trussed::ts_definition(),
+        Trussed::zod_schema(),
         Dray::ts_definition(),
         Dray::zod_schema(),
         Stevedore::ts_definition(),
@@ -338,10 +338,10 @@ fn zod_module() -> String {
     .join("\n\n");
     module.push_str("\n\nconst told: string[] = [];\n");
     for row in every_row() {
-        let schema = if row.read_as == "Docketed" {
-            "Docketed$Schema"
-        } else {
-            "Waybilled$SchemaDefault"
+        let schema = match row.read_as {
+            "Docketed" => "Docketed$Schema",
+            "Trussed" => "Trussed$Schema",
+            _ => "Waybilled$SchemaDefault",
         };
         let _ = writeln!(
             module,
@@ -354,8 +354,9 @@ fn zod_module() -> String {
     module
 }
 
-/// The generated Zod schema reads the slot's members beside the tag, and refuses the slot under a
-/// `value` key, a key no member reads, and the unit entry serde writes.
+/// The generated Zod schema reads the slot's members beside the tag, an externally tagged enum's
+/// unit variant as an entry of its name over `null`, and refuses the slot under a `value` key and
+/// a key no member reads.
 #[cfg(all(feature = "zod", feature = "typescript"))]
 #[test]
 fn zod_reads_the_slot_beside_the_tag() {
@@ -405,6 +406,36 @@ fn the_readme_shows_the_slot_the_run_reads() {
             "`{}` is refused with `SerializationException: {}`",
             refused.json,
             refused.kotlin.strip_prefix("refused: ").unwrap()
+        ),
+    ] {
+        assert!(readme.contains(&shown), "not in the README: {shown}");
+    }
+}
+
+/// The README's sentences on an externally tagged enum held beside the tag show the payload serde
+/// writes for its unit variant and the words the Dart and Swift reads refuse the tag alone and two
+/// entries with.
+#[test]
+fn the_readme_shows_the_entries_the_runs_read_and_refuse() {
+    let readme = include_str!("../../README.md");
+    let [tag_alone, two_entries, _] = &ENTRIES_REFUSED;
+    assert!(
+        WRITTEN.contains(&("Docketed", r#"{"kind":"External","Loose":null}"#))
+            && tag_alone.json == r#"{"kind":"External"}"#,
+        "the rows are no longer the ones the README shows"
+    );
+    for shown in [
+        "`#[serde(tag = \"kind\")] enum Docketed { External(Palleted) }` over `enum Palleted { \
+         Loose, Stacked { layers: u32 } }`, `{\"kind\":\"External\",\"Loose\":null}` reads"
+            .to_owned(),
+        format!(
+            "The tag alone, `{}`, is refused with `{}`, and the entries of two variants with `{}`",
+            tag_alone.json, tag_alone.dart, two_entries.dart
+        ),
+        format!(
+            "The tag alone, `{}`, is refused with `DecodingError.dataCorrupted` and `{}`, and the \
+             entries of two variants with `{}`",
+            tag_alone.json, tag_alone.swift, two_entries.swift
         ),
     ] {
         assert!(readme.contains(&shown), "not in the README: {shown}");

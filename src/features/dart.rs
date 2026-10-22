@@ -816,6 +816,20 @@ fn writes_a_name(def: &FieldDef) -> bool {
     DART_WRITES_A_NAME.with(|recorded| recorded.borrow().contains(name))
 }
 
+/// The entries `encode`, what a value of `def` writes, adds to the object it joins: a unit variant
+/// of an externally tagged enum emitted above as an entry of its name over `null`, as serde writes
+/// it, where the enum's own `toJson` writes the bare name.
+fn joined_entries(def: &FieldDef, encode: &str) -> String {
+    if writes_a_name(def) {
+        format!(
+            "(switch ({encode}) {{ final String name => {{name: null}}, final written => written \
+             as Map<String, dynamic> }})"
+        )
+    } else {
+        format!("({encode} as Map<String, dynamic>)")
+    }
+}
+
 /// What a member typed `def`, flattened into its holder, takes off the object serde hands it:
 /// what was recorded for a struct or an enum whose class was emitted above, and nothing for a
 /// member that names a function, which reads it as a value.
@@ -2849,14 +2863,7 @@ fn class_body_parts(fields: &[DartField], extra_to_json: &[String]) -> ClassBody
         .map(|field| {
             let encode = dart_encode_expr(&field.field_def, &field.member, false);
             if field.flatten {
-                let entries = if writes_a_name(&field.field_def) {
-                    format!(
-                        "(switch ({encode}) {{ final String name => {{name: null}}, final written \
-                         => written as Map<String, dynamic> }})"
-                    )
-                } else {
-                    format!("({encode} as Map<String, dynamic>)")
-                };
+                let entries = joined_entries(&field.field_def, &encode);
                 if field.field_def.is_optional() {
                     format!("if ({} != null) ...{entries},", field.member)
                 } else {
@@ -3212,6 +3219,10 @@ fn alias_dart_tokens(item_type: &ItemType, name_override: Option<&str>) -> Token
     let type_parameters = type_parameters_in_scope(&item_type.generics);
     let mut target = get_field_def(&export_name, &item_type.ty, "");
     target.erase_type_parameters(&type_parameters);
+    // The alias of an enum that writes a unit variant as its bare name writes it so as well.
+    if !target.is_list() && !target.is_optional() && writes_a_name(&target) {
+        record_writes_a_name(&item_type.ident.to_string());
+    }
     // An alias is another name for its target: where that is a declared type itself, its rules
     // are the target's.
     let named = !target.is_list()
@@ -3505,9 +3516,10 @@ fn tagged_variant_tokens(
                 // Internal tagging with a non-`Named` payload: serde admits only an object-shaped
                 // one, so the tag merges into that object.
                 format!(
-                    "{{ {}: {}, ...({own_encode} as Map<String, dynamic>) }}",
+                    "{{ {}: {}, ...{} }}",
                     quoted(shape.tag_key),
-                    quoted(wire_tag)
+                    quoted(wire_tag),
+                    joined_entries(field_def, &own_encode)
                 )
             } else {
                 tagged_wrap_encode(shape, wire_tag, Some(&own_encode))

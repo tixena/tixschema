@@ -1096,6 +1096,24 @@ const YAWS: [(&str, bool); 4] = [
     (r#"{"note":"a","Calm":1}"#, false),
 ];
 
+/// Each payload of [`DeclaredMooring`], and whether serde, its Zod schema and its TypeScript type
+/// take it: each variant's entry beside the tag, a unit variant's over `null` among them, and not
+/// the tag alone, the entries of two variants or a unit variant's entry over a number.
+const MOORINGS: [(&str, bool); 9] = [
+    (r#"{"kind":"Hatched","Bay":{"label":"n"}}"#, true),
+    (r#"{"kind":"Hatched","Calm":null}"#, true),
+    (r#"{"kind":"Hatched"}"#, false),
+    (
+        r#"{"kind":"Hatched","Bay":{"label":"n"},"Dock":{"label":"s"}}"#,
+        false,
+    ),
+    (r#"{"kind":"Hatched","Calm":1}"#, false),
+    (r#"{"kind":"Idle"}"#, true),
+    (r#"{"kind":"Tacked","Calm":null}"#, true),
+    (r#"{"kind":"Tacked","Held":"x"}"#, true),
+    (r#"{"kind":"Tacked","Calm":1}"#, false),
+];
+
 static STOOD_DOWN: Once = Once::new();
 
 /// A struct whose fields bound a brand over a string, one declared below it and an optional one,
@@ -1390,6 +1408,18 @@ pub struct DeclaredDrift {
     pub note: String,
 }
 
+/// [`DeclaredHatch`] in the lone slot of a variant under a tag alone, and [`DeclaredTack`] there
+/// under a function that answers the payload as it was handed: serde writes each variant beside
+/// the tag as an entry, a unit variant's over `null`.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum DeclaredMooring {
+    Hatched(DeclaredHatch),
+    Idle,
+    Tacked(#[model_schema_prop(preprocess = ["asGiven"])] DeclaredTack),
+}
+
 fn bundle() -> String {
     [
         PREAMBLE.to_owned(),
@@ -1481,6 +1511,8 @@ fn hatches_bundle() -> String {
         DeclaredLull::zod_schema(),
         DeclaredDrift::ts_definition(),
         DeclaredDrift::zod_schema(),
+        DeclaredMooring::ts_definition(),
+        DeclaredMooring::zod_schema(),
     ]
     .join("\n\n")
 }
@@ -3355,6 +3387,55 @@ fn type_check_a_name_or_a_doc_that_ends_a_comment_is_read_under_zod_as_serde_wri
     assert_eq!(
         read, expected,
         "Zod does not read what serde writes:\n{failed}"
+    );
+}
+
+/// An externally tagged enum in the lone slot of a variant under a tag alone, under a function or
+/// not, is taken by the Zod schema of the enum that holds it under `node` and by its TypeScript type
+/// under `tsc --strict` as serde writes and reads it: each variant's entry beside the tag, a unit
+/// variant's over `null` among them.
+#[test]
+fn type_check_a_slot_beside_the_tag_takes_a_unit_variants_entry_over_null() {
+    let stated: Vec<bool> = MOORINGS.iter().map(|&(_, taken)| taken).collect();
+    let read: Vec<bool> = MOORINGS
+        .iter()
+        .map(|&(json, _)| serde_json::from_str::<DeclaredMooring>(json).is_ok())
+        .collect();
+    assert_eq!(read, stated, "serde does not take what the rows state");
+    let listed: Vec<(&str, &str)> = MOORINGS
+        .iter()
+        .map(|&(json, _)| ("DeclaredMooring$Schema", json))
+        .collect();
+    let driver = TAKEN_DRIVER.replace("PAYLOADS", &serde_json::to_string(&listed).unwrap());
+    let Some((printed, failed)) = loaded_from("moorings", &hatches_bundle(), &driver) else {
+        return;
+    };
+    assert_eq!(
+        printed,
+        serde_json::to_string(&stated).unwrap(),
+        "the schema does not take what the rows state:\n{failed}"
+    );
+    let Some(at) = built_from("moorings-payloads", &hatches_bundle()) else {
+        return;
+    };
+    let mut payloads = String::from("import type { DeclaredMooring } from \"./lib/index.js\";\n");
+    for (position, &(json, _)) in MOORINGS.iter().enumerate() {
+        let _ = writeln!(
+            payloads,
+            "export const row{position}: DeclaredMooring = {json};"
+        );
+    }
+    fs::write(at.join("tsconfig.consumer.json"), CONSUMER_PROJECT).unwrap();
+    fs::write(at.join("consumer.ts"), &payloads).unwrap();
+    let (_, said) = compiled(&at, "tsconfig.consumer.json").unwrap();
+    fs::remove_dir_all(&at).unwrap();
+    // A row's line is its position after the import.
+    let typed: Vec<bool> = (0..MOORINGS.len())
+        .map(|row| !said.contains(&format!("consumer.ts({},", row + 2)))
+        .collect();
+    assert_eq!(
+        typed, stated,
+        "TypeScript does not take what the rows state:\n{said}\n{payloads}"
     );
 }
 
