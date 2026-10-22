@@ -58,3 +58,16 @@ mod unwritten_models;
 #[cfg(feature = "kotlin")]
 #[path = "kotlin_tests/unwritten.rs"]
 mod unwritten;
+
+/// The models a name serde reads beside the one it writes is read under. Declared after the
+/// module that declares the member they flatten.
+#[cfg(test)]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[path = "kotlin_tests/aliased_models.rs"]
+mod aliased_models;
+
+/// A name serde reads beside the one it writes: a variant's alias and a member's.
+#[cfg(test)]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[path = "kotlin_tests/aliased.rs"]
+mod aliased;
