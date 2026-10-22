@@ -196,7 +196,7 @@ mod on_a_mobile_surface {
 
     #[cfg(feature = "kotlin")]
     #[test]
-    fn kotlin_holds_the_tag_in_a_property_it_always_encodes() {
+    fn kotlin_holds_the_tag_in_a_property_it_always_encodes_ahead_of_the_fields() {
         assert_eq!(
             tagged_mobile_kotlin::kotlin_definition(),
             "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
@@ -204,8 +204,11 @@ mod on_a_mobile_surface {
              TaggedMobile(val name: String) { @SerialName(\"kind\") @EncodeDefault val \
              kotlinSchemaTag: String = \"TaggedMobile\"; fun validate(): List<String> = \
              emptyList() } @OptIn(ExperimentalSerializationApi::class) object \
-             TaggedMobileUnjudged : KSerializer<TaggedMobile> by \
-             TaggedMobile.generatedSerializer() object TaggedMobileSerializer : \
+             TaggedMobileUnjudged : \
+             JsonTransformingSerializer<TaggedMobile>(TaggedMobile.generatedSerializer()) { \
+             override fun transformSerialize(element: JsonElement): JsonElement = \
+             JsonObject(mapOf(\"kind\" to element.jsonObject.getValue(\"kind\")) + \
+             element.jsonObject) } object TaggedMobileSerializer : \
              KSerializer<TaggedMobile> { override val descriptor: SerialDescriptor = \
              TaggedMobileUnjudged.descriptor; override fun serialize(encoder: Encoder, value: \
              TaggedMobile) = TaggedMobileUnjudged.serialize(encoder, value); override fun \

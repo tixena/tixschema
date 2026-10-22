@@ -324,19 +324,28 @@ pub fn read_whole(field: &FieldDef, type_parameters: &[String]) -> (String, Stri
 
 /// What a serializer that corrects its payload overrides: `correction` is the Kotlin expression
 /// of `element` corrected.
-fn transform(correction: &str) -> String {
+pub fn transform(correction: &str) -> String {
     format!("override fun transformDeserialize(element: JsonElement): JsonElement = {correction}")
 }
 
-/// [`generated`] for a type that corrects its payload: the plugin's serializer behind
-/// `correction`, the Kotlin expression of `element` corrected.
+/// What a serializer that writes a struct's own tag, under `key`, ahead of the struct's members
+/// overrides: the plugin writes the property that holds the tag after the constructor's.
+pub fn tag_first(key: &str) -> String {
+    format!(
+        "override fun transformSerialize(element: JsonElement): JsonElement = \
+         JsonObject(mapOf(\"{key}\" to element.jsonObject.getValue(\"{key}\")) + \
+         element.jsonObject)"
+    )
+}
+
+/// [`generated`] for a type that corrects its payload or moves its tag: the plugin's serializer
+/// behind `body`, the [`transform`] and the [`tag_first`] it overrides.
 pub fn transforming(
     export_name: &str,
     generic_params: &str,
     type_parameters: &[String],
-    correction: &str,
+    body: &str,
 ) -> String {
-    let body = transform(correction);
     if type_parameters.is_empty() {
         format!(
             "{OPTED_IN} object {export_name}Unjudged : \

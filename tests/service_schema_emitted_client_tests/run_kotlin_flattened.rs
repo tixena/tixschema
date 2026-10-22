@@ -13,7 +13,9 @@
 //! is `null` where neither its tag nor its content key is there, and is read where one is, so one
 //! that does not read refuses the payload, as TypeScript and Zod refuse it. A variant reads and
 //! writes a flattened member at its own level, under every tagging. An optional member that names a
-//! function is read from what the function answers, as the Zod schema of its holder reads it.
+//! function is read from what the function answers, as the Zod schema of its holder reads it. A
+//! struct under its own tag is written with the tag ahead of its members, alone and flattened, as
+//! serde writes it.
 
 #![cfg(feature = "kotlin")]
 
@@ -28,22 +30,24 @@ use super::corrected_options_models::{
 };
 use super::flattened_models::{
     BELTING, BOWLINING, BROACHING, Belting, Bending, Bowlining, Brailing, Broaching, CHOCKED,
-    CLEATING, Cathead, Cleating, CorrectedLocker, Dipping, ENSIGN, EmptiedLocker, GAFFING, Gaffing,
-    Gammoning, Gasketing, HEAVING, HITCHING, Hawsepipe, Heaving, Hitching, Knotting, LOCKER,
-    Lanyarding, Luffing, MARLINE, Netting, Nipping, PAYLOAD, ProbeLocker, Rousing, SCARFING,
-    SCUDDING, SNUBBED, STOWING, STROPPING, STRUCK, SWAYING, Scarfing, Scudding, Seizing, Slinging,
+    CLEATING, Cathead, Cleating, CorrectedLocker, DRESSING, Dipping, Dressing, ENSIGN,
+    EmptiedLocker, FLAG, Flag, GAFFING, GONFALON, Gaffing, Gammoning, Gasketing, Gonfalon, HEAVING,
+    HITCHING, Hawsepipe, Heaving, Hitching, Knotting, LOCKER, Lanyarding, Luffing, MARLINE,
+    Netting, Nipping, PAYLOAD, ProbeLocker, Rousing, SCARFING, SCUDDING, SEMAPHORE, SNUBBED,
+    STOWING, STROPPING, STRUCK, SWAYING, Scarfing, Scudding, Seizing, Semaphore, Slinging,
     Snubbing, Splicing, Stoppering, Stowing, Striking, Stropping, Swaying, Tacking, UNDER_AN_ALIAS,
     UNWRITTEN, WHELPING, Whelping, Whipping, Yawing, belting_kotlin, bending_kotlin,
     bowlining_kotlin, brailing_kotlin, broaching_kotlin, bunting_kotlin, cathead_kotlin,
-    chock_kotlin, cleating_kotlin, corrected_locker_kotlin, dipping_kotlin, emptied_locker_kotlin,
-    ensign_kotlin, gaffing_kotlin, gammoning_kotlin, gasketing_kotlin, hawsepipe_kotlin,
-    hawser_kotlin, heaving_kotlin, hitching_kotlin, jibing_kotlin, knotting_kotlin,
-    lanyarding_kotlin, luffing_kotlin, marline_kotlin, netting_kotlin, nipping_kotlin,
-    noting_kotlin, probe_locker_kotlin, quaying_kotlin, read_of, rousing_kotlin, scarfing_kotlin,
-    scudding_kotlin, seizing_kotlin, sheeting_kotlin, slinging_kotlin, snubbing_kotlin,
-    splicing_kotlin, stoppering_kotlin, stowing_kotlin, striking_kotlin, stropping_kotlin,
-    swaying_kotlin, tacking_kotlin, ticketed_kotlin, unwritten_kotlin, whelping_kotlin,
-    whipping_kotlin, yawing_kotlin,
+    chock_kotlin, cleating_kotlin, corrected_locker_kotlin, dipping_kotlin, dressing_kotlin,
+    emptied_locker_kotlin, ensign_kotlin, flag_kotlin, gaffing_kotlin, gammoning_kotlin,
+    gasketing_kotlin, gonfalon_kotlin, hawsepipe_kotlin, hawser_kotlin, heaving_kotlin,
+    hitching_kotlin, jibing_kotlin, knotting_kotlin, lanyarding_kotlin, luffing_kotlin,
+    marline_kotlin, netting_kotlin, nipping_kotlin, noting_kotlin, probe_locker_kotlin,
+    quaying_kotlin, read_of, rousing_kotlin, scarfing_kotlin, scudding_kotlin, seizing_kotlin,
+    semaphore_kotlin, sheeting_kotlin, slinging_kotlin, snubbing_kotlin, splicing_kotlin,
+    stoppering_kotlin, stowing_kotlin, striking_kotlin, stropping_kotlin, swaying_kotlin,
+    tacking_kotlin, ticketed_kotlin, unwritten_kotlin, whelping_kotlin, whipping_kotlin,
+    yawing_kotlin,
 };
 use super::runtime::ran_kotlin;
 use super::swift_flattened_options_models::{
@@ -454,6 +458,70 @@ fn a_member_flattened_after_a_struct_reads_in_kotlin_the_keys_serde_hands_it() {
         slinging_kotlin::kotlin_definition(),
         FUNCTIONS.to_owned(),
         HANDED_ROW.to_owned(),
+        main,
+    ];
+    let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
+        return;
+    };
+    assert_eq!(printed, expected);
+}
+
+/// A struct under its own tag, alone, with a type parameter and with a member under its alias,
+/// and flattened ahead of a member of its holder's own, each read from a payload with the tag
+/// after the members, is written back with the tag ahead of them, as serde writes it.
+#[test]
+fn a_struct_under_its_own_tag_is_written_in_kotlin_with_the_tag_ahead_as_serde_writes_it() {
+    let rows = [
+        (
+            "alone",
+            "Flag.serializer()",
+            FLAG,
+            written_back::<Flag>(FLAG),
+        ),
+        (
+            "with a type parameter",
+            "GonfalonSerializer(serializer<String>())",
+            GONFALON,
+            written_back::<Gonfalon<String>>(GONFALON),
+        ),
+        (
+            "with a member under its alias",
+            "Semaphore.serializer()",
+            SEMAPHORE,
+            written_back::<Semaphore>(SEMAPHORE),
+        ),
+        (
+            "flattened ahead of a member",
+            "Dressing.serializer()",
+            DRESSING,
+            written_back::<Dressing>(DRESSING),
+        ),
+    ];
+    let mut expected = String::new();
+    let mut main = String::from("fun main() {\n");
+    for (name, serializer, payload, serde) in &rows {
+        let _ = writeln!(expected, "{name}: {serde}");
+        let _ = writeln!(
+            main,
+            "    row(\"{name}\", {serializer}, \"\"\"{payload}\"\"\")"
+        );
+    }
+    main.push_str("}\n");
+    assert_eq!(
+        expected,
+        "alone: {\"kind\":\"Flag\",\"label\":\"n\"}\n\
+         with a type parameter: {\"kind\":\"Gonfalon\",\"label\":\"n\"}\n\
+         with a member under its alias: {\"kind\":\"Semaphore\",\"label\":\"n\"}\n\
+         flattened ahead of a member: {\"kind\":\"Ensign\",\"label\":\"n\",\"north\":2}\n"
+    );
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        flag_kotlin::kotlin_definition(),
+        gonfalon_kotlin::kotlin_definition(),
+        semaphore_kotlin::kotlin_definition(),
+        ensign_kotlin::kotlin_definition(),
+        dressing_kotlin::kotlin_definition(),
+        TOLD.to_owned(),
         main,
     ];
     let Some(printed) = ran_kotlin(&source.join("\n\n")) else {

@@ -453,8 +453,9 @@ surface describes it. `struct_tag` in `src/features/serde.rs` answers the key an
 ident, or the container's `rename`); `with_struct_tag` puts the pair ahead of the struct's members
 as a required string literal and refuses a field that writes the same key, which serde would write
 twice. Dart writes it into `toJson`, Swift encodes it under `SwiftSchemaTagCodingKeys`, and Kotlin
-holds it in an `@EncodeDefault` property outside the constructor; all three read a payload with
-the key or without it, as serde does.
+holds it in an `@EncodeDefault` property outside the constructor, which the plugin writes after the
+members and `{Type}Unjudged` moves ahead of them (`read::tag_first`), where serde writes it; all
+three read a payload with the key or without it, as serde does.
 
 ### 7. Field Validation Attributes (`#[model_schema_prop(...)]`)
 
@@ -941,8 +942,11 @@ the consumer's view; this is what a change has to keep.
 - **The plugin's serializer is kept where the plugin takes the annotation.** A class, a unit
   struct's `object` and a brand's value class carry `@KeepGeneratedSerializer` (`kept`,
   `kept_inline`), and their `{Type}Unjudged` delegates to `generatedSerializer()` (`generated`).
-  The serializer the emitter writes for a struct with a flattened member, a tuple struct and an
-  enum is the unjudged one, under `written_head`.
+  A class under its own tag wraps it in a `JsonTransformingSerializer` instead
+  (`read::transforming`), whose `transformSerialize` (`read::tag_first`) moves the tag the plugin
+  writes after the members ahead of them, as serde writes it; `kept_unjudged` joins it to the
+  correction of a type that names a function. The serializer the emitter writes for a struct with
+  a flattened member, a tuple struct and an enum is the unjudged one, under `written_head`.
 - **Every refusal a serializer the emitter writes makes as it reads is a `SerializationException`**,
   checked inline in the read, with no declaration shared at file scope. Four writers in
   `src/features/kotlin.rs` word it: `read_as` and `payload_read_as` read a payload as an object, an
@@ -1157,7 +1161,9 @@ the consumer's view; this is what a change has to keep.
   structs, a variant's entry under an alias among them (`UNDER_AN_ALIAS`). It also reads
   `Scarfing`, and `Crowning`, `Fidding` and `Flaking` of
   `tests/swift_tests/flattened_options_models.rs`: an optional struct that takes no key against
-  serde, and one that takes a key against the rule TypeScript and Zod hold.
+  serde, and one that takes a key against the rule TypeScript and Zod hold. It writes back `Flag`,
+  `Gonfalon` and `Semaphore`, a struct under its own tag alone, with a parameter and with an
+  alias, and `Dressing`, which flattens `Ensign` ahead of a member, each with the tag first.
   `tests/kotlin_tests/aliased_models.rs` holds the models of a variant and a member under an
   alias, under each tagging, in a plain enum, a struct the plugin reads, one read by hand and one
   flattened, and pins what serde reads of each payload, which the Dart client is held to as well.
