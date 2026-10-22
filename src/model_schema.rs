@@ -94,11 +94,11 @@ use crate::utils::{
 
 #[cfg(feature = "serde")]
 use crate::utils::{
-    Declared, NonObjectWire, TrivialPattern, WireLeaf, forget_field_validators,
+    Declared, NonObjectWire, TrivialPattern, UnionParameter, WireLeaf, forget_field_validators,
     is_recorded_plain_enum, record_declared, record_field_validator,
     record_flattened_beside_parameters, record_non_object_wire, record_open_map,
-    record_open_map_parameters, record_plain_enum, record_value_parameter,
-    recorded_non_object_wire, trivial_pattern, value_parameter,
+    record_open_map_parameters, record_plain_enum, record_union_parameters, record_value_parameter,
+    recorded_non_object_wire, trivial_pattern, union_parameters, value_parameter,
 };
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
@@ -821,15 +821,15 @@ struct TaggedSlot<'slot> {
 #[cfg(feature = "serde")]
 impl<'slot> TaggedSlot<'slot> {
     /// The name a refusal quotes the slot's type by, beside the filling serde writes its value as:
-    /// the type's name and no filling, or, where serde writes the type as what fills its type
-    /// parameter, the type with the arguments written for it beside that filling. `None` for a
-    /// slot that names no type.
+    /// the type's [`union_spelling`] and no filling, or, where serde writes the type as what fills
+    /// its type parameter, the type with the arguments written for it beside that filling. `None`
+    /// for a slot that names no type.
     fn read(self) -> Option<(String, Option<&'slot FieldDef>)> {
         let FieldDefType::SiblingType(inner_name, _) = &self.inner.field_type else {
             return None;
         };
         Some(value_filling(self.inner).map_or_else(
-            || (inner_name.clone(), None),
+            || (union_spelling(self.written, inner_name), None),
             |filling| (filled_spelling(self.written, inner_name), Some(filling)),
         ))
     }
@@ -3558,6 +3558,7 @@ fn record_item(item: &Item) {
         record_plain_enum(&name, written_as_a_variant_name(item));
         record_non_object_wire(&name, non_object_wire(item));
         record_value_parameter(&name, value_parameter_position(item));
+        record_union_parameters(&name, union_parameters_of(item));
     }
 }
 
@@ -3777,6 +3778,88 @@ fn member_written_leaves(fld: &FieldDef) -> Vec<WireLeaf> {
             non_object: written_non_object_wire(fld, written_leaves),
         }]
     })
+}
+
+/// The leaves of the members of `item`, an untagged enum, that serde writes as what fills one of
+/// its type parameters, placed as [`non_object_wire`] places each member's leaves. Empty for any
+/// other item.
+#[cfg(feature = "serde")]
+fn union_parameters_of(item: &Item) -> Vec<UnionParameter> {
+    let Item::Enum(item_enum) = item else {
+        return Vec::new();
+    };
+    if !matches!(Tagging::of(item_enum), Tagging::Untagged) {
+        return Vec::new();
+    }
+    let parameters = type_parameters_in_scope(&item_enum.generics);
+    item_enum
+        .variants
+        .iter()
+        .enumerate()
+        .filter_map(|(index, variant)| {
+            match (variant_wire_kind(variant), variant.fields.iter().next()) {
+                (VariantKind::TupleSingle, Some(slot)) => Some((index, slot)),
+                _ => None,
+            }
+        })
+        .flat_map(|(index, slot)| {
+            let mut member = get_field_def("_written", &slot.ty, "");
+            member.erase_type_parameters(&parameters);
+            member_parameter_leaves(&member, &parameters)
+                .into_iter()
+                .map(move |mut leaf| {
+                    leaf.branch.insert(0, index + 1);
+                    leaf
+                })
+        })
+        .collect()
+}
+
+/// The leaves of an untagged member written as `fld` that serde writes as what fills one of
+/// `parameters`, read as [`member_written_leaves`] reads the member: under an `Option`, at a
+/// generic type's [`value_filling`], and through an untagged enum declared above that `fld` fills
+/// with a parameter.
+#[cfg(feature = "serde")]
+fn member_parameter_leaves(fld: &FieldDef, parameters: &[String]) -> Vec<UnionParameter> {
+    if fld.is_optional() {
+        let mut leaves = member_parameter_leaves(&without_its_option(fld), parameters);
+        for leaf in &mut leaves {
+            leaf.branch.insert(0, 1);
+        }
+        return leaves;
+    }
+    if let Some(filling) = value_filling(fld) {
+        return member_parameter_leaves(filling, parameters);
+    }
+    if fld.array_depth > 0 {
+        return Vec::new();
+    }
+    if let FieldDefType::TypeParam(name) = &fld.field_type {
+        return parameters
+            .iter()
+            .position(|parameter| parameter == name)
+            .map(|at| UnionParameter {
+                at,
+                branch: Vec::new(),
+            })
+            .into_iter()
+            .collect();
+    }
+    let FieldDefType::SiblingType(name, arguments) = &fld.field_type else {
+        return Vec::new();
+    };
+    union_parameters(name)
+        .into_iter()
+        .filter_map(|held| Some((arguments.get(held.at)?, held.branch)))
+        .flat_map(|(argument, branch)| {
+            member_parameter_leaves(argument, parameters)
+                .into_iter()
+                .map(move |mut leaf| {
+                    leaf.branch = [branch.as_slice(), &leaf.branch].concat();
+                    leaf
+                })
+        })
+        .collect()
 }
 
 /// Whether serde writes `item` as the bare name of one of its variants: a plain enum, and an
@@ -5806,7 +5889,8 @@ fn apply_deferred_field_attrs<'field>(
 /// The `compile_error!` tokens for a `#[serde(flatten)]` field whose recorded wire proves serde
 /// does not write an object where the merge needs one, or `None` for every other field. A generic
 /// type declared above that serde writes as what fills its type parameter is read at that filling,
-/// and named with the arguments written for it; any other type is read by its name.
+/// and named with the arguments written for it; any other type is read by its name, and quoted by
+/// its [`union_spelling`].
 #[cfg(feature = "serde")]
 fn flatten_edge_guard_error(
     field: &syn::Field,
@@ -5817,7 +5901,12 @@ fn flatten_edge_guard_error(
         return None;
     };
     let (inner_name, non_object) = value_filling(&without_its_option(&inner)).map_or_else(
-        || (name.clone(), flattened_name_non_object(&inner)),
+        || {
+            (
+                union_spelling(&field.ty, name),
+                flattened_name_non_object(&inner),
+            )
+        },
         |filling| {
             (
                 filled_spelling(&field.ty, name),
@@ -5887,17 +5976,33 @@ fn written_non_object(inner: &FieldDef) -> Option<NonObject> {
         .or_else(|| flattened_name_non_object_wire(inner, written_leaves).map(NonObject::Whole))
 }
 
-/// The members of the untagged union `def` names, as every build with serde records them, and
-/// nothing for a def that names no such union.
+/// The members of the untagged union `def` names, as every build with serde records them, each
+/// leaf the union writes as what fills a type parameter read at the argument `def` fills it with,
+/// and nothing for a def that names no such union.
 #[cfg(feature = "serde")]
 fn written_union_members(def: &FieldDef) -> Vec<WireLeaf> {
     if def.array_depth > 0 {
         return Vec::new();
     }
-    let FieldDefType::SiblingType(name, _) = &def.field_type else {
+    let FieldDefType::SiblingType(name, arguments) = &def.field_type else {
         return Vec::new();
     };
-    recorded_non_object_wire(name).map_or_else(Vec::new, |wire| wire.members)
+    let mut members = recorded_non_object_wire(name).map_or_else(Vec::new, |wire| wire.members);
+    for parameter in union_parameters(name) {
+        let Some(argument) = arguments.get(parameter.at) else {
+            continue;
+        };
+        // The record keeps its leaves in branch order, and drops a union whose every leaf is an
+        // object, so the filling's leaves go where the parameter's leaf sorts.
+        members.retain(|leaf| leaf.branch != parameter.branch);
+        let at = members.partition_point(|leaf| leaf.branch < parameter.branch);
+        let filled = member_written_leaves(argument).into_iter().map(|mut leaf| {
+            leaf.branch = [parameter.branch.as_slice(), &leaf.branch].concat();
+            leaf
+        });
+        members.splice(at..at, filled);
+    }
+    members
 }
 
 /// The JSON type keyword the item a flattened field names publishes, where the name is the whole of
@@ -11346,6 +11451,18 @@ fn filled_spelling(written: &syn::Type, named: &str) -> String {
         } else {
             return named.to_owned();
         }
+    }
+}
+
+/// The name a refusal quotes the type `written` names, `named`, by: with the arguments its author
+/// fills it with where it is an untagged enum whose members those arguments fill, and by its name
+/// alone everywhere else.
+#[cfg(feature = "serde")]
+fn union_spelling(written: &syn::Type, named: &str) -> String {
+    if union_parameters(named).is_empty() {
+        named.to_owned()
+    } else {
+        filled_spelling(written, named)
     }
 }
 

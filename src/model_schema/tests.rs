@@ -3290,6 +3290,265 @@ fn an_untagged_member_over_a_generic_type_filled_at_an_object_or_declared_below_
     }
 }
 
+/// No local build is of the clients alone, so the gates are read off the sources.
+#[test]
+fn the_untagged_parameter_refusals_are_compiled_in_every_build_with_serde() {
+    let with_serde = quote::quote!(cfg(feature = "serde")).to_string();
+    let expansion = include_str!("../model_schema.rs");
+    let registry = include_str!("../utils.rs");
+    for (source, named) in [
+        (expansion, "union_parameters_of"),
+        (expansion, "member_parameter_leaves"),
+        (expansion, "written_union_members"),
+        (expansion, "member_written_leaves"),
+        (expansion, "union_spelling"),
+        (expansion, "written_non_object"),
+        (expansion, "flatten_edge_guard_error"),
+        (expansion, "tagged_non_object_message"),
+        (registry, "union_parameters"),
+        (registry, "record_union_parameters"),
+    ] {
+        assert_eq!(
+            gates_above(source, named),
+            [with_serde.as_str()],
+            "for `{named}`"
+        );
+    }
+}
+
+/// Declares, beside the types [`declare_filled_members`] declares, the generic untagged enums with
+/// an object member and a member that is their own type parameter: itself, under `Box`, under an
+/// `Option`, in a generic type declared above, forwarded to another such enum, beside a member
+/// written as text, and at the second of two parameters; an alias of one filled at text; and the
+/// enums and the alias with each such member written over a filling itself.
+#[cfg(feature = "serde")]
+fn declare_own_members() {
+    declare_filled_members();
+    for (args, declared) in [
+        (
+            "default_types(X = String)",
+            "pub enum ProbeOwnMember<X> { Obj { a: String }, Held(X) }",
+        ),
+        (
+            "default_types(X = String)",
+            "pub enum ProbeOwnBoxed<X> { Obj { a: String }, Held(Box<X>) }",
+        ),
+        (
+            "default_types(X = String)",
+            "pub enum ProbeOwnMaybe<X> { Obj { a: String }, Held(Option<X>) }",
+        ),
+        (
+            "default_types(X = String)",
+            "pub enum ProbeOwnWrapped<X> { Obj { a: String }, Held(ProbeWrap<X>) }",
+        ),
+        (
+            "default_types(Y = String)",
+            "pub enum ProbeOwnForwarded<Y> { Obj { a: String }, Inner(ProbeOwnMember<Y>) }",
+        ),
+        (
+            "default_types(X = String)",
+            "pub enum ProbeOwnBeside<X> { Obj { a: String }, Held(X), Text(String) }",
+        ),
+        (
+            "default_types(A = String, B = String)",
+            "pub enum ProbeOwnPair<A, B> { Obj { a: String }, First(A), Second(B) }",
+        ),
+        (
+            "",
+            "pub enum ProbeNestedTextMember { Obj { a: String }, Inner(ProbeTextMember) }",
+        ),
+        (
+            "",
+            "pub enum ProbeBesideCountMember { Obj { a: String }, Held(u32), Text(String) }",
+        ),
+        (
+            "",
+            "pub enum ProbeBesideFieldsMember { Obj { a: String }, Held(ProbeFields), Text(String) }",
+        ),
+        (
+            "",
+            "pub enum ProbeSecondTextMember { Obj { a: String }, First(ProbeFields), Second(String) }",
+        ),
+    ] {
+        let untagged = format!("#[serde(untagged)] {declared}");
+        let expanded = serialized_under(args, &untagged);
+        assert_eq!(
+            compile_error_count(&expanded),
+            0,
+            "for {declared}, got: {expanded}"
+        );
+    }
+    for declared in [
+        "pub type ProbeOwnAlias = ProbeOwnMember<String>;",
+        "pub type ProbeTextAlias = ProbeTextMember;",
+    ] {
+        let expanded = serialized_under("", declared);
+        assert_eq!(
+            compile_error_count(&expanded),
+            0,
+            "for {declared}, got: {expanded}"
+        );
+    }
+}
+
+/// The refusals of `flattened` flattened beside a member, and of `flattened` held by a newtype
+/// variant under a tag alone, each holder named after `holder`.
+#[cfg(feature = "serde")]
+fn flattened_and_held(holder: &str, flattened: &str) -> [Vec<String>; 2] {
+    [
+        flattened_beside_an_id(&format!("ProbeFlat{holder}"), flattened),
+        held_under_tag(&format!("ProbeHeld{holder}"), flattened),
+    ]
+}
+
+/// The refusals [`flattened_and_held`] answers where the union named `inner` writes its member at
+/// `branch` as a `named` value.
+#[cfg(feature = "serde")]
+fn branch_refusals(holder: &str, inner: &str, branch: &str, named: &str) -> [Vec<String>; 2] {
+    [
+        vec![branch_non_object_refusal(
+            &format!("ProbeFlat{holder}"),
+            inner,
+            branch,
+            named,
+        )],
+        vec![tagged_non_object_refusal(
+            &format!("ProbeHeld{holder}"),
+            inner,
+            &format!(
+                "writes a union member that is not an object \u{2014} its branch {branch} \
+                 describes a `{named}`"
+            ),
+        )],
+    ]
+}
+
+/// An untagged enum whose member is its own type parameter, filled at text, flattened beside a
+/// member and held by a newtype variant under a tag alone, each refused with the branch the enum
+/// with the member over text itself is refused with, and named with its argument.
+#[cfg(feature = "serde")]
+#[test]
+fn an_untagged_enum_filled_at_no_object_at_its_own_parameter_is_refused_in_every_build_with_serde()
+{
+    declare_own_members();
+    assert_eq!(
+        flattened_and_held("OwnMember", "ProbeOwnMember<String>"),
+        branch_refusals("OwnMember", "ProbeOwnMember<String>", "2", "string")
+    );
+    assert_eq!(
+        flattened_and_held("TextMember", "ProbeTextMember"),
+        branch_refusals("TextMember", "ProbeTextMember", "2", "string"),
+        "the enum with the member over text itself"
+    );
+    for quoted in branch_refusals("OwnMember", "ProbeOwnMember<String>", "2", "string") {
+        let answered = format!("error: {}", quoted[0]);
+        assert!(
+            include_str!("../../README.md").contains(&answered),
+            "the README no longer quotes: {answered}"
+        );
+    }
+}
+
+/// An untagged enum whose member is its own type parameter under `Box`, under an `Option`, in a
+/// generic type declared above, forwarded to another such enum, beside a member written as text
+/// and at the second of two parameters, and an alias of one, each flattened and held under a tag
+/// alone at a filling serde writes as no object, refused with the branch the enum with the member
+/// over that filling itself is refused with.
+#[cfg(feature = "serde")]
+#[test]
+fn an_untagged_enum_filled_at_its_own_parameter_through_a_wrapper_a_holder_or_another_enum_is_refused_as_its_filling()
+ {
+    declare_own_members();
+    for (index, (filled, itself, branch, named)) in [
+        ("ProbeOwnBoxed<String>", "ProbeTextMember", "2", "string"),
+        (
+            "ProbeOwnMaybe<u32>",
+            "ProbeMaybeCountMember",
+            "2.1",
+            "integer",
+        ),
+        ("ProbeOwnWrapped<f64>", "ProbeCountMember", "2", "number"),
+        (
+            "ProbeOwnForwarded<String>",
+            "ProbeNestedTextMember",
+            "2.2",
+            "string",
+        ),
+        (
+            "ProbeOwnBeside<u32>",
+            "ProbeBesideCountMember",
+            "2",
+            "integer",
+        ),
+        (
+            "ProbeOwnBeside<ProbeFields>",
+            "ProbeBesideFieldsMember",
+            "3",
+            "string",
+        ),
+        (
+            "ProbeOwnPair<ProbeFields, String>",
+            "ProbeSecondTextMember",
+            "3",
+            "string",
+        ),
+        ("ProbeOwnAlias", "ProbeTextAlias", "2", "string"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let holder = format!("Own{index}");
+        assert_eq!(
+            flattened_and_held(&holder, filled),
+            branch_refusals(&holder, filled, branch, named),
+            "for {filled}"
+        );
+        let direct = format!("Direct{index}");
+        assert_eq!(
+            flattened_and_held(&direct, itself),
+            branch_refusals(&direct, itself, branch, named),
+            "for {itself}, the shape over the filling itself"
+        );
+    }
+}
+
+/// The generic untagged enums left alone: each filled at a struct, filled at a type parameter of
+/// the holder, and one declared below, flattened and held under a tag alone.
+#[cfg(feature = "serde")]
+#[test]
+fn an_untagged_enum_filled_at_an_object_at_its_own_parameter_or_declared_below_is_accepted() {
+    declare_own_members();
+    for (index, filled) in [
+        "ProbeOwnMember<ProbeFields>",
+        "ProbeOwnBoxed<ProbeFields>",
+        "ProbeOwnWrapped<ProbeFields>",
+        "ProbeOwnForwarded<ProbeFields>",
+        "ProbeOwnPair<ProbeFields, ProbeFields>",
+        "ProbeOwnLater<String>",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        assert_eq!(
+            flattened_and_held(&format!("Accepted{index}"), filled),
+            [Vec::<String>::new(), Vec::new()],
+            "for {filled}"
+        );
+    }
+    for accepted in [
+        "pub struct ProbeFlatOwnParameter<T> { pub id: String, #[serde(flatten)] pub wrap: \
+         ProbeOwnMember<T> }",
+        "#[serde(tag = \"kind\")] pub enum ProbeHeldOwnParameter<T> { Held(ProbeOwnMember<T>) }",
+    ] {
+        let expanded = serialized_under("default_types(T = String)", accepted);
+        assert_eq!(
+            compile_error_count(&expanded),
+            0,
+            "for {accepted}, got: {expanded}"
+        );
+    }
+}
+
 /// What the record every build with serde writes proves of each flattened type is what the record
 /// a Zod surface writes proves, so the refusal reads the same with a schema surface and without.
 #[cfg(all(feature = "serde", feature = "zod"))]
