@@ -1806,6 +1806,9 @@ fn present_statement(
     {
         return read;
     }
+    if field.flatten && field.field_def.is_optional() {
+        return flattened_option(field, source, withheld, container, locals, twins);
+    }
     let beside = field.flatten && preprocess::beside(&field.field_def);
     if field.flatten && withheld && !beside {
         // A type that reads its holder's decoder sees every key, so it is read from the payload
@@ -1823,6 +1826,40 @@ fn present_statement(
         );
     }
     keyed_read(field, container, absent_is_nil)
+}
+
+/// The statements that read from `source` the flattened `Option` `field`, which names no function
+/// and holds no map, as serde reads one: the type it holds, read as a flattened member of that type
+/// is, and `nil` wherever that read throws, an object without the type's keys among them.
+fn flattened_option(
+    field: &SwiftField,
+    source: &read::Source,
+    withheld: bool,
+    container: &str,
+    locals: &mut read::Locals,
+    twins: &mut Vec<String>,
+) -> String {
+    let held = SwiftField {
+        default_at: None,
+        field_def: validate::under_option(&field.field_def),
+        flatten: true,
+        hint: field.hint.clone(),
+        never_written: field.never_written,
+        real_type: field
+            .real_type
+            .strip_suffix('?')
+            .unwrap_or(&field.real_type)
+            .to_owned(),
+        required: field.required,
+        shape: field.shape.clone(),
+        swift_name: field.swift_name.clone(),
+        wire_name: field.wire_name.clone(),
+    };
+    let read = present_statement(&held, source, withheld, false, container, locals, twins);
+    format!(
+        "do {{ {read} }} catch {{ self.{} = nil }}",
+        field.swift_name
+    )
 }
 
 /// The map a member `def` describes holds, read through an `Option`, or `None` for a member that
