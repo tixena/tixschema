@@ -1,31 +1,38 @@
 //! A flattened `Option` member beside a member of its holder's own, alone in its holder and in a
 //! variant under a tag key, a struct of two keys, a struct declared below its holder, a struct
 //! flattened bare beside a member of its holder's own, a model `validate()` walks, a struct that
-//! reads the keys no member around it took, and a struct read from what a function answers, each
-//! read and written back by the emitted Dart types under the Dart VM, against what serde reads and
-//! writes back. A flattened `Option` is `null` where the object holds none of its type's keys, as
-//! serde reads it. Where the object holds a key of the type that does not read, serde reads `None`
-//! and the Dart read refuses the payload, as TypeScript and Zod refuse it. A type whose keys are
-//! not known is read as `null` wherever it does not read, as serde reads it.
+//! reads the keys no member around it took, a struct read from what a function answers, an enum of
+//! each tagging, one declared below its holder and one under a tag key that names a function on
+//! itself, each read and written back by the emitted Dart types under the Dart VM, against what
+//! serde reads and writes back. A flattened `Option` is `null` where the object holds none of its
+//! type's keys, the tag and the content key of an enum under a tag key among them, as serde reads
+//! it. Where the object holds a key of the type that does not read, serde reads `None` and the
+//! Dart read refuses the payload, as TypeScript and Zod refuse it. A type whose keys are not
+//! known, an untagged enum, one declared below its holder and one that names a function on itself
+//! among them, is read as `null` wherever it does not read, as serde reads it.
 
 #![cfg(all(feature = "dart", feature = "serde"))]
 
 use core::fmt::Write as _;
 
-use serde::Serialize;
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use tixschema::model_schema;
 
 use super::run_dart_validate::{dart, module};
 use super::swift_flattened_options_models::{
-    Crowning, FLAKING, FLAKING_ABSENT, FLAKING_MISTYPED, Fidding, Flaking, KINKING_SHORT, Kinking,
-    LAPPING, LAPPING_ABSENT, LAPPING_MISTYPED, Lapping, PAINTER, Painter, Ratline, SENNIT,
-    SENNIT_ABSENT, SENNIT_MISTYPED, Sennit, TARRING_SHORT, Tarring, Veering, crowning_dart,
-    fidding_dart, flaking_dart, gasket_dart, kinking_dart, lapping_dart, nippering_dart,
-    painter_dart, plaiting_dart, ratline_dart, sennit_dart, tabling_dart, tarring_dart,
-    veering_dart,
+    Crowning, EASING, Easing, FLAKING, FLAKING_ABSENT, FLAKING_MISTYPED, Fidding, Flaking, HEELING,
+    Heeling, KINKING_SHORT, Kinking, LAPPING, LAPPING_ABSENT, LAPPING_MISTYPED, LOWERING, Lapping,
+    Lowering, PAINTER, PITCHING, Painter, Pitching, Ratline, SENNIT, SENNIT_ABSENT,
+    SENNIT_MISTYPED, SQUARING, Sennit, Squaring, TARRING_SHORT, Tarring, Veering, becket_dart,
+    crowning_dart, easing_dart, fidding_dart, flaking_dart, gasket_dart, grommet_dart,
+    heeling_dart, kinking_dart, lapping_dart, lowering_dart, nippering_dart, painter_dart,
+    pitching_dart, plaiting_dart, ratline_dart, sennit_dart, shackle_dart, squaring_dart,
+    tabling_dart, tarring_dart, thimble_dart, toggle_dart, veering_dart,
 };
 
-/// The function [`Veering`] names, which answers the payload as it was handed.
+/// The function [`Veering`] and [`Cringle`] name, which answers the payload as it was handed.
 const AS_GIVEN: &str = "dynamic asGiven(dynamic payload) => payload;";
 
 /// What prints a row: the value read, as the row tells it, or what the read says as it refuses
@@ -46,6 +53,25 @@ void row(String name, String Function() read) {
 
 /// What the Dart read says of a key held as a number where its type reads a text.
 const MISTYPED: &str = "refused: type 'int' is not a subtype of type 'String' in type cast";
+
+/// An enum under a tag key alone that names a function on itself, which [`Tucking`] flattens.
+#[model_schema(preprocess = ["asGiven"])]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind")]
+pub enum Cringle {
+    Calm,
+    Round { turns: u32 },
+}
+
+/// A flattened `Option` of [`Cringle`], which has no key to be looked for by, beside a member of
+/// its holder's own.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Tucking {
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    pub cringle: Option<Cringle>,
+    pub note: String,
+}
 
 /// A holder printed by the run: its name, the payload, the Dart that tells what is read of it,
 /// what serde tells of it, and what the Dart read tells in its place where it differs.
@@ -97,6 +123,11 @@ impl Row {
             serde,
         }
     }
+}
+
+/// The payload as it was handed.
+const fn as_given(payload: Value) -> Value {
+    payload
 }
 
 /// The text of `value` as serde writes it.
@@ -209,6 +240,78 @@ fn rows() -> Vec<Row> {
     ]
 }
 
+/// Each holder of an enum read from each payload of its own: the enum absent, held, and there with
+/// what it does not read.
+fn enum_rows() -> Vec<Row> {
+    let easing = |name, json| {
+        Row::read(name, "Easing", "read.thimble", json, |read: &Easing| {
+            written(&read.thimble)
+        })
+    };
+    let lowering = |name, json| {
+        Row::read(name, "Lowering", "read.grommet", json, |read: &Lowering| {
+            written(&read.grommet)
+        })
+    };
+    let squaring = |name, json| {
+        Row::read(name, "Squaring", "read.becket", json, |read: &Squaring| {
+            written(&read.becket)
+        })
+    };
+    let heeling = |name, json| {
+        Row::read(name, "Heeling", "read.toggle", json, |read: &Heeling| {
+            written(&read.toggle)
+        })
+    };
+    let pitching = |name, json| {
+        Row::read(name, "Pitching", "read.shackle", json, |read: &Pitching| {
+            written(&read.shackle)
+        })
+    };
+    let tucking = |name, json| {
+        Row::read(name, "Tucking", "read.cringle", json, |read: &Tucking| {
+            written(&read.cringle)
+        })
+    };
+    let turns = "refused: type 'String' is not a subtype of type 'int' in type cast";
+    vec![
+        easing("easing absent", EASING[0]),
+        easing("easing", EASING[1]),
+        easing("easing mistyped", EASING[2]).in_dart(turns),
+        easing("easing unit mistyped", EASING[3])
+            .in_dart("refused: Invalid argument(s): Thimble: Calm takes no value"),
+        lowering("lowering absent", LOWERING[0]),
+        lowering("lowering", LOWERING[1]),
+        lowering("lowering unit", LOWERING[2]),
+        // A tag, or a member of the variant it names, that does not read: TypeScript and Zod refuse
+        // it.
+        lowering("lowering mistyped", LOWERING[3]).in_dart(turns),
+        lowering("lowering unnamed", LOWERING[4])
+            .in_dart("refused: Invalid argument(s): Unknown Grommet: Gale"),
+        lowering("lowering untagged", LOWERING[5]),
+        squaring("squaring absent", SQUARING[0]),
+        squaring("squaring", SQUARING[1]),
+        squaring("squaring unit", SQUARING[2]),
+        squaring("squaring mistyped", SQUARING[3]).in_dart(turns),
+        squaring("squaring unnamed", SQUARING[4])
+            .in_dart("refused: Invalid argument(s): Unknown Becket: Gale"),
+        squaring("squaring untagged", SQUARING[5])
+            .in_dart("refused: type 'Null' is not a subtype of type 'String' in type cast"),
+        heeling("heeling absent", HEELING[0]),
+        heeling("heeling", HEELING[1]),
+        heeling("heeling mistyped", HEELING[2]),
+        pitching("pitching absent", PITCHING[0]),
+        pitching("pitching", PITCHING[1]),
+        pitching("pitching mistyped", PITCHING[2]),
+        tucking("tucking absent", LOWERING[0]),
+        tucking("tucking", LOWERING[1]),
+        tucking("tucking unit", LOWERING[2]),
+        tucking("tucking mistyped", LOWERING[3]),
+        tucking("tucking unnamed", LOWERING[4]),
+        tucking("tucking untagged", LOWERING[5]),
+    ]
+}
+
 /// The emitted definitions of every holder the analyzer passes whole, and of the types they hold.
 /// [`Crowning`] and [`Fidding`], which holds it, are in [`definitions`] alone: the codec of a struct
 /// flattened bare casts a value whose type the analyzer already knows.
@@ -226,6 +329,18 @@ fn analyzed_definitions() -> Vec<String> {
         kinking_dart::dart_definition(),
         tarring_dart::dart_definition(),
         veering_dart::dart_definition(),
+        thimble_dart::dart_definition(),
+        grommet_dart::dart_definition(),
+        becket_dart::dart_definition(),
+        toggle_dart::dart_definition(),
+        shackle_dart::dart_definition(),
+        cringle_dart::dart_definition(),
+        easing_dart::dart_definition(),
+        lowering_dart::dart_definition(),
+        squaring_dart::dart_definition(),
+        heeling_dart::dart_definition(),
+        pitching_dart::dart_definition(),
+        tucking_dart::dart_definition(),
     ]
 }
 
@@ -287,6 +402,52 @@ fn a_flattened_option_is_read_where_one_of_its_keys_is_held() {
     );
 }
 
+/// A flattened `Option` of an enum under a tag key whose class was emitted above is read where the
+/// object it is handed holds its tag or its content key, and is `null` where it holds neither. One
+/// with no key to be looked for by, an untagged enum, one declared below its holder and one that
+/// names a function on itself, is read in a closure that answers `null` where the read throws.
+#[test]
+fn a_flattened_option_of_an_enum_is_read_where_its_tag_or_its_content_key_is_held() {
+    let handed = "({...json}..remove('note'))";
+    let closed =
+        |read: &str| format!("(() {{ try {{ return {read}; }} catch (_) {{ return null; }} }})()");
+    assert_written(
+        &lowering_dart::dart_definition(),
+        &format!(
+            "Lowering(grommet: ({handed}.keys.any(const ['kind'].contains) ? \
+             Grommet.fromJsonUnjudged({handed}) : null),note: json['note'] as String,);"
+        ),
+    );
+    assert_written(
+        &squaring_dart::dart_definition(),
+        &format!(
+            "Squaring(becket: ({handed}.keys.any(const ['kind', 'body'].contains) ? \
+             Becket.fromJsonUnjudged({handed}) : null),note: json['note'] as String,);"
+        ),
+    );
+    assert_written(
+        &heeling_dart::dart_definition(),
+        &format!(
+            "Heeling(note: json['note'] as String,toggle: {},);",
+            closed(&format!("Toggle.fromJsonUnjudged({handed})"))
+        ),
+    );
+    assert_written(
+        &pitching_dart::dart_definition(),
+        &format!(
+            "Pitching(note: json['note'] as String,shackle: {},);",
+            closed(&format!("Shackle.fromJsonUnjudged({handed})"))
+        ),
+    );
+    assert_written(
+        &tucking_dart::dart_definition(),
+        &format!(
+            "Tucking(cringle: {},note: json['note'] as String,);",
+            closed(&format!("Cringle.fromJsonUnjudged({handed})"))
+        ),
+    );
+}
+
 /// A flattened `Option` that names a function, and a struct flattened bare, are read as they were.
 #[test]
 fn a_flattened_option_that_names_a_function_is_read_as_it_was() {
@@ -312,12 +473,8 @@ fn a_flattened_option_that_names_a_function_is_read_as_it_was() {
 #[test]
 fn a_flattened_option_reads_and_writes_in_dart_what_serde_reads_and_writes() {
     let rows = rows();
-    let serde_told = rows.iter().fold(String::new(), |mut told, row| {
-        let _ = writeln!(told, "{}: {}", row.name, row.serde);
-        told
-    });
     assert_eq!(
-        serde_told,
+        told_by_serde(&rows),
         "lapping: {\"label\":\"north\"} {\"note\":\"n\",\"label\":\"north\"}\n\
          flaking: {\"label\":\"north\"} {\"label\":\"north\"}\n\
          sennit: {\"label\":\"north\"} {\"kind\":\"Laid\",\"label\":\"north\",\"note\":\"n\"}\n\
@@ -350,6 +507,67 @@ fn a_flattened_option_reads_and_writes_in_dart_what_serde_reads_and_writes() {
          veering refused: refused: missing field `label`\n",
         "serde no longer reads each payload as it did"
     );
+    assert_read_in_dart(&rows, "flattened-options");
+}
+
+/// A flattened `Option` of an enum is `null` where the object holds none of its keys, as serde
+/// reads it: no entry under a variant's name, and neither the tag nor the content key, a member of
+/// a variant there with no tag among them. Where an entry, a tag or a content is there and does
+/// not read, or a content is there with no tag, serde reads `None` and the Dart read refuses the
+/// payload, as TypeScript and Zod refuse it. An untagged enum, one declared below its holder and
+/// one that names a function on itself have no key to be looked for by, and are read as `null`
+/// wherever they do not read, as serde reads them. Each holder is written back as serde writes it
+/// back.
+#[test]
+fn a_flattened_option_of_an_enum_reads_and_writes_in_dart_by_its_keys() {
+    let rows = enum_rows();
+    assert_eq!(
+        told_by_serde(&rows),
+        "easing absent: null {\"note\":\"n\"}\n\
+         easing: {\"Round\":{\"turns\":2}} {\"note\":\"n\",\"Round\":{\"turns\":2}}\n\
+         easing mistyped: null {\"note\":\"n\"}\n\
+         easing unit mistyped: null {\"note\":\"n\"}\n\
+         lowering absent: null {\"note\":\"n\"}\n\
+         lowering: {\"kind\":\"Round\",\"turns\":2} {\"kind\":\"Round\",\"turns\":2,\"note\":\"n\"}\n\
+         lowering unit: {\"kind\":\"Calm\"} {\"kind\":\"Calm\",\"note\":\"n\"}\n\
+         lowering mistyped: null {\"note\":\"n\"}\n\
+         lowering unnamed: null {\"note\":\"n\"}\n\
+         lowering untagged: null {\"note\":\"n\"}\n\
+         squaring absent: null {\"note\":\"n\"}\n\
+         squaring: {\"kind\":\"Round\",\"body\":{\"turns\":2}} \
+         {\"kind\":\"Round\",\"body\":{\"turns\":2},\"note\":\"n\"}\n\
+         squaring unit: {\"kind\":\"Calm\"} {\"kind\":\"Calm\",\"note\":\"n\"}\n\
+         squaring mistyped: null {\"note\":\"n\"}\n\
+         squaring unnamed: null {\"note\":\"n\"}\n\
+         squaring untagged: null {\"note\":\"n\"}\n\
+         heeling absent: null {\"note\":\"n\"}\n\
+         heeling: {\"turns\":2} {\"note\":\"n\",\"turns\":2}\n\
+         heeling mistyped: null {\"note\":\"n\"}\n\
+         pitching absent: null {\"note\":\"n\"}\n\
+         pitching: {\"Round\":{\"turns\":2}} {\"note\":\"n\",\"Round\":{\"turns\":2}}\n\
+         pitching mistyped: null {\"note\":\"n\"}\n\
+         tucking absent: null {\"note\":\"n\"}\n\
+         tucking: {\"kind\":\"Round\",\"turns\":2} {\"kind\":\"Round\",\"turns\":2,\"note\":\"n\"}\n\
+         tucking unit: {\"kind\":\"Calm\"} {\"kind\":\"Calm\",\"note\":\"n\"}\n\
+         tucking mistyped: null {\"note\":\"n\"}\n\
+         tucking unnamed: null {\"note\":\"n\"}\n\
+         tucking untagged: null {\"note\":\"n\"}\n",
+        "serde no longer reads each payload as it did"
+    );
+    assert_read_in_dart(&rows, "flattened-option-enums");
+}
+
+/// What serde tells of each of `rows`, a line each.
+fn told_by_serde(rows: &[Row]) -> String {
+    rows.iter().fold(String::new(), |mut told, row| {
+        let _ = writeln!(told, "{}: {}", row.name, row.serde);
+        told
+    })
+}
+
+/// Asserts that the Dart VM, in a run under `run`, tells of each of `rows` what serde tells, or
+/// what the row says the Dart read tells in its place.
+fn assert_read_in_dart(rows: &[Row], run: &str) {
     let expected = rows.iter().fold(String::new(), |mut told, row| {
         let _ = writeln!(
             told,
@@ -360,7 +578,7 @@ fn a_flattened_option_reads_and_writes_in_dart_what_serde_reads_and_writes() {
         told
     });
     let mut main = String::from("void main() {\n");
-    for row in &rows {
+    for row in rows {
         let _ = writeln!(
             main,
             "  row('{}', () {{ final payload = r'{}'; {} }});",
@@ -369,7 +587,7 @@ fn a_flattened_option_reads_and_writes_in_dart_what_serde_reads_and_writes() {
     }
     main.push_str("}\n");
     let source = module(&definitions(), &[AS_GIVEN, TOLD], &main);
-    let Some((ran, printed)) = dart("flattened-options", &[], &source) else {
+    let Some((ran, printed)) = dart(run, &[], &source) else {
         return;
     };
     assert!(ran, "{printed}");

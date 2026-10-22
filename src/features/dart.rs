@@ -406,6 +406,11 @@ thread_local! {
     /// for, read flattened.
     static DART_TAKEN_KEYS: RefCell<HashMap<String, Taken>> = RefCell::new(HashMap::new());
 
+    /// The tag, then the content key where it has one, of each enum under a tag key a class has
+    /// been emitted for: what a flattened `Option` of it is looked for by. Under a tag alone it
+    /// takes no key off its holder's object, so these are no keys taken.
+    static DART_TAG_KEYS: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
+
     /// Each externally tagged enum a class has been emitted for whose `toJson` writes a unit
     /// variant as its bare name: what a holder that flattens one writes as an entry over `null`.
     static DART_WRITES_A_NAME: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
@@ -699,6 +704,46 @@ fn record_taken_keys(rust_ident: &str, taken: Taken) {
     DART_TAKEN_KEYS.with(|recorded| {
         recorded.borrow_mut().insert(rust_ident.to_owned(), taken);
     });
+}
+
+/// The tag, then the content key where it has one, of an enum under a tag key: what a flattened
+/// `Option` of it is looked for by. None for an untagged enum, and for one that names a function
+/// on itself, which is read from what the function answers.
+fn tag_keys(tag_attrs: &EnumTagAttrs, preprocess: &[FunctionName]) -> Vec<String> {
+    if tag_attrs.untagged || !preprocess.is_empty() {
+        return Vec::new();
+    }
+    tag_attrs
+        .tag
+        .iter()
+        .chain(&tag_attrs.content)
+        .cloned()
+        .collect()
+}
+
+/// Records `keys`, the tag and the content key of the enum `rust_ident`, for a holder emitted after
+/// it: none for an enum under no tag key, or one that names a function on itself.
+fn record_tag_keys(rust_ident: &str, keys: Vec<String>) {
+    DART_TAG_KEYS.with(|recorded| {
+        if keys.is_empty() {
+            recorded.borrow_mut().remove(rust_ident);
+        } else {
+            recorded.borrow_mut().insert(rust_ident.to_owned(), keys);
+        }
+    });
+}
+
+/// The keys a flattened `Option` typed `def` is looked for by in the object it is handed: `taken`,
+/// the keys its type takes, and where it takes none, the tag and the content key of an enum under
+/// a tag key whose class was emitted above.
+fn looked_for_by(def: &FieldDef, taken: &[String]) -> Vec<String> {
+    if !taken.is_empty() {
+        return taken.to_vec();
+    }
+    let FieldDefType::SiblingType(name, _) = &def.field_type else {
+        return Vec::new();
+    };
+    DART_TAG_KEYS.with(|recorded| recorded.borrow().get(name).cloned().unwrap_or_default())
 }
 
 /// Records that the externally tagged enum `rust_ident` writes a unit variant as its bare name, for
@@ -1446,21 +1491,22 @@ fn first_entry_decode(def: &FieldDef, first: &str) -> String {
 }
 
 /// The read of a member typed `def` flattened into its holder from `handed`, the object it is
-/// handed, whose type takes `keys`. An optional one that names no function reads no value where
-/// `handed` holds none of `keys`, and is refused where its type does not read, as TypeScript and
-/// Zod refuse it. Where no key is known, a map among them, it reads no value wherever its type
-/// does not read, as serde reads it.
-fn flattened_decode(def: &FieldDef, handed: &str, keys: &[String]) -> String {
+/// handed, whose type takes `taken`. An optional one that names no function reads no value where
+/// `handed` holds none of the keys it is looked for by ([`looked_for_by`]), and is refused where
+/// its type does not read, as TypeScript and Zod refuse it. Where no key is known, a map among
+/// them, it reads no value wherever its type does not read, as serde reads it.
+fn flattened_decode(def: &FieldDef, handed: &str, taken: &[String]) -> String {
     if !def.is_optional() || !member_functions(def).is_empty() {
         return member_decode(def, handed, None, Read::Unjudged);
     }
     let read = dart_decode_at(def, def.array_depth, handed, Read::Unjudged);
+    let keys = looked_for_by(def, taken);
     if keys.is_empty() {
         return format!("(() {{ try {{ return {read}; }} catch (_) {{ return null; }} }})()");
     }
     format!(
         "({handed}.keys.any(const [{}].contains) ? {read} : null)",
-        listed_names(keys)
+        listed_names(&keys)
     )
 }
 
@@ -2489,7 +2535,8 @@ fn generic_codec(parameters: &[String]) -> GenericCodec {
 /// flattened one at its place, from the entries neither `tag_key`, a member of the holder's own nor
 /// a member flattened ahead of it takes, an externally tagged enum from the first of them under a
 /// variant's name, an optional one as no value where none is, an optional struct as no value
-/// where none of its keys is, and an optional map as no value where an entry does not read.
+/// where none of its keys is, an optional enum under a tag key as no value where neither its tag
+/// nor its content key is, and an optional map as no value where an entry does not read.
 fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>) -> String {
     let mut taken_ahead: Vec<String> = tag_key
         .into_iter()
@@ -2937,6 +2984,7 @@ fn enum_dart_tokens(item_enum: &ItemEnum, args: &DartTypeArgs<'_>) -> TokenStrea
             Taken::FirstOf(names)
         },
     );
+    record_tag_keys(&rust_ident, tag_keys(&tag_attrs, args.preprocess));
     let writes_bare_variant_names =
         tag_attrs.tag.is_none() && tag_attrs.content.is_none() && !tag_attrs.untagged;
     let defaults = SerdeDefaults::of_enum(item_enum);

@@ -1576,8 +1576,8 @@ consumer's view; this is what a change has to keep.
     removes them. An optional one that names no function is read by `flattened_decode`: where
     `taken_by` answers keys, `null` where the object it is handed holds none of them, and its
     type's read where one is there, which refuses a key that does not read, as TypeScript and Zod
-    refuse it, where serde reads `None`; where it answers none, a map among them, its type's read
-    inside a closure called in place, `(() { try { return ...; } catch (_) { return null; }
+    refuse it, where serde reads `None`; where neither it nor `DART_TAG_KEYS` (below) answers
+    keys, a map among them, its type's read inside a closure called in place, `(() { try { return ...; } catch (_) { return null; }
     })()`, which declares no name and answers `null` wherever the read throws, as serde reads
     `None`.
   - `Taken::FirstOf` of an externally tagged enum, which `enum_dart_tokens` records from
@@ -1597,7 +1597,17 @@ consumer's view; this is what a change has to keep.
   - Nothing, for an enum under a tag key, an untagged one and one that names a function on
     itself. serde reads an enum under a tag alone and an untagged one as a map, which takes no
     key; it reads one under a tag and a content key as a struct of the two, which takes both,
-    and the README states the limit.
+    and the README states the limit. An optional enum under a tag key is still looked for by
+    keys: `enum_dart_tokens` records its tag, then its content key where it has one, in
+    `DART_TAG_KEYS` (`tag_keys`, `record_tag_keys`), none for an untagged enum and one that
+    names a function on itself, and `flattened_decode` tests it by them (`looked_for_by`) with
+    the test a struct takes, `(handed.keys.any(const ['kind', 'body'].contains) ? ... : null)`.
+    So a tag naming no variant, a member or a content that does not read, and a content with no
+    tag refuse the payload, as TypeScript, Zod and the Swift and Kotlin clients refuse it, where
+    serde reads `None`, and a variant's member with no tag reads `null`, as serde reads it. The
+    keys are no keys taken: a member flattened after the enum is handed what it was. An untagged
+    enum, one declared below its holder and one that names a function on itself have no key to
+    be looked for by, and are read in the closure.
 
   A struct that names a `preprocess` on itself is read by serde as a value, and one with a
   flattened member of its own as a map: each records none. A type the emitter has not written
@@ -1605,9 +1615,11 @@ consumer's view; this is what a change has to keep.
   and an optional one is read in the closure, and the README states both. `toJson` writes each
   flattened member at its place: a key two of them hold is written once, with the last value,
   where serde writes it twice. `run_dart_flattened_options.rs` pins the read of a flattened
-  `Option` of a struct and runs it under the Dart SDK, over the models of
-  `tests/swift_tests/flattened_options_models.rs`, which the `dart_tests` binary cannot declare
-  beside the `Veering` of `kotlin_tests/aliased_models.rs`.
+  `Option` of a struct and of an enum of each tagging and runs it under the Dart SDK, over the
+  models of `tests/swift_tests/flattened_options_models.rs`, which the `dart_tests` binary cannot
+  declare beside the `Veering` of `kotlin_tests/aliased_models.rs`, and of `Cringle`, an enum
+  under a tag that names a function on itself, which it declares. `src/features/dart/tests.rs`
+  pins the read of an enum under each tag shape whose class was emitted above.
 - **A unit variant of an externally tagged enum is an entry of its name over `null`** where the
   enum is flattened, as serde writes and reads it. The enum's `toJson` writes the bare name, so
   `tagged_enum_dart_source` records every externally tagged enum with a unit variant in
