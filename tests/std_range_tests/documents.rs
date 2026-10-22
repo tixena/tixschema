@@ -1,5 +1,6 @@
 //! What a JSON Schema document admits, for the keywords the documents of the ranges write, the
-//! keys a map names (`propertyNames`), a `pattern` and the `date` format.
+//! keys a map names (`propertyNames`), a `pattern`, the `date` format and the names a plain enum
+//! lists (`enum`).
 
 use serde_json::Value;
 
@@ -49,6 +50,13 @@ pub fn refusal(document: &Value, value: &Value) -> Option<Refusal> {
     if document
         .get("const")
         .is_some_and(|written| written != value)
+    {
+        return Some(Refusal::Written);
+    }
+    if document
+        .get("enum")
+        .and_then(Value::as_array)
+        .is_some_and(|listed| !listed.contains(value))
     {
         return Some(Refusal::Written);
     }

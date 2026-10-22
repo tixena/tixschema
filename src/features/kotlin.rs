@@ -38,7 +38,7 @@ use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{
     brand_field, has_serde_skip_serializing, keys_taken_when_flattened, parse_serde_key_omission,
-    struct_tag, tag_and_content_when_flattened, variant_names_when_flattened,
+    struct_tag, tag_and_content_when_flattened, variant_names_when_flattened, variants_on_the_wire,
 };
 use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, classify_variant, get_field_def,
@@ -2536,7 +2536,10 @@ fn alias_kotlin_tokens(item_type: &ItemType, name_override: Option<&str>) -> Tok
 /// The Kotlin tokens an enum earns: an `enum class` for an all-unit, untagged-by-default
 /// declaration; a `sealed interface` for every tagged or untagged shape otherwise — mirroring
 /// exactly the shape `process_enum` itself dispatches a declaration to.
-fn enum_kotlin_tokens(item_enum: &ItemEnum, args: &KotlinArgs<'_>) -> TokenStream {
+fn enum_kotlin_tokens(declared: &ItemEnum, args: &KotlinArgs<'_>) -> TokenStream {
+    // Plain or not as every variant declared reads, as `process_enum` dispatches it.
+    let plain = is_plain_enum(declared);
+    let item_enum = &variants_on_the_wire(declared);
     let rust_ident = item_enum.ident.to_string();
     let export_name = compute_item_export_name(&rust_ident, args.name_override);
     register_kotlin_name(&rust_ident, &export_name);
@@ -2553,7 +2556,7 @@ fn enum_kotlin_tokens(item_enum: &ItemEnum, args: &KotlinArgs<'_>) -> TokenStrea
     let writes_bare_variant_names =
         tag_attrs.tag.is_none() && tag_attrs.content.is_none() && !tag_attrs.untagged;
     let defaults = SerdeDefaults::of_enum(item_enum);
-    let kotlin_source = if is_plain_enum(item_enum) && writes_bare_variant_names {
+    let kotlin_source = if plain && writes_bare_variant_names {
         validate::note_plain_enum(&rust_ident);
         plain_enum_kotlin_source(item_enum, &export_name, args)
     } else {

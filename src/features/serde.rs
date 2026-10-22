@@ -241,6 +241,26 @@ pub fn parse_serde_key_omission(attrs: &[Attribute]) -> SerdeKeyOmission {
     omission
 }
 
+/// Whether serde writes or reads `variant`. Under `skip`, or under `skip_serializing` and
+/// `skip_deserializing` together, it does neither, and no surface describes the variant, as none
+/// describes a member taken off the wire in both directions.
+pub fn variant_on_the_wire(variant: &Variant) -> bool {
+    !parse_serde_key_omission(&variant.attrs).absent_from_wire()
+}
+
+/// `item_enum` with the variants [`variant_on_the_wire`] answers for alone: what a client writes.
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+pub fn variants_on_the_wire(item_enum: &ItemEnum) -> ItemEnum {
+    let mut written = item_enum.clone();
+    written.variants = item_enum
+        .variants
+        .iter()
+        .filter(|variant| variant_on_the_wire(variant))
+        .cloned()
+        .collect();
+    written
+}
+
 /// Whether serde writes and reads the member or the variant through functions of its author's
 /// alone: under `with`, or under both `serialize_with` and `deserialize_with`. Read in every build,
 /// as [`parse_serde_key_omission`] is.

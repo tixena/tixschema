@@ -16954,6 +16954,7 @@ fn generated_validation_under(
         container_read_back: false,
         enum_args: None,
         member_steps: &steps,
+        on_the_wire: true,
         rename_all: None,
         schema_module_name: Some("probe_schema"),
         type_name: "Probe",
@@ -17505,6 +17506,7 @@ fn a_field_read_through_a_reference_is_given_no_read_hook() {
         container_read_back: true,
         enum_args: None,
         member_steps: &steps,
+        on_the_wire: true,
         rename_all: None,
         schema_module_name: Some("probe_schema"),
         type_name: "Probe",
@@ -20831,4 +20833,145 @@ fn the_record_of_a_member_over_unit_is_published_under_its_one_name() {
         !published("pub struct ProbeRecordBoxed(Box<ProbeRecordUnit>);"),
         "a struct of one slot behind a wrapper forwards the record"
     );
+}
+
+/// An enum whose every variant serde neither writes nor reads is refused, its members' keys taken
+/// off; an enum with a variant serde reads or writes, and an enum of no variant, are not.
+#[test]
+fn an_enum_with_no_variant_serde_writes_or_reads_is_refused() {
+    assert_refused_without_member_keys(
+        "",
+        "pub enum ProbeBecalmed { #[serde(skip)] Drifting { #[model_schema_prop(minLength = 1)] \
+         note: String }, #[serde(skip_serializing, skip_deserializing)] Still }",
+        "model_schema: type `ProbeBecalmed`: every variant is under `#[serde(skip)]`, or under \
+         `skip_serializing` and `skip_deserializing` together, so serde writes no value of it and \
+         reads none, and no surface can describe it. Let serde write or read one of its variants.",
+    );
+    for source in [
+        "pub enum ProbeHalfWritten { #[serde(skip_serializing)] Read, #[serde(skip)] Neither }",
+        "pub enum ProbeHalfRead { #[serde(skip_deserializing)] Written, #[serde(skip)] Neither }",
+        "pub enum ProbeNoVariant {}",
+    ] {
+        let refusals = super::no_variant_on_the_wire_errors(&syn::parse_str(source).unwrap());
+        assert!(refusals.is_empty(), "for {source}, got: {refusals:?}");
+    }
+}
+
+/// No guard of what serde writes or reads refuses a variant serde neither writes nor reads: a
+/// tuple variant of no slot, a lone slot taken off the wire under a content key, a bare `Option`
+/// member, a unit variant's name that breaks the enum's pattern, an untagged unit variant and
+/// tuple variant of several slots, and an untagged member over text a holder flattens.
+#[cfg(feature = "serde")]
+#[test]
+fn the_guards_of_the_wire_read_past_a_variant_serde_neither_writes_nor_reads() {
+    for (args, source) in [
+        (
+            "",
+            "pub enum ProbeSkippedEmpty { Open { note: String }, #[serde(skip)] Nothing() }",
+        ),
+        (
+            "",
+            "#[serde(tag = \"kind\", content = \"body\")] pub enum ProbeSkippedNextEmpty { Open { \
+             note: String }, #[serde(skip)] Nothing() }",
+        ),
+        (
+            "",
+            "#[serde(untagged)] pub enum ProbeSkippedLooseEmpty { Open { note: String }, \
+             #[serde(skip)] Nothing() }",
+        ),
+        (
+            "",
+            "#[serde(tag = \"kind\", content = \"body\")] pub enum ProbeSkippedLone { Open { note: \
+             String }, #[serde(skip)] Lone(#[serde(skip)] u8) }",
+        ),
+        (
+            "",
+            "#[serde(tag = \"kind\")] pub enum ProbeSkippedOption { Open { note: String }, \
+             #[serde(skip)] Closed { reason: Option<String> } }",
+        ),
+        (
+            "",
+            "#[serde(untagged)] pub enum ProbeSkippedLoose { Open { note: String }, \
+             #[serde(skip)] Closed { reason: Option<String> }, #[serde(skip)] Gone, \
+             #[serde(skip)] Pair(u8, u8) }",
+        ),
+        (
+            "",
+            "#[serde(untagged)] pub enum ProbeSkippedText { Fields { note: String }, \
+             #[serde(skip)] Text(String) }",
+        ),
+        (
+            "",
+            "pub struct ProbeSkippedHolder { #[serde(flatten)] pub held: ProbeSkippedText, pub \
+             label: String }",
+        ),
+        (
+            "pattern = \"^[a-z]+$\"",
+            "#[serde(rename_all = \"lowercase\")] pub enum ProbeSkippedName { Red, \
+             #[serde(skip, rename = \"GREEN\")] Green }",
+        ),
+    ] {
+        let expanded = super::exec_model_schema(
+            syn::parse_str(args).unwrap(),
+            syn::parse_str(&format!("#[derive(Serialize, Deserialize)] {source}")).unwrap(),
+        );
+        assert_eq!(
+            compile_error_count(&expanded),
+            0,
+            "for {source}, got: {expanded}"
+        );
+    }
+}
+
+/// The guards [`the_guards_of_the_wire_read_past_a_variant_serde_neither_writes_nor_reads`] reads
+/// past refuse a variant serde drops in one direction alone, as before.
+#[cfg(feature = "serde")]
+#[test]
+fn the_guards_of_the_wire_refuse_a_variant_serde_drops_in_one_direction() {
+    // Declared ahead of the holder that flattens it, which reads what it records.
+    let declared = expansion_under(
+        "",
+        "#[derive(Serialize, Deserialize)] #[serde(untagged)] pub enum ProbeHalfText { Fields { \
+         note: String }, #[serde(skip_deserializing)] Text(String) }",
+    );
+    assert!(!declared.contains("compile_error"), "got: {declared}");
+    for (args, source, refusal) in [
+        (
+            "",
+            "pub enum ProbeHalfEmpty { Open { note: String }, #[serde(skip_serializing)] \
+             Nothing() }",
+            "`Nothing()` is a tuple variant with no field",
+        ),
+        (
+            "",
+            "#[serde(tag = \"kind\")] pub enum ProbeHalfOption { Open { note: String }, \
+             #[serde(skip_deserializing)] Closed { reason: Option<String> } }",
+            "field `reason` is `Option`",
+        ),
+        (
+            "pattern = \"^[a-z]+$\"",
+            "#[serde(rename_all = \"lowercase\")] pub enum ProbeHalfName { Red, \
+             #[serde(skip_serializing, rename = \"GREEN\")] Green }",
+            "variant `Green` is written `GREEN`",
+        ),
+        (
+            "",
+            "#[serde(untagged)] pub enum ProbeHalfLoose { Open { note: String }, \
+             #[serde(skip_deserializing)] Gone }",
+            "`Gone` is a unit variant",
+        ),
+        (
+            "",
+            "pub struct ProbeHalfHolder { #[serde(flatten)] pub held: ProbeHalfText, pub label: \
+             String }",
+            "its branch 2 describes a `string`",
+        ),
+    ] {
+        let expanded = super::exec_model_schema(
+            syn::parse_str(args).unwrap(),
+            syn::parse_str(&format!("#[derive(Serialize, Deserialize)] {source}")).unwrap(),
+        )
+        .to_string();
+        assert!(expanded.contains(refusal), "for {source}, got: {expanded}");
+    }
 }

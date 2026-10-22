@@ -64,6 +64,11 @@ mod shared_keys;
 #[path = "../kotlin_tests/text_forms_models.rs"]
 mod text_forms;
 
+/// The enums with a variant serde neither writes nor reads, or drops in one direction alone, and
+/// what serde and Zod take of each payload.
+#[path = "../skipped_variant_tests/models.rs"]
+mod skipped_variants;
+
 use core::fmt::Write as _;
 
 #[cfg(feature = "chrono")]
@@ -1958,6 +1963,31 @@ fn shared_keys_bundle() -> String {
     .join("\n\n")
 }
 
+/// The enums with a variant serde neither writes nor reads, or drops in one direction alone: a
+/// bundle of their own, compiled with `tsc --strict` before it is loaded.
+fn skipped_variants_bundle() -> String {
+    [
+        PREAMBLE.to_owned(),
+        skipped_variants::Berthage::ts_definition(),
+        skipped_variants::Berthage::zod_schema(),
+        skipped_variants::Wharfage::ts_definition(),
+        skipped_variants::Wharfage::zod_schema(),
+        skipped_variants::Pilotage::ts_definition(),
+        skipped_variants::Pilotage::zod_schema(),
+        skipped_variants::Lighterage::ts_definition(),
+        skipped_variants::Lighterage::zod_schema(),
+        skipped_variants::Keelage::ts_definition(),
+        skipped_variants::Keelage::zod_schema(),
+        skipped_variants::Cartage::ts_definition(),
+        skipped_variants::Cartage::zod_schema(),
+        skipped_variants::Tonnage::ts_definition(),
+        skipped_variants::Tonnage::zod_schema(),
+        skipped_variants::Dockage::ts_definition(),
+        skipped_variants::Dockage::zod_schema(),
+    ]
+    .join("\n\n")
+}
+
 /// The holders of a text serde reads in one form alone: a bundle of their own, compiled with
 /// `tsc --strict` before it is loaded.
 #[cfg(feature = "chrono")]
@@ -2853,6 +2883,46 @@ fn type_check_a_text_of_one_form_is_read_under_zod_where_the_table_states() {
         printed,
         serde_json::to_string(&taken).unwrap(),
         "the schemas do not read what the table states:\n{failed}"
+    );
+}
+
+/// The Zod schema of each enum under `node` refuses the payload of a variant serde neither writes
+/// nor reads, as serde refuses it, and takes the payload of every variant serde writes, and of a
+/// variant serde drops in one direction alone.
+#[test]
+fn type_check_a_variant_serde_neither_writes_nor_reads_is_refused_under_zod() {
+    for row in &skipped_variants::ROWS {
+        assert_eq!(
+            (row.read)(row.json),
+            row.serde,
+            "serde's read of {} as {}",
+            row.json,
+            row.read_as
+        );
+    }
+    assert!(
+        skipped_variants::unread_writes()
+            .iter()
+            .rev()
+            .skip(1)
+            .all(|said| said.ends_with("cannot be serialized")),
+        "serde writes a variant it skips"
+    );
+    let taken: Vec<bool> = skipped_variants::ROWS.iter().map(|row| row.zod).collect();
+    let listed: Vec<(String, &str)> = skipped_variants::ROWS
+        .iter()
+        .map(|row| (format!("{}$Schema", row.read_as), row.json))
+        .collect();
+    let driver = TAKEN_DRIVER.replace("PAYLOADS", &serde_json::to_string(&listed).unwrap());
+    let Some((printed, failed)) =
+        loaded_from("skipped-variants", &skipped_variants_bundle(), &driver)
+    else {
+        return;
+    };
+    assert_eq!(
+        printed,
+        serde_json::to_string(&taken).unwrap(),
+        "the schemas do not take what the table states:\n{failed}"
     );
 }
 
