@@ -290,6 +290,36 @@ pub fn written_and_read_by_the_author(attrs: &[Attribute]) -> bool {
     with || (serialize_with && deserialize_with)
 }
 
+/// The key `#[serde(tag = "...")]` names on an enum that is not untagged and names no `content`
+/// key: the tag serde writes a variant's members beside. Read in every build, as
+/// [`parse_serde_key_omission`] is.
+pub fn tag_written_alone(attrs: &[Attribute]) -> Option<String> {
+    let (mut tag, mut content, mut untagged) = (None, false, false);
+    for attr in attrs {
+        if !attr.path().is_ident("serde") {
+            continue;
+        }
+        attr.parse_nested_meta(|nested| {
+            if nested.path.is_ident("tag") {
+                tag = Some(nested.value()?.parse::<LitStr>()?.value());
+                return Ok(());
+            }
+            if nested.path.is_ident("content") {
+                content = true;
+            } else if nested.path.is_ident("untagged") {
+                untagged = true;
+            } else {
+                // Every other serde key is someone else's business.
+            }
+            consume_unread_value(&nested)
+        })
+        .unwrap_or_else(|e| {
+            log::trace!("Failed to parse serde tag attribute: {e}");
+        });
+    }
+    tag.filter(|_| !content && !untagged)
+}
+
 /// Consumes the value of a `key = value` or the group of a `key(...)` list the walk had no use
 /// for, so an unread value doesn't end the walk early and drop every attribute written after it.
 /// The list is consumed whole rather than parsed. `bound(...)` is the one list form worth naming
