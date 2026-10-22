@@ -16,9 +16,10 @@ use super::flattened_models::{
     BELTING, Belting, Bending, Brailing, CHOCKED, CLEATING, Cathead, Chock, Cleating,
     CorrectedLocker, Dipping, ENSIGN, EmptiedLocker, Gammoning, Gasketing, HEAVING, HITCHING,
     Hawsepipe, Heaving, Hitching, Jibing, Knotting, LOCKER, Lanyarding, Luffing, MARLINE, Netting,
-    Nipping, PAYLOAD, ProbeLocker, Quaying, Rousing, SCUDDING, SNUBBED, STOWING, STROPPING, STRUCK,
-    Scudding, Seizing, Slinging, Snubbing, Splicing, Stoppering, Stowing, Striking, Stropping,
-    Tacking, UNDER_AN_ALIAS, UNWRITTEN, Whipping, Yawing, read_of,
+    Nipping, PAYLOAD, ProbeLocker, Quaying, Rousing, SCARFING, SCUDDING, SNUBBED, STOWING,
+    STROPPING, STRUCK, Scarfing, Scudding, Seizing, Sheeting, Slinging, Snubbing, Splicing,
+    Stoppering, Stowing, Striking, Stropping, Tacking, UNDER_AN_ALIAS, UNWRITTEN, Whipping, Yawing,
+    read_of,
 };
 #[cfg(feature = "serde")]
 use super::flattened_models::{
@@ -26,8 +27,8 @@ use super::flattened_models::{
     corrected_locker_kotlin, dipping_kotlin, emptied_locker_kotlin, gammoning_kotlin,
     gasketing_kotlin, hawsepipe_kotlin, heaving_kotlin, hitching_kotlin, knotting_kotlin,
     luffing_kotlin, netting_kotlin, nipping_kotlin, probe_locker_kotlin, rousing_kotlin,
-    scudding_kotlin, seizing_kotlin, slinging_kotlin, splicing_kotlin, stoppering_kotlin,
-    stowing_kotlin, striking_kotlin, whipping_kotlin, yawing_kotlin,
+    scarfing_kotlin, scudding_kotlin, seizing_kotlin, slinging_kotlin, splicing_kotlin,
+    stoppering_kotlin, stowing_kotlin, striking_kotlin, whipping_kotlin, yawing_kotlin,
 };
 use super::read::{kept, serializers};
 use super::tuple_variants_models::Labelling;
@@ -1211,6 +1212,35 @@ fn a_flattened_struct_takes_the_keys_serde_takes_of_it() {
     ] {
         assert!(kotlin.contains(held), "no `{held}` in: {kotlin}");
     }
+}
+
+/// serde reads an optional struct with a flattened member of its own wherever the struct reads
+/// from the object, and as `None` wherever it does not.
+#[test]
+fn serde_reads_an_optional_struct_with_a_flattened_member_wherever_it_reads() {
+    let read = |json: &str| serde_json::from_str::<Scarfing>(json).unwrap().sheeting;
+    let held = Sheeting {
+        labelling: Labelling {
+            label: "n".to_owned(),
+        },
+    };
+    assert_eq!(
+        SCARFING.map(read),
+        [Some(held), None, None],
+        "serde no longer reads each payload as it did"
+    );
+}
+
+/// An optional struct with a flattened member of its own takes no key, so it has none to be
+/// looked for by: it is read wherever its read succeeds and is `null` wherever that read throws,
+/// as serde reads it.
+#[test]
+#[cfg(feature = "serde")]
+fn an_optional_struct_that_takes_no_key_is_read_wherever_its_read_succeeds() {
+    let scarfing = scarfing_kotlin::kotlin_definition();
+    let decoded = "val sheetingKeys = setOf<String>(); val sheeting = runCatching { \
+                   lenient.decodeFromJsonElement(SheetingUnjudged, obj) }.getOrNull();";
+    assert!(scarfing.contains(decoded), "no `{decoded}` in: {scarfing}");
 }
 
 /// What serde reads of each holder of a flattened externally tagged enum: the first entry, in the

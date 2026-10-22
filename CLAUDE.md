@@ -954,7 +954,14 @@ the consumer's view; this is what a change has to keep.
   (`flatten_plan`): from `JsonObject(obj - setOf(...) - {member}Keys ...)`, the object without the
   keys the holder's own members take and those each member flattened ahead of it took, and from
   `obj` where nothing was taken. An optional one looks for its keys in that object alone
-  (`flatten_struct_field_plan`). A struct takes the keys `flattened_struct_keys` answers, unless
+  (`flatten_struct_field_plan`): `null` where none is there, and read where one is, so a key that
+  does not read refuses the payload, as TypeScript and Zod refuse it, where serde reads `None`.
+  An optional struct `KOTLIN_TAKEN_KEYS` records with no key, one with a flattened member of its
+  own, has none to be looked for by (`recorded_keys`): where the member names no function it is
+  read inside `runCatching { ... }.getOrNull()`, held wherever its read succeeds and `null`
+  wherever it throws, as serde's untagged read of an `Option` reads `None`, and it still takes no
+  key. A member that names a function, and a struct the emitter has not written, are looked for
+  by their keys. A struct takes the keys `flattened_struct_keys` answers, unless
   `preprocess::takes_no_key` answers for it: a member that names a function, and a type `HANDED`
   does not note as handing its object to none, so a type the emitter has not written takes none.
   `struct_kotlin_tokens` records in `KOTLIN_TAKEN_KEYS`, for every struct it writes, the keys
@@ -995,8 +1002,9 @@ the consumer's view; this is what a change has to keep.
   without `{member}Entry.key`. `enum_kotlin_tokens` records the names in `KOTLIN_VARIANT_NAMES`,
   and `flattened_variant_names` reads them: an enum under a tag key, an untagged one, one that
   names a function on itself or on its member, and one the emitter has not written are read as a
-  struct is, and take no key. The enum's own read takes no variant under an `alias`, so an entry
-  under one is taken and refused: the README states both limits.
+  struct is, and take no key, a limit the README states for one the emitter has not written. The
+  names hold each `alias`, and the enum's own read takes a variant under each of them, so an entry
+  under one is taken and read as that variant (`UNDER_AN_ALIAS`).
 - **A flattened enum's unit variant is written as its name over `null`** (`flattened_merge`), as
   serde writes it, where the enum writes a bare name. `enum_kotlin_tokens` records in
   `KOTLIN_BARE_NAMED` each externally tagged enum with a unit variant, whatever function it
@@ -1075,7 +1083,10 @@ the consumer's view; this is what a change has to keep.
   tag and one with a member serde never reads among them, and of an externally tagged enum
   flattened beside other keys, `tests/kotlin_tests/tests.rs` pins their reads, and
   `run_kotlin_flattened.rs` reads each under the toolchain, against serde, and writes back the
-  structs, a variant's entry under an alias among them (`UNDER_AN_ALIAS`).
+  structs, a variant's entry under an alias among them (`UNDER_AN_ALIAS`). It also reads
+  `Scarfing`, and `Crowning`, `Fidding` and `Flaking` of
+  `tests/swift_tests/flattened_options_models.rs`: an optional struct that takes no key against
+  serde, and one that takes a key against the rule TypeScript and Zod hold.
   `tests/kotlin_tests/aliased_models.rs` holds the models of a variant and a member under an
   alias, under each tagging, in a plain enum, a struct the plugin reads, one read by hand and one
   flattened, and pins what serde reads of each payload, which the Dart client is held to as well.

@@ -10,11 +10,12 @@
 //! the name of a variant it reads, beside a member of its holder's own, ahead of a member that
 //! names a function and ahead of a struct, and one declared below its holder is read from the
 //! object. serde writes such an enum's unit variant as an entry, its name over `null`, the enum
-//! optional and under a function too. An optional map, the one member, serde reads as `None`
-//! wherever an entry does not read as a count, and under a function from what the function
-//! answers. A map keyed by a plain enum serde writes and reads under the name each variant is
-//! written under, and refuses, or reads as `None` where it is optional, a key no variant is written
-//! under.
+//! optional and under a function too. An optional struct with a flattened member of its own, the
+//! one member, serde reads wherever the struct reads and as `None` wherever it does not. An
+//! optional map, the one member, serde reads as `None` wherever an entry does not read as a count,
+//! and under a function from what the function answers. A map keyed by a plain enum serde writes
+//! and reads under the name each variant is written under, and refuses, or reads as `None` where
+//! it is optional, a key no variant is written under.
 
 use alloc::collections::BTreeMap;
 use std::collections::HashMap;
@@ -119,6 +120,10 @@ pub const CHOCKED: [&str; 5] = [
 /// What [`Snubbing`] is read from: a key under its variant's `rename`, one under the enum's
 /// `rename_all`, and one under a variant's Rust name, which serde reads no variant under.
 pub const SNUBBED: [&str; 3] = [r#"{"bow":2}"#, r#"{"open_water":2}"#, r#"{"OpenWater":2}"#];
+
+/// What [`Scarfing`] is read from: the key [`Sheeting`] reads beside another, no key, and the key
+/// held as a number, which [`Sheeting`] does not read.
+pub const SCARFING: [&str; 3] = [r#"{"label":"n","north":2}"#, "{}", r#"{"label":5}"#];
 
 /// A map, the one member, which serde hands every key of the object.
 #[model_schema()]
@@ -317,6 +322,15 @@ pub struct Brailing {
     #[model_schema_prop(preprocess = ["withItsKeys"])]
     #[serde(flatten)]
     pub tally: Bunting,
+}
+
+/// [`Sheeting`] optional, the one member: serde reads it wherever [`Sheeting`] reads from the
+/// object, and as `None` wherever it does not.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Scarfing {
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    pub sheeting: Option<Sheeting>,
 }
 
 /// A struct with a member serde reads and never writes, which takes the keys it reads.

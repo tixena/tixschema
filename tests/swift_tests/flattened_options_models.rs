@@ -7,7 +7,7 @@
 //! struct read from what a function answers. serde writes the keys of a flattened member that
 //! holds a value beside its holder's own, and nothing for one that holds none, and reads one that
 //! names no function as `None` wherever the type it holds does not read from the object it is
-//! handed.
+//! handed. `run_kotlin_flattened.rs` reads [`Crowning`] and [`Fidding`] as well.
 
 #[cfg(feature = "chrono")]
 use alloc::collections::BTreeMap;
