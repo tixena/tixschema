@@ -203,11 +203,15 @@ fn zod_checks_each_set_for_a_repeat_after_its_count() {
     assert!(every_list.contains(counted), "{every_list}");
     let nesting = Nesting::zod_schema();
     assert!(
-        nesting.contains("  grid: z.array(z.array(z.number().int()).check((ctx) => {"),
+        nesting.contains(
+            "  grid: z.array(z.array(z.number().int().min(0).max(4294967295)).check((ctx) => {"
+        ),
         "{nesting}"
     );
     assert!(
-        nesting.contains("  listed: z.array(z.array(z.number().int())).check((ctx) => {"),
+        nesting.contains(
+            "  listed: z.array(z.array(z.number().int().min(0).max(4294967295))).check((ctx) => {"
+        ),
         "{nesting}"
     );
 }

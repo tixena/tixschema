@@ -49,14 +49,14 @@ pub fn refusal(document: &Value, value: &Value) -> Option<Refusal> {
     }
     if document
         .get("const")
-        .is_some_and(|written| written != value)
+        .is_some_and(|written| !same(written, value))
     {
         return Some(Refusal::Written);
     }
     if document
         .get("enum")
         .and_then(Value::as_array)
-        .is_some_and(|listed| !listed.contains(value))
+        .is_some_and(|listed| !listed.iter().any(|named| same(named, value)))
     {
         return Some(Refusal::Written);
     }
@@ -163,6 +163,15 @@ fn full_date(text: &str) -> bool {
             }
         });
     shaped && chrono::NaiveDate::parse_from_str(text, "%Y-%m-%d").is_ok()
+}
+
+/// Whether `written` and `value` are one JSON value: two numbers are one where they are equal,
+/// whatever form each is written in, as `214` and `214.0` are.
+fn same(written: &Value, value: &Value) -> bool {
+    match (written.as_f64(), value.as_f64()) {
+        (Some(left), Some(right)) => left.total_cmp(&right).is_eq(),
+        _ => written == value,
+    }
 }
 
 /// Whether `value` is of the JSON type `kind` names.

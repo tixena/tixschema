@@ -415,8 +415,12 @@ fn test_naive_time_zod() {
 fn test_naive_datetime_zod() {
     let zod = LocalEvent::zod_schema();
     assert!(
-        zod.contains("local_datetime: z.iso.datetime({ local: true }),"),
-        "NaiveDateTime should use z.iso.datetime({{ local: true }}). Got: {zod}"
+        zod.contains("local_datetime: z.preprocess((arg) => {")
+            && zod.contains(
+                "? `${read[1]}${read[2] ?? \":00\"}` : arg; }, z.iso.datetime({ local: true })),"
+            ),
+        "NaiveDateTime should write the form serde reads, then use z.iso.datetime({{ local: true \
+         }}). Got: {zod}"
     );
 }
 
@@ -756,8 +760,8 @@ fn test_sample_zod_mixes_coerce_date_and_inline_number() {
         "as_number coercer should map Date -> getTime(). Got: {zod}"
     );
     assert!(
-        zod.contains("}, z.number()),"),
-        "as_number coercer should validate with z.number(). Got: {zod}"
+        zod.contains("}, z.number().int()),"),
+        "as_number coercer should validate with z.number().int(). Got: {zod}"
     );
     assert!(
         !zod.contains("created_at: z.iso.datetime"),
@@ -788,7 +792,7 @@ fn test_tuple_variant_datetime_zod_honors_as_number() {
         "Native variant payload should use the date schema. Got: {zod}"
     );
     assert!(
-        zod.contains("}, z.number())"),
+        zod.contains("}, z.number().int())"),
         "Number variant payload should use the inline as_number coercer. Got: {zod}"
     );
 }

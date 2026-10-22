@@ -8633,7 +8633,7 @@ fn a_default_naming_a_sibling_at_other_than_its_own_default_calls_the_factory() 
     let field = super::declared_default_field("IdType", &default_types);
     assert_eq!(
         super::default_zod_rendering(&field).into_argument(),
-        "z.lazy(() => DocumentId$SchemaFactory(z.number().int()))"
+        "z.lazy(() => DocumentId$SchemaFactory(z.number().int().min(0).max(4294967295)))"
     );
 }
 
@@ -17870,7 +17870,7 @@ fn a_tuple_struct_describes_as_its_arity_in_zod() {
     );
     assert_eq!(
         tuple_struct_zod_body(&whole_tuple(&["String", "u32"]), &owner),
-        "z.tuple([z.string(), z.number().int()])"
+        "z.tuple([z.string(), z.number().int().min(0).max(4294967295)])"
     );
 }
 

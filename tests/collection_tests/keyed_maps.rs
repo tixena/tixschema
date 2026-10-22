@@ -16,150 +16,175 @@ pub const PAYLOADS: [Payload; 25] = [
         name: "each map",
         parted: false,
         read_as: "Marlinspike",
+        widened: false,
     },
     Payload {
         json: r#"{"counts":{"7":"x"},"flags":{},"letters":{},"turns":{}}"#,
         name: "a number key, a count of text",
         parted: false,
         read_as: "Marlinspike",
+        widened: false,
     },
     Payload {
         json: r#"{"counts":{"x":2},"flags":{},"letters":{},"turns":{}}"#,
         name: "a number key of text",
         parted: false,
         read_as: "Marlinspike",
+        widened: false,
     },
     Payload {
         json: r#"{"counts":{"7.5":2},"flags":{},"letters":{},"turns":{}}"#,
         name: "a number key with a fraction",
         parted: false,
         read_as: "Marlinspike",
+        widened: false,
     },
     Payload {
         json: r#"{"counts":{"+7":2},"flags":{},"letters":{},"turns":{}}"#,
         name: "a number key under a plus",
         parted: false,
         read_as: "Marlinspike",
+        widened: false,
     },
     Payload {
         json: r#"{"counts":{"1e2":2},"flags":{},"letters":{},"turns":{}}"#,
         name: "a number key with an exponent",
         parted: false,
         read_as: "Marlinspike",
+        widened: false,
     },
     Payload {
         json: r#"{"counts":{"07":2},"flags":{},"letters":{},"turns":{}}"#,
         name: "a number key with a leading zero",
         parted: true,
         read_as: "Marlinspike",
+        widened: false,
     },
     Payload {
         json: r#"{"counts":{"7.0":2},"flags":{},"letters":{},"turns":{}}"#,
         name: "a number key with a fraction of zeros",
         parted: true,
         read_as: "Marlinspike",
+        widened: false,
     },
     Payload {
         json: r#"{"counts":{"-7":2},"flags":{},"letters":{},"turns":{}}"#,
         name: "a number key below the range of a u32",
-        parted: true,
+        parted: false,
         read_as: "Marlinspike",
+        widened: true,
     },
     Payload {
         json: r#"{"counts":{},"flags":{"true":"x"},"letters":{},"turns":{}}"#,
         name: "a bool key, a count of text",
         parted: false,
         read_as: "Marlinspike",
+        widened: false,
     },
     Payload {
         json: r#"{"counts":{},"flags":{"yes":2},"letters":{},"turns":{}}"#,
         name: "a bool key of other text",
         parted: false,
         read_as: "Marlinspike",
+        widened: false,
     },
     Payload {
         json: r#"{"counts":{},"flags":{},"letters":{"n":"x"},"turns":{}}"#,
         name: "a char key, a count of text",
         parted: false,
         read_as: "Marlinspike",
+        widened: false,
     },
     Payload {
         json: r#"{"counts":{},"flags":{},"letters":{"nn":2},"turns":{}}"#,
         name: "a char key of two chars",
         parted: false,
         read_as: "Marlinspike",
+        widened: false,
     },
     Payload {
         json: r#"{"counts":{},"flags":{},"letters":{},"turns":{"tt":2}}"#,
         name: "a key of a brand over a char, of two chars",
         parted: false,
         read_as: "Marlinspike",
+        widened: false,
     },
     Payload {
         json: r#"{"t":2}"#,
         name: "flattened, a key of a brand over a char",
         parted: false,
         read_as: "Trunnel",
+        widened: false,
     },
     Payload {
         json: r#"{"tt":2}"#,
         name: "flattened, a key of a brand over a char, of two chars",
         parted: false,
         read_as: "Trunnel",
+        widened: false,
     },
     Payload {
         json: r#"{"t":"x"}"#,
         name: "flattened, a key of a brand over a char, a count of text",
         parted: false,
         read_as: "Trunnel",
+        widened: false,
     },
     Payload {
         json: r#"{"kind":"Lines","body":{"depths":{"7":2}}}"#,
         name: "under a tag and a content key",
         parted: false,
         read_as: "Scuttle",
+        widened: false,
     },
     Payload {
         json: r#"{"kind":"Lines","body":{"depths":{"x":2}}}"#,
         name: "under a tag and a content key, a key of text",
         parted: false,
         read_as: "Scuttle",
+        widened: false,
     },
     Payload {
         json: r#"{"body":{"depths":{"7":2}},"kind":"Lines"}"#,
         name: "under a tag and a content key, the content first",
         parted: true,
         read_as: "Scuttle",
+        widened: false,
     },
     Payload {
         json: r#"{"Lines":{"depths":{"7":2}}}"#,
         name: "under its name",
         parted: false,
         read_as: "Baggywrinkle",
+        widened: false,
     },
     Payload {
         json: r#"{"Lines":{"depths":{"x":2}}}"#,
         name: "under its name, a key of text",
         parted: false,
         read_as: "Baggywrinkle",
+        widened: false,
     },
     Payload {
         json: r#"{"days":{"2026-10-21":2}}"#,
         name: "a date key",
         parted: false,
         read_as: "Gudgeon",
+        widened: false,
     },
     Payload {
         json: r#"{"days":{"x":2}}"#,
         name: "a date key of other text",
         parted: false,
         read_as: "Gudgeon",
+        widened: false,
     },
     Payload {
         json: r#"{"days":{"2026-10-21":"x"}}"#,
         name: "a date key, a count of text",
         parted: false,
         read_as: "Gudgeon",
+        widened: false,
     },
 ];
 
@@ -178,7 +203,8 @@ a number key with an exponent: refused
     'counts.1e2': Invalid key in record
 a number key with a leading zero: read
 a number key with a fraction of zeros: read
-a number key below the range of a u32: read
+a number key below the range of a u32: refused
+    'counts.-7': Invalid key in record
 a bool key, a count of text: refused
     'flags.true': Invalid input: expected number, received string
 a bool key of other text: refused
@@ -255,6 +281,9 @@ pub struct Payload {
     /// Zod reads as the number, or an enum's content ahead of its tag, which serde buffers.
     pub parted: bool,
     pub read_as: &'static str,
+    /// The JSON Schema reads the payload, which serde and Zod refuse: a number key below the
+    /// range of an unsigned key, which the pattern of a number key does not bound.
+    pub widened: bool,
 }
 
 /// An enum under a tag and a content key with a map keyed by a number, which serde reads where
@@ -318,6 +347,11 @@ pub fn assert_serde_reads_what_zod_reads() {
         assert!(
             !payload.parted || zod_reads(payload),
             "Zod refuses `{}`, which is marked as parted",
+            payload.name
+        );
+        assert!(
+            !payload.widened || !(zod_reads(payload) || payload.parted),
+            "Zod reads `{}`, which is marked as read by the JSON Schema alone",
             payload.name
         );
     }

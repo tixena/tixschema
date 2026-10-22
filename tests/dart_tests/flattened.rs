@@ -14,6 +14,7 @@ use super::flattened_models::{
     lacing_dart, loading_dart, mousing_dart, rigging_dart, scuppering_dart, shoring_dart,
     spare_dart, steeving_dart, trimming_dart, twin_dart,
 };
+use super::held_numbers::u8_held;
 
 /// The names of each variant of `Hatching`, as the read of a flattened one lists them.
 const HATCHING: &str = "['Bay'], ['Dock', 'Quay']";
@@ -22,7 +23,8 @@ const HATCHING: &str = "['Bay'], ['Dock', 'Quay']";
 fn counts_from(source: &str) -> String {
     format!(
         "Map<String, int>.fromEntries(({source} as Map<String, dynamic>).entries.map((e) => \
-         MapEntry(e.key as String, e.value as int)))"
+         MapEntry(e.key as String, {})))",
+        u8_held("e.value as int")
     )
 }
 
@@ -67,8 +69,11 @@ fn a_map_alone_is_read_from_every_key() {
     assert_written(&spare, &format!("Spare(rest: {},);", counts_from("json")));
     assert_written(
         &spare,
-        "toJson() => { ...(Map<String, dynamic>.fromEntries((rest).entries.map((e) => \
-         MapEntry((e.key) as String, e.value))) as Map<String, dynamic>), };",
+        &format!(
+            "toJson() => {{ ...(Map<String, dynamic>.fromEntries((rest).entries.map((e) => \
+             MapEntry((e.key) as String, {}))) as Map<String, dynamic>), }};",
+            u8_held("e.value")
+        ),
     );
 }
 
@@ -261,9 +266,12 @@ fn an_optional_map_is_null_where_an_entry_does_not_read() {
     );
     assert_written(
         &dunnage,
-        "toJson() => { if (counts != null) ...((counts == null ? null : \
-         Map<String, dynamic>.fromEntries((counts!).entries.map((e) => MapEntry((e.key) as String, \
-         e.value)))) as Map<String, dynamic>), };",
+        &format!(
+            "toJson() => {{ if (counts != null) ...((counts == null ? null : \
+             Map<String, dynamic>.fromEntries((counts!).entries.map((e) => MapEntry((e.key) as \
+             String, {})))) as Map<String, dynamic>), }};",
+            u8_held("e.value")
+        ),
     );
     for (definition, class) in [
         (steeving_dart::dart_definition(), "SteevingOpen"),
@@ -279,10 +287,11 @@ fn an_optional_map_is_null_where_an_entry_does_not_read() {
         &bilging_dart::dart_definition(),
         &format!(
             "Bilging(counts: {},);",
-            or_null(
+            or_null(&format!(
                 "Map<Garboard, int>.fromEntries((json as Map<String, dynamic>).entries.map((e) => \
-                 MapEntry(Garboard.fromJson(e.key), e.value as int)))"
-            )
+                 MapEntry(Garboard.fromJson(e.key), {})))",
+                u8_held("e.value as int")
+            ))
         ),
     );
 }

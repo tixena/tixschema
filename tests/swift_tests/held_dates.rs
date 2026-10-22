@@ -55,10 +55,20 @@ where
     written
 }
 
-/// The helpers written for `named`, opened by `formatter`.
+/// The helpers written for `named`, opened by `formatter` and its twin with no fraction, which
+/// reads a date of whole seconds.
 fn helpers(named: &str, formatter: &str) -> String {
+    let whole = formatter
+        .replace(
+            "swiftSchemaIso8601Formatter",
+            "swiftSchemaWholeIso8601Formatter",
+        )
+        .replace(
+            "[.withInternetDateTime, .withFractionalSeconds]",
+            "[.withInternetDateTime]",
+        );
     format!(
-        "extension {named} {{ {formatter}private static func \
+        "extension {named} {{ {formatter}{whole}private static func \
          swiftSchemaParseIso8601Date(_ text: String, codingPath: [CodingKey]) throws -> Date {{ "
     )
 }

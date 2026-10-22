@@ -357,7 +357,19 @@ fn test_the_chrono_example_is_declarable_and_shows_what_it_emits() {
         "pub struct Event {",
         &Event::zod_schema(),
         &[
+            "  time: z.preprocess((arg) => { if (typeof arg === \"number\") { const s = \
+             Math.floor(arg / 1000); const hh = String(Math.floor(s / 3600)).padStart(2, \"0\"); \
+             const mm = String(Math.floor((s % 3600) / 60)).padStart(2, \"0\"); const ss = \
+             String(s % 60).padStart(2, \"0\"); return `${hh}:${mm}:${ss}`; } if (typeof arg === \
+             \"string\" && /^\\d{2}:\\d{2}$/.test(arg)) return `${arg}:00`; return arg; }, \
+             z.iso.time()),",
+            "  local_datetime: z.preprocess((arg) => { if (typeof arg !== \"string\") return arg; \
+             const read = /^(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2})(:\\d{2}(?:\\.\\d+)?)?Z?$/.exec(arg); \
+             return read ? `${read[1]}${read[2] ?? \":00\"}` : arg; }, z.iso.datetime({ local: true \
+             })),",
             "  created_at: z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date()),",
+            "  epoch_ms: z.preprocess((arg) => { if (arg instanceof Date) return arg.getTime(); if \
+             (typeof arg === \"string\") return Date.parse(arg); return arg; }, z.number().int()),",
             "  updated_at: z.union([z.null().transform(() => undefined), z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date()), z.undefined()]).prefault(undefined),",
         ],
     );
@@ -504,7 +516,7 @@ fn test_the_compiler_validated_examples_are_declarable_and_show_what_they_emit()
         &[
             "  name: z.string(),",
             "  email: z.string(),",
-            "  age: z.number().int(),",
+            "  age: z.number().int().min(0).max(4294967295),",
             "  examples: [{\"age\":25,\"email\":\"john@example.com\",\"name\":\"John Doe\"}]",
         ],
     );

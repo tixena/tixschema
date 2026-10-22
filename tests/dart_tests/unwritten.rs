@@ -1,6 +1,7 @@
 //! A member serde reads and never writes: the Dart read takes it, and `toJson` writes no key for
 //! it, in a struct of its own and beside a flattened member.
 
+use super::held_numbers::u32_held;
 use super::unwritten_models::furling_dart;
 #[cfg(feature = "serde")]
 use super::unwritten_models::{flemishing_dart, ranging_dart, reefing_dart, splaying_dart};
@@ -9,10 +10,11 @@ use super::unwritten_models::{flemishing_dart, ranging_dart, reefing_dart, splay
 #[test]
 fn a_member_serde_never_writes_is_read_and_has_no_entry() {
     let furling = furling_dart::dart_definition();
-    assert!(
-        furling.contains("spare: (json['spare'] == null ? null : json['spare'] as int),"),
-        "got: {furling}"
+    let spare = format!(
+        "spare: (json['spare'] == null ? null : {}),",
+        u32_held("json['spare'] as int")
     );
+    assert!(furling.contains(&spare), "got: {furling}");
     assert!(
         furling.contains("Map<String, dynamic> toJson() => { 'label': label, };"),
         "got: {furling}"
@@ -24,10 +26,11 @@ fn a_member_serde_never_writes_is_read_and_has_no_entry() {
 #[test]
 fn a_member_serde_never_writes_beside_a_flattened_one_has_no_entry() {
     let reefing = reefing_dart::dart_definition();
-    assert!(
-        reefing.contains("spare: (json['spare'] == null ? null : json['spare'] as int),"),
-        "got: {reefing}"
+    let spare = format!(
+        "spare: (json['spare'] == null ? null : {}),",
+        u32_held("json['spare'] as int")
     );
+    assert!(reefing.contains(&spare), "got: {reefing}");
     assert!(
         reefing.contains(
             "Map<String, dynamic> toJson() => { ...((braiding).toJson() as Map<String, \

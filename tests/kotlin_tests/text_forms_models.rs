@@ -1,11 +1,12 @@
-//! The models of a text serde reads in one form alone, which the Kotlin client holds as a
-//! `String`: a `char`, a `NaiveDate`, a `NaiveTime`, a `NaiveDateTime` and a `DateTime<Utc>`, each
+//! The models of a text serde reads in one form alone, which a client holds as its own text or
+//! date: a `char`, a `NaiveDate`, a `NaiveTime`, a `NaiveDateTime` and a `DateTime<Utc>`, each
 //! held by a field, in a list, as a map's key, as a map's value and as the key of a map flattened
 //! alone, and [`Chronometer`], a `char` and a date held by a field and as a map's key.
-//! [`TEXT_FORMS`] holds what serde, Zod and the Kotlin read answer of each payload: the Kotlin read
-//! refuses what Zod refuses, a `DateTime<Utc>` apart, which it reads as any text.
-//! `kotlin_tests/text_forms.rs` pins the Kotlin text,
-//! `service_schema_emitted_client_tests/run_kotlin_text_forms.rs` runs it, and
+//! [`TEXT_FORMS`] holds what serde, Zod and the Kotlin, Dart and Swift reads answer of each
+//! payload: each read refuses what Zod refuses, a `DateTime<Utc>` apart, which Kotlin reads as any
+//! text and Dart and Swift as their own date. `kotlin_tests/text_forms.rs`,
+//! `dart_tests/text_forms.rs` and `swift_tests/text_forms.rs` pin each client's text,
+//! `service_schema_emitted_client_tests/run_{kotlin,dart,swift}_text_forms.rs` run it, and
 //! `generic_types_tests/declarations.rs` holds Zod to [`TEXT_FORMS`].
 
 use alloc::collections::BTreeMap;
@@ -17,16 +18,19 @@ use tixschema::model_schema;
 
 /// Each payload, read as its type: one every reader reads, then a text of no form at each place,
 /// and a text serde and Zod part on.
-pub const TEXT_FORMS: [TextFormRow; 49] = [
+pub const TEXT_FORMS: [TextFormRow; 50] = [
     TextFormRow {
+        dart: "read",
         json: r#"{"by_date":{"2024-01-05":2},"by_letter":{"a":1},"day":"2024-01-06","letter":"b"}"#,
         kotlin: "read",
         read_as: "Chronometer",
         serde: "read",
+        swift: "read",
         told: serde_told::<Chronometer>,
         zod: true,
     },
     TextFormRow {
+        dart: r#"expected a character, found "ab""#,
         json: concat!(
             r#"{"by_date":{"2024-01-05":2},"by_letter":{"ab":1},"day":"2024-01-06","#,
             r#""letter":"b"}"#
@@ -34,18 +38,22 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: r#"expected a character, found "ab""#,
         read_as: "Chronometer",
         serde: r#"invalid value: string "ab", expected a character at line 1 column 45"#,
+        swift: r#"expected a character, found "ab""#,
         told: serde_told::<Chronometer>,
         zod: false,
     },
     TextFormRow {
+        dart: r#"expected a date, found "x""#,
         json: r#"{"by_date":{"x":2},"by_letter":{"a":1},"day":"2024-01-06","letter":"b"}"#,
         kotlin: r#"expected a date, found "x""#,
         read_as: "Chronometer",
         serde: "input contains invalid characters at line 1 column 15",
+        swift: r#"expected a date, found "x""#,
         told: serde_told::<Chronometer>,
         zod: false,
     },
     TextFormRow {
+        dart: r#"expected a character, found "ab""#,
         json: concat!(
             r#"{"by_date":{"2024-01-05":2},"by_letter":{"a":1},"day":"2024-01-06","#,
             r#""letter":"ab"}"#
@@ -53,66 +61,82 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: r#"expected a character, found "ab""#,
         read_as: "Chronometer",
         serde: r#"invalid value: string "ab", expected a character at line 1 column 80"#,
+        swift: r#"expected a character, found "ab""#,
         told: serde_told::<Chronometer>,
         zod: false,
     },
     TextFormRow {
+        dart: r#"expected a date, found "x""#,
         json: r#"{"by_date":{"2024-01-05":2},"by_letter":{"a":1},"day":"x","letter":"b"}"#,
         kotlin: r#"expected a date, found "x""#,
         read_as: "Chronometer",
         serde: "input contains invalid characters at line 1 column 57",
+        swift: r#"expected a date, found "x""#,
         told: serde_told::<Chronometer>,
         zod: false,
     },
     TextFormRow {
+        dart: "read",
         json: r#"{"by_letter":{"a":1},"letter":"b","letters":["c"],"to_letter":{"k":"d"}}"#,
         kotlin: "read",
         read_as: "LetterLog",
         serde: "read",
+        swift: "read",
         told: serde_told::<LetterLog>,
         zod: true,
     },
     TextFormRow {
+        dart: r#"expected a character, found "ab""#,
         json: r#"{"by_letter":{"ab":1},"letter":"b","letters":["c"],"to_letter":{"k":"d"}}"#,
         kotlin: r#"expected a character, found "ab""#,
         read_as: "LetterLog",
         serde: r#"invalid value: string "ab", expected a character at line 1 column 18"#,
+        swift: r#"expected a character, found "ab""#,
         told: serde_told::<LetterLog>,
         zod: false,
     },
     TextFormRow {
+        dart: r#"expected a character, found "ab""#,
         json: r#"{"by_letter":{"a":1},"letter":"ab","letters":["c"],"to_letter":{"k":"d"}}"#,
         kotlin: r#"expected a character, found "ab""#,
         read_as: "LetterLog",
         serde: r#"invalid value: string "ab", expected a character at line 1 column 34"#,
+        swift: r#"expected a character, found "ab""#,
         told: serde_told::<LetterLog>,
         zod: false,
     },
     TextFormRow {
+        dart: r#"expected a character, found "ab""#,
         json: r#"{"by_letter":{"a":1},"letter":"b","letters":["ab"],"to_letter":{"k":"d"}}"#,
         kotlin: r#"expected a character, found "ab""#,
         read_as: "LetterLog",
         serde: r#"invalid value: string "ab", expected a character at line 1 column 49"#,
+        swift: r#"expected a character, found "ab""#,
         told: serde_told::<LetterLog>,
         zod: false,
     },
     TextFormRow {
+        dart: r#"expected a character, found "ab""#,
         json: r#"{"by_letter":{"a":1},"letter":"b","letters":["c"],"to_letter":{"k":"ab"}}"#,
         kotlin: r#"expected a character, found "ab""#,
         read_as: "LetterLog",
         serde: r#"invalid value: string "ab", expected a character at line 1 column 71"#,
+        swift: r#"expected a character, found "ab""#,
         told: serde_told::<LetterLog>,
         zod: false,
     },
     TextFormRow {
+        dart: r#"expected a character, found """#,
         json: r#"{"by_letter":{"a":1},"letter":"","letters":["c"],"to_letter":{"k":"d"}}"#,
         kotlin: r#"expected a character, found """#,
         read_as: "LetterLog",
         serde: r#"invalid value: string "", expected a character at line 1 column 32"#,
+        swift: r#"expected a character, found """#,
         told: serde_told::<LetterLog>,
         zod: false,
     },
     TextFormRow {
+        dart: "read",
         json: concat!(
             r#"{"by_letter":{"a":1},"letter":""#,
             "\u{1f600}",
@@ -121,26 +145,32 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: "read",
         read_as: "LetterLog",
         serde: "read",
+        swift: "read",
         told: serde_told::<LetterLog>,
         zod: true,
     },
     TextFormRow {
+        dart: "read",
         json: r#"{"a":2}"#,
         kotlin: "read",
         read_as: "LetterLines",
         serde: "read",
+        swift: "read",
         told: serde_told::<LetterLines>,
         zod: true,
     },
     TextFormRow {
+        dart: r#"expected a character, found "ab""#,
         json: r#"{"ab":2}"#,
         kotlin: r#"expected a character, found "ab""#,
         read_as: "LetterLines",
         serde: r#"invalid value: string "ab", expected a character at line 1 column 8"#,
+        swift: r#"expected a character, found "ab""#,
         told: serde_told::<LetterLines>,
         zod: false,
     },
     TextFormRow {
+        dart: "read",
         json: concat!(
             r#"{"by_day":{"2024-01-05":1},"day":"2024-01-06","days":["2024-01-07"],"#,
             r#""to_day":{"k":"2024-01-08"}}"#
@@ -148,10 +178,12 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: "read",
         read_as: "DayLog",
         serde: "read",
+        swift: "read",
         told: serde_told::<DayLog>,
         zod: true,
     },
     TextFormRow {
+        dart: r#"expected a date, found "x""#,
         json: concat!(
             r#"{"by_day":{"x":1},"day":"2024-01-06","days":["2024-01-07"],"#,
             r#""to_day":{"k":"2024-01-08"}}"#
@@ -159,10 +191,12 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: r#"expected a date, found "x""#,
         read_as: "DayLog",
         serde: "input contains invalid characters at line 1 column 14",
+        swift: r#"expected a date, found "x""#,
         told: serde_told::<DayLog>,
         zod: false,
     },
     TextFormRow {
+        dart: r#"expected a date, found "x""#,
         json: concat!(
             r#"{"by_day":{"2024-01-05":1},"day":"x","days":["2024-01-07"],"#,
             r#""to_day":{"k":"2024-01-08"}}"#
@@ -170,10 +204,12 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: r#"expected a date, found "x""#,
         read_as: "DayLog",
         serde: "input contains invalid characters at line 1 column 36",
+        swift: r#"expected a date, found "x""#,
         told: serde_told::<DayLog>,
         zod: false,
     },
     TextFormRow {
+        dart: r#"expected a date, found "x""#,
         json: concat!(
             r#"{"by_day":{"2024-01-05":1},"day":"2024-01-06","days":["x"],"#,
             r#""to_day":{"k":"2024-01-08"}}"#
@@ -181,10 +217,12 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: r#"expected a date, found "x""#,
         read_as: "DayLog",
         serde: "input contains invalid characters at line 1 column 57",
+        swift: r#"expected a date, found "x""#,
         told: serde_told::<DayLog>,
         zod: false,
     },
     TextFormRow {
+        dart: r#"expected a date, found "x""#,
         json: concat!(
             r#"{"by_day":{"2024-01-05":1},"day":"2024-01-06","days":["2024-01-07"],"#,
             r#""to_day":{"k":"x"}}"#
@@ -192,10 +230,12 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: r#"expected a date, found "x""#,
         read_as: "DayLog",
         serde: "input contains invalid characters at line 1 column 85",
+        swift: r#"expected a date, found "x""#,
         told: serde_told::<DayLog>,
         zod: false,
     },
     TextFormRow {
+        dart: r#"expected a date, found "2024-1-6""#,
         json: concat!(
             r#"{"by_day":{"2024-01-05":1},"day":"2024-1-6","days":["2024-01-07"],"#,
             r#""to_day":{"k":"2024-01-08"}}"#
@@ -207,10 +247,12 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
             r#"{"by_day":{"2024-01-05":1},"day":"2024-01-06","days":["2024-01-07"],"#,
             r#""to_day":{"k":"2024-01-08"}}"#
         ),
+        swift: r#"expected a date, found "2024-1-6""#,
         told: serde_told::<DayLog>,
         zod: false,
     },
     TextFormRow {
+        dart: r#"expected a date, found "2023-02-29""#,
         json: concat!(
             r#"{"by_day":{"2024-01-05":1},"day":"2023-02-29","days":["2024-01-07"],"#,
             r#""to_day":{"k":"2024-01-08"}}"#
@@ -218,10 +260,12 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: r#"expected a date, found "2023-02-29""#,
         read_as: "DayLog",
         serde: "input is out of range at line 1 column 45",
+        swift: r#"expected a date, found "2023-02-29""#,
         told: serde_told::<DayLog>,
         zod: false,
     },
     TextFormRow {
+        dart: r#"expected a date, found "+12024-01-06""#,
         json: concat!(
             r#"{"by_day":{"2024-01-05":1},"day":"+12024-01-06","days":["2024-01-07"],"#,
             r#""to_day":{"k":"2024-01-08"}}"#
@@ -229,26 +273,32 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: r#"expected a date, found "+12024-01-06""#,
         read_as: "DayLog",
         serde: "read",
+        swift: r#"expected a date, found "+12024-01-06""#,
         told: serde_told::<DayLog>,
         zod: false,
     },
     TextFormRow {
+        dart: "read",
         json: r#"{"2024-01-05":2}"#,
         kotlin: "read",
         read_as: "DayLines",
         serde: "read",
+        swift: "read",
         told: serde_told::<DayLines>,
         zod: true,
     },
     TextFormRow {
+        dart: r#"expected a date, found "x""#,
         json: r#"{"x":2}"#,
         kotlin: r#"expected a date, found "x""#,
         read_as: "DayLines",
         serde: "input contains invalid characters at line 1 column 7",
+        swift: r#"expected a date, found "x""#,
         told: serde_told::<DayLines>,
         zod: false,
     },
     TextFormRow {
+        dart: "read",
         json: concat!(
             r#"{"by_time":{"10:20:30":1},"time":"11:20:30","times":["12:20:30"],"#,
             r#""to_time":{"k":"13:20:30"}}"#
@@ -256,10 +306,12 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: "read",
         read_as: "TimeLog",
         serde: "read",
+        swift: "read",
         told: serde_told::<TimeLog>,
         zod: true,
     },
     TextFormRow {
+        dart: r#"expected a time, found "x""#,
         json: concat!(
             r#"{"by_time":{"x":1},"time":"11:20:30","times":["12:20:30"],"#,
             r#""to_time":{"k":"13:20:30"}}"#
@@ -267,10 +319,12 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: r#"expected a time, found "x""#,
         read_as: "TimeLog",
         serde: "input contains invalid characters at line 1 column 15",
+        swift: r#"expected a time, found "x""#,
         told: serde_told::<TimeLog>,
         zod: false,
     },
     TextFormRow {
+        dart: r#"expected a time, found "x""#,
         json: concat!(
             r#"{"by_time":{"10:20:30":1},"time":"x","times":["12:20:30"],"#,
             r#""to_time":{"k":"13:20:30"}}"#
@@ -278,10 +332,12 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: r#"expected a time, found "x""#,
         read_as: "TimeLog",
         serde: "input contains invalid characters at line 1 column 36",
+        swift: r#"expected a time, found "x""#,
         told: serde_told::<TimeLog>,
         zod: false,
     },
     TextFormRow {
+        dart: r#"expected a time, found "x""#,
         json: concat!(
             r#"{"by_time":{"10:20:30":1},"time":"11:20:30","times":["x"],"#,
             r#""to_time":{"k":"13:20:30"}}"#
@@ -289,10 +345,12 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: r#"expected a time, found "x""#,
         read_as: "TimeLog",
         serde: "input contains invalid characters at line 1 column 56",
+        swift: r#"expected a time, found "x""#,
         told: serde_told::<TimeLog>,
         zod: false,
     },
     TextFormRow {
+        dart: r#"expected a time, found "x""#,
         json: concat!(
             r#"{"by_time":{"10:20:30":1},"time":"11:20:30","times":["12:20:30"],"#,
             r#""to_time":{"k":"x"}}"#
@@ -300,10 +358,12 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: r#"expected a time, found "x""#,
         read_as: "TimeLog",
         serde: "input contains invalid characters at line 1 column 83",
+        swift: r#"expected a time, found "x""#,
         told: serde_told::<TimeLog>,
         zod: false,
     },
     TextFormRow {
+        dart: r#"expected a time, found "23:59:60""#,
         json: concat!(
             r#"{"by_time":{"10:20:30":1},"time":"23:59:60","times":["12:20:30"],"#,
             r#""to_time":{"k":"13:20:30"}}"#
@@ -311,26 +371,32 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: r#"expected a time, found "23:59:60""#,
         read_as: "TimeLog",
         serde: "read",
+        swift: r#"expected a time, found "23:59:60""#,
         told: serde_told::<TimeLog>,
         zod: false,
     },
     TextFormRow {
+        dart: "read",
         json: r#"{"10:20:30":2}"#,
         kotlin: "read",
         read_as: "TimeLines",
         serde: "read",
+        swift: "read",
         told: serde_told::<TimeLines>,
         zod: true,
     },
     TextFormRow {
+        dart: r#"expected a time, found "x""#,
         json: r#"{"x":2}"#,
         kotlin: r#"expected a time, found "x""#,
         read_as: "TimeLines",
         serde: "input contains invalid characters at line 1 column 7",
+        swift: r#"expected a time, found "x""#,
         told: serde_told::<TimeLines>,
         zod: false,
     },
     TextFormRow {
+        dart: "read",
         json: concat!(
             r#"{"by_stamp":{"2024-01-05T10:20:30":1},"stamp":"2024-01-05T11:20:30","#,
             r#""stamps":["2024-01-05T12:20:30"],"to_stamp":{"k":"2024-01-05T13:20:30"}}"#
@@ -338,10 +404,12 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: "read",
         read_as: "StampLog",
         serde: "read",
+        swift: "read",
         told: serde_told::<StampLog>,
         zod: true,
     },
     TextFormRow {
+        dart: r#"expected a date and time, found "x""#,
         json: concat!(
             r#"{"by_stamp":{"x":1},"stamp":"2024-01-05T11:20:30","#,
             r#""stamps":["2024-01-05T12:20:30"],"to_stamp":{"k":"2024-01-05T13:20:30"}}"#
@@ -349,10 +417,12 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: r#"expected a date and time, found "x""#,
         read_as: "StampLog",
         serde: "input contains invalid characters at line 1 column 16",
+        swift: r#"expected a date and time, found "x""#,
         told: serde_told::<StampLog>,
         zod: false,
     },
     TextFormRow {
+        dart: r#"expected a date and time, found "x""#,
         json: concat!(
             r#"{"by_stamp":{"2024-01-05T10:20:30":1},"stamp":"x","#,
             r#""stamps":["2024-01-05T12:20:30"],"to_stamp":{"k":"2024-01-05T13:20:30"}}"#
@@ -360,10 +430,12 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: r#"expected a date and time, found "x""#,
         read_as: "StampLog",
         serde: "input contains invalid characters at line 1 column 49",
+        swift: r#"expected a date and time, found "x""#,
         told: serde_told::<StampLog>,
         zod: false,
     },
     TextFormRow {
+        dart: r#"expected a date and time, found "x""#,
         json: concat!(
             r#"{"by_stamp":{"2024-01-05T10:20:30":1},"stamp":"2024-01-05T11:20:30","#,
             r#""stamps":["x"],"to_stamp":{"k":"2024-01-05T13:20:30"}}"#
@@ -371,10 +443,12 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: r#"expected a date and time, found "x""#,
         read_as: "StampLog",
         serde: "input contains invalid characters at line 1 column 81",
+        swift: r#"expected a date and time, found "x""#,
         told: serde_told::<StampLog>,
         zod: false,
     },
     TextFormRow {
+        dart: r#"expected a date and time, found "x""#,
         json: concat!(
             r#"{"by_stamp":{"2024-01-05T10:20:30":1},"stamp":"2024-01-05T11:20:30","#,
             r#""stamps":["2024-01-05T12:20:30"],"to_stamp":{"k":"x"}}"#
@@ -382,10 +456,12 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: r#"expected a date and time, found "x""#,
         read_as: "StampLog",
         serde: "input contains invalid characters at line 1 column 120",
+        swift: r#"expected a date and time, found "x""#,
         told: serde_told::<StampLog>,
         zod: false,
     },
     TextFormRow {
+        dart: "read",
         json: concat!(
             r#"{"by_stamp":{"2024-01-05T10:20:30":1},"stamp":"2024-01-05T11:20:30Z","#,
             r#""stamps":["2024-01-05T12:20:30"],"to_stamp":{"k":"2024-01-05T13:20:30"}}"#
@@ -393,10 +469,12 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: "read",
         read_as: "StampLog",
         serde: "trailing input at line 1 column 68",
+        swift: "read",
         told: serde_told::<StampLog>,
         zod: true,
     },
     TextFormRow {
+        dart: r#"expected a date and time, found "2024-01-05 11:20:30""#,
         json: concat!(
             r#"{"by_stamp":{"2024-01-05T10:20:30":1},"stamp":"2024-01-05 11:20:30","#,
             r#""stamps":["2024-01-05T12:20:30"],"to_stamp":{"k":"2024-01-05T13:20:30"}}"#
@@ -404,10 +482,12 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: r#"expected a date and time, found "2024-01-05 11:20:30""#,
         read_as: "StampLog",
         serde: "input contains invalid characters at line 1 column 67",
+        swift: r#"expected a date and time, found "2024-01-05 11:20:30""#,
         told: serde_told::<StampLog>,
         zod: false,
     },
     TextFormRow {
+        dart: "read",
         json: concat!(
             r#"{"by_stamp":{"2024-01-05T10:20:30":1},"stamp":"2024-01-05T11:20","#,
             r#""stamps":["2024-01-05T12:20:30"],"to_stamp":{"k":"2024-01-05T13:20:30"}}"#
@@ -415,26 +495,45 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: "read",
         read_as: "StampLog",
         serde: "premature end of input at line 1 column 64",
+        swift: "read",
         told: serde_told::<StampLog>,
         zod: true,
     },
     TextFormRow {
+        dart: "read",
+        json: concat!(
+            r#"{"by_stamp":{"2024-01-05T10:20:30":1},"stamp":"2024-01-05T11:20Z","#,
+            r#""stamps":["2024-01-05T12:20:30"],"to_stamp":{"k":"2024-01-05T13:20:30"}}"#
+        ),
+        kotlin: "read",
+        read_as: "StampLog",
+        serde: "input contains invalid characters at line 1 column 65",
+        swift: "read",
+        told: serde_told::<StampLog>,
+        zod: true,
+    },
+    TextFormRow {
+        dart: "read",
         json: r#"{"2024-01-05T10:20:30":2}"#,
         kotlin: "read",
         read_as: "StampLines",
         serde: "read",
+        swift: "read",
         told: serde_told::<StampLines>,
         zod: true,
     },
     TextFormRow {
+        dart: r#"expected a date and time, found "x""#,
         json: r#"{"x":2}"#,
         kotlin: r#"expected a date and time, found "x""#,
         read_as: "StampLines",
         serde: "input contains invalid characters at line 1 column 7",
+        swift: r#"expected a date and time, found "x""#,
         told: serde_told::<StampLines>,
         zod: false,
     },
     TextFormRow {
+        dart: "read",
         json: concat!(
             r#"{"by_instant":{"2024-01-05T10:20:30Z":1},"instant":"2024-01-05T11:20:30Z","#,
             r#""instants":["2024-01-05T12:20:30Z"],"to_instant":{"k":"2024-01-05T13:20:30Z"}}"#
@@ -442,10 +541,12 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: "read",
         read_as: "InstantLog",
         serde: "read",
+        swift: "read",
         told: serde_told::<InstantLog>,
         zod: true,
     },
     TextFormRow {
+        dart: "Invalid date format",
         json: concat!(
             r#"{"by_instant":{"x":1},"instant":"2024-01-05T11:20:30Z","#,
             r#""instants":["2024-01-05T12:20:30Z"],"to_instant":{"k":"2024-01-05T13:20:30Z"}}"#
@@ -453,10 +554,12 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: "read",
         read_as: "InstantLog",
         serde: "input contains invalid characters at line 1 column 18",
+        swift: "bad key x",
         told: serde_told::<InstantLog>,
         zod: false,
     },
     TextFormRow {
+        dart: "Invalid date format",
         json: concat!(
             r#"{"by_instant":{"2024-01-05T10:20:30Z":1},"instant":"x","#,
             r#""instants":["2024-01-05T12:20:30Z"],"to_instant":{"k":"2024-01-05T13:20:30Z"}}"#
@@ -464,10 +567,12 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: "read",
         read_as: "InstantLog",
         serde: "input contains invalid characters at line 1 column 54",
+        swift: "bad ISO8601 date: x",
         told: serde_told::<InstantLog>,
         zod: false,
     },
     TextFormRow {
+        dart: "Invalid date format",
         json: concat!(
             r#"{"by_instant":{"2024-01-05T10:20:30Z":1},"instant":"2024-01-05T11:20:30Z","#,
             r#""instants":["x"],"to_instant":{"k":"2024-01-05T13:20:30Z"}}"#
@@ -475,10 +580,12 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: "read",
         read_as: "InstantLog",
         serde: "input contains invalid characters at line 1 column 89",
+        swift: "bad ISO8601 date: x",
         told: serde_told::<InstantLog>,
         zod: false,
     },
     TextFormRow {
+        dart: "Invalid date format",
         json: concat!(
             r#"{"by_instant":{"2024-01-05T10:20:30Z":1},"instant":"2024-01-05T11:20:30Z","#,
             r#""instants":["2024-01-05T12:20:30Z"],"to_instant":{"k":"x"}}"#
@@ -486,22 +593,27 @@ pub const TEXT_FORMS: [TextFormRow; 49] = [
         kotlin: "read",
         read_as: "InstantLog",
         serde: "input contains invalid characters at line 1 column 131",
+        swift: "bad ISO8601 date: x",
         told: serde_told::<InstantLog>,
         zod: false,
     },
     TextFormRow {
+        dart: "read",
         json: r#"{"2024-01-05T10:20:30Z":2}"#,
         kotlin: "read",
         read_as: "InstantLines",
         serde: "read",
+        swift: "read",
         told: serde_told::<InstantLines>,
         zod: true,
     },
     TextFormRow {
+        dart: "Invalid date format",
         json: r#"{"x":2}"#,
         kotlin: "read",
         read_as: "InstantLines",
         serde: "input contains invalid characters at line 1 column 7",
+        swift: "bad key x",
         told: serde_told::<InstantLines>,
         zod: false,
     },
@@ -591,14 +703,18 @@ pub struct StampLog {
 
 /// One payload of [`TEXT_FORMS`], the type it is read as, and what each reader answers of it.
 pub struct TextFormRow {
+    /// What the Dart read answers: `read`, or the message of what it throws.
+    pub dart: &'static str,
     pub json: &'static str,
-    /// What the Kotlin read answers: `read`, written back as it was, or the message of the
-    /// `SerializationException` it throws.
+    /// What the Kotlin read answers: `read`, or the message of the `SerializationException` it
+    /// throws.
     pub kotlin: &'static str,
     pub read_as: &'static str,
     /// What serde answers: `read` where it writes the payload back as it was, what it writes back
     /// otherwise, or its refusal.
     pub serde: &'static str,
+    /// What the Swift read answers: `read`, or the description of what it throws.
+    pub swift: &'static str,
     /// serde's read of the payload as the type.
     pub told: fn(&str) -> String,
     /// Whether the Zod schema of the type reads the payload.
@@ -653,18 +769,31 @@ fn serde_answers_each_text_as_the_table_states() {
     );
 }
 
-/// The Kotlin read refuses a payload exactly where Zod refuses it, where serde does too and where
-/// the two part, and reads every payload of a `DateTime<Utc>`, whose text no check is held to.
+/// Each client's read refuses a payload exactly where Zod refuses it, where serde does too and
+/// where the two part, in the one sentence of its form. A `DateTime<Utc>` apart: Kotlin reads it as
+/// any text, and Dart and Swift read a text serde reads.
 #[test]
-fn the_kotlin_read_refuses_what_zod_refuses_but_a_date_and_time_with_its_zone() {
+fn each_client_read_refuses_what_zod_refuses_but_a_date_and_time_with_its_zone() {
     for row in &TEXT_FORMS {
         let zoned = row.read_as.starts_with("Instant");
-        assert_eq!(
-            row.kotlin == "read",
-            row.zod || zoned,
-            "the Kotlin read parts from Zod on `{}` as {}",
-            row.json,
-            row.read_as
+        let serde_reads = row.serde.starts_with("read");
+        for (client, answer, reads_zoned) in [
+            ("Kotlin", row.kotlin, true),
+            ("Dart", row.dart, serde_reads),
+            ("Swift", row.swift, serde_reads),
+        ] {
+            assert_eq!(
+                answer == "read",
+                if zoned { reads_zoned } else { row.zod },
+                "the {client} read parts from Zod on `{}` as {}",
+                row.json,
+                row.read_as
+            );
+        }
+        assert!(
+            zoned || (row.dart == row.kotlin && row.swift == row.kotlin),
+            "the clients refuse `{}` in other words",
+            row.json
         );
     }
 }

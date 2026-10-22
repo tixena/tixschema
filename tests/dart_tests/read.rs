@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
+use super::held_numbers::{u8_held, u32_held};
 use super::validate::{
     closed_dock_dart, code_dart, consignment_dart, crate_dart, depot_dart, freight_dart,
     gauge_dart, grade_dart, haul_dart, lift_dart, manifest_dart, pair_dart, parcel_dart,
@@ -283,9 +284,10 @@ fn a_tuple_struct_reads_each_slot_as_a_member() {
         &pair_dart::dart_definition(),
         &format!(
             "{}=> Pair(switch (json as List<dynamic>) {{ final tuple when tuple.length == 2 => \
-             (tuple[0] as String, tuple[1] as int), final tuple => throw FormatException('invalid \
+             (tuple[0] as String, {second}), final tuple => throw FormatException('invalid \
              length ${{tuple.length}}, expected 2') }});",
-            pair("Pair", "dynamic json", "json")
+            pair("Pair", "dynamic json", "json"),
+            second = u32_held("tuple[1] as int")
         ),
     );
     assert_written(
@@ -326,10 +328,11 @@ fn a_tagged_enum_dispatches_unjudged_and_judges_once() {
              no value'); case 'Loose': return \
              FreightLoose.fromJsonUnjudged(map['Loose']); case 'Split': return \
              FreightSplit(switch (map['Split'] as List<dynamic>) {{ final tuple when tuple.length \
-             == 2 => (tuple[0] as String, tuple[1] as int), final tuple => throw \
+             == 2 => (tuple[0] as String, {second}), final tuple => throw \
              FormatException('invalid length ${{tuple.length}}, expected 2') }}); default: throw \
              FormatException('Unknown Freight: ' + tag); }} }} dynamic toJson();",
-            pair("Freight", "dynamic json", "json")
+            pair("Freight", "dynamic json", "json"),
+            second = u32_held("tuple[1] as int")
         ),
     );
     assert_written(
@@ -380,10 +383,11 @@ fn an_untagged_enum_takes_the_first_variant_whose_bounds_hold() {
         &format!(
             "{}{{ try {{ final read = ReferenceNamed.fromJsonUnjudged(json as Map<String, \
              dynamic>); if (read._bounds().isEmpty) return read; }} catch (_) {{}} try {{ final \
-             read = ReferenceNumbered(json as int); if (read._bounds().isEmpty) return read; }} \
+             read = ReferenceNumbered({numbered}); if (read._bounds().isEmpty) return read; }} \
              catch (_) {{}} throw FormatException('No variant of Reference matched'); }} dynamic \
              toJson();",
-            pair("Reference", "dynamic json", "json")
+            pair("Reference", "dynamic json", "json"),
+            numbered = u32_held("json as int")
         ),
     );
     assert_written(
@@ -394,8 +398,11 @@ fn an_untagged_enum_takes_the_first_variant_whose_bounds_hold() {
     );
     assert_written(
         &reference,
-        "@override dynamic toJson() => value; List<String> _bounds() => [ if (value < 1) \"too \
-         small: minimum is 1, got ${value}\", ]; @override List<String> validate() =>",
+        &format!(
+            "@override dynamic toJson() => {}; List<String> _bounds() => [ if (value < 1) \"too \
+             small: minimum is 1, got ${{value}}\", ]; @override List<String> validate() =>",
+            u32_held("value")
+        ),
     );
 }
 
@@ -475,22 +482,27 @@ fn an_enum_member_named_after_the_unjudged_read_moves() {
 #[test]
 fn a_fixed_array_is_read_from_an_array_of_its_length() {
     let vise = vise_dart::dart_definition();
+    let item = u8_held("e as int");
     assert_written(
         &vise,
-        "grid: switch (json['grid'] as List<dynamic>) { final array when array.length == 3 => \
-         array.map((e) => switch (e as List<dynamic>) { final array when array.length == 2 => \
-         array.map((e) => e as int).toList(), final array => throw FormatException('invalid \
-         length ${array.length}, expected 2') }).toList(), final array => throw \
-         FormatException('invalid length ${array.length}, expected 3') },",
+        &format!(
+            "grid: switch (json['grid'] as List<dynamic>) {{ final array when array.length == 3 \
+             => array.map((e) => switch (e as List<dynamic>) {{ final array when array.length == \
+             2 => array.map((e) => {item}).toList(), final array => throw \
+             FormatException('invalid length ${{array.length}}, expected 2') }}).toList(), final \
+             array => throw FormatException('invalid length ${{array.length}}, expected 3') }},"
+        ),
     );
     assert_written(
         &vise,
-        "listed: (json['listed'] as List<dynamic>).map((e) => e as int).toList(),",
+        &format!("listed: (json['listed'] as List<dynamic>).map((e) => {item}).toList(),"),
     );
     assert_written(
         &vise,
-        "pair: switch (json['pair'] as List<dynamic>) { final array when array.length == 2 => \
-         array.map((e) => e as int).toList(), final array => throw FormatException('invalid \
-         length ${array.length}, expected 2') },",
+        &format!(
+            "pair: switch (json['pair'] as List<dynamic>) {{ final array when array.length == 2 \
+             => array.map((e) => {item}).toList(), final array => throw \
+             FormatException('invalid length ${{array.length}}, expected 2') }},"
+        ),
     );
 }

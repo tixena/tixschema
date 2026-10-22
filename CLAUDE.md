@@ -378,7 +378,7 @@ to serde and to Zod, and `tests/generic_types_tests/declarations.rs` parses each
 
 - `String` → `string`
 - `bool` → `boolean`
-- Numeric types → `number`
+- Numeric types → `number`. Zod holds each integer to its type's range, `z.number().int().min(0).max(255)` for a `u8`: `FieldDefType::integer_range` answers it, and `zod_number_type` writes it where no declared `minimum` or `maximum` narrows that side. `u64` and `usize` take `.min(0)` alone, and `i64` and `isize` `.int()` alone, which refuses an integer beyond `Number.MAX_SAFE_INTEGER`. An `f32` is `z.number().gt(-B).lt(B)`, `B` being `F32_READ_BOUND`, `3.4028235677973366e38`, the size below which serde reads a finite `f32`. The JSON Schema states no range
 - `Option<T>` → `T | undefined` (Zod: `z.union([z.null().transform(() => undefined), T, z.undefined()]).prefault(undefined)`, accepting an explicit `null` and coercing it to `undefined`; JSON Schema `anyOf: [T, {"type": "null"}]`, key left out of `required`); with `#[model_schema_prop(ts_optional)]` the TypeScript key becomes optional instead: `field?: T`; with `#[model_schema_prop(nullable)]` all three surfaces render `T | null` with the key **required** instead: Zod `z.union([T, z.null()])`, JSON Schema `anyOf: [T, {"type": "null"}]` with the key in `required`
 - `Vec<T>` → `Array<T>`
 - `HashSet<T>`, `BTreeSet<T>` and `IndexSet<T>` (under `indexmap`) → the array a `Vec<T>` writes, its items distinct. `is_set_wrapper` in `src/field_type.rs`, beside `is_sequence_wrapper`, is the one list of sets, and `collection_element_field` records each array level written as one in `FieldDef::set_levels`, numbered as `array_lengths` numbers its levels, so the fact survives every merge into array levels. The JSON Schema writes `"uniqueItems": true` at that level (`arrayed_json_schema_value`, `arrayed_json_schema_fragment`), and Zod `zod_repeat_check` after the level's count, which compares the items it parsed by their `JSON.stringify` and pushes its issue with `continue: true`. The `validate()` of each client answers a repeat at every set level, a member's own set ahead of its count: `own_repeat_elements` and `listed_at` in Dart, comparing the JSON its codec writes for each item; `own_repeat_rules` and `held_walk` under `Walk::Reported` in Swift, comparing the `JSONEncoder` texts with sorted keys; `own_repeat_statements` from `Rules::member` and `held_statements` in Kotlin, comparing the values. A brand over a set answers it too, and no bound a variant of an untagged enum is chosen by holds it. Swift's `reaches` asks `Walk::Rules`, which writes no repeat, so the read of a set is what it was; a tuple that holds a set is read unjudged, its `validate()` answering the repeat. The sentence is `REPEATED_ITEM` in `src/bound_message.rs`, written by `zod_repeat_check`, `dart_repeated`, `swift_repeated` and `kotlin_repeated`. Rust's read keeps one item of a repeat, and its `validate()` answers nothing of one; TypeScript writes `Array<T>`. `tests/set_tests/models.rs` holds the models and `PRINTED`, the table Zod and each client print, and `assert_rust_keeps_one_item`, what Rust's read answers of the same payloads
@@ -387,7 +387,8 @@ to serde and to Zod, and `tests/generic_types_tests/declarations.rs` parses each
 - A unit struct (`pub struct Ping;`, no braces) → `Record<string, never>` (unchanged); the wire is `{}` both ways: the macro replaces the author's own `Serialize`/`Deserialize` derive with impls writing and reading `{}` (serde's own derive writes and reads `null`, refusing `{}`). Kotlin renders a serializable `object Ping` rather than a `class`; Dart and Swift render their own no-data type. Declared above a service as `Result<Ping, E>`, it reads like a `()` success on every client — a braced `struct Ping {}` is a different shape and is unaffected
 - `ObjectId` → `ObjectId` (with $oid validation)
 - `DateTime<Tz>` → `Date` (Zod `z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date())`, which refuses `null` and booleans that `z.coerce.date()` alone reads as 1970, ahead of the `null` arm and the boolean member a union lists after the date; `type_check_a_date_refuses_what_is_no_date_in_every_position_that_holds_one` in `tests/generic_types_tests/declarations.rs` loads the schema under `node` and holds each input to it); with `#[model_schema_prop(as_number)]` → `number` (inline epoch-ms coercer)
-- `NaiveTime` → `string` (Zod `z.iso.time()` wrapped in an inline preprocessor that also accepts millis-since-start-of-day)
+- `NaiveTime` → `string` (Zod `z.iso.time()` wrapped in an inline preprocessor that also accepts millis-since-start-of-day, and writes the seconds `HH:MM` leaves out)
+- `NaiveDateTime` → `string` (Zod `z.iso.datetime({ local: true })` wrapped in an inline preprocessor that drops a `Z` and writes the seconds `T…HH:MM` leaves out, so a client sends the form serde reads: section 14)
 - `Range<T>` and `RangeInclusive<T>` → `{ start: T; end: T }`, `RangeFrom<T>` → `{ start: T }`, `RangeTo<T>` → `{ end: T }` (Zod `z.strictObject({ … })`, JSON Schema an object of those members, each `required`, with `additionalProperties: false`), each bound rendered as its type renders anywhere else. `written_std_range` in `src/field_type.rs` is the one seam that says a path is one: one of the four last names with one type argument, written in full under `core::ops` or `std::ops` (`names_std_ops`), or under any other path but a name `is_declared_ident` holds, a `#[model_schema()]` type of the crate's own declared above. A range written by any path but the full one earns the check `src/model_schema/ranges.rs` writes beside the holder in every build, which hands the std range back as the type the path names and fails with E0308 where that is another type. Each client writes a type of its own per range: a Dart record with named members, a Swift struct `{Holder}{Field}Range` (`{Holder}{Field}Argument{N}Range` in a type argument) that declares the parameters its bound reaches, and a Kotlin `@Serializable` data class over its bound's type, one per kind of range an item writes (`KOTLIN_RANGES`). Each refuses an object that holds a key the range does not write, as serde's own read of a range does: the Dart record's `switch` takes it only where every key is a member, and the Swift struct reads its keys through `SwiftSchemaAnyKey` first and throws `typeMismatch`, as Swift's own read of an enum does. `validate()` walks a range's bounds under their keys (`ConstraintWrap::Range`), the judged read reads a model in one unjudged (`range_built_back`), the recovering decode reads one whole (`Expected::Range`), and under `mongodb` a range field is a `Field`. A range as a map key and a bound key on a range field are refused in every build, and a range under `#[serde(flatten)]` in every build with `serde`
 - `Result<T, E>` → `{ Ok: T } | { Err: E }` (Zod `z.union([z.strictObject({ Ok: T }), z.strictObject({ Err: E })])`, JSON Schema a `oneOf` of the two objects, each with its one key `required` and `additionalProperties: false`), each arm rendered as its type renders anywhere else, an arm of `()` as `null`, as `()` is everywhere. `written_std_result` in `src/field_type.rs` is the one seam that says a path is one: `Result` with two type arguments, written in full under `core::result` or `std::result` (`names_std_result`), or under any other path but a name `is_declared_ident` holds; a `Result<T>` of one keeps its reading. A `Result` written by any path but the full one earns the check `is_std_result` that `src/model_schema/ranges.rs` writes beside the holder, which fails with E0308 where the name is another type. Each client writes a type of its own: a Dart sealed class `DartResult{N}` with an `Ok` and an `Err` subclass, one per shape of `()` arms an item writes (`DART_RESULTS`), a Swift enum `{Holder}{Field}Result` of the cases `ok` and `err` that declares the parameters its arms reach, and a Kotlin sealed interface `KotlinResult{N}` with a class or an object per arm and a serializer that reads the object key by key (`KOTLIN_RESULTS`). Each refuses an object of both keys, of neither or of another key, as serde does. `validate()` walks the arm the value holds under its key (`HeldEnd::Arms`, the walk that branches as `HeldEnd::Positions` does), the judged read reads a model in either arm unjudged, built back arm by arm (`walked_read`, `result_read`, which several models of one member hand `MemberHook::leaves`), the recovering decode walks into the arm (`Step::Arms`) and lists an object that names neither arm or both as one `Invalid` at the field, expected `Variants(["Ok", "Err"])`, and under `mongodb` a `Result` field is a `Field`. A `Result` as a map key and a bound key on a `Result` field are refused in every build, and a `Result` under `#[serde(flatten)]` in every build with `serde`
 - `()` → `null` (Zod `z.null()`, JSON Schema `{"type": "null"}`), the `null` serde writes for it, wherever it is held: a member, a list's item, a tuple's position, a type argument, an arm of a `Result` and a brand's slot (`null & $brand<"Name">`). serde refuses `[]` for it. `FieldDef::is_unit` names it, and the `FieldDefType::Tuple` arm of `typescript_base`, `zod_array_base` and `tuple_json_schema_value` is the one place each surface renders it, the arms of a `Result` read through it. A tuple struct of no slot, and a tuple variant of no slot serde writes, keep the `[]` serde writes for them. `written_non_object_wire` and `scalar_json_type_keyword` answer `null` for `()`, and a leaf written as it carries `WrittenAs::Unit`: flattened, and in the lone slot of a variant under a tag alone, it is refused (below), in words that say serde writes no key, or the tag alone (`TAGGED_UNIT_WRITTEN`, `TaggedContent::Unit` for `()` written in place). A flattened union member over `()` is closed by `FLATTENED_UNIT_MEMBER_SCOPE`. A union declared below is refused by the JSON Schema merge when `json_schema()` runs (`refuse_unit_member`, in the words of the expansion's refusal), by the record its schema module's `Schema` publishes, `WRITES_A_UNIT_MEMBER` (`UNIT_MEMBER_RECORD`, written by `unit_member_record_item`), which an alias, a brand and a struct of one slot over such a union, written by its name, forward; the holder reads it behind a block-local trait that answers `false` for every other type (`unit_member_record`, carried as `MergedSource::unit_member`). A member the union's own expansion does not see as `()`, its type parameter filled at `()` or a type declared below it, sets no record, and the merge reads its `null` as the absence an `Option` offers; `tests/flatten_tests/tests.rs` holds both. A map key `()` is refused as the `null` serde writes (`WRITTEN_AS_NULL`). `tests/branded_newtype_tests/unit_value.rs` pins each surface, and `type_check_a_unit_parses_under_zod_what_serde_reads` holds the Zod schema and the JSON Schema to serde under node. Each client reads `()` from `null` alone and writes it as `null`, refusing any other value in serde's words (`invalid type: [], expected unit`, the value quoted as JSON): Dart in `unit_decode`, with an absent key that holds `()`, or a brand, an alias or an untagged enum over it declared above, refused by `keyed_decode` (`reads_a_unit`, `DART_READS_A_UNIT`); Swift through the struct `unit_shape` writes, `{hint}Tuple`, over a single-value container, with `DecodingError.dataCorrupted`; Kotlin through the `object` `unit_typename` declares once per item, `KotlinUnit{N}`, beside its serializer, with `SerializationException`. A tuple struct of no slot keeps `[]`: Dart reads it through `Held::Slots`, Swift's `Wrapped::Tuple` through `tuple_shape`, and Kotlin writes it as a `class`, kotlinc refusing a `data class` of no property. `tests/service_schema_emitted_client_tests/unit_models.rs` holds the models and what serde reads and refuses, and `run_dart_units.rs`, `run_swift_units.rs` and `run_kotlin_units.rs` hold each client to it.
@@ -602,7 +603,7 @@ A function a `preprocess` names is called by the read alone of each language, ah
 | `preprocess = ["fn"]` | any, and a type | `z.preprocess(fn, ...)` | — | every read of the type calls `fn` in snake case on the payload, a `serde_json::Value`, ahead of the value's read | in `fromJsonUnjudged`: `fn` on the payload, a `dynamic`, ahead of the value's read | in `init(swiftSchemaUnjudged:)`: `fn` on the payload, an `Any`, ahead of the value's read | in the read of `{Type}Unjudged`: `fn` on the payload, a `JsonElement`, ahead of the value's read |
 | `check = ["fn"]` | any, and a type | `.check((ctx) => { ... fn(own.value, own); ... })` | — | `validate()` calls `fn` in snake case, in every build, and the type's read refuses with its messages; an issue of the recovering decode | `validate()` calls `fn`, and `fromJson` throws `FormatException` with its messages | `validate()` calls `fn`, and `init(from:)` throws `DecodingError.dataCorrupted` with its messages | `validate()` calls `fn`, and `{Type}Serializer` throws `SerializationException` with its messages |
 | `ts_optional` | `Option<T>` | — | — | — (TypeScript-only) | — | — | — |
-| `as_number` | `DateTime<Tz>` | inline `z.preprocess(..., z.number())` | — | serde `with = chrono::serde::ts_milliseconds` injected | an `int` | an `Int64`, which the emitted codec reads from an ISO 8601 string and writes as one | a `Long` |
+| `as_number` | `DateTime<Tz>` | inline `z.preprocess(..., z.number().int())` | — | serde `with = chrono::serde::ts_milliseconds` injected | an `int` | an `Int64`, the number serde writes | a `Long` |
 | `nullable` | `Option<T>` | `z.union([T, z.null()])`, key required | `anyOf: [T, {"type":"null"}]`, key required | guard: refuses a key-dropping serde attr | `T?`, the one spelling of an `Option` | the key always encoded, `nil` included | no `= null` default on the property |
 
 `README.md`'s "Preprocess and check" section is the one place that states `preprocess` and `check`
@@ -1145,18 +1146,22 @@ the consumer's view; this is what a change has to keep.
   reads each payload under kotlinc with both `Json`s, beside serde's read and what Zod answers
   under node; the rows of `run_kotlin_flattened.rs` that hold a key serde reads past are pinned to
   the Kotlin read, the Zod read.
-- **A `char` and a chrono date, time and date and time are read in their one form**, by
-  `src/features/kotlin/texts.rs`. Kotlin holds each as a `String`, and `TextForm` names its form.
-  `texts::serializer` declares, once per item and form, `object KotlinText{N} :
-  KSerializer<String>` into the queue the tuple wrappers are written from (`KOTLIN_TEXTS`, cleared
-  with them), which throws `SerializationException` for any other text: `expected a character,
-  found "ab"` for a text of other than one code point, as serde refuses it, and `expected a date,
-  found "x"` for a text Zod's `z.iso.date()`, `z.iso.time()` or `z.iso.datetime({ local: true })`
-  refuses, written with the regexes of Zod 4.6.5. Where serde and Zod part on a date, the read
-  follows Zod: serde reads more forms than Zod, years outside 0000 to 9999 and leap seconds among
-  them, and refuses a date and time under `Z` or with no seconds, which Zod reads. A
-  `DateTime<Tz>` has no form: Zod reads any text a JavaScript `Date` reads, and the read takes any
-  text.
+- **A `char` and a chrono date, time and date and time are read in their one form, and written
+  in the form serde writes**, by `src/features/kotlin/texts.rs`. Kotlin holds each as a `String`,
+  and `TextForm` (`src/features/text_forms.rs`, section 14) names its form. `texts::serializer`
+  declares, once per item and form, `object KotlinText{N} : KSerializer<String>` into the queue
+  the tuple wrappers are written from (`KOTLIN_TEXTS`, cleared with them), which throws
+  `SerializationException` for any other text: `expected a character, found "ab"` for a text of
+  other than one code point, as serde refuses it, and `expected a date, found "x"` for a text
+  Zod's `z.iso.date()`, `z.iso.time()` or `z.iso.datetime({ local: true })` refuses, written with
+  the regexes of Zod 4.6.5. Where serde and Zod part on a date, the read follows Zod: serde reads
+  more forms than Zod, years outside 0000 to 9999 and leap seconds among them, and refuses a date
+  and time under `Z` or with no seconds, which Zod reads. The write drops that `Z`
+  (`TextForm::unzoned`), writes the seconds (`TextForm::unsecond`), and throws in the words of
+  the read for a text that is then not of `TextForm::sent`. A `DateTime<Tz>` held as its text is
+  `TextForm::Zoned`: read as any text, as Zod reads any text a JavaScript `Date` reads, and
+  written held to RFC 3339 with its zone, its seconds written, `expected a date and time with its
+  zone, found "x"` for any other.
   - Where the plugin reads, the declaration names the serializer. `read::plugin_read` writes
     `@Serializable(with = KotlinText{N}::class)` at each place `texts::declared` finds a form, the
     value itself, inside a list, a nullable, a map's key and value, a type argument, a range's
@@ -1178,8 +1183,8 @@ the consumer's view; this is what a change has to keep.
     header the HTTP client reads is read from its text as a JSON string through it
     (`kotlin_header_out_decode`). `run_kotlin_service_forms.rs` reads a reply of a date and a
     header of a `char` under kotlinc.
-  - `tests/kotlin_tests/text_forms_models.rs` holds `TEXT_FORMS`, what serde, Zod and the Kotlin
-    read answer of each payload of a `char` and of each chrono type in each place.
+  - `tests/kotlin_tests/text_forms_models.rs` holds `TEXT_FORMS`, what serde, Zod and the Kotlin,
+    Dart and Swift reads answer of each payload of a `char` and of each chrono type in each place.
     `tests/kotlin_tests/text_forms.rs` pins the text, `run_kotlin_text_forms.rs` reads each payload
     under kotlinc, `tests/generic_types_tests/declarations.rs` holds Zod to the table under `node`,
     and `src/features/kotlin/tests/texts.rs` pins each shape and each limit.
@@ -1833,6 +1838,20 @@ consumer's view; this is what a change has to keep.
   keys, is refused where that object holds another key beside its entry, which serde reads.
   `run_dart_refusals.rs` reads each refusal under the Dart SDK, beside serde's refusal of the same
   payload.
+- **A number, a `char` and a chrono date, time and date and time are read and written in their
+  one form** (section 14), by `src/features/dart/forms.rs`, each an inline expression, so two
+  types share nothing. `text_read` reads a `char` and a date or time held as a `String` wherever
+  `dart_decode_at` reads one, a map's key among them: a `switch` that answers the text where it
+  matches `TextForm::read`, or is one code point for a `char`, and throws `FormatException('expected
+  {form}, found ...')` otherwise, the text quoted by `jsonEncode`. `text_sent`, wherever `toJson`
+  writes one, drops the `Z` (`TextForm::unzoned`), writes the seconds (`TextForm::unsecond`) and
+  throws in the same words for a text not of `TextForm::sent`. `number_held` holds an integer to
+  `FieldDefType::integer_range` and an `f32` below `F32_READ_BOUND` in size, on the read and on
+  the write, a map's key included: `expected an integer from 0 to 255, found 256`, `expected a
+  32-bit float, found 1e+300`. A `DateTime<Tz>` is written `toUtc().toIso8601String()`, as a value
+  and as a map's key. The WebSocket client writes and reads a header through the same codec.
+  `run_dart_text_forms.rs` reads `TEXT_FORMS` under the Dart SDK, and `run_dart_wire_forms.rs`
+  writes `WIRE_FORMS`.
 - **A declared type is read unjudged exactly where the holder's `validate()` runs it.** `Read` is
   threaded through `dart_decode_expr` and `dart_decode_at`, and `Read::of_member` asks
   `walks_what_it_holds`, the question `member_elements` asks: a member's own bound stands in for
@@ -2322,7 +2341,23 @@ to keep.
 - **Every struct writes its memberwise initializer**, public, the struct written for a tuple
   included: Swift synthesizes none beside a written `init(from:)`.
 - **`encode(to:)` does not move.** `struct_body_content` writes it where it wrote it before
-  (`needs_encode`), and Swift synthesizes it everywhere else.
+  (`needs_encode`), and Swift synthesizes it everywhere else. A member of a `char` or of a chrono
+  date or time held as a `String` is a `LeafConversion::Text`, so its type writes it.
+- **A `char` and a chrono date, time and date and time are read and written in their one form**
+  (section 14), by `src/features/swift/forms.rs`. `forms::read_call` reads the text through
+  `swiftSchemaRead{Char|Date|Time|Stamp}`, which throws `DecodingError.dataCorrupted` and
+  `expected {form}, found ...` for a text not of `TextForm::read`, and `forms::sent_call` writes it
+  through `swiftSchemaSent…`, which drops the `Z`, writes the seconds and throws
+  `EncodingError.invalidValue` in the same words for a text not of `TextForm::sent`, each under
+  the coding path of the decoder or the encoder, and a map's key under the path of its entry. `forms::helpers` writes the functions a type calls as private static
+  functions of that type, with `swiftSchemaQuoted`, and `leaf_helpers_for` writes them beside the
+  date helpers; a map's wrapper reads and writes a key of a form through them. A pattern is
+  written with `[0-9]` for `\d`: Foundation's `\d` takes a digit of any script. A `DateTime<Tz>`
+  is a `Date`, read by a formatter with a fraction of a second or by one without
+  (`swiftSchemaWholeIso8601Formatter`, `isoWholeFormatterForKeys`), and written by the first; under
+  `as_number` it is an `Int64` read and written as the number serde writes.
+  `run_swift_text_forms.rs` reads `TEXT_FORMS` under the toolchain, and `run_swift_wire_forms.rs`
+  writes `WIRE_FORMS`.
 - **A member serde never writes is read and encoded under no key.** `SwiftField::never_written`
   is `has_serde_skip_serializing`: `skip_serializing`, never `skip_serializing_if`. Swift's own
   `encode(to:)` encodes every property, so `needs_encode` holds for a struct with such a member,
@@ -2797,6 +2832,46 @@ has to keep.
   without it, beside a holder of its untagged form whose Zod text holds no placeholder. Each
   refusal of a variant's member is a `trybuild` case whose `.stderr` holds its message spanned on
   the field, and an enum with two refused members reports both.
+
+### 14. The Form Each Client Sends
+
+Every client sends each value in the one form every target reads: serde, Zod, the JSON Schema and
+each other client. The Rust read and write do not change: the clients write the form at the
+boundary. `README.md`'s "The Form Each Client Sends" section is the consumer's view; this is what a
+change has to keep.
+
+- **Two rules.** A value held in another form of the same value is sent in the form serde writes
+  (a `NaiveDateTime`'s `Z` dropped, the seconds `HH:MM` leaves out written, a Dart `DateTime` sent
+  in UTC). A value no form serde reads holds is refused before it is sent (an integer outside its
+  type's range, an `f32` beyond `F32_READ_BOUND` in size, an `f64` NaN, a `char` of other than one
+  code point, a date or time text no rewrite turns into its form). A text in a form serde reads
+  beside the one it writes is refused where Zod refuses it (`2024-1-5`). A value already in the
+  form is sent as it is.
+- **`src/features/text_forms.rs` is the one source of the forms**, under `dart`, `swift` or
+  `kotlin`: `TextForm`, its `read`, `sent`, `unsecond` and `unzoned` patterns, the Zod 4.6.5
+  patterns `DATE`, `TIME`, `TIME_SENT` and `OFFSET`, and `expected`, the words of a refusal. Each
+  client writes them in its own language: Dart inline (`src/features/dart/forms.rs`), Swift as
+  private static functions of the type (`src/features/swift/forms.rs`), Kotlin as one serializer
+  object per item and form (`src/features/kotlin/texts.rs`). `TextForm::sends` is the one Rust
+  statement of what a client sends of a text, which the unit tests of the module hold.
+- **TypeScript sends what the message's Zod check gives back**, over HTTP, the bus seam and the
+  WebSocket transport, which carries the seam's messages: the integer ranges and the `f32` range
+  of section 4, and the preprocessors of `NaiveTime` and `NaiveDateTime`, decide what is sent.
+- **What no client changes is reported, not changed**: an `i64`, `isize`, `u64` or `usize`
+  beyond `2^53 - 1` in size, which a JavaScript number does not hold exactly, and a date under
+  `as_number`, which the JSON Schema describes as a date's text where serde writes a number
+  (`NO_COMMON_FORM` in `tests/wire_forms_tests/tests.rs`). Years outside 0000 to 9999 and leap
+  seconds are out of scope.
+- **The tests.** `tests/wire_forms_tests/models.rs` holds `WIRE_FORMS`: each value a caller hands
+  a client, in a field, a list and, where section 3 allows, a map's key, what serde answers of it,
+  and what each client sends (`Sends`). `tests/wire_forms_tests.rs` holds serde to the table and
+  the JSON Schema to every payload a client sends; `tests/generic_types_tests/declarations.rs`
+  sends each row through the Zod schemas under node; `run_dart_wire_forms.rs`,
+  `run_swift_wire_forms.rs` and `run_kotlin_wire_forms.rs` send each row through each client's
+  codec under its toolchain, and `run_node_wire_forms.rs` sends a message through the three
+  TypeScript clients. `TEXT_FORMS` in `tests/kotlin_tests/text_forms_models.rs` holds what each
+  client reads of a text, which `run_kotlin_text_forms.rs`, `run_dart_text_forms.rs` and
+  `run_swift_text_forms.rs` run.
 
 ### Generic Types and Zod Factories
 
@@ -3876,6 +3951,7 @@ tixschema/
 │   │   ├── zod.rs                # Zod schema generation
 │   │   ├── jsonschema.rs         # JSON schema generation
 │   │   ├── object_id.rs          # ObjectId support
+│   │   ├── text_forms.rs         # The one form of a char and a chrono text, which each client reads and sends
 │   │   ├── recovering_decode.rs  # enable: the entry points, the walkers, the two support libraries, the probes
 │   │   ├── recovering_decode/
 │   │   │   ├── enums.rs          # The walkers of an enum
@@ -3887,6 +3963,7 @@ tixschema/
 │   │   ├── swift.rs              # Swift types and their Codable codec
 │   │   ├── swift/
 │   │   │   ├── aliases.rs        # The names serde reads a variant and a member under beside the one it writes
+│   │   │   ├── forms.rs          # A char and a chrono text read and written in their one form
 │   │   │   ├── preprocess.rs     # preprocess in the Swift read: the payload type, the calls, the keys taken
 │   │   │   ├── read.rs           # The two reads of every Swift type: its own, and the one that judges
 │   │   │   └── validate.rs       # validate() of every Swift type: bounds, checks, holders
@@ -3904,6 +3981,8 @@ tixschema/
 │   ├── preprocess_and_check_tests/       # The parcel the section declares, and the section held to the test of each language
 │   ├── serde_default_tests.rs            # A key under #[serde(default)]: the serde read, the text of every surface
 │   ├── serde_default_tests/              # The models and the table every surface is held to
+│   ├── wire_forms_tests.rs               # The form each client sends: serde and the JSON Schema held to WIRE_FORMS
+│   ├── wire_forms_tests/                 # WIRE_FORMS and its models, which every client's run sends
 │   ├── skipped_variant_tests.rs          # A variant serde neither writes nor reads: every surface, and the models the client runs read
 │   ├── skipped_variant_tests/            # The models and the payloads every surface and client is held to
 │   ├── std_range_tests.rs                # The four std ranges: every surface, validate(), the read, the decode, the README

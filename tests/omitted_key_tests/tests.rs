@@ -127,7 +127,7 @@ fn zod_keeps_the_undefined_union_that_already_admits_the_absent_key() {
 
     assert!(
         zod.contains(
-            "age: z.union([z.null().transform(() => undefined), z.number().int(), z.undefined()]).prefault(undefined),"
+            "age: z.union([z.null().transform(() => undefined), z.number().int().min(0).max(4294967295), z.undefined()]).prefault(undefined),"
         ),
         "Got: {zod}"
     );

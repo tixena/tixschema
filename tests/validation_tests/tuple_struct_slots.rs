@@ -252,7 +252,7 @@ mod a_check_on_a_slot {
         assert!(
             pair.contains(
                 "z.tuple([z.string().min(1, { error: (issue) => `too short: minimum length is 1, \
-                 got ${String(issue.input).length}` }), z.number().int().min(1, { error: (issue) \
+                 got ${String(issue.input).length}` }), z.number().int().max(4294967295).min(1, { error: (issue) \
                  => `too small: minimum is 1, got ${String(issue.input)}` })])"
             ),
             "Got:\n{pair}"

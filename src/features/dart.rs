@@ -1,5 +1,7 @@
 //! Dart type and JSON-codec generation.
 
+mod forms;
+
 use core::cell::{Cell, RefCell};
 use core::fmt::Write as _;
 use core::iter::once;
@@ -18,6 +20,7 @@ use crate::features::serde::{
     struct_tag, tag_and_content_when_flattened, variant_names_when_flattened, variants_on_the_wire,
     written_slots,
 };
+use crate::features::text_forms::TextForm;
 use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, dart_from_json_argument,
     dart_lower_camel, dart_to_json_argument, get_field_def, is_plain_enum, is_sequence_wrapper,
@@ -1159,7 +1162,10 @@ fn dart_map_key_decode(key: &FieldDef, expr: &str) -> String {
             | FieldDefType::I32
             | FieldDefType::I64
             | FieldDefType::Usize
-            | FieldDefType::Isize => format!("int.parse({expr})"),
+            | FieldDefType::Isize => {
+                let read = format!("int.parse({expr})");
+                forms::number_held(&key.field_type, &read).unwrap_or(read)
+            }
             FieldDefType::F32 | FieldDefType::F64 => format!("double.parse({expr})"),
             FieldDefType::Boolean
             | FieldDefType::Char
@@ -1195,7 +1201,7 @@ fn dart_map_key_encode(key: &FieldDef, expr: &str) -> String {
     match key.map_key_wire() {
         MapKeyWire::Boolean => format!("({expr} ? \"true\" : \"false\")"),
         #[cfg(feature = "chrono")]
-        MapKeyWire::Timestamp => format!("{expr}.toIso8601String()"),
+        MapKeyWire::Timestamp => format!("{expr}.toUtc().toIso8601String()"),
         MapKeyWire::Enumerated => format!("({expr}).toJson()"),
         MapKeyWire::Named => match &key.field_type {
             FieldDefType::U8
@@ -1209,7 +1215,10 @@ fn dart_map_key_encode(key: &FieldDef, expr: &str) -> String {
             | FieldDefType::Usize
             | FieldDefType::Isize
             | FieldDefType::F32
-            | FieldDefType::F64 => format!("({expr}).toString()"),
+            | FieldDefType::F64 => format!(
+                "({}).toString()",
+                forms::number_held(&key.field_type, expr).unwrap_or_else(|| expr.to_owned())
+            ),
             FieldDefType::Boolean
             | FieldDefType::Char
             | FieldDefType::String
@@ -1343,9 +1352,7 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
             )
         }
         FieldDefType::Boolean => format!("{expr} as bool"),
-        FieldDefType::Char | FieldDefType::String | FieldDefType::StringLiteral(_) => {
-            format!("{expr} as String")
-        }
+        FieldDefType::String | FieldDefType::StringLiteral(_) => format!("{expr} as String"),
         FieldDefType::BooleanLiteral(_) => format!("{expr} as bool"),
         FieldDefType::NumberLiteral(_) => format!("({expr} as num).toDouble()"),
         FieldDefType::U8
@@ -1357,13 +1364,23 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
         | FieldDefType::I32
         | FieldDefType::I64
         | FieldDefType::Usize
-        | FieldDefType::Isize => format!("{expr} as int"),
-        FieldDefType::F32 | FieldDefType::F64 => format!("({expr} as num).toDouble()"),
+        | FieldDefType::Isize => {
+            let taken = format!("{expr} as int");
+            forms::number_held(&field.field_type, &taken).unwrap_or(taken)
+        }
+        FieldDefType::F32 | FieldDefType::F64 => {
+            let taken = format!("({expr} as num).toDouble()");
+            forms::number_held(&field.field_type, &taken).unwrap_or(taken)
+        }
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => format!("ObjectId.fromJson({expr})"),
+        FieldDefType::Char => forms::text_read(TextForm::Char, &format!("{expr} as String")),
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate | FieldDefType::NaiveTime | FieldDefType::NaiveDateTime => {
-            format!("{expr} as String")
+            TextForm::of(field).map_or_else(
+                || format!("{expr} as String"),
+                |form| forms::text_read(form, &format!("{expr} as String")),
+            )
         }
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime => {
@@ -1826,12 +1843,12 @@ fn dart_encode_at(field: &FieldDef, level: u8, expr: &str) -> String {
             )
         }
         FieldDefType::Boolean
-        | FieldDefType::Char
         | FieldDefType::String
         | FieldDefType::StringLiteral(_)
         | FieldDefType::BooleanLiteral(_)
         | FieldDefType::NumberLiteral(_)
-        | FieldDefType::U8
+        | FieldDefType::F64 => expr.to_owned(),
+        FieldDefType::U8
         | FieldDefType::U16
         | FieldDefType::U32
         | FieldDefType::U64
@@ -1841,20 +1858,23 @@ fn dart_encode_at(field: &FieldDef, level: u8, expr: &str) -> String {
         | FieldDefType::I64
         | FieldDefType::Usize
         | FieldDefType::Isize
-        | FieldDefType::F32
-        | FieldDefType::F64 => expr.to_owned(),
+        | FieldDefType::F32 => {
+            forms::number_held(&field.field_type, expr).unwrap_or_else(|| expr.to_owned())
+        }
+        FieldDefType::Char => forms::text_sent(TextForm::Char, expr),
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => format!("({expr}).toJson()"),
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate | FieldDefType::NaiveTime | FieldDefType::NaiveDateTime => {
-            expr.to_owned()
+            TextForm::of(field).map_or_else(|| expr.to_owned(), |form| forms::text_sent(form, expr))
         }
+        // A `DateTime` of no zone is written with its zone, as serde reads a `DateTime<Tz>`.
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime => {
             if has_as_number(field) {
                 expr.to_owned()
             } else {
-                format!("({expr}).toIso8601String()")
+                format!("({expr}).toUtc().toIso8601String()")
             }
         }
     }

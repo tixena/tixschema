@@ -179,19 +179,21 @@ fn test_a_fixed_array_in_a_slot_describes_its_length() {
 fn test_a_fixed_array_validates_its_length_in_zod() {
     let zod_schema = FixedArrayFields::zod_schema();
     for spelling in [
-        "const_ids: z.array(z.number().int()),",
-        "grid: z.array(z.array(z.number().int()).length(2)).length(2),",
-        "ids: z.array(z.number().int()).length(3),",
-        "ids_of_rows: z.array(z.array(z.number().int())).length(2),",
-        "optional_elements: z.array(z.nullable(z.number().int())).length(3),",
-        "rows_of_ids: z.array(z.array(z.number().int()).length(3)),",
-        "slice_ids: z.array(z.number().int()),",
+        "const_ids: z.array(z.number().int().min(0).max(4294967295)),",
+        "grid: z.array(z.array(z.number().int().min(0).max(4294967295)).length(2)).length(2),",
+        "ids: z.array(z.number().int().min(0).max(4294967295)).length(3),",
+        "ids_of_rows: z.array(z.array(z.number().int().min(0).max(4294967295))).length(2),",
+        "optional_elements: z.array(z.nullable(z.number().int().min(0).max(4294967295))).length(3),",
+        "rows_of_ids: z.array(z.array(z.number().int().min(0).max(4294967295)).length(3)),",
+        "slice_ids: z.array(z.number().int().min(0).max(4294967295)),",
     ] {
         assert!(zod_schema.contains(spelling), "Got: {zod_schema}");
     }
     // Each set the array holds refuses a repeat, and the array keeps its length.
     assert!(
-        zod_schema.contains("set_of_ids: z.array(z.array(z.number().int()).check((ctx) => {"),
+        zod_schema.contains(
+            "set_of_ids: z.array(z.array(z.number().int().min(0).max(4294967295)).check((ctx) => {"
+        ),
         "Got: {zod_schema}"
     );
     assert!(
@@ -205,15 +207,15 @@ fn test_a_fixed_array_validates_its_length_in_zod() {
     assert!(
         zod_schema.contains(
             "optional_ids: z.union([z.null().transform(() => undefined), \
-             z.array(z.number().int()).length(3), z.undefined()])"
+             z.array(z.number().int().min(0).max(4294967295)).length(3), z.undefined()])"
         ),
         "Got: {zod_schema}"
     );
 
     let slot_schema = FixedArraySlots::zod_schema();
     for spelling in [
-        "by_key: z.record(z.string(), z.array(z.number().int()).length(3)),",
-        "entry: z.tuple([z.string(), z.array(z.number().int()).length(3)]),",
+        "by_key: z.record(z.string(), z.array(z.number().int().min(0).max(4294967295)).length(3)),",
+        "entry: z.tuple([z.string(), z.array(z.number().int().min(0).max(4294967295)).length(3)]),",
     ] {
         assert!(slot_schema.contains(spelling), "Got: {slot_schema}");
     }

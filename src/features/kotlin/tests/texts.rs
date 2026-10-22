@@ -3,13 +3,14 @@
 
 use super::*;
 
-/// The serializer of a `char`, declared under `named`.
+/// The serializer of a `char`, declared under `named`, which writes and reads one code point alone.
 fn letter(named: &str) -> String {
     format!(
         "object {named} : KSerializer<String> {{ override val descriptor: SerialDescriptor = \
          PrimitiveSerialDescriptor(\"{named}\", PrimitiveKind.STRING); override fun \
-         serialize(encoder: Encoder, value: String) = encoder.encodeString(value); override fun \
-         deserialize(decoder: Decoder): String {{ val text = decoder.decodeString(); if \
+         serialize(encoder: Encoder, value: String) {{ if (value.codePointCount(0, value.length) \
+         != 1) throw SerializationException(\"expected a character, found \" + \
+         JsonPrimitive(value)); encoder.encodeString(value) }} override fun deserialize(decoder: Decoder): String {{ val text = decoder.decodeString(); if \
          (text.codePointCount(0, text.length) != 1) throw SerializationException(\"expected a \
          character, found \" + JsonPrimitive(text)); return text }} }}"
     )

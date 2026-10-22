@@ -3,13 +3,14 @@
 //! through the first and throws what `validate()` answers. A holder reads each model its
 //! `validate()` asks with the unjudged one, so the whole value is judged once.
 
-use super::texts::{self, TextForm};
+use super::texts;
 use super::{arrays, validate};
 use super::{
     innermost, kotlin_base, kotlin_quoted, kotlin_serializer_expr, kotlin_serializer_param_name,
     kotlin_typename, listed_serializer, lookup_kotlin_name, range_serializer, range_typename,
     result_serializer, result_typename, sibling_typename, tuple_wrapper_typename,
 };
+use crate::features::text_forms::TextForm;
 use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
 
 /// What a serializer the emitter writes binds each type parameter to: `KSerializer<T>.nullable`

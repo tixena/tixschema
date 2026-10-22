@@ -22,9 +22,9 @@ fn zod_refuses_each_key_serde_drops_from_an_optional_struct() {
 #[test]
 fn a_map_alone_writes_a_record_of_every_key() {
     #[cfg(feature = "typescript")]
-    const EXPECTED: &str = "const Thwart$RawSchema = z.strictObject({\n}).and(z.lazy(() => z.record(z.string(), z.number().int())));\n\nexport const Thwart$Schema: ZodType<Thwart> = Thwart$RawSchema.meta({\n  examples: []\n});";
+    const EXPECTED: &str = "const Thwart$RawSchema = z.strictObject({\n}).and(z.lazy(() => z.record(z.string(), z.number().int().min(0).max(255))));\n\nexport const Thwart$Schema: ZodType<Thwart> = Thwart$RawSchema.meta({\n  examples: []\n});";
     #[cfg(not(feature = "typescript"))]
-    const EXPECTED: &str = "export const Thwart$Schema = z.strictObject({\n}).and(z.lazy(() => z.record(z.string(), z.number().int()))).meta({\n  examples: []\n});";
+    const EXPECTED: &str = "export const Thwart$Schema = z.strictObject({\n}).and(z.lazy(() => z.record(z.string(), z.number().int().min(0).max(255)))).meta({\n  examples: []\n});";
 
     assert_eq!(Thwart::zod_schema(), EXPECTED);
 }
@@ -49,9 +49,9 @@ fn a_map_in_a_variant_writes_a_record_of_every_key() {
 #[test]
 fn an_optional_map_is_the_map_or_every_key_dropped() {
     #[cfg(feature = "typescript")]
-    const EXPECTED: &str = "const Locker$OwnSchema = z.strictObject({\n});\n\nconst Locker$RawSchema = z.union([\n  Locker$OwnSchema.and(z.lazy(() => z.record(z.string(), z.number().int()))),\n  Locker$OwnSchema.and(z.record(z.string(), z.unknown()).transform(() => ({}))),\n]);\n\nexport const Locker$Schema: ZodType<Locker> = Locker$RawSchema.meta({\n  examples: []\n});";
+    const EXPECTED: &str = "const Locker$OwnSchema = z.strictObject({\n});\n\nconst Locker$RawSchema = z.union([\n  Locker$OwnSchema.and(z.lazy(() => z.record(z.string(), z.number().int().min(0).max(255)))),\n  Locker$OwnSchema.and(z.record(z.string(), z.unknown()).transform(() => ({}))),\n]);\n\nexport const Locker$Schema: ZodType<Locker> = Locker$RawSchema.meta({\n  examples: []\n});";
     #[cfg(not(feature = "typescript"))]
-    const EXPECTED: &str = "const Locker$OwnSchema = z.strictObject({\n});\n\nexport const Locker$Schema = z.union([\n  Locker$OwnSchema.and(z.lazy(() => z.record(z.string(), z.number().int()))),\n  Locker$OwnSchema.and(z.record(z.string(), z.unknown()).transform(() => ({}))),\n]).meta({\n  examples: []\n});";
+    const EXPECTED: &str = "const Locker$OwnSchema = z.strictObject({\n});\n\nexport const Locker$Schema = z.union([\n  Locker$OwnSchema.and(z.lazy(() => z.record(z.string(), z.number().int().min(0).max(255)))),\n  Locker$OwnSchema.and(z.record(z.string(), z.unknown()).transform(() => ({}))),\n]).meta({\n  examples: []\n});";
 
     assert_eq!(Locker::zod_schema(), EXPECTED);
 }

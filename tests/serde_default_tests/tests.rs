@@ -14,6 +14,20 @@ use super::models::{Gangway, report};
 #[cfg(all(feature = "indexmap", any(feature = "zod", feature = "jsonschema")))]
 use super::models::{IndexedFleet, IndexedLogbook};
 
+/// The read of `Gangway`'s `u32`, held to its range.
+#[cfg(feature = "dart")]
+const WIDTH_READ: &str = "(switch (json['width'] as int) { final number when number >= 0 && \
+                          number <= 4294967295 => number, final number => throw \
+                          FormatException('expected an integer from 0 to 4294967295, found \
+                          $number') })";
+
+/// The write of `Gangway`'s `u32`, held to its range.
+#[cfg(feature = "dart")]
+const WIDTH_WRITTEN: &str = "(switch (width) { final number when number >= 0 && number <= \
+                             4294967295 => number, final number => throw \
+                             FormatException('expected an integer from 0 to 4294967295, found \
+                             $number') })";
+
 /// The table prints one row for each payload, a refusal followed by its messages.
 #[test]
 fn the_table_prints_a_row_for_each_payload() {
@@ -139,7 +153,7 @@ export const Wharf$Schema: ZodType<Wharf> = Wharf$RawSchema.meta({
     assert_eq!(
         Jetty::zod_schema(),
         "const Jetty$RawSchema = z.strictObject({
-  berths: z.number().int().prefault(4),
+  berths: z.number().int().min(0).max(4294967295).prefault(4),
   dock: z.string().prefault(\"east\"),
   moorings: z.array(z.string()).prefault([\"a\",\"b\"]),
 });
@@ -431,7 +445,7 @@ fn a_type_with_no_default_writes_the_zod_text_it_wrote() {
         Gangway::zod_schema(),
         "const Gangway$RawSchema = z.strictObject({
   label: z.string(),
-  width: z.number().int(),
+  width: z.number().int().min(0).max(4294967295),
 });
 
 export const Gangway$Schema: ZodType<Gangway> = Gangway$RawSchema.meta({
@@ -479,13 +493,15 @@ fn a_type_with_no_default_writes_the_json_schema_it_wrote() {
 fn a_type_with_no_default_writes_the_dart_text_it_wrote() {
     assert_eq!(
         super::models::gangway_dart::dart_definition(),
-        "class Gangway { const Gangway({required this.label,required this.width,}); final String \
-         label;final int width; factory Gangway.fromJson(Map<String, dynamic> json) { final read \
-         = Gangway.fromJsonUnjudged(json); final violations = read.validate(); if \
-         (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; } \
-         factory Gangway.fromJsonUnjudged(Map<String, dynamic> json) => Gangway(label: \
-         json['label'] as String,width: json['width'] as int,); Map<String, dynamic> toJson() => \
-         { 'label': label,'width': width, }; List<String> validate() => const []; }"
+        format!(
+            "class Gangway {{ const Gangway({{required this.label,required this.width,}}); final \
+             String label;final int width; factory Gangway.fromJson(Map<String, dynamic> json) {{ \
+             final read = Gangway.fromJsonUnjudged(json); final violations = read.validate(); if \
+             (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; \
+             }} factory Gangway.fromJsonUnjudged(Map<String, dynamic> json) => Gangway(label: \
+             json['label'] as String,width: {WIDTH_READ},); Map<String, dynamic> toJson() => {{ \
+             'label': label,'width': {WIDTH_WRITTEN}, }}; List<String> validate() => const []; }}"
+        )
     );
 }
 

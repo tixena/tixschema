@@ -526,7 +526,7 @@ mod a_key_on_a_list {
                 Counted::zod_schema(),
                 vec![
                     format!(
-                        "  numbers: z.array(z.number().int()){}{},\n",
+                        "  numbers: z.array(z.number().int().min(0).max(4294967295)){}{},\n",
                         short(1),
                         long(3)
                     ),
@@ -545,7 +545,7 @@ mod a_key_on_a_list {
                 vec![
                     every("deque", "z.string()", ""),
                     every_set("hashed"),
-                    every("heap", "z.number().int()", ""),
+                    every("heap", "z.number().int().min(0).max(4294967295)", ""),
                     every("listed", "z.string()", ""),
                     every_set("ordered"),
                     every("pair", "z.string()", ".length(2)"),
@@ -574,7 +574,10 @@ mod a_key_on_a_list {
                 Shipment::zod_schema(),
                 vec![
                     format!("  labels: z.array(z.string()){},\n", short(1)),
-                    format!("  \"Pallets\": z.array(z.number().int()){},\n", long(2)),
+                    format!(
+                        "  \"Pallets\": z.array(z.number().int().min(0).max(4294967295)){},\n",
+                        long(2)
+                    ),
                 ],
             ),
         ] {

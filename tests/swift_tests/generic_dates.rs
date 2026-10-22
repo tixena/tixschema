@@ -125,10 +125,20 @@ where
     written
 }
 
-/// The helpers written for `named`, opened by `formatter`.
+/// The helpers written for `named`, opened by `formatter` and its twin with no fraction, which
+/// reads a date of whole seconds.
 fn helpers(named: &str, formatter: &str) -> String {
+    let whole = formatter
+        .replace(
+            "swiftSchemaIso8601Formatter",
+            "swiftSchemaWholeIso8601Formatter",
+        )
+        .replace(
+            "[.withInternetDateTime, .withFractionalSeconds]",
+            "[.withInternetDateTime]",
+        );
     format!(
-        "extension {named} {{ {formatter}private static func \
+        "extension {named} {{ {formatter}{whole}private static func \
          swiftSchemaParseIso8601Date(_ text: String, codingPath: [CodingKey]) throws -> Date {{ "
     )
 }
@@ -279,11 +289,9 @@ fn a_struct_that_declares_a_parameter_computes_its_formatter() {
         &[
             "public struct Voyage<Stowed: Codable & Sendable>: Codable, Sendable { ".to_owned(),
             helpers("Voyage", COMPUTED),
-            "self.atMillis = try Self.swiftSchemaParseIso8601Millis(wireAtMillis, \
-             codingPath: decoder.codingPath); "
-                .to_owned(),
+            "self.atMillis = try container.decode(Int64.self, forKey: .atMillis); ".to_owned(),
             "private static func swiftSchemaFormatIso8601Date(_ date: Date) -> String { \
-             swiftSchemaIso8601Formatter.string(from: date) }; "
+             swiftSchemaIso8601Formatter.string(from: date) } };"
                 .to_owned(),
         ],
     );

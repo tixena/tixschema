@@ -182,7 +182,10 @@ fn test_a_wider_tuple_struct_describes_a_fixed_tuple_in_zod() {
     let zod = Pair::zod_schema();
     assert!(zod.contains("Pair$Schema"), "Got: {zod}");
     assert!(
-        binds(&zod, "z.tuple([z.string(), z.number().int()])"),
+        binds(
+            &zod,
+            "z.tuple([z.string(), z.number().int().min(0).max(4294967295)])"
+        ),
         "Got: {zod}"
     );
     assert!(!zod.contains("{ : "), "Got: {zod}");
@@ -377,7 +380,7 @@ fn test_zod_describes_the_arity_each_drop_leaves() {
         (SkippedTrailingSlot::zod_schema(), "z.tuple([z.string()])"),
         (
             SkippedMiddleSlot::zod_schema(),
-            "z.tuple([z.string(), z.number().int()])",
+            "z.tuple([z.string(), z.number().int().min(0).max(4294967295)])",
         ),
         (EverySlotSkipped::zod_schema(), "z.tuple([])"),
         (SkippedLoneSlot::zod_schema(), "z.string()"),

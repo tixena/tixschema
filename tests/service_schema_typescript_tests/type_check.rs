@@ -62,8 +62,12 @@ declare type ZodType<Parsed> = {
 };
 
 declare type ZodBuilder = ZodType<never> & {
+  gt(bound: number): ZodBuilder;
   int(): ZodBuilder;
+  lt(bound: number): ZodBuilder;
+  max(bound: number): ZodBuilder;
   meta(data: { examples: ReadonlyArray<unknown> }): ZodBuilder;
+  min(bound: number): ZodBuilder;
   prefault(value: unknown): ZodBuilder;
   transform(map: (value: never) => unknown): ZodBuilder;
 };

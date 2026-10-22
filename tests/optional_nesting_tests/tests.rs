@@ -328,8 +328,10 @@ fn test_the_typescript_surface_puts_the_null_at_the_level_it_was_written() {
 fn test_the_zod_surface_puts_the_nullable_at_the_level_it_was_written() {
     let element_null = ElementNullFields::zod_schema();
     for spelling in [
-        format!("set_items: z.array(z.nullable(z.number().int())){REPEAT_CHECK},"),
-        "vec_items: z.array(z.nullable(z.number().int())),".to_owned(),
+        format!(
+            "set_items: z.array(z.nullable(z.number().int().min(0).max(4294967295))){REPEAT_CHECK},"
+        ),
+        "vec_items: z.array(z.nullable(z.number().int().min(0).max(4294967295))),".to_owned(),
     ] {
         assert!(element_null.contains(&spelling), "Got: {element_null}");
     }
@@ -337,9 +339,9 @@ fn test_the_zod_surface_puts_the_nullable_at_the_level_it_was_written() {
     for spelling in [
         format!(
             "set_items: z.union([z.null().transform(() => undefined), \
-             z.array(z.number().int()){REPEAT_CHECK}, z.undefined()]).prefault(undefined),"
+             z.array(z.number().int().min(0).max(4294967295)){REPEAT_CHECK}, z.undefined()]).prefault(undefined),"
         ),
-        "vec_items: z.union([z.null().transform(() => undefined), z.array(z.number().int()), \
+        "vec_items: z.union([z.null().transform(() => undefined), z.array(z.number().int().min(0).max(4294967295)), \
          z.undefined()]).prefault(undefined),"
             .to_owned(),
     ] {
@@ -347,33 +349,33 @@ fn test_the_zod_surface_puts_the_nullable_at_the_level_it_was_written() {
     }
     let schema = NullNestingSlots::zod_schema();
     for spelling in [
-        "map_both: z.record(z.string(), z.nullable(z.array(z.nullable(z.number().int())))),"
+        "map_both: z.record(z.string(), z.nullable(z.array(z.nullable(z.number().int().min(0).max(4294967295))))),"
             .to_owned(),
         format!(
             "map_wrapped: z.record(z.string(), \
-             z.array(z.nullable(z.array(z.nullable(z.number().int())){REPEAT_CHECK}))),"
+             z.array(z.nullable(z.array(z.nullable(z.number().int().min(0).max(4294967295))){REPEAT_CHECK}))),"
         ),
         format!(
             "map_set_element: z.record(z.string(), \
-             z.array(z.nullable(z.number().int())){REPEAT_CHECK}),"
+             z.array(z.nullable(z.number().int().min(0).max(4294967295))){REPEAT_CHECK}),"
         ),
         format!(
-            "map_set_slot: z.record(z.string(), z.nullable(z.array(z.number().int()){REPEAT_CHECK})),"
+            "map_set_slot: z.record(z.string(), z.nullable(z.array(z.number().int().min(0).max(4294967295)){REPEAT_CHECK})),"
         ),
-        "map_vec_element: z.record(z.string(), z.array(z.nullable(z.number().int()))),".to_owned(),
-        "map_vec_slot: z.record(z.string(), z.nullable(z.array(z.number().int()))),".to_owned(),
-        "tuple_both: z.tuple([z.string(), z.nullable(z.array(z.nullable(z.number().int())))]),"
+        "map_vec_element: z.record(z.string(), z.array(z.nullable(z.number().int().min(0).max(4294967295)))),".to_owned(),
+        "map_vec_slot: z.record(z.string(), z.nullable(z.array(z.number().int().min(0).max(4294967295)))),".to_owned(),
+        "tuple_both: z.tuple([z.string(), z.nullable(z.array(z.nullable(z.number().int().min(0).max(4294967295))))]),"
             .to_owned(),
         format!(
             "tuple_set_element: z.tuple([z.string(), \
-             z.array(z.nullable(z.number().int())){REPEAT_CHECK}]),"
+             z.array(z.nullable(z.number().int().min(0).max(4294967295))){REPEAT_CHECK}]),"
         ),
         format!(
-            "tuple_set_slot: z.tuple([z.string(), z.nullable(z.array(z.number().int()){REPEAT_CHECK})]),"
+            "tuple_set_slot: z.tuple([z.string(), z.nullable(z.array(z.number().int().min(0).max(4294967295)){REPEAT_CHECK})]),"
         ),
-        "tuple_vec_element: z.tuple([z.string(), z.array(z.nullable(z.number().int()))]),"
+        "tuple_vec_element: z.tuple([z.string(), z.array(z.nullable(z.number().int().min(0).max(4294967295)))]),"
             .to_owned(),
-        "tuple_vec_slot: z.tuple([z.string(), z.nullable(z.array(z.number().int()))]),".to_owned(),
+        "tuple_vec_slot: z.tuple([z.string(), z.nullable(z.array(z.number().int().min(0).max(4294967295)))]),".to_owned(),
     ] {
         assert!(schema.contains(&spelling), "{spelling} in: {schema}");
     }

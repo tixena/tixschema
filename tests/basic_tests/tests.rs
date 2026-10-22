@@ -234,7 +234,7 @@ fn test_optional_fields_zod_schema() {
         "email: z.union([z.null().transform(() => undefined), z.string(), z.undefined()])"
     ));
     assert!(zod_schema.contains(
-        "age: z.union([z.null().transform(() => undefined), z.number().int(), z.undefined()])"
+        "age: z.union([z.null().transform(() => undefined), z.number().int().min(0).max(4294967295), z.undefined()])"
     ));
     assert!(zod_schema.contains(
         "nickname: z.union([z.null().transform(() => undefined), z.string(), z.undefined()])"

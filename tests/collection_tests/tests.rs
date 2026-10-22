@@ -1142,7 +1142,7 @@ fn test_collections_ts_definition() {
 
     let zod_schema = UserWithCollections::zod_schema();
     assert!(zod_schema.contains("tags: z.array(z.string())"));
-    assert!(zod_schema.contains("scores: z.array(z.number().int())"));
+    assert!(zod_schema.contains("scores: z.array(z.number().int().min(0).max(4294967295))"));
     assert!(zod_schema.contains("metadata: z.record(z.string(), z.string())"));
 }
 
@@ -2966,8 +2966,9 @@ fn test_property_keyed_maps_keep_their_own_schema_on_zod() {
     for expected in [
         "chars: z.record(z.string().length(1), z.number().int())",
         "dates: z.record(z.iso.date(), z.number().int())",
-        "datetimes: z.record(z.iso.datetime({ local: true }), z.number().int())",
-        "numbers: z.record(z.number().int(), z.number().int())",
+        "datetimes: z.record(z.preprocess((arg) => { if (typeof arg !== \"string\") return arg;",
+        "z.iso.datetime({ local: true })), z.number().int())",
+        "numbers: z.record(z.number().int().min(0).max(4294967295), z.number().int())",
         "slots: z.partialRecord(MetricSlot$Schema, z.number().int())",
         "strings: z.record(z.string(), z.number().int())",
         "times: z.record(z.preprocess((arg) => {",
@@ -3552,7 +3553,7 @@ fn test_set_element_zod_generation() {
         // The preprocess wrap belongs once, outside the array — where the `Vec` spelling puts it.
         format!("preprocessed_labels: z.preprocess(trim, z.array(z.string()){REPEAT_CHECK}),"),
         format!("sibling_tags: z.array(MetricTag$Schema){REPEAT_CHECK},"),
-        format!("small_ids: z.array(z.number().int()){REPEAT_CHECK},"),
+        format!("small_ids: z.array(z.number().int().min(0).max(4294967295)){REPEAT_CHECK},"),
     ] {
         assert!(
             zod_schema.contains(&spelling),
@@ -3863,15 +3864,19 @@ fn test_set_slots_validate_as_the_vec_slot_twin() {
             "enum_keyed_tags: z.partialRecord(MetricSlot$Schema, z.array(MetricTag$Schema){REPEAT_CHECK}),"
         ),
         format!(
-            "optional_element_ids: z.record(z.string(), z.array(z.nullable(z.number().int())){REPEAT_CHECK}),"
+            "optional_element_ids: z.record(z.string(), z.array(z.nullable(z.number().int().min(0).max(4294967295))){REPEAT_CHECK}),"
         ),
         format!(
-            "optional_ids: z.record(z.string(), z.nullable(z.array(z.number().int()){REPEAT_CHECK})),"
+            "optional_ids: z.record(z.string(), z.nullable(z.array(z.number().int().min(0).max(4294967295)){REPEAT_CHECK})),"
         ),
-        format!("tuple_ids: z.tuple([z.string(), z.array(z.number().int()){REPEAT_CHECK}]),"),
-        format!("tuple_labels: z.tuple([z.number().int(), z.array(z.string()){REPEAT_CHECK}]),"),
         format!(
-            "tuple_optional_ids: z.tuple([z.string(), z.array(z.nullable(z.number().int())){REPEAT_CHECK}]),"
+            "tuple_ids: z.tuple([z.string(), z.array(z.number().int().min(0).max(4294967295)){REPEAT_CHECK}]),"
+        ),
+        format!(
+            "tuple_labels: z.tuple([z.number().int().min(0).max(4294967295), z.array(z.string()){REPEAT_CHECK}]),"
+        ),
+        format!(
+            "tuple_optional_ids: z.tuple([z.string(), z.array(z.nullable(z.number().int().min(0).max(4294967295))){REPEAT_CHECK}]),"
         ),
     ] {
         assert!(
@@ -4070,17 +4075,21 @@ fn test_nested_sequences_validate_at_the_depth_they_are_written() {
     for spelling in [
         "aliased_rows: z.array(z.array(MetricTagRefType$Schema)),",
         "constrained_rows: z.array(z.array(z.string())).min(3, { error: (issue) => `too short: minimum length is 3, got ${Array.isArray(issue.input) ? issue.input.length : 0}` }),",
-        "deep_ids: z.array(z.array(z.array(z.number().int()))),",
-        "fixed_grid: z.array(z.array(z.number().int()).length(2)).length(2),",
+        "deep_ids: z.array(z.array(z.array(z.number().int().min(0).max(4294967295)))),",
+        "fixed_grid: z.array(z.array(z.number().int().min(0).max(4294967295)).length(2)).length(2),",
         "labels: z.array(z.array(z.string())),",
         "sibling_rows: z.array(z.array(MetricTag$Schema)),",
-        "small_ids: z.array(z.array(z.number().int())),",
+        "small_ids: z.array(z.array(z.number().int().min(0).max(4294967295))),",
     ] {
         assert!(zod_schema.contains(spelling), "Got: {zod_schema}");
     }
     for spelling in [
-        format!("set_of_rows: z.array(z.array(z.number().int())){REPEAT_CHECK},"),
-        format!("vec_of_sets: z.array(z.array(z.number().int()){REPEAT_CHECK}),"),
+        format!(
+            "set_of_rows: z.array(z.array(z.number().int().min(0).max(4294967295))){REPEAT_CHECK},"
+        ),
+        format!(
+            "vec_of_sets: z.array(z.array(z.number().int().min(0).max(4294967295)){REPEAT_CHECK}),"
+        ),
     ] {
         assert!(
             zod_schema.contains(&spelling),
@@ -4090,16 +4099,16 @@ fn test_nested_sequences_validate_at_the_depth_they_are_written() {
 
     let slot_schema = NestedSequenceSlots::zod_schema();
     for spelling in [
-        "enum_keyed_rows: z.partialRecord(MetricSlot$Schema, z.array(z.array(z.number().int()))),",
-        "optional_rows: z.record(z.string(), z.nullable(z.array(z.array(z.number().int())))),",
-        "rows: z.record(z.string(), z.array(z.array(z.number().int()))),",
+        "enum_keyed_rows: z.partialRecord(MetricSlot$Schema, z.array(z.array(z.number().int().min(0).max(4294967295)))),",
+        "optional_rows: z.record(z.string(), z.nullable(z.array(z.array(z.number().int().min(0).max(4294967295))))),",
+        "rows: z.record(z.string(), z.array(z.array(z.number().int().min(0).max(4294967295)))),",
         "sibling_rows: z.record(z.string(), z.array(z.array(MetricTag$Schema))),",
-        "tuple_rows: z.tuple([z.string(), z.array(z.array(z.number().int()))]),",
+        "tuple_rows: z.tuple([z.string(), z.array(z.array(z.number().int().min(0).max(4294967295)))]),",
     ] {
         assert!(slot_schema.contains(spelling), "Got: {slot_schema}");
     }
     let set_rows = format!(
-        "set_rows: z.record(z.string(), z.array(z.array(z.number().int())){REPEAT_CHECK}),"
+        "set_rows: z.record(z.string(), z.array(z.array(z.number().int().min(0).max(4294967295))){REPEAT_CHECK}),"
     );
     assert!(
         slot_schema.contains(&set_rows),
@@ -4124,7 +4133,8 @@ fn test_an_alias_of_a_nested_sequence_publishes_its_depth() {
     );
     #[cfg(feature = "zod")]
     assert!(
-        metric_grid_schema::Schema::zod_schema().contains("z.array(z.array(z.number().int()))"),
+        metric_grid_schema::Schema::zod_schema()
+            .contains("z.array(z.array(z.number().int().min(0).max(4294967295)))"),
         "Got: {}",
         metric_grid_schema::Schema::zod_schema()
     );

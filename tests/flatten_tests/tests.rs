@@ -3670,7 +3670,7 @@ fn carried_holders() -> [(&'static str, String, String, &'static str, &'static s
             own_ts,
             own_zod,
             "number",
-            "z.number().int()",
+            "z.number().int().min(0).max(4294967295)",
         ),
         ("ExtCarriedOwnHolder", held_ts, held_zod, "Held", "held"),
         (

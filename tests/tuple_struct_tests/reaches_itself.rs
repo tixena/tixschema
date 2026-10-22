@@ -66,7 +66,7 @@ fn a_slot_reaching_a_type_declared_below_is_read_behind_a_lazy() {
     assert!(
         zod.contains(
             "const AheadOfItsSlot$RawSchema = z.tuple([z.lazy(() => DeclaredBelow$Schema), \
-             z.number().int()]);"
+             z.number().int().min(0).max(4294967295)]);"
         ),
         "got: {zod}"
     );

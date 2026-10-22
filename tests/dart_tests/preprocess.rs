@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tixschema::model_schema;
 
+use super::held_numbers::u32_held;
+
 /// What a judged read does with the value its unjudged read answered.
 const JUDGED: &str = "final violations = read.validate(); if (violations.isNotEmpty) throw \
      FormatException(violations.join('; ')); return read; }";
@@ -482,12 +484,13 @@ fn a_fields_function_is_called_ahead_of_the_fields_read_whatever_it_holds() {
              unwrapped(json['heldParcel']) : null)),item_label: (json.containsKey('itemLabel') ? \
              trimmed(unwrapped(json['itemLabel'])) : null) as String,seat_pair: switch \
              ((json.containsKey('seatPair') ? unwrapped(json['seatPair']) : null) as \
-             List<dynamic>) {{ final tuple when tuple.length == 2 => (tuple[0] as String, tuple[1] \
-             as int), final tuple => throw FormatException('invalid length ${{tuple.length}}, \
+             List<dynamic>) {{ final tuple when tuple.length == 2 => (tuple[0] as String, \
+             {seat}), final tuple => throw FormatException('invalid length ${{tuple.length}}, \
              expected 2') }},short_note: switch (json.containsKey('shortNote') ? \
              trimmed(json['shortNote']) : null) {{ final corrected => (corrected == null ? null : \
              corrected as String) }},); Map<String, dynamic> toJson() =>",
-            plain_pair("Ticket", "Map<String, dynamic>", "json")
+            plain_pair("Ticket", "Map<String, dynamic>", "json"),
+            seat = u32_held("tuple[1] as int")
         ),
     );
 }
@@ -512,10 +515,11 @@ fn a_tuple_struct_calls_its_function_on_its_payload_and_a_slots_on_its_position(
         &stack_dart::dart_definition(),
         &format!(
             "{}{{ final json = unwrapped(payload); return Stack(switch (json as List<dynamic>) \
-             {{ final tuple when tuple.length == 2 => (trimmed(tuple[0]) as String, tuple[1] as \
-             int), final tuple => throw FormatException('invalid length ${{tuple.length}}, \
-             expected 2') }}); }} dynamic toJson() =>",
-            plain_pair("Stack", "dynamic", "payload")
+             {{ final tuple when tuple.length == 2 => (trimmed(tuple[0]) as String, {second}), \
+             final tuple => throw FormatException('invalid length ${{tuple.length}}, expected 2') \
+             }}); }} dynamic toJson() =>",
+            plain_pair("Stack", "dynamic", "payload"),
+            second = u32_held("tuple[1] as int")
         ),
     );
 }
@@ -612,10 +616,11 @@ fn an_enum_under_its_variants_name_calls_its_function_in_its_base() {
              TransferRail(trimmed(map['Rail']) as String); case 'Road': return \
              TransferRoad.fromJsonUnjudged(map['Road']); case 'Split': return \
              TransferSplit(switch (map['Split'] as List<dynamic>) {{ final tuple when \
-             tuple.length == 2 => (trimmed(tuple[0]) as String, tuple[1] as int), final tuple => \
+             tuple.length == 2 => (trimmed(tuple[0]) as String, {second}), final tuple => \
              throw FormatException('invalid length ${{tuple.length}}, expected 2') }}); default: \
              throw FormatException('Unknown Transfer: ' + tag); }} }} dynamic toJson();",
-            plain_pair("Transfer", "dynamic", "payload")
+            plain_pair("Transfer", "dynamic", "payload"),
+            second = u32_held("tuple[1] as int")
         ),
     );
     assert_written(
@@ -685,10 +690,11 @@ fn an_untagged_enum_calls_its_function_ahead_of_every_attempt() {
             "{}{{ final json = unwrapped(payload); try {{ final read = \
              ReferenceNamed.fromJsonUnjudged(json as Map<String, dynamic>); if \
              (read._bounds().isEmpty) return read; }} catch (_) {{}} try {{ final read = \
-             ReferenceNumbered(unwrapped(json) as int); if (read._bounds().isEmpty) return read; \
+             ReferenceNumbered({numbered}); if (read._bounds().isEmpty) return read; \
              }} catch (_) {{}} throw FormatException('No variant of Reference matched'); }} \
              dynamic toJson();",
-            plain_pair("Reference", "dynamic", "payload")
+            plain_pair("Reference", "dynamic", "payload"),
+            numbered = u32_held("unwrapped(json) as int")
         ),
     );
     assert_written(
@@ -767,19 +773,21 @@ fn a_name_the_read_declares_is_numbered_where_a_function_is_called_under_it() {
         &counted_dart::dart_definition(),
         &format!(
             "{}{{ try {{ return CountedText(json as String); }} catch (_) {{}} try {{ final read2 \
-             = CountedWhole(read(json) as int); if (read2._bounds().isEmpty) return read2; }} \
+             = CountedWhole({whole}); if (read2._bounds().isEmpty) return read2; }} \
              catch (_) {{}} throw FormatException('No variant of Counted matched'); }} dynamic \
              toJson();",
-            plain_pair("Counted", "dynamic", "json")
+            plain_pair("Counted", "dynamic", "json"),
+            whole = u32_held("read(json) as int")
         ),
     );
     assert_written(
         &coupled_dart::dart_definition(),
         &format!(
             "{}=> Coupled(switch (json as List<dynamic>) {{ final tuple2 when tuple2.length == 2 \
-             => (tuple(tuple2[0]) as String, tuple2[1] as int), final tuple2 => throw \
+             => (tuple(tuple2[0]) as String, {second}), final tuple2 => throw \
              FormatException('invalid length ${{tuple2.length}}, expected 2') }});",
-            plain_pair("Coupled", "dynamic", "json")
+            plain_pair("Coupled", "dynamic", "json"),
+            second = u32_held("tuple2[1] as int")
         ),
     );
     assert_written(

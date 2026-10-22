@@ -62,7 +62,7 @@ fn typescript_names_the_type_declared_here() {
 fn zod_calls_the_factory_of_the_type_declared_here() {
     let zod = Holder::zod_schema();
     assert!(
-        zod.contains("Map$SchemaFactory(z.string(), z.number().int())"),
+        zod.contains("Map$SchemaFactory(z.string(), z.number().int().min(0).max(4294967295))"),
         "got: {zod}"
     );
     assert!(!zod.contains("z.record("), "got: {zod}");

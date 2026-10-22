@@ -242,7 +242,7 @@ mod zod {
         assert!(
             leader.contains(
                 "= CycleLeader$SchemaFactory(z.lazy(() => \
-                 CycleFollower$SchemaFactory(z.number().int())));"
+                 CycleFollower$SchemaFactory(z.number().int().min(0).max(4294967295))));"
             ),
             "Got: {leader}"
         );
@@ -251,7 +251,7 @@ mod zod {
         assert!(
             follower.contains(
                 "= CycleFollower$SchemaFactory(z.lazy(() => \
-                 CycleLeader$SchemaFactory(z.number().int())));"
+                 CycleLeader$SchemaFactory(z.number().int().min(0).max(4294967295))));"
             ),
             "Got: {follower}"
         );
@@ -310,7 +310,7 @@ mod zod {
             "Got: {zod}"
         );
         assert!(
-            zod.contains("stringified_number_key: z.record(z.number().int(), z.string())"),
+            zod.contains("stringified_number_key: z.record(z.number().int().min(0).max(4294967295), z.string())"),
             "Got: {zod}"
         );
     }
@@ -474,7 +474,7 @@ mod zod {
         assert!(
             zod.contains(
                 "= OverriddenDefault$SchemaFactory(z.lazy(() => \
-                 Tagged$SchemaFactory(z.number().int())));"
+                 Tagged$SchemaFactory(z.number().int().min(0).max(4294967295))));"
             ),
             "Got: {zod}"
         );
@@ -826,7 +826,7 @@ mod zod {
         for call in [
             "keyed: Inner$SchemaFactory(z.object({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { \
              message: \"Invalid ObjectId\" }) })),",
-            "sized: Inner$SchemaFactory(z.number().int()),",
+            "sized: Inner$SchemaFactory(z.number().int().min(0).max(4294967295)),",
             "stamped: Inner$SchemaFactory(z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date())),",
         ] {
             assert!(zod.contains(call), "Missing {call:?} in: {zod}");
@@ -837,7 +837,7 @@ mod zod {
     fn a_reference_to_an_alias_or_a_brand_calls_the_factory_it_publishes() {
         let zod = Referrer::zod_schema();
         assert!(
-            zod.contains("boxed: Boxed$SchemaFactory(z.number().int()),"),
+            zod.contains("boxed: Boxed$SchemaFactory(z.number().int().min(0).max(4294967295)),"),
             "Got: {zod}"
         );
         assert!(

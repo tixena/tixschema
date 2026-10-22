@@ -96,7 +96,7 @@ fn test_sequence_wrappers_render_as_zod_arrays() {
         let distinct = repeat_check_of(wrapper);
         assert_eq!(
             sequence_of(wrapper, FieldDefType::U32).zod_type(),
-            format!("z.array(z.number().int()){distinct}"),
+            format!("z.array(z.number().int().min(0).max(4294967295)){distinct}"),
             "for: {wrapper}"
         );
         assert_eq!(
@@ -195,7 +195,7 @@ fn test_sequence_within_an_array_field_nests_both_wraps() {
         assert_eq!(
             nested.zod_type(),
             format!(
-                "z.array(z.array(z.number().int()){})",
+                "z.array(z.array(z.number().int().min(0).max(4294967295)){})",
                 repeat_check_of(wrapper)
             ),
             "for: {wrapper}"
@@ -234,7 +234,7 @@ fn test_an_array_element_within_a_sequence_nests_both_wraps() {
         assert_eq!(
             nested.zod_type(),
             format!(
-                "z.array(z.array(z.number().int())){}",
+                "z.array(z.array(z.number().int().min(0).max(4294967295))){}",
                 repeat_check_of(wrapper)
             ),
             "for: {wrapper}"

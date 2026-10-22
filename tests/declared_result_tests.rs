@@ -39,7 +39,7 @@ mod tests {
         );
         let zod = Shelved::zod_schema();
         assert!(
-            zod.contains("outcome: Result$SchemaFactory(z.number().int(), z.string()),"),
+            zod.contains("outcome: Result$SchemaFactory(z.number().int().min(0).max(4294967295), z.string()),"),
             "{zod}"
         );
         let document = Shelved::json_schema();

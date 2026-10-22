@@ -193,10 +193,10 @@ fn each_range_is_described_as_the_object_serde_writes() {
     }
     let zod = Spanned::zod_schema();
     for member in [
-        "closed: z.strictObject({ start: z.number().int(), end: z.number().int() }),",
-        "from: z.strictObject({ start: z.number().int() }),",
-        "span: z.strictObject({ start: z.number().int(), end: z.number().int() }),",
-        "to: z.strictObject({ end: z.number().int() }),",
+        "closed: z.strictObject({ start: z.number().int().min(0).max(4294967295), end: z.number().int().min(0).max(4294967295) }),",
+        "from: z.strictObject({ start: z.number().int().min(0).max(4294967295) }),",
+        "span: z.strictObject({ start: z.number().int().min(0).max(4294967295), end: z.number().int().min(0).max(4294967295) }),",
+        "to: z.strictObject({ end: z.number().int().min(0).max(4294967295) }),",
     ] {
         assert!(zod.contains(member), "{member} in: {zod}");
     }
@@ -237,7 +237,7 @@ fn a_range_is_the_object_in_every_position_that_holds_a_value() {
     ] {
         assert!(typescript.contains(&member), "{member} in: {typescript}");
     }
-    let schema = "z.strictObject({ start: z.number().int(), end: z.number().int() })";
+    let schema = "z.strictObject({ start: z.number().int().min(0).max(4294967295), end: z.number().int().min(0).max(4294967295) })";
     let zod = Positioned::zod_schema();
     for member in [
         format!("filled: Itinerary$SchemaFactory({schema}),"),
@@ -283,7 +283,7 @@ fn a_range_of_the_types_own_parameter_holds_the_argument() {
     let zod = Stride::<u32>::zod_schema();
     for written in [
         "span: z.strictObject({ start: bound, end: bound }),",
-        "Stride$SchemaFactory(z.number().int())",
+        "Stride$SchemaFactory(z.number().int().min(0).max(4294967295))",
     ] {
         assert!(zod.contains(written), "{written} in: {zod}");
     }
