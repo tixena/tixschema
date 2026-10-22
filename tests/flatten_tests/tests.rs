@@ -1,6 +1,8 @@
 //! Tests of `#[serde(flatten)]`: the intersection, the merged schema and the choices a flattened
 //! source multiplies into.
 
+#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
+use bson2::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 #[cfg(any(feature = "jsonschema", feature = "zod"))]
 use std::collections::HashMap;
@@ -890,6 +892,16 @@ struct UntaggedPickedAliasHolder {
     pick: MemberUntaggedPickedOf<bool>,
 }
 
+/// A flattened `ObjectId`, whose `$oid` key serde writes beside the object's own.
+#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct FlattenedOidHolder {
+    id: u32,
+    #[serde(flatten)]
+    oid: ObjectId,
+}
+
 /// A type parameter flattened beside a member, as serde alone writes it.
 #[derive(Serialize, Debug)]
 struct SerdeOnlyBag<T> {
@@ -1000,6 +1012,20 @@ enum InlineUntagEither {
 struct InlineUntagDirectHolder {
     #[serde(flatten)]
     either: InlineUntagEither,
+    own: String,
+}
+
+/// The same union under an alias, which the object that flattens it joins by the union's members.
+#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+#[model_schema()]
+type InlineUntagAlias = InlineUntagEither;
+
+#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct InlineUntagAliasHolder {
+    #[serde(flatten)]
+    either: InlineUntagAlias,
     own: String,
 }
 
@@ -3988,8 +4014,8 @@ fn test_a_flattened_untagged_enum_written_with_an_argument_parses_each_member_at
 }
 
 /// TypeScript joins each member of an untagged enum written with an argument where its members
-/// close each other's keys, the parameter written as the argument, and names no parameter the
-/// holder does not declare.
+/// close each other's keys, the parameter written as the argument, directly and through an alias
+/// that declares a parameter of its own, and names no parameter the holder does not declare.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_a_flattened_untagged_enum_written_with_an_argument_types_each_member_at_the_argument() {
@@ -3997,6 +4023,12 @@ fn test_a_flattened_untagged_enum_written_with_an_argument_types_each_member_at_
     assert!(
         picked.contains("} & ({ load: number; count?: never } | { count: number; load?: never });"),
         "expected one key set per member, got: {picked}"
+    );
+    let aliased = UntaggedPickedAliasHolder::ts_definition();
+    assert!(
+        aliased
+            .contains("} & ({ load: boolean; count?: never } | { count: number; load?: never });"),
+        "expected one key set per member of the alias, got: {aliased}"
     );
     for (holder, ts) in [
         ("UntaggedPickedHolder", picked),
@@ -4008,8 +4040,9 @@ fn test_a_flattened_untagged_enum_written_with_an_argument_types_each_member_at_
             "UntaggedCarriedOwnHolder",
             UntaggedCarriedOwnHolder::<BasePart>::ts_definition(),
         ),
+        ("UntaggedPickedAliasHolder", aliased),
     ] {
-        for unbound in ["Load", "__tixschema_parameter_"] {
+        for unbound in ["Load", "Stowed", "__tixschema_parameter_"] {
             assert!(!ts.contains(unbound), "{holder} names `{unbound}`: {ts}");
         }
     }
@@ -4070,6 +4103,37 @@ fn test_a_flattened_untagged_enum_written_with_an_argument_documents_each_member
                 "{payload} is accepted by {schema}"
             );
         }
+    }
+}
+
+/// The JSON Schema of a flattened `ObjectId` admits the `$oid` key serde writes beside the
+/// object's own, and refuses the object without it and a key that is no `ObjectId`.
+#[test]
+#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
+fn test_a_flattened_object_id_document_admits_what_serde_writes() {
+    let holder = FlattenedOidHolder {
+        id: 1,
+        oid: ObjectId::parse_str("507f1f77bcf86cd799439011").unwrap(),
+    };
+    let written = serde_json::to_value(&holder).unwrap();
+    assert_eq!(
+        written,
+        serde_json::json!({ "id": 1_u32, "$oid": "507f1f77bcf86cd799439011" }),
+        "serde no longer writes the `$oid` key beside the object's own"
+    );
+    let schema = FlattenedOidHolder::json_schema();
+    assert!(
+        super::documents::admits(&schema, &written),
+        "{written} is rejected by {schema}"
+    );
+    for refused in [
+        serde_json::json!({ "id": 1_u32 }),
+        serde_json::json!({ "id": 1_u32, "$oid": "x" }),
+    ] {
+        assert!(
+            !super::documents::admits(&schema, &refused),
+            "{refused} is accepted by {schema}"
+        );
     }
 }
 
@@ -4246,12 +4310,26 @@ fn test_a_directly_flattened_inline_untagged_union_round_trips_every_member() {
 #[test]
 #[cfg(feature = "typescript")]
 fn test_an_inline_untagged_direct_flatten_type_closes_each_member_against_the_other() {
-    let ts = InlineUntagDirectHolder::ts_definition();
-    let declared = &ts[ts.find("export type").unwrap()..];
-    assert_eq!(
-        declared,
-        "export type InlineUntagDirectHolder = {\n  /**\n   * own\n   * \n   */\n  own: string;\n} & ({ left: string; right?: never } | { right: boolean; left?: never });"
-    );
+    for (holder, ts) in [
+        (
+            "InlineUntagDirectHolder",
+            InlineUntagDirectHolder::ts_definition(),
+        ),
+        (
+            "InlineUntagAliasHolder",
+            InlineUntagAliasHolder::ts_definition(),
+        ),
+    ] {
+        let declared = &ts[ts.find("export type").unwrap()..];
+        assert_eq!(
+            declared,
+            format!(
+                "export type {holder} = {{\n  /**\n   * own\n   * \n   */\n  own: string;\n}} & \
+                 ({{ left: string; right?: never }} | {{ right: boolean; left?: never }});"
+            ),
+            "{holder} does not close each member against the other"
+        );
+    }
 }
 
 #[test]

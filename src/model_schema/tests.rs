@@ -73,6 +73,28 @@ use syn::spanned::Spanned as _;
 use crate::utils::{Declared, declared, record_plain_enum};
 use crate::utils::{is_recorded_untagged_enum, record_untagged_enum};
 
+/// The slot `$slot` of `Lettered::Held` under a tag alone, the refusals the expansion raises for
+/// it, and what serde answers for a write of `$value` through the same declaration.
+#[cfg(feature = "serde")]
+macro_rules! refused_beside_serde {
+    ($slot:ty, $value:expr) => {{
+        #[derive(serde::Serialize)]
+        #[serde(tag = "kind")]
+        enum Lettered {
+            Held($slot),
+        }
+        let item: syn::ItemEnum =
+            syn::parse_str(concat!("enum Lettered { Held(", stringify!($slot), ") }")).unwrap();
+        (
+            stringify!($slot),
+            internal_guard_errors(&item),
+            serde_json::to_string(&Lettered::Held($value))
+                .unwrap_err()
+                .to_string(),
+        )
+    }};
+}
+
 /// The variants of [`rendered_discriminated_union`]'s enum, in the order they are declared.
 const DECLARED_VARIANTS: [&str; 6] = ["Upload", "Generate", "Delete", "Rename", "Move", "Archive"];
 
@@ -1553,28 +1575,249 @@ fn internally_tagged_serializable_variants_are_accepted() {
     assert!(errors.is_empty(), "got: {errors:?}");
 }
 
+/// Each slot is refused once, as the value `value` names, quoting word for word the error serde
+/// answers for a write of it.
 #[cfg(feature = "serde")]
-#[test]
-fn internally_tagged_newtype_over_a_scalar_is_rejected() {
-    for (source, shape) in [
-        ("enum E { V(String) }", "a string"),
-        ("enum E { V(bool) }", "a boolean"),
-        ("enum E { V(i64) }", "an integer"),
-        ("enum E { V(f64) }", "a float"),
-        ("enum E { V((u32, u32)) }", "a tuple"),
-        ("enum E { V(Vec<Payload>) }", "a sequence"),
-        ("enum E { V(Option<Payload>) }", "an optional"),
-    ] {
-        let errors = internal_guard_errors(&syn::parse_str(source).unwrap());
-        assert_eq!(errors.len(), 1, "got: {errors:?} for {source}");
-        assert!(errors[0].contains("compile_error"), "got: {}", errors[0]);
-        assert!(errors[0].contains("variant `V`"), "got: {}", errors[0]);
+fn assert_quotes_serde(rows: &[(&str, Vec<String>, String)], value: &str) {
+    let named = format!("variant `Held` of internally tagged enum `Lettered` wraps {value},");
+    for (slot, errors, said) in rows {
+        assert_eq!(errors.len(), 1, "got: {errors:?} for `{slot}`");
         assert!(
-            errors[0].contains(&format!("containing {shape}")),
-            "expected serde's own wording for {source}. Got: {}",
+            errors[0].contains(&named),
+            "the refusal of `{slot}` does not name it {value}: {}",
+            errors[0]
+        );
+        assert!(
+            errors[0].contains("serde refuses this one at run time")
+                && errors[0].contains(&format!("`{said}`")),
+            "the refusal of `{slot}` does not quote serde's `{said}`: {}",
             errors[0]
         );
     }
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_tagged_char_is_refused_in_the_words_serde_refuses_it() {
+    assert_quotes_serde(&[refused_beside_serde!(char, 'c')], "a char");
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_tagged_string_is_refused_in_the_words_serde_refuses_it() {
+    use std::path::PathBuf;
+    assert_quotes_serde(
+        &[
+            refused_beside_serde!(String, "s".to_owned()),
+            refused_beside_serde!(&'static str, "s"),
+            refused_beside_serde!(Box<str>, "s".into()),
+            refused_beside_serde!(PathBuf, PathBuf::from("p")),
+        ],
+        "a string",
+    );
+}
+
+#[cfg(all(feature = "serde", feature = "chrono"))]
+#[test]
+fn a_tagged_date_is_refused_in_the_words_serde_refuses_it() {
+    use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
+    let day = NaiveDate::from_ymd_opt(2020, 1, 2).unwrap();
+    let time = NaiveTime::from_hms_opt(1, 2, 3).unwrap();
+    assert_quotes_serde(
+        &[
+            refused_beside_serde!(NaiveDate, day),
+            refused_beside_serde!(NaiveTime, time),
+            refused_beside_serde!(NaiveDateTime, day.and_time(time)),
+            refused_beside_serde!(DateTime<Utc>, DateTime::from_timestamp(0, 0).unwrap()),
+        ],
+        "a string",
+    );
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_tagged_boolean_is_refused_in_the_words_serde_refuses_it() {
+    assert_quotes_serde(&[refused_beside_serde!(bool, true)], "a boolean");
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_tagged_integer_of_every_width_is_refused_in_the_words_serde_refuses_it() {
+    assert_quotes_serde(
+        &[
+            refused_beside_serde!(i8, 1),
+            refused_beside_serde!(i16, 1),
+            refused_beside_serde!(i32, 1),
+            refused_beside_serde!(i64, 1),
+            refused_beside_serde!(isize, 1),
+            refused_beside_serde!(u8, 1),
+            refused_beside_serde!(u16, 1),
+            refused_beside_serde!(u32, 1),
+            refused_beside_serde!(u64, 1),
+            refused_beside_serde!(usize, 1),
+            refused_beside_serde!(Box<u32>, Box::new(1)),
+        ],
+        "an integer",
+    );
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_tagged_float_of_every_width_is_refused_in_the_words_serde_refuses_it() {
+    assert_quotes_serde(
+        &[
+            refused_beside_serde!(f32, 1.5),
+            refused_beside_serde!(f64, 1.5),
+        ],
+        "a float",
+    );
+}
+
+/// serde's tag refuses an `Option` before it reads what the `Option` holds.
+#[cfg(feature = "serde")]
+#[test]
+fn a_tagged_option_is_refused_in_the_words_serde_refuses_it() {
+    assert_quotes_serde(
+        &[
+            refused_beside_serde!(Option<u32>, Some(1)),
+            refused_beside_serde!(Option<String>, None),
+            refused_beside_serde!(Option<Vec<u32>>, Some(vec![1])),
+            refused_beside_serde!(Option<[u32; 2]>, Some([1, 2])),
+        ],
+        "an optional",
+    );
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_tagged_sequence_is_refused_in_the_words_serde_refuses_it() {
+    use std::collections::HashSet;
+    assert_quotes_serde(
+        &[
+            refused_beside_serde!(Vec<u32>, vec![1]),
+            refused_beside_serde!(Vec<[u32; 2]>, vec![[1, 2]]),
+            refused_beside_serde!(HashSet<u32>, HashSet::from([1])),
+            refused_beside_serde!(&'static [u32], &[1]),
+            refused_beside_serde!(Box<[u32]>, vec![1].into_boxed_slice()),
+        ],
+        "a sequence",
+    );
+}
+
+#[cfg(all(feature = "serde", feature = "indexmap"))]
+#[test]
+fn a_tagged_index_set_is_refused_in_the_words_serde_refuses_it() {
+    use indexmap::IndexSet;
+    assert_quotes_serde(
+        &[refused_beside_serde!(IndexSet<u32>, IndexSet::from([1]))],
+        "a sequence",
+    );
+}
+
+/// serde writes a fixed-size array as a tuple, whatever its length is written as.
+#[cfg(feature = "serde")]
+#[test]
+fn a_tagged_tuple_and_a_fixed_size_array_are_refused_in_the_words_serde_refuses_them() {
+    const PAIR: usize = 2;
+    assert_quotes_serde(
+        &[
+            refused_beside_serde!((u32,), (1,)),
+            refused_beside_serde!((u32, String), (1, "s".to_owned())),
+        ],
+        "a tuple",
+    );
+    assert_quotes_serde(
+        &[
+            refused_beside_serde!([u32; 2], [1, 2]),
+            refused_beside_serde!([u32; 0], []),
+            refused_beside_serde!([u32; PAIR], [1, 2]),
+            refused_beside_serde!([Vec<u32>; 1], [vec![1]]),
+            refused_beside_serde!(Box<[u32; 2]>, Box::new([1, 2])),
+        ],
+        "a fixed-size array",
+    );
+}
+
+/// serde writes a range and a `Result` beside the tag, in the object the tag is written in, and
+/// reads them back: the refusal names what serde writes there.
+#[cfg(feature = "serde")]
+#[test]
+fn a_tagged_range_and_result_are_refused_as_what_serde_writes_beside_the_tag() {
+    use core::ops::Range;
+
+    #[derive(serde::Serialize)]
+    #[serde(tag = "kind")]
+    enum Ranged {
+        Held(Range<u32>),
+    }
+
+    #[derive(serde::Serialize)]
+    #[serde(tag = "kind")]
+    enum Resulted {
+        Held(Result<u32, String>),
+    }
+
+    for (source, value, written, said, serde_writes) in [
+        (
+            "enum Ranged { Held(Range<u32>) }",
+            "a range",
+            "its bounds",
+            serde_json::to_string(&Ranged::Held(1..3)).unwrap(),
+            r#"{"kind":"Held","start":1,"end":3}"#,
+        ),
+        (
+            "enum Resulted { Held(Result<u32, String>) }",
+            "a result",
+            "the key of its arm",
+            serde_json::to_string(&Resulted::Held(Ok(1))).unwrap(),
+            r#"{"kind":"Held","Ok":1}"#,
+        ),
+    ] {
+        assert_eq!(
+            said, serde_writes,
+            "serde no longer writes {source} beside the tag"
+        );
+        assert_written_beside(source, value, written);
+    }
+}
+
+/// serde writes an `ObjectId` beside the tag as its `$oid` key, and reads it back.
+#[cfg(all(feature = "serde", feature = "mongodb"))]
+#[test]
+fn a_tagged_object_id_is_refused_as_what_serde_writes_beside_the_tag() {
+    use bson2::oid::ObjectId;
+
+    #[derive(serde::Serialize)]
+    #[serde(tag = "kind")]
+    enum Stamped {
+        Held(ObjectId),
+    }
+
+    let held = ObjectId::parse_str("507f1f77bcf86cd799439011").unwrap();
+    assert_eq!(
+        serde_json::to_string(&Stamped::Held(held)).unwrap(),
+        r#"{"kind":"Held","$oid":"507f1f77bcf86cd799439011"}"#,
+        "serde no longer writes an ObjectId beside the tag"
+    );
+    assert_written_beside(
+        "enum Stamped { Held(ObjectId) }",
+        "an ObjectId",
+        "its `$oid` key",
+    );
+}
+
+/// The one refusal `source` earns names `value` and what serde writes beside the tag for it.
+#[cfg(feature = "serde")]
+fn assert_written_beside(source: &str, value: &str, written: &str) {
+    let errors = internal_guard_errors(&syn::parse_str(source).unwrap());
+    assert_eq!(errors.len(), 1, "got: {errors:?} for {source}");
+    assert!(
+        errors[0].contains(&format!("wraps {value}:"))
+            && errors[0].contains(&format!("writes {written} beside the tag"))
+            && !errors[0].contains("cannot name"),
+        "the refusal of {source} does not say what serde writes: {}",
+        errors[0]
+    );
 }
 
 #[cfg(feature = "serde")]

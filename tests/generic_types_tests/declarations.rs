@@ -1343,6 +1343,62 @@ const LANDINGS: [(&str, &str, &str, bool); 12] = [
     ),
 ];
 
+/// Each payload of an untagged enum of members of named fields, under an alias flattened beside a
+/// member, the schema it is parsed through and the type it is assigned to, and whether Zod and
+/// TypeScript take it: each member serde writes, through an alias of the enum and through an alias
+/// that declares a parameter of its own, written with an argument, and not the keys of two members,
+/// no member, or a member of another type.
+const ALIASED_PICKS: [(&str, &str, &str, bool); 8] = [
+    (
+        "DeclaredDinghy$Schema",
+        "DeclaredDinghy",
+        r#"{"note":"n","oars":2}"#,
+        true,
+    ),
+    (
+        "DeclaredDinghy$Schema",
+        "DeclaredDinghy",
+        r#"{"note":"n","sail":"s"}"#,
+        true,
+    ),
+    (
+        "DeclaredDinghy$Schema",
+        "DeclaredDinghy",
+        r#"{"note":"n","oars":2,"sail":"s"}"#,
+        false,
+    ),
+    (
+        "DeclaredDinghy$Schema",
+        "DeclaredDinghy",
+        r#"{"note":"n"}"#,
+        false,
+    ),
+    (
+        "DeclaredGangway$Schema",
+        "DeclaredGangway",
+        r#"{"note":"n","load":true}"#,
+        true,
+    ),
+    (
+        "DeclaredGangway$Schema",
+        "DeclaredGangway",
+        r#"{"note":"n","count":3}"#,
+        true,
+    ),
+    (
+        "DeclaredGangway$Schema",
+        "DeclaredGangway",
+        r#"{"note":"n","load":true,"count":3}"#,
+        false,
+    ),
+    (
+        "DeclaredGangway$Schema",
+        "DeclaredGangway",
+        r#"{"note":"n","load":3}"#,
+        false,
+    ),
+];
+
 static STOOD_DOWN: Once = Once::new();
 
 /// A struct whose fields bound a brand over a string, one declared below it and an optional one,
@@ -1754,6 +1810,42 @@ pub struct DeclaredSlipway {
     pub pick: DeclaredPick<u32>,
 }
 
+/// An untagged enum of two members of named fields, each closed to the other's key where it is
+/// flattened.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum DeclaredSkiff {
+    Rowed { oars: u32 },
+    Sailed { sail: String },
+}
+
+/// [`DeclaredSkiff`] under an alias.
+#[model_schema()]
+pub type DeclaredSkiffAlias = DeclaredSkiff;
+
+/// [`DeclaredSkiffAlias`] flattened beside a member of its holder's own.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeclaredDinghy {
+    pub note: String,
+    #[serde(flatten)]
+    pub skiff: DeclaredSkiffAlias,
+}
+
+/// [`DeclaredPick`] under an alias that declares a parameter of its own.
+#[model_schema(default_types(Stowed = String))]
+pub type DeclaredPickOf<Stowed> = DeclaredPick<Stowed>;
+
+/// [`DeclaredPickOf`] written with an argument and flattened beside a member of its holder's own.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeclaredGangway {
+    pub note: String,
+    #[serde(flatten)]
+    pub pick: DeclaredPickOf<bool>,
+}
+
 fn bundle() -> String {
     [
         PREAMBLE.to_owned(),
@@ -1871,6 +1963,16 @@ fn hatches_bundle() -> String {
         DeclaredPick::<String>::zod_schema(),
         DeclaredSlipway::ts_definition(),
         DeclaredSlipway::zod_schema(),
+        DeclaredSkiff::ts_definition(),
+        DeclaredSkiff::zod_schema(),
+        declared_skiff_alias_schema::Schema::ts_definition(),
+        declared_skiff_alias_schema::Schema::zod_schema(),
+        DeclaredDinghy::ts_definition(),
+        DeclaredDinghy::zod_schema(),
+        declared_pick_of_schema::Schema::ts_definition(),
+        declared_pick_of_schema::Schema::zod_schema(),
+        DeclaredGangway::ts_definition(),
+        DeclaredGangway::zod_schema(),
     ]
     .join("\n\n")
 }
@@ -4183,6 +4285,69 @@ fn type_check_an_untagged_enum_written_with_an_argument_takes_each_member_at_the
     fs::remove_dir_all(&at).unwrap();
     // A row's line is its position after the import.
     let typed: Vec<bool> = (0..LANDINGS.len())
+        .map(|row| !said.contains(&format!("consumer.ts({},", row + 2)))
+        .collect();
+    assert_eq!(
+        typed, stated,
+        "TypeScript does not take what the rows state:\n{said}\n{payloads}"
+    );
+}
+
+/// Whether serde writes `json` back as it reads it, as `T`: a payload serde writes.
+fn serde_writes<T>(json: &str) -> bool
+where
+    T: DeserializeOwned + Serialize,
+{
+    serde_json::from_str::<T>(json).is_ok_and(|read| {
+        serde_json::to_value(read).ok() == serde_json::from_str::<serde_json::Value>(json).ok()
+    })
+}
+
+/// An untagged enum flattened through an alias is taken by the Zod schema of its holder under
+/// `node` and by its TypeScript type under `tsc --strict` as the enum named directly is: each
+/// member serde writes, and not the keys of two members, which serde reads as the first member
+/// and never writes.
+#[test]
+fn type_check_an_untagged_enum_flattened_through_an_alias_takes_each_member_serde_writes() {
+    let stated: Vec<bool> = ALIASED_PICKS
+        .iter()
+        .map(|&(_, _, _, taken)| taken)
+        .collect();
+    let written: Vec<bool> = ALIASED_PICKS
+        .iter()
+        .map(|&(_, typed, json, _)| match typed {
+            "DeclaredDinghy" => serde_writes::<DeclaredDinghy>(json),
+            _ => serde_writes::<DeclaredGangway>(json),
+        })
+        .collect();
+    assert_eq!(written, stated, "serde does not write what the rows state");
+    let listed: Vec<(&str, &str)> = ALIASED_PICKS
+        .iter()
+        .map(|&(schema, _, json, _)| (schema, json))
+        .collect();
+    let driver = TAKEN_DRIVER.replace("PAYLOADS", &serde_json::to_string(&listed).unwrap());
+    let Some((printed, failed)) = loaded_from("aliased-picks", &hatches_bundle(), &driver) else {
+        return;
+    };
+    assert_eq!(
+        printed,
+        serde_json::to_string(&stated).unwrap(),
+        "the schemas do not take what the rows state:\n{failed}"
+    );
+    let Some(at) = built_from("aliased-picks-payloads", &hatches_bundle()) else {
+        return;
+    };
+    let mut payloads =
+        String::from("import type { DeclaredDinghy, DeclaredGangway } from \"./lib/index.js\";\n");
+    for (position, &(_, typed, json, _)) in ALIASED_PICKS.iter().enumerate() {
+        let _ = writeln!(payloads, "export const row{position}: {typed} = {json};");
+    }
+    fs::write(at.join("tsconfig.consumer.json"), CONSUMER_PROJECT).unwrap();
+    fs::write(at.join("consumer.ts"), &payloads).unwrap();
+    let (_, said) = compiled(&at, "tsconfig.consumer.json").unwrap();
+    fs::remove_dir_all(&at).unwrap();
+    // A row's line is its position after the import.
+    let typed: Vec<bool> = (0..ALIASED_PICKS.len())
         .map(|row| !said.contains(&format!("consumer.ts({},", row + 2)))
         .collect();
     assert_eq!(
