@@ -8,7 +8,9 @@
 //! plain enum under the names serde writes its variants under. An optional struct with a flattened
 //! member of its own is read wherever the struct reads, and as `null` wherever serde reads `None`,
 //! and one that takes a key is `null` where the key is absent and refuses a key that does not read.
-//! A variant reads and writes a flattened member at its own level, under every tagging.
+//! An optional type the emitter recorded no keys for is read as the first where its serializer
+//! declares no property, and as the second where it declares some. A variant reads and writes a
+//! flattened member at its own level, under every tagging.
 
 #![cfg(feature = "kotlin")]
 
@@ -40,9 +42,14 @@ use super::flattened_models::{
 use super::runtime::ran_kotlin;
 use super::swift_flattened_options_models::{
     Crowning, FLAKING, FLAKING_ABSENT, FLAKING_MISTYPED, Fidding, Flaking, LAPPING, LAPPING_ABSENT,
-    LAPPING_MISTYPED, crowning_kotlin, fidding_kotlin, flaking_kotlin, tabling_kotlin,
+    LAPPING_MISTYPED, Ratline, crowning_kotlin, fidding_kotlin, flaking_kotlin, nippering_kotlin,
+    ratline_kotlin, tabling_kotlin,
 };
 use super::tuple_variants_models::labelling_kotlin;
+use super::unrecorded_options_models::{
+    READ_BACK, UNRECORDED, bight_kotlin, bridled_kotlin, bridling_kotlin, crowned_kotlin,
+    fiddling_kotlin, hitched_kotlin, slipped_kotlin, slipping_kotlin, snagging_kotlin,
+};
 
 const KOTLIN_IMPORTS: &str = "import kotlinx.serialization.*\n\
      import kotlinx.serialization.json.*\n\
@@ -1030,6 +1037,74 @@ fn an_optional_struct_that_takes_no_key_reads_and_writes_in_kotlin_as_serde_does
         labelling_kotlin::kotlin_definition(),
         sheeting_kotlin::kotlin_definition(),
         scarfing_kotlin::kotlin_definition(),
+        main,
+    ];
+    let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
+        return;
+    };
+    assert_eq!(printed, expected, "the Kotlin read is not the read above");
+}
+
+/// An optional member whose type the emitter recorded no keys for and whose serializer is written
+/// by hand, a struct declared below its holder with a flattened member of its own and an enum
+/// under each tagging but serde's own, is read wherever its read succeeds and is `null` wherever
+/// it throws, as serde reads it, and is written back as serde writes it back. A struct declared
+/// below its holder whose serializer the plugin writes is looked for by the keys its descriptor
+/// names: `null` where none is there, and a key that does not read refuses the payload, as
+/// TypeScript and Zod refuse it, where serde reads `None`.
+#[test]
+fn an_optional_type_of_no_recorded_key_reads_and_writes_in_kotlin_as_serde_does() {
+    let serde_told: Vec<String> = UNRECORDED
+        .iter()
+        .map(|row| (row.read_back)(row.json))
+        .collect();
+    assert_eq!(
+        serde_told, READ_BACK,
+        "serde no longer reads each payload as it did"
+    );
+    let looked_for = [FLAKING, FLAKING_ABSENT, FLAKING_MISTYPED];
+    let ratline_told =
+        looked_for.map(|json| told_by_serde(json, |read: &Ratline| self::json(read)));
+    assert_eq!(
+        ratline_told,
+        ["{\"label\":\"north\"}", "{}", "{}"],
+        "serde no longer reads each payload as it did"
+    );
+    let rows = UNRECORDED
+        .iter()
+        .map(|row| (row.holder, row.json))
+        .chain(looked_for.map(|json| ("Ratline", json)));
+    // The key `Nippering` reads, held as a number: TypeScript and Zod refuse it.
+    let in_kotlin = READ_BACK.into_iter().chain([
+        ratline_told[0].as_str(),
+        ratline_told[1].as_str(),
+        "refused",
+    ]);
+    let mut expected = String::new();
+    let mut main = String::from(ENTRY_READ);
+    main.push_str("fun main() {\n");
+    for (at, ((holder, json), told)) in rows.zip(in_kotlin).enumerate() {
+        let _ = writeln!(expected, "{at}: {told}");
+        let _ = writeln!(
+            main,
+            "    entry(\"{at}\", {holder}.serializer(), \"\"\"{json}\"\"\") {{ \
+             Json.encodeToString({holder}.serializer(), it) }}"
+        );
+    }
+    main.push_str("}\n");
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        bight_kotlin::kotlin_definition(),
+        fiddling_kotlin::kotlin_definition(),
+        crowned_kotlin::kotlin_definition(),
+        hitched_kotlin::kotlin_definition(),
+        snagging_kotlin::kotlin_definition(),
+        bridled_kotlin::kotlin_definition(),
+        bridling_kotlin::kotlin_definition(),
+        slipped_kotlin::kotlin_definition(),
+        slipping_kotlin::kotlin_definition(),
+        ratline_kotlin::kotlin_definition(),
+        nippering_kotlin::kotlin_definition(),
         main,
     ];
     let Some(printed) = ran_kotlin(&source.join("\n\n")) else {

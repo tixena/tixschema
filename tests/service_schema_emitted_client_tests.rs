@@ -395,6 +395,14 @@ mod run_kotlin_tuple_variants;
 #[path = "kotlin_tests/flattened_models.rs"]
 mod flattened_models;
 
+/// An optional flattened member whose type the Kotlin emitter recorded no keys for: a struct
+/// declared below its holder with a flattened member of its own, and an enum under each tagging
+/// but serde's own.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "kotlin_tests/unrecorded_options_models.rs"]
+mod unrecorded_options_models;
+
 /// A map flattened as the one member of its struct, optional or not and keyed by a plain enum, a
 /// flattened struct beside a member of its own, an optional member beside a flattened one, and a
 /// member flattened after a struct or beside a member of its holder's own, read and written by

@@ -35,6 +35,10 @@ use super::flattened_models::{
 };
 use super::read::{kept, serializers};
 use super::tuple_variants_models::Labelling;
+#[cfg(feature = "serde")]
+use super::unrecorded_options_models::{
+    bridling_kotlin, fiddling_kotlin, slipping_kotlin, snagging_kotlin,
+};
 
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1244,6 +1248,43 @@ fn an_optional_struct_that_takes_no_key_is_read_wherever_its_read_succeeds() {
     let decoded = "val sheetingKeys = setOf<String>(); val sheeting = runCatching { \
                    lenient.decodeFromJsonElement(SheetingUnjudged, obj) }.getOrNull();";
     assert!(scarfing.contains(decoded), "no `{decoded}` in: {scarfing}");
+}
+
+/// An optional flattened member whose type the emitter recorded no keys for is looked for by the
+/// elements its serializer's descriptor names, and where it names none, a serializer written by
+/// hand, is read wherever its read succeeds and is `null` wherever that read throws.
+#[test]
+#[cfg(feature = "serde")]
+fn an_optional_type_of_no_recorded_key_is_read_where_its_descriptor_names_no_element() {
+    let read = |prop: &str, serializer: &str, rest: &str| {
+        let decoded = format!("lenient.decodeFromJsonElement({serializer}, {rest})");
+        format!(
+            "val {prop}Keys = ({serializer}).descriptor.elementNames.toSet(); val {prop} = if \
+             ({prop}Keys.isEmpty()) runCatching {{ {decoded} }}.getOrNull() else if \
+             ({rest}.keys.any {{ it in {prop}Keys }}) {decoded} else null;"
+        )
+    };
+    let beside_a_note = "JsonObject(obj - setOf(\"note\"))";
+    for (kotlin, held) in [
+        (
+            fiddling_kotlin::kotlin_definition(),
+            read("crowned", "serializer<Crowned>()", "obj"),
+        ),
+        (
+            snagging_kotlin::kotlin_definition(),
+            read("hitched", "HitchedUnjudged", beside_a_note),
+        ),
+        (
+            bridling_kotlin::kotlin_definition(),
+            read("bridled", "BridledUnjudged", beside_a_note),
+        ),
+        (
+            slipping_kotlin::kotlin_definition(),
+            read("slipped", "SlippedUnjudged", beside_a_note),
+        ),
+    ] {
+        assert!(kotlin.contains(&held), "no `{held}` in: {kotlin}");
+    }
 }
 
 /// What serde reads of each holder of a flattened externally tagged enum: the first entry, in the
