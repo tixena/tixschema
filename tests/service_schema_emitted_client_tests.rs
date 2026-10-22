@@ -389,7 +389,8 @@ mod run_kotlin_tuple_variants;
 /// A map flattened as the one member of its struct, optional or not and keyed by a plain enum, a
 /// flattened struct beside a member of its own, an optional member beside a flattened one with its
 /// twin under `nullable`, and a member flattened after a struct or beside a member of its holder's
-/// own. Declared after the module that declares the member they flatten.
+/// own. Declared after the module that declares the member they flatten. The Swift run reads its
+/// externally tagged enums flattened where both clients are built.
 #[cfg(all(test, feature = "kotlin"))]
 #[path = "kotlin_tests/flattened_models.rs"]
 mod flattened_models;
@@ -457,6 +458,13 @@ mod swift_flattened_models;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_swift_flattened.rs"]
 mod run_swift_flattened;
+
+/// An externally tagged enum flattened beside a member of its holder's own, ahead of a function
+/// and of a struct, optional, and with a model its holder judges, read by the emitted Swift types
+/// from the one entry under a variant's name.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_flattened_enums.rs"]
+mod run_swift_flattened_enums;
 
 /// A flattened `Option` beside a member of its holder's own, alone in its holder and in a variant
 /// under a tag key, of a struct of two keys, of a struct declared below its holder, of a model

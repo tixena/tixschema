@@ -18,7 +18,7 @@ use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{
     brand_field, has_serde_skip_serializing, keys_taken_when_flattened, parse_serde_key_omission,
-    struct_tag,
+    struct_tag, variant_names_when_flattened,
 };
 use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, classify_variant, get_field_def,
@@ -1802,6 +1802,12 @@ fn present_statement(
         return corrected_field(field, functions, walked, source, twins);
     }
     if field.flatten
+        && let read::Source::Beside(taken) = source
+        && let Some((named, entries)) = preprocess::entries_of(&field.field_def)
+    {
+        return flattened_enum(field, (named, &entries), taken, twins);
+    }
+    if field.flatten
         && let Some(read) = flattened_map(field, walked, source, locals)
     {
         return read;
@@ -1826,6 +1832,83 @@ fn present_statement(
         );
     }
     keyed_read(field, container, absent_is_nil)
+}
+
+/// The statements that read the flattened externally tagged enum `field` holds, under an `Option`
+/// or not, from the one entry under one of `entries`' names of the object without `taken`.
+fn flattened_enum(
+    field: &SwiftField,
+    entries: (&str, &[preprocess::Entry]),
+    taken: &str,
+    twins: &mut Vec<String>,
+) -> String {
+    let optional = field.field_def.is_optional();
+    let def = if optional {
+        validate::under_option(&field.field_def)
+    } else {
+        field.field_def.clone()
+    };
+    let real_type = if optional {
+        field
+            .real_type
+            .strip_suffix('?')
+            .unwrap_or(&field.real_type)
+    } else {
+        &field.real_type
+    };
+    preprocess::entry(
+        &preprocess::Member {
+            def: &def,
+            functions: &[],
+            hint: &field.hint,
+            keys: "CodingKeys",
+            plain: preprocess::Plain::Declared,
+            real_type,
+            stem: swift_bare(&field.swift_name),
+            walked: validate::walks(&def, false),
+        },
+        entries,
+        taken,
+        optional,
+        &|held| format!("self.{} = {held}", field.swift_name),
+        twins,
+    )
+}
+
+/// The names serde reads a variant of `item_enum` under where it is flattened into a holder, each
+/// with the name the enum's own read takes the variant under and whether the variant holds no
+/// value, in the order [`variant_names_when_flattened`] lists them.
+fn flattened_entries(item_enum: &ItemEnum, preprocess: &[FunctionName]) -> Vec<preprocess::Entry> {
+    let read = variant_names_when_flattened(item_enum, preprocess);
+    let rule = container_rename_rule(&item_enum.attrs);
+    item_enum
+        .variants
+        .iter()
+        .flat_map(|variant| {
+            let variant_name = rename_override(&variant.attrs)
+                .unwrap_or_else(|| rule.apply_to_variant(&variant.ident.to_string()));
+            let unit = matches!(variant.fields, Fields::Unit);
+            iter::once(variant_name.clone())
+                .chain(variant_aliases(&variant.attrs))
+                .map(move |name| preprocess::Entry {
+                    name,
+                    unit,
+                    variant: variant_name.clone(),
+                })
+        })
+        .filter(|entry| read.contains(&entry.name))
+        .collect()
+}
+
+/// The `#[serde(alias = "...")]` names a variant is read under beside its own.
+#[cfg(feature = "serde")]
+fn variant_aliases(attrs: &[syn::Attribute]) -> Vec<String> {
+    parse_serde_field_attributes(attrs).aliases
+}
+
+#[cfg(not(feature = "serde"))]
+const fn variant_aliases(_attrs: &[syn::Attribute]) -> Vec<String> {
+    Vec::new()
 }
 
 /// The statements that read from `source` the flattened `Option` `field`, which names no function
@@ -2440,18 +2523,28 @@ fn handed_reads(fields: &[SwiftField], synthesized: bool, around: bool) -> (Stri
         .filter(|field| !field.flatten)
         .map(|field| field.wire_name.clone())
         .collect();
+    // The local of each flattened enum ahead, which holds the name of the entry it took.
+    let mut found_ahead: Vec<String> = Vec::new();
     let statements = fields
         .iter()
         .map(|field| {
             let handed = Handed {
-                taken: preprocess::taken_with(taken_ahead.iter().map(String::as_str)),
-                withheld: around || !taken_ahead.is_empty(),
+                taken: iter::once(preprocess::taken_with(
+                    taken_ahead.iter().map(String::as_str),
+                ))
+                .chain(found_ahead.iter().cloned())
+                .collect::<Vec<_>>()
+                .join(" + "),
+                withheld: around || !taken_ahead.is_empty() || !found_ahead.is_empty(),
             };
             if field.flatten {
                 for key in preprocess::keys_taken_by(&field.field_def) {
                     if !taken_ahead.contains(&key) {
                         taken_ahead.push(key);
                     }
+                }
+                if preprocess::entries_of(&field.field_def).is_some() {
+                    found_ahead.push(preprocess::found(swift_bare(&field.swift_name)));
                 }
             }
             decode_statement(
@@ -3647,6 +3740,7 @@ fn enum_swift_tokens(item_enum: &ItemEnum, args: &SwiftTypeArgs<'_>) -> TokenStr
         external_tagged_enum_swift_source(&shape, &mut aux)
     };
     preprocess::note(&rust_ident, read::takes_keys(&swift_source));
+    preprocess::note_entries(&rust_ident, flattened_entries(item_enum, args.preprocess));
     let full_source = if aux.is_empty() {
         swift_source
     } else {
