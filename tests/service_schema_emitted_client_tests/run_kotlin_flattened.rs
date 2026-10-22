@@ -15,7 +15,8 @@
 //! writes a flattened member at its own level, under every tagging. An optional member that names a
 //! function is read from what the function answers, as the Zod schema of its holder reads it. A
 //! struct under its own tag is written with the tag ahead of its members, alone and flattened, as
-//! serde writes it.
+//! serde writes it, and refuses a payload with no tag or another value under it, as TypeScript and
+//! Zod refuse it, where serde reads it.
 
 #![cfg(feature = "kotlin")]
 
@@ -30,24 +31,24 @@ use super::corrected_options_models::{
 };
 use super::flattened_models::{
     BELTING, BOWLINING, BROACHING, Belting, Bending, Bowlining, Brailing, Broaching, CHOCKED,
-    CLEATING, Cathead, Cleating, CorrectedLocker, DRESSING, Dipping, Dressing, ENSIGN,
-    EmptiedLocker, FLAG, Flag, GAFFING, GONFALON, Gaffing, Gammoning, Gasketing, Gonfalon, HEAVING,
-    HITCHING, Hawsepipe, Heaving, Hitching, Knotting, LOCKER, Lanyarding, Luffing, MARLINE,
-    Netting, Nipping, PAYLOAD, ProbeLocker, Rousing, SCARFING, SCUDDING, SEMAPHORE, SNUBBED,
-    STOWING, STROPPING, STRUCK, SWAYING, Scarfing, Scudding, Seizing, Semaphore, Slinging,
-    Snubbing, Splicing, Stoppering, Stowing, Striking, Stropping, Swaying, Tacking, UNDER_AN_ALIAS,
-    UNWRITTEN, WHELPING, Whelping, Whipping, Yawing, belting_kotlin, bending_kotlin,
-    bowlining_kotlin, brailing_kotlin, broaching_kotlin, bunting_kotlin, cathead_kotlin,
-    chock_kotlin, cleating_kotlin, corrected_locker_kotlin, dipping_kotlin, dressing_kotlin,
-    emptied_locker_kotlin, ensign_kotlin, flag_kotlin, gaffing_kotlin, gammoning_kotlin,
-    gasketing_kotlin, gonfalon_kotlin, hawsepipe_kotlin, hawser_kotlin, heaving_kotlin,
-    hitching_kotlin, jibing_kotlin, knotting_kotlin, lanyarding_kotlin, luffing_kotlin,
-    marline_kotlin, netting_kotlin, nipping_kotlin, noting_kotlin, probe_locker_kotlin,
-    quaying_kotlin, read_of, rousing_kotlin, scarfing_kotlin, scudding_kotlin, seizing_kotlin,
-    semaphore_kotlin, sheeting_kotlin, slinging_kotlin, snubbing_kotlin, splicing_kotlin,
-    stoppering_kotlin, stowing_kotlin, striking_kotlin, stropping_kotlin, swaying_kotlin,
-    tacking_kotlin, ticketed_kotlin, unwritten_kotlin, whelping_kotlin, whipping_kotlin,
-    yawing_kotlin,
+    CLEATING, Cathead, Cleating, CorrectedLocker, DRESSING, DRESSING_TAGS, Dipping, Dressing,
+    ENSIGN, EmptiedLocker, FLAG, FLAG_TAGS, Flag, GAFFING, GONFALON, Gaffing, Gammoning, Gasketing,
+    Gonfalon, HEAVING, HITCHING, Hawsepipe, Heaving, Hitching, Knotting, LOCKER, Lanyarding,
+    Luffing, MARLINE, Netting, Nipping, PAYLOAD, PENNANT_TAGS, Pennant, ProbeLocker, Rousing,
+    SCARFING, SCUDDING, SEMAPHORE, SNUBBED, STOWING, STROPPING, STRUCK, SWAYING, Scarfing,
+    Scudding, Seizing, Semaphore, Slinging, Snubbing, Splicing, Stoppering, Stowing, Striking,
+    Stropping, Swaying, Tacking, UNDER_AN_ALIAS, UNWRITTEN, WHELPING, Whelping, Whipping, Yawing,
+    belting_kotlin, bending_kotlin, bowlining_kotlin, brailing_kotlin, broaching_kotlin,
+    bunting_kotlin, cathead_kotlin, chock_kotlin, cleating_kotlin, corrected_locker_kotlin,
+    dipping_kotlin, dressing_kotlin, emptied_locker_kotlin, ensign_kotlin, flag_kotlin,
+    gaffing_kotlin, gammoning_kotlin, gasketing_kotlin, gonfalon_kotlin, hawsepipe_kotlin,
+    hawser_kotlin, heaving_kotlin, hitching_kotlin, jibing_kotlin, knotting_kotlin,
+    lanyarding_kotlin, luffing_kotlin, marline_kotlin, netting_kotlin, nipping_kotlin,
+    noting_kotlin, pennant_kotlin, probe_locker_kotlin, quaying_kotlin, read_of, rousing_kotlin,
+    scarfing_kotlin, scudding_kotlin, seizing_kotlin, semaphore_kotlin, sheeting_kotlin,
+    slinging_kotlin, snubbing_kotlin, splicing_kotlin, stoppering_kotlin, stowing_kotlin,
+    striking_kotlin, stropping_kotlin, swaying_kotlin, tacking_kotlin, ticketed_kotlin,
+    unwritten_kotlin, whelping_kotlin, whipping_kotlin, yawing_kotlin,
 };
 use super::runtime::ran_kotlin;
 use super::swift_flattened_options_models::{
@@ -265,6 +266,9 @@ const UNIT_ENTRIES: [(&str, &str); 7] = [
     ("Easing", r#"{"note":"n"}"#),
 ];
 
+/// What each payload of a [`TagRows`] holds under the tag.
+const TAGS: [&str; 4] = ["its tag", "no tag", "another tag", "a tag of another kind"];
+
 /// A payload, the type it is read as, and what serde writes back of it.
 struct Row {
     json: &'static str,
@@ -287,6 +291,18 @@ struct OptionRow {
     holder: &'static str,
     json: &'static str,
     serde: String,
+}
+
+/// A struct under its own tag, which writes `named` under it, read from the payloads of
+/// [`FLAG_TAGS`] written for it, by `serializer` in Kotlin and by `written` in serde, which writes
+/// `back` of every one.
+struct TagRows {
+    back: &'static str,
+    name: &'static str,
+    named: &'static str,
+    payloads: [String; 4],
+    serializer: &'static str,
+    written: fn(&str) -> String,
 }
 
 /// What serde writes back of `json`, read as `T`.
@@ -522,6 +538,108 @@ fn a_struct_under_its_own_tag_is_written_in_kotlin_with_the_tag_ahead_as_serde_w
         ensign_kotlin::kotlin_definition(),
         dressing_kotlin::kotlin_definition(),
         TOLD.to_owned(),
+        main,
+    ];
+    let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
+        return;
+    };
+    assert_eq!(printed, expected);
+}
+
+/// A struct under its own tag alone, with a type parameter, with a member under its alias, with a
+/// flattened member of its own and flattened ahead of a member of its holder's own.
+fn tag_rows() -> [TagRows; 5] {
+    let renamed =
+        |named: &str| FLAG_TAGS.map(|row| row.replace("\"Flag\"", &format!("\"{named}\"")));
+    [
+        TagRows {
+            back: r#"{"kind":"Flag","label":"n"}"#,
+            name: "alone",
+            named: "Flag",
+            payloads: FLAG_TAGS.map(str::to_owned),
+            serializer: "Flag.serializer()",
+            written: written_back::<Flag>,
+        },
+        TagRows {
+            back: r#"{"kind":"Gonfalon","label":"n"}"#,
+            name: "with a type parameter",
+            named: "Gonfalon",
+            payloads: renamed("Gonfalon"),
+            serializer: "GonfalonSerializer(serializer<String>())",
+            written: written_back::<Gonfalon<String>>,
+        },
+        TagRows {
+            back: r#"{"kind":"Semaphore","label":"n"}"#,
+            name: "with a member under its alias",
+            named: "Semaphore",
+            payloads: renamed("Semaphore"),
+            serializer: "Semaphore.serializer()",
+            written: written_back::<Semaphore>,
+        },
+        TagRows {
+            back: r#"{"kind":"Pennant","label":"n","note":"a"}"#,
+            name: "with a flattened member",
+            named: "Pennant",
+            payloads: PENNANT_TAGS.map(str::to_owned),
+            serializer: "Pennant.serializer()",
+            written: written_back::<Pennant>,
+        },
+        TagRows {
+            back: r#"{"kind":"Ensign","label":"n","north":2}"#,
+            name: "flattened ahead of a member",
+            named: "Ensign",
+            payloads: DRESSING_TAGS.map(str::to_owned),
+            serializer: "Dressing.serializer()",
+            written: written_back::<Dressing>,
+        },
+    ]
+}
+
+/// Each struct of [`tag_rows`] reads a payload under its own tag as serde reads it, and refuses one
+/// with no tag, or with another value under it, as TypeScript and Zod refuse it
+/// (`kind: z.literal("Flag")`), where serde reads each and writes the struct's name back.
+#[test]
+fn a_struct_under_its_own_tag_refuses_in_kotlin_every_tag_zod_refuses() {
+    let mut expected = String::new();
+    let mut main = String::from(TOLD_OR_REFUSED);
+    main.push_str("fun main() {\n");
+    for rows in tag_rows() {
+        let name = rows.name;
+        assert_eq!(
+            rows.payloads
+                .each_ref()
+                .map(|payload| (rows.written)(payload)),
+            [rows.back; 4],
+            "serde reads every payload {name} and writes the struct's name back"
+        );
+        for (tag, payload) in TAGS.iter().zip(&rows.payloads) {
+            let _ = writeln!(
+                main,
+                "    told(\"{name}, {tag}\", {}, \"\"\"{payload}\"\"\")",
+                rows.serializer
+            );
+        }
+        let named = rows.named;
+        let _ = write!(
+            expected,
+            "{name}, {}: {}\n\
+             {name}, {}: refused: SerializationException: missing field `kind`\n\
+             {name}, {}: refused: SerializationException: expected tag \"{named}\", found \
+             \"Other\"\n\
+             {name}, {}: refused: SerializationException: expected tag \"{named}\", found 5\n",
+            TAGS[0], rows.back, TAGS[1], TAGS[2], TAGS[3]
+        );
+    }
+    main.push_str("}\n");
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        flag_kotlin::kotlin_definition(),
+        gonfalon_kotlin::kotlin_definition(),
+        semaphore_kotlin::kotlin_definition(),
+        labelling_kotlin::kotlin_definition(),
+        pennant_kotlin::kotlin_definition(),
+        ensign_kotlin::kotlin_definition(),
+        dressing_kotlin::kotlin_definition(),
         main,
     ];
     let Some(printed) = ran_kotlin(&source.join("\n\n")) else {

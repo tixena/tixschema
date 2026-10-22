@@ -16,13 +16,14 @@ use tixschema::model_schema;
 use super::corrected_options_models::{moused_kotlin, reeved_kotlin, wormed_kotlin};
 use super::flattened_models::{
     BELTING, BOWLINING, BROACHING, Belting, Bending, Bowlining, Brailing, Broaching, CHOCKED,
-    CLEATING, Cathead, Chock, Cleating, CorrectedLocker, DRESSING, Dipping, Dressing, ENSIGN,
-    EmptiedLocker, FLAG, Flag, GAFFING, GONFALON, Gaffing, Gammoning, Gasketing, Gonfalon, HEAVING,
-    HITCHING, Hawsepipe, Heaving, Hitching, Jibing, Knotting, LOCKER, Lanyarding, Luffing, MARLINE,
-    Netting, Nipping, PAYLOAD, ProbeLocker, Quaying, Rousing, SCARFING, SCUDDING, SEMAPHORE,
-    SNUBBED, STOWING, STROPPING, STRUCK, SWAYING, Scarfing, Scudding, Seizing, Semaphore, Sheeting,
-    Slinging, Snubbing, Splicing, Stoppering, Stowing, Striking, Stropping, Swaying, Tacking,
-    UNDER_AN_ALIAS, UNWRITTEN, WHELPING, Whelping, Whipping, Yawing, read_of,
+    CLEATING, Cathead, Chock, Cleating, CorrectedLocker, DRESSING, DRESSING_TAGS, Dipping,
+    Dressing, ENSIGN, EmptiedLocker, Ensign, FLAG, FLAG_TAGS, Flag, GAFFING, GONFALON, Gaffing,
+    Gammoning, Gasketing, Gonfalon, HEAVING, HITCHING, Hawsepipe, Heaving, Hitching, Jibing,
+    Knotting, LOCKER, Lanyarding, Luffing, MARLINE, Netting, Nipping, PAYLOAD, PENNANT_TAGS,
+    Pennant, ProbeLocker, Quaying, Rousing, SCARFING, SCUDDING, SEMAPHORE, SNUBBED, STOWING,
+    STROPPING, STRUCK, SWAYING, Scarfing, Scudding, Seizing, Semaphore, Sheeting, Slinging,
+    Snubbing, Splicing, Stoppering, Stowing, Striking, Stropping, Swaying, Tacking, UNDER_AN_ALIAS,
+    UNWRITTEN, WHELPING, Whelping, Whipping, Yawing, read_of,
 };
 #[cfg(feature = "serde")]
 use super::flattened_models::{
@@ -30,10 +31,10 @@ use super::flattened_models::{
     cathead_kotlin, cleating_kotlin, corrected_locker_kotlin, dipping_kotlin, dressing_kotlin,
     emptied_locker_kotlin, flag_kotlin, gaffing_kotlin, gammoning_kotlin, gasketing_kotlin,
     gonfalon_kotlin, hawsepipe_kotlin, heaving_kotlin, hitching_kotlin, knotting_kotlin,
-    luffing_kotlin, netting_kotlin, nipping_kotlin, probe_locker_kotlin, quaying_kotlin,
-    rousing_kotlin, scarfing_kotlin, scudding_kotlin, seizing_kotlin, semaphore_kotlin,
-    slinging_kotlin, splicing_kotlin, stoppering_kotlin, stowing_kotlin, striking_kotlin,
-    swaying_kotlin, whelping_kotlin, whipping_kotlin, yawing_kotlin,
+    luffing_kotlin, netting_kotlin, nipping_kotlin, pennant_kotlin, probe_locker_kotlin,
+    quaying_kotlin, rousing_kotlin, scarfing_kotlin, scudding_kotlin, seizing_kotlin,
+    semaphore_kotlin, slinging_kotlin, splicing_kotlin, stoppering_kotlin, stowing_kotlin,
+    striking_kotlin, swaying_kotlin, whelping_kotlin, whipping_kotlin, yawing_kotlin,
 };
 use super::read::{kept, serializers};
 use super::tuple_variants_models::Labelling;
@@ -926,21 +927,78 @@ fn serde_writes_a_structs_own_tag_ahead_of_its_members() {
     );
 }
 
-/// The unjudged serializer of a struct under its own tag moves the tag, which the plugin writes
-/// after the constructor's properties, ahead of the members, beside the correction of a payload
-/// where it has one, and a holder merges what that serializer writes ahead of its own members.
+/// serde reads a struct under its own tag with no tag and with any value under it, alone, with a
+/// flattened member of its own and flattened ahead of a member of its holder's own, and writes the
+/// struct's name back.
+#[test]
+fn serde_reads_a_structs_own_tag_whatever_it_holds_and_writes_the_name_back() {
+    assert_eq!(
+        FLAG_TAGS.map(read_of::<Flag>),
+        [r#"{"kind":"Flag","label":"n"}"#; 4],
+        "serde's write of each payload of `Flag`"
+    );
+    assert_eq!(
+        PENNANT_TAGS.map(read_of::<Pennant>),
+        [r#"{"kind":"Pennant","label":"n","note":"a"}"#; 4],
+        "serde's write of each payload of `Pennant`"
+    );
+    assert_eq!(
+        DRESSING_TAGS.map(read_of::<Dressing>),
+        [r#"{"kind":"Ensign","label":"n","north":2}"#; 4],
+        "serde's write of each payload of `Dressing`"
+    );
+}
+
+/// The Zod schema of a struct under its own tag holds the tag as the literal of the struct's name,
+/// which refuses each payload of [`FLAG_TAGS`], [`PENNANT_TAGS`] and [`DRESSING_TAGS`] but the
+/// first.
+#[test]
+#[cfg(feature = "zod")]
+fn zod_holds_a_structs_own_tag_as_the_literal_of_its_name() {
+    for (zod, literal) in [
+        (Flag::zod_schema(), "kind: z.literal(\"Flag\"),"),
+        (Pennant::zod_schema(), "kind: z.literal(\"Pennant\"),"),
+        (Ensign::zod_schema(), "kind: z.literal(\"Ensign\"),"),
+    ] {
+        assert!(zod.contains(literal), "no `{literal}` in: {zod}");
+    }
+}
+
+/// The statement that refuses `object` where it holds no tag `kind` of the value `named`.
+#[cfg(feature = "serde")]
+fn tag_held(object: &str, named: &str) -> String {
+    format!(
+        "when ({object}[\"kind\"]) {{ JsonPrimitive(\"{named}\") -> {{}}; null -> throw \
+         SerializationException(\"missing field `kind`\"); else -> throw \
+         SerializationException(\"expected tag \\\"{named}\\\", found \" + {object}[\"kind\"]) }}"
+    )
+}
+
+/// The unjudged serializer of a struct under its own tag refuses a payload that holds no tag, or
+/// another value under it, after the correction of a payload where it has one, and moves the tag,
+/// which the plugin writes after the constructor's properties, ahead of the members. A serializer
+/// tixschema writes checks the object it reads every member from, and writes the tag first, and a
+/// holder merges what the unjudged serializer writes ahead of its own members.
 #[test]
 #[cfg(feature = "serde")]
-fn a_struct_under_its_own_tag_is_written_with_the_tag_ahead_of_its_members() {
+fn a_struct_under_its_own_tag_is_read_by_its_tag_and_written_with_the_tag_ahead() {
     let moved = "override fun transformSerialize(element: JsonElement): JsonElement = \
                  JsonObject(mapOf(\"kind\" to element.jsonObject.getValue(\"kind\")) + \
                  element.jsonObject)";
+    let read = |named: &str| {
+        format!(
+            "override fun transformDeserialize(element: JsonElement): JsonElement = \
+             element.also {{ whole: JsonElement -> if (whole is JsonObject) {} }}",
+            tag_held("whole", named)
+        )
+    };
     for (kotlin, written) in [
         (
             flag_kotlin::kotlin_definition(),
             format!(
                 "@OptIn(ExperimentalSerializationApi::class) object FlagUnjudged : \
-                 JsonTransformingSerializer<Flag>(Flag.generatedSerializer()) {{ {moved} }}"
+                 JsonTransformingSerializer<Flag>(Flag.generatedSerializer()) {{ {}; {moved} }}",
+                read("Flag")
             ),
         ),
         (
@@ -949,7 +1007,8 @@ fn a_struct_under_its_own_tag_is_written_with_the_tag_ahead_of_its_members() {
                 "@OptIn(ExperimentalSerializationApi::class) class \
                  GonfalonUnjudged<Held>(heldSerializer: KSerializer<Held>) : \
                  JsonTransformingSerializer<Gonfalon<Held>>(Gonfalon.generatedSerializer(\
-                 heldSerializer)) {{ {moved} }}"
+                 heldSerializer)) {{ {}; {moved} }}",
+                read("Gonfalon")
             ),
         ),
         (
@@ -957,7 +1016,24 @@ fn a_struct_under_its_own_tag_is_written_with_the_tag_ahead_of_its_members() {
             format!(
                 "-> val named = when (key) {{ \"name\" -> \"label\"; else -> key }}; if \
                  (put(named, held) != null) throw SerializationException(\"duplicate field \
-                 `$named`\") }} }}) else whole }}; {moved} }}"
+                 `$named`\") }} }}) else whole }}.also {{ whole: JsonElement -> if (whole is \
+                 JsonObject) {} }}; {moved} }}",
+                tag_held("whole", "Semaphore")
+            ),
+        ),
+        (
+            pennant_kotlin::kotlin_definition(),
+            "buildJsonObject { put(\"kind\", \"Pennant\"); \
+             output.json.encodeToJsonElement(LabellingUnjudged, value.labelling)"
+                .to_owned(),
+        ),
+        (
+            pennant_kotlin::kotlin_definition(),
+            format!(
+                "val obj = input.decodeJsonElement().let {{ it as? JsonObject ?: throw \
+                 SerializationException(\"expected an object, found \" + it) }}; {}; val \
+                 labellingKeys",
+                tag_held("obj", "Pennant")
             ),
         ),
         (
