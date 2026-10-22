@@ -21075,6 +21075,152 @@ fn an_enum_with_no_variant_serde_writes_or_reads_is_refused() {
     }
 }
 
+/// What a variant under `#[serde(untagged)]` in an enum serde writes with names is refused with.
+fn untagged_variant_refusal(enum_name: &str, variant: &str) -> String {
+    format!(
+        "model_schema: type `{enum_name}`: variant `{variant}` is under `#[serde(untagged)]`, so \
+         serde writes it with no name, as its content alone, inside an enum it writes with names, \
+         and no surface can describe it. Take `#[serde(untagged)]` off the variant, or put it on \
+         the whole enum."
+    )
+}
+
+/// A variant under `#[serde(untagged)]` that serde writes or reads, in an enum it writes with
+/// names, is refused under every tagging, its members' keys taken off, ahead of every refusal that
+/// reads it beside the enum's tag; every such variant is refused in one expansion, and one serde's
+/// derive refuses for its place is refused in serde's words.
+#[test]
+fn a_variant_under_untagged_in_an_enum_written_with_names_is_refused() {
+    for (source, enum_name) in [
+        (
+            "pub enum Mixed { Named { #[model_schema_prop(minLength = 1)] label: String }, \
+             #[serde(untagged)] Loose(String) }",
+            "Mixed",
+        ),
+        (
+            "#[serde(tag = \"kind\")] pub enum ProbeTaggedLoose { Named { label: String }, \
+             #[serde(untagged)] Loose(String) }",
+            "ProbeTaggedLoose",
+        ),
+        (
+            "#[serde(tag = \"kind\", content = \"body\")] pub enum ProbeNextLoose { Named { label: \
+             String }, #[serde(untagged)] Loose(String) }",
+            "ProbeNextLoose",
+        ),
+        (
+            "#[serde(tag = \"kind\")] pub enum ProbeLooseEntries { Named { label: String }, \
+             #[serde(untagged)] Loose { #[serde(flatten)] extra: HashMap<String, String> } }",
+            "ProbeLooseEntries",
+        ),
+        (
+            "pub enum ProbeReadLoose { Named { label: String }, #[serde(untagged, \
+             skip_serializing)] Loose(String) }",
+            "ProbeReadLoose",
+        ),
+        (
+            "pub enum ProbeWrittenLoose { Named { label: String }, #[serde(untagged, \
+             skip_deserializing)] Loose(String) }",
+            "ProbeWrittenLoose",
+        ),
+    ] {
+        let refusal = untagged_variant_refusal(enum_name, "Loose");
+        assert_refused_without_member_keys("", source, &refusal);
+        assert!(
+            enum_name != "Mixed" || include_str!("../../README.md").contains(&refusal),
+            "the README no longer quotes this refusal:\n{refusal}"
+        );
+    }
+    assert_refused_without_member_keys(
+        "",
+        "pub enum ProbeHue { Red, #[serde(untagged)] Other }",
+        &untagged_variant_refusal("ProbeHue", "Other"),
+    );
+
+    let both = super::exec_model_schema(
+        syn::parse_str("").unwrap(),
+        syn::parse_str(
+            "#[serde(tag = \"kind\")] pub enum ProbeTwoLoose { Named { label: String }, \
+             #[serde(untagged)] Text(String), #[serde(untagged)] Count(u32) }",
+        )
+        .unwrap(),
+    );
+    let written = both.to_string();
+    assert_eq!(
+        identifiers_named(both, "compile_error"),
+        2,
+        "got: {written}"
+    );
+    for variant in ["Text", "Count"] {
+        let refusal = untagged_variant_refusal("ProbeTwoLoose", variant);
+        assert!(
+            written.contains(&refusal),
+            "missing `{refusal}` in: {written}"
+        );
+    }
+
+    for source in [
+        "pub enum Ahead { #[serde(untagged)] Loose(String), Named { label: String } }",
+        "pub enum Ahead { #[serde(untagged, skip)] Loose(String), Named { label: String } }",
+    ] {
+        let refusal = "model_schema: type `Ahead`: variant `Loose` is under `#[serde(untagged)]` \
+                       ahead of a variant that is not, which serde's derive refuses: `all \
+                       variants with the #[serde(untagged)] attribute must be placed at the end \
+                       of the enum`. Take `#[serde(untagged)]` off the variant, or put it on the \
+                       whole enum.";
+        assert_refused_without_member_keys("", source, refusal);
+        assert!(
+            include_str!("../../README.md").contains(refusal),
+            "the README no longer quotes this refusal:\n{refusal}"
+        );
+    }
+}
+
+/// An enum untagged as a whole builds with a variant under `#[serde(untagged)]` as well, and so
+/// does a variant under it serde neither writes nor reads; under a tag alone, a tuple variant of no
+/// slot or of several is left to the refusals in the words of serde's derive, which refuses it
+/// untagged or not.
+#[test]
+fn an_untagged_variant_of_an_untagged_enum_or_off_the_wire_is_not_refused() {
+    for source in [
+        "#[serde(untagged)] pub enum ProbeBothLoose { Named { label: String }, \
+         #[serde(untagged)] Loose(String) }",
+        "pub enum ProbeSkippedLooseVariant { Named { label: String }, #[serde(untagged, skip)] \
+         Loose(String) }",
+        "pub enum ProbeAbsentLoose { Named { label: String }, #[serde(untagged, \
+         skip_serializing, skip_deserializing)] Loose(String) }",
+        "#[serde(tag = \"kind\")] pub enum ProbeTaggedPair { Named { label: String }, \
+         #[serde(untagged)] Pair(u8, u8) }",
+        "#[serde(tag = \"kind\")] pub enum ProbeTaggedNothing { Named { label: String }, \
+         #[serde(untagged)] Nothing() }",
+    ] {
+        let refusals = super::untagged_variant_errors(&syn::parse_str(source).unwrap());
+        assert!(refusals.is_empty(), "for {source}, got: {refusals:?}");
+    }
+    for source in [
+        "#[serde(untagged)] pub enum ProbeBothLoose { Named { label: String }, \
+         #[serde(untagged)] Loose(String) }",
+        "pub enum ProbeSkippedLooseVariant { Named { label: String }, #[serde(untagged, skip)] \
+         Loose(String) }",
+    ] {
+        let expanded =
+            super::exec_model_schema(syn::parse_str("").unwrap(), syn::parse_str(source).unwrap());
+        let written = expanded.to_string();
+        assert_eq!(
+            identifiers_named(expanded, "compile_error"),
+            0,
+            "for {source}, got: {written}"
+        );
+    }
+    let nothing = super::empty_tuple_variant_errors(
+        &syn::parse_str(
+            "#[serde(tag = \"kind\")] pub enum ProbeTaggedNothing { Named { label: String }, \
+             #[serde(untagged)] Nothing() }",
+        )
+        .unwrap(),
+    );
+    assert_eq!(nothing.len(), 1, "got: {nothing:?}");
+}
+
 /// No guard of what serde writes or reads refuses a variant serde neither writes nor reads: a
 /// tuple variant of no slot, a lone slot taken off the wire under a content key, a bare `Option`
 /// member, a unit variant's name that breaks the enum's pattern, an untagged unit variant and

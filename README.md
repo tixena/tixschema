@@ -1068,7 +1068,7 @@ const Skipped$RawSchema = z.discriminatedUnion("kind", [z.strictObject({
 
 The schema refuses `{"kind":"Closed","reason":"r"}`, as serde does. Whether an enum is a plain one is read off every variant it declares: `enum Cartage { Light, Heavy, #[serde(skip)] Bulk(String) }` is described as the externally tagged union of `"Light"` and `"Heavy"`, the payloads serde writes for it.
 
-What serde does not write or read is held to no rule of what it writes or reads. A skipped variant builds where the same variant written would be refused: a tuple variant of no slot, `Nothing()`, but under a tag alone, where Serde's derive refuses every tuple variant of no slot or of several, skipped or not; a member that holds a `u64` or a `usize` under `swift` or `kotlin`, a `LinkedList` or an `OsString`, a map keyed by a value serde writes as no string, or a JSON value, as a member serde neither writes nor reads does; a variant under a `content` key that declares one slot and takes it off the wire; a member that is a bare `Option` with no `skip_serializing_if`; a unit variant whose name breaks the enum's own `pattern`; a unit variant and a tuple variant of several slots of an untagged enum; and what it holds beside a tag (see [Internally Tagged Enums](#internally-tagged-enums-tag-with-no-content)). A holder that flattens the enum is refused for nothing such a variant holds. Its members are still held to their own `#[model_schema_prop]` keys, and `validate()` still checks a value of it built in Rust. A variant under `skip_serializing` alone, which serde reads, or under `skip_deserializing` alone, which serde writes, is described and held to every rule as any other variant.
+What serde does not write or read is held to no rule of what it writes or reads. A skipped variant builds where the same variant written would be refused: a tuple variant of no slot, `Nothing()`, but under a tag alone, where Serde's derive refuses every tuple variant of no slot or of several, skipped or not; a member that holds a `u64` or a `usize` under `swift` or `kotlin`, a `LinkedList` or an `OsString`, a map keyed by a value serde writes as no string, or a JSON value, as a member serde neither writes nor reads does; a variant under a `content` key that declares one slot and takes it off the wire; a member that is a bare `Option` with no `skip_serializing_if`; a unit variant whose name breaks the enum's own `pattern`; a unit variant and a tuple variant of several slots of an untagged enum; and what it holds beside a tag (see [Internally Tagged Enums](#internally-tagged-enums-tag-with-no-content)). A holder that flattens the enum is refused for nothing such a variant holds. Its members are still held to their own `#[model_schema_prop]` keys, and `validate()` still checks a value of it built in Rust. A variant under `skip_serializing` alone, which serde reads, or under `skip_deserializing` alone, which serde writes, is described and held to every rule as any other variant. serde reads no member of a variant under `skip` or `skip_deserializing`, and neither does the read the macro writes, so such a member's type need not be one serde reads: a model that derives `Serialize` alone, or a `std::sync::OnceLock`, builds there as it does under serde's own derive.
 
 An enum whose every variant serde neither writes nor reads has no value to describe, and does not build:
 
@@ -1081,6 +1081,32 @@ Nor does an enum that declares no variant, under a tag or not:
 ```text
 error: model_schema: type `Becalm`: declares no variant, so serde writes no value of it and reads none, and no surface can describe it. Declare a variant serde writes or reads.
 ```
+
+#### A Variant Under `#[serde(untagged)]`
+
+serde writes a variant under `#[serde(untagged)]` as its content alone, under no name, inside an enum it writes with names too: `Loose("x")` below is written `"x"`. No surface describes such a variant, so an enum with no `untagged` of its own does not build with one, with no tag attribute, under a `tag`, and under a `tag` and a `content` key, a plain enum among them:
+
+```rust
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+pub enum Mixed {
+    Named { label: String },
+    #[serde(untagged)]
+    Loose(String),
+}
+```
+
+```text
+error: model_schema: type `Mixed`: variant `Loose` is under `#[serde(untagged)]`, so serde writes it with no name, as its content alone, inside an enum it writes with names, and no surface can describe it. Take `#[serde(untagged)]` off the variant, or put it on the whole enum.
+```
+
+Every such variant of the enum is reported. One written ahead of a variant that is not under `#[serde(untagged)]` is refused in the words of serde's derive, which refuses it, skipped or not:
+
+```text
+error: model_schema: type `Ahead`: variant `Loose` is under `#[serde(untagged)]` ahead of a variant that is not, which serde's derive refuses: `all variants with the #[serde(untagged)] attribute must be placed at the end of the enum`. Take `#[serde(untagged)]` off the variant, or put it on the whole enum.
+```
+
+An enum under `#[serde(untagged)]` as a whole is described as before, with the attribute on a variant as well. A variant under `#[serde(untagged)]` that serde neither writes nor reads is refused only where it stands ahead of a variant that is not. Under a `tag` with no `content`, a tuple variant of no slot or of several is refused as [Tuple Variants](#tuple-variants) states, untagged or not.
 
 #### A Check Written on the Enum
 

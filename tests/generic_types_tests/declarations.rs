@@ -2930,6 +2930,95 @@ fn type_check_a_unit_parses_under_zod_what_serde_reads() {
     );
 }
 
+/// A map whose values are `()` is described as an object of `null` values on every surface, and
+/// each surface reads what serde reads.
+#[test]
+#[expect(
+    clippy::zero_sized_map_values,
+    reason = "a map of `()` is the shape under test"
+)]
+fn type_check_a_map_of_units_parses_under_zod_what_serde_reads() {
+    use alloc::collections::BTreeMap;
+
+    #[model_schema()]
+    #[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
+    pub struct ProbeUnitsKeyed {
+        pub keyed: BTreeMap<String, ()>,
+    }
+
+    const WRITTEN: &str = r#"{"keyed":{"a":null}}"#;
+    const LISTED: &str = r#"{"keyed":{"a":[]}}"#;
+
+    let value = ProbeUnitsKeyed {
+        keyed: BTreeMap::from([("a".to_owned(), ())]),
+    };
+    assert_eq!(
+        serde_json::to_string(&value).unwrap(),
+        WRITTEN,
+        "serde's write"
+    );
+    assert_eq!(
+        serde_json::from_str::<ProbeUnitsKeyed>(WRITTEN).unwrap(),
+        value,
+        "serde's read of its write"
+    );
+    let refused = serde_json::from_str::<ProbeUnitsKeyed>(LISTED)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        refused.starts_with("invalid type: sequence, expected unit"),
+        "serde's refusal of an empty array: {refused}"
+    );
+
+    let ts = ProbeUnitsKeyed::ts_definition();
+    assert!(
+        ts.contains("keyed: Partial<Record<string, null>>"),
+        "the TypeScript text:\n{ts}"
+    );
+    let zod = ProbeUnitsKeyed::zod_schema();
+    assert!(
+        zod.contains("keyed: z.record(z.string(), z.null()),"),
+        "the Zod text:\n{zod}"
+    );
+    #[cfg(feature = "jsonschema")]
+    {
+        let document = ProbeUnitsKeyed::json_schema();
+        assert_eq!(
+            document,
+            serde_json::json!({
+                "additionalProperties": false,
+                "properties": {
+                    "keyed": {"additionalProperties": {"type": "null"}, "type": "object"}
+                },
+                "required": ["keyed"],
+                "type": "object"
+            }),
+            "the JSON Schema"
+        );
+        for (payload, admitted) in [(WRITTEN, true), (LISTED, false)] {
+            assert_eq!(
+                documents::admits(&document, &serde_json::from_str(payload).unwrap()),
+                admitted,
+                "the JSON Schema and serde disagree on {payload}"
+            );
+        }
+    }
+
+    let payloads = [
+        ("written by serde", "ProbeUnitsKeyed", WRITTEN),
+        ("an empty array", "ProbeUnitsKeyed", LISTED),
+    ];
+    let source = [PREAMBLE.to_owned(), ts, zod].join("\n\n");
+    let driver = UNITS_DRIVER.replace("PAYLOADS", &serde_json::to_string(&payloads).unwrap());
+    let Some((printed, failed)) = loaded_from("map-of-units", &source, &driver) else {
+        return;
+    };
+    assert_eq!(
+        printed, "written by serde: read\nan empty array: refused",
+        "the Zod schema does not read what a serde read reads:\n{failed}"
+    );
+}
+
 /// Every payload that repeats an item of a set is refused by the Zod schema of its type under
 /// `node`, each set under its path, in every place a set is held, where Rust's read keeps one item
 /// of it.

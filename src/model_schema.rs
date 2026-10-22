@@ -129,8 +129,9 @@ use crate::features::serde::{
     has_serde_read_hook, parse_read_renames, parse_written_renames, struct_tag,
 };
 use crate::features::serde::{
-    brand_field, has_serde_default, member_steps, parse_serde_key_omission, tag_written_alone,
-    transparent_fields_apart, variant_on_the_wire, variant_steps, written_and_read_by_the_author,
+    brand_field, carries_untagged, has_serde_default, member_steps, parse_serde_key_omission,
+    tag_written_alone, transparent_fields_apart, variant_members_read, variant_on_the_wire,
+    variant_steps, written_and_read_by_the_author,
 };
 
 #[cfg(all(
@@ -1187,7 +1188,8 @@ struct FieldContext<'ctx> {
     /// Whether the container carries `#[serde(default)]`, which supplies a value for every field
     /// under it whose key the payload leaves out.
     container_defaulted: bool,
-    /// Whether the container is read back at all — whether `Deserialize` is among what it derives.
+    /// Whether serde reads the container's members back: `Deserialize` is among what it derives,
+    /// and, for a variant, serde reads that variant.
     container_read_back: bool,
     /// The arguments of the enum the field's variant belongs to: a string check written there is
     /// the field's own as well, where it reaches the field.
@@ -1841,6 +1843,12 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // A default of a variant's member that no target but Rust reads as serde does is refused
     // beside it, every such member of the item at once.
     if let Some(output) = refused_item_output(&item, &serde_attribute_guard_errors(&item)) {
+        return output;
+    }
+    // serde writes a variant under `#[serde(untagged)]` with no name inside an enum it writes with
+    // names, which no surface describes, in any build. Refused ahead of every refusal that reads
+    // the variant under its enum's tag.
+    if let Some(output) = refused_item_output(&item, &untagged_variant_errors(&item)) {
         return output;
     }
     // A map flattened beside a member that writes a key, or filling a type parameter flattened
@@ -4403,6 +4411,61 @@ fn no_variant_on_the_wire_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
         )
     };
     vec![syn::Error::new_spanned(name, prefixed_guard_message(&message)).to_compile_error()]
+}
+
+/// The `compile_error!` tokens for every variant under `#[serde(untagged)]` in an enum serde writes
+/// with names: serde writes the variant with no name, which no surface describes. One serde's
+/// derive refuses is refused in serde's words, here or by the refusals of a tuple variant.
+fn untagged_variant_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
+    let Item::Enum(item_enum) = item else {
+        return Vec::new();
+    };
+    if carries_untagged(&item_enum.attrs) {
+        return Vec::new();
+    }
+    let enum_name = &item_enum.ident;
+    let tag = tag_written_alone(&item_enum.attrs);
+    let last_named = item_enum
+        .variants
+        .iter()
+        .rposition(|variant| !carries_untagged(&variant.attrs));
+    item_enum
+        .variants
+        .iter()
+        .enumerate()
+        .filter(|(_, variant)| carries_untagged(&variant.attrs))
+        .filter_map(|(at, variant)| {
+            let name = &variant.ident;
+            let message = if last_named.is_some_and(|last| at < last) {
+                format!(
+                    "type `{enum_name}`: variant `{name}` is under `#[serde(untagged)]` ahead of a \
+                     variant that is not, which serde's derive refuses: `all variants with the \
+                     #[serde(untagged)] attribute must be placed at the end of the enum`. Take \
+                     `#[serde(untagged)]` off the variant, or put it on the whole enum."
+                )
+            } else if !variant_on_the_wire(variant) {
+                return None;
+            } else if tag.is_some()
+                && let syn::Fields::Unnamed(slots) = &variant.fields
+                && slots.unnamed.len() != 1
+            {
+                // Under a tag alone serde's derive refuses a tuple variant of no slot or of
+                // several, untagged or not, and the refusals of a tuple variant say so.
+                return None;
+            } else {
+                format!(
+                    "type `{enum_name}`: variant `{name}` is under `#[serde(untagged)]`, so serde \
+                     writes it with no name, as its content alone, inside an enum it writes with \
+                     names, and no surface can describe it. Take `#[serde(untagged)]` off the \
+                     variant, or put it on the whole enum."
+                )
+            };
+            Some(
+                syn::Error::new_spanned(variant, prefixed_guard_message(&message))
+                    .to_compile_error(),
+            )
+        })
+        .collect()
 }
 
 /// The `compile_error!` tokens every list-form `rename(...)` / `rename_all(...)` the item carries
@@ -10794,7 +10857,7 @@ fn collect_discriminated_variants(
 
         let member_ctx = FieldContext {
             container_defaulted: variant_defaulted,
-            container_read_back: enum_read_back,
+            container_read_back: enum_read_back && variant_members_read(item),
             enum_args: Some(args),
             member_steps: steps,
             on_the_wire,
@@ -12859,6 +12922,18 @@ fn untagged_member_field_def(
     (field_def, member_guard_errors)
 }
 
+/// The gate a member of an untagged variant is checked through: its read as well, the one
+/// position where a bound picks the variant, and `validate()` alone in a variant serde never
+/// reads, where a hook would ask a read of a type serde asks none of.
+#[cfg(feature = "serde")]
+fn untagged_member_gate(variant: &syn::Variant) -> ConstraintGate {
+    if variant_members_read(variant) {
+        ConstraintGate::Deserializer
+    } else {
+        ConstraintGate::Validator
+    }
+}
+
 /// Collects each untagged variant's union-member parts: the TypeScript member type, the Zod
 /// member schema, the JSON-schema value token, and the `compile_error!` tokens for any
 /// field-level guard violations. The first three are always returned regardless of features.
@@ -12880,6 +12955,7 @@ fn collect_untagged_variant_members(
     // Read as the discriminated walk reads it: no guard of the wire reads a variant serde neither
     // writes nor reads.
     let on_the_wire = variant_on_the_wire(variant);
+    let gate = untagged_member_gate(variant);
     let variant_defaulted = has_serde_default(&variant.attrs);
     // An untagged variant has no name on the wire, so the rename the seam also resolves is unused
     // here.
@@ -12938,9 +13014,7 @@ fn collect_untagged_variant_members(
                 field,
                 index,
                 &prop_meta,
-                // The one position where the read is also the gate: an untagged union picks the
-                // variant by which one accepts the payload.
-                ConstraintGate::Deserializer,
+                gate,
                 &mut injected_attrs,
             );
         field.attrs = new_attrs;
@@ -12973,7 +13047,9 @@ fn collect_untagged_variant_members(
                 nested_validate_body(field, &member_def, &place),
             ),
         };
-        read_untagged_member_unjudged(&member_ctx, field, &member_def, index, &walked);
+        if gate == ConstraintGate::Deserializer {
+            read_untagged_member_unjudged(&member_ctx, field, &member_def, index, &walked);
+        }
         let named = held_member_checks(field, &member_def, &place);
         if let Some(body) = then_checks(declared, named) {
             walked.bound.push(bound_member(field, index));
