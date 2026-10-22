@@ -220,25 +220,33 @@ struct Outer {
     id: String,
 }
 
-/// A flattened plain enum. A schema surface refuses the declaration.
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+/// A flattened plain enum declared below: one declared above is refused in every build with
+/// serde.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Moody {
-    #[serde(flatten)]
-    mood: Mood,
     name: String,
+    #[serde(flatten)]
+    temper: Temper,
 }
 
-/// Internally tagged, with a variant that holds a plain enum. A schema surface refuses the
-/// declaration.
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+/// Internally tagged, with a variant that holds a plain enum declared below: one declared above
+/// is refused in every build with serde.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Slot {
     Empty,
-    Held(Mood),
+    Held(Temper),
+}
+
+/// A plain enum declared below the types that hold it, so no expansion of theirs sees it:
+/// flattened, serde writes the variant's name as a key holding `null`.
+#[model_schema(enable = ["decode_with"])]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+enum Temper {
+    Calm,
+    Tense,
 }
 
 /// A single-slot struct over an `Option` of a struct whose key holds text.
@@ -834,13 +842,12 @@ fn a_flattened_single_slot_struct_claims_the_keys_serde_reads_for_it() {
     assert_eq!(calls, 0);
 }
 
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
 #[test]
 fn a_flattened_plain_enum_claims_the_key_naming_its_variant() {
     let mut calls = 0_u32;
     let moody = Moody {
-        mood: Mood::Calm,
         name: "a".to_owned(),
+        temper: Temper::Calm,
     };
     let moody_written = serde_json::to_value(&moody).unwrap();
     assert_eq!(moody_written, json!({ "Calm": null, "name": "a" }));
@@ -849,7 +856,7 @@ fn a_flattened_plain_enum_claims_the_key_naming_its_variant() {
         Ok(moody)
     );
 
-    let slot = Slot::Held(Mood::Calm);
+    let slot = Slot::Held(Temper::Calm);
     let slot_written = serde_json::to_value(&slot).unwrap();
     assert_eq!(slot_written, json!({ "Calm": null, "kind": "Held" }));
     assert_eq!(
@@ -939,7 +946,6 @@ fn an_issue_in_a_flattened_single_slot_struct_is_what_a_flattened_field_of_its_v
     );
 }
 
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
 #[test]
 fn a_flattened_plain_enum_lists_what_an_externally_tagged_enum_lists_for_a_unit_variant() {
     let not_null = json!({ "Calm": 5_i32, "name": "a" });

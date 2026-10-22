@@ -676,6 +676,10 @@ thread_local! {
     /// that reads `#[serde(flatten)]`.
     static FLATTENED_BESIDE_PARAMETERS: RefCell<HashMap<String, Vec<FlattenedParameter>>> =
         RefCell::new(HashMap::new());
+    /// The names `#[model_schema]` has been written on so far whose value serde writes as the
+    /// bare name of a variant: a plain enum, and an alias of one. Kept in every build that reads
+    /// `#[serde(flatten)]`.
+    static PLAIN_ENUMS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
 }
 
 /// A type parameter an item flattens beside a key serde writes at the same level, as
@@ -854,6 +858,25 @@ pub fn is_open_map(rust_ident: &str) -> bool {
 pub fn record_open_map(rust_ident: &str, open: bool) {
     OPEN_MAPS.with(|names| {
         if open {
+            names.borrow_mut().insert(rust_ident.to_owned());
+        } else {
+            names.borrow_mut().remove(rust_ident);
+        }
+    });
+}
+
+/// Whether serde writes a value of `rust_ident` as the bare name of a variant, where
+/// `#[model_schema]` has been written on it above.
+#[cfg(feature = "serde")]
+pub fn is_recorded_plain_enum(rust_ident: &str) -> bool {
+    PLAIN_ENUMS.with(|names| names.borrow().contains(rust_ident))
+}
+
+/// Records whether serde writes a value of `rust_ident` as the bare name of a variant.
+#[cfg(feature = "serde")]
+pub fn record_plain_enum(rust_ident: &str, plain: bool) {
+    PLAIN_ENUMS.with(|names| {
+        if plain {
             names.borrow_mut().insert(rust_ident.to_owned());
         } else {
             names.borrow_mut().remove(rust_ident);

@@ -12,12 +12,11 @@ use serde::{Deserialize, Deserializer, Serialize};
 use tixschema::model_schema;
 
 // The JSON schema of a type holding a `Version` names its module from here, beside the type.
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-use super::undescribed;
 #[cfg(feature = "jsonschema")]
 use super::version_schema;
 use super::{
-    Told, Version, invalid, missing, mistyped, oid, serde_reads, string, unknown, written,
+    Told, Version, invalid, missing, mistyped, oid, serde_reads, string, undescribed, unknown,
+    written,
 };
 
 /// What `$issues` say less each `reason`, whichever type's `$module` declares them.
@@ -557,35 +556,33 @@ struct Outer {
     id: String,
 }
 
-/// A plain enum: flattened, serde writes the variant's name as a key holding `null`. It is read
-/// only where it is flattened, which a schema surface refuses.
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-#[model_schema(enable = ["decode_with", "mongodb"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-enum Mood {
-    Calm,
-    Tense,
-}
-
-/// A flattened plain enum. A schema surface refuses the declaration.
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+/// A flattened plain enum declared below: one declared above is refused in every build with
+/// serde.
 #[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Moody {
-    #[serde(flatten)]
-    mood: Mood,
     name: String,
+    #[serde(flatten)]
+    temper: Temper,
 }
 
-/// Internally tagged, with a variant that holds a plain enum. A schema surface refuses the
-/// declaration.
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+/// Internally tagged, with a variant that holds a plain enum declared below: one declared above
+/// is refused in every build with serde.
 #[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Slot {
     Empty,
-    Held(Mood),
+    Held(Temper),
+}
+
+/// A plain enum declared below the types that hold it, so no expansion of theirs sees it:
+/// flattened, serde writes the variant's name as a key holding `null`.
+#[model_schema(enable = ["decode_with", "mongodb"])]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+enum Temper {
+    Calm,
+    Tense,
 }
 
 /// A flattened `Option` of a type that takes every key it is handed.
@@ -1787,13 +1784,12 @@ fn a_flattened_single_slot_struct_claims_the_keys_serde_reads_for_it() {
     assert_eq!(calls, 0);
 }
 
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
 #[test]
 fn a_flattened_plain_enum_claims_the_key_naming_its_variant() {
     let mut calls = 0_u32;
     let moody = Moody {
-        mood: Mood::Calm,
         name: "a".to_owned(),
+        temper: Temper::Calm,
     };
     assert_eq!(written(&moody), doc! { "Calm": Bson::Null, "name": "a" });
     assert_eq!(
@@ -1801,7 +1797,7 @@ fn a_flattened_plain_enum_claims_the_key_naming_its_variant() {
         Ok(moody)
     );
 
-    let slot = Slot::Held(Mood::Calm);
+    let slot = Slot::Held(Temper::Calm);
     assert_eq!(written(&slot), doc! { "kind": "Held", "Calm": Bson::Null });
     assert_eq!(
         read_counting!(Slot, slot_schema, written(&slot), calls),
@@ -1862,7 +1858,6 @@ fn an_issue_in_a_type_handed_what_serde_hands_it_is_listed_once_where_it_sits() 
     );
 }
 
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
 #[test]
 fn a_flattened_plain_enum_lists_what_an_externally_tagged_enum_lists_for_a_unit_variant() {
     let not_null = doc! { "Calm": 5_i32, "name": "a" };
