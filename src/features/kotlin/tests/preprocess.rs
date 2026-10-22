@@ -254,11 +254,15 @@ fn a_serializer_the_emitter_writes_corrects_the_payload_it_decodes() {
     for (written, read) in [
         (
             corrected_by(&yard, &["unwrapped"]),
-            "val obj = unwrapped(input.decodeJsonElement()).jsonObject; val baseKeys = ",
+            "val obj = unwrapped(input.decodeJsonElement()).let { it as? JsonObject ?: throw \
+             SerializationException(\"expected an object, found \" + it) }; val baseKeys = ",
         ),
         (
             corrected_by(&pile, &["unwrapped", "listed"]),
-            "val array = listed(unwrapped(input.decodeJsonElement())).jsonArray; return Pile(",
+            "val array = listed(unwrapped(input.decodeJsonElement())).let { it as? JsonArray ?: \
+             throw SerializationException(\"expected an array, found \" + it) }; if (array.size \
+             != 2) throw SerializationException(\"invalid length \" + array.size + \", expected \
+             2\"); return Pile(",
         ),
     ] {
         assert!(
@@ -284,8 +288,11 @@ fn a_serializer_the_emitter_writes_corrects_the_payload_it_decodes() {
     for (item, read) in [
         (
             &beside,
-            "val obj = unwrapped(input.decodeJsonElement()).jsonObject; val tag = \
-             obj.getValue(\"kind\").jsonPrimitive.content; ",
+            "val obj = unwrapped(input.decodeJsonElement()).let { it as? JsonObject ?: throw \
+             SerializationException(\"expected an object, found \" + it) }; val tag = \
+             (obj[\"kind\"] ?: throw SerializationException(\"missing field `kind`\")).let { it \
+             as? JsonPrimitive ?: throw SerializationException(\"expected a string, found \" + \
+             it) }.content; ",
         ),
         (
             &under_its_name,
@@ -293,8 +300,9 @@ fn a_serializer_the_emitter_writes_corrects_the_payload_it_decodes() {
         ),
         (
             &under_a_tag,
-            "val obj = unwrapped(input.decodeJsonElement()).jsonObject; val tag = (obj[\"kind\"] \
-             as? JsonPrimitive)?.content; ",
+            "val obj = unwrapped(input.decodeJsonElement()).let { it as? JsonObject ?: throw \
+             SerializationException(\"expected an object, found \" + it) }; val tag = \
+             (obj[\"kind\"] as? JsonPrimitive)?.content; ",
         ),
         (
             &untagged,
@@ -459,7 +467,7 @@ fn a_member_the_emitter_reads_is_corrected_in_place() {
     for held in [
         "data class Bonded(val dock: String, val note: String? = null, val parcel: Parcel) {",
         "val dock = input.json.decodeFromJsonElement(serializer<String>(), \
-         trimmed(obj.getValue(\"dock\")));",
+         trimmed((obj[\"dock\"] ?: throw SerializationException(\"missing field `dock`\"))));",
         "val note = obj[\"note\"]?.let { input.json.decodeFromJsonElement(serializer<String?>(), \
          lowered(trimmed(it))) };",
         "val parcel = lenient.decodeFromJsonElement(ParcelUnjudged, JsonObject(obj - \
@@ -563,7 +571,8 @@ fn every_flattened_member_is_handed_what_no_member_ahead_of_it_takes() {
     let named_by_the_map = plain(&strapped);
     assert!(
         named_by_the_map.contains(
-            "val rest = withItsKeys(obj).jsonObject.mapValues { (_, v) -> \
+            "val rest = withItsKeys(obj).let { it as? JsonObject ?: throw \
+             SerializationException(\"expected an object, found \" + it) }.mapValues { (_, v) -> \
              input.json.decodeFromJsonElement(serializer<String>(), v) }"
         ),
         "got: {named_by_the_map}"
@@ -601,9 +610,10 @@ fn a_member_and_a_slot_of_a_variant_are_corrected_where_each_is_read() {
         "@Serializable data class PortageBoxed(@Serializable(with = \
          PortageBoxedLabelPreprocess::class) val label: String) : Portage {",
         "@Serializable data class PortageLone(val value: String) : Portage {",
-        "\"Boxed\" -> input.json.decodeFromJsonElement(serializer<PortageBoxed>(), data!!); ",
+        "\"Boxed\" -> input.json.decodeFromJsonElement(serializer<PortageBoxed>(), (data ?: \
+         throw SerializationException(\"missing field `detail`\"))); ",
         "\"Lone\" -> PortageLone(input.json.decodeFromJsonElement(serializer<String>(), \
-         trimmed(data!!))); ",
+         trimmed((data ?: throw SerializationException(\"missing field `detail`\"))))); ",
         "(input.json.decodeFromJsonElement(serializer<String>(), trimmed(array[0])), \
          input.json.decodeFromJsonElement(serializer<UInt>(), array[1])) } }",
     ] {
@@ -693,10 +703,13 @@ fn a_variant_member_that_reaches_a_parameter_is_corrected_by_the_enums_serialize
         format!(
             "\"Many\" -> input.json.decodeFromJsonElement(PickMany.serializer(codeTypeSerializer), \
              {}); ",
-            keyed("data!!", "\"codes\" -> unwrapped(held)")
+            keyed(
+                "(data ?: throw SerializationException(\"missing field `detail`\"))",
+                "\"codes\" -> unwrapped(held)"
+            )
         ),
         "\"One\" -> PickOne(input.json.decodeFromJsonElement(codeTypeSerializer, \
-         unwrapped(data!!))) else -> "
+         unwrapped((data ?: throw SerializationException(\"missing field `detail`\"))))) else -> "
             .to_owned(),
     ] {
         assert!(pick.contains(&held), "no `{held}` in: {pick}");

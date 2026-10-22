@@ -23,15 +23,13 @@ const KOTLIN_IMPORTS: &str = "import kotlinx.serialization.*\n\
      import kotlinx.serialization.encoding.*\n\
      import kotlinx.serialization.builtins.*";
 
-/// What prints a row: the value read, written back, or that the read is refused with one of the
-/// two exceptions the emitted reads throw.
+/// What prints a row: the value read, written back, or that the read is refused with
+/// `SerializationException`, which every emitted read throws.
 const TOLD: &str = r#"
 fun <T> row(name: String, serializer: KSerializer<T>, payload: String) {
     val told = try {
         Json.encodeToString(serializer, Json.decodeFromString(serializer, payload))
     } catch (refused: SerializationException) {
-        "refused"
-    } catch (refused: IllegalStateException) {
         "refused"
     }
     println("$name $payload: $told")

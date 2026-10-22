@@ -235,8 +235,7 @@ fun <T : Any> variant(serializer: KSerializer<T>, payload: String) {
 "#;
 
 /// What prints a row of a holder of a flattened `Option` of an enum: the holder read and written
-/// back, or the class and the first line of what its read throws, an enum's read throwing more
-/// than `SerializationException`.
+/// back, or the class and the first line of what its read throws.
 const TOLD_OR_REFUSED: &str = r#"
 fun <T> told(name: String, serializer: KSerializer<T>, payload: String) {
     val told = try {
@@ -804,7 +803,7 @@ fn an_enum_declared_below_its_holder_is_read_in_kotlin_from_the_object_it_is_han
          val read = Json.decodeFromString(Luffing.serializer(), \"\"\"{}\"\"\")\n\
          println(\"${{Json.encodeToString(serializer<Quaying>(), read.quaying)}} ${{read.note}}\")\n\
          try {{ Json.decodeFromString(Luffing.serializer(), \"\"\"{beside}\"\"\"); println(\"read\") }} \
-         catch (refused: IllegalArgumentException) {{ println(refused.message) }}\n\
+         catch (refused: SerializationException) {{ println(refused.message) }}\n\
          }}\n",
         STOWING[0]
     );
@@ -819,7 +818,10 @@ fn an_enum_declared_below_its_holder_is_read_in_kotlin_from_the_object_it_is_han
     };
     assert_eq!(
         printed,
-        format!("{}\nCollection has more than one element.\n", serde_read[0])
+        format!(
+            "{}\nexpected an object of one key, found {}\n",
+            serde_read[0], r#"{"Bay":{"label":"n"},"north":2}"#
+        )
     );
 }
 
@@ -1143,7 +1145,7 @@ fn an_optional_type_of_no_recorded_key_reads_and_writes_in_kotlin_as_serde_does(
             "refused: MissingFieldException: Field 'label' is required for type with serial name \
              'Bay', but it was missing at path: $",
         ),
-        (10, "refused: NullPointerException: "),
+        (10, "refused: SerializationException: missing field `held`"),
         (
             16,
             "refused: JsonDecodingException: String literal for value of key 'label' should be \
@@ -1446,11 +1448,8 @@ fn a_flattened_option_of_an_enum_reads_in_kotlin_as_zod_does_where_its_keys_are_
         (3, mistyped),
         (4, "SerializationException: unknown tag Gale"),
         (9, mistyped),
-        (10, "IllegalStateException: unknown tag Gale"),
-        (
-            11,
-            "NoSuchElementException: Key kind is missing in the map.",
-        ),
+        (10, "SerializationException: unknown tag Gale"),
+        (11, "SerializationException: missing field `kind`"),
     ] {
         in_kotlin[at] = format!("refused: {refused}");
     }

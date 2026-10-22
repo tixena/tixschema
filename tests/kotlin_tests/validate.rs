@@ -483,11 +483,11 @@ fn a_flattened_member_is_reported_under_no_name() {
     );
 }
 
-/// The serializer the emitter writes for each of these shapes is its unjudged one, a model it
-/// holds read unjudged, and the type's own serializer follows it.
+/// The serializer the emitter writes for a struct with a flattened member and for a tuple struct
+/// is its unjudged one, a model it holds read unjudged, and the type's own serializer follows it.
 #[cfg(feature = "serde")]
 #[test]
-fn the_serializer_the_emitter_writes_for_each_shape_is_its_unjudged_one() {
+fn the_serializer_the_emitter_writes_for_each_struct_shape_is_its_unjudged_one() {
     for (definition, unjudged, own) in [
         (
             audit_kotlin::kotlin_definition(),
@@ -498,8 +498,10 @@ fn the_serializer_the_emitter_writes_for_each_shape_is_its_unjudged_one() {
              put(\"id\", output.json.encodeToJsonElement(serializer<String>(), value.id)); \
              output.json.encodeToJsonElement(StampUnjudged, value.stamp).jsonObject.forEach { (k, \
              v) -> put(k, v) } }) }; override fun deserialize(decoder: Decoder): Audit { val \
-             input = decoder as JsonDecoder; val obj = input.decodeJsonElement().jsonObject; val \
-             id = input.json.decodeFromJsonElement(serializer<String>(), obj.getValue(\"id\")); \
+             input = decoder as JsonDecoder; val obj = input.decodeJsonElement().let { it as? \
+             JsonObject ?: throw SerializationException(\"expected an object, found \" + it) }; \
+             val id = input.json.decodeFromJsonElement(serializer<String>(), (obj[\"id\"] ?: \
+             throw SerializationException(\"missing field `id`\"))); \
              val stampKeys = setOf(\"created_at\", \"updated_at\"); val stamp = \
              lenient.decodeFromJsonElement(StampUnjudged, JsonObject(obj - setOf(\"id\"))); \
              return Audit(id = id, stamp = stamp) } }",
@@ -515,11 +517,27 @@ fn the_serializer_the_emitter_writes_for_each_shape_is_its_unjudged_one() {
              add(output.json.encodeToJsonElement(tSerializer, value.slot0)); \
              add(output.json.encodeToJsonElement(serializer<UInt>(), value.slot1)) }) }; override \
              fun deserialize(decoder: Decoder): GenericPair<T> { val input = decoder as \
-             JsonDecoder; val array = input.decodeJsonElement().jsonArray; return \
-             GenericPair(input.json.decodeFromJsonElement(tSerializer, array[0]), \
+             JsonDecoder; val array = input.decodeJsonElement().let { it as? JsonArray ?: throw \
+             SerializationException(\"expected an array, found \" + it) }; if (array.size != 2) \
+             throw SerializationException(\"invalid length \" + array.size + \", expected 2\"); \
+             return GenericPair(input.json.decodeFromJsonElement(tSerializer, array[0]), \
              input.json.decodeFromJsonElement(serializer<UInt>(), array[1])) } }",
             judged_over("GenericPair", "T", ": Any", "tSerializer"),
         ),
+    ] {
+        assert!(
+            definition.ends_with(&format!("{unjudged} {own}")),
+            "the serializers moved in: {definition}"
+        );
+    }
+}
+
+/// The serializer the emitter writes for an enum under each tagging is its unjudged one, and the
+/// type's own serializer follows it.
+#[cfg(feature = "serde")]
+#[test]
+fn the_serializer_the_emitter_writes_for_each_enum_shape_is_its_unjudged_one() {
+    for (definition, unjudged, own) in [
         (
             simple_choice_kotlin::kotlin_definition(),
             "object SimpleChoiceUnjudged : KSerializer<SimpleChoice> { override val \
@@ -530,12 +548,15 @@ fn the_serializer_the_emitter_writes_for_each_shape_is_its_unjudged_one() {
              output.json.encodeToJsonElement(serializer<String>(), value.value)) } }) }; override \
              fun deserialize(decoder: Decoder): SimpleChoice { val input = decoder as \
              JsonDecoder; val element = input.decodeJsonElement(); val (tag, data) = if (element \
-             is JsonPrimitive) element.content to JsonNull else \
-             element.jsonObject.entries.single().let { it.key to it.value }; return when (tag) { \
+             is JsonPrimitive) element.content to JsonNull else (element as? JsonObject ?: throw \
+             SerializationException(\"expected an object, found \" + \
+             element)).entries.singleOrNull()?.let { it.key to it.value } ?: throw \
+             SerializationException(\"expected an object of one key, found \" + element); return \
+             when (tag) { \
              \"None\" -> if (data is JsonNull) SimpleChoiceNone else throw \
              SerializationException(\"SimpleChoice: \" + tag + \" takes no value\"); \"Value\" -> \
              SimpleChoiceValue(input.json.decodeFromJsonElement(serializer<String>(), data)) else \
-             -> error(\"unknown tag \" + tag) } } }",
+             -> throw SerializationException(\"unknown tag \" + tag) } } }",
             judged("SimpleChoice"),
         ),
         (
@@ -550,13 +571,17 @@ fn the_serializer_the_emitter_writes_for_each_shape_is_its_unjudged_one() {
              DynamicValueNumber -> buildJsonObject { put(\"type\", \"Number\"); put(\"value\", \
              output.json.encodeToJsonElement(serializer<Long>(), value.value)) } }) }; override \
              fun deserialize(decoder: Decoder): DynamicValue { val input = decoder as \
-             JsonDecoder; val obj = input.decodeJsonElement().jsonObject; val tag = \
-             obj.getValue(\"type\").jsonPrimitive.content; val data = obj[\"value\"]; return when \
-             (tag) { \"Flag\" -> \
-             DynamicValueFlag(input.json.decodeFromJsonElement(serializer<Boolean>(), data!!)); \
-             \"Nothing\" -> DynamicValueNothing; \"Number\" -> \
-             DynamicValueNumber(input.json.decodeFromJsonElement(serializer<Long>(), data!!)) \
-             else -> error(\"unknown tag \" + tag) } } }",
+             JsonDecoder; val obj = input.decodeJsonElement().let { it as? JsonObject ?: throw \
+             SerializationException(\"expected an object, found \" + it) }; val tag = \
+             (obj[\"type\"] ?: throw SerializationException(\"missing field `type`\")).let { it \
+             as? JsonPrimitive ?: throw SerializationException(\"expected a string, found \" + \
+             it) }.content; val data = obj[\"value\"]; return when (tag) { \"Flag\" -> \
+             DynamicValueFlag(input.json.decodeFromJsonElement(serializer<Boolean>(), (data ?: \
+             throw SerializationException(\"missing field `value`\")))); \"Nothing\" -> \
+             DynamicValueNothing; \"Number\" -> \
+             DynamicValueNumber(input.json.decodeFromJsonElement(serializer<Long>(), (data ?: \
+             throw SerializationException(\"missing field `value`\")))) else -> throw \
+             SerializationException(\"unknown tag \" + tag) } } }",
             judged("DynamicValue"),
         ),
         (
@@ -572,7 +597,8 @@ fn the_serializer_the_emitter_writes_for_each_shape_is_its_unjudged_one() {
              error(\"unreachable\") as Nothing }.recoverCatching { \
              input.json.decodeFromJsonElement(serializer<DateValueEpoch>(), element) as DateValue \
              }.recoverCatching { input.json.decodeFromJsonElement(serializer<DateValueIso>(), \
-             element) as DateValue }.getOrElse { error(\"No variant of DateValue matched\") } } }",
+             element) as DateValue }.getOrElse { throw SerializationException(\"No variant of \
+             DateValue matched\") } } }",
             judged("DateValue"),
         ),
     ] {

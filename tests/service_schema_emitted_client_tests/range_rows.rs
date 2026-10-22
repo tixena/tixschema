@@ -18,8 +18,9 @@ pub struct Row {
     pub read_as: &'static str,
 }
 
-/// A model a row is read as: its name, and what the serde read prints of a row read as it.
-type Printer = (&'static str, fn(&Row) -> String);
+/// A model a row is read as: its name, whether `validate()` judges a model or a brand it holds,
+/// and what the serde read prints of a row read as it.
+type Printer = (&'static str, bool, fn(&Row) -> String);
 
 /// Every payload of the ranges, among them one that holds a key no range writes, which each
 /// client refuses as serde does.
@@ -70,20 +71,20 @@ where
 /// Each model a row is read as.
 fn models() -> Vec<Printer> {
     vec![
-        ("Compass", |row| printed::<Compass>(row, false)),
-        ("Course", |row| printed::<Course<u32>>(row, false)),
-        ("Detour", |row| printed::<Detour>(row, false)),
-        ("Excursion", |row| printed::<Excursion>(row, true)),
-        ("Frontier", |row| printed::<Frontier>(row, true)),
-        ("Positioned", |row| printed::<Positioned>(row, false)),
+        ("Compass", false, |row| printed::<Compass>(row, false)),
+        ("Course", false, |row| printed::<Course<u32>>(row, false)),
+        ("Detour", false, |row| printed::<Detour>(row, false)),
+        ("Excursion", true, |row| printed::<Excursion>(row, true)),
+        ("Frontier", true, |row| printed::<Frontier>(row, true)),
+        ("Positioned", false, |row| printed::<Positioned>(row, false)),
         #[cfg(feature = "chrono")]
-        ("Rostered", |row| {
+        ("Rostered", false, |row| {
             printed::<super::range_models::Rostered>(row, false)
         }),
-        ("Signposted", |row| printed::<Signposted>(row, true)),
-        ("Spanned", |row| printed::<Spanned>(row, false)),
-        ("Stride", |row| printed::<Stride<u32>>(row, false)),
-        ("Waypost", |row| printed::<Waypost>(row, true)),
+        ("Signposted", true, |row| printed::<Signposted>(row, true)),
+        ("Spanned", false, |row| printed::<Spanned>(row, false)),
+        ("Stride", false, |row| printed::<Stride<u32>>(row, false)),
+        ("Waypost", true, |row| printed::<Waypost>(row, true)),
     ]
 }
 
@@ -92,14 +93,22 @@ pub fn declares_a_parameter(read_as: &str) -> bool {
     matches!(read_as, "Course" | "Stride")
 }
 
+/// Whether `validate()` judges a model or a brand the type `read_as` names holds, so that a client
+/// lists what it refuses.
+pub fn judged(read_as: &str) -> bool {
+    models()
+        .into_iter()
+        .any(|(named, judges, _)| named == read_as && judges)
+}
+
 /// What the serde read prints of each of `rows`.
 pub fn expected(rows: &[Row]) -> String {
     let models = models();
     rows.iter()
         .map(|row| {
-            let (_, print) = models
+            let (_, _, print) = models
                 .iter()
-                .find(|(named, _)| *named == row.read_as)
+                .find(|(named, _, _)| *named == row.read_as)
                 .unwrap();
             print(row)
         })

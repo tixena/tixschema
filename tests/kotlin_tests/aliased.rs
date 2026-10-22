@@ -60,8 +60,8 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
     for held in [
         format!(
             "\"Berth\", \"Pier\" -> \
-             input.json.decodeFromJsonElement(serializer<ScendingBerth>(), \
-             data!!.{NAME_AS_LABEL});"
+             input.json.decodeFromJsonElement(serializer<ScendingBerth>(), (data ?: throw \
+             SerializationException(\"missing field `data`\")).{NAME_AS_LABEL});"
         ),
         "\"Calm\", \"Still\" -> ScendingCalm;".to_owned(),
         "\"Held\", \"Tied\" -> ScendingHeld(".to_owned(),
@@ -148,8 +148,10 @@ fn a_struct_the_plugin_reads_reads_a_member_under_each_alias() {
 fn a_struct_read_by_hand_reads_a_member_under_its_alias() {
     let fairleading = fairleading_kotlin::kotlin_definition();
     let held = format!(
-        "val obj = input.decodeJsonElement().{NAME_AS_LABEL}.jsonObject; val label = \
-         input.json.decodeFromJsonElement(serializer<String>(), obj.getValue(\"label\")); \
+        "val obj = input.decodeJsonElement().{NAME_AS_LABEL}.let {{ it as? JsonObject ?: throw \
+         SerializationException(\"expected an object, found \" + it) }}; val label = \
+         input.json.decodeFromJsonElement(serializer<String>(), (obj[\"label\"] ?: throw \
+         SerializationException(\"missing field `label`\"))); \
          val tallyKeys = setOf(\"keys\"); val tally = \
          lenient.decodeFromJsonElement(PennonUnjudged, withItsKeys(JsonObject(obj - \
          setOf(\"label\"))));"

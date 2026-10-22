@@ -187,6 +187,35 @@ struct DispatchedTaggedContext<'ctx> {
     variant_rule: RenameRule,
 }
 
+/// A kind of JSON value a serializer this module writes reads a payload as.
+#[derive(Clone, Copy)]
+enum JsonKind {
+    Array,
+    Object,
+    /// A tag, which serde writes as a string.
+    Text,
+}
+
+impl JsonKind {
+    /// The `kotlinx.serialization.json` class a value of the kind is.
+    const fn class(self) -> &'static str {
+        match self {
+            Self::Array => "JsonArray",
+            Self::Object => "JsonObject",
+            Self::Text => "JsonPrimitive",
+        }
+    }
+
+    /// What a refusal names the kind by.
+    const fn named(self) -> &'static str {
+        match self {
+            Self::Array => "an array",
+            Self::Object => "an object",
+            Self::Text => "a string",
+        }
+    }
+}
+
 thread_local! {
     /// The Kotlin class/enum name each Rust ident publishes, read back by a sibling reference.
     static KOTLIN_NAMES: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
@@ -506,6 +535,40 @@ pub fn kotlin_template_text(text: &str) -> String {
         }
     }
     written
+}
+
+/// `held`, the Kotlin variable of a `JsonElement`, read as `kind`: any other kind is refused with
+/// `SerializationException`, which every refusal of a serializer this module writes throws.
+fn read_as(held: &str, kind: JsonKind) -> String {
+    format!(
+        "{held} as? {} ?: throw SerializationException(\"expected {}, found \" + {held})",
+        kind.class(),
+        kind.named()
+    )
+}
+
+/// `payload`, the Kotlin expression of a `JsonElement`, read as `kind` as [`read_as`] reads it.
+fn payload_read_as(payload: &str, kind: JsonKind) -> String {
+    format!("{payload}.let {{ {} }}", read_as("it", kind))
+}
+
+/// `read`, the Kotlin expression of what an object holds under `key`, refused where it holds
+/// nothing, in serde's words.
+fn present(read: &str, key: &str) -> String {
+    format!(
+        "({read} ?: throw SerializationException(\"missing field `{}`\"))",
+        kotlin_template_text(key)
+    )
+}
+
+/// The statements that read `payload` as the array of a tuple of `length` positions, `array`, and
+/// refuse an array of another length, in serde's words.
+fn tuple_array(payload: &str, length: usize) -> String {
+    format!(
+        "val array = {}; if (array.size != {length}) throw SerializationException(\"invalid \
+         length \" + array.size + \", expected {length}\")",
+        payload_read_as(payload, JsonKind::Array)
+    )
 }
 
 /// `cased`, a name already cased as Kotlin writes one, between backticks where it is a hard
@@ -909,8 +972,9 @@ fn tuple_wrapper_typename(elements: &[FieldDef], walked: bool) -> String {
          val output = encoder as JsonEncoder; \
          output.encodeJsonElement(buildJsonArray {{ {encode_entries} }}) }}; \
          override fun deserialize(decoder: Decoder): {wrapper_name} {{ \
-         val input = decoder as JsonDecoder; val array = input.decodeJsonElement().jsonArray; \
-         return {wrapper_name}({decode_entries}) }} }}"
+         val input = decoder as JsonDecoder; {}; \
+         return {wrapper_name}({decode_entries}) }} }}",
+        tuple_array("input.decodeJsonElement()", elements.len())
     );
     KOTLIN_TUPLE_AUX.with(|aux| aux.borrow_mut().push(class_text));
     KOTLIN_TUPLES.with(|tuples| {
@@ -1392,9 +1456,10 @@ fn flatten_base_field(field_def: &FieldDef) -> FieldDef {
 
 /// One non-flattened field's own `serialize`/`deserialize` statements and constructor argument —
 /// the branch [`flatten_plan`] takes for every field that is not itself `#[serde(flatten)]`. The
-/// payload under the field's key is read as the field's own `preprocess` corrects it. An optional
-/// member's key is left out where it holds no value, as serde leaves it out, but under `nullable`,
-/// and a member serde never writes has no `serialize` statement.
+/// payload under the field's key is read as the field's own `preprocess` corrects it, and a key
+/// serde requires is refused where it is absent. An optional member's key is left out where it
+/// holds no value, as serde leaves it out, but under `nullable`, and a member serde never writes
+/// has no `serialize` statement.
 fn own_field_plan(
     field: &KotlinField,
     prop: &str,
@@ -1429,7 +1494,10 @@ fn own_field_plan(
     } else {
         format!(
             "input.json.decodeFromJsonElement({field_serializer}, {})",
-            preprocess::corrected(functions, &format!("obj.getValue(\"{}\")", field.wire_name))
+            preprocess::corrected(
+                functions,
+                &present(&format!("obj[\"{}\"]", field.wire_name), &field.wire_name)
+            )
         )
     };
     (serialize, format!("val {prop} = {decode_expr}"))
@@ -1609,10 +1677,10 @@ fn flatten_map_field_plan(
         if optional {
             format!(
                 "{corrected}.let {{ if (it is JsonNull) null else {} }}",
-                entries("it.jsonObject")
+                entries(&format!("({})", read_as("it", JsonKind::Object)))
             )
         } else {
-            entries(&format!("{corrected}.jsonObject"))
+            entries(&payload_read_as(&corrected, JsonKind::Object))
         }
     };
     (serialize, format!("val {prop} = {read}"))
@@ -1731,11 +1799,14 @@ fn flatten_merging_serializer(
     );
     let deserialize_body = format!(
         "override fun deserialize(decoder: Decoder): {self_type} {{ \
-         val input = decoder as JsonDecoder; val obj = {}.jsonObject; {}; \
+         val input = decoder as JsonDecoder; val obj = {}; {}; \
          return {export_name}({}) }}",
-        aliases::keys_named(
-            &preprocess::corrected(own, "input.decodeJsonElement()"),
-            renamed
+        payload_read_as(
+            &aliases::keys_named(
+                &preprocess::corrected(own, "input.decodeJsonElement()"),
+                renamed
+            ),
+            JsonKind::Object
         ),
         plan.deserialize_stmts.join("; "),
         plan.ctor_args.join(", "),
@@ -2036,8 +2107,9 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
          val output = encoder as JsonEncoder; \
          output.encodeJsonElement(buildJsonArray {{ {encode_entries} }}) }}; \
          override fun deserialize(decoder: Decoder): {export_name}{generic_params} {{ \
-         val input = decoder as JsonDecoder; val array = {payload}.jsonArray; \
+         val input = decoder as JsonDecoder; {}; \
          return {export_name}({decode_entries}) }} }} {}{alias}",
+        tuple_array(&payload, slots.len()),
         read::judged(&export_name, &generic_params, &type_parameters, true)
     );
 
@@ -2398,10 +2470,10 @@ fn dispatched_tagged_variant(
 
     let tag_key = ctx.tag_key;
     // Under a tag and a content key the content is read out of a `Map` index, which is nullable
-    // in Kotlin; under a tag alone it is the object without the tag; with no tag attribute the
-    // object's one entry is destructured, already non-null.
+    // in Kotlin, and refused where it is absent; under a tag alone it is the object without the
+    // tag; with no tag attribute the object's one entry is destructured, already non-null.
     let data = match ctx.tagging {
-        Tagging::Adjacent(_) => "data!!".to_owned(),
+        Tagging::Adjacent(content) => present("data", content),
         Tagging::External => "data".to_owned(),
         Tagging::Unwrapped => format!("JsonObject(obj - \"{tag_key}\")"),
     };
@@ -2524,25 +2596,28 @@ fn dispatched_tagged_enum_kotlin_source(
 
     let arms = deserialize_arms.join("; ");
     let whole = preprocess::corrected(args.preprocess, "input.decodeJsonElement()");
+    let obj = payload_read_as(&whole, JsonKind::Object);
+    let unknown = "throw SerializationException(\"unknown tag \" + tag)";
     let deserialize_body = match tagging {
         Tagging::Adjacent(content) => format!(
-            "val obj = {whole}.jsonObject; \
-             val tag = obj.getValue(\"{tag_key}\").jsonPrimitive.content; \
-             val data = obj[\"{content}\"]; \
-             return when (tag) {{ {arms} else -> error(\"unknown tag \" + tag) }}"
+            "val obj = {obj}; val tag = {}.content; val data = obj[\"{content}\"]; \
+             return when (tag) {{ {arms} else -> {unknown} }}",
+            payload_read_as(
+                &present(&format!("obj[\"{tag_key}\"]"), tag_key),
+                JsonKind::Text
+            )
         ),
         Tagging::External => format!(
             "val element = {whole}; \
              val (tag, data) = if (element is JsonPrimitive) element.content to JsonNull \
-             else element.jsonObject.entries.single().let {{ it.key to it.value }}; \
-             return when (tag) {{ {arms} else -> error(\"unknown tag \" + tag) }}"
+             else ({}).entries.singleOrNull()?.let {{ it.key to it.value }} ?: throw \
+             SerializationException(\"expected an object of one key, found \" + element); \
+             return when (tag) {{ {arms} else -> {unknown} }}",
+            read_as("element", JsonKind::Object)
         ),
-        // A tag no variant has is refused with the decoder's own exception.
         Tagging::Unwrapped => format!(
-            "val obj = {whole}.jsonObject; \
-             val tag = (obj[\"{tag_key}\"] as? JsonPrimitive)?.content; \
-             return when (tag) {{ {arms} else -> throw SerializationException(\"unknown tag \" + \
-             tag) }}"
+            "val obj = {obj}; val tag = (obj[\"{tag_key}\"] as? JsonPrimitive)?.content; \
+             return when (tag) {{ {arms} else -> {unknown} }}"
         ),
     };
 
@@ -2657,7 +2732,8 @@ fn untagged_enum_kotlin_source(
          output.encodeJsonElement(when (value) {{ {} }}) }}; \
          override fun deserialize(decoder: Decoder): {export_name}{generic_params} {{ \
          val input = decoder as JsonDecoder; val element = {}; \
-         return {deserialize_chain}.getOrElse {{ error(\"No variant of {export_name} matched\") }} }} }}",
+         return {deserialize_chain}.getOrElse {{ throw SerializationException(\"No variant of \
+         {export_name} matched\") }} }} }}",
         serialize_arms.join("; "),
         preprocess::corrected(args.preprocess, "input.decodeJsonElement()"),
     );

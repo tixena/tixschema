@@ -596,7 +596,10 @@ fn test_external_tagged_enum() {
     );
     assert!(kotlin.contains("element is JsonPrimitive"), "got: {kotlin}");
     assert!(
-        kotlin.contains("element.jsonObject.entries.single()"),
+        kotlin.contains(
+            "(element as? JsonObject ?: throw SerializationException(\"expected an object, found \" \
+             + element)).entries.singleOrNull()"
+        ),
         "got: {kotlin}"
     );
 }
@@ -611,7 +614,9 @@ fn test_external_tagged_unit_variant_round_trip_source() {
     assert!(
         kotlin.contains(
             "val (tag, data) = if (element is JsonPrimitive) element.content to JsonNull \
-             else element.jsonObject.entries.single().let { it.key to it.value }"
+             else (element as? JsonObject ?: throw SerializationException(\"expected an object, \
+             found \" + element)).entries.singleOrNull()?.let { it.key to it.value } ?: throw \
+             SerializationException(\"expected an object of one key, found \" + element);"
         ),
         "the reader branches on the decoded element's own shape rather than assuming an object. \
          got: {kotlin}"
@@ -909,8 +914,10 @@ fn a_flattened_map_is_read_from_every_key_and_written_entry_by_entry() {
     for held in [
         "buildJsonObject { value.rest.forEach { (k, v) -> put(k, \
          output.json.encodeToJsonElement(serializer<UByte>(), v)) } }",
-        "val obj = input.decodeJsonElement().jsonObject; val rest = obj.mapValues { (_, v) -> \
-         input.json.decodeFromJsonElement(serializer<UByte>(), v) }; return Netting(rest = rest) }",
+        "val obj = input.decodeJsonElement().let { it as? JsonObject ?: throw \
+         SerializationException(\"expected an object, found \" + it) }; val rest = obj.mapValues \
+         { (_, v) -> input.json.decodeFromJsonElement(serializer<UByte>(), v) }; return \
+         Netting(rest = rest) }",
     ] {
         assert!(netting.contains(held), "no `{held}` in: {netting}");
     }
@@ -974,15 +981,17 @@ fn an_optional_flattened_map_is_read_as_null_where_an_entry_does_not_read() {
         (
             corrected_locker_kotlin::kotlin_definition(),
             format!(
-                "val counts = asGiven(obj).let {{ if (it is JsonNull) null else \
-                 it.jsonObject.{entries} }}; return CorrectedLocker(counts = counts) }}"
+                "val counts = asGiven(obj).let {{ if (it is JsonNull) null else (it as? JsonObject \
+                 ?: throw SerializationException(\"expected an object, found \" + it)).{entries} \
+                 }}; return CorrectedLocker(counts = counts) }}"
             ),
         ),
         (
             emptied_locker_kotlin::kotlin_definition(),
             format!(
-                "val counts = asNull(obj).let {{ if (it is JsonNull) null else \
-                 it.jsonObject.{entries} }}; return EmptiedLocker(counts = counts) }}"
+                "val counts = asNull(obj).let {{ if (it is JsonNull) null else (it as? JsonObject \
+                 ?: throw SerializationException(\"expected an object, found \" + it)).{entries} \
+                 }}; return EmptiedLocker(counts = counts) }}"
             ),
         ),
     ] {
@@ -1714,7 +1723,7 @@ fn a_variant_with_a_flattened_member_is_read_by_a_serializer_of_its_own() {
         (
             bowlining_kotlin::kotlin_definition(),
             "\"Tallied\" -> input.json.decodeFromJsonElement(serializer<BowliningTallied>(), \
-             data!!)",
+             (data ?: throw SerializationException(\"missing field `held`\")))",
         ),
         (
             swaying_kotlin::kotlin_definition(),
@@ -1922,7 +1931,8 @@ fn test_generic_flatten_own_field() {
     );
     assert!(
         kotlin.contains(
-            "val id = input.json.decodeFromJsonElement(tSerializer, obj.getValue(\"id\"))"
+            "val id = input.json.decodeFromJsonElement(tSerializer, (obj[\"id\"] ?: throw \
+             SerializationException(\"missing field `id`\")))"
         ),
         "got: {kotlin}"
     );

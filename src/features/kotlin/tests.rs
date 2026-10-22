@@ -589,8 +589,10 @@ fn a_tuple_struct_reads_its_slots_unjudged_and_judges_the_whole() {
              add(output.json.encodeToJsonElement(serializer<List<String>>(), value.slot0)); \
              add(output.json.encodeToJsonElement(ParcelUnjudged, value.slot1)) }}) }}; override \
              fun deserialize(decoder: Decoder): Consignment {{ val input = decoder as \
-             JsonDecoder; val array = input.decodeJsonElement().jsonArray; return \
-             Consignment(input.json.decodeFromJsonElement(serializer<List<String>>(), array[0]), \
+             JsonDecoder; val array = input.decodeJsonElement().let {{ it as? JsonArray ?: throw \
+             SerializationException(\"expected an array, found \" + it) }}; if (array.size != 2) \
+             throw SerializationException(\"invalid length \" + array.size + \", expected 2\"); \
+             return Consignment(input.json.decodeFromJsonElement(serializer<List<String>>(), array[0]), \
              input.json.decodeFromJsonElement(ParcelUnjudged, array[1])) }} }} {}",
             judged("Consignment")
         )
@@ -613,8 +615,10 @@ fn a_tuple_struct_of_one_slot_keeps_the_array_it_was_read_from() {
              output.encodeJsonElement(buildJsonArray { \
              add(output.json.encodeToJsonElement(serializer<String>(), value.slot0)) }) }; \
              override fun deserialize(decoder: Decoder): Sealed { val input = decoder as \
-             JsonDecoder; val array = input.decodeJsonElement().jsonArray; return \
-             Sealed(input.json.decodeFromJsonElement(serializer<String>(), array[0])) } }"
+             JsonDecoder; val array = input.decodeJsonElement().let { it as? JsonArray ?: throw \
+             SerializationException(\"expected an array, found \" + it) }; if (array.size != 1) \
+             throw SerializationException(\"invalid length \" + array.size + \", expected 1\"); \
+             return Sealed(input.json.decodeFromJsonElement(serializer<String>(), array[0])) } }"
         ),
         "got: {kotlin}"
     );
@@ -836,8 +840,9 @@ fn an_enum_under_a_tag_alone_is_read_and_written_by_hand_over_its_variants() {
              output.encodeJsonElement(when (value) {{ {}; is LiftHeld -> buildJsonObject {{ \
              put(\"kind\", \"Held\") }}; {} }}) }}; override fun deserialize(decoder: Decoder): \
              Lift {{ val input = decoder as JsonDecoder; val obj = \
-             input.decodeJsonElement().jsonObject; val tag = (obj[\"kind\"] as? \
-             JsonPrimitive)?.content; return when (tag) {{ {}; \"Held\" -> LiftHeld; {} else -> \
+             input.decodeJsonElement().let {{ it as? JsonObject ?: throw \
+             SerializationException(\"expected an object, found \" + it) }}; val tag = \
+             (obj[\"kind\"] as? JsonPrimitive)?.content; return when (tag) {{ {}; \"Held\" -> LiftHeld; {} else -> \
              throw SerializationException(\"unknown tag \" + tag) }} }} }} {}",
             merged("Boxed"),
             merged("Loose"),
@@ -876,12 +881,18 @@ fn an_enum_under_its_variants_names_reads_what_a_variant_holds_unjudged() {
          FreightHeld -> JsonPrimitive(\"Held\"); is FreightMany -> buildJsonObject { \
          put(\"Many\", output.json.encodeToJsonElement(ListSerializer(ParcelUnjudged), \
          value.value)) } }) };",
+        "override fun deserialize(decoder: Decoder): Freight { val input = decoder as \
+         JsonDecoder; val element = input.decodeJsonElement(); val (tag, data) = if (element is \
+         JsonPrimitive) element.content to JsonNull else (element as? JsonObject ?: throw \
+         SerializationException(\"expected an object, found \" + element)).entries.singleOrNull()\
+         ?.let { it.key to it.value } ?: throw SerializationException(\"expected an object of \
+         one key, found \" + element); ",
         "return when (tag) { \"Boxed\" -> \
          FreightBoxed(input.json.decodeFromJsonElement(ParcelUnjudged, data)); \"Held\" -> if \
          (data is JsonNull) FreightHeld else throw SerializationException(\"Freight: \" + tag + \
          \" takes no value\"); \"Many\" -> \
          FreightMany(input.json.decodeFromJsonElement(ListSerializer(ParcelUnjudged), data)) \
-         else -> error(\"unknown tag \" + tag) } } }",
+         else -> throw SerializationException(\"unknown tag \" + tag) } } }",
     ] {
         assert!(kotlin.contains(held), "no `{held}` in: {kotlin}");
     }
@@ -973,7 +984,7 @@ fn an_untagged_enum_takes_the_first_variant_whose_bounds_hold() {
     assert!(
         kotlin.contains(&format!(
             "return runCatching {{ error(\"unreachable\") as Nothing }}{}{}{}{}{}.getOrElse {{ \
-             error(\"No variant of Reference matched\") }} }} }} {}",
+             throw SerializationException(\"No variant of Reference matched\") }} }} }} {}",
             taken("Boxed"),
             held_to_its_bounds("Coded"),
             held_to_its_bounds("Named"),

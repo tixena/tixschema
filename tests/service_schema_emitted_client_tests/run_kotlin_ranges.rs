@@ -11,7 +11,7 @@ use super::range_models::{
     itinerary_kotlin, milestone_kotlin, positioned_kotlin, signposted_kotlin, spanned_kotlin,
     stride_kotlin, waymark_kotlin, waypost_kotlin,
 };
-use super::range_rows::{declares_a_parameter, expected, rows};
+use super::range_rows::{declares_a_parameter, expected, judged, rows};
 use super::runtime::ran_kotlin;
 
 const KOTLIN_IMPORTS: &str = "import kotlinx.serialization.*\n\
@@ -21,15 +21,16 @@ const KOTLIN_IMPORTS: &str = "import kotlinx.serialization.*\n\
      import kotlinx.serialization.builtins.*";
 
 /// What prints a row: the value read, written back, or `refused`, with each message of what
-/// `validate()` refused, which the read of a type throws as a `SerializationException` of its own.
+/// `validate()` refused where the type judges a model or a brand it holds, which the read of a type
+/// throws as a `SerializationException` of its own.
 const TOLD: &str = r#"
-fun <T> row(name: String, serializer: KSerializer<T>, payload: String) {
+fun <T> row(name: String, serializer: KSerializer<T>, payload: String, judged: Boolean) {
     try {
         val read = Json.decodeFromString(serializer, payload)
         println("$name: read ${Json.encodeToString(serializer, read)}")
     } catch (refused: Exception) {
         println("$name: refused")
-        if (refused::class == SerializationException::class) {
+        if (judged && refused::class == SerializationException::class) {
             (refused.message ?: "").split("; ").forEach { println("    $it") }
         }
     }
@@ -62,9 +63,10 @@ fn each_range_reads_and_writes_in_kotlin_as_serde_does() {
         let serializer = format!("{}.serializer({filled})", row.read_as);
         let _ = writeln!(
             main,
-            "    row(\"{}\", {serializer}, {})",
+            "    row(\"{}\", {serializer}, {}, {})",
             row.name,
-            raw(&row.json)
+            raw(&row.json),
+            judged(row.read_as)
         );
     }
     main.push_str("}\n");
