@@ -300,23 +300,20 @@ fn enum_rows() -> Vec<Row> {
         easing("easing absent", EASING[0]),
         easing("easing", EASING[1]),
         easing("easing mistyped", EASING[2]).in_dart(turns),
-        easing("easing unit mistyped", EASING[3])
-            .in_dart("refused: Invalid argument(s): Thimble: Calm takes no value"),
+        easing("easing unit mistyped", EASING[3]).in_dart("refused: Thimble: Calm takes no value"),
         lowering("lowering absent", LOWERING[0]),
         lowering("lowering", LOWERING[1]),
         lowering("lowering unit", LOWERING[2]),
         // A tag, or a member of the variant it names, that does not read: TypeScript and Zod refuse
         // it.
         lowering("lowering mistyped", LOWERING[3]).in_dart(turns),
-        lowering("lowering unnamed", LOWERING[4])
-            .in_dart("refused: Invalid argument(s): Unknown Grommet: Gale"),
+        lowering("lowering unnamed", LOWERING[4]).in_dart("refused: Unknown Grommet: Gale"),
         lowering("lowering untagged", LOWERING[5]),
         squaring("squaring absent", SQUARING[0]),
         squaring("squaring", SQUARING[1]),
         squaring("squaring unit", SQUARING[2]),
         squaring("squaring mistyped", SQUARING[3]).in_dart(turns),
-        squaring("squaring unnamed", SQUARING[4])
-            .in_dart("refused: Invalid argument(s): Unknown Becket: Gale"),
+        squaring("squaring unnamed", SQUARING[4]).in_dart("refused: Unknown Becket: Gale"),
         squaring("squaring untagged", SQUARING[5])
             .in_dart("refused: type 'Null' is not a subtype of type 'String' in type cast"),
         heeling("heeling absent", HEELING[0]),

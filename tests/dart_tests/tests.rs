@@ -611,7 +611,7 @@ fn test_untagged_enum_tries_each_variant_in_turn() {
     assert!(dart.contains("sealed class ReceivedAt {"));
     assert!(dart.contains("try { return ReceivedAtEpoch("));
     assert!(dart.contains("try { return ReceivedAtIso("));
-    assert!(dart.contains("throw ArgumentError('No variant of ReceivedAt matched');"));
+    assert!(dart.contains("throw FormatException('No variant of ReceivedAt matched');"));
 }
 
 #[test]
@@ -901,7 +901,7 @@ fn a_member_named_after_a_reserved_word_moves_and_keeps_its_key() {
         "enum ReservedMember { default_('Default'), in_('In'), other('Other'); const \
          ReservedMember(this.wireValue); final String wireValue; static ReservedMember \
          fromJson(String json) => switch (json) { 'Default' => ReservedMember.default_,'In' => \
-         ReservedMember.in_,'Other' => ReservedMember.other, _ => throw ArgumentError('Unknown \
+         ReservedMember.in_,'Other' => ReservedMember.other, _ => throw FormatException('Unknown \
          ReservedMember: ' + json) }; static ReservedMember fromJsonUnjudged(String json) => \
          fromJson(json); String toJson() => wireValue; List<String> validate() => const []; }"
     );

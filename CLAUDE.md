@@ -1552,6 +1552,17 @@ consumer's view; this is what a change has to keep.
   wrapper (a brand, a tuple struct, an alias), a variant with named members and the base of a
   sealed enum. `judged_body` writes the judgement, which the static `fromJson` of a plain enum
   takes too. A generic type takes its converters in both reads.
+- **Every refusal the read writes itself is a `FormatException`**, thrown inline in the emitted
+  text, with no declaration shared between two types. In `src/features/dart.rs`,
+  `tagged_enum_dart_source` writes `Unknown {Enum}: {tag}` for a tag no variant has, under every
+  tagging, and `{Enum}: {tag} takes no value` for a unit variant's entry over a value;
+  `tagged_variant_tokens` the same words for its content under a content key;
+  `untagged_enum_dart_source` `No variant of {Enum} matched`; `plain_enum_dart_source`
+  `Unknown {Enum}: {name}`; `range_decode` `Unknown key of a {kind}: {keys}`; `result_decode`
+  `Not a Result: {keys}`; `own_tag_held` a struct's own tag; and `named_by_aliases` a member
+  under two of its names. A cast's `TypeError`, and every other error a Dart operation throws on
+  its own, are the language's. `run_dart_refusals.rs` reads each refusal under the Dart SDK,
+  beside serde's refusal of the same payload.
 - **A declared type is read unjudged exactly where the holder's `validate()` runs it.** `Read` is
   threaded through `dart_decode_expr` and `dart_decode_at`, and `Read::of_member` asks
   `walks_what_it_holds`, the question `member_elements` asks: a member's own bound stands in for

@@ -491,6 +491,13 @@ mod run_dart_unit_entries;
 #[path = "service_schema_emitted_client_tests/run_dart_own_tags.rs"]
 mod run_dart_own_tags;
 
+/// A payload serde refuses, refused by the emitted Dart types with a `FormatException`: a tag no
+/// variant has under every tagging, a unit variant's value, a payload no variant of an untagged
+/// enum reads, a range of a key it does not write and a `Result` of both keys.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_refusals.rs"]
+mod run_dart_refusals;
+
 /// A struct under its own tag, alone, with a parameter, with a member under its alias, naming a
 /// function on itself, with a flattened member and flattened into a holder, read by the emitted
 /// Swift types under its name alone, as TypeScript and Zod read it.

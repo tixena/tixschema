@@ -41,13 +41,13 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
         &surging_dart::dart_definition(),
         &[
             "switch (json) { case 'Calm' || 'Still' || 'Slack': return SurgingCalm(); default: \
-             throw ArgumentError('Unknown Surging: ' + json); }"
+             throw FormatException('Unknown Surging: ' + json); }"
                 .to_owned(),
             "switch (tag) { case 'Berth' || 'Pier': return \
              SurgingBerth.fromJsonUnjudged(map[tag]); case 'Calm' || 'Still' || 'Slack': return \
-             map[tag] == null ? SurgingCalm() : throw ArgumentError('Surging: ' + tag + ' takes no \
-             value'); case 'Held' || 'Tied': return SurgingHeld(map[tag] as String); default: \
-             throw ArgumentError('Unknown Surging: ' + tag); }"
+             map[tag] == null ? SurgingCalm() : throw FormatException('Surging: ' + tag + ' takes \
+             no value'); case 'Held' || 'Tied': return SurgingHeld(map[tag] as String); default: \
+             throw FormatException('Unknown Surging: ' + tag); }"
                 .to_owned(),
             format!(
                 "factory SurgingBerth.fromJsonUnjudged(Map<String, dynamic> json) {{ \
@@ -115,7 +115,7 @@ fn a_plain_enum_reads_a_variant_under_each_alias() {
         swell_dart::dart_definition(),
         "enum Swell { ebb('Ebb'), flood('Flood'); const Swell(this.wireValue); final String \
          wireValue; static Swell fromJson(String json) => switch (json) { 'Ebb' || 'Low' || \
-         'Neap' => Swell.ebb,'Flood' => Swell.flood, _ => throw ArgumentError('Unknown Swell: ' \
+         'Neap' => Swell.ebb,'Flood' => Swell.flood, _ => throw FormatException('Unknown Swell: ' \
          + json) }; static Swell fromJsonUnjudged(String json) => fromJson(json); String toJson() \
          => wireValue; List<String> validate() => const []; }"
     );
@@ -125,7 +125,7 @@ fn a_plain_enum_reads_a_variant_under_each_alias() {
          wireValue; static Lulling fromJson(String json) => fromJsonUnjudged(json); static \
          Lulling fromJsonUnjudged(String payload) { final json = unpadded(payload) as String; \
          return switch (json) { 'Ebb' || 'Low' => Lulling.ebb,'Flood' => Lulling.flood, _ => \
-         throw ArgumentError('Unknown Lulling: ' + json) }; } String toJson() => wireValue; \
+         throw FormatException('Unknown Lulling: ' + json) }; } String toJson() => wireValue; \
          List<String> validate() => const []; }"
     );
 }

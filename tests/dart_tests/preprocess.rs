@@ -563,7 +563,7 @@ fn a_plain_enum_calls_its_function_on_the_text_it_takes() {
         "static Grade fromJson(String json) => fromJsonUnjudged(json); static Grade \
          fromJsonUnjudged(String payload) { final json = trimmed(payload) as String; return \
          switch (json) { 'Express' => Grade.express,'Standard' => Grade.standard, _ => throw \
-         ArgumentError('Unknown Grade: ' + json) }; } String toJson() => wireValue;",
+         FormatException('Unknown Grade: ' + json) }; } String toJson() => wireValue;",
     );
     assert_written(
         &rating_dart::dart_definition(),
@@ -571,7 +571,7 @@ fn a_plain_enum_calls_its_function_on_the_text_it_takes() {
             "static Rating fromJson(String json) {{ final read = Rating.fromJsonUnjudged(json); \
              {JUDGED} static Rating fromJsonUnjudged(String payload) {{ final json = \
              trimmed(payload) as String; return switch (json) {{ 'Express' => \
-             Rating.express,'Unrated' => Rating.unrated, _ => throw ArgumentError('Unknown \
+             Rating.express,'Unrated' => Rating.unrated, _ => throw FormatException('Unknown \
              Rating: ' + json) }}; }} String toJson() => wireValue;"
         ),
     );
@@ -587,13 +587,13 @@ fn an_enum_under_its_variants_name_calls_its_function_in_its_base() {
         &transfer,
         &format!(
             "{}{{ final json = unwrapped(payload); if (json is String) {{ switch (json) {{ case \
-             'Held': return TransferHeld(); default: throw ArgumentError('Unknown Transfer: ' + \
+             'Held': return TransferHeld(); default: throw FormatException('Unknown Transfer: ' + \
              json); }} }} final map = json as Map<String, dynamic>; final tag = map.keys.first; \
              switch (tag) {{ case 'Held': return map[tag] == null ? TransferHeld() : throw \
-             ArgumentError('Transfer: ' + tag + ' takes no value'); case 'Rail': return \
+             FormatException('Transfer: ' + tag + ' takes no value'); case 'Rail': return \
              TransferRail(trimmed(map['Rail']) as String); case 'Road': return TransferRoad.fromJsonUnjudged(map['Road']); case 'Split': return \
              TransferSplit((trimmed((map['Split'] as List<dynamic>)[0]) as String, (map['Split'] \
-             as List<dynamic>)[1] as int)); default: throw ArgumentError('Unknown Transfer: ' + \
+             as List<dynamic>)[1] as int)); default: throw FormatException('Unknown Transfer: ' + \
              tag); }} }} dynamic toJson();",
             plain_pair("Transfer", "dynamic", "payload")
         ),
@@ -621,7 +621,7 @@ fn an_enum_under_a_tag_key_hands_a_function_the_object_without_the_tag() {
              json['kind'] as String; switch (tag) {{ case 'Air': return \
              ShipmentAir.fromJsonUnjudged(json); case 'Boxed': return \
              ShipmentBoxed(Listed.fromJsonUnjudged(withItsKeys(({{...json}}..remove('kind'))))); \
-             case 'Ground': return ShipmentGround(); default: throw ArgumentError('Unknown \
+             case 'Ground': return ShipmentGround(); default: throw FormatException('Unknown \
              Shipment: ' + tag); }} }} dynamic toJson();",
             plain_pair("Shipment", "Map<String, dynamic>", "payload")
         ),
@@ -648,7 +648,7 @@ fn an_enum_under_a_content_key_calls_a_slots_function_where_the_key_is_held() {
              json['kind'] as String; switch (tag) {{ case 'Left': return \
              HandoverLeft((json.containsKey('detail') ? trimmed(json['detail']) : null) as \
              String); case 'Signed': return HandoverSigned.fromJsonUnjudged(json['detail']); \
-             default: throw ArgumentError('Unknown Handover: ' + tag); }} }} dynamic toJson();",
+             default: throw FormatException('Unknown Handover: ' + tag); }} }} dynamic toJson();",
             plain_pair("Handover", "Map<String, dynamic>", "payload")
         ),
     );
@@ -666,8 +666,8 @@ fn an_untagged_enum_calls_its_function_ahead_of_every_attempt() {
              ReferenceNamed.fromJsonUnjudged(json as Map<String, dynamic>); if \
              (read._bounds().isEmpty) return read; }} catch (_) {{}} try {{ final read = \
              ReferenceNumbered(unwrapped(json) as int); if (read._bounds().isEmpty) return read; \
-             }} catch (_) {{}} throw ArgumentError('No variant of Reference matched'); }} dynamic \
-             toJson();",
+             }} catch (_) {{}} throw FormatException('No variant of Reference matched'); }} \
+             dynamic toJson();",
             plain_pair("Reference", "dynamic", "payload")
         ),
     );
@@ -732,11 +732,11 @@ fn a_name_the_read_declares_is_numbered_where_a_function_is_called_under_it() {
         &routed_dart::dart_definition(),
         &format!(
             "{}{{ final json = tag(payload); if (json is String) {{ switch (json) {{ case 'Held': \
-             return RoutedHeld(); default: throw ArgumentError('Unknown Routed: ' + json); }} }} \
+             return RoutedHeld(); default: throw FormatException('Unknown Routed: ' + json); }} }} \
              final map2 = json as Map<String, dynamic>; final tag2 = map2.keys.first; switch \
              (tag2) {{ case 'Held': return map2[tag2] == null ? RoutedHeld() : throw \
-             ArgumentError('Routed: ' + tag2 + ' takes no value'); case 'Rail': return \
-             RoutedRail(map(map2['Rail']) as String); default: throw ArgumentError('Unknown \
+             FormatException('Routed: ' + tag2 + ' takes no value'); case 'Rail': return \
+             RoutedRail(map(map2['Rail']) as String); default: throw FormatException('Unknown \
              Routed: ' + tag2); }} }} dynamic toJson();",
             plain_pair("Routed", "dynamic", "payload")
         ),
@@ -746,7 +746,7 @@ fn a_name_the_read_declares_is_numbered_where_a_function_is_called_under_it() {
         &format!(
             "{}{{ try {{ return CountedText(json as String); }} catch (_) {{}} try {{ final read2 \
              = CountedWhole(read(json) as int); if (read2._bounds().isEmpty) return read2; }} \
-             catch (_) {{}} throw ArgumentError('No variant of Counted matched'); }} dynamic \
+             catch (_) {{}} throw FormatException('No variant of Counted matched'); }} dynamic \
              toJson();",
             plain_pair("Counted", "dynamic", "json")
         ),

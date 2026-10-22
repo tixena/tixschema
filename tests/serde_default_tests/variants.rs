@@ -559,7 +559,7 @@ fn an_enum_with_no_default_writes_the_dart_text_it_wrote() {
          (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; } \
          factory Tide.fromJsonUnjudged(Map<String, dynamic> json) { final tag = json['kind'] as \
          String; switch (tag) { case 'Ebbing': return TideEbbing.fromJsonUnjudged(json); case \
-         'Slack': return TideSlack(); default: throw ArgumentError('Unknown Tide: ' + tag); } } \
+         'Slack': return TideSlack(); default: throw FormatException('Unknown Tide: ' + tag); } } \
          dynamic toJson(); List<String> validate(); } class TideEbbing extends Tide { const \
          TideEbbing({required this.height,}); final int height; factory \
          TideEbbing.fromJson(Map<String, dynamic> json) { final read = \
