@@ -3699,6 +3699,192 @@ fn a_slot_over_an_untagged_enum_of_objects_or_declared_below_is_accepted() {
     }
 }
 
+/// No local build is of the clients alone, so the gates are read off the sources.
+#[test]
+fn the_refusals_of_a_holder_of_an_untagged_enum_at_its_own_parameter_are_compiled_in_every_build_with_serde()
+ {
+    let with_serde = quote::quote!(cfg(feature = "serde")).to_string();
+    let expansion = include_str!("../model_schema.rs");
+    let registry = include_str!("../utils.rs");
+    for (source, named) in [
+        (expansion, "union_parameters_of"),
+        (expansion, "filled_union_parameters"),
+        (expansion, "named_union_parameters"),
+        (expansion, "member_parameter_leaves"),
+        (expansion, "written_union_members"),
+        (expansion, "union_spelling"),
+        (registry, "union_parameters"),
+        (registry, "record_union_parameters"),
+    ] {
+        assert_eq!(
+            gates_above(source, named),
+            [with_serde.as_str()],
+            "for `{named}`"
+        );
+    }
+}
+
+/// Declares, beside the types [`declare_slot_members`] declares, the generic alias, struct of one
+/// slot and brand whose value is an untagged enum filled at their own type parameter: the enum
+/// whose member is its own type parameter, through an alias of one, in a generic type declared
+/// above, and an enum declared below; and an untagged enum with a member over the alias.
+#[cfg(feature = "serde")]
+fn declare_own_holders() {
+    declare_slot_members();
+    for (args, declared) in [
+        (
+            "default_types(T = String)",
+            "pub type ProbeOwnAliasOf<T> = ProbeOwnMember<T>;",
+        ),
+        (
+            "no_display, default_types(T = String)",
+            "pub struct ProbeSlotOwnOf<T>(ProbeOwnMember<T>);",
+        ),
+        (
+            "no_display, default_types(T = String)",
+            "#[serde(transparent)] pub struct ProbeBrandOwnOf<T>(ProbeOwnMember<T>);",
+        ),
+        (
+            "default_types(U = String)",
+            "pub type ProbeOwnAliasChain<U> = ProbeOwnAliasOf<U>;",
+        ),
+        (
+            "no_display, default_types(T = String)",
+            "pub struct ProbeSlotWrapOwnOf<T>(ProbeWrap<ProbeOwnMember<T>>);",
+        ),
+        (
+            "default_types(T = String)",
+            "pub type ProbeOwnAliasBelow<T> = ProbeOwnLater<T>;",
+        ),
+        (
+            "default_types(Y = String)",
+            "#[serde(untagged)] pub enum ProbeOwnHolderMember<Y> { Obj { a: String }, \
+             Inner(ProbeOwnAliasOf<Y>) }",
+        ),
+    ] {
+        let expanded = serialized_under(args, declared);
+        assert_eq!(
+            compile_error_count(&expanded),
+            0,
+            "for {declared}, got: {expanded}"
+        );
+    }
+}
+
+/// A generic alias, struct of one slot and brand whose value is an untagged enum filled at their
+/// own type parameter, each filled at text, flattened beside a member and held by a newtype
+/// variant under a tag alone, refused with the branch the enum filled at text is refused with,
+/// and named with their arguments.
+#[cfg(feature = "serde")]
+#[test]
+fn a_holder_of_an_untagged_enum_at_its_own_parameter_filled_at_no_object_is_refused_in_every_build_with_serde()
+ {
+    declare_own_holders();
+    assert_eq!(
+        flattened_and_held("OwnMember", "ProbeOwnMember<String>"),
+        branch_refusals("OwnMember", "ProbeOwnMember<String>", "2", "string"),
+        "the enum filled at text itself"
+    );
+    for holder in ["OwnAliasOf", "SlotOwnOf", "BrandOwnOf"] {
+        let filled = format!("Probe{holder}<String>");
+        assert_eq!(
+            flattened_and_held(holder, &filled),
+            branch_refusals(holder, &filled, "2", "string"),
+            "for {filled}"
+        );
+    }
+    for quoted in branch_refusals("OwnAliasOf", "ProbeOwnAliasOf<String>", "2", "string") {
+        let answered = format!("error: {}", quoted[0]);
+        assert!(
+            include_str!("../../README.md").contains(&answered),
+            "the README no longer quotes: {answered}"
+        );
+    }
+}
+
+/// An alias of such an alias, a struct of one slot over a generic type declared above filled at
+/// the enum, a generic type declared above filled at such a struct, and an untagged enum with a
+/// member over such an alias, each filled at text, flattened and held under a tag alone, refused
+/// with the branch the shape over the enum filled at text is refused with.
+#[cfg(feature = "serde")]
+#[test]
+fn a_holder_of_an_untagged_enum_at_its_own_parameter_through_another_type_is_refused_as_its_filling()
+ {
+    declare_own_holders();
+    for (index, (filled, itself, branch)) in [
+        ("ProbeOwnAliasChain<String>", "ProbeOwnMember<String>", "2"),
+        ("ProbeSlotWrapOwnOf<String>", "ProbeOwnMember<String>", "2"),
+        (
+            "ProbeWrap<ProbeSlotOwnOf<String>>",
+            "ProbeWrap<ProbeSlotOwn>",
+            "2",
+        ),
+        (
+            "ProbeOwnHolderMember<String>",
+            "ProbeNestedTextMember",
+            "2.2",
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let holder = format!("OwnHolder{index}");
+        assert_eq!(
+            flattened_and_held(&holder, filled),
+            branch_refusals(&holder, filled, branch, "string"),
+            "for {filled}"
+        );
+        let direct = format!("OwnDirect{index}");
+        assert_eq!(
+            flattened_and_held(&direct, itself),
+            branch_refusals(&direct, itself, branch, "string"),
+            "for {itself}, the shape over the filling itself"
+        );
+    }
+}
+
+/// The holders left alone: each filled at a struct, a holder over an enum declared below, a
+/// holder declared below, and each filled at a type parameter of the type that holds it,
+/// flattened and held under a tag alone.
+#[cfg(feature = "serde")]
+#[test]
+fn a_holder_of_an_untagged_enum_at_its_own_parameter_filled_at_an_object_or_declared_below_is_accepted()
+ {
+    declare_own_holders();
+    for (index, filled) in [
+        "ProbeOwnAliasOf<ProbeFields>",
+        "ProbeSlotOwnOf<ProbeFields>",
+        "ProbeBrandOwnOf<ProbeFields>",
+        "ProbeOwnAliasChain<ProbeFields>",
+        "ProbeSlotWrapOwnOf<ProbeFields>",
+        "ProbeOwnHolderMember<ProbeFields>",
+        "ProbeOwnAliasBelow<String>",
+        "ProbeOwnAliasUnseen<String>",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        assert_eq!(
+            flattened_and_held(&format!("OwnHolderAccepted{index}"), filled),
+            [Vec::<String>::new(), Vec::new()],
+            "for {filled}"
+        );
+    }
+    for accepted in [
+        "pub struct ProbeFlatOwnAliasParameter<T> { pub id: String, #[serde(flatten)] pub wrap: \
+         ProbeOwnAliasOf<T> }",
+        "#[serde(tag = \"kind\")] pub enum ProbeHeldSlotOwnParameter<T> { \
+         Held(ProbeSlotOwnOf<T>) }",
+    ] {
+        let expanded = serialized_under("default_types(T = String)", accepted);
+        assert_eq!(
+            compile_error_count(&expanded),
+            0,
+            "for {accepted}, got: {expanded}"
+        );
+    }
+}
+
 /// What the record every build with serde writes proves of each flattened type is what the record
 /// a Zod surface writes proves, so the refusal reads the same with a schema surface and without.
 #[cfg(all(feature = "serde", feature = "zod"))]

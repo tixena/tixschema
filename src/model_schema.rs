@@ -3782,35 +3782,86 @@ fn member_written_leaves(fld: &FieldDef) -> Vec<WireLeaf> {
     })
 }
 
-/// The leaves of the members of `item`, an untagged enum, that serde writes as what fills one of
-/// its type parameters, placed as [`non_object_wire`] places each member's leaves. Empty for any
-/// other item.
+/// The leaves of the members of the untagged union `item` stands for that serde writes as what
+/// fills one of its type parameters, placed as [`non_object_wire`] places each member's leaves:
+/// an untagged enum's, and those a brand's, a struct of one slot's or an alias's value hands its
+/// own parameters on to. Empty for any other item.
 #[cfg(feature = "serde")]
 fn union_parameters_of(item: &Item) -> Vec<UnionParameter> {
-    let Item::Enum(item_enum) = item else {
-        return Vec::new();
+    let parameters = item_generics(item).map_or_else(Vec::new, type_parameters_in_scope);
+    let written = |ty: &syn::Type| {
+        let mut def = get_field_def("_written", ty, "");
+        def.erase_type_parameters(&parameters);
+        def
     };
-    if !matches!(Tagging::of(item_enum), Tagging::Untagged) {
-        return Vec::new();
-    }
-    let parameters = type_parameters_in_scope(&item_enum.generics);
-    item_enum
-        .variants
-        .iter()
-        .enumerate()
-        .filter_map(|(index, variant)| {
-            match (variant_wire_kind(variant), variant.fields.iter().next()) {
-                (VariantKind::TupleSingle, Some(slot)) => Some((index, slot)),
-                _ => None,
-            }
+    if let Item::Struct(item_struct) = item {
+        written_as_its_slot(item_struct).map_or_else(Vec::new, |slot| {
+            filled_union_parameters(&written(&slot.ty), &parameters)
         })
-        .flat_map(|(index, slot)| {
-            let mut member = get_field_def("_written", &slot.ty, "");
-            member.erase_type_parameters(&parameters);
-            member_parameter_leaves(&member, &parameters)
+    } else if let Item::Type(alias) = item {
+        filled_union_parameters(&written(&alias.ty), &parameters)
+    } else if let Item::Enum(item_enum) = item
+        && matches!(Tagging::of(item_enum), Tagging::Untagged)
+    {
+        item_enum
+            .variants
+            .iter()
+            .enumerate()
+            .filter_map(|(index, variant)| {
+                match (variant_wire_kind(variant), variant.fields.iter().next()) {
+                    (VariantKind::TupleSingle, Some(slot)) => Some((index, slot)),
+                    _ => None,
+                }
+            })
+            .flat_map(|(index, slot)| {
+                member_parameter_leaves(&written(&slot.ty), &parameters)
+                    .into_iter()
+                    .map(move |mut leaf| {
+                        leaf.branch.insert(0, index + 1);
+                        leaf
+                    })
+            })
+            .collect()
+    } else {
+        Vec::new()
+    }
+}
+
+/// The leaves of the members [`filled_union_members`] reads of `def` that serde writes as what
+/// fills one of `parameters`, placed as it places them.
+#[cfg(feature = "serde")]
+fn filled_union_parameters(def: &FieldDef, parameters: &[String]) -> Vec<UnionParameter> {
+    value_filling(&without_its_option(def)).map_or_else(
+        || {
+            if let FieldDefType::SiblingType(name, arguments) = &def.field_type
+                && def.array_depth == 0
+            {
+                named_union_parameters(name, arguments, parameters)
+            } else {
+                Vec::new()
+            }
+        },
+        |filling| filled_union_parameters(filling, parameters),
+    )
+}
+
+/// The leaves of the members of the untagged union `name` stands for, named with `arguments`, that
+/// serde writes as what fills one of `parameters`: each leaf [`union_parameters`] records, read at
+/// the argument that fills it.
+#[cfg(feature = "serde")]
+fn named_union_parameters(
+    name: &str,
+    arguments: &[FieldDef],
+    parameters: &[String],
+) -> Vec<UnionParameter> {
+    union_parameters(name)
+        .into_iter()
+        .filter_map(|held| Some((arguments.get(held.at)?, held.branch)))
+        .flat_map(|(argument, branch)| {
+            member_parameter_leaves(argument, parameters)
                 .into_iter()
                 .map(move |mut leaf| {
-                    leaf.branch.insert(0, index + 1);
+                    leaf.branch = [branch.as_slice(), &leaf.branch].concat();
                     leaf
                 })
         })
@@ -3819,8 +3870,8 @@ fn union_parameters_of(item: &Item) -> Vec<UnionParameter> {
 
 /// The leaves of an untagged member written as `fld` that serde writes as what fills one of
 /// `parameters`, read as [`member_written_leaves`] reads the member: under an `Option`, at a
-/// generic type's [`value_filling`], and through an untagged enum declared above that `fld` fills
-/// with a parameter.
+/// generic type's [`value_filling`], and through an untagged union declared above that `fld`
+/// fills with a parameter.
 #[cfg(feature = "serde")]
 fn member_parameter_leaves(fld: &FieldDef, parameters: &[String]) -> Vec<UnionParameter> {
     if fld.is_optional() {
@@ -3850,18 +3901,7 @@ fn member_parameter_leaves(fld: &FieldDef, parameters: &[String]) -> Vec<UnionPa
     let FieldDefType::SiblingType(name, arguments) = &fld.field_type else {
         return Vec::new();
     };
-    union_parameters(name)
-        .into_iter()
-        .filter_map(|held| Some((arguments.get(held.at)?, held.branch)))
-        .flat_map(|(argument, branch)| {
-            member_parameter_leaves(argument, parameters)
-                .into_iter()
-                .map(move |mut leaf| {
-                    leaf.branch = [branch.as_slice(), &leaf.branch].concat();
-                    leaf
-                })
-        })
-        .collect()
+    named_union_parameters(name, arguments, parameters)
 }
 
 /// Whether serde writes `item` as the bare name of one of its variants: a plain enum, and an
