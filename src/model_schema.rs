@@ -3566,8 +3566,9 @@ fn record_item(item: &Item) {
 /// item as the leaves a schema surface records are read off what it publishes: a brand's or a
 /// struct of one slot's value, any other tuple struct's array, a plain enum's name, each variant
 /// of an externally tagged enum, each member of an untagged enum, and an alias's value. A brand's,
-/// a struct of one slot's, an alias's value and an untagged member that names a generic type
-/// declared above is read at what fills its type parameter.
+/// a struct of one slot's and an alias's value is also recorded with the members of the untagged
+/// enum it names. A brand's, a struct of one slot's, an alias's value and an untagged member that
+/// names a generic type declared above is read at what fills its type parameter.
 #[cfg(feature = "serde")]
 fn non_object_wire(item: &Item) -> NonObjectWire {
     let parameters = item_generics(item).map_or_else(Vec::new, type_parameters_in_scope);
@@ -3581,6 +3582,7 @@ fn non_object_wire(item: &Item) -> NonObjectWire {
         if let Some(slot) = written_as_its_slot(item_struct) {
             let value = written(&slot.ty);
             wire.leaves = filled_wire_leaves(&value);
+            wire.members = filled_union_members(&value);
             wire.optional = writes_an_optional(value_filling(&value).unwrap_or(&value));
         } else if matches!(item_struct.fields, syn::Fields::Unnamed(_)) {
             wire.leaves = vec![WireLeaf {
