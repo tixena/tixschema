@@ -696,6 +696,10 @@ pub struct NonObjectWire {
     /// The leaves of each member of the untagged union the name stands for, under the member's
     /// branch.
     pub members: Vec<WireLeaf>,
+    /// Whether serde writes the value as an `Option`: a brand's, a struct of one slot's or an
+    /// alias's value written as one, or naming a type recorded as one. Its `null` leaf keeps the
+    /// record.
+    pub optional: bool,
 }
 
 /// A type parameter an item flattens beside a key serde writes at the same level, as

@@ -2366,6 +2366,123 @@ fn a_tagged_newtype_variant_over_a_type_serde_writes_as_no_object_is_refused_in_
     }
 }
 
+/// No local build is of the clients alone, so the gates are read off the sources.
+#[test]
+fn the_tagged_optional_refusal_is_compiled_in_every_build_with_serde() {
+    let with_serde = quote::quote!(cfg(feature = "serde")).to_string();
+    let expansion = include_str!("../model_schema.rs");
+    let registry = include_str!("../utils.rs");
+    for (source, named) in [
+        (expansion, "tagged_optional_message"),
+        (expansion, "writes_an_optional"),
+        (expansion, "internally_tagged_guard_errors"),
+        (expansion, "non_object_wire"),
+        (expansion, "TAGGED_OPTIONAL_SCOPE"),
+        (registry, "record_non_object_wire"),
+        (registry, "recorded_non_object_wire"),
+    ] {
+        assert_eq!(
+            gates_above(source, named),
+            [with_serde.as_str()],
+            "for `{named}`"
+        );
+    }
+}
+
+/// The refusal of the slot of variant `Held` of `holder`, under the tag `kind`, over `inner`,
+/// which serde writes as an `Option`.
+#[cfg(feature = "serde")]
+fn tagged_optional_refusal(holder: &str, inner: &str) -> String {
+    format!(
+        "model_schema: variant `Held` of internally tagged enum `{holder}` wraps `{inner}`, \
+         which serde writes as an optional, which cannot sit beside the tag: `#[serde(tag = \
+         \"kind\")]` with no `content` writes the variant's data as members of the object the tag \
+         is written in, and only a value serde writes as an object has members to put there. \
+         serde refuses this one at run time \u{2014} `cannot serialize tagged newtype variant \
+         {holder}::Held containing an optional`. Name a `content` key so the value gets an object \
+         of its own, or wrap it in a struct whose fields can sit beside the tag. {}",
+        super::TAGGED_OPTIONAL_SCOPE
+    )
+}
+
+/// A newtype variant under a tag alone over a struct of one slot, a brand and an alias over an
+/// `Option`, an alias of that struct and a struct of one slot over it, each declared above, and
+/// the shapes that stay accepted: that struct flattened into a struct and into a variant's
+/// members, a slot declared below, and an enum under a tag and a content key.
+#[cfg(feature = "serde")]
+#[test]
+fn a_tagged_newtype_variant_over_a_type_serde_writes_as_an_optional_is_refused_in_every_build_with_serde()
+ {
+    for declared in [
+        "#[derive(Serialize, Deserialize)] pub struct ProbeFields { pub note: String }",
+        "#[derive(Serialize, Deserialize)] pub struct ProbeMaybe(Option<ProbeFields>);",
+        "pub type ProbeMaybeAlias = Option<ProbeFields>;",
+        "pub type ProbeMaybeAgain = ProbeMaybe;",
+        "#[derive(Serialize, Deserialize)] pub struct ProbeMaybeHeld(ProbeMaybe);",
+    ] {
+        let expanded = expansion_over(declared);
+        assert_eq!(compile_error_count(&expanded), 0, "got: {expanded}");
+    }
+    // A schema surface refuses a brand over an `Option` itself; the record is written either way.
+    let brand = expansion_over(
+        "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct ProbeMaybeBrand(Box<\
+         Option<ProbeFields>>);",
+    );
+    assert_eq!(
+        compile_error_count(&brand),
+        usize::from(cfg!(any(
+            feature = "typescript",
+            feature = "zod",
+            feature = "jsonschema"
+        ))),
+        "got: {brand}"
+    );
+    let optional = refusal_texts(&expansion_over(
+        "#[derive(Serialize, Deserialize)] #[serde(tag = \"kind\")] pub enum ProbeOptional { \
+         Held(ProbeMaybe) }",
+    ));
+    assert_eq!(
+        optional,
+        [tagged_optional_refusal("ProbeOptional", "ProbeMaybe")]
+    );
+    let answered = format!("error: {}", optional[0]);
+    assert!(
+        include_str!("../../README.md").contains(&answered),
+        "the README no longer quotes: {answered}"
+    );
+    for (holder, inner) in [
+        ("ProbeBranded", "ProbeMaybeBrand"),
+        ("ProbeAliased", "ProbeMaybeAlias"),
+        ("ProbeAgain", "ProbeMaybeAgain"),
+        ("ProbeHeldTwice", "ProbeMaybeHeld"),
+    ] {
+        assert_eq!(
+            refusal_texts(&expansion_over(&format!(
+                "#[derive(Serialize, Deserialize)] #[serde(tag = \"kind\")] pub enum {holder} {{ \
+                 Held(Box<{inner}>) }}"
+            ))),
+            [tagged_optional_refusal(holder, inner)],
+            "for {inner}"
+        );
+    }
+    for accepted in [
+        "pub struct ProbeFlat { pub id: String, #[serde(flatten)] pub maybe: ProbeMaybe }",
+        "pub enum ProbeFlatVariant { Noted { id: String, #[serde(flatten)] maybe: ProbeMaybe } }",
+        "#[serde(tag = \"kind\")] pub enum ProbeFlatTagged { Noted { id: String, \
+         #[serde(flatten)] maybe: ProbeMaybe } }",
+        "#[serde(tag = \"kind\")] pub enum ProbeLater { Held(ProbeMaybeUnseen) }",
+        "#[serde(tag = \"kind\", content = \"value\")] pub enum ProbeAdjacent { \
+         Held(ProbeMaybe) }",
+    ] {
+        let expanded = expansion_over(&format!("#[derive(Serialize, Deserialize)] {accepted}"));
+        assert_eq!(
+            compile_error_count(&expanded),
+            0,
+            "for {accepted}, got: {expanded}"
+        );
+    }
+}
+
 /// What the record every build with serde writes proves of each flattened type is what the record
 /// a Zod surface writes proves, so the refusal reads the same with a schema surface and without.
 #[cfg(all(feature = "serde", feature = "zod"))]
