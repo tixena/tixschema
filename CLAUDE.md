@@ -1078,9 +1078,9 @@ the consumer's view; this is what a change has to keep.
   structs, a variant's entry under an alias among them (`UNDER_AN_ALIAS`).
   `tests/kotlin_tests/aliased_models.rs` holds the models of a variant and a member under an
   alias, under each tagging, in a plain enum, a struct the plugin reads, one read by hand and one
-  flattened, `tests/kotlin_tests/aliased.rs` pins their text and what serde reads of each
-  payload, and `run_kotlin_aliased.rs` reads and writes back each payload under the toolchain,
-  against serde.
+  flattened, and pins what serde reads of each payload, which the Dart client is held to as well.
+  `tests/kotlin_tests/aliased.rs` pins their Kotlin text, and `run_kotlin_aliased.rs` reads and
+  writes back each payload under the toolchain, against serde.
 
 #### The Kotlin client's `preprocess`
 
@@ -1509,6 +1509,17 @@ consumer's view; this is what a change has to keep.
   takes none, so a member after a struct declared below its holder is handed the struct's keys,
   and the README states the limit. `toJson` writes each flattened member at its place: a key two
   of them hold is written once, with the last value, where serde writes it twice.
+- **A name serde reads beside the one it writes is read too.** `read_aliases` reads the
+  `#[serde(alias)]` names of a field and of a variant, none for one serde never reads, and
+  `DartField::aliases` holds a member's. A tagged enum takes a variant under its written name or
+  any alias (`any_of`, `case 'Berth' || 'Pier':`), under every tagging, and an externally tagged
+  variant read under an alias too reads its value from the entry it took, `map[tag]`
+  (`VariantClass::aliased`); a plain enum's `switch` takes each alias the same way. Where a member
+  of a class has an alias, `class_reads` reads the members from `named`, the object copied with
+  each alias moved to the member's wire name in its place (`named_by_aliases`), and refuses a
+  member under two of its names with `FormatException('duplicate field ...')`, as serde refuses
+  it: a member flattened after them is handed `named` without their keys. A type that names no
+  alias is written as it was, and `toJson` writes the written name.
 - **`fromJsonUnjudged` is a taken name of a plain enum** (`DART_ENUM_NAMES_TAKEN`), which holds
   it as a static function. It is not in `DART_FIELD_NAMES_TAKEN`: Dart takes a field and a
   constructor under one name, so such a field is emitted as it was.
@@ -1521,9 +1532,14 @@ consumer's view; this is what a change has to keep.
   serde takes, a reply that breaks a rule through both clients, and the README's section.
   `tests/dart_tests/flattened.rs` pins the read of a flattened member at each place, over the
   models of `tests/dart_tests/flattened_models.rs`, which also pin what serde reads of each, and
-  `run_dart_flattened.rs` reads and writes each back under the Dart SDK, against serde. A
-  variant's entry under its alias is the one payload it holds apart (`UNDER_AN_ALIAS`): the Dart
-  read of an enum reads no variant under an alias, and refuses it.
+  `run_dart_flattened.rs` reads and writes each back under the Dart SDK, against serde.
+  `tests/dart_tests/aliased.rs` pins the read of a variant and a member under an alias, over the
+  models of `tests/kotlin_tests/aliased_models.rs` and of
+  `tests/dart_tests/flattened_aliased_models.rs`, which flattens each tagged enum of the first
+  beside a member and pins what serde reads of it, and `run_dart_aliased.rs` reads and writes
+  each payload back under the Dart SDK, against serde. A unit variant's entry over `null` is the
+  one payload it holds apart (`UNIT_ENTRY`): the Dart read of an enum has no case for that entry,
+  under any of the variant's names.
 
 #### A `preprocess` in the Dart read
 

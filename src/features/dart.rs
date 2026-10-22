@@ -2,6 +2,7 @@
 
 use core::cell::{Cell, RefCell};
 use core::fmt::Write as _;
+use core::iter::once;
 use std::collections::HashMap;
 
 use proc_macro2::TokenStream;
@@ -105,6 +106,8 @@ const VALIDATE_DECLARED: &str = "List<String> validate();";
 /// the key always reaches the wire, whether it is a `#[serde(flatten)]` source, and the `FieldDef`
 /// describing its type.
 struct DartField {
+    /// The names serde reads the member under beside its wire name.
+    aliases: Vec<String>,
     /// Where the JSON of the default serde reads for an absent key is written.
     default_at: Option<String>,
     field_def: FieldDef,
@@ -308,6 +311,8 @@ enum Step {
 /// One variant of a sealed enum as its subclass is written.
 #[derive(Clone, Copy)]
 struct VariantClass<'variant> {
+    /// Whether serde reads the variant under an alias too.
+    aliased: bool,
     payload: &'variant VariantPayload,
     subclass_name: &'variant str,
     /// The variant's `validate()` and its helpers, as [`validate_members`] writes them.
@@ -608,6 +613,35 @@ const fn rename_override(_attrs: &[syn::Attribute]) -> Option<String> {
     None
 }
 
+/// The names serde reads a field or a variant under beside its own, each `alias` written on it:
+/// none where serde does not read it.
+#[cfg(feature = "serde")]
+fn read_aliases(attrs: &[syn::Attribute]) -> Vec<String> {
+    if parse_serde_key_omission(attrs).skips_deserializing {
+        return Vec::new();
+    }
+    parse_serde_field_attributes(attrs).aliases
+}
+
+#[cfg(not(feature = "serde"))]
+const fn read_aliases(_attrs: &[syn::Attribute]) -> Vec<String> {
+    Vec::new()
+}
+
+/// `name` and then each of `aliases`: every name serde reads a variant under.
+fn read_as(name: String, aliases: Vec<String>) -> Vec<String> {
+    once(name).chain(aliases).collect()
+}
+
+/// The pattern a `switch` takes any of `names` by.
+fn any_of(names: &[String]) -> String {
+    names
+        .iter()
+        .map(|name| format!("'{name}'"))
+        .collect::<Vec<_>>()
+        .join(" || ")
+}
+
 /// Whether `attrs` carries `#[serde(flatten)]` — always `false` without the `serde` feature, since
 /// nothing else reads what a serde attribute means in that build either.
 #[cfg(feature = "serde")]
@@ -769,6 +803,7 @@ fn collect_dart_fields(
             field_def.nullable_levels.push(field_def.array_depth);
         }
         collected.push(DartField {
+            aliases: read_aliases(&field.attrs),
             default_at: default_at(&rust_name),
             required: !omission.omits_key,
             flatten: field_is_flatten(&field.attrs),
@@ -2519,8 +2554,8 @@ fn class_body_parts(fields: &[DartField], extra_to_json: &[String]) -> ClassBody
 }
 
 /// The two reads of the class `class_name` over `fields`: the unjudged one calls what `corrects`
-/// names on the object it takes, and reads each member from what they answer. `tag_key` is the
-/// key that object holds its variant's tag under.
+/// names on the object it takes, and reads each member from what they answer, under its wire name
+/// or an alias. `tag_key` is the key that object holds its variant's tag under.
 fn class_reads(
     class_name: &str,
     fields: &[DartField],
@@ -2528,14 +2563,44 @@ fn class_reads(
     codec: &GenericCodec,
     corrects: &Corrects<'_>,
 ) -> String {
-    let arguments = constructor_arguments(fields, &corrects.json, tag_key);
+    let named = declared("named");
+    let answer = named_by_aliases(fields, &corrects.json, &named).map_or_else(
+        || {
+            let arguments = constructor_arguments(fields, &corrects.json, tag_key);
+            Answer::Value(format!("{class_name}({arguments})"))
+        },
+        |naming| {
+            let arguments = constructor_arguments(fields, &named, tag_key);
+            Answer::Statements(format!("{naming} return {class_name}({arguments});"))
+        },
+    );
     let unjudged = unjudged_read(
         corrects,
         " as Map<String, dynamic>",
         !fields.is_empty(),
-        &Answer::Value(format!("{class_name}({arguments})")),
+        &answer,
     );
     read_pair(class_name, "Map<String, dynamic>", codec, &unjudged)
+}
+
+/// What copies the object `json` names into `named`, each entry under an alias of a member of
+/// `fields` moved to the member's wire name in its place, and refuses a member given under two of
+/// its names, as serde reads them. `None` where no member has an alias.
+fn named_by_aliases(fields: &[DartField], json: &str, named: &str) -> Option<String> {
+    let arms: Vec<String> = fields
+        .iter()
+        .filter(|field| !field.flatten && !field.aliases.is_empty())
+        .map(|field| format!("{} => '{}'", any_of(&field.aliases), field.wire_name))
+        .collect();
+    if arms.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "final {named} = <String, dynamic>{{}}; for (final entry in {json}.entries) {{ final key = \
+         switch (entry.key) {{ {}, final other => other }}; if ({named}.containsKey(key)) throw \
+         FormatException('duplicate field `$key`'); {named}[key] = entry.value; }}",
+        arms.join(", ")
+    ))
 }
 
 /// The Dart class body, everything a class's own braces hold, for a set of [`DartField`]s: shared
@@ -2905,11 +2970,11 @@ fn variant_payload(
 /// The Dart expression reading a tagged variant's own payload slot out of the top-level `json` (or,
 /// under external tagging, the `map` the base class's own dispatch already bound): the content key
 /// under adjacent tagging, `json` itself under internal tagging (whose object merges the tag beside
-/// the payload's own fields), or `map['{wire_tag}']` under external tagging, whose dispatch has
-/// already read the wire tag as the object's one key. Beside it, the test that the payload holds
-/// the slot, where it may not: a content key.
+/// the payload's own fields), or `map[{entry}]` under external tagging, whose dispatch has already
+/// read the variant's name as the object's one key, `entry` being that key. Beside it, the test
+/// that the payload holds the slot, where it may not: a content key.
 fn tagged_payload_json_expr(
-    wire_tag: &str,
+    entry: &str,
     shape: &TagShape<'_>,
     corrects: &Corrects<'_>,
 ) -> (String, Option<String>) {
@@ -2919,7 +2984,7 @@ fn tagged_payload_json_expr(
             if shape.merge_tag_into_object {
                 (json.clone(), None)
             } else {
-                (format!("{map}['{wire_tag}']"), None)
+                (format!("{map}[{entry}]"), None)
             }
         },
         |content| {
@@ -2968,7 +3033,7 @@ fn tagged_variant_steps(wire_tag: &str, shape: &TagShape<'_>) -> Vec<Step> {
 }
 
 /// The Dart tokens for one tagged-union variant: the subclass definition, and the arm of the
-/// base's unjudged dispatch (everything after `case '{wire_tag}':`). `corrects` holds the names
+/// base's unjudged dispatch (everything after the `case` of its names). `corrects` holds the names
 /// the base's read declares, which the read of a variant with named members declares too.
 fn tagged_variant_tokens(
     export_name: &str,
@@ -2979,12 +3044,19 @@ fn tagged_variant_tokens(
     corrects: &Corrects<'_>,
 ) -> (String, String) {
     let VariantClass {
+        aliased,
         payload,
         subclass_name,
         validate,
         wire_tag,
     } = *variant;
-    let (payload_expr, held) = tagged_payload_json_expr(wire_tag, shape, corrects);
+    // A variant read under an alias too reads its value from the entry the dispatch took.
+    let entry = if aliased {
+        corrects.tag.clone()
+    } else {
+        format!("'{wire_tag}'")
+    };
+    let (payload_expr, held) = tagged_payload_json_expr(&entry, shape, corrects);
     let extends = format!("extends {export_name}{generic_params}");
     match payload {
         VariantPayload::Unit => {
@@ -3102,6 +3174,7 @@ fn tagged_enum_dart_source(
         let variant_rust_name = variant.ident.to_string();
         let wire_tag = rename_override(&variant.attrs)
             .unwrap_or_else(|| variant_rule.apply_to_variant(&variant_rust_name));
+        let names = read_as(wire_tag.clone(), read_aliases(&variant.attrs));
         let subclass_name = format!("{export_name}{variant_rust_name}");
         let payload = variant_payload(variant, field_rule, &type_parameters, args, defaults);
         let validate = variant_validate(
@@ -3114,6 +3187,7 @@ fn tagged_enum_dart_source(
             &generic_params,
             &codec,
             &VariantClass {
+                aliased: names.len() > 1,
                 payload: &payload,
                 subclass_name: &subclass_name,
                 validate: &validate,
@@ -3123,10 +3197,11 @@ fn tagged_enum_dart_source(
             &corrects,
         );
         subclasses.push(class_text);
+        let arm = format!("case {}: return {from_json};", any_of(&names));
         if is_external && matches!(payload, VariantPayload::Unit) {
-            is_string_dispatch_arms.push(format!("case '{wire_tag}': return {from_json};"));
+            is_string_dispatch_arms.push(arm);
         } else {
-            map_dispatch_arms.push(format!("case '{wire_tag}': return {from_json};"));
+            map_dispatch_arms.push(arm);
         }
     }
 
@@ -3278,8 +3353,13 @@ fn untagged_enum_dart_source(
 }
 
 /// One plain-enum variant's Dart member name (lower-camel of its Rust ident, moved off a name
-/// Dart will not take; `written` is every member's lower-camel name) and wire value.
-fn plain_enum_member(variant: &Variant, rule: RenameRule, written: &[String]) -> (String, String) {
+/// Dart will not take; `written` is every member's lower-camel name), and its wire value
+/// followed by each alias serde reads it under.
+fn plain_enum_member(
+    variant: &Variant,
+    rule: RenameRule,
+    written: &[String],
+) -> (String, Vec<String>) {
     let rust_name = variant.ident.to_string();
     let member_name = dart_member(
         &dart_lower_camel(&rust_name),
@@ -3287,7 +3367,7 @@ fn plain_enum_member(variant: &Variant, rule: RenameRule, written: &[String]) ->
         written,
     );
     let wire = rename_override(&variant.attrs).unwrap_or_else(|| rule.apply_to_variant(&rust_name));
-    (member_name, wire)
+    (member_name, read_as(wire, read_aliases(&variant.attrs)))
 }
 
 /// The Dart tokens a plain (all-unit, string-wire) enum earns: a `String`-backed enhanced enum,
@@ -3309,20 +3389,22 @@ fn plain_enum_dart_source(
         .iter()
         .map(|variant| dart_lower_camel(&variant.ident.to_string()))
         .collect();
-    let members: Vec<(String, String)> = item_enum
+    let members: Vec<(String, Vec<String>)> = item_enum
         .variants
         .iter()
         .map(|variant| plain_enum_member(variant, rule, &written))
         .collect();
     let member_list = members
         .iter()
-        .map(|(name, wire)| format!("{name}('{wire}')"))
+        .map(|(name, names)| format!("{name}('{}')", names[0]))
         .collect::<Vec<_>>()
         .join(", ");
-    let match_arms = members.iter().fold(String::new(), |mut acc, (name, wire)| {
-        write!(acc, "'{wire}' => {export_name}.{name},").unwrap();
-        acc
-    });
+    let match_arms = members
+        .iter()
+        .fold(String::new(), |mut acc, (name, names)| {
+            write!(acc, "{} => {export_name}.{name},", any_of(names)).unwrap();
+            acc
+        });
     let validate = validate_members(&own_check_elements(checks), &Helpers::default(), false);
     let unjudged = unjudged_read(
         &corrects,
