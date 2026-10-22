@@ -531,7 +531,8 @@ mod run_swift_flattened_options;
 #[path = "service_schema_emitted_client_tests/run_dart_flattened_options.rs"]
 mod run_dart_flattened_options;
 
-/// A member serde reads and never writes, in a struct of its own and beside a flattened member.
+/// A member serde reads and never writes, in a struct of its own, beside a flattened member and in
+/// an enum's variant under each tagging that writes a variant's named members.
 #[cfg(test)]
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 #[path = "service_schema_emitted_client_tests/unwritten_models.rs"]

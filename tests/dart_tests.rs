@@ -31,7 +31,8 @@ mod read;
 #[path = "dart_tests/preprocess.rs"]
 mod preprocess;
 
-/// A member serde reads and never writes, in a struct of its own and beside a flattened member.
+/// A member serde reads and never writes, in a struct of its own, beside a flattened member and in
+/// an enum's variant under each tagging that writes a variant's named members.
 #[cfg(test)]
 #[cfg(feature = "dart")]
 #[path = "service_schema_emitted_client_tests/unwritten_models.rs"]

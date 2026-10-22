@@ -1,9 +1,12 @@
 //! A member serde reads and never writes: the Kotlin serializer reads it and writes no key for it,
-//! in a struct of its own and beside a flattened member.
+//! in a struct of its own, beside a flattened member, and in an enum's variant under each tagging
+//! that writes a variant's named members.
 
 use super::unwritten_models::furling_kotlin;
 #[cfg(feature = "serde")]
-use super::unwritten_models::reefing_kotlin;
+use super::unwritten_models::{
+    dousing_kotlin, ratcheting_kotlin, reefing_kotlin, shackling_kotlin, wearing_kotlin,
+};
 
 /// A struct with a member serde never writes takes the serializer the emitter writes in place of
 /// the plugin's, which writes every property: the member is read, and no key is written for it.
@@ -57,4 +60,56 @@ fn a_member_serde_never_writes_beside_a_flattened_one_has_no_put() {
         ),
         "got: {reefing}"
     );
+}
+
+/// A variant with a member serde never writes takes the serializer the emitter writes,
+/// `{Enum}{Variant}Unjudged`, in place of the plugin's, under each tagging that writes a variant's
+/// named members: the member is read, and no key is written for it. The variant beside it, with no
+/// such member, keeps the plugin's serializer.
+#[cfg(feature = "serde")]
+#[test]
+fn a_variant_with_a_member_serde_never_writes_names_the_serializer_the_emitter_writes() {
+    for (kotlin, name) in [
+        (dousing_kotlin::kotlin_definition(), "Dousing"),
+        (wearing_kotlin::kotlin_definition(), "Wearing"),
+        (shackling_kotlin::kotlin_definition(), "Shackling"),
+        (ratcheting_kotlin::kotlin_definition(), "Ratcheting"),
+    ] {
+        assert!(
+            kotlin.contains(&format!(
+                "@Serializable(with = {name}FurledUnjudged::class) data class {name}Furled(val \
+                 label: String, val spare: UInt? = null) : {name} "
+            )),
+            "got: {kotlin}"
+        );
+        assert!(
+            kotlin.contains(&format!(
+                "object {name}FurledUnjudged : KSerializer<{name}Furled> {{ override val \
+                 descriptor: SerialDescriptor = buildClassSerialDescriptor(\"{name}Furled\"); \
+                 override fun serialize(encoder: Encoder, value: {name}Furled) {{ val output = \
+                 encoder as JsonEncoder; output.encodeJsonElement(buildJsonObject {{ \
+                 put(\"label\", output.json.encodeToJsonElement(serializer<String>(), \
+                 value.label)) }}) }}"
+            )),
+            "got: {kotlin}"
+        );
+        assert!(
+            kotlin.contains(&format!(
+                "val spare = obj[\"spare\"]?.let {{ \
+                 input.json.decodeFromJsonElement(serializer<UInt?>(), it) }}; return \
+                 {name}Furled(label = label, spare = spare) }} }}"
+            )),
+            "got: {kotlin}"
+        );
+        assert!(
+            kotlin.contains(&format!(
+                "@Serializable data class {name}Struck(val label: String) : {name} "
+            )),
+            "got: {kotlin}"
+        );
+        assert!(
+            !kotlin.contains(&format!("{name}StruckUnjudged")),
+            "got: {kotlin}"
+        );
+    }
 }

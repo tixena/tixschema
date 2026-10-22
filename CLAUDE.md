@@ -978,13 +978,18 @@ the consumer's view; this is what a change has to keep.
   payload no variant of an untagged enum reads `No variant of {Enum} matched`. The `.jsonObject` of
   a write is the write's. `run_kotlin_refusals.rs` reads each refusal under the toolchain, beside
   serde's refusal of the same payload.
-- **A struct's member serde never writes is read and has no `put`.** `KotlinField::never_written`
-  is `has_serde_skip_serializing`: `skip_serializing`, never `skip_serializing_if`. The plugin
-  writes every property, so `struct_kotlin_tokens` hands a struct with such a member to
-  `flatten_merging_serializer`, as it hands one with a flattened member, and `own_field_plan`
-  answers no `serialize` statement for the member. A struct with neither keeps the plugin's
-  serializer and its text. A member under `skip_serializing_if` is written wherever it holds a
-  value: no client calls the Rust function, and the README states the limit.
+- **A member serde never writes is read and has no `put`**, in a struct and in an enum's variant.
+  `KotlinField::never_written` is `has_serde_skip_serializing`: `skip_serializing`, never
+  `skip_serializing_if`. The plugin writes every property, so `struct_kotlin_tokens` hands a
+  struct with such a member to `flatten_merging_serializer`, as it hands one with a flattened
+  member, `written_by_hand` answers for a variant with one as for a variant with a flattened
+  member (below), and `own_field_plan` answers no `serialize` statement for the member. A struct
+  or a variant with neither keeps the plugin's serializer and its text. A member under
+  `skip_serializing_if` is written wherever it holds a value: no client calls the Rust function,
+  and the README states the limit. `tests/service_schema_emitted_client_tests/unwritten_models.rs`
+  holds the models, a struct and an enum under each tagging that writes a variant's named members,
+  and serde's writes, and `run_kotlin_unwritten.rs`, `run_dart_unwritten.rs` and
+  `run_swift_unwritten.rs` read and write each back under the toolchain, against serde.
 - **Every flattened member is read at its place, in the order declared**, as serde reads it
   (`flatten_plan`): from `JsonObject(obj - setOf(...) - {member}Keys ...)`, the object without the
   keys the holder's own members take and those each member flattened ahead of it took, and from
@@ -1100,15 +1105,16 @@ the consumer's view; this is what a change has to keep.
   that subclass writes. The subclass carries its tag in `@SerialName`, and a tag no variant has
   throws `SerializationException`.
 - **A variant with a flattened member is written by hand too**, under every tagging, as serde
-  reads and writes the member at the variant's own level. `written_by_hand` asks it of the
-  variant's payload, `variant_subclass` names `{Subclass}Unjudged` in the class's
-  `@Serializable(with = ...)` and declares the members as the emitter's serializer reads them,
+  reads and writes the member at the variant's own level, and so is a variant with a member serde
+  never writes. `written_by_hand` asks it of the variant's payload, `variant_subclass` names
+  `{Subclass}Unjudged` in the class's `@Serializable(with = ...)` and declares the members as the
+  emitter's serializer reads them,
   and `variant_serializer` writes that serializer through `flatten_merging_serializer`, with no
   tag and no function of the type's. The enum hands it the variant's object as it is
   (`members_renamed` and `variant_keyed` answer nothing for it): the serializer reads each alias
   and calls each member's function itself. The enum judges the variant, so the subclass has no
-  judged serializer. A variant with no flattened member keeps the plugin's serializer and its
-  text. `tests/kotlin_tests/flattened_models.rs` holds the models and serde's reads, and
+  judged serializer. A variant with neither keeps the plugin's serializer and its text.
+  `tests/kotlin_tests/flattened_models.rs` holds the models and serde's reads, and
   `run_kotlin_flattened.rs` reads and writes each under kotlinc, against serde.
 - **A model is read unjudged exactly where `validate()` asks it, and nowhere else.** A model read
   unjudged where no `validate()` reaches it is a broken value handed back. `validate::asks_the_held`
