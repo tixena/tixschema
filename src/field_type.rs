@@ -554,7 +554,7 @@ impl FieldDef {
     /// The element count the array at `level` was written with, for a level written as a `[T; N]`
     /// whose `N` the expansion could read. `None` is every other level: serde writes as many items
     /// as it holds there, so nothing bounds it.
-    #[cfg(any(feature = "jsonschema", feature = "zod"))]
+    #[cfg(any(feature = "jsonschema", feature = "zod", feature = "dart"))]
     pub fn fixed_length_at(&self, level: u8) -> Option<usize> {
         self.array_lengths
             .iter()

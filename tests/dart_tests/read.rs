@@ -91,6 +91,15 @@ pub enum Reading {
     Judged,
 }
 
+/// A member of a fixed length, one of fixed lengths at two levels, and a list of any length.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Vise {
+    pub grid: [[u8; 2]; 3],
+    pub listed: Vec<u8>,
+    pub pair: [u8; 2],
+}
+
 /// The pair every class type writes: `named`'s judged read over its unjudged one, which takes
 /// `parameters` and is handed `arguments`.
 fn pair(named: &str, parameters: &str, arguments: &str) -> String {
@@ -135,6 +144,16 @@ fn every_declared_type_is_constructible() {
     assert_eq!(
         serde_json::to_string(&[Reading::FromJsonUnjudged, Reading::Judged]).unwrap(),
         r#"["FromJsonUnjudged","Judged"]"#
+    );
+    let vise = Vise {
+        grid: [[1, 2]; 3],
+        listed: vec![3],
+        pair: [4, 5],
+    };
+    assert_eq!(
+        serde_json::to_string(&vise).unwrap(),
+        r#"{"grid":[[1,2],[1,2],[1,2]],"listed":[3],"pair":[4,5]}"#,
+        "serde no longer writes a fixed array as an array of its items"
     );
 }
 
@@ -448,5 +467,30 @@ fn an_enum_member_named_after_the_unjudged_read_moves() {
     assert_written(
         &reading,
         "'FromJsonUnjudged' => Reading.fromJsonUnjudged_,'Judged' => Reading.judged,",
+    );
+}
+
+/// A level written as `[T; N]` binds its array once and refuses one of another length before it
+/// maps the items, at each level; a list of any length is read as it was.
+#[test]
+fn a_fixed_array_is_read_from_an_array_of_its_length() {
+    let vise = vise_dart::dart_definition();
+    assert_written(
+        &vise,
+        "grid: switch (json['grid'] as List<dynamic>) { final array when array.length == 3 => \
+         array.map((e) => switch (e as List<dynamic>) { final array when array.length == 2 => \
+         array.map((e) => e as int).toList(), final array => throw FormatException('invalid \
+         length ${array.length}, expected 2') }).toList(), final array => throw \
+         FormatException('invalid length ${array.length}, expected 3') },",
+    );
+    assert_written(
+        &vise,
+        "listed: (json['listed'] as List<dynamic>).map((e) => e as int).toList(),",
+    );
+    assert_written(
+        &vise,
+        "pair: switch (json['pair'] as List<dynamic>) { final array when array.length == 2 => \
+         array.map((e) => e as int).toList(), final array => throw FormatException('invalid \
+         length ${array.length}, expected 2') },",
     );
 }
