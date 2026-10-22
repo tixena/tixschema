@@ -14,6 +14,7 @@ use crate::service_schema::support::fault_fields_typescript_name;
 use core::fmt::Write as _;
 use syn::{Ident, Type};
 
+use super::on_one_line;
 use super::swift_type::swift_typename_of;
 
 /// The locals and parameters an emitted method writes around an operation's own argument: the
@@ -271,9 +272,9 @@ fn method_params(operation: &OperationDef, shape: &HttpShape) -> String {
 fn method_doc(operation: &OperationDef, shape: &HttpShape) -> String {
     format!(
         "  /// Calls `{}` over `{} {}`.",
-        operation.wire_name,
+        on_one_line(&operation.wire_name),
         shape.method.name(),
-        shape.path_template()
+        on_one_line(&shape.path_template())
     )
 }
 
@@ -407,7 +408,7 @@ fn path_build_stmt(fn_prefix: &str, operation: &OperationDef, shape: &HttpShape)
     for segment in &shape.path {
         match segment {
             PathSegment::Literal(text) => {
-                let _ = writeln!(stmt, "    path += \"{}\"", swift_escape(text));
+                let _ = writeln!(stmt, "    path += {}", swift_quoted(text));
             }
             PathSegment::Placeholder(name) => {
                 let value = placeholder_value_swift_expr(fn_prefix, operation, shape, name);
@@ -1368,18 +1369,4 @@ fn swift_header_out_decode(ty: &Type, raw: &str) -> String {
         | FieldDefType::NaiveDateTime
         | FieldDefType::DateTime => raw.to_owned(),
     }
-}
-
-/// Escapes a path literal for a double-quoted Swift string: a backslash and a double quote both
-/// need escaping so a literal segment cannot open `\(...)` interpolation or close the literal
-/// early; a path template is ASCII by construction, so nothing else does.
-fn swift_escape(text: &str) -> String {
-    let mut escaped = String::with_capacity(text.len());
-    for ch in text.chars() {
-        if matches!(ch, '\\' | '"') {
-            escaped.push('\\');
-        }
-        escaped.push(ch);
-    }
-    escaped
 }

@@ -1198,6 +1198,23 @@ const SWIFT_HEADER_VEC_OF_OPTIONS_SERVICE: &str = "
     }
 ";
 
+/// A one-way operation whose message name, and so its path, holds a line break.
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+const NOTING_SERVICE: &str = r#"
+    pub trait NotingService<Ctx> {
+        #[service_schema_op(message = "no*/te\n\\", one_way)]
+        async fn note(&self, ctx: &Ctx, label: String);
+    }
+"#;
+
+/// The doc line each `http_rest` client writes over a method.
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+const NOTING_HTTP_DOC: &str = "  /// Calls `no*/te\\n\\` over `POST /no*/te\\n\\`.\n";
+
+/// The doc line each `ws_rpc` client writes over a method.
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+const NOTING_WS_DOC: &str = "  /// Calls `no*/te\\n\\` over `ws_rpc`.\n";
+
 /// `ConversationId` is a wire-scalar newtype throughout the fixtures this parses, and the
 /// registry recording that is thread-local and reset per test — see [`record_wire_scalar`].
 #[cfg(feature = "swift")]
@@ -1770,4 +1787,66 @@ fn a_name_in_a_comment_keeps_to_its_line_and_leaves_the_comment_open() {
         "get-available-balance",
         "a name with nothing to spell apart is written as it was"
     );
+}
+
+/// A name written into a doc line of a client keeps the line comment to its line: each line
+/// terminator is spelled as its escape, and any other text is kept, `*/` among it.
+#[cfg(any(
+    all(feature = "typescript", feature = "zod"),
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
+))]
+#[test]
+fn a_name_on_one_line_spells_each_line_terminator_as_its_escape() {
+    assert_eq!(
+        super::on_one_line("no*/te\n\r\u{2028}\u{2029}\\ le$vy'it\"q*"),
+        "no*/te\\n\\r\\u2028\\u2029\\ le$vy'it\"q*",
+        "a name on one line is spelled another way"
+    );
+}
+
+/// The doc line over each method and the literal piece of the path spell the line break as its
+/// escape.
+#[cfg(feature = "dart")]
+#[test]
+fn the_dart_clients_write_a_line_break_in_a_name_as_its_escape() {
+    let http = dart_http_client_of(NOTING_SERVICE);
+    assert!(http.contains(NOTING_HTTP_DOC), "got: {http}");
+    assert!(
+        http.contains("    path += '/no*/te\\n\\\\';\n"),
+        "got: {http}"
+    );
+    let ws = dart_ws_client_of(NOTING_SERVICE);
+    assert!(ws.contains(NOTING_WS_DOC), "got: {ws}");
+}
+
+/// The doc line over each method and the literal piece of the path spell the line break as its
+/// escape.
+#[cfg(feature = "swift")]
+#[test]
+fn the_swift_clients_write_a_line_break_in_a_name_as_its_escape() {
+    let http = swift_http_client_of(NOTING_SERVICE);
+    assert!(http.contains(NOTING_HTTP_DOC), "got: {http}");
+    assert!(
+        http.contains("    path += \"/no*/te\\n\\\\\"\n"),
+        "got: {http}"
+    );
+    let ws = swift_ws_client_of(NOTING_SERVICE);
+    assert!(ws.contains(NOTING_WS_DOC), "got: {ws}");
+}
+
+/// The doc line over each method and the literal piece of the path spell the line break as its
+/// escape.
+#[cfg(feature = "kotlin")]
+#[test]
+fn the_kotlin_clients_write_a_line_break_in_a_name_as_its_escape() {
+    let http = kotlin_http_client_of(NOTING_SERVICE);
+    assert!(http.contains(NOTING_HTTP_DOC), "got: {http}");
+    assert!(
+        http.contains("    path += \"/no*/te\\n\\\\\"\n"),
+        "got: {http}"
+    );
+    let ws = kotlin_ws_client_of(NOTING_SERVICE);
+    assert!(ws.contains(NOTING_WS_DOC), "got: {ws}");
 }

@@ -1,7 +1,9 @@
 //! A service whose header names, part names, message names and paths hold a `$`, a quote, a
 //! double quote and a backslash, each a character a Dart, a Swift or a Kotlin string literal reads
-//! apart from text, called through each emitted `http_rest` client: each name reaches the transport
-//! as it was declared, and the `ws_rpc` client and dispatcher beside it compile.
+//! apart from text, and a message name that holds a line break, which ends a line comment, called
+//! through each emitted `http_rest` client: each name reaches the transport as it was declared, and
+//! the `ws_rpc` client and dispatcher beside it compile. The Rust dispatcher of a service with the
+//! same operation routes the path the clients carry for the line break.
 
 #![cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 
@@ -9,14 +11,23 @@ use core::future::{Future, ready};
 use core::pin::pin;
 use core::task::{Context as PollContext, Poll, Waker};
 use std::io::Cursor;
+use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tixschema::{model_schema, service_schema};
 
+use super::run_node_quoted::rust_noted;
+
+#[cfg(feature = "dart")]
+use super::run_dart_validate::dart;
 #[cfg(feature = "dart")]
 use super::runtime::ran;
 #[cfg(feature = "kotlin")]
 use super::runtime::ran_kotlin;
+
+/// The message name `note` declares, which names its path too.
+const NOTE_WIRE: &str = "no*/te\n\\";
 
 /// What each client's driver prints: the header names, the part names and the path of each call
 /// its transport carried, under keys in their order, the header the first call answered, and the
@@ -24,6 +35,7 @@ use super::runtime::ran_kotlin;
 const CARRIED: &str = r#"{"headers":["x-co$t","x-it's"],"parts":[],"path":"/co$t/it's/l"}
 {"headers":[],"parts":[],"path":"/le$vy'it\"q\\x/l"}
 {"headers":[],"parts":["title","note","fi$le'x\"q\\"],"path":"/deposit"}
+{"headers":[],"parts":[],"path":"/no*/te\n\\"}
 answered aged
 fault in le$vy'it"q\x
 "#;
@@ -46,6 +58,9 @@ class _Recorder implements TollingClientServiceHttpTransport, TollingUploadClien
     if (request.path.startsWith('/le')) {
       throw StateError('uncarried');
     }
+    if (request.path.startsWith('/no')) {
+      return (status: 204, headers: <(String, String)>[], body: <int>[], bodyStream: const Stream<List<int>>.empty());
+    }
     return (
       status: 200,
       headers: <(String, String)>[('x-ag\$e', 'aged')],
@@ -60,6 +75,7 @@ void main() async {
   final tolled = await TollingClientServiceHttpClient(recorder).toll('l', 't', 7);
   final levied = await TollingClientServiceHttpClient(recorder).levy(LevyRequest(label: 'l', note: 'n'));
   await TollingUploadClientServiceHttpClient(recorder).deposit(DepositRequest(title: 't', note: 'n'), <int>[1]);
+  await TollingClientServiceHttpClient(recorder).note('l');
   for (final sent in recorder.sent) {
     print(sent);
   }
@@ -85,6 +101,9 @@ actor Recorder: TollingClientServiceHttpTransport, TollingUploadClientServiceHtt
     if request.path.hasPrefix("/le") {
       throw CancellationError()
     }
+    if request.path.hasPrefix("/no") {
+      return TollingClientServiceHttpResponse(status: 204, headers: [], body: Data())
+    }
     return TollingClientServiceHttpResponse(status: 200, headers: [("x-ag$e", "aged")], body: Data(#"{"label":"l"}"#.utf8))
   }
 
@@ -98,6 +117,7 @@ let recorder = Recorder()
 let tolled = await TollingClientServiceHttpClient(transport: recorder).toll("l", tenant: "t", trace: 7)
 let levied = await TollingClientServiceHttpClient(transport: recorder).levy(LevyRequest(label: "l", note: "n"))
 _ = await TollingUploadClientServiceHttpClient(transport: recorder).deposit(DepositRequest(title: "t", note: "n"), attachment: Data([1]))
+try await TollingClientServiceHttpClient(transport: recorder).note("l")
 let encoder = JSONEncoder()
 encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
 for sent in await recorder.sent {
@@ -122,6 +142,7 @@ class Recorder : TollingClientServiceHttpTransport, TollingUploadClientServiceHt
     override suspend fun send(request: TollingClientServiceHttpRequest): TollingClientServiceHttpResponse {
         sent.add(recorded(request.path, request.headers.map { it.first }, emptyList()))
         if (request.path.startsWith("/le")) throw IllegalStateException("uncarried")
+        if (request.path.startsWith("/no")) return TollingClientServiceHttpResponse(204, emptyList(), ByteArray(0))
         return TollingClientServiceHttpResponse(200, listOf("x-ag${'$'}e" to "aged"), """{"label":"l"}""".encodeToByteArray())
     }
 
@@ -142,6 +163,7 @@ fun main() = runBlocking {
     val tolled = TollingClientServiceHttpClient(recorder).toll("l", "t", 7u)
     val levied = TollingClientServiceHttpClient(recorder).levy(LevyRequest(label = "l", note = "n"))
     TollingUploadClientServiceHttpClient(recorder).deposit(DepositRequest(title = "t", note = "n"), JsonPrimitive(1))
+    TollingClientServiceHttpClient(recorder).note("l")
     for (sent in recorder.sent) println(sent.toString())
     println(when (tolled) { is TollingClientServiceTollResult.Ok -> "answered " + tolled.value.headerOut0; else -> "refused" })
     println(when (levied) { is TollingClientServiceLevyResult.Fault -> "fault in " + levied.fault.operation; else -> "answered" })
@@ -173,8 +195,9 @@ pub enum TollingError {
     Refused,
 }
 
-/// Header names and a path holding a `$` and a quote, and a message name and a path holding a
-/// double quote and a backslash as well.
+/// Header names and a path holding a `$` and a quote, a message name and a path holding a double
+/// quote and a backslash as well, and a one-way operation whose message name, and so its path,
+/// holds a line break.
 #[service_schema(transports = ["http_rest", "ws_rpc"])]
 pub trait TollingClientService<Ctx> {
     #[service_schema_op(
@@ -187,6 +210,9 @@ pub trait TollingClientService<Ctx> {
         label: String,
         note: String,
     ) -> Result<TollingReceipt, TollingError>;
+
+    #[service_schema_op(message = "no*/te\n\\", one_way)]
+    async fn note(&self, ctx: &Ctx, label: String);
 
     #[service_schema_op(http(
         method = "POST",
@@ -224,8 +250,12 @@ pub trait TollingUploadClientService<Ctx> {
     ) -> Result<TollingReceipt, TollingError>;
 }
 
-/// A back end that answers each operation from what it is handed.
-pub struct Tollbooth;
+/// A back end that answers each operation from what it is handed, and holds the label of each
+/// one-way call.
+#[derive(Default)]
+pub struct Tollbooth {
+    noted: Mutex<Vec<String>>,
+}
 
 impl TollingClientService<()> for Tollbooth {
     async fn levy(
@@ -239,6 +269,11 @@ impl TollingClientService<()> for Tollbooth {
             return Err(TollingError::Refused);
         }
         Ok(TollingReceipt { label })
+    }
+
+    async fn note(&self, _ctx: &(), label: String) {
+        ready(()).await;
+        self.noted.lock().unwrap().push(label);
     }
 
     async fn toll(
@@ -308,6 +343,10 @@ fn the_dart_client_carries_each_name_as_it_was_declared() {
         return;
     };
     assert_eq!(printed, CARRIED, "the Dart client carries other names");
+    let Some((clean, said)) = dart("quoted-service-analyze", &["analyze"], &module) else {
+        return;
+    };
+    assert!(clean && said.contains("No issues found!"), "{said}");
 }
 
 #[cfg(feature = "swift")]
@@ -389,10 +428,28 @@ fn the_kotlin_client_carries_each_name_as_it_was_declared() {
     assert_eq!(printed, CARRIED, "the Kotlin client carries other names");
 }
 
+/// The Rust dispatcher of a service that declares the same one-way operation under the same
+/// message name routes the path each client carried for it, and hands its back end the label.
+#[test]
+fn the_rust_dispatcher_routes_the_path_the_clients_carry_for_a_line_break() {
+    let carried: Value = serde_json::from_str(CARRIED.lines().nth(3).unwrap()).unwrap();
+    let path = carried["path"].as_str().unwrap();
+    assert_eq!(
+        path,
+        format!("/{NOTE_WIRE}"),
+        "the clients carry another path"
+    );
+    assert_eq!(
+        rust_noted(path, serde_json::to_vec("l").unwrap()),
+        (204, vec!["l".to_owned()]),
+        "the Rust dispatcher answers the path otherwise"
+    );
+}
+
 /// The back end the clients' calls stand for answers each operation from what it is handed.
 #[test]
 fn the_back_end_answers_each_operation_from_what_it_is_handed() {
-    let tolled = poll_once(Tollbooth.toll(&(), "l".to_owned(), "t".to_owned(), Some(7)));
+    let tolled = poll_once(Tollbooth::default().toll(&(), "l".to_owned(), "t".to_owned(), Some(7)));
     assert_eq!(
         tolled,
         Some(Ok((
@@ -403,13 +460,24 @@ fn the_back_end_answers_each_operation_from_what_it_is_handed() {
         ))),
         "toll answers otherwise"
     );
-    let levied = poll_once(Tollbooth.levy(&(), "l".to_owned(), String::new()));
+    let levied = poll_once(Tollbooth::default().levy(&(), "l".to_owned(), String::new()));
     assert_eq!(
         levied,
         Some(Err(TollingError::Refused)),
         "levy answers otherwise"
     );
-    let deposited = poll_once(Tollbooth.deposit(
+    let tollbooth = Tollbooth::default();
+    assert_eq!(
+        poll_once(tollbooth.note(&(), "l".to_owned())),
+        Some(()),
+        "note answers otherwise"
+    );
+    assert_eq!(
+        *tollbooth.noted.lock().unwrap(),
+        ["l"],
+        "note holds another label"
+    );
+    let deposited = poll_once(Tollbooth::default().deposit(
         &(),
         "t".to_owned(),
         "n".to_owned(),

@@ -102,7 +102,8 @@ mod run_dart_read;
 mod run_reserved;
 
 /// A service whose header names, part names, message names and paths hold a character a mobile
-/// client's string literal reads apart from text, called through each mobile client.
+/// client's string literal reads apart from text, or a line break, called through each mobile
+/// client.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_quoted_service.rs"]
 mod run_quoted_service;
@@ -731,6 +732,17 @@ mod run_dart_tagged_slots;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_swift_tagged_slots.rs"]
 mod run_swift_tagged_slots;
+
+/// Tuple variants with a slot serde neither writes nor reads.
+#[cfg(test)]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+#[path = "service_schema_emitted_client_tests/skipped_slot_models.rs"]
+mod skipped_slot_models;
+
+/// Those variants, read and written back by each client beside serde and Zod.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_skipped_slots.rs"]
+mod run_skipped_slots;
 
 // The transport's expansion reaches each service through `$crate`, which is this binary's root:
 // every trait and its schema module are named here for it to resolve.

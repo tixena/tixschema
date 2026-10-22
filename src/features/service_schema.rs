@@ -312,6 +312,29 @@ fn dart_published(service: &ServiceDef) -> Vec<TokenStream> {
     collected
 }
 
+/// `text` on one line, as a `//` comment of the service code holds it: each character TypeScript
+/// ends a line at spelled as its escape, `\n`, `\r`, `\u2028` and `\u2029`, which covers the
+/// `\n` and `\r` Dart, Swift and Kotlin end one at. Every other character is written as it is.
+#[cfg(any(
+    all(feature = "typescript", feature = "zod"),
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
+))]
+fn on_one_line(text: &str) -> String {
+    let mut written = String::with_capacity(text.len());
+    for letter in text.chars() {
+        match letter {
+            '\n' => written.push_str("\\n"),
+            '\r' => written.push_str("\\r"),
+            '\u{2028}' => written.push_str("\\u2028"),
+            '\u{2029}' => written.push_str("\\u2029"),
+            other => written.push(other),
+        }
+    }
+    written
+}
+
 fn registry_rustdoc(service: &str) -> Vec<String> {
     let mut written = vec![format!(
         " What `{service}` publishes, in one place per artifact."

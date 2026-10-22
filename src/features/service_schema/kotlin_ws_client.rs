@@ -4,6 +4,7 @@
 //! `kotlinx.serialization` idioms rather than Dart's `Future`/`Stream` pair.
 
 use super::kotlin_http_client::{held_copies, kotlin_held, read_serializer};
+use super::on_one_line;
 use super::result::result_name;
 use crate::features::kotlin::{
     kotlin_bare, kotlin_declarations, kotlin_name, kotlin_property_name, kotlin_quoted,
@@ -418,7 +419,10 @@ fn client_method(
     let req_ty = message_kotlin_typename(operation);
     let shape = HttpShape::of(operation);
     let params = client_method_params(&shape, &req_ty);
-    let doc = format!("  /// Calls `{}` over `ws_rpc`.", operation.wire_name);
+    let doc = format!(
+        "  /// Calls `{}` over `ws_rpc`.",
+        on_one_line(&operation.wire_name)
+    );
     let (headers_build, headers_arg) = if has_headers {
         (client_headers_build_stmt(&shape), ", headers")
     } else {

@@ -28,6 +28,8 @@ use crate::features::model_schema_prop::FunctionName;
 #[cfg(feature = "serde")]
 use crate::field_type::is_plain_enum;
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+use crate::field_type::{FieldDef, FieldDefType, get_field_def};
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 use crate::rename_rule::RenameRule;
 #[cfg(feature = "serde")]
 use crate::rename_rule::resolve_rename_rule;
@@ -287,6 +289,42 @@ pub fn variants_on_the_wire(item_enum: &ItemEnum) -> ItemEnum {
         .cloned()
         .collect();
     written
+}
+
+/// The value of a tuple variant that declares several slots, `slot_def` reading each slot serde
+/// writes and reads, at its place among them: their array, of one slot where serde writes one. A
+/// variant whose every slot is skipped writes `[]`, answered as an array of `()` of length 0, which
+/// a client tells from the `null` it reads and writes for `()`.
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+pub fn written_slots<SlotDef>(variant: &Variant, slot_def: SlotDef) -> FieldDef
+where
+    SlotDef: Fn(&Field) -> FieldDef,
+{
+    let slots: Vec<FieldDef> = variant
+        .fields
+        .iter()
+        .filter(|slot| !parse_serde_key_omission(&slot.attrs).absent_from_wire())
+        .map(slot_def)
+        .collect();
+    if slots.is_empty() {
+        return get_field_def("value", &syn::parse_quote!([(); 0]), "");
+    }
+    FieldDef {
+        absent_from_wire: false,
+        array_depth: 0,
+        array_lengths: Vec::new(),
+        docs: String::new(),
+        field_type: FieldDefType::Tuple(slots),
+        model_schema_prop_meta: None,
+        name: "value".to_owned(),
+        nullable_levels: Vec::new(),
+        omits_value: false,
+        #[cfg(any(feature = "zod", feature = "jsonschema"))]
+        serde_default: None,
+        set_levels: Vec::new(),
+        #[cfg(feature = "jsonschema")]
+        type_span: Span::call_site(),
+    }
 }
 
 /// Whether serde writes and reads the member or the variant through functions of its author's

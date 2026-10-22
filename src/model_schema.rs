@@ -10680,7 +10680,7 @@ fn plain_enum_output(
 }
 
 /// The kind a variant publishes, which is not always the kind it declares.
-fn variant_wire_kind(variant: &syn::Variant) -> VariantKind {
+pub fn variant_wire_kind(variant: &syn::Variant) -> VariantKind {
     if lone_slot_off_wire(variant) {
         VariantKind::Unit
     } else {
