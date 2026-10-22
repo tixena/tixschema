@@ -583,8 +583,9 @@ fn unit_entry_read(answer: &str, units: &[Entry]) -> String {
     )
 }
 
-/// The unit variants of the externally tagged enum written above a flattened member `def`
-/// describes holds, under an `Option` or not, whatever function the member names.
+/// The unit variants of the externally tagged enum written above that `def`, a flattened member or
+/// the slot of a variant under a tag alone, holds, under an `Option` or not, whatever function it
+/// names.
 pub(super) fn units_of(def: &FieldDef) -> Vec<Entry> {
     let FieldDefType::SiblingType(name, _) = &def.field_type else {
         return Vec::new();

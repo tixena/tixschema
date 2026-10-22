@@ -3,6 +3,21 @@
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
+/// Each payload serde writes for a bare tag over an externally tagged enum, and reads back: the
+/// variant's entry beside the tag, a unit variant's over `null`.
+const EXTERNAL_BESIDE_THE_TAG: [&str; 2] = [
+    r#"{"type":"Held","Bay":{"a":"x"}}"#,
+    r#"{"type":"Held","Calm":null}"#,
+];
+
+/// Each payload of a bare tag over an externally tagged enum serde refuses: the tag alone, the
+/// entries of two variants, and a unit variant's entry over a number.
+const EXTERNAL_REFUSED_BESIDE_THE_TAG: [&str; 3] = [
+    r#"{"type":"Held"}"#,
+    r#"{"type":"Held","Bay":{"a":"x"},"Calm":null}"#,
+    r#"{"type":"Held","Calm":1}"#,
+];
+
 /// A generated schema module reaches its siblings through the enclosing module, and a function body
 /// is not one, so a type another type references is declared here rather than inside a test.
 #[model_schema()]
@@ -189,6 +204,23 @@ pub enum InternalEither {
 #[serde(tag = "type")]
 pub enum InternalOverUntagged {
     Wrapped(InternalEither),
+}
+
+/// An externally tagged enum of a unit variant and a variant that holds a struct.
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum InternalTack {
+    Bay(InternalFirst),
+    Calm,
+}
+
+/// A bare tag over that enum: serde writes its variant beside the tag as it writes it flattened,
+/// an entry of the variant's name, over `null` for the unit variant.
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(tag = "type")]
+pub enum InternalOverExternal {
+    Held(InternalTack),
 }
 
 /// The same wrapping over a union declared below it with one member serde writes as a string. Only
@@ -1985,6 +2017,88 @@ fn test_adjacent_twin_keeps_its_content_key() {
 
     let ts = Adjacent::ts_definition();
     assert!(ts.contains("value: string"), "Got: {ts}");
+}
+
+#[test]
+fn test_bare_tag_over_an_external_enum_writes_each_variant_as_its_entry() {
+    let written = [
+        InternalOverExternal::Held(InternalTack::Bay(InternalFirst { a: "x".to_owned() })),
+        InternalOverExternal::Held(InternalTack::Calm),
+    ];
+    for (value, json) in written.into_iter().zip(EXTERNAL_BESIDE_THE_TAG) {
+        assert_eq!(serde_json::to_string(&value).unwrap(), json);
+        assert_eq!(
+            serde_json::from_str::<InternalOverExternal>(json).unwrap(),
+            value,
+            "serde no longer reads {json} back"
+        );
+    }
+    for json in EXTERNAL_REFUSED_BESIDE_THE_TAG {
+        assert!(
+            serde_json::from_str::<InternalOverExternal>(json).is_err(),
+            "serde reads {json}"
+        );
+    }
+}
+
+/// TypeScript joins the tag's object with each variant's entry, as it joins a flattened externally
+/// tagged enum, where the enum's own type is a unit variant's bare name.
+#[test]
+fn test_bare_tag_over_an_external_enum_typescript_joins_each_variants_entry() {
+    let ts = InternalOverExternal::ts_definition();
+    assert!(
+        ts.contains(
+            "type: \"Held\";\n} & ({\n  /**\n   * Bay\n   * \n   */\n  \"Bay\": \
+             InternalFirst;\n  \"Calm\"?: never;\n} | {\n  /**\n   * Calm\n   * \n   */\n  \
+             \"Calm\": null;\n  \"Bay\"?: never;\n});"
+        ),
+        "expected one key set per variant, got: {ts}"
+    );
+    assert!(
+        !ts.contains("& InternalTack"),
+        "the enum is named as an operand in: {ts}"
+    );
+}
+
+/// Zod joins the tag's object with each variant's entry, as it joins a flattened externally tagged
+/// enum, where the enum's own schema takes a unit variant's bare name.
+#[cfg(feature = "zod")]
+#[test]
+fn test_bare_tag_over_an_external_enum_zod_joins_each_variants_entry() {
+    let zod = InternalOverExternal::zod_schema();
+    assert!(
+        zod.contains(
+            "z.union([\n  z.strictObject({\n  type: z.literal(\"Held\"),\n}).and(z.lazy(() => \
+             z.strictObject({\n  \"Bay\": InternalFirst$Schema,\n}))),\n  z.strictObject({\n  \
+             type: z.literal(\"Held\"),\n}).and(z.lazy(() => z.strictObject({\n  \"Calm\": \
+             z.null(),\n}))),\n])"
+        ),
+        "expected one operand per variant, got: {zod}"
+    );
+    assert!(
+        !zod.contains("InternalTack$Schema"),
+        "the enum is named as an operand in: {zod}"
+    );
+}
+
+/// The JSON Schema admits each payload serde writes for a bare tag over an externally tagged enum,
+/// and refuses each one serde refuses.
+#[cfg(feature = "jsonschema")]
+#[test]
+fn test_bare_tag_over_an_external_enum_json_schema_admits_what_serde_reads() {
+    let schema = InternalOverExternal::json_schema();
+    for json in EXTERNAL_BESIDE_THE_TAG {
+        assert!(
+            super::documents::admits(&schema, &serde_json::from_str(json).unwrap()),
+            "{json} is refused by {schema}"
+        );
+    }
+    for json in EXTERNAL_REFUSED_BESIDE_THE_TAG {
+        assert!(
+            !super::documents::admits(&schema, &serde_json::from_str(json).unwrap()),
+            "{json} is admitted by {schema}"
+        );
+    }
 }
 
 /// What serde writes for a bare tag over a plain enum.

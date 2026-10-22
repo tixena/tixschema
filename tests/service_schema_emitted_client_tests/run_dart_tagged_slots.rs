@@ -1,6 +1,7 @@
 //! The lone slot of a newtype variant under a tag alone, read and written back by the emitted Dart
 //! types under the Dart VM, against what serde writes: the slot is read from the object without
-//! the tag, as serde hands it, so an externally tagged enum there reads its one entry.
+//! the tag, as serde hands it, so an externally tagged enum there reads its one entry, and is
+//! written beside the tag, a unit variant of that enum as an entry of its name over `null`.
 
 #![cfg(all(feature = "dart", feature = "serde"))]
 
@@ -8,13 +9,14 @@ use core::fmt::Write as _;
 
 use super::run_dart_validate::{dart, module};
 use super::tagged_slot_models::{
-    UNIT_ENTRY, WRITTEN, ballast_dart, bunkered_dart, demurrage_dart, docketed_dart, dray_dart,
-    drayage_dart, freighted_dart, lighter_dart, lightering_dart, palleted_dart, serde_told,
-    stevedore_dart, tonnage_dart, waybilled_dart, wharfage_dart,
+    ENTRIES_REFUSED, WRITTEN, ballast_dart, bunkered_dart, demurrage_dart, docketed_dart,
+    dray_dart, drayage_dart, freighted_dart, lashing_dart, lighter_dart, lightering_dart,
+    palleted_dart, serde_told, stevedore_dart, tonnage_dart, trussed_dart, waybilled_dart,
+    wharfage_dart,
 };
 
-/// The function `Docketed::Trimmed` names, and what prints a row: the value read, written back, or
-/// the class of what the read or the write throws and its message.
+/// The function `Docketed::Trimmed` and `Docketed::Pared` name, and what prints a row: the value
+/// read, written back, or the class of what the read or the write throws and its message.
 const TOLD: &str = "
 dynamic lightened(dynamic payload) =>
     payload is Map<String, dynamic> ? ({...payload}..remove('spare')) : payload;
@@ -32,16 +34,10 @@ void told(String at, Object? Function() read) {
 }
 ";
 
-/// What the Dart client answers of [`UNIT_ENTRY`], for which TypeScript and Zod describe no
-/// payload: it reads the entry, and its write casts the bare name the enum writes for the variant
-/// to an object.
-const UNIT_ENTRY_TOLD: &str =
-    "_TypeError: type 'String' is not a subtype of type 'Map<String, dynamic>' in type cast";
-
 /// What `told` prints of `json` read as `read_as` and written back.
 fn told(at: usize, read_as: &str, json: &str) -> String {
-    if read_as == "Docketed" {
-        format!("  told('{at}', () => Docketed.fromJson(jsonDecode(r'''{json}''')).toJson());\n")
+    if read_as == "Docketed" || read_as == "Trussed" {
+        format!("  told('{at}', () => {read_as}.fromJson(jsonDecode(r'''{json}''')).toJson());\n")
     } else {
         format!(
             "  told('{at}', () => Waybilled.fromJson(jsonDecode(r'''{json}'''), (e) => \
@@ -51,18 +47,25 @@ fn told(at: usize, read_as: &str, json: &str) -> String {
 }
 
 /// Each payload serde writes is read by the Dart read and written back as serde wrote it, an
-/// externally tagged enum's entry beside the tag among them.
+/// externally tagged enum's entry beside the tag among them, a unit variant's over `null` too, and
+/// each payload of an externally tagged slot serde refuses is refused.
 #[test]
 fn a_slot_beside_the_tag_is_read_and_written_back_by_dart_as_serde_writes_it() {
     let mut main = String::from("void main() {\n");
     let mut expected = String::new();
     for (at, (read_as, json)) in WRITTEN.iter().enumerate() {
         main.push_str(&told(at, read_as, json));
-        if *json == UNIT_ENTRY {
-            let _ = writeln!(expected, "{at}: {UNIT_ENTRY_TOLD}");
-        } else {
-            let _ = writeln!(expected, "{at}: {}", serde_told(read_as, json));
-        }
+        let _ = writeln!(expected, "{at}: {}", serde_told(read_as, json));
+    }
+    for (at, refused) in (WRITTEN.len()..).zip(&ENTRIES_REFUSED) {
+        assert_eq!(
+            serde_told("Docketed", refused.json),
+            "refused",
+            "serde no longer refuses {}",
+            refused.json
+        );
+        main.push_str(&told(at, "Docketed", refused.json));
+        let _ = writeln!(expected, "{at}: {}", refused.dart);
     }
     main.push_str("}\n");
     let source = module(
@@ -75,6 +78,8 @@ fn a_slot_beside_the_tag_is_read_and_written_back_by_dart_as_serde_writes_it() {
             demurrage_dart::dart_definition(),
             bunkered_dart::dart_definition(),
             palleted_dart::dart_definition(),
+            lashing_dart::dart_definition(),
+            trussed_dart::dart_definition(),
             dray_dart::dart_definition(),
             stevedore_dart::dart_definition(),
             freighted_dart::dart_definition(),
@@ -106,4 +111,15 @@ fn the_dart_text_hands_the_slot_the_object_without_the_tag() {
     ] {
         assert!(docketed.contains(held), "no `{held}` in: {docketed}");
     }
+}
+
+/// The Dart write puts an externally tagged enum's unit variant in a slot beside the tag as an
+/// entry of its name over `null`, where the enum's own `toJson` writes the bare name.
+#[test]
+fn the_dart_text_writes_a_unit_variant_beside_the_tag_as_its_entry() {
+    let docketed = docketed_dart::dart_definition();
+    let written = "@override dynamic toJson() => { 'kind': 'External', ...(switch \
+                   ((value).toJson()) { final String name => {name: null}, final written => \
+                   written as Map<String, dynamic> }) };";
+    assert!(docketed.contains(written), "no `{written}` in: {docketed}");
 }

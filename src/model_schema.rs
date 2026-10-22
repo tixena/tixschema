@@ -15,6 +15,8 @@ use core::iter;
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use core::ops::Range;
 use core::ptr;
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+use core::slice;
 
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -2119,6 +2121,17 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
     // members the target's own name would have given it.
     #[cfg(feature = "zod")]
     record_zod_union_members(&rust_ident_str, &alias_field_def.zod_union_members());
+    // An object that takes an externally tagged enum's entries through its alias takes the enum's
+    // own. The variants of an enum written with arguments name its own parameters, unbound here.
+    #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+    if alias.generics.params.is_empty()
+        && matches!(
+            &alias_field_def.field_type,
+            FieldDefType::SiblingType(_, arguments) if arguments.is_empty()
+        )
+    {
+        record_flatten_variants(&rust_ident_str, &alias_field_def.flatten_variants());
+    }
 
     // Registered above whatever the outcome, so a type naming a refused alias still resolves to the
     // export name the author wrote and the alias's own diagnostic stays the one they act on.
@@ -12067,6 +12080,10 @@ fn render_internal_variant(
     #[cfg(not(feature = "jsonschema"))]
     let json = quote! {};
 
+    if let Some((typescript, zod)) = entries_beside_the_tag(&parts, inner, tag_name) {
+        return (typescript, zod, json, true);
+    }
+
     // The content joins the member through [`deferred_zod_operand`] for the reason a flattened
     // base does: it names a `const` of its own, and one macro invocation sees one type.
     #[cfg(feature = "zod")]
@@ -12084,6 +12101,50 @@ fn render_internal_variant(
         json,
         true,
     )
+}
+
+/// The TypeScript and the Zod member of a variant under the tag `tag_name` alone whose lone slot
+/// `inner` names an externally tagged enum declared above with no argument: the object `parts`
+/// closes, joined with each variant's entry as a flattened enum is. `None` for any other slot.
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+fn entries_beside_the_tag(
+    parts: &VariantParts,
+    inner: &FieldDef,
+    tag_name: &str,
+) -> Option<(String, String)> {
+    let named = matches!(
+        &inner.field_type,
+        FieldDefType::SiblingType(_, arguments) if arguments.is_empty()
+    );
+    if !named
+        || (inner.flatten_variants().is_empty()
+            && inner.flatten_variants_written_around().is_empty())
+    {
+        return None;
+    }
+    let flattened = slice::from_ref(inner);
+    #[cfg(feature = "zod")]
+    let zod = variant_flatten_zod(&format!("z.strictObject({})", parts.schema_code), flattened);
+    #[cfg(not(feature = "zod"))]
+    let zod = String::new();
+    Some((
+        format!(
+            "{}{}",
+            parts.type_code,
+            variant_flatten_typescript(&[tag_name.to_owned()], flattened)
+        ),
+        zod,
+    ))
+}
+
+/// No surface joins entries where neither the TypeScript nor the Zod surface is written.
+#[cfg(all(feature = "serde", not(any(feature = "typescript", feature = "zod"))))]
+const fn entries_beside_the_tag(
+    _parts: &VariantParts,
+    _inner: &FieldDef,
+    _tag_name: &str,
+) -> Option<(String, String)> {
+    None
 }
 
 /// Joins an internally tagged enum's rendered members into its three union surfaces. The Zod

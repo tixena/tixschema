@@ -1,17 +1,19 @@
 //! The lone slot of a newtype variant under a tag alone, in each shape serde writes beside the
 //! tag: a struct, one under its own tag, a brand and an alias over one, a generic struct, the
-//! enum's own type parameter, an enum of each tagging, a unit struct, a struct with a flattened
-//! member, one declared below the enum, and one a function reads. serde writes the slot's members
-//! beside the tag, and reads the slot from the object without the tag.
+//! enum's own type parameter, an enum of each tagging, an alias of an externally tagged one, a unit
+//! struct, a struct with a flattened member, one declared below the enum, and a struct and an
+//! externally tagged enum a function reads. serde writes the slot's members beside the tag, an
+//! externally tagged enum's variant as an entry, and reads the slot from the object without the
+//! tag. A struct that flattens the alias reads and writes the same entries.
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tixschema::model_schema;
 
-/// Each payload serde writes, and the type it is read as, as Kotlin and Swift name it. The row of
-/// an externally tagged enum's unit variant is [`UNIT_ENTRY`].
-pub const WRITTEN: [(&str, &str); 19] = [
+/// Each payload serde writes, and the type it is read as, as Kotlin and Swift name it: an
+/// externally tagged enum's unit variant among them, as an entry of its name over `null`.
+pub const WRITTEN: [(&str, &str); 25] = [
     ("Docketed", r#"{"kind":"Weighed","cost":"c"}"#),
     (
         "Docketed",
@@ -28,20 +30,58 @@ pub const WRITTEN: [(&str, &str); 19] = [
     ),
     ("Docketed", r#"{"kind":"Adjacent","sort":"Empty"}"#),
     ("Docketed", r#"{"kind":"External","Stacked":{"layers":5}}"#),
-    ("Docketed", UNIT_ENTRY),
+    ("Docketed", r#"{"kind":"External","Loose":null}"#),
     ("Docketed", r#"{"kind":"Either","miles":6}"#),
     ("Docketed", r#"{"kind":"Either","bay":"b"}"#),
     ("Docketed", r#"{"kind":"Hired"}"#),
     ("Docketed", r#"{"kind":"Merged","note":"n","cost":"c"}"#),
     ("Docketed", r#"{"kind":"Below","barge":"g"}"#),
     ("Docketed", r#"{"kind":"Trimmed","cost":"c"}"#),
+    ("Docketed", r#"{"kind":"Pared","Loose":null}"#),
+    ("Docketed", r#"{"kind":"Pared","Stacked":{"layers":5}}"#),
+    ("Docketed", r#"{"kind":"Lashed","Loose":null}"#),
+    ("Docketed", r#"{"kind":"Lashed","Stacked":{"layers":5}}"#),
+    ("Trussed", r#"{"note":"n","Loose":null}"#),
+    ("Trussed", r#"{"note":"n","Stacked":{"layers":5}}"#),
     ("Docketed", r#"{"kind":"Idle"}"#),
     ("Waybilled<Tonnage>", r#"{"kind":"Held","cost":"c"}"#),
 ];
 
-/// What serde writes of an externally tagged enum's unit variant beside the tag: its name over
-/// `null`. TypeScript and the generated Zod schema describe no payload for it.
-pub const UNIT_ENTRY: &str = r#"{"kind":"External","Loose":null}"#;
+/// The payloads of [`Docketed::External`] serde refuses, and the words each client refuses each
+/// with: the tag alone, the entries of two variants, and a unit variant's entry over a number.
+pub const ENTRIES_REFUSED: [Refused; 3] = [
+    Refused {
+        dart: "FormatException: empty object for Palleted",
+        json: r#"{"kind":"External"}"#,
+        kotlin: "refused: expected an object of one key, found {}",
+        swift: "empty object for Palleted",
+    },
+    Refused {
+        dart: "FormatException: more than one key for Palleted",
+        json: r#"{"kind":"External","Stacked":{"layers":5},"Loose":null}"#,
+        kotlin: "refused: expected an object of one key, found \
+                 {\"Stacked\":{\"layers\":5},\"Loose\":null}",
+        swift: "more than one key for Palleted",
+    },
+    Refused {
+        dart: "FormatException: Palleted: Loose takes no value",
+        json: r#"{"kind":"External","Loose":1}"#,
+        kotlin: "refused: Palleted: Loose takes no value",
+        swift: "unknown tag Loose",
+    },
+];
+
+/// A payload serde refuses, which TypeScript and the generated Zod schema refuse too, and what
+/// each client refuses it with.
+pub struct Refused {
+    /// What the Dart read throws, its class and its message.
+    pub dart: &'static str,
+    pub json: &'static str,
+    /// What the Kotlin read throws under either `Json`.
+    pub kotlin: &'static str,
+    /// The description of what the Swift read throws.
+    pub swift: &'static str,
+}
 
 /// A struct of one member.
 #[model_schema()]
@@ -101,6 +141,19 @@ pub enum Palleted {
     Stacked { layers: u32 },
 }
 
+/// An alias of [`Palleted`].
+#[model_schema()]
+pub type Lashing = Palleted;
+
+/// [`Lashing`] flattened beside a member of its holder's own.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Trussed {
+    pub note: String,
+    #[serde(flatten)]
+    pub pallet: Lashing,
+}
+
 /// An untagged enum of two structs' shapes.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -124,8 +177,8 @@ pub struct Freighted {
     pub tonnage: Tonnage,
 }
 
-/// An enum under a tag alone whose newtype variants hold each shape above, one declared below it
-/// and one a function reads.
+/// An enum under a tag alone whose newtype variants hold each shape above, one declared below it,
+/// and a struct and an externally tagged enum a function reads.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind")]
@@ -140,7 +193,9 @@ pub enum Docketed {
     Hired(Stevedore),
     Idle,
     Inner(Demurrage),
+    Lashed(Lashing),
     Merged(Freighted),
+    Pared(#[model_schema_prop(preprocess = ["lightened"])] Palleted),
     Sorted(Ballast),
     Trimmed(#[model_schema_prop(preprocess = ["lightened"])] Tonnage),
     Weighed(Tonnage),
@@ -162,7 +217,8 @@ pub enum Waybilled<Held> {
     Held(Held),
 }
 
-/// The function [`Docketed::Trimmed`] names: drops a key `spare` from the object it is handed.
+/// The function [`Docketed::Trimmed`] and [`Docketed::Pared`] name: drops a key `spare` from the
+/// object it is handed.
 pub fn lightened(mut payload: Value) -> Value {
     if let Some(object) = payload.as_object_mut() {
         object.remove("spare");
@@ -172,10 +228,10 @@ pub fn lightened(mut payload: Value) -> Value {
 
 /// What serde writes back of `json` read as the type `read_as` names, or `refused`.
 pub fn serde_told(read_as: &str, json: &str) -> String {
-    if read_as == "Docketed" {
-        written_back::<Docketed>(json)
-    } else {
-        written_back::<Waybilled<Tonnage>>(json)
+    match read_as {
+        "Docketed" => written_back::<Docketed>(json),
+        "Trussed" => written_back::<Trussed>(json),
+        _ => written_back::<Waybilled<Tonnage>>(json),
     }
 }
 
