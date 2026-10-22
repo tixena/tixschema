@@ -4,10 +4,10 @@
 //! after a struct, beside a member of its holder's own and in a variant under a tag key, ahead of a
 //! struct, after each member that takes none of the keys it reads, and after an externally tagged
 //! enum, an enum under a tag key and an untagged one; and an externally tagged enum beside a member
-//! of its holder's own. serde reads the members in the order declared: a struct takes the keys it
-//! reads, an externally tagged enum the first entry under the name of a variant it reads, wherever
-//! it is, and every flattened member is handed every entry no member ahead of it took. A struct
-//! after a struct that reads the same key is refused.
+//! of its holder's own, and that enum optional. serde reads the members in the order declared: a
+//! struct takes the keys it reads, an externally tagged enum the first entry under the name of a
+//! variant it reads, wherever it is, and every flattened member is handed every entry no member
+//! ahead of it took. A struct after a struct that reads the same key is refused.
 
 use alloc::collections::BTreeMap;
 
@@ -47,6 +47,15 @@ pub const BATTENING: [&str; 4] = [
     r#"{"north":2,"south":3,"Bay":{"label":"n"},"note":"a"}"#,
     r#"{"note":"a","north":2,"Dock":{"label":"s"},"Bay":{"label":"n"}}"#,
     r#"{"north":2,"note":"a"}"#,
+];
+
+/// What [`Caulking`] is read from: no key but the holder's own, a key no member reads, a variant's
+/// entry after one, and a variant's entry that does not read.
+pub const CAULKING: [&str; 4] = [
+    r#"{"note":"a"}"#,
+    r#"{"north":2,"note":"a"}"#,
+    r#"{"north":2,"Bay":{"label":"n"},"note":"a"}"#,
+    r#"{"Bay":{"label":5},"note":"a"}"#,
 ];
 
 /// What [`Kedging`] is read from: a variant under its `rename`, one under the enum's `rename_all`,
@@ -229,6 +238,16 @@ pub struct Loading {
 pub struct Battening {
     #[serde(flatten)]
     pub hatching: Hatching,
+    pub note: String,
+}
+
+/// [`Battening`] with its enum optional, which serde reads no value of where no entry is under the
+/// name of a variant, and where the entry under one does not read.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Caulking {
+    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
+    pub hatching: Option<Hatching>,
     pub note: String,
 }
 
@@ -445,6 +464,28 @@ fn serde_reads_a_flattened_externally_tagged_enum_from_its_variants_entry_wherev
             r#"{"Dock":{"label":"s"}} a"#,
             "refused",
         ]
+    );
+}
+
+/// An optional externally tagged enum beside a member of its holder's own is read as no value where
+/// no entry is under a variant's name, and where the entry under one does not read, which the Zod
+/// schema refuses.
+#[test]
+fn serde_reads_an_optional_flattened_externally_tagged_enum_as_none_where_no_entry_reads() {
+    let caulked = CAULKING.map(|payload| {
+        read_of(payload, |caulking: &Caulking| {
+            format!("{} {}", written(&caulking.hatching), written(caulking))
+        })
+    });
+    assert_eq!(
+        caulked,
+        [
+            r#"null {"note":"a"}"#,
+            r#"null {"note":"a"}"#,
+            r#"{"Bay":{"label":"n"}} {"Bay":{"label":"n"},"note":"a"}"#,
+            r#"null {"note":"a"}"#,
+        ],
+        "serde reads no value where no entry reads"
     );
 }
 

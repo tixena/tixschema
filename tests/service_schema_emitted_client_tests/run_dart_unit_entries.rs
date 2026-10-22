@@ -144,14 +144,14 @@ fn a_flattened_unit_variant_is_written_and_read_in_dart_as_serde_writes_and_read
     );
 }
 
-/// The analyzer passes the enum and its holders. [`Belting`] is run and left out: its read
-/// compares the object it hands the enum with `null`, which the analyzer reports.
+/// The analyzer passes the enum and its holders.
 #[test]
 fn the_emitted_holders_of_a_flattened_unit_variant_have_no_issue() {
     let source = module(
         &[
             tacking_dart::dart_definition(),
             stowing_dart::dart_definition(),
+            belting_dart::dart_definition(),
             yawing_dart::dart_definition(),
         ],
         &[AS_GIVEN],

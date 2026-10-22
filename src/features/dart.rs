@@ -1434,6 +1434,17 @@ fn first_of(json: &str, names: &[String]) -> String {
     )
 }
 
+/// The read of an externally tagged enum typed `def` flattened into its holder from `first`, the
+/// object [`first_of`] answers. An optional one reads no value where that object holds no entry,
+/// and is refused where the entry does not read, as TypeScript and Zod refuse it.
+fn first_entry_decode(def: &FieldDef, first: &str) -> String {
+    if !def.is_optional() {
+        return dart_decode_expr(def, first, Read::Unjudged);
+    }
+    let read = dart_decode_at(def, def.array_depth, "entry", Read::Unjudged);
+    format!("(switch ({first}) {{ final entry => entry.isEmpty ? null : {read} }})")
+}
+
 /// The object `json` names without its first entry, in the object's order, under one of `names`:
 /// what serde hands a member flattened after an externally tagged enum, which takes that entry.
 fn without_first(json: &str, names: &[String]) -> String {
@@ -2458,7 +2469,7 @@ fn generic_codec(parameters: &[String]) -> GenericCodec {
 /// member from its key, where the payload holds it for a member that names a function, and a
 /// flattened one at its place, from the entries neither `tag_key`, a member of the holder's own nor
 /// a member flattened ahead of it takes, an externally tagged enum from the first of them under a
-/// variant's name.
+/// variant's name, an optional one as no value where none is.
 fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>) -> String {
     let mut taken_ahead: Vec<String> = tag_key
         .into_iter()
@@ -2477,7 +2488,8 @@ fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>
     fields.iter().fold(String::new(), |mut acc, field| {
         let decode = if field.flatten {
             let keys: Vec<&str> = taken_ahead[removed..].iter().map(String::as_str).collect();
-            let mut handed = without(&source, &keys);
+            let handed = without(&source, &keys);
+            // A flattened member is walked whatever it writes.
             match taken_by(&field.field_def) {
                 Taken::Keys(taken) => {
                     for key in taken {
@@ -2485,15 +2497,14 @@ fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>
                             taken_ahead.push(key);
                         }
                     }
+                    member_decode(&field.field_def, &handed, None, Read::Unjudged)
                 }
                 Taken::FirstOf(names) => {
                     source = without_first(&handed, &names);
                     removed = taken_ahead.len();
-                    handed = first_of(&handed, &names);
+                    first_entry_decode(&field.field_def, &first_of(&handed, &names))
                 }
             }
-            // A flattened member is walked whatever it writes.
-            member_decode(&field.field_def, &handed, None, Read::Unjudged)
         } else {
             let read = Read::Unjudged.of_member(&field.field_def);
             let held = format!("{json}.containsKey('{}')", field.wire_name);

@@ -1509,7 +1509,10 @@ consumer's view; this is what a change has to keep.
     `whole` or `rest`, calls no function. The entry depends on what is left to the enum, so the
     keys taken ahead of it are removed first and the keys taken after it from what
     `without_first` answers (`source`, `removed`); a holder with no flattened enum is written as
-    it was.
+    it was. An optional enum is read by `first_entry_decode`: `null` where the object `first_of`
+    answers is empty, and the enum's read of the entry where it holds one, which refuses an entry
+    that does not read, as TypeScript and Zod refuse it, where serde reads `None`. Its variable,
+    `entry`, calls no function either.
   - Nothing, for an enum under a tag key, an untagged one and one that names a function on
     itself. serde reads an enum under a tag alone and an untagged one as a map, which takes no
     key; it reads one under a tag and a content key as a struct of the two, which takes both,

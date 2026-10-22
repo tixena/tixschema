@@ -1,9 +1,9 @@
 //! A map that is the one member of its struct, a member that names a function, flattened after a
 //! struct, beside a member of its holder's own, ahead of a struct, after a member that takes none
 //! of the keys it reads, and after an externally tagged enum, an enum under a tag key and an
-//! untagged one, and an externally tagged enum beside a member of its holder's own, each read and
-//! written back by the emitted Dart types under the Dart VM, against what serde reads and writes
-//! back.
+//! untagged one, and an externally tagged enum beside a member of its holder's own, optional too,
+//! each read and written back by the emitted Dart types under the Dart VM, against what serde reads
+//! and writes back.
 
 #![cfg(feature = "dart")]
 
@@ -12,12 +12,13 @@ use core::fmt::Write as _;
 use serde::{Deserialize, Serialize};
 
 use super::dart_flattened_models::{
-    BATTENING, Battening, Belaying, CLAMPING, Clamping, Doubling, FASTENING, Fastening, Hoisting,
-    KEDGING, Kedging, LOADING, Lacing, Loading, MOUSING, Mousing, PAYLOAD, Rigging, SPARE, Shoring,
-    Spare, TRIMMING, Trimming, Twin, battening_dart, belaying_dart, bracing_dart, chocking_dart,
-    clamping_dart, doubling_dart, fastening_dart, frapping_dart, hatching_dart, hoisting_dart,
-    kedging_dart, keying_dart, lacing_dart, loading_dart, marking_dart, mousing_dart, rigging_dart,
-    shoring_dart, spare_dart, ticketing_dart, trimming_dart, twin_dart, warping_dart,
+    BATTENING, Battening, Belaying, CAULKING, CLAMPING, Caulking, Clamping, Doubling, FASTENING,
+    Fastening, Hoisting, KEDGING, Kedging, LOADING, Lacing, Loading, MOUSING, Mousing, PAYLOAD,
+    Rigging, SPARE, Shoring, Spare, TRIMMING, Trimming, Twin, battening_dart, belaying_dart,
+    bracing_dart, caulking_dart, chocking_dart, clamping_dart, doubling_dart, fastening_dart,
+    frapping_dart, hatching_dart, hoisting_dart, kedging_dart, keying_dart, lacing_dart,
+    loading_dart, marking_dart, mousing_dart, rigging_dart, shoring_dart, spare_dart,
+    ticketing_dart, trimming_dart, twin_dart, warping_dart,
 };
 use super::run_dart_validate::{dart, module};
 
@@ -118,6 +119,25 @@ void main() {
 }
 ";
 
+/// What prints the enum and the member [`Caulking`] read from each of its payloads, and what it
+/// writes back, or that the read is refused.
+const OPTIONAL_BESIDE_A_MEMBER: &str = "
+String caulked(String payload) {
+  try {
+    final caulking = Caulking.fromJson(jsonDecode(payload));
+    return '${jsonEncode(caulking.hatching?.toJson())} ${caulking.note} ${jsonEncode(caulking.toJson())}';
+  } catch (_) {
+    return 'refused';
+  }
+}
+
+void main() {
+  for (final payload in CAULKING) {
+    print('caulking: ${caulked(payload)}');
+  }
+}
+";
+
 /// The text of `value` as serde writes it.
 fn written<T>(value: &T) -> String
 where
@@ -143,6 +163,7 @@ fn with_payloads(main: &str) -> String {
         .replace("FASTENING", FASTENING)
         .replace("LOADING", &listed(&LOADING))
         .replace("BATTENING", &listed(&BATTENING))
+        .replace("CAULKING", &listed(&CAULKING))
         .replace("KEDGING", &listed(&KEDGING))
         .replace("TRIMMING", TRIMMING)
         .replace("MOUSING", MOUSING)
@@ -388,4 +409,48 @@ fn a_flattened_enum_beside_a_member_reads_in_dart_the_entry_serde_reads() {
         return;
     };
     assert_eq!(printed, battened);
+}
+
+/// An optional externally tagged enum flattened beside a member of its holder's own is read as no
+/// value where no entry is under a variant's name, and from the first entry under one, as serde
+/// reads it. An entry that does not read is refused, as the Zod schema refuses it, where serde
+/// reads no value and drops the entry. The holder is written back as serde writes it back.
+#[test]
+fn an_optional_flattened_enum_beside_a_member_reads_in_dart_no_value_where_no_entry_is() {
+    let caulked = CAULKING.map(|payload| {
+        read_of(payload, |caulking: &Caulking| {
+            format!(
+                "{} {} {}",
+                written(&caulking.hatching),
+                caulking.note,
+                written(caulking)
+            )
+        })
+    });
+    assert_eq!(
+        caulked,
+        [
+            r#"null a {"note":"a"}"#,
+            r#"null a {"note":"a"}"#,
+            r#"{"Bay":{"label":"n"}} a {"Bay":{"label":"n"},"note":"a"}"#,
+            r#"null a {"note":"a"}"#,
+        ],
+        "serde reads no value where no entry reads"
+    );
+    let mut expected = caulked[..3].iter().fold(String::new(), |mut acc, row| {
+        writeln!(acc, "caulking: {row}").unwrap();
+        acc
+    });
+    expected.push_str("caulking: refused\n");
+    let Some(printed) = printed(
+        "flattened-optional-beside-a-member",
+        &[
+            hatching_dart::dart_definition(),
+            caulking_dart::dart_definition(),
+        ],
+        OPTIONAL_BESIDE_A_MEMBER,
+    ) else {
+        return;
+    };
+    assert_eq!(printed, expected, "the Dart reads beside serde's");
 }
