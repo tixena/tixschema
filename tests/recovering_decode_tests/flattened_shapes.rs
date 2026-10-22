@@ -177,12 +177,21 @@ struct Row(Vec<i32>);
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Spot((String, u32));
 
-/// Internally tagged, with a variant that holds a type that takes every key it is handed.
+/// A count that refuses every key it does not declare: handed a key of another type's, it lists
+/// it.
+#[model_schema(enable = ["decode_with"])]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+struct Tallies {
+    a: i32,
+}
+
+/// Internally tagged, with a variant that holds a type that refuses every key it does not declare.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Filled {
-    Counted(Counts),
+    Counted(Tallies),
 }
 
 /// A flattened single-slot struct over a map.
@@ -542,12 +551,6 @@ where
     T::deserialize(deserializer)
 }
 
-fn counts() -> Counts {
-    Counts {
-        by_name: HashMap::from([("a".to_owned(), 1_i32)]),
-    }
-}
-
 /// Holds the walker to serde over `stored`, a record serde writes for a `T`. Where serde reads
 /// it, it writes the same record back, and `from_value_with` gives the value serde read and runs
 /// no decider; where serde refuses it, `from_value_with` hands the decider its list once.
@@ -786,7 +789,7 @@ fn no_copy_is_made_of_what_is_left_where_serde_takes_nothing() {
 /// The type an internally tagged variant holds is handed the object without the tag's key.
 #[test]
 fn an_internally_tagged_variants_value_is_handed_the_object_without_the_tag() {
-    let filled = Filled::Counted(counts());
+    let filled = Filled::Counted(Tallies { a: 1_i32 });
     let written = serde_json::to_value(&filled).unwrap();
     assert_eq!(written, json!({ "a": 1_i32, "kind": "Counted" }));
     let mut calls = 0_u32;

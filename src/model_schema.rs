@@ -783,7 +783,8 @@ enum KeyAsked {
 /// it.
 #[cfg(feature = "serde")]
 enum TaggedContent {
-    /// A named type: what it writes are members, and they are the ones that join the tag.
+    /// A named type: what it writes are members, and they are the ones that join the tag, unless
+    /// it writes a map, which [`ranges::tagged_slot_map_error`] refuses.
     Flattened,
     /// serde refuses to write it beside the tag, and names the shape the way this names it.
     Refused(&'static str),
@@ -10874,7 +10875,14 @@ fn internally_tagged_guard_errors(
                 return None;
             }
             let inner = get_field_def("_inner", &field.ty, "");
-            let message = match tagged_content(&inner) {
+            let content = tagged_content(&inner);
+            if matches!(content, TaggedContent::Flattened)
+                && let Some(refused) =
+                    ranges::tagged_slot_map_error(item_enum, variant, field, tag_name)
+            {
+                return Some(refused);
+            }
+            let message = match content {
                 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
                 TaggedContent::Flattened => {
                     let inner_name = flattened_plain_enum(&inner)?;

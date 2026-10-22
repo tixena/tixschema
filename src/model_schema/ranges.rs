@@ -1,8 +1,9 @@
 //! The std ranges and the std `Result` an item writes: the check, beside the item, that one
 //! written by its bare name is the std type every surface describes, the refusal of one under
 //! `#[serde(flatten)]`, and that of one as a map key in a build whose map key guard does not run.
-//! Beside them, the refusal of a map under `#[serde(flatten)]` beside another member or a tag,
-//! written there or filling a type parameter a type flattens there.
+//! Beside them, the refusal of a map under `#[serde(flatten)]` beside another member or a tag, or
+//! as the lone slot of a variant under a tag alone, written there or filling a type parameter a
+//! type flattens there.
 
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, quote_spanned};
@@ -257,6 +258,31 @@ pub fn flattened_map_beside_errors(
         .collect()
 }
 
+/// Refuses `slot`, the lone slot of `variant` of `item_enum` under the tag `tag` alone, where it
+/// writes a map: serde writes the slot's value beside the tag, so the tag and the map's entries
+/// share one level, as for a map flattened beside the tag.
+#[cfg(feature = "serde")]
+pub fn tagged_slot_map_error(
+    item_enum: &syn::ItemEnum,
+    variant: &syn::Variant,
+    slot: &syn::Field,
+    tag: &str,
+) -> Option<TokenStream> {
+    if !writes_a_map(&slot.ty, &parameter_names(&item_enum.generics)) {
+        return None;
+    }
+    let message = format!(
+        "type `{}`: {}: `{}` writes a map, which cannot sit beside the tag `{tag}` \u{2014} serde \
+         writes the tag and the map's entries at one level, and no TypeScript type describes both. \
+         Name a `content` key so the map gets an object of its own, or write the map under a key \
+         of its own.",
+        item_enum.ident.unraw(),
+        refused_member_named(Some(&variant.ident), 0, slot),
+        written_spelling(&slot.ty)
+    );
+    Some(syn::Error::new_spanned(slot, prefixed_guard_message(&message)).to_compile_error())
+}
+
 /// Whether `item` is a type serde writes, flattened, as the entries of a map: a struct whose one
 /// member on the wire is a flattened map, a brand or a struct of one slot over a map, an alias of
 /// one, and an untagged enum with a variant serde writes as one.
@@ -421,8 +447,12 @@ pub fn flattened_beside_parameters_of(item: &Item) -> Vec<FlattenedParameter> {
             .iter()
             .filter(|field| !parse_serde_key_omission(&field.attrs).absent_from_wire())
             .collect();
+        // serde writes the lone slot of a variant under a tag alone beside the tag, as it writes a
+        // flattened member there.
+        let slot_beside_tag =
+            tag.is_some() && matches!(fields, Fields::Unnamed(slots) if slots.unnamed.len() == 1);
         for (index, field) in written.iter().enumerate() {
-            if !parse_serde_field_attributes(&field.attrs).flatten {
+            if !slot_beside_tag && !parse_serde_field_attributes(&field.attrs).flatten {
                 continue;
             }
             let beside = written
