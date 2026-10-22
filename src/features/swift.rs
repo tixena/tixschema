@@ -2260,10 +2260,10 @@ fn struct_body_content(
     let memberwise_init = memberwise_initializer(fields);
     let mut twins = Vec::new();
     let members = member_reads(fields, !unsynthesized, &mut twins);
-    let keyed = if fields.is_empty() {
-        ""
-    } else {
+    let keyed = if names_container(&members) {
         "let container = try decoder.container(keyedBy: CodingKeys.self); "
+    } else {
+        ""
     };
     let reads = read::both(
         &format!("{keyed}{members}"),
@@ -2281,16 +2281,13 @@ fn struct_body_content(
             .map(|field| encode_statement(field, "container"))
             .collect::<Vec<_>>()
             .join("; ");
-        let under_a_key = fields
-            .iter()
-            .any(|field| !field.flatten && !field.never_written);
-        let container = if fields.is_empty() {
-            ""
-        } else if under_a_key || !fields.iter().any(|field| field.never_written) {
+        let container = if names_container(&statements) {
             "var container = encoder.container(keyedBy: CodingKeys.self); "
-        } else {
+        } else if fields.iter().any(|field| field.never_written) {
             // No member is written under a key: the object is opened all the same.
             "_ = encoder.container(keyedBy: CodingKeys.self); "
+        } else {
+            ""
         };
         let tag = own_tag.map_or_else(String::new, |(_, named)| {
             format!(
@@ -2311,6 +2308,17 @@ fn struct_body_content(
         )
     });
     format!("{props}{coding_keys} {tag_keys}{memberwise_init}{reads}{encode_method}{validate}")
+}
+
+/// Whether `statements` read or write through `container`, the keyed container of a struct's
+/// members: a member of it, never `decoder.container(...)`, `self.container` or the key
+/// `.container`.
+fn names_container(statements: &str) -> bool {
+    statements
+        .split(|character: char| {
+            !(character.is_ascii_alphanumeric() || matches!(character, '_' | '.'))
+        })
+        .any(|path| path.starts_with("container."))
 }
 
 /// The statements that read each of `fields` in the type's own read, in the order declared, a

@@ -7,10 +7,11 @@
 //! struct with a flattened member of its own, a member that names a function, a model with a rule
 //! and a struct that reads the same key; and a struct flattened ahead of every struct, plain and
 //! naming a function, beside a member of its holder's own that reads its key, and in a holder of no
-//! member of its own whose holder reads that key. serde reads the members in the order declared: a
-//! struct takes the keys it reads, and every flattened member is handed every key neither its
-//! holder's own members nor a member ahead of it took. Every holder of a member that names a
-//! function has a member of its own, whose key no flattened member is handed, but [`Stropping`].
+//! member of its own whose holder reads that key; and a struct whose every member is a flattened
+//! struct. serde reads the members in the order declared: a struct takes the keys it reads, and
+//! every flattened member is handed every key neither its holder's own members nor a member ahead
+//! of it took. Every holder of a member that names a function has a member of its own, whose key
+//! no flattened member is handed, but [`Stropping`].
 
 use alloc::collections::BTreeMap;
 
@@ -63,6 +64,9 @@ pub const HANKING: &str = r#"{"label":"n","marker":"m"}"#;
 /// What [`Whipping`], [`Marrying`] and [`Ratlining`] are read from: the one key their own member
 /// reads.
 pub const LABEL: &str = r#"{"label":"n"}"#;
+
+/// What [`Seaming`] is read from.
+pub const SEAMING: &str = r#"{"label":"n","mark":"x"}"#;
 
 /// A plain enum a map is keyed by, which Swift reads through a wrapper.
 #[model_schema()]
@@ -345,6 +349,17 @@ pub struct Ratlining {
     pub stropping: Stropping,
 }
 
+/// A struct whose every member is a flattened struct, the second a model with a rule, which serde
+/// hands every key the first did not take.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Seaming {
+    #[serde(flatten)]
+    pub flag: Pennant,
+    #[serde(flatten)]
+    pub notch: Notch,
+}
+
 /// The payload as it was handed.
 const fn as_given(payload: Value) -> Value {
     payload
@@ -473,4 +488,13 @@ fn serde_hands_a_struct_flattened_first_the_keys_its_holder_and_the_types_around
         written(&read::<Hanking>(HANKING)),
         r#"{"marker":"m","label":"n"}"#
     );
+}
+
+/// A struct whose every member is a flattened struct hands the second the keys the first did not
+/// take, and writes each at its place.
+#[test]
+fn serde_hands_the_second_of_two_flattened_structs_the_keys_the_first_did_not_take() {
+    let seaming = read::<Seaming>(SEAMING);
+    assert_eq!(seaming.notch.mark, "x");
+    assert_eq!(written(&seaming), SEAMING);
 }

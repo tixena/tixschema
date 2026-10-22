@@ -1721,6 +1721,11 @@ to keep.
   `_ = encoder.container(keyedBy: CodingKeys.self)`. A member under `skip_serializing_if` is
   encoded wherever it holds a value: no client calls the Rust function, and the README states the
   limit.
+- **The container of a struct's keys is declared where a statement uses it.**
+  `struct_body_content` writes `let container` ahead of the read's statements and
+  `var container` ahead of `encode(to:)`'s only where `names_container` finds a statement that
+  reads or writes through it, so a struct and a variant's payload whose every member is flattened
+  declare neither, which `-warnings-as-errors` would refuse unused.
 - **Nothing is shared between two emitted types.** `SwiftSchemaAnyKey`, the key type a map is read
   entry by entry under, is private to each type whose read names it (`any_key`). `Locals` numbers
   what one initializer declares (`listed`, `items`, `keyed`, `entries`, `entry`, `number`), and a
@@ -1734,15 +1739,15 @@ to keep.
   members and the members flattened ahead of it take no key of it. A map under a key Swift wraps
   is read by its wrapper, through the `init(swiftSchemaUnjudged:swiftSchemaWithout:)`
   `flattened_wrapper_read` writes in an extension of the wrapper for the flattened member alone.
-  The read and the write of a struct whose every member is flattened declare a container they do
-  not use, so `run_swift_flattened.rs` runs no map, and `tests/swift_tests/flattened.rs` pins its
-  text. What a struct takes is `preprocess::keys_taken_by`: the keys `struct_swift_tokens` records
-  for its type (`preprocess::note_keys`), serde's own list from `keys_taken_when_flattened`, and
-  none for a member that names a function. A struct that names a `preprocess` on itself is read
-  by serde as a value, and one with a flattened member of its own as a map: each records none. A
-  type the emitter has not written takes none, and the README states the limit. `encode(to:)`
-  writes each flattened member at its place, through its shape (`written_from`): a key two of
-  them hold is written once, with the last value, where serde writes it twice.
+  `run_swift_flattened.rs` runs a map alone in each shape, and `tests/swift_tests/flattened.rs`
+  pins its text. What a struct takes is `preprocess::keys_taken_by`: the keys
+  `struct_swift_tokens` records for its type (`preprocess::note_keys`), serde's own list from
+  `keys_taken_when_flattened`, and none for a member that names a function. A struct that names a
+  `preprocess` on itself is read by serde as a value, and one with a flattened member of its own
+  as a map: each records none. A type the emitter has not written takes none, and the README
+  states the limit. `encode(to:)` writes each flattened member at its place, through its shape
+  (`written_from`): a key two of them hold is written once, with the last value, where serde
+  writes it twice.
 - **Every flattened member is handed the keys its holder withholds, the first one included.**
   `member_reads` hands each a `Handed`: the `taken + [...]` of the holder's own keys and those
   each member flattened ahead took, and `withheld`, whether any key can be withheld: the holder
@@ -1787,8 +1792,8 @@ to keep.
   flattened map alone in each shape, of a member that names a function at each place, and of
   each other member flattened after a struct, over the models of
   `tests/swift_tests/flattened_models.rs`, which also pin what serde reads of each, and
-  `run_swift_flattened.rs` reads and writes each holder with a member of its own back under the
-  toolchain, against serde.
+  `run_swift_flattened.rs` reads and writes each back under the toolchain, against serde, a holder
+  whose every member is flattened among them.
 
 ### 12. The Swift `preprocess`
 

@@ -9,8 +9,8 @@ use super::flattened_models::serving_swift;
 use super::flattened_models::{
     bowsing_swift, clewing_swift, faking_swift, footing_swift, frapping_swift, gripping_swift,
     hanking_swift, kedging_swift, marling_swift, marrying_swift, mousing_swift, parceling_swift,
-    plying_swift, ratlining_swift, snaking_swift, splaying_swift, stopping_swift, stropping_swift,
-    toggling_swift, twinning_swift, whipping_swift, worming_swift,
+    plying_swift, ratlining_swift, seaming_swift, snaking_swift, splaying_swift, stopping_swift,
+    stropping_swift, toggling_swift, twinning_swift, whipping_swift, worming_swift,
 };
 
 /// The read a holder takes the keys the types around it took with.
@@ -55,8 +55,18 @@ fn assert_written(definition: &str, fragment: &str) {
     );
 }
 
+/// Asserts that `definition`, whose structs read and write every member flattened, declares no
+/// container of their keys.
+fn assert_no_keyed_container(definition: &str) {
+    assert!(
+        !definition.contains("keyedBy: CodingKeys.self"),
+        "a container of the keys in: {definition}"
+    );
+}
+
 /// A map that is the one member of its struct is read from every key the types around it did not
 /// take, and written at its place. In a variant under a tag key the enum hands it the tag as taken.
+/// Neither reads or writes a key of its own, so neither declares a container of its keys.
 #[test]
 fn a_map_alone_is_read_without_the_keys_the_types_around_its_holder_took() {
     let stopping = stopping_swift::swift_definition();
@@ -68,8 +78,12 @@ fn a_map_alone_is_read_without_the_keys_the_types_around_its_holder_took() {
             "try keyed.decode(UInt8.self, forKey: entry)",
         ),
     );
-    assert_written(&stopping, TAKING);
-    assert_written(&stopping, "try rest.encode(to: encoder)");
+    assert_written(&stopping, &format!("{TAKING} {{ let keyed = "));
+    assert_written(
+        &stopping,
+        "public func encode(to encoder: Encoder) throws { try rest.encode(to: encoder) }",
+    );
+    assert_no_keyed_container(&stopping);
     let clewing = clewing_swift::swift_definition();
     assert_written(
         &clewing,
@@ -79,6 +93,12 @@ fn a_map_alone_is_read_without_the_keys_the_types_around_its_holder_took() {
             "try keyed.decode(UInt8.self, forKey: entry)",
         ),
     );
+    assert_written(&clewing, &format!("{TAKING} {{ let keyed = "));
+    assert_written(
+        &clewing,
+        "public func encode(to encoder: Encoder) throws { try rest.encode(to: encoder) }",
+    );
+    assert_no_keyed_container(&clewing);
     assert_written(
         &clewing,
         "case \"Held\": self = .held(try ClewingHeldPayload(swiftSchemaUnjudged: decoder, \
@@ -273,7 +293,8 @@ fn a_member_after_a_flattened_struct_is_read_without_the_keys_the_struct_took() 
 /// A struct flattened first is read from the payload without its holder's own keys, plain and
 /// through the function it names, and so is a struct beside a member of its holder's own whose
 /// key it does not read. In a holder of no member of its own it is read without the keys the
-/// types around the holder took, where another read of the holder takes them.
+/// types around the holder took, where another read of the holder takes them, and the holder
+/// declares no container of its keys.
 #[test]
 fn a_struct_flattened_first_is_read_without_its_holders_own_keys() {
     let label = "self.label = try container.decode(String.self, forKey: .label)";
@@ -315,10 +336,41 @@ fn a_struct_flattened_first_is_read_without_its_holders_own_keys() {
             handed("tally", "taken + [\"label\"]")
         ),
     );
-    assert_written(&stropping, TAKING);
+    assert_written(&stropping, &format!("{TAKING} {{ let flagPayload = "));
+    assert_written(
+        &stropping,
+        "public func encode(to encoder: Encoder) throws { \
+         try flag.encode(to: encoder); try tally.encode(to: encoder) }",
+    );
+    assert_no_keyed_container(&stropping);
     assert_written(
         &ratlining_swift::swift_definition(),
         "self.stropping = try Stropping(swiftSchemaUnjudged: decoder, \
          swiftSchemaWithout: taken + [\"label\"])",
     );
+}
+
+/// A struct whose every member is a flattened struct reads the first from the payload without the
+/// keys the types around it took, and the second, a model with a rule, unjudged and without the
+/// keys the first took too. It writes each through its encoder and declares no container of its
+/// keys.
+#[test]
+fn a_struct_of_flattened_structs_alone_declares_no_container_of_its_keys() {
+    let seaming = seaming_swift::swift_definition();
+    assert_written(
+        &seaming,
+        &format!(
+            "{TAKING} {{ {}; let notchPayload = try SwiftSchemaPayload(from: decoder, \
+             without: taken + [\"label\"]).value; \
+             self.notch = try SwiftSchemaPayload.read(SwiftSchemaReadNotch.self, \
+             from: notchPayload, at: decoder.codingPath).value }}",
+            pennant("flag", "taken")
+        ),
+    );
+    assert_written(
+        &seaming,
+        "public func encode(to encoder: Encoder) throws { \
+         try flag.encode(to: encoder); try notch.encode(to: encoder) }",
+    );
+    assert_no_keyed_container(&seaming);
 }
