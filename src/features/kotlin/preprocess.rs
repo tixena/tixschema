@@ -124,10 +124,10 @@ pub fn serializers() -> Vec<String> {
     SERIALIZERS.with(RefCell::take)
 }
 
-/// Whether a member typed `def`, flattened into its holder, is handed the keys the holder's own
-/// members do not take, as a serde read hands them: a member that names a function, and one
-/// whose type is not known to hand its object to none.
-pub fn takes_the_rest(def: &FieldDef) -> bool {
+/// Whether a member typed `def`, flattened into its holder, takes none of the keys it reads, as
+/// serde's read of it takes none: a member that names a function, and one whose type is no map
+/// and is not known to hand its object to none, a type the emitter has not written among them.
+pub fn takes_no_key(def: &FieldDef) -> bool {
     if !of(def).is_empty() {
         return true;
     }

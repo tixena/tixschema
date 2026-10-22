@@ -501,8 +501,8 @@ fn the_serializer_the_emitter_writes_for_each_shape_is_its_unjudged_one() {
              input = decoder as JsonDecoder; val obj = input.decodeJsonElement().jsonObject; val \
              id = input.json.decodeFromJsonElement(serializer<String>(), obj.getValue(\"id\")); \
              val stampKeys = (StampUnjudged).descriptor.elementNames.toSet(); val stamp = \
-             lenient.decodeFromJsonElement(StampUnjudged, obj); return Audit(id = id, stamp = \
-             stamp) } }",
+             lenient.decodeFromJsonElement(StampUnjudged, JsonObject(obj - setOf(\"id\"))); \
+             return Audit(id = id, stamp = stamp) } }",
             judged("Audit"),
         ),
         (
