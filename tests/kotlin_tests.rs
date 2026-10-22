@@ -47,6 +47,14 @@ mod tuple_variants;
 #[path = "kotlin_tests/flattened_models.rs"]
 mod flattened_models;
 
+/// An optional flattened member whose type the emitter recorded no keys for: a struct declared
+/// below its holder with a flattened member of its own, and an enum under each tagging but serde's
+/// own.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "kotlin_tests/unrecorded_options_models.rs"]
+mod unrecorded_options_models;
+
 /// A member serde reads and never writes, in a struct of its own and beside a flattened member.
 #[cfg(test)]
 #[cfg(feature = "kotlin")]

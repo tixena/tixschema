@@ -960,10 +960,21 @@ the consumer's view; this is what a change has to keep.
   own, has none to be looked for by (`recorded_keys`): where the member names no function it is
   read inside `runCatching { ... }.getOrNull()`, held wherever its read succeeds and `null`
   wherever it throws, as serde's untagged read of an `Option` reads `None`, and it still takes no
-  key. A member that names a function, and a struct the emitter has not written, are looked for
-  by their keys. A struct takes the keys `flattened_struct_keys` answers, unless
-  `preprocess::takes_no_key` answers for it: a member that names a function, and a type `HANDED`
-  does not note as handing its object to none, so a type the emitter has not written takes none.
+  key. A member that names a function is looked for by its keys. A type `KOTLIN_TAKEN_KEYS`
+  records nothing for, a struct the emitter has not written, an enum under a tag key or untagged,
+  an alias and a type parameter, is looked for by the `descriptor.elementNames` of its serializer
+  where they name an element, and read inside `runCatching` where they name none, the check made
+  at run time: `if ({member}Keys.isEmpty()) runCatching { ... }.getOrNull() else if (...)`. So a
+  serializer written by hand is tried, where TypeScript and Zod refuse a key of the type that does
+  not read, and the plugin's is looked for by its keys.
+  `tests/kotlin_tests/unrecorded_options_models.rs` holds `Fiddling` over `Crowned` declared below
+  it and a holder of an enum under each tagging but serde's own, with serde's write-back of each
+  payload and whether TypeScript and Zod take it, which `tests/generic_types_tests/declarations.rs`
+  measures under `tsc --strict` and `node`; `tests/kotlin_tests/tests.rs` pins the Kotlin text and
+  `run_kotlin_flattened.rs` runs it against serde, beside `Ratline`, which keeps the key test. A
+  struct takes the keys `flattened_struct_keys` answers, unless `preprocess::takes_no_key` answers
+  for it: a member that names a function, and a type `HANDED` does not note as handing its object
+  to none, so a type the emitter has not written takes none.
   `struct_kotlin_tokens` records in `KOTLIN_TAKEN_KEYS`, for every struct it writes, the keys
   `keys_taken_when_flattened` in `src/features/serde.rs` answers: the name and each alias of every
   member serde reads, one serde never writes among them, and neither the struct's own tag nor a
@@ -971,8 +982,7 @@ the consumer's view; this is what a change has to keep.
   serde reads as a map. The descriptor of a serializer the emitter writes declares no element,
   and the plugin's names the tag and a member serde never reads, and no alias. A struct that
   names a function on itself takes none, and is recorded with the keys its read reads, which an
-  optional holder looks for. A struct the emitter has not written is looked for by the
-  `descriptor.elementNames` of its serializer. A map is the one member of its object (section 4).
+  optional holder looks for. A map is the one member of its object (section 4).
 - **A flattened map's key is written and read through the key's own serializer**
   (`flatten_map_field_plan`), where the key's Kotlin type (`kotlin_typename`) is no `String`: it
   is written as `output.json.encodeToJsonElement(<key>, k).jsonPrimitive.content` and read over

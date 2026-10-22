@@ -37,6 +37,13 @@ mod sets;
 #[path = "../flatten_tests/maps.rs"]
 mod flattened_maps;
 
+/// The holders of an optional flattened member whose type the Kotlin emitter recorded no keys for,
+/// and whether TypeScript and Zod take each payload.
+#[path = "../kotlin_tests/unrecorded_options_models.rs"]
+mod unrecorded;
+
+use core::fmt::Write as _;
+
 #[cfg(feature = "chrono")]
 use chrono::{DateTime, Utc};
 #[cfg(feature = "jsonschema")]
@@ -585,6 +592,15 @@ for (const [name, schema, payload] of PAYLOADS) {
   }
 }
 console.log(printed.join("\n"));
+"#;
+
+/// Parses each payload through the schema of the type it is read as, and prints whether each read
+/// takes it.
+const TAKEN_DRIVER: &str = r#"import * as lib from "./lib/index.js";
+
+console.log(
+  JSON.stringify(PAYLOADS.map(([schema, payload]) => lib[schema].safeParse(JSON.parse(payload)).success)),
+);
 "#;
 
 /// Parses each payload of a `Result` through the schema of the type it is read as, the declared
@@ -1558,6 +1574,33 @@ fn flattened_maps() -> String {
     .join("\n\n")
 }
 
+/// The holders of an optional flattened member whose type the Kotlin emitter recorded no keys for:
+/// a bundle of their own, compiled with `tsc --strict` before it is loaded.
+fn unrecorded_options() -> String {
+    [
+        PREAMBLE.to_owned(),
+        unrecorded::Bight::ts_definition(),
+        unrecorded::Bight::zod_schema(),
+        unrecorded::Fiddling::ts_definition(),
+        unrecorded::Fiddling::zod_schema(),
+        unrecorded::Crowned::ts_definition(),
+        unrecorded::Crowned::zod_schema(),
+        unrecorded::Hitched::ts_definition(),
+        unrecorded::Hitched::zod_schema(),
+        unrecorded::Snagging::ts_definition(),
+        unrecorded::Snagging::zod_schema(),
+        unrecorded::Bridled::ts_definition(),
+        unrecorded::Bridled::zod_schema(),
+        unrecorded::Bridling::ts_definition(),
+        unrecorded::Bridling::zod_schema(),
+        unrecorded::Slipped::ts_definition(),
+        unrecorded::Slipped::zod_schema(),
+        unrecorded::Slipping::ts_definition(),
+        unrecorded::Slipping::zod_schema(),
+    ]
+    .join("\n\n")
+}
+
 /// What serde's read of `json` as a `T` prints, as the driver of the `Result`s prints the same
 /// payload: the value, with the keys of each object in order, or the refusal, with each message
 /// of `validate()` where the type judges a model it holds.
@@ -2388,5 +2431,55 @@ fn type_check_an_optional_flattened_struct_refuses_under_zod_a_key_serde_drops()
         format!("{printed}\n"),
         flattened_maps::OPTIONAL_STRUCT_PRINTED,
         "the schema does not read what it is stated to read:\n{failed}"
+    );
+}
+
+/// An optional flattened member whose type the Kotlin emitter recorded no keys for is taken by
+/// TypeScript and by the Zod schema of its holder under `node` where it is absent and where its
+/// type reads, and refused where a key of its type does not read, a payload serde reads as `None`,
+/// dropping the key.
+#[test]
+fn type_check_an_optional_flattened_type_is_refused_where_a_key_of_it_does_not_read() {
+    let taken: Vec<bool> = unrecorded::UNRECORDED
+        .iter()
+        .map(|row| row.taken_by_zod)
+        .collect();
+    let listed: Vec<(String, &str)> = unrecorded::UNRECORDED
+        .iter()
+        .map(|row| (format!("{}$Schema", row.holder), row.json))
+        .collect();
+    let driver = TAKEN_DRIVER.replace("PAYLOADS", &serde_json::to_string(&listed).unwrap());
+    let Some((printed, failed)) = loaded_from("unrecorded", &unrecorded_options(), &driver) else {
+        return;
+    };
+    assert_eq!(
+        printed,
+        serde_json::to_string(&taken).unwrap(),
+        "the schemas do not take what they are stated to take:\n{failed}"
+    );
+    let Some(at) = built_from("unrecorded-payloads", &unrecorded_options()) else {
+        return;
+    };
+    let mut payloads = String::from(
+        "import type { Bridling, Fiddling, Slipping, Snagging } from \"./lib/index.js\";\n",
+    );
+    for (position, row) in unrecorded::UNRECORDED.iter().enumerate() {
+        let _ = writeln!(
+            payloads,
+            "export const row{position}: {} = {};",
+            row.holder, row.json
+        );
+    }
+    fs::write(at.join("tsconfig.consumer.json"), CONSUMER_PROJECT).unwrap();
+    fs::write(at.join("consumer.ts"), &payloads).unwrap();
+    let (_, said) = compiled(&at, "tsconfig.consumer.json").unwrap();
+    fs::remove_dir_all(&at).unwrap();
+    // A row's line is its position after the import.
+    let typed: Vec<bool> = (0..taken.len())
+        .map(|row| !said.contains(&format!("consumer.ts({},", row + 2)))
+        .collect();
+    assert_eq!(
+        typed, taken,
+        "TypeScript does not take what it is stated to take:\n{said}\n{payloads}"
     );
 }

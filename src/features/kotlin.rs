@@ -322,7 +322,7 @@ fn recorded_keys(def: &FieldDef) -> Option<Vec<String>> {
 
 /// The keys a flattened struct typed `def` takes off its holder's object, as a Kotlin set: those
 /// serde reads where the emitter wrote the struct, and the `elementNames` of the descriptor
-/// `serializer` answers for a struct it has not written.
+/// `serializer` answers for any type it recorded no keys for.
 fn flattened_struct_keys(def: &FieldDef, serializer: &str) -> String {
     recorded_keys(def).map_or_else(
         || format!("({serializer}).descriptor.elementNames.toSet()"),
@@ -1396,8 +1396,9 @@ fn own_field_plan(
 /// `deserialize` read (leniently, off `rest`, the object serde hands the member, as the member's
 /// own `preprocess` then corrects it), and the keys it takes, which the members flattened after it
 /// are handed the object without. An optional field is `null` where its own keys are all absent
-/// from `rest`, and, holding a struct the emitter wrote that takes no key and naming no function,
-/// wherever its read throws.
+/// from `rest`, and, naming no function and having no key to look for, wherever its read throws:
+/// a struct the emitter wrote that takes no key, and a type it recorded no keys for whose
+/// serializer's descriptor names no element.
 fn flatten_struct_field_plan(
     field: &KotlinField,
     prop: &str,
@@ -1417,15 +1418,26 @@ fn flatten_struct_field_plan(
         "lenient.decodeFromJsonElement({inner_serializer}, {})",
         preprocess::corrected(functions, rest)
     );
-    let decode = if !field.field_def.is_optional() {
-        format!("val {prop} = {decoded}")
-    } else if functions.is_empty() && recorded_keys(&base).is_some_and(|keys| keys.is_empty()) {
-        // With no key to look for, the struct is held wherever it reads, as serde holds it.
-        format!("val {prop} = runCatching {{ {decoded} }}.getOrNull()")
+    // With no key to look for, the type is held wherever it reads, as serde holds it.
+    let tried = format!("runCatching {{ {decoded} }}.getOrNull()");
+    let looked_for = format!("if ({rest}.keys.any {{ it in {keys_ident} }}) {decoded} else null");
+    let read = if !field.field_def.is_optional() {
+        decoded
+    } else if !functions.is_empty() {
+        looked_for
     } else {
-        format!("val {prop} = if ({rest}.keys.any {{ it in {keys_ident} }}) {decoded} else null")
+        match recorded_keys(&base) {
+            Some(keys) if keys.is_empty() => tried,
+            Some(_) => looked_for,
+            // A serializer written by hand declares no element; the plugin's names the keys.
+            None => format!("if ({keys_ident}.isEmpty()) {tried} else {looked_for}"),
+        }
     };
-    (serialize, format!("{key_read}; {decode}"), keys_ident)
+    (
+        serialize,
+        format!("{key_read}; val {prop} = {read}"),
+        keys_ident,
+    )
 }
 
 /// The `serialize` statement that merges a flattened member's own keys into its holder's object,
