@@ -9,7 +9,10 @@
 //! it. Where the object holds a key of the type that does not read, serde reads `None` and the
 //! Dart read refuses the payload, as TypeScript and Zod refuse it. A type whose keys are not
 //! known, an untagged enum, one declared below its holder and one that names a function on itself
-//! among them, is read as `null` wherever it does not read, as serde reads it.
+//! among them, is read as `null` wherever it does not read, as serde reads it. A member that names
+//! a function and is handed none of its struct's keys reads `null`, as Zod reads it, where serde
+//! refuses what the function answers; the holders of `corrected_options_models.rs` are read as Zod
+//! reads each of their payloads.
 
 #![cfg(all(feature = "dart", feature = "serde"))]
 
@@ -20,6 +23,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tixschema::model_schema;
 
+use super::corrected_options_models::{
+    CORRECTED, frapped_dart, moused_dart, reeved_dart, tholepin_dart, wormed_dart,
+};
 use super::run_dart_validate::{dart, module};
 use super::swift_flattened_options_models::{
     Crowning, EASING, Easing, FLAKING, FLAKING_ABSENT, FLAKING_MISTYPED, Fidding, Flaking, HEELING,
@@ -32,7 +38,8 @@ use super::swift_flattened_options_models::{
     tabling_dart, tarring_dart, thimble_dart, toggle_dart, veering_dart,
 };
 
-/// The function [`Veering`] and [`Cringle`] name, which answers the payload as it was handed.
+/// The function [`Veering`], [`Cringle`] and the holders of [`CORRECTED`] but `Wormed` name, which
+/// answers the payload as it was handed.
 const AS_GIVEN: &str = "dynamic asGiven(dynamic payload) => payload;";
 
 /// What prints a row: the value read, as the row tells it, or what the read says as it refuses
@@ -53,6 +60,21 @@ void row(String name, String Function() read) {
 
 /// What the Dart read says of a key held as a number where its type reads a text.
 const MISTYPED: &str = "refused: type 'int' is not a subtype of type 'String' in type cast";
+
+/// The function [`CORRECTED`]'s `Wormed` names, which answers `null` whatever it is handed, and
+/// what prints the holder a payload reads as, written back with its keys sorted, or `refused`.
+const CORRECTED_HELPERS: &str = "
+dynamic asNull(dynamic payload) => null;
+
+String told(Map<String, dynamic> Function() read) {
+  try {
+    final written = read().entries.toList()..sort((a, b) => a.key.compareTo(b.key));
+    return jsonEncode(Map.fromEntries(written));
+  } catch (_) {
+    return 'refused';
+  }
+}
+";
 
 /// An enum under a tag key alone that names a function on itself, which [`Tucking`] flattens.
 #[model_schema(preprocess = ["asGiven"])]
@@ -234,9 +256,9 @@ fn rows() -> Vec<Row> {
             .in_dart("refused: type 'Null' is not a subtype of type 'int' in type cast"),
         kinking("kinking refused", KINKING_SHORT),
         tarring("tarring refused", TARRING_SHORT),
-        // Refused by both, by the Dart read in the words of its cast.
-        veering("veering refused", LAPPING_ABSENT)
-            .in_dart("refused: type 'Null' is not a subtype of type 'String' in type cast"),
+        // Refused by serde, which hands the function none of the struct's keys: `null`, as Zod
+        // reads it.
+        veering("veering absent", LAPPING_ABSENT).in_dart("null {\"note\":\"n\"}"),
     ]
 }
 
@@ -448,18 +470,61 @@ fn a_flattened_option_of_an_enum_is_read_where_its_tag_or_its_content_key_is_hel
     );
 }
 
-/// A flattened `Option` that names a function, and a struct flattened bare, are read as they were.
+/// A struct flattened bare is read as it was.
 #[test]
-fn a_flattened_option_that_names_a_function_is_read_as_it_was() {
-    assert_written(
-        &veering_dart::dart_definition(),
-        "Veering(note: json['note'] as String,tabling: switch (asGiven(({...json}..remove('note')))) \
-         { final corrected => (corrected == null ? null : Tabling.fromJsonUnjudged(corrected)) },);",
-    );
+fn a_flattened_struct_is_read_as_it_was() {
     assert_written(
         &crowning_dart::dart_definition(),
         "Crowning(note: json['note'] as String,tabling: \
          Tabling.fromJsonUnjudged(({...json}..remove('note'))),);",
+    );
+}
+
+/// A flattened `Option` that names a function is read from what the function answers, in a closure
+/// that answers `null` where that read throws and the object the function is handed holds none of
+/// its struct's keys, or no key at all for an enum, whose keys are not known, and throws again
+/// where it holds one.
+#[test]
+fn a_flattened_option_that_names_a_function_is_tried_on_what_the_function_answers() {
+    let handed = "({...json}..remove('note'))";
+    let tried = |called: &str, read: &str, held: &str| {
+        format!(
+            "switch ({called}({handed})) {{ final corrected => (() {{ try {{ return {read}; }} \
+             catch (_) {{ if ({handed}{held}) rethrow; return null; }} }})() }}"
+        )
+    };
+    let by_label = ".keys.any(const ['label'].contains)";
+    assert_written(
+        &veering_dart::dart_definition(),
+        &format!(
+            "Veering(note: json['note'] as String,tabling: {},);",
+            tried("asGiven", "Tabling.fromJsonUnjudged(corrected)", by_label)
+        ),
+    );
+    assert_written(
+        &reeved_dart::dart_definition(),
+        &format!(
+            "Reeved(note: json['note'] as String,tholepin: {},);",
+            tried("asGiven", "Tholepin.fromJsonUnjudged(corrected)", by_label)
+        ),
+    );
+    assert_written(
+        &wormed_dart::dart_definition(),
+        &format!(
+            "Wormed(note: json['note'] as String,tholepin: {},);",
+            tried("asNull", "Tholepin.fromJsonUnjudged(corrected)", by_label)
+        ),
+    );
+    assert_written(
+        &moused_dart::dart_definition(),
+        &format!(
+            "Moused(frapped: {},note: json['note'] as String,);",
+            tried(
+                "asGiven",
+                "Frapped.fromJsonUnjudged(corrected)",
+                ".isNotEmpty"
+            )
+        ),
     );
 }
 
@@ -468,8 +533,9 @@ fn a_flattened_option_that_names_a_function_is_read_as_it_was() {
 /// it, and a model it holds that breaks its rule refuses the payload in serde's words. Where the
 /// object holds a key its type does not read, a key held as a number or one of two keys, serde
 /// reads `None` and the Dart read refuses the payload, as TypeScript and Zod refuse it, but for a
-/// type whose keys are not known, read as `null` as serde reads it. Each holder is written back
-/// as serde writes it back.
+/// type whose keys are not known, read as `null` as serde reads it. One that names a function,
+/// handed none of its struct's keys, is `null`, as Zod reads it, where serde refuses what the
+/// function answers. Each holder is written back as serde writes it back.
 #[test]
 fn a_flattened_option_reads_and_writes_in_dart_what_serde_reads_and_writes() {
     let rows = rows();
@@ -504,7 +570,7 @@ fn a_flattened_option_reads_and_writes_in_dart_what_serde_reads_and_writes() {
          painter partial: null {}\n\
          kinking refused: refused: 'label': too short: minimum length is 2, got 1\n\
          tarring refused: refused: 'label': too short: minimum length is 2, got 1\n\
-         veering refused: refused: missing field `label`\n",
+         veering absent: refused: missing field `label`\n",
         "serde no longer reads each payload as it did"
     );
     assert_read_in_dart(&rows, "flattened-options");
@@ -603,6 +669,70 @@ fn the_emitted_holders_of_a_flattened_option_have_no_issue() {
         "void main() => print(jsonEncode(const Flaking().toJson()));\n",
     );
     let Some((clean, said)) = dart("flattened-options-analyze", &["analyze"], &source) else {
+        return;
+    };
+    assert!(clean, "{said}");
+    assert!(said.contains("No issues found!"), "{said}");
+}
+
+/// The emitted definitions of the holders of [`CORRECTED`] and of the types they hold.
+fn corrected_definitions() -> Vec<String> {
+    vec![
+        tholepin_dart::dart_definition(),
+        reeved_dart::dart_definition(),
+        wormed_dart::dart_definition(),
+        frapped_dart::dart_definition(),
+        moused_dart::dart_definition(),
+    ]
+}
+
+/// An optional member that names a function is read from what the function answers, and where
+/// that read throws is `null` where the object the function is handed holds none of its struct's
+/// keys, or no key at all for a type whose keys are not known, an enum under a tag alone among
+/// them, and refuses the payload where it holds one: each payload of [`CORRECTED`] reads as the
+/// Zod schema of its holder reads it, written back with its keys sorted, where serde refuses a
+/// type the answer does not read and reads `null` as `None`.
+#[test]
+fn an_optional_type_that_names_a_function_reads_in_dart_as_zod_does() {
+    let mut expected = String::new();
+    let mut main = String::from("void main() {\n");
+    for (at, row) in CORRECTED.iter().enumerate() {
+        assert_eq!(
+            (row.read_back)(row.json),
+            row.serde,
+            "serde no longer reads `{}` as {} did",
+            row.json,
+            row.holder
+        );
+        let _ = writeln!(expected, "{at}: {}", row.zod);
+        let _ = writeln!(
+            main,
+            "  print('{at}: ${{told(() => {}.fromJson(jsonDecode(r'{}')).toJson())}}');",
+            row.holder, row.json
+        );
+    }
+    main.push_str("}\n");
+    let source = module(
+        &corrected_definitions(),
+        &[AS_GIVEN, CORRECTED_HELPERS],
+        &main,
+    );
+    let Some((ran, printed)) = dart("corrected-options", &[], &source) else {
+        return;
+    };
+    assert!(ran, "{printed}");
+    assert_eq!(printed, expected, "the Dart read is not the Zod read");
+}
+
+/// The analyzer passes the holders of an optional member that names a function.
+#[test]
+fn the_emitted_holders_of_an_optional_type_that_names_a_function_have_no_issue() {
+    let source = module(
+        &corrected_definitions(),
+        &[AS_GIVEN, CORRECTED_HELPERS],
+        "void main() => print(jsonEncode(const Reeved(note: 'n').toJson()));\n",
+    );
+    let Some((clean, said)) = dart("corrected-options-analyze", &["analyze"], &source) else {
         return;
     };
     assert!(clean, "{said}");

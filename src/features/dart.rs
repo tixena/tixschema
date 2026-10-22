@@ -779,6 +779,19 @@ fn taken_by(def: &FieldDef) -> Taken {
         .unwrap_or(none)
 }
 
+/// The keys serde reads the struct a member typed `def` describes under, whatever function the
+/// member names: those recorded for a struct whose class was emitted above, and none for any other
+/// type.
+fn struct_keys(def: &FieldDef) -> Vec<String> {
+    let FieldDefType::SiblingType(name, _) = &def.field_type else {
+        return Vec::new();
+    };
+    match DART_TAKEN_KEYS.with(|recorded| recorded.borrow().get(name).cloned()) {
+        Some(Taken::Keys(keys)) => keys,
+        Some(Taken::FirstOf(_)) | None => Vec::new(),
+    }
+}
+
 /// `name` as a method or a parameter of an emitted client, moved off a reserved word and off
 /// `taken`, the names written around it.
 #[cfg(feature = "serde")]
@@ -1494,9 +1507,15 @@ fn first_entry_decode(def: &FieldDef, first: &str) -> String {
 /// handed, whose type takes `taken`. An optional one that names no function reads no value where
 /// `handed` holds none of the keys it is looked for by ([`looked_for_by`]), and is refused where
 /// its type does not read, as TypeScript and Zod refuse it. Where no key is known, a map among
-/// them, it reads no value wherever its type does not read, as serde reads it.
+/// them, it reads no value wherever its type does not read, as serde reads it. An optional one
+/// that names a function and holds no map is read by [`corrected_option`].
 fn flattened_decode(def: &FieldDef, handed: &str, taken: &[String]) -> String {
-    if !def.is_optional() || !member_functions(def).is_empty() {
+    let functions = member_functions(def);
+    let holds_a_map = matches!(def.field_type, FieldDefType::Map(..));
+    if def.is_optional() && !functions.is_empty() && !holds_a_map {
+        return corrected_option(def, functions, handed);
+    }
+    if !def.is_optional() || !functions.is_empty() {
         return member_decode(def, handed, None, Read::Unjudged);
     }
     let read = dart_decode_at(def, def.array_depth, handed, Read::Unjudged);
@@ -1507,6 +1526,30 @@ fn flattened_decode(def: &FieldDef, handed: &str, taken: &[String]) -> String {
     format!(
         "({handed}.keys.any(const [{}].contains) ? {read} : null)",
         listed_names(&keys)
+    )
+}
+
+/// The read of an optional member typed `def` flattened into its holder from `handed`, the object
+/// it is handed, through `functions`, as the holder's Zod schema reads it: the type it holds, read
+/// from what they answer, and where that read throws, an answer of `null` among it, no value where
+/// `handed` holds none of a struct's keys, or no key at all for a type whose keys are not known,
+/// and refused otherwise. An enum's tag stands for none of its variants' members.
+fn corrected_option(def: &FieldDef, functions: &[FunctionName], handed: &str) -> String {
+    let answer = declared("corrected");
+    let read = dart_decode_at(def, def.array_depth, &answer, Read::Unjudged);
+    let keys = struct_keys(def);
+    let held = if keys.is_empty() {
+        format!("{handed}.isNotEmpty")
+    } else {
+        format!(
+            "{handed}.keys.any(const [{}].contains)",
+            listed_names(&keys)
+        )
+    };
+    format!(
+        "switch ({}) {{ final {answer} => (() {{ try {{ return {read}; }} catch (_) {{ if ({held}) \
+         rethrow; return null; }} }})() }}",
+        corrected(functions, handed)
     )
 }
 
@@ -2536,7 +2579,9 @@ fn generic_codec(parameters: &[String]) -> GenericCodec {
 /// a member flattened ahead of it takes, an externally tagged enum from the first of them under a
 /// variant's name, an optional one as no value where none is, an optional struct as no value
 /// where none of its keys is, an optional enum under a tag key as no value where neither its tag
-/// nor its content key is, and an optional map as no value where an entry does not read.
+/// nor its content key is, an optional map as no value where an entry does not read, and an
+/// optional one that names a function as no value where its type does not read from what the
+/// function answers and none of a struct's keys, or no key at all, is.
 fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>) -> String {
     let mut taken_ahead: Vec<String> = tag_key
         .into_iter()

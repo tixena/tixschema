@@ -1567,8 +1567,16 @@ consumer's view; this is what a change has to keep.
   optional map that names no function takes no key, and is read in the closure below, so it is
   `null` wherever an entry does not read as its key and value, as serde's untagged read of an
   `Option` reads `None`; one that names a function is read from what the function answers, where
-  an entry that does not read refuses the payload, as the Rust read refuses it. What a member
-  takes is `taken_by`, the `Taken` recorded for its type in `DART_TAKEN_KEYS`, and nothing for a
+  an entry that does not read refuses the payload, as the Rust read refuses it. Any other optional
+  member that names a function is read by `corrected_option`, as the holder's Zod schema reads
+  it: the type from what the functions answer, held under the name `declared("corrected")`
+  answers, inside a closure called in place that answers `null` where that read throws, an answer
+  of `null` among it, and the object the functions are handed holds none of the struct's keys
+  (`struct_keys`, the `Taken::Keys` recorded for its type whatever function the member names), or
+  no key at all for a type whose keys are not known, an enum among them, and rethrows where it
+  holds one. serde refuses an answer its type does not read. `run_dart_flattened_options.rs`
+  holds each row of `CORRECTED`, in `tests/kotlin_tests/corrected_options_models.rs`, to what Zod
+  reads. What a member takes is `taken_by`, the `Taken` recorded for its type in `DART_TAKEN_KEYS`, and nothing for a
   member that names a function:
   - `Taken::Keys` of a struct, which `struct_dart_tokens` records from
     `keys_taken_when_flattened` in `src/features/serde.rs`, which the Swift and Kotlin emitters
@@ -1708,10 +1716,16 @@ resort; this is what a change has to keep.
   tag key is read from the object without the tag where the slot names a function, and from
   `json` as it was where it names none, so a type such a slot holds is handed the tag, where
   Rust hands it none.
+- **A flattened `Option` of any type but a map that names a function is read as the Zod schema
+  of its holder reads it** (`corrected_option`), where serde parts from Zod: where the type does
+  not read what the functions answer, `null` among it, the member is `null` where the object they
+  are handed holds none of its struct's keys, or no key at all for a type whose keys are not
+  known, an enum among them, and the read's error is thrown again where it holds one.
 - **Every name a read declares is its own.** `dart_schema_dispatch` records the name of each
   function the item's reads call (`called_by`, `DART_CALLED`), and `declared` numbers a name
   where one is called under it (`json2`): `json`, `payload`, `map`, `tag` and `read`, which
-  `Corrects` holds, and the converter of a type parameter (`from_json_argument`), in the
+  `Corrects` holds, `corrected` where a flattened `Option` holds what its functions answer
+  (`corrected_option`), and the converter of a type parameter (`from_json_argument`), in the
   signature of both reads and where a value behind the parameter is read. A member of the type
   still hides a function of its name, as it hides a check's, and the documents say so.
 - **The payload a type's function takes is typed as its read types it**: a
