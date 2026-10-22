@@ -92,12 +92,11 @@ use crate::utils::{
     record_shape_question, record_value_shape, shape_questions_for,
 };
 
-#[cfg(all(feature = "serde", any(feature = "zod", feature = "jsonschema")))]
-use crate::utils::is_open_map;
 #[cfg(feature = "serde")]
 use crate::utils::{
     Declared, TrivialPattern, forget_field_validators, record_declared, record_field_validator,
-    record_open_map, trivial_pattern,
+    record_flattened_beside_parameters, record_open_map, record_open_map_parameters,
+    trivial_pattern,
 };
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
@@ -1641,10 +1640,11 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     if let Some(output) = refused_item_output(&item, &serde_attribute_guard_errors(&item)) {
         return output;
     }
-    // A map flattened beside a member that writes a key shares one level of the object with it,
-    // which no TypeScript type describes, so it is refused here, in every build with serde.
+    // A map flattened beside a member that writes a key, or filling a type parameter flattened
+    // beside one, shares one level of the object with it, which no TypeScript type describes, so
+    // it is refused here, in every build with serde.
     #[cfg(feature = "serde")]
-    if let Some(output) = refused_item_output(&item, &flattened_map_errors(&item)) {
+    if let Some(output) = refused_item_output(&item, &flattened_map_errors(&item, &parsed_args)) {
         return output;
     }
     // `Foo()` and `Foo` are two wire shapes to serde and one to every surface, in every feature
@@ -2574,14 +2574,12 @@ const fn flattened_name_offers_absence(_fld: &FieldDef) -> bool {
     false
 }
 
-/// Whether serde reads a flattened source as the entries of a map: a map, or a type declared above
-/// that writes one. serde reads an `Option` of it as `None` wherever one entry does not read as
+/// Whether serde reads a flattened source as the entries of a map, as the refusal of a map beside
+/// a member reads it. serde reads an `Option` of it as `None` wherever one entry does not read as
 /// the map, and leaves every entry in the object.
 #[cfg(all(feature = "serde", any(feature = "zod", feature = "jsonschema")))]
 fn flattened_as_entries(fld: &FieldDef) -> bool {
-    fld.array_depth == 0
-        && (matches!(fld.field_type, FieldDefType::Map(_, _))
-            || matches!(&fld.field_type, FieldDefType::SiblingType(name, _) if is_open_map(name)))
+    ranges::def_writes_a_map(fld)
 }
 
 /// No source is read as entries where nothing reads `#[serde(flatten)]`.
@@ -3499,24 +3497,42 @@ fn record_item(item: &Item) {
     record_declaration(item);
     #[cfg(feature = "serde")]
     if let Some(ident) = item_schema_ident(item) {
-        record_open_map(&ident.to_string(), ranges::writes_an_open_map(item));
+        let name = ident.to_string();
+        record_open_map(&name, ranges::writes_an_open_map(item));
+        record_open_map_parameters(&name, ranges::open_map_parameter_positions(item));
+        record_flattened_beside_parameters(&name, ranges::flattened_beside_parameters_of(item));
     }
 }
 
 /// The refusal of each map `item` flattens beside another member that writes a key, or beside the
 /// tag serde writes at its level, in a struct and in each variant with named fields, spanned on the
-/// map: a struct's own tag, and an enum's under a tag with no content key.
+/// map, and of each map that fills a type parameter a type flattens beside a key.
 #[cfg(feature = "serde")]
-fn flattened_map_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
+fn flattened_map_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_macro2::TokenStream> {
+    let Some(generics) = item_generics(item) else {
+        return Vec::new();
+    };
+    flattening_levels(item)
+        .into_iter()
+        .flat_map(|(subject, fields, tag)| {
+            ranges::flattened_map_beside_errors(&subject, fields, generics, tag.as_deref())
+        })
+        .chain(ranges::filled_map_errors(item, &args.default_types))
+        .collect()
+}
+
+/// Each level of `item` serde writes a flattened member's entries at, with the subject a refusal
+/// there opens with and the tag serde writes at that level: a struct, with its own tag, and each
+/// variant of an enum, with the enum's tag where it writes no content key.
+#[cfg(feature = "serde")]
+fn flattening_levels(item: &Item) -> Vec<(String, &syn::Fields, Option<String>)> {
     let label = item_label(item);
     if let Item::Struct(item_struct) = item {
-        let tag = struct_tag(item_struct).map(|(key, _)| key);
-        ranges::flattened_map_beside_errors(
-            &format!("{label}: "),
+        vec![(
+            format!("{label}: "),
             &item_struct.fields,
-            &item_struct.generics,
-            tag.as_deref(),
-        )
+            struct_tag(item_struct).map(|(key, _)| key),
+        )]
     } else if let Item::Enum(item_enum) = item {
         let tag = match Tagging::of(item_enum) {
             Tagging::Internal { tag } => Some(tag),
@@ -3529,12 +3545,11 @@ fn flattened_map_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
         item_enum
             .variants
             .iter()
-            .flat_map(|variant| {
-                ranges::flattened_map_beside_errors(
-                    &format!("{label}: variant `{}`, ", variant.ident),
+            .map(|variant| {
+                (
+                    format!("{label}: variant `{}`, ", variant.ident),
                     &variant.fields,
-                    &item_enum.generics,
-                    tag.as_deref(),
+                    tag.clone(),
                 )
             })
             .collect()

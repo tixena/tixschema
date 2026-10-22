@@ -349,13 +349,19 @@ struct Captioned {
     name: String,
 }
 
-/// Untagged, with a map among its variants, which takes every key the enum is handed.
+#[model_schema(enable = ["decode_with"])]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Pointed {
+    a: i32,
+}
+
+/// Untagged, each variant a struct that reads its own keys out of what the enum is handed.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Scores {
     Captioned(Captioned),
-    Tallied(HashMap<String, i32>),
+    Pointed(Pointed),
 }
 
 #[model_schema(enable = ["decode_with"])]
@@ -1204,10 +1210,10 @@ fn a_flattened_untagged_variant_with_no_field_declares_no_key() {
 }
 
 #[test]
-fn a_flattened_untagged_enum_with_a_map_variant_is_handed_no_key_of_the_outer_type() {
+fn a_flattened_untagged_enum_is_handed_no_key_of_the_outer_type() {
     let scoreboard = Scoreboard {
         id: "i".to_owned(),
-        scores: Scores::Tallied(HashMap::from([("a".to_owned(), 1_i32)])),
+        scores: Scores::Pointed(Pointed { a: 1_i32 }),
     };
     let written = serde_json::to_value(&scoreboard).unwrap();
     assert_eq!(written, json!({ "a": 1_i32, "id": "i" }));
@@ -1265,7 +1271,7 @@ fn a_flattened_untagged_enum_no_variant_reads_holds_what_the_enum_was_handed() {
     assert_eq!(
         lines(&report),
         [
-            "the value itself: no variant: found Object {\"a\": String(\"x\")}, tried Captioned, Tallied"
+            "the value itself: no variant: found Object {\"a\": String(\"x\")}, tried Captioned, Pointed"
         ]
     );
     assert_eq!(
@@ -1276,7 +1282,7 @@ fn a_flattened_untagged_enum_no_variant_reads_holds_what_the_enum_was_handed() {
                 vec!["name: missing: expected String".to_owned()]
             ),
             (
-                "Tallied",
+                "Pointed",
                 vec![
                     "a: invalid: expected I32, found String(\"x\"): invalid type: string \"x\", expected i32"
                         .to_owned()
