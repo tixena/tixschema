@@ -523,14 +523,13 @@ struct FlatOverMemberMaybeUntagged {
 
 /// The map-shaped member is the one of the three that stays where it was: serde writes a map's keys
 /// straight into the object being written, which is what flattening is, so the multiplication keeps
-/// its branch and the merge keeps its document.
+/// its branch and the merge keeps its document. Flattened alone: beside a member it is refused.
 #[cfg(any(feature = "jsonschema", feature = "zod"))]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverMemberBucketUntagged {
     #[serde(flatten)]
     either: MemberBucketEither,
-    own: String,
 }
 
 /// The array-shaped and nullable members in unions declared below the object that flattens them,
@@ -2982,14 +2981,13 @@ fn test_a_named_nullable_member_of_a_later_flattened_untagged_enum_is_refused_by
 #[cfg(any(feature = "jsonschema", feature = "zod"))]
 fn test_a_named_map_member_of_a_flattened_untagged_enum_round_trips() {
     let written = serde_json::to_value(FlatOverMemberBucketUntagged {
-        own: "o".to_owned(),
         either: MemberBucketEither::Bucket(MemberBucket(HashMap::from([(
             "k".to_owned(),
             "v".to_owned(),
         )]))),
     })
     .unwrap();
-    assert_eq!(written, serde_json::json!({ "own": "o", "k": "v" }));
+    assert_eq!(written, serde_json::json!({ "k": "v" }));
     serde_json::from_value::<FlatOverMemberBucketUntagged>(written).unwrap();
 }
 

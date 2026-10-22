@@ -396,13 +396,19 @@ struct Captioned {
     name: String,
 }
 
-/// Untagged, with a map among its variants, which takes every key the enum is handed.
+#[model_schema(enable = ["decode_with", "mongodb"])]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Pointed {
+    a: i32,
+}
+
+/// Untagged, each variant a struct that reads its own keys out of what the enum is handed.
 #[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Scores {
     Captioned(Captioned),
-    Tallied(HashMap<String, i32>),
+    Pointed(Pointed),
 }
 
 #[model_schema(enable = ["decode_with", "mongodb"])]
@@ -1390,10 +1396,10 @@ fn an_optional_flattened_map_is_walked_by_nothing_and_takes_every_key() {
 }
 
 #[test]
-fn a_flattened_untagged_enum_with_a_map_variant_is_handed_no_key_of_the_outer_type() {
+fn a_flattened_untagged_enum_is_handed_no_key_of_the_outer_type() {
     let scoreboard = Scoreboard {
         id: "i".to_owned(),
-        scores: Scores::Tallied(HashMap::from([("a".to_owned(), 1_i32)])),
+        scores: Scores::Pointed(Pointed { a: 1_i32 }),
     };
     assert_eq!(written(&scoreboard), doc! { "id": "i", "a": 1_i32 });
     let mut calls = 0_u32;
@@ -1449,7 +1455,7 @@ fn a_flattened_untagged_enum_no_variant_reads_holds_what_the_enum_was_handed() {
         tried!(scoreboard_schema, issues),
         [
             ("Captioned", vec![missing("name", "String")]),
-            ("Tallied", vec![invalid("a", "I32", string("x"))]),
+            ("Pointed", vec![invalid("a", "I32", string("x"))]),
         ]
     );
 }

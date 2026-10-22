@@ -666,6 +666,42 @@ thread_local! {
     /// The names `#[model_schema]` has been written on so far whose value serde writes, flattened,
     /// as the entries of a map. Kept in every build that reads `#[serde(flatten)]`.
     static OPEN_MAPS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+    /// The names `#[model_schema]` has been written on so far whose value serde writes, flattened,
+    /// as the entries of what fills their type parameter at each position held. Kept in every
+    /// build that reads `#[serde(flatten)]`.
+    static OPEN_MAP_PARAMETERS: RefCell<HashMap<String, Vec<usize>>> =
+        RefCell::new(HashMap::new());
+    /// The names `#[model_schema]` has been written on so far that flatten a type parameter beside
+    /// a key serde writes at the same level, each with every such parameter. Kept in every build
+    /// that reads `#[serde(flatten)]`.
+    static FLATTENED_BESIDE_PARAMETERS: RefCell<HashMap<String, Vec<FlattenedParameter>>> =
+        RefCell::new(HashMap::new());
+}
+
+/// A type parameter an item flattens beside a key serde writes at the same level, as
+/// [`FLATTENED_BESIDE_PARAMETERS`] holds it: where it is filled with a map, serde writes the map's
+/// entries at one level with that key.
+#[cfg(feature = "serde")]
+#[derive(Clone)]
+pub struct FlattenedParameter {
+    /// The parameter's position among the type parameters of the item that holds it.
+    pub at: usize,
+    /// The key serde writes beside it.
+    pub beside: FlattenedBeside,
+    /// The type that flattens it: the item itself, or a type the item holds it in.
+    pub flattens: String,
+    /// The parameter as the type that flattens it declares it.
+    pub parameter: String,
+}
+
+/// The key serde writes at one level with a flattened member.
+#[cfg(feature = "serde")]
+#[derive(Clone)]
+pub enum FlattenedBeside {
+    /// Another member, under its name.
+    Member(String),
+    /// The tag of a struct, or of an enum under a tag alone.
+    Tag(String),
 }
 
 #[cfg(feature = "serde")]
@@ -821,6 +857,45 @@ pub fn record_open_map(rust_ident: &str, open: bool) {
             names.borrow_mut().insert(rust_ident.to_owned());
         } else {
             names.borrow_mut().remove(rust_ident);
+        }
+    });
+}
+
+/// The positions of the type parameters of `rust_ident` whose filling serde writes, flattened, as
+/// the entries of a value of `rust_ident`. Empty for a name declared below the item asking.
+#[cfg(feature = "serde")]
+pub fn open_map_parameters(rust_ident: &str) -> Vec<usize> {
+    OPEN_MAP_PARAMETERS.with(|names| names.borrow().get(rust_ident).cloned().unwrap_or_default())
+}
+
+/// Records the positions [`open_map_parameters`] answers for `rust_ident`.
+#[cfg(feature = "serde")]
+pub fn record_open_map_parameters(rust_ident: &str, positions: Vec<usize>) {
+    OPEN_MAP_PARAMETERS.with(|names| {
+        if positions.is_empty() {
+            names.borrow_mut().remove(rust_ident);
+        } else {
+            names.borrow_mut().insert(rust_ident.to_owned(), positions);
+        }
+    });
+}
+
+/// The type parameters `rust_ident` flattens beside a key serde writes at the same level. Empty for
+/// a name declared below the item asking.
+#[cfg(feature = "serde")]
+pub fn flattened_beside_parameters(rust_ident: &str) -> Vec<FlattenedParameter> {
+    FLATTENED_BESIDE_PARAMETERS
+        .with(|names| names.borrow().get(rust_ident).cloned().unwrap_or_default())
+}
+
+/// Records the parameters [`flattened_beside_parameters`] answers for `rust_ident`.
+#[cfg(feature = "serde")]
+pub fn record_flattened_beside_parameters(rust_ident: &str, parameters: Vec<FlattenedParameter>) {
+    FLATTENED_BESIDE_PARAMETERS.with(|names| {
+        if parameters.is_empty() {
+            names.borrow_mut().remove(rust_ident);
+        } else {
+            names.borrow_mut().insert(rust_ident.to_owned(), parameters);
         }
     });
 }

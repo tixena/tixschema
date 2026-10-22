@@ -355,6 +355,384 @@ fn a_type_declared_below_its_holder_is_not_looked_into() {
     );
 }
 
+/// The refusal of a map flattened beside `id` in the field `field` of `holder`.
+#[cfg(feature = "serde")]
+fn beside_id(holder: &str, field: &str) -> String {
+    format!(
+        "model_schema: type `{holder}`: field `{field}`: `#[serde(flatten)]` cannot hold a map \
+         beside other members \u{2014} serde writes the map's entries at one level with `id`, and \
+         no TypeScript type describes both. Write the map under a key of its own."
+    )
+}
+
+/// The refusal of `filling` filling the type parameter `T` that `Letter` flattens beside `id`, in
+/// the place `subject` names.
+#[cfg(feature = "serde")]
+fn filling_letter(subject: &str, filling: &str) -> String {
+    format!(
+        "model_schema: {subject}: `Letter` flattens its type parameter `T` beside `id`, and \
+         `{filling}` fills it with a map \u{2014} serde writes the map's entries at one level \
+         with `id`, and no TypeScript type describes both. Write the map under a key of its own."
+    )
+}
+
+/// What `#[model_schema(default_types(T = ...))]` refuses `source` with, `filling` being what `T`
+/// is declared at.
+#[cfg(feature = "serde")]
+fn refused_with_default(filling: &str, source: &str) -> Vec<String> {
+    refusals(super::super::exec_model_schema(
+        syn::parse_str(&format!("default_types(T = {filling})")).unwrap(),
+        syn::parse_str(&format!("#[derive(Serialize, Deserialize)] {source}")).unwrap(),
+    ))
+}
+
+/// What `#[model_schema(default_types(parameter = String))]` refuses `source` with, written as it
+/// is.
+#[cfg(feature = "serde")]
+fn generic(parameter: &str, source: &str) -> Vec<String> {
+    refusals(super::super::exec_model_schema(
+        syn::parse_str(&format!("default_types({parameter} = String)")).unwrap(),
+        syn::parse_str(source).unwrap(),
+    ))
+}
+
+/// What a generic `source` deriving both of serde's traits is refused with, its one type parameter
+/// `T` declared at `String`.
+#[cfg(feature = "serde")]
+fn refused_generic(source: &str) -> Vec<String> {
+    generic("T", &format!("#[derive(Serialize, Deserialize)] {source}"))
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn an_untagged_enum_with_a_map_among_its_variants_is_refused_flattened_beside_a_member() {
+    let _: Vec<String> = refused("pub struct Captioned { pub name: String }");
+    for scores in [
+        "#[serde(untagged)] pub enum Scores { Captioned(Captioned), Tallied(HashMap<String, i32>) }",
+        "#[serde(untagged)] pub enum Scores { Captioned(Captioned), \
+         Tallied { #[serde(flatten)] counts: HashMap<String, i32> } }",
+    ] {
+        assert_eq!(refused(scores), NONE, "{scores}");
+        assert_eq!(
+            refused(
+                "pub struct Scoreboard { pub id: String, #[serde(flatten)] pub scores: Scores }"
+            ),
+            vec![beside_id("Scoreboard", "scores")],
+            "{scores}"
+        );
+        assert_eq!(
+            refused("pub struct Scored { #[serde(flatten)] pub scores: Scores }"),
+            NONE,
+            "{scores}"
+        );
+    }
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn an_enum_that_writes_no_map_as_its_own_entries_builds_flattened_beside_a_member() {
+    let _: Vec<String> = refused("pub struct Captioned { pub name: String }");
+    let _: Vec<String> = refused("pub struct Counted { pub total: u32 }");
+    for (name, enum_source) in [
+        (
+            "Plainly",
+            "#[serde(untagged)] pub enum Plainly { Captioned(Captioned), Counted(Counted) }",
+        ),
+        (
+            "Named",
+            "pub enum Named { Captioned(Captioned), Tallied(HashMap<String, i32>) }",
+        ),
+        (
+            "Adjacent",
+            "#[serde(tag = \"kind\", content = \"held\")] pub enum Adjacent { \
+             Captioned(Captioned), Tallied(HashMap<String, i32>) }",
+        ),
+    ] {
+        assert_eq!(refused(enum_source), NONE, "{name}");
+        assert_eq!(
+            refused(&format!(
+                "pub struct NamedBoard {{ pub id: String, #[serde(flatten)] pub scores: {name} }}"
+            )),
+            NONE,
+            "{name}"
+        );
+    }
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_generic_type_written_as_its_argument_is_refused_flattened_beside_a_member_at_a_map() {
+    let _: Vec<String> = refused("pub struct Plain { pub text: String }");
+    let _: Vec<String> = refused("pub struct Captioned { pub name: String }");
+    assert_eq!(
+        refused_generic("#[serde(transparent)] pub struct Wrap<T>(T);"),
+        NONE
+    );
+    assert_eq!(generic("T", "type Held<T> = T;"), NONE);
+    assert_eq!(
+        refused_generic("#[serde(untagged)] pub enum Either<T> { Captioned(Captioned), Other(T) }"),
+        NONE
+    );
+    assert_eq!(
+        refused_generic(
+            "pub struct Loose<T> { #[serde(flatten, skip_serializing_if = \"Option::is_none\")] \
+             pub body: Option<T> }"
+        ),
+        NONE
+    );
+    for flattened in [
+        "Wrap<HashMap<String, i32>>",
+        "Held<HashMap<String, i32>>",
+        "Either<HashMap<String, i32>>",
+        "Loose<HashMap<String, i32>>",
+        "Option<Wrap<Box<HashMap<String, i32>>>>",
+        "Wrap<Box<Option<HashMap<String, i32>>>>",
+        "Wrap<Held<HashMap<String, i32>>>",
+    ] {
+        assert_eq!(
+            refused(&format!(
+                "pub struct Crate {{ #[serde(flatten)] pub body: {flattened}, pub id: String }}"
+            )),
+            vec![beside_id("Crate", "body")],
+            "{flattened}"
+        );
+    }
+    for flattened in [
+        "Wrap<Plain>",
+        "Held<Plain>",
+        "Either<Plain>",
+        "Loose<Plain>",
+    ] {
+        assert_eq!(
+            refused(&format!(
+                "pub struct Crate {{ #[serde(flatten)] pub body: {flattened}, pub id: String }}"
+            )),
+            NONE,
+            "{flattened}"
+        );
+    }
+    assert_eq!(
+        refused("pub struct Basket { #[serde(flatten)] pub body: Wrap<HashMap<String, i32>> }"),
+        NONE
+    );
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_type_parameter_flattened_beside_a_member_is_refused_where_a_map_fills_it() {
+    let _: Vec<String> = refused("pub struct Plain { pub text: String }");
+    assert_eq!(
+        refused_generic("pub struct Letter<T> { #[serde(flatten)] pub body: T, pub id: String }"),
+        NONE
+    );
+    for (letter, filling) in [
+        ("Letter<HashMap<String, i32>>", "HashMap<String, i32>"),
+        ("Vec<Letter<HashMap<String, i32>>>", "HashMap<String, i32>"),
+        (
+            "Option<Letter<BTreeMap<String, u8>>>",
+            "BTreeMap<String, u8>",
+        ),
+        (
+            "HashMap<String, Letter<Box<HashMap<String, i32>>>>",
+            "Box<HashMap<String, i32>>",
+        ),
+    ] {
+        assert_eq!(
+            refused(&format!("pub struct Post {{ pub letter: {letter} }}")),
+            vec![filling_letter("type `Post`: field `letter`", filling)],
+            "{letter}"
+        );
+    }
+    assert_eq!(
+        refused("pub struct Post { pub letter: Letter<Plain> }"),
+        NONE
+    );
+    assert_eq!(
+        generic(
+            "T",
+            "#[derive(Serialize, Deserialize)] pub enum Envelope<T> { \
+             Sealed { #[serde(flatten)] body: T, id: String }, \
+             Open { #[serde(flatten)] body: T, note: String } }"
+        ),
+        NONE
+    );
+    assert_eq!(
+        refused("pub struct Mailed { pub envelope: Envelope<HashMap<String, i32>> }").len(),
+        1
+    );
+    assert_eq!(
+        refused("pub enum Posted { Sent { letter: (u8, Letter<HashMap<String, i32>>) } }"),
+        vec![filling_letter(
+            "type `Posted`: variant `Sent`, field `letter`",
+            "HashMap<String, i32>"
+        )]
+    );
+    assert_eq!(
+        refusals(expanded("type Mailbag = Letter<HashMap<String, i32>>;")),
+        vec![filling_letter("type `Mailbag`", "HashMap<String, i32>")]
+    );
+    assert_eq!(
+        refused(
+            "pub struct Skipped { #[serde(skip)] pub letter: Option<Letter<HashMap<String, i32>>> }"
+        ),
+        NONE
+    );
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_type_parameter_flattened_beside_a_member_is_refused_at_a_default_that_is_a_map() {
+    assert_eq!(
+        refused_with_default(
+            "HashMap<String, i32>",
+            "pub struct Letter<T> { #[serde(flatten)] pub body: T, pub id: String }"
+        ),
+        vec![filling_letter(
+            "type `Letter`: `default_types` entry `T`",
+            "HashMap<String, i32>"
+        )]
+    );
+    assert_eq!(
+        refused_with_default(
+            "String",
+            "pub struct Letter<T> { #[serde(flatten)] pub body: T, pub id: String }"
+        ),
+        NONE
+    );
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_parameter_handed_on_to_a_type_that_flattens_it_is_refused_where_a_map_fills_it() {
+    let _: Vec<String> = refused("pub struct Plain { pub text: String }");
+    let _: Vec<String> = refused_generic("#[serde(transparent)] pub struct Wrap<T>(T);");
+    assert_eq!(
+        refused_generic("pub struct Letter<T> { #[serde(flatten)] pub body: T, pub id: String }"),
+        NONE
+    );
+    assert_eq!(
+        generic(
+            "U",
+            "#[derive(Serialize, Deserialize)] pub struct Bag<U> { pub letters: \
+             Vec<Letter<Box<Option<U>>>> }"
+        ),
+        NONE
+    );
+    assert_eq!(
+        refused("pub struct Sack { pub bag: Bag<HashMap<String, i32>> }"),
+        vec![filling_letter(
+            "type `Sack`: field `bag`",
+            "HashMap<String, i32>"
+        )]
+    );
+    assert_eq!(refused("pub struct Sack { pub bag: Bag<Plain> }"), NONE);
+    assert_eq!(
+        refused("pub struct Post { pub letter: Letter<Wrap<HashMap<String, i32>>> }"),
+        vec![filling_letter(
+            "type `Post`: field `letter`",
+            "Wrap<HashMap<String, i32>>"
+        )]
+    );
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_type_parameter_flattened_beside_a_tag_is_refused_where_a_map_fills_it() {
+    assert_eq!(
+        refused_generic(
+            "#[serde(tag = \"kind\")] pub struct Hull<T> { #[serde(flatten)] pub body: T }"
+        ),
+        NONE
+    );
+    let beside_kind = |subject: &str| {
+        format!(
+            "model_schema: type `{subject}`: `Hull` flattens its type parameter `T` beside the \
+             tag `kind`, and `HashMap<String, i32>` fills it with a map \u{2014} serde writes \
+             the tag and the map's entries at one level, and no TypeScript type describes both. \
+             Write the map under a key of its own."
+        )
+    };
+    assert_eq!(
+        refused("pub struct Dock { pub hull: Hull<HashMap<String, i32>> }"),
+        vec![beside_kind("Dock`: field `hull")]
+    );
+    assert_eq!(
+        refused(
+            "pub struct Slip { #[serde(flatten)] pub hull: Hull<HashMap<String, i32>>, \
+             pub id: String }"
+        ),
+        vec![beside_kind("Slip`: field `hull")]
+    );
+}
+
+/// The README quotes each refusal of a map that reaches a flattened member through an untagged
+/// enum, a generic brand or a type parameter as the build answers it: the type parameter's in the
+/// list of what an upgrade asks of a crate as well.
+#[cfg(feature = "serde")]
+#[test]
+fn the_readme_states_the_refusals_of_a_map_reached_another_way_as_the_build_answers_them() {
+    let _: Vec<String> = refused("pub struct Captioned { pub name: String }");
+    let _: Vec<String> = refused(
+        "#[serde(untagged)] pub enum Scores { Captioned(Captioned), \
+         Tallied(HashMap<String, i32>) }",
+    );
+    let _: Vec<String> = refused_generic("#[serde(transparent)] pub struct Wrap<T>(T);");
+    let _: Vec<String> =
+        refused_generic("pub struct Letter<T> { #[serde(flatten)] pub body: T, pub id: String }");
+    for (source, quoted) in [
+        (
+            "pub struct Scoreboard { pub id: String, #[serde(flatten)] pub scores: Scores }",
+            1,
+        ),
+        (
+            "pub struct Crate { #[serde(flatten)] pub body: Wrap<HashMap<String, i32>>, \
+             pub id: String }",
+            1,
+        ),
+        (
+            "pub struct Post { pub letter: Letter<HashMap<String, i32>> }",
+            2,
+        ),
+    ] {
+        let messages = refused(source);
+        assert_eq!(messages.len(), 1, "{source}: {messages:?}");
+        let answered = format!("error: {}", messages[0]);
+        assert_eq!(
+            include_str!("../../../README.md")
+                .matches(&answered)
+                .count(),
+            quoted,
+            "the README no longer quotes: {answered}"
+        );
+    }
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_generic_type_declared_below_its_filling_is_not_looked_into() {
+    assert_eq!(
+        refused("pub struct Post { pub letter: LetterBelow<HashMap<String, i32>> }"),
+        NONE
+    );
+    assert_eq!(
+        refused(
+            "pub struct Crate { #[serde(flatten)] pub body: WrapBelow<HashMap<String, i32>>, \
+             pub id: String }"
+        ),
+        NONE
+    );
+    assert_eq!(
+        refused_generic(
+            "pub struct LetterBelow<T> { #[serde(flatten)] pub body: T, pub id: String }"
+        ),
+        NONE
+    );
+    assert_eq!(
+        refused_generic("#[serde(transparent)] pub struct WrapBelow<T>(T);"),
+        NONE
+    );
+}
+
 #[cfg(feature = "serde")]
 #[test]
 fn a_variant_that_flattens_a_map_beside_a_member_is_refused_under_each_tagging() {

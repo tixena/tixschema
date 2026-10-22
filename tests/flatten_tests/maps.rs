@@ -12,7 +12,7 @@ use tixschema::model_schema;
 /// Every payload, one that serde reads and one with a count of the wrong type for each place a
 /// map is flattened. An optional map is read as `None` wherever an entry does not read, so serde
 /// reads every object its holder reads.
-pub const PAYLOADS: [Payload; 46] = [
+pub const PAYLOADS: [Payload; 53] = [
     Payload {
         json: r#"{"north":2}"#,
         name: "alone",
@@ -189,6 +189,41 @@ pub const PAYLOADS: [Payload; 46] = [
         read_as: "Pintle",
     },
     Payload {
+        json: "{}",
+        name: "an optional generic brand, no entry",
+        read_as: "Thole",
+    },
+    Payload {
+        json: r#"{"north":2}"#,
+        name: "an optional generic brand, a count",
+        read_as: "Thole",
+    },
+    Payload {
+        json: r#"{"north":"x"}"#,
+        name: "an optional generic brand, a count of text",
+        read_as: "Thole",
+    },
+    Payload {
+        json: "{}",
+        name: "an optional untagged enum, no entry",
+        read_as: "Stanchion",
+    },
+    Payload {
+        json: r#"{"total":2}"#,
+        name: "an optional untagged enum, its struct",
+        read_as: "Stanchion",
+    },
+    Payload {
+        json: r#"{"north":2}"#,
+        name: "an optional untagged enum, a count",
+        read_as: "Stanchion",
+    },
+    Payload {
+        json: r#"{"north":"x"}"#,
+        name: "an optional untagged enum, a count of text",
+        read_as: "Stanchion",
+    },
+    Payload {
         json: r#"{"Open":{}}"#,
         name: "optional in a variant, no entry",
         read_as: "Fairlead",
@@ -246,7 +281,7 @@ pub const PAYLOADS: [Payload; 46] = [
 ];
 
 /// Each model a payload is read as, beside serde's read of a payload as it.
-const READS: [(&str, ReadAs); 16] = [
+const READS: [(&str, ReadAs); 18] = [
     ("Thwart", reads::<Thwart>),
     ("Gunwale", reads::<Gunwale>),
     ("Strake", reads::<Strake>),
@@ -260,6 +295,8 @@ const READS: [(&str, ReadAs); 16] = [
     ("Sheave", reads::<Sheave>),
     ("Lazarette", reads::<Lazarette>),
     ("Pintle", reads::<Pintle>),
+    ("Thole", reads::<Thole>),
+    ("Stanchion", reads::<Stanchion>),
     ("Fairlead", reads::<Fairlead>),
     ("Davit", reads::<Davit>),
     ("Capstan", reads::<Capstan>),
@@ -309,6 +346,13 @@ made optional by its alias, a count of text: read
 an optional brand, no entry: read
 an optional brand, a count: read
 an optional brand, a count of text: read
+an optional generic brand, no entry: read
+an optional generic brand, a count: read
+an optional generic brand, a count of text: read
+an optional untagged enum, no entry: read
+an optional untagged enum, its struct: read
+an optional untagged enum, a count: read
+an optional untagged enum, a count of text: read
 optional in a variant, no entry: read
 optional in a variant, a count: read
 optional in a variant, a count of text: read
@@ -467,6 +511,44 @@ pub struct PintleCounts(pub BTreeMap<String, u8>);
 pub struct Pintle {
     #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
     pub counts: Option<PintleCounts>,
+}
+
+/// A brand over its type parameter.
+#[model_schema(no_display, default_types(T = BTreeMap<String, u8>))]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct Oarlock<T>(pub T);
+
+/// An optional brand over its type parameter, filled at a map.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Thole {
+    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
+    pub counts: Option<Oarlock<BTreeMap<String, u8>>>,
+}
+
+/// One way the untagged enum below is written.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Kedge {
+    pub total: u8,
+}
+
+/// An untagged enum with a map among its variants.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum Fender {
+    Anchored(Kedge),
+    Counted(BTreeMap<String, u8>),
+}
+
+/// An optional untagged enum with a map among its variants.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Stanchion {
+    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
+    pub lines: Option<Fender>,
 }
 
 /// An optional map in a variant written under its name.

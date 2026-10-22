@@ -12,7 +12,7 @@ use tixschema::model_schema;
 use super::documents::admits;
 use super::maps::{
     Bilge, Capstan, Coaming, Davit, Fairlead, Fathom, Gunwale, Lazarette, Locker, PAYLOADS, Pintle,
-    Scupper, Sheave, Strake, Thwart, Transom, Windlass, serde_reads,
+    Scupper, Sheave, Stanchion, Strake, Thole, Thwart, Transom, Windlass, serde_reads,
 };
 
 /// Payloads of the models declared here, each with whether serde reads it.
@@ -28,7 +28,7 @@ const MORE_PAYLOADS: [(&str, &str, bool); 8] = [
 ];
 
 /// Each model a payload is read as, beside its JSON Schema.
-const DOCUMENTS: [(&str, Written); 19] = [
+const DOCUMENTS: [(&str, Written); 21] = [
     ("Thwart", Thwart::json_schema),
     ("Gunwale", Gunwale::json_schema),
     ("Strake", Strake::json_schema),
@@ -42,6 +42,8 @@ const DOCUMENTS: [(&str, Written); 19] = [
     ("Sheave", Sheave::json_schema),
     ("Lazarette", Lazarette::json_schema),
     ("Pintle", Pintle::json_schema),
+    ("Thole", Thole::json_schema),
+    ("Stanchion", Stanchion::json_schema),
     ("Fairlead", Fairlead::json_schema),
     ("Davit", Davit::json_schema),
     ("Capstan", Capstan::json_schema),

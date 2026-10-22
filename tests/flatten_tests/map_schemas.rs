@@ -3,7 +3,7 @@
 
 use super::maps::assert_serde_reads_what_zod_reads;
 #[cfg(feature = "zod")]
-use super::maps::{Bilge, Coaming, Locker, Sheave, Thwart, Transom};
+use super::maps::{Bilge, Coaming, Locker, Sheave, Stanchion, Thole, Thwart, Transom};
 
 #[test]
 fn serde_reads_each_payload_zod_reads() {
@@ -59,6 +59,23 @@ fn the_absence_of_an_optional_map_named_through_an_alias_is_dropped() {
         sheave.contains(&format!("  Sheave$OwnSchema{dropped},\n")),
         "{sheave}"
     );
+}
+
+/// The absence of an optional generic brand filled at a map, and of an optional untagged enum with
+/// a map among its variants, is dropped as a map's own is.
+#[cfg(feature = "zod")]
+#[test]
+fn the_absence_of_an_optional_generic_brand_or_untagged_enum_over_a_map_is_dropped() {
+    let dropped = ".and(z.record(z.string(), z.unknown()).transform(() => ({})))";
+    for (name, zod) in [
+        ("Thole", Thole::zod_schema()),
+        ("Stanchion", Stanchion::zod_schema()),
+    ] {
+        assert!(
+            zod.contains(&format!("  {name}$OwnSchema{dropped},\n")),
+            "{zod}"
+        );
+    }
 }
 
 /// The README quotes the absence of an optional map as the emitter writes it.

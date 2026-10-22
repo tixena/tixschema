@@ -1,7 +1,8 @@
 //! The std ranges and the std `Result` an item writes: the check, beside the item, that one
 //! written by its bare name is the std type every surface describes, the refusal of one under
 //! `#[serde(flatten)]`, and that of one as a map key in a build whose map key guard does not run.
-//! Beside them, the refusal of a map under `#[serde(flatten)]` beside another member or a tag.
+//! Beside them, the refusal of a map under `#[serde(flatten)]` beside another member or a tag,
+//! written there or filling a type parameter a type flattens there.
 
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, quote_spanned};
@@ -22,16 +23,24 @@ use super::prefixed_guard_message;
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
 use super::{WRITTEN_AS_OBJECT, unwritable_map_key_message};
 #[cfg(feature = "serde")]
-use crate::features::serde::{brand_field, parse_serde_field_attributes};
+use super::{
+    flattening_levels, forwarded_parameter_position, item_generics, item_label, item_schema_ident,
+    refused_member_named, type_arguments_of, written_spelling,
+};
+#[cfg(feature = "serde")]
+use crate::features::serde::{Tagging, brand_field, parse_serde_field_attributes, struct_tag};
 #[cfg(any(
     feature = "serde",
     not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
 ))]
 use crate::field_type::FieldDef;
 #[cfg(feature = "serde")]
-use crate::field_type::{FieldDefType, get_field_def};
+use crate::field_type::{FieldDefType, get_field_def, is_transparent_wrapper};
 #[cfg(feature = "serde")]
-use crate::utils::is_open_map;
+use crate::utils::{
+    FlattenedBeside, FlattenedParameter, flattened_beside_parameters, is_open_map,
+    open_map_parameters,
+};
 #[cfg(feature = "serde")]
 use syn::ext::IdentExt as _;
 
@@ -249,35 +258,118 @@ pub fn flattened_map_beside_errors(
 }
 
 /// Whether `item` is a type serde writes, flattened, as the entries of a map: a struct whose one
-/// member on the wire is a flattened map, a brand or a struct of one slot over a map, and an alias
-/// of one.
+/// member on the wire is a flattened map, a brand or a struct of one slot over a map, an alias of
+/// one, and an untagged enum with a variant serde writes as one.
 #[cfg(feature = "serde")]
 pub fn writes_an_open_map(item: &Item) -> bool {
+    let parameters = item_generics(item).map_or_default(parameter_names);
+    written_as_itself(item)
+        .into_iter()
+        .any(|ty| writes_a_map(ty, &parameters))
+}
+
+/// The positions of the type parameters of `item` whose filling serde writes, flattened, as the
+/// entries of a value of `item`, where `item` writes it as it writes a map in
+/// [`writes_an_open_map`].
+#[cfg(feature = "serde")]
+pub fn open_map_parameter_positions(item: &Item) -> Vec<usize> {
+    let mut positions: Vec<usize> = written_as_itself(item)
+        .into_iter()
+        .flat_map(|ty| parameters_written_as(item, ty))
+        .collect();
+    positions.sort_unstable();
+    positions.dedup();
+    positions
+}
+
+/// The types serde writes, flattened, as the entries of a value of `item` itself: a brand's value,
+/// the one slot of a struct, the one member on the wire of a struct with no tag of its own where
+/// it is flattened, an alias's value, and the same of each variant of an untagged enum.
+#[cfg(feature = "serde")]
+fn written_as_itself(item: &Item) -> Vec<&Type> {
     if let Item::Struct(item_struct) = item {
-        let parameters = parameter_names(&item_struct.generics);
         if let Some(inner) = brand_field(item_struct) {
-            return writes_a_map(&inner.ty, &parameters);
+            return vec![&inner.ty];
         }
-        if let Fields::Unnamed(slots) = &item_struct.fields {
-            return slots.unnamed.len() == 1
-                && slots
-                    .unnamed
-                    .iter()
-                    .all(|slot| writes_a_map(&slot.ty, &parameters));
+        // A struct's own tag stands beside its flattened member, which `filled_map_errors` refuses
+        // where a map fills it.
+        if struct_tag(item_struct).is_some() {
+            return Vec::new();
         }
-        let mut written = item_struct
-            .fields
+        entries_of_its_own(&item_struct.fields)
+    } else if let Item::Enum(item_enum) = item {
+        if !matches!(Tagging::of(item_enum), Tagging::Untagged) {
+            return Vec::new();
+        }
+        item_enum
+            .variants
             .iter()
-            .filter(|field| !parse_serde_key_omission(&field.attrs).absent_from_wire());
-        matches!(
-            (written.next(), written.next()),
-            (Some(only), None) if flattened_map(only, &parameters)
-        )
+            .filter(|variant| !parse_serde_key_omission(&variant.attrs).absent_from_wire())
+            .flat_map(|variant| entries_of_its_own(&variant.fields))
+            .collect()
     } else if let Item::Type(item_type) = item {
-        writes_a_map(&item_type.ty, &parameter_names(&item_type.generics))
+        vec![&*item_type.ty]
     } else {
-        false
+        Vec::new()
     }
+}
+
+/// The type of the member of `fields` serde writes as the value that holds it: its one slot, or
+/// its one member on the wire where that member is flattened.
+#[cfg(feature = "serde")]
+fn entries_of_its_own(fields: &Fields) -> Vec<&Type> {
+    if let Fields::Unnamed(slots) = fields {
+        return if slots.unnamed.len() == 1 {
+            slots.unnamed.iter().map(|slot| &slot.ty).collect()
+        } else {
+            Vec::new()
+        };
+    }
+    let mut written = fields
+        .iter()
+        .filter(|field| !parse_serde_key_omission(&field.attrs).absent_from_wire());
+    match (written.next(), written.next()) {
+        (Some(only), None) if parse_serde_field_attributes(&only.attrs).flatten => vec![&only.ty],
+        _ => Vec::new(),
+    }
+}
+
+/// The positions among `item`'s type parameters of each one serde writes `ty` as: through
+/// `Option` and the transparent wrappers, through what [`forwarded_parameter_position`] reads, and
+/// through a type declared above at each position it writes as itself.
+#[cfg(feature = "serde")]
+fn parameters_written_as(item: &Item, ty: &Type) -> Vec<usize> {
+    let held = unwrapped(ty);
+    if let Some(at) = forwarded_parameter_position(item, held) {
+        return vec![at];
+    }
+    let Type::Path(named) = held else {
+        return Vec::new();
+    };
+    let Some(last) = named.path.segments.last().filter(|_| named.qself.is_none()) else {
+        return Vec::new();
+    };
+    let arguments: Vec<&Type> = type_arguments_of(&last.arguments).collect();
+    open_map_parameters(&last.ident.to_string())
+        .into_iter()
+        .filter_map(|at| arguments.get(at))
+        .flat_map(|argument| parameters_written_as(item, argument))
+        .collect()
+}
+
+/// `ty` under every `Option` and transparent wrapper it is written in, as [`get_field_def`] reads
+/// through them.
+#[cfg(feature = "serde")]
+fn unwrapped(ty: &Type) -> &Type {
+    let mut current = written_type(ty);
+    while let Type::Path(named) = current
+        && let Some(last) = named.path.segments.last()
+        && (last.ident == "Option" || is_transparent_wrapper(&last.ident.to_string()))
+        && let Some(inner) = type_arguments_of(&last.arguments).next()
+    {
+        current = written_type(inner);
+    }
+    current
 }
 
 /// Whether `field` is a named field under `#[serde(flatten)]` whose type writes a map.
@@ -287,14 +379,272 @@ fn flattened_map(field: &syn::Field, parameters: &[String]) -> bool {
 }
 
 /// Whether serde writes `ty` as a map, through `Option` and the transparent wrappers: a map, or a
-/// type declared above that writes one.
+/// type declared above that writes one, itself or at what fills its type parameter.
 #[cfg(feature = "serde")]
 fn writes_a_map(ty: &Type, parameters: &[String]) -> bool {
     let mut def = get_field_def("", ty, "");
     def.erase_type_parameters(parameters);
-    def.array_depth == 0
-        && (matches!(def.field_type, FieldDefType::Map(_, _))
-            || matches!(&def.field_type, FieldDefType::SiblingType(name, _) if is_open_map(name)))
+    def_writes_a_map(&def)
+}
+
+/// Whether serde writes `def` as a map: a map, a name recorded as an open map, or a name recorded
+/// as writing its argument at a position as itself, filled there with a map.
+#[cfg(feature = "serde")]
+pub fn def_writes_a_map(def: &FieldDef) -> bool {
+    if def.array_depth != 0 {
+        return false;
+    }
+    if let FieldDefType::SiblingType(name, arguments) = &def.field_type {
+        return is_open_map(name)
+            || open_map_parameters(name)
+                .into_iter()
+                .any(|at| arguments.get(at).is_some_and(def_writes_a_map));
+    }
+    matches!(def.field_type, FieldDefType::Map(_, _))
+}
+
+/// The type parameters `item` flattens beside a key serde writes at the same level: at each of its
+/// own levels, and where it fills, with one of them, a type that flattens a parameter so.
+#[cfg(feature = "serde")]
+pub fn flattened_beside_parameters_of(item: &Item) -> Vec<FlattenedParameter> {
+    let (Some(ident), Some(generics)) = (item_schema_ident(item), item_generics(item)) else {
+        return Vec::new();
+    };
+    let parameters = parameter_names(generics);
+    if parameters.is_empty() {
+        return Vec::new();
+    }
+    let flattens = ident.to_string();
+    let mut held = Vec::new();
+    for (_, fields, tag) in flattening_levels(item) {
+        let written: Vec<&syn::Field> = fields
+            .iter()
+            .filter(|field| !parse_serde_key_omission(&field.attrs).absent_from_wire())
+            .collect();
+        for (index, field) in written.iter().enumerate() {
+            if !parse_serde_field_attributes(&field.attrs).flatten {
+                continue;
+            }
+            let beside = written
+                .iter()
+                .enumerate()
+                .find(|(other, _)| *other != index)
+                .and_then(|(_, other)| other.ident.as_ref())
+                .map(|member| FlattenedBeside::Member(member.unraw().to_string()))
+                .or_else(|| tag.clone().map(FlattenedBeside::Tag));
+            let Some(written_beside) = beside else {
+                continue;
+            };
+            for at in parameters_written_as(item, &field.ty) {
+                held.push(FlattenedParameter {
+                    at,
+                    beside: written_beside.clone(),
+                    flattens: flattens.clone(),
+                    parameter: parameters[at].clone(),
+                });
+            }
+        }
+    }
+    let own = held.clone();
+    let recorded = |name: &str| {
+        if name == flattens {
+            own.clone()
+        } else {
+            flattened_beside_parameters(name)
+        }
+    };
+    let mut fillings = Vec::new();
+    for (_, ty) in written_types(item) {
+        flattened_fillings(ty, &recorded, &mut fillings);
+    }
+    for (argument, filled) in fillings {
+        for at in parameters_written_as(item, argument) {
+            held.push(FlattenedParameter {
+                at,
+                ..filled.clone()
+            });
+        }
+    }
+    // One record per parameter: a map that fills it is refused once.
+    let mut seen: Vec<usize> = Vec::new();
+    held.retain(|filled| {
+        let first = !seen.contains(&filled.at);
+        seen.push(filled.at);
+        first
+    });
+    held
+}
+
+/// The refusal of each map that fills, in a type `item` writes, a type parameter a type flattens
+/// beside a key serde writes at the same level, spanned on the map: in its members, in an alias's
+/// value, and in each of `default_types`, where the entry fills the item's own parameter.
+#[cfg(feature = "serde")]
+pub fn filled_map_errors(item: &Item, default_types: &[(Ident, Type)]) -> Vec<TokenStream> {
+    let Some(generics) = item_generics(item) else {
+        return Vec::new();
+    };
+    let parameters = parameter_names(generics);
+    let label = item_label(item);
+    let flattens = item_schema_ident(item).map(ToString::to_string);
+    let own = flattened_beside_parameters_of(item);
+    let recorded = |name: &str| {
+        if flattens.as_deref() == Some(name) {
+            own.clone()
+        } else {
+            flattened_beside_parameters(name)
+        }
+    };
+    let mut refused: Vec<(String, &Type, FlattenedParameter)> = Vec::new();
+    for (member, ty) in written_types(item) {
+        let subject = member.map_or_else(
+            || format!("{label}: "),
+            |named| format!("{label}: {named}: "),
+        );
+        let mut fillings = Vec::new();
+        flattened_fillings(ty, &recorded, &mut fillings);
+        refused.extend(
+            fillings
+                .into_iter()
+                .filter(|(argument, _)| writes_a_map(argument, &parameters))
+                .map(|(argument, filled)| (subject.clone(), argument, filled)),
+        );
+    }
+    for (entry, filling) in default_types {
+        let subject = format!("{label}: `default_types` entry `{entry}`: ");
+        let at = parameters.iter().position(|parameter| entry == parameter);
+        if writes_a_map(filling, &parameters) {
+            refused.extend(
+                own.iter()
+                    .filter(|filled| Some(filled.at) == at)
+                    .map(|filled| (subject.clone(), filling, filled.clone())),
+            );
+        }
+        let mut fillings = Vec::new();
+        flattened_fillings(filling, &recorded, &mut fillings);
+        refused.extend(
+            fillings
+                .into_iter()
+                .filter(|(argument, _)| writes_a_map(argument, &parameters))
+                .map(|(argument, filled)| (subject.clone(), argument, filled)),
+        );
+    }
+    refused
+        .into_iter()
+        .map(|(subject, argument, filled)| {
+            let message = filled_map_message(&subject, argument, &filled);
+            syn::Error::new_spanned(argument, prefixed_guard_message(&message)).to_compile_error()
+        })
+        .collect()
+}
+
+/// The refusal of `argument`, a map, filling the parameter `filled` holds.
+#[cfg(feature = "serde")]
+fn filled_map_message(subject: &str, argument: &Type, filled: &FlattenedParameter) -> String {
+    let flattened = format!(
+        "{subject}`{}` flattens its type parameter `{}`",
+        filled.flattens, filled.parameter
+    );
+    let filling = written_spelling(argument);
+    match &filled.beside {
+        FlattenedBeside::Member(member) => format!(
+            "{flattened} beside `{member}`, and `{filling}` fills it with a map \u{2014} serde \
+             writes the map's entries at one level with `{member}`, and no TypeScript type \
+             describes both. Write the map under a key of its own."
+        ),
+        FlattenedBeside::Tag(key) => format!(
+            "{flattened} beside the tag `{key}`, and `{filling}` fills it with a map \u{2014} \
+             serde writes the tag and the map's entries at one level, and no TypeScript type \
+             describes both. Write the map under a key of its own."
+        ),
+    }
+}
+
+/// Each type `item` writes, beside the member that writes it: every member on the wire of a struct
+/// and of each variant on the wire of an enum, and an alias's value under no member.
+#[cfg(feature = "serde")]
+fn written_types(item: &Item) -> Vec<(Option<String>, &Type)> {
+    let members: Vec<(Option<&Ident>, &Fields)> = if let Item::Struct(item_struct) = item {
+        vec![(None, &item_struct.fields)]
+    } else if let Item::Enum(item_enum) = item {
+        item_enum
+            .variants
+            .iter()
+            .filter(|variant| !parse_serde_key_omission(&variant.attrs).absent_from_wire())
+            .map(|variant| (Some(&variant.ident), &variant.fields))
+            .collect()
+    } else if let Item::Type(item_type) = item {
+        return vec![(None, &*item_type.ty)];
+    } else {
+        Vec::new()
+    };
+    members
+        .into_iter()
+        .flat_map(|(variant, fields)| {
+            fields
+                .iter()
+                .enumerate()
+                .filter(|(_, field)| !parse_serde_key_omission(&field.attrs).absent_from_wire())
+                .map(move |(position, field)| {
+                    (
+                        Some(refused_member_named(variant, position, field)),
+                        &field.ty,
+                    )
+                })
+        })
+        .collect()
+}
+
+/// Each argument `ty` fills a type parameter with, at any depth, where the type it is handed to
+/// flattens that parameter beside a key, as `recorded` answers for that type's name, beside what is
+/// recorded of the parameter.
+#[cfg(feature = "serde")]
+fn flattened_fillings<'ty>(
+    ty: &'ty Type,
+    recorded: &dyn Fn(&str) -> Vec<FlattenedParameter>,
+    found: &mut Vec<(&'ty Type, FlattenedParameter)>,
+) {
+    match written_type(ty) {
+        Type::Path(named) => {
+            let Some(last) = named.path.segments.last() else {
+                return;
+            };
+            // serde writes no value of what a marker is written with.
+            if last.ident == "PhantomData" {
+                return;
+            }
+            let arguments: Vec<&Type> = type_arguments_of(&last.arguments).collect();
+            for filled in recorded(&last.ident.to_string()) {
+                if let Some(argument) = arguments.get(filled.at) {
+                    found.push((argument, filled));
+                }
+            }
+            for segment in &named.path.segments {
+                for argument in type_arguments_of(&segment.arguments) {
+                    flattened_fillings(argument, recorded, found);
+                }
+            }
+        }
+        Type::Array(array) => flattened_fillings(&array.elem, recorded, found),
+        Type::Slice(slice) => flattened_fillings(&slice.elem, recorded, found),
+        Type::Paren(paren) => flattened_fillings(&paren.elem, recorded, found),
+        Type::Reference(reference) => flattened_fillings(&reference.elem, recorded, found),
+        Type::Tuple(tuple) => {
+            for elem in &tuple.elems {
+                flattened_fillings(elem, recorded, found);
+            }
+        }
+        // None of these holds a value serde writes as a type argument's filling.
+        Type::FnPtr(_)
+        | Type::Group(_)
+        | Type::ImplTrait(_)
+        | Type::Infer(_)
+        | Type::Macro(_)
+        | Type::Never(_)
+        | Type::Ptr(_)
+        | Type::TraitObject(_)
+        | Type::Verbatim(_)
+        | _ => {}
+    }
 }
 
 /// The names of the type parameters `generics` declares.
