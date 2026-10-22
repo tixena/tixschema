@@ -78,7 +78,7 @@ pub const UNWRITTEN: &str = r#"{"label":"n","hidden":1,"north":2}"#;
 pub const SCUDDING: &str = r#"{"Bay":{"label":"n"},"label":"m","north":2}"#;
 
 /// A variant's entry under its `alias`, beside a member of its holder's own and ahead of a member
-/// that names a function: serde reads it, and the Kotlin read of an enum refuses it.
+/// that names a function, which serde reads as the variant.
 pub const UNDER_AN_ALIAS: [&str; 2] = [
     r#"{"Quay":{"label":"s"},"note":"a"}"#,
     r#"{"Quay":{"label":"s"},"north":2}"#,

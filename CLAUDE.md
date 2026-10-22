@@ -1007,6 +1007,23 @@ the consumer's view; this is what a change has to keep.
   method on a brand with a bound. A check and what a held model reports choose nothing: the
   enum's own serializer refuses them after the choice, as serde's read does. `Helper::Unbounded`
   answers for a type the emitter has not written.
+- **A name serde reads beside the one it writes is read too.** `aliases::written_on` reads the
+  `#[serde(alias)]` names of a variant and of a field, and `KotlinField::aliases` holds a member's,
+  none for a flattened member or one serde never reads. `dispatched_tagged_variant` writes each
+  variant's arm under its written name and each alias, under every tagging. `aliases::keys_named`
+  reads a member's alias as its wire name in the object the member is read from, and refuses two
+  names of one member as serde refuses a duplicate field: in the `{Type}Unjudged` `kept_unjudged`
+  writes for a class the plugin reads, a `JsonTransformingSerializer` over the plugin's, after the
+  type's own functions and ahead of `preprocess::keyed`; in the object `flatten_merging_serializer`
+  reads every member from; and in the object a tagged or an untagged enum hands a variant's class
+  (`members_renamed`). A plain enum that names no function is read by
+  `aliases::plain_enum_serializer`, a `{Type}Unjudged` written by hand that reads each variant under
+  its name and each alias, and carries no opt-in. One that names a function keeps
+  `read::kept_plain`, and `aliases::text_named` reads the alias after the functions. The write keeps
+  the written name. A struct with an aliased member records in `KOTLIN_TAKEN_KEYS` the keys
+  `keys_taken_when_flattened` answers, its aliases among them, which its descriptor's `elementNames`
+  do not hold. `@JsonNames` is not used: it is experimental, and the build compiles under `-Werror`
+  with no opt-in to it.
 - **A serializer the emitter writes binds a parameter to `Any`** (`COMPOSED`), which
   `KSerializer<T>.nullable` requires, and one that delegates to the plugin's binds none. So
   `unjudged_serializer` composes a model written with a nullable argument through its own
@@ -1021,7 +1038,12 @@ the consumer's view; this is what a change has to keep.
   member flattened after a struct and beside a member of its holder's own, and of an externally
   tagged enum flattened beside other keys, `tests/kotlin_tests/tests.rs` pins their reads, and
   `run_kotlin_flattened.rs` reads each under the toolchain, against serde, and writes back the
-  structs. A variant's entry under an alias is held apart (`UNDER_AN_ALIAS`).
+  structs, a variant's entry under an alias among them (`UNDER_AN_ALIAS`).
+  `tests/kotlin_tests/aliased_models.rs` holds the models of a variant and a member under an
+  alias, under each tagging, in a plain enum, a struct the plugin reads, one read by hand and one
+  flattened, `tests/kotlin_tests/aliased.rs` pins their text and what serde reads of each
+  payload, and `run_kotlin_aliased.rs` reads and writes back each payload under the toolchain,
+  against serde.
 
 #### The Kotlin client's `preprocess`
 

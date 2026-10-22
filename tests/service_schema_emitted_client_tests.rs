@@ -401,6 +401,18 @@ mod flattened_models;
 #[path = "service_schema_emitted_client_tests/run_kotlin_flattened.rs"]
 mod run_kotlin_flattened;
 
+/// The models a name serde reads beside the one it writes is read under. Declared after the
+/// module that declares the member they flatten.
+#[cfg(all(test, feature = "kotlin", feature = "serde"))]
+#[path = "kotlin_tests/aliased_models.rs"]
+mod aliased_models;
+
+/// A variant and a member under the `alias` serde reads them under, read by the emitted Kotlin
+/// types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_aliased.rs"]
+mod run_kotlin_aliased;
+
 /// A map that is the one member of its object, and a member that names a function flattened at
 /// each place a member can be handed fewer keys than its object holds.
 #[cfg(test)]

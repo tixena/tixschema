@@ -10,6 +10,7 @@
 //! plugin's or the written one, and `{Type}Serializer`, which reads through it and judges. The
 //! unjudged one calls each function a `preprocess` names, as `preprocess` writes the call.
 
+mod aliases;
 mod preprocess;
 mod read;
 mod validate;
@@ -84,6 +85,9 @@ const KOTLIN_HARD_KEYWORDS: [&str; 28] = [
 /// What a sealed interface declares the method each of its variants overrides as.
 const VALIDATE_DECLARED: &str = "{ fun validate(): List<String> }";
 
+/// The payload a serializer that corrects the plugin's reads, `transformDeserialize`'s parameter.
+const ELEMENT: &str = "element";
+
 /// What `#[model_schema(...)]` wrote on an item, as this module reads it.
 pub struct KotlinArgs<'args> {
     /// The functions `check` names on the type, each taking the whole value.
@@ -107,6 +111,8 @@ pub struct KotlinArgs<'args> {
 /// Kotlin property spelling by [`kotlin_property_name`]), its wire name, whether it is a
 /// `#[serde(flatten)]` source, and the [`FieldDef`] describing its type.
 struct KotlinField {
+    /// The names serde reads the member under beside its wire name, its aliases.
+    aliases: Vec<String>,
     /// Where the JSON of the default serde reads for an absent key is written.
     default_at: Option<String>,
     /// Whether that default is of a member whose type names a parameter of the class: the empty
@@ -518,12 +524,18 @@ fn collect_kotlin_fields(
             field_def.nullable_levels.push(field_def.array_depth);
         }
         let defaulted = default_at(&rust_name);
+        let flatten = field_is_flatten(&field.attrs);
         collected.push(KotlinField {
+            aliases: if flatten || omission.skips_deserializing {
+                Vec::new()
+            } else {
+                aliases::written_on(&field.attrs)
+            },
             empty_default: defaulted.is_some()
                 && field_reaches_type_parameter(&field_def, type_parameters),
             default_at: defaulted,
             field_def,
-            flatten: field_is_flatten(&field.attrs),
+            flatten,
             never_written: has_serde_skip_serializing(&field.attrs),
             rust_name,
             wire_name,
@@ -1587,7 +1599,8 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
 /// keys into the enclosing object, tolerant of the other fields' own keys on decode. A struct with
 /// a member serde never writes earns it too: `kotlinx.serialization` has no annotation for a
 /// member read and never written. `own` is the type's `preprocess`, which corrects the object
-/// every member is read from.
+/// every member is read from, and each alias of `renamed` is read in that object as the name it
+/// stands for.
 fn flatten_merging_serializer(
     export_name: &str,
     generic_params: &str,
@@ -1595,6 +1608,7 @@ fn flatten_merging_serializer(
     fields: &[KotlinField],
     own_tag: Option<&(String, String)>,
     own: &[FunctionName],
+    renamed: &[(String, String)],
 ) -> String {
     let self_type = format!("{export_name}{generic_params}");
     let serializer_head = read::written_head(export_name, type_parameters);
@@ -1620,7 +1634,10 @@ fn flatten_merging_serializer(
         "override fun deserialize(decoder: Decoder): {self_type} {{ \
          val input = decoder as JsonDecoder; val obj = {}.jsonObject; {}; \
          return {export_name}({}) }}",
-        preprocess::corrected(own, "input.decodeJsonElement()"),
+        aliases::keys_named(
+            &preprocess::corrected(own, "input.decodeJsonElement()"),
+            renamed
+        ),
         plan.deserialize_stmts.join("; "),
         plan.ctor_args.join(", "),
     );
@@ -1632,21 +1649,32 @@ fn flatten_merging_serializer(
 }
 
 /// The unjudged serializer of a type the plugin writes a serializer for: the plugin's own, behind
-/// the functions `own` names on the type and those of each member of `keyed`, where there are
-/// any.
+/// `correction`, the Kotlin expression [`ELEMENT`] is read as, where that is not [`ELEMENT`]
+/// itself.
 fn kept_unjudged(
     export_name: &str,
     generic_params: &str,
     type_parameters: &[String],
-    own: &[FunctionName],
-    keyed: &[(String, Vec<FunctionName>)],
+    correction: &str,
 ) -> String {
-    if own.is_empty() && keyed.is_empty() {
+    if correction == ELEMENT {
         read::generated(export_name, generic_params, type_parameters)
     } else {
-        let correction = preprocess::keyed(&preprocess::corrected(own, "element"), keyed);
-        read::transforming(export_name, generic_params, type_parameters, &correction)
+        read::transforming(export_name, generic_params, type_parameters, correction)
     }
+}
+
+/// Notes the keys the struct written under `rust_ident` takes off its holder's object when it is
+/// flattened, `None` where the `elementNames` of its serializer's descriptor are those keys.
+fn note_taken_keys(rust_ident: &str, taken: Option<Vec<String>>) {
+    KOTLIN_TAKEN_KEYS.with(|noted| {
+        let mut recorded = noted.borrow_mut();
+        if let Some(keys) = taken {
+            recorded.insert(rust_ident.to_owned(), keys);
+        } else {
+            recorded.remove(rust_ident);
+        }
+    });
 }
 
 /// The Kotlin tokens a named-field struct earns: a `data class` with its `validate()` and its two
@@ -1682,15 +1710,13 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
     let written_by_hand = fields
         .iter()
         .any(|field| field.flatten || field.never_written);
-    KOTLIN_TAKEN_KEYS.with(|noted| {
-        let mut recorded = noted.borrow_mut();
-        if written_by_hand {
-            let taken = keys_taken_when_flattened(&item_struct.fields, rule, args.preprocess);
-            recorded.insert(rust_ident.clone(), taken);
-        } else {
-            recorded.remove(&rust_ident);
-        }
-    });
+    let renamed = aliases::of_members(&fields);
+    // The descriptor of the plugin's serializer names no alias.
+    note_taken_keys(
+        &rust_ident,
+        (written_by_hand || !renamed.is_empty())
+            .then(|| keys_taken_when_flattened(&item_struct.fields, rule, args.preprocess)),
+    );
     let handed_on = fields
         .iter()
         .any(|field| field.flatten && preprocess::takes_no_key(&field.field_def));
@@ -1724,6 +1750,7 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
             &fields,
             own_tag.as_ref(),
             args.preprocess,
+            &renamed,
         );
         format!(
             "@Serializable(with = {export_name}Serializer::class) {body} {{ {validated} }} \
@@ -1745,8 +1772,13 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
                 &export_name,
                 &generic_params,
                 &type_parameters,
-                args.preprocess,
-                &plugin.keyed(&fields)
+                &preprocess::keyed(
+                    &aliases::keys_named(
+                        &preprocess::corrected(args.preprocess, ELEMENT),
+                        &renamed
+                    ),
+                    &plugin.keyed(&fields)
+                )
             ),
             read::judged(&export_name, &generic_params, &type_parameters, false)
         )
@@ -1817,8 +1849,7 @@ fn value_class_tokens(
             &export_name,
             &generic_params,
             &type_parameters,
-            args.preprocess,
-            &[],
+            &preprocess::corrected(args.preprocess, ELEMENT),
         )
     } else {
         let correction = preprocess::corrected(args.preprocess, "input.decodeJsonElement()");
@@ -2178,6 +2209,15 @@ fn variant_keyed(
     }
 }
 
+/// Each alias of a member of a variant's `payload`, beside the name the member is written under.
+fn members_renamed(payload: &VariantPayload) -> Vec<(String, String)> {
+    if let VariantPayload::Named(fields) = payload {
+        aliases::of_members(fields)
+    } else {
+        Vec::new()
+    }
+}
+
 /// One variant's own subclass, `serialize` arm and `deserialize` arm, for
 /// [`dispatched_tagged_enum_kotlin_source`] — pulled out of that function's own loop to keep it
 /// under this crate's line budget per function.
@@ -2246,7 +2286,10 @@ fn dispatched_tagged_variant(
             format!(
                 "input.json.decodeFromJsonElement({}, {})",
                 own(),
-                preprocess::keyed(&data, &variant_keyed(&payload, &plugin))
+                preprocess::keyed(
+                    &aliases::keys_named(&data, &members_renamed(&payload)),
+                    &variant_keyed(&payload, &plugin)
+                )
             ),
         ),
     };
@@ -2269,7 +2312,11 @@ fn dispatched_tagged_variant(
         }
         (Tagging::External, None) => format!("is {subclass_name} -> JsonPrimitive(\"{wire_tag}\")"),
     };
-    let deserialize_arm = format!("\"{wire_tag}\" -> {decode_expr}");
+    let mut read_under = format!("\"{wire_tag}\"");
+    for alias in aliases::written_on(&variant.attrs) {
+        let _ = write!(read_under, ", \"{}\"", kotlin_template_text(&alias));
+    }
+    let deserialize_arm = format!("{read_under} -> {decode_expr}");
 
     (subclass, serialize_arm, deserialize_arm)
 }
@@ -2435,7 +2482,10 @@ fn untagged_enum_kotlin_source(
         let handed = if let VariantPayload::Value(field_def) = &payload {
             preprocess::corrected(preprocess::of(field_def), "element")
         } else {
-            preprocess::keyed("element", &variant_keyed(&payload, &plugin))
+            preprocess::keyed(
+                &aliases::keys_named("element", &members_renamed(&payload)),
+                &variant_keyed(&payload, &plugin),
+            )
         };
         deserialize_chain = format!(
             "{deserialize_chain}.recoverCatching {{ input.json.decodeFromJsonElement({subclass_serializer}, {handed}){held_to_its_bounds} as {export_name}{generic_params} }}"
@@ -2479,20 +2529,27 @@ fn plain_enum_member(variant: &Variant, rule: RenameRule) -> (String, String) {
 
 /// The Kotlin tokens a plain (all-unit, string-wire) enum earns: a serializable `enum class`,
 /// `@SerialName` only where the wire spelling differs from the Rust ident. One that names a
-/// `preprocess` is read by `{Type}Unjudged`, its one serializer.
+/// `preprocess` is read by `{Type}Unjudged`, its one serializer, and so is one that reads a
+/// variant under an alias, whose serializer is written by hand.
 fn plain_enum_kotlin_source(
     item_enum: &ItemEnum,
     export_name: &str,
     args: &KotlinArgs<'_>,
 ) -> String {
     let rule = container_rename_rule(&item_enum.attrs);
-    let members = item_enum
+    let variants: Vec<_> = item_enum
         .variants
         .iter()
         .map(|variant| {
             let (name, wire) = plain_enum_member(variant, rule);
+            (name, wire, aliases::written_on(&variant.attrs))
+        })
+        .collect();
+    let members = variants
+        .iter()
+        .map(|(name, wire, _)| {
             if name == wire {
-                name
+                name.clone()
             } else {
                 format!("@SerialName(\"{wire}\") {name}")
             }
@@ -2505,14 +2562,27 @@ fn plain_enum_kotlin_source(
         "enum class {export_name} {{ {members}; {} }}",
         rules.written("")
     );
-    if args.preprocess.is_empty() {
-        format!("@Serializable {body}")
-    } else {
+    let renamed: Vec<_> = variants
+        .iter()
+        .flat_map(|(_, wire, read_under)| {
+            read_under.iter().map(|alias| (alias.clone(), wire.clone()))
+        })
+        .collect();
+    if !args.preprocess.is_empty() {
         // The enum's one serializer is the plugin's behind its functions.
+        let correction =
+            aliases::text_named(&preprocess::corrected(args.preprocess, ELEMENT), &renamed);
         format!(
             "{} {body} {}",
             read::kept_plain(export_name),
-            kept_unjudged(export_name, "", &[], args.preprocess, &[])
+            kept_unjudged(export_name, "", &[], &correction)
+        )
+    } else if renamed.is_empty() {
+        format!("@Serializable {body}")
+    } else {
+        format!(
+            "@Serializable(with = {export_name}Unjudged::class) {body} {}",
+            aliases::plain_enum_serializer(export_name, &variants)
         )
     }
 }

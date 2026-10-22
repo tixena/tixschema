@@ -452,6 +452,18 @@ fn entry_rows() -> Vec<EntryRow> {
         shown: enum_struct_and_tally,
         told: scudding,
     });
+    rows.push(EntryRow {
+        json: UNDER_AN_ALIAS[0],
+        read_as: "Stowing",
+        shown: enum_and_note,
+        told: stowing,
+    });
+    rows.push(EntryRow {
+        json: UNDER_AN_ALIAS[1],
+        read_as: "Heaving",
+        shown: enum_and_tally,
+        told: heaving,
+    });
     rows
 }
 
@@ -477,8 +489,8 @@ fn entry_source(main: String) -> String {
 /// A flattened externally tagged enum is handed the first entry, in the object's order, under the
 /// name a variant is read under, and every member after it the object without that entry, as serde
 /// hands them: beside a member of its holder's own, beside a key no member reads, ahead of a
-/// function and of a struct, under a `rename` and the enum's `rename_all`, and optional. A payload
-/// with no such entry is refused, and an optional enum reads no value.
+/// function and of a struct, under a `rename`, the enum's `rename_all` and an `alias`, and
+/// optional. A payload with no such entry is refused, and an optional enum reads no value.
 #[test]
 fn a_flattened_enum_reads_in_kotlin_the_entry_serde_hands_it() {
     let rows = entry_rows();
@@ -513,7 +525,9 @@ fn a_flattened_enum_reads_in_kotlin_the_entry_serde_hands_it() {
          14: {\"pier\":{\"label\":\"n\"}} {\"keys\":[\"north\"]}\n\
          15: {\"open_bay\":{\"label\":\"n\"}} {\"keys\":[\"north\"]}\n\
          16: refused\n\
-         17: {\"Bay\":{\"label\":\"n\"}} {\"label\":\"m\"} {\"keys\":[\"north\"]}\n"
+         17: {\"Bay\":{\"label\":\"n\"}} {\"label\":\"m\"} {\"keys\":[\"north\"]}\n\
+         18: {\"Dock\":{\"label\":\"s\"}} a\n\
+         19: {\"Dock\":{\"label\":\"s\"}} {\"keys\":[\"north\"]}\n"
     );
     let Some(printed) = ran_kotlin(&entry_source(main)) else {
         return;
@@ -617,42 +631,6 @@ fn a_flattened_enum_writes_in_kotlin_as_serde_writes_it() {
         return;
     };
     assert_eq!(printed, expected);
-}
-
-/// A variant's entry under its `alias` is taken by the holder as serde takes it, and the Kotlin
-/// read of the enum refuses it, where serde reads the variant.
-#[test]
-fn a_flattened_enum_refuses_in_kotlin_a_variant_under_its_alias() {
-    let serde_read = [
-        told_by_serde(UNDER_AN_ALIAS[0], |read: &Stowing| {
-            format!("{} {}", json(&read.tacking), read.note)
-        }),
-        told_by_serde(UNDER_AN_ALIAS[1], |read: &Heaving| {
-            format!("{} {}", json(&read.tacking), json(&read.tally))
-        }),
-    ];
-    assert_eq!(
-        serde_read,
-        [
-            "{\"Dock\":{\"label\":\"s\"}} a",
-            "{\"Dock\":{\"label\":\"s\"}} {\"keys\":[\"north\"]}"
-        ]
-    );
-    let main = format!(
-        "fun <T> refusal(serializer: KSerializer<T>, payload: String) {{\n\
-         try {{ Json.decodeFromString(serializer, payload); println(\"read\") }} \
-         catch (refused: IllegalStateException) {{ println(refused.message) }}\n\
-         }}\n\n\
-         fun main() {{\n\
-         refusal(Stowing.serializer(), \"\"\"{}\"\"\")\n\
-         refusal(Heaving.serializer(), \"\"\"{}\"\"\")\n\
-         }}\n",
-        UNDER_AN_ALIAS[0], UNDER_AN_ALIAS[1]
-    );
-    let Some(printed) = ran_kotlin(&entry_source(main)) else {
-        return;
-    };
-    assert_eq!(printed, "unknown tag Quay\nunknown tag Quay\n");
 }
 
 /// An enum declared below its holder is not known to take an entry: it is read from the object
