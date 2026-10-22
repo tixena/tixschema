@@ -163,17 +163,16 @@ impl ZodUnionMember {
 
 /// One leaf of the value surface a `#[model_schema()]` item published, in the vocabulary the
 /// flatten-member refusal names a wire by.
-#[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
+#[cfg(feature = "serde")]
 #[derive(Clone)]
 pub struct WireLeaf {
     pub branch: Vec<usize>,
     pub non_object: Option<&'static str>,
 }
 
-#[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
+#[cfg(feature = "serde")]
 impl WireLeaf {
     /// The leaf's position, spelled the way the JSON-schema merge spells the same one.
-    #[cfg(feature = "zod")]
     pub fn branch_path(&self) -> String {
         self.branch
             .iter()
@@ -680,6 +679,23 @@ thread_local! {
     /// bare name of a variant: a plain enum, and an alias of one. Kept in every build that reads
     /// `#[serde(flatten)]`.
     static PLAIN_ENUMS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+    /// The names `#[model_schema]` has been written on so far whose value serde writes as no
+    /// object at some position, with the leaves of each. Kept in every build that reads
+    /// `#[serde(flatten)]`.
+    static NON_OBJECT_WIRES: RefCell<HashMap<String, NonObjectWire>> =
+        RefCell::new(HashMap::new());
+}
+
+/// What serde writes a value of a name as, in the leaves the flatten refusal reads, as
+/// [`NON_OBJECT_WIRES`] holds it.
+#[cfg(feature = "serde")]
+#[derive(Clone, Default)]
+pub struct NonObjectWire {
+    /// The leaves of the value itself.
+    pub leaves: Vec<WireLeaf>,
+    /// The leaves of each member of the untagged union the name stands for, under the member's
+    /// branch.
+    pub members: Vec<WireLeaf>,
 }
 
 /// A type parameter an item flattens beside a key serde writes at the same level, as
@@ -878,6 +894,30 @@ pub fn record_plain_enum(rust_ident: &str, plain: bool) {
     PLAIN_ENUMS.with(|names| {
         if plain {
             names.borrow_mut().insert(rust_ident.to_owned());
+        } else {
+            names.borrow_mut().remove(rust_ident);
+        }
+    });
+}
+
+/// What serde writes a value of `rust_ident` as, where `#[model_schema]` has been written on it
+/// above and some leaf of it is no object.
+#[cfg(feature = "serde")]
+pub fn recorded_non_object_wire(rust_ident: &str) -> Option<NonObjectWire> {
+    NON_OBJECT_WIRES.with(|names| names.borrow().get(rust_ident).cloned())
+}
+
+/// Records what serde writes a value of `rust_ident` as, kept only where some leaf is no object.
+#[cfg(feature = "serde")]
+pub fn record_non_object_wire(rust_ident: &str, wire: NonObjectWire) {
+    let non_object = wire
+        .leaves
+        .iter()
+        .chain(&wire.members)
+        .any(|leaf| leaf.non_object.is_some());
+    NON_OBJECT_WIRES.with(|names| {
+        if non_object {
+            names.borrow_mut().insert(rust_ident.to_owned(), wire);
         } else {
             names.borrow_mut().remove(rust_ident);
         }
