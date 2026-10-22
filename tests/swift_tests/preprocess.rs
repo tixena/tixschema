@@ -621,9 +621,10 @@ fn a_type_read_from_the_decoder_of_its_holder_is_handed_the_keys_taken() {
 
 /// A brand over such a type hands it the keys it was handed, and judges it as the type's own read
 /// judges it. An alias of such a type is one too. A type declared below the type that reads it is
-/// not known to take the keys, and is read as any model is.
+/// not known to take the keys, and is read as any flattened model is: from the payload without
+/// the keys its holder withholds.
 #[test]
-fn a_brand_and_an_alias_hand_the_keys_and_a_type_declared_below_is_handed_none() {
+fn a_brand_and_an_alias_hand_the_keys_and_a_type_declared_below_is_handed_a_payload() {
     let wrap = wrap_swift::swift_definition();
     let read = format!(
         "{BESIDE} {{ self.value = try Carton(swiftSchemaUnjudged: decoder, \
@@ -646,9 +647,24 @@ fn a_brand_and_an_alias_hand_the_keys_and_a_type_declared_below_is_handed_none()
     let ahead = ahead_swift::swift_definition();
     holds(
         &ahead,
-        &["self.behind = try Behind(swiftSchemaUnjudged: decoder); "],
+        &[
+            concat!(
+                "private struct SwiftSchemaReadBehind: Decodable { let value: Behind; ",
+                "init(from decoder: Decoder) throws { ",
+                "self.value = try Behind(swiftSchemaUnjudged: decoder) } }",
+            ),
+            concat!(
+                "let behindPayload = try SwiftSchemaPayload(from: decoder, ",
+                r#"without: taken + ["dock"]).value; "#,
+                "self.behind = try SwiftSchemaPayload.read(SwiftSchemaReadBehind.self, ",
+                "from: behindPayload, at: decoder.codingPath).value; ",
+            ),
+        ],
     );
-    assert!(!ahead.contains("swiftSchemaWithout"), "got: {ahead}");
+    assert!(
+        !ahead.contains("Behind(swiftSchemaUnjudged: decoder, swiftSchemaWithout"),
+        "got: {ahead}"
+    );
 }
 
 /// A unit struct, a tuple struct, a brand and a type with a parameter each call their function

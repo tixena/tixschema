@@ -1729,15 +1729,20 @@ to keep.
   type the emitter has not written takes none, and the README states the limit. `encode(to:)`
   writes each flattened member at its place, through its shape (`written_from`): a key two of
   them hold is written once, with the last value, where serde writes it twice.
-- **Every flattened member is handed the keys taken ahead of it.** `member_reads` hands each a
-  `Handed`: the `taken + [...]` of the holder's own keys and those each member flattened ahead
-  took, and `by_a_member`, whether a member ahead took any. A type that takes keys
-  (`preprocess::beside`) and a member that names a function read that expression.
-  Where `by_a_member` holds, `present_statement` reads any other flattened member through
+- **Every flattened member is handed the keys its holder withholds, the first one included.**
+  `member_reads` hands each a `Handed`: the `taken + [...]` of the holder's own keys and those
+  each member flattened ahead took, and `withheld`, whether any key can be withheld: the holder
+  has a member of its own, a member ahead took keys, or the types around the holder hand some. A
+  type that takes keys (`preprocess::beside`) and a member that names a function read that
+  expression. Where `withheld` holds, `present_statement` reads any other flattened member through
   `corrected_field` with no function: `SwiftSchemaPayload(from:without:)`, then the type, a model
-  `validate()` walks through `SwiftSchemaRead{Member}`, unjudged. A struct that reads a key a
-  struct ahead took is then refused, as serde refuses it. A member flattened after no member that
-  took keys is written as it was.
+  `validate()` walks through `SwiftSchemaRead{Member}`, unjudged. A struct that reads a key of
+  the holder's own members or one a struct ahead took is then refused, as serde refuses it. A
+  holder of no member of its own is handed keys only where one of its reads names `taken`, so
+  `handed_reads` writes its reads twice there, the second time with every member withheld from;
+  one whose reads name none reads its members from its decoder, as before. An enum under a tag
+  alone hands the tag only to a payload that takes keys, so a struct flattened into a variant of
+  no member of its own, where no read of the variant names `taken`, still reads the tag.
 - **An untagged enum takes the variant serde takes.** `validate::bound_alone` is what chooses: a
   member's own bounds, and `held_walk` under `Walk::Bound`, which asks each brand the member
   holds for `swiftSchemaValidateBound()`, the member the wrapper of a bounded brand declares
@@ -1827,10 +1832,11 @@ change to the emitter has to keep.
   `preprocess::beside` is what a holder asks. A flattened member, the slot of a variant read
   from the enum's decoder and the value of a brand are read through that initializer where the
   type takes keys, and through the read they had everywhere else, so a type that names no
-  function and reads none is written as it was, a flattened member after a struct that took keys
+  function and reads none is written as it was, a flattened member its holder withholds keys from
   apart. A struct written for a variant's members
   answers through `VariantPayload::takes_keys`. A type declared below its holder is not known
-  to take keys, and is read from the holder's whole object.
+  to take keys, and is read from the holder's whole object, or, flattened where its holder
+  withholds keys, from the payload without them.
 - **An untagged enum hands its readers the keys.** A `swiftSchemaRead{Variant}` whose statements
   name `taken` takes it as a second parameter, and `Written::beside` hands `both` the readers,
   which name the payload type and the key type the enum declares ahead of them.

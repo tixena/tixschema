@@ -243,10 +243,11 @@ struct SwiftFieldShape {
 /// What a flattened member is handed of its holder's object.
 #[derive(Default)]
 struct Handed {
-    /// Whether a member flattened ahead of it took some of the keys.
-    by_a_member: bool,
     /// The keys it is read without, as a Swift expression.
     taken: String,
+    /// Whether it can be handed fewer keys than the object holds: its holder has a member of its
+    /// own, a member flattened ahead of it took some, or the types around its holder took some.
+    withheld: bool,
 }
 
 impl VariantPayload {
@@ -1757,7 +1758,7 @@ fn decode_statement(
     let present = present_statement(
         field,
         &source,
-        handed.by_a_member,
+        handed.withheld,
         absent_is_nil,
         container,
         locals,
@@ -1774,11 +1775,11 @@ fn decode_statement(
 }
 
 /// The statements that read `field` from `source`, where the payload holds its key or it has no
-/// default. `taken_ahead` says a member flattened ahead of `field` took keys off the object.
+/// default. `withheld` says a flattened `field` is handed fewer keys than its holder's object holds.
 fn present_statement(
     field: &SwiftField,
     source: &read::Source,
-    taken_ahead: bool,
+    withheld: bool,
     absent_is_nil: bool,
     container: &str,
     locals: &mut read::Locals,
@@ -1796,7 +1797,7 @@ fn present_statement(
         return read;
     }
     let beside = field.flatten && preprocess::beside(&field.field_def);
-    if field.flatten && taken_ahead && !beside {
+    if field.flatten && withheld && !beside {
         // A type that reads its holder's decoder sees every key, so it is read from the payload
         // without the keys taken.
         return corrected_field(field, &[], walked, source, twins);
@@ -2314,22 +2315,39 @@ fn struct_body_content(
 
 /// The statements that read each of `fields` in the type's own read, in the order declared, a
 /// type written for one joining `twins`. `synthesized` says Swift wrote the read before the
-/// emitter did. Each flattened member is handed the keys its holder's own members and the members
-/// flattened ahead of it took, as serde reads it without them.
+/// emitter did. Each flattened member is handed the object without the keys its holder's own
+/// members, the members flattened ahead of it and the types around its holder took, as serde
+/// reads it.
 fn member_reads(fields: &[SwiftField], synthesized: bool, twins: &mut Vec<String>) -> String {
+    let alone = handed_reads(fields, synthesized, false);
+    // A holder of no member of its own is handed keys by the types around it only where one of
+    // its reads takes them.
+    let (statements, written) =
+        if fields.iter().all(|field| field.flatten) && read::names_taken(&alone.0) {
+            handed_reads(fields, synthesized, true)
+        } else {
+            alone
+        };
+    twins.extend(written);
+    statements
+}
+
+/// [`member_reads`] with the types written for the members, where `around` says the types around
+/// the holder hand it keys it takes.
+fn handed_reads(fields: &[SwiftField], synthesized: bool, around: bool) -> (String, Vec<String>) {
     let mut locals = read::Locals::default();
+    let mut twins = Vec::new();
     let mut taken_ahead: Vec<String> = fields
         .iter()
         .filter(|field| !field.flatten)
         .map(|field| field.wire_name.clone())
         .collect();
-    let own_keys = taken_ahead.len();
-    fields
+    let statements = fields
         .iter()
         .map(|field| {
             let handed = Handed {
                 taken: preprocess::taken_with(taken_ahead.iter().map(String::as_str)),
-                by_a_member: taken_ahead.len() > own_keys,
+                withheld: around || !taken_ahead.is_empty(),
             };
             if field.flatten {
                 for key in preprocess::keys_taken_by(&field.field_def) {
@@ -2338,10 +2356,18 @@ fn member_reads(fields: &[SwiftField], synthesized: bool, twins: &mut Vec<String
                     }
                 }
             }
-            decode_statement(field, "container", synthesized, &handed, &mut locals, twins)
+            decode_statement(
+                field,
+                "container",
+                synthesized,
+                &handed,
+                &mut locals,
+                &mut twins,
+            )
         })
         .collect::<Vec<_>>()
-        .join("; ")
+        .join("; ");
+    (statements, twins)
 }
 
 /// The explicit memberwise `public init(...)` a written `init(from:)` costs a struct — Swift

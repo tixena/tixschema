@@ -1,16 +1,16 @@
 //! What the Swift emitter reads of a flattened member: a map entry by entry, without the keys the
-//! types around its holder took, as serde hands it, and any other member after a struct without
-//! the keys the struct took. A member that names a function is handed the payload without the keys
-//! its holder's own members and the members flattened ahead of it took. Each flattened member is
-//! written at its place. The reads are run under the Swift toolchain in
+//! types around its holder took, as serde hands it, and any other member without the keys its
+//! holder's own members, the structs flattened ahead of it and the types around its holder took.
+//! Each flattened member is written at its place. The reads are run under the Swift toolchain in
 //! `tests/service_schema_emitted_client_tests/run_swift_flattened.rs`.
 
 #[cfg(feature = "chrono")]
 use super::flattened_models::serving_swift;
 use super::flattened_models::{
     bowsing_swift, clewing_swift, faking_swift, footing_swift, frapping_swift, gripping_swift,
-    kedging_swift, marling_swift, mousing_swift, parceling_swift, plying_swift, snaking_swift,
-    splaying_swift, stopping_swift, toggling_swift, twinning_swift, worming_swift,
+    hanking_swift, kedging_swift, marling_swift, marrying_swift, mousing_swift, parceling_swift,
+    plying_swift, ratlining_swift, snaking_swift, splaying_swift, stopping_swift, stropping_swift,
+    toggling_swift, twinning_swift, whipping_swift, worming_swift,
 };
 
 /// The read a holder takes the keys the types around it took with.
@@ -35,6 +35,15 @@ fn handed(property: &str, taken: &str) -> String {
         "let {property}Payload = try SwiftSchemaPayload(from: decoder, without: {taken}).value; \
          self.{property} = try SwiftSchemaPayload.read(Counting.self, \
          from: withItsKeys({property}Payload), at: decoder.codingPath)"
+    )
+}
+
+/// The read of the `Pennant` flattened into `property`, from the payload without `taken`.
+fn pennant(property: &str, taken: &str) -> String {
+    format!(
+        "let {property}Payload = try SwiftSchemaPayload(from: decoder, without: {taken}).value; \
+         self.{property} = try SwiftSchemaPayload.read(Pennant.self, \
+         from: {property}Payload, at: decoder.codingPath)"
     )
 }
 
@@ -182,9 +191,9 @@ fn a_function_is_handed_every_key_but_its_holders_own_where_no_member_ahead_took
     assert_written(
         &kedging,
         &format!(
-            "{}; self.note = try container.decode(String.self, forKey: .note); \
-             self.pennant = try Pennant(from: decoder)",
-            handed("extra", "taken + [\"note\"]")
+            "{}; self.note = try container.decode(String.self, forKey: .note); {}",
+            handed("extra", "taken + [\"note\"]"),
+            pennant("pennant", "taken + [\"note\"]")
         ),
     );
     assert_written(
@@ -205,10 +214,10 @@ fn a_function_is_handed_every_key_but_its_holders_own_where_no_member_ahead_took
 /// holder took: a struct with a flattened member of its own through the read that takes those
 /// keys, and a member that names a function, a model with a rule and a struct that reads the same
 /// key from the payload without them, the model read unjudged. The struct flattened first is read
-/// as before.
+/// from the payload without its holder's own keys.
 #[test]
 fn a_member_after_a_flattened_struct_is_read_without_the_keys_the_struct_took() {
-    let flag = "self.flag = try Pennant(from: decoder); ";
+    let flag = format!("{}; ", pennant("flag", "taken + [\"note\"]"));
     let note = "self.note = try container.decode(String.self, forKey: .note)";
     let ahead = format!("{flag}{note}; ");
     let without = "without: taken + [\"note\", \"label\"]).value";
@@ -259,4 +268,57 @@ fn a_member_after_a_flattened_struct_is_read_without_the_keys_the_struct_took() 
         assert_written(&definition, TAKING);
         assert_written(&definition, "try flag.encode(to: encoder); try ");
     }
+}
+
+/// A struct flattened first is read from the payload without its holder's own keys, plain and
+/// through the function it names, and so is a struct beside a member of its holder's own whose
+/// key it does not read. In a holder of no member of its own it is read without the keys the
+/// types around the holder took, where another read of the holder takes them.
+#[test]
+fn a_struct_flattened_first_is_read_without_its_holders_own_keys() {
+    let label = "self.label = try container.decode(String.self, forKey: .label)";
+    let whipping = whipping_swift::swift_definition();
+    assert_written(
+        &whipping,
+        &format!("{}; {label}", pennant("flag", "taken + [\"label\"]")),
+    );
+    assert_written(&whipping, TAKING);
+    assert_written(
+        &marrying_swift::swift_definition(),
+        &format!(
+            "let flagPayload = try SwiftSchemaPayload(from: decoder, \
+             without: taken + [\"label\"]).value; \
+             self.flag = try SwiftSchemaPayload.read(Pennant.self, from: asGiven(flagPayload), \
+             at: decoder.codingPath); {label}"
+        ),
+    );
+    let hanking = hanking_swift::swift_definition();
+    assert_written(
+        &hanking,
+        &format!(
+            "self.marker = try container.decode(String.self, forKey: .marker); {}",
+            pennant("pennant", "taken + [\"marker\"]")
+        ),
+    );
+    assert_written(&hanking, TAKING);
+    assert_written(
+        &bowsing_swift::swift_definition(),
+        "self.hanking = try Hanking(swiftSchemaUnjudged: decoder, \
+         swiftSchemaWithout: taken + [\"note\"])",
+    );
+    let stropping = stropping_swift::swift_definition();
+    assert_written(
+        &stropping,
+        &format!(
+            "{}; {}",
+            pennant("flag", "taken"),
+            handed("tally", "taken + [\"label\"]")
+        ),
+    );
+    assert_written(&stropping, TAKING);
+    assert_written(
+        &ratlining_swift::swift_definition(),
+        "self.stropping = try Stropping(swiftSchemaUnjudged: decoder, \
+         swiftSchemaWithout: taken + [\"label\"])",
+    );
 }

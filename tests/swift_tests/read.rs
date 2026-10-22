@@ -418,7 +418,12 @@ fn an_optional_and_a_nullable_member_keep_the_rule_they_had() {
         &anchorage_swift::swift_definition(),
         &[
             "self.anchorNote = try container.decode(String?.self, forKey: .anchorNote); ",
-            "self.flattened = try FlattenedExtra(from: decoder); ",
+            concat!(
+                "let flattenedPayload = try SwiftSchemaPayload(from: decoder, ",
+                r#"without: taken + ["anchorNote", "heldParcel"]).value; "#,
+                "self.flattened = try SwiftSchemaPayload.read(FlattenedExtra.self, ",
+                "from: flattenedPayload, at: decoder.codingPath); ",
+            ),
             concat!(
                 "if try !container.decodeNil(forKey: .heldParcel) ",
                 "{ self.heldParcel = try Parcel(swiftSchemaUnjudged: ",
@@ -519,17 +524,34 @@ fn a_model_in_a_map_under_a_number_and_in_a_tuple_is_read_unjudged() {
     holds(&unwalked, &["self.byU32 = wireByU32.storage"]);
 }
 
-/// A flattened member that has a rule is read unjudged through the decoder of its holder, and one
-/// that has none as it was.
+/// A flattened member is read from its holder's object without the holder's own keys: one that
+/// has a rule unjudged, through a type written for it, and one that has none as it was.
 #[test]
-fn a_flattened_member_is_read_through_the_decoder_of_its_holder() {
+fn a_flattened_member_is_read_without_its_holders_own_keys() {
     holds(
         &berthed_swift::swift_definition(),
-        &["self.parcel = try Parcel(swiftSchemaUnjudged: decoder); "],
+        &[
+            concat!(
+                "private struct SwiftSchemaReadParcel: Decodable { let value: Parcel; ",
+                "init(from decoder: Decoder) throws { ",
+                "self.value = try Parcel(swiftSchemaUnjudged: decoder) } }",
+            ),
+            concat!(
+                "let parcelPayload = try SwiftSchemaPayload(from: decoder, ",
+                r#"without: taken + ["quay"]).value; "#,
+                "self.parcel = try SwiftSchemaPayload.read(SwiftSchemaReadParcel.self, ",
+                "from: parcelPayload, at: decoder.codingPath).value; ",
+            ),
+        ],
     );
     holds(
         &with_flatten_swift::swift_definition(),
-        &["self.extra = try FlattenedExtra(from: decoder); "],
+        &[concat!(
+            "let extraPayload = try SwiftSchemaPayload(from: decoder, ",
+            r#"without: taken + ["id"]).value; "#,
+            "self.extra = try SwiftSchemaPayload.read(FlattenedExtra.self, ",
+            "from: extraPayload, at: decoder.codingPath); ",
+        )],
     );
 }
 

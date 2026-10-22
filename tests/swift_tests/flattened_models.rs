@@ -5,10 +5,12 @@
 //! function; and a member that names a function, beside a member of its holder's own, ahead of a
 //! struct and after each member that takes none of the keys it reads; and, after a struct, a
 //! struct with a flattened member of its own, a member that names a function, a model with a rule
-//! and a struct that reads the same key. serde reads the members in the order declared: a struct
-//! takes the keys it reads, and every flattened member is handed every key no member ahead of it
-//! took. Every holder of a member that names a function has a member of its own, whose key no
-//! flattened member is handed.
+//! and a struct that reads the same key; and a struct flattened ahead of every struct, plain and
+//! naming a function, beside a member of its holder's own that reads its key, and in a holder of no
+//! member of its own whose holder reads that key. serde reads the members in the order declared: a
+//! struct takes the keys it reads, and every flattened member is handed every key neither its
+//! holder's own members nor a member ahead of it took. Every holder of a member that names a
+//! function has a member of its own, whose key no flattened member is handed, but [`Stropping`].
 
 use alloc::collections::BTreeMap;
 
@@ -54,6 +56,13 @@ pub const SNAKING: &str = r#"{"north":"s"}"#;
 
 /// What [`Gripping`] is read from.
 pub const GRIPPING: &str = r#"{"label":"n","mark":"x","note":"a"}"#;
+
+/// What [`Hanking`] is read from.
+pub const HANKING: &str = r#"{"label":"n","marker":"m"}"#;
+
+/// What [`Whipping`], [`Marrying`] and [`Ratlining`] are read from: the one key their own member
+/// reads.
+pub const LABEL: &str = r#"{"label":"n"}"#;
 
 /// A plain enum a map is keyed by, which Swift reads through a wrapper.
 #[model_schema()]
@@ -293,6 +302,49 @@ pub struct Plying {
     pub twice: Pennant,
 }
 
+/// A struct flattened ahead of a member of its holder's own that reads the struct's key, which
+/// serde hands the struct the object without.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Whipping {
+    #[serde(flatten)]
+    pub flag: Pennant,
+    pub label: String,
+}
+
+/// [`Whipping`] with a member that names a function, which serde hands the object without its
+/// holder's own key.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Marrying {
+    #[model_schema_prop(preprocess = ["asGiven"])]
+    #[serde(flatten)]
+    pub flag: Pennant,
+    pub label: String,
+}
+
+/// A struct flattened first in a holder of no member of its own, ahead of a member that names a
+/// function, which takes the keys the types around the holder took.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Stropping {
+    #[serde(flatten)]
+    pub flag: Pennant,
+    #[model_schema_prop(preprocess = ["withItsKeys"])]
+    #[serde(flatten)]
+    pub tally: Counting,
+}
+
+/// [`Stropping`] flattened beside a member that reads the key of its first struct, which serde
+/// hands that struct the object without.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Ratlining {
+    pub label: String,
+    #[serde(flatten)]
+    pub stropping: Stropping,
+}
+
 /// The payload as it was handed.
 const fn as_given(payload: Value) -> Value {
     payload
@@ -396,5 +448,29 @@ fn serde_hands_a_member_flattened_after_a_struct_the_keys_the_struct_did_not_tak
     assert_eq!(
         refused.to_string(),
         "missing field `label` at line 1 column 34"
+    );
+}
+
+/// A struct flattened first, plain or naming a function, is handed the object without the keys of
+/// its holder's own members and those the types around its holder took, so one that reads such a
+/// key is refused. One whose keys collide with none is read.
+#[test]
+fn serde_hands_a_struct_flattened_first_the_keys_its_holder_and_the_types_around_did_not_take() {
+    let refusal = |refused: serde_json::Error| refused.to_string();
+    assert_eq!(
+        refusal(serde_json::from_str::<Whipping>(LABEL).unwrap_err()),
+        "missing field `label` at line 1 column 13"
+    );
+    assert_eq!(
+        refusal(serde_json::from_str::<Marrying>(LABEL).unwrap_err()),
+        "missing field `label` at line 1 column 13"
+    );
+    assert_eq!(
+        refusal(serde_json::from_str::<Ratlining>(LABEL).unwrap_err()),
+        "missing field `label` at line 1 column 13"
+    );
+    assert_eq!(
+        written(&read::<Hanking>(HANKING)),
+        r#"{"marker":"m","label":"n"}"#
     );
 }
