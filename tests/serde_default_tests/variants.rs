@@ -3,6 +3,8 @@
 //! runs of each client are in the emitted-client groups, and the run of the Zod schemas under node
 //! in `generic_types_tests`.
 
+#[cfg(feature = "kotlin")]
+use crate::kotlin_numbers::without_number_readers;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
@@ -352,7 +354,7 @@ fn swift_reads_a_member_of_a_variant_left_out_from_the_json_of_its_default() {
 #[cfg(feature = "kotlin")]
 #[test]
 fn kotlin_reads_a_member_of_a_variant_left_out_from_the_json_of_its_default() {
-    let written = super::models::berthing_kotlin::kotlin_definition();
+    let written = without_number_readers(&super::models::berthing_kotlin::kotlin_definition());
     for class in [
         "data class BerthingDocked(val dock: String = Json.decodeFromString(serializer<String>(), \
          \"\\\"\\\"\"), val pier: UInt)",
@@ -624,7 +626,7 @@ fn an_enum_with_no_default_writes_the_swift_text_it_wrote() {
 #[test]
 fn an_enum_with_no_default_writes_the_kotlin_text_it_wrote() {
     assert_eq!(
-        tide_kotlin::kotlin_definition(),
+        without_number_readers(&tide_kotlin::kotlin_definition()),
         "@Serializable(with = TideSerializer::class) sealed interface Tide { fun validate(): \
          List<String> } @SerialName(\"Ebbing\") @Serializable data class TideEbbing(val height: \
          UInt) : Tide { override fun validate(): List<String> = emptyList() } \

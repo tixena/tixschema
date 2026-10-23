@@ -18,3 +18,8 @@ mod tests;
 #[cfg(test)]
 #[path = "serde_default_tests/variants.rs"]
 mod variants;
+
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "support/kotlin_numbers.rs"]
+mod kotlin_numbers;

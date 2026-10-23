@@ -1055,7 +1055,7 @@ fn kotlin_serializer_expr(field: &FieldDef, type_parameters: &[String]) -> Strin
         }
         FieldDefType::Map(key, value) => format!(
             "MapSerializer({}, {})",
-            kotlin_serializer_expr(key, type_parameters),
+            key_serializer_expr(key, type_parameters),
             kotlin_serializer_expr(value, type_parameters)
         ),
         FieldDefType::Range(kind, bound) => {
@@ -1066,27 +1066,30 @@ fn kotlin_serializer_expr(field: &FieldDef, type_parameters: &[String]) -> Strin
         }
         FieldDefType::Tuple(elements) => tuple_wrapper_serializer(elements, false),
         FieldDefType::Char => texts::serializer(TextForm::Char),
-        // None of these ever reaches a type parameter, a text of one form or an array of one
-        // length at its innermost level (see `composed`), so this arm is unreached in practice; it
-        // stays total rather than a wildcard.
-        FieldDefType::Unknown
-        | FieldDefType::StringLiteral(_)
-        | FieldDefType::BooleanLiteral(_)
-        | FieldDefType::NumberLiteral(_)
-        | FieldDefType::Boolean
-        | FieldDefType::String
+        FieldDefType::Boolean
         | FieldDefType::U8
         | FieldDefType::U16
         | FieldDefType::U32
-        | FieldDefType::U64
         | FieldDefType::I8
         | FieldDefType::I16
         | FieldDefType::I32
         | FieldDefType::I64
         | FieldDefType::Isize
-        | FieldDefType::Usize
         | FieldDefType::F32
-        | FieldDefType::F64 => format!("serializer<{}>()", kotlin_typename(&held)),
+        | FieldDefType::F64 => texts::Primitive::of(&held).map_or_else(
+            || format!("serializer<{}>()", kotlin_typename(&held)),
+            texts::number_serializer,
+        ),
+        // None of these ever reaches a type parameter, a form or an array of one length at its
+        // innermost level (see `composed`), so this arm is unreached in practice; it stays total
+        // rather than a wildcard.
+        FieldDefType::Unknown
+        | FieldDefType::StringLiteral(_)
+        | FieldDefType::BooleanLiteral(_)
+        | FieldDefType::NumberLiteral(_)
+        | FieldDefType::String
+        | FieldDefType::U64
+        | FieldDefType::Usize => format!("serializer<{}>()", kotlin_typename(&held)),
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => format!("serializer<{}>()", kotlin_typename(&held)),
         #[cfg(feature = "chrono")]
@@ -1097,11 +1100,26 @@ fn kotlin_serializer_expr(field: &FieldDef, type_parameters: &[String]) -> Strin
         FieldDefType::NaiveTime => texts::serializer(TextForm::Time),
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime => TextForm::of(field).map_or_else(
-            || format!("serializer<{}>()", kotlin_typename(&held)),
+            || {
+                texts::Primitive::of(field).map_or_else(
+                    || format!("serializer<{}>()", kotlin_typename(&held)),
+                    texts::number_serializer,
+                )
+            },
             texts::serializer,
         ),
     };
     listed_serializer(field, scalar)
+}
+
+/// The serializer a map's key is read through: a number or a `bool` key is the text serde writes
+/// it as, which the library reads as it is.
+pub fn key_serializer_expr(key: &FieldDef, type_parameters: &[String]) -> String {
+    if texts::Primitive::of(key).is_some() && key.array_depth == 0 {
+        format!("serializer<{}>()", kotlin_typename(key))
+    } else {
+        kotlin_serializer_expr(key, type_parameters)
+    }
 }
 
 /// `scalar`, the serializer of what `field` holds at its innermost level, under each level of its

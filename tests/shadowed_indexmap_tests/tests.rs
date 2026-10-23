@@ -1,5 +1,7 @@
 //! Tests of model types named `IndexMap` and `IndexSet` where the `indexmap` feature is on.
 
+#[cfg(feature = "kotlin")]
+use crate::kotlin_numbers::without_number_readers;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tixschema::model_schema;
@@ -186,7 +188,7 @@ fn swift_names_the_types_declared_here() {
 #[cfg(feature = "kotlin")]
 #[test]
 fn kotlin_names_the_types_declared_here() {
-    let kotlin = holder_kotlin::kotlin_definition();
+    let kotlin = without_number_readers(&holder_kotlin::kotlin_definition());
     assert!(
         kotlin.contains("val held: IndexMap<String, UInt>"),
         "got: {kotlin}"

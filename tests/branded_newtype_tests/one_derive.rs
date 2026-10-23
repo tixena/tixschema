@@ -89,6 +89,16 @@ mod by_the_derive {
         })
     }
 
+    /// `text` with the digits of the names the Kotlin number serializers are declared under taken
+    /// off: a counter that runs across the items of a crate numbers them.
+    #[cfg(feature = "kotlin")]
+    fn unnumbered(text: &str) -> String {
+        regex::Regex::new(r"KotlinNumber\d+").map_or_else(
+            |_| text.to_owned(),
+            |pattern| pattern.replace_all(text, "KotlinNumber").into_owned(),
+        )
+    }
+
     #[test]
     fn serde_writes_one_field_and_reads_the_other() {
         let written = Written {
@@ -193,12 +203,18 @@ mod by_the_derive {
     #[test]
     fn kotlin_brands_the_field_the_derive_takes() {
         assert_eq!(
-            written_kotlin::kotlin_definition(),
-            under_the_name(&count_alone_kotlin::kotlin_definition(), WRITTEN)
+            unnumbered(&written_kotlin::kotlin_definition()),
+            unnumbered(&under_the_name(
+                &count_alone_kotlin::kotlin_definition(),
+                WRITTEN
+            ))
         );
         assert_eq!(
-            received_kotlin::kotlin_definition(),
-            under_the_name(&text_alone_kotlin::kotlin_definition(), RECEIVED)
+            unnumbered(&received_kotlin::kotlin_definition()),
+            unnumbered(&under_the_name(
+                &text_alone_kotlin::kotlin_definition(),
+                RECEIVED
+            ))
         );
     }
 

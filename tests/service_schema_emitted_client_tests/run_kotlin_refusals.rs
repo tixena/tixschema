@@ -5,6 +5,8 @@
 #![cfg(feature = "kotlin")]
 
 use core::fmt::Write as _;
+use core::ops::Range;
+use std::collections::HashMap;
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -238,6 +240,37 @@ const UNIT_ROWS: [(&str, &str, &str); 3] = [
     ),
 ];
 
+const NUMBERS: &str = r#"{"arch":5,"double":2.5,"flag":true,"large":4,"medium":3,"single":1.5,"small":2,"tiny":1,"umedium":8,"usmall":7,"utiny":6}"#;
+
+const PLACES: &str = r#"{"held":{"value":1},"id":1,"items":[1],"keyed":{"k":1},"keys":{"3":"x"},"maybe":1,"outcome":{"Ok":1},"pair":[1,2],"span":{"start":1,"end":2}}"#;
+
+const OUTCOME_ERR: &str = r#"{"held":{"value":1},"id":1,"items":[1],"keyed":{"k":1},"keys":{"3":"x"},"maybe":null,"outcome":{"Err":"7"},"pair":[1,2],"span":{"start":1,"end":2}}"#;
+
+/// Each place a read reaches a number or a `bool`, with the path to it in the payload, the text a
+/// quoted value there is, and the type serde names in its refusal.
+const QUOTED: [(&str, &str, &str, &str); 20] = [
+    ("QuotedNumbers", "/arch", "7", "isize"),
+    ("QuotedNumbers", "/double", "7", "f64"),
+    ("QuotedNumbers", "/flag", "true", "a boolean"),
+    ("QuotedNumbers", "/large", "7", "i64"),
+    ("QuotedNumbers", "/medium", "7", "i32"),
+    ("QuotedNumbers", "/single", "7", "f32"),
+    ("QuotedNumbers", "/small", "7", "i16"),
+    ("QuotedNumbers", "/tiny", "7", "i8"),
+    ("QuotedNumbers", "/umedium", "7", "u32"),
+    ("QuotedNumbers", "/usmall", "7", "u16"),
+    ("QuotedNumbers", "/utiny", "7", "u8"),
+    ("QuotedPlaces", "/held/value", "7", "u8"),
+    ("QuotedPlaces", "/id", "7", "i64"),
+    ("QuotedPlaces", "/items/0", "7", "u8"),
+    ("QuotedPlaces", "/keyed/k", "7", "i32"),
+    ("QuotedPlaces", "/maybe", "7", "u32"),
+    ("QuotedPlaces", "/outcome/Ok", "7", "i32"),
+    ("QuotedPlaces", "/pair/1", "7", "i32"),
+    ("QuotedPlaces", "/span/start", "7", "i16"),
+    ("QuotedPlaces", "/pair/0", "7", "u8"),
+];
+
 /// A unit variant under a tag and a content key, beside a variant that holds a value.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -245,6 +278,63 @@ const UNIT_ROWS: [(&str, &str, &str); 3] = [
 pub enum Becalming {
     Breeze(bool),
     Lull,
+}
+
+/// A member of each number type the Kotlin client reads, and a `bool`.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct QuotedNumbers {
+    pub arch: isize,
+    pub double: f64,
+    pub flag: bool,
+    pub large: i64,
+    pub medium: i32,
+    pub single: f32,
+    pub small: i16,
+    pub tiny: i8,
+    pub umedium: u32,
+    pub usmall: u16,
+    pub utiny: u8,
+}
+
+/// A value held as a type argument.
+#[model_schema(default_types(Held = u8))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct QuotedHolding<Held> {
+    pub value: Held,
+}
+
+/// A brand over an `i64`.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct QuotedId(pub i64);
+
+/// A date under `as_number`, which serde reads as epoch milliseconds.
+#[cfg(feature = "chrono")]
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct QuotedMillis {
+    #[model_schema_prop(as_number)]
+    pub at: chrono::DateTime<chrono::Utc>,
+}
+
+/// A number in each place a read reaches one: an item of a list, a map's value beside a map's
+/// number key, a range's bound, an arm of a `Result`, a position of a tuple, a type argument, an
+/// optional member and a brand.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct QuotedPlaces {
+    pub held: QuotedHolding<u8>,
+    pub id: QuotedId,
+    pub items: Vec<u8>,
+    pub keyed: HashMap<String, i32>,
+    pub keys: HashMap<u32, String>,
+    #[model_schema_prop(nullable)]
+    pub maybe: Option<u32>,
+    pub outcome: Result<i32, u8>,
+    pub pair: (u8, i32),
+    pub span: Range<i16>,
 }
 
 /// One payload, the type it is read as and what serde answers of it.
@@ -333,6 +423,107 @@ fn a_serializer_tixschema_writes_refuses_with_a_serialization_exception() {
         printed, expected,
         "the Kotlin read is not the refusal above"
     );
+}
+
+/// The payload `base` with the value at `path` replaced by the text `quoted`.
+fn quoted_at(base: &str, path: &str, quoted: &str) -> String {
+    let mut payload: serde_json::Value = serde_json::from_str(base).unwrap();
+    *payload.pointer_mut(path).unwrap() = serde_json::Value::String(quoted.to_owned());
+    payload.to_string()
+}
+
+/// The row of a date under `as_number` written between quotes, held to serde's refusal.
+#[cfg(feature = "chrono")]
+fn millis_row() -> (String, &'static str, String) {
+    let json = r#"{"at":"7"}"#;
+    let said = "invalid type: string \"7\", expected a unix timestamp in milliseconds";
+    let serde = serde_told::<QuotedMillis>(json);
+    assert!(
+        serde.starts_with(said),
+        "serde no longer refuses {json} as `{said}`: {serde}"
+    );
+    (json.to_owned(), "QuotedMillis", said.to_owned())
+}
+
+/// A number or a `bool` written between quotes is refused in each place a read reaches one, with
+/// `SerializationException` in serde's words, and the payload with every value unquoted is read,
+/// a map's number key included, which JSON writes between quotes.
+#[test]
+fn a_number_between_quotes_is_refused_wherever_the_read_reaches_one() {
+    let mut rows: Vec<(String, &str, String)> = QUOTED
+        .into_iter()
+        .map(|(read_as, path, quoted, expected)| {
+            let base = if read_as == "QuotedNumbers" {
+                NUMBERS
+            } else {
+                PLACES
+            };
+            (
+                quoted_at(base, path, quoted),
+                read_as,
+                format!("invalid type: string \"{quoted}\", expected {expected}"),
+            )
+        })
+        .collect();
+    rows.push((
+        OUTCOME_ERR.to_owned(),
+        "QuotedPlaces",
+        "invalid type: string \"7\", expected u8".to_owned(),
+    ));
+    for (json, read_as, said) in &rows {
+        let serde = if *read_as == "QuotedNumbers" {
+            serde_told::<QuotedNumbers>(json)
+        } else {
+            serde_told::<QuotedPlaces>(json)
+        };
+        assert!(
+            serde.starts_with(said.as_str()),
+            "serde no longer refuses {json} as `{said}`: {serde}"
+        );
+    }
+    #[cfg(feature = "chrono")]
+    rows.push(millis_row());
+    let mut expected = String::new();
+    let mut main = String::from(THROWN);
+    main.push_str("fun main() {\n");
+    for (at, (json, read_as, said)) in rows.iter().enumerate() {
+        let _ = writeln!(
+            expected,
+            "{at}: kotlinx.serialization.SerializationException: {said}"
+        );
+        let _ = writeln!(
+            main,
+            "    thrown(\"{at}\", {read_as}.serializer(), \"\"\"{json}\"\"\")"
+        );
+    }
+    for (offset, (json, read_as)) in [(NUMBERS, "QuotedNumbers"), (PLACES, "QuotedPlaces")]
+        .into_iter()
+        .enumerate()
+    {
+        assert_eq!(serde_told::<QuotedNumbers>(NUMBERS), "read");
+        assert_eq!(serde_told::<QuotedPlaces>(PLACES), "read");
+        let at = rows.len() + offset;
+        let _ = writeln!(expected, "{at}: read");
+        let _ = writeln!(
+            main,
+            "    thrown(\"{at}\", {read_as}.serializer(), \"\"\"{json}\"\"\")"
+        );
+    }
+    main.push_str("}\n");
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        quoted_numbers_kotlin::kotlin_definition(),
+        quoted_holding_kotlin::kotlin_definition(),
+        quoted_id_kotlin::kotlin_definition(),
+        quoted_places_kotlin::kotlin_definition(),
+        #[cfg(feature = "chrono")]
+        quoted_millis_kotlin::kotlin_definition(),
+        main,
+    ];
+    let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
+        return;
+    };
+    assert_eq!(printed, expected, "the Kotlin read is not the read above");
 }
 
 /// A unit variant under a tag and a content key is read where the object holds no content key, and

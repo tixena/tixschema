@@ -1,6 +1,6 @@
 //! An `i64` read and written back as a JSON number by the emitted Kotlin types compiled with
 //! `-Werror`, against serde, in each place a member holds one, and each payload serde refuses
-//! refused but the string of an `i64`'s digits, which Kotlin's `Json` reads as the number.
+//! refused, the string of an `i64`'s digits included.
 
 #![cfg(all(feature = "kotlin", feature = "serde"))]
 
@@ -32,26 +32,22 @@ fun <T> told(at: Int, serializer: KSerializer<T>, payload: String) {
 }
 "#;
 
-/// What the Kotlin read answers of each payload of [`REFUSED`], in its order. Kotlin's `Json` reads
-/// a number written between quotes, which serde refuses: the string of an `i64`'s digits is read.
+/// What the Kotlin read answers of each payload of [`REFUSED`], in its order. The read refuses the
+/// string of an `i64`'s digits in serde's words, and reads a number through the tree of the
+/// payload, so the path of an out-of-range number starts at the number.
 const KOTLIN_REFUSED: [&str; 8] = [
-    "JsonDecodingException: Unexpected JSON token at offset 19: Numeric value overflow at path: \
-     $\nJSON input: 9223372036854775808",
-    "read 7",
-    "JsonDecodingException: Unexpected JSON token at offset 24: Numeric value overflow at path: \
-     $.listed[1]\nJSON input: {\"keyed\":{},\"listed\":[1,-9223372036854775809],\"paired\":[1,\"y\"],\
-     \"signed\":0}",
-    "JsonDecodingException: Failed to parse literal '1.5' as a long value at path: $.from\nJSON \
-     input: {\"from\":1.5,\"to\":2}",
+    "JsonDecodingException: Failed to parse literal '9223372036854775808' as a long value at \
+     path: $.primitive\nJSON input: 9223372036854775808",
+    "SerializationException: invalid type: string \"7\", expected i64",
+    "JsonDecodingException: Failed to parse literal '-9223372036854775809' as a long value at \
+     path: $.primitive\nJSON input: -9223372036854775809",
+    "JsonDecodingException: Failed to parse literal '1.5' as a long value at path: \
+     $.primitive\nJSON input: 1.5",
     "SerializationException: 'level': too large: maximum is 5, got 6",
-    "JsonDecodingException: Unexpected JSON token at offset 121: Numeric value overflow at path: \
-     $.ranged.end\nJSON input: {\"aliased\":0,\"fixed\":214,\"from\":{\"start\":0},\"inclusive\":\
-     {\"start\":0,\"end\":0},\"ranged\":{\"start\":0,\"end\":9223372036854775808},\"resulted\":\
-     {\"Ok\":7},\"to\":{\"end\":0},\"wrong\":{\"Ok\":\"o\"}}",
+    "JsonDecodingException: Failed to parse literal '9223372036854775808' as a long value at \
+     path: $.primitive\nJSON input: 9223372036854775808",
     "SerializationException: 'fixed': not the literal 214, got 215",
-    "JsonDecodingException: Unexpected JSON token at offset 15: Unexpected symbol 'x' in numeric \
-     literal at path: $.keyed['4']\nJSON input: {\"keyed\":{\"4\":\"x\"},\"listed\":[],\"paired\":\
-     [0,\"y\"]}",
+    "SerializationException: invalid type: string \"x\", expected i64",
 ];
 
 /// Each payload serde writes is read and written back as serde writes it back, and each payload

@@ -211,7 +211,7 @@ fn the_one_wrapper(definition: &str, subclass: &str) -> String {
 #[cfg(feature = "serde")]
 #[test]
 fn the_slots_under_a_content_key_are_written_and_read_by_the_wrapper_declared() {
-    let racking = racking_kotlin::kotlin_definition();
+    let racking = super::tests::renumbered(&racking_kotlin::kotlin_definition());
     let wrapper = the_one_wrapper(&racking, "RackingSplit");
     assert!(
         racking.contains(&format!(
@@ -239,7 +239,7 @@ fn the_slots_under_a_content_key_are_written_and_read_by_the_wrapper_declared() 
 /// subclass declares.
 #[test]
 fn the_slots_under_the_variants_name_are_written_and_read_by_the_wrapper_declared() {
-    let stacking = stacking_kotlin::kotlin_definition();
+    let stacking = super::tests::renumbered(&stacking_kotlin::kotlin_definition());
     let wrapper = the_one_wrapper(&stacking, "StackingSplit");
     assert!(
         stacking.contains(&format!(
@@ -268,7 +268,7 @@ fn the_slots_under_the_variants_name_are_written_and_read_by_the_wrapper_declare
 #[cfg(feature = "serde")]
 #[test]
 fn an_untagged_slot_holding_the_slots_declares_one_wrapper() {
-    let piling = piling_kotlin::kotlin_definition();
+    let piling = super::tests::renumbered(&piling_kotlin::kotlin_definition());
     let wrapper = the_one_wrapper(&piling, "PilingSplit");
     assert!(
         piling.contains(&format!(
@@ -289,7 +289,7 @@ fn an_untagged_slot_holding_the_slots_declares_one_wrapper() {
 #[cfg(not(feature = "jsonschema"))]
 #[test]
 fn a_map_of_tuples_in_a_variant_is_declared_and_read_by_one_wrapper() {
-    let tallying = tallying_kotlin::kotlin_definition();
+    let tallying = super::tests::renumbered(&tallying_kotlin::kotlin_definition());
     let [wrapper] = declared_wrappers(&tallying).try_into().unwrap();
     assert!(
         tallying.contains(&format!(
@@ -310,7 +310,7 @@ fn a_map_of_tuples_in_a_variant_is_declared_and_read_by_one_wrapper() {
 /// serializer writes and reads it, by one wrapper.
 #[test]
 fn a_result_holding_a_tuple_in_a_variant_is_declared_and_read_by_one_wrapper() {
-    let ranking = ranking_kotlin::kotlin_definition();
+    let ranking = super::tests::renumbered(&ranking_kotlin::kotlin_definition());
     let [wrapper] = declared_wrappers(&ranking).try_into().unwrap();
     let opens = "data class RankingPlaces(val value: ";
     let at = ranking.find(opens).unwrap() + opens.len();
@@ -332,7 +332,7 @@ fn a_result_holding_a_tuple_in_a_variant_is_declared_and_read_by_one_wrapper() {
 #[cfg(feature = "serde")]
 #[test]
 fn a_tuple_read_as_its_default_is_declared_and_read_by_one_wrapper() {
-    let strapping = strapping_kotlin::kotlin_definition();
+    let strapping = super::tests::renumbered(&strapping_kotlin::kotlin_definition());
     let [wrapper] = declared_wrappers(&strapping).try_into().unwrap();
     assert!(
         strapping.contains(&format!(
@@ -348,7 +348,7 @@ fn a_tuple_read_as_its_default_is_declared_and_read_by_one_wrapper() {
 #[cfg(feature = "serde")]
 #[test]
 fn a_tuple_beside_a_flattened_member_is_declared_and_read_by_one_wrapper() {
-    let bundling = bundling_kotlin::kotlin_definition();
+    let bundling = super::tests::renumbered(&bundling_kotlin::kotlin_definition());
     let [wrapper] = declared_wrappers(&bundling).try_into().unwrap();
     for held in [
         format!("val pair: {wrapper})"),
@@ -368,7 +368,7 @@ fn a_tuple_beside_a_flattened_member_is_declared_and_read_by_one_wrapper() {
 /// and reads it, by one wrapper.
 #[test]
 fn a_tuple_in_a_slot_of_a_tuple_struct_is_declared_and_read_by_one_wrapper() {
-    let palleting = palleting_kotlin::kotlin_definition();
+    let palleting = super::tests::renumbered(&palleting_kotlin::kotlin_definition());
     let [wrapper] = declared_wrappers(&palleting).try_into().unwrap();
     for held in [
         format!("data class Palleting(val slot0: {wrapper}, val slot1: UByte)"),
@@ -383,7 +383,7 @@ fn a_tuple_in_a_slot_of_a_tuple_struct_is_declared_and_read_by_one_wrapper() {
 /// reads it, by the one inner wrapper.
 #[test]
 fn a_tuple_in_a_position_of_a_tuple_is_declared_and_read_by_one_wrapper() {
-    let crating = crating_kotlin::kotlin_definition();
+    let crating = super::tests::renumbered(&crating_kotlin::kotlin_definition());
     let [inner, outer] = declared_wrappers(&crating).try_into().unwrap();
     for held in [
         format!("data class Crating(val pair: {outer})"),
@@ -420,7 +420,7 @@ fn the_walked_wrapper(definition: &str) -> String {
 #[cfg(feature = "serde")]
 #[test]
 fn a_tuple_holding_a_model_read_as_its_default_is_declared_and_read_by_one_wrapper() {
-    let wrapping = wrapping_kotlin::kotlin_definition();
+    let wrapping = super::tests::renumbered(&wrapping_kotlin::kotlin_definition());
     let wrapper = the_walked_wrapper(&wrapping);
     let default = r#""[{\"code\":\"\"},0]""#;
     assert!(
@@ -437,7 +437,7 @@ fn a_tuple_holding_a_model_read_as_its_default_is_declared_and_read_by_one_wrapp
 #[cfg(feature = "serde")]
 #[test]
 fn a_tuple_holding_a_model_beside_a_flattened_member_is_declared_and_read_by_one_wrapper() {
-    let banding = banding_kotlin::kotlin_definition();
+    let banding = super::tests::renumbered(&banding_kotlin::kotlin_definition());
     let wrapper = the_walked_wrapper(&banding);
     for held in [
         format!("data class Banding(val labelling: Labelling, val pair: {wrapper})"),
@@ -458,7 +458,7 @@ fn a_tuple_holding_a_model_beside_a_flattened_member_is_declared_and_read_by_one
 #[cfg(all(feature = "serde", not(feature = "jsonschema")))]
 #[test]
 fn a_map_of_tuples_holding_a_model_in_a_variant_is_declared_and_read_by_one_wrapper() {
-    let binning = binning_kotlin::kotlin_definition();
+    let binning = super::tests::renumbered(&binning_kotlin::kotlin_definition());
     let wrapper = the_walked_wrapper(&binning);
     assert!(
         binning.contains(&format!(
@@ -481,7 +481,7 @@ fn a_map_of_tuples_holding_a_model_in_a_variant_is_declared_and_read_by_one_wrap
 /// serializer writes and reads it, by the one wrapper that reads the model unjudged.
 #[test]
 fn a_tuple_holding_a_model_in_a_slot_of_a_tuple_struct_is_declared_and_read_by_one_wrapper() {
-    let slotting = slotting_kotlin::kotlin_definition();
+    let slotting = super::tests::renumbered(&slotting_kotlin::kotlin_definition());
     let wrapper = the_walked_wrapper(&slotting);
     for held in [
         format!("data class Slotting(val slot0: {wrapper}, val slot1: UByte)"),
@@ -497,7 +497,7 @@ fn a_tuple_holding_a_model_in_a_slot_of_a_tuple_struct_is_declared_and_read_by_o
 /// unjudged.
 #[test]
 fn a_tuple_holding_a_model_in_a_result_in_a_tuple_is_declared_and_read_by_one_wrapper() {
-    let grading = grading_kotlin::kotlin_definition();
+    let grading = super::tests::renumbered(&grading_kotlin::kotlin_definition());
     let [inner, outer] = declared_wrappers(&grading).try_into().unwrap();
     reads_the_model_unjudged(&grading, &inner);
     assert!(
@@ -516,7 +516,7 @@ fn a_tuple_holding_a_model_in_a_result_in_a_tuple_is_declared_and_read_by_one_wr
     assert_eq!(
         grading
             .matches(&format!(
-                "{result}Serializer(serializer<{inner}>(), serializer<UByte>())"
+                "{result}Serializer(serializer<{inner}>(), KotlinNumber1)"
             ))
             .count(),
         2,
@@ -530,7 +530,7 @@ fn a_tuple_holding_a_model_in_a_result_in_a_tuple_is_declared_and_read_by_one_wr
 #[cfg(feature = "serde")]
 #[test]
 fn tuples_holding_a_model_in_an_option_and_a_list_are_declared_and_read_by_one_wrapper() {
-    let spooling = spooling_kotlin::kotlin_definition();
+    let spooling = super::tests::renumbered(&spooling_kotlin::kotlin_definition());
     let wrapper = the_walked_wrapper(&spooling);
     for held in [
         format!(
@@ -565,7 +565,7 @@ fn tuples_holding_a_model_in_an_option_and_a_list_are_declared_and_read_by_one_w
 #[cfg(not(feature = "jsonschema"))]
 #[test]
 fn a_map_of_tuples_holding_a_model_in_a_tuple_is_declared_and_read_by_one_wrapper() {
-    let coiling = coiling_kotlin::kotlin_definition();
+    let coiling = super::tests::renumbered(&coiling_kotlin::kotlin_definition());
     let [inner, outer] = declared_wrappers(&coiling).try_into().unwrap();
     reads_the_model_unjudged(&coiling, &inner);
     for held in [
@@ -591,7 +591,7 @@ fn a_map_of_tuples_holding_a_model_in_a_tuple_is_declared_and_read_by_one_wrappe
 #[cfg(all(feature = "serde", not(feature = "jsonschema")))]
 #[test]
 fn a_flattened_map_of_tuples_holding_a_model_is_declared_and_read_by_one_wrapper() {
-    let lashing = lashing_kotlin::kotlin_definition();
+    let lashing = super::tests::renumbered(&lashing_kotlin::kotlin_definition());
     let wrapper = the_walked_wrapper(&lashing);
     for held in [
         format!("data class Lashing(val dock: String, val extra: Map<String, {wrapper}>)"),
@@ -608,7 +608,7 @@ fn a_flattened_map_of_tuples_holding_a_model_is_declared_and_read_by_one_wrapper
 #[cfg(not(feature = "jsonschema"))]
 #[test]
 fn a_preprocessed_map_of_tuples_holding_a_model_is_declared_and_read_by_one_wrapper() {
-    let heaping = heaping_kotlin::kotlin_definition();
+    let heaping = super::tests::renumbered(&heaping_kotlin::kotlin_definition());
     let wrapper = the_walked_wrapper(&heaping);
     for held in [
         format!(

@@ -7,6 +7,8 @@
 ))]
 mod list_rule;
 
+#[cfg(feature = "kotlin")]
+use crate::kotlin_numbers::without_number_readers;
 use std::collections::{HashMap, HashSet};
 use std::hash::RandomState;
 
@@ -260,15 +262,21 @@ fn swift_writes_each_as_its_std_twin() {
 #[test]
 fn kotlin_writes_each_as_its_std_twin() {
     assert_eq!(
-        document_kotlin::kotlin_definition(),
-        under_its_own_name(&document_twin_kotlin::kotlin_definition())
+        without_number_readers(&document_kotlin::kotlin_definition()),
+        under_its_own_name(&without_number_readers(
+            &document_twin_kotlin::kotlin_definition()
+        ))
     );
     assert_eq!(
-        nested_kotlin::kotlin_definition(),
-        under_its_own_name(&nested_twin_kotlin::kotlin_definition())
+        without_number_readers(&nested_kotlin::kotlin_definition()),
+        under_its_own_name(&without_number_readers(
+            &nested_twin_kotlin::kotlin_definition()
+        ))
     );
     assert_eq!(
-        slotted_kotlin::kotlin_definition(),
-        under_its_own_name(&slotted_twin_kotlin::kotlin_definition())
+        without_number_readers(&slotted_kotlin::kotlin_definition()),
+        under_its_own_name(&without_number_readers(
+            &slotted_twin_kotlin::kotlin_definition()
+        ))
     );
 }
