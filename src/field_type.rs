@@ -16,7 +16,6 @@ use syn::Attribute;
 
 #[cfg(feature = "zod")]
 use crate::features::model_schema_prop::FunctionName;
-#[cfg(feature = "zod")]
 use crate::features::model_schema_prop::LiteralValue;
 use crate::features::model_schema_prop::ModelSchemaPropMeta;
 use crate::utils::{
@@ -429,7 +428,6 @@ impl FieldDef {
 
     /// The value of the `literal` a `u64` or an `i64` member is held to, as decimal digits, and
     /// `None` where it is held to none.
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     pub fn bigint_literal(&self) -> Option<String> {
         let literal = self.model_schema_prop_meta.as_ref()?.literal.as_ref()?;
         match literal {
