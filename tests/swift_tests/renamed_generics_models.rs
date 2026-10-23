@@ -122,6 +122,7 @@ pub struct Library<Leaf> {
     pub catalog: Catalog<Leaf>,
     pub diptych: Diptych<Leaf>,
     pub leaves: Leaves<Leaf>,
+    #[model_schema_prop(nullable)]
     pub margin: Margin<Leaf>,
     pub scroll: Scroll<Leaf>,
     pub shelfmark: Shelfmark<Leaf>,

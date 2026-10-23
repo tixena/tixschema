@@ -49,7 +49,8 @@ use crate::model_schema::digits;
 use crate::model_schema::variant_wire_kind;
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
 use crate::utils::{
-    compute_alias_export_name, compute_item_export_name, to_snake_case, type_parameters_in_scope,
+    compute_alias_export_name, compute_item_export_name, option_alias, to_snake_case,
+    type_parameters_in_scope,
 };
 
 #[cfg(feature = "serde")]
@@ -541,7 +542,7 @@ fn lookup_kotlin_name(rust_ident: &str) -> Option<String> {
 /// The `FieldDef` of the field a brand is the value of, its type parameters already erased, with
 /// the bounds the brand writes on itself as the value's own.
 fn brand_value_field(held: &Field, type_parameters: &[String], args: &KotlinArgs<'_>) -> FieldDef {
-    let mut field_def = digits::member_def(held, get_field_def("value", &held.ty, ""));
+    let mut field_def = digits::member_def(held, kotlin_field_def("value", &held.ty));
     field_def.model_schema_prop_meta = Some(ModelSchemaPropMeta {
         max_length: args.max_length,
         min_length: args.min_length,
@@ -556,9 +557,15 @@ fn brand_value_field(held: &Field, type_parameters: &[String], args: &KotlinArgs
 /// built for it — `get_field_def` reads the Rust type alone, so `nullable`/`as_number` and the
 /// bounds need this filled in separately, as `process_field` does for the other three surfaces.
 fn field_def_with_prop_meta(name: &str, field: &Field, args: &KotlinArgs<'_>) -> FieldDef {
-    let mut field_def = digits::member_def(field, get_field_def(name, &field.ty, ""));
+    let mut field_def = digits::member_def(field, kotlin_field_def(name, &field.ty));
     field_def.model_schema_prop_meta = Some((args.member_meta)(field));
     field_def
+}
+
+/// The `FieldDef` of `ty` as Kotlin writes it: an alias of an `Option` that declares a type
+/// parameter is written in place, as no `typealias` of a nullable parameter compiles.
+pub fn kotlin_field_def(name: &str, ty: &Type) -> FieldDef {
+    get_field_def(name, ty, "").with_parameterized_option_aliases_in_place()
 }
 
 /// The `#[serde(rename = "...")]` a field or variant earns, honored only where the `serde` feature
@@ -869,13 +876,23 @@ fn kotlin_base(field: &FieldDef) -> String {
         }
     };
     (0..field.array_depth).fold(scalar, |wrapped, level| {
-        let item = if field.is_nullable_at(level) {
+        let item = if marked_nullable_at(field, level) {
             format!("{wrapped}?")
         } else {
             wrapped
         };
         format!("List<{item}>")
     })
+}
+
+/// Whether `field` is written with a `?` at `level`: a nullable level, but the innermost one over
+/// an alias of an `Option`, whose type is nullable already and takes no second `?`.
+fn marked_nullable_at(field: &FieldDef, level: u8) -> bool {
+    let over_an_alias = matches!(
+        &field.field_type,
+        FieldDefType::SiblingType(name, _) if option_alias(name).is_some()
+    );
+    field.is_nullable_at(level) && !(level == 0 && over_an_alias)
 }
 
 /// The Kotlin type of the type written `name` with `arguments`, each typed by `typed`.
@@ -898,7 +915,7 @@ fn sibling_typename(
 /// `#[model_schema_prop(nullable)]` (see [`property_declaration`] for the `= null` default).
 pub fn kotlin_typename(field: &FieldDef) -> String {
     let base = kotlin_base(field);
-    if field.is_optional() {
+    if marked_nullable_at(field, field.array_depth) {
         format!("{base}?")
     } else {
         base
@@ -1067,7 +1084,7 @@ fn kotlin_serializer_expr(field: &FieldDef, type_parameters: &[String]) -> Strin
 /// refuses an array of any other.
 fn listed_serializer(field: &FieldDef, scalar: String) -> String {
     let listed = (0..field.array_depth).fold(scalar, |inner, level| {
-        let item = if field.is_nullable_at(level) {
+        let item = if marked_nullable_at(field, level) {
             format!("{inner}.nullable")
         } else {
             inner
@@ -1077,7 +1094,7 @@ fn listed_serializer(field: &FieldDef, scalar: String) -> String {
             .map_or_else(|| "ListSerializer".to_owned(), arrays::serializer);
         format!("{class}({item})")
     });
-    if field.is_optional() {
+    if marked_nullable_at(field, field.array_depth) {
         format!("{listed}.nullable")
     } else {
         listed
@@ -2370,7 +2387,7 @@ fn declared_default(value_field: &FieldDef, args: &KotlinArgs<'_>) -> Option<Fie
         .find(|(named, _)| named == parameter)
         .map_or_else(
             || get_field_def("value", &syn::parse_quote!(String), ""),
-            |(_, ty)| get_field_def("value", ty, ""),
+            |(_, ty)| kotlin_field_def("value", ty),
         );
     Some(declared)
 }
@@ -2536,7 +2553,16 @@ fn alias_kotlin_tokens(item_type: &ItemType, name_override: Option<&str>) -> Tok
     register_kotlin_name(&rust_ident, &export_name);
 
     let type_parameters = type_parameters_in_scope(&item_type.generics);
-    let mut target = get_field_def(&export_name, &item_type.ty, "");
+    if !type_parameters.is_empty() && option_alias(&rust_ident).is_some() {
+        // Each holder writes it in place: kotlinc refuses a `typealias` of a nullable parameter.
+        return kotlin_module_tokens(
+            &rust_ident,
+            item_type.ident.span(),
+            "",
+            &SerdeDefaults::none(),
+        );
+    }
+    let mut target = kotlin_field_def(&export_name, &item_type.ty);
     target.erase_type_parameters(&type_parameters);
     validate::note_alias(&rust_ident, &target);
     if type_parameters.is_empty() {

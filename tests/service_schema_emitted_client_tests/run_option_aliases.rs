@@ -1,7 +1,8 @@
 //! An alias of an `Option` held outside a field, read and written back by the emitted Dart, Swift
 //! and Kotlin types under their toolchains as serde writes it: `None` as `null` in an item of a
 //! list, a value of a map, a position of a tuple, a type argument, an arm of a `Result`, a slot of
-//! a tuple struct and the slot of a variant.
+//! a tuple struct and the slot of a variant. Beside it, a field of the alias, its key left out for
+//! `None` or, under `nullable`, written as `null`.
 
 #![cfg(all(
     feature = "serde",
@@ -16,17 +17,20 @@ use super::option_alias_models::{LEADS, serde_wrote};
 #[cfg(feature = "dart")]
 use super::option_alias_models::{
     chanced_dart, deepsea_dart, handlead_dart, haply_dart, heaved_dart, leadsman_dart,
-    plummet_dart, reckoned_dart, relead_dart, sinker_dart, swung_dart,
+    lineman_dart, plumbline_dart, plummet_dart, reckoned_dart, relead_dart, shoaled_dart,
+    sinker_dart, swung_dart,
+};
+#[cfg(feature = "kotlin")]
+use super::option_alias_models::{
+    chanced_kotlin, deepsea_kotlin, handlead_kotlin, haply_kotlin, heaved_kotlin, leadsman_kotlin,
+    lineman_kotlin, plumbline_kotlin, plummet_kotlin, reckoned_kotlin, relead_kotlin,
+    shoaled_kotlin, sinker_kotlin, swung_kotlin,
 };
 #[cfg(feature = "swift")]
 use super::option_alias_models::{
     chanced_swift, deepsea_swift, handlead_swift, haply_swift, heaved_swift, leadsman_swift,
-    plummet_swift, reckoned_swift, relead_swift, sinker_swift, swung_swift,
-};
-#[cfg(feature = "kotlin")]
-use super::option_alias_models::{
-    deepsea_kotlin, heaved_kotlin, leadsman_kotlin, plummet_kotlin, reckoned_kotlin, relead_kotlin,
-    sinker_kotlin, swung_kotlin,
+    lineman_swift, plumbline_swift, plummet_swift, reckoned_swift, relead_swift, shoaled_swift,
+    sinker_swift, swung_swift,
 };
 #[cfg(feature = "dart")]
 use super::run_dart_validate::{dart, module};
@@ -141,6 +145,9 @@ fn dart_writes_back_the_null_serde_writes_for_an_alias_of_an_option() {
             deepsea_dart::dart_definition(),
             sinker_dart::dart_definition(),
             heaved_dart::dart_definition(),
+            shoaled_dart::dart_definition(),
+            lineman_dart::dart_definition(),
+            plumbline_dart::dart_definition(),
         ],
         &[DART_WRITTEN],
         &main,
@@ -173,6 +180,9 @@ fn swift_writes_back_the_null_serde_writes_for_an_alias_of_an_option() {
         deepsea_swift::swift_definition(),
         sinker_swift::swift_definition(),
         heaved_swift::swift_definition(),
+        shoaled_swift::swift_definition(),
+        lineman_swift::swift_definition(),
+        plumbline_swift::swift_definition(),
         SWIFT_WRITTEN.to_owned(),
         main,
     ]
@@ -201,9 +211,8 @@ fn swift_writes_back_the_null_serde_writes_for_an_alias_of_an_option() {
 #[test]
 fn kotlin_writes_back_the_null_serde_writes_for_an_alias_of_an_option() {
     // Kotlin reads a struct of one slot as an array of the slot, where serde writes the slot's
-    // value. `-Werror` refuses the `typealias` an alias of an `Option` with a parameter is written
-    // as, and the redundant `?` written on a field of such an alias under `default`.
-    let rows = rows_but(&["Chanced", "Deepsea", "Handlead"]);
+    // value.
+    let rows = rows_but(&["Deepsea"]);
     let mut main = String::from("fun main() {\n");
     for &(read_as, json) in &rows {
         let _ = writeln!(
@@ -216,12 +225,18 @@ fn kotlin_writes_back_the_null_serde_writes_for_an_alias_of_an_option() {
         KOTLIN_IMPORTS.to_owned(),
         plummet_kotlin::kotlin_definition(),
         relead_kotlin::kotlin_definition(),
+        haply_kotlin::kotlin_definition(),
         swung_kotlin::kotlin_definition(),
         leadsman_kotlin::kotlin_definition(),
+        chanced_kotlin::kotlin_definition(),
+        handlead_kotlin::kotlin_definition(),
         reckoned_kotlin::kotlin_definition(),
         deepsea_kotlin::kotlin_definition(),
         sinker_kotlin::kotlin_definition(),
         heaved_kotlin::kotlin_definition(),
+        shoaled_kotlin::kotlin_definition(),
+        lineman_kotlin::kotlin_definition(),
+        plumbline_kotlin::kotlin_definition(),
         KOTLIN_WRITTEN.to_owned(),
         main,
     ];

@@ -4915,7 +4915,8 @@ fn type_check_a_literal_refuses_under_zod_what_serde_refuses() {
 }
 
 /// An alias of an `Option` held outside a field is read under Zod as serde writes it, `null` as
-/// `null`, and each payload serde writes is a value of its TypeScript type under `tsc --strict`.
+/// `null`, a field of it as serde leaves its key out or writes it, and each payload serde writes
+/// is a value of its TypeScript type under `tsc --strict`.
 #[test]
 fn type_check_an_alias_of_an_option_held_outside_a_field_is_read_with_null() {
     let source = [
@@ -4942,6 +4943,12 @@ fn type_check_an_alias_of_an_option_held_outside_a_field_is_read_with_null() {
         option_aliases::Sinker::zod_schema(),
         option_aliases::Heaved::ts_definition(),
         option_aliases::Heaved::zod_schema(),
+        option_aliases::Shoaled::ts_definition(),
+        option_aliases::Shoaled::zod_schema(),
+        option_aliases::Lineman::ts_definition(),
+        option_aliases::Lineman::zod_schema(),
+        option_aliases::Plumbline::ts_definition(),
+        option_aliases::Plumbline::zod_schema(),
     ]
     .join("\n\n");
     for (read_as, json) in option_aliases::LEADS {
@@ -4974,8 +4981,8 @@ fn type_check_an_alias_of_an_option_held_outside_a_field_is_read_with_null() {
         return;
     };
     let mut payloads = String::from(
-        "import type { Chanced, Deepsea, Handlead, Heaved, Leadsman, Reckoned, Sinker } from \
-         \"./lib/index.js\";\n",
+        "import type { Chanced, Deepsea, Handlead, Heaved, Leadsman, Lineman, Plumbline, \
+         Reckoned, Shoaled, Sinker } from \"./lib/index.js\";\n",
     );
     for (position, &(read_as, json)) in option_aliases::LEADS.iter().enumerate() {
         let _ = writeln!(payloads, "export const row{position}: {read_as} = {json};");

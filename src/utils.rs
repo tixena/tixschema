@@ -257,7 +257,6 @@ pub struct ShapeQuestion {
 
 /// The type an alias of an `Option` names, as written, beside the alias's own type parameters.
 /// Kept as text: a token outlives no expansion.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[derive(Clone)]
 pub struct OptionTarget {
     pub parameters: Vec<String>,
@@ -280,9 +279,6 @@ pub struct AliasInfo {
     pub kind: AliasKind,
     #[cfg(feature = "jsonschema")]
     pub module_name: String,
-    /// What an alias of an `Option` names, which a position outside a field writes in place.
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-    pub option_target: Option<OptionTarget>,
     /// What an untagged enum's members are spelled as where an object flattens the enum, in the
     /// order the union writes them; empty for every other item.
     #[cfg(all(feature = "serde", feature = "typescript"))]
@@ -675,6 +671,13 @@ thread_local! {
 }
 
 thread_local! {
+    /// What each alias of an `Option` declared so far names. Kept out of [`ALIAS_INFO`], which is
+    /// written only where a generation surface is on: the guards of a field and the Kotlin client
+    /// read it in every build.
+    static OPTION_ALIASES: RefCell<HashMap<String, OptionTarget>> = RefCell::new(HashMap::new());
+}
+
+thread_local! {
     static ALIAS_INFO: RefCell<HashMap<String, AliasInfo>> = RefCell::new(HashMap::new());
     /// The Rust ident holding each published name — see [`claim_published_name`]. Kept out of
     /// [`ALIAS_INFO`], which is keyed the other way round and only written where a surface is on.
@@ -999,6 +1002,25 @@ pub fn declared(rust_ident: &str) -> Option<Declared> {
     DECLARED.with(|names| names.borrow().get(rust_ident).cloned())
 }
 
+/// Records what the alias `rust_ident` names where it is an alias of an `Option`, and forgets the
+/// name otherwise: a later declaration under the same name is no such alias.
+pub fn record_option_alias(rust_ident: &str, target: Option<OptionTarget>) {
+    OPTION_ALIASES.with(|recorded| {
+        let mut held = recorded.borrow_mut();
+        if let Some(named) = target {
+            held.insert(rust_ident.to_owned(), named);
+        } else {
+            held.remove(rust_ident);
+        }
+    });
+}
+
+/// What the alias of an `Option` declared above under `rust_ident` names, and `None` for any other
+/// name.
+pub fn option_alias(rust_ident: &str) -> Option<OptionTarget> {
+    OPTION_ALIASES.with(|recorded| recorded.borrow().get(rust_ident).cloned())
+}
+
 /// Records what `rust_ident` declares for the expansions that follow.
 #[cfg(feature = "serde")]
 pub fn record_declared(rust_ident: &str, declares: Declared) {
@@ -1236,7 +1258,6 @@ pub fn register_alias_info(
                 kind,
                 #[cfg(feature = "jsonschema")]
                 module_name: module_name.to_owned(),
-                option_target: None,
                 #[cfg(all(feature = "serde", feature = "typescript"))]
                 ts_union_members: Vec::new(),
                 value_shape: PublishedShape::Flat(None),
@@ -1256,16 +1277,6 @@ pub fn record_key_wire(rust_ident: &str, wire: MapKeyWire) {
     ALIAS_INFO.with(|map| {
         if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
             info.key_wire = wire;
-        }
-    });
-}
-
-/// Records the type an alias of an `Option` names, on the entry that alias has just registered.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-pub fn record_option_target(rust_ident: &str, target: OptionTarget) {
-    ALIAS_INFO.with(|map| {
-        if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
-            info.option_target = Some(target);
         }
     });
 }

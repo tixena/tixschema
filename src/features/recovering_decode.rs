@@ -4671,8 +4671,8 @@ fn walked_field<'item>(
         .then(|| member_walk(field, module_name, parameters, corrected));
     // With a read hook on the field, serde's derive no longer reads a missing key as `None`. The
     // hook a `preprocess` is called from is hung with the `default` that reads it so.
-    let optional =
-        !has_serde_read_hook(&field.attrs) && get_field_def("", &field.ty, "").is_optional();
+    let optional = !has_serde_read_hook(&field.attrs)
+        && get_field_def("", &field.ty, "").stands_for_an_option();
     Some(WalkedField {
         absence_is_read: omission.defaulted || container_defaulted || optional,
         aliases: meta.aliases,

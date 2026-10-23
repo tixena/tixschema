@@ -667,7 +667,7 @@ fn guard_result(item: &syn::ItemStruct) -> Result<(), syn::Error> {
     let field_name = field.ident.as_ref().map_or_default(ToString::to_string);
     let field_def = get_field_def(&field_name, &field.ty, "");
     let is_nullable = super::parse_model_schema_prop_attributes(&field.attrs).nullable;
-    check_optional_field_serialization(field, field_def.is_optional(), is_nullable)
+    check_optional_field_serialization(field, field_def.stands_for_an_option(), is_nullable)
 }
 
 /// Runs the `nullable`-key guard over the sole field of `item`, reading the flag off its
@@ -688,9 +688,70 @@ fn omitted_key_guard_result(item: &syn::ItemStruct) -> Result<(), syn::Error> {
     let field_def = get_field_def(&field_name, &field.ty, "");
     check_omitted_key_is_readable(
         field,
-        field_def.is_optional(),
+        field_def.stands_for_an_option(),
         has_serde_default(&item.attrs),
     )
+}
+
+/// A field of an alias of an `Option` declared above is held to both key guards as the same field
+/// written `Option<T>` is: refused with no key-dropping attribute, read back under
+/// `skip_serializing_if` alone, and taken under `nullable`. An alias declared below is no `Option`
+/// the guards know of, and keeps the refusal of a key serde requires.
+#[cfg(feature = "serde")]
+#[test]
+fn a_field_of_an_alias_of_an_option_declared_above_is_held_to_the_key_guards_as_an_option() {
+    let kept: syn::ItemStruct = syn::parse_quote! {
+        struct Report {
+            #[serde(skip_serializing_if = "Option::is_none")]
+            note: ProbeNoteMaybe,
+        }
+    };
+    assert!(
+        omitted_key_guard_result(&kept).is_err(),
+        "an alias declared below is read as a key serde requires"
+    );
+    drop(expansion_over("pub type ProbeNoteMaybe = Option<String>;"));
+    drop(super::exec_model_schema(
+        syn::parse_str("default_types(T = String)").unwrap(),
+        syn::parse_str("pub type ProbeHeldMaybe<T> = Option<T>;").unwrap(),
+    ));
+    omitted_key_guard_result(&kept).unwrap();
+    let held: syn::ItemStruct = syn::parse_quote! {
+        struct Report {
+            #[serde(skip_serializing_if = "Option::is_none")]
+            note: ProbeHeldMaybe<String>,
+        }
+    };
+    omitted_key_guard_result(&held).unwrap();
+    let bare: syn::ItemStruct = syn::parse_quote! {
+        struct Report {
+            note: ProbeNoteMaybe,
+        }
+    };
+    let message = guard_result(&bare).unwrap_err().to_string();
+    assert!(message.contains("T | undefined"), "got: {message}");
+    assert!(
+        include_str!("../../README.md").contains(&format!("error: {message}")),
+        "the README no longer quotes: {message}"
+    );
+    let nullable: syn::ItemStruct = syn::parse_quote! {
+        struct Report {
+            #[model_schema_prop(nullable)]
+            note: ProbeNoteMaybe,
+        }
+    };
+    guard_result(&nullable).unwrap();
+}
+
+/// `nullable` and `ts_optional` are taken on a field of an alias of an `Option` declared above, as
+/// on the same field written `Option<T>`.
+#[test]
+fn the_option_flags_are_taken_on_a_field_of_an_alias_of_an_option() {
+    drop(expansion_over("pub type ProbeFlaggedMaybe = Option<u32>;"));
+    let field: syn::Field = syn::parse_quote! { note: ProbeFlaggedMaybe };
+    let field_def = get_field_def("note", &field.ty, "");
+    validate_nullable_flag(field_def.stands_for_an_option(), true).unwrap();
+    validate_ts_optional_flag(&field, &field_def, true).unwrap();
 }
 
 #[cfg(feature = "serde")]
@@ -3414,10 +3475,16 @@ fn a_tagged_optional_of_a_value_written_as_no_object_is_refused_as_an_optional()
             "for {inner}"
         );
         let flattened = format!("{holder}Flat");
+        let written: syn::Type = syn::parse_str(inner).unwrap();
+        let skipped = if get_field_def("held", &written, "").stands_for_an_option() {
+            "default, skip_serializing_if = \"Option::is_none\", "
+        } else {
+            ""
+        };
         assert_eq!(
             refusal_texts(&expansion_over(&format!(
                 "#[derive(Serialize, Deserialize)] pub struct {flattened} {{ pub id: String, \
-                 #[serde(flatten)] pub held: {inner} }}"
+                 #[serde({skipped}flatten)] pub held: {inner} }}"
             ))),
             [flattened_branch_refusal(&flattened, inner, branch, named)],
             "for {inner} flattened"
@@ -3934,7 +4001,8 @@ fn branch_non_object_refusal(holder: &str, inner: &str, branch: &str, named: &st
 /// The refusals of `holder`, a struct that flattens `flattened` beside a member of its own.
 #[cfg(feature = "serde")]
 fn flattened_beside_an_id(holder: &str, flattened: &str) -> Vec<String> {
-    let attribute = if flattened.starts_with("Option<") {
+    let written: syn::Type = syn::parse_str(flattened).unwrap();
+    let attribute = if get_field_def("wrap", &written, "").stands_for_an_option() {
         "#[serde(default, flatten, skip_serializing_if = \"Option::is_none\")]"
     } else {
         "#[serde(flatten)]"

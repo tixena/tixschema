@@ -50,7 +50,7 @@ use crate::features::serde::{
 use crate::field_type::is_ownership_wrapper;
 #[cfg(feature = "serde")]
 use crate::field_type::{
-    RESULT_ARMS, RangeKind, is_map_wrapper, written_std_range, written_std_result,
+    RESULT_ARMS, RangeKind, get_field_def, is_map_wrapper, written_std_range, written_std_result,
 };
 use crate::utils::{to_snake_case, written_names, written_type};
 
@@ -1036,9 +1036,12 @@ pub(super) fn hook_member(field: &Field, shape: &super::HeldShape, place: &HookP
         "read_unjudged_{}",
         helper_name_stem(&declared_as, place.variant)
     );
+    // serde reads the absent key of an alias of an `Option` as `None`, where no hook is hung.
     let defaulted = place.written_under_a_key
         && !place.container_defaulted
-        && needs_injected_default(&shape.wraps, has_serde_default(&field.attrs));
+        && (needs_injected_default(&shape.wraps, has_serde_default(&field.attrs))
+            || (!has_serde_default(&field.attrs)
+                && get_field_def("_held", &field.ty, "").stands_for_an_option()));
     MEMBER_HOOKS.with(|held| {
         held.borrow_mut().push(MemberHook {
             back: read.back.to_string(),

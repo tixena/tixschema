@@ -50,6 +50,7 @@ mod method_parameter_names;
     feature = "kotlin"
 )))]
 mod one_direction;
+mod option_aliases;
 mod ordered_maps;
 mod piped;
 mod preprocessed;

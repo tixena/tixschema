@@ -7,10 +7,9 @@ use super::kotlin_http_client::{held_copies, kotlin_held, read_serializer};
 use super::result::result_name;
 use super::{left_to_http_rest, on_one_line};
 use crate::features::kotlin::{
-    kotlin_bare, kotlin_declarations, kotlin_name, kotlin_property_name, kotlin_quoted,
-    kotlin_typename,
+    kotlin_bare, kotlin_declarations, kotlin_field_def, kotlin_name, kotlin_property_name,
+    kotlin_quoted, kotlin_typename,
 };
-use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationInputs, OperationOutcome, ServiceDef, is_unit_type,
@@ -1190,7 +1189,7 @@ fn message_kotlin_typename(operation: &OperationDef) -> String {
 }
 
 fn kotlin_type_of(ty: &Type) -> String {
-    kotlin_typename(&get_field_def("value", ty, ""))
+    kotlin_typename(&kotlin_field_def("value", ty))
 }
 
 /// The `KSerializer` the client writes the message with and the dispatcher reads it with,

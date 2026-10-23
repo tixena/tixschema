@@ -77,9 +77,9 @@ use crate::utils::escape_js_double_quoted;
 #[cfg(feature = "typescript")]
 use crate::utils::ts_generic_params;
 use crate::utils::{
-    PLACEHOLDER_CLOSES, PLACEHOLDER_OPENS, constraining_pattern, emittable_pattern,
-    parameter_placeholder, portable_pattern, ts_commented, ts_quoted, type_parameters_in_scope,
-    written_type,
+    OptionTarget, PLACEHOLDER_CLOSES, PLACEHOLDER_OPENS, constraining_pattern, emittable_pattern,
+    parameter_placeholder, portable_pattern, record_option_alias, ts_commented, ts_quoted,
+    type_parameters_in_scope, written_type,
 };
 
 #[cfg(feature = "zod")]
@@ -101,9 +101,8 @@ use crate::features::object_id::OBJECT_ID_HEX_PATTERN;
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use crate::utils::{
-    AliasKind, MapKeyWire, OptionTarget, PublishedShape, ShapeQuestion, lookup_alias_info,
-    record_key_wire, record_option_target, record_shape_question, record_value_shape,
-    shape_questions_for,
+    AliasKind, MapKeyWire, PublishedShape, ShapeQuestion, lookup_alias_info, record_key_wire,
+    record_shape_question, record_value_shape, shape_questions_for,
 };
 
 #[cfg(feature = "serde")]
@@ -2039,6 +2038,9 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // Which members write a `u64` or an `i64` as its digit string is read off the item as its
     // author wrote it, before the walk takes any attribute off a member.
     digits::record(&item);
+    // What an alias of an `Option` names is read by every expansion after it, the alias's own
+    // Kotlin among them.
+    record_option_alias_item(&item);
     // Which Zod binding this item publishes turns on whether it declares type parameters, and a
     // field written at the item's own name reads that answer back the way any other reference does.
     record_item(&item);
@@ -2251,24 +2253,29 @@ fn alias_target_placed(target: &FieldDef, generics: &syn::Generics) -> FieldDef 
     placed
 }
 
-/// Records what an alias of an `Option` names, which a holder writes in place wherever it holds the
-/// alias outside a field. An alias that reaches itself through such aliases records nothing: the
-/// compiler refuses the cycle.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-fn record_alias_option_target(alias: &ItemType, rust_ident: &str, target: &FieldDef) {
-    let parameters = type_parameters_in_scope(&alias.generics);
-    let surface = surface_field_def(&alias.generics, target);
-    let mut reached = Vec::new();
-    surface.names_through_option_aliases(&mut reached);
-    if surface.stands_for_an_option() && !reached.iter().any(|name| name == rust_ident) {
-        record_option_target(
-            rust_ident,
-            OptionTarget {
-                parameters,
-                written: quote::ToTokens::to_token_stream(&alias.ty).to_string(),
-            },
-        );
-    }
+/// Records what `item` names where it is an alias of an `Option`, which a holder writes in place
+/// wherever it holds the alias outside a field and every guard of a field reads as an `Option`,
+/// and forgets the name otherwise. An alias that reaches itself through such aliases records
+/// nothing: the compiler refuses the cycle.
+fn record_option_alias_item(item: &Item) {
+    let Some(ident) = item_schema_ident(item) else {
+        return;
+    };
+    let rust_ident = ident.to_string();
+    let target = if let Item::Type(alias) = item {
+        let parameters = type_parameters_in_scope(&alias.generics);
+        let mut surface = get_field_def(&rust_ident, &alias.ty, "");
+        surface.erase_type_parameters(&parameters);
+        let mut reached = Vec::new();
+        surface.names_through_option_aliases(&mut reached);
+        (surface.stands_for_an_option() && !reached.contains(&rust_ident)).then(|| OptionTarget {
+            parameters,
+            written: quote::ToTokens::to_token_stream(&alias.ty).to_string(),
+        })
+    } else {
+        None
+    };
+    record_option_alias(&rust_ident, target);
 }
 
 /// The alias schema module is referenced by all three schema features — `typescript` and `zod`
@@ -2292,7 +2299,6 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
     let alias_field_def = get_field_def(export_name.as_str(), &alias.ty, "");
     let kind = alias_target_kind(&alias_field_def);
     register_alias_info(&rust_ident_str, &export_name, &module_name, kind);
-    record_alias_option_target(&alias, &rust_ident_str, &alias_field_def);
     // An alias *is* its target, so a key written under its name renders in the target's wire form.
     record_key_wire(&rust_ident_str, alias_field_def.map_key_wire());
     // An alias's schema *is* its target's, so it publishes whatever the target publishes.
@@ -13337,10 +13343,13 @@ fn untagged_member_field_def(
         field_def = field_def.with_digit_leaves();
     }
     apply_serde_key_omission(&mut field_def, field);
+    if prop_meta.nullable {
+        field_def = field_def.nullable_in_place();
+    }
     let serde_guard_errors = field_guard_errors(
         field,
         field_name,
-        field_def.is_optional(),
+        field_def.stands_for_an_option(),
         prop_meta.nullable,
         serde_field_meta,
         ctx,
@@ -17663,7 +17672,7 @@ fn validate_ts_optional_flag(
                 .into(),
         );
     }
-    if !field_def.is_optional() {
+    if !field_def.stands_for_an_option() {
         return Err("#[model_schema_prop(ts_optional)] requires an Option<T> field".into());
     }
     if field_def.absent_from_wire {
@@ -17961,7 +17970,7 @@ fn model_schema_prop_guard_errors(
         flag_guard_error(
             field,
             label,
-            validate_nullable_flag(field_def.is_optional(), prop_meta.nullable),
+            validate_nullable_flag(field_def.stands_for_an_option(), prop_meta.nullable),
         ),
         flag_guard_error(field, label, check_nullable_ts_optional_conflict(prop_meta)),
     ];
@@ -18613,12 +18622,15 @@ fn process_field(
     field_def.erase_type_parameters(ctx.type_parameters);
 
     apply_serde_key_omission(&mut field_def, field);
+    if model_schema_prop_meta.nullable {
+        field_def = field_def.nullable_in_place();
+    }
 
     #[cfg(feature = "serde")]
     let serde_guard_errors = field_guard_errors(
         field,
         &raw_field_ident,
-        field_def.is_optional(),
+        field_def.stands_for_an_option(),
         model_schema_prop_meta.nullable,
         &serde_field_meta,
         ctx,

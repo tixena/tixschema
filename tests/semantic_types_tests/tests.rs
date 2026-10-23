@@ -105,6 +105,7 @@ struct CompactRowHolder {
 struct DocumentRecord {
     document_id: DocumentId,
     is_active: IsActive,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     note: OptionalNote,
     revision: Revision,
     score: Score,
@@ -300,7 +301,7 @@ fn test_struct_with_alias_fields_typescript() {
         "Should use IsActive type alias. Got: {ts}"
     );
     assert!(
-        ts.contains("note: OptionalNote;"),
+        ts.contains("note?: OptionalNote;"),
         "Should use OptionalNote type alias. Got: {ts}"
     );
 }
