@@ -14,7 +14,7 @@ use tixschema::model_schema;
 /// (`None` where each refuses it), and what the Zod schema parses it to (`None` where it refuses
 /// it). The Zod coercer of a date under `as_number` reads a date's text as the epoch milliseconds
 /// it stands for, which serde refuses.
-pub const MILLIS_ROWS: [(&str, &str, Option<&str>, Option<&str>); 12] = [
+pub const MILLIS_ROWS: [(&str, &str, Option<&str>, Option<&str>); 13] = [
     (
         "MillisOrFlag",
         "1704164645678",
@@ -53,6 +53,7 @@ pub const MILLIS_ROWS: [(&str, &str, Option<&str>, Option<&str>); 12] = [
         None,
         Some("1704164645678"),
     ),
+    ("MillisMaybe", "null", Some("null"), Some("null")),
     (
         "MillisLater",
         r#"{"later":1704164645678,"settled":null}"#,
