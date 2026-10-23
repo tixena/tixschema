@@ -17775,7 +17775,8 @@ fn push_described_field(field_defs: &mut Vec<FieldDef>, field_def: FieldDef) {
 }
 
 /// Rejects a named `Option` field whose serde attributes let a `None` reach the wire as `null`,
-/// unless `nullable` already declares that shape on the author's word.
+/// unless `nullable` already declares that shape on the author's word. A flattened member writes no
+/// key of its own, so serde writes nothing for its `None`.
 #[cfg(feature = "serde")]
 fn check_optional_field_serialization(
     field: &Field,
@@ -17785,7 +17786,11 @@ fn check_optional_field_serialization(
     let Some(ident) = field.ident.as_ref() else {
         return Ok(());
     };
-    if !is_optional || is_nullable || parse_serde_key_omission(&field.attrs).omits_key {
+    if !is_optional
+        || is_nullable
+        || is_flattened_field(field)
+        || parse_serde_key_omission(&field.attrs).omits_key
+    {
         return Ok(());
     }
     Err(syn::Error::new_spanned(

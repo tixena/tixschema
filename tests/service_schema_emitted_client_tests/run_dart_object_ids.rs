@@ -9,11 +9,13 @@
 use core::fmt::Write as _;
 
 use super::object_id_models::{
-    belated_dart, bullae_dart, cachet_dart, countersigned_dart, crossed_dart, crossing_dart,
-    docketing_dart, embossed_dart, endorsed_dart, endorsing_dart, enveloping_dart, enwafered_dart,
-    folding_dart, late_sigil_dart, lettering_dart, notation_dart, relayed_dart, relaying_dart,
-    rows, sigil_dart, sigiled_dart, sigillary_dart, sigillum_dart, stampage_dart, wafer_dart,
-    wafered_dart, wafering_dart, waxing_dart,
+    belated_dart, bullae_dart, cachet_dart, cartouche_dart, cartouching_dart, countersealing_dart,
+    countersigned_dart, crossed_dart, crossing_dart, docketing_dart, embossed_dart, endorsed_dart,
+    endorsing_dart, enveloping_dart, enwafered_dart, folding_dart, impress_dart, impressing_dart,
+    late_cartouche_dart, late_sigil_dart, latewaxed_dart, lettering_dart, notation_dart,
+    relayed_dart, relaying_dart, rewaxed_dart, rewaxing_dart, rows, sigil_dart, sigiled_dart,
+    sigillary_dart, sigillum_dart, stampage_dart, wafer_dart, wafered_dart, wafering_dart,
+    waxing_dart, waxwork_dart, waxworking_dart,
 };
 use super::object_id_runs::{printed, readme_object_id};
 use super::run_dart_validate::{dart, module};
@@ -54,6 +56,9 @@ fn an_object_id_is_read_and_written_back_by_dart_as_serde_reads_it() {
         &[
             readme_object_id("dart"),
             notation_dart::dart_definition(),
+            cartouche_dart::dart_definition(),
+            impress_dart::dart_definition(),
+            waxwork_dart::dart_definition(),
             countersigned_dart::dart_definition(),
             sigil_dart::dart_definition(),
             sigillum_dart::dart_definition(),
@@ -67,10 +72,17 @@ fn an_object_id_is_read_and_written_back_by_dart_as_serde_reads_it() {
             sigillary_dart::dart_definition(),
             enveloping_dart::dart_definition(),
             waxing_dart::dart_definition(),
+            rewaxing_dart::dart_definition(),
             relaying_dart::dart_definition(),
             wafer_dart::dart_definition(),
             lettering_dart::dart_definition(),
             folding_dart::dart_definition(),
+            cartouching_dart::dart_definition(),
+            rewaxed_dart::dart_definition(),
+            countersealing_dart::dart_definition(),
+            latewaxed_dart::dart_definition(),
+            waxworking_dart::dart_definition(),
+            impressing_dart::dart_definition(),
             relayed_dart::dart_definition(),
             crossed_dart::dart_definition(),
             crossing_dart::dart_definition(),
@@ -80,6 +92,7 @@ fn an_object_id_is_read_and_written_back_by_dart_as_serde_reads_it() {
             enwafered_dart::dart_definition(),
             belated_dart::dart_definition(),
             late_sigil_dart::dart_definition(),
+            late_cartouche_dart::dart_definition(),
         ],
         &[TOLD],
         &main,
@@ -221,4 +234,59 @@ fn the_dart_text_hands_an_object_id_a_type_parameter_flattens_its_key_alone() {
     ] {
         assert!(written.contains(&held), "no `{held}` in: {written}");
     }
+}
+
+/// A type that reads its type parameter flattened under an `Option` takes the keys of what fills
+/// it, and reads no value where the object holds none of them, and the filling's read where it
+/// holds one. A holder hands the keys of a filling it knows, an `ObjectId`'s and a struct's or an
+/// enum's written above it, a type that hands its parameter on hands the keys it is handed, and a
+/// holder of a filling declared below it hands none, which reads no value wherever the read fails.
+#[test]
+fn the_dart_text_looks_a_flattened_option_of_a_type_parameter_up_by_the_keys_of_its_filling() {
+    for (written, held) in [
+        (
+            waxing_dart::dart_definition(),
+            "factory Waxing.fromJsonUnjudged(Map<String, dynamic> json, Held Function(dynamic) \
+             heldFromJson, {List<String>? heldKeys}) => Waxing(held: (heldKeys == null ? (() { \
+             try { return heldFromJson(json); } catch (_) { return null; } })() : \
+             (json.keys.any(heldKeys.contains) ? heldFromJson(json) : null)),"
+                .to_owned(),
+        ),
+        (
+            folding_dart::dart_definition(),
+            "heldKeys: const ['\\$oid'])".to_owned(),
+        ),
+        (
+            cartouching_dart::dart_definition(),
+            "Waxing.fromJsonUnjudged(json['waxed'], (e) => Cartouche.fromJson(e), heldKeys: \
+             const ['wax'])"
+                .to_owned(),
+        ),
+        (
+            countersealing_dart::dart_definition(),
+            "heldKeys: const ['held'])".to_owned(),
+        ),
+        (
+            waxworking_dart::dart_definition(),
+            "heldKeys: const ['kind'])".to_owned(),
+        ),
+        (
+            rewaxing_dart::dart_definition(),
+            "Waxing.fromJsonUnjudged(json['waxing'], (e) => heldFromJson(e), heldKeys: heldKeys)"
+                .to_owned(),
+        ),
+        (
+            rewaxed_dart::dart_definition(),
+            "Rewaxing.fromJsonUnjudged(json['rewaxed'], (e) => Cartouche.fromJson(e), heldKeys: \
+             const ['wax'])"
+                .to_owned(),
+        ),
+    ] {
+        assert!(written.contains(&held), "no `{held}` in: {written}");
+    }
+    let late = latewaxed_dart::dart_definition();
+    assert!(
+        !late.contains("heldKeys"),
+        "a filling declared below its holder is handed keys: {late}"
+    );
 }

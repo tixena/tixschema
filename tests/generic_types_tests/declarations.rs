@@ -2113,6 +2113,12 @@ fn object_ids_bundle() -> String {
         "type ObjectId = { $oid: string };".to_owned(),
         object_ids::Notation::ts_definition(),
         object_ids::Notation::zod_schema(),
+        object_ids::Cartouche::ts_definition(),
+        object_ids::Cartouche::zod_schema(),
+        object_ids::Waxwork::ts_definition(),
+        object_ids::Waxwork::zod_schema(),
+        object_ids::Impress::ts_definition(),
+        object_ids::Impress::zod_schema(),
         object_ids::Countersigned::<String>::ts_definition(),
         object_ids::Countersigned::<String>::zod_schema(),
         object_ids::Sigil::ts_definition(),
@@ -2139,6 +2145,8 @@ fn object_ids_bundle() -> String {
         object_ids::Enveloping::<String>::zod_schema(),
         object_ids::Waxing::<String>::ts_definition(),
         object_ids::Waxing::<String>::zod_schema(),
+        object_ids::Rewaxing::<String>::ts_definition(),
+        object_ids::Rewaxing::<String>::zod_schema(),
         object_ids::Relaying::<String>::ts_definition(),
         object_ids::Relaying::<String>::zod_schema(),
         object_ids::Wafer::ts_definition(),
@@ -2147,6 +2155,18 @@ fn object_ids_bundle() -> String {
         object_ids::Lettering::zod_schema(),
         object_ids::Folding::ts_definition(),
         object_ids::Folding::zod_schema(),
+        object_ids::Cartouching::ts_definition(),
+        object_ids::Cartouching::zod_schema(),
+        object_ids::Rewaxed::ts_definition(),
+        object_ids::Rewaxed::zod_schema(),
+        object_ids::Countersealing::ts_definition(),
+        object_ids::Countersealing::zod_schema(),
+        object_ids::Latewaxed::ts_definition(),
+        object_ids::Latewaxed::zod_schema(),
+        object_ids::Waxworking::ts_definition(),
+        object_ids::Waxworking::zod_schema(),
+        object_ids::Impressing::ts_definition(),
+        object_ids::Impressing::zod_schema(),
         object_ids::Relayed::ts_definition(),
         object_ids::Relayed::zod_schema(),
         object_ids::Crossed::<String>::ts_definition(),
@@ -2165,6 +2185,8 @@ fn object_ids_bundle() -> String {
         object_ids::Belated::zod_schema(),
         object_ids::LateSigil::ts_definition(),
         object_ids::LateSigil::zod_schema(),
+        object_ids::LateCartouche::ts_definition(),
+        object_ids::LateCartouche::zod_schema(),
     ]
     .join("\n\n")
 }
@@ -2183,6 +2205,12 @@ fn object_id_document(read_as: &str) -> serde_json::Value {
         "Sigillary" => object_ids::Sigillary::json_schema(),
         "Lettering" => object_ids::Lettering::json_schema(),
         "Folding" => object_ids::Folding::json_schema(),
+        "Cartouching" => object_ids::Cartouching::json_schema(),
+        "Rewaxed" => object_ids::Rewaxed::json_schema(),
+        "Countersealing" => object_ids::Countersealing::json_schema(),
+        "Latewaxed" => object_ids::Latewaxed::json_schema(),
+        "Waxworking" => object_ids::Waxworking::json_schema(),
+        "Impressing" => object_ids::Impressing::json_schema(),
         "Relayed" => object_ids::Relayed::json_schema(),
         "Bullae" => object_ids::Bullae::json_schema(),
         "Crossing" => object_ids::Crossing::json_schema(),
@@ -5050,6 +5078,16 @@ fn type_check_an_alias_of_an_option_held_outside_a_field_is_read_with_null() {
         option_aliases::Lineman::zod_schema(),
         option_aliases::Plumbline::ts_definition(),
         option_aliases::Plumbline::zod_schema(),
+        option_aliases::Seabed::ts_definition(),
+        option_aliases::Seabed::zod_schema(),
+        option_aliases::bottoming_schema::Schema::ts_definition(),
+        option_aliases::bottoming_schema::Schema::zod_schema(),
+        option_aliases::Bottomed::ts_definition(),
+        option_aliases::Bottomed::zod_schema(),
+        option_aliases::Groundage::ts_definition(),
+        option_aliases::Groundage::zod_schema(),
+        option_aliases::Grounding::ts_definition(),
+        option_aliases::Grounding::zod_schema(),
     ]
     .join("\n\n");
     for (read_as, json) in option_aliases::LEADS {
@@ -5082,8 +5120,8 @@ fn type_check_an_alias_of_an_option_held_outside_a_field_is_read_with_null() {
         return;
     };
     let mut payloads = String::from(
-        "import type { Chanced, Deepsea, Handlead, Heaved, Leadsman, Lineman, Plumbline, \
-         Reckoned, Shoaled, Sinker } from \"./lib/index.js\";\n",
+        "import type { Bottomed, Chanced, Deepsea, Groundage, Grounding, Handlead, Heaved, \
+         Leadsman, Lineman, Plumbline, Reckoned, Shoaled, Sinker } from \"./lib/index.js\";\n",
     );
     for (position, &(read_as, json)) in option_aliases::LEADS.iter().enumerate() {
         let _ = writeln!(payloads, "export const row{position}: {read_as} = {json};");

@@ -9,12 +9,14 @@
 use core::fmt::Write as _;
 
 use super::object_id_models::{
-    belated_kotlin, bullae_kotlin, cachet_kotlin, countersigned_kotlin, crossed_kotlin,
-    crossing_kotlin, docketing_kotlin, embossed_kotlin, endorsed_kotlin, endorsing_kotlin,
-    enveloping_kotlin, enwafered_kotlin, folding_kotlin, late_sigil_kotlin, lettering_kotlin,
-    notation_kotlin, relayed_kotlin, relaying_kotlin, rows, sigil_kotlin, sigiled_kotlin,
-    sigillary_kotlin, sigillum_kotlin, stampage_kotlin, wafer_kotlin, wafered_kotlin,
-    wafering_kotlin, waxing_kotlin,
+    belated_kotlin, bullae_kotlin, cachet_kotlin, cartouche_kotlin, cartouching_kotlin,
+    countersealing_kotlin, countersigned_kotlin, crossed_kotlin, crossing_kotlin, docketing_kotlin,
+    embossed_kotlin, endorsed_kotlin, endorsing_kotlin, enveloping_kotlin, enwafered_kotlin,
+    folding_kotlin, impress_kotlin, impressing_kotlin, late_cartouche_kotlin, late_sigil_kotlin,
+    latewaxed_kotlin, lettering_kotlin, notation_kotlin, relayed_kotlin, relaying_kotlin,
+    rewaxed_kotlin, rewaxing_kotlin, rows, sigil_kotlin, sigiled_kotlin, sigillary_kotlin,
+    sigillum_kotlin, stampage_kotlin, wafer_kotlin, wafered_kotlin, wafering_kotlin, waxing_kotlin,
+    waxwork_kotlin, waxworking_kotlin,
 };
 use super::object_id_runs::{printed, readme_object_id};
 use super::runtime::ran_kotlin;
@@ -66,6 +68,9 @@ fn an_object_id_is_read_and_written_back_by_kotlin_as_serde_reads_it() {
         KOTLIN_IMPORTS.to_owned(),
         readme_object_id("kotlin"),
         notation_kotlin::kotlin_definition(),
+        cartouche_kotlin::kotlin_definition(),
+        impress_kotlin::kotlin_definition(),
+        waxwork_kotlin::kotlin_definition(),
         countersigned_kotlin::kotlin_definition(),
         sigil_kotlin::kotlin_definition(),
         sigillum_kotlin::kotlin_definition(),
@@ -79,10 +84,17 @@ fn an_object_id_is_read_and_written_back_by_kotlin_as_serde_reads_it() {
         sigillary_kotlin::kotlin_definition(),
         enveloping_kotlin::kotlin_definition(),
         waxing_kotlin::kotlin_definition(),
+        rewaxing_kotlin::kotlin_definition(),
         relaying_kotlin::kotlin_definition(),
         wafer_kotlin::kotlin_definition(),
         lettering_kotlin::kotlin_definition(),
         folding_kotlin::kotlin_definition(),
+        cartouching_kotlin::kotlin_definition(),
+        rewaxed_kotlin::kotlin_definition(),
+        countersealing_kotlin::kotlin_definition(),
+        latewaxed_kotlin::kotlin_definition(),
+        waxworking_kotlin::kotlin_definition(),
+        impressing_kotlin::kotlin_definition(),
         relayed_kotlin::kotlin_definition(),
         crossed_kotlin::kotlin_definition(),
         crossing_kotlin::kotlin_definition(),
@@ -92,6 +104,7 @@ fn an_object_id_is_read_and_written_back_by_kotlin_as_serde_reads_it() {
         enwafered_kotlin::kotlin_definition(),
         belated_kotlin::kotlin_definition(),
         late_sigil_kotlin::kotlin_definition(),
+        late_cartouche_kotlin::kotlin_definition(),
         TOLD.to_owned(),
         main,
     ];
@@ -99,4 +112,23 @@ fn an_object_id_is_read_and_written_back_by_kotlin_as_serde_reads_it() {
         return;
     };
     assert_eq!(printed, expected, "the Kotlin read is not serde's");
+}
+
+/// A type that reads its type parameter flattened under an `Option` looks it up by the elements the
+/// descriptor of what fills it names, and where it names none, by the keys of the type of that
+/// descriptor's name among those the emitter wrote above it by hand: a struct's, and an enum's
+/// under a tag key.
+#[test]
+fn the_kotlin_text_looks_a_flattened_option_of_a_type_parameter_up_by_the_keys_of_its_filling() {
+    let written = waxing_kotlin::kotlin_definition();
+    for held in [
+        "val heldStanding = heldKeys.ifEmpty { mapOf(",
+        r#""Impress" to setOf("lot", "wax")"#,
+        r#""Waxwork" to setOf("kind")"#,
+        ".descriptor.serialName].orEmpty() }; val held = if (heldStanding.isEmpty()) ",
+        " else if (",
+        ".keys.any { it in heldStanding }) ",
+    ] {
+        assert!(written.contains(held), "no `{held}` in: {written}");
+    }
 }

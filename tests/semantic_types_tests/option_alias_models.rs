@@ -4,7 +4,9 @@
 //! and a field typed with the alias, which keeps the alias's name: under `default` and
 //! `skip_serializing_if`, under `skip_serializing_if` alone, whose absent key serde reads as
 //! `None`, as a variant's member, and under `nullable`, written in place. An alias that declares a
-//! type parameter is held in a field and in a list. `semantic_types_tests/option_aliases.rs` holds
+//! type parameter is held in a field and in a list. A flattened `Option`, of a struct and of an
+//! alias of one, under no attribute that drops a key: serde writes nothing for `None`, a flattened
+//! member writing no key of its own. `semantic_types_tests/option_aliases.rs` holds
 //! serde, the text of each surface and the JSON Schema to [`LEADS`],
 //! `generic_types_tests/declarations.rs` the Zod schema under `node` and the TypeScript type under
 //! `tsc --strict`, and `service_schema_emitted_client_tests/run_option_aliases.rs` each client.
@@ -17,7 +19,7 @@ use tixschema::model_schema;
 
 /// Each payload serde writes, and the type it is read as. serde reads each back and writes it as
 /// it was.
-pub const LEADS: [(&str, &str); 19] = [
+pub const LEADS: [(&str, &str); 25] = [
     (
         "Leadsman",
         r#"{"keyed":{"a":null,"b":3},"listed":[null,2],"nested":[[null]],"paired":[null,1],"relisted":[null,4],"resulted":{"Ok":null},"swung":{"held":null},"swung_option":{"held":null}}"#,
@@ -43,6 +45,12 @@ pub const LEADS: [(&str, &str); 19] = [
     ("Sinker", r#"{"Depth":null}"#),
     ("Sinker", r#"{"Pair":[null,5]}"#),
     ("Heaved", r#"{"kind":"Depth","body":null}"#),
+    ("Bottomed", r#"{"id":"x"}"#),
+    ("Bottomed", r#"{"id":"x","depth":1}"#),
+    ("Groundage", r#"{"id":"x"}"#),
+    ("Groundage", r#"{"id":"x","depth":1}"#),
+    ("Grounding", r#"{"Aground":{"id":"x"}}"#),
+    ("Grounding", r#"{"Aground":{"id":"x","depth":1}}"#),
 ];
 
 /// An alias of an `Option`.
@@ -152,6 +160,46 @@ pub enum Heaved {
     Depth(Plummet),
 }
 
+/// The struct the members below flatten.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Seabed {
+    pub depth: u32,
+}
+
+/// An alias of an `Option` of [`Seabed`].
+#[model_schema()]
+pub type Bottoming = Option<Seabed>;
+
+/// A flattened `Option` under no attribute that drops a key.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Bottomed {
+    pub id: String,
+    #[serde(flatten)]
+    pub seabed: Option<Seabed>,
+}
+
+/// A flattened alias of an `Option` under no attribute that drops a key.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Groundage {
+    pub id: String,
+    #[serde(flatten)]
+    pub seabed: Bottoming,
+}
+
+/// A variant's flattened `Option` under no attribute that drops a key.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum Grounding {
+    Aground {
+        id: String,
+        #[serde(flatten)]
+        seabed: Option<Seabed>,
+    },
+}
+
 /// What serde writes back of `json` read as the type `read_as` names, or `None` where it refuses
 /// it.
 pub fn serde_wrote(read_as: &str, json: &str) -> Option<String> {
@@ -165,6 +213,9 @@ pub fn serde_wrote(read_as: &str, json: &str) -> Option<String> {
         "Reckoned" => written::<Reckoned>(json),
         "Deepsea" => written::<Deepsea>(json),
         "Sinker" => written::<Sinker>(json),
+        "Bottomed" => written::<Bottomed>(json),
+        "Groundage" => written::<Groundage>(json),
+        "Grounding" => written::<Grounding>(json),
         _ => written::<Heaved>(json),
     }
 }

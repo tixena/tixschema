@@ -432,6 +432,15 @@ to serde and to Zod, and `tests/generic_types_tests/declarations.rs` parses each
     optional swiftc takes with no diagnostic, and Dart a class the `?` is not redundant over.
     `run_option_aliases.rs` runs every row under each toolchain, `Deepsea` apart in Dart and Kotlin
     (a struct of one slot read as an array)
+  - **A flattened field of one is read and written as the `Option` it names, in each client.**
+    `FieldDef::written_in_place` answers the field with its type written as that `Option`:
+    `collect_swift_fields` and `collect_kotlin_fields` read the member through it, the alias
+    being a `typealias` of the `Option` there, and `collect_dart_fields` keeps the alias's
+    class as the member's type and reads and writes its `value` as that `Option`
+    (`DartField::read_as`, `wire_def`): `null` where none of the keys of the type it names is
+    there, and no key for its `None`. `Bottomed`, `Groundage` and `Grounding` in
+    `option_alias_models.rs` hold a flattened `Option` and a flattened alias of one under no
+    attribute that drops a key
 - `Vec<T>` → `Array<T>`
 - `HashSet<T>`, `BTreeSet<T>` and `IndexSet<T>` (under `indexmap`) → the array a `Vec<T>` writes, its items distinct. `is_set_wrapper` in `src/field_type.rs`, beside `is_sequence_wrapper`, is the one list of sets, and `collection_element_field` records each array level written as one in `FieldDef::set_levels`, numbered as `array_lengths` numbers its levels, so the fact survives every merge into array levels. The JSON Schema writes `"uniqueItems": true` at that level (`arrayed_json_schema_value`, `arrayed_json_schema_fragment`), and Zod `zod_repeat_check` after the level's count, which compares the items it parsed by their `JSON.stringify` and pushes its issue with `continue: true`. The `validate()` of each client answers a repeat at every set level, a member's own set ahead of its count: `own_repeat_elements` and `listed_at` in Dart, comparing the JSON its codec writes for each item; `own_repeat_rules` and `held_walk` under `Walk::Reported` in Swift, comparing the `JSONEncoder` texts with sorted keys; `own_repeat_statements` from `Rules::member` and `held_statements` in Kotlin, comparing the values. A brand over a set answers it too, and no bound a variant of an untagged enum is chosen by holds it. Swift's `reaches` asks `Walk::Rules`, which writes no repeat, so the read of a set is what it was; a tuple that holds a set is read unjudged, its `validate()` answering the repeat. The sentence is `REPEATED_ITEM` in `src/bound_message.rs`, written by `zod_repeat_check`, `dart_repeated`, `swift_repeated` and `kotlin_repeated`. Rust's read keeps one item of a repeat, and its `validate()` answers nothing of one; TypeScript writes `Array<T>`. `tests/set_tests/models.rs` holds the models and `PRINTED`, the table Zod and each client print, and `assert_rust_keeps_one_item`, what Rust's read answers of the same payloads
 - `HashMap<String, T>` → `Partial<Record<string, T>>`
@@ -446,7 +455,10 @@ to serde and to Zod, and `tests/generic_types_tests/declarations.rs` parses each
   `$oid` and a `$oid` that is not 24 hexadecimal digits in lower case, and the Swift one is public
   and `Sendable`. `tests/service_schema_emitted_client_tests/object_id_models.rs` holds an
   `ObjectId` in each position and what serde, the schemas and each client take of each payload
-  (`rows`); `tests/generic_types_tests/declarations.rs` holds Zod under node after `tsc --strict`
+  (`rows`), and `Waxing`, which flattens an `Option` of its type parameter, filled at an
+  `ObjectId`, a struct, one the Kotlin client reads by hand, an enum under a tag alone, a struct
+  declared below it and through a type that hands the parameter on;
+  `tests/generic_types_tests/declarations.rs` holds Zod under node after `tsc --strict`
   and the JSON Schema to it, and `run_dart_object_ids.rs`, `run_swift_object_ids.rs` and
   `run_kotlin_object_ids.rs` compile the README's blocks (`object_id_runs.rs`) beside the
   emitted types, warnings as errors, and read and write each payload against serde, each client's
@@ -1026,6 +1038,8 @@ feature enabled for that module to exist. What a change has to keep:
   `run_untagged_millis.rs` each client.
 
 `nullable` is a bare flag (no value): on an `Option<T>` field it renders `T | null` with the key **required** on TypeScript, Zod and JSON Schema, instead of the default coercing `T | undefined` with the key left optional. It is only valid on `Option<T>` fields, an alias of an `Option` declared above among them, written in place (non-`Option` is a compile error), is refused together with `ts_optional` (the two disagree about the key), and composes with `preprocess` — the preprocess wrap goes around the whole nullable union. With the `serde` feature on, it is also refused together with a key-dropping serde attribute (`skip_serializing_if`, `skip_serializing`, `skip`) — the flag declares the key always written, so dropping it would let serde write a payload the generated schema does not admit. The mirror guard, `check_optional_field_serialization`, requires that same attribute on a bare `Option<T>` field carrying no `nullable`.
+A flattened one is not held to it (`is_flattened_field`): it writes no key of its own, so serde
+writes nothing for its `None`, whatever its attributes say, and reads the payload back.
 
 ```rust
 #[model_schema()]
@@ -1426,7 +1440,12 @@ the consumer's view; this is what a change has to keep.
   inside `runCatching` where they name none, the check made at run time: `if
   ({member}Keys.isEmpty()) runCatching { ... }.getOrNull() else if (...)`. So a serializer written
   by hand is tried, where TypeScript and Zod refuse a key of the type that does not read, and the
-  plugin's is looked for by its keys. Where the type is read by a serializer that judges, one
+  plugin's is looked for by its keys. A type parameter is looked for, where those elements are
+  none, by the keys `filled_standing` writes as `{member}Standing`: a map by Kotlin name of the
+  keys `KOTLIN_TAKEN_KEYS` and `KOTLIN_TAG_KEYS` hold for each type the emitter wrote above, read
+  at the `descriptor.serialName` of the parameter's serializer, which one written by hand declares
+  as the type's name. `Impress` and `Waxwork` in `object_id_models.rs` hold it. Where the type
+  is read by a serializer that judges, one
   declared below its holder among them, the tried read is `read_or_judged`: where the judged read
   throws, the payload is read again by what the serializer answers called, `(serializer as?
   Function0<*>)?.invoke() as? DeserializationStrategy<*>`, its unjudged one, or by itself where it
@@ -2138,6 +2157,14 @@ consumer's view; this is what a change has to keep.
     untagged
     enum, one declared below its holder and one that names a function on itself have no key to
     be looked for by, and are read in the closure.
+  - A type parameter: an optional one is looked for by the keys of what fills it, which the type
+    that fills it hands. `record_flattenings` notes in `DART_LOOKED_UP` each parameter a type
+    reads flattened under an `Option`, itself or through a type it hands the parameter to, with
+    the name its two reads take the keys under, named and optional (`{List<String>? heldKeys}`,
+    `generic_codec`; `DART_LOOKING` for the item being emitted). `argument_converters` hands the
+    keys `argument_keys` answers: those an `Option` of the argument flattened in its place is
+    looked for by, or the holder's own for one of its parameters. `flattened_read` writes
+    `(heldKeys == null ? <the closure> : (handed.keys.any(heldKeys.contains) ? ... : null))`.
 
   A struct that names a `preprocess` on itself is read by serde as a value, and one with a
   flattened member of its own as a map: each records none. A type the emitter has not written
@@ -2609,7 +2636,12 @@ to keep.
   reads `nil` wherever its read throws: a struct declared below its holder or in another crate,
   one with a flattened member of its own or that names a function on itself, an untagged enum, an
   enum declared below its holder or that names a function on itself, an alias and a type
-  parameter. An externally tagged enum written above is read from its one entry (below). A model
+  parameter `preprocess::filled_keys` tells no keys for. A type parameter is tested by the keys of
+  what fills it: `filled_keys` writes `{member}Standing`, a dictionary by Swift name of the keys
+  `keys_standing_for` answers for each type written above whose keys are known (an `ObjectId`, a
+  brand and a struct of one slot over one, a struct, an enum under a tag key), read at the name
+  `String(describing:)` writes for the parameter with its arguments cut off, and `nil` keeps the
+  `catch`. An externally tagged enum written above is read from its one entry (below). A model
   it holds that breaks its rule still refuses the payload through `validate()`, as the Rust read
   refuses it. A member that names a function is read as the Zod schema of its holder reads it
   (`corrected_option`, section 12), and a flattened map, optional or not, by `flattened_map`.

@@ -121,8 +121,18 @@ struct DartField {
     member: String,
     /// Whether serde never writes the member: it is under `skip_serializing`.
     never_written: bool,
+    /// The `Option` a flattened alias of one is read and written as, its value held in the
+    /// alias's class.
+    read_as: Option<FieldDef>,
     required: bool,
     wire_name: String,
+}
+
+impl DartField {
+    /// The member as it is read and written flattened: the `Option` an alias of one names.
+    fn wire_def(&self) -> &FieldDef {
+        self.read_as.as_ref().unwrap_or(&self.field_def)
+    }
 }
 
 /// The container attributes read off any enum, in the shape `process_enum` itself dispatches on —
@@ -419,11 +429,13 @@ enum Flattening {
     Never,
 }
 
-/// Whether the members of a type read one of its type parameters flattened, and whether one reads
-/// it any other way.
+/// Whether the members of a type read one of its type parameters flattened, whether one reads it
+/// any other way, and whether one reads it flattened under an `Option`, which is looked up by the
+/// keys of what fills it.
 #[derive(Default)]
 struct ParameterReads {
     flattened: bool,
+    looked_up: bool,
     plainly: bool,
 }
 
@@ -458,6 +470,16 @@ thread_local! {
     /// How the item being emitted reads each of its type parameters flattened, by name.
     static DART_FLATTENING: RefCell<Vec<(String, Flattening)>> =
         const { RefCell::new(Vec::new()) };
+
+    /// For each type a class has been emitted for, in the order its type parameters are declared,
+    /// the name its read takes the keys of what fills one under, where it reads that parameter
+    /// flattened under an `Option`, itself or through a type that does.
+    static DART_LOOKED_UP: RefCell<HashMap<String, Vec<Option<String>>>> =
+        RefCell::new(HashMap::new());
+
+    /// The type parameters the item being emitted reads flattened under an `Option`, each with the
+    /// name its read takes the keys of what fills it under.
+    static DART_LOOKING: RefCell<Vec<(String, String)>> = const { RefCell::new(Vec::new()) };
 
     /// The type parameter a flattened member of the item being emitted is, while it is read.
     static DART_FLATTENED_READ: RefCell<Option<String>> = const { RefCell::new(None) };
@@ -514,6 +536,7 @@ pub fn dart_schema_dispatch(item: &Item, args: &DartTypeArgs<'_>) -> TokenStream
     };
     record_called(Vec::new());
     DART_FLATTENING.with(|current| current.borrow_mut().clear());
+    DART_LOOKING.with(|current| current.borrow_mut().clear());
     tokens
 }
 
@@ -548,6 +571,7 @@ fn record_flattenings(item: &Item) {
         return;
     };
     let parameters = type_parameters_in_scope(generics);
+    let mut looked_up: Vec<Option<String>> = Vec::new();
     let flattenings: Vec<(String, Flattening)> = parameters
         .iter()
         .map(|parameter| {
@@ -565,6 +589,11 @@ fn record_flattenings(item: &Item) {
                 ))),
                 (false, _) => Flattening::Never,
             };
+            looked_up.push(
+                reads
+                    .looked_up
+                    .then(|| declared(&format!("{}Keys", dart_lower_camel(parameter)))),
+            );
             (parameter.clone(), flattening)
         })
         .collect();
@@ -577,7 +606,16 @@ fn record_flattenings(item: &Item) {
                 .collect(),
         );
     });
+    let looking: Vec<(String, String)> = parameters
+        .iter()
+        .zip(&looked_up)
+        .filter_map(|(parameter, keys)| Some((parameter.clone(), keys.clone()?)))
+        .collect();
+    DART_LOOKED_UP.with(|recorded| {
+        recorded.borrow_mut().insert(ident.to_string(), looked_up);
+    });
     DART_FLATTENING.with(|current| *current.borrow_mut() = flattenings);
+    DART_LOOKING.with(|current| *current.borrow_mut() = looking);
 }
 
 /// Each member of `fields` serde reads, and whether it is flattened.
@@ -598,6 +636,7 @@ fn parameter_reads(def: &FieldDef, parameter: &str, flattened: bool, reads: &mut
             if name == parameter {
                 if flattened && def.array_depth == 0 {
                     reads.flattened = true;
+                    reads.looked_up |= def.is_optional();
                 } else {
                     reads.plainly = true;
                 }
@@ -605,10 +644,12 @@ fn parameter_reads(def: &FieldDef, parameter: &str, flattened: bool, reads: &mut
         }
         FieldDefType::SiblingType(name, arguments) => {
             let through = flattenings_of(name);
+            let looked_up = looked_up_by(name);
             for (at, argument) in arguments.iter().enumerate() {
                 let bare = argument.field_type == FieldDefType::TypeParam(parameter.to_owned())
                     && argument.array_depth == 0
                     && !argument.is_optional();
+                reads.looked_up |= bare && looked_up.get(at).is_some_and(Option::is_some);
                 match through.get(at) {
                     Some(Flattening::Alone) if bare => reads.flattened = true,
                     Some(Flattening::Also(_)) if bare => {
@@ -668,6 +709,26 @@ fn flattenings_of(rust_ident: &str) -> Vec<Flattening> {
     DART_FLATTENINGS
         .with(|recorded| recorded.borrow().get(rust_ident).cloned())
         .unwrap_or_default()
+}
+
+/// The name the read of the type `rust_ident` names takes the keys of what fills each of its type
+/// parameters under, where it reads the parameter flattened under an `Option`: nothing for a type
+/// declared below the one asking.
+fn looked_up_by(rust_ident: &str) -> Vec<Option<String>> {
+    DART_LOOKED_UP
+        .with(|recorded| recorded.borrow().get(rust_ident).cloned())
+        .unwrap_or_default()
+}
+
+/// The name the read of the item being emitted takes the keys of what fills its type parameter
+/// `parameter` under: `None` for a parameter it reads flattened under no `Option`.
+fn looked_up_argument(parameter: &str) -> Option<String> {
+    DART_LOOKING.with(|current| {
+        current
+            .borrow()
+            .iter()
+            .find_map(|(name, keys)| (name == parameter).then(|| keys.clone()))
+    })
 }
 
 /// The name the read of the item being emitted takes the converter of the flattened reads of its
@@ -1227,6 +1288,11 @@ fn collect_dart_fields(
             default_at: default_at(&rust_name),
             required: !omission.omits_key || !field_def.is_optional(),
             flatten,
+            read_as: if flatten && field_def.array_depth == 0 && !field_def.is_optional() {
+                field_def.written_in_place()
+            } else {
+                None
+            },
             field_def,
             member: dart_member(&rust_name, &DART_FIELD_NAMES_TAKEN, &written),
             never_written: has_serde_skip_serializing(&field.attrs),
@@ -1514,11 +1580,15 @@ pub fn dart_json_encode(ty: &syn::Type, expr: &str, promoted: bool) -> String {
 /// reading the argument judged: no `validate()` reaches a value behind a parameter. A value that
 /// reads one key alone is handed that key alone where the type reads its parameter flattened
 /// alone, and by a converter of the flattened reads where it reads it otherwise too. A parameter
-/// of the holder's own is handed the holder's converter of its flattened reads there.
+/// of the holder's own is handed the holder's converter of its flattened reads there. Where the
+/// type reads a parameter flattened under an `Option`, it is handed the keys of the argument, where
+/// they are known, and a parameter of the holder's own the keys the holder is handed for it.
 fn argument_converters(name: &str, arguments: &[FieldDef]) -> String {
     let through = flattenings_of(name);
+    let looked_up = looked_up_by(name);
     let mut converters = Vec::new();
     let mut flattened = Vec::new();
+    let mut keyed = Vec::new();
     for (at, argument) in arguments.iter().enumerate() {
         let alone = match taken_by(argument) {
             Taken::Only(keys) if !argument.is_optional() => Some(only("e", &keys)),
@@ -1555,9 +1625,34 @@ fn argument_converters(name: &str, arguments: &[FieldDef]) -> String {
                 converters.push(read("e"));
             }
         }
+        if let Some(Some(named)) = looked_up.get(at)
+            && let Some(keys) = argument_keys(argument)
+        {
+            keyed.push(format!("{named}: {keys}"));
+        }
     }
     converters.extend(flattened);
+    converters.extend(keyed);
     converters.join(", ")
+}
+
+/// The keys a type that reads its type parameter flattened under an `Option` is handed for
+/// `argument`, which fills it: the keys an `Option` of the argument flattened in its place is
+/// looked for by, and for a type parameter of the holder's own, the keys the holder is handed for
+/// it. `None` where none are known.
+fn argument_keys(argument: &FieldDef) -> Option<String> {
+    if argument.array_depth > 0 || argument.is_optional() {
+        return None;
+    }
+    if let FieldDefType::TypeParam(parameter) = &argument.field_type {
+        return looked_up_argument(parameter);
+    }
+    let taken = match taken_by(argument) {
+        Taken::Keys(keys) | Taken::Only(keys) | Taken::Tagged(keys) => keys,
+        Taken::FirstOf(_) => Vec::new(),
+    };
+    let keys = looked_for_by(argument, &taken);
+    (!keys.is_empty()).then(|| format!("const [{}]", listed_names(&keys)))
 }
 
 /// The expression that decodes `field`'s value out of the raw, dynamically-typed JSON `expr`
@@ -2046,9 +2141,19 @@ fn flattened_read(def: &FieldDef, handed: &str, taken: &[String]) -> String {
         return member_decode(def, handed, None, Read::Unjudged);
     }
     let read = dart_decode_at(def, def.array_depth, handed, Read::Unjudged);
+    let caught = format!("(() {{ try {{ return {read}; }} catch (_) {{ return null; }} }})()");
+    if let FieldDefType::TypeParam(parameter) = &def.field_type
+        && def.array_depth == 0
+        && let Some(named) = looked_up_argument(parameter)
+    {
+        // The keys of what fills the parameter, where a holder hands them.
+        return format!(
+            "({named} == null ? {caught} : ({handed}.keys.any({named}.contains) ? {read} : null))"
+        );
+    }
     let keys = looked_for_by(def, taken);
     if keys.is_empty() {
-        return format!("(() {{ try {{ return {read}; }} catch (_) {{ return null; }} }})()");
+        return caught;
     }
     format!(
         "({handed}.keys.any(const [{}].contains) ? {read} : null)",
@@ -3184,17 +3289,23 @@ fn generic_codec(parameters: &[String]) -> GenericCodec {
         write!(acc, ", {}", from_json_argument(parameter)).unwrap();
         acc
     });
-    let flattened: Vec<(&String, String)> = parameters
+    let named_arguments: Vec<(String, String)> = parameters
         .iter()
-        .filter_map(|parameter| flattened_argument(parameter).map(|named| (parameter, named)))
+        .filter_map(|parameter| {
+            flattened_argument(parameter)
+                .map(|named| (format!("{parameter} Function(dynamic)? {named}"), named))
+        })
+        .chain(parameters.iter().filter_map(|parameter| {
+            looked_up_argument(parameter).map(|named| (format!("List<String>? {named}"), named))
+        }))
         .collect();
-    if !flattened.is_empty() {
-        let declared_as: Vec<String> = flattened
+    if !named_arguments.is_empty() {
+        let declared_as: Vec<&str> = named_arguments
             .iter()
-            .map(|(parameter, named)| format!("{parameter} Function(dynamic)? {named}"))
+            .map(|(declared, _)| declared.as_str())
             .collect();
         write!(from_json_params, ", {{{}}}", declared_as.join(", ")).unwrap();
-        for (_, named) in &flattened {
+        for (_, named) in &named_arguments {
             write!(from_json_args, ", {named}: {named}").unwrap();
         }
     }
@@ -3244,15 +3355,12 @@ fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>
         let decode = if field.flatten {
             let keys: Vec<&str> = taken_ahead[removed..].iter().map(String::as_str).collect();
             let handed = without(&source, &keys);
+            let def = field.wire_def();
             // A flattened member is walked whatever it writes.
-            match taken_by(&field.field_def) {
+            let decode = match taken_by(def) {
                 Taken::Keys(taken) | Taken::Tagged(taken) => {
-                    let whole = if reads_the_whole(&field.field_def) {
-                        json
-                    } else {
-                        &handed
-                    };
-                    let decode = flattened_decode(&field.field_def, whole, &taken);
+                    let whole = if reads_the_whole(def) { json } else { &handed };
+                    let decode = flattened_decode(def, whole, &taken);
                     for key in taken {
                         if !taken_ahead.contains(&key) {
                             taken_ahead.push(key);
@@ -3261,7 +3369,7 @@ fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>
                     decode
                 }
                 Taken::Only(taken) => {
-                    let decode = flattened_decode(&field.field_def, &only(&handed, &taken), &taken);
+                    let decode = flattened_decode(def, &only(&handed, &taken), &taken);
                     for key in taken {
                         if !taken_ahead.contains(&key) {
                             taken_ahead.push(key);
@@ -3272,9 +3380,14 @@ fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>
                 Taken::FirstOf(names) => {
                     source = without_first(&handed, &names.concat());
                     removed = taken_ahead.len();
-                    let first = first_of(&handed, named_type(&field.field_def), &names);
-                    first_entry_decode(&field.field_def, &first)
+                    let first = first_of(&handed, named_type(def), &names);
+                    first_entry_decode(def, &first)
                 }
+            };
+            if field.read_as.is_some() {
+                format!("{}({decode})", dart_typename(&field.field_def))
+            } else {
+                decode
             }
         } else {
             let read = Read::Unjudged.of_member(&field.field_def);
@@ -3334,23 +3447,32 @@ fn class_body_parts(fields: &[DartField], extra_to_json: &[String]) -> ClassBody
         .iter()
         .filter(|field| !field.never_written)
         .map(|field| {
-            let encode = dart_encode_expr(&field.field_def, &field.member, false);
-            if field.flatten {
-                let entries = joined_entries(&field.field_def, &encode);
-                if field.field_def.is_optional() {
-                    format!("if ({} != null) ...{entries},", field.member)
-                } else {
-                    format!("...{entries},")
-                }
-            } else if field.required {
-                format!("{}: {encode},", quoted(&field.wire_name))
-            } else {
-                format!(
-                    "if ({} != null) {}: {encode},",
-                    field.member,
-                    quoted(&field.wire_name)
-                )
-            }
+            field.read_as.as_ref().map_or_else(
+                || {
+                    let encode = dart_encode_expr(&field.field_def, &field.member, false);
+                    if field.flatten {
+                        let entries = joined_entries(&field.field_def, &encode);
+                        if field.field_def.is_optional() {
+                            format!("if ({} != null) ...{entries},", field.member)
+                        } else {
+                            format!("...{entries},")
+                        }
+                    } else if field.required {
+                        format!("{}: {encode},", quoted(&field.wire_name))
+                    } else {
+                        format!(
+                            "if ({} != null) {}: {encode},",
+                            field.member,
+                            quoted(&field.wire_name)
+                        )
+                    }
+                },
+                |held| {
+                    let value = format!("{}.value", field.member);
+                    let entries = joined_entries(held, &dart_encode_expr(held, &value, false));
+                    format!("if ({value} != null) ...{entries},")
+                },
+            )
         })
         .collect();
     let extra: String = extra_to_json.join(" ");
@@ -3533,7 +3655,7 @@ fn struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -> Toke
     let hands = !args.preprocess.is_empty()
         || fields
             .iter()
-            .any(|field| field.flatten && !hands_to_none(&field.field_def));
+            .any(|field| field.flatten && !hands_to_none(field.wire_def()));
     DART_HANDED.with(|recorded| {
         recorded.borrow_mut().insert(rust_ident.clone(), hands);
     });

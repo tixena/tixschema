@@ -3,7 +3,10 @@
 //! beside a member of its holder's own, ahead of a flattened struct, under an `Option`, under a
 //! brand and an alias, and as the type parameter a generic type flattens. serde refuses a key
 //! beside `$oid`, and a `$oid` that is not 24 hexadecimal digits, wherever the `ObjectId` is held
-//! as a value, and reads past the key where it is flattened.
+//! as a value, and reads past the key where it is flattened. A generic type that flattens an
+//! `Option` of its type parameter is filled at an `ObjectId` and at a struct as well: serde reads
+//! `None` where a key of the filling is there and does not read, which Zod and every client refuse
+//! where the client knows the filling's keys.
 
 use std::collections::HashMap;
 
@@ -14,7 +17,7 @@ use tixschema::model_schema;
 
 /// Each payload: an `ObjectId` in each position, a key beside its `$oid` there, a `$oid` that is
 /// not 24 hexadecimal digits, and one in upper case, which serde alone reads.
-const ROWS: [Row; 37] = [
+const ROWS: [Row; 53] = [
     Row {
         dart: Told::Serde,
         json: concat!(
@@ -312,10 +315,154 @@ const ROWS: [Row; 37] = [
         swift: Told::Serde,
     },
     Row {
-        dart: Told::Serde,
+        dart: Told::Refused,
         json: r#"{"waxed":{"$oid":"507f1f77bcf86cd79943901z","note":"n"}}"#,
         kotlin: Told::Refused,
         read_as: "Folding",
+        schema: false,
+        serde: true,
+        swift: Told::Refused,
+    },
+    Row {
+        dart: Told::Serde,
+        json: r#"{"waxed":{"note":"n"}}"#,
+        kotlin: Told::Serde,
+        read_as: "Cartouching",
+        schema: true,
+        serde: true,
+        swift: Told::Serde,
+    },
+    Row {
+        dart: Told::Serde,
+        json: r#"{"waxed":{"note":"n","wax":"red"}}"#,
+        kotlin: Told::Serde,
+        read_as: "Cartouching",
+        schema: true,
+        serde: true,
+        swift: Told::Serde,
+    },
+    Row {
+        dart: Told::Refused,
+        json: r#"{"waxed":{"note":"n","wax":5}}"#,
+        kotlin: Told::Refused,
+        read_as: "Cartouching",
+        schema: false,
+        serde: true,
+        swift: Told::Refused,
+    },
+    Row {
+        dart: Told::Serde,
+        json: r#"{"rewaxed":{"waxing":{"note":"n"}}}"#,
+        kotlin: Told::Serde,
+        read_as: "Rewaxed",
+        schema: true,
+        serde: true,
+        swift: Told::Serde,
+    },
+    Row {
+        dart: Told::Serde,
+        json: r#"{"rewaxed":{"waxing":{"note":"n","wax":"red"}}}"#,
+        kotlin: Told::Serde,
+        read_as: "Rewaxed",
+        schema: true,
+        serde: true,
+        swift: Told::Serde,
+    },
+    Row {
+        dart: Told::Refused,
+        json: r#"{"rewaxed":{"waxing":{"note":"n","wax":5}}}"#,
+        kotlin: Told::Refused,
+        read_as: "Rewaxed",
+        schema: false,
+        serde: true,
+        swift: Told::Refused,
+    },
+    Row {
+        dart: Told::Serde,
+        json: r#"{"waxed":{"note":"n"}}"#,
+        kotlin: Told::Serde,
+        read_as: "Countersealing",
+        schema: true,
+        serde: true,
+        swift: Told::Serde,
+    },
+    Row {
+        dart: Told::Serde,
+        json: r#"{"waxed":{"held":"h","note":"n"}}"#,
+        kotlin: Told::Serde,
+        read_as: "Countersealing",
+        schema: true,
+        serde: true,
+        swift: Told::Serde,
+    },
+    Row {
+        dart: Told::Refused,
+        json: r#"{"waxed":{"held":5,"note":"n"}}"#,
+        kotlin: Told::Refused,
+        read_as: "Countersealing",
+        schema: false,
+        serde: true,
+        swift: Told::Refused,
+    },
+    Row {
+        dart: Told::Serde,
+        json: r#"{"waxed":{"note":"n"}}"#,
+        kotlin: Told::Serde,
+        read_as: "Waxworking",
+        schema: true,
+        serde: true,
+        swift: Told::Serde,
+    },
+    Row {
+        dart: Told::Serde,
+        json: r#"{"waxed":{"kind":"Plain","note":"n"}}"#,
+        kotlin: Told::Serde,
+        read_as: "Waxworking",
+        schema: true,
+        serde: true,
+        swift: Told::Serde,
+    },
+    Row {
+        dart: Told::Refused,
+        json: r#"{"waxed":{"kind":"Gale","note":"n"}}"#,
+        kotlin: Told::Refused,
+        read_as: "Waxworking",
+        schema: false,
+        serde: true,
+        swift: Told::Refused,
+    },
+    Row {
+        dart: Told::Serde,
+        json: r#"{"waxed":{"note":"n","wax":"red"}}"#,
+        kotlin: Told::Serde,
+        read_as: "Impressing",
+        schema: true,
+        serde: true,
+        swift: Told::Serde,
+    },
+    Row {
+        dart: Told::Refused,
+        json: r#"{"waxed":{"note":"n","wax":5}}"#,
+        kotlin: Told::Refused,
+        read_as: "Impressing",
+        schema: false,
+        serde: true,
+        swift: Told::Refused,
+    },
+    Row {
+        dart: Told::Serde,
+        json: r#"{"waxed":{"note":"n","wax":"red"}}"#,
+        kotlin: Told::Serde,
+        read_as: "Latewaxed",
+        schema: true,
+        serde: true,
+        swift: Told::Serde,
+    },
+    Row {
+        dart: Told::Serde,
+        json: r#"{"waxed":{"note":"n","wax":5}}"#,
+        kotlin: Told::Refused,
+        read_as: "Latewaxed",
         schema: false,
         serde: true,
         swift: Told::Serde,
@@ -421,6 +568,32 @@ pub struct Notation {
     pub note: String,
 }
 
+/// A struct of one member, which fills the type parameter [`Waxing`] flattens under an `Option`.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Cartouche {
+    pub wax: String,
+}
+
+/// A struct with a member serde never writes, which the Kotlin client reads by a serializer written
+/// by hand, and which fills the type parameter [`Waxing`] flattens under an `Option`.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Impress {
+    #[serde(default, skip_serializing)]
+    pub lot: u32,
+    pub wax: String,
+}
+
+/// An enum under a tag alone, which fills the type parameter [`Waxing`] flattens under an `Option`.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind")]
+pub enum Waxwork {
+    Plain,
+    Red { shade: String },
+}
+
 /// A struct that declares a parameter, filled at an `ObjectId`.
 #[model_schema(default_types(Held = String))]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -522,14 +695,22 @@ pub struct Enveloping<Held> {
     pub remark: Notation,
 }
 
-/// A struct that flattens an `Option` of its type parameter ahead of a flattened struct.
+/// A struct that flattens an `Option` of its type parameter ahead of a flattened struct, under no
+/// attribute that drops a key: serde writes nothing for its `None`.
 #[model_schema(default_types(Held = Sigil))]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Waxing<Held> {
-    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    #[serde(flatten)]
     pub held: Option<Held>,
     #[serde(flatten)]
     pub remark: Notation,
+}
+
+/// A struct that hands its type parameter on to [`Waxing`].
+#[model_schema(default_types(Held = Sigil))]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Rewaxing<Held> {
+    pub waxing: Waxing<Held>,
 }
 
 /// A struct that hands its type parameter on to [`Enveloping`].
@@ -556,6 +737,49 @@ pub struct Lettering {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Folding {
     pub waxed: Waxing<ObjectId>,
+}
+
+/// [`Waxing`] filled at a struct written above it.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Cartouching {
+    pub waxed: Waxing<Cartouche>,
+}
+
+/// [`Rewaxing`] filled at a struct written above [`Waxing`].
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Rewaxed {
+    pub rewaxed: Rewaxing<Cartouche>,
+}
+
+/// [`Waxing`] filled at a struct that declares a parameter, written above it.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Countersealing {
+    pub waxed: Waxing<Countersigned<String>>,
+}
+
+/// [`Waxing`] filled at an enum under a tag alone, written above it.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Waxworking {
+    pub waxed: Waxing<Waxwork>,
+}
+
+/// [`Waxing`] filled at a struct with a member serde never writes, written above it.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Impressing {
+    pub waxed: Waxing<Impress>,
+}
+
+/// [`Waxing`] filled at a struct declared below both: Dart and Swift do not know its keys, and
+/// read a flattened `Option` of it as `None` wherever its read fails, as serde reads it.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Latewaxed {
+    pub waxed: Waxing<LateCartouche>,
 }
 
 /// [`Relaying`] filled at an `ObjectId`.
@@ -633,6 +857,13 @@ pub struct Belated {
 #[serde(transparent)]
 pub struct LateSigil(pub ObjectId);
 
+/// A struct of one member, declared below [`Latewaxed`], which fills [`Waxing`] there.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LateCartouche {
+    pub wax: String,
+}
+
 /// [`ROWS`], each held to what its columns state of one another: neither a client nor the schemas
 /// take a payload serde refuses.
 pub fn rows() -> &'static [Row] {
@@ -666,6 +897,12 @@ pub fn serde_told(read_as: &str, json: &str) -> String {
         "Sigillary" => written_back::<Sigillary>(json),
         "Lettering" => written_back::<Lettering>(json),
         "Folding" => written_back::<Folding>(json),
+        "Cartouching" => written_back::<Cartouching>(json),
+        "Rewaxed" => written_back::<Rewaxed>(json),
+        "Countersealing" => written_back::<Countersealing>(json),
+        "Latewaxed" => written_back::<Latewaxed>(json),
+        "Waxworking" => written_back::<Waxworking>(json),
+        "Impressing" => written_back::<Impressing>(json),
         "Relayed" => written_back::<Relayed>(json),
         "Bullae" => written_back::<Bullae>(json),
         "Crossing" => written_back::<Crossing>(json),
