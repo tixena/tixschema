@@ -101,8 +101,9 @@ use crate::features::object_id::OBJECT_ID_HEX_PATTERN;
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use crate::utils::{
-    AliasKind, MapKeyWire, PublishedShape, ShapeQuestion, lookup_alias_info, record_key_wire,
-    record_shape_question, record_value_shape, shape_questions_for,
+    AliasKind, MapKeyWire, OptionTarget, PublishedShape, ShapeQuestion, lookup_alias_info,
+    record_key_wire, record_option_target, record_shape_question, record_value_shape,
+    shape_questions_for,
 };
 
 #[cfg(feature = "serde")]
@@ -2250,6 +2251,26 @@ fn alias_target_placed(target: &FieldDef, generics: &syn::Generics) -> FieldDef 
     placed
 }
 
+/// Records what an alias of an `Option` names, which a holder writes in place wherever it holds the
+/// alias outside a field. An alias that reaches itself through such aliases records nothing: the
+/// compiler refuses the cycle.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+fn record_alias_option_target(alias: &ItemType, rust_ident: &str, target: &FieldDef) {
+    let parameters = type_parameters_in_scope(&alias.generics);
+    let surface = surface_field_def(&alias.generics, target);
+    let mut reached = Vec::new();
+    surface.names_through_option_aliases(&mut reached);
+    if surface.stands_for_an_option() && !reached.iter().any(|name| name == rust_ident) {
+        record_option_target(
+            rust_ident,
+            OptionTarget {
+                parameters,
+                written: quote::ToTokens::to_token_stream(&alias.ty).to_string(),
+            },
+        );
+    }
+}
+
 /// The alias schema module is referenced by all three schema features — `typescript` and `zod`
 /// through the export name, `jsonschema` through `#module_ident::Schema::json_schema()` — so the
 /// module and its `register_alias_info` call are gated on the union, not `typescript` alone.
@@ -2271,6 +2292,7 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
     let alias_field_def = get_field_def(export_name.as_str(), &alias.ty, "");
     let kind = alias_target_kind(&alias_field_def);
     register_alias_info(&rust_ident_str, &export_name, &module_name, kind);
+    record_alias_option_target(&alias, &rust_ident_str, &alias_field_def);
     // An alias *is* its target, so a key written under its name renders in the target's wire form.
     record_key_wire(&rust_ident_str, alias_field_def.map_key_wire());
     // An alias's schema *is* its target's, so it publishes whatever the target publishes.
@@ -20232,21 +20254,21 @@ fn declared_default_field(parameter: &str, default_types: &[(syn::Ident, syn::Ty
         )
 }
 
-/// The rendering one declared default composes: the ordinary rendering [`FieldDef::zod_type`]
-/// gives every field, deferred wherever that rendering names another item's own module-scope
+/// The rendering one declared default composes: the rendering [`FieldDef::zod_slot_type`] gives
+/// every type argument, deferred wherever that rendering names another item's own module-scope
 /// binding — its factory, called with fresh arguments exactly as an ordinary field naming it does,
 /// or, where the default names that item at exactly the arguments it calls its own, that item's
 /// `$SchemaDefault` directly (the fold).
 #[cfg(feature = "zod")]
 fn default_zod_rendering(field: &FieldDef) -> DefaultZodRendering {
     if field.array_depth == 0
-        && !field.is_optional()
+        && !field.stands_for_an_option()
         && let FieldDefType::SiblingType(name, args) = &field.field_type
     {
         if publishes_zod_factory(name)
             && let Some(info) = lookup_alias_info(name)
         {
-            let rendered: Vec<String> = args.iter().map(FieldDef::zod_type).collect();
+            let rendered: Vec<String> = args.iter().map(FieldDef::zod_slot_type).collect();
             if zod_default_arguments(name).as_deref() == Some(rendered.as_slice()) {
                 return DefaultZodRendering::Deferred(format!(
                     "{}$SchemaDefault",
@@ -20254,12 +20276,12 @@ fn default_zod_rendering(field: &FieldDef) -> DefaultZodRendering {
                 ));
             }
         }
-        return DefaultZodRendering::Deferred(field.zod_type());
+        return DefaultZodRendering::Deferred(field.zod_slot_type());
     }
     if field.names_a_sibling_binding() {
-        return DefaultZodRendering::Deferred(field.zod_type());
+        return DefaultZodRendering::Deferred(field.zod_slot_type());
     }
-    DefaultZodRendering::Eager(field.zod_type())
+    DefaultZodRendering::Eager(field.zod_slot_type())
 }
 
 /// What a generic item appends after its factory: the factory called with each parameter's
@@ -20276,7 +20298,7 @@ fn zod_default_block(
         .iter()
         .map(|parameter| declared_default_field(parameter, defaults.default_types))
         .collect();
-    let fold_keys: Vec<String> = fields.iter().map(FieldDef::zod_type).collect();
+    let fold_keys: Vec<String> = fields.iter().map(FieldDef::zod_slot_type).collect();
     record_zod_default_arguments(rust_ident, fold_keys);
     let renderings: Vec<DefaultZodRendering> = fields.iter().map(default_zod_rendering).collect();
 
@@ -20308,7 +20330,7 @@ fn zod_default_block(
         ": ZodType<{item_name}<{}>>",
         fields
             .iter()
-            .map(FieldDef::typescript_typename)
+            .map(FieldDef::typescript_slot_typename)
             .collect::<Vec<_>>()
             .join(", ")
     );
@@ -20463,12 +20485,15 @@ fn republishes_sibling_binding(field: &FieldDef) -> bool {
 }
 
 /// [`republishes_sibling_binding`] for a tuple struct: serde writes a one-slot struct as the slot's
-/// value alone, so a bare sibling slot is published verbatim; every other arity builds a `z.tuple`.
+/// value alone, so a bare sibling slot is published verbatim, but for an alias of an `Option`,
+/// which the slot writes in place; every other arity builds a `z.tuple`.
 #[cfg(feature = "zod")]
 fn tuple_struct_republishes_slot(shape: &TupleStructShape) -> bool {
     match shape {
         TupleStructShape::Array(_) => false,
-        TupleStructShape::BareValue(slot) => republishes_sibling_binding(slot),
+        TupleStructShape::BareValue(slot) => {
+            republishes_sibling_binding(slot) && !slot.stands_for_an_option()
+        }
     }
 }
 

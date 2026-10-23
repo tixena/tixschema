@@ -99,6 +99,15 @@ mod skipped_variants;
 #[path = "../model_schema_prop_tests/literal_models.rs"]
 mod literals;
 
+/// An alias of an `Option` held outside a field, and the payloads serde writes for it.
+#[path = "../semantic_types_tests/option_alias_models.rs"]
+mod option_aliases;
+
+/// Untagged enums with a newtype variant over an `Option`, and the variant serde takes for each
+/// payload.
+#[path = "../untagged_tests/null_models.rs"]
+mod null_models;
+
 #[cfg(feature = "chrono")]
 use alloc::collections::BTreeSet;
 use core::fmt::Write as _;
@@ -620,6 +629,16 @@ const QUOTED_DRIVER: &str = r#"import * as lib from "./lib/index.js";
 for (const [readAs, payload] of PAYLOADS) {
   const read = lib[`${readAs}$Schema`].safeParse(JSON.parse(payload));
   console.log(JSON.stringify(read.success ? read.data : { refused: read.error.issues }));
+}
+"#;
+
+/// Parses each payload through the schema of the model it is read as, and prints one line per
+/// payload: the value read, `undefined` for a read that answers no value, or `refused`.
+const VALUES_DRIVER: &str = r#"import * as lib from "./lib/index.js";
+
+for (const [readAs, payload] of PAYLOADS) {
+  const read = lib[`${readAs}$Schema`].safeParse(JSON.parse(payload));
+  console.log(read.success ? (JSON.stringify(read.data) ?? "undefined") : "refused");
 }
 "#;
 
@@ -4753,5 +4772,150 @@ fn type_check_a_literal_refuses_under_zod_what_serde_refuses() {
         printed,
         literals::literal_report(literals::names_each_violation).trim_end(),
         "the Zod schemas do not refuse what a serde read refuses:\n{failed}"
+    );
+}
+
+/// An alias of an `Option` held outside a field is read under Zod as serde writes it, `null` as
+/// `null`, and each payload serde writes is a value of its TypeScript type under `tsc --strict`.
+#[test]
+fn type_check_an_alias_of_an_option_held_outside_a_field_is_read_with_null() {
+    let source = [
+        PREAMBLE.to_owned(),
+        option_aliases::plummet_schema::Schema::ts_definition(),
+        option_aliases::plummet_schema::Schema::zod_schema(),
+        option_aliases::relead_schema::Schema::ts_definition(),
+        option_aliases::relead_schema::Schema::zod_schema(),
+        option_aliases::haply_schema::Schema::ts_definition(),
+        option_aliases::haply_schema::Schema::zod_schema(),
+        option_aliases::Swung::<u32>::ts_definition(),
+        option_aliases::Swung::<u32>::zod_schema(),
+        option_aliases::Leadsman::ts_definition(),
+        option_aliases::Leadsman::zod_schema(),
+        option_aliases::Chanced::ts_definition(),
+        option_aliases::Chanced::zod_schema(),
+        option_aliases::Handlead::ts_definition(),
+        option_aliases::Handlead::zod_schema(),
+        option_aliases::Reckoned::ts_definition(),
+        option_aliases::Reckoned::zod_schema(),
+        option_aliases::Deepsea::ts_definition(),
+        option_aliases::Deepsea::zod_schema(),
+        option_aliases::Sinker::ts_definition(),
+        option_aliases::Sinker::zod_schema(),
+        option_aliases::Heaved::ts_definition(),
+        option_aliases::Heaved::zod_schema(),
+    ]
+    .join("\n\n");
+    for (read_as, json) in option_aliases::LEADS {
+        assert_eq!(
+            option_aliases::serde_wrote(read_as, json).as_deref(),
+            Some(json),
+            "serde does not write back {json} read as {read_as}"
+        );
+    }
+    let driver = VALUES_DRIVER.replace(
+        "PAYLOADS",
+        &serde_json::to_string(&option_aliases::LEADS).unwrap(),
+    );
+    let Some((printed, failed)) = loaded_from("option-aliases", &source, &driver) else {
+        return;
+    };
+    let read: Vec<Option<serde_json::Value>> = printed
+        .lines()
+        .map(|line| serde_json::from_str(line).ok())
+        .collect();
+    let written: Vec<Option<serde_json::Value>> = option_aliases::LEADS
+        .iter()
+        .map(|&(_, json)| serde_json::from_str(json).ok())
+        .collect();
+    assert_eq!(
+        read, written,
+        "Zod does not read what serde writes:\n{printed}\n{failed}"
+    );
+    let Some(at) = built_from("option-aliases-payloads", &source) else {
+        return;
+    };
+    let mut payloads = String::from(
+        "import type { Chanced, Deepsea, Handlead, Heaved, Leadsman, Reckoned, Sinker } from \
+         \"./lib/index.js\";\n",
+    );
+    for (position, &(read_as, json)) in option_aliases::LEADS.iter().enumerate() {
+        let _ = writeln!(payloads, "export const row{position}: {read_as} = {json};");
+    }
+    fs::write(at.join("tsconfig.consumer.json"), CONSUMER_PROJECT).unwrap();
+    fs::write(at.join("consumer.ts"), &payloads).unwrap();
+    let (typed, said) = compiled(&at, "tsconfig.consumer.json").unwrap();
+    fs::remove_dir_all(&at).unwrap();
+    assert!(
+        typed,
+        "TypeScript refuses a payload serde writes:\n{said}\n{payloads}"
+    );
+}
+
+/// Each payload serde reads as an untagged enum with a newtype variant over an `Option` is a value
+/// of the enum's TypeScript type under `tsc --strict`, `null` among them, and the Zod schema reads
+/// it as the value serde writes back.
+#[test]
+fn type_check_an_untagged_variant_over_an_option_holds_null() {
+    let source = [
+        PREAMBLE.to_owned(),
+        null_models::Fathom::ts_definition(),
+        null_models::Fathom::zod_schema(),
+        null_models::Kedged::ts_definition(),
+        null_models::Kedged::zod_schema(),
+        null_models::Drogue::ts_definition(),
+        null_models::Drogue::zod_schema(),
+        null_models::Drogued::ts_definition(),
+        null_models::Drogued::zod_schema(),
+        null_models::sounded_schema::Schema::ts_definition(),
+        null_models::sounded_schema::Schema::zod_schema(),
+        null_models::Plumb::ts_definition(),
+        null_models::Plumb::zod_schema(),
+    ]
+    .join("\n\n");
+    let read: Vec<(&str, &str)> = null_models::NULL_ROWS
+        .iter()
+        .filter(|row| {
+            assert_eq!(
+                null_models::serde_told(row.read_as, row.json),
+                row.told(str::to_owned),
+                "serde answers {} read as {} otherwise",
+                row.json,
+                row.read_as
+            );
+            row.taken.is_some()
+        })
+        .map(|row| (row.read_as, row.json))
+        .collect();
+    let driver = VALUES_DRIVER.replace("PAYLOADS", &serde_json::to_string(&read).unwrap());
+    let Some((printed, failed)) = loaded_from("untagged-nulls", &source, &driver) else {
+        return;
+    };
+    let values: Vec<Option<serde_json::Value>> = printed
+        .lines()
+        .map(|line| serde_json::from_str(line).ok())
+        .collect();
+    let written: Vec<Option<serde_json::Value>> = read
+        .iter()
+        .map(|&(_, json)| serde_json::from_str(json).ok())
+        .collect();
+    assert_eq!(
+        values, written,
+        "Zod does not read what serde writes back:\n{printed}\n{failed}"
+    );
+    let Some(at) = built_from("untagged-nulls-payloads", &source) else {
+        return;
+    };
+    let mut payloads =
+        String::from("import type { Drogued, Fathom, Kedged, Plumb } from \"./lib/index.js\";\n");
+    for (position, &(read_as, json)) in read.iter().enumerate() {
+        let _ = writeln!(payloads, "export const row{position}: {read_as} = {json};");
+    }
+    fs::write(at.join("tsconfig.consumer.json"), CONSUMER_PROJECT).unwrap();
+    fs::write(at.join("consumer.ts"), &payloads).unwrap();
+    let (typed, said) = compiled(&at, "tsconfig.consumer.json").unwrap();
+    fs::remove_dir_all(&at).unwrap();
+    assert!(
+        typed,
+        "TypeScript refuses a payload serde reads:\n{said}\n{payloads}"
     );
 }

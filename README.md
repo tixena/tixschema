@@ -1741,6 +1741,32 @@ export type DocumentRecord = {
 };
 ```
 
+An alias of an `Option` is named by a field alone. Its own type describes the `Option` of a field, `T | undefined`, whose `None` leaves the key out. Everywhere else serde writes `None` as `null`: an item of a list, a value of a map, a position of a tuple, a type argument, an arm of a `Result`, a slot of a tuple struct and the slot of a variant. There the holder writes the type the alias names in place, as an `Option` written there is written:
+
+```rust
+#[model_schema()]
+pub type Plummet = Option<u32>;
+
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+pub struct Handlead {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kept: Plummet,
+    pub listed: Vec<Plummet>,
+}
+```
+
+```typescript
+export type PlummetType = number | undefined;
+
+export type Handlead = {
+  kept?: PlummetType;
+  listed: Array<number | null>;
+};
+```
+
+Zod writes `listed: z.array(z.nullable(z.number().int().min(0).max(4294967295)))`, which reads the `[null]` serde writes as `[null]`, and the JSON Schema describes the same `null`. An alias of such an alias, and one that declares a type parameter, are written in place the same way.
+
 An alias takes `name`, and `default_types` where it declares a type parameter. `pattern`, `minLength` and `maxLength` are refused on it at expansion: an alias is another name for the type it names, not a type of its own, so a check written on one has nothing to belong to and nothing to enforce it. A value that carries a rule is a branded newtype, which takes all three -- see [Branded Newtype Validation Constraints](#branded-newtype-validation-constraints) -- and a rule that holds a single field is written on that field, in `#[model_schema_prop(...)]`.
 
 ### Type Parameters
@@ -1750,6 +1776,8 @@ A struct, a tuple struct, an enum, an alias and a branded newtype can each name 
 **TypeScript binds the parameter for real.** It is a type surface, and the declaration it emits carries the parameter list: `export type Wrapper<T> = { id: T }` is a generic type, and a use site fills `T` in. The one position where it does not is a map's key, which states `string` on all three surfaces — see [Collections and Maps](#collections-and-maps).
 
 **JSON Schema writes the document of whatever fills the parameter.** JSON Schema has no type parameters at all, so a document exists only at one filling: the type `default_types` declares where the document stands on its own, and the reference site's arguments where a field embeds it. The shape around the parameter -- an array, a map's keys, a tuple's arity -- is described either way.
+
+**An argument is written as serde writes a value outside a field.** serde writes the `None` of an `Option` that fills a parameter as `null` wherever the parameter is held, under the key of a field typed with it among them, which `skip_serializing_if = "Option::is_none"` cannot be written on. So `Wrapper<Option<u32>>` is `Wrapper<number | null>` in TypeScript, and its factory is handed `z.nullable(z.number().int().min(0).max(4294967295))`, which reads `null` as `null`. A default declared at an `Option` is written into `X$SchemaDefault` and its annotation the same way.
 
 **Zod publishes a factory rather than a schema -- and a default beside it.** A Zod schema is a runtime value and TypeScript generics do not exist at runtime, so there is no one value a generic type could publish: the caller has to say what fills each parameter before anything can validate. A generic type therefore exports `X$SchemaFactory`, a function taking one required schema argument per parameter, and a field written with a parameter composes the argument bound for it. It also exports `X$SchemaDefault`: the factory called at the type's own declared `default_types`, memoized like any other call, so a consumer who wants the ordinary filling never constructs the argument list by hand.
 
@@ -4656,7 +4684,7 @@ Rust, Dart, Swift and Kotlin print them from the `validate()` of each value, and
 
 #### What an upgrade asks of your crate
 
-Thirty-five rules meet a crate that upgrades. Each is stated with what a build or a read answers:
+Thirty-seven rules meet a crate that upgrades. Each is stated with what a build or a read answers:
 
 - **A map under `#[serde(flatten)]` beside another member that writes a key stops the build**, on a struct and on a variant of an enum: `pub struct Stocktake { #[serde(flatten)] pub counts: BTreeMap<String, u8>, pub note: String }` answers ``error: model_schema: type `Stocktake`: field `counts`: `#[serde(flatten)]` cannot hold a map beside other members — serde writes the map's entries at one level with `note`, and no TypeScript type describes both. Write the map under a key of its own.`` Write the map under a key of its own, `pub counts: BTreeMap<String, u8>`. See [Intersection Types](#intersection-types-serdeflatten).
 - **A map keyed by a number or a `bool` below a `#[serde(flatten)]` member stops the build**, at any depth, on a struct and on a variant of an enum, as does a type declared above that holds one there, and a type parameter read there filled with a number, a `bool` or a map keyed by one: serde reads no entry of such a map back. `pub struct Soundings { #[serde(flatten)] pub rest: BTreeMap<isize, u8> }` answers ``error: model_schema: type `Soundings`: field `rest`: `#[serde(flatten)]` cannot hold a map keyed by `isize` — serde reads every key below a flattened member as text, and reads no number and no `bool` from text, so no entry of that map reads back. Key the map by a `String`, or write the field under a key of its own.`` Key the map by a `String`, or write it under a key of its own, `pub rest: BTreeMap<isize, u8>`. See [Intersection Types](#intersection-types-serdeflatten).
@@ -4702,6 +4730,8 @@ Thirty-five rules meet a crate that upgrades. Each is stated with what a build o
 - **A value a client writes as text into a path, a query, a header or a part is written in the form the Rust dispatcher reads, and refused before anything is sent where no form holds it**: a `char` of two characters, an integer outside its type's range, a date text no rewrite turns into its form. Each client refuses it as it refuses such a message, where it sent the text before: the TypeScript and Swift clients answer the fault, and the Dart and Kotlin clients throw, `FormatException: expected a character, found "ab"` and `SerializationException: expected a character, found "ab"`.
 - **A date under `as_number` in a member of an `#[serde(untagged)]` enum's variant crosses the wire as the epoch milliseconds every surface describes**, as it does in every other position: with `#[serde(untagged)] pub enum MillisOrFlag { Flag(bool), Millis(#[model_schema_prop(as_number)] DateTime<Utc>) }`, `serde_json::to_string(&MillisOrFlag::Millis(at))` answers `1704164645678` where it answered `"2024-01-02T03:04:05.678Z"`, and `serde_json::from_str::<MillisOrFlag>(r#""2024-01-02T03:04:05.678Z""#)` answers `data did not match any variant of untagged enum MillisOrFlag` where it read the date. A payload stored in the date's text is read through a [`preprocess`](#preprocessing-preprocess) that turns it into the number, or through a `with` of your own. See [Chrono Date/Time Types](#chrono-datetime-types).
 - **A date under `as_number` beside a `deserialize_with` of your own is written as the epoch milliseconds**, through `chrono::serde::ts_milliseconds::serialize`, where it was written as its text, and one beside a `serialize_with` of your own alone, which stopped the build with ``error: duplicate serde attribute `serialize_with` ``, builds and is read through `chrono::serde::ts_milliseconds::deserialize`. See [Chrono Date/Time Types](#chrono-datetime-types).
+- **An alias of an `Option` held outside a field is described with `null`**, in an item of a list, a value of a map, a position of a tuple, a type argument, an arm of a `Result`, a slot of a tuple struct and the slot of a variant: TypeScript and Zod write the type the alias names in place, where they named the alias, whose own type describes the absent key of a field. With `pub type Plummet = Option<u32>;`, `pub listed: Vec<Plummet>` is `Array<number | null>` where it was `Array<PlummetType>`, and its Zod schema reads the `[null]` serde writes as `[null]` where it read it as `[undefined]`. A field typed with the alias keeps its name. See [Type Aliases](#type-aliases).
+- **An `Option` written as a type argument is described with `null`**: `Wrapper<Option<u32>>` is `Wrapper<number | null>` where it was `Wrapper<number | undefined>`, and the factory is handed `z.nullable(...)`, which reads `null` as `null`, where it was handed a union that read it as `undefined`. A `$SchemaDefault` declared at an `Option` is built and annotated the same way. See [Type Parameters](#type-parameters).
 - **An absent key of an `Option` of a date under `as_number` is read as `None`**, where serde answered ``missing field `later` ``: `#[model_schema_prop(as_number)] #[serde(skip_serializing_if = "Option::is_none")] pub later: Option<DateTime<Utc>>` reads back the `{}` serde writes for `None`, and a `nullable` one reads an object without its key. See [Chrono Date/Time Types](#chrono-datetime-types).
 
 ### Checks (`check`)
