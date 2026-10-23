@@ -770,6 +770,41 @@ fn bare_option_field_is_rejected() {
     assert!(!message.contains("only accepts the key being absent"));
 }
 
+/// A flattened `Option`, and a flattened field of an alias of an `Option` declared above, write no
+/// key of their own, so serde writes nothing for `None`: no key guard refuses one written with no
+/// attribute that drops a key, in a struct or in a variant's members.
+#[cfg(feature = "serde")]
+#[test]
+fn a_flattened_option_with_no_key_dropping_attribute_passes_the_key_guards() {
+    drop(expansion_over(
+        "#[derive(Serialize, Deserialize)] pub struct ProbeFlatInner { pub a: u32 }",
+    ));
+    drop(expansion_over(
+        "pub type ProbeFlatMaybe = Option<ProbeFlatInner>;",
+    ));
+    for written in ["Option<ProbeFlatInner>", "ProbeFlatMaybe"] {
+        let item: syn::ItemStruct = syn::parse_str(&format!(
+            "struct Report {{ #[serde(flatten)] inner: {written} }}"
+        ))
+        .unwrap();
+        guard_result(&item).unwrap();
+        omitted_key_guard_result(&item).unwrap();
+        for source in [
+            format!(
+                "#[derive(Serialize, Deserialize)] pub struct ProbeFlatHolder {{ pub id: String, \
+                 #[serde(flatten)] pub inner: {written} }}"
+            ),
+            format!(
+                "#[derive(Serialize, Deserialize)] pub enum ProbeFlatVariants {{ Held {{ id: \
+                 String, #[serde(flatten)] inner: {written} }} }}"
+            ),
+        ] {
+            let expanded = expansion_over(&source).to_string();
+            assert!(!expanded.contains("compile_error"), "got: {expanded}");
+        }
+    }
+}
+
 #[cfg(feature = "serde")]
 #[test]
 fn bare_nullable_option_field_is_accepted() {

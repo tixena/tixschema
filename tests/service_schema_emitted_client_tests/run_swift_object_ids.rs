@@ -9,11 +9,14 @@
 use core::fmt::Write as _;
 
 use super::object_id_models::{
-    belated_swift, bullae_swift, cachet_swift, countersigned_swift, crossed_swift, crossing_swift,
-    docketing_swift, embossed_swift, endorsed_swift, endorsing_swift, enveloping_swift,
-    enwafered_swift, folding_swift, late_sigil_swift, lettering_swift, notation_swift,
-    relayed_swift, relaying_swift, rows, sigil_swift, sigiled_swift, sigillary_swift,
-    sigillum_swift, stampage_swift, wafer_swift, wafered_swift, wafering_swift, waxing_swift,
+    belated_swift, bullae_swift, cachet_swift, cartouche_swift, cartouching_swift,
+    countersealing_swift, countersigned_swift, crossed_swift, crossing_swift, docketing_swift,
+    embossed_swift, endorsed_swift, endorsing_swift, enveloping_swift, enwafered_swift,
+    folding_swift, impress_swift, impressing_swift, late_cartouche_swift, late_sigil_swift,
+    latewaxed_swift, lettering_swift, notation_swift, relayed_swift, relaying_swift, rewaxed_swift,
+    rewaxing_swift, rows, sigil_swift, sigiled_swift, sigillary_swift, sigillum_swift,
+    stampage_swift, wafer_swift, wafered_swift, wafering_swift, waxing_swift, waxwork_swift,
+    waxworking_swift,
 };
 use super::object_id_runs::{printed, readme_object_id};
 use super::run_swift_tagged_slots::sorted;
@@ -54,6 +57,9 @@ fn an_object_id_is_read_and_written_back_by_swift_as_serde_reads_it() {
         "import Foundation".to_owned(),
         readme_object_id("swift"),
         notation_swift::swift_definition(),
+        cartouche_swift::swift_definition(),
+        impress_swift::swift_definition(),
+        waxwork_swift::swift_definition(),
         countersigned_swift::swift_definition(),
         sigil_swift::swift_definition(),
         sigillum_swift::swift_definition(),
@@ -67,10 +73,17 @@ fn an_object_id_is_read_and_written_back_by_swift_as_serde_reads_it() {
         sigillary_swift::swift_definition(),
         enveloping_swift::swift_definition(),
         waxing_swift::swift_definition(),
+        rewaxing_swift::swift_definition(),
         relaying_swift::swift_definition(),
         wafer_swift::swift_definition(),
         lettering_swift::swift_definition(),
         folding_swift::swift_definition(),
+        cartouching_swift::swift_definition(),
+        rewaxed_swift::swift_definition(),
+        countersealing_swift::swift_definition(),
+        latewaxed_swift::swift_definition(),
+        waxworking_swift::swift_definition(),
+        impressing_swift::swift_definition(),
         relayed_swift::swift_definition(),
         crossed_swift::swift_definition(),
         crossing_swift::swift_definition(),
@@ -80,6 +93,7 @@ fn an_object_id_is_read_and_written_back_by_swift_as_serde_reads_it() {
         enwafered_swift::swift_definition(),
         belated_swift::swift_definition(),
         late_sigil_swift::swift_definition(),
+        late_cartouche_swift::swift_definition(),
         TOLD.to_owned(),
         main,
     ]
@@ -193,6 +207,37 @@ fn the_swift_text_reads_a_flattened_type_parameter_filled_at_an_object_id_from_i
     assert!(
         !countersigned.contains("String(describing:"),
         "a type that flattens no parameter tells no filling apart: {countersigned}"
+    );
+}
+
+/// A type that reads its type parameter flattened under an `Option` tells the keys of what fills
+/// it by its name, as it is read, among those of the types written above it whose keys are known:
+/// an `ObjectId`'s and a brand's over one, a struct's, and an enum's under a tag key. It reads no
+/// value where the object holds none of them, and the filling's read where it holds one, and a
+/// filling whose keys are not known as `nil` wherever its read throws.
+#[test]
+fn the_swift_text_looks_a_flattened_option_of_a_type_parameter_up_by_the_keys_of_its_filling() {
+    let written = waxing_swift::swift_definition();
+    for held in [
+        "let heldStanding: [String]? = ([",
+        r#""Cartouche": ["wax"]"#,
+        r#""Countersigned": ["held"]"#,
+        r#""Impress": ["lot", "wax"]"#,
+        r#""Notation": ["note"]"#,
+        r#""ObjectId": ["$oid"]"#,
+        r#""Sigil": ["$oid"]"#,
+        r#""Waxwork": ["kind"]"#,
+        r#"] as [String: [String]])[String(String(describing: Held.self).prefix { $0 != "<" })]; "#,
+        "if let heldStanding { if try decoder.container(keyedBy: \
+         SwiftSchemaAnyKey.self).allKeys.contains(where: { heldStanding.contains($0.stringValue) \
+         }) { if [",
+        "} else { self.held = nil } } else { do { if [",
+    ] {
+        assert!(written.contains(held), "no `{held}` in: {written}");
+    }
+    assert!(
+        !written.contains(r#""LateCartouche""#),
+        "a type declared below is told apart: {written}"
     );
 }
 

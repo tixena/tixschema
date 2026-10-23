@@ -2359,8 +2359,9 @@ fn tag_keys(tag_attrs: &EnumTagAttrs, preprocess: &[FunctionName]) -> Vec<String
 /// The statements that read from `source` the flattened `Option` `field`, which names no function
 /// and holds no map: `nil` where the object it is handed holds none of its type's keys, a struct's
 /// or the tag and the content key of an enum under a tag key, and the type otherwise, read as a
-/// flattened member of that type is, a read that throws refusing the payload. A type whose keys
-/// are not known is read as `nil` wherever its read throws.
+/// flattened member of that type is, a read that throws refusing the payload. A type parameter is
+/// tested by the keys of the type that fills it, where they are known as it is read. A type whose
+/// keys are not known is read as `nil` wherever its read throws.
 fn flattened_option(
     field: &SwiftField,
     source: &read::Source,
@@ -2372,10 +2373,7 @@ fn flattened_option(
     let held = flattened_under_option(field);
     let read = present_statement(&held, source, withheld, false, container, locals, twins);
     let absent = format!("self.{} = nil", field.swift_name);
-    let keys = preprocess::keys_standing_for(&field.field_def);
-    if keys.is_empty() {
-        return format!("do {{ {read} }} catch {{ {absent} }}");
-    }
+    let caught = format!("do {{ {read} }} catch {{ {absent} }}");
     // A type read from its own keys alone is looked for in the whole object it is read from.
     let without = if withheld
         && !preprocess::reads_the_whole(&field.field_def)
@@ -2386,6 +2384,18 @@ fn flattened_option(
     } else {
         None
     };
+    if let Some(filled) = preprocess::filled_keys(&held.field_def, &held.real_type) {
+        let standing = format!("{}Standing", swift_bare(&field.swift_name));
+        return format!(
+            "let {standing}: [String]? = {filled}; if let {standing} {{ if {} {{ {read} }} else \
+             {{ {absent} }} }} else {{ {caught} }}",
+            preprocess::holds_one_listed(&standing, without)
+        );
+    }
+    let keys = preprocess::keys_standing_for(&field.field_def);
+    if keys.is_empty() {
+        return caught;
+    }
     format!(
         "if {} {{ {read} }} else {{ {absent} }}",
         preprocess::holds_one_of(&keys, without)
@@ -2882,6 +2892,14 @@ fn collect_swift_fields(
         let mut field_def = member_def(args, &rust_name, field);
         field_def.erase_type_parameters(type_parameters);
         let flatten = field_is_flatten(&field.attrs);
+        if flatten
+            && field_def.array_depth == 0
+            && !field_def.is_optional()
+            && let Some(held) = field_def.written_in_place()
+        {
+            // An alias of an `Option` is a `typealias` of it, which a flattened read takes apart.
+            field_def = held;
+        }
         // A flattened member has no key to leave out, and serde reads it whatever it writes.
         if omission.omits_key && !field_def.is_optional() && !flatten {
             field_def.nullable_levels.push(field_def.array_depth);

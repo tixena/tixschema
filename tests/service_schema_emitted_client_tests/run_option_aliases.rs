@@ -16,20 +16,22 @@ use serde_json::Value;
 use super::option_alias_models::{LEADS, serde_wrote};
 #[cfg(feature = "dart")]
 use super::option_alias_models::{
-    chanced_dart, deepsea_dart, handlead_dart, haply_dart, heaved_dart, leadsman_dart,
-    lineman_dart, plumbline_dart, plummet_dart, reckoned_dart, relead_dart, shoaled_dart,
-    sinker_dart, swung_dart,
+    bottomed_dart, bottoming_dart, chanced_dart, deepsea_dart, groundage_dart, grounding_dart,
+    handlead_dart, haply_dart, heaved_dart, leadsman_dart, lineman_dart, plumbline_dart,
+    plummet_dart, reckoned_dart, relead_dart, seabed_dart, shoaled_dart, sinker_dart, swung_dart,
 };
 #[cfg(feature = "kotlin")]
 use super::option_alias_models::{
-    chanced_kotlin, deepsea_kotlin, handlead_kotlin, haply_kotlin, heaved_kotlin, leadsman_kotlin,
+    bottomed_kotlin, bottoming_kotlin, chanced_kotlin, deepsea_kotlin, groundage_kotlin,
+    grounding_kotlin, handlead_kotlin, haply_kotlin, heaved_kotlin, leadsman_kotlin,
     lineman_kotlin, plumbline_kotlin, plummet_kotlin, reckoned_kotlin, relead_kotlin,
-    shoaled_kotlin, sinker_kotlin, swung_kotlin,
+    seabed_kotlin, shoaled_kotlin, sinker_kotlin, swung_kotlin,
 };
 #[cfg(feature = "swift")]
 use super::option_alias_models::{
-    chanced_swift, deepsea_swift, handlead_swift, haply_swift, heaved_swift, leadsman_swift,
-    lineman_swift, plumbline_swift, plummet_swift, reckoned_swift, relead_swift, shoaled_swift,
+    bottomed_swift, bottoming_swift, chanced_swift, deepsea_swift, groundage_swift,
+    grounding_swift, handlead_swift, haply_swift, heaved_swift, leadsman_swift, lineman_swift,
+    plumbline_swift, plummet_swift, reckoned_swift, relead_swift, seabed_swift, shoaled_swift,
     sinker_swift, swung_swift,
 };
 #[cfg(feature = "dart")]
@@ -148,6 +150,11 @@ fn dart_writes_back_the_null_serde_writes_for_an_alias_of_an_option() {
             shoaled_dart::dart_definition(),
             lineman_dart::dart_definition(),
             plumbline_dart::dart_definition(),
+            seabed_dart::dart_definition(),
+            bottoming_dart::dart_definition(),
+            bottomed_dart::dart_definition(),
+            groundage_dart::dart_definition(),
+            grounding_dart::dart_definition(),
         ],
         &[DART_WRITTEN],
         &main,
@@ -183,6 +190,11 @@ fn swift_writes_back_the_null_serde_writes_for_an_alias_of_an_option() {
         shoaled_swift::swift_definition(),
         lineman_swift::swift_definition(),
         plumbline_swift::swift_definition(),
+        seabed_swift::swift_definition(),
+        bottoming_swift::swift_definition(),
+        bottomed_swift::swift_definition(),
+        groundage_swift::swift_definition(),
+        grounding_swift::swift_definition(),
         SWIFT_WRITTEN.to_owned(),
         main,
     ]
@@ -237,6 +249,11 @@ fn kotlin_writes_back_the_null_serde_writes_for_an_alias_of_an_option() {
         shoaled_kotlin::kotlin_definition(),
         lineman_kotlin::kotlin_definition(),
         plumbline_kotlin::kotlin_definition(),
+        seabed_kotlin::kotlin_definition(),
+        bottoming_kotlin::kotlin_definition(),
+        bottomed_kotlin::kotlin_definition(),
+        groundage_kotlin::kotlin_definition(),
+        grounding_kotlin::kotlin_definition(),
         KOTLIN_WRITTEN.to_owned(),
         main,
     ];

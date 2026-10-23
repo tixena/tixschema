@@ -5,12 +5,15 @@
 //! entry under, are noted here too: a member flattened after either is not handed them. So are the
 //! tag and the content key of an enum under a tag key, which a flattened `Option` is tested by.
 
+extern crate alloc;
+
+use alloc::collections::BTreeMap;
 use core::cell::RefCell;
 use core::iter;
 use std::collections::{HashMap, HashSet};
 
 use super::read::{Locals, Source, counted, unjudged};
-use super::{Shaped, swift_member, swift_upper_camel};
+use super::{Shaped, lookup_swift_name, swift_member, swift_upper_camel};
 use crate::bound_message::swift_literal_text;
 use crate::features::model_schema_prop::FunctionName;
 use crate::field_type::{FieldDef, FieldDefType};
@@ -232,6 +235,62 @@ pub(super) fn filled_alone(def: &FieldDef, parameter: &str) -> Option<(String, S
             listed(&[OID.to_owned()]),
         )
     })
+}
+
+/// The keys a flattened `Option` of the type parameter `parameter`, which `def` describes under its
+/// `Option`, is tested by in the object it is read from, as a Swift expression of type `[String]?`:
+/// those [`keys_standing_for`] answers for the type written above that fills it, told by its name
+/// as it is read, and `nil` for any other type. `None` where no type written above has keys known,
+/// and for a member that names a function.
+pub(super) fn filled_keys(def: &FieldDef, parameter: &str) -> Option<String> {
+    if def.array_depth > 0
+        || !functions(def).is_empty()
+        || !matches!(def.field_type, FieldDefType::TypeParam(_))
+    {
+        return None;
+    }
+    let mut standing: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    if cfg!(feature = "mongodb") {
+        standing.insert("ObjectId".to_owned(), vec![OID.to_owned()]);
+    }
+    ONLY_NAMED.with(|recorded| {
+        for (rust_ident, written) in recorded.borrow().iter() {
+            if let Some(keys) = ONLY_KEYS.with(|only| only.borrow().get(rust_ident).cloned()) {
+                standing.insert(written.clone(), keys);
+            }
+        }
+    });
+    let recorded: Vec<(String, Vec<String>)> = [&TAKEN_KEYS, &TAG_KEYS]
+        .into_iter()
+        .flat_map(|registry| {
+            registry.with(|noted| {
+                noted
+                    .borrow()
+                    .iter()
+                    .filter(|(_, keys)| !keys.is_empty())
+                    .filter_map(|(rust_ident, keys)| {
+                        Some((lookup_swift_name(rust_ident)?, keys.clone()))
+                    })
+                    .collect::<Vec<_>>()
+            })
+        })
+        .collect();
+    for (written, keys) in recorded {
+        standing.entry(written).or_insert(keys);
+    }
+    if standing.is_empty() {
+        return None;
+    }
+    let entries: Vec<String> = standing
+        .iter()
+        .map(|(written, keys)| format!("\"{}\": {}", swift_literal_text(written), listed(keys)))
+        .collect();
+    // A type that declares parameters is told by its name ahead of them.
+    Some(format!(
+        "([{}] as [String: [String]])[String(String(describing: {parameter}.self).prefix {{ $0 \
+         != \"<\" }})]",
+        entries.join(", ")
+    ))
 }
 
 /// The keys a member `def` describes, flattened into its holder, is read from alone, its read
@@ -508,10 +567,11 @@ pub(super) fn listed(keys: &[String]) -> String {
 /// condition: the object less `without`, the keys it is read without, where it is handed fewer
 /// keys than its holder's object holds.
 pub(super) fn holds_one_of(keys: &[String], without: Option<&str>) -> String {
-    let listed: Vec<String> = keys
-        .iter()
-        .map(|key| format!("\"{}\"", swift_literal_text(key)))
-        .collect();
+    holds_one_listed(&listed(keys), without)
+}
+
+/// [`holds_one_of`] over `keys`, a Swift expression of type `[String]`.
+pub(super) fn holds_one_listed(keys: &str, without: Option<&str>) -> String {
     let handed = match without {
         Some("taken") => " && !taken.contains($0.stringValue)".to_owned(),
         Some(taken) => format!(" && !({taken}).contains($0.stringValue)"),
@@ -519,8 +579,7 @@ pub(super) fn holds_one_of(keys: &[String], without: Option<&str>) -> String {
     };
     format!(
         "try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys.contains(where: {{ \
-         [{}].contains($0.stringValue){handed} }})",
-        listed.join(", ")
+         {keys}.contains($0.stringValue){handed} }})"
     )
 }
 

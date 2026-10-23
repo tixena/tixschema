@@ -17,6 +17,9 @@ mod read;
 mod texts;
 mod validate;
 
+extern crate alloc;
+
+use alloc::collections::BTreeMap;
 use core::cell::{Cell, RefCell};
 use core::fmt::Write as _;
 use core::iter::once;
@@ -796,6 +799,14 @@ fn collect_kotlin_fields(
         let mut field_def = field_def_with_prop_meta(&rust_name, field, args);
         field_def.erase_type_parameters(type_parameters);
         let flatten = field_is_flatten(&field.attrs);
+        if flatten
+            && field_def.array_depth == 0
+            && !field_def.is_optional()
+            && let Some(held) = field_def.written_in_place()
+        {
+            // An alias of an `Option` is a `typealias` of it, which a flattened read takes apart.
+            field_def = held;
+        }
         // A flattened member has no key to leave out, and serde reads it whatever it writes.
         if omission.omits_key && !field_def.is_optional() && !flatten {
             field_def.nullable_levels.push(field_def.array_depth);
@@ -1859,9 +1870,19 @@ fn flatten_struct_field_plan(
                 } else {
                     read_or_judged(&inner_serializer, &corrected)
                 };
+                let standing = filled_standing(&base, &inner_serializer).map_or_else(
+                    || keys_ident.clone(),
+                    |filled| {
+                        let standing_ident = format!("{}Standing", kotlin_bare(prop));
+                        statements.push(format!(
+                            "val {standing_ident} = {keys_ident}.ifEmpty {{ {filled} }}"
+                        ));
+                        standing_ident
+                    },
+                );
                 format!(
-                    "if ({keys_ident}.isEmpty()) {without_keys} else {}",
-                    looked_for(&keys_ident)
+                    "if ({standing}.isEmpty()) {without_keys} else {}",
+                    looked_for(&standing)
                 )
             }
         }
@@ -1873,6 +1894,47 @@ fn flatten_struct_field_plan(
         serialize,
         taken: keys_ident,
     }
+}
+
+/// The keys a flattened `Option` of the type parameter `def` describes is looked for by where the
+/// descriptor of `serializer`, which reads what fills it, names no element: those the emitter
+/// recorded for the type of that serializer's name, a struct it wrote by hand and an enum under a
+/// tag key, as a Kotlin set. `None` for a member that is no type parameter, and where no such type
+/// was written above.
+fn filled_standing(def: &FieldDef, serializer: &str) -> Option<String> {
+    if def.array_depth > 0 || !matches!(def.field_type, FieldDefType::TypeParam(_)) {
+        return None;
+    }
+    let mut standing: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let recorded: Vec<(String, Vec<String>)> = [&KOTLIN_TAKEN_KEYS, &KOTLIN_TAG_KEYS]
+        .into_iter()
+        .flat_map(|registry| {
+            registry.with(|noted| {
+                noted
+                    .borrow()
+                    .iter()
+                    .filter(|(_, keys)| !keys.is_empty())
+                    .filter_map(|(rust_ident, keys)| {
+                        Some((lookup_kotlin_name(rust_ident)?, keys.clone()))
+                    })
+                    .collect::<Vec<_>>()
+            })
+        })
+        .collect();
+    for (named, keys) in recorded {
+        standing.entry(named).or_insert(keys);
+    }
+    if standing.is_empty() {
+        return None;
+    }
+    let entries: Vec<String> = standing
+        .iter()
+        .map(|(named, keys)| format!("{} to {}", kotlin_quoted(named), kotlin_set_of(keys)))
+        .collect();
+    Some(format!(
+        "mapOf({})[({serializer}).descriptor.serialName].orEmpty()",
+        entries.join(", ")
+    ))
 }
 
 /// The read of `payload` by `serializer`, which judges, `null` where it throws. Where the

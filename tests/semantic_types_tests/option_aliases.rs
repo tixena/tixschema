@@ -11,6 +11,8 @@ use super::documents::admits;
 use super::option_alias_models::haply_schema;
 #[cfg(any(feature = "typescript", feature = "zod"))]
 use super::option_alias_models::plummet_schema;
+#[cfg(feature = "jsonschema")]
+use super::option_alias_models::{Bottomed, Groundage, Grounding};
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use super::option_alias_models::{
     Chanced, Deepsea, Handlead, Heaved, Leadsman, Lineman, Plumbline, Reckoned, Shoaled, Sinker,
@@ -187,6 +189,9 @@ fn the_json_schema_admits_the_null_serde_writes_for_an_alias_of_an_option() {
             "Reckoned" => Reckoned::json_schema(),
             "Deepsea" => Deepsea::json_schema(),
             "Sinker" => Sinker::json_schema(),
+            "Bottomed" => Bottomed::json_schema(),
+            "Groundage" => Groundage::json_schema(),
+            "Grounding" => Grounding::json_schema(),
             _ => Heaved::json_schema(),
         };
         let payload: Value = serde_json::from_str(json).unwrap();
