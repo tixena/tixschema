@@ -488,7 +488,7 @@ fn reach(field: &Field, generics: &Generics) -> Option<Result<TokenStream, Strin
     if omission.skips_deserializing {
         return None;
     }
-    if get_field_def(&field_name(field), &field.ty, "").is_optional() {
+    if get_field_def(&field_name(field), &field.ty, "").stands_for_an_option() {
         return None;
     }
     if parse_serde_field_attributes(&field.attrs).flatten {

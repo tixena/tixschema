@@ -389,7 +389,7 @@ impl EnumWalker<'_> {
             // serde reads a single optional value as `None` where the key is missing.
             absence_is_read: matches!(
                 content,
-                Shape::Held(walk) if get_field_def("", walk.ty, "").is_optional()
+                Shape::Held(walk) if get_field_def("", walk.ty, "").stands_for_an_option()
             ),
             aliases: &[],
             key,

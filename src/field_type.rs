@@ -19,7 +19,9 @@ use crate::features::model_schema_prop::FunctionName;
 #[cfg(feature = "zod")]
 use crate::features::model_schema_prop::LiteralValue;
 use crate::features::model_schema_prop::ModelSchemaPropMeta;
-use crate::utils::{MapKeyWire, is_declared_ident, lookup_alias_info, ts_quoted, written_type};
+use crate::utils::{
+    MapKeyWire, is_declared_ident, lookup_alias_info, option_alias, ts_quoted, written_type,
+};
 
 #[cfg(feature = "zod")]
 use crate::bound_message::{Bound, zod_error_arg, zod_repeat_check};
@@ -667,7 +669,6 @@ impl FieldDef {
 
     /// Writes `arguments` in place of the type parameters, `parameters`, they fill, each under the
     /// array levels and the `Option`s the parameter is written under.
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     fn fill_type_parameters(&mut self, parameters: &[String], arguments: &[Self]) {
         if let FieldDefType::TypeParam(name) = &self.field_type
             && let Some(argument) = parameters
@@ -1029,7 +1030,6 @@ impl FieldDef {
 
     /// Every name this field reaches, the names an alias of an `Option` it names reaches among
     /// them, each once, into `reached`.
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     pub fn names_through_option_aliases(&self, reached: &mut Vec<String>) {
         if let FieldDefType::SiblingType(name, _) = &self.field_type
             && !reached.contains(name)
@@ -1090,6 +1090,21 @@ impl FieldDef {
         }
     }
 
+    /// This field, where it names an alias of an `Option`, as the `Option` the alias names, its
+    /// own docs kept: what a field under `nullable` writes, the alias's own binding describing as
+    /// left out a key the flag says is always written.
+    pub fn nullable_in_place(self) -> Self {
+        let Some(held) = self.written_in_place() else {
+            return self;
+        };
+        Self {
+            docs: self.docs,
+            #[cfg(feature = "jsonschema")]
+            type_span: self.type_span,
+            ..held
+        }
+    }
+
     /// The std range or the std `Result` the key of the first map this field reaches is written
     /// as, at any depth, by the name a refusal writes it under.
     #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
@@ -1124,12 +1139,11 @@ impl FieldDef {
 
     /// The type an alias of an `Option` this field names stands for, the alias's own type
     /// parameters filled with the arguments written here, and `None` for any other field.
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     fn option_alias_target(&self) -> Option<Self> {
         let FieldDefType::SiblingType(name, arguments) = &self.field_type else {
             return None;
         };
-        let target = lookup_alias_info(name)?.option_target?;
+        let target = option_alias(name)?;
         if target.parameters.len() != arguments.len() {
             return None;
         }
@@ -1457,7 +1471,6 @@ impl FieldDef {
     }
 
     /// Whether this field's own value is an `Option`, written as one or as an alias of one.
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     pub fn stands_for_an_option(&self) -> bool {
         self.is_optional() || (self.array_depth == 0 && self.option_alias_target().is_some())
     }
@@ -1758,6 +1771,24 @@ impl FieldDef {
         }
     }
 
+    /// This field with each alias of an `Option` that declares a type parameter, at any depth,
+    /// written in place at the arguments written for it: Kotlin declares no alias of a nullable
+    /// type parameter.
+    #[cfg(feature = "kotlin")]
+    pub fn with_parameterized_option_aliases_in_place(mut self) -> Self {
+        for nested in self.nested_type_positions() {
+            *nested = nested.clone().with_parameterized_option_aliases_in_place();
+        }
+        let parameterized = matches!(
+            &self.field_type,
+            FieldDefType::SiblingType(_, arguments) if !arguments.is_empty()
+        );
+        if parameterized && let Some(in_place) = self.written_in_place() {
+            return in_place.with_parameterized_option_aliases_in_place();
+        }
+        self
+    }
+
     /// The field with its own set read as a plain list: what a walk below the set reads, the set's
     /// own repeat being asked ahead of its count. The field as it is where its own value is no
     /// set.
@@ -1776,8 +1807,7 @@ impl FieldDef {
     /// This field as a position outside a field writes it, where it names an alias of an
     /// `Option`: the type the alias names, in place, so a `None` is the `null` serde writes there
     /// and not the absent key the alias's own binding describes.
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-    fn written_in_place(&self) -> Option<Self> {
+    pub fn written_in_place(&self) -> Option<Self> {
         self.option_alias_target()
             .map(|held| self.levels_stacked_over(held))
     }

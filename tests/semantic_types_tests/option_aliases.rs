@@ -1,6 +1,6 @@
 //! An alias of an `Option` held outside a field is written in place, in the nullable form of the
 //! `Option` it names, on TypeScript and Zod, and the JSON Schema admits the `null` serde writes
-//! there. A field keeps the alias's name.
+//! there. A field keeps the alias's name, but under `nullable`, which writes it in place.
 
 #[cfg(feature = "jsonschema")]
 use serde_json::Value;
@@ -12,8 +12,14 @@ use super::option_alias_models::haply_schema;
 #[cfg(any(feature = "typescript", feature = "zod"))]
 use super::option_alias_models::plummet_schema;
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-use super::option_alias_models::{Chanced, Deepsea, Handlead, Heaved, Leadsman, Reckoned, Sinker};
+use super::option_alias_models::{
+    Chanced, Deepsea, Handlead, Heaved, Leadsman, Lineman, Plumbline, Reckoned, Shoaled, Sinker,
+};
 use super::option_alias_models::{LEADS, serde_wrote};
+#[cfg(feature = "kotlin")]
+use super::option_alias_models::{
+    chanced_kotlin, handlead_kotlin, haply_kotlin, lineman_kotlin, plummet_kotlin, shoaled_kotlin,
+};
 
 /// The Zod schema of a `u32`, the value an alias of an `Option<u32>` holds.
 #[cfg(feature = "zod")]
@@ -56,7 +62,12 @@ fn typescript_writes_an_alias_of_an_option_outside_a_field_with_null() {
             "export type Reckoned = [number | null, number];",
         ),
         (Chanced::ts_definition(), "listed: Array<string | null>;"),
+        (Chanced::ts_definition(), "kept?: HaplyType<string>;"),
         (Handlead::ts_definition(), "kept?: PlummetType;"),
+        (Shoaled::ts_definition(), "kept?: PlummetType;"),
+        (Shoaled::ts_definition(), "marked: Array<number | null>;"),
+        (Plumbline::ts_definition(), "kept?: PlummetType;"),
+        (Lineman::ts_definition(), "kept: number | null;"),
         (Handlead::ts_definition(), "listed: Array<number | null>;"),
         (
             Deepsea::ts_definition(),
@@ -113,8 +124,25 @@ fn zod_writes_an_alias_of_an_option_outside_a_field_as_a_nullable_schema() {
             "listed: z.array(z.nullable(z.string())),".to_owned(),
         ),
         (
+            Chanced::zod_schema(),
+            "kept: HaplyType$SchemaFactory(z.string()).optional(),".to_owned(),
+        ),
+        (
             Handlead::zod_schema(),
             "kept: PlummetType$Schema.optional(),".to_owned(),
+        ),
+        (
+            Shoaled::zod_schema(),
+            "kept: PlummetType$Schema.optional(),".to_owned(),
+        ),
+        (Shoaled::zod_schema(), format!("marked: z.array({held}),")),
+        (
+            Plumbline::zod_schema(),
+            "kept: PlummetType$Schema.optional(),".to_owned(),
+        ),
+        (
+            Lineman::zod_schema(),
+            format!("kept: z.union([{COUNT}, z.null()]),"),
         ),
         (Handlead::zod_schema(), format!("listed: z.array({held}),")),
         (
@@ -153,6 +181,9 @@ fn the_json_schema_admits_the_null_serde_writes_for_an_alias_of_an_option() {
             "Leadsman" => Leadsman::json_schema(),
             "Handlead" => Handlead::json_schema(),
             "Chanced" => Chanced::json_schema(),
+            "Shoaled" => Shoaled::json_schema(),
+            "Lineman" => Lineman::json_schema(),
+            "Plumbline" => Plumbline::json_schema(),
             "Reckoned" => Reckoned::json_schema(),
             "Deepsea" => Deepsea::json_schema(),
             "Sinker" => Sinker::json_schema(),
@@ -162,6 +193,59 @@ fn the_json_schema_admits_the_null_serde_writes_for_an_alias_of_an_option() {
         assert!(
             admits(&document, &payload),
             "the JSON Schema of {read_as} refuses {json}, which serde writes: {document}"
+        );
+    }
+}
+
+/// The JSON Schema requires the key of a field of an alias of an `Option` under `nullable`, which
+/// serde always writes, and leaves out of `required` the key it leaves out for `None`.
+#[cfg(feature = "jsonschema")]
+#[test]
+fn the_json_schema_requires_the_key_serde_always_writes_for_an_alias_of_an_option() {
+    for (document, required) in [
+        (Lineman::json_schema(), serde_json::json!(["kept"])),
+        (Shoaled::json_schema(), serde_json::json!(["marked"])),
+    ] {
+        assert_eq!(document["required"], required, "in: {document}");
+    }
+}
+
+/// Kotlin writes no second `?` over an alias of an `Option` that declares no type parameter, and
+/// writes one that declares a parameter in place: kotlinc refuses a `typealias` of a nullable
+/// type parameter, and reports a second `?` as redundant.
+#[cfg(feature = "kotlin")]
+#[test]
+fn kotlin_writes_one_nullable_mark_over_an_alias_of_an_option() {
+    assert_eq!(
+        haply_kotlin::kotlin_definition(),
+        "",
+        "no typealias of a nullable parameter"
+    );
+    for (definition, written) in [
+        (
+            plummet_kotlin::kotlin_definition(),
+            "typealias PlummetType = UInt?;",
+        ),
+        (
+            handlead_kotlin::kotlin_definition(),
+            "data class Handlead(val kept: PlummetType = null, val listed: List<PlummetType>)",
+        ),
+        (
+            shoaled_kotlin::kotlin_definition(),
+            "data class Shoaled(val kept: PlummetType = null, val marked: List<PlummetType>)",
+        ),
+        (
+            lineman_kotlin::kotlin_definition(),
+            "data class Lineman(val kept: PlummetType)",
+        ),
+        (
+            chanced_kotlin::kotlin_definition(),
+            "data class Chanced(val kept: String? = null, val listed: List<String?>)",
+        ),
+    ] {
+        assert!(
+            definition.contains(written),
+            "no `{written}` in: {definition}"
         );
     }
 }

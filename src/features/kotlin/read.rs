@@ -7,8 +7,8 @@ use super::texts;
 use super::{arrays, validate};
 use super::{
     innermost, kotlin_base, kotlin_quoted, kotlin_serializer_expr, kotlin_serializer_param_name,
-    kotlin_typename, listed_serializer, lookup_kotlin_name, range_serializer, range_typename,
-    result_serializer, result_typename, sibling_typename, tuple_wrapper_typename,
+    kotlin_typename, listed_serializer, lookup_kotlin_name, marked_nullable_at, range_serializer,
+    range_typename, result_serializer, result_typename, sibling_typename, tuple_wrapper_typename,
 };
 use crate::features::text_forms::TextForm;
 use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
@@ -92,7 +92,7 @@ fn annotated_base(field: &FieldDef, annotated: Annotated) -> String {
             )
     };
     (0..field.array_depth).fold(scalar, |wrapped, level| {
-        let item = if field.is_nullable_at(level) {
+        let item = if marked_nullable_at(field, level) {
             format!("{wrapped}?")
         } else {
             wrapped
@@ -115,7 +115,7 @@ fn annotated_base(field: &FieldDef, annotated: Annotated) -> String {
 /// [`annotated_base`] with the `?` an optional `field` carries.
 fn annotated_typename(field: &FieldDef, annotated: Annotated) -> String {
     let base = annotated_base(field, annotated);
-    if field.is_optional() {
+    if marked_nullable_at(field, field.array_depth) {
         format!("{base}?")
     } else {
         base
