@@ -27,11 +27,11 @@ void row(String name, Object? Function() read) {
 }
 ";
 
-/// The emitted types of the sets the analyzer passes whole. `Nesting` and `Pouch` are run and
-/// left out: the codec of the first casts a map's key the analyzer already knows to be a string,
-/// and that of the second a tuple's.
-fn analyzed_definitions() -> Vec<String> {
+/// The emitted types of the sets.
+fn definitions() -> Vec<String> {
     vec![
+        nesting_dart::dart_definition(),
+        pouch_dart::dart_definition(),
         point_dart::dart_definition(),
         ticket_dart::dart_definition(),
         folder_dart::dart_definition(),
@@ -66,11 +66,8 @@ fn calls() -> String {
 
 /// The emitted types, the row printer, and the `main` of [`calls`].
 fn source() -> String {
-    let mut definitions = analyzed_definitions();
-    definitions.push(nesting_dart::dart_definition());
-    definitions.push(pouch_dart::dart_definition());
     module(
-        &definitions,
+        &definitions(),
         &[ROW],
         &format!("void main() {{\n{}}}\n", calls()),
     )
@@ -95,7 +92,7 @@ fn a_set_that_repeats_an_item_is_refused_by_the_dart_read() {
 #[test]
 fn the_emitted_sets_have_no_issue() {
     let analyzed = module(
-        &analyzed_definitions(),
+        &definitions(),
         &[ROW],
         "void main() => row('a list', () => jsonDecode('[]'));\n",
     );

@@ -27,6 +27,23 @@ void told(String at, Object? Function() reading) {
 }
 ";
 
+/// The emitted types the rows read.
+fn definitions() -> Vec<String> {
+    vec![
+        chronometer_dart::dart_definition(),
+        letter_log_dart::dart_definition(),
+        letter_lines_dart::dart_definition(),
+        day_log_dart::dart_definition(),
+        day_lines_dart::dart_definition(),
+        time_log_dart::dart_definition(),
+        time_lines_dart::dart_definition(),
+        stamp_log_dart::dart_definition(),
+        stamp_lines_dart::dart_definition(),
+        instant_log_dart::dart_definition(),
+        instant_lines_dart::dart_definition(),
+    ]
+}
+
 /// Each payload is read, or refused, as [`TEXT_FORMS`] states: what Zod refuses, and a date and
 /// time with its zone that a Dart `DateTime` does not read.
 #[test]
@@ -42,20 +59,7 @@ fn each_text_of_one_form_reads_in_dart_where_the_table_states() {
         );
     }
     main.push_str("}\n");
-    let definitions = [
-        chronometer_dart::dart_definition(),
-        letter_log_dart::dart_definition(),
-        letter_lines_dart::dart_definition(),
-        day_log_dart::dart_definition(),
-        day_lines_dart::dart_definition(),
-        time_log_dart::dart_definition(),
-        time_lines_dart::dart_definition(),
-        stamp_log_dart::dart_definition(),
-        stamp_lines_dart::dart_definition(),
-        instant_log_dart::dart_definition(),
-        instant_lines_dart::dart_definition(),
-    ];
-    let Some((ran, printed)) = dart("text-forms", &[], &module(&definitions, &[TOLD], &main))
+    let Some((ran, printed)) = dart("text-forms", &[], &module(&definitions(), &[TOLD], &main))
     else {
         return;
     };
@@ -64,4 +68,21 @@ fn each_text_of_one_form_reads_in_dart_where_the_table_states() {
         printed, expected,
         "the Dart read is not what the table states"
     );
+}
+
+/// The analyzer passes the types that key a map by a `char` or a date or time, each key read and
+/// written as the `String` it already is, those that flatten such a map among them: a flattened
+/// map is read off the object and spread as it is, with no cast.
+#[test]
+fn the_emitted_types_that_key_a_map_by_text_have_no_issue() {
+    let source = module(
+        &definitions(),
+        &[TOLD],
+        "void main() => told('0', () => DayLog.fromJson(jsonDecode('{}')));\n",
+    );
+    let Some((clean, said)) = dart("text-forms-analyze", &["analyze"], &source) else {
+        return;
+    };
+    assert!(clean, "{said}");
+    assert!(said.contains("No issues found!"), "{said}");
 }

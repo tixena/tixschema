@@ -331,11 +331,11 @@ fn enum_rows() -> Vec<Row> {
     ]
 }
 
-/// The emitted definitions of every holder the analyzer passes whole, and of the types they hold.
-/// [`Crowning`] and [`Fidding`], which holds it, are in [`definitions`] alone: the codec of a struct
-/// flattened bare casts a value whose type the analyzer already knows.
-fn analyzed_definitions() -> Vec<String> {
+/// The emitted definitions of every holder and of the types they hold.
+fn definitions() -> Vec<String> {
     vec![
+        crowning_dart::dart_definition(),
+        fidding_dart::dart_definition(),
         tabling_dart::dart_definition(),
         lapping_dart::dart_definition(),
         flaking_dart::dart_definition(),
@@ -361,16 +361,6 @@ fn analyzed_definitions() -> Vec<String> {
         pitching_dart::dart_definition(),
         tucking_dart::dart_definition(),
     ]
-}
-
-/// The emitted definitions of every holder and of the types they hold.
-fn definitions() -> Vec<String> {
-    let mut definitions = analyzed_definitions();
-    definitions.extend([
-        crowning_dart::dart_definition(),
-        fidding_dart::dart_definition(),
-    ]);
-    definitions
 }
 
 /// Asserts that `definition` holds `fragment`.
@@ -657,7 +647,7 @@ fn assert_read_in_dart(rows: &[Row], run: &str) {
 #[test]
 fn the_emitted_holders_of_a_flattened_option_have_no_issue() {
     let source = module(
-        &analyzed_definitions(),
+        &definitions(),
         &[AS_GIVEN],
         "void main() => print(jsonEncode(const Flaking().toJson()));\n",
     );

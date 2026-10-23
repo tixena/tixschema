@@ -35,10 +35,6 @@ void row(String name, bool judged, Object? Function() written) {
 /// The emitted types of the ranges, the row printer, and a `main` that reads each payload with
 /// the `fromJson` of its type and writes it back with `toJson`.
 fn source() -> String {
-    let mut definitions = analyzed_definitions();
-    definitions.push(positioned_dart::dart_definition());
-    definitions.push(atlas_dart::dart_definition());
-    definitions.push(excursion_dart::dart_definition());
     let calls = rows().iter().fold(String::new(), |mut written, row| {
         let (converted, write) = if declares_a_parameter(row.read_as) {
             (", (e) => e as int", "(e) => e")
@@ -56,16 +52,18 @@ fn source() -> String {
         written
     });
     module(
-        &definitions,
+        &definitions(),
         &[ROW],
         &format!("void main() {{\n{calls}}}\n"),
     )
 }
 
-/// The emitted types the analyzer passes whole. `Positioned`, `Atlas` and `Excursion` are run and
-/// left out: the codec of each map casts a key the analyzer already knows to be a string.
-fn analyzed_definitions() -> Vec<String> {
+/// The emitted types of the ranges.
+fn definitions() -> Vec<String> {
     vec![
+        positioned_dart::dart_definition(),
+        atlas_dart::dart_definition(),
+        excursion_dart::dart_definition(),
         milestone_dart::dart_definition(),
         waymark_dart::dart_definition(),
         itinerary_dart::dart_definition(),
@@ -107,7 +105,7 @@ fn each_range_reads_and_writes_in_dart_as_serde_does() {
 #[test]
 fn the_emitted_ranges_have_no_issue() {
     let analyzed = module(
-        &analyzed_definitions(),
+        &definitions(),
         &[ROW],
         "void main() => row('a list', false, () => jsonDecode('[]'));\n",
     );

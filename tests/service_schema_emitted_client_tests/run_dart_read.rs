@@ -19,9 +19,9 @@ use tixschema::{model_schema, service_schema};
 
 use super::run_dart_validate::{
     CHECKS, Case, Crate, Deck, Gauge, Pair, Parcel, SHAPE_FUNCTIONS, Stamp, Terminal, Yard,
-    analyzed_definitions, brand_cases, compared, dart, from_until, manifest_dart, module,
-    named_shape_cases, named_variant_cases, outside, parcel, parcel_dart, pinned,
-    shape_definitions, sound, table_cases, tagged_and_untagged_variant_cases, texts, unlabelled,
+    brand_cases, compared, dart, from_until, manifest_dart, module, named_shape_cases,
+    named_variant_cases, outside, parcel, parcel_dart, pinned, shape_definitions, sound,
+    table_cases, tagged_and_untagged_variant_cases, texts, unlabelled,
 };
 use super::runtime::ran;
 use super::tests::{ShelfError, shelf_error_dart};
@@ -674,10 +674,10 @@ fn a_member_named_after_the_unjudged_read_builds_and_keeps_its_key() {
     );
 }
 
-/// The emitted source of the shapes declared here, with every shape the analyzer passes whole.
+/// The emitted source of the shapes declared here, with every shape.
 #[test]
 fn the_emitted_source_of_the_reads_has_no_issue() {
-    let mut definitions = analyzed_definitions();
+    let mut definitions = shape_definitions();
     definitions.extend([
         carton_dart::dart_definition(),
         tray_dart::dart_definition(),

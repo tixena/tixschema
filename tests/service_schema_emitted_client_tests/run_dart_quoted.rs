@@ -109,19 +109,11 @@ fn a_name_that_holds_a_quote_is_read_and_written_back_as_serde_writes_it() {
     assert_eq!(printed, expected, "the Dart read is not serde's");
 }
 
-/// The analyzer passes the types the rows read. `Levied` and `Tithed` are run above alone: the
-/// `toJson` of each casts a value whose type the analyzer already knows.
+/// The analyzer passes the types the rows read.
 #[test]
 fn the_emitted_types_have_no_issue() {
     let source = module(
-        &[
-            tariffed_dart::dart_definition(),
-            tolled_dart::dart_definition(),
-            leveed_dart::dart_definition(),
-            dutied_dart::dart_definition(),
-            excised_dart::dart_definition(),
-            mulcted_dart::dart_definition(),
-        ],
+        &definitions(),
         &[TOLD],
         r#"void main() => told('calm', () => Tolled.fromJson(jsonDecode(r'"Calm\""')).toJson());"#,
     );

@@ -19,11 +19,11 @@ use super::held_numbers::u8_held;
 /// The names of each variant of `Hatching`, as the read of a flattened one lists them.
 const HATCHING: &str = "['Bay'], ['Dock', 'Quay']";
 
-/// The read of a map of `u8` values from the object `source` names.
-fn counts_from(source: &str) -> String {
+/// The read of a map of `u8` values from the entries of `object`, which Dart types
+/// `Map<String, dynamic>`.
+fn counts_from(object: &str) -> String {
     format!(
-        "Map<String, int>.fromEntries(({source} as Map<String, dynamic>).entries.map((e) => \
-         MapEntry(e.key as String, {})))",
+        "Map<String, int>.fromEntries({object}.entries.map((e) => MapEntry(e.key, {})))",
         u8_held("e.value as int")
     )
 }
@@ -70,8 +70,8 @@ fn a_map_alone_is_read_from_every_key() {
     assert_written(
         &spare,
         &format!(
-            "toJson() => {{ ...(Map<String, dynamic>.fromEntries((rest).entries.map((e) => \
-             MapEntry((e.key) as String, {}))) as Map<String, dynamic>), }};",
+            "toJson() => {{ ...Map<String, dynamic>.fromEntries((rest).entries.map((e) => \
+             MapEntry(e.key, {}))), }};",
             u8_held("e.value")
         ),
     );
@@ -268,8 +268,8 @@ fn an_optional_map_is_null_where_an_entry_does_not_read() {
         &dunnage,
         &format!(
             "toJson() => {{ if (counts != null) ...((counts == null ? null : \
-             Map<String, dynamic>.fromEntries((counts!).entries.map((e) => MapEntry((e.key) as \
-             String, {})))) as Map<String, dynamic>), }};",
+             Map<String, dynamic>.fromEntries((counts!).entries.map((e) => MapEntry(e.key, \
+             {})))) as Map<String, dynamic>), }};",
             u8_held("e.value")
         ),
     );
@@ -288,7 +288,7 @@ fn an_optional_map_is_null_where_an_entry_does_not_read() {
         &format!(
             "Bilging(counts: {},);",
             or_null(&format!(
-                "Map<Garboard, int>.fromEntries((json as Map<String, dynamic>).entries.map((e) => \
+                "Map<Garboard, int>.fromEntries(json.entries.map((e) => \
                  MapEntry(Garboard.fromJson(e.key), {})))",
                 u8_held("e.value as int")
             ))
@@ -305,8 +305,8 @@ fn an_optional_map_of_models_reads_each_unjudged_in_the_closure() {
         &format!(
             "Limber(notches: {},);",
             or_null(
-                "Map<String, Scantling>.fromEntries((json as Map<String, dynamic>).entries.map((e) \
-                 => MapEntry(e.key as String, Scantling.fromJsonUnjudged(e.value))))"
+                "Map<String, Scantling>.fromEntries(json.entries.map((e) => MapEntry(e.key, \
+                 Scantling.fromJsonUnjudged(e.value))))"
             )
         ),
     );
@@ -321,7 +321,7 @@ fn an_optional_map_that_names_a_function_is_read_as_it_was() {
         &format!(
             "Hawsehole(counts: switch (asGiven(json)) {{ final corrected => (corrected == null ? \
              null : {}) }},);",
-            counts_from("corrected")
+            counts_from("(corrected as Map<String, dynamic>)")
         ),
     );
 }

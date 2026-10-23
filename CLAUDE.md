@@ -2043,17 +2043,24 @@ consumer's view; this is what a change has to keep.
 - **A number, a `char` and a chrono date, time and date and time are read and written in their
   one form** (section 14), by `src/features/dart/forms.rs`, each an inline expression, so two
   types share nothing. `text_read` reads a `char` and a date or time held as a `String` wherever
-  `dart_decode_at` reads one, a map's key among them: a `switch` that answers the text where it
+  `dart_decode_at` reads one, and a map's key: a `switch` that answers the text where it
   matches `TextForm::read`, or is one code point for a `char`, and throws `FormatException('expected
   {form}, found ...')` otherwise, the text quoted by `jsonEncode`. `text_sent`, wherever `toJson`
-  writes one, drops the `Z` (`TextForm::unzoned`), writes the seconds (`TextForm::unsecond`) and
-  throws in the same words for a text not of `TextForm::sent`. `number_held` holds an integer to
-  `FieldDefType::integer_range` and an `f32` below `F32_READ_BOUND` in size, on the read and on
-  the write, a map's key included: `expected an integer from 0 to 255, found 256`, `expected a
-  32-bit float, found 1e+300`. A `DateTime<Tz>` is written `toUtc().toIso8601String()`, as a value
-  and as a map's key. The WebSocket client writes and reads a header through the same codec.
-  `run_dart_text_forms.rs` reads `TEXT_FORMS` under the Dart SDK, and `run_dart_wire_forms.rs`
-  writes `WIRE_FORMS`.
+  writes one, a map's key among them, drops the `Z` (`TextForm::unzoned`), writes the seconds
+  (`TextForm::unsecond`) and throws in the same words for a text not of `TextForm::sent`. A map's
+  key held as a `String` is a `String` already, read off the object and written by `toJson`, so
+  `dart_map_key_decode` and `dart_map_key_encode` cast none, a cast `dart analyze` reports as
+  unnecessary: a `String` key is the key itself, a `char` and a date or time key `text_read` and
+  `text_sent` of it. A key of a declared type and an unknown one keep the cast of what `toJson`
+  answers. `run_dart_text_keys.rs` reads and writes back a `String` key held itself, under an
+  `Option`, in a list and as a map's value, against serde, and analyzes the type, and
+  `run_dart_text_forms.rs` analyzes the types keyed by a `char` and a date or time. `number_held`
+  holds an integer to `FieldDefType::integer_range` and an `f32` below `F32_READ_BOUND` in size,
+  on the read and on the write, a map's key included: `expected an integer from 0 to 255, found
+  256`, `expected a 32-bit float, found 1e+300`. A `DateTime<Tz>` is written
+  `toUtc().toIso8601String()`, as a value and as a map's key. The WebSocket client writes and reads
+  a header through the same codec. `run_dart_text_forms.rs` reads `TEXT_FORMS` under the Dart SDK,
+  and `run_dart_wire_forms.rs` writes `WIRE_FORMS`.
 - **A declared type is read unjudged exactly where the holder's `validate()` runs it.** `Read` is
   threaded through `dart_decode_expr` and `dart_decode_at`, and `Read::of_member` asks
   `walks_what_it_holds`, the question `member_elements` asks: a member's own bound stands in for
@@ -2198,6 +2205,19 @@ consumer's view; this is what a change has to keep.
   declare beside the `Veering` of `kotlin_tests/aliased_models.rs`, and of `Cringle`, an enum
   under a tag that names a function on itself, which it declares. `src/features/dart/tests.rs`
   pins the read of an enum under each tag shape whose class was emitted above.
+- **No cast is written of a value Dart types `Map<String, dynamic>` already**, a cast `dart
+  analyze` reports as unnecessary. `joined_entries` spreads what a flattened member, and the lone
+  slot of a variant under a tag alone, writes as it is where `writes_an_object` answers: a map, the
+  README's `ObjectId`, and a struct `DART_WRITES_AN_OBJECT` notes, a class whose `toJson` is
+  `Map<String, dynamic>`. An optional one is cast to the map it holds. A brand, an alias, a tuple struct and an enum answer `dynamic` from
+  `toJson` and are spread through `as Map<String, dynamic>`, and so is a type the emitter has not
+  written: a struct declared below its holder keeps the cast, which the analyzer reports. A
+  flattened map is read off the object it is handed (`map_decode`), which the read types
+  `Map<String, dynamic>`, and a map under a key off `json['key'] as Map<String, dynamic>`.
+  `run_dart_validate.rs`, `run_dart_ranges.rs`, `run_dart_results.rs`, `run_dart_object_ids.rs`,
+  `run_dart_quoted.rs`, `run_dart_own_tags.rs`, `run_dart_flattened_options.rs` and
+  `run_dart_text_forms.rs` analyze every type they read, a flattened struct, `ObjectId` and map and
+  a slot beside a tag among them.
 - **A unit variant of an externally tagged enum is an entry of its name over `null`** where the
   enum is flattened, as serde writes and reads it. The enum's `toJson` writes the bare name, so
   `tagged_enum_dart_source` records every externally tagged enum with a unit variant in

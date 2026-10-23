@@ -118,7 +118,7 @@ fn an_enums_names_are_escaped_in_its_dart_text() {
                 r"Map<String, dynamic> toJson() => {{ 'ki\'nd': 'Bid\$Ask','lo\$t': {}, }};",
                 u8_held("lot")
             ),
-            r#"{ 'ki\'nd': 'He"ld', ...((value).toJson() as Map<String, dynamic>) }"#,
+            r#"{ 'ki\'nd': 'He"ld', ...(value).toJson() }"#,
             r"@override dynamic toJson() => { 'ki\'nd': 'Calm\\' };",
         ],
     );

@@ -256,18 +256,11 @@ fn the_readme_shows_the_dart_read_of_a_struct_under_its_own_tag() {
     }
 }
 
-/// The analyzer passes the structs under their own tag that flatten nothing. `Pennant` and
-/// `Dressing` are run above alone: the `toJson` of each casts a value whose type the analyzer
-/// already knows.
+/// The analyzer passes the structs under their own tag and what they flatten.
 #[test]
 fn the_emitted_structs_under_their_own_tag_have_no_issue() {
     let source = module(
-        &[
-            flag_dart::dart_definition(),
-            gonfalon_dart::dart_definition(),
-            semaphore_dart::dart_definition(),
-            ensign_dart::dart_definition(),
-        ],
+        &definitions(),
         &[],
         "void main() => print(jsonEncode(Flag(label: 'n').toJson()));\n",
     );

@@ -497,6 +497,10 @@ thread_local! {
     /// variant as its bare name: what a holder that flattens one writes as an entry over `null`.
     static DART_WRITES_A_NAME: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
 
+    /// Each struct a class has been emitted for whose `toJson` is typed `Map<String, dynamic>`: a
+    /// holder spreads what it writes with no cast. A wrapper's and an enum's answer `dynamic`.
+    static DART_WRITES_AN_OBJECT: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+
     /// Each brand and alias a class has been emitted for whose value is `()`, or another such
     /// type, and each untagged enum with a variant over one: its read takes the `null` an absent
     /// key reads as, which its holder refuses.
@@ -1064,6 +1068,35 @@ fn note_reads_a_unit(rust_ident: &str, reads: bool) {
     });
 }
 
+/// Records whether the class emitted for `rust_ident` declares its `toJson` as `Map<String,
+/// dynamic>`.
+fn note_writes_an_object(rust_ident: &str, writes: bool) {
+    DART_WRITES_AN_OBJECT.with(|recorded| {
+        if writes {
+            recorded.borrow_mut().insert(rust_ident.to_owned());
+        } else {
+            recorded.borrow_mut().remove(rust_ident);
+        }
+    });
+}
+
+/// Whether Dart types what a value typed `def` writes as `Map<String, dynamic>` already: a map,
+/// the README's `ObjectId`, and a struct `DART_WRITES_AN_OBJECT` notes. A type not known keeps
+/// `dynamic`.
+fn writes_an_object(def: &FieldDef) -> bool {
+    if def.array_depth > 0 || def.is_optional() {
+        return false;
+    }
+    if let FieldDefType::SiblingType(name, _) = &def.field_type {
+        return DART_WRITES_AN_OBJECT.with(|recorded| recorded.borrow().contains(name));
+    }
+    #[cfg(feature = "mongodb")]
+    if matches!(def.field_type, FieldDefType::ObjectId) {
+        return true;
+    }
+    matches!(def.field_type, FieldDefType::Map(_, _))
+}
+
 /// Whether a value typed `def` is `()`, or a type emitted above that `DART_READS_A_UNIT` notes:
 /// its read takes `null`, and so the `null` an absent key reads as.
 fn reads_a_unit(def: &FieldDef) -> bool {
@@ -1089,13 +1122,16 @@ fn writes_a_name(def: &FieldDef) -> bool {
 
 /// The entries `encode`, what a value of `def` writes, adds to the object it joins: a unit variant
 /// of an externally tagged enum emitted above as an entry of its name over `null`, as serde writes
-/// it, where the enum's own `toJson` writes the bare name.
+/// it, where the enum's own `toJson` writes the bare name. A value Dart types
+/// `Map<String, dynamic>` already is not cast to it.
 fn joined_entries(def: &FieldDef, encode: &str) -> String {
     if writes_a_name(def) {
         format!(
             "(switch ({encode}) {{ final String name => {{name: null}}, final written => written \
              as Map<String, dynamic> }})"
         )
+    } else if writes_an_object(def) {
+        encode.to_owned()
     } else {
         format!("({encode} as Map<String, dynamic>)")
     }
@@ -1464,10 +1500,10 @@ fn dart_map_key_decode(key: &FieldDef, expr: &str) -> String {
                     forms::number_held(&key.field_type, &read).unwrap_or(read)
                 }
                 FieldDefType::F32 | FieldDefType::F64 => format!("double.parse({expr})"),
+                // The key is a `String` already, and the analyzer reports a cast of it.
+                FieldDefType::String | FieldDefType::StringLiteral(_) => expr.to_owned(),
+                FieldDefType::Char => forms::text_read(TextForm::Char, expr),
                 FieldDefType::Boolean
-                | FieldDefType::Char
-                | FieldDefType::String
-                | FieldDefType::StringLiteral(_)
                 | FieldDefType::BooleanLiteral(_)
                 | FieldDefType::NumberLiteral(_)
                 | FieldDefType::SiblingType(_, _)
@@ -1480,10 +1516,12 @@ fn dart_map_key_decode(key: &FieldDef, expr: &str) -> String {
                 #[cfg(feature = "mongodb")]
                 FieldDefType::ObjectId => dart_decode_expr(key, expr, Read::Judged),
                 #[cfg(feature = "chrono")]
-                FieldDefType::NaiveDate
-                | FieldDefType::NaiveTime
-                | FieldDefType::NaiveDateTime
-                | FieldDefType::DateTime => dart_decode_expr(key, expr, Read::Judged),
+                FieldDefType::NaiveDate | FieldDefType::NaiveTime | FieldDefType::NaiveDateTime => {
+                    TextForm::of(key)
+                        .map_or_else(|| expr.to_owned(), |form| forms::text_read(form, expr))
+                }
+                #[cfg(feature = "chrono")]
+                FieldDefType::DateTime => dart_decode_expr(key, expr, Read::Judged),
             }
         }
     }
@@ -1518,10 +1556,10 @@ fn dart_map_key_encode(key: &FieldDef, expr: &str) -> String {
                     "({}).toString()",
                     forms::number_held(&key.field_type, expr).unwrap_or_else(|| expr.to_owned())
                 ),
+                // The key is a `String` already, and the analyzer reports a cast of it.
+                FieldDefType::String | FieldDefType::StringLiteral(_) => expr.to_owned(),
+                FieldDefType::Char => forms::text_sent(TextForm::Char, expr),
                 FieldDefType::Boolean
-                | FieldDefType::Char
-                | FieldDefType::String
-                | FieldDefType::StringLiteral(_)
                 | FieldDefType::BooleanLiteral(_)
                 | FieldDefType::NumberLiteral(_)
                 | FieldDefType::SiblingType(_, _)
@@ -1538,10 +1576,12 @@ fn dart_map_key_encode(key: &FieldDef, expr: &str) -> String {
                     format!("({}) as String", dart_encode_expr(key, expr, false))
                 }
                 #[cfg(feature = "chrono")]
-                FieldDefType::NaiveDate
-                | FieldDefType::NaiveTime
-                | FieldDefType::NaiveDateTime
-                | FieldDefType::DateTime => {
+                FieldDefType::NaiveDate | FieldDefType::NaiveTime | FieldDefType::NaiveDateTime => {
+                    TextForm::of(key)
+                        .map_or_else(|| expr.to_owned(), |form| forms::text_sent(form, expr))
+                }
+                #[cfg(feature = "chrono")]
+                FieldDefType::DateTime => {
                     format!("({}) as String", dart_encode_expr(key, expr, false))
                 }
             }
@@ -1716,15 +1756,12 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
                 format!("{class_name}.{constructor}({expr}, {converters})")
             }
         }
-        FieldDefType::Map(key, value) => {
-            let key_ty = dart_map_key_typename(key);
-            let value_ty = dart_typename(value);
-            let key_decode = dart_map_key_decode(key, "e.key");
-            let value_decode = dart_decode_expr(value, "e.value", read);
-            format!(
-                "Map<{key_ty}, {value_ty}>.fromEntries(({expr} as Map<String, dynamic>).entries.map((e) => MapEntry({key_decode}, {value_decode})))"
-            )
-        }
+        FieldDefType::Map(key, value) => map_decode(
+            key,
+            value,
+            &format!("({expr} as Map<String, dynamic>)"),
+            read,
+        ),
         FieldDefType::Boolean => format!("{expr} as bool"),
         FieldDefType::String | FieldDefType::StringLiteral(_) => format!("{expr} as String"),
         FieldDefType::BooleanLiteral(_) => format!("{expr} as bool"),
@@ -1765,6 +1802,19 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
             }
         }
     }
+}
+
+/// The map of `key` to `value` the entries of `object` hold, an expression Dart types
+/// `Map<String, dynamic>`.
+fn map_decode(key: &FieldDef, value: &FieldDef, object: &str, read: Read) -> String {
+    let key_ty = dart_map_key_typename(key);
+    let value_ty = dart_typename(value);
+    let key_decode = dart_map_key_decode(key, "e.key");
+    let value_decode = dart_decode_expr(value, "e.value", read);
+    format!(
+        "Map<{key_ty}, {value_ty}>.fromEntries({object}.entries.map((e) => MapEntry({key_decode}, \
+         {value_decode})))"
+    )
 }
 
 /// The record the array `expr` holds, each position read as its element of `elements`. The array
@@ -2134,10 +2184,20 @@ fn flattened_read(def: &FieldDef, handed: &str, taken: &[String]) -> String {
     if def.is_optional() && !functions.is_empty() && !holds_a_map {
         return corrected_option(def, functions, handed);
     }
-    if !def.is_optional() || !functions.is_empty() {
+    if !functions.is_empty() {
         return member_decode(def, handed, None, Read::Unjudged);
     }
-    let read = dart_decode_at(def, def.array_depth, handed, Read::Unjudged);
+    // `handed` is typed `Map<String, dynamic>` already, which a map is read from uncast.
+    let read = if let FieldDefType::Map(key, value) = &def.field_type
+        && def.array_depth == 0
+    {
+        map_decode(key, value, handed, Read::Unjudged)
+    } else {
+        dart_decode_at(def, def.array_depth, handed, Read::Unjudged)
+    };
+    if !def.is_optional() {
+        return read;
+    }
     let caught = format!("(() {{ try {{ return {read}; }} catch (_) {{ return null; }} }})()");
     if let FieldDefType::TypeParam(parameter) = &def.field_type
         && def.array_depth == 0
@@ -3589,6 +3649,7 @@ fn struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -> Toke
     let rust_ident = item_struct.ident.to_string();
     let export_name = compute_item_export_name(&rust_ident, args.name_override);
     register_dart_name(&rust_ident, &export_name);
+    note_writes_an_object(&rust_ident, true);
 
     record_dart_fields(
         &rust_ident,
@@ -3691,6 +3752,7 @@ fn value_wrapper_tokens(
     let rust_ident = ident.to_string();
     let export_name = compute_item_export_name(&rust_ident, name_override);
     register_dart_name(&rust_ident, &export_name);
+    note_writes_an_object(&rust_ident, false);
     note_reads_a_unit(
         &rust_ident,
         matches!(held, Held::Value(value_field) if reads_a_unit(value_field)),
@@ -3845,6 +3907,7 @@ fn enum_dart_tokens(declared: &ItemEnum, args: &DartTypeArgs<'_>) -> TokenStream
     let rust_ident = item_enum.ident.to_string();
     let export_name = compute_item_export_name(&rust_ident, args.name_override);
     register_dart_name(&rust_ident, &export_name);
+    note_writes_an_object(&rust_ident, false);
     let tag_attrs = enum_tag_attrs(&item_enum.attrs);
     let names = variant_names_when_flattened(item_enum, args.preprocess);
     record_taken_keys(

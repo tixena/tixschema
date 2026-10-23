@@ -32,10 +32,7 @@ fn a_member_serde_never_writes_beside_a_flattened_one_has_no_entry() {
     );
     assert!(reefing.contains(&spare), "got: {reefing}");
     assert!(
-        reefing.contains(
-            "Map<String, dynamic> toJson() => { ...((braiding).toJson() as Map<String, \
-             dynamic>), };"
-        ),
+        reefing.contains("Map<String, dynamic> toJson() => { ...(braiding).toJson(), };"),
         "got: {reefing}"
     );
 }

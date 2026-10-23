@@ -426,6 +426,12 @@ mod set_models;
 #[path = "service_schema_emitted_client_tests/run_dart_sets.rs"]
 mod run_dart_sets;
 
+/// A map keyed by a `String` in each place a member holds one, read and written back by the
+/// emitted Dart types against serde, and passed by the analyzer.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_text_keys.rs"]
+mod run_dart_text_keys;
+
 /// A set that repeats an item, refused by the read of the emitted Swift types.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_swift_sets.rs"]

@@ -125,21 +125,11 @@ fn a_struct_of_one_slot_reads_and_writes_in_dart_as_serde_does_wherever_it_is_he
     held_to_rows(&rows, &printed, "Dart");
 }
 
-/// The analyzer passes the text of every model of the table but those that hold a map keyed by
-/// text, whose codec casts a key the analyzer already knows is one.
+/// The analyzer passes the text of every model of the table.
 #[test]
 fn the_dart_text_of_a_struct_of_one_slot_has_no_issue() {
-    let keyed_by_text = [
-        bales_by_name_dart::dart_definition(),
-        stowed_by_name_dart::dart_definition(),
-        laden_dart::dart_definition(),
-    ];
-    let analyzed: Vec<String> = definitions()
-        .into_iter()
-        .filter(|definition| !keyed_by_text.contains(definition))
-        .collect();
     let source = module(
-        &analyzed,
+        &definitions(),
         &[],
         "void main() => print(jsonEncode(Count.fromJson(jsonDecode('5')).toJson()));\n",
     );

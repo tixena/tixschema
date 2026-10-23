@@ -200,7 +200,7 @@ fn a_holder_reads_what_it_names_unjudged() {
              (json['parcelList'] as List<dynamic>).map((e) => \
              Parcel.fromJsonUnjudged(e)).toList(),parcels_by_dock: Map<String, \
              Parcel>.fromEntries((json['parcelsByDock'] as Map<String, dynamic>).entries.map((e) \
-             => MapEntry(e.key as String, Parcel.fromJsonUnjudged(e.value)))),spare_parcel: \
+             => MapEntry(e.key, Parcel.fromJsonUnjudged(e.value)))),spare_parcel: \
              (json['spareParcel'] == null ? null : \
              Parcel.fromJsonUnjudged(json['spareParcel'])),);",
             pair("Manifest", "Map<String, dynamic> json", "json")
