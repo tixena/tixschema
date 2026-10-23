@@ -13,8 +13,8 @@ fn found(source: &str) -> Vec<(Option<String>, usize, bool, bool)> {
 }
 
 /// Every position a member holds a `u64` or an `i64` in through a std wrapper, a list, a set, an
-/// array, a map's value or a tuple is written as digits, and so is a member's own type through a
-/// lock.
+/// array, a map's value, a tuple, a lock, a range's bound or a `Result`'s arm is written as
+/// digits, beside the item's own type parameter and `Self` too.
 #[test]
 fn each_position_the_macro_takes_apart_is_found() {
     for written in [
@@ -41,10 +41,23 @@ fn each_position_the_macro_takes_apart_is_found() {
         "RefCell<i64>",
         "Mutex<Option<i64>>",
         "Arc<RwLock<Vec<u64>>>",
+        "Vec<Mutex<i64>>",
+        "Option<RefCell<i64>>",
+        "(Mutex<i64>, String)",
+        "BTreeMap<String, Mutex<i64>>",
+        "Range<i64>",
+        "RangeInclusive<u64>",
+        "RangeFrom<i64>",
+        "RangeTo<u64>",
+        "Result<i64, String>",
+        "Result<String, Vec<u64>>",
+        "Vec<(u64, T)>",
+        "Vec<(u64, Box<Self>)>",
     ] {
         assert_eq!(
             found(&format!(
-                "#[derive(Serialize, Deserialize)] pub struct Wide {{ pub held: {written} }}"
+                "#[derive(Serialize, Deserialize)] pub struct Wide<T> {{ pub held: {written}, \
+                 pub marker: PhantomData<T> }}"
             )),
             [(None, 0, true, true)],
             "for {written}"
@@ -52,24 +65,17 @@ fn each_position_the_macro_takes_apart_is_found() {
     }
 }
 
-/// A key, a range's bound, a `Result`'s arm, another type's argument and a name that stands for
-/// one are written as their own types write them, and a level no written function takes apart,
-/// a reference and a lock below another level, keeps the whole member a number.
+/// A key, another type's argument, a name that stands for one and a type no expansion has seen
+/// are written as their own types write them.
 #[test]
 fn a_position_serde_writes_through_another_impl_is_not_found() {
     for written in [
         "u32",
+        "usize",
         "BTreeMap<u64, String>",
-        "Range<i64>",
-        "Result<i64, String>",
         "Wrapper<i64>",
         "Count",
-        "Vec<Mutex<i64>>",
-        "Option<RefCell<i64>>",
-        "(Mutex<i64>, String)",
-        "&'static [i64]",
-        "Vec<(u64, T)>",
-        "Vec<(u64, Box<Self>)>",
+        "Vec<Count>",
     ] {
         assert_eq!(
             found(&format!(
@@ -83,7 +89,8 @@ fn a_position_serde_writes_through_another_impl_is_not_found() {
 }
 
 /// serde writes and reads the member only in the directions its derives and its attributes leave
-/// it, and a member its author writes or reads through a function of their own is theirs.
+/// it, a reference only on the write, and a member its author writes or reads through a function
+/// or a type of their own is theirs.
 #[test]
 fn the_directions_follow_the_derives_and_the_attributes() {
     assert_eq!(
@@ -95,6 +102,11 @@ fn the_directions_follow_the_derives_and_the_attributes() {
         [(None, 0, false, true)]
     );
     assert_eq!(found("pub struct Wide { pub held: i64 }"), []);
+    assert_eq!(
+        found("#[derive(Serialize, Deserialize)] pub struct Wide { pub held: &'static [i64] }"),
+        [(None, 0, true, false)],
+        "a reference is written and never read"
+    );
     assert_eq!(
         found(
             "#[derive(Serialize, Deserialize)] pub struct Wide { #[serde(skip_serializing)] pub \
@@ -114,7 +126,8 @@ fn the_directions_follow_the_derives_and_the_attributes() {
             "#[derive(Serialize, Deserialize)] pub struct Wide { #[model_schema_prop(literal = \
              7)] pub stated: i64, #[model_schema_prop(as = String)] pub named: u64 }"
         ),
-        []
+        [(None, 0, true, true)],
+        "a literal is digits, a member under `as` is the type it names"
     );
 }
 

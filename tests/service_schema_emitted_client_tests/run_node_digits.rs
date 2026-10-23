@@ -81,6 +81,80 @@ for (const call of calls) {
 console.log(JSON.stringify(ran));
 "#;
 
+/// Sends each bare `i64` through each client to the dispatcher of its transport, and prints what
+/// each transport carried each way and what each client answered, a `bigint` written with an `n`.
+const BARE_DRIVER: &str = r#"
+const shown = (value) => value === undefined ? null : JSON.parse(JSON.stringify(value, (_, held) => (typeof held === "bigint" ? `${held}n` : held)));
+
+const recorded = [];
+const impl = {
+  async shift(_ctx, req, offset) {
+    const shifted = req + (offset ?? 0n);
+    return { ok: true, value: [shifted, shifted * 2n <= 9223372036854775807n ? shifted * 2n : null] };
+  },
+  async total(_ctx, req) {
+    const sum = req.reduce((held, entry) => held + entry, 0n);
+    return sum > 9223372036854775807n ? { ok: false, error: -9223372036854775808n } : { ok: true, value: sum };
+  },
+  async record(_ctx, req) {
+    recorded.push(req);
+  },
+};
+
+const dispatch = createTallyingBareServiceDispatcher(impl);
+const handle = createTallyingBareServiceHttpDispatcher(impl);
+
+const overBus = async (call) => {
+  const carried = [];
+  const client = createTallyingBareServiceClient({
+    async notify(operation, payload, headers) {
+      const sent = JSON.parse(JSON.stringify(payload));
+      await dispatch(undefined, operation, sent, headers);
+      carried.push(sent, headers);
+    },
+    async request(operation, payload, headers) {
+      const sent = JSON.parse(JSON.stringify(payload));
+      const dispatched = await dispatch(undefined, operation, sent, headers);
+      const answered = JSON.parse(JSON.stringify(dispatched.answered));
+      carried.push(sent, headers, answered, dispatched.headers);
+      return { answered, headers: dispatched.headers };
+    },
+  });
+  return { carried, answered: shown(await call(client)) };
+};
+
+const overHttp = async (call) => {
+  const carried = [];
+  const client = createTallyingBareServiceHttpClient({
+    async send(request) {
+      const response = await handle(undefined, {
+        body: request.body,
+        headers: request.headers,
+        method: request.method,
+        path: request.path,
+        query: request.query,
+      });
+      const sent = new TextDecoder().decode(request.body);
+      carried.push(`${request.method} ${request.path} ${JSON.stringify(request.headers)} ${sent}`, `${response.status} ${JSON.stringify(response.headers)} ${new TextDecoder().decode(response.body)}`);
+      return { status: response.status, headers: response.headers, body: response.body };
+    },
+  });
+  return { carried, answered: shown(await call(client)) };
+};
+
+const calls = [
+  (client) => client.shift(9223372036854775806n, 1n),
+  (client) => client.shift(4611686018427387903n, undefined),
+  (client) => client.total([9223372036854775807n, 1n]),
+  (client) => client.record(-9223372036854775808n),
+];
+const ran = [];
+for (const call of calls) {
+  ran.push({ bus: await overBus(call), http: await overHttp(call) });
+}
+console.log(JSON.stringify({ ran, recorded: shown(recorded) }));
+"#;
+
 /// A tally, whose `i64` travels as the string of its digits.
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -151,6 +225,63 @@ impl TallyingClientService<()> for TallyingBackEnd {
     }
 }
 
+/// A bare `i64` as the message, a header beside it, the reply and a header beside the reply; a
+/// bare list of them as the message beside an `i64` as the declared error; and a one-way message
+/// of one.
+#[service_schema(transports = [])]
+pub trait TallyingBareService<Ctx> {
+    #[service_schema_op(one_way, http(method = "PUT", path = "/bare"))]
+    async fn record(&self, ctx: &Ctx, entry: i64);
+
+    #[service_schema_op(http(
+        method = "GET",
+        path = "/bare/{entry}",
+        header_in("x-offset" = offset),
+        header_out("x-doubled"),
+    ))]
+    async fn shift(
+        &self,
+        ctx: &Ctx,
+        entry: i64,
+        offset: Option<i64>,
+    ) -> Result<(i64, Option<i64>), TallyError>;
+
+    #[service_schema_op(http(method = "POST", path = "/bare"))]
+    async fn total(&self, ctx: &Ctx, entries: Vec<i64>) -> Result<i64, i64>;
+}
+
+/// A backend answering the bare contract, so the trait is implementable rather than merely
+/// declared.
+pub struct TallyingBareBackEnd;
+
+impl TallyingBareService<()> for TallyingBareBackEnd {
+    async fn record(&self, _ctx: &(), _entry: i64) {
+        ready(()).await;
+    }
+
+    async fn shift(
+        &self,
+        _ctx: &(),
+        entry: i64,
+        offset: Option<i64>,
+    ) -> Result<(i64, Option<i64>), TallyError> {
+        ready(()).await;
+        let shifted = entry
+            .checked_add(offset.unwrap_or(0))
+            .ok_or(TallyError::Refused)?;
+        Ok((shifted, shifted.checked_mul(2)))
+    }
+
+    async fn total(&self, _ctx: &(), entries: Vec<i64>) -> Result<i64, i64> {
+        ready(()).await;
+        entries
+            .iter()
+            .copied()
+            .try_fold(0_i64, i64::checked_add)
+            .ok_or(i64::MIN)
+    }
+}
+
 /// The messages, the service, its dispatchers and its clients, beside the real `zod`.
 fn emitted() -> String {
     [
@@ -166,8 +297,144 @@ fn emitted() -> String {
         TallyingClientServiceSchema::ts_http_service(),
         TallyingClientServiceSchema::ts_client(),
         TallyingClientServiceSchema::ts_http_client(),
+        TallyingBareServiceSchema::ts_definition(),
+        TallyingBareServiceSchema::ts_service(),
+        TallyingBareServiceSchema::ts_http_service(),
+        TallyingBareServiceSchema::ts_client(),
+        TallyingBareServiceSchema::ts_http_client(),
     ]
     .join("\n\n")
+}
+
+/// What each transport carries each way of each call of [`BARE_DRIVER`], and what each client
+/// answers: every bare `i64` written as its digits.
+fn carried_bare() -> Value {
+    json!({
+        "ran": [
+            {
+                "bus": {
+                    "carried": [
+                        "9223372036854775806",
+                        [["x-offset", r#""1""#]],
+                        { "ok": true, "value": "9223372036854775807" },
+                        [],
+                    ],
+                    "answered": { "ok": true, "value": ["9223372036854775807n", null] },
+                },
+                "http": {
+                    "carried": [
+                        r#"GET /bare/9223372036854775806 [["x-offset","1"]] "#,
+                        r#"200 [["content-type","application/json"]] "9223372036854775807""#,
+                    ],
+                    "answered": { "ok": true, "value": ["9223372036854775807n", null] },
+                },
+            },
+            {
+                "bus": {
+                    "carried": [
+                        "4611686018427387903",
+                        [["x-offset", "null"]],
+                        { "ok": true, "value": "4611686018427387903" },
+                        [["x-doubled", r#""9223372036854775806""#]],
+                    ],
+                    "answered": {
+                        "ok": true,
+                        "value": ["4611686018427387903n", "9223372036854775806n"],
+                    },
+                },
+                "http": {
+                    "carried": [
+                        "GET /bare/4611686018427387903 [] ",
+                        r#"200 [["x-doubled","9223372036854775806"],["content-type","application/json"]] "4611686018427387903""#,
+                    ],
+                    "answered": {
+                        "ok": true,
+                        "value": ["4611686018427387903n", "9223372036854775806n"],
+                    },
+                },
+            },
+            {
+                "bus": {
+                    "carried": [
+                        ["9223372036854775807", "1"],
+                        [],
+                        { "ok": false, "error": "-9223372036854775808" },
+                        [],
+                    ],
+                    "answered": { "ok": false, "error": "-9223372036854775808n" },
+                },
+                "http": {
+                    "carried": [
+                        r#"POST /bare [] ["9223372036854775807","1"]"#,
+                        r#"422 [["content-type","application/json"]] "-9223372036854775808""#,
+                    ],
+                    "answered": { "ok": false, "error": "-9223372036854775808n" },
+                },
+            },
+            {
+                "bus": {
+                    "carried": ["-9223372036854775808", []],
+                    "answered": null,
+                },
+                "http": {
+                    "carried": [r#"PUT /bare [] "-9223372036854775808""#, "204 [] "],
+                    "answered": null,
+                },
+            },
+        ],
+        "recorded": ["-9223372036854775808n", "-9223372036854775808n"],
+    })
+}
+
+/// Each client sends a bare `i64` as its digits, in the message and in a header, each dispatcher
+/// answers the reply, its header and its declared error as their digits, and each client reads
+/// them back into the `bigint` each was, over both transports.
+#[test]
+fn a_bare_i64_travels_as_its_digits_through_each_typescript_client_and_dispatcher() {
+    let Some(modules) = node_modules(REQUIRED_PACKAGES) else {
+        stand_down_modules(
+            REQUIRED_PACKAGES,
+            "the emitted service's bare 64-bit integers",
+        );
+        return;
+    };
+    let module = format!("{}\n\n{BARE_DRIVER}", emitted());
+    let Some(wrote) = ran_with_modules(
+        "bare-digits",
+        RUNTIME_VAR,
+        "node",
+        "bare.mts",
+        &module,
+        &modules,
+    ) else {
+        return;
+    };
+    let ran: Value = serde_json::from_str(wrote.trim()).unwrap();
+    assert_eq!(
+        ran,
+        carried_bare(),
+        "a bare 64-bit integer does not travel as its digits"
+    );
+    assert_eq!(
+        serde_json::from_str::<i64>(r#""9223372036854775806""#).ok(),
+        None,
+        "serde's own read of an i64 refuses the digits a service's wire type reads"
+    );
+    assert_eq!(
+        poll_once(TallyingBareBackEnd.total(&(), vec![i64::MAX, 1])),
+        Some(Err(i64::MIN)),
+        "the backend answers the error the dispatcher answered"
+    );
+    assert_eq!(
+        poll_once(TallyingBareBackEnd.shift(&(), i64::MAX / 2, None)).and_then(Result::ok),
+        Some((i64::MAX / 2, Some(i64::MAX - 1))),
+        "the backend answers the shift the dispatcher answered"
+    );
+    assert_eq!(
+        poll_once(TallyingBareBackEnd.record(&(), i64::MIN)),
+        Some(()),
+        "the backend records the one-way call"
+    );
 }
 
 /// What each transport carries each way, the headers of a request beside its message, and what

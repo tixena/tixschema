@@ -51,6 +51,8 @@ use crate::features::serde::{
 // Bring serde metadata types into scope (used by the serde parsing helpers below).
 #[cfg(feature = "serde")]
 use crate::features::serde::{SerdeFieldMeta, SerdeTypeMeta};
+#[cfg(feature = "serde")]
+use crate::model_schema::digits::alias_written_as_digits;
 
 /// The keys serde writes the two arms of a `Result` under, `Ok` first.
 pub const RESULT_ARMS: [&str; 2] = ["Ok", "Err"];
@@ -578,6 +580,18 @@ impl FieldDef {
             | FieldDefType::NaiveTime
             | FieldDefType::NaiveDateTime
             | FieldDefType::DateTime => false,
+        }
+    }
+
+    /// The value of the `literal` a `u64` or an `i64` member is held to, as decimal digits, and
+    /// `None` where it is held to none.
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    pub fn digits_literal(&self) -> Option<String> {
+        let literal = self.model_schema_prop_meta.as_ref()?.literal.as_ref()?;
+        match literal {
+            LiteralValue::Integer(value) => Some(value.to_string()),
+            LiteralValue::Number(value) => Some(format_number_literal(*value)),
+            LiteralValue::Bool(_) | LiteralValue::Str(_) => None,
         }
     }
 
@@ -1245,6 +1259,36 @@ impl FieldDef {
         }
     }
 
+    /// `target`, the field an alias names, placed under the levels this field, written with the
+    /// alias's name, holds it in.
+    #[cfg(feature = "serde")]
+    fn placed_over(&self, target: Self) -> Self {
+        let mut placed = target;
+        let below = placed.array_depth;
+        for level in &self.nullable_levels {
+            placed.mark_nullable_at(level.saturating_add(below));
+        }
+        for &(level, length) in &self.array_lengths {
+            placed.mark_fixed_length_at(level.saturating_add(below), length);
+        }
+        for level in &self.set_levels {
+            placed.mark_set_at(level.saturating_add(below));
+        }
+        placed.array_depth = placed.array_depth.saturating_add(self.array_depth);
+        placed.name.clone_from(&self.name);
+        placed.docs.clone_from(&self.docs);
+        placed
+            .model_schema_prop_meta
+            .clone_from(&self.model_schema_prop_meta);
+        placed.omits_value = self.omits_value;
+        placed.absent_from_wire = self.absent_from_wire;
+        #[cfg(any(feature = "zod", feature = "jsonschema"))]
+        placed.serde_default.clone_from(&self.serde_default);
+        #[cfg(feature = "jsonschema")]
+        placed.type_span.clone_from(&self.type_span);
+        placed
+    }
+
     /// The first name this field reaches, at any depth, that `refused` answers for. A name is only
     /// ever written where a type is, so the walk descends the positions holding written types and
     /// stops at every value the parser resolved to something of its own.
@@ -1535,30 +1579,10 @@ impl FieldDef {
                     // The element re-enters the whole per-type rendering as the arrayed field it
                     // stands for, so a set renders exactly as the `Vec` of that element does.
                     return self.collection_element_field(element).typescript_base();
-                } else if let Some(info) = lookup_alias_info(name) {
-                    if lst.is_empty() {
-                        info.export_name
-                    } else {
-                        format!(
-                            "{}<{}>",
-                            info.export_name,
-                            lst.iter()
-                                .map(Self::typescript_slot_typename)
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        )
-                    }
-                } else if lst.is_empty() {
-                    name.clone()
-                } else {
-                    format!(
-                        "{name}<{}>",
-                        lst.iter()
-                            .map(Self::typescript_slot_typename)
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )
                 }
+                let shown =
+                    lookup_alias_info(name).map_or_else(|| name.clone(), |info| info.export_name);
+                typescript_with_arguments(shown, lst)
             }
             FieldDefType::Map(k, v) => {
                 format!(
@@ -1582,7 +1606,9 @@ impl FieldDef {
             | FieldDefType::I64
             | FieldDefType::Usize
             | FieldDefType::Isize => "number".to_owned(),
-            FieldDefType::U64Digits | FieldDefType::I64Digits => "bigint".to_owned(),
+            FieldDefType::U64Digits | FieldDefType::I64Digits => self
+                .digits_literal()
+                .map_or_else(|| "bigint".to_owned(), |literal| format!("{literal}n")),
             FieldDefType::F32 | FieldDefType::F64 => "number".to_owned(),
             #[cfg(feature = "mongodb")]
             FieldDefType::ObjectId => object_id::get_object_id_typescript_type(),
@@ -1739,15 +1765,33 @@ impl FieldDef {
     }
 
     /// The field with each `u64` and `i64` it writes itself read as the digit string the macro
-    /// writes it as: the value, and what a tuple, a set and a map's value hold, at any depth. A
-    /// map's key, a range's bound, a `Result`'s arm and what fills another type's parameter are
-    /// written by serde's own impl of what holds them, and keep the number.
+    /// writes it as: the value, and what a tuple, a set, a map's value, a range's bound, a
+    /// `Result`'s arm and an alias declared above hold, at any depth. A map's key and what fills
+    /// another type's parameter are written by serde's own impl of what holds them, and keep the
+    /// number.
     #[must_use]
     pub fn with_digit_leaves(mut self) -> Self {
+        // The alias publishes the number its target writes elsewhere, so the digits are written
+        // here in its place, as a key loses an alias whose schema does not describe it.
+        #[cfg(feature = "serde")]
+        if let FieldDefType::SiblingType(name, arguments) = &self.field_type
+            && arguments.is_empty()
+            && let Some(target) = alias_written_as_digits(name)
+        {
+            let named = get_field_def(&self.name, &target, &self.docs);
+            return self.placed_over(named).with_digit_leaves();
+        }
         self.field_type = if let FieldDefType::Tuple(elements) = self.field_type {
             FieldDefType::Tuple(elements.into_iter().map(Self::with_digit_leaves).collect())
         } else if let FieldDefType::Map(key, value) = self.field_type {
             FieldDefType::Map(key, Box::new(value.with_digit_leaves()))
+        } else if let FieldDefType::Range(kind, bound) = self.field_type {
+            FieldDefType::Range(kind, Box::new(bound.with_digit_leaves()))
+        } else if let FieldDefType::Result(ok, err) = self.field_type {
+            FieldDefType::Result(
+                Box::new(ok.with_digit_leaves()),
+                Box::new(err.with_digit_leaves()),
+            )
         } else if let FieldDefType::SiblingType(name, arguments) = self.field_type {
             let held = if is_sequence_wrapper(&name) {
                 arguments.into_iter().map(Self::with_digit_leaves).collect()
@@ -1963,6 +2007,23 @@ impl FieldDef {
         let Some((least, most)) = self.field_type.digit_range() else {
             return "z.never()".to_owned();
         };
+        let sign = if least.starts_with('-') { "-?" } else { "" };
+        let digits = format!("z.string().regex(/^{sign}(0|[1-9][0-9]*)$/)");
+        // The literal is held on the digits, where a `bigint` read from them would not narrow to
+        // the literal's type.
+        if let Some(literal) = self.digits_literal() {
+            let written = self.zod_literal_of(&format!("\"{literal}\""), "string");
+            return format!(
+                "z.codec({digits}.pipe({written}), z.literal({literal}n), {{ decode: (): \
+                 {literal}n => {literal}n, encode: (): \"{literal}\" => \"{literal}\" }})"
+            );
+        }
+        let codec = |held: &str| {
+            format!(
+                "z.codec({digits}, {held}, {{ decode: (text) => BigInt(text), encode: (value) => \
+                 value.toString() }})"
+            )
+        };
         let declared = self.model_schema_prop_meta.as_ref();
         let minimum = declared.and_then(|meta| meta.minimum);
         let maximum = declared.and_then(|meta| meta.maximum);
@@ -1987,11 +2048,7 @@ impl FieldDef {
             let reported = zod_error_arg(Bound::Maximum(max));
             held = format!("{held}.max({}n, {reported})", whole(max));
         }
-        let sign = if least.starts_with('-') { "-?" } else { "" };
-        format!(
-            "z.codec(z.string().regex(/^{sign}(0|[1-9][0-9]*)$/), {held}, {{ decode: (text) => \
-             BigInt(text), encode: (value) => value.toString() }})"
-        )
+        codec(&held)
     }
 
     /// Every factory call this field's schema is written with, outermost only and once each, in
@@ -2070,17 +2127,27 @@ impl FieldDef {
     /// union reports it at the value's path, as it reports a broken bound.
     #[cfg(feature = "zod")]
     fn zod_literal(&self, written: &str) -> String {
+        let kind = match self
+            .model_schema_prop_meta
+            .as_ref()
+            .and_then(|meta| meta.literal.as_ref())
+        {
+            Some(LiteralValue::Bool(_)) => "boolean",
+            Some(LiteralValue::Integer(_) | LiteralValue::Number(_)) => "number",
+            Some(LiteralValue::Str(_)) | None => "string",
+        };
+        self.zod_literal_of(written, kind)
+    }
+
+    /// [`Self::zod_literal`] of a value whose JavaScript type is `kind`.
+    #[cfg(feature = "zod")]
+    fn zod_literal_of(&self, written: &str, kind: &str) -> String {
         self.model_schema_prop_meta
             .as_ref()
             .and_then(|meta| meta.literal.as_ref())
             .map_or_else(
                 || format!("z.literal({written})"),
                 |literal| {
-                    let kind = match literal {
-                        LiteralValue::Bool(_) => "boolean",
-                        LiteralValue::Number(_) => "number",
-                        LiteralValue::Str(_) => "string",
-                    };
                     format!(
                         "z.literal({written}, {}).check(z.superRefine((_, ctx) => {{\n  for (const \
                          [at, issue] of ctx.issues.entries()) if (issue.code === \"invalid_value\") \
@@ -2366,6 +2433,19 @@ impl FieldDef {
     }
 }
 
+/// `name` with each of `arguments` written as a slot is, where it takes any.
+fn typescript_with_arguments(name: String, arguments: &[FieldDef]) -> String {
+    if arguments.is_empty() {
+        return name;
+    }
+    let written = arguments
+        .iter()
+        .map(FieldDef::typescript_slot_typename)
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("{name}<{written}>")
+}
+
 /// The TypeScript union of the two objects a `Result` of the arms `ok` and `err` is written as.
 fn typescript_result(ok: &FieldDef, err: &FieldDef) -> String {
     result_union(ok, err, |arm, held| {
@@ -2482,24 +2562,42 @@ pub fn held_number(number: &str, literal: f64) -> Option<String> {
         "f32" => written
             .parse::<f32>()
             .is_ok_and(|nearest| nearest.to_string() == written),
-        whole => {
-            let Ok(value) = written.parse::<i128>() else {
-                return None;
-            };
-            let (least, most) = match whole {
-                "u8" => (0, i128::from(u8::MAX)),
-                "u16" => (0, i128::from(u16::MAX)),
-                "u32" => (0, i128::from(u32::MAX)),
-                "u64" | "usize" => (0, i128::from(u64::MAX)),
-                "i8" => (i128::from(i8::MIN), i128::from(i8::MAX)),
-                "i16" => (i128::from(i16::MIN), i128::from(i16::MAX)),
-                "i32" => (i128::from(i32::MIN), i128::from(i32::MAX)),
-                _ => (i128::from(i64::MIN), i128::from(i64::MAX)),
-            };
-            (least..=most).contains(&value)
-        }
+        whole => whole_held(whole, &written),
     };
     held.then_some(written)
+}
+
+/// [`held_number`] for a `literal` of any kind: an integer is measured exactly against an integer
+/// type, and `None` answers a literal that is no number.
+pub fn held_literal(number: &str, literal: &LiteralValue) -> Option<String> {
+    match literal {
+        LiteralValue::Integer(value) if !matches!(number, "f32" | "f64") => {
+            let written = value.to_string();
+            whole_held(number, &written).then_some(written)
+        }
+        LiteralValue::Integer(_) | LiteralValue::Number(_) => {
+            held_number(number, literal.number()?)
+        }
+        LiteralValue::Bool(_) | LiteralValue::Str(_) => None,
+    }
+}
+
+/// Whether the integer type `whole` holds the value `written` spells.
+fn whole_held(whole: &str, written: &str) -> bool {
+    let Ok(value) = written.parse::<i128>() else {
+        return false;
+    };
+    let (least, most) = match whole {
+        "u8" => (0, i128::from(u8::MAX)),
+        "u16" => (0, i128::from(u16::MAX)),
+        "u32" => (0, i128::from(u32::MAX)),
+        "u64" | "usize" => (0, i128::from(u64::MAX)),
+        "i8" => (i128::from(i8::MIN), i128::from(i8::MAX)),
+        "i16" => (i128::from(i16::MIN), i128::from(i16::MAX)),
+        "i32" => (i128::from(i32::MIN), i128::from(i32::MAX)),
+        _ => (i128::from(i64::MIN), i128::from(i64::MAX)),
+    };
+    (least..=most).contains(&value)
 }
 
 /// The union `union` writes around `held`, with every factory call in `held` handed in through a
@@ -2967,6 +3065,12 @@ fn literal_array_length(len: &syn::Expr) -> Option<usize> {
         return None;
     };
     literal.base10_parse::<usize>().ok()
+}
+
+/// The field of a value a service carries bare, where no member holds it: [`get_field_def`], each
+/// `u64` and `i64` it holds read as the digit string it travels as.
+pub fn bare_field_def(name: &str, ty: &Type) -> FieldDef {
+    get_field_def(name, ty, "").with_digit_leaves()
 }
 
 /// Debug logging: Set `RUST_LOG=trace` to see HashMap/SiblingType creation.

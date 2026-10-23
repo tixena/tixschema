@@ -49,7 +49,7 @@ use super::fault;
 use super::left_to_http_rest;
 use super::message;
 use super::result::result_name;
-use crate::field_type::get_field_def;
+use crate::field_type::bare_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, HttpShape, OperationDef, OperationOutcome, ServiceDef, is_unit_type, option_inner,
@@ -91,7 +91,7 @@ impl Rejoined<'_> {
         for (index, (name, ty)) in self.names.iter().zip(&self.types).enumerate() {
             let ident = format!("{}{index}", self.ident_prefix);
             let quoted = ts_quoted(name);
-            let schema = get_field_def("value", ty, "").zod_slot_type();
+            let schema = bare_field_def("value", ty).zod_slot_type();
             let _ = write!(
                 stmt,
                 "{margin}const {ident} = {prefix}ReplyHeader({wire}, replied, {quoted}, \
@@ -362,7 +362,7 @@ fn method_params(operation: &OperationDef) -> String {
     once(format!("req: {}", message::typename(operation)))
         .chain(shape.header_in.iter().map(|header| {
             let name = message::parameter_name(&header.parameter);
-            let ty = get_field_def(&name, &header.ty, "").typescript_typename();
+            let ty = bare_field_def(&name, &header.ty).typescript_typename();
             format!("{name}: {ty}")
         }))
         .collect::<Vec<_>>()
@@ -384,7 +384,7 @@ fn header_in_build_stmt(prefix: &str, operation: &OperationDef) -> (String, Stri
     for header in &shape.header_in {
         let name = ts_quoted(&header.name);
         let parameter = message::parameter_name(&header.parameter);
-        let schema = get_field_def(&parameter, &header.ty, "").zod_type();
+        let schema = bare_field_def(&parameter, &header.ty).zod_type();
         let refusal = outbound_refusal(
             prefix,
             operation,
@@ -430,9 +430,9 @@ fn header_tuple_answer(
     let value_ty = if is_unit_type(&success_body) {
         "undefined".to_owned()
     } else {
-        get_field_def("value", &success_body, "").typescript_typename()
+        bare_field_def("value", &success_body).typescript_typename()
     };
-    let error_ty = get_field_def("error", error_body, "").typescript_typename();
+    let error_ty = bare_field_def("error", error_body).typescript_typename();
     let mut stmt = format!(
         "      const {{ answered, headers: replied }} = await transport.request<\n        \
          | {{ ok: true; value: {value_ty} }}\n        \
@@ -453,7 +453,7 @@ fn success_stmt(prefix: &str, wire: &str, shape: &HttpShape, success: &Type) -> 
     let value = if is_unit_type(&body) {
         "undefined"
     } else {
-        let schema = get_field_def("value", &body, "").zod_type();
+        let schema = bare_field_def("value", &body).zod_type();
         let _ = write!(
             stmt,
             "        const parsed = {schema}.safeParse(answered.value);\n        \
@@ -493,7 +493,7 @@ fn success_stmt(prefix: &str, wire: &str, shape: &HttpShape, success: &Type) -> 
 /// `error_header_out` elements are rejoined onto it.
 fn failure_stmt(prefix: &str, wire: &str, shape: &HttpShape, error: &Type) -> String {
     let body = message::body_type(shape.error_header_out.len(), error);
-    let schema = get_field_def("error", body, "").zod_type();
+    let schema = bare_field_def("error", body).zod_type();
     let mut stmt = format!(
         "      const error = answered.error;\n      \
          if (typeof error === \"object\" && error !== null && \"isServiceFault\" in error) {{\n        \

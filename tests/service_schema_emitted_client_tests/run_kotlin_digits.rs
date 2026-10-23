@@ -7,8 +7,9 @@
 use core::fmt::Write as _;
 
 use super::digit_models::{
-    REFUSED, WRITTEN, serde_refusal, serde_written, sixty_event_kotlin, sixty_id_kotlin,
-    sixty_level_kotlin, sixty_tally_kotlin,
+    REFUSED, WRITTEN, serde_refusal, serde_written, sixty_beside_kotlin, sixty_event_kotlin,
+    sixty_id_kotlin, sixty_level_kotlin, sixty_locked_kotlin, sixty_reached_kotlin,
+    sixty_tally_kotlin,
 };
 use super::runtime::ran_kotlin;
 
@@ -32,7 +33,7 @@ fun <T> told(at: Int, serializer: KSerializer<T>, payload: String) {
 "#;
 
 /// What the Kotlin read answers of each payload of [`REFUSED`], in its order.
-const KOTLIN_REFUSED: [&str; 5] = [
+const KOTLIN_REFUSED: [&str; 8] = [
     "SerializationException: expected an i64 as a string of its decimal digits, found \
      \"9223372036854775808\"",
     "SerializationException: expected an i64 as a string of its decimal digits, found \"seven\"",
@@ -40,6 +41,10 @@ const KOTLIN_REFUSED: [&str; 5] = [
      \"-9223372036854775809\"",
     "SerializationException: expected an i64 as a string of its decimal digits, found \"1.5\"",
     "SerializationException: 'level': too large: maximum is 5, got 6",
+    "SerializationException: expected an i64 as a string of its decimal digits, found \
+     \"9223372036854775808\"",
+    "SerializationException: 'fixed': not the literal 214, got 215",
+    "SerializationException: expected an i64 as a string of its decimal digits, found \"x\"",
 ];
 
 /// Each payload serde writes is read and written back as serde writes it back, and each payload
@@ -77,6 +82,9 @@ fn an_i64_is_read_from_its_digits_and_written_as_them_in_kotlin() {
         sixty_id_kotlin::kotlin_definition(),
         sixty_event_kotlin::kotlin_definition(),
         sixty_level_kotlin::kotlin_definition(),
+        sixty_reached_kotlin::kotlin_definition(),
+        sixty_locked_kotlin::kotlin_definition(),
+        sixty_beside_kotlin::kotlin_definition(),
         TOLD.to_owned(),
         main,
     ];

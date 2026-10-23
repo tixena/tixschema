@@ -766,6 +766,26 @@ mod run_swift_digits;
 #[path = "service_schema_emitted_client_tests/run_kotlin_digits.rs"]
 mod run_kotlin_digits;
 
+/// What each `http_rest` client sends and reads of a bare `i64`.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/bare_digit_rows.rs"]
+mod bare_digit_rows;
+
+/// A bare `i64`, sent and read as its digits by the emitted Dart client.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_bare_digits.rs"]
+mod run_dart_bare_digits;
+
+/// A bare `i64`, sent and read as its digits by the emitted Swift client.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_bare_digits.rs"]
+mod run_swift_bare_digits;
+
+/// A bare `i64`, sent and read as its digits by the emitted Kotlin client.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_bare_digits.rs"]
+mod run_kotlin_bare_digits;
+
 /// A fixed array and a tuple of another length, refused by the emitted Swift types in serde's
 /// words, in each place a value is held, and read from an array of their length as serde reads
 /// them. The fixed arrays and the tuples of `run_dart_refusals.rs` are declared where the Dart

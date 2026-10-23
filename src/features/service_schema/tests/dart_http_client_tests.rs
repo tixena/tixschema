@@ -706,7 +706,7 @@ fn a_unit_success_answers_the_field_less_ok_member() {
 }
 
 #[test]
-fn a_primitive_message_and_success_cross_as_their_own_json_values() {
+fn a_primitive_message_crosses_as_its_own_json_value_and_an_i64_success_as_its_digits() {
     let written = dart_http_client_of(DART_PRIMITIVE_SERVICE);
     let method = method_body(&written, "tally");
     assert!(
@@ -714,7 +714,11 @@ fn a_primitive_message_and_success_cross_as_their_own_json_values() {
         "got: {method}"
     );
     assert!(
-        method.contains("value = jsonDecode(utf8.decode(response.body)) as int;"),
+        method.contains(
+            "value = (switch (jsonDecode(utf8.decode(response.body)) as String) { final digits \
+             when RegExp(r'^(?:-?(0|[1-9][0-9]*))$').hasMatch(digits) && int.tryParse(digits) != \
+             null => int.parse(digits),"
+        ),
         "got: {method}"
     );
     assert!(!method.contains("toJson"), "got: {method}");

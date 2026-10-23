@@ -699,7 +699,8 @@ fn literal_rule(
         LiteralValue::Bool(true) => format!("!{value}"),
         LiteralValue::Bool(false) => value.to_owned(),
         LiteralValue::Str(text) => format!("{value} != \"{}\"", swift_literal_text(text)),
-        LiteralValue::Number(number) => {
+        LiteralValue::Integer(_) | LiteralValue::Number(_) => {
+            let number = literal.number().unwrap_or_default();
             if matches!(number_kind(&def.field_type), Some(Number::Float)) {
                 shown = format!("{owner}.swiftSchemaPlain({value})");
                 let written = number.to_string();
@@ -708,8 +709,10 @@ fn literal_rule(
                 } else {
                     format!("{value} != {written}.0")
                 }
+            } else if let LiteralValue::Integer(whole) = literal {
+                format!("{value} != {whole}")
             } else {
-                format!("{value} != {}", format_number_literal(*number))
+                format!("{value} != {}", format_number_literal(number))
             }
         }
     };

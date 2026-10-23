@@ -6,7 +6,7 @@
 use super::message;
 use super::result::STREAMED_ANSWER_TS_TYPE;
 use super::service;
-use crate::field_type::get_field_def;
+use crate::field_type::bare_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HttpShape, OperationDef, OperationInputs,
@@ -470,7 +470,7 @@ fn named_message_build(
 }
 
 fn query_field_insert(key: &str, ty: &Type, prefix: &str) -> String {
-    let decode = message::decode_member_ts_expr(ty, "raw", prefix);
+    let decode = message::decode_ts_expr(ty, "raw", prefix);
     let quoted = ts_quoted(key);
     format!(
         "        {{\n          \
@@ -481,7 +481,7 @@ fn query_field_insert(key: &str, ty: &Type, prefix: &str) -> String {
 }
 
 fn multipart_field_insert(key: &str, ty: &Type, prefix: &str) -> String {
-    let decode = message::decode_member_ts_expr(ty, "raw", prefix);
+    let decode = message::decode_ts_expr(ty, "raw", prefix);
     let quoted = ts_quoted(key);
     format!(
         "        {{\n          \
@@ -528,11 +528,8 @@ fn generated_message_build(
         }
         let key = wire_key(field);
         if is_placeholder {
-            let decode = message::decode_member_ts_expr(
-                ty,
-                &message::placeholder_local(&field_name),
-                prefix,
-            );
+            let decode =
+                message::decode_ts_expr(ty, &message::placeholder_local(&field_name), prefix);
             let _ = writeln!(setup, "        message[{}] = {decode};", ts_quoted(&key));
         } else if multipart {
             setup.push_str(&multipart_field_insert(&key, ty, prefix));
@@ -926,7 +923,7 @@ fn declared_error_response_stmt(
         );
     }
     let idents = error_header_out_idents(shape);
-    let head_ty = get_field_def("error", error_head, "").typescript_typename();
+    let head_ty = bare_field_def("error", error_head).typescript_typename();
     let types = message::header_types(shape.error_header_out.len(), error);
     let mut stmt = format!(
         "          const declaredError = envelope.error as {head_ty};\n\
@@ -962,7 +959,7 @@ fn replied_header_reads(
 ) -> String {
     let mut stmt = String::new();
     for ((name, ident), ty) in names.iter().zip(idents).zip(types) {
-        let element_ty = get_field_def("value", ty, "").typescript_typename();
+        let element_ty = bare_field_def("value", ty).typescript_typename();
         let _ = writeln!(
             stmt,
             "{indent}const {ident} = {prefix}HttpRepliedHeader(replied, {}) as \
@@ -1058,7 +1055,7 @@ fn bytes_reply_block(
         .into_iter()
         .flatten()
         .take(2)
-        .map(|ty| get_field_def("value", ty, "").typescript_typename())
+        .map(|ty| bare_field_def("value", ty).typescript_typename())
         .collect::<Vec<_>>()
         .join(", ");
     let mut out =
@@ -1138,7 +1135,7 @@ fn header_out_json_reply_block(
 ) -> String {
     let wire = &ts_quoted(&operation.wire_name);
     let body = message::body_type(shape.header_out.len(), success);
-    let body_ty = get_field_def("value", body, "").typescript_typename();
+    let body_ty = bare_field_def("value", body).typescript_typename();
     let mut out = dispatch_envelope_preamble(wire, message_expr, &body_ty, shape, error, ctx);
     out.push_str("        const value = envelope.value;\n");
     out.push_str(&header_out_writes(wire, shape, success, ctx, ""));

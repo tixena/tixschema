@@ -446,8 +446,13 @@ impl<'item> Rules<'item> {
             LiteralValue::Bool(true) => format!("!{read}"),
             LiteralValue::Bool(false) => read.to_owned(),
             LiteralValue::Str(text) => format!("{read} != {}", kotlin_quoted(text)),
-            LiteralValue::Number(number) => {
-                let whole = format_number_literal(*number);
+            LiteralValue::Integer(_) | LiteralValue::Number(_) => {
+                let number = literal.number().unwrap_or_default();
+                let whole = if let LiteralValue::Integer(value) = literal {
+                    value.to_string()
+                } else {
+                    format_number_literal(number)
+                };
                 let held = &def.field_type;
                 // Kotlin compares two integers of one type alone, and warns of a conversion to the
                 // type a value already is.
@@ -455,14 +460,17 @@ impl<'item> Rules<'item> {
                     Some(kind @ (Number::Double | Number::Float)) => {
                         self.helpers.insert(Helper::Shown);
                         shown = kind.quoted(read);
-                        kind.compared(read, "!=", *number)
+                        kind.compared(read, "!=", number)
                     }
                     Some(Number::Unsigned) if matches!(held, FieldDefType::U32) => {
                         format!("{read} != {whole}u")
                     }
                     Some(Number::Unsigned) => format!("{read}.toUInt() != {whole}u"),
                     Some(Number::Signed) | None => {
-                        if matches!(held, FieldDefType::I64 | FieldDefType::Isize) {
+                        if matches!(
+                            held,
+                            FieldDefType::I64 | FieldDefType::I64Digits | FieldDefType::Isize
+                        ) {
                             format!("{read} != {whole}L")
                         } else if matches!(held, FieldDefType::I8 | FieldDefType::I16) {
                             format!("{read}.toInt() != {whole}")

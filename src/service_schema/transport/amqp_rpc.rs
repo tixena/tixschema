@@ -225,7 +225,7 @@ use crate::service_schema::parse::{
     argument_local, is_unit_type, option_inner, tuple_elements,
 };
 use crate::service_schema::support::{
-    message_alias_ident, message_reader_ident, message_validator_ident, module_ident,
+    digits_wire, message_alias_ident, message_reader_ident, message_validator_ident, module_ident,
 };
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -385,12 +385,13 @@ fn reply_settled_block(
 ) -> TokenStream {
     let success_names = header_out_names(operation);
     let error_names = error_header_out_names(operation);
+    let answered = wired_answer(module, operation);
     if success_names.is_empty() && error_names.is_empty() {
         return quote! {
             match #called {
                 ::core::result::Result::Ok(answered) => {
                     reply
-                        .send($crate::#module::Answered::answering(answered), ::std::vec::Vec::new())
+                        .send($crate::#module::Answered::answering(#answered), ::std::vec::Vec::new())
                         .await
                 }
                 ::core::result::Result::Err(panicked) => {
@@ -408,7 +409,7 @@ fn reply_settled_block(
         let idents = header_out_idents(success_names);
         let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
         let element_types: Vec<&Type> = elements.iter().skip(1).copied().collect();
-        let pushed = header_pushed_stmts(success_names, &idents, &element_types);
+        let pushed = header_pushed_stmts(module, success_names, &idents, &element_types);
         quote! {
             ::core::result::Result::Ok((value, #(#idents),*)) => {
                 #(#pushed)*
@@ -422,7 +423,7 @@ fn reply_settled_block(
         let idents = header_out_idents(error_names);
         let elements: Vec<&Type> = tuple_elements(error).into_iter().flatten().collect();
         let element_types: Vec<&Type> = elements.iter().skip(1).copied().collect();
-        let pushed = header_pushed_stmts(error_names, &idents, &element_types);
+        let pushed = header_pushed_stmts(module, error_names, &idents, &element_types);
         quote! {
             ::core::result::Result::Err((declared, #(#idents),*)) => {
                 #(#pushed)*
@@ -441,7 +442,7 @@ fn reply_settled_block(
                     #err_arm
                 };
                 reply
-                    .send($crate::#module::Answered::answering(answered), headers)
+                    .send($crate::#module::Answered::answering(#answered), headers)
                     .await
             }
             ::core::result::Result::Err(panicked) => {
@@ -1345,14 +1346,23 @@ fn header_in_reads(module: &Ident, operation: &OperationDef) -> TokenStream {
         let HeaderIn {
             name,
             parameter,
-            ty: _ty,
+            ty,
         } = header;
         // No `: #ty` here: the argument's own type is the author's, and this arm is never the
         // module it is nameable from.
         let held = argument_local(parameter);
+        let (read_as, read) = digits_wire(ty).map_or_else(
+            || (quote! {}, quote! { decoded }),
+            |(digits, _)| {
+                (
+                    quote! { ::<$crate::#module::#digits> },
+                    quote! { decoded.0 },
+                )
+            },
+        );
         quote! {
-            let #held = match decoded_header(message.headers(), #name) {
-                ::core::result::Result::Ok(decoded) => decoded,
+            let #held = match decoded_header #read_as (message.headers(), #name) {
+                ::core::result::Result::Ok(decoded) => #read,
                 ::core::result::Result::Err(detail) => {
                     return reply
                         .fault($crate::#module::ServiceFault::failed_validation(
@@ -1379,6 +1389,7 @@ fn header_out_idents(names: &[String]) -> Vec<Ident> {
 /// One `encoded_header` push per declared name. An `Option<T>` entry pushes nothing for `None`,
 /// rather than the JSON text `"null"` `encoded_header` would otherwise happily write.
 fn header_pushed_stmts(
+    module: &Ident,
     names: &[String],
     idents: &[Ident],
     element_types: &[&Type],
@@ -1388,23 +1399,64 @@ fn header_pushed_stmts(
         .zip(idents)
         .zip(element_types)
         .map(|((name, ident), ty)| {
-            if option_inner(ty).is_some() {
-                quote! {
-                    if let ::core::option::Option::Some(value) = &#ident {
-                        if let ::core::option::Option::Some(pair) = encoded_header(#name, value) {
+            option_inner(ty).map_or_else(
+                || {
+                    let value = wired_of(module, ty, &quote! { &#ident });
+                    quote! {
+                        if let ::core::option::Option::Some(pair) = encoded_header(#name, #value) {
                             headers.push(pair);
                         }
                     }
-                }
-            } else {
-                quote! {
-                    if let ::core::option::Option::Some(pair) = encoded_header(#name, &#ident) {
-                        headers.push(pair);
+                },
+                |inner| {
+                    let value = wired_of(module, inner, &quote! { value });
+                    quote! {
+                        if let ::core::option::Option::Some(value) = &#ident {
+                            if let ::core::option::Option::Some(pair) = encoded_header(#name, #value) {
+                                headers.push(pair);
+                            }
+                        }
                     }
-                }
-            }
+                },
+            )
         })
         .collect()
+}
+
+/// `value`, a reference to a bare value of `ty`, as it is written: through the type that writes
+/// each `u64` and `i64` it holds as its digits, and as it is otherwise.
+pub(super) fn wired_of(module: &Ident, ty: &Type, value: &TokenStream) -> TokenStream {
+    digits_wire(ty).map_or_else(
+        || value.clone(),
+        |(_, wire_of)| quote! { &$crate::#module::#wire_of(#value) },
+    )
+}
+
+/// The outcome `answered` an arm sends, its success and its declared error each written through
+/// the type that writes each `u64` and `i64` it holds as its digits, where it holds one.
+fn wired_answer(module: &Ident, operation: &OperationDef) -> TokenStream {
+    let OperationOutcome::Reply { error, success } = &operation.outcome else {
+        return quote! { answered };
+    };
+    let mut answered = quote! { answered };
+    if let Some((wire, _)) = digits_wire(answer_body(success, header_out_names(operation))) {
+        answered = quote! { #answered.map($crate::#module::#wire) };
+    }
+    if let Some((wire, _)) = digits_wire(answer_body(error, error_header_out_names(operation))) {
+        answered = quote! { #answered.map_err($crate::#module::#wire) };
+    }
+    answered
+}
+
+/// What a reply of `replied` carries as its body: the type itself, or the first element of the
+/// tuple it is where `headers` are declared beside it.
+pub(super) fn answer_body<'replied>(replied: &'replied Type, headers: &[String]) -> &'replied Type {
+    if headers.is_empty() {
+        return replied;
+    }
+    tuple_elements(replied)
+        .and_then(|elements| elements.first())
+        .unwrap_or(replied)
 }
 
 /// The `header_out` names an operation declared, or none for an operation that named no `http`
@@ -1585,6 +1637,12 @@ pub(super) fn method(operation: &OperationDef, generated: &Generated) -> TokenSt
     let answered = client_answer(operation, generated);
     let answers = answers(operation, generated);
     let doc = method_doc(operation);
+    let wired = match &operation.inputs {
+        OperationInputs::Named(declared) => digits_wire(declared).map(|(wire, _)| {
+            quote! { let sending = $crate::#module::#wire(sending); }
+        }),
+        OperationInputs::Empty | OperationInputs::Generated(_) => None,
+    };
     quote! {
         #[doc = #doc]
         pub fn #named(
@@ -1595,6 +1653,7 @@ pub(super) fn method(operation: &OperationDef, generated: &Generated) -> TokenSt
                 if let ::core::result::Result::Err(violations) = $crate::#module::#check(&sending) {
                     #refusal
                 }
+                #wired
                 #headers
                 #answered
             }
@@ -1615,12 +1674,13 @@ fn outbound_headers(operation: &OperationDef, generated: &Generated) -> TokenStr
         let HeaderIn {
             name,
             parameter,
-            ty: _ty,
+            ty,
         } = header;
         let refusal = header_encode_refusal(operation, generated, name);
         let held = argument_local(parameter);
+        let written = wired_of(&generated.module, ty, &quote! { &#held });
         quote! {
-            match ::serde_json::to_string(&#held) {
+            match ::serde_json::to_string(#written) {
                 ::core::result::Result::Ok(encoded) => headers.push((#name.to_owned(), encoded)),
                 ::core::result::Result::Err(unrepresentable) => {
                     let detail = unrepresentable.to_string();
@@ -1677,9 +1737,18 @@ fn header_value_decode_lets(
         .zip(header_types.iter())
         .zip(idents)
         .map(|((name, ty), ident)| {
+            let (read_as, read) = digits_wire(ty).map_or_else(
+                || (quote! {}, quote! { decoded }),
+                |(digits, _)| {
+                    (
+                        quote! { ::<$crate::#module::#digits> },
+                        quote! { decoded.0 },
+                    )
+                },
+            );
             quote! {
-                let #ident: #ty = match decoded_header(&incoming, #name) {
-                    ::core::result::Result::Ok(decoded) => decoded,
+                let #ident: #ty = match decoded_header #read_as (&incoming, #name) {
+                    ::core::result::Result::Ok(decoded) => #read,
                     ::core::result::Result::Err(detail) => {
                         return ::core::result::Result::Err(#call_error::Fault(
                             $crate::#module::ServiceFault::failed_validation(
@@ -1693,6 +1762,28 @@ fn header_value_decode_lets(
             }
         })
         .collect()
+}
+
+/// The type a client reads a bare value of `ty` as, and whether that is the type that reads each
+/// `u64` and `i64` it holds from its digits, which holds the value; `written` where it is not.
+fn read_through(module: &Ident, ty: &Type, written: &TokenStream) -> (TokenStream, bool) {
+    digits_wire(ty).map_or_else(
+        || (written.clone(), false),
+        |(wire, _)| (quote! { $crate::#module::#wire }, true),
+    )
+}
+
+/// What turns the declared error a client read through the type that reads its digits back into
+/// the error itself, where `wired` holds, and nothing where it does not.
+fn unwired_operation(call_error: &TokenStream, wired: bool) -> Option<TokenStream> {
+    wired.then(|| {
+        quote! {
+            .map_err(|failed| match failed {
+                #call_error::Fault(reported) => #call_error::Fault(reported),
+                #call_error::Operation(declared) => #call_error::Operation(declared.0),
+            })
+        }
+    })
 }
 
 /// What one operation's client method answers, once the transport call itself has returned.
@@ -1743,36 +1834,49 @@ fn client_answer_reply(
     error: &Type,
     success: &Type,
 ) -> TokenStream {
+    let (error_as, error_back) = read_through(module, error, &quote! { _ });
+    let unwired_error = unwired_operation(call_error, error_back);
     match header_out_shape(operation) {
         None if is_unit_type(success) => quote! {
             match self.transport.request(#wire, sending, headers).await {
-                ::core::result::Result::Ok((encoded, _headers)) => read_unit_answer(#wire, &encoded).map(|()| #success),
+                ::core::result::Result::Ok((encoded, _headers)) => read_unit_answer::<#error_as>(#wire, &encoded) #unwired_error .map(|()| #success),
                 ::core::result::Result::Err(uncarried) => ::core::result::Result::Err(#call_error::Fault(#fault::transport_failure(
                     #wire,
                     &uncarried,
                 ))),
             }
         },
-        None => quote! {
-            match self.transport.request(#wire, sending, headers).await {
-                ::core::result::Result::Ok((encoded, _headers)) => read_answer(#wire, &encoded),
-                ::core::result::Result::Err(uncarried) => ::core::result::Result::Err(#call_error::Fault(#fault::transport_failure(
-                    #wire,
-                    &uncarried,
-                ))),
+        None => {
+            let (success_as, success_back) = read_through(module, success, &quote! { _ });
+            let unwired = success_back.then(|| quote! { .map(|read| read.0) });
+            quote! {
+                match self.transport.request(#wire, sending, headers).await {
+                    ::core::result::Result::Ok((encoded, _headers)) => read_answer::<#success_as, #error_as>(#wire, &encoded) #unwired #unwired_error,
+                    ::core::result::Result::Err(uncarried) => ::core::result::Result::Err(#call_error::Fault(#fault::transport_failure(
+                        #wire,
+                        &uncarried,
+                    ))),
+                }
             }
-        },
+        }
         Some((names, response, header_types)) => {
             let idents = header_out_idents(&names);
             let decodes =
                 header_value_decode_lets(wire, call_error, module, &names, &header_types, &idents);
+            let (response_as, response_back) =
+                read_through(module, &response, &quote! { #response });
+            let value = if response_back {
+                quote! { value.0 }
+            } else {
+                quote! { value }
+            };
             quote! {
                 match self.transport.request(#wire, sending, headers).await {
                     ::core::result::Result::Ok((encoded, incoming)) => {
-                        match read_answer::<#response, #error>(#wire, &encoded) {
+                        match read_answer::<#response_as, #error_as>(#wire, &encoded) #unwired_error {
                             ::core::result::Result::Ok(value) => {
                                 #decodes
-                                ::core::result::Result::Ok((value, #(#idents),*))
+                                ::core::result::Result::Ok((#value, #(#idents),*))
                             }
                             ::core::result::Result::Err(refused) => ::core::result::Result::Err(refused),
                         }
@@ -1799,6 +1903,12 @@ fn client_answer_reply_with_error_headers(
     error_shape: &(Vec<String>, Type, Vec<Type>),
 ) -> TokenStream {
     let (error_names, error_head, error_header_types) = error_shape;
+    let (error_as, error_back) = read_through(module, error_head, &quote! { #error_head });
+    let head = if error_back {
+        quote! { head.0 }
+    } else {
+        quote! { head }
+    };
     let reconstruct = {
         let idents = header_out_idents(error_names);
         let decodes = header_value_decode_lets(
@@ -1815,7 +1925,7 @@ fn client_answer_reply_with_error_headers(
                 ::core::result::Result::Err(#call_error::Fault(reported)) => ::core::result::Result::Err(#call_error::Fault(reported)),
                 ::core::result::Result::Err(#call_error::Operation(head)) => {
                     #decodes
-                    ::core::result::Result::Err(#call_error::Operation((head, #(#idents),*)))
+                    ::core::result::Result::Err(#call_error::Operation((#head, #(#idents),*)))
                 }
             }
         }
@@ -1824,7 +1934,7 @@ fn client_answer_reply_with_error_headers(
         None if is_unit_type(success) => quote! {
             match self.transport.request(#wire, sending, headers).await {
                 ::core::result::Result::Ok((encoded, incoming)) => {
-                    let raw = read_unit_answer::<#error_head>(#wire, &encoded);
+                    let raw = read_unit_answer::<#error_as>(#wire, &encoded);
                     #reconstruct
                 }
                 ::core::result::Result::Err(uncarried) => ::core::result::Result::Err(#call_error::Fault(#fault::transport_failure(
@@ -1833,10 +1943,13 @@ fn client_answer_reply_with_error_headers(
                 ))),
             }
         },
-        None => quote! {
+        None => {
+            let (success_as, success_back) = read_through(module, success, &quote! { #success });
+            let unwired = success_back.then(|| quote! { .map(|read| read.0) });
+            quote! {
             match self.transport.request(#wire, sending, headers).await {
                 ::core::result::Result::Ok((encoded, incoming)) => {
-                    let raw = read_answer::<#success, #error_head>(#wire, &encoded);
+                    let raw = read_answer::<#success_as, #error_as>(#wire, &encoded) #unwired;
                     #reconstruct
                 }
                 ::core::result::Result::Err(uncarried) => ::core::result::Result::Err(#call_error::Fault(#fault::transport_failure(
@@ -1844,18 +1957,26 @@ fn client_answer_reply_with_error_headers(
                     &uncarried,
                 ))),
             }
-        },
+            }
+        }
         Some((names, response, header_types)) => {
             let idents = header_out_idents(&names);
             let decodes =
                 header_value_decode_lets(wire, call_error, module, &names, &header_types, &idents);
+            let (response_as, response_back) =
+                read_through(module, &response, &quote! { #response });
+            let value = if response_back {
+                quote! { value.0 }
+            } else {
+                quote! { value }
+            };
             quote! {
                 match self.transport.request(#wire, sending, headers).await {
                     ::core::result::Result::Ok((encoded, incoming)) => {
-                        let raw = match read_answer::<#response, #error_head>(#wire, &encoded) {
+                        let raw = match read_answer::<#response_as, #error_as>(#wire, &encoded) {
                             ::core::result::Result::Ok(value) => {
                                 #decodes
-                                ::core::result::Result::Ok((value, #(#idents),*))
+                                ::core::result::Result::Ok((#value, #(#idents),*))
                             }
                             ::core::result::Result::Err(refused) => ::core::result::Result::Err(refused),
                         };

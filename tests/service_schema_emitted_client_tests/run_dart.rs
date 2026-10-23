@@ -229,7 +229,8 @@ void main() async {
 ";
 
 /// A stub `ShelfClientServiceHttpTransport` answering by path: a list of strings, a list of
-/// classes, an integer, and the plain-enum error when `deep` is set, recording every request body.
+/// classes, an `i64` as its digits, and the plain-enum error when `deep` is set, recording every
+/// request body.
 const SHELF_DRIVER: &str = "
 class _ShelfRecorder implements ShelfClientServiceHttpTransport {
   final List<dynamic> bodies = <dynamic>[];
@@ -249,7 +250,7 @@ class _ShelfRecorder implements ShelfClientServiceHttpTransport {
     final Object answer = switch (request.path) {
       '/titles' => <String>['a', 'b'],
       '/stacks' => <Map<String, dynamic>>[<String, dynamic>{'title': 't'}],
-      _ => 7,
+      _ => '7',
     };
     return (status: 200, headers: <(String, String)>[], body: utf8.encode(jsonEncode(answer)), bodyStream: const Stream<List<int>>.empty());
   }

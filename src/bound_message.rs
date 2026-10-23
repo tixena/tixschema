@@ -119,6 +119,7 @@ impl Bound<'_> {
         let stem = self.stem();
         match self {
             Self::Literal(LiteralValue::Bool(value)) => format!("{stem}{value}"),
+            Self::Literal(LiteralValue::Integer(value)) => format!("{stem}{value}"),
             Self::Literal(LiteralValue::Number(value)) => {
                 format!("{stem}{}", format_number_literal(*value))
             }

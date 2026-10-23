@@ -7,13 +7,13 @@ use super::message;
 use super::result::result_name;
 #[cfg(feature = "chrono")]
 use crate::field_type::FieldDefType;
-use crate::field_type::get_field_def;
+use crate::field_type::bare_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HttpShape, OperationDef, OperationInputs,
     OperationOutcome, PathSegment, ScalarKind, ServiceDef, is_scalar_named_type, is_unit_type,
-    option_inner, scalar_kind, service_declares_a_stream, service_declares_multipart,
-    tuple_elements, vec_inner, wire_key, written,
+    option_inner, reads_its_digits, scalar_kind, service_declares_a_stream,
+    service_declares_multipart, tuple_elements, vec_inner, wire_key, written,
 };
 use crate::utils::ts_quoted;
 use core::fmt::Write as _;
@@ -371,7 +371,7 @@ fn header_in_build_stmt(prefix: &str, operation: &OperationDef, shape: &HttpShap
     for header in &shape.header_in {
         let name = ts_quoted(&header.name);
         let parameter = message::parameter_name(&header.parameter);
-        let schema = get_field_def(&parameter, &header.ty, "").zod_type();
+        let schema = bare_field_def(&parameter, &header.ty).zod_type();
         let unparsed = outbound_fault_stmt(
             prefix,
             operation,
@@ -612,7 +612,7 @@ fn error_decode_block(prefix: &str, wire: &str, shape: &HttpShape, error: &Type)
 /// Reads the response body into `local` through [`parsed_fn`]'s reader, answering the fault it
 /// returns where the body will not become `ty`.
 fn parsed_body_stmt(prefix: &str, wire: &str, local: &str, ty: &Type) -> String {
-    let schema = get_field_def(local, ty, "").zod_type();
+    let schema = bare_field_def(local, ty).zod_type();
     format!(
         "        const {local} = {prefix}HttpParsed({wire}, response.body, {schema});\n        \
          if (!{local}.ok) {{\n          \
@@ -890,7 +890,7 @@ fn header_value_read_stmts(
     {
         let raw_ident = format!("raw{capitalized_prefix}{index}");
         let ident = format!("{ident_prefix}{index}");
-        let slot_typename = get_field_def("value", element_ty, "").typescript_slot_typename();
+        let slot_typename = bare_field_def("value", element_ty).typescript_slot_typename();
         let _ = writeln!(
             stmt,
             "        const {raw_ident} = response.headers.find(\n          \
@@ -958,6 +958,7 @@ fn header_out_value_expr(ty: &Type, raw: &str) -> String {
     }
     match scalar_kind(base) {
         ScalarKind::Bool => format!("(({raw}) === \"true\")"),
+        ScalarKind::Number if reads_its_digits(base) => format!("BigInt({raw})"),
         ScalarKind::Number => format!("Number({raw})"),
         ScalarKind::Text => raw.to_owned(),
     }
@@ -980,6 +981,19 @@ fn header_out_invalid_expr(ty: &Type, raw: &str) -> Option<String> {
     }
     match scalar_kind(base) {
         ScalarKind::Bool => Some(format!("{raw} !== \"true\" && {raw} !== \"false\"")),
+        // The digits of a `u64` or an `i64`, within the range of its type, as the Rust client
+        // reads them.
+        ScalarKind::Number if reads_its_digits(base) => {
+            let (least, most) = bare_field_def("value", base)
+                .field_type
+                .digit_range()
+                .unwrap_or_default();
+            let sign = if least.starts_with('-') { "-?" } else { "" };
+            Some(format!(
+                "!/^{sign}(0|[1-9][0-9]*)$/.test({raw}) || BigInt({raw}) < {least}n || \
+                 BigInt({raw}) > {most}n"
+            ))
+        }
         ScalarKind::Number => {
             let parsed = format!("Number({raw})");
             if is_integer_scalar(base) {
@@ -999,7 +1013,7 @@ fn header_out_invalid_expr(ty: &Type, raw: &str) -> Option<String> {
 #[cfg(feature = "chrono")]
 fn reads_a_date(ty: &Type) -> bool {
     matches!(
-        get_field_def("value", ty, "").field_type,
+        bare_field_def("value", ty).field_type,
         FieldDefType::DateTime
     )
 }
