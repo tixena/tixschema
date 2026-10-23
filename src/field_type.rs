@@ -463,28 +463,11 @@ impl FieldDef {
     /// The element of a collection wrapper, as the field the wrapper's own serialization makes it.
     pub fn collection_element_field(&self, element: &Self) -> Self {
         let mut arrayed = element.clone();
-        arrayed.name.clone_from(&self.name);
-        let own_level = element.array_depth;
         arrayed.array_depth = element.array_depth.saturating_add(1);
         if matches!(&self.field_type, FieldDefType::SiblingType(name, _) if is_set_wrapper(name)) {
-            arrayed.mark_set_at(own_level);
+            arrayed.mark_set_at(element.array_depth);
         }
-        for level in &self.nullable_levels {
-            arrayed.mark_nullable_at(level.saturating_add(arrayed.array_depth));
-        }
-        for &(level, length) in &self.array_lengths {
-            arrayed.mark_fixed_length_at(level.saturating_add(arrayed.array_depth), length);
-        }
-        for level in &self.set_levels {
-            arrayed.mark_set_at(level.saturating_add(arrayed.array_depth));
-        }
-        arrayed.array_depth = arrayed.array_depth.saturating_add(self.array_depth);
-        arrayed
-            .model_schema_prop_meta
-            .clone_from(&self.model_schema_prop_meta);
-        arrayed.omits_value = self.omits_value;
-        arrayed.absent_from_wire = self.absent_from_wire;
-        arrayed
+        self.levels_stacked_over(arrayed)
     }
 
     /// The shape this field renders when the values a bound could be spelled against are its
@@ -549,6 +532,9 @@ impl FieldDef {
                 generics
                     .iter()
                     .any(|g| g.contains_type_reference(type_name))
+                    || self
+                        .option_alias_target()
+                        .is_some_and(|target| target.contains_type_reference(type_name))
             }
             FieldDefType::Map(k, v) => {
                 k.contains_type_reference(type_name) || v.contains_type_reference(type_name)
@@ -677,6 +663,24 @@ impl FieldDef {
         members.push((member, names, under.len()));
         members.extend(under.iter().flat_map(Self::expected_members));
         members
+    }
+
+    /// Writes `arguments` in place of the type parameters, `parameters`, they fill, each under the
+    /// array levels and the `Option`s the parameter is written under.
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    fn fill_type_parameters(&mut self, parameters: &[String], arguments: &[Self]) {
+        if let FieldDefType::TypeParam(name) = &self.field_type
+            && let Some(argument) = parameters
+                .iter()
+                .position(|parameter| parameter == name)
+                .and_then(|at| arguments.get(at))
+        {
+            *self = self.levels_stacked_over(argument.clone());
+            return;
+        }
+        for nested in self.nested_type_positions() {
+            nested.fill_type_parameters(parameters, arguments);
+        }
     }
 
     /// The element count the array at `level` was written with, for a level written as a `[T; N]`
@@ -859,6 +863,17 @@ impl FieldDef {
             .is_some_and(|meta| !meta.preprocess.is_empty() || !meta.check.is_empty())
     }
 
+    /// [`Self::written_in_place`] where this field's own array levels hold the alias: an item of a
+    /// list is outside a field whatever holds the list.
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    fn items_written_in_place(&self) -> Option<Self> {
+        if self.array_depth > 0 {
+            self.written_in_place()
+        } else {
+            None
+        }
+    }
+
     /// Whether every payload serde writes carries a key for this field — what the JSON surface's
     /// `required` names, and the one question there that a field's `Option`-ness alone cannot
     /// answer. A `nullable` `Option<T>` is the one case where both hold at once: the key is always
@@ -885,6 +900,26 @@ impl FieldDef {
         } else {
             self.omits_value
         }
+    }
+
+    /// `held` under this field's own array levels and `Option`s, with this field's name and keys.
+    fn levels_stacked_over(&self, mut held: Self) -> Self {
+        held.name.clone_from(&self.name);
+        for level in &self.nullable_levels {
+            held.mark_nullable_at(level.saturating_add(held.array_depth));
+        }
+        for &(level, length) in &self.array_lengths {
+            held.mark_fixed_length_at(level.saturating_add(held.array_depth), length);
+        }
+        for level in &self.set_levels {
+            held.mark_set_at(level.saturating_add(held.array_depth));
+        }
+        held.array_depth = held.array_depth.saturating_add(self.array_depth);
+        held.model_schema_prop_meta
+            .clone_from(&self.model_schema_prop_meta);
+        held.omits_value = self.omits_value;
+        held.absent_from_wire = self.absent_from_wire;
+        held
     }
 
     /// The form serde writes this key in, wherever that form is not what the key's own type spells
@@ -941,17 +976,19 @@ impl FieldDef {
         Some((name, !arguments.is_empty()))
     }
 
-    /// Whether this field's rendering reads any other item's own module-scope Zod binding — a
-    /// factory call or a bare `$Schema` const — at any depth, wrapped or named directly. Deferral
-    /// asks a wider question than the direct-sibling fold gate does:
+    /// Whether this field's rendering as a type argument reads any other item's own module-scope
+    /// Zod binding — a factory call or a bare `$Schema` const — at any depth, wrapped or named
+    /// directly. Deferral asks a wider question than the direct-sibling fold gate does:
     /// `z.array(Tagged$SchemaFactory(z.string()))` reads a sibling `const` exactly as much as a
-    /// bare `Tagged$SchemaFactory(z.string())` does.
+    /// bare `Tagged$SchemaFactory(z.string())` does. An alias of an `Option` is read through the
+    /// type it names, which a type argument writes in its place.
     #[cfg(feature = "zod")]
     pub fn names_a_sibling_binding(&self) -> bool {
         match &self.field_type {
-            FieldDefType::SiblingType(name, generics) => {
-                !is_sequence_wrapper(name) || generics.iter().any(Self::names_a_sibling_binding)
-            }
+            FieldDefType::SiblingType(name, generics) => self.option_alias_target().map_or_else(
+                || !is_sequence_wrapper(name) || generics.iter().any(Self::names_a_sibling_binding),
+                |target| target.names_a_sibling_binding(),
+            ),
             FieldDefType::Map(_, value) => value.names_a_sibling_binding(),
             FieldDefType::Range(_, bound) => bound.names_a_sibling_binding(),
             FieldDefType::Result(ok, err) => {
@@ -987,6 +1024,24 @@ impl FieldDef {
             | FieldDefType::NaiveTime
             | FieldDefType::NaiveDateTime
             | FieldDefType::DateTime => false,
+        }
+    }
+
+    /// Every name this field reaches, the names an alias of an `Option` it names reaches among
+    /// them, each once, into `reached`.
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    pub fn names_through_option_aliases(&self, reached: &mut Vec<String>) {
+        if let FieldDefType::SiblingType(name, _) = &self.field_type
+            && !reached.contains(name)
+        {
+            reached.push(name.clone());
+            if let Some(target) = self.option_alias_target() {
+                target.names_through_option_aliases(reached);
+            }
+        }
+        let mut nested = self.clone();
+        for position in nested.nested_type_positions() {
+            position.names_through_option_aliases(reached);
         }
     }
 
@@ -1065,6 +1120,24 @@ impl FieldDef {
         for nested in self.nested_type_positions() {
             nested.opaque_parameters();
         }
+    }
+
+    /// The type an alias of an `Option` this field names stands for, the alias's own type
+    /// parameters filled with the arguments written here, and `None` for any other field.
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    fn option_alias_target(&self) -> Option<Self> {
+        let FieldDefType::SiblingType(name, arguments) = &self.field_type else {
+            return None;
+        };
+        let target = lookup_alias_info(name)?.option_target?;
+        if target.parameters.len() != arguments.len() {
+            return None;
+        }
+        let written = syn::parse_str::<Type>(&target.written).ok()?;
+        let mut held = get_field_def(&self.name, &written, "");
+        held.erase_type_parameters(&target.parameters);
+        held.fill_type_parameters(&target.parameters, arguments);
+        Some(held)
     }
 
     /// The `?` a member written with an absent-able key carries, and nothing for one whose key is
@@ -1225,6 +1298,9 @@ impl FieldDef {
             FieldDefType::SiblingType(name, generics) => {
                 (!is_sequence_wrapper(name) && lookup_alias_info(name).is_none())
                     || generics.iter().any(Self::reaches_a_type_declared_later)
+                    || self
+                        .option_alias_target()
+                        .is_some_and(|target| target.reaches_a_type_declared_later())
             }
             FieldDefType::Map(key, value) => {
                 key.reaches_a_type_declared_later() || value.reaches_a_type_declared_later()
@@ -1286,13 +1362,13 @@ impl FieldDef {
                 Some(FlattenVariant {
                     #[cfg(feature = "typescript")]
                     typescript: placeholders_filled(&variant.typescript, |at| {
-                        arguments.get(at).map(Self::typescript_typename)
+                        arguments.get(at).map(Self::typescript_slot_typename)
                     })?,
                     #[cfg(feature = "zod")]
                     unit: variant.unit,
                     #[cfg(feature = "zod")]
                     zod: placeholders_filled(&variant.zod, |at| {
-                        arguments.get(at).map(Self::zod_type)
+                        arguments.get(at).map(Self::zod_slot_type)
                     })?,
                 })
             })
@@ -1380,6 +1456,12 @@ impl FieldDef {
         }
     }
 
+    /// Whether this field's own value is an `Option`, written as one or as an alias of one.
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    pub fn stands_for_an_option(&self) -> bool {
+        self.is_optional() || (self.array_depth == 0 && self.option_alias_target().is_some())
+    }
+
     /// The members of the untagged union this field names as an object flattening it spells them,
     /// as the registry recorded them, each of the union's own type parameters filled with the
     /// argument written at its position — and nothing for a field that names no such union, for
@@ -1398,7 +1480,7 @@ impl FieldDef {
             .iter()
             .map(|member| {
                 placeholders_filled(member, |at| {
-                    arguments.get(at).map(Self::typescript_typename)
+                    arguments.get(at).map(Self::typescript_slot_typename)
                 })
             })
             .collect::<Option<Vec<String>>>()
@@ -1410,6 +1492,10 @@ impl FieldDef {
     /// level's wrap lives in `typescript_typename` and `typescript_slot_typename`, which is where
     /// the position it sits in decides between `| undefined` and `| null`.
     fn typescript_base(&self) -> String {
+        #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+        if let Some(in_place) = self.items_written_in_place() {
+            return in_place.typescript_base();
+        }
         let result = match &self.field_type {
             // A type written as no path, a function pointer or a macro among them.
             FieldDefType::Unknown => "unknown".to_owned(),
@@ -1444,7 +1530,7 @@ impl FieldDef {
                             "{}<{}>",
                             info.export_name,
                             lst.iter()
-                                .map(Self::typescript_typename)
+                                .map(Self::typescript_slot_typename)
                                 .collect::<Vec<_>>()
                                 .join(", ")
                         )
@@ -1455,7 +1541,7 @@ impl FieldDef {
                     format!(
                         "{name}<{}>",
                         lst.iter()
-                            .map(Self::typescript_typename)
+                            .map(Self::typescript_slot_typename)
                             .collect::<Vec<_>>()
                             .join(", ")
                     )
@@ -1541,6 +1627,10 @@ impl FieldDef {
     /// those positions can be omitted the way an object key can, so serde emits `null` for a
     /// `None` in each of them.
     pub fn typescript_slot_typename(&self) -> String {
+        #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+        if let Some(in_place) = self.written_in_place() {
+            return in_place.typescript_slot_typename();
+        }
         let base = self.typescript_base();
         if self.is_optional() {
             format!("{base} | null")
@@ -1683,12 +1773,24 @@ impl FieldDef {
         }
     }
 
+    /// This field as a position outside a field writes it, where it names an alias of an
+    /// `Option`: the type the alias names, in place, so a `None` is the `null` serde writes there
+    /// and not the absent key the alias's own binding describes.
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    fn written_in_place(&self) -> Option<Self> {
+        self.option_alias_target()
+            .map(|held| self.levels_stacked_over(held))
+    }
+
     /// The type match plus one `z.array(…)` per array level, each carrying the `z.nullable(…)` of
     /// the level it wraps and the `.length(N)` of a level written as a fixed-size `[T; N]`, before
     /// the preprocess wrap. The outermost level carries the count the field's own keys hold it to,
     /// and a level written as a set the check that refuses a repeat, after the count.
     #[cfg(feature = "zod")]
     fn zod_array_base(&self) -> String {
+        if let Some(in_place) = self.items_written_in_place() {
+            return in_place.zod_array_base();
+        }
         let result = match &self.field_type {
             // A type written as no path, a function pointer or a macro among them.
             FieldDefType::Unknown => "z.unknown()".to_owned(),
@@ -1866,23 +1968,26 @@ impl FieldDef {
     /// the text [`Self::zod_array_base`] writes it as.
     #[cfg(feature = "zod")]
     fn zod_factory_calls(&self, calls: &mut Vec<String>) {
+        if let Some(in_place) = self.items_written_in_place() {
+            return in_place.zod_factory_calls(calls);
+        }
         if let FieldDefType::Map(key, value) = &self.field_type {
             key.zod_factory_calls(calls);
-            value.zod_factory_calls(calls);
+            value.zod_slot_factory_calls(calls);
         } else if let FieldDefType::Tuple(elements) = &self.field_type {
             for element in elements {
-                element.zod_factory_calls(calls);
+                element.zod_slot_factory_calls(calls);
             }
         } else if let FieldDefType::Range(_, bound) = &self.field_type {
-            bound.zod_factory_calls(calls);
+            bound.zod_slot_factory_calls(calls);
         } else if let FieldDefType::Result(ok, err) = &self.field_type {
-            ok.zod_factory_calls(calls);
-            err.zod_factory_calls(calls);
+            ok.zod_slot_factory_calls(calls);
+            err.zod_slot_factory_calls(calls);
         } else if let FieldDefType::SiblingType(name, arguments) = &self.field_type {
             let call = if let [element] = arguments.as_slice()
                 && is_sequence_wrapper(name)
             {
-                return element.zod_factory_calls(calls);
+                return element.zod_slot_factory_calls(calls);
             } else if let Some(info) = lookup_alias_info(name) {
                 publishes_zod_factory(name).then(|| zod_factory_call(&info.export_name, arguments))
             } else {
@@ -2121,6 +2226,16 @@ impl FieldDef {
                 .any(|member| holds_a_placeholder(&member.spelling))
     }
 
+    /// [`Self::zod_factory_calls`] of this field where it is held outside a field, in the text
+    /// [`Self::zod_slot_type`] writes it as.
+    #[cfg(feature = "zod")]
+    fn zod_slot_factory_calls(&self, calls: &mut Vec<String>) {
+        match self.written_in_place() {
+            Some(in_place) => in_place.zod_slot_factory_calls(calls),
+            None => self.zod_factory_calls(calls),
+        }
+    }
+
     /// The Zod schema for a value in a slot that cannot be dropped — a tuple element, a map entry,
     /// or the content key of a single-element tuple variant, which serde always writes. An
     /// `Option` there is null-flavored (`z.nullable({base})`) rather than undefined-flavored: none
@@ -2128,6 +2243,9 @@ impl FieldDef {
     /// `None` in each of them.
     #[cfg(feature = "zod")]
     pub fn zod_slot_type(&self) -> String {
+        if let Some(in_place) = self.written_in_place() {
+            return in_place.zod_slot_type();
+        }
         let base = self.zod_base();
         if self.is_optional() {
             format!("z.nullable({base})")
@@ -2209,7 +2327,7 @@ impl FieldDef {
             .into_iter()
             .map(|mut member| {
                 member.spelling = placeholders_filled(&member.spelling, |at| {
-                    arguments.get(at).map(Self::zod_type)
+                    arguments.get(at).map(Self::zod_slot_type)
                 })?;
                 Some(member)
             })
@@ -2412,7 +2530,7 @@ fn zod_factory_call(name: &str, arguments: &[FieldDef]) -> String {
         "{name}$SchemaFactory({})",
         arguments
             .iter()
-            .map(FieldDef::zod_type)
+            .map(FieldDef::zod_slot_type)
             .collect::<Vec<_>>()
             .join(", ")
     )

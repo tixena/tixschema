@@ -1,8 +1,8 @@
-//! Untagged enums with a newtype variant over an `Option`, taken by the generated Zod schema and
-//! read and written back by the emitted Dart, Swift and Kotlin types under their toolchains,
-//! beside what serde answers of the same payload: each client reads `null` as the first variant
-//! whose payload reads it, the variant over an `Option` holding nothing among them, and writes it
-//! back as `null`.
+//! Untagged enums with a newtype variant over an `Option`, read by the generated Zod schema as the
+//! value serde writes back and read and written back by the emitted Dart, Swift and Kotlin types
+//! under their toolchains, beside what serde answers of the same payload: each client reads `null`
+//! as the first variant whose payload reads it, the variant over an `Option` holding nothing among
+//! them, and writes it back as `null`.
 
 #![cfg(all(
     feature = "serde",
@@ -126,10 +126,11 @@ fn variant_class(row: &NullRow, taken: &str) -> String {
     format!("{}{taken}", row.read_as)
 }
 
-/// The generated Zod schema takes each payload serde reads, and refuses each other one.
+/// The generated Zod schema reads each payload serde reads as the value serde writes back, `null`
+/// as `null`, and refuses each other one.
 #[cfg(all(feature = "zod", feature = "typescript"))]
 #[test]
-fn zod_takes_each_payload_serde_reads() {
+fn zod_reads_each_payload_as_the_value_serde_writes_back() {
     const REQUIRED: &[&str] = &["zod"];
     let Some(modules) = node_modules(REQUIRED) else {
         stand_down_modules(
@@ -158,7 +159,8 @@ fn zod_takes_each_payload_serde_reads() {
     for row in &NULL_ROWS {
         let _ = writeln!(
             source,
-            "told.push({}$Schema.safeParse(JSON.parse({})).success ? \"read\" : \"refused\");",
+            "{{ const read = {}$Schema.safeParse(JSON.parse({})); told.push(read.success ? \
+             \"read \" + JSON.stringify(read.data) : \"refused\"); }}",
             row.read_as,
             serde_json::to_string(row.json).unwrap()
         );
@@ -175,15 +177,13 @@ fn zod_takes_each_payload_serde_reads() {
         return;
     };
     let told: Vec<String> = serde_json::from_str(printed.trim()).unwrap();
-    let pinned: Vec<&str> = NULL_ROWS
+    // serde writes back each payload it reads as it was.
+    let pinned: Vec<String> = NULL_ROWS
         .iter()
         .map(|row| {
             held_to_serde(row);
-            if row.taken.is_some() {
-                "read"
-            } else {
-                "refused"
-            }
+            row.taken
+                .map_or_else(|| "refused".to_owned(), |_| format!("read {}", row.json))
         })
         .collect();
     assert_eq!(told, pinned, "the Zod schema answers otherwise than serde");

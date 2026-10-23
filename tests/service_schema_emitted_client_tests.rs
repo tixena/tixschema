@@ -971,6 +971,20 @@ mod null_models;
 #[path = "service_schema_emitted_client_tests/run_untagged_nulls.rs"]
 mod run_untagged_nulls;
 
+/// An alias of an `Option` held outside a field.
+#[cfg(test)]
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
+#[path = "semantic_types_tests/option_alias_models.rs"]
+mod option_alias_models;
+
+/// Those aliases, read and written back by each client beside serde.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_option_aliases.rs"]
+mod run_option_aliases;
+
 // The transport's expansion reaches each service through `$crate`, which is this binary's root:
 // every trait and its schema module are named here for it to resolve.
 #[cfg(all(test, feature = "dart"))]

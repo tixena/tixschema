@@ -255,6 +255,15 @@ pub struct ShapeQuestion {
     pub inner: String,
 }
 
+/// The type an alias of an `Option` names, as written, beside the alias's own type parameters.
+/// Kept as text: a token outlives no expansion.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[derive(Clone)]
+pub struct OptionTarget {
+    pub parameters: Vec<String>,
+    pub written: String,
+}
+
 /// What the registry records of a declared item: the name it is published as, and what each surface
 /// reads to reference it.
 #[derive(Clone)]
@@ -271,6 +280,9 @@ pub struct AliasInfo {
     pub kind: AliasKind,
     #[cfg(feature = "jsonschema")]
     pub module_name: String,
+    /// What an alias of an `Option` names, which a position outside a field writes in place.
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    pub option_target: Option<OptionTarget>,
     /// What an untagged enum's members are spelled as where an object flattens the enum, in the
     /// order the union writes them; empty for every other item.
     #[cfg(all(feature = "serde", feature = "typescript"))]
@@ -1224,6 +1236,7 @@ pub fn register_alias_info(
                 kind,
                 #[cfg(feature = "jsonschema")]
                 module_name: module_name.to_owned(),
+                option_target: None,
                 #[cfg(all(feature = "serde", feature = "typescript"))]
                 ts_union_members: Vec::new(),
                 value_shape: PublishedShape::Flat(None),
@@ -1243,6 +1256,16 @@ pub fn record_key_wire(rust_ident: &str, wire: MapKeyWire) {
     ALIAS_INFO.with(|map| {
         if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
             info.key_wire = wire;
+        }
+    });
+}
+
+/// Records the type an alias of an `Option` names, on the entry that alias has just registered.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+pub fn record_option_target(rust_ident: &str, target: OptionTarget) {
+    ALIAS_INFO.with(|map| {
+        if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
+            info.option_target = Some(target);
         }
     });
 }
@@ -1342,9 +1365,9 @@ pub fn names_a_zod_preprocess(rust_ident: &str) -> bool {
 }
 
 /// Records `rust_ident`'s own `$SchemaDefault` fold-comparison keys — the plain
-/// [`FieldDef::zod_type`](crate::field_type::FieldDef::zod_type) rendering of each declared-default
-/// field, one per parameter in declaration order, computed before deferral and before a
-/// constrained brand's `.min`/`.max`/`.check` chain is appended.
+/// [`FieldDef::zod_slot_type`](crate::field_type::FieldDef::zod_slot_type) rendering of each
+/// declared-default field, one per parameter in declaration order, computed before deferral and
+/// before a constrained brand's `.min`/`.max`/`.check` chain is appended.
 #[cfg(feature = "zod")]
 pub fn record_zod_default_arguments(rust_ident: &str, arguments: Vec<String>) {
     ZOD_DEFAULT_ARGUMENTS.with(|map| {
