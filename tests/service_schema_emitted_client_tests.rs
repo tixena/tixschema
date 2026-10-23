@@ -926,6 +926,25 @@ mod untagged_millis_models;
 #[path = "service_schema_emitted_client_tests/run_untagged_millis.rs"]
 mod run_untagged_millis;
 
+/// Untagged enums with a newtype variant over an `Option`.
+#[cfg(test)]
+#[cfg(all(
+    feature = "serde",
+    any(
+        all(feature = "zod", feature = "typescript"),
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
+))]
+#[path = "untagged_tests/null_models.rs"]
+mod null_models;
+
+/// Those enums, read and written back by Zod and each client beside serde.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_untagged_nulls.rs"]
+mod run_untagged_nulls;
+
 // The transport's expansion reaches each service through `$crate`, which is this binary's root:
 // every trait and its schema module are named here for it to resolve.
 #[cfg(all(test, feature = "dart"))]

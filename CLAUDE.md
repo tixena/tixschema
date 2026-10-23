@@ -2672,7 +2672,13 @@ to keep.
   (`bound_member`). The enum writes one `swiftSchemaBound{Variant}` per variant that has such a
   rule, and one `swiftSchemaRead{Variant}` where a slot is read in several statements. A check and
   a model choose nothing. The registry says which name is a bounded brand (`note_bounded`), so one
-  declared below the enum chooses nothing.
+  declared below the enum chooses nothing. A variant whose payload Swift holds as an optional
+  (`VariantPayload::optional`: an `Option`, or an alias `note_optional_alias` noted as one) is
+  tried in `do { let value = try ...; ... } catch {}`, where `try?` would take a read that
+  answered `nil` for one that threw, so `null` takes it, as serde reads it as `None`. Every other
+  variant keeps `if let value = try? ...`. `tests/untagged_tests/null_models.rs` holds
+  `NULL_ROWS`, and `run_untagged_nulls.rs` holds what Zod takes, and what each client reads and
+  writes back, to serde.
 - **A name serde reads beside the one it writes is read too.** `src/features/swift/aliases.rs` reads
   the `#[serde(alias)]` names of a variant and of a field (`aliases::written_on`), and
   `SwiftField::aliases` holds a member's, none for a flattened member or one serde never reads. A

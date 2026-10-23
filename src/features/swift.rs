@@ -9,7 +9,7 @@ mod validate;
 use core::cell::RefCell;
 use core::fmt::Write as _;
 use core::iter;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -185,6 +185,9 @@ struct VariantPayload {
     /// payload: one that names a function, and under a tag alone one whose type takes no keys.
     corrected: Option<(FieldDef, String)>,
     held: Option<String>,
+    /// Whether Swift holds the payload as an optional, which `try?` reads as `nil` where its read
+    /// answered `nil` and where it threw alike.
+    optional: bool,
     rules: Vec<String>,
     /// Whether the payload is a type written for the variant that reads the keys the types around
     /// it took.
@@ -466,6 +469,9 @@ thread_local! {
     /// a value of the alias item by item, as it reads one of the target.
     static COUNTED_ALIASES: RefCell<HashMap<String, (FieldDef, String)>> =
         RefCell::new(HashMap::new());
+
+    /// The Rust ident of each alias the emitter wrote whose target Swift holds as an optional.
+    static OPTIONAL_ALIASES: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
 }
 
 /// A unit variant of an externally tagged enum: the case Swift declares it as, and the name serde
@@ -532,6 +538,26 @@ fn note_counted_alias(rust_ident: &str, target: Option<(FieldDef, String)>) {
             recorded.borrow_mut().remove(rust_ident);
         }
     });
+}
+
+/// Records whether Swift holds the target of the alias `rust_ident` as an optional.
+fn note_optional_alias(rust_ident: &str, optional: bool) {
+    OPTIONAL_ALIASES.with(|recorded| {
+        if optional {
+            recorded.borrow_mut().insert(rust_ident.to_owned());
+        } else {
+            recorded.borrow_mut().remove(rust_ident);
+        }
+    });
+}
+
+/// Whether Swift holds a value of `def` as an optional: an `Option`, or an alias the emitter wrote
+/// above of one.
+fn held_as_optional(def: &FieldDef) -> bool {
+    def.is_optional()
+        || def.array_depth == 0
+            && matches!(&def.field_type, FieldDefType::SiblingType(name, _)
+                if OPTIONAL_ALIASES.with(|recorded| recorded.borrow().contains(name)))
 }
 
 /// `def` with the alias its leaf names written out as the alias's target, the levels `def` writes
@@ -3539,6 +3565,7 @@ fn alias_swift_tokens(item_type: &ItemType, name_override: Option<&str>) -> Toke
         )
     });
     note_counted_alias(&item_type.ident.to_string(), counted);
+    note_optional_alias(&item_type.ident.to_string(), held_as_optional(&target));
     let generic_params = swift_generic_params(&item_type.generics);
     let mut aux = Vec::new();
     let target_type = swift_full_real_type(&target, &export_name, &mut aux);
@@ -3576,6 +3603,7 @@ fn resolve_variant_payload(
             converted: None,
             corrected: None,
             held: None,
+            optional: false,
             rules: Vec::new(),
             takes_keys: false,
             walked: None,
@@ -3656,6 +3684,7 @@ fn named_payload(
         converted: None,
         corrected: None,
         held: Some(held_at(&struct_name, &generic_params)),
+        optional: false,
         rules: validate::payload_rules(export_name, step, !members.is_empty()),
         takes_keys,
         walked: None,
@@ -3715,6 +3744,7 @@ fn slot_payload(
         converted: (slot.converts() || read::holds_a_length(&slot.def)).then_some(slot),
         corrected,
         held: Some(held),
+        optional: held_as_optional(&field_def),
         rules,
         takes_keys: false,
         walked,
@@ -3769,6 +3799,7 @@ fn slots_payload(
         converted: None,
         corrected: None,
         held: Some(held),
+        optional: false,
         rules: validate::payload_rules(export_name, step, checked),
         takes_keys: false,
         walked: None,
@@ -4226,9 +4257,7 @@ fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> S
             let returned = payload.read(&from, &|held| format!("return {held}"), &mut twins);
             let reader = format!("swiftSchemaRead{named}");
             let tried = tried_read(&returned, export_name, &reader, ty, &mut choosers);
-            let holds = if payload.bound.is_empty() {
-                String::new()
-            } else {
+            let check = (!payload.bound.is_empty()).then(|| {
                 write!(
                     choosers,
                     "private static func swiftSchemaBound{named}(_ payload: {ty}) -> [String] \
@@ -4236,13 +4265,14 @@ fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> S
                     payload.bound.join("; ")
                 )
                 .unwrap();
-                format!(", {export_name}.swiftSchemaBound{named}(value).isEmpty")
-            };
-            write!(
-                decode_attempts,
-                "if let value = try? {tried}{holds} {{ self = .{case_name}(value); return }}; "
-            )
-            .unwrap();
+                format!("{export_name}.swiftSchemaBound{named}(value).isEmpty")
+            });
+            decode_attempts.push_str(&untagged_attempt(
+                &case_name,
+                &tried,
+                check.as_deref(),
+                payload.optional,
+            ));
             write!(
                 encode_arms,
                 "case .{case_name}(let value): try {}.encode(to: encoder); ",
@@ -4284,6 +4314,22 @@ fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> S
     );
     let typealias = ident_typealias(rust_ident, export_name, generic_params);
     format!("{body}{}{typealias}", enum_date_helpers(shape, &slots))
+}
+
+/// The statement an untagged enum tries the variant `case_name` with: its payload read by `tried`,
+/// and the variant taken where `check`, the payload's own bounds, holds. A payload Swift holds as
+/// an optional is read in a `do`, where `try?` would take a read that answered `nil` for one that
+/// threw.
+fn untagged_attempt(case_name: &str, tried: &str, check: Option<&str>, optional: bool) -> String {
+    let taken = format!("self = .{case_name}(value); return");
+    match (optional, check) {
+        (true, None) => format!("do {{ let value = try {tried}; {taken} }} catch {{}}; "),
+        (true, Some(holds)) => {
+            format!("do {{ let value = try {tried}; if {holds} {{ {taken} }} }} catch {{}}; ")
+        }
+        (false, None) => format!("if let value = try? {tried} {{ {taken} }}; "),
+        (false, Some(holds)) => format!("if let value = try? {tried}, {holds} {{ {taken} }}; "),
+    }
 }
 
 /// The expression the untagged enum `owner` tries a variant's payload with, of type `read_as`,

@@ -253,6 +253,16 @@ pub enum Pick {
     Whole(Carton),
 }
 
+/// An untagged enum whose slot over an `Option` names a function, ahead of a variant that holds a
+/// carton.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Culled {
+    Maybe(#[model_schema_prop(preprocess = ["trimmed"])] Option<String>),
+    Whole(Carton),
+}
+
 /// A date that names a function.
 #[cfg(feature = "chrono")]
 #[model_schema()]
@@ -430,6 +440,7 @@ fn the_payload_type_is_written_into_each_type_that_names_a_function_and_no_other
         ("Tier", tier_swift::swift_definition()),
         ("Leg", leg_swift::swift_definition()),
         ("Pick", pick_swift::swift_definition()),
+        ("Culled", culled_swift::swift_definition()),
     ] {
         assert_eq!(payload_types(&swift), 1, "{named}: {swift}");
     }
@@ -926,6 +937,28 @@ fn a_member_of_a_variant_calls_its_function_on_its_own_payload() {
     );
 }
 
+/// The slot of an untagged variant over an `Option` that names a function is read through its
+/// reader, handed the keys the types around the enum took, and a `nil` the reader answers takes
+/// the variant.
+#[test]
+fn an_untagged_slot_over_an_option_that_names_a_function_takes_the_nil_it_reads() {
+    holds(
+        &culled_swift::swift_definition(),
+        &[
+            concat!(
+                "private static func swiftSchemaReadMaybe(_ decoder: Decoder, _ taken: [String]) ",
+                "throws -> String? { ",
+            ),
+            concat!(
+                "do { let value = try Culled.swiftSchemaReadMaybe(decoder, taken); ",
+                "self = .maybe(value); return } catch {}; ",
+                "if let value = try? Carton(swiftSchemaUnjudged: decoder, ",
+                "swiftSchemaWithout: taken) { self = .whole(value); return }; ",
+            ),
+        ],
+    );
+}
+
 /// A carton as every read of this file answers it.
 fn carton() -> Carton {
     Carton {
@@ -1128,6 +1161,13 @@ fn every_enum_of_this_file_is_read_by_serde_through_its_functions() {
                 .unwrap(),
         ],
         [Pick::Named("A".to_owned()), Pick::Whole(carton())]
+    );
+    assert_eq!(
+        [
+            serde_json::from_value::<Culled>(Value::Null).unwrap(),
+            serde_json::from_value::<Culled>(json!("  A  ")).unwrap(),
+        ],
+        [Culled::Maybe(None), Culled::Maybe(Some("A".to_owned()))]
     );
 }
 
