@@ -2236,27 +2236,42 @@ fn present_statement(
     if field.flatten && field.field_def.is_optional() {
         return flattened_option(field, source, withheld, container, locals, twins);
     }
+    let only = preprocess::only_keys(&field.field_def);
+    if field.flatten && !only.is_empty() {
+        // Its read refuses any other key, which serde reads past where it is flattened.
+        let kept = read::Source::Keeping(preprocess::listed(&only));
+        return corrected_field(field, &[], walked, &kept, None, twins);
+    }
     let beside = field.flatten && preprocess::beside(&field.field_def);
-    if field.flatten && withheld && !beside && !preprocess::reads_the_whole(&field.field_def) {
-        // A type that reads its holder's decoder sees every key, so it is read from the payload
-        // without the keys taken.
-        return corrected_field(field, &[], walked, source, None, twins);
+    let read =
+        if field.flatten && withheld && !beside && !preprocess::reads_the_whole(&field.field_def) {
+            // A type that reads its holder's decoder sees every key, so it is read from the payload
+            // without the keys taken.
+            corrected_field(field, &[], walked, source, None, twins)
+        } else if walked || beside {
+            read::unjudged(&field.field_def, &field.hint, source, &member, locals)
+        } else if field.flatten {
+            format!(
+                "self.{swift} = try {real_type}(from: decoder)",
+                swift = field.swift_name,
+                real_type = field.real_type,
+            )
+        } else if read::holds_a_length(&field.field_def) {
+            let stem = swift_bare(&field.swift_name);
+            read::counted(&field.shaped(), stem, source, &member, locals)
+        } else {
+            keyed_read(field, container, absent_is_nil)
+        };
+    if field.flatten
+        && let Some((filled, keys)) = preprocess::filled_alone(&field.field_def, &field.real_type)
+    {
+        // A type parameter filled at a type that refuses a key beside its own, which serde reads
+        // past here.
+        let kept = read::Source::Keeping(keys);
+        let alone = corrected_field(field, &[], walked, &kept, None, twins);
+        return format!("if {filled} {{ {alone} }} else {{ {read} }}");
     }
-    if walked || beside {
-        return read::unjudged(&field.field_def, &field.hint, source, &member, locals);
-    }
-    if field.flatten {
-        return format!(
-            "self.{swift} = try {real_type}(from: decoder)",
-            swift = field.swift_name,
-            real_type = field.real_type,
-        );
-    }
-    if read::holds_a_length(&field.field_def) {
-        let stem = swift_bare(&field.swift_name);
-        return read::counted(&field.shaped(), stem, source, &member, locals);
-    }
-    keyed_read(field, container, absent_is_nil)
+    read
 }
 
 /// The statements that read the flattened externally tagged enum `field` holds, under an `Option`
@@ -2361,8 +2376,10 @@ fn flattened_option(
     if keys.is_empty() {
         return format!("do {{ {read} }} catch {{ {absent} }}");
     }
+    // A type read from its own keys alone is looked for in the whole object it is read from.
     let without = if withheld
         && !preprocess::reads_the_whole(&field.field_def)
+        && preprocess::only_keys(&field.field_def).is_empty()
         && let read::Source::Beside(taken) = source
     {
         Some(taken.as_str())
@@ -3388,6 +3405,12 @@ fn value_wrapper_tokens(
         },
     );
     preprocess::note(&rust_ident, read::takes_keys(&reads));
+    let lone_value = !matches!(wrapped, Wrapped::Tuple) && args.preprocess.is_empty();
+    preprocess::note_only_keys(
+        &rust_ident,
+        generic_params.is_empty().then_some(export_name.as_str()),
+        lone_value.then_some(value_field),
+    );
     let body = format!(
         "public struct {export_name}{generic_params}: Codable, Sendable {{ \
          public let value: {real_type}; \
@@ -3576,6 +3599,7 @@ fn alias_swift_tokens(item_type: &ItemType, name_override: Option<&str>) -> Toke
         &item_type.ident.to_string(),
         !target.is_optional() && preprocess::beside(&target),
     );
+    preprocess::note_only_keys(&item_type.ident.to_string(), None, Some(&target));
     // The alias of an externally tagged enum is read and written by the enum's entries.
     if !target.is_list() && !target.is_optional() {
         note_unit_entries(&item_type.ident.to_string(), unit_entries_of(&target));

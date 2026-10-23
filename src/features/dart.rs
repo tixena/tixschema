@@ -397,9 +397,34 @@ enum Taken {
     FirstOf(Vec<Vec<String>>),
     /// Every entry under one of the keys: a struct's members.
     Keys(Vec<String>),
+    /// Every entry under one of the keys, and no other: an `ObjectId`'s `$oid`, and a brand or an
+    /// alias over one, whose read refuses any other key, as serde refuses one where the `ObjectId`
+    /// is held as a value.
+    Only(Vec<String>),
     /// Every entry under one of the keys of any other enum: the tag and the content key of one
     /// under both, which serde reads as a struct of the two, and none for every other.
     Tagged(Vec<String>),
+}
+
+/// How a type reads one of its type parameters flattened.
+#[derive(Clone)]
+enum Flattening {
+    /// Flattened and nowhere else: the converter a holder hands for it is called with the object
+    /// the type is read from, and with nothing else.
+    Alone,
+    /// Flattened and otherwise: its flattened reads call the converter the read takes under this
+    /// name where a holder hands one, and the type parameter's own converter otherwise.
+    Also(String),
+    /// Not flattened.
+    Never,
+}
+
+/// Whether the members of a type read one of its type parameters flattened, and whether one reads
+/// it any other way.
+#[derive(Default)]
+struct ParameterReads {
+    flattened: bool,
+    plainly: bool,
 }
 
 /// The unjudged read of a type: the name it takes its payload under, and its body.
@@ -424,6 +449,18 @@ thread_local! {
     /// What serde takes off its holder's object for each struct and enum a class has been emitted
     /// for, read flattened.
     static DART_TAKEN_KEYS: RefCell<HashMap<String, Taken>> = RefCell::new(HashMap::new());
+
+    /// How each type a class has been emitted for reads each of its type parameters flattened,
+    /// itself or through a type that does, in the order declared.
+    static DART_FLATTENINGS: RefCell<HashMap<String, Vec<Flattening>>> =
+        RefCell::new(HashMap::new());
+
+    /// How the item being emitted reads each of its type parameters flattened, by name.
+    static DART_FLATTENING: RefCell<Vec<(String, Flattening)>> =
+        const { RefCell::new(Vec::new()) };
+
+    /// The type parameter a flattened member of the item being emitted is, while it is read.
+    static DART_FLATTENED_READ: RefCell<Option<String>> = const { RefCell::new(None) };
 
     /// Whether each struct and enum a class has been emitted for hands the object it is read from
     /// to a function: the type names one, or a struct flattens a member that is handed one or whose
@@ -465,6 +502,7 @@ thread_local! {
 /// type alias) earns nothing.
 pub fn dart_schema_dispatch(item: &Item, args: &DartTypeArgs<'_>) -> TokenStream {
     record_called(called_by(item, args));
+    record_flattenings(item);
     let tokens = if let Item::Struct(item_struct) = item {
         struct_dart_tokens(item_struct, args)
     } else if let Item::Enum(item_enum) = item {
@@ -475,7 +513,175 @@ pub fn dart_schema_dispatch(item: &Item, args: &DartTypeArgs<'_>) -> TokenStream
         TokenStream::new()
     };
     record_called(Vec::new());
+    DART_FLATTENING.with(|current| current.borrow_mut().clear());
     tokens
+}
+
+/// Records how `item` reads each of its type parameters flattened, for its own reads and for a
+/// holder emitted after it: a member flattened that is the parameter itself, under an `Option` or
+/// not, and a type argument that is the parameter, handed to a type that reads it flattened.
+fn record_flattenings(item: &Item) {
+    let (ident, generics, members) = if let Item::Struct(item_struct) = item {
+        (
+            &item_struct.ident,
+            &item_struct.generics,
+            read_members(item_struct.fields.iter()),
+        )
+    } else if let Item::Enum(item_enum) = item {
+        (
+            &item_enum.ident,
+            &item_enum.generics,
+            read_members(
+                item_enum
+                    .variants
+                    .iter()
+                    .flat_map(|variant| variant.fields.iter()),
+            ),
+        )
+    } else if let Item::Type(item_type) = item {
+        (
+            &item_type.ident,
+            &item_type.generics,
+            vec![(false, item_type.ty.as_ref())],
+        )
+    } else {
+        return;
+    };
+    let parameters = type_parameters_in_scope(generics);
+    let flattenings: Vec<(String, Flattening)> = parameters
+        .iter()
+        .map(|parameter| {
+            let mut reads = ParameterReads::default();
+            for &(flattened, ty) in &members {
+                let mut def = get_field_def("", ty, "");
+                def.erase_type_parameters(&parameters);
+                parameter_reads(&def, parameter, flattened, &mut reads);
+            }
+            let flattening = match (reads.flattened, reads.plainly) {
+                (true, false) => Flattening::Alone,
+                (true, true) => Flattening::Also(declared(&format!(
+                    "{}FromFlattenedJson",
+                    dart_lower_camel(parameter)
+                ))),
+                (false, _) => Flattening::Never,
+            };
+            (parameter.clone(), flattening)
+        })
+        .collect();
+    DART_FLATTENINGS.with(|recorded| {
+        recorded.borrow_mut().insert(
+            ident.to_string(),
+            flattenings
+                .iter()
+                .map(|(_, flattening)| flattening.clone())
+                .collect(),
+        );
+    });
+    DART_FLATTENING.with(|current| *current.borrow_mut() = flattenings);
+}
+
+/// Each member of `fields` serde reads, and whether it is flattened.
+fn read_members<'item>(
+    fields: impl Iterator<Item = &'item Field>,
+) -> Vec<(bool, &'item syn::Type)> {
+    fields
+        .filter(|field| !parse_serde_key_omission(&field.attrs).absent_from_wire())
+        .map(|field| (field_is_flatten(&field.attrs), &field.ty))
+        .collect()
+}
+
+/// How `def`, a member read flattened where `flattened` holds, reads the type parameter
+/// `parameter`, added to `reads`.
+fn parameter_reads(def: &FieldDef, parameter: &str, flattened: bool, reads: &mut ParameterReads) {
+    match &def.field_type {
+        FieldDefType::TypeParam(name) => {
+            if name == parameter {
+                if flattened && def.array_depth == 0 {
+                    reads.flattened = true;
+                } else {
+                    reads.plainly = true;
+                }
+            }
+        }
+        FieldDefType::SiblingType(name, arguments) => {
+            let through = flattenings_of(name);
+            for (at, argument) in arguments.iter().enumerate() {
+                let bare = argument.field_type == FieldDefType::TypeParam(parameter.to_owned())
+                    && argument.array_depth == 0
+                    && !argument.is_optional();
+                match through.get(at) {
+                    Some(Flattening::Alone) if bare => reads.flattened = true,
+                    Some(Flattening::Also(_)) if bare => {
+                        reads.flattened = true;
+                        reads.plainly = true;
+                    }
+                    Some(Flattening::Alone | Flattening::Also(_) | Flattening::Never) | None => {
+                        parameter_reads(argument, parameter, false, reads);
+                    }
+                }
+            }
+        }
+        FieldDefType::Map(first, second) | FieldDefType::Result(first, second) => {
+            parameter_reads(first, parameter, false, reads);
+            parameter_reads(second, parameter, false, reads);
+        }
+        FieldDefType::Range(_, bound) => parameter_reads(bound, parameter, false, reads),
+        FieldDefType::Tuple(elements) => {
+            for element in elements {
+                parameter_reads(element, parameter, false, reads);
+            }
+        }
+        FieldDefType::Boolean
+        | FieldDefType::BooleanLiteral(_)
+        | FieldDefType::Char
+        | FieldDefType::F32
+        | FieldDefType::F64
+        | FieldDefType::I8
+        | FieldDefType::I16
+        | FieldDefType::I32
+        | FieldDefType::I64
+        | FieldDefType::I64Digits
+        | FieldDefType::Isize
+        | FieldDefType::NumberLiteral(_)
+        | FieldDefType::String
+        | FieldDefType::StringLiteral(_)
+        | FieldDefType::U8
+        | FieldDefType::U16
+        | FieldDefType::U32
+        | FieldDefType::U64
+        | FieldDefType::U64Digits
+        | FieldDefType::Unknown
+        | FieldDefType::Usize => {}
+        #[cfg(feature = "mongodb")]
+        FieldDefType::ObjectId => {}
+        #[cfg(feature = "chrono")]
+        FieldDefType::NaiveDate
+        | FieldDefType::NaiveTime
+        | FieldDefType::NaiveDateTime
+        | FieldDefType::DateTime => {}
+    }
+}
+
+/// How the type `rust_ident` names reads each of its type parameters flattened: nothing for a
+/// type declared below the one asking.
+fn flattenings_of(rust_ident: &str) -> Vec<Flattening> {
+    DART_FLATTENINGS
+        .with(|recorded| recorded.borrow().get(rust_ident).cloned())
+        .unwrap_or_default()
+}
+
+/// The name the read of the item being emitted takes the converter of the flattened reads of its
+/// type parameter `parameter` under: `None` for a parameter it reads flattened alone or never.
+fn flattened_argument(parameter: &str) -> Option<String> {
+    DART_FLATTENING.with(|current| {
+        current
+            .borrow()
+            .iter()
+            .find_map(|(name, flattening)| match flattening {
+                Flattening::Also(argument) if name == parameter => Some(argument.clone()),
+                Flattening::Alone | Flattening::Also(_) | Flattening::Never => None,
+            })
+    })
 }
 
 /// The name of each function the reads of `item` call: what the `preprocess` of the type names,
@@ -845,12 +1051,33 @@ fn taken_by(def: &FieldDef) -> Taken {
     if !member_functions(def).is_empty() {
         return none;
     }
+    let object_id = object_id_keys(def);
+    if !object_id.is_empty() {
+        return Taken::Only(object_id);
+    }
     let FieldDefType::SiblingType(name, _) = &def.field_type else {
         return none;
     };
     DART_TAKEN_KEYS
         .with(|recorded| recorded.borrow().get(name).cloned())
         .unwrap_or(none)
+}
+
+/// The one key an `ObjectId` written as itself, under an `Option` or not, is read from: `$oid`,
+/// and none for any other member.
+#[cfg(feature = "mongodb")]
+fn object_id_keys(def: &FieldDef) -> Vec<String> {
+    if matches!(def.field_type, FieldDefType::ObjectId) && def.array_depth == 0 {
+        vec!["$oid".to_owned()]
+    } else {
+        Vec::new()
+    }
+}
+
+/// No member is an `ObjectId` without `mongodb`.
+#[cfg(not(feature = "mongodb"))]
+const fn object_id_keys(_def: &FieldDef) -> Vec<String> {
+    Vec::new()
 }
 
 /// The Rust ident of the type a member typed `def` names, which serde names an enum by in a
@@ -872,7 +1099,7 @@ fn struct_keys(def: &FieldDef) -> Vec<String> {
     };
     match DART_TAKEN_KEYS.with(|recorded| recorded.borrow().get(name).cloned()) {
         Some(Taken::Keys(keys)) => keys,
-        Some(Taken::FirstOf(_) | Taken::Tagged(_)) | None => Vec::new(),
+        Some(Taken::FirstOf(_) | Taken::Tagged(_) | Taken::Only(_)) | None => Vec::new(),
     }
 }
 
@@ -1283,6 +1510,56 @@ pub fn dart_json_encode(ty: &syn::Type, expr: &str, promoted: bool) -> String {
     dart_encode_expr(&get_field_def("value", ty, ""), expr, promoted)
 }
 
+/// The converters a holder hands the type `name` for `arguments`, one per type parameter, each
+/// reading the argument judged: no `validate()` reaches a value behind a parameter. A value that
+/// reads one key alone is handed that key alone where the type reads its parameter flattened
+/// alone, and by a converter of the flattened reads where it reads it otherwise too. A parameter
+/// of the holder's own is handed the holder's converter of its flattened reads there.
+fn argument_converters(name: &str, arguments: &[FieldDef]) -> String {
+    let through = flattenings_of(name);
+    let mut converters = Vec::new();
+    let mut flattened = Vec::new();
+    for (at, argument) in arguments.iter().enumerate() {
+        let alone = match taken_by(argument) {
+            Taken::Only(keys) if !argument.is_optional() => Some(only("e", &keys)),
+            Taken::FirstOf(_) | Taken::Keys(_) | Taken::Only(_) | Taken::Tagged(_) => None,
+        };
+        let held = if let FieldDefType::TypeParam(parameter) = &argument.field_type
+            && argument.array_depth == 0
+            && !argument.is_optional()
+        {
+            flattened_argument(parameter).map(|named| (named, from_json_argument(parameter)))
+        } else {
+            None
+        };
+        let read = |handed: &str| {
+            format!(
+                "(e) => {}",
+                dart_decode_expr(argument, handed, Read::Judged)
+            )
+        };
+        match (through.get(at), alone, held) {
+            (Some(Flattening::Alone), Some(handed), _) => converters.push(read(&handed)),
+            (Some(Flattening::Alone), None, Some((named, own))) => {
+                converters.push(format!("(e) => ({named} ?? {own})(e)"));
+            }
+            (Some(Flattening::Also(argument_name)), Some(handed), _) => {
+                converters.push(read("e"));
+                flattened.push(format!("{argument_name}: {}", read(&handed)));
+            }
+            (Some(Flattening::Also(argument_name)), None, Some((named, _))) => {
+                converters.push(read("e"));
+                flattened.push(format!("{argument_name}: {named}"));
+            }
+            (Some(Flattening::Alone | Flattening::Also(_) | Flattening::Never) | None, _, _) => {
+                converters.push(read("e"));
+            }
+        }
+    }
+    converters.extend(flattened);
+    converters.join(", ")
+}
+
 /// The expression that decodes `field`'s value out of the raw, dynamically-typed JSON `expr`
 /// names — the whole field including its outer optionality, which is asked once here rather than
 /// by every caller. `read` is how a declared type the value holds is read.
@@ -1321,7 +1598,7 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
     match &field.field_type {
         // An opaque type parameter (`FieldDef::opaque_parameters`), and a type written as no path.
         FieldDefType::Unknown => expr.to_owned(),
-        FieldDefType::TypeParam(name) => format!("{}({expr})", from_json_argument(name)),
+        FieldDefType::TypeParam(name) => parameter_read(name, expr),
         FieldDefType::Tuple(elements) if elements.is_empty() => unit_decode(expr),
         FieldDefType::Tuple(elements) => tuple_decode(elements, expr, read),
         FieldDefType::Range(kind, bound) => range_decode(*kind, bound, expr, read),
@@ -1340,14 +1617,7 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
             if generics.is_empty() {
                 format!("{class_name}.{constructor}({expr})")
             } else {
-                // No `validate()` reaches a value behind a parameter, which judges itself.
-                let converters = generics
-                    .iter()
-                    .map(|argument| {
-                        format!("(e) => {}", dart_decode_expr(argument, "e", Read::Judged))
-                    })
-                    .collect::<Vec<_>>()
-                    .join(", ");
+                let converters = argument_converters(name, generics);
                 format!("{class_name}.{constructor}({expr}, {converters})")
             }
         }
@@ -1678,6 +1948,16 @@ fn without(json: &str, taken: &[&str]) -> String {
     format!("({{...{json}}}{removed})")
 }
 
+/// An object of the entries of the object `json` names under `keys`, and of no other: what a type
+/// that refuses any other key is handed of its holder's object.
+fn only(json: &str, keys: &[String]) -> String {
+    format!(
+        "(switch ({json}) {{ final whole => {{ for (final key in const [{}]) \
+         if (whole.containsKey(key)) key: whole[key] }} }})",
+        listed_names(keys)
+    )
+}
+
 /// `names` as the elements of a Dart list of strings.
 fn listed_names(names: &[String]) -> String {
     names
@@ -1728,6 +2008,35 @@ fn first_entry_decode(def: &FieldDef, first: &str) -> String {
 /// them, it reads no value wherever its type does not read, as serde reads it. An optional one
 /// that names a function and holds no map is read by [`corrected_option`].
 fn flattened_decode(def: &FieldDef, handed: &str, taken: &[String]) -> String {
+    let parameter = if let FieldDefType::TypeParam(parameter) = &def.field_type
+        && def.array_depth == 0
+    {
+        Some(parameter.clone())
+    } else {
+        None
+    };
+    DART_FLATTENED_READ.with(|reading| reading.replace(parameter));
+    let read = flattened_read(def, handed, taken);
+    DART_FLATTENED_READ.with(|reading| reading.replace(None));
+    read
+}
+
+/// The read of the type parameter `parameter` from `expr`: through the converter of its flattened
+/// reads where a holder hands one and `expr` is the flattened member that parameter is.
+fn parameter_read(parameter: &str, expr: &str) -> String {
+    let converter = from_json_argument(parameter);
+    DART_FLATTENED_READ
+        .with(|reading| reading.borrow().as_deref() == Some(parameter))
+        .then(|| flattened_argument(parameter))
+        .flatten()
+        .map_or_else(
+            || format!("{converter}({expr})"),
+            |named| format!("({named} ?? {converter})({expr})"),
+        )
+}
+
+/// The read [`flattened_decode`] answers.
+fn flattened_read(def: &FieldDef, handed: &str, taken: &[String]) -> String {
     let functions = member_functions(def);
     let holds_a_map = matches!(def.field_type, FieldDefType::Map(..));
     if def.is_optional() && !functions.is_empty() && !holds_a_map {
@@ -2854,7 +3163,7 @@ fn unjudged_read(corrects: &Corrects<'_>, held_as: &str, reads: bool, answer: &A
 }
 
 fn generic_codec(parameters: &[String]) -> GenericCodec {
-    let from_json_params = parameters.iter().fold(String::new(), |mut acc, parameter| {
+    let mut from_json_params = parameters.iter().fold(String::new(), |mut acc, parameter| {
         write!(
             acc,
             ", {parameter} Function(dynamic) {}",
@@ -2863,10 +3172,24 @@ fn generic_codec(parameters: &[String]) -> GenericCodec {
         .unwrap();
         acc
     });
-    let from_json_args = parameters.iter().fold(String::new(), |mut acc, parameter| {
+    let mut from_json_args = parameters.iter().fold(String::new(), |mut acc, parameter| {
         write!(acc, ", {}", from_json_argument(parameter)).unwrap();
         acc
     });
+    let flattened: Vec<(&String, String)> = parameters
+        .iter()
+        .filter_map(|parameter| flattened_argument(parameter).map(|named| (parameter, named)))
+        .collect();
+    if !flattened.is_empty() {
+        let declared_as: Vec<String> = flattened
+            .iter()
+            .map(|(parameter, named)| format!("{parameter} Function(dynamic)? {named}"))
+            .collect();
+        write!(from_json_params, ", {{{}}}", declared_as.join(", ")).unwrap();
+        for (_, named) in &flattened {
+            write!(from_json_args, ", {named}: {named}").unwrap();
+        }
+    }
     let to_json_params = parameters
         .iter()
         .map(|parameter| {
@@ -2888,7 +3211,8 @@ fn generic_codec(parameters: &[String]) -> GenericCodec {
 /// member from its key, where the payload holds it for a member that names a function, and a
 /// flattened one at its place, from the entries neither `tag_key`, a member of the holder's own nor
 /// a member flattened ahead of it takes, an externally tagged enum from the first of them under a
-/// variant's name, an optional one as no value where none is, an optional struct as no value
+/// variant's name, an `ObjectId` and a type over one from its `$oid` entry alone, an optional one
+/// as no value where none is, an optional struct as no value
 /// where none of its keys is, an optional enum under a tag key as no value where neither its tag
 /// nor its content key is, an optional map as no value where an entry does not read, and an
 /// optional one that names a function as no value where its type does not read from what the
@@ -2921,6 +3245,15 @@ fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>
                         &handed
                     };
                     let decode = flattened_decode(&field.field_def, whole, &taken);
+                    for key in taken {
+                        if !taken_ahead.contains(&key) {
+                            taken_ahead.push(key);
+                        }
+                    }
+                    decode
+                }
+                Taken::Only(taken) => {
+                    let decode = flattened_decode(&field.field_def, &only(&handed, &taken), &taken);
                     for key in taken {
                         if !taken_ahead.contains(&key) {
                             taken_ahead.push(key);
@@ -3268,6 +3601,13 @@ fn value_wrapper_tokens(
         &rust_ident,
         matches!(held, Held::Value(value_field) if reads_a_unit(value_field)),
     );
+    // A value that reads one key alone is handed that key alone where it is flattened.
+    if let (Held::Value(value), []) = (held, corrects.own)
+        && !value.is_optional()
+        && let Taken::Only(keys) = taken_by(value)
+    {
+        record_taken_keys(&rust_ident, Taken::Only(keys));
+    }
 
     let generic_params = dart_generic_params(generics);
     let parameters = type_parameters_in_scope(generics);

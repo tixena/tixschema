@@ -92,7 +92,7 @@ pub const STAMPED: [&str; 3] = [
 /// `ObjectId` refuses it with.
 #[cfg(feature = "mongodb")]
 pub const STAMP_REFUSED: Refused = Refused {
-    dart: "_TypeError: type 'Null' is not a subtype of type 'String' in type cast",
+    dart: "FormatException: Invalid ObjectId: {}",
     json: r#"{"kind":"Held"}"#,
     kotlin: "refused: Field '$oid' is required for type with serial name 'ObjectId', but it was \
              missing at path: $",

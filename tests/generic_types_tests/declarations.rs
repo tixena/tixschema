@@ -108,6 +108,12 @@ mod option_aliases;
 #[path = "../untagged_tests/null_models.rs"]
 mod null_models;
 
+/// An `ObjectId` in each position serde writes one, and whether serde, the Zod schema, the JSON
+/// Schema and each client take each payload.
+#[cfg(feature = "mongodb")]
+#[path = "../service_schema_emitted_client_tests/object_id_models.rs"]
+mod object_ids;
+
 #[cfg(feature = "chrono")]
 use alloc::collections::BTreeSet;
 use core::fmt::Write as _;
@@ -2093,6 +2099,95 @@ fn stamps_bundle() -> String {
         DeclaredStamp::zod_schema(),
     ]
     .join("\n\n")
+}
+
+/// The models of [`object_ids`]: a bundle of their own, compiled with `tsc --strict` before it is
+/// loaded, beside the consumer's own `ObjectId`.
+#[cfg(feature = "mongodb")]
+fn object_ids_bundle() -> String {
+    [
+        PREAMBLE.to_owned(),
+        "type ObjectId = { $oid: string };".to_owned(),
+        object_ids::Notation::ts_definition(),
+        object_ids::Notation::zod_schema(),
+        object_ids::Countersigned::<String>::ts_definition(),
+        object_ids::Countersigned::<String>::zod_schema(),
+        object_ids::Sigil::ts_definition(),
+        object_ids::Sigil::zod_schema(),
+        object_ids::sigillum_schema::Schema::ts_definition(),
+        object_ids::sigillum_schema::Schema::zod_schema(),
+        object_ids::Endorsed::ts_definition(),
+        object_ids::Endorsed::zod_schema(),
+        object_ids::Endorsing::ts_definition(),
+        object_ids::Endorsing::zod_schema(),
+        object_ids::Cachet::ts_definition(),
+        object_ids::Cachet::zod_schema(),
+        object_ids::Embossed::ts_definition(),
+        object_ids::Embossed::zod_schema(),
+        object_ids::Docketing::ts_definition(),
+        object_ids::Docketing::zod_schema(),
+        object_ids::Stampage::ts_definition(),
+        object_ids::Stampage::zod_schema(),
+        object_ids::Sigiled::ts_definition(),
+        object_ids::Sigiled::zod_schema(),
+        object_ids::Sigillary::ts_definition(),
+        object_ids::Sigillary::zod_schema(),
+        object_ids::Enveloping::<String>::ts_definition(),
+        object_ids::Enveloping::<String>::zod_schema(),
+        object_ids::Waxing::<String>::ts_definition(),
+        object_ids::Waxing::<String>::zod_schema(),
+        object_ids::Relaying::<String>::ts_definition(),
+        object_ids::Relaying::<String>::zod_schema(),
+        object_ids::Wafer::ts_definition(),
+        object_ids::Wafer::zod_schema(),
+        object_ids::Lettering::ts_definition(),
+        object_ids::Lettering::zod_schema(),
+        object_ids::Folding::ts_definition(),
+        object_ids::Folding::zod_schema(),
+        object_ids::Relayed::ts_definition(),
+        object_ids::Relayed::zod_schema(),
+        object_ids::Crossed::<String>::ts_definition(),
+        object_ids::Crossed::<String>::zod_schema(),
+        object_ids::Crossing::ts_definition(),
+        object_ids::Crossing::zod_schema(),
+        object_ids::Bullae::ts_definition(),
+        object_ids::Bullae::zod_schema(),
+        object_ids::Wafered::ts_definition(),
+        object_ids::Wafered::zod_schema(),
+        object_ids::Wafering::ts_definition(),
+        object_ids::Wafering::zod_schema(),
+        object_ids::Enwafered::ts_definition(),
+        object_ids::Enwafered::zod_schema(),
+        object_ids::Belated::ts_definition(),
+        object_ids::Belated::zod_schema(),
+        object_ids::LateSigil::ts_definition(),
+        object_ids::LateSigil::zod_schema(),
+    ]
+    .join("\n\n")
+}
+
+/// The JSON Schema of the type a row of [`object_ids::rows`] is read as.
+#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
+fn object_id_document(read_as: &str) -> serde_json::Value {
+    match read_as {
+        "Endorsed" => object_ids::Endorsed::json_schema(),
+        "Endorsing" => object_ids::Endorsing::json_schema(),
+        "Cachet" => object_ids::Cachet::json_schema(),
+        "Embossed" => object_ids::Embossed::json_schema(),
+        "Docketing" => object_ids::Docketing::json_schema(),
+        "Stampage" => object_ids::Stampage::json_schema(),
+        "Sigiled" => object_ids::Sigiled::json_schema(),
+        "Sigillary" => object_ids::Sigillary::json_schema(),
+        "Lettering" => object_ids::Lettering::json_schema(),
+        "Folding" => object_ids::Folding::json_schema(),
+        "Relayed" => object_ids::Relayed::json_schema(),
+        "Bullae" => object_ids::Bullae::json_schema(),
+        "Crossing" => object_ids::Crossing::json_schema(),
+        "Belated" => object_ids::Belated::json_schema(),
+        "Wafered" => object_ids::Wafered::json_schema(),
+        "Wafering" => object_ids::Wafering::json_schema(),
+        _ => object_ids::Enwafered::json_schema(),
+    }
 }
 
 /// The types a check is written on, and the functions their checks name.
@@ -4511,6 +4606,50 @@ fn type_check_an_object_id_beside_the_tag_is_taken_as_serde_writes_it() {
     assert_eq!(
         typed, stated,
         "TypeScript does not take what the rows state:\n{said}\n{payloads}"
+    );
+}
+
+/// An `ObjectId` with a key beside its `$oid`, or a `$oid` that is not 24 hexadecimal digits in
+/// lower case, is refused by the Zod schema of its holder under `node`, compiled with
+/// `tsc --strict`, and by its JSON Schema, wherever serde refuses it: under a key, in a list, as a
+/// map's value, as a type argument, under a brand and beside a tag. Flattened, it is joined as a
+/// flattened struct is, so the holder's own keys and those of a struct flattened beside it read,
+/// and a key none of them reads is refused, where serde reads past it.
+#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
+#[test]
+fn type_check_an_object_id_with_a_key_beside_its_oid_is_refused_where_serde_refuses_it() {
+    let read: Vec<bool> = object_ids::rows()
+        .iter()
+        .map(|row| object_ids::serde_told(row.read_as, row.json) != "refused")
+        .collect();
+    let stated: Vec<bool> = object_ids::rows().iter().map(|row| row.serde).collect();
+    assert_eq!(read, stated, "serde does not take what the rows state");
+    let described: Vec<bool> = object_ids::rows()
+        .iter()
+        .map(|row| {
+            documents::admits(
+                &object_id_document(row.read_as),
+                &serde_json::from_str(row.json).unwrap(),
+            )
+        })
+        .collect();
+    let schema: Vec<bool> = object_ids::rows().iter().map(|row| row.schema).collect();
+    assert_eq!(
+        described, schema,
+        "the JSON Schema does not take what the rows state"
+    );
+    let listed: Vec<(String, &str)> = object_ids::rows()
+        .iter()
+        .map(|row| (format!("{}$Schema", row.read_as), row.json))
+        .collect();
+    let driver = TAKEN_DRIVER.replace("PAYLOADS", &serde_json::to_string(&listed).unwrap());
+    let Some((printed, failed)) = loaded_from("object-ids", &object_ids_bundle(), &driver) else {
+        return;
+    };
+    assert_eq!(
+        printed,
+        serde_json::to_string(&schema).unwrap(),
+        "the Zod schema does not take what the rows state:\n{failed}"
     );
 }
 

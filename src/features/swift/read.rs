@@ -71,6 +71,9 @@ pub(super) enum Source {
     Beside(String),
     /// The decoder the initializer was handed.
     Decoder,
+    /// The decoder the initializer was handed, of whose object the type reads alone the keys the
+    /// expression names.
+    Keeping(String),
     /// Under `key` of the keyed container `container`.
     Keyed {
         container: String,
@@ -117,7 +120,7 @@ impl Source {
     /// The decoder a held type is handed.
     fn decoder(&self) -> String {
         match self {
-            Self::Beside(_) | Self::Decoder => "decoder".to_owned(),
+            Self::Beside(_) | Self::Decoder | Self::Keeping(_) => "decoder".to_owned(),
             Self::Keyed {
                 container,
                 key,
@@ -130,7 +133,7 @@ impl Source {
     /// What holds where the source holds a value and no `null`, and the source once it does.
     fn holding(&self) -> (String, Self) {
         match self {
-            Self::Beside(_) | Self::Decoder => (
+            Self::Beside(_) | Self::Decoder | Self::Keeping(_) => (
                 "try !decoder.singleValueContainer().decodeNil()".to_owned(),
                 self.clone(),
             ),
@@ -159,7 +162,7 @@ impl Source {
     /// The container the entries of a map are read from.
     fn keyed(&self) -> String {
         match self {
-            Self::Beside(_) | Self::Decoder => {
+            Self::Beside(_) | Self::Decoder | Self::Keeping(_) => {
                 "decoder.container(keyedBy: SwiftSchemaAnyKey.self)".to_owned()
             }
             Self::Keyed {
@@ -189,6 +192,13 @@ impl Source {
             ),
             Self::Decoder => (
                 format!("let {stem}Payload = try SwiftSchemaPayload(from: decoder).value; "),
+                "decoder.codingPath".to_owned(),
+            ),
+            Self::Keeping(kept) => (
+                format!(
+                    "let {stem}Payload = (try SwiftSchemaPayload(from: decoder).value as? \
+                     [String: Any] ?? [:]).filter {{ {kept}.contains($0.key) }}; "
+                ),
                 "decoder.codingPath".to_owned(),
             ),
             Self::Keyed {
@@ -222,7 +232,9 @@ impl Source {
     /// The value read as the type `read_as` through `Decodable`.
     pub(super) fn plain(&self, read_as: &str) -> String {
         match self {
-            Self::Beside(_) | Self::Decoder => format!("{read_as}(from: decoder)"),
+            Self::Beside(_) | Self::Decoder | Self::Keeping(_) => {
+                format!("{read_as}(from: decoder)")
+            }
             Self::Keyed {
                 container,
                 key,
@@ -250,7 +262,9 @@ impl Source {
     /// The container the items of a list are read from.
     fn unkeyed(&self) -> String {
         match self {
-            Self::Beside(_) | Self::Decoder => "decoder.unkeyedContainer()".to_owned(),
+            Self::Beside(_) | Self::Decoder | Self::Keeping(_) => {
+                "decoder.unkeyedContainer()".to_owned()
+            }
             Self::Keyed {
                 container,
                 key,

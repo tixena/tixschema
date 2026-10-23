@@ -1316,7 +1316,7 @@ Notes:
 - The flattened base joins the intersection under `z.lazy`. A base is a `const` of its own and nothing orders one type's schema against another's, so reading the name while the intersection's `const` initializes would fail for any base declared below -- and for two bases that flatten each other, no order puts each above the other. Deferred, every module loads whatever order it is assembled in, and a pair that does flatten each other fails when asked to validate rather than at import.
 - Multiple `#[serde(flatten)]` fields chain: `{ ... } & BasePart & ExtraPart` in TypeScript and `z.strictObject({ ... }).and(z.lazy(() => BasePart$Schema)).and(z.lazy(() => ExtraPart$Schema))` in Zod.
 - A struct whose only field is flattened becomes a plain alias (e.g. `export type FlattenOnly = DataElementSampleValueVariant;`).
-- A flattened `ObjectId` joins its `$oid` key, which Serde writes among the object's own: `{"id":1,"$oid":"507f1f77bcf86cd799439011"}` for `pub struct Stamped { pub id: u32, #[serde(flatten)] pub oid: ObjectId }`. TypeScript and Zod intersect the object with the `$oid` object, and the JSON Schema adds `$oid` to the object's members, required. An `ObjectId` in the lone slot of a newtype variant under a `tag` with no `content` joins the tag's object the same way: Serde writes `{"kind":"Held","$oid":"507f1f77bcf86cd799439011"}` for `#[serde(tag = "kind")] pub enum Stamping { Held(ObjectId) }` and reads it back. TypeScript writes `{ kind: "Held"; } & ObjectId`, Zod intersects the tag's object with the `$oid` object, the JSON Schema adds `$oid` beside the tag, required, and the Dart, Swift and Kotlin types read the `ObjectId` from the object without the tag and write its `$oid` key beside the tag. The tag alone, `{"kind":"Held"}`, is refused as Serde refuses it: by Zod and the JSON Schema, and by TypeScript and each client where its `ObjectId` requires the `$oid` key.
+- A flattened `ObjectId` joins its `$oid` key, which Serde writes among the object's own: `{"id":1,"$oid":"507f1f77bcf86cd799439011"}` for `pub struct Stamped { pub id: u32, #[serde(flatten)] pub oid: ObjectId }`. TypeScript and Zod intersect the object with the `$oid` object, and the JSON Schema adds `$oid` to the object's members, required. Zod's `$oid` object is strict, as a flattened struct's is, so the holder refuses a key none of its members reads, as the JSON Schema refuses it, where Serde reads past it. An `ObjectId` in the lone slot of a newtype variant under a `tag` with no `content` joins the tag's object the same way: Serde writes `{"kind":"Held","$oid":"507f1f77bcf86cd799439011"}` for `#[serde(tag = "kind")] pub enum Stamping { Held(ObjectId) }` and reads it back. TypeScript writes `{ kind: "Held"; } & ObjectId`, Zod intersects the tag's object with the `$oid` object, the JSON Schema adds `$oid` beside the tag, required, and the Dart, Swift and Kotlin types read the `ObjectId` from the object without the tag and write its `$oid` key beside the tag. The tag alone, `{"kind":"Held"}`, is refused as Serde refuses it: by Zod and the JSON Schema, and by TypeScript and each client where its `ObjectId` requires the `$oid` key. So is a key beside the tag and `$oid`, by Zod, the JSON Schema and each client's `ObjectId` as [the section on it](#mongodb-objectid-support) declares it.
 - **A map is flattened alone.** A `#[serde(flatten)]` member that writes a map, beside any other member that writes a key, stops the build, on a struct and on a variant of an enum under every tagging, in every build with `serde`: serde writes the map's entries at one level with that member's key, and no TypeScript type describes both. `{ note: string } & Partial<Record<string, number>>` refuses `{ note: "a", north: 2 }`, which serde reads. A map is written under a key of its own instead. A member that writes a map is a map, an `Option` of one and a `Box` of one, and a type declared above the holder that serde writes as one: a struct whose one member is a flattened map, a [brand](#branded-newtypes) or a struct of one slot over a map, an alias of a map, and an `#[serde(untagged)]` enum with a variant that writes one. A generic type of those shapes over its own type parameter writes a map where a map fills that parameter. A member under `skip` writes no key and stands beside no map, and a variant under `#[serde(skip)]`, which serde neither writes nor reads, holds no map beside anything. A type declared below the holder, or in another crate, is not looked into: the expansion of the holder cannot see what it writes. `pub struct Stocktake { #[serde(flatten)] pub counts: BTreeMap<String, u8>, pub note: String }` answers:
 
   ```text
@@ -4684,7 +4684,7 @@ Rust, Dart, Swift and Kotlin print them from the `validate()` of each value, and
 
 #### What an upgrade asks of your crate
 
-Thirty-seven rules meet a crate that upgrades. Each is stated with what a build or a read answers:
+Thirty-eight rules meet a crate that upgrades. Each is stated with what a build or a read answers:
 
 - **A map under `#[serde(flatten)]` beside another member that writes a key stops the build**, on a struct and on a variant of an enum: `pub struct Stocktake { #[serde(flatten)] pub counts: BTreeMap<String, u8>, pub note: String }` answers ``error: model_schema: type `Stocktake`: field `counts`: `#[serde(flatten)]` cannot hold a map beside other members — serde writes the map's entries at one level with `note`, and no TypeScript type describes both. Write the map under a key of its own.`` Write the map under a key of its own, `pub counts: BTreeMap<String, u8>`. See [Intersection Types](#intersection-types-serdeflatten).
 - **A map keyed by a number or a `bool` below a `#[serde(flatten)]` member stops the build**, at any depth, on a struct and on a variant of an enum, as does a type declared above that holds one there, and a type parameter read there filled with a number, a `bool` or a map keyed by one: serde reads no entry of such a map back. `pub struct Soundings { #[serde(flatten)] pub rest: BTreeMap<isize, u8> }` answers ``error: model_schema: type `Soundings`: field `rest`: `#[serde(flatten)]` cannot hold a map keyed by `isize` — serde reads every key below a flattened member as text, and reads no number and no `bool` from text, so no entry of that map reads back. Key the map by a `String`, or write the field under a key of its own.`` Key the map by a `String`, or write it under a key of its own, `pub rest: BTreeMap<isize, u8>`. See [Intersection Types](#intersection-types-serdeflatten).
@@ -4733,6 +4733,7 @@ Thirty-seven rules meet a crate that upgrades. Each is stated with what a build 
 - **An alias of an `Option` held outside a field is described with `null`**, in an item of a list, a value of a map, a position of a tuple, a type argument, an arm of a `Result`, a slot of a tuple struct and the slot of a variant: TypeScript and Zod write the type the alias names in place, where they named the alias, whose own type describes the absent key of a field. With `pub type Plummet = Option<u32>;`, `pub listed: Vec<Plummet>` is `Array<number | null>` where it was `Array<PlummetType>`, and its Zod schema reads the `[null]` serde writes as `[null]` where it read it as `[undefined]`. A field typed with the alias keeps its name. See [Type Aliases](#type-aliases).
 - **An `Option` written as a type argument is described with `null`**: `Wrapper<Option<u32>>` is `Wrapper<number | null>` where it was `Wrapper<number | undefined>`, and the factory is handed `z.nullable(...)`, which reads `null` as `null`, where it was handed a union that read it as `undefined`. A `$SchemaDefault` declared at an `Option` is built and annotated the same way. See [Type Parameters](#type-parameters).
 - **An absent key of an `Option` of a date under `as_number` is read as `None`**, where serde answered ``missing field `later` ``: `#[model_schema_prop(as_number)] #[serde(skip_serializing_if = "Option::is_none")] pub later: Option<DateTime<Utc>>` reads back the `{}` serde writes for `None`, and a `nullable` one reads an object without its key. See [Chrono Date/Time Types](#chrono-datetime-types).
+- **The Zod schema of an `ObjectId` refuses a key beside `$oid`**, as Serde and the JSON Schema refuse it: the `$oid` object is a `z.strictObject`, where it was a `z.object`, which read the key and dropped it. With `pub struct Docket { pub id: ObjectId }`, `Docket$Schema.safeParse({ id: { $oid: "507f1f77bcf86cd799439011", extra: 1 } })` fails with an `unrecognized_keys` issue at `id`, under a key, in a list, as a map's value, as a type argument, under a brand and beside a tag alike. A flattened `ObjectId` is joined as a flattened struct is, so its holder refuses a key none of its members reads. The Dart, Swift and Kotlin `ObjectId` [the section on it](#mongodb-objectid-support) declares refuses the key too, and a `$oid` that is not 24 hexadecimal digits in lower case, and the Swift one is public and `Sendable`, as the emitted types that hold it require.
 
 ### Checks (`check`)
 
@@ -6572,13 +6573,13 @@ export type Document = {
 };
 
 export const Document$Schema = z.strictObject({
-  id: z.object({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) }),
+  id: z.strictObject({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) }),
   title: z.string(),
-  author_id: z.object({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) }),
-  tags: z.array(z.object({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) })),
-  metadata: z.record(z.string(), z.object({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) })),
-  parent_id: z.union([z.null().transform(() => undefined), z.object({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) }), z.undefined()]).prefault(undefined),
-  related_docs: z.record(z.string(), z.array(z.object({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) }))),
+  author_id: z.strictObject({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) }),
+  tags: z.array(z.strictObject({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) })),
+  metadata: z.record(z.string(), z.strictObject({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) })),
+  parent_id: z.union([z.null().transform(() => undefined), z.strictObject({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) }), z.undefined()]).prefault(undefined),
+  related_docs: z.record(z.string(), z.array(z.strictObject({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) }))),
 }).meta({
   examples: []
 });
@@ -6602,31 +6603,70 @@ Key details:
 
 - Uses `{ "$oid": "hex_string" }` format matching MongoDB's native serialization.
 - Validates 24-character hexadecimal ObjectId strings via regex.
+- Refuses a key beside `$oid`, as Serde refuses it: Zod writes the `$oid` object as a `z.strictObject`, and the JSON Schema writes `"additionalProperties": false`. A flattened `ObjectId` is joined as a flattened struct is, so its holder refuses a key none of its members reads, where Serde reads past it.
 - Supports ObjectIds in arrays, HashMaps, optional fields, and deeply nested structures.
 - The MongoDB crate is a dev-dependency only -- zero production overhead.
 
-Every non-Rust target treats `ObjectId` as a bare reference rather than publishing it -- `ts_definition()` writes `ObjectId` unresolved (see "Missing TypeScript Types" below), and `dart_definition()`, `swift_definition()` and `kotlin_definition()` do the same. The consuming project supplies a one-line type in its own language matching the `{ "$oid": "hex_string" }` wire form:
+Every non-Rust target treats `ObjectId` as a bare reference rather than publishing it -- `ts_definition()` writes `ObjectId` unresolved (see "Missing TypeScript Types" below), and `dart_definition()`, `swift_definition()` and `kotlin_definition()` do the same. The consuming project supplies a type in its own language that reads and writes the `{ "$oid": "hex_string" }` wire form, and refuses what Serde refuses: an object that holds a key beside `$oid`, and a `$oid` that is not 24 hexadecimal digits. Serde reads the digits in upper case too; these types, the Zod schema and the JSON Schema read them in lower case alone, as Serde writes them. The Swift type is public and `Sendable`, as the types `swift_definition()` writes are, and the Kotlin type refuses another key under the default `Json`, as every class the plugin reads does:
 
 ```dart
 class ObjectId {
   final String oid;
   ObjectId(this.oid);
-  factory ObjectId.fromJson(Map<String, dynamic> json) => ObjectId(json['\$oid'] as String);
+  factory ObjectId.fromJson(Map<String, dynamic> json) => switch (json) {
+        {'\$oid': final String oid}
+            when json.length == 1 && RegExp(r'^[a-f0-9]{24}$').hasMatch(oid) =>
+          ObjectId(oid),
+        _ => throw FormatException('Invalid ObjectId: $json'),
+      };
   Map<String, dynamic> toJson() => {'\$oid': oid};
 }
 ```
 
 ```swift
-struct ObjectId: Codable {
-  let oid: String
+public struct ObjectId: Codable, Sendable {
+  public let oid: String
   enum CodingKeys: String, CodingKey { case oid = "$oid" }
+
+  public init(oid: String) { self.oid = oid }
+
+  public init(from decoder: Decoder) throws {
+    let keys = try decoder.container(keyedBy: AnyKey.self).allKeys
+    oid = try decoder.container(keyedBy: CodingKeys.self).decode(String.self, forKey: .oid)
+    guard keys.count == 1, oid.count == 24, oid.allSatisfy({ "0123456789abcdef".contains($0) })
+    else {
+      throw DecodingError.dataCorrupted(
+        DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Invalid ObjectId"))
+    }
+  }
+
+  private struct AnyKey: CodingKey {
+    let stringValue: String
+    var intValue: Int? { nil }
+    init?(stringValue: String) { self.stringValue = stringValue }
+    init?(intValue: Int) { nil }
+  }
 }
 ```
 
 ```kotlin
 @Serializable
-data class ObjectId(@SerialName("\$oid") val oid: String)
+data class ObjectId(@SerialName("\$oid") val oid: String) {
+    init {
+        if (!Regex("[a-f0-9]{24}").matches(oid)) throw SerializationException("Invalid ObjectId: $oid")
+    }
+}
 ```
+
+Where an `ObjectId` is flattened, Serde reads past a key beside `$oid`. So the Dart and Swift reads hand a flattened `ObjectId`, and a brand or an alias over one declared above its holder, the entry of its `$oid` key alone, and the Kotlin read reads it with `ignoreUnknownKeys`. An optional one is read as no value where the object holds no `$oid` key, and is refused where the key does not read. The Dart and Swift reads do the same where such an `ObjectId` fills a type parameter that a generic type flattens, itself or through a type it hands the parameter on to, and under an `Option` of the parameter they read no value wherever the `ObjectId` does not read, as Serde does. With `pub struct Enveloping<Held> { #[serde(flatten)] pub held: Held, #[serde(flatten)] pub remark: Notation }`, a holder of `Enveloping<ObjectId>` reads that member from `{"$oid":"507f1f77bcf86cd799439011","note":"n"}` as Serde does:
+
+- in Dart, the converter the holder hands for the parameter reads the entry of its `$oid` key alone. Where the generic type also reads the parameter under a key, the holder hands that converter beside the one that reads all it is handed, as `heldFromFlattenedJson`, and the generic type calls it for its flattened reads alone;
+- in Swift, the generic type tells, as it reads the parameter, whether it is filled at an `ObjectId`, or at a brand or a struct of one slot over one declared above the generic type, by the name `String(describing:)` writes for the filling. An alias is the type it names.
+
+Elsewhere the `ObjectId` is handed the object any flattened member is handed, and the keys of a member flattened after it, and of one flattened ahead of it whose keys the client does not know, reach it and refuse the payload, where Serde reads it:
+
+- in Dart and in Swift, for a brand over an `ObjectId` declared below its holder, and in Dart for an alias of one declared there: a type the emitter has not written. In Swift an alias declared below its holder is a type tixschema has not written, which the `ObjectId` above does not declare itself as (see [`validate()` in the Swift client](#validate-in-the-swift-client)), so its holder does not compile;
+- in Swift, for a brand or a struct of one slot over an `ObjectId` that fills a type parameter and is declared below the generic type, or declares a type parameter of its own.
 
 ## Chrono Date/Time Types
 

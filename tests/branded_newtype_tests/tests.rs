@@ -381,8 +381,10 @@ mod objectid_branded_surface_tests {
     use super::*;
     use mongodb::bson::oid::ObjectId;
 
-    const OID_ZOD_BASE: &str =
-        r#"z.object({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" })"#;
+    const OID_ZOD_BASE: &str = concat!(
+        r#"z.strictObject({ $oid: z.string().regex(/^[a-f0-9]{24}$/, "#,
+        r#"{ message: "Invalid ObjectId" })"#
+    );
 
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

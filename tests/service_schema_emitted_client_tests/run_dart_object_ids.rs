@@ -1,0 +1,224 @@
+//! An `ObjectId` in each position serde writes one, read and written back under the Dart VM by the
+//! emitted Dart types beside the `ObjectId` the README declares, against serde: a key beside
+//! `$oid`, and a `$oid` that is not 24 hexadecimal digits in lower case, are refused where serde
+//! refuses them, and a flattened one is read from its `$oid` key alone, as serde reads past any
+//! other.
+
+#![cfg(all(feature = "dart", feature = "mongodb"))]
+
+use core::fmt::Write as _;
+
+use super::object_id_models::{
+    belated_dart, bullae_dart, cachet_dart, countersigned_dart, crossed_dart, crossing_dart,
+    docketing_dart, embossed_dart, endorsed_dart, endorsing_dart, enveloping_dart, enwafered_dart,
+    folding_dart, late_sigil_dart, lettering_dart, notation_dart, relayed_dart, relaying_dart,
+    rows, sigil_dart, sigiled_dart, sigillary_dart, sigillum_dart, stampage_dart, wafer_dart,
+    wafered_dart, wafering_dart, waxing_dart,
+};
+use super::object_id_runs::{printed, readme_object_id};
+use super::run_dart_validate::{dart, module};
+
+/// What prints a row: the value read and written back, or `refused`.
+const TOLD: &str = "
+void told(String at, Object? Function() read) {
+  String printed;
+  try {
+    printed = 'read ${jsonEncode(read())}';
+  } catch (_) {
+    printed = 'refused';
+  }
+  print('$at: $printed');
+}
+";
+
+/// Each payload of [`rows`] is read by the Dart read where the row states a client reads it, and
+/// written back as serde writes it, and refused where it states none does.
+#[test]
+fn an_object_id_is_read_and_written_back_by_dart_as_serde_reads_it() {
+    let mut main = String::from("void main() {\n");
+    let mut expected = String::new();
+    for (at, row) in rows().iter().enumerate() {
+        let _ = writeln!(
+            main,
+            "  told('{at}', () => {}.fromJson(jsonDecode(r'''{}''')).toJson());",
+            row.read_as, row.json
+        );
+        let _ = writeln!(
+            expected,
+            "{at}: {}",
+            printed(row.dart, row.read_as, row.json)
+        );
+    }
+    main.push_str("}\n");
+    let source = module(
+        &[
+            readme_object_id("dart"),
+            notation_dart::dart_definition(),
+            countersigned_dart::dart_definition(),
+            sigil_dart::dart_definition(),
+            sigillum_dart::dart_definition(),
+            endorsed_dart::dart_definition(),
+            endorsing_dart::dart_definition(),
+            cachet_dart::dart_definition(),
+            embossed_dart::dart_definition(),
+            docketing_dart::dart_definition(),
+            stampage_dart::dart_definition(),
+            sigiled_dart::dart_definition(),
+            sigillary_dart::dart_definition(),
+            enveloping_dart::dart_definition(),
+            waxing_dart::dart_definition(),
+            relaying_dart::dart_definition(),
+            wafer_dart::dart_definition(),
+            lettering_dart::dart_definition(),
+            folding_dart::dart_definition(),
+            relayed_dart::dart_definition(),
+            crossed_dart::dart_definition(),
+            crossing_dart::dart_definition(),
+            bullae_dart::dart_definition(),
+            wafered_dart::dart_definition(),
+            wafering_dart::dart_definition(),
+            enwafered_dart::dart_definition(),
+            belated_dart::dart_definition(),
+            late_sigil_dart::dart_definition(),
+        ],
+        &[TOLD],
+        &main,
+    );
+    let Some((ran, printed)) = dart("object-ids", &[], &source) else {
+        return;
+    };
+    assert!(ran, "{printed}");
+    assert_eq!(printed, expected, "the Dart read is not serde's");
+}
+
+/// The analyzer passes the README's `ObjectId` beside a holder of one under a key, in a list, as a
+/// type argument and under a brand. A holder that flattens one, or holds one as a map's value or
+/// beside a tag, is run above alone: its codec casts a value whose type the analyzer already
+/// knows.
+#[test]
+fn the_readme_object_id_has_no_issue_beside_the_emitted_types() {
+    let source = module(
+        &[
+            readme_object_id("dart"),
+            countersigned_dart::dart_definition(),
+            sigil_dart::dart_definition(),
+            endorsed_dart::dart_definition(),
+        ],
+        &[],
+        &format!(
+            "void main() => \
+             print(jsonEncode(Endorsed.fromJson(jsonDecode(r'''{}''')).toJson()));\n",
+            rows()[0].json
+        ),
+    );
+    let Some((clean, said)) = dart("object-ids-analyze", &["analyze"], &source) else {
+        return;
+    };
+    assert!(clean, "{said}");
+    assert!(said.contains("No issues found!"), "{said}");
+}
+
+/// The Dart read hands a flattened `ObjectId`, and a brand and an alias over one, the entry of its
+/// `$oid` key alone, and looks for an optional one by that key.
+#[test]
+fn the_dart_text_hands_a_flattened_object_id_its_key_alone() {
+    let only = "(switch (json) { final whole => { for (final key in const ['\\$oid']) if \
+                (whole.containsKey(key)) key: whole[key] } })";
+    for (written, held) in [
+        (
+            docketing_dart::dart_definition(),
+            format!("oid: ObjectId.fromJson({only}),"),
+        ),
+        (
+            sigiled_dart::dart_definition(),
+            format!("mark: Sigil.fromJsonUnjudged({only}),"),
+        ),
+        (
+            sigillary_dart::dart_definition(),
+            format!("oid: SigillumType.fromJsonUnjudged({only}),"),
+        ),
+        (
+            stampage_dart::dart_definition(),
+            "oid: ((switch (({...json}..remove('id'))) { final whole => { for (final key in \
+             const ['\\$oid']) if (whole.containsKey(key)) key: whole[key] } }).keys.any(const \
+             ['\\$oid'].contains) ? "
+                .to_owned(),
+        ),
+    ] {
+        assert!(written.contains(&held), "no `{held}` in: {written}");
+    }
+}
+
+/// A holder hands a type that reads its type parameter only flattened a converter that hands an
+/// `ObjectId`, and a brand and an alias over one, the entry of its `$oid` key alone, through a type
+/// that hands the parameter on as well. A type that also reads it under a key takes that converter
+/// for its flattened reads beside the one that hands all it is handed, and a type that reads it
+/// under a key alone takes the second alone.
+#[test]
+fn the_dart_text_hands_an_object_id_a_type_parameter_flattens_its_key_alone() {
+    let only = |read: &str| {
+        format!(
+            "(e) => {read}((switch (e) {{ final whole => {{ for (final key in const ['\\$oid']) \
+             if (whole.containsKey(key)) key: whole[key] }} }}))"
+        )
+    };
+    for (written, held) in [
+        (
+            lettering_dart::dart_definition(),
+            format!(
+                "Enveloping.fromJsonUnjudged(json['envelope'], {})",
+                only("ObjectId.fromJson")
+            ),
+        ),
+        (
+            relayed_dart::dart_definition(),
+            format!(
+                "Relaying.fromJsonUnjudged(json['relay'], {})",
+                only("ObjectId.fromJson")
+            ),
+        ),
+        (
+            bullae_dart::dart_definition(),
+            format!(
+                "Enveloping.fromJsonUnjudged(json['branded'], {})",
+                only("Sigil.fromJson")
+            ),
+        ),
+        (
+            bullae_dart::dart_definition(),
+            format!(
+                "Enveloping.fromJsonUnjudged(json['aliased'], {})",
+                only("SigillumType.fromJson")
+            ),
+        ),
+        (
+            endorsed_dart::dart_definition(),
+            "Countersigned.fromJsonUnjudged(json['carried'], (e) => ObjectId.fromJson(e))"
+                .to_owned(),
+        ),
+        (
+            crossing_dart::dart_definition(),
+            format!(
+                "Crossed.fromJsonUnjudged(json['crossed'], (e) => ObjectId.fromJson(e), \
+                 heldFromFlattenedJson: {})",
+                only("ObjectId.fromJson")
+            ),
+        ),
+        (
+            crossed_dart::dart_definition(),
+            "factory Crossed.fromJsonUnjudged(Map<String, dynamic> json, Held Function(dynamic) \
+             heldFromJson, {Held Function(dynamic)? heldFromFlattenedJson}) => Crossed(held: \
+             (heldFromFlattenedJson ?? heldFromJson)(({...json}..remove('spare'))),remark: \
+             Notation.fromJsonUnjudged(json),spare: heldFromJson(json['spare']),);"
+                .to_owned(),
+        ),
+        (
+            enveloping_dart::dart_definition(),
+            "factory Enveloping.fromJsonUnjudged(Map<String, dynamic> json, Held Function(dynamic) \
+             heldFromJson) => Enveloping(held: heldFromJson(json),"
+                .to_owned(),
+        ),
+    ] {
+        assert!(written.contains(&held), "no `{held}` in: {written}");
+    }
+}

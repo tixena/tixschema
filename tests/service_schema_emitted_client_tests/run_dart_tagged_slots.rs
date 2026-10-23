@@ -8,6 +8,8 @@
 
 use core::fmt::Write as _;
 
+#[cfg(feature = "mongodb")]
+use super::object_id_runs::readme_object_id;
 use super::run_dart_validate::{dart, module};
 use super::tagged_slot_models::{
     ENTRIES_REFUSED, WRITTEN, ballast_dart, bunkered_dart, cradled_dart, demurrage_dart,
@@ -34,17 +36,6 @@ void told(String at, Object? Function() read) {
     printed = '${refusal.runtimeType}: $refusal';
   }
   print('$at: $printed');
-}
-";
-
-/// The consumer's own `ObjectId`, as the README writes it.
-#[cfg(feature = "mongodb")]
-const OBJECT_ID: &str = r"
-class ObjectId {
-  final String oid;
-  ObjectId(this.oid);
-  factory ObjectId.fromJson(Map<String, dynamic> json) => ObjectId(json['\$oid'] as String);
-  Map<String, dynamic> toJson() => {'\$oid': oid};
 }
 ";
 
@@ -163,7 +154,7 @@ fn an_object_id_beside_the_tag_is_read_and_written_back_by_dart_as_serde_writes_
     main.push_str("}\n");
     let source = module(
         &[
-            OBJECT_ID.to_owned(),
+            readme_object_id("dart"),
             imprint_dart::dart_definition(),
             stamping_dart::dart_definition(),
         ],
