@@ -7,9 +7,9 @@
 
 use core::fmt::Write as _;
 
-use super::bare_digit_rows::{BARE_EXCHANGES, bare_printed};
+use super::bare_wide_integer_rows::{BARE_EXCHANGES, bare_printed};
 use super::run_dart_validate::{dart, module};
-use super::run_node_digits::{TallyingBareServiceSchema, tally_error_dart};
+use super::run_node_wide_integers::{TallyingBareServiceSchema, tally_error_dart};
 
 /// A transport that prints each request it is handed and answers the next response of
 /// `responses`, and what prints each answer.
@@ -47,7 +47,7 @@ String shownTotal(TallyingBareServiceTotalResult result) => switch (result) {
 /// Each call hands its transport the request the Rust client sends of it, and reads each response
 /// the Rust dispatcher answers back into the integers.
 #[test]
-fn a_bare_i64_travels_as_its_digits_through_the_dart_client() {
+fn a_bare_i64_travels_as_a_number_through_the_dart_client() {
     let mut responses = String::new();
     for exchange in &BARE_EXCHANGES {
         let headers: Vec<String> = exchange
@@ -85,7 +85,7 @@ fn a_bare_i64_travels_as_its_digits_through_the_dart_client() {
         &[RECORDER],
         &main,
     );
-    let Some((ran, printed)) = dart("bare-digits", &[], &source) else {
+    let Some((ran, printed)) = dart("bare-wide-integers", &[], &source) else {
         return;
     };
     assert!(ran, "{printed}");
@@ -94,7 +94,7 @@ fn a_bare_i64_travels_as_its_digits_through_the_dart_client() {
         bare_printed(),
         "the Dart client is not the Rust one"
     );
-    let Some((clean, said)) = dart("bare-digits-analyze", &["analyze"], &source) else {
+    let Some((clean, said)) = dart("bare-wide-integers-analyze", &["analyze"], &source) else {
         return;
     };
     assert!(clean && said.contains("No issues found!"), "{said}");

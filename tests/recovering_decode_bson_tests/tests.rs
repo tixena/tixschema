@@ -33,7 +33,6 @@ mod across_modules;
 mod aliased;
 mod bounds;
 mod checks;
-mod digits;
 mod flattened;
 mod generic_holders;
 // A build that describes a type refuses a renaming whose two directions name two keys.
@@ -53,6 +52,7 @@ mod readme;
 mod readme_resolvers;
 mod refused_read;
 mod shared_resolvers;
+mod wide_integers;
 
 use core::error::Error;
 use core::fmt::Display;

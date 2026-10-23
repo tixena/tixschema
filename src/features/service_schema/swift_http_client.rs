@@ -3,7 +3,7 @@
 
 use crate::features::swift::{forms, swift_field_member, swift_member, swift_quoted};
 use crate::features::text_forms::TextForm;
-use crate::field_type::{FieldDefType, bare_field_def};
+use crate::field_type::{FieldDefType, get_field_def};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HttpShape, OperationDef, OperationInputs,
@@ -11,7 +11,7 @@ use crate::service_schema::parse::{
     path_reads_a_named_field, service_declares_a_stream, service_declares_multipart,
     tuple_elements, vec_inner, wire_key, written,
 };
-use crate::service_schema::support::{bare_types, fault_fields_typescript_name};
+use crate::service_schema::support::fault_fields_typescript_name;
 use core::fmt::Write as _;
 use syn::{Ident, Type};
 
@@ -218,7 +218,7 @@ fn client_struct(
         .map(|operation| method(named, fn_prefix, operation, has_multipart))
         .collect::<Vec<_>>()
         .join("\n\n");
-    let forms = forms::helpers(&text_forms(service), reads_digits(service));
+    let forms = forms::helpers(&text_forms(service));
     let texts = if forms.is_empty() {
         String::new()
     } else {
@@ -615,122 +615,16 @@ fn json_encode_body_stmt(
 /// `String`, in the form serde writes, under an `Option` and a list alike; `None` where `ty`
 /// reaches no such text. It throws for a text no rewrite turns into its form.
 pub(super) fn swift_sent_value(ty: &Type, expr: &str) -> Option<String> {
-    sent_at(ty, expr).map(|(sent, _)| sent)
-}
-
-/// [`swift_sent_value`], and whether writing it throws: a `u64` and an `i64` are written as the
-/// string of their digits, which throws nothing.
-fn sent_at(ty: &Type, expr: &str) -> Option<(String, bool)> {
-    let tried_if = |throws: bool| if throws { "try " } else { "" };
     if let Some(inner) = option_inner(ty) {
-        let (held, throws) = sent_at(inner, "held")?;
-        let tried = tried_if(throws);
-        return Some((format!("{tried}({expr}).map {{ held in {held} }}"), throws));
+        let held = swift_sent_value(inner, "held")?;
+        return Some(format!("try ({expr}).map {{ held in {held} }}"));
     }
     if let Some(inner) = vec_inner(ty) {
-        let (element, throws) = sent_at(inner, "element")?;
-        let tried = tried_if(throws);
-        return Some((
-            format!("{tried}({expr}).map {{ element in {element} }}"),
-            throws,
-        ));
+        let element = swift_sent_value(inner, "element")?;
+        return Some(format!("try ({expr}).map {{ element in {element} }}"));
     }
-    let def = bare_field_def("value", ty);
-    if matches!(def.field_type, FieldDefType::I64Digits) {
-        return Some((format!("String({expr})"), false));
-    }
-    forms::held_as_text(&def).map(|form| (forms::sent_call_at(form, expr, "[]"), true))
-}
-
-/// What reads a value of `ty` that holds an `i64` as the string of its digits: the type it is
-/// decoded as, `String` in place of each integer, and the expression that turns `expr`, a value of
-/// that type, into the value. `None` where `ty` holds no such integer, under an `Option`, a list
-/// and a map's value alike.
-pub(super) fn swift_digits_read(ty: &Type, expr: &str) -> Option<(String, String)> {
-    digits_read_at(ty, expr, 0)
-}
-
-/// [`swift_digits_read`], `depth` numbering the bindings of its closures.
-fn digits_read_at(ty: &Type, expr: &str, depth: usize) -> Option<(String, String)> {
-    let held = format!("held{depth}");
-    let below = |inner: &Type| digits_read_at(inner, &held, depth.saturating_add(1));
-    if let Some(inner) = option_inner(ty) {
-        let (wire, read) = below(inner)?;
-        return Some((
-            format!("{wire}?"),
-            format!("try ({expr}).map {{ {held} in {read} }}"),
-        ));
-    }
-    if let Some(inner) = vec_inner(ty) {
-        let (wire, read) = below(inner)?;
-        return Some((
-            format!("[{wire}]"),
-            format!("try ({expr}).map {{ {held} in {read} }}"),
-        ));
-    }
-    let def = bare_field_def("value", ty);
-    if matches!(def.field_type, FieldDefType::Map(_, _))
-        && def.array_depth == 0
-        && !def.is_optional()
-        && let Some((key_ty, value_ty)) = map_arguments(ty)
-    {
-        let (wire, read) = below(value_ty)?;
-        let key = swift_typename_of(key_ty);
-        return Some((
-            format!("[{key}: {wire}]"),
-            format!("try ({expr}).mapValues {{ {held} in {read} }}"),
-        ));
-    }
-    matches!(def.field_type, FieldDefType::I64Digits)
-        .then(|| ("String".to_owned(), forms::digits_read_call(expr, "[]")))
-}
-
-/// The two type arguments of a map `ty` writes, the key's and the value's.
-fn map_arguments(ty: &Type) -> Option<(&Type, &Type)> {
-    let Type::Path(named) = ty else {
-        return None;
-    };
-    let segment = named.path.segments.last()?;
-    let syn::PathArguments::AngleBracketed(angled) = &segment.arguments else {
-        return None;
-    };
-    let mut written = angled.args.iter().filter_map(|argument| {
-        if let syn::GenericArgument::Type(held) = argument {
-            Some(held)
-        } else {
-            None
-        }
-    });
-    Some((written.next()?, written.next()?))
-}
-
-/// The statement that decodes `source`, a `Data`, into `target`, a value of `ty`: through the
-/// string of the digits of each `i64` it holds, where it holds one. `indent` leads the second line
-/// of two.
-fn decoded_assign(fn_prefix: &str, ty: &Type, target: &str, source: &str, indent: &str) -> String {
-    swift_digits_read(ty, "wire").map_or_else(
-        || {
-            format!(
-                "{target} = try {fn_prefix}DatedDecoder().decode({}.self, from: {source})",
-                swift_typename_of(ty)
-            )
-        },
-        |(wire, read)| {
-            format!(
-                "let wire = try {fn_prefix}DatedDecoder().decode({wire}.self, from: {source})\n\
-                 {indent}{target} = {read}"
-            )
-        },
-    )
-}
-
-/// Whether a value `service` reads back holds an `i64` it reads from the string of its digits.
-pub(super) fn reads_digits(service: &ServiceDef) -> bool {
-    service
-        .operations
-        .iter()
-        .flat_map(bare_types)
-        .any(|ty| swift_digits_read(&ty, "value").is_some())
+    forms::held_as_text(&get_field_def("value", ty, ""))
+        .map(|form| forms::sent_call_at(form, expr, "[]"))
 }
 
 /// What a method answers for a value it cannot write, before the transport is reached: a message
@@ -1065,7 +959,7 @@ fn header_value_read_stmts(
 /// item type.
 fn header_read_is_fallible(bare_ty: &Type) -> bool {
     let leaf = vec_inner(bare_ty).unwrap_or(bare_ty);
-    let read = bare_field_def("value", leaf);
+    let read = get_field_def("value", leaf, "");
     #[cfg(feature = "chrono")]
     if matches!(read.field_type, FieldDefType::DateTime) {
         return true;
@@ -1077,12 +971,10 @@ fn header_read_is_fallible(bare_ty: &Type) -> bool {
             | FieldDefType::U16
             | FieldDefType::U32
             | FieldDefType::U64
-            | FieldDefType::U64Digits
             | FieldDefType::I8
             | FieldDefType::I16
             | FieldDefType::I32
             | FieldDefType::I64
-            | FieldDefType::I64Digits
             | FieldDefType::Usize
             | FieldDefType::Isize
             | FieldDefType::F32
@@ -1186,11 +1078,11 @@ fn fallible_assign_stmt(
 fn error_decode_block(fn_prefix: &str, wire: &str, shape: &HttpShape, error: &Type) -> String {
     if shape.error_header_out.is_empty() {
         let error_ty = swift_typename_of(error);
-        let decoded = decoded_assign(fn_prefix, error, "declared", "response.body", "        ");
         return format!(
             "      let declared: {error_ty}\n      \
              do {{\n        \
-             {decoded}\n      \
+             declared = try {fn_prefix}DatedDecoder().decode({error_ty}.self, from: \
+             response.body)\n      \
              }} catch {{\n        \
              return .failure(.fault(\n          \
              {fn_prefix}UndeserializablePayload({wire}, \"\\(error)\")\n        \
@@ -1200,13 +1092,14 @@ fn error_decode_block(fn_prefix: &str, wire: &str, shape: &HttpShape, error: &Ty
         );
     }
     let elements: Vec<&Type> = tuple_elements(error).into_iter().flatten().collect();
-    let head = elements.first().copied().unwrap_or(error);
-    let head_ty = swift_typename_of(head);
-    let decoded = decoded_assign(fn_prefix, head, "declaredHead", "response.body", "        ");
+    let head_ty = elements
+        .first()
+        .map_or_else(|| swift_typename_of(error), |ty| swift_typename_of(ty));
     let mut stmt = format!(
         "      let declaredHead: {head_ty}\n      \
          do {{\n        \
-         {decoded}\n      \
+         declaredHead = try {fn_prefix}DatedDecoder().decode({head_ty}.self, from: \
+         response.body)\n      \
          }} catch {{\n        \
          return .failure(.fault(\n          \
          {fn_prefix}UndeserializablePayload({wire}, \"\\(error)\")\n        \
@@ -1242,11 +1135,11 @@ fn success_decode_block(fn_prefix: &str, wire: &str, shape: &HttpShape, success:
             return "      return .success(())\n".to_owned();
         }
         let success_ty = swift_typename_of(success);
-        let decoded = decoded_assign(fn_prefix, success, "value", "response.body", "        ");
         return format!(
             "      let value: {success_ty}\n      \
              do {{\n        \
-             {decoded}\n      \
+             value = try {fn_prefix}DatedDecoder().decode({success_ty}.self, from: \
+             response.body)\n      \
              }} catch {{\n        \
              return .failure(.fault(\n          \
              {fn_prefix}UndeserializablePayload({wire}, \"\\(error)\")\n        \
@@ -1258,13 +1151,13 @@ fn success_decode_block(fn_prefix: &str, wire: &str, shape: &HttpShape, success:
     // `header_out`'s own arity check guarantees `success` is a tuple of exactly this many
     // elements, so the lookups below never miss.
     let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
-    let body = elements.first().copied().unwrap_or(success);
-    let body_ty = swift_typename_of(body);
-    let decoded = decoded_assign(fn_prefix, body, "value", "response.body", "        ");
+    let body_ty = elements
+        .first()
+        .map_or_else(|| swift_typename_of(success), |ty| swift_typename_of(ty));
     let mut stmt = format!(
         "      let value: {body_ty}\n      \
          do {{\n        \
-         {decoded}\n      \
+         value = try {fn_prefix}DatedDecoder().decode({body_ty}.self, from: response.body)\n      \
          }} catch {{\n        \
          return .failure(.fault(\n          \
          {fn_prefix}UndeserializablePayload({wire}, \"\\(error)\")\n        \
@@ -1582,7 +1475,7 @@ fn swift_wire_text(fn_prefix: &str, ty: &Type, expr: &str) -> SwiftText {
             throws: element.throws,
         };
     }
-    let field = bare_field_def("value", ty);
+    let field = get_field_def("value", ty, "");
     if let Some(form) = forms::held_as_text(&field) {
         return SwiftText {
             expr: forms::sent_call_at(form, expr, "[]"),
@@ -1629,7 +1522,7 @@ fn writes_through_wire_text(ty: &Type) -> bool {
     if let Some(inner) = vec_inner(base) {
         return writes_through_wire_text(inner);
     }
-    let field = bare_field_def("value", base);
+    let field = get_field_def("value", base, "");
     forms::held_as_text(&field).is_none() && !interpolates(&field.field_type)
 }
 
@@ -1649,7 +1542,7 @@ fn text_forms(service: &ServiceDef) -> Vec<TextForm> {
             while let Some(inner) = option_inner(base).or_else(|| vec_inner(base)) {
                 base = inner;
             }
-            if let Some(form) = forms::held_as_text(&bare_field_def("value", base))
+            if let Some(form) = forms::held_as_text(&get_field_def("value", base, ""))
                 && !found.contains(&form)
             {
                 found.push(form);
@@ -1673,7 +1566,7 @@ fn swift_header_out_decode(fn_prefix: &str, ty: &Type, raw: &str) -> String {
              .map {{ piece in {element} }}"
         );
     }
-    match bare_field_def("value", base).field_type {
+    match get_field_def("value", base, "").field_type {
         FieldDefType::Boolean => {
             format!("({raw} == \"true\" ? true : ({raw} == \"false\" ? false : nil))")
         }
@@ -1681,12 +1574,10 @@ fn swift_header_out_decode(fn_prefix: &str, ty: &Type, raw: &str) -> String {
         | FieldDefType::U16
         | FieldDefType::U32
         | FieldDefType::U64
-        | FieldDefType::U64Digits
         | FieldDefType::I8
         | FieldDefType::I16
         | FieldDefType::I32
         | FieldDefType::I64
-        | FieldDefType::I64Digits
         | FieldDefType::Usize
         | FieldDefType::Isize
         | FieldDefType::F32

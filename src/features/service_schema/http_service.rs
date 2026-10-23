@@ -6,13 +6,13 @@
 use super::message;
 use super::result::STREAMED_ANSWER_TS_TYPE;
 use super::service;
-use crate::field_type::bare_field_def;
+use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HttpShape, OperationDef, OperationInputs,
-    OperationOutcome, PathSegment, ServiceDef, error_declared_type, is_scalar_named_type,
-    option_inner, service_declares_a_stream, service_declares_multipart, tuple_elements,
-    type_leaf_name, vec_inner, wire_key, written,
+    OperationOutcome, PathSegment, ServiceDef, error_declared_type, held_as_a_bigint,
+    is_scalar_named_type, option_inner, service_declares_a_stream, service_declares_multipart,
+    tuple_elements, type_leaf_name, vec_inner, wire_key, written,
 };
 use crate::service_schema::support::fault_fields_typescript_name;
 use crate::utils::{is_recorded_untagged_enum, ts_quoted};
@@ -42,6 +42,7 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
         response_type(&named, has_stream),
         fault_handler_type(&named),
         message::wire_fn(&format!("{prefix}HttpAnswered")),
+        message::read_fn(&format!("{prefix}HttpRequestRead")),
         json_fn(&named, &prefix),
         default_fault_handler_fn(&named, &prefix),
         fault_fn(&named, &prefix),
@@ -50,6 +51,9 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
         parse_query_fn(&prefix),
         coerce_number_fn(&prefix),
     ];
+    if service.operations.iter().any(reads_a_bigint_from_text) {
+        items.push(coerce_bigint_fn(&prefix));
+    }
     if service_writes_a_response_header(service) {
         items.push(legal_response_header_value_fn(&prefix));
     }
@@ -100,7 +104,7 @@ fn replied_header_fn(prefix: &str) -> String {
          name: string,\n\
          ): unknown {{\n  \
          const carried = replied.find(([candidate]) => candidate === name)?.[1];\n  \
-         return carried === undefined ? undefined : JSON.parse(carried);\n\
+         return carried === undefined ? undefined : {prefix}HttpRequestRead(carried);\n\
          }}"
     )
 }
@@ -312,6 +316,41 @@ fn coerce_number_fn(prefix: &str) -> String {
     )
 }
 
+/// The text of a `u64` or an `i64` read as the `bigint` it holds, exactly: a text of no digits is
+/// handed on as it is, for the message's schema to refuse.
+fn coerce_bigint_fn(prefix: &str) -> String {
+    format!(
+        "/** The text of a `u64` or an `i64` read as the `bigint` its digits hold, else the text \
+         itself. */\n\
+         function {prefix}HttpCoerceBigInt(raw: string): unknown {{\n  \
+         return /^-?(0|[1-9][0-9]*)$/.test(raw) ? BigInt(raw) : raw;\n\
+         }}"
+    )
+}
+
+/// Whether `operation` reads a `u64` or an `i64` from the text of a path, a query, a header or a
+/// text part: what [`coerce_bigint_fn`] is written for.
+fn reads_a_bigint_from_text(operation: &OperationDef) -> bool {
+    let shape = HttpShape::of(operation);
+    let generated = match &operation.inputs {
+        OperationInputs::Generated(fields) => fields.iter().any(|(_, ty)| reads_a_bigint(ty)),
+        OperationInputs::Named(declared) => reads_a_bigint(declared),
+        OperationInputs::Empty => false,
+    };
+    generated
+        || shape
+            .header_in
+            .iter()
+            .any(|header| reads_a_bigint(&header.ty))
+}
+
+/// Whether the text a value of `ty` is read from holds a `u64` or an `i64`, under an `Option` and
+/// a list alike.
+fn reads_a_bigint(ty: &Type) -> bool {
+    let base = option_inner(ty).unwrap_or(ty);
+    held_as_a_bigint(vec_inner(base).unwrap_or(base))
+}
+
 /// The one status a declared error answers whatever it holds: the fixed default with no table,
 /// and the status every mapped variant of an untagged enum shares. `None` where a switch reads it.
 fn fixed_error_status(shape: &HttpShape, error_type: &Type) -> Option<u16> {
@@ -393,7 +432,7 @@ fn whole_body_message_stmt(wire: &str, prefix: &str) -> String {
     format!(
         "        let message: unknown;\n        \
          try {{\n          \
-         message = JSON.parse(new TextDecoder().decode(request.body));\n        \
+         message = {prefix}HttpRequestRead(new TextDecoder().decode(request.body));\n        \
          }} catch (rejected) {{\n          \
          return onFault({prefix}HttpFault(\"undeserializable-payload\", {wire}, \
          String(rejected)));\n        \
@@ -404,18 +443,20 @@ fn whole_body_message_stmt(wire: &str, prefix: &str) -> String {
 /// The statements that read `request.body` as JSON and answer with an empty base object rather
 /// than a fault where it will not parse or is not itself an object — mirroring the Rust
 /// `object_base(true)`, which the caller then inserts fields onto.
-fn parsed_body_base_stmt() -> String {
-    "        let message: Record<string, unknown>;\n        \
-     try {\n          \
-     const parsedBody: unknown = JSON.parse(new TextDecoder().decode(request.body));\n          \
-     message =\n            \
-     typeof parsedBody === \"object\" && parsedBody !== null && !Array.isArray(parsedBody)\n              \
-     ? (parsedBody as Record<string, unknown>)\n              \
-     : {};\n        \
-     } catch {\n          \
-     message = {};\n        \
-     }\n"
-        .to_owned()
+fn parsed_body_base_stmt(prefix: &str) -> String {
+    format!(
+        "        let message: Record<string, unknown>;\n        \
+         try {{\n          \
+         const parsedBody: unknown = {prefix}HttpRequestRead(new \
+         TextDecoder().decode(request.body));\n          \
+         message =\n            \
+         typeof parsedBody === \"object\" && parsedBody !== null && !Array.isArray(parsedBody)\n              \
+         ? (parsedBody as Record<string, unknown>)\n              \
+         : {{}};\n        \
+         }} catch {{\n          \
+         message = {{}};\n        \
+         }}\n"
+    )
 }
 
 fn empty_message_build(
@@ -457,7 +498,7 @@ fn named_message_build(
             ),
         );
     }
-    let mut setup = parsed_body_base_stmt();
+    let mut setup = parsed_body_base_stmt(prefix);
     for name in placeholder_names {
         let _ = writeln!(
             setup,
@@ -509,7 +550,7 @@ fn generated_message_build(
     let mut setup = if multipart {
         "        const message: Record<string, unknown> = {};\n".to_owned()
     } else if bodied {
-        parsed_body_base_stmt()
+        parsed_body_base_stmt(prefix)
     } else if reads_query {
         format!(
             "        const queryMap = {prefix}HttpParseQuery(request.query);\n        \
@@ -714,7 +755,13 @@ fn header_in_encode_stmt(shape: &HttpShape, prefix: &str) -> String {
             RenameRule::CamelCase.apply_to_field(&written(&header.parameter))
         );
         let lower = ts_quoted(&header.name.to_lowercase());
-        let decode = message::decode_ts_expr(&header.ty, &text, prefix);
+        let decoded = message::decode_ts_expr(&header.ty, &text, prefix);
+        // A `bigint` is written as the JSON number of its digits, which `JSON.stringify` refuses.
+        let decode = if reads_a_bigint(&header.ty) {
+            format!("{prefix}HttpAnswered({decoded})")
+        } else {
+            decoded
+        };
         let _ = write!(
             stmt,
             "        const {text} = request.headers.find(([name]) => name.toLowerCase() === \
@@ -923,7 +970,7 @@ fn declared_error_response_stmt(
         );
     }
     let idents = error_header_out_idents(shape);
-    let head_ty = bare_field_def("error", error_head).typescript_typename();
+    let head_ty = get_field_def("error", error_head, "").typescript_typename();
     let types = message::header_types(shape.error_header_out.len(), error);
     let mut stmt = format!(
         "          const declaredError = envelope.error as {head_ty};\n\
@@ -959,7 +1006,7 @@ fn replied_header_reads(
 ) -> String {
     let mut stmt = String::new();
     for ((name, ident), ty) in names.iter().zip(idents).zip(types) {
-        let element_ty = bare_field_def("value", ty).typescript_typename();
+        let element_ty = get_field_def("value", ty, "").typescript_typename();
         let _ = writeln!(
             stmt,
             "{indent}const {ident} = {prefix}HttpRepliedHeader(replied, {}) as \
@@ -1055,7 +1102,7 @@ fn bytes_reply_block(
         .into_iter()
         .flatten()
         .take(2)
-        .map(|ty| bare_field_def("value", ty).typescript_typename())
+        .map(|ty| get_field_def("value", ty, "").typescript_typename())
         .collect::<Vec<_>>()
         .join(", ");
     let mut out =
@@ -1135,7 +1182,7 @@ fn header_out_json_reply_block(
 ) -> String {
     let wire = &ts_quoted(&operation.wire_name);
     let body = message::body_type(shape.header_out.len(), success);
-    let body_ty = bare_field_def("value", body).typescript_typename();
+    let body_ty = get_field_def("value", body, "").typescript_typename();
     let mut out = dispatch_envelope_preamble(wire, message_expr, &body_ty, shape, error, ctx);
     out.push_str("        const value = envelope.value;\n");
     out.push_str(&header_out_writes(wire, shape, success, ctx, ""));

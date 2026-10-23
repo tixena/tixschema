@@ -5,7 +5,7 @@
 
 use crate::features::swift::{forms, swift_quoted, swift_reference_type};
 use crate::features::text_forms::TextForm;
-use crate::field_type::bare_field_def;
+use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationInputs, OperationOutcome, ServiceDef, is_unit_type,
@@ -15,8 +15,7 @@ use core::fmt::Write as _;
 use syn::Type;
 
 use super::swift_http_client::{
-    reads_digits, swift_call, swift_digits_read, swift_parameter, swift_parameter_declared,
-    swift_sent_value,
+    swift_call, swift_parameter, swift_parameter_declared, swift_sent_value,
 };
 use super::swift_type::swift_typename_of;
 use super::{left_to_http_rest, on_one_line};
@@ -272,7 +271,7 @@ fn sent_forms(service: &ServiceDef) -> Vec<TextForm> {
             while let Some(inner) = option_inner(base).or_else(|| vec_inner(base)) {
                 base = inner;
             }
-            if let Some(form) = forms::held_as_text(&bare_field_def("value", base))
+            if let Some(form) = forms::held_as_text(&get_field_def("value", base, ""))
                 && !found.contains(&form)
             {
                 found.push(form);
@@ -321,7 +320,7 @@ fn transport_actor(
         .map(|operation| operation_method(named, prefix, operation, has_header_in, aux))
         .collect::<Vec<_>>()
         .join("\n\n");
-    let forms = forms::helpers(&sent_forms(service), reads_digits(service));
+    let forms = forms::helpers(&sent_forms(service));
     let texts = if forms.is_empty() {
         String::new()
     } else {
@@ -641,23 +640,11 @@ fn header_read_struct(
     let mut properties = String::new();
     let mut coding_keys = String::new();
     let mut assigns = String::new();
-    let mut digits = false;
     for (ident, name, ty) in &entries {
         let full_ty = swift_typename_of(ty);
         let _ = writeln!(properties, "  let {ident}: {full_ty}");
         let _ = writeln!(coding_keys, "    case {ident} = {}", swift_quoted(name));
-        let wire = format!("{ident}Wire");
-        if let Some((wire_ty, read)) = swift_digits_read(ty, &wire) {
-            digits = true;
-            let decoded = wire_ty.strip_suffix('?').map_or_else(
-                || format!("try headers.decode({wire_ty}.self, forKey: .{ident})"),
-                |inner_wire| {
-                    let accessor = if has_required { "headers" } else { "headers?" };
-                    format!("try {accessor}.decodeIfPresent({inner_wire}.self, forKey: .{ident})")
-                },
-            );
-            let _ = writeln!(assigns, "    let {wire} = {decoded}\n    {ident} = {read}");
-        } else if let Some(inner) = option_inner(ty) {
+        if let Some(inner) = option_inner(ty) {
             let inner_ty = swift_typename_of(inner);
             let accessor = if has_required { "headers" } else { "headers?" };
             let _ = writeln!(
@@ -685,14 +672,9 @@ fn header_read_struct(
         ""
     };
     let idents = entries.into_iter().map(|(ident, _, _)| ident).collect();
-    let helpers = if digits {
-        format!("  {}\n", forms::helpers(&[], true).trim_end())
-    } else {
-        String::new()
-    };
     let text = format!(
         "struct {type_name}: Decodable {{\n\
-{properties}{helpers}\n  \
+{properties}\n  \
          private enum TopKeys: String, CodingKey {{\n    \
          case headers\n  \
          }}\n\n  \
@@ -729,9 +711,9 @@ fn success_block(
     if !shape.header_out.is_empty() {
         let success_ty = swift_typename_of(success);
         let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
-        let body = elements.first().copied().unwrap_or(success);
-        let (body_ty, body_value) = swift_digits_read(body, "decoded.value")
-            .unwrap_or_else(|| (swift_typename_of(body), "decoded.value".to_owned()));
+        let body_ty = elements
+            .first()
+            .map_or_else(|| swift_typename_of(success), |ty| swift_typename_of(ty));
         let headers_ty = format!(
             "{named}Ws{}SuccessHeaders",
             RenameRule::PascalCase.apply_to_field(&written(&operation.ident))
@@ -739,7 +721,7 @@ fn success_block(
         let (headers_struct, header_idents) =
             header_read_struct(&headers_ty, &shape.header_out, &elements, 1, "headerOut");
         aux.push(headers_struct);
-        let mut tuple_parts = vec![body_value];
+        let mut tuple_parts = vec!["decoded.value".to_owned()];
         tuple_parts.extend(
             header_idents
                 .iter()
@@ -770,15 +752,13 @@ fn success_block(
         RenameRule::PascalCase.apply_to_field(&written(&operation.ident))
     );
     let (success_ty, success_aux) =
-        swift_reference_type(&bare_field_def("value", success), &field_hint);
+        swift_reference_type(&get_field_def("value", success, ""), &field_hint);
     aux.extend(success_aux);
-    let (wire_ty, value) = swift_digits_read(success, "decoded.value")
-        .unwrap_or_else(|| (success_ty.clone(), "decoded.value".to_owned()));
     let block = format!(
         "        do {{\n          \
          let decoded = try {prefix}WsDatedDecoder().decode(\
-         {named}WsValueEnvelope<{wire_ty}>.self, from: raw)\n          \
-         return .success({value})\n        \
+         {named}WsValueEnvelope<{success_ty}>.self, from: raw)\n          \
+         return .success(decoded.value)\n        \
          }} catch {{\n          \
          return .failure(.fault({prefix}WsFailedValidation({wire}, \"\\(error)\")))\n        \
          }}\n"
@@ -803,24 +783,22 @@ fn declared_error_block(
             RenameRule::PascalCase.apply_to_field(&written(&operation.ident))
         );
         let (error_ty, error_aux) =
-            swift_reference_type(&bare_field_def("error", error), &error_hint);
+            swift_reference_type(&get_field_def("error", error, ""), &error_hint);
         aux.extend(error_aux);
-        let (wire_ty, value) = swift_digits_read(error, "declared.error")
-            .unwrap_or_else(|| (error_ty, "declared.error".to_owned()));
         return format!(
             "    do {{\n      \
              let declared = try {prefix}WsDatedDecoder().decode(\
-             {named}WsDeclaredEnvelope<{wire_ty}>.self, from: raw)\n      \
-             return .failure(.declared({value}))\n    \
+             {named}WsDeclaredEnvelope<{error_ty}>.self, from: raw)\n      \
+             return .failure(.declared(declared.error))\n    \
              }} catch {{\n      \
              return .failure(.fault({prefix}WsFailedValidation({wire}, \"\\(error)\")))\n    \
              }}\n"
         );
     }
     let elements: Vec<&Type> = tuple_elements(error).into_iter().flatten().collect();
-    let head = elements.first().copied().unwrap_or(error);
-    let (head_ty, head_value) = swift_digits_read(head, "declared.error")
-        .unwrap_or_else(|| (swift_typename_of(head), "declared.error".to_owned()));
+    let head_ty = elements
+        .first()
+        .map_or_else(|| swift_typename_of(error), |ty| swift_typename_of(ty));
     let headers_ty = format!(
         "{named}Ws{}ErrorHeaders",
         RenameRule::PascalCase.apply_to_field(&written(&operation.ident))
@@ -833,7 +811,7 @@ fn declared_error_block(
         "errorHeaderOut",
     );
     aux.push(headers_struct);
-    let mut tuple_parts = vec![head_value];
+    let mut tuple_parts = vec!["declared.error".to_owned()];
     tuple_parts.extend(
         header_idents
             .iter()
@@ -918,14 +896,14 @@ fn reply_method(
 fn message_swift_type(operation: &OperationDef) -> (String, Vec<String>) {
     match &operation.inputs {
         OperationInputs::Named(declared) => {
-            swift_reference_type(&bare_field_def("req", declared), "Req")
+            swift_reference_type(&get_field_def("req", declared, ""), "Req")
         }
         OperationInputs::Empty | OperationInputs::Generated(_) => {
             operation.generated_message_ident().map_or_else(
                 || ("String".to_owned(), Vec::new()),
                 |ident| {
                     let named: Type = syn::parse_quote! { #ident };
-                    swift_reference_type(&bare_field_def("req", &named), "Req")
+                    swift_reference_type(&get_field_def("req", &named, ""), "Req")
                 },
             )
         }

@@ -6,8 +6,6 @@ mod checks;
 pub mod enums;
 #[cfg(feature = "mongodb")]
 mod fields;
-#[cfg(feature = "bson")]
-mod integers;
 #[cfg(feature = "mongodb")]
 mod operations;
 #[cfg(feature = "mongodb")]
@@ -54,22 +52,15 @@ use crate::utils::{
 
 #[cfg(all(
     any(feature = "typescript", feature = "zod", feature = "jsonschema"),
-    not(feature = "bson")
+    not(feature = "mongodb")
 ))]
 const ADDED_TYPE_COUNT: usize = 15;
 
 #[cfg(all(
     any(feature = "typescript", feature = "zod", feature = "jsonschema"),
-    feature = "bson",
-    not(feature = "mongodb")
-))]
-const ADDED_TYPE_COUNT: usize = 16;
-
-#[cfg(all(
-    any(feature = "typescript", feature = "zod", feature = "jsonschema"),
     feature = "mongodb"
 ))]
-const ADDED_TYPE_COUNT: usize = 38;
+const ADDED_TYPE_COUNT: usize = 37;
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
@@ -84,8 +75,6 @@ const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
     #[cfg(feature = "mongodb")]
     "AsUpdate",
     "Asked",
-    #[cfg(feature = "bson")]
-    "BsonIntegers",
     #[cfg(feature = "mongodb")]
     "Element",
     "EntryOf",
@@ -148,8 +137,6 @@ const REEXPORT_REASON: &str = "tixschema re-exports the crate's support library 
 /// module re-exports by name.
 const DECODE_WITH_LIBRARY_NAMES: &[&str] = &[
     "Asked",
-    #[cfg(feature = "bson")]
-    "BsonIntegers",
     "Expected",
     "ExpectedToken",
     "Issue",
@@ -165,6 +152,8 @@ const DECODE_WITH_LIBRARY_NAMES: &[&str] = &[
     #[cfg(feature = "bson")]
     "bson_bound",
     #[cfg(feature = "bson")]
+    "bson_digits_settled",
+    #[cfg(feature = "bson")]
     "bson_leaf",
     #[cfg(feature = "bson")]
     "bson_remaining",
@@ -175,6 +164,7 @@ const DECODE_WITH_LIBRARY_NAMES: &[&str] = &[
     "taken_keys",
     "unsettled",
     "value_bound",
+    "value_digits_settled",
     "value_leaf",
     "value_remaining",
 ];
@@ -2683,11 +2673,9 @@ fn bson_library_items() -> TokenStream {
     let bound = bson_bound_items();
     let leaf = bson_leaf_items();
     let path = bson_path_helpers();
-    let integers = integers::bson_integer_items();
     quote! {
         #bound
         #leaf
-        #integers
 
         impl Path {
             #path
@@ -3056,6 +3044,26 @@ fn bson_bound_items() -> TokenStream {
     }
 }
 
+/// The statement that binds `whole` to the document an entry point takes: the functions a type
+/// names for itself are called once, on the document as it is taken.
+#[cfg(feature = "bson")]
+fn bson_document_taken(module: &Ident, corrects_own: bool) -> TokenStream {
+    if corrects_own {
+        quote! {
+            let mut whole = match Self::decode_with_bson_corrected(bson::Bson::Document(document)) {
+                ::core::result::Result::Ok(corrected) => corrected,
+                ::core::result::Result::Err(reason) => {
+                    return ::core::result::Result::Err(#module::Unrecovered {
+                        issues: ::std::vec::Vec::from([#module::Issue::Undescribed { reason }]),
+                    });
+                }
+            };
+        }
+    } else {
+        quote! { let mut whole = bson::Bson::Document(document); }
+    }
+}
+
 /// `from_bson_with`, `from_bson_piped` and the report they run. Every value is read through
 /// `bson::Deserializer::new`, which both major versions of the `bson` library have, and which
 /// takes what it reads by value: the document is held as the `bson::Bson` the walker borrows, and
@@ -3077,24 +3085,9 @@ fn bson_entry_methods(
     );
     // The read lists what it finds, so nothing below it is judged as it is read.
     let read = quote! { Self::#own_read(bson::Deserializer::new(whole.clone())) };
-    // The functions a type names for itself are called once, on the document as it is taken.
-    let taken = if corrects_own {
-        quote! {
-            let mut whole = match Self::decode_with_bson_corrected(bson::Bson::Document(document)) {
-                ::core::result::Result::Ok(corrected) => corrected,
-                ::core::result::Result::Err(reason) => {
-                    return ::core::result::Result::Err(#module::Unrecovered {
-                        issues: ::std::vec::Vec::from([#module::Issue::Undescribed { reason }]),
-                    });
-                }
-            };
-        }
-    } else {
-        quote! { let mut whole = bson::Bson::Document(document); }
-    };
-    let first_read = quote! {
-        #taken
-        let found = match #read {
+    let taken = bson_document_taken(module, corrects_own);
+    let attempt = quote! {
+        match #read {
             ::core::result::Result::Ok(decoded) => {
                 let mut found = Self::decode_with_bson_report(&whole, ::core::option::Option::None);
                 found.extend(Self::decode_with_bson_check_issues(&whole, &decoded.decode_with_check_messages()));
@@ -3104,6 +3097,25 @@ fn bson_entry_methods(
                 found
             }
             ::core::result::Result::Err(refused) => Self::decode_with_bson_report(&whole, ::core::option::Option::Some(refused.to_string())),
+        }
+    };
+    // A `u64` or an `i64` stored as the string of its digits, as a build of tixschema that wrote
+    // them so stored it, is read as its integer before any issue is handed on.
+    let first_read = quote! {
+        #taken
+        let mut settled = false;
+        let found = loop {
+            let found = #attempt;
+            if settled {
+                break found;
+            }
+            settled = match &mut whole {
+                bson::Bson::Document(object) => #module::bson_digits_settled(object, &found),
+                _ => false,
+            };
+            if !settled {
+                break found;
+            }
         };
         // `whole` is the document it was built from, so the other arm is never taken.
         let bson::Bson::Document(object) = &mut whole else {
@@ -3168,7 +3180,8 @@ fn bson_entry_methods(
     }
 }
 
-/// `bson_leaf`, the bracket rule it decides `Mistyped` by, and `bson_remaining`.
+/// `bson_leaf`, the bracket rule it decides `Mistyped` by, `bson_digits_settled` and
+/// `bson_remaining`.
 #[cfg(feature = "bson")]
 fn bson_leaf_items() -> TokenStream {
     quote! {
@@ -3183,8 +3196,7 @@ fn bson_leaf_items() -> TokenStream {
         }
 
         /// One BSON value read whole: refused by serde, or read but stored as a type `write`
-        /// does not give back. A 64-bit integer stored as a number or as its digits is stored as
-        /// either of its types.
+        /// does not give back.
         pub fn bson_leaf<T, I, E, R, W>(
             held: &bson::Bson,
             read: R,
@@ -3196,21 +3208,68 @@ fn bson_leaf_items() -> TokenStream {
         where
             E: ::core::fmt::Display,
             R: ::core::ops::FnOnce(bson::Deserializer) -> ::core::result::Result<T, E>,
-            W: ::core::ops::FnOnce(&T, BsonIntegers<bson::Serializer>) -> ::core::option::Option<bson::Bson>,
+            W: ::core::ops::FnOnce(&T, bson::Serializer) -> ::core::option::Option<bson::Bson>,
         {
             match read(bson::Deserializer::new(held.clone())) {
                 ::core::result::Result::Err(refused) => ::core::option::Option::Some(issue("Invalid", path, expected, ::core::option::Option::Some(held.clone()), ::core::option::Option::Some(refused.to_string()), ::std::vec::Vec::new())),
-                ::core::result::Result::Ok(read) => match write(&read, BsonIntegers(bson::Serializer::new())) {
-                    ::core::option::Option::Some(written)
-                        if !same_bracket(held, &written)
-                            && !(read_from_either_form(expected)
-                                && [held, &written].iter().all(|either| matches!(either, bson::Bson::Int32(_) | bson::Bson::Int64(_) | bson::Bson::String(_)))) =>
-                    {
+                ::core::result::Result::Ok(read) => match write(&read, bson::Serializer::new()) {
+                    ::core::option::Option::Some(written) if !same_bracket(held, &written) => {
                         ::core::option::Option::Some(issue("Mistyped", path, expected, ::core::option::Option::Some(held.clone()), ::core::option::Option::None, ::std::vec::Vec::new()))
                     }
                     _ => ::core::option::Option::None,
                 },
             }
+        }
+
+        /// `found`, a value of `expected`, with each `u64` and `i64` it holds as the string of its
+        /// decimal digits stored as the integer, or `None` where such a string holds no value of
+        /// its type, or one BSON stores no integer of.
+        fn bson_digits_as_numbers(expected: &Expected, found: &bson::Bson) -> ::core::option::Option<bson::Bson> {
+            match (expected, found) {
+                (Expected::I64, bson::Bson::String(digits)) => digits.parse::<i64>().ok().map(bson::Bson::Int64),
+                (Expected::U64, bson::Bson::String(digits)) => digits
+                    .parse::<u64>()
+                    .ok()
+                    .and_then(|whole| <i64 as ::core::convert::TryFrom<u64>>::try_from(whole).ok())
+                    .map(bson::Bson::Int64),
+                (Expected::Optional(held), _) => bson_digits_as_numbers(held, found),
+                (Expected::Array(held), bson::Bson::Array(items)) => items
+                    .iter()
+                    .map(|item| bson_digits_as_numbers(held, item))
+                    .collect::<::core::option::Option<::std::vec::Vec<bson::Bson>>>()
+                    .map(bson::Bson::Array),
+                (Expected::Tuple(held), bson::Bson::Array(items)) if held.len() == items.len() => held
+                    .iter()
+                    .zip(items)
+                    .map(|(position, item)| bson_digits_as_numbers(position, item))
+                    .collect::<::core::option::Option<::std::vec::Vec<bson::Bson>>>()
+                    .map(bson::Bson::Array),
+                (Expected::Map(held) | Expected::Range(_, held), bson::Bson::Document(entries)) => entries
+                    .iter()
+                    .map(|(key, item)| bson_digits_as_numbers(held, item).map(|stored| (key.clone(), stored)))
+                    .collect::<::core::option::Option<bson::Document>>()
+                    .map(bson::Bson::Document),
+                _ => ::core::option::Option::Some(found.clone()),
+            }
+        }
+
+        /// Writes in `root`, in place of the value of each `Invalid` issue in `issues`, that value
+        /// with each `u64` and `i64` it holds as the string of its decimal digits stored as the
+        /// integer, and answers whether it wrote one. A build of tixschema that wrote the two as
+        /// their digits stored such a value.
+        pub fn bson_digits_settled(root: &mut bson::Document, issues: &[Issue<bson::Bson>]) -> bool {
+            let mut wrote = false;
+            for issue in issues {
+                if let Issue::Invalid { path, expected, found, .. } = issue {
+                    match bson_digits_as_numbers(expected, found) {
+                        ::core::option::Option::Some(stored) if stored != *found => {
+                            wrote |= path.set_in_document(root, stored);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            wrote
         }
 
         /// What remains of `entries` once serde has read a type flattened there through `read`,
@@ -3454,9 +3513,8 @@ fn entry_methods(module: &Ident, decider: &Ident, corrects_own: bool) -> TokenSt
     let read = quote! { Self::#own_read(&value) };
     // The functions a type names for itself are called once, on the value as it is taken.
     let taken = corrects_own.then(|| quote! { value = Self::decode_with_value_corrected(value); });
-    let first_read = quote! {
-        #taken
-        let found = match #read {
+    let attempt = quote! {
+        match #read {
             ::core::result::Result::Ok(decoded) => {
                 let mut found = Self::decode_with_value_report(&value, ::core::option::Option::None);
                 found.extend(Self::decode_with_value_check_issues(&value, &decoded.decode_with_check_messages()));
@@ -3466,6 +3524,19 @@ fn entry_methods(module: &Ident, decider: &Ident, corrects_own: bool) -> TokenSt
                 found
             }
             ::core::result::Result::Err(refused) => Self::decode_with_value_report(&value, ::core::option::Option::Some(refused.to_string())),
+        }
+    };
+    // A `u64` or an `i64` written as the string of its digits, as a build of tixschema that wrote
+    // them so wrote it, is read as its number before any issue is handed on.
+    let first_read = quote! {
+        #taken
+        let mut settled = false;
+        let found = loop {
+            let found = #attempt;
+            if settled || !#module::value_digits_settled(&mut value, &found) {
+                break found;
+            }
+            settled = true;
         };
     };
     let second_read = quote! {
@@ -3721,21 +3792,11 @@ fn handoff_items() -> TokenStream {
     }
 }
 
-/// `value_leaf`, the check of a JSON value read whole, and what it asks of an expected type.
+/// `value_leaf`, the check of a JSON value read whole, and `value_digits_settled`.
 fn leaf_items() -> TokenStream {
     quote! {
-        /// Whether a value of `expected` is a 64-bit integer, which serde reads from a number
-        /// and from the string of its digits alike.
-        fn read_from_either_form(expected: &[ExpectedToken]) -> bool {
-            expected
-                .iter()
-                .find(|(member, _, _)| *member != "Optional")
-                .is_some_and(|(member, _, _)| *member == "I64" || *member == "U64")
-        }
-
         /// One JSON value read whole: refused by serde, or read but held in a different shape
-        /// than `write` gives back. A 64-bit integer held as a number or as its digits is held in
-        /// either of its shapes.
+        /// than `write` gives back.
         pub fn value_leaf<'a, T, I, R, W>(
             held: &'a serde_json::Value,
             read: R,
@@ -3751,16 +3812,59 @@ fn leaf_items() -> TokenStream {
             match read(held) {
                 ::core::result::Result::Err(refused) => ::core::option::Option::Some(issue("Invalid", path, expected, ::core::option::Option::Some(held.clone()), ::core::option::Option::Some(refused.to_string()), ::std::vec::Vec::new())),
                 ::core::result::Result::Ok(read) => match write(&read) {
-                    ::core::option::Option::Some(written)
-                        if ::std::mem::discriminant(held) != ::std::mem::discriminant(&written)
-                            && !(read_from_either_form(expected)
-                                && [held, &written].iter().all(|either| matches!(either, serde_json::Value::Number(_) | serde_json::Value::String(_)))) =>
-                    {
+                    ::core::option::Option::Some(written) if ::std::mem::discriminant(held) != ::std::mem::discriminant(&written) => {
                         ::core::option::Option::Some(issue("Mistyped", path, expected, ::core::option::Option::Some(held.clone()), ::core::option::Option::None, ::std::vec::Vec::new()))
                     }
                     _ => ::core::option::Option::None,
                 },
             }
+        }
+
+        /// `found`, a value of `expected`, with each `u64` and `i64` it holds as the string of its
+        /// decimal digits written as the number, or `None` where such a string holds no value of
+        /// its type.
+        fn value_digits_as_numbers(expected: &Expected, found: &serde_json::Value) -> ::core::option::Option<serde_json::Value> {
+            match (expected, found) {
+                (Expected::I64, serde_json::Value::String(digits)) => digits.parse::<i64>().ok().map(serde_json::Value::from),
+                (Expected::U64, serde_json::Value::String(digits)) => digits.parse::<u64>().ok().map(serde_json::Value::from),
+                (Expected::Optional(held), _) => value_digits_as_numbers(held, found),
+                (Expected::Array(held), serde_json::Value::Array(items)) => items
+                    .iter()
+                    .map(|item| value_digits_as_numbers(held, item))
+                    .collect::<::core::option::Option<::std::vec::Vec<serde_json::Value>>>()
+                    .map(serde_json::Value::Array),
+                (Expected::Tuple(held), serde_json::Value::Array(items)) if held.len() == items.len() => held
+                    .iter()
+                    .zip(items)
+                    .map(|(position, item)| value_digits_as_numbers(position, item))
+                    .collect::<::core::option::Option<::std::vec::Vec<serde_json::Value>>>()
+                    .map(serde_json::Value::Array),
+                (Expected::Map(held) | Expected::Range(_, held), serde_json::Value::Object(entries)) => entries
+                    .iter()
+                    .map(|(key, item)| value_digits_as_numbers(held, item).map(|written| (key.clone(), written)))
+                    .collect::<::core::option::Option<serde_json::Map<::std::string::String, serde_json::Value>>>()
+                    .map(serde_json::Value::Object),
+                _ => ::core::option::Option::Some(found.clone()),
+            }
+        }
+
+        /// Writes in `root`, in place of the value of each `Invalid` issue in `issues`, that value
+        /// with each `u64` and `i64` it holds as the string of its decimal digits written as the
+        /// number, and answers whether it wrote one. A build of tixschema that wrote the two as
+        /// their digits wrote such a value.
+        pub fn value_digits_settled(root: &mut serde_json::Value, issues: &[Issue<serde_json::Value>]) -> bool {
+            let mut wrote = false;
+            for issue in issues {
+                if let Issue::Invalid { path, expected, found, .. } = issue {
+                    match value_digits_as_numbers(expected, found) {
+                        ::core::option::Option::Some(written) if written != *found => {
+                            wrote |= path.set_in_value(root, written);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            wrote
         }
     }
 }

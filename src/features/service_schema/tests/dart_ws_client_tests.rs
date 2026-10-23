@@ -498,7 +498,7 @@ fn a_unit_success_answers_the_field_less_ok_member() {
 }
 
 #[test]
-fn a_primitive_message_rides_the_frame_as_its_own_json_value_and_an_i64_success_as_its_digits() {
+fn a_primitive_message_and_success_ride_the_frame_as_their_own_json_values() {
     let written = dart_ws_client_of(DART_PRIMITIVE_SERVICE);
     let method = body_from(&written, "tally(String req)");
     assert!(
@@ -506,11 +506,7 @@ fn a_primitive_message_rides_the_frame_as_its_own_json_value_and_an_i64_success_
         "got: {method}"
     );
     assert!(
-        method.contains(
-            "return ShelvesTallyResultOk((switch (reply['value'] as String) { final digits when \
-             RegExp(r'^(?:-?(0|[1-9][0-9]*))$').hasMatch(digits) && int.tryParse(digits) != null \
-             => int.parse(digits),"
-        ),
+        method.contains("return ShelvesTallyResultOk(reply['value'] as int);"),
         "got: {method}"
     );
     let arm = body_from(&written, "case 'tally':");
@@ -518,10 +514,7 @@ fn a_primitive_message_rides_the_frame_as_its_own_json_value_and_an_i64_success_
         arm.contains("decoded = frame['payload'] as String;"),
         "got: {arm}"
     );
-    assert!(
-        arm.contains("'value': (answered).toString(),"),
-        "got: {arm}"
-    );
+    assert!(arm.contains("'value': answered,"), "got: {arm}");
 }
 
 #[test]

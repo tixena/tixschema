@@ -1,9 +1,10 @@
 //! An `i64` through the emitted TypeScript service, run by node with the real `zod`: the client of
-//! each transport hands a `bigint` as the string of its digits, the dispatcher and the HTTP
-//! dispatcher answer the `bigint` an implementation returns as its digits, and each client reads
-//! that answer back into a `bigint`, exactly, beyond what a JavaScript `number` holds. A member of
-//! a message the service declares is read from the text of its path and of its query, and a header
-//! of a brand over an `i64` from the digits each client writes in it.
+//! each transport hands a `bigint` as the JSON number of its digits, the dispatcher and the HTTP
+//! dispatcher answer the `bigint` an implementation returns as the JSON number, and each client
+//! reads that answer back into a `bigint`, exactly, beyond what a JavaScript `number` holds,
+//! through the reader each emits. A reply read by a plain `JSON.parse`, within what a `number`
+//! holds, is the `bigint` too. A member of a message the service declares is read from the text of
+//! its path and of its query, and a header of an `i64` from the digits each client writes in it.
 
 use core::future::ready;
 
@@ -18,8 +19,10 @@ const RUNTIME_VAR: &str = "TIXSCHEMA_NODE";
 
 const REQUIRED_PACKAGES: &[&str] = &["zod"];
 
-/// Sends a tally through each client to the dispatcher of its transport, and prints what each
-/// transport carried each way and what each client answered, a `bigint` written with an `n`.
+/// Sends a tally through each client to the dispatcher of its transport, and prints the text each
+/// transport carried each way and what each client answered, a `bigint` written with an `n`. The
+/// bus is joined as an adapter joins it, each text read by the reader the side that receives it
+/// emits; the last call's reply is read by a plain `JSON.parse`.
 const DRIVER: &str = r#"
 const shown = (value) => JSON.parse(JSON.stringify(value, (_, held) => (typeof held === "bigint" ? `${held}n` : held)));
 
@@ -35,16 +38,16 @@ const impl = {
 const dispatch = createTallyingClientServiceDispatcher(impl);
 const handle = createTallyingClientServiceHttpDispatcher(impl);
 
-const overBus = async (call) => {
+const overBus = (readReply) => async (call) => {
   const carried = [];
   const client = createTallyingClientServiceClient({
     async notify() { throw new Error("no one-way operation is declared"); },
     async request(operation, payload, headers) {
-      const sent = JSON.parse(JSON.stringify(payload));
-      const dispatched = await dispatch(undefined, operation, sent, headers);
-      const answered = JSON.parse(JSON.stringify(dispatched.answered));
+      const sent = JSON.stringify(payload);
+      const dispatched = await dispatch(undefined, operation, tallyingClientServiceRequestRead(sent), headers);
+      const answered = JSON.stringify(dispatched.answered);
       carried.push(sent, headers, answered);
-      return { answered, headers: dispatched.headers };
+      return { answered: readReply(answered), headers: dispatched.headers };
     },
   });
   return { carried, answered: shown(await call(client)) };
@@ -70,19 +73,22 @@ const overHttp = async (call) => {
 };
 
 const calls = [
-  (client) => client.count({ tally: 9223372036854775806n }),
-  (client) => client.fetch({ tally: -9223372036854775807n, limit: -1n }, 9007199254740993n),
-  (client) => client.count({ tally: 9223372036854775807n }),
+  [(client) => client.count({ tally: 9223372036854775806n }), tallyingClientServiceRead],
+  [(client) => client.fetch({ tally: -9223372036854775807n, limit: -1n }, 9007199254740993n), tallyingClientServiceRead],
+  [(client) => client.count({ tally: 9223372036854775807n }), tallyingClientServiceRead],
+  [(client) => client.count({ tally: 1719623999999n }), JSON.parse],
 ];
 const ran = [];
-for (const call of calls) {
-  ran.push({ bus: await overBus(call), http: await overHttp(call) });
+for (const [call, readReply] of calls) {
+  ran.push({ bus: await overBus(readReply)(call), http: await overHttp(call) });
 }
 console.log(JSON.stringify(ran));
 "#;
 
-/// Sends each bare `i64` through each client to the dispatcher of its transport, and prints what
-/// each transport carried each way and what each client answered, a `bigint` written with an `n`.
+/// Sends each bare `i64` through each client to the dispatcher of its transport, and prints the
+/// text each transport carried each way and what each client answered, a `bigint` written with an
+/// `n`. The bus is joined as an adapter joins it, each text read by the reader the side that
+/// receives it emits.
 const BARE_DRIVER: &str = r#"
 const shown = (value) => value === undefined ? null : JSON.parse(JSON.stringify(value, (_, held) => (typeof held === "bigint" ? `${held}n` : held)));
 
@@ -108,16 +114,16 @@ const overBus = async (call) => {
   const carried = [];
   const client = createTallyingBareServiceClient({
     async notify(operation, payload, headers) {
-      const sent = JSON.parse(JSON.stringify(payload));
-      await dispatch(undefined, operation, sent, headers);
+      const sent = JSON.stringify(payload);
+      await dispatch(undefined, operation, tallyingBareServiceRequestRead(sent), headers);
       carried.push(sent, headers);
     },
     async request(operation, payload, headers) {
-      const sent = JSON.parse(JSON.stringify(payload));
-      const dispatched = await dispatch(undefined, operation, sent, headers);
-      const answered = JSON.parse(JSON.stringify(dispatched.answered));
+      const sent = JSON.stringify(payload);
+      const dispatched = await dispatch(undefined, operation, tallyingBareServiceRequestRead(sent), headers);
+      const answered = JSON.stringify(dispatched.answered);
       carried.push(sent, headers, answered, dispatched.headers);
-      return { answered, headers: dispatched.headers };
+      return { answered: tallyingBareServiceRead(answered), headers: dispatched.headers };
     },
   });
   return { carried, answered: shown(await call(client)) };
@@ -155,18 +161,63 @@ for (const call of calls) {
 console.log(JSON.stringify({ ran, recorded: shown(recorded) }));
 "#;
 
-/// A tally, whose `i64` travels as the string of its digits.
+/// Sends a tally through the bus client to its dispatcher in a runtime without `JSON.rawJSON`, and
+/// prints the text the transport carried each way and what the client answered: a `bigint` a
+/// `number` holds exactly is written as that number, and any other is refused. Then hands each
+/// dispatcher a tally whose answer no `number` holds exactly.
+const FALLBACK_DRIVER: &str = r#"
+const shown = (value) => JSON.parse(JSON.stringify(value, (_, held) => (typeof held === "bigint" ? `${held}n` : held)));
+Reflect.deleteProperty(JSON, "rawJSON");
+
+const impl = {
+  async count(_ctx, req) {
+    return { ok: true, value: { tally: req.tally + 1n } };
+  },
+  async fetch() {
+    throw new Error("not called");
+  },
+};
+const dispatch = createTallyingClientServiceDispatcher(impl);
+const handle = createTallyingClientServiceHttpDispatcher(impl);
+
+const run = async (tally) => {
+  const carried = [];
+  const client = createTallyingClientServiceClient({
+    async notify() { throw new Error("no one-way operation is declared"); },
+    async request(operation, payload, headers) {
+      const sent = JSON.stringify(payload);
+      const dispatched = await dispatch(undefined, operation, tallyingClientServiceRequestRead(sent), headers);
+      const answered = JSON.stringify(dispatched.answered);
+      carried.push(sent, answered);
+      return { answered: tallyingClientServiceRead(answered), headers: dispatched.headers };
+    },
+  });
+  return { carried, answered: shown(await client.count({ tally })) };
+};
+const overBus = await dispatch(undefined, "count", { tally: 9007199254740991n }).then(
+  () => "answered",
+  (refused) => `refused: ${refused.message}`,
+);
+const overHttp = await handle(undefined, {
+  body: new TextEncoder().encode('{"tally":9007199254740991}'),
+  headers: [],
+  method: "POST",
+  path: "/tallies",
+  query: "",
+});
+console.log(JSON.stringify({
+  sent: [await run(5n), await run(9007199254740993n)],
+  overBus,
+  overHttp: `${overHttp.status} ${new TextDecoder().decode(overHttp.body)}`,
+}));
+"#;
+
+/// A tally, whose `i64` travels as a JSON number.
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct TallyCount {
     pub tally: i64,
 }
-
-/// A brand over an `i64`, handed in a header.
-#[model_schema()]
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(transparent)]
-pub struct TallyLedger(pub i64);
 
 /// The one error each operation declares.
 #[model_schema()]
@@ -193,7 +244,7 @@ pub trait TallyingClientService<Ctx> {
         ctx: &Ctx,
         tally: i64,
         limit: Option<i64>,
-        ledger: TallyLedger,
+        ledger: i64,
     ) -> Result<TallyCount, TallyError>;
 }
 
@@ -214,12 +265,12 @@ impl TallyingClientService<()> for TallyingBackEnd {
         _ctx: &(),
         tally: i64,
         limit: Option<i64>,
-        ledger: TallyLedger,
+        ledger: i64,
     ) -> Result<TallyCount, TallyError> {
         ready(()).await;
         tally
             .checked_add(limit.unwrap_or(0))
-            .and_then(|sum| sum.checked_add(ledger.0))
+            .and_then(|sum| sum.checked_add(ledger))
             .map(|sum| TallyCount { tally: sum })
             .ok_or(TallyError::Refused)
     }
@@ -288,8 +339,6 @@ fn emitted() -> String {
         "import { z, type ZodType } from \"zod\";".to_owned(),
         TallyCount::ts_definition(),
         TallyCount::zod_schema(),
-        TallyLedger::ts_definition(),
-        TallyLedger::zod_schema(),
         TallyError::ts_definition(),
         TallyError::zod_schema(),
         TallyingClientServiceSchema::ts_definition(),
@@ -307,7 +356,8 @@ fn emitted() -> String {
 }
 
 /// What each transport carries each way of each call of [`BARE_DRIVER`], and what each client
-/// answers: every bare `i64` written as its digits.
+/// answers: every bare `i64` written as a JSON number, and as the text of the number in a header
+/// of the `http_rest` transport.
 fn carried_bare() -> Value {
     json!({
         "ran": [
@@ -315,8 +365,8 @@ fn carried_bare() -> Value {
                 "bus": {
                     "carried": [
                         "9223372036854775806",
-                        [["x-offset", r#""1""#]],
-                        { "ok": true, "value": "9223372036854775807" },
+                        [["x-offset", "1"]],
+                        r#"{"ok":true,"value":9223372036854775807}"#,
                         [],
                     ],
                     "answered": { "ok": true, "value": ["9223372036854775807n", null] },
@@ -324,7 +374,7 @@ fn carried_bare() -> Value {
                 "http": {
                     "carried": [
                         r#"GET /bare/9223372036854775806 [["x-offset","1"]] "#,
-                        r#"200 [["content-type","application/json"]] "9223372036854775807""#,
+                        r#"200 [["content-type","application/json"]] 9223372036854775807"#,
                     ],
                     "answered": { "ok": true, "value": ["9223372036854775807n", null] },
                 },
@@ -334,8 +384,8 @@ fn carried_bare() -> Value {
                     "carried": [
                         "4611686018427387903",
                         [["x-offset", "null"]],
-                        { "ok": true, "value": "4611686018427387903" },
-                        [["x-doubled", r#""9223372036854775806""#]],
+                        r#"{"ok":true,"value":4611686018427387903}"#,
+                        [["x-doubled", "9223372036854775806"]],
                     ],
                     "answered": {
                         "ok": true,
@@ -345,7 +395,7 @@ fn carried_bare() -> Value {
                 "http": {
                     "carried": [
                         "GET /bare/4611686018427387903 [] ",
-                        r#"200 [["x-doubled","9223372036854775806"],["content-type","application/json"]] "4611686018427387903""#,
+                        r#"200 [["x-doubled","9223372036854775806"],["content-type","application/json"]] 4611686018427387903"#,
                     ],
                     "answered": {
                         "ok": true,
@@ -356,17 +406,17 @@ fn carried_bare() -> Value {
             {
                 "bus": {
                     "carried": [
-                        ["9223372036854775807", "1"],
+                        "[9223372036854775807,1]",
                         [],
-                        { "ok": false, "error": "-9223372036854775808" },
+                        r#"{"ok":false,"error":-9223372036854775808}"#,
                         [],
                     ],
                     "answered": { "ok": false, "error": "-9223372036854775808n" },
                 },
                 "http": {
                     "carried": [
-                        r#"POST /bare [] ["9223372036854775807","1"]"#,
-                        r#"422 [["content-type","application/json"]] "-9223372036854775808""#,
+                        "POST /bare [] [9223372036854775807,1]",
+                        r#"422 [["content-type","application/json"]] -9223372036854775808"#,
                     ],
                     "answered": { "ok": false, "error": "-9223372036854775808n" },
                 },
@@ -377,7 +427,7 @@ fn carried_bare() -> Value {
                     "answered": null,
                 },
                 "http": {
-                    "carried": [r#"PUT /bare [] "-9223372036854775808""#, "204 [] "],
+                    "carried": ["PUT /bare [] -9223372036854775808", "204 [] "],
                     "answered": null,
                 },
             },
@@ -386,11 +436,11 @@ fn carried_bare() -> Value {
     })
 }
 
-/// Each client sends a bare `i64` as its digits, in the message and in a header, each dispatcher
-/// answers the reply, its header and its declared error as their digits, and each client reads
-/// them back into the `bigint` each was, over both transports.
+/// Each client sends a bare `i64` as a JSON number, in the message and in a header, each
+/// dispatcher answers the reply, its header and its declared error as JSON numbers, and each client
+/// reads them back into the `bigint` each was, over both transports.
 #[test]
-fn a_bare_i64_travels_as_its_digits_through_each_typescript_client_and_dispatcher() {
+fn a_bare_i64_travels_as_a_number_through_each_typescript_client_and_dispatcher() {
     let Some(modules) = node_modules(REQUIRED_PACKAGES) else {
         stand_down_modules(
             REQUIRED_PACKAGES,
@@ -400,7 +450,7 @@ fn a_bare_i64_travels_as_its_digits_through_each_typescript_client_and_dispatche
     };
     let module = format!("{}\n\n{BARE_DRIVER}", emitted());
     let Some(wrote) = ran_with_modules(
-        "bare-digits",
+        "bare-wide-integers",
         RUNTIME_VAR,
         "node",
         "bare.mts",
@@ -413,12 +463,12 @@ fn a_bare_i64_travels_as_its_digits_through_each_typescript_client_and_dispatche
     assert_eq!(
         ran,
         carried_bare(),
-        "a bare 64-bit integer does not travel as its digits"
+        "a bare 64-bit integer does not travel as a JSON number"
     );
     assert_eq!(
-        serde_json::from_str::<i64>(r#""9223372036854775806""#).ok(),
-        None,
-        "serde's own read of an i64 refuses the digits a service's wire type reads"
+        serde_json::from_str::<i64>(ran["ran"][0]["bus"]["carried"][0].as_str().unwrap()).ok(),
+        Some(i64::MAX - 1),
+        "serde reads the number the client sends"
     );
     assert_eq!(
         poll_once(TallyingBareBackEnd.total(&(), vec![i64::MAX, 1])),
@@ -439,22 +489,22 @@ fn a_bare_i64_travels_as_its_digits_through_each_typescript_client_and_dispatche
 
 /// What each transport carries each way, the headers of a request beside its message, and what
 /// each client answers, of each call of the driver: the third answered beyond an `i64`, which each
-/// client refuses.
+/// client refuses, and the last read by a plain `JSON.parse` on the bus.
 fn carried() -> Value {
     json!([
         {
             "bus": {
                 "carried": [
-                    { "tally": "9223372036854775806" },
+                    r#"{"tally":9223372036854775806}"#,
                     [],
-                    { "ok": true, "value": { "tally": "9223372036854775807" } },
+                    r#"{"ok":true,"value":{"tally":9223372036854775807}}"#,
                 ],
                 "answered": { "ok": true, "value": { "tally": "9223372036854775807n" } },
             },
             "http": {
                 "carried": [
-                    r#"POST /tallies? [] {"tally":"9223372036854775806"}"#,
-                    r#"{"tally":"9223372036854775807"}"#,
+                    r#"POST /tallies? [] {"tally":9223372036854775806}"#,
+                    r#"{"tally":9223372036854775807}"#,
                 ],
                 "answered": { "ok": true, "value": { "tally": "9223372036854775807n" } },
             },
@@ -462,16 +512,16 @@ fn carried() -> Value {
         {
             "bus": {
                 "carried": [
-                    { "limit": "-1", "tally": "-9223372036854775807" },
-                    [["x-ledger", r#""9007199254740993""#]],
-                    { "ok": true, "value": { "tally": "-9223372036854775808" } },
+                    r#"{"tally":-9223372036854775807,"limit":-1}"#,
+                    [["x-ledger", "9007199254740993"]],
+                    r#"{"ok":true,"value":{"tally":-9223372036854775808}}"#,
                 ],
                 "answered": { "ok": true, "value": { "tally": "-9223372036854775808n" } },
             },
             "http": {
                 "carried": [
                     r#"GET /tallies/-9223372036854775807?limit=-1 [["x-ledger","9007199254740993"]] "#,
-                    r#"{"tally":"-9223372036854775808"}"#,
+                    r#"{"tally":-9223372036854775808}"#,
                 ],
                 "answered": { "ok": true, "value": { "tally": "-9223372036854775808n" } },
             },
@@ -479,9 +529,9 @@ fn carried() -> Value {
         {
             "bus": {
                 "carried": [
-                    { "tally": "9223372036854775807" },
+                    r#"{"tally":9223372036854775807}"#,
                     [],
-                    { "ok": true, "value": { "tally": "9223372036854775808" } },
+                    r#"{"ok":true,"value":{"tally":9223372036854775808}}"#,
                 ],
                 "answered": {
                     "ok": false,
@@ -499,8 +549,8 @@ fn carried() -> Value {
             },
             "http": {
                 "carried": [
-                    r#"POST /tallies? [] {"tally":"9223372036854775807"}"#,
-                    r#"{"tally":"9223372036854775808"}"#,
+                    r#"POST /tallies? [] {"tally":9223372036854775807}"#,
+                    r#"{"tally":9223372036854775808}"#,
                 ],
                 "answered": {
                     "ok": false,
@@ -516,23 +566,40 @@ fn carried() -> Value {
                 },
             },
         },
+        {
+            "bus": {
+                "carried": [
+                    r#"{"tally":1719623999999}"#,
+                    [],
+                    r#"{"ok":true,"value":{"tally":1719624000000}}"#,
+                ],
+                "answered": { "ok": true, "value": { "tally": "1719624000000n" } },
+            },
+            "http": {
+                "carried": [
+                    r#"POST /tallies? [] {"tally":1719623999999}"#,
+                    r#"{"tally":1719624000000}"#,
+                ],
+                "answered": { "ok": true, "value": { "tally": "1719624000000n" } },
+            },
+        },
     ])
 }
 
-/// Each client sends a `bigint` as its digits, each dispatcher answers one as its digits, and each
-/// client reads the answer back into the `bigint` it was, over both transports.
+/// Each client sends a `bigint` as a JSON number, each dispatcher answers one as a JSON number, and
+/// each client reads the answer back into the `bigint` it was, over both transports.
 #[test]
-fn an_i64_travels_as_its_digits_through_each_typescript_client_and_dispatcher() {
+fn an_i64_travels_as_a_number_through_each_typescript_client_and_dispatcher() {
     let Some(modules) = node_modules(REQUIRED_PACKAGES) else {
         stand_down_modules(REQUIRED_PACKAGES, "the emitted service's 64-bit integers");
         return;
     };
     let module = format!("{}\n\n{DRIVER}", emitted());
     let Some(wrote) = ran_with_modules(
-        "digits",
+        "wide-integers",
         RUNTIME_VAR,
         "node",
-        "digits.mts",
+        "wide.mts",
         &module,
         &modules,
     ) else {
@@ -542,9 +609,10 @@ fn an_i64_travels_as_its_digits_through_each_typescript_client_and_dispatcher() 
     assert_eq!(
         ran,
         carried(),
-        "a 64-bit integer does not travel as its digits"
+        "a 64-bit integer does not travel as a JSON number"
     );
-    let read: TallyCount = serde_json::from_value(ran[0]["bus"]["carried"][0].clone()).unwrap();
+    let read: TallyCount =
+        serde_json::from_str(ran[0]["bus"]["carried"][0].as_str().unwrap()).unwrap();
     assert_eq!(
         poll_once(TallyingBackEnd.count(&(), read))
             .map(|answered| answered.map(|count| count.tally).ok()),
@@ -552,9 +620,66 @@ fn an_i64_travels_as_its_digits_through_each_typescript_client_and_dispatcher() 
         "the backend counts what serde read of what the client sends"
     );
     assert_eq!(
-        poll_once(TallyingBackEnd.fetch(&(), i64::MIN + 1, Some(-1), TallyLedger(0)))
+        poll_once(TallyingBackEnd.fetch(&(), i64::MIN + 1, Some(-1), 0))
             .map(|answered| answered.map(|count| count.tally).ok()),
         Some(Some(i64::MIN)),
         "the backend answers the tally the dispatcher answered"
+    );
+}
+
+/// Without `JSON.rawJSON`, the client writes a `bigint` a `number` holds exactly as that number and
+/// refuses any other as a message that fails validation, the dispatcher rejects as a handler that
+/// throws, and the HTTP dispatcher answers the fault of a handler that panicked.
+#[test]
+fn without_raw_json_a_bigint_beyond_a_number_is_refused_and_any_other_is_sent_as_the_number() {
+    let Some(modules) = node_modules(REQUIRED_PACKAGES) else {
+        stand_down_modules(
+            REQUIRED_PACKAGES,
+            "the emitted service's 64-bit integers without JSON.rawJSON",
+        );
+        return;
+    };
+    let module = format!("{}\n\n{FALLBACK_DRIVER}", emitted());
+    let Some(wrote) = ran_with_modules(
+        "wide-integers-fallback",
+        RUNTIME_VAR,
+        "node",
+        "fallback.mts",
+        &module,
+        &modules,
+    ) else {
+        return;
+    };
+    let ran: Value = serde_json::from_str(wrote.trim()).unwrap();
+    let unwritten = "is written exactly only through JSON.rawJSON, which this runtime has not";
+    assert_eq!(
+        ran,
+        json!({
+            "sent": [
+                {
+                    "carried": [r#"{"tally":5}"#, r#"{"ok":true,"value":{"tally":6}}"#],
+                    "answered": { "ok": true, "value": { "tally": "6n" } },
+                },
+                {
+                    "carried": [],
+                    "answered": {
+                        "ok": false,
+                        "error": {
+                            "isServiceFault": true,
+                            "fault": {
+                                "detail": format!("9007199254740993 {unwritten}"),
+                                "kind": "failed-validation",
+                                "operation": "count",
+                            },
+                        },
+                    },
+                },
+            ],
+            "overBus": format!("refused: 9007199254740992 {unwritten}"),
+            "overHttp": format!(
+                r#"500 {{"detail":"9007199254740992 {unwritten}","kind":"handler-panic","operation":"count"}}"#
+            ),
+        }),
+        "what the client sends and each dispatcher answers without JSON.rawJSON"
     );
 }

@@ -763,8 +763,7 @@ fn carried(request: &Value, call: &Call) -> Option<String> {
 }
 
 /// What serde writes back of `json` read as the type the model `held_by` holds, or `None` where no
-/// argument is of that type. An `i64` is read from the text of its digits, as a message's member
-/// reads it.
+/// argument is of that type.
 fn written_back(held_by: &str, json: &str) -> Option<Value> {
     fn back<T>(json: &str) -> Value
     where
@@ -782,7 +781,7 @@ fn written_back(held_by: &str, json: &str) -> Option<Value> {
         "ConveyedI8" => back::<i8>(json),
         "ConveyedI16" => back::<i16>(json),
         "ConveyedI32" => back::<i32>(json),
-        "ConveyedI64" => back::<i64>(&text_of(json)),
+        "ConveyedI64" => back::<i64>(json),
         "ConveyedIsize" => back::<isize>(json),
         "ConveyedF32" => back::<f32>(json),
         "ConveyedF64" => back::<f64>(json),

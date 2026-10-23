@@ -3,7 +3,7 @@
 
 use super::fault;
 use super::message;
-use crate::field_type::bare_field_def;
+use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationOutcome, ServiceDef, is_unit_type,
@@ -15,6 +15,7 @@ use syn::Type;
 pub fn emit(declared: &ServiceDef) -> Vec<String> {
     let service = &declared.enveloped();
     let named = service.ident.to_string();
+    let prefix = RenameRule::CamelCase.apply_to_variant(&named);
     vec![
         socket_type(&named),
         options_type(&named),
@@ -22,6 +23,8 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
         schemas_table(service, "Error", error_type),
         fault_fn(service),
         issues_fault_fn(service),
+        message::wire_fn(&format!("{prefix}WsSent")),
+        message::read_fn(&format!("{prefix}WsRead")),
         header_table_fn(&named),
         header_pairs_fn(&named),
         transport_factory(service),
@@ -116,7 +119,7 @@ fn schemas_table(
         let Some(ty) = pick(operation) else {
             continue;
         };
-        let schema = bare_field_def(field, &ty).zod_type();
+        let schema = get_field_def(field, &ty, "").zod_type();
         let _ = writeln!(entries, "  {}: {schema},", ts_quoted(&operation.wire_name));
     }
     let body = if entries.is_empty() {
@@ -211,7 +214,7 @@ fn header_table_fn(named: &str) -> String {
          const table: Record<string, unknown> = {{}};\n  \
          for (const [name, encoded] of headers) {{\n    \
          try {{\n      \
-         table[name] = JSON.parse(encoded);\n    \
+         table[name] = {prefix}WsRead(encoded);\n    \
          }} catch {{\n      \
          table[name] = encoded;\n    \
          }}\n  \
@@ -232,7 +235,8 @@ fn header_pairs_fn(named: &str) -> String {
          {{\n  \
          if (typeof table !== \"object\" || table === null || Array.isArray(table)) return \
          [];\n  \
-         return Object.entries(table).map(([name, value]) => [name, JSON.stringify(value)] as \
+         return Object.entries(table).map(([name, value]) => [name, \
+         JSON.stringify({prefix}WsSent(value))] as \
          const);\n\
          }}"
     )
@@ -370,7 +374,7 @@ fn on_message_stmt(prefix: &str) -> String {
     format!(
         "  const onMessage = (event: {{ data: unknown }}) => {{\n    \
          let frame: unknown;\n    \
-         try {{ frame = JSON.parse(String(event.data)); }} catch {{ return; }}\n    \
+         try {{ frame = {prefix}WsRead(String(event.data)); }} catch {{ return; }}\n    \
          if (typeof frame !== \"object\" || frame === null) return;\n    \
          const {{ kind, id, service: named, headers, ...envelope }} = frame as Record<string, \
          unknown>;\n    \
@@ -412,8 +416,8 @@ fn returned_transport_stmt(prefix: &str) -> String {
         "  return {{\n    \
          async notify(operation, payload, headers) {{\n      \
          socket.send(\n        \
-         JSON.stringify({{ kind: \"notify\", service, operation, payload, \
-         ...{prefix}WsHeaderTable(headers) }}),\n      \
+         JSON.stringify({prefix}WsSent({{ kind: \"notify\", service, operation, payload, \
+         ...{prefix}WsHeaderTable(headers) }})),\n      \
          );\n    \
          }},\n    \
          request<Answered>(\n      \
@@ -430,8 +434,8 @@ fn returned_transport_stmt(prefix: &str) -> String {
          replied }}),\n        \
          }});\n        \
          socket.send(\n          \
-         JSON.stringify({{ kind: \"request\", id, service, operation, payload, \
-         ...{prefix}WsHeaderTable(headers) }}),\n        \
+         JSON.stringify({prefix}WsSent({{ kind: \"request\", id, service, operation, payload, \
+         ...{prefix}WsHeaderTable(headers) }})),\n        \
          );\n      \
          }});\n    \
          }},\n    \

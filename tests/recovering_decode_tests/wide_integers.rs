@@ -1,6 +1,6 @@
-//! An `i64` a member writes as the string of its digits, read by `from_value_with` as serde reads
-//! it: from its digits and from a number alike, with a digit string beyond an `i64` listed as one
-//! issue at the member that holds it.
+//! An `i64` a member writes as a JSON number, read by `from_value_with` as serde reads it, and from
+//! the string of its digits a stored record may hold, with no callback: a string that is no `i64`
+//! is one issue where it is held.
 
 use alloc::collections::BTreeMap;
 use core::cell::RefCell;
@@ -16,7 +16,7 @@ use super::lines;
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct DigitLedger {
+struct WideLedger {
     by_name: BTreeMap<String, i64>,
     history: Vec<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -33,7 +33,7 @@ type LedgerRevision = i64;
 /// lock and beside the type's own parameter.
 #[model_schema(enable = ["decode_with"], default_types(Key = String))]
 #[derive(Debug, Deserialize, Serialize)]
-struct DigitReachedLedger<Key: Ord> {
+struct WideReachedLedger<Key: Ord> {
     aliased: LedgerRevision,
     #[model_schema_prop(literal = 214)]
     fixed: i64,
@@ -44,8 +44,8 @@ struct DigitReachedLedger<Key: Ord> {
 }
 
 /// The ledger every read below answers.
-fn ledger() -> DigitLedger {
-    DigitLedger {
+fn ledger() -> WideLedger {
+    WideLedger {
         by_name: BTreeMap::from([("a".to_owned(), -7_i64)]),
         history: vec![1_i64, i64::MAX],
         maybe: Some(i64::MIN),
@@ -55,13 +55,30 @@ fn ledger() -> DigitLedger {
 }
 
 /// Reads `stored` with a callback that rejects, and answers the read with every issue listed.
-fn read(stored: serde_json::Value) -> (Result<DigitLedger, Vec<String>>, u32) {
+fn read(stored: serde_json::Value) -> (Result<WideLedger, Vec<String>>, u32) {
     let mut calls = 0_u32;
-    let answered = DigitLedger::from_value_with(stored, |_raw, _found| {
+    let answered = WideLedger::from_value_with(stored, |_raw, _found| {
         calls = calls.saturating_add(1);
-        digit_ledger_schema::Verdict::Reject
+        wide_ledger_schema::Verdict::Reject
     });
     (answered.map_err(|refused| lines(&refused)), calls)
+}
+
+#[test]
+fn a_ledger_of_numbers_is_read_as_serde_writes_it_and_reaches_no_callback() {
+    let stored = json!({
+        "byName": { "a": -7_i64 },
+        "history": [1_i64, i64::MAX],
+        "maybe": i64::MIN,
+        "paired": [9_i64, "x"],
+        "total": -(1_i64 << 60_i32),
+    });
+    assert_eq!(
+        serde_json::to_value(ledger()).unwrap(),
+        stored,
+        "what serde writes"
+    );
+    assert_eq!(read(stored), (Ok(ledger()), 0));
 }
 
 #[test]
@@ -73,28 +90,11 @@ fn a_ledger_of_digit_strings_is_read_and_reaches_no_callback() {
         "paired": ["9", "x"],
         "total": "-1152921504606846976",
     });
-    assert_eq!(
-        serde_json::to_value(ledger()).unwrap(),
-        stored,
-        "what serde writes"
-    );
     assert_eq!(read(stored), (Ok(ledger()), 0));
 }
 
 #[test]
-fn a_ledger_of_numbers_is_read_as_serde_reads_it() {
-    let stored = json!({
-        "byName": { "a": -7_i64 },
-        "history": [1_i64, i64::MAX],
-        "maybe": i64::MIN,
-        "paired": [9_i64, "x"],
-        "total": -(1_i64 << 60_i32),
-    });
-    assert_eq!(read(stored), (Ok(ledger()), 0));
-}
-
-#[test]
-fn a_digit_string_beyond_an_i64_is_one_issue_at_the_member_that_holds_it() {
+fn a_string_that_is_no_i64_is_one_issue_where_it_is_held() {
     let (answered, calls) = read(json!({
         "byName": {},
         "history": ["1", "9223372036854775808"],
@@ -104,12 +104,11 @@ fn a_digit_string_beyond_an_i64_is_one_issue_at_the_member_that_holds_it() {
     assert_eq!(
         answered,
         Err(vec![
-            "history: invalid: expected Array(I64), found Array [String(\"1\"), \
-             String(\"9223372036854775808\")]: invalid value: string \"9223372036854775808\", \
-             expected an i64 as a string of its decimal digits"
+            "history[1]: invalid: expected I64, found String(\"9223372036854775808\"): invalid type: \
+             string \"9223372036854775808\", expected i64"
                 .to_owned(),
-            "total: invalid: expected I64, found String(\"seven\"): invalid value: string \
-             \"seven\", expected an i64 as a string of its decimal digits"
+            "total: invalid: expected I64, found String(\"seven\"): invalid type: string \"seven\", \
+             expected i64"
                 .to_owned(),
         ])
     );
@@ -120,9 +119,9 @@ fn a_digit_string_beyond_an_i64_is_one_issue_at_the_member_that_holds_it() {
 /// times the callback ran.
 fn reached(stored: serde_json::Value) -> (Result<serde_json::Value, Vec<String>>, u32) {
     let mut calls = 0_u32;
-    let answered = DigitReachedLedger::<String>::from_value_with(stored, |_raw, _found| {
+    let answered = WideReachedLedger::<String>::from_value_with(stored, |_raw, _found| {
         calls = calls.saturating_add(1);
-        digit_reached_ledger_schema::Verdict::Reject
+        wide_reached_ledger_schema::Verdict::Reject
     });
     (
         answered
@@ -133,20 +132,7 @@ fn reached(stored: serde_json::Value) -> (Result<serde_json::Value, Vec<String>>
 }
 
 #[test]
-fn an_i64_in_each_place_its_holder_reaches_is_read_from_its_digits_and_from_a_number() {
-    let stored = json!({
-        "aliased": "-1152921504606846976",
-        "fixed": "214",
-        "keyed": { "a": "-7" },
-        "locked": ["9223372036854775807"],
-        "ranged": { "start": "1", "end": "2" },
-        "resulted": { "Ok": "7" },
-    });
-    assert_eq!(
-        reached(stored.clone()),
-        (Ok(stored.clone()), 0),
-        "the digits serde reads, written back"
-    );
+fn an_i64_in_each_place_its_holder_reaches_is_read_from_a_number_and_from_its_digits() {
     let numbers = json!({
         "aliased": -(1_i64 << 60_i32),
         "fixed": 214_i64,
@@ -156,8 +142,21 @@ fn an_i64_in_each_place_its_holder_reaches_is_read_from_its_digits_and_from_a_nu
         "resulted": { "Ok": 7_i64 },
     });
     assert_eq!(
-        reached(numbers),
-        (Ok(stored), 0),
-        "the numbers serde reads, written back as digits"
+        reached(numbers.clone()),
+        (Ok(numbers.clone()), 0),
+        "the numbers serde reads, written back"
+    );
+    let digits = json!({
+        "aliased": "-1152921504606846976",
+        "fixed": "214",
+        "keyed": { "a": "-7" },
+        "locked": ["9223372036854775807"],
+        "ranged": { "start": "1", "end": "2" },
+        "resulted": { "Ok": "7" },
+    });
+    assert_eq!(
+        reached(digits),
+        (Ok(numbers), 0),
+        "the digits, written back as the numbers serde writes"
     );
 }

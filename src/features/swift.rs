@@ -29,7 +29,6 @@ use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, get_field_def, is_plain_enum,
     is_sequence_wrapper,
 };
-use crate::model_schema::digits;
 use crate::model_schema::variant_wire_kind;
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
 use crate::utils::{
@@ -132,7 +131,6 @@ struct EnumTagAttrs {
 pub struct SwiftTypeArgs<'args> {
     /// The checks the type names, in the order written.
     pub check: &'args [FunctionName],
-    /// The members whose `u64` and `i64` are written as digit strings.
     /// The default type declared per type parameter.
     pub default_types: &'args [(Ident, syn::Type)],
     pub max_length: Option<usize>,
@@ -231,9 +229,6 @@ enum LeafConversion {
     /// `JSONDecoder`'s default strategy cannot parse into `Date` without a formatter.
     #[cfg(feature = "chrono")]
     DateTimePlain,
-    /// An `i64` a member writes as the string of its decimal digits: held as an `Int64`, read from
-    /// the digits and written as them.
-    Digits,
     /// A map whose key is not written as a JSON object key can decode directly: `wrapper` names
     /// the per-field struct that carries the string round trip.
     MapWrapper(String),
@@ -794,7 +789,7 @@ fn swift_upper_camel(parameter: &str) -> String {
 /// One member's `#[model_schema_prop(...)]` metadata, held to the string check of the enum around
 /// it, folded into the `FieldDef` `get_field_def` built for it.
 fn member_def(args: &SwiftTypeArgs<'_>, name: &str, member: &Field) -> FieldDef {
-    let mut field_def = digits::member_def(member, get_field_def(name, &member.ty, ""));
+    let mut field_def = get_field_def(name, &member.ty, "");
     field_def.model_schema_prop_meta = Some((args.member_meta)(member));
     arrayed(field_def)
 }
@@ -859,12 +854,10 @@ fn reach_parameters(def: &FieldDef, reached: &mut Vec<String>) {
         | FieldDefType::U16
         | FieldDefType::U32
         | FieldDefType::U64
-        | FieldDefType::U64Digits
         | FieldDefType::I8
         | FieldDefType::I16
         | FieldDefType::I32
         | FieldDefType::I64
-        | FieldDefType::I64Digits
         | FieldDefType::Usize
         | FieldDefType::Isize
         | FieldDefType::F32
@@ -967,7 +960,7 @@ fn swift_map_key_scalar(key: &FieldDef) -> String {
         FieldDefType::I8 => "Int8".to_owned(),
         FieldDefType::I16 => "Int16".to_owned(),
         FieldDefType::I32 => "Int32".to_owned(),
-        FieldDefType::I64 | FieldDefType::I64Digits => "Int64".to_owned(),
+        FieldDefType::I64 => "Int64".to_owned(),
         FieldDefType::Isize => "Int".to_owned(),
         FieldDefType::SiblingType(name, _) => {
             lookup_swift_name(name).unwrap_or_else(|| name.clone())
@@ -983,7 +976,6 @@ fn swift_map_key_scalar(key: &FieldDef) -> String {
         | FieldDefType::Result(_, _)
         | FieldDefType::Tuple(_)
         | FieldDefType::U64
-        | FieldDefType::U64Digits
         | FieldDefType::F32
         | FieldDefType::F64
         | FieldDefType::Usize => "String".to_owned(),
@@ -1019,7 +1011,6 @@ fn swift_map_key_codec(key: &FieldDef) -> (Option<String>, String) {
         | FieldDefType::I16
         | FieldDefType::I32
         | FieldDefType::I64
-        | FieldDefType::I64Digits
         | FieldDefType::Isize => {
             let swift_type = swift_map_key_scalar(key);
             (
@@ -1039,7 +1030,6 @@ fn swift_map_key_codec(key: &FieldDef) -> (Option<String>, String) {
         | FieldDefType::Result(_, _)
         | FieldDefType::Tuple(_)
         | FieldDefType::U64
-        | FieldDefType::U64Digits
         | FieldDefType::F32
         | FieldDefType::F64
         | FieldDefType::Usize => (None, "key".to_owned()),
@@ -1360,13 +1350,6 @@ fn swift_field_shape(field: &FieldDef, name_hint: &str, aux: &mut Vec<String>) -
         FieldDefType::I16 => direct_shape("Int16".to_owned()),
         FieldDefType::I32 => direct_shape("Int32".to_owned()),
         FieldDefType::I64 => direct_shape("Int64".to_owned()),
-        FieldDefType::I64Digits => SwiftFieldShape {
-            leaf_conversion: LeafConversion::Digits,
-            real_leaf: "Int64".to_owned(),
-            wire_leaf: "String".to_owned(),
-        },
-        // Refused under `swift` ahead of every shape, as the `u64` it is.
-        FieldDefType::U64Digits => direct_shape("UInt64".to_owned()),
         FieldDefType::Usize | FieldDefType::Isize => direct_shape("Int".to_owned()),
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => direct_shape("ObjectId".to_owned()),
@@ -1802,7 +1785,10 @@ fn held_argument(real_type: &str, argument: &Shaped, aux: &mut Vec<String>) -> S
 /// How Swift reads a map under `key`: a string-shaped key and an `isize` are the key of a native
 /// dictionary, and any other is read through a wrapper.
 fn map_keys(key: &FieldDef) -> MapKeys {
-    if !matches!(key.map_key_wire(), MapKeyWire::Named) {
+    if !matches!(
+        key.map_key_wire(),
+        MapKeyWire::Named | MapKeyWire::Signed64 | MapKeyWire::Unsigned64
+    ) {
         return MapKeys::Wrapped;
     }
     match key.field_type {
@@ -1825,12 +1811,10 @@ fn map_keys(key: &FieldDef) -> MapKeys {
         | FieldDefType::U16
         | FieldDefType::U32
         | FieldDefType::U64
-        | FieldDefType::U64Digits
         | FieldDefType::I8
         | FieldDefType::I16
         | FieldDefType::I32
         | FieldDefType::I64
-        | FieldDefType::I64Digits
         | FieldDefType::F32
         | FieldDefType::F64
         | FieldDefType::Usize => MapKeys::Wrapped,
@@ -1982,7 +1966,6 @@ fn decode_leaf(shape: &SwiftFieldShape, expr: &str) -> String {
             format!("try Self.swiftSchemaParseIso8601Date({expr}, codingPath: decoder.codingPath)")
         }
         LeafConversion::Text(form) => forms::read_call(*form, expr, "decoder.codingPath"),
-        LeafConversion::Digits => forms::digits_read_call(expr, "decoder.codingPath"),
         LeafConversion::Values(value) => format!(
             "{}{expr}.mapValues {{ {} }}",
             tried(shape),
@@ -1997,7 +1980,7 @@ fn throws(conversion: &LeafConversion) -> bool {
     match conversion {
         #[cfg(feature = "chrono")]
         LeafConversion::DateTimePlain => true,
-        LeafConversion::Digits | LeafConversion::Text(_) => true,
+        LeafConversion::Text(_) => true,
         LeafConversion::Values(value) => throws(&value.shape.leaf_conversion),
         LeafConversion::MapWrapper(_) | LeafConversion::None => false,
     }
@@ -2011,7 +1994,7 @@ fn writes_throw(conversion: &LeafConversion) -> bool {
         LeafConversion::Values(value) => writes_throw(&value.shape.leaf_conversion),
         #[cfg(feature = "chrono")]
         LeafConversion::DateTimePlain => false,
-        LeafConversion::Digits | LeafConversion::MapWrapper(_) | LeafConversion::None => false,
+        LeafConversion::MapWrapper(_) | LeafConversion::None => false,
     }
 }
 
@@ -2044,7 +2027,6 @@ fn encode_leaf(shape: &SwiftFieldShape, expr: &str) -> String {
         #[cfg(feature = "chrono")]
         LeafConversion::DateTimePlain => format!("Self.swiftSchemaFormatIso8601Date({expr})"),
         LeafConversion::Text(form) => forms::sent_call(*form, expr),
-        LeafConversion::Digits => format!("String({expr})"),
         LeafConversion::Values(value) => write_tried(
             shape,
             format!(
@@ -2789,10 +2771,7 @@ fn reads_a_date(shape: &SwiftFieldShape) -> bool {
     match &shape.leaf_conversion {
         LeafConversion::DateTimePlain => true,
         LeafConversion::Values(value) => reads_a_date(&value.shape),
-        LeafConversion::Digits
-        | LeafConversion::MapWrapper(_)
-        | LeafConversion::None
-        | LeafConversion::Text(_) => false,
+        LeafConversion::MapWrapper(_) | LeafConversion::None | LeafConversion::Text(_) => false,
     }
 }
 
@@ -2825,16 +2804,15 @@ const fn datetime_helpers_for(
 }
 
 /// The forms of the texts a value of `shape` is read and written through, gathered into `found`
-/// once each, and whether it reads the digits of an integer.
-fn text_forms_of(shape: &SwiftFieldShape, found: &mut Vec<TextForm>, digits: &mut bool) {
+/// once each.
+fn text_forms_of(shape: &SwiftFieldShape, found: &mut Vec<TextForm>) {
     match &shape.leaf_conversion {
         LeafConversion::Text(form) => {
             if !found.contains(form) {
                 found.push(*form);
             }
         }
-        LeafConversion::Digits => *digits = true,
-        LeafConversion::Values(value) => text_forms_of(&value.shape, found, digits),
+        LeafConversion::Values(value) => text_forms_of(&value.shape, found),
         #[cfg(feature = "chrono")]
         LeafConversion::DateTimePlain => {}
         LeafConversion::MapWrapper(_) | LeafConversion::None => {}
@@ -2852,11 +2830,10 @@ fn leaf_helpers_for(
 ) -> String {
     let mut written = datetime_helpers_for(export_name, generic_params, shapes);
     let mut found: Vec<TextForm> = keyed.into_iter().collect();
-    let mut digits = false;
     for shape in shapes {
-        text_forms_of(shape, &mut found, &mut digits);
+        text_forms_of(shape, &mut found);
     }
-    let texts = forms::helpers(&found, digits);
+    let texts = forms::helpers(&found);
     if !texts.is_empty() {
         write!(written, "extension {export_name} {{ {texts}}};").unwrap();
     }

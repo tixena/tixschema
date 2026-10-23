@@ -99,14 +99,38 @@ export type ConversationClientServiceHttpResponse = {
 /** Decides what one fault answers with. The default: 404 unknown-operation, 500 handler-panic, 400 otherwise, the fault as JSON. */
 export type ConversationClientServiceHttpFaultHandler = (fault: ConversationClientServiceFault) => ConversationClientServiceHttpResponse;
 
-/** `value` as it is written to the wire: each `bigint` as the string of its decimal digits. */
+/**
+ * `value` as it is written to the wire: each `bigint` through `JSON.rawJSON`, the JSON number of
+ * its digits. Without `JSON.rawJSON`, a `bigint` a `number` holds exactly is that `number`, and any
+ * other is refused.
+ */
 function conversationClientServiceHttpAnswered(value: unknown): unknown {
-  if (typeof value === \"bigint\") return value.toString();
+  if (typeof value === \"bigint\") {
+    const raw: unknown = Reflect.get(JSON, \"rawJSON\");
+    if (typeof raw === \"function\") return raw(value.toString());
+    if (Number.isSafeInteger(Number(value))) return Number(value);
+    throw new RangeError(`${value} is written exactly only through JSON.rawJSON, which this runtime has not`);
+  }
   if (Array.isArray(value)) return value.map((held) => conversationClientServiceHttpAnswered(held));
   if (typeof value === \"object\" && value !== null && Object.getPrototypeOf(value) === Object.prototype) {
     return Object.fromEntries(Object.entries(value).map(([key, held]) => [key, conversationClientServiceHttpAnswered(held)]));
   }
   return value;
+}
+
+/**
+ * `text` read as JSON, each integer a `number` does not hold exactly rebuilt from its source text
+ * as a `bigint`.
+ */
+function conversationClientServiceHttpRequestRead(text: string): unknown {
+  return JSON.parse(text, (_key, value: unknown, context?: { source?: string }) =>
+    typeof value === \"number\" &&
+    !Number.isSafeInteger(value) &&
+    context?.source !== undefined &&
+    /^-?(0|[1-9][0-9]*)$/.test(context.source)
+      ? BigInt(context.source)
+      : value,
+  );
 }
 
 function conversationClientServiceHttpJson(status: number, headers: ReadonlyArray<readonly [string, string]>, value: unknown): ConversationClientServiceHttpResponse {
@@ -362,43 +386,50 @@ fn a_generated_bodyless_message_reads_its_unbound_fields_off_the_query_with_thei
     );
 }
 
-/// A generated message's `i64` is read from the string of its digits, so the path and the query
-/// hand it their text, where a `u32` is coerced to a number.
+/// A generated message's `i64` is read from the text of the path and the query as the `bigint` its
+/// digits hold, exactly, where a `u32` is coerced to a number.
 #[test]
-fn a_generated_messages_i64_is_handed_the_text_of_the_path_and_the_query() {
+fn a_generated_messages_i64_is_read_from_the_text_of_the_path_and_the_query_as_a_bigint() {
     let written = http_service_of(DIGIT_QUERY_HTTP_SERVICE);
     for expected in [
-        "message[\"tally\"] = tally;",
-        "message[\"limit\"] = raw === undefined ? null : raw;",
+        "message[\"tally\"] = tallyClientServiceHttpCoerceBigInt(tally);",
+        "message[\"limit\"] = raw === undefined ? null : tallyClientServiceHttpCoerceBigInt(raw);",
         "message[\"ids\"] = raw === undefined ? null : (raw).split(\",\").map((piece: string) => \
-         piece);",
+         tallyClientServiceHttpCoerceBigInt(piece));",
         "message[\"page\"] = raw === undefined ? null : tallyClientServiceHttpCoerceNumber(raw);",
+        "function tallyClientServiceHttpCoerceBigInt(raw: string): unknown {\n  \
+         return /^-?(0|[1-9][0-9]*)$/.test(raw) ? BigInt(raw) : raw;\n}",
     ] {
         assert!(
             written.contains(expected),
             "missing {expected}. Got: {written}"
         );
     }
+    assert!(
+        !http_service_of(QUERY_HTTP_SERVICE).contains("HttpCoerceBigInt"),
+        "a service that reads no `u64` or `i64` from a text writes no reader of one"
+    );
 }
 
-/// What the dispatcher answers is written as each client writes a message: each `bigint` as the
-/// string of its digits.
+/// What the dispatcher answers is written as each client writes a message: each `bigint` through
+/// `JSON.rawJSON`, as the JSON number of its digits. A body is read through a reader that rebuilds
+/// an integer a `number` does not hold exactly as a `bigint`.
 #[test]
-fn the_answer_is_written_with_each_bigint_as_its_digits() {
+fn the_answer_is_written_with_each_bigint_as_a_json_number() {
     let written = http_service_of(QUERY_HTTP_SERVICE);
-    assert!(
-        written.contains(
-            "function searchClientServiceHttpAnswered(value: unknown): unknown {\n  \
-             if (typeof value === \"bigint\") return value.toString();"
-        ),
-        "got: {written}"
-    );
-    assert!(
-        written.contains(
-            "body: new TextEncoder().encode(JSON.stringify(searchClientServiceHttpAnswered(value)))"
-        ),
-        "got: {written}"
-    );
+    for expected in [
+        "function searchClientServiceHttpAnswered(value: unknown): unknown {\n  \
+         if (typeof value === \"bigint\") {\n    \
+         const raw: unknown = Reflect.get(JSON, \"rawJSON\");\n    \
+         if (typeof raw === \"function\") return raw(value.toString());",
+        "body: new TextEncoder().encode(JSON.stringify(searchClientServiceHttpAnswered(value)))",
+        "function searchClientServiceHttpRequestRead(text: string): unknown {",
+    ] {
+        assert!(
+            written.contains(expected),
+            "missing {expected}. Got: {written}"
+        );
+    }
 }
 
 #[test]

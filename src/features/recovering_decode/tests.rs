@@ -1255,8 +1255,9 @@ fn the_bson_items_are_emitted_beside_the_json_ones() {
             "unsettled",
             "expected_from_tokens",
             "issue_from_parts",
-            "read_from_either_form",
             "value_leaf",
+            "value_digits_as_numbers",
+            "value_digits_settled",
             "reads_an_option",
             "taken_keys",
             "value_remaining",
@@ -1264,6 +1265,8 @@ fn the_bson_items_are_emitted_beside_the_json_ones() {
             "bson_bound",
             "same_bracket",
             "bson_leaf",
+            "bson_digits_as_numbers",
+            "bson_digits_settled",
             "bson_remaining",
             #[cfg(feature = "mongodb")]
             "write_plain",
@@ -1835,9 +1838,10 @@ fn a_write_hands_the_driver_documents_and_an_insert_writes_its_row_first() {
         }
         let written = body_of(type_impl, "mongo_written_row");
         assert!(
-            written.starts_with("{ match :: serde :: Serialize :: serialize (self , ")
-                && written.contains(":: BsonIntegers (bson :: Serializer :: new ())) . map_err (")
-                && written.contains(
+            written.starts_with(
+                "{ match :: serde :: Serialize :: serialize (self , bson :: Serializer :: new ()) \
+                 . map_err ("
+            ) && written.contains(
                 ":: OperationError :: Unwritable) ? { bson :: Bson :: Document (row) => :: core \
                  :: result :: Result :: Ok (row) , _ => :: core :: result :: Result :: Err ("
             ) && written.ends_with(refused_as),
@@ -2338,7 +2342,15 @@ fn the_decode_with_library_names_are_every_name_it_makes_public() {
         .into_iter()
         .filter_map(|(name, public)| (!public).then_some(name))
         .collect();
-    assert_eq!(private, ["expected_from_tokens", "read_from_either_form"]);
+    assert_eq!(
+        private,
+        [
+            "expected_from_tokens",
+            "value_digits_as_numbers",
+            #[cfg(feature = "bson")]
+            "bson_digits_as_numbers",
+        ]
+    );
 }
 
 /// The module of a type that lists "mongodb" re-exports every name the MongoDB library makes
@@ -5417,7 +5429,7 @@ fn a_hooked_path_is_a_function_written_beside_the_type() {
     assert!(
         bare.contains(
             "fnmongo_write_a(value:u8)->::core::result::Result<bson::Bson,row_schema::WriteError>\
-             {hook::serialize(&value,row_schema::BsonIntegers(bson::Serializer::new()))}"
+             {hook::serialize(&value,bson::Serializer::new())}"
         ),
         "got: {bare}"
     );
@@ -5428,8 +5440,7 @@ fn a_hooked_path_is_a_function_written_beside_the_type() {
     assert!(
         optional.contains(
             "fnmongo_write_a(value:u8)->::core::result::Result<bson::Bson,row_schema::WriteError>\
-             {shown(&::core::option::Option::Some(value),row_schema::BsonIntegers(bson::\
-             Serializer::new()))}"
+             {shown(&::core::option::Option::Some(value),bson::Serializer::new())}"
         ),
         "got: {optional}"
     );

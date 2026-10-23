@@ -1,7 +1,7 @@
-//! What each `http_rest` client of [`TallyingBareService`](super::run_node_digits) sends of a bare
-//! `i64` and reads of one: the request each call hands its transport, which is what the Rust
-//! client sends of the same call, and what the client answers of the response the Rust dispatcher
-//! answers it with.
+//! What each `http_rest` client of [`TallyingBareService`](super::run_node_wide_integers) sends
+//! of a bare `i64` and reads of one: the request each call hands its transport, which is what the
+//! Rust client sends of the same call, and what the client answers of the response the Rust
+//! dispatcher answers it with.
 
 #![cfg(all(
     feature = "serde",
@@ -14,37 +14,37 @@
 pub const BARE_EXCHANGES: [BareExchange; 5] = [
     BareExchange {
         answered: "ok 9223372036854775807 null",
-        body: r#""9223372036854775807""#,
+        body: "9223372036854775807",
         headers: &[],
         request: "GET /bare/9223372036854775806 x-offset=1 ",
         status: 200,
     },
     BareExchange {
         answered: "ok 4611686018427387903 9223372036854775806",
-        body: r#""4611686018427387903""#,
+        body: "4611686018427387903",
         headers: &[("x-doubled", "9223372036854775806")],
         request: "GET /bare/4611686018427387903  ",
         status: 200,
     },
     BareExchange {
         answered: "declared -9223372036854775808",
-        body: r#""-9223372036854775808""#,
+        body: "-9223372036854775808",
         headers: &[],
-        request: r#"POST /bare  ["9223372036854775807","1"]"#,
+        request: "POST /bare  [9223372036854775807,1]",
         status: 422,
     },
     BareExchange {
         answered: "sent",
         body: "",
         headers: &[],
-        request: r#"PUT /bare  "-9223372036854775808""#,
+        request: "PUT /bare  -9223372036854775808",
         status: 204,
     },
     BareExchange {
         answered: "fault undeserializable-payload",
-        body: r#""9223372036854775808""#,
+        body: "9223372036854775808",
         headers: &[],
-        request: r#"POST /bare  ["1"]"#,
+        request: "POST /bare  [1]",
         status: 200,
     },
 ];

@@ -467,10 +467,7 @@ impl<'item> Rules<'item> {
                     }
                     Some(Number::Unsigned) => format!("{read}.toUInt() != {whole}u"),
                     Some(Number::Signed) | None => {
-                        if matches!(
-                            held,
-                            FieldDefType::I64 | FieldDefType::I64Digits | FieldDefType::Isize
-                        ) {
+                        if matches!(held, FieldDefType::I64 | FieldDefType::Isize) {
                             format!("{read} != {whole}L")
                         } else if matches!(held, FieldDefType::I8 | FieldDefType::I16) {
                             format!("{read}.toInt() != {whole}")

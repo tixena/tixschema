@@ -673,10 +673,10 @@ fn a_brand_in_a_composite_is_written_as_the_bare_value_in_every_position() {
     };
     let wire = serde_json::to_value(&held).unwrap();
     assert_eq!(wire["direct"], serde_json::json!("a"));
-    assert_eq!(wire["keyed"], serde_json::json!({ "k": "1" }));
+    assert_eq!(wire["keyed"], serde_json::json!({ "k": 1_i64 }));
     assert_eq!(wire["listed"], serde_json::json!(["l"]));
     assert_eq!(wire["maybe"], serde_json::json!("m"));
-    assert_eq!(wire["paired"], serde_json::json!(["p", "2"]));
+    assert_eq!(wire["paired"], serde_json::json!(["p", 2_i64]));
     assert_eq!(wire["valued"], serde_json::json!({ "v": "w" }));
     assert_eq!(serde_json::from_value::<HoldsBrands>(wire).unwrap(), held);
 

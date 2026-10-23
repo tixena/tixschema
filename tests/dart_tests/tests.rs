@@ -516,7 +516,7 @@ fn test_adjacently_tagged_tuple_single_writes_tag_and_content() {
     let dart = dynamic_value_dart::dart_definition();
     assert!(dart.contains("sealed class DynamicValue {"));
     assert!(
-        dart.contains("{ 'type': 'Number', 'value': (value).toString() }"),
+        dart.contains("{ 'type': 'Number', 'value': value }"),
         "adjacent tagging writes tag and content side by side. Got: {dart}"
     );
     assert!(
@@ -546,7 +546,10 @@ fn test_adjacently_tagged_unit_variant_has_no_content_key() {
 #[cfg(feature = "serde")]
 fn test_adjacently_tagged_wire_shape_matches_serde() {
     let value = serde_json::to_value(DynamicValue::Number(7)).unwrap();
-    assert_eq!(value, serde_json::json!({ "type": "Number", "value": "7" }));
+    assert_eq!(
+        value,
+        serde_json::json!({ "type": "Number", "value": 7_i32 })
+    );
     let nothing = serde_json::to_value(DynamicValue::Nothing).unwrap();
     assert_eq!(nothing, serde_json::json!({ "type": "Nothing" }));
 }
@@ -616,7 +619,7 @@ fn test_untagged_enum_tries_each_variant_in_turn() {
 fn test_untagged_wire_shape_matches_serde() {
     assert_eq!(
         serde_json::to_value(ReceivedAt::Epoch(1_700_000_000)).unwrap(),
-        serde_json::json!("1700000000")
+        serde_json::json!(1_700_000_000_i64)
     );
     assert_eq!(
         serde_json::to_value(ReceivedAt::Iso("2025-01-01".to_owned())).unwrap(),

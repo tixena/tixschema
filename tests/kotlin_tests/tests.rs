@@ -505,7 +505,7 @@ fn test_width_table() {
         "val tinySigned: Byte",
         "val smallSigned: Short",
         "val mediumSigned: Int",
-        "val largeSigned: @Serializable(with = KotlinDigits1::class) Long",
+        "val largeSigned: Long",
         "val archSigned: Long",
         "val tinyUnsigned: UByte",
         "val smallUnsigned: UShort",
@@ -564,8 +564,8 @@ fn test_internal_tagged_enum() {
     );
     assert!(
         kotlin.contains(
-            "@SerialName(\"RateLimited\") @Serializable data class WindowErrorRateLimited(@SerialName(\"retry_after_ms\") val retryAfterMs: @Serializable(with = KotlinDigits"
-        ) && kotlin.contains("::class) Long) : WindowError"),
+            "@SerialName(\"RateLimited\") @Serializable data class WindowErrorRateLimited(@SerialName(\"retry_after_ms\") val retryAfterMs: Long) : WindowError"
+        ),
         "got: {kotlin}"
     );
 }
@@ -654,10 +654,7 @@ fn test_untagged_enum() {
     assert!(kotlin.contains("runCatching {"), "got: {kotlin}");
     assert!(kotlin.contains("recoverCatching {"), "got: {kotlin}");
     assert!(
-        kotlin.contains(
-            "@JvmInline @Serializable value class DateValueEpoch(val value: @Serializable(with = \
-             KotlinDigits"
-        ),
+        kotlin.contains("@JvmInline @Serializable value class DateValueEpoch(val value: Long)"),
         "got: {kotlin}"
     );
 }

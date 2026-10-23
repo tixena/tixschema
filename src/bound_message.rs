@@ -240,7 +240,7 @@ fn js_template_text(text: &str) -> String {
 }
 
 /// The check a set's Zod array is written with: an array whose parsed items write one JSON text
-/// twice, each `bigint` written as its digits as a client sends it, is refused with
+/// twice, each `bigint` written as its digits, is refused with
 /// [`REPEATED_ITEM`]. The issue carries `continue: true`, as each issue a written check copies
 /// does.
 #[cfg(feature = "zod")]

@@ -1,9 +1,9 @@
 //! How the client and the service name the one message an operation receives.
 
-use crate::field_type::bare_field_def;
+use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
-    BodyKind, HttpShape, OperationDef, OperationInputs, ScalarKind, option_inner, reads_its_digits,
+    BodyKind, HttpShape, OperationDef, OperationInputs, ScalarKind, held_as_a_bigint, option_inner,
     scalar_kind, tuple_elements, vec_inner, written,
 };
 use crate::utils::ts_commented;
@@ -127,14 +127,27 @@ const REFUSED_AS_A_NAME: [&str; 48] = [
 ];
 
 /// The function named `function` that answers a value as it is written to the wire: each
-/// `bigint` in it, at any depth of a list or a plain object, written as the string of its decimal
-/// digits, as a `u64` and an `i64` travel. Every other value is answered as it is.
+/// `bigint` in it, at any depth of a list or a plain object, through `JSON.rawJSON`, which
+/// `JSON.stringify` writes as the JSON number of its digits. Without `JSON.rawJSON` a `bigint` a
+/// `number` holds exactly is that `number`, and any other is refused with a `RangeError`. Every
+/// other value is answered as it is.
 pub fn wire_fn(function: &str) -> String {
     format!(
-        "/** `value` as it is written to the wire: each `bigint` as the string of its decimal \
-         digits. */\n\
+        "/**\n \
+         * `value` as it is written to the wire: each `bigint` through `JSON.rawJSON`, the JSON \
+         number of\n \
+         * its digits. Without `JSON.rawJSON`, a `bigint` a `number` holds exactly is that \
+         `number`, and any\n \
+         * other is refused.\n \
+         */\n\
          function {function}(value: unknown): unknown {{\n  \
-         if (typeof value === \"bigint\") return value.toString();\n  \
+         if (typeof value === \"bigint\") {{\n    \
+         const raw: unknown = Reflect.get(JSON, \"rawJSON\");\n    \
+         if (typeof raw === \"function\") return raw(value.toString());\n    \
+         if (Number.isSafeInteger(Number(value))) return Number(value);\n    \
+         throw new RangeError(`${{value}} is written exactly only through JSON.rawJSON, which this \
+         runtime has not`);\n  \
+         }}\n  \
          if (Array.isArray(value)) return value.map((held) => {function}(held));\n  \
          if (typeof value === \"object\" && value !== null && Object.getPrototypeOf(value) === \
          Object.prototype) {{\n    \
@@ -142,6 +155,62 @@ pub fn wire_fn(function: &str) -> String {
          {function}(held)]));\n  \
          }}\n  \
          return value;\n\
+         }}"
+    )
+}
+
+/// The function named `function` that reads a JSON text: each integer a `number` does not hold
+/// exactly rebuilt from its source text as a `bigint`, as a `u64` and an `i64` beyond `2^53 - 1`
+/// are written. A runtime that hands a reviver no source text keeps the `number`.
+pub fn read_fn(function: &str) -> String {
+    format!(
+        "/**\n \
+         * `text` read as JSON, each integer a `number` does not hold exactly rebuilt from its \
+         source text\n \
+         * as a `bigint`.\n \
+         */\n\
+         function {function}(text: string): unknown {{\n  \
+         return JSON.parse(text, (_key, value: unknown, context?: {{ source?: string }}) =>\n    \
+         typeof value === \"number\" &&\n    \
+         !Number.isSafeInteger(value) &&\n    \
+         context?.source !== undefined &&\n    \
+         /^-?(0|[1-9][0-9]*)$/.test(context.source)\n      \
+         ? BigInt(context.source)\n      \
+         : value,\n  \
+         );\n\
+         }}"
+    )
+}
+
+/// The function named `function` that parses `value` with `schema` and writes what it answers
+/// through `writer`, the function [`wire_fn`] writes: a value the schema refuses, or one the wire
+/// cannot hold, answers its issues.
+pub fn checked_fn(function: &str, writer: &str) -> String {
+    format!(
+        "/**\n \
+         * `value` parsed by `schema` and written as it goes on the wire: the issues of a value \
+         the schema\n \
+         * refuses, or one the wire cannot hold, otherwise.\n \
+         */\n\
+         function {function}<Parsed>(\n  \
+         schema: ZodType<Parsed>,\n  \
+         value: unknown,\n\
+         ):\n  \
+         | {{ success: true; data: Parsed; sent: unknown }}\n  \
+         | {{ success: false; error: {{ issues: ReadonlyArray<{{ path: ReadonlyArray<PropertyKey>; \
+         message: string }}> }} }} {{\n  \
+         const parsed = schema.safeParse(value);\n  \
+         if (!parsed.success) return {{ success: false, error: {{ issues: parsed.error.issues }} \
+         }};\n  \
+         try {{\n    \
+         return {{ success: true, data: parsed.data, sent: {writer}(parsed.data) }};\n  \
+         }} catch (unsent) {{\n    \
+         return {{\n      \
+         success: false,\n      \
+         error: {{ issues: [{{ path: [], message: unsent instanceof Error ? unsent.message : \
+         String(unsent) }}] }},\n    \
+         }};\n  \
+         }}\n\
          }}"
     )
 }
@@ -158,12 +227,12 @@ pub fn commented(text: &str) -> String {
 /// pasting a suffix onto a name.
 pub fn schema(operation: &OperationDef) -> String {
     match &operation.inputs {
-        OperationInputs::Named(declared) => bare_field_def("req", declared).zod_type(),
+        OperationInputs::Named(declared) => get_field_def("req", declared, "").zod_type(),
         OperationInputs::Empty | OperationInputs::Generated(_) => operation
             .generated_message_ident()
             .map_or_else(String::new, |declared| {
                 let named: syn::Type = syn::parse_quote! { #declared };
-                bare_field_def("req", &named).zod_type()
+                get_field_def("req", &named, "").zod_type()
             }),
     }
 }
@@ -172,7 +241,9 @@ pub fn schema(operation: &OperationDef) -> String {
 /// an operation that named none.
 pub fn typename(operation: &OperationDef) -> String {
     match &operation.inputs {
-        OperationInputs::Named(declared) => bare_field_def("req", declared).typescript_typename(),
+        OperationInputs::Named(declared) => {
+            get_field_def("req", declared, "").typescript_typename()
+        }
         OperationInputs::Empty | OperationInputs::Generated(_) => operation
             .generated_message_ident()
             .map_or_else(|| "unknown".to_owned(), |declared| declared.to_string()),
@@ -211,14 +282,14 @@ pub fn binding_params(shape: &HttpShape) -> Vec<(String, String)> {
         let name = parameter_name(&header.parameter);
         params.push((
             name.clone(),
-            bare_field_def(&name, &header.ty).typescript_typename(),
+            get_field_def(&name, &header.ty, "").typescript_typename(),
         ));
     }
     for part in &shape.multipart_parts {
         let name = parameter_name(&part.parameter);
         params.push((
             name.clone(),
-            bare_field_def(&name, &part.ty).typescript_typename(),
+            get_field_def(&name, &part.ty, "").typescript_typename(),
         ));
     }
     params
@@ -268,8 +339,8 @@ pub fn header_types(headers: usize, ty: &Type) -> Vec<&Type> {
 
 /// Mirrors the Rust `decode_expr`: a `Vec<...>` splits `raw` on `,` and coerces each piece the
 /// same way; otherwise a boolean text, a numeric coercion, or the text itself, a `u64` and an
-/// `i64` kept as the text of its digits. Shared by the REST server's query/path decoding and the
-/// dispatcher's header/part decoding.
+/// `i64` read from the text of its digits as the `bigint` it holds. Shared by the REST server's
+/// query/path decoding and the dispatcher's header/part decoding.
 pub fn decode_ts_expr(ty: &Type, raw: &str, prefix: &str) -> String {
     let base = option_inner(ty).unwrap_or(ty);
     if let Some(inner) = vec_inner(base) {
@@ -280,7 +351,7 @@ pub fn decode_ts_expr(ty: &Type, raw: &str, prefix: &str) -> String {
         ScalarKind::Bool => {
             format!("({raw} === \"true\" ? true : {raw} === \"false\" ? false : {raw})")
         }
-        ScalarKind::Number if reads_its_digits(base) => raw.to_owned(),
+        ScalarKind::Number if held_as_a_bigint(base) => format!("{prefix}HttpCoerceBigInt({raw})"),
         ScalarKind::Number => format!("{prefix}HttpCoerceNumber({raw})"),
         ScalarKind::Text => raw.to_owned(),
     }

@@ -1,7 +1,7 @@
 //! The `<Operation>Result` type: the two arms an operation declared, joined into one return type.
 
 #[cfg(feature = "typescript")]
-use crate::field_type::bare_field_def;
+use crate::field_type::get_field_def;
 #[cfg(any(feature = "typescript", feature = "dart", feature = "kotlin"))]
 use crate::rename_rule::RenameRule;
 #[cfg(feature = "typescript")]
@@ -57,9 +57,9 @@ fn result_type(service: &str, operation: &OperationDef) -> Option<String> {
     } else if is_unit_type(success) {
         "undefined".to_owned()
     } else {
-        bare_field_def("value", success).typescript_typename()
+        get_field_def("value", success, "").typescript_typename()
     };
-    let failure = bare_field_def("error", error).typescript_typename();
+    let failure = get_field_def("error", error, "").typescript_typename();
     let called = &operation.ts_name;
     Some(format!(
         "/**\n \
@@ -89,7 +89,7 @@ pub fn stream_success_ts_type(shape: &HttpShape, success: &Type) -> String {
         elements
             .iter()
             .skip(1)
-            .map(|ty| bare_field_def("value", ty).typescript_typename()),
+            .map(|ty| get_field_def("value", ty, "").typescript_typename()),
     );
     format!("[{}]", parts.join(", "))
 }

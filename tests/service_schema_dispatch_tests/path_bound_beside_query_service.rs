@@ -141,10 +141,10 @@ fn the_query_reader_beside_it_still_reads_its_query() {
     assert_eq!(body, br#"{"title":"acme limit=Some(5)"}"#);
 }
 
-/// The message the service declares reads its `i64` from the text of the query, which is its
-/// digits, in the full range of an `i64`, and refuses a text beyond it in those words.
+/// The message the service declares reads its `i64` from the text of the query in the full range
+/// of an `i64`, and refuses a number beyond it in serde's words.
 #[test]
-fn a_query_hands_an_i64_its_digits_in_the_full_range() {
+fn a_query_hands_an_i64_its_number_in_the_full_range() {
     let (least_status, least_body) =
         dispatched("/orgs/acme/documents", "limit=-9223372036854775808");
     assert_eq!(least_status, 200, "the least i64");
@@ -157,9 +157,7 @@ fn a_query_hands_an_i64_its_digits_in_the_full_range() {
     assert_eq!(beyond_status, 400, "beyond an i64");
     let said = String::from_utf8(beyond_body).unwrap();
     assert!(
-        said.contains(
-            r#"invalid value: string \"9223372036854775808\", expected an i64 as a string of its decimal digits"#
-        ),
+        said.contains("invalid value: integer `9223372036854775808`, expected i64"),
         "the refusal names the text: {said}"
     );
 }

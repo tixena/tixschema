@@ -6,7 +6,7 @@ use super::dart_http_client::{dart_call, dart_parameter, message_type};
 use super::result::result_name;
 use super::{left_to_http_rest, on_one_line};
 use crate::features::dart::{dart_json_decode, dart_json_encode, dart_typename, quoted};
-use crate::field_type::bare_field_def;
+use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationInputs, OperationOutcome, ServiceDef, is_unit_type,
@@ -1196,5 +1196,5 @@ fn message_dart_typename(operation: &OperationDef) -> String {
 /// `ty`'s own Dart type name, read through the same `FieldDef` walk every field's type goes
 /// through — mirrors `dart_http_client`'s own `dart_type_of`.
 fn dart_type_of(ty: &Type) -> String {
-    dart_typename(&bare_field_def("value", ty))
+    dart_typename(&get_field_def("value", ty, ""))
 }

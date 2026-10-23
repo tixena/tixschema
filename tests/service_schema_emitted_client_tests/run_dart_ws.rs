@@ -203,7 +203,7 @@ void main() async {
   final stacks = await stacksFuture;
 
   final tallyFuture = client.tally(TallyRequest(prefix: 'x', deep: false));
-  reply(await lastSent(), <String, dynamic>{'ok': true, 'value': '7'});
+  reply(await lastSent(), <String, dynamic>{'ok': true, 'value': 7});
   final tally = await tallyFuture;
 
   final refusedFuture = client.tally(TallyRequest(prefix: 'x', deep: true));
@@ -399,7 +399,7 @@ fn a_primitive_message_and_primitive_list_and_enum_answers_cross_the_client_and_
                 {"id": "1", "ok": true, "carried": null},
                 {"id": "2", "ok": true, "carried": ["q"]},
                 {"id": "3", "ok": true, "carried": [{"title": "r"}]},
-                {"id": "4", "ok": true, "carried": "7"},
+                {"id": "4", "ok": true, "carried": 7_i64},
                 {"id": "5", "ok": false, "carried": "Missing"},
             ],
             "faults": [],

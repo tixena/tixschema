@@ -464,9 +464,9 @@ fn test_string_literal_zod() {
     assert!(zod_schema.contains("sub: z.string().min(1, { error: (issue) => `too short: minimum length is 1, got ${String(issue.input).length}` })"));
     assert!(zod_schema.contains("jti: z.string().min(1, { error: (issue) => `too short: minimum length is 1, got ${String(issue.input).length}` })"));
 
-    assert!(zod_schema.contains("exp: z.codec(z.string().regex("));
-    assert!(zod_schema.contains("iat: z.codec(z.string().regex("));
-    assert!(zod_schema.contains("nbf: z.codec(z.string().regex("));
+    assert!(zod_schema.contains("exp: z.codec(z.union([z.bigint(), z.number().int()])"));
+    assert!(zod_schema.contains("iat: z.codec(z.union([z.bigint(), z.number().int()])"));
+    assert!(zod_schema.contains("nbf: z.codec(z.union([z.bigint(), z.number().int()])"));
 }
 
 #[test]

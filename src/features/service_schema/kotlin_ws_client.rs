@@ -1189,7 +1189,7 @@ fn message_kotlin_typename(operation: &OperationDef) -> String {
 }
 
 fn kotlin_type_of(ty: &Type) -> String {
-    kotlin_typename(&kotlin_field_def("value", ty).with_digit_leaves())
+    kotlin_typename(&kotlin_field_def("value", ty))
 }
 
 /// The `KSerializer` the client writes the message with and the dispatcher reads it with,

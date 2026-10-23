@@ -533,9 +533,9 @@ pub fn scalar_kind(ty: &Type) -> ScalarKind {
     }
 }
 
-/// Whether `ty` is a `u64` or an `i64`, which a member of a message the macro declares reads from
-/// the text of its digits.
-pub fn reads_its_digits(ty: &Type) -> bool {
+/// Whether `ty` is a `u64` or an `i64`, which TypeScript holds as a `bigint`: the text of a path, a
+/// query, a header or a text part is read as one from its digits.
+pub fn held_as_a_bigint(ty: &Type) -> bool {
     let Type::Path(named) = ty else {
         return false;
     };

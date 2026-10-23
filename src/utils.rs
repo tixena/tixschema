@@ -107,8 +107,8 @@ pub enum AliasKind {
 
 /// The form a map key is written in on the two nominal surfaces. The name a key is written under
 /// stands wherever its value form spells a TypeScript property key, and is spent where it does not:
-/// `boolean` and `Date` are no property keys, and the only bindings a brand or alias over one
-/// publishes are the value-shaped schemas Zod refuses or rewrites in key position. Recorded on
+/// `boolean`, `bigint` and `Date` are no property keys, and the only bindings a brand or alias over
+/// one publishes are the value-shaped schemas Zod refuses or rewrites in key position. Recorded on
 /// [`AliasInfo`] as a plain enum, a brand and an alias register, so a chain forwards its target's
 /// answer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -120,9 +120,13 @@ pub enum MapKeyWire {
     Enumerated,
     /// The value form already spells a property key, so the name written stands.
     Named,
+    /// serde writes the digits of an `i64`, which TypeScript holds as a `bigint`.
+    Signed64,
     /// serde writes an RFC 3339 timestamp carrying an offset.
     #[cfg(feature = "chrono")]
     Timestamp,
+    /// serde writes the digits of a `u64`, which TypeScript holds as a `bigint`.
+    Unsigned64,
 }
 
 /// The `str` method call a `pattern` says the same thing as, for the patterns a regex engine is

@@ -4,6 +4,7 @@
 //! re-emitting its frame rules.
 
 use super::service::enveloped_impl;
+use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::ServiceDef;
 
 pub fn emit(service: &ServiceDef) -> Vec<String> {
@@ -104,7 +105,7 @@ fn accept_fn_stmt(named: &str) -> String {
         heartbeat = accept_heartbeat_stmt(),
         guarded = guarded_socket_stmt(named),
         connection = connection_stmt(named),
-        on_frame = on_frame_stmt(),
+        on_frame = on_frame_stmt(&RenameRule::CamelCase.apply_to_variant(named)),
         on_error = on_error_stmt(),
         on_close = on_close_stmt(),
         wiring = wiring_and_detach_stmt(named),
@@ -177,18 +178,20 @@ fn connection_stmt(named: &str) -> String {
 /// The server's own `\"message\"` listener: it never reads a call frame itself — the attachment
 /// does that — but every inbound frame re-arms the idle timer, and a `ping` draws the `pong` the
 /// attachment does not answer.
-fn on_frame_stmt() -> String {
-    "      const onFrame = (event: { data: unknown }) => {\n        \
-     if (pongDeadline !== undefined) { clearTimeout(pongDeadline); pongDeadline = undefined; }\n        \
-     armIdle();\n        \
-     let frame: unknown;\n        \
-     try { frame = JSON.parse(String(event.data)); } catch { return; }\n        \
-     if (typeof frame === \"object\" && frame !== null && (frame as { kind?: unknown }).kind === \
-     \"ping\") {\n          \
-     socket.send(JSON.stringify({ kind: \"pong\" }));\n        \
-     }\n      \
-     };\n"
-        .to_owned()
+fn on_frame_stmt(prefix: &str) -> String {
+    format!(
+        "      const onFrame = (event: {{ data: unknown }}) => {{\n        \
+         if (pongDeadline !== undefined) {{ clearTimeout(pongDeadline); pongDeadline = undefined; \
+         }}\n        \
+         armIdle();\n        \
+         let frame: unknown;\n        \
+         try {{ frame = {prefix}WsRead(String(event.data)); }} catch {{ return; }}\n        \
+         if (typeof frame === \"object\" && frame !== null && (frame as {{ kind?: unknown }}).kind \
+         === \"ping\") {{\n          \
+         socket.send(JSON.stringify({{ kind: \"pong\" }}));\n        \
+         }}\n      \
+         }};\n"
+    )
 }
 
 fn on_error_stmt() -> String {

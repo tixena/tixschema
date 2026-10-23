@@ -48,7 +48,6 @@ use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, get_field_def, is_plain_enum,
     is_sequence_wrapper,
 };
-use crate::model_schema::digits;
 use crate::model_schema::variant_wire_kind;
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
 use crate::utils::{
@@ -102,7 +101,6 @@ const ELEMENT: &str = "element";
 pub struct KotlinArgs<'args> {
     /// The functions `check` names on the type, each taking the whole value.
     pub check: &'args [FunctionName],
-    /// The members whose `u64` and `i64` are written as digit strings.
     /// The type declared per type parameter, which a brand's bounds are run at.
     pub default_types: &'args [(Ident, Type)],
     /// A brand's `maxLength`.
@@ -331,7 +329,7 @@ pub fn kotlin_schema_dispatch(item: &Item, args: &KotlinArgs<'_>) -> TokenStream
 /// that could carry `u64`; the refusal exists for parity with the Swift target instead.
 pub fn kotlin_refused_width(field: &FieldDef) -> Option<&'static str> {
     match &field.field_type {
-        FieldDefType::U64 | FieldDefType::U64Digits => Some("u64"),
+        FieldDefType::U64 => Some("u64"),
         FieldDefType::Usize => Some("usize"),
         FieldDefType::SiblingType(_, generics) => generics.iter().find_map(kotlin_refused_width),
         FieldDefType::Map(key, value) => {
@@ -357,7 +355,6 @@ pub fn kotlin_refused_width(field: &FieldDef) -> Option<&'static str> {
         | FieldDefType::I16
         | FieldDefType::I32
         | FieldDefType::I64
-        | FieldDefType::I64Digits
         | FieldDefType::Isize
         | FieldDefType::F32
         | FieldDefType::F64 => None,
@@ -545,7 +542,7 @@ fn lookup_kotlin_name(rust_ident: &str) -> Option<String> {
 /// The `FieldDef` of the field a brand is the value of, its type parameters already erased, with
 /// the bounds the brand writes on itself as the value's own.
 fn brand_value_field(held: &Field, type_parameters: &[String], args: &KotlinArgs<'_>) -> FieldDef {
-    let mut field_def = digits::member_def(held, kotlin_field_def("value", &held.ty));
+    let mut field_def = kotlin_field_def("value", &held.ty);
     field_def.model_schema_prop_meta = Some(ModelSchemaPropMeta {
         max_length: args.max_length,
         min_length: args.min_length,
@@ -560,7 +557,7 @@ fn brand_value_field(held: &Field, type_parameters: &[String], args: &KotlinArgs
 /// built for it — `get_field_def` reads the Rust type alone, so `nullable`/`as_number` and the
 /// bounds need this filled in separately, as `process_field` does for the other three surfaces.
 fn field_def_with_prop_meta(name: &str, field: &Field, args: &KotlinArgs<'_>) -> FieldDef {
-    let mut field_def = digits::member_def(field, kotlin_field_def(name, &field.ty));
+    let mut field_def = kotlin_field_def(name, &field.ty);
     field_def.model_schema_prop_meta = Some((args.member_meta)(field));
     field_def
 }
@@ -864,11 +861,11 @@ fn kotlin_base(field: &FieldDef) -> String {
         FieldDefType::U32 => "UInt".to_owned(),
         // Refused under `check_kotlin_width_field` in `model_schema.rs`; a filler rendering keeps
         // this dispatch total for the compile_error! tokens emitted alongside it to stand on.
-        FieldDefType::U64 | FieldDefType::U64Digits | FieldDefType::Usize => "Long".to_owned(),
+        FieldDefType::U64 | FieldDefType::Usize => "Long".to_owned(),
         FieldDefType::I8 => "Byte".to_owned(),
         FieldDefType::I16 => "Short".to_owned(),
         FieldDefType::I32 => "Int".to_owned(),
-        FieldDefType::I64 | FieldDefType::I64Digits | FieldDefType::Isize => "Long".to_owned(),
+        FieldDefType::I64 | FieldDefType::Isize => "Long".to_owned(),
         FieldDefType::F32 => "Float".to_owned(),
         FieldDefType::F64 => "Double".to_owned(),
         #[cfg(feature = "mongodb")]
@@ -963,12 +960,10 @@ fn field_reaches_type_parameter(field: &FieldDef, type_parameters: &[String]) ->
         | FieldDefType::U16
         | FieldDefType::U32
         | FieldDefType::U64
-        | FieldDefType::U64Digits
         | FieldDefType::I8
         | FieldDefType::I16
         | FieldDefType::I32
         | FieldDefType::I64
-        | FieldDefType::I64Digits
         | FieldDefType::Isize
         | FieldDefType::Usize
         | FieldDefType::F32
@@ -1050,7 +1045,6 @@ fn kotlin_serializer_expr(field: &FieldDef, type_parameters: &[String]) -> Strin
             result_serializer(ok, err, |arm| kotlin_serializer_expr(arm, type_parameters))
         }
         FieldDefType::Char => texts::serializer(TextForm::Char),
-        FieldDefType::I64Digits | FieldDefType::U64Digits => texts::digits_serializer(),
         // None of these ever reaches a type parameter, a text of one form or an array of one
         // length at its innermost level (see `composed`), so this arm is unreached in practice; it
         // stays total rather than a wildcard.

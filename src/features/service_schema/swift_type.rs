@@ -6,14 +6,14 @@
 //! vector of nested tuple and map-key wrapper structs through every leaf.
 
 use crate::features::swift::lookup_swift_name;
-use crate::field_type::{FieldDef, FieldDefType, bare_field_def, is_sequence_wrapper};
+use crate::field_type::{FieldDef, FieldDefType, get_field_def, is_sequence_wrapper};
 use syn::Type;
 
 /// `ty`'s own Swift type name, read through the same `FieldDef` walk every field's type goes
 /// through — so a reference to a sibling `#[model_schema()]` type resolves to its published
 /// Swift name exactly as it would inside an ordinary field.
 pub(super) fn swift_typename_of(ty: &Type) -> String {
-    swift_typename(&bare_field_def("value", ty))
+    swift_typename(&get_field_def("value", ty, ""))
 }
 
 fn swift_typename(field: &FieldDef) -> String {
@@ -88,11 +88,11 @@ fn swift_base(field: &FieldDef) -> String {
         FieldDefType::U8 => "UInt8".to_owned(),
         FieldDefType::U16 => "UInt16".to_owned(),
         FieldDefType::U32 => "UInt32".to_owned(),
-        FieldDefType::U64 | FieldDefType::U64Digits => "UInt64".to_owned(),
+        FieldDefType::U64 => "UInt64".to_owned(),
         FieldDefType::I8 => "Int8".to_owned(),
         FieldDefType::I16 => "Int16".to_owned(),
         FieldDefType::I32 => "Int32".to_owned(),
-        FieldDefType::I64 | FieldDefType::I64Digits => "Int64".to_owned(),
+        FieldDefType::I64 => "Int64".to_owned(),
         FieldDefType::Usize | FieldDefType::Isize => "Int".to_owned(),
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => "ObjectId".to_owned(),
