@@ -461,7 +461,8 @@ fn a_brand_and_an_alias_name_the_helper_at_its_parameters() {
             "public struct HoardKeyedMap<Stowed: Codable & Sendable>: Codable, Sendable { \
              var storage: [UInt32: Stowed]; ",
             "let wireValue = try container.decode(HoardKeyedMap<Stowed>.self); ",
-            "try container.encode(HoardKeyedMap<Stowed>(storage: value)) }; ",
+            "let written = HoardKeyedMap<Stowed>(storage: value); try written.encode(to: encoder) \
+             }; ",
         ],
     );
     holds(

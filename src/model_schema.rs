@@ -2244,6 +2244,16 @@ fn alias_target_placed(target: &FieldDef, generics: &syn::Generics) -> FieldDef 
     placed
 }
 
+/// Records the entries a brand or a struct of one slot is flattened by where its value is an
+/// externally tagged enum, as an alias of the enum records them: serde flattens it as that value.
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+fn record_newtype_flatten_variants(rust_ident: &str, value: &FieldDef, generics: &syn::Generics) {
+    record_flatten_variants(
+        rust_ident,
+        &alias_target_placed(value, generics).flatten_variants(),
+    );
+}
+
 /// Records what `item` names where it is an alias of an `Option`, which a holder writes in place
 /// wherever it holds the alias outside a field and every guard of a field reads as an `Option`,
 /// and forgets the name otherwise. An alias that reaches itself through such aliases records
@@ -8412,6 +8422,10 @@ fn process_tuple_struct(
     {
         return output;
     }
+    #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+    if let TupleStructShape::BareValue(slot) = &slots.shape {
+        record_newtype_flatten_variants(&name.to_string(), slot, &item_struct.generics);
+    }
 
     #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     let docs_and_example = struct_docs_and_example(&item_struct);
@@ -9906,6 +9920,12 @@ fn register_branded_newtype(
         &type_parameters_in_scope(&item_struct.generics),
     )
     .record(rust_ident);
+    #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+    record_newtype_flatten_variants(
+        rust_ident,
+        &get_field_def("value", &inner_field.ty, ""),
+        &item_struct.generics,
+    );
 }
 
 /// Registers the brand, then records the consult question its own registration could not answer —

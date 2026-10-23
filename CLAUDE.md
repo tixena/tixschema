@@ -494,7 +494,7 @@ to serde and to Zod, and `tests/generic_types_tests/declarations.rs` parses each
   serde's derive, which refuses it, skipped or not; under a tag alone a tuple variant of no slot or
   of several is left to the refusals of a tuple variant, serde's derive refusing it untagged or
   not. An enum untagged as a whole is untouched.
-- An externally tagged enum → TypeScript union of each unit variant's name and one object per other variant, each object closing every other object variant's name with `"{other}"?: never` (`join_external_union`, through `sibling_key_exclusions` and `close_tagged_flatten_member`), so an object of two variants' entries, which serde and Zod refuse, does not type-check, and a member is told apart by `value.Bay !== undefined`, every object declaring every name. Flattened, the enum is joined by the entry of each variant, a unit variant's as its name over `null` (`record_external_flatten_operands`), each closed the same way, a member that names a `preprocess` or a `check` too (`FieldDef::flatten_variants_written_around`, `zod_merged_schema`), the functions written around the entries. The lone slot of a newtype variant under a tag alone that names such an enum is joined the same way (`entries_beside_the_tag`, through `variant_flatten_typescript` and `variant_flatten_zod`), as serde writes it beside the tag as it writes it flattened, and so is an alias of the enum, which `process_type_alias` records with the enum's entries (`record_flatten_variants`). An enum that declares a type parameter records its entries with each parameter written as its `parameter_placeholder` (`FieldDef::place_type_parameters`, on a copy of each variant `record_external_flatten_operands` renders again), and `FieldDef::recorded_flatten_variants` fills each placeholder with the argument the reference writes at its position, as a reference to the enum writes it (`typescript_typename`, `zod_type`, through `placeholders_filled` in `src/utils.rs`), the holder's own parameter as the holder declares it; a reference with no argument at a position the entries name is joined as the enum's own schema. An alias that declares a parameter records the entries filled with its own placeholders, which its holder fills in turn. `tests/flatten_tests/tests.rs` (`ExtCarriedHolder`) and `tests/tuple_variant_tests/tests.rs` (`InternalOverCarried`) hold the text, `LADINGS` in `tests/generic_types_tests/declarations.rs` holds it under `tsc --strict` and `node`, and `Cradled` in `tagged_slot_models.rs` under each client. `tests/tuple_variant_tests/tests.rs` holds the slot's text and its JSON Schema, which `merged_object_value` already writes by the entries, against serde, and `DeclaredMooring` in `tests/generic_types_tests/declarations.rs` holds it under `tsc --strict` and `node`. Such a check is handed the enum's own value, a unit variant's bare name (`FlattenVariant::unit`, `zod_check_wrap_handing`), written in the call twice so the function's parameter types it, and `record_external_flatten_operands` writes the checks the enum names on itself on each entry, handed the same value. The absence of a flattened `Option` source closes the source's keys to `never` but for those the object's own members and its other sources write (`ts_merged_operand`, `Exclude<keyof X, ...>`), which a payload holds on either branch. `tests/generic_types_tests/declarations.rs` holds `HATCHES` under `tsc --strict` and `node`, and `YAWS` under `node`, for a `preprocess` and for a `check`
+- An externally tagged enum → TypeScript union of each unit variant's name and one object per other variant, each object closing every other object variant's name with `"{other}"?: never` (`join_external_union`, through `sibling_key_exclusions` and `close_tagged_flatten_member`), so an object of two variants' entries, which serde and Zod refuse, does not type-check, and a member is told apart by `value.Bay !== undefined`, every object declaring every name. Flattened, the enum is joined by the entry of each variant, a unit variant's as its name over `null` (`record_external_flatten_operands`), each closed the same way, a member that names a `preprocess` or a `check` too (`FieldDef::flatten_variants_written_around`, `zod_merged_schema`), the functions written around the entries. The lone slot of a newtype variant under a tag alone that names such an enum is joined the same way (`entries_beside_the_tag`, through `variant_flatten_typescript` and `variant_flatten_zod`), as serde writes it beside the tag as it writes it flattened, and so is an alias of the enum, which `process_type_alias` records with the enum's entries (`record_flatten_variants`), and a brand and a struct of one slot over it, which `register_branded_newtype` and `process_tuple_struct` record the same way (`record_newtype_flatten_variants`). An enum that declares a type parameter records its entries with each parameter written as its `parameter_placeholder` (`FieldDef::place_type_parameters`, on a copy of each variant `record_external_flatten_operands` renders again), and `FieldDef::recorded_flatten_variants` fills each placeholder with the argument the reference writes at its position, as a reference to the enum writes it (`typescript_typename`, `zod_type`, through `placeholders_filled` in `src/utils.rs`), the holder's own parameter as the holder declares it; a reference with no argument at a position the entries name is joined as the enum's own schema. An alias that declares a parameter records the entries filled with its own placeholders, which its holder fills in turn. `tests/flatten_tests/tests.rs` (`ExtCarriedHolder`) and `tests/tuple_variant_tests/tests.rs` (`InternalOverCarried`) hold the text, `LADINGS` in `tests/generic_types_tests/declarations.rs` holds it under `tsc --strict` and `node`, and `Cradled` in `tagged_slot_models.rs` under each client. `tests/tuple_variant_tests/tests.rs` holds the slot's text and its JSON Schema, which `merged_object_value` already writes by the entries, against serde, and `DeclaredMooring` in `tests/generic_types_tests/declarations.rs` holds it under `tsc --strict` and `node`. Such a check is handed the enum's own value, a unit variant's bare name (`FlattenVariant::unit`, `zod_check_wrap_handing`), written in the call twice so the function's parameter types it, and `record_external_flatten_operands` writes the checks the enum names on itself on each entry, handed the same value. The absence of a flattened `Option` source closes the source's keys to `never` but for those the object's own members and its other sources write (`ts_merged_operand`, `Exclude<keyof X, ...>`), which a payload holds on either branch. `tests/generic_types_tests/declarations.rs` holds `HATCHES` under `tsc --strict` and `node`, and `YAWS` under `node`, for a `preprocess` and for a `check`
 - A member of a struct or of an enum's variant under `#[serde(default)]` → the TypeScript member unchanged, Zod `T.prefault(<json>)`, JSON Schema `"default": <json>` with the key left out of `required`, and each client reading the JSON of the default where the key is left out (section 13)
 - Type parameter → TypeScript parameter (`X<IdType>`), Zod `X$SchemaFactory(idType)` (memoized, one cache level per parameter) plus `X$SchemaDefault` — that same factory called at the item's own declared `default_types`, checks included — JSON Schema the document of whatever fills it — `default_types(...)` where the type stands alone, the reference site's arguments where a field embeds it. An argument, and a `default_types` filling in `$SchemaDefault` and its annotation, is written in the slot form (`typescript_slot_typename`, `zod_slot_type`): serde writes a parameter's `None` as `null` wherever the parameter is held, a field typed with it among them, so `X<Option<u32>>` is `X<number | null>` and `X$SchemaFactory(z.nullable(...))`, as the JSON Schema describes it. A lifetime is dropped on every surface, a borrowed value writing what its owned form writes; a const renders as an array length only, and is refused where it is handed to a written type as an argument
 - `serde_json::Value` and `serde_json::Map` → refused, in every build, by the path written. No
@@ -1208,17 +1208,24 @@ section is the consumer's view; this is what a change has to keep.
 - **A slot and a variant's member are named by the steps serde writes** (`Tagging`,
   `variant_body`, `slot_rules`): the variant's wire name where no tag is written, the content key
   under a tag and a content key, and nothing under a tag alone and under no tag; a slot's position
-  where there are several, and nothing for a lone slot.
+  in the array serde writes, `0` for the one slot `#[serde(skip)]` leaves of several, and nothing
+  for the one slot of a struct or a variant that declares one.
 - **A map's key is `key_step`'s**: the key itself for a string, a number and a `Boolean`, the text
   its serializer writes for a declared type, and a type parameter's only where
   `serialized_parameters` finds `Serialize` declared for it, as Rust writes it.
-- **One wrapper is written per tuple shape per item.** `tuple_wrapper_typename` queues a wrapper
+- **One wrapper is written per tuple shape per item.** `tuple_wrapper` queues a wrapper
   class the first time the item asks for a shape, and answers its name to every later ask of that
   shape (`KOTLIN_TUPLES`, cleared with the queue in `kotlin_module_tokens`). A shape is the
   class's body without its name: the type of each position and the serializer each is written
   and read with, so a walked and an unwalked read are two shapes where a position holds a model
   the walked one reads unjudged. The walk reads a position as `slot{N}` off the value, and names
-  no wrapper.
+  no wrapper. A wrapper whose positions reach type parameters of its holder declares them, in
+  the order a walk first reaches them (`FieldDef::reach_type_parameters`, which Swift's tuple
+  structs read too), and its serializer is a class over one serializer per parameter, bound to
+  `Any`: `tuple_wrapper_typename` writes the reference with the parameters and
+  `tuple_wrapper_serializer` hands the holder's serializers of them. A wrapper that reaches none
+  is an `object`, written as it was. `Yoked` in `run_kotlin_lone_slots.rs` reads a tuple of a
+  parameter filled at a text and at a model under kotlinc.
 - **A brand with a parameter** runs its bounds behind `if (value is {Default})`, the Kotlin type
   of the parameter's declared default (`declared_default`). A default written with arguments
   writes no bound: the JVM keeps no argument to tell the filling by.
@@ -1273,6 +1280,13 @@ the consumer's view; this is what a change has to keep.
   `tests/dart_tests/quoted_models.rs`, `run_kotlin_quoted.rs` reads and writes back each payload
   against serde, and `run_quoted_service.rs` calls each mobile client of a service whose names hold
   them.
+- **A tuple struct that declares one slot is the value of that slot**, as serde writes it whatever
+  the slot's attributes say: `tuple_struct_kotlin_tokens` writes its `{Type}Unjudged` over the
+  slot's value, the data class keeping `slot0`, and one of no slot or several over the array of
+  the slots serde writes (`tuple_array`). `lone_slot_rows.rs`, in
+  `tests/service_schema_emitted_client_tests/`, holds the table of such a struct in each position,
+  which `run_kotlin_lone_slots.rs`, `run_dart_lone_slots.rs`, `run_swift_lone_slots.rs` and, for
+  Zod, `run_node_lone_slots.rs` read and write back against serde.
 - **Every refusal a serializer the emitter writes makes as it reads is a `SerializationException`**,
   checked inline in the read, with no declaration shared at file scope. Six writers in
   `src/features/kotlin.rs` word it: `read_as` and `payload_read_as` read a payload as an object, an
@@ -1521,9 +1535,10 @@ the consumer's view; this is what a change has to keep.
   `when (val written = ...)`, a `JsonPrimitive` as `put(written.content, JsonNull)` and an object
   entry by entry, optional and under a function too. Every other flattened member merges its
   object as it did, so an enum the emitter has not written throws on a unit variant: the README
-  states the limit. `alias_kotlin_tokens` records an alias of such an enum as well, so the alias is
-  written the same way, flattened and beside a tag. `run_kotlin_flattened.rs` writes each variant
-  of `Tacking` against serde.
+  states the limit. `alias_kotlin_tokens` records an alias of such an enum as well, and
+  `value_class_tokens` and `tuple_struct_kotlin_tokens` a brand and a struct of one slot over one
+  (`note_bare_named`), so each is written the same way, flattened and beside a tag.
+  `run_kotlin_flattened.rs` writes each variant of `Tacking` against serde.
 - **An externally tagged enum reads a unit variant's entry over `null` alone**, as serde reads
   the enum alone (`unit_variant_read`): the arm reads `if (data is JsonNull)` and throws
   `SerializationException("{Enum}: " + tag + " takes no value")` otherwise, the wording of the
@@ -2000,6 +2015,12 @@ consumer's view; this is what a change has to keep.
   wrapper (a brand, a tuple struct, an alias), a variant with named members and the base of a
   sealed enum. `judged_body` writes the judgement, which the static `fromJson` of a plain enum
   takes too. A generic type takes its converters in both reads.
+- **A tuple struct that declares one slot is the value of that slot**, as serde writes it whatever
+  the slot's attributes say: `tuple_struct_dart_tokens` hands `value_wrapper_tokens` the slot as
+  `Held::Value`, the class a brand is written as, and the slot is read through `member_decode`,
+  which calls the functions it names. So a slot over an `ObjectId` takes `$oid` alone flattened
+  (`Taken::Only`). One of no slot or several is `Held::Slots`, the record of the slots serde
+  writes, read from their array.
 - **Every refusal the read writes itself is a `FormatException`**, thrown inline in the emitted
   text, with no declaration shared between two types. In `src/features/dart.rs`,
   `tagged_enum_dart_source` writes `Unknown {Enum}: {tag}` for a tag no variant has, under every
@@ -2184,7 +2205,8 @@ consumer's view; this is what a change has to keep.
   through a `switch` that writes a `String` as `{name: null}` and a map as it was
   (`joined_entries`), the member optional or under a function too, and so does the lone slot of a
   newtype variant under a tag alone, which serde writes beside the tag as it writes it flattened.
-  `alias_dart_tokens` records an alias of such an enum as well. A holder of any other flattened
+  `value_wrapper_tokens` records an alias, a brand and a struct of one slot over such an enum as
+  well. A holder of any other flattened
   member, and of an enum declared below it, writes the spread it wrote. The enum's map branch
   reads a unit variant from its entry, under each of its names, where the value is `null`, and
   refuses any other value: the Zod schema takes the entry over `null` alone, where serde's
@@ -2548,6 +2570,10 @@ to keep.
 - **`encode(to:)` does not move.** `struct_body_content` writes it where it wrote it before
   (`needs_encode`), and Swift synthesizes it everywhere else. A member of a `char` or of a chrono
   date or time held as a `String` is a `LeafConversion::Text`, so its type writes it.
+- **A brand and a struct of one slot write their value through their own encoder**
+  (`value_wrapper_tokens`): `try value.encode(to: encoder)`, as serde writes a newtype, so a
+  flattened one joins its value's keys to the holder's object, which a single value written over
+  it replaced. `Laden` in `tests/swift_tests/lone_slots_models.rs` flattens one of each.
 - **A `char` and a chrono date, time and date and time are read and written in their one form**
   (section 14), by `src/features/swift/forms.rs`. `forms::read_call` reads the text through
   `swiftSchemaRead{Char|Date|Time|Stamp}`, which throws `DecodingError.dataCorrupted` and
@@ -2720,7 +2746,9 @@ to keep.
   variant, and the README states the limit. A member under a function reads the entry back
   through the enum's own read, which refuses it, as the Zod schema refuses it. `alias_swift_tokens`
   records an alias of such an enum with the enum's `UNIT_ENTRIES` and `ENTRIES`, so the alias is
-  read and written the same way.
+  read and written the same way, and `value_wrapper_tokens` a brand and a struct of one slot over
+  one (`note_value_entries`), whose unit variants a holder tells by `value` (`entries_held`,
+  `SlotEntries::value`).
 - **The lone slot of a newtype variant under a tag alone that holds an externally tagged enum
   written above is read and written as serde writes it beside the tag**: `slot_payload` hands the
   payload `SlotEntries`, the enum's unit variants. The slot is read from the object without the

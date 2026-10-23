@@ -130,8 +130,10 @@ fn an_alias_names_the_serializer_of_its_form_and_a_written_read_composes_it() {
         "got: {initials_read}"
     );
     assert!(
-        initials_read
-            .contains("return Initials(input.json.decodeFromJsonElement(KotlinText2, array[0]))"),
+        initials_read.contains(
+            "return Initials(input.json.decodeFromJsonElement(KotlinText2, \
+             input.decodeJsonElement()))"
+        ),
         "got: {initials_read}"
     );
 }

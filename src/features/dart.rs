@@ -156,10 +156,11 @@ enum VariantPayload {
 
 /// What the class [`value_wrapper_tokens`] writes holds as its `value`.
 enum Held<'held> {
-    /// The slots of a tuple struct that is no brand, read from and written as the array serde
-    /// writes them in, an empty one for a struct of no slot.
+    /// The slots of a tuple struct that is no brand and declares no slot or several, read from and
+    /// written as the array serde writes them in, an empty one for a struct of no slot.
     Slots(&'held [FieldDef]),
-    /// A value, read and written as its type is.
+    /// A value, read and written as its type is: a brand's, an alias's, and the one slot of a
+    /// tuple struct that declares one, through the functions it names.
     Value(&'held FieldDef),
 }
 
@@ -3694,6 +3695,15 @@ fn value_wrapper_tokens(
         &rust_ident,
         matches!(held, Held::Value(value_field) if reads_a_unit(value_field)),
     );
+    // A brand, a struct of one slot or an alias over an enum that writes a unit variant as its bare
+    // name writes it so as well.
+    if let Held::Value(value) = held
+        && !value.is_list()
+        && !value.is_optional()
+        && writes_a_name(value)
+    {
+        record_writes_a_name(&rust_ident);
+    }
     // A value that reads one key alone is handed that key alone where it is flattened.
     if let (Held::Value(value), []) = (held, corrects.own)
         && !value.is_optional()
@@ -3713,7 +3723,12 @@ fn value_wrapper_tokens(
         ),
         Held::Value(value_field) => (
             dart_typename(value_field),
-            dart_decode_expr(value_field, &corrects.json, read),
+            member_decode(
+                value_field,
+                &corrects.json,
+                None,
+                read.of_member(value_field),
+            ),
             dart_encode_expr(value_field, "value", false),
         ),
     };
@@ -3740,31 +3755,46 @@ fn value_wrapper_tokens(
     )
 }
 
-/// The Dart tokens for a non-branded tuple struct: the single-slot ("bare value") shape shares
+/// The Dart tokens for a non-branded tuple struct. One that declares a single slot is that slot's
+/// value, which serde writes whatever the slot's attributes say, and shares
 /// [`value_wrapper_tokens`] with a branded newtype; a wider tuple struct wraps the fixed-size Dart
-/// record its slots describe, and one of no slot the empty record, read from the empty array.
+/// record of the slots serde writes, and one of no slot the empty record, read from the empty
+/// array.
 fn tuple_struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -> TokenStream {
     let type_parameters = type_parameters_in_scope(&item_struct.generics);
     let Fields::Unnamed(unnamed) = &item_struct.fields else {
         return TokenStream::new();
     };
+    let slot_def = |slot: &Field, name: &str| {
+        let mut field_def = field_def_with_prop_meta(name, slot, args);
+        field_def.erase_type_parameters(&type_parameters);
+        field_def
+    };
+    let mut helpers = Helpers::default();
+    if let Some(only) = unnamed.unnamed.first()
+        && unnamed.unnamed.len() == 1
+    {
+        let value_field = slot_def(only, "value");
+        // The slot is the value serde writes for the struct, which is no step.
+        let mut rules = member_elements(&value_field, "value", &[], 0, Asked::Rules, &mut helpers);
+        rules.extend(own_check_elements(args.check));
+        return value_wrapper_tokens(
+            &item_struct.ident,
+            &item_struct.generics,
+            args.name_override,
+            &Held::Value(&value_field),
+            Read::Unjudged,
+            &Corrects::of(args.preprocess),
+            &validate_members(&rules, &helpers, false),
+        );
+    }
     let slots: Vec<FieldDef> = unnamed
         .unnamed
         .iter()
         .filter(|slot| !parse_serde_key_omission(&slot.attrs).absent_from_wire())
-        .map(|slot| {
-            let mut field_def = field_def_with_prop_meta("slot", slot, args);
-            field_def.erase_type_parameters(&type_parameters);
-            field_def
-        })
+        .map(|slot| slot_def(slot, "slot"))
         .collect();
-    let mut helpers = Helpers::default();
-    // serde writes a struct that declares one slot as that slot's value, which is no step.
-    let mut rules = if let ([lone], 1) = (slots.as_slice(), unnamed.unnamed.len()) {
-        member_elements(lone, "value.$1", &[], 0, Asked::Rules, &mut helpers)
-    } else {
-        slot_elements(&slots, "value", &[], 0, Asked::Rules, &mut helpers)
-    };
+    let mut rules = slot_elements(&slots, "value", &[], 0, Asked::Rules, &mut helpers);
     rules.extend(own_check_elements(args.check));
     value_wrapper_tokens(
         &item_struct.ident,
@@ -3784,10 +3814,6 @@ fn alias_dart_tokens(item_type: &ItemType, name_override: Option<&str>) -> Token
     let type_parameters = type_parameters_in_scope(&item_type.generics);
     let mut target = get_field_def(&export_name, &item_type.ty, "");
     target.erase_type_parameters(&type_parameters);
-    // The alias of an enum that writes a unit variant as its bare name writes it so as well.
-    if !target.is_list() && !target.is_optional() && writes_a_name(&target) {
-        record_writes_a_name(&item_type.ident.to_string());
-    }
     // An alias is another name for its target: where that is a declared type itself, its rules
     // are the target's.
     let named = !target.is_list()

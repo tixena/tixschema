@@ -293,15 +293,35 @@ mod wrapped_maps_models;
 mod run_swift_wrapped_maps;
 
 /// The models a tuple struct that declares one slot is written on.
-#[cfg(all(test, feature = "swift"))]
+#[cfg(test)]
 #[path = "swift_tests/lone_slots_models.rs"]
 mod lone_slots_models;
+
+/// The payloads of those models the Zod schema and each client are held to.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/lone_slot_rows.rs"]
+mod lone_slot_rows;
 
 /// A tuple struct that declares one slot, which serde writes as the slot's value, read and written
 /// by the emitted Swift types wherever it is held.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_swift_lone_slots.rs"]
 mod run_swift_lone_slots;
+
+/// The same, read and written by the emitted Dart types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_lone_slots.rs"]
+mod run_dart_lone_slots;
+
+/// The same, read and written by the emitted Kotlin types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_lone_slots.rs"]
+mod run_kotlin_lone_slots;
+
+/// The same, read by the generated Zod schema under node.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_lone_slots.rs"]
+mod run_node_lone_slots;
 
 /// The models a type that declares a parameter and publishes under another name is written on.
 #[cfg(all(test, feature = "swift"))]

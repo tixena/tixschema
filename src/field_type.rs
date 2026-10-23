@@ -1225,6 +1225,55 @@ impl FieldDef {
         }
     }
 
+    /// Adds to `reached` each type parameter the field holds at any depth that `reached` does not
+    /// list yet, in the order a walk first reaches them.
+    #[cfg(any(feature = "swift", feature = "kotlin"))]
+    pub fn reach_type_parameters(&self, reached: &mut Vec<String>) {
+        let nested: Vec<&Self> = match &self.field_type {
+            FieldDefType::TypeParam(name) => {
+                if !reached.contains(name) {
+                    reached.push(name.clone());
+                }
+                return;
+            }
+            FieldDefType::SiblingType(_, arguments) => arguments.iter().collect(),
+            FieldDefType::Map(key, value) | FieldDefType::Result(key, value) => {
+                vec![key.as_ref(), value.as_ref()]
+            }
+            FieldDefType::Range(_, bound) => vec![bound.as_ref()],
+            FieldDefType::Tuple(elements) => elements.iter().collect(),
+            FieldDefType::Unknown
+            | FieldDefType::StringLiteral(_)
+            | FieldDefType::BooleanLiteral(_)
+            | FieldDefType::NumberLiteral(_)
+            | FieldDefType::Boolean
+            | FieldDefType::Char
+            | FieldDefType::String
+            | FieldDefType::U8
+            | FieldDefType::U16
+            | FieldDefType::U32
+            | FieldDefType::U64
+            | FieldDefType::I8
+            | FieldDefType::I16
+            | FieldDefType::I32
+            | FieldDefType::I64
+            | FieldDefType::Usize
+            | FieldDefType::Isize
+            | FieldDefType::F32
+            | FieldDefType::F64 => Vec::new(),
+            #[cfg(feature = "mongodb")]
+            FieldDefType::ObjectId => Vec::new(),
+            #[cfg(feature = "chrono")]
+            FieldDefType::NaiveDate
+            | FieldDefType::NaiveTime
+            | FieldDefType::NaiveDateTime
+            | FieldDefType::DateTime => Vec::new(),
+        };
+        for held in nested {
+            held.reach_type_parameters(reached);
+        }
+    }
+
     /// The first name this field reaches, at any depth, that `refused` answers for. A name is only
     /// ever written where a type is, so the walk descends the positions holding written types and
     /// stops at every value the parser resolved to something of its own.

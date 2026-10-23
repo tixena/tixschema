@@ -11,11 +11,11 @@ use core::fmt::Write as _;
 use super::object_id_models::{
     belated_dart, bullae_dart, cachet_dart, cartouche_dart, cartouching_dart, countersealing_dart,
     countersigned_dart, crossed_dart, crossing_dart, docketing_dart, embossed_dart, endorsed_dart,
-    endorsing_dart, enveloping_dart, enwafered_dart, folding_dart, impress_dart, impressing_dart,
-    late_cartouche_dart, late_sigil_dart, latewaxed_dart, lettering_dart, notation_dart,
-    relayed_dart, relaying_dart, rewaxed_dart, rewaxing_dart, rows, sigil_dart, sigiled_dart,
-    sigillary_dart, sigillum_dart, stampage_dart, wafer_dart, wafered_dart, wafering_dart,
-    waxing_dart, waxwork_dart, waxworking_dart,
+    endorsing_dart, enveloping_dart, enwafered_dart, folding_dart, impress_dart, impressed_dart,
+    impressing_dart, late_cartouche_dart, late_sigil_dart, latewaxed_dart, lettering_dart,
+    notation_dart, relayed_dart, relaying_dart, rewaxed_dart, rewaxing_dart, rows, sigil_dart,
+    sigiled_dart, sigillary_dart, sigillum_dart, stampage_dart, wafer_dart, wafered_dart,
+    wafering_dart, wafers_dart, waxing_dart, waxwork_dart, waxworking_dart,
 };
 use super::object_id_runs::{printed, readme_object_id};
 use super::run_dart_validate::{dart, module};
@@ -90,6 +90,8 @@ fn an_object_id_is_read_and_written_back_by_dart_as_serde_reads_it() {
             wafered_dart::dart_definition(),
             wafering_dart::dart_definition(),
             enwafered_dart::dart_definition(),
+            wafers_dart::dart_definition(),
+            impressed_dart::dart_definition(),
             belated_dart::dart_definition(),
             late_sigil_dart::dart_definition(),
             late_cartouche_dart::dart_definition(),

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 /// The codec of each type below but `Audit`: its two reads, and `toJson` as it was written before
-/// any type had `validate()`.
+/// any type had `validate()`, but `Sleeve`'s, which reads and writes the value of its one slot.
 const CODEC: &str = include_str!("codec_before_validate.txt");
 
 /// The helper a type that names a place carries, as it is written into the type.
@@ -552,8 +552,8 @@ fn a_slot_is_named_by_its_position_and_a_lone_slot_by_nothing() {
     let sleeve = sleeve_dart::dart_definition();
     assert!(
         sleeve.ends_with(
-            "List<String> validate() => [ if (value.$1.runes.length < 1) \"too short: minimum \
-             length is 1, got ${value.$1.runes.length}\", ]; }"
+            "List<String> validate() => [ if (value.runes.length < 1) \"too short: minimum length \
+             is 1, got ${value.runes.length}\", ]; }"
         ),
         "got: {sleeve}"
     );

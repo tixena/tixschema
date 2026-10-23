@@ -6,9 +6,10 @@
 use super::texts;
 use super::{arrays, validate};
 use super::{
-    innermost, kotlin_base, kotlin_quoted, kotlin_serializer_expr, kotlin_serializer_param_name,
-    kotlin_typename, listed_serializer, lookup_kotlin_name, marked_nullable_at, range_serializer,
-    range_typename, result_serializer, result_typename, sibling_typename, tuple_wrapper_typename,
+    field_reaches_type_parameter, innermost, kotlin_base, kotlin_quoted, kotlin_serializer_expr,
+    kotlin_serializer_param_name, kotlin_typename, listed_serializer, lookup_kotlin_name,
+    marked_nullable_at, range_serializer, range_typename, result_serializer, result_typename,
+    sibling_typename, tuple_wrapper_serializer, tuple_wrapper_typename,
 };
 use crate::features::text_forms::TextForm;
 use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
@@ -282,12 +283,19 @@ pub fn kept_plain(export_name: &str) -> String {
 }
 
 /// [`member_serializer`] of a member already declared `declared`: a tuple is read by the wrapper
-/// that declaration names, a walked and an unwalked wrapper of one tuple being two classes.
+/// that declaration names, a walked and an unwalked wrapper of one tuple being two classes, and a
+/// wrapper that declares a type parameter is handed the serializer of each.
 pub fn declared_serializer(field: &FieldDef, declared: &str, type_parameters: &[String]) -> String {
-    if matches!(field.field_type, FieldDefType::Tuple(_)) {
-        format!("serializer<{declared}>()")
+    let FieldDefType::Tuple(positions) = &field.field_type else {
+        return member_serializer(field, type_parameters);
+    };
+    if field_reaches_type_parameter(field, type_parameters) {
+        listed_serializer(
+            field,
+            tuple_wrapper_serializer(positions, member_read_unjudged(field)),
+        )
     } else {
-        member_serializer(field, type_parameters)
+        format!("serializer<{declared}>()")
     }
 }
 
@@ -324,12 +332,13 @@ fn parameter_list(type_parameters: &[String], bound: &str) -> String {
 }
 
 /// A reference to the `KSerializer` the wrapper of a tuple a `validate()` walks reads the
-/// position typed `field` with.
-pub fn position_serializer(field: &FieldDef) -> String {
+/// position typed `field` with, composed from the serializers of `type_parameters`, the
+/// wrapper's own.
+pub fn position_serializer(field: &FieldDef, type_parameters: &[String]) -> String {
     if in_a_position(field) {
-        unjudged_serializer(field, &[])
+        unjudged_serializer(field, type_parameters)
     } else {
-        kotlin_serializer_expr(field, &[])
+        kotlin_serializer_expr(field, type_parameters)
     }
 }
 
@@ -503,7 +512,7 @@ fn unjudged_serializer(field: &FieldDef, type_parameters: &[String]) -> String {
             unjudged_serializer(value, type_parameters)
         )
     } else if let FieldDefType::Tuple(positions) = &field.field_type {
-        format!("serializer<{}>()", tuple_wrapper_typename(positions, true))
+        tuple_wrapper_serializer(positions, true)
     } else if let FieldDefType::Range(kind, bound) = &field.field_type {
         range_serializer(*kind, &unjudged_serializer(bound, type_parameters))
     } else if let FieldDefType::Result(ok, err) = &field.field_type {

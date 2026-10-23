@@ -207,6 +207,9 @@ struct SlotEntries {
     /// The unit variants the enum's own read takes from an entry over `null` in the object
     /// without the tag, or in what the slot's functions answer of it.
     units: Vec<preprocess::Entry>,
+    /// The `value` of a brand or a struct of one slot over the enum, which the variants are told
+    /// by, and nothing where the slot holds the enum itself.
+    value: &'static str,
     /// The unit variants written as an entry of their names over `null`.
     written: Vec<UnitEntry>,
 }
@@ -376,7 +379,11 @@ impl VariantPayload {
     /// encoder: a unit variant of the enum [`Self::beside`] holds as an entry of its name over
     /// `null`.
     fn written_beside(&self, payload: &str) -> String {
-        unit_entries_write(&self.beside.written, payload, &self.written(payload))
+        unit_entries_write(
+            &self.beside.written,
+            &format!("{payload}{}", self.beside.value),
+            &self.written(payload),
+        )
     }
 }
 
@@ -464,6 +471,10 @@ thread_local! {
     /// writes such a variant flattened as an entry of its holder's object, its name over `null`.
     static UNIT_ENTRIES: RefCell<HashMap<String, Vec<UnitEntry>>> = RefCell::new(HashMap::new());
 
+    /// The Rust ident of each brand and struct of one slot the emitter wrote whose `value` is such
+    /// an enum, which [`UNIT_ENTRIES`] holds the unit variants of: a holder tells them by `value`.
+    static VALUE_ENTRIES: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+
     /// The target of each alias the emitter wrote that declares no parameter and holds an array to
     /// its length, by Rust ident, and what the types written for it are named from: a holder reads
     /// a value of the alias item by item, as it reads one of the target.
@@ -526,6 +537,46 @@ fn unit_entries_of(def: &FieldDef) -> Vec<UnitEntry> {
         return Vec::new();
     };
     UNIT_ENTRIES.with(|recorded| recorded.borrow().get(name).cloned().unwrap_or_default())
+}
+
+/// Whether `def` names a brand or a struct of one slot whose `value` is an enum that writes a unit
+/// variant as an entry of its name.
+fn wraps_entries(def: &FieldDef) -> bool {
+    matches!(&def.field_type, FieldDefType::SiblingType(name, _)
+        if VALUE_ENTRIES.with(|recorded| recorded.borrow().contains(name)))
+}
+
+/// What the unit variants of `held`, a value of `def`, are told by: the value itself, and the
+/// `value` of a brand or a struct of one slot over such an enum.
+fn entries_held(def: &FieldDef, held: &str) -> String {
+    if wraps_entries(def) {
+        format!("{held}.value")
+    } else {
+        held.to_owned()
+    }
+}
+
+/// Records the unit variants and the entries of `value`, the value of the brand or the struct of
+/// one slot `rust_ident`, where it is an externally tagged enum written above: serde writes and
+/// reads the wrapper flattened, and beside a tag, as that value.
+fn note_value_entries(rust_ident: &str, value: &FieldDef) {
+    let (units, entries) = if value.is_list() || value.is_optional() {
+        (Vec::new(), Vec::new())
+    } else {
+        (
+            unit_entries_of(value),
+            preprocess::entries_of(value).map_or_else(Vec::new, |(_, entries)| entries),
+        )
+    };
+    VALUE_ENTRIES.with(|recorded| {
+        if units.is_empty() {
+            recorded.borrow_mut().remove(rust_ident);
+        } else {
+            recorded.borrow_mut().insert(rust_ident.to_owned());
+        }
+    });
+    note_unit_entries(rust_ident, units);
+    preprocess::note_entries(rust_ident, entries);
 }
 
 /// Records `target`, the target of the alias `rust_ident` and what its types are named from, for a
@@ -811,65 +862,9 @@ fn arrayed(field: FieldDef) -> FieldDef {
 fn parameters_reached(defs: &[&FieldDef]) -> Vec<String> {
     let mut reached = Vec::new();
     for def in defs {
-        reach_parameters(def, &mut reached);
+        def.reach_type_parameters(&mut reached);
     }
     reached
-}
-
-/// Adds to `reached` each type parameter `def` holds that it does not list yet.
-fn reach_parameters(def: &FieldDef, reached: &mut Vec<String>) {
-    match &def.field_type {
-        FieldDefType::TypeParam(name) => {
-            if !reached.contains(name) {
-                reached.push(name.clone());
-            }
-        }
-        FieldDefType::SiblingType(_, arguments) => {
-            for argument in arguments {
-                reach_parameters(argument, reached);
-            }
-        }
-        FieldDefType::Map(key, value) => {
-            reach_parameters(key, reached);
-            reach_parameters(value, reached);
-        }
-        FieldDefType::Tuple(elements) => {
-            for element in elements {
-                reach_parameters(element, reached);
-            }
-        }
-        FieldDefType::Range(_, bound) => reach_parameters(bound, reached),
-        FieldDefType::Result(ok, err) => {
-            reach_parameters(ok, reached);
-            reach_parameters(err, reached);
-        }
-        FieldDefType::Unknown
-        | FieldDefType::StringLiteral(_)
-        | FieldDefType::BooleanLiteral(_)
-        | FieldDefType::NumberLiteral(_)
-        | FieldDefType::Boolean
-        | FieldDefType::Char
-        | FieldDefType::String
-        | FieldDefType::U8
-        | FieldDefType::U16
-        | FieldDefType::U32
-        | FieldDefType::U64
-        | FieldDefType::I8
-        | FieldDefType::I16
-        | FieldDefType::I32
-        | FieldDefType::I64
-        | FieldDefType::Usize
-        | FieldDefType::Isize
-        | FieldDefType::F32
-        | FieldDefType::F64 => {}
-        #[cfg(feature = "mongodb")]
-        FieldDefType::ObjectId => {}
-        #[cfg(feature = "chrono")]
-        FieldDefType::NaiveDate
-        | FieldDefType::NaiveTime
-        | FieldDefType::NaiveDateTime
-        | FieldDefType::DateTime => {}
-    }
 }
 
 /// The `#[serde(rename = "...")]` a field or variant earns, honored only where the `serde`
@@ -2703,7 +2698,7 @@ fn encode_statement(field: &SwiftField, container: &str) -> String {
 /// encoder. A unit variant of an externally tagged enum written above is an entry of its name over
 /// `null`, as serde writes it: the bare name the enum writes is dropped by the holder's object.
 fn flattened_write(def: &FieldDef, held: &str, written: &str) -> String {
-    unit_entries_write(&unit_entries_of(def), held, written)
+    unit_entries_write(&unit_entries_of(def), &entries_held(def, held), written)
 }
 
 /// The statement that writes `held`, a value of an enum whose unit variants are `entries`, as
@@ -3314,8 +3309,8 @@ fn brand_value_field(
 
 /// The Swift tokens for a value that carries no shape of its own on the wire beyond one wrapped
 /// value: a branded newtype, or a non-branded tuple struct. Both publish a struct with one
-/// `public let value` and a single-value-container codec. `rules` is what the wrapper's
-/// `validate()` runs.
+/// `public let value`, read from a single value and written by the value's own `encode(to:)`.
+/// `rules` is what the wrapper's `validate()` runs.
 fn value_wrapper_tokens(
     ident: &Ident,
     generics: &syn::Generics,
@@ -3347,6 +3342,9 @@ fn value_wrapper_tokens(
             }
         }
         Wrapped::Slot | Wrapped::Tuple => validate::note(&rust_ident, None, !rules.is_empty()),
+    }
+    if !matches!(wrapped, Wrapped::Tuple) {
+        note_value_entries(&rust_ident, value_field);
     }
 
     let generic_params = swift_generic_params(generics);
@@ -3382,7 +3380,7 @@ fn value_wrapper_tokens(
     } else {
         format!("try container.decode({real_type}.self)")
     };
-    let encode = format!("try container.encode({})", shaped.written("value"));
+    let encode = wrapper_write(&shaped);
     let helpers = leaf_helpers_for(&export_name, &generic_params, &[&shaped.shape], None);
     let mut twins = Vec::new();
     let own_read = if matches!(wrapped, Wrapped::Slot) {
@@ -3411,8 +3409,7 @@ fn value_wrapper_tokens(
          public let value: {real_type}; \
          public init(value: {real_type}) {{ self.value = value }}; \
          {reads}\
-         public func encode(to encoder: Encoder) throws {{ \
-         var container = encoder.singleValueContainer(); {encode} }}; {validate} }}; {helpers}"
+         public func encode(to encoder: Encoder) throws {{ {encode} }}; {validate} }}; {helpers}"
     );
     let typealias = ident_typealias(&rust_ident, &export_name, &generic_params);
     let swift_source = if aux.is_empty() {
@@ -3427,6 +3424,18 @@ fn value_wrapper_tokens(
         &swift_source,
         &SerdeDefaults::none(),
     )
+}
+
+/// The statements of the `encode(to:)` of a struct of one `value`, `shaped`: the value writes
+/// itself through the wrapper's encoder, as serde writes a newtype, so a flattened one joins its
+/// keys to the holder's object, which a single value written over it would replace.
+fn wrapper_write(shaped: &Shaped) -> String {
+    let written = shaped.written("value");
+    if written == "value" {
+        "try value.encode(to: encoder)".to_owned()
+    } else {
+        format!("let written = {written}; try written.encode(to: encoder)")
+    }
 }
 
 /// The statements of the own read of a tuple struct's one slot, read from the decoder itself as
@@ -3778,6 +3787,11 @@ fn slot_payload(
     let beside = if shape.tag_attrs.tag_alone() {
         SlotEntries {
             units: preprocess::units_of(&field_def),
+            value: if wraps_entries(&field_def) {
+                ".value"
+            } else {
+                ""
+            },
             written: unit_entries_of(&field_def),
         }
     } else {

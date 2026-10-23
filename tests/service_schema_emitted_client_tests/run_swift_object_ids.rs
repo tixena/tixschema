@@ -12,11 +12,11 @@ use super::object_id_models::{
     belated_swift, bullae_swift, cachet_swift, cartouche_swift, cartouching_swift,
     countersealing_swift, countersigned_swift, crossed_swift, crossing_swift, docketing_swift,
     embossed_swift, endorsed_swift, endorsing_swift, enveloping_swift, enwafered_swift,
-    folding_swift, impress_swift, impressing_swift, late_cartouche_swift, late_sigil_swift,
-    latewaxed_swift, lettering_swift, notation_swift, relayed_swift, relaying_swift, rewaxed_swift,
-    rewaxing_swift, rows, sigil_swift, sigiled_swift, sigillary_swift, sigillum_swift,
-    stampage_swift, wafer_swift, wafered_swift, wafering_swift, waxing_swift, waxwork_swift,
-    waxworking_swift,
+    folding_swift, impress_swift, impressed_swift, impressing_swift, late_cartouche_swift,
+    late_sigil_swift, latewaxed_swift, lettering_swift, notation_swift, relayed_swift,
+    relaying_swift, rewaxed_swift, rewaxing_swift, rows, sigil_swift, sigiled_swift,
+    sigillary_swift, sigillum_swift, stampage_swift, wafer_swift, wafered_swift, wafering_swift,
+    wafers_swift, waxing_swift, waxwork_swift, waxworking_swift,
 };
 use super::object_id_runs::{printed, readme_object_id};
 use super::run_swift_tagged_slots::sorted;
@@ -91,6 +91,8 @@ fn an_object_id_is_read_and_written_back_by_swift_as_serde_reads_it() {
         wafered_swift::swift_definition(),
         wafering_swift::swift_definition(),
         enwafered_swift::swift_definition(),
+        wafers_swift::swift_definition(),
+        impressed_swift::swift_definition(),
         belated_swift::swift_definition(),
         late_sigil_swift::swift_definition(),
         late_cartouche_swift::swift_definition(),

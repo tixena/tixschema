@@ -89,7 +89,7 @@ const KOTLIN_IMPORTS: &str = "import kotlinx.serialization.*\n\
      import kotlinx.serialization.builtins.*";
 
 /// The rows of [`LEADS`] but those read as one of `left_out`.
-#[cfg(any(feature = "dart", feature = "kotlin"))]
+#[cfg(feature = "kotlin")]
 fn rows_but(left_out: &[&str]) -> Vec<(&'static str, &'static str)> {
     LEADS
         .into_iter()
@@ -124,10 +124,8 @@ fn held_to_serde(rows: &[(&str, &str)], printed: &str, client: &str) {
 #[cfg(feature = "dart")]
 #[test]
 fn dart_writes_back_the_null_serde_writes_for_an_alias_of_an_option() {
-    // Dart reads a struct of one slot as an array of the slot, where serde writes the slot's value.
-    let rows = rows_but(&["Deepsea"]);
     let mut main = String::from("void main() {\n");
-    for &(read_as, json) in &rows {
+    for (read_as, json) in LEADS {
         let _ = writeln!(
             main,
             "  written(() => {read_as}.fromJson(jsonDecode(r'''{json}''')));"
@@ -163,7 +161,7 @@ fn dart_writes_back_the_null_serde_writes_for_an_alias_of_an_option() {
         return;
     };
     assert!(ran, "{printed}");
-    held_to_serde(&rows, &printed, "Dart");
+    held_to_serde(&LEADS, &printed, "Dart");
 }
 
 /// The Swift read takes each payload serde writes and writes it back as serde does.
@@ -222,9 +220,7 @@ fn swift_writes_back_the_null_serde_writes_for_an_alias_of_an_option() {
 #[cfg(feature = "kotlin")]
 #[test]
 fn kotlin_writes_back_the_null_serde_writes_for_an_alias_of_an_option() {
-    // Kotlin reads a struct of one slot as an array of the slot, where serde writes the slot's
-    // value.
-    let rows = rows_but(&["Deepsea"]);
+    let rows = rows_but(&[]);
     let mut main = String::from("fun main() {\n");
     for &(read_as, json) in &rows {
         let _ = writeln!(

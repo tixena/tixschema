@@ -1145,16 +1145,18 @@ fn a_slot_is_named_by_the_step_serde_writes() {
             &[],
             "Pair.fromJsonUnjudged(@)",
         ),
-        Case {
-            answered: texts(&["too short: minimum length is 1, got 0"]),
-            built: "Sleeve(('',))".to_owned(),
-            name: "Sleeve, empty",
-        },
-        Case {
-            answered: Vec::new(),
-            built: "Sleeve(('a',))".to_owned(),
-            name: "Sleeve",
-        },
+        pinned(
+            "Sleeve, empty",
+            &Sleeve(String::new()),
+            &["too short: minimum length is 1, got 0"],
+            "Sleeve.fromJsonUnjudged(@)",
+        ),
+        pinned(
+            "Sleeve",
+            &Sleeve("a".to_owned()),
+            &[],
+            "Sleeve.fromJsonUnjudged(@)",
+        ),
         pinned(
             "Deck, a tuple in a field",
             &deck,
