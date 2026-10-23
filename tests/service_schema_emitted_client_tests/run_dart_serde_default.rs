@@ -46,10 +46,6 @@ void requires(String name, Object? Function() read) {
 }
 ";
 
-/// The structs whose codec casts a key of a map the analyzer already knows to be a string: run,
-/// and left out of what is analyzed.
-const MAPS: [&str; 2] = ["IndexedLogbook", "Logbook"];
-
 /// The function `Bollard` names, as a consumer writes it in Dart.
 const TRIMMED_DOCK: &str =
     "dynamic trimmedDock(dynamic payload) => payload is String ? payload.trim() : payload;";
@@ -159,20 +155,18 @@ fn an_empty_collection_of_a_parameter_is_read_from_its_json() {
 
 /// The emitted types of the structs that declare a parameter, the row printers, and a `main`
 /// that reads each payload at `String`, then each payload of `Harbour` that leaves out a key.
-/// `analyzed` leaves out the types of [`MAPS`] and their rows.
-fn filled_source(analyzed: bool) -> String {
-    let kept = |read_as: &str| !(analyzed && MAPS.contains(&read_as));
-    let filled = filled_cases()
-        .into_iter()
-        .filter(|&(_, read_as, _)| kept(read_as))
-        .fold(String::new(), |mut written, (name, read_as, payload)| {
-            let _ = writeln!(
-                written,
-                "  row('{name}', () => {read_as}<String>.fromJson(jsonDecode(r'{payload}'), (e) => \
-                 e as String).toJson((e) => e));"
-            );
-            written
-        });
+fn filled_source() -> String {
+    let filled =
+        filled_cases()
+            .into_iter()
+            .fold(String::new(), |mut written, (name, read_as, payload)| {
+                let _ = writeln!(
+                    written,
+                    "  row('{name}', () => {read_as}<String>.fromJson(jsonDecode(r'{payload}'), \
+                     (e) => e as String).toJson((e) => e));"
+                );
+                written
+            });
     let required = REQUIRED
         .iter()
         .fold(String::new(), |mut written, (name, payload)| {
@@ -183,23 +177,19 @@ fn filled_source(analyzed: bool) -> String {
             );
             written
         });
-    let definitions: Vec<String> = [
-        ("Link", link_dart::dart_definition()),
-        ("Basin", basin_dart::dart_definition()),
-        ("Config", config_dart::dart_definition()),
-        ("Fleet", fleet_dart::dart_definition()),
-        ("Logbook", logbook_dart::dart_definition()),
-        ("Harbour", harbour_dart::dart_definition()),
-        ("Manifest", manifest_dart::dart_definition()),
+    let definitions = [
+        link_dart::dart_definition(),
+        basin_dart::dart_definition(),
+        config_dart::dart_definition(),
+        fleet_dart::dart_definition(),
+        logbook_dart::dart_definition(),
+        harbour_dart::dart_definition(),
+        manifest_dart::dart_definition(),
         #[cfg(feature = "indexmap")]
-        ("IndexedFleet", indexed_fleet_dart::dart_definition()),
+        indexed_fleet_dart::dart_definition(),
         #[cfg(feature = "indexmap")]
-        ("IndexedLogbook", indexed_logbook_dart::dart_definition()),
-    ]
-    .into_iter()
-    .filter(|&(declared, _)| kept(declared))
-    .map(|(_, written)| written)
-    .collect();
+        indexed_logbook_dart::dart_definition(),
+    ];
     module(
         &definitions,
         &[ROW, REQUIRES],
@@ -223,7 +213,7 @@ fn each_payload_of_a_struct_that_declares_a_parameter_reads_in_dart_as_serde_rea
             harbour
         );
     }
-    let Some((ran, printed)) = dart("serde-default-filled", &[], &filled_source(false)) else {
+    let Some((ran, printed)) = dart("serde-default-filled", &[], &filled_source()) else {
         return;
     };
     assert!(ran, "{printed}");
@@ -236,7 +226,7 @@ fn the_read_of_an_empty_collection_of_a_parameter_has_no_issue() {
     let Some((clean, said)) = dart(
         "serde-default-filled-analyze",
         &["analyze"],
-        &filled_source(true),
+        &filled_source(),
     ) else {
         return;
     };

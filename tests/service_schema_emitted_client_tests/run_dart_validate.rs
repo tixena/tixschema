@@ -553,10 +553,8 @@ fn table_definitions() -> Vec<String> {
     ]
 }
 
-/// The emitted definitions of every shape the analyzer passes whole. `Docket`, `Lift`, `Pair`
-/// and `Terminal` are in [`shape_definitions`] alone: the codec of each casts a value whose type
-/// the analyzer already knows.
-pub fn analyzed_definitions() -> Vec<String> {
+/// The emitted definitions of every shape.
+pub fn shape_definitions() -> Vec<String> {
     let mut definitions = table_definitions();
     definitions.extend([
         code_dart::dart_definition(),
@@ -579,18 +577,10 @@ pub fn analyzed_definitions() -> Vec<String> {
         haul_dart::dart_definition(),
         reference_dart::dart_definition(),
         stamp_dart::dart_definition(),
-    ]);
-    definitions
-}
-
-/// The emitted definitions of every shape.
-pub fn shape_definitions() -> Vec<String> {
-    let mut definitions = analyzed_definitions();
-    definitions.extend([
-        docket_dart::dart_definition(),
-        lift_dart::dart_definition(),
         pair_dart::dart_definition(),
         terminal_dart::dart_definition(),
+        docket_dart::dart_definition(),
+        lift_dart::dart_definition(),
     ]);
     definitions
 }
@@ -702,7 +692,7 @@ fn the_emitted_source_of_the_shared_table_has_no_issue() {
 #[test]
 fn the_emitted_source_of_every_shape_has_no_issue() {
     let source = module(
-        &analyzed_definitions(),
+        &shape_definitions(),
         &[CHECKS, REPORT, SHAPE_FUNCTIONS],
         "void main() {\n  report('none', const []);\n  print(jsonEncode(const <String>[]));\n}\n",
     );

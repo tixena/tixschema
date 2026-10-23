@@ -57,8 +57,8 @@ fn holds(dart: &str, written: &[String]) {
     }
 }
 
-/// A `char` and a date are read where Zod reads them, a map's key among them, and written as they
-/// are where serde writes them.
+/// A `char` and a date are read where Zod reads them, and written as they are where serde writes
+/// them, a map's key among them, which is a `String` already and so is not cast.
 #[test]
 fn a_char_and_a_date_are_read_and_written_in_their_form() {
     let letter = "text.runes.length == 1";
@@ -73,9 +73,18 @@ fn a_char_and_a_date_are_read_and_written_in_their_form() {
                 "letter: {},",
                 read("json['letter'] as String", letter, "a character")
             ),
+            format!("MapEntry({}, ", read("e.key", letter, "a character")),
             format!(
                 "MapEntry({}, ",
-                read("e.key as String", letter, "a character")
+                read("e.key", &matching(DATE, "text"), "a date")
+            ),
+            format!(
+                "MapEntry({}, ",
+                sent("e.key", "e.key", "sent.runes.length == 1", "a character")
+            ),
+            format!(
+                "MapEntry({}, ",
+                sent("e.key", "e.key", &matching(DATE, "sent"), "a date")
             ),
             format!(
                 "'day': {},",

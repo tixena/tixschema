@@ -33,6 +33,53 @@ void told(String at, Object? Function() read) {
 }
 ";
 
+/// The README's `ObjectId` and the emitted types the rows read.
+fn definitions() -> Vec<String> {
+    vec![
+        readme_object_id("dart"),
+        notation_dart::dart_definition(),
+        cartouche_dart::dart_definition(),
+        impress_dart::dart_definition(),
+        waxwork_dart::dart_definition(),
+        countersigned_dart::dart_definition(),
+        sigil_dart::dart_definition(),
+        sigillum_dart::dart_definition(),
+        endorsed_dart::dart_definition(),
+        endorsing_dart::dart_definition(),
+        cachet_dart::dart_definition(),
+        embossed_dart::dart_definition(),
+        docketing_dart::dart_definition(),
+        stampage_dart::dart_definition(),
+        sigiled_dart::dart_definition(),
+        sigillary_dart::dart_definition(),
+        enveloping_dart::dart_definition(),
+        waxing_dart::dart_definition(),
+        rewaxing_dart::dart_definition(),
+        relaying_dart::dart_definition(),
+        wafer_dart::dart_definition(),
+        lettering_dart::dart_definition(),
+        folding_dart::dart_definition(),
+        cartouching_dart::dart_definition(),
+        rewaxed_dart::dart_definition(),
+        countersealing_dart::dart_definition(),
+        latewaxed_dart::dart_definition(),
+        waxworking_dart::dart_definition(),
+        impressing_dart::dart_definition(),
+        relayed_dart::dart_definition(),
+        crossed_dart::dart_definition(),
+        crossing_dart::dart_definition(),
+        bullae_dart::dart_definition(),
+        wafered_dart::dart_definition(),
+        wafering_dart::dart_definition(),
+        enwafered_dart::dart_definition(),
+        wafers_dart::dart_definition(),
+        impressed_dart::dart_definition(),
+        belated_dart::dart_definition(),
+        late_sigil_dart::dart_definition(),
+        late_cartouche_dart::dart_definition(),
+    ]
+}
+
 /// Each payload of [`rows`] is read by the Dart read where the row states a client reads it, and
 /// written back as serde writes it, and refused where it states none does.
 #[test]
@@ -52,53 +99,7 @@ fn an_object_id_is_read_and_written_back_by_dart_as_serde_reads_it() {
         );
     }
     main.push_str("}\n");
-    let source = module(
-        &[
-            readme_object_id("dart"),
-            notation_dart::dart_definition(),
-            cartouche_dart::dart_definition(),
-            impress_dart::dart_definition(),
-            waxwork_dart::dart_definition(),
-            countersigned_dart::dart_definition(),
-            sigil_dart::dart_definition(),
-            sigillum_dart::dart_definition(),
-            endorsed_dart::dart_definition(),
-            endorsing_dart::dart_definition(),
-            cachet_dart::dart_definition(),
-            embossed_dart::dart_definition(),
-            docketing_dart::dart_definition(),
-            stampage_dart::dart_definition(),
-            sigiled_dart::dart_definition(),
-            sigillary_dart::dart_definition(),
-            enveloping_dart::dart_definition(),
-            waxing_dart::dart_definition(),
-            rewaxing_dart::dart_definition(),
-            relaying_dart::dart_definition(),
-            wafer_dart::dart_definition(),
-            lettering_dart::dart_definition(),
-            folding_dart::dart_definition(),
-            cartouching_dart::dart_definition(),
-            rewaxed_dart::dart_definition(),
-            countersealing_dart::dart_definition(),
-            latewaxed_dart::dart_definition(),
-            waxworking_dart::dart_definition(),
-            impressing_dart::dart_definition(),
-            relayed_dart::dart_definition(),
-            crossed_dart::dart_definition(),
-            crossing_dart::dart_definition(),
-            bullae_dart::dart_definition(),
-            wafered_dart::dart_definition(),
-            wafering_dart::dart_definition(),
-            enwafered_dart::dart_definition(),
-            wafers_dart::dart_definition(),
-            impressed_dart::dart_definition(),
-            belated_dart::dart_definition(),
-            late_sigil_dart::dart_definition(),
-            late_cartouche_dart::dart_definition(),
-        ],
-        &[TOLD],
-        &main,
-    );
+    let source = module(&definitions(), &[TOLD], &main);
     let Some((ran, printed)) = dart("object-ids", &[], &source) else {
         return;
     };
@@ -106,19 +107,13 @@ fn an_object_id_is_read_and_written_back_by_dart_as_serde_reads_it() {
     assert_eq!(printed, expected, "the Dart read is not serde's");
 }
 
-/// The analyzer passes the README's `ObjectId` beside a holder of one under a key, in a list, as a
-/// type argument and under a brand. A holder that flattens one, or holds one as a map's value or
-/// beside a tag, is run above alone: its codec casts a value whose type the analyzer already
-/// knows.
+/// The analyzer passes the README's `ObjectId` beside every emitted type the rows read: a holder
+/// of one under a key, in a list, as a type argument, under a brand, as a map's value, flattened
+/// and beside a tag.
 #[test]
 fn the_readme_object_id_has_no_issue_beside_the_emitted_types() {
     let source = module(
-        &[
-            readme_object_id("dart"),
-            countersigned_dart::dart_definition(),
-            sigil_dart::dart_definition(),
-            endorsed_dart::dart_definition(),
-        ],
+        &definitions(),
         &[],
         &format!(
             "void main() => \

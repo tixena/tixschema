@@ -953,9 +953,8 @@ fn a_preprocess_with_no_dart_function_does_not_compile() {
     }
 }
 
-/// The emitted source of the sample, and of every shape that names a function and whose codec
-/// the analyzer passes. The tally is run above and left out here: the read of its tuple casts a
-/// value whose type the analyzer already knows, as the read of a tuple struct does.
+/// The emitted source of the sample, and of every shape that names a function, the counted tally
+/// among them.
 #[test]
 fn the_emitted_source_of_a_preprocess_has_no_issue() {
     let rows = dart_row("row 1", "Parcel.fromJson(@).toJson()", SAMPLE_ROWS[0].1);
@@ -993,10 +992,11 @@ fn the_emitted_source_of_a_preprocess_has_no_issue() {
         rerouted_dart::dart_definition(),
         recounted_dart::dart_definition(),
         keyed_dart::dart_definition(),
+        tally_dart::dart_definition(),
     ];
     let shapes = module(
         &definitions,
-        &[FUNCTIONS, CORRECTIONS, CHECK, NAMED_FUNCTIONS, ROW],
+        &[FUNCTIONS, CORRECTIONS, CHECK, NAMED_FUNCTIONS, COUNTED, ROW],
         "void main() {\n  row('none', () => null);\n}\n",
     );
     let Some((passed, reported)) = dart("analyze-preprocess", &["analyze"], &shapes) else {

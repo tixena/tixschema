@@ -169,15 +169,14 @@ fn an_object_id_beside_the_tag_is_read_and_written_back_by_dart_as_serde_writes_
 }
 
 /// The Dart read hands an `ObjectId` in the slot the object without the tag, and the write spreads
-/// its `$oid` key after the tag.
+/// its `$oid` key after the tag, uncast: the README's `toJson` answers a `Map<String, dynamic>`.
 #[cfg(feature = "mongodb")]
 #[test]
 fn the_dart_text_reads_and_writes_an_object_id_beside_the_tag() {
     let stamping = stamping_dart::dart_definition();
     for held in [
         "case 'Held': return StampingHeld(ObjectId.fromJson(({...json}..remove('kind'))));",
-        "@override dynamic toJson() => { 'kind': 'Held', ...((value).toJson() as Map<String, \
-         dynamic>) };",
+        "@override dynamic toJson() => { 'kind': 'Held', ...(value).toJson() };",
     ] {
         assert!(stamping.contains(held), "no `{held}` in: {stamping}");
     }
