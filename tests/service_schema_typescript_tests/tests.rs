@@ -8,6 +8,10 @@
 #[path = "type_check.rs"]
 mod type_check;
 
+/// A service that sends and answers a map keyed by an `i64`.
+#[path = "keyed.rs"]
+mod keyed;
+
 #[cfg(feature = "typescript")]
 mod the_bundle_one_registration_line_produces {
     use super::{

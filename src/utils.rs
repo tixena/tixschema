@@ -70,6 +70,11 @@ pub const PLACEHOLDER_OPENS: &str = "__tixschema_parameter_";
 /// What a [`parameter_placeholder`] closes with, after the position.
 pub const PLACEHOLDER_CLOSES: &str = "__";
 
+/// The `JSDoc` tag over each TypeScript declaration that writes a map keyed by a `u64` or an
+/// `i64`, whose key stays a `number`: an editor strikes the declaration through and shows the tag.
+pub const INEXACT_KEY_NOTE: &str = "@deprecated A map key above 2^53 - 1 (9007199254740991) in size is not held exactly as a \
+     number.";
+
 /// Why a construct cannot reach the JavaScript surfaces as the author wrote it. The three are
 /// different failures and the rejection says which one it is.
 #[derive(Clone, Copy)]
@@ -276,6 +281,10 @@ pub struct AliasInfo {
     /// itself, one per variant in the order the union writes them, and empty for every other item.
     #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
     pub flatten_variants: Vec<FlattenVariant>,
+    /// Whether the TypeScript type written under this name is, or holds in a slot, a map keyed by a
+    /// `u64` or an `i64`: an alias, a brand or a tuple struct, which carries [`INEXACT_KEY_NOTE`]
+    /// on itself.
+    pub inexact_key: bool,
     /// The form a key written under this name renders in, which [`AliasKind::Stringified`] alone
     /// does not separate.
     pub key_wire: MapKeyWire,
@@ -1258,6 +1267,7 @@ pub fn register_alias_info(
                 export_name: export_name.to_owned(),
                 #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
                 flatten_variants: Vec::new(),
+                inexact_key: false,
                 key_wire: MapKeyWire::Named,
                 kind,
                 #[cfg(feature = "jsonschema")]
@@ -1271,6 +1281,17 @@ pub fn register_alias_info(
                 zod_union_members: Vec::new(),
             },
         );
+    });
+}
+
+/// Records whether the TypeScript type written under a name carries [`INEXACT_KEY_NOTE`] on
+/// itself, on the entry that name has just registered.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+pub fn record_inexact_key(rust_ident: &str, inexact: bool) {
+    ALIAS_INFO.with(|map| {
+        if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
+            info.inexact_key = inexact;
+        }
     });
 }
 
@@ -1670,8 +1691,25 @@ pub fn ts_generic_params(generics: &Generics) -> String {
 /// through the re-export.
 #[cfg(feature = "typescript")]
 pub fn ident_reexport_ts(rust_ident: &str, export_name: &str, ts_generics: &str) -> String {
+    noted_ident_reexport_ts(rust_ident, export_name, ts_generics, false)
+}
+
+/// [`ident_reexport_ts`], under [`INEXACT_KEY_NOTE`] where `noted`: the line names the type the
+/// item writes the note over.
+#[cfg(feature = "typescript")]
+pub fn noted_ident_reexport_ts(
+    rust_ident: &str,
+    export_name: &str,
+    ts_generics: &str,
+    noted: bool,
+) -> String {
     ident_reexport_name(rust_ident, export_name).map_or_else(String::new, |referenced| {
-        format!("\n\nexport type {referenced}{ts_generics} = {export_name}{ts_generics};")
+        let note = if noted {
+            format!("/** {INEXACT_KEY_NOTE} */\n")
+        } else {
+            String::new()
+        };
+        format!("\n\n{note}export type {referenced}{ts_generics} = {export_name}{ts_generics};")
     })
 }
 

@@ -10,5 +10,13 @@ extern crate alloc;
 mod models;
 
 #[cfg(test)]
+#[path = "wide_integer_tests/keyed_models.rs"]
+mod keyed_models;
+
+#[cfg(test)]
+#[path = "wide_integer_tests/keyed.rs"]
+mod keyed;
+
+#[cfg(test)]
 #[path = "wide_integer_tests/tests.rs"]
 mod tests;

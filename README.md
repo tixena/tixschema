@@ -633,7 +633,38 @@ const read = (text: string): unknown =>
 ```
 
 - **A text position holds the digits.** A path placeholder, a query parameter, a header and a text part hold the text of the number, which every client writes and every dispatcher reads exactly. The Rust `http_rest` dispatcher reads a `u64` message, header and path placeholder up to `u64::MAX`.
-- **A map's key is a `number`** in TypeScript, `z.number().int()` in Zod: serde writes the key as the text of the number, and the Zod schema refuses a key beyond `2^53 - 1` in size.
+- **A map's key is a `number`** in TypeScript, `z.number().int()` in Zod: serde writes the key as the text of the number, and the Zod schema refuses a key beyond `2^53 - 1` in size. The TypeScript writes a `@deprecated` note over each declaration that writes such a map, so an editor strikes the name through where it is read and shows the note. `tsc --strict` prints nothing for it:
+
+```rust
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+pub struct Histogram {
+    pub counts: BTreeMap<i64, u32>,
+    pub labels: BTreeMap<u32, String>,
+}
+```
+
+```typescript
+/**
+ * Histogram
+ * 
+ */
+export type Histogram = {
+  /**
+   * counts
+   * 
+   * @deprecated A map key above 2^53 - 1 (9007199254740991) in size is not held exactly as a number.
+   */
+  counts: Partial<Record<number, number>>;
+  /**
+   * labels
+   * 
+   */
+  labels: Partial<Record<number, string>>;
+};
+```
+
+- **Where the note is written.** On a member whose type writes such a map at any depth, or names an alias, a brand or a tuple struct declared above it that carries the note. On the key a variant's slots are written under, its name or its content key. On a tuple struct, an alias and a brand whose value writes such a map, and on the name each republishes itself under. In the service code, on each method of a client and of an implementation whose message, header or part writes one, and on the `value` or the `error` of a result and of an outcome whose arm writes one. A type declared below the member that names it, or in another crate, is not looked into.
 - **MongoDB stores the integer**, as serde writes it: a row an operation writes, `bson::to_document` of a model, and the value of a filter and of an update hold an `Int64`. See [What a row stores](#what-a-row-stores).
 - **The recovering decode** reads the number serde writes, and the string of its digits a stored value may hold, with no issue, and lists a string that holds no value of the type, a digit string beyond its range among them, as one `Invalid` where it is held.
 
