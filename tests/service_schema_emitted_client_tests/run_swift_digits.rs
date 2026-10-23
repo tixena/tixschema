@@ -10,8 +10,8 @@ use core::fmt::Write as _;
 use serde_json::Value;
 
 use super::digit_models::{
-    REFUSED, WRITTEN, serde_refusal, serde_written, sixty_event_swift, sixty_id_swift,
-    sixty_level_swift, sixty_tally_swift,
+    REFUSED, WRITTEN, serde_refusal, serde_written, sixty_beside_swift, sixty_event_swift,
+    sixty_id_swift, sixty_level_swift, sixty_locked_swift, sixty_reached_swift, sixty_tally_swift,
 };
 use super::runtime::judged;
 
@@ -36,7 +36,7 @@ func told<Read: Codable>(_ at: Int, _ type: Read.Type, _ payload: String) {
 "#;
 
 /// What the Swift read answers of each payload of [`REFUSED`], in its order.
-const SWIFT_REFUSED: [&str; 5] = [
+const SWIFT_REFUSED: [&str; 8] = [
     "dataCorrupted: expected an i64 as a string of its decimal digits, found \
      \"9223372036854775808\"",
     "dataCorrupted: expected an i64 as a string of its decimal digits, found \"seven\"",
@@ -44,6 +44,10 @@ const SWIFT_REFUSED: [&str; 5] = [
      \"-9223372036854775809\"",
     "dataCorrupted: expected an i64 as a string of its decimal digits, found \"1.5\"",
     "dataCorrupted: 'level': too large: maximum is 5, got 6",
+    "dataCorrupted: expected an i64 as a string of its decimal digits, found \
+     \"9223372036854775808\"",
+    "dataCorrupted: 'fixed': not the literal 214, got 215",
+    "dataCorrupted: expected an i64 as a string of its decimal digits, found \"x\"",
 ];
 
 /// `json` with the keys of every object sorted, as the Swift encoder of the run writes them.
@@ -97,6 +101,9 @@ fn an_i64_is_read_from_its_digits_and_written_as_them_in_swift() {
         sixty_id_swift::swift_definition(),
         sixty_event_swift::swift_definition(),
         sixty_level_swift::swift_definition(),
+        sixty_reached_swift::swift_definition(),
+        sixty_locked_swift::swift_definition(),
+        sixty_beside_swift::swift_definition(),
         TOLD.to_owned(),
         main,
     ]

@@ -3,6 +3,7 @@
 //! `Int64`, each major of the `bson` library reads the row back, and `from_bson_with` reads the
 //! integer and its digits alike, with a digit string beyond an `i64` listed as one issue.
 
+use core::ops::Range;
 use std::collections::HashMap;
 
 use bson::{Bson, Document, doc};
@@ -29,6 +30,22 @@ struct DigitRow {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct DigitHolderRow {
     held: DigitRow,
+}
+
+/// An alias of an `i64`, declared above the row that holds it.
+#[model_schema()]
+type RowRevision = i64;
+
+/// An `i64` through an alias, as a range's bound, as a `Result`'s arm and under a `literal`, in a
+/// row of its own.
+#[model_schema(enable = ["decode_with", "mongodb"])]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+struct DigitReachedRow {
+    aliased: RowRevision,
+    #[model_schema_prop(literal = 214)]
+    fixed: i64,
+    ranged: Range<i64>,
+    resulted: Result<i64, String>,
 }
 
 /// The row every read below answers.
@@ -125,4 +142,45 @@ fn a_filter_and_an_update_write_each_i64_as_the_bson_integer() {
         .nest(DigitRow::MONGO_FIELDS.total().gt(5_i64).unwrap())
         .into();
     assert_eq!(nested, doc! { "held.total": { "$gt": 5_i64 } });
+}
+
+#[test]
+fn a_row_stores_each_i64_its_holder_reaches_as_the_bson_integer() {
+    let reached = DigitReachedRow {
+        aliased: -(1_i64 << 60_i32),
+        fixed: 214,
+        ranged: 1..i64::MAX,
+        resulted: Ok(7),
+    };
+    let integers = doc! {
+        "aliased": -(1_i64 << 60_i32),
+        "fixed": 214_i64,
+        "ranged": { "start": 1_i64, "end": i64::MAX },
+        "resulted": { "Ok": 7_i64 },
+    };
+    assert_eq!(
+        reached.mongo_written_row().unwrap(),
+        integers,
+        "the row the operations write"
+    );
+    assert_eq!(
+        read_document::<DigitReachedRow>(integers.clone()),
+        Ok(reached.clone()),
+        "the major's own read"
+    );
+    let as_digits = doc! {
+        "aliased": "-1152921504606846976",
+        "fixed": "214",
+        "ranged": { "start": "1", "end": "9223372036854775807" },
+        "resulted": { "Ok": "7" },
+    };
+    for stored_row in [integers, as_digits] {
+        let mut calls = 0_u32;
+        let answered = DigitReachedRow::from_bson_with(stored_row, |_raw, _found| {
+            calls = calls.saturating_add(1);
+            digit_reached_row_schema::Verdict::Reject
+        });
+        assert_eq!(answered.ok(), Some(reached.clone()), "the read");
+        assert_eq!(calls, 0, "no callback");
+    }
 }

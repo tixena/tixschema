@@ -1,6 +1,6 @@
 //! How the client and the service name the one message an operation receives.
 
-use crate::field_type::get_field_def;
+use crate::field_type::bare_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, HttpShape, OperationDef, OperationInputs, ScalarKind, option_inner, reads_its_digits,
@@ -158,12 +158,12 @@ pub fn commented(text: &str) -> String {
 /// pasting a suffix onto a name.
 pub fn schema(operation: &OperationDef) -> String {
     match &operation.inputs {
-        OperationInputs::Named(declared) => get_field_def("req", declared, "").zod_type(),
+        OperationInputs::Named(declared) => bare_field_def("req", declared).zod_type(),
         OperationInputs::Empty | OperationInputs::Generated(_) => operation
             .generated_message_ident()
             .map_or_else(String::new, |declared| {
                 let named: syn::Type = syn::parse_quote! { #declared };
-                get_field_def("req", &named, "").zod_type()
+                bare_field_def("req", &named).zod_type()
             }),
     }
 }
@@ -172,9 +172,7 @@ pub fn schema(operation: &OperationDef) -> String {
 /// an operation that named none.
 pub fn typename(operation: &OperationDef) -> String {
     match &operation.inputs {
-        OperationInputs::Named(declared) => {
-            get_field_def("req", declared, "").typescript_typename()
-        }
+        OperationInputs::Named(declared) => bare_field_def("req", declared).typescript_typename(),
         OperationInputs::Empty | OperationInputs::Generated(_) => operation
             .generated_message_ident()
             .map_or_else(|| "unknown".to_owned(), |declared| declared.to_string()),
@@ -213,14 +211,14 @@ pub fn binding_params(shape: &HttpShape) -> Vec<(String, String)> {
         let name = parameter_name(&header.parameter);
         params.push((
             name.clone(),
-            get_field_def(&name, &header.ty, "").typescript_typename(),
+            bare_field_def(&name, &header.ty).typescript_typename(),
         ));
     }
     for part in &shape.multipart_parts {
         let name = parameter_name(&part.parameter);
         params.push((
             name.clone(),
-            get_field_def(&name, &part.ty, "").typescript_typename(),
+            bare_field_def(&name, &part.ty).typescript_typename(),
         ));
     }
     params
@@ -269,30 +267,20 @@ pub fn header_types(headers: usize, ty: &Type) -> Vec<&Type> {
 }
 
 /// Mirrors the Rust `decode_expr`: a `Vec<...>` splits `raw` on `,` and coerces each piece the
-/// same way; otherwise a boolean text, a numeric coercion, or the text itself. Shared by the REST
-/// server's query/path decoding and the dispatcher's header/part decoding.
+/// same way; otherwise a boolean text, a numeric coercion, or the text itself, a `u64` and an
+/// `i64` kept as the text of its digits. Shared by the REST server's query/path decoding and the
+/// dispatcher's header/part decoding.
 pub fn decode_ts_expr(ty: &Type, raw: &str, prefix: &str) -> String {
-    decoded(ty, raw, prefix, false)
-}
-
-/// [`decode_ts_expr`] for a member of a message the macro declares, which reads a `u64` and an
-/// `i64` from the text of its digits.
-pub fn decode_member_ts_expr(ty: &Type, raw: &str, prefix: &str) -> String {
-    decoded(ty, raw, prefix, true)
-}
-
-/// [`decode_ts_expr`], each `u64` and `i64` kept as its text where `digits` holds.
-fn decoded(ty: &Type, raw: &str, prefix: &str, digits: bool) -> String {
     let base = option_inner(ty).unwrap_or(ty);
     if let Some(inner) = vec_inner(base) {
-        let element = decoded(inner, "piece", prefix, digits);
+        let element = decode_ts_expr(inner, "piece", prefix);
         return format!("({raw}).split(\",\").map((piece: string) => {element})");
     }
     match scalar_kind(base) {
         ScalarKind::Bool => {
             format!("({raw} === \"true\" ? true : {raw} === \"false\" ? false : {raw})")
         }
-        ScalarKind::Number if digits && reads_its_digits(base) => raw.to_owned(),
+        ScalarKind::Number if reads_its_digits(base) => raw.to_owned(),
         ScalarKind::Number => format!("{prefix}HttpCoerceNumber({raw})"),
         ScalarKind::Text => raw.to_owned(),
     }

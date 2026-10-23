@@ -49,7 +49,7 @@ use crate::field_type::{zod_check_wrap, zod_check_wrap_handing, zod_preprocess_w
 use crate::{
     field_type::{
         BoundKind, FieldDef, FieldDefType, VariantKind, classify_variant, format_number_literal,
-        get_field_def, held_number, is_plain_enum,
+        get_field_def, held_literal, is_plain_enum,
     },
     utils::{get_field_docs, get_variant_docs, strip_examples_from_docs},
 };
@@ -613,6 +613,20 @@ enum ConstraintGate {
     /// The validator alone: every position where a constraint decides only whether a value is
     /// admissible, never what it is.
     Validator,
+}
+
+/// How an untagged member's bound hook reads the integers the member holds.
+#[cfg(feature = "serde")]
+#[derive(Clone, Copy)]
+enum DigitRead<'member> {
+    /// From their digits, by the function written beside the item, of the member's type, which
+    /// names the item's own parameters no hook in the schema module can name: the schema module
+    /// writes no hook.
+    Beside(&'member syn::Type),
+    /// From their digits, by the hook in the schema module, of the member's type and shape.
+    Module(&'member syn::Type, &'member digits::Held),
+    /// As numbers, through the member's own type.
+    Number,
 }
 
 /// What the end of a constraint walk does with a violation: `validate()` collects every one, a
@@ -15625,17 +15639,16 @@ fn build_numeric_field_schema(
 }
 
 /// Builds the JSON schema for a `u64` or an `i64` field written as its digit string. A declared
-/// bound has no keyword on a string, and the schema states the digits alone.
+/// bound has no keyword on a string, and the schema states the digits alone, or the digits of the
+/// one value a `literal` admits.
 #[cfg(feature = "jsonschema")]
 fn build_digits_field_schema(fld: &FieldDef, field_name_str: &str) -> proc_macro2::TokenStream {
     let pattern = digits_json_pattern(&fld.field_type);
-    let schema = nullable_slot_json_schema_value(
-        fld,
-        arrayed_json_schema_value(
-            fld,
-            quote! { serde_json::json!({ "type": "string", "pattern": #pattern }) },
-        ),
+    let value = fld.digits_literal().map_or_else(
+        || quote! { serde_json::json!({ "type": "string", "pattern": #pattern }) },
+        |literal| quote! { serde_json::json!({ "type": "string", "const": #literal }) },
     );
+    let schema = nullable_slot_json_schema_value(fld, arrayed_json_schema_value(fld, value));
     quote! {
         properties.insert(#field_name_str.to_string(), { #schema });
     }
@@ -16869,7 +16882,7 @@ fn generate_numeric_validation_code(
     rust_type_str: &str,
     meta: &ModelSchemaPropMeta,
     shape: &ConstrainedShape,
-    (field_ty, digit_shape): (&syn::Type, Option<&digits::Held>),
+    (field_ty, digit_read): (&syn::Type, DigitRead<'_>),
 ) -> FieldValidationCode {
     let wraps: &[ConstraintWrap] = &shape.wraps;
     let validate_value_fn_name = format!("validate_{}_value", member.stem);
@@ -16907,13 +16920,13 @@ fn generate_numeric_validation_code(
         });
     }
 
-    let deserializer = if ends_on_a_borrow(wraps) {
+    let deserializer = if ends_on_a_borrow(wraps) || matches!(digit_read, DigitRead::Beside(_)) {
         quote! {}
-    } else if let Some(held) = digit_shape {
+    } else if let DigitRead::Module(digit_ty, held) = digit_read {
         digits_bound_hook(
             &deserialize_fn_ident,
             &validate_value_fn_ident,
-            field_ty,
+            digit_ty,
             wraps,
             held,
         )
@@ -17051,6 +17064,31 @@ fn list_hook_header(wraps: &[ConstraintWrap]) -> Option<ListHookHeader> {
     })
 }
 
+/// The check the digit read written beside the item holds an untagged member of type `field_ty`
+/// to: each value its bound reaches under `wraps` held to `validator` of `module`.
+#[cfg(feature = "serde")]
+fn digits_read_check(
+    module_name: &str,
+    validator_name: &str,
+    field_ty: &syn::Type,
+    wraps: &[ConstraintWrap],
+) -> proc_macro2::TokenStream {
+    let (module, validator) = (
+        proc_macro2::Ident::new(module_name, proc_macro2::Span::call_site()),
+        proc_macro2::Ident::new(validator_name, proc_macro2::Span::call_site()),
+    );
+    let head = wrap_binding(0);
+    let leaf = constraint_leaf(CheckSink::Fail, &walked_value(wraps), &validator);
+    let walk = walk_wraps(wraps, &head, 1, &leaf);
+    quote! {
+        |#head: &#field_ty| -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
+            use #module::#validator;
+            #walk
+            ::core::result::Result::Ok(())
+        }
+    }
+}
+
 /// The serde hook of a member of type `field_ty` whose integers are written as digit strings, held
 /// as `digit_shape`: the member read from its digits, then each value its bound reaches under
 /// `wraps` held to `validator`.
@@ -17128,7 +17166,7 @@ fn generate_list_validation_code(
     member: &CheckedMember,
     meta: &ModelSchemaPropMeta,
     wraps: &[ConstraintWrap],
-    (field_ty, digit_shape): (&syn::Type, Option<&digits::Held>),
+    digit_read: DigitRead<'_>,
 ) -> FieldValidationCode {
     let validator = proc_macro2::Ident::new(
         &format!("validate_{}_value", member.stem),
@@ -17144,10 +17182,13 @@ fn generate_list_validation_code(
         meta.max_length,
         member.reported.as_deref(),
     );
-    let deserialize_fn = digit_shape.map_or_else(
-        || list_deserializer(&deserializer, &validator, wraps),
-        |held| digits_bound_hook(&deserializer, &validator, field_ty, wraps, held),
-    );
+    let deserialize_fn = match digit_read {
+        DigitRead::Number => list_deserializer(&deserializer, &validator, wraps),
+        DigitRead::Module(field_ty, held) => {
+            digits_bound_hook(&deserializer, &validator, field_ty, wraps, held)
+        }
+        DigitRead::Beside(_) => quote! {},
+    };
     FieldValidationCode {
         module_items: quote! {
             #validate_fn
@@ -18237,9 +18278,9 @@ fn literal_field_type(literal: &LiteralValue, field_type: &FieldDefType) -> Opti
     match literal {
         LiteralValue::Bool(value) => matches!(field_type, FieldDefType::Boolean)
             .then_some(FieldDefType::BooleanLiteral(*value)),
-        LiteralValue::Number(value) => field_type
+        LiteralValue::Integer(_) | LiteralValue::Number(_) => field_type
             .is_numeric()
-            .then_some(FieldDefType::NumberLiteral(*value)),
+            .then(|| FieldDefType::NumberLiteral(literal.number().unwrap_or_default())),
         LiteralValue::Str(value) => matches!(field_type, FieldDefType::String)
             .then(|| FieldDefType::StringLiteral(value.clone())),
     }
@@ -18250,6 +18291,7 @@ fn literal_written(literal: &LiteralValue) -> String {
     match literal {
         LiteralValue::Str(value) => format!("\"{value}\""),
         LiteralValue::Bool(value) => value.to_string(),
+        LiteralValue::Integer(value) => value.to_string(),
         LiteralValue::Number(value) => format_number_literal(*value),
     }
 }
@@ -18260,7 +18302,7 @@ const fn literal_kind_words(literal: &LiteralValue) -> (&'static str, &'static s
     match literal {
         LiteralValue::Str(_) => ("a string", "a `String`"),
         LiteralValue::Bool(_) => ("a boolean", "a `bool`"),
-        LiteralValue::Number(_) => ("a numeric", "a numeric type"),
+        LiteralValue::Integer(_) | LiteralValue::Number(_) => ("a numeric", "a numeric type"),
     }
 }
 
@@ -18303,16 +18345,17 @@ fn check_literal_held(
     prop_meta: &ModelSchemaPropMeta,
     label: &str,
 ) -> Result<(), syn::Error> {
-    let Some(LiteralValue::Number(value)) = &prop_meta.literal else {
+    let Some(literal @ (LiteralValue::Integer(_) | LiteralValue::Number(_))) = &prop_meta.literal
+    else {
         return Ok(());
     };
     let Some(number) = field_def.field_type.number_name() else {
         return Ok(());
     };
-    if held_number(number, *value).is_some() {
+    if held_literal(number, literal).is_some() {
         return Ok(());
     }
-    let written = literal_written(&LiteralValue::Number(*value));
+    let written = literal_written(literal);
     Err(syn::Error::new_spanned(
         field,
         format!(
@@ -19193,9 +19236,9 @@ fn literal_broken(leaf: &LiteralLeaf, literal: &LiteralValue) -> Option<proc_mac
     match (leaf, literal) {
         (LiteralLeaf::Bool, LiteralValue::Bool(true)) => Some(quote! { !*value }),
         (LiteralLeaf::Bool, LiteralValue::Bool(false)) => Some(quote! { *value }),
-        (LiteralLeaf::Number(number), LiteralValue::Number(held)) => {
+        (LiteralLeaf::Number(number), LiteralValue::Integer(_) | LiteralValue::Number(_)) => {
             let written: proc_macro2::TokenStream =
-                format!("{}{number}", held_number(number, *held)?)
+                format!("{}{number}", held_literal(number, literal)?)
                     .parse()
                     .ok()?;
             // A float is compared through `partial_cmp`, which clippy's `float_cmp` reads past.
@@ -19247,7 +19290,7 @@ fn unindexed_walk(
 /// the value to `validator` as `validate()` does, or nothing for a field read through a borrow.
 #[cfg(feature = "serde")]
 fn literal_hook(
-    field_ty: &syn::Type,
+    (declared_ty, digit_member): (&syn::Type, Option<&digits::DigitMember>),
     shape: &LiteralShape,
     owned: &proc_macro2::TokenStream,
     validator: &proc_macro2::Ident,
@@ -19258,14 +19301,19 @@ fn literal_hook(
     if ends_on_a_borrow(wraps) {
         return quote! {};
     }
+    // A literal of a `u64` or an `i64` is read from its digits, as every other value of the type.
+    let field_ty = digit_member.map_or(declared_ty, |written| &written.ty);
+    let read = digit_member.map_or_else(
+        || quote! { <#field_ty as serde::Deserialize>::deserialize(deserializer)? },
+        |written| digits::read_block(&written.held, field_ty, &quote! { deserializer }),
+    );
     if wraps.is_empty() {
         return quote! {
             pub fn #deserializer<'de, D>(deserializer: D) -> ::core::result::Result<#owned, D::Error>
             where
                 D: serde::Deserializer<'de>,
             {
-                use serde::Deserialize;
-                let read = #owned::deserialize(deserializer)?;
+                let read: #owned = #read;
                 #validator(&read).map_err(#refusal)?;
                 ::core::result::Result::Ok(read)
             }
@@ -19280,7 +19328,7 @@ fn literal_hook(
         where
             D: serde::Deserializer<'de>,
         {
-            let read = <#field_ty as serde::Deserialize>::deserialize(deserializer)?;
+            let read: #field_ty = #read;
             let check = |#head: &#field_ty| -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
                 #walk
                 ::core::result::Result::Ok(())
@@ -19334,7 +19382,7 @@ fn literal_validate_body(
 #[cfg(feature = "serde")]
 fn generate_literal_validation(
     ctx: &FieldContext<'_>,
-    field: &Field,
+    (field, digit_member): (&Field, Option<&digits::DigitMember>),
     member: &CheckedMember,
     literal: &LiteralValue,
     gate: ConstraintGate,
@@ -19374,7 +19422,13 @@ fn generate_literal_validation(
         &format!("deserialize_{stem}"),
         proc_macro2::Span::call_site(),
     );
-    let hook = literal_hook(&field.ty, &shape, &owned, &validator, &deserializer);
+    let hook = literal_hook(
+        (&field.ty, digit_member),
+        &shape,
+        &owned,
+        &validator,
+        &deserializer,
+    );
     let validate_body = literal_validate_body(member, &shape, &validator)?;
     if gate == ConstraintGate::Validator {
         record_field_validator(module_name, stem, named, items);
@@ -19481,10 +19535,19 @@ fn generate_field_validation(
                 interior_mutability_constraint_guard_error(field, &member.label, &wrapper, true);
             return (None, None, Some(refused));
         }
-        return generate_literal_validation(ctx, field, &member, literal, gate, injected_attrs)
-            .map_or((None, None, None), |(items, body)| {
-                (Some(items), Some(body), None)
-            });
+        let digit_member =
+            digits::recorded(ctx.variant_ident, index).filter(|written| written.scope.is_empty());
+        return generate_literal_validation(
+            ctx,
+            (field, digit_member.as_ref()),
+            &member,
+            literal,
+            gate,
+            injected_attrs,
+        )
+        .map_or((None, None, None), |(items, body)| {
+            (Some(items), Some(body), None)
+        });
     }
 
     let (Some(module_name), Some(shape)) = (ctx.schema_module_name, constrained_shape(&field.ty))
@@ -19508,16 +19571,19 @@ fn generate_field_validation(
 
     let counts_items =
         model_schema_prop_meta.min_length.is_some() || model_schema_prop_meta.max_length.is_some();
-    // A member that writes its integers as digit strings reads them through its own hook as well.
-    let digit_shape = digits::recorded(ctx.variant_ident, index).map(|written| written.held);
+    // A member that writes its integers as digit strings reads them through its own hook as well:
+    // in the schema module, or beside the item where its type names the item's own parameters.
+    let digit_member = digits::recorded(ctx.variant_ident, index);
+    let digit_read = match &digit_member {
+        Some(written) if written.scope.is_empty() => DigitRead::Module(&written.ty, &written.held),
+        Some(written) if written.reads && gate == ConstraintGate::Deserializer => {
+            DigitRead::Beside(&written.ty)
+        }
+        _ => DigitRead::Number,
+    };
     let generated = match &shape.leaf {
         ConstraintLeaf::List => counts_items.then(|| {
-            generate_list_validation_code(
-                &member,
-                model_schema_prop_meta,
-                &shape.wraps,
-                (&field.ty, digit_shape.as_ref()),
-            )
+            generate_list_validation_code(&member, model_schema_prop_meta, &shape.wraps, digit_read)
         }),
         ConstraintLeaf::Named(_) | ConstraintLeaf::Path | ConstraintLeaf::Str => {
             has_string_constraints.then(|| {
@@ -19530,7 +19596,7 @@ fn generate_field_validation(
                 rust_type,
                 model_schema_prop_meta,
                 &shape,
-                (&field.ty, digit_shape.as_ref()),
+                (&field.ty, digit_read),
             )
         }),
     };
@@ -19542,10 +19608,44 @@ fn generate_field_validation(
     if gate == ConstraintGate::Validator {
         record_field_validator(module_name, helper_stem, member.reported.as_deref(), false);
     }
+    hang_bound_read(
+        ctx,
+        (field, index),
+        (module_name, helper_stem),
+        &shape.wraps,
+        (gate, digit_read),
+        injected_attrs,
+    );
+
+    (
+        Some(validation_code.module_items),
+        Some(bound_body(validation_code.validate_body, module_name)),
+        None,
+    )
+}
+
+/// Hangs on the member at `index` the read that holds it to its bound, where `gate` makes the read
+/// a gate: the hook of the schema module, or, for a member `digit_read` reads beside the item, the
+/// check that read runs.
+#[cfg(feature = "serde")]
+fn hang_bound_read(
+    ctx: &FieldContext<'_>,
+    (field, index): (&Field, usize),
+    (module_name, helper_stem): (&str, &str),
+    wraps: &[ConstraintWrap],
+    (gate, digit_read): (ConstraintGate, DigitRead<'_>),
+    injected_attrs: &mut Vec<syn::Attribute>,
+) {
+    if let DigitRead::Beside(digit_ty) = digit_read {
+        let validator = format!("validate_{helper_stem}_value");
+        let check = digits_read_check(module_name, &validator, digit_ty, wraps);
+        digits::read_and_check(ctx.variant_ident, index, &check);
+        return;
+    }
     // A borrow publishes no hook, and a member its author reads through a function of their own
     // keeps that one: serde admits one reader per field. Its bound is the validator's alone.
     if gate == ConstraintGate::Deserializer
-        && !ends_on_a_borrow(&shape.wraps)
+        && !ends_on_a_borrow(wraps)
         && !has_serde_read_hook(&field.attrs)
     {
         let deserialize_with_path = format!("{module_name}::deserialize_{helper_stem}");
@@ -19554,18 +19654,12 @@ fn generate_field_validation(
             #[serde(deserialize_with = #path_lit)]
         });
         // Only alongside the hook.
-        if needs_injected_default(&shape.wraps, has_serde_default(&field.attrs)) {
+        if needs_injected_default(wraps, has_serde_default(&field.attrs)) {
             injected_attrs.push(syn::parse_quote! {
                 #[serde(default)]
             });
         }
     }
-
-    (
-        Some(validation_code.module_items),
-        Some(bound_body(validation_code.validate_body, module_name)),
-        None,
-    )
 }
 
 /// What a member's bound adds to `validate()`. It calls a validator of the schema module by its
@@ -19614,8 +19708,14 @@ fn apply_model_schema_prop_meta(
         || !prop_meta.check.is_empty())
     .then_some(prop_meta);
 
+    // A literal of a `u64` or an `i64` keeps the digit string it is written as, which every
+    // surface reads the literal on.
     if let Some(meta) = &field_def.model_schema_prop_meta
         && let Some(literal) = &meta.literal
+        && !matches!(
+            field_def.field_type,
+            FieldDefType::I64Digits | FieldDefType::U64Digits
+        )
         && let Some(collapsed) = literal_field_type(literal, &field_def.field_type)
     {
         field_def.field_type = collapsed;

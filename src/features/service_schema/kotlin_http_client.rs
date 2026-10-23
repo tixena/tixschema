@@ -10,7 +10,7 @@ use crate::features::kotlin::{
     kotlin_bare, kotlin_declarations, kotlin_field_def, kotlin_name, kotlin_property_name,
     kotlin_quoted, kotlin_read_serializer, kotlin_typename,
 };
-use crate::field_type::{FieldDefType, get_field_def};
+use crate::field_type::{FieldDefType, bare_field_def};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HttpShape, OperationDef, OperationInputs,
@@ -1263,13 +1263,13 @@ fn message_kotlin_typename(operation: &OperationDef) -> String {
 /// field's type goes through — so a reference to a sibling `#[model_schema()]` type resolves to
 /// its published Kotlin name exactly as it would inside an ordinary field.
 fn kotlin_type_of(ty: &Type) -> String {
-    kotlin_typename(&kotlin_field_def("value", ty))
+    kotlin_typename(&kotlin_field_def("value", ty).with_digit_leaves())
 }
 
 /// The `KSerializer` a value typed `ty` is read with: the one of each text of one form and of each
 /// array of one length it holds, composed, so a text or an array of another is refused.
 pub(super) fn read_serializer(ty: &Type) -> String {
-    kotlin_read_serializer(&kotlin_field_def("value", ty))
+    kotlin_read_serializer(&kotlin_field_def("value", ty).with_digit_leaves())
 }
 
 /// The Kotlin expression that renders `ty`'s value at `expr` as URL- or header-safe text: an
@@ -1309,7 +1309,7 @@ fn writes_through_its_serializer(ty: &Type) -> bool {
         return writes_through_its_serializer(inner);
     }
     !matches!(
-        get_field_def("value", base, "").field_type,
+        bare_field_def("value", base).field_type,
         FieldDefType::String
             | FieldDefType::StringLiteral(_)
             | FieldDefType::Boolean
@@ -1330,7 +1330,7 @@ fn kotlin_header_out_decode(ty: &Type, raw: &str) -> String {
              if (pieces.any {{ it == null }}) null else pieces.filterNotNull() }}"
         );
     }
-    match get_field_def("value", base, "").field_type {
+    match bare_field_def("value", base).field_type {
         FieldDefType::Boolean => {
             format!("(when ({raw}) {{ \"true\" -> true; \"false\" -> false; else -> null }})")
         }
@@ -1385,7 +1385,7 @@ fn kotlin_header_out_decode_is_fallible(ty: &Type) -> bool {
     if let Some(inner) = vec_inner(base) {
         return kotlin_header_out_decode_is_fallible(inner);
     }
-    let read = get_field_def("value", base, "");
+    let read = bare_field_def("value", base);
     #[cfg(feature = "chrono")]
     if matches!(
         read.field_type,

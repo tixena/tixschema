@@ -10,8 +10,8 @@ use syn::meta::ParseNestedMeta;
 use syn::punctuated::Punctuated;
 use syn::token::Paren;
 use syn::{
-    Attribute, Data, DeriveInput, Field, GenericArgument, Ident, Lifetime, LitStr, PathArguments,
-    ReturnType, Token, Type, TypeParamBound, TypePath, WherePredicate, parse_quote,
+    Attribute, Data, DeriveInput, Field, GenericArgument, Generics, Ident, Lifetime, LitStr,
+    PathArguments, ReturnType, Token, Type, TypeParamBound, TypePath, WherePredicate, parse_quote,
 };
 
 use super::consume_unread_value;
@@ -105,7 +105,7 @@ impl ReadAttrs {
                 Defaulted::Bare
             };
         } else if nested.path.is_ident("bound") {
-            if let Some(written) = deserialize_side(nested)? {
+            if let Some(written) = bound_side(nested, "deserialize")? {
                 self.bound = Some(predicates_of(&written));
             }
             return Ok(());
@@ -159,21 +159,24 @@ impl<'item> NamedParameters<'item> {
     }
 
     fn field(&mut self, field: &'item Field) {
-        if let Type::Path(named) = written_type(&field.ty)
+        self.field_type(&field.ty);
+    }
+
+    fn field_type(&mut self, ty: &'item Type) {
+        if let Type::Path(named) = written_type(ty)
             && named.path.segments.len() > 1
             && let Some(first) = named.path.segments.first()
             && self.declared.contains(&&first.ident)
         {
             self.associated.push(named);
         }
-        self.ty(&field.ty);
+        self.ty(ty);
     }
 
-    fn of(input: &'item DeriveInput) -> Self {
+    fn of(generics: &'item Generics) -> Self {
         Self {
             associated: Vec::new(),
-            declared: input
-                .generics
+            declared: generics
                 .type_params()
                 .map(|parameter| &parameter.ident)
                 .collect(),
@@ -204,9 +207,8 @@ impl<'item> NamedParameters<'item> {
 
     /// One predicate holding each parameter named, in the order declared, and each associated
     /// type, to `bound`.
-    fn predicates(&self, input: &'item DeriveInput, bound: &syn::Path) -> Vec<WherePredicate> {
-        let parameters = input
-            .generics
+    fn predicates(&self, generics: &'item Generics, bound: &syn::Path) -> Vec<WherePredicate> {
+        let parameters = generics
             .type_params()
             .filter(|parameter| self.named.contains(&&parameter.ident))
             .map(|parameter| {
@@ -259,17 +261,68 @@ impl<'item> NamedParameters<'item> {
     }
 }
 
-/// The `deserialize` side of a `bound`, in either spelling, or `None` for a list that leaves it
-/// out.
-fn deserialize_side(nested: &ParseNestedMeta<'_>) -> syn::Result<Option<LitStr>> {
+/// What the serde attributes of a container, a variant or a field say of the write.
+struct WriteAttrs {
+    bound: Option<Vec<WherePredicate>>,
+    skipped: bool,
+    /// `serialize_with` or `with`: a function of its author's writes the value.
+    writes_itself: bool,
+}
+
+impl WriteAttrs {
+    fn of(attrs: &[Attribute]) -> Self {
+        let mut write = Self {
+            bound: None,
+            skipped: false,
+            writes_itself: false,
+        };
+        for attr in attrs {
+            if !attr.path().is_ident("serde") {
+                continue;
+            }
+            attr.parse_nested_meta(|nested| write.take(&nested))
+                .unwrap_or_else(|e| {
+                    log::trace!("Failed to parse serde attribute for its bounds: {e}");
+                });
+        }
+        write
+    }
+
+    fn take(&mut self, nested: &ParseNestedMeta<'_>) -> syn::Result<()> {
+        if nested.path.is_ident("skip") || nested.path.is_ident("skip_serializing") {
+            self.skipped = true;
+        } else if nested.path.is_ident("with") || nested.path.is_ident("serialize_with") {
+            self.writes_itself = true;
+        } else if nested.path.is_ident("bound") {
+            if let Some(written) = bound_side(nested, "serialize")? {
+                self.bound = Some(predicates_of(&written));
+            }
+            return Ok(());
+        } else {
+            // Every other key leaves the bounds as they are.
+        }
+        consume_unread_value(nested)
+    }
+}
+
+/// Which sides of a `bound` the attributes of a container, a variant or a field write.
+#[derive(Clone, Copy, Default)]
+pub struct BoundSides {
+    pub deserialize: bool,
+    pub serialize: bool,
+}
+
+/// The `side` of a `bound`, `serialize` or `deserialize`, in either spelling, or `None` for a list
+/// that leaves it out.
+fn bound_side(nested: &ParseNestedMeta<'_>, side: &str) -> syn::Result<Option<LitStr>> {
     if nested.input.peek(Token![=]) {
         return nested.value()?.parse().map(Some);
     }
     let mut written: Option<LitStr> = None;
     if nested.input.peek(Paren) {
-        nested.parse_nested_meta(|side| {
-            let value: LitStr = side.value()?.parse()?;
-            if side.path.is_ident("deserialize") {
+        nested.parse_nested_meta(|listed| {
+            let value: LitStr = listed.value()?.parse()?;
+            if listed.path.is_ident(side) {
                 written = Some(value);
             }
             Ok(())
@@ -493,8 +546,8 @@ pub fn read_bounds(input: &DeriveInput) -> ReadBounds {
     let fields = read_fields(input, &variants);
 
     let mut borrowed: Vec<Lifetime> = Vec::new();
-    let mut asked = NamedParameters::of(input);
-    let mut defaulted = NamedParameters::of(input);
+    let mut asked = NamedParameters::of(&input.generics);
+    let mut defaulted = NamedParameters::of(&input.generics);
     let mut predicates: Vec<WherePredicate> = Vec::new();
     for read in &fields {
         let lifetimes = if read.attrs.skipped {
@@ -540,14 +593,78 @@ pub fn read_bounds(input: &DeriveInput) -> ReadBounds {
         if container.defaulted == Defaulted::Bare {
             predicates.push(parse_quote! { Self: ::core::default::Default });
         }
-        predicates.extend(asked.predicates(input, &parse_quote! { serde::Deserialize<#de> }));
-        predicates.extend(defaulted.predicates(input, &parse_quote! { ::core::default::Default }));
+        predicates
+            .extend(asked.predicates(&input.generics, &parse_quote! { serde::Deserialize<#de> }));
+        predicates.extend(
+            defaulted.predicates(&input.generics, &parse_quote! { ::core::default::Default }),
+        );
     }
     ReadBounds {
         borrowed: (!read_at_static).then_some(borrowed),
         predicates,
         written_by_container,
     }
+}
+
+/// The predicates serde's derive writes on the `Serialize` impl of `input`, after the item's own:
+/// the `bound` of each field and variant, and the container's `bound`, or each parameter a written
+/// field names held to `Serialize` where the container writes none.
+pub fn write_bounds(input: &DeriveInput) -> Vec<WherePredicate> {
+    let container = WriteAttrs::of(&input.attrs);
+    let mut asked = NamedParameters::of(&input.generics);
+    let mut predicates: Vec<WherePredicate> = Vec::new();
+    let fields: Vec<(Option<WriteAttrs>, &Field)> = match &input.data {
+        Data::Struct(held) => held.fields.iter().map(|field| (None, field)).collect(),
+        Data::Enum(held) => held
+            .variants
+            .iter()
+            .flat_map(|variant| {
+                variant
+                    .fields
+                    .iter()
+                    .map(|field| (Some(WriteAttrs::of(&variant.attrs)), field))
+            })
+            .collect(),
+        Data::Union(_) => Vec::new(),
+    };
+    for (variant, field) in fields {
+        let attrs = WriteAttrs::of(&field.attrs);
+        let of_variant = variant
+            .as_ref()
+            .is_none_or(|held| !held.skipped && !held.writes_itself && held.bound.is_none());
+        if !attrs.skipped && !attrs.writes_itself && attrs.bound.is_none() && of_variant {
+            asked.field(field);
+        }
+        predicates.extend(attrs.bound.into_iter().flatten());
+    }
+    if let Data::Enum(held) = &input.data {
+        for variant in &held.variants {
+            predicates.extend(WriteAttrs::of(&variant.attrs).bound.into_iter().flatten());
+        }
+    }
+    if let Some(written) = container.bound {
+        predicates.extend(written);
+    } else {
+        predicates.extend(asked.predicates(&input.generics, &parse_quote! { serde::Serialize }));
+    }
+    predicates
+}
+
+/// The sides of a `bound` that `attrs` write.
+pub fn bound_sides(attrs: &[Attribute]) -> BoundSides {
+    BoundSides {
+        deserialize: ReadAttrs::of(attrs).bound.is_some(),
+        serialize: WriteAttrs::of(attrs).bound.is_some(),
+    }
+}
+
+/// The predicates serde's derive asks of a field of type `ty` it reads or writes itself: each
+/// parameter of `generics` the type names, outside `PhantomData`, and each associated type it
+/// starts at, held to `bound`.
+pub fn asked_by_type(generics: &Generics, ty: &Type, bound: &syn::Path) -> Vec<WherePredicate> {
+    let mut asked = NamedParameters::of(generics);
+    asked.field_type(ty);
+    asked.predicates(generics, bound)
 }
 
 #[cfg(test)]

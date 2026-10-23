@@ -3,6 +3,8 @@
 //! issue at the member that holds it.
 
 use alloc::collections::BTreeMap;
+use core::cell::RefCell;
+use core::ops::Range;
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -21,6 +23,24 @@ struct DigitLedger {
     maybe: Option<i64>,
     paired: (i64, String),
     total: i64,
+}
+
+/// An alias of an `i64`, declared above the ledger that holds it.
+#[model_schema()]
+type LedgerRevision = i64;
+
+/// An `i64` through an alias, as a range's bound, as a `Result`'s arm, under a `literal`, below a
+/// lock and beside the type's own parameter.
+#[model_schema(enable = ["decode_with"], default_types(Key = String))]
+#[derive(Debug, Deserialize, Serialize)]
+struct DigitReachedLedger<Key: Ord> {
+    aliased: LedgerRevision,
+    #[model_schema_prop(literal = 214)]
+    fixed: i64,
+    keyed: BTreeMap<Key, i64>,
+    locked: Vec<RefCell<i64>>,
+    ranged: Range<i64>,
+    resulted: Result<i64, String>,
 }
 
 /// The ledger every read below answers.
@@ -94,4 +114,50 @@ fn a_digit_string_beyond_an_i64_is_one_issue_at_the_member_that_holds_it() {
         ])
     );
     assert_eq!(calls, 1, "the callback runs once");
+}
+
+/// What a ledger of `stored` reads as, written back, with every issue listed and the number of
+/// times the callback ran.
+fn reached(stored: serde_json::Value) -> (Result<serde_json::Value, Vec<String>>, u32) {
+    let mut calls = 0_u32;
+    let answered = DigitReachedLedger::<String>::from_value_with(stored, |_raw, _found| {
+        calls = calls.saturating_add(1);
+        digit_reached_ledger_schema::Verdict::Reject
+    });
+    (
+        answered
+            .map(|read| serde_json::to_value(read).unwrap())
+            .map_err(|refused| lines(&refused)),
+        calls,
+    )
+}
+
+#[test]
+fn an_i64_in_each_place_its_holder_reaches_is_read_from_its_digits_and_from_a_number() {
+    let stored = json!({
+        "aliased": "-1152921504606846976",
+        "fixed": "214",
+        "keyed": { "a": "-7" },
+        "locked": ["9223372036854775807"],
+        "ranged": { "start": "1", "end": "2" },
+        "resulted": { "Ok": "7" },
+    });
+    assert_eq!(
+        reached(stored.clone()),
+        (Ok(stored.clone()), 0),
+        "the digits serde reads, written back"
+    );
+    let numbers = json!({
+        "aliased": -(1_i64 << 60_i32),
+        "fixed": 214_i64,
+        "keyed": { "a": -7_i64 },
+        "locked": [i64::MAX],
+        "ranged": { "start": 1_i64, "end": 2_i64 },
+        "resulted": { "Ok": 7_i64 },
+    });
+    assert_eq!(
+        reached(numbers),
+        (Ok(stored), 0),
+        "the numbers serde reads, written back as digits"
+    );
 }

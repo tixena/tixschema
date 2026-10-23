@@ -22,9 +22,9 @@ use crate::features::serde::{
 };
 use crate::features::text_forms::TextForm;
 use crate::field_type::{
-    FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, dart_from_json_argument,
-    dart_lower_camel, dart_to_json_argument, format_number_literal, get_field_def, is_plain_enum,
-    is_sequence_wrapper,
+    FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, bare_field_def,
+    dart_from_json_argument, dart_lower_camel, dart_to_json_argument, format_number_literal,
+    get_field_def, is_plain_enum, is_sequence_wrapper,
 };
 use crate::model_schema::digits;
 use crate::model_schema::variant_wire_kind;
@@ -1500,14 +1500,14 @@ pub fn dart_typename(field: &FieldDef) -> String {
 /// is decoded, a declared type by its judged read.
 #[cfg(feature = "serde")]
 pub fn dart_json_decode(ty: &syn::Type, expr: &str) -> String {
-    dart_decode_expr(&get_field_def("value", ty, ""), expr, Read::Judged)
+    dart_decode_expr(&bare_field_def("value", ty), expr, Read::Judged)
 }
 
 /// Encodes the Dart value `expr` of `ty` into a `jsonEncode`-safe value, as a model field of that
 /// type is encoded. `promoted`: Dart narrows `expr`, being a parameter or a local.
 #[cfg(feature = "serde")]
 pub fn dart_json_encode(ty: &syn::Type, expr: &str, promoted: bool) -> String {
-    dart_encode_expr(&get_field_def("value", ty, ""), expr, promoted)
+    dart_encode_expr(&bare_field_def("value", ty), expr, promoted)
 }
 
 /// The converters a holder hands the type `name` for `arguments`, one per type parameter, each
@@ -2856,13 +2856,21 @@ fn literal_elements(
         LiteralValue::Bool(true) => format!("!{expr}"),
         LiteralValue::Bool(false) => expr.to_owned(),
         LiteralValue::Str(text) => format!("{expr} != '{}'", dart_escaped(text, '\'')),
-        LiteralValue::Number(number) => {
+        LiteralValue::Integer(_) | LiteralValue::Number(_) => {
+            let number = literal.number().unwrap_or_default();
             if matches!(field.field_type, FieldDefType::F32 | FieldDefType::F64) {
                 helpers.call(Helper::Number);
                 shown = format!("_number({expr})");
-                format!("{expr} != {}", dart_number(*number))
+                format!("{expr} != {}", dart_number(number))
+            } else if let LiteralValue::Integer(value) = literal {
+                // A `u64` is held as a `BigInt`, which no `int` equals.
+                if matches!(field.field_type, FieldDefType::U64Digits) {
+                    format!("{expr} != BigInt.parse('{value}')")
+                } else {
+                    format!("{expr} != {value}")
+                }
             } else {
-                format!("{expr} != {}", format_number_literal(*number))
+                format!("{expr} != {}", format_number_literal(number))
             }
         }
     };

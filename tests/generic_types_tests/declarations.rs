@@ -716,6 +716,9 @@ console.log(JSON.stringify(wireForm(lib.DigitTally$Schema.parse(JSON.parse(TALLY
 /// exactly in each place.
 const DIGIT_TALLY: &str = r#"{"boxed":"-1152921504606846976","grid":["1","1152921504606846976"],"keyed":{"a":"-7"},"listed":["0","9223372036854775807"],"maybe":"-9223372036854775808","nested":[["3"],null],"paired":["9","x"],"set":["2","5"],"signed":"-1152921504606846976"}"#;
 
+/// The digits serde writes of a `DigitReached` with an `i64` in each place it holds one.
+const DIGIT_REACHED: &str = r#"{"aliased":"-1152921504606846976","aliases":["1","9223372036854775807"],"fixed":"214","from":{"start":"-3"},"inclusive":{"start":"4","end":"5"},"ranged":{"start":"1","end":"1152921504606846976"},"resulted":{"Ok":"7"},"to":{"end":"6"},"wrong":{"Err":["8","-9"]}}"#;
+
 /// The value a client writes of a value its schema read, as each client's own helper writes it:
 /// each `bigint` as the string of its digits.
 const WIRE_FORM: &str = "function wireForm(value) {
@@ -2907,6 +2910,24 @@ fn digit_strings_bundle() -> String {
         digit_strings::DigitAdjacent::zod_schema(),
         digit_strings::DigitUntagged::ts_definition(),
         digit_strings::DigitUntagged::zod_schema(),
+        digit_strings::digit_revision_schema::Schema::ts_definition(),
+        digit_strings::digit_revision_schema::Schema::zod_schema(),
+        digit_strings::digit_revisions_schema::Schema::ts_definition(),
+        digit_strings::digit_revisions_schema::Schema::zod_schema(),
+        digit_strings::DigitReached::ts_definition(),
+        digit_strings::DigitReached::zod_schema(),
+        digit_strings::DigitLocked::ts_definition(),
+        digit_strings::DigitLocked::zod_schema(),
+        digit_strings::DigitBeside::<String>::ts_definition(),
+        digit_strings::DigitBeside::<String>::zod_schema(),
+        digit_strings::DigitChosen::<String>::ts_definition(),
+        digit_strings::DigitChosen::<String>::zod_schema(),
+        digit_strings::DigitLater::ts_definition(),
+        digit_strings::DigitLater::zod_schema(),
+        digit_strings::digit_later_revision_schema::Schema::ts_definition(),
+        digit_strings::digit_later_revision_schema::Schema::zod_schema(),
+        digit_strings::DigitBorrowed::ts_definition(),
+        digit_strings::DigitBorrowed::zod_schema(),
     ]
     .into_iter()
     .chain(wide)
@@ -4093,6 +4114,86 @@ fn type_check_a_64_bit_integer_is_read_as_a_bigint_from_its_digits_under_zod() {
             "too large: maximum is 5, got 6",
             r#"{"level":"-5n","start":"7n"}"#,
             DIGIT_TALLY,
+        ]
+        .join("\n"),
+        "the Zod schemas do not read each payload as stated:\n{failed}"
+    );
+}
+
+/// An `i64` through an alias, as a range's bound, as a `Result`'s arm, under a `literal`, below a
+/// lock and beside the type's own parameter, in an untagged enum too, is read by its Zod schema
+/// under `node` as a `bigint` from its digits, refused as a number and beyond the literal, and
+/// written back as its digits. One through an alias declared below its holder is the number.
+#[test]
+fn type_check_a_64_bit_integer_in_each_place_its_holder_reaches_is_read_as_a_bigint_under_zod() {
+    assert_eq!(
+        serde_json::to_string(
+            &serde_json::from_str::<digit_strings::DigitReached>(DIGIT_REACHED).unwrap()
+        )
+        .unwrap(),
+        DIGIT_REACHED,
+        "serde writes the payload the driver reads"
+    );
+    let locked = r#"{"keyed":{"a":"-7"},"listed":["9223372036854775807"],"paired":["9","x"]}"#;
+    let beside = r#"{"keyed":{"a":"-7"},"paired":["b","1152921504606846976"]}"#;
+    let chosen = r#"{"listed":[["9223372036854775807","a"]]}"#;
+    for (json, read) in [
+        (
+            locked,
+            serde_json::from_str::<digit_strings::DigitLocked>(locked).is_ok(),
+        ),
+        (
+            beside,
+            serde_json::from_str::<digit_strings::DigitBeside<String>>(beside).is_ok(),
+        ),
+        (
+            chosen,
+            serde_json::from_str::<digit_strings::DigitChosen<String>>(chosen).is_ok(),
+        ),
+    ] {
+        assert!(read, "serde reads {json}");
+    }
+    let payloads = [
+        ("DigitReached$Schema", DIGIT_REACHED.to_owned()),
+        (
+            "DigitReached$Schema",
+            DIGIT_REACHED.replace(r#""end":"6""#, r#""end":6"#),
+        ),
+        (
+            "DigitReached$Schema",
+            DIGIT_REACHED.replace(r#""fixed":"214""#, r#""fixed":"215""#),
+        ),
+        ("DigitLocked$Schema", locked.to_owned()),
+        ("DigitBeside$SchemaDefault", beside.to_owned()),
+        ("DigitChosen$SchemaDefault", chosen.to_owned()),
+        ("DigitLater$Schema", r#"{"revision":-7}"#.to_owned()),
+        (
+            "DigitBorrowed$Schema",
+            r#"{"counted":"-1","listed":["2"]}"#.to_owned(),
+        ),
+    ];
+    let driver = DIGIT_STRINGS_DRIVER
+        .replace("PAYLOADS", &serde_json::to_string(&payloads).unwrap())
+        .replace("WIRE_FORM", WIRE_FORM)
+        .replace("DigitTally$Schema", "DigitReached$Schema")
+        .replace("TALLY", &serde_json::to_string(DIGIT_REACHED).unwrap());
+    let Some((printed, failed)) =
+        loaded_from("digit-strings-reached", &digit_strings_bundle(), &driver)
+    else {
+        return;
+    };
+    assert_eq!(
+        printed,
+        [
+            r#"{"aliased":"-1152921504606846976n","aliases":["1n","9223372036854775807n"],"fixed":"214n","from":{"start":"-3n"},"inclusive":{"start":"4n","end":"5n"},"ranged":{"start":"1n","end":"1152921504606846976n"},"resulted":{"Ok":"7n"},"to":{"end":"6n"},"wrong":{"Err":["8n","-9n"]}}"#,
+            "Invalid input: expected string, received number",
+            "not the literal 214, got 215",
+            r#"{"keyed":{"a":"-7n"},"listed":["9223372036854775807n"],"paired":["9n","x"]}"#,
+            r#"{"keyed":{"a":"-7n"},"paired":["b","1152921504606846976n"]}"#,
+            r#"{"listed":[["9223372036854775807n","a"]]}"#,
+            r#"{"revision":-7}"#,
+            r#"{"counted":"-1n","listed":["2n"]}"#,
+            DIGIT_REACHED,
         ]
         .join("\n"),
         "the Zod schemas do not read each payload as stated:\n{failed}"

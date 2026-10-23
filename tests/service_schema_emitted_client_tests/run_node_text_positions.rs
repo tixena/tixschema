@@ -64,12 +64,12 @@ fn typescript_at_a_text_position(row: &WireFormRow) -> Sends {
     }
 }
 
-/// The TypeScript value of `json` handed at `position`: itself, but the float JSON writes none of,
-/// and an `i64` a member of the message holds as a `bigint`, which a header is not.
-fn ts_value(held_by: &str, json: &str, position: Position) -> String {
+/// The TypeScript value of `json` handed at a text position: itself, but the float JSON writes
+/// none of, and an `i64`, which the client holds as a `bigint` in a message and in a header alike.
+fn ts_value(held_by: &str, json: &str) -> String {
     if json == "NaN" {
         "NaN".to_owned()
-    } else if held_by == "ConveyedI64" && position != Position::Header {
+    } else if held_by == "ConveyedI64" {
         format!("{json}n")
     } else {
         json.to_owned()
@@ -78,11 +78,7 @@ fn ts_value(held_by: &str, json: &str, position: Position) -> String {
 
 /// The statement that makes `call` through the client.
 fn statement(call: &Call) -> String {
-    let arguments = spelled(
-        call,
-        &|held_by, json| ts_value(held_by, json, call.position),
-        "undefined",
-    );
+    let arguments = spelled(call, &|held_by, json| ts_value(held_by, json), "undefined");
     let operation = call.operation();
     let made = if call.position == Position::Header {
         format!("client.{operation}(\"n\", {})", arguments.join(", "))

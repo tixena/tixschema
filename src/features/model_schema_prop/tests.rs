@@ -50,7 +50,22 @@ fn test_parse_literal_bool_false() {
 fn test_parse_literal_number_integer() {
     let attr: Attribute = parse_quote! { #[model_schema_prop(literal = 214)] };
     let meta = parse_model_schema_prop_attributes(&[attr]);
-    assert_eq!(meta.literal, Some(LiteralValue::Number(214.0)));
+    assert_eq!(
+        meta.literal,
+        Some(LiteralValue::Integer(214)),
+        "an integer literal is held exactly"
+    );
+}
+
+#[test]
+fn an_integer_literal_no_f64_holds_is_parsed_exactly() {
+    let attr: Attribute = parse_quote! { #[model_schema_prop(literal = 9007199254740993)] };
+    let meta = parse_model_schema_prop_attributes(&[attr]);
+    assert_eq!(
+        meta.literal,
+        Some(LiteralValue::Integer((1_i128 << 53_i32) + 1)),
+        "the literal as written"
+    );
 }
 
 #[test]

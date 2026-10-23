@@ -7,8 +7,8 @@
 use core::fmt::Write as _;
 
 use super::digit_models::{
-    REFUSED, WRITTEN, serde_refusal, serde_written, sixty_event_dart, sixty_id_dart,
-    sixty_level_dart, sixty_tally_dart,
+    REFUSED, WRITTEN, serde_refusal, serde_written, sixty_beside_dart, sixty_event_dart,
+    sixty_id_dart, sixty_level_dart, sixty_locked_dart, sixty_reached_dart, sixty_tally_dart,
 };
 use super::run_dart_validate::{dart, module};
 
@@ -29,7 +29,7 @@ void told(String at, Object? Function() read) {
 ";
 
 /// What the Dart read answers of each payload of [`REFUSED`], in its order.
-const DART_REFUSED: [&str; 5] = [
+const DART_REFUSED: [&str; 8] = [
     "FormatException: expected an i64 as a string of its decimal digits, found \
      \"9223372036854775808\"",
     "FormatException: expected an i64 as a string of its decimal digits, found \"seven\"",
@@ -37,6 +37,10 @@ const DART_REFUSED: [&str; 5] = [
      \"-9223372036854775809\"",
     "FormatException: expected an i64 as a string of its decimal digits, found \"1.5\"",
     "FormatException: 'level': too large: maximum is 5, got 6",
+    "FormatException: expected an i64 as a string of its decimal digits, found \
+     \"9223372036854775808\"",
+    "FormatException: 'fixed': not the literal 214, got 215",
+    "FormatException: expected an i64 as a string of its decimal digits, found \"x\"",
 ];
 
 /// The emitted types every row reads.
@@ -46,12 +50,23 @@ fn definitions() -> Vec<String> {
         sixty_id_dart::dart_definition(),
         sixty_event_dart::dart_definition(),
         sixty_level_dart::dart_definition(),
+        sixty_reached_dart::dart_definition(),
+        sixty_locked_dart::dart_definition(),
+        sixty_beside_dart::dart_definition(),
     ]
 }
 
-/// What `told` prints of `json` read as `read_as` and written back.
+/// What `told` prints of `json` read as `read_as` and written back: a type with a parameter is
+/// handed the converters of a `String` that fills it.
 fn told(at: usize, read_as: &str, json: &str) -> String {
-    format!("  told('{at}', () => {read_as}.fromJson(jsonDecode(r'''{json}''')).toJson());\n")
+    let (read, written) = if read_as.ends_with("<String>") {
+        (", (held) => held as String", "(held) => held")
+    } else {
+        ("", "")
+    };
+    format!(
+        "  told('{at}', () => {read_as}.fromJson(jsonDecode(r'''{json}'''){read}).toJson({written}));\n"
+    )
 }
 
 /// Each payload serde writes is read and written back as serde writes it back, and each payload

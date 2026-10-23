@@ -3,7 +3,7 @@
 
 use super::fault;
 use super::message;
-use crate::field_type::get_field_def;
+use crate::field_type::bare_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationOutcome, ServiceDef, is_unit_type,
@@ -116,7 +116,7 @@ fn schemas_table(
         let Some(ty) = pick(operation) else {
             continue;
         };
-        let schema = get_field_def(field, &ty, "").zod_type();
+        let schema = bare_field_def(field, &ty).zod_type();
         let _ = writeln!(entries, "  {}: {schema},", ts_quoted(&operation.wire_name));
     }
     let body = if entries.is_empty() {

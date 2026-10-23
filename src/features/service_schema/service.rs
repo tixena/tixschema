@@ -5,7 +5,7 @@
 use super::fault;
 use super::message;
 use super::result::{result_name, stream_success_ts_type};
-use crate::field_type::get_field_def;
+use crate::field_type::bare_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, HttpShape, OperationDef, OperationOutcome, ServiceDef, is_unit_type, option_inner,
@@ -199,7 +199,7 @@ fn binding_reads(
     for header in &shape.header_in {
         let name = RenameRule::CamelCase.apply_to_field(&written(&header.parameter));
         let read = format!("{name}Header");
-        let schema = get_field_def(&name, &header.ty, "").zod_type();
+        let schema = bare_field_def(&name, &header.ty).zod_type();
         let _ = write!(
             stmt,
             "        const {read} = {prefix}RequestHeader({wire}, headers, {header_name}, \
@@ -560,10 +560,10 @@ fn outcome_type(service: &str, operation: &OperationDef) -> Option<String> {
     } else if is_unit_type(success) {
         "{ ok: true }".to_owned()
     } else {
-        let value = get_field_def("value", success, "").typescript_typename();
+        let value = bare_field_def("value", success).typescript_typename();
         format!("{{ ok: true; value: {value} }}")
     };
-    let failure = get_field_def("error", error, "").typescript_typename();
+    let failure = bare_field_def("error", error).typescript_typename();
     let called = &operation.ts_name;
     Some(format!(
         "/**\n \

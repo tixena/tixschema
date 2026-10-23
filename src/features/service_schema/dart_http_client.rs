@@ -8,7 +8,7 @@ use crate::features::dart::{
     dart_field_member, dart_fields_of, dart_json_decode, dart_json_encode, dart_local,
     dart_typename, quoted,
 };
-use crate::field_type::{FieldDefType, get_field_def};
+use crate::field_type::{FieldDefType, bare_field_def};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HttpShape, OperationDef, OperationInputs,
@@ -1111,7 +1111,7 @@ pub(super) fn message_type(operation: &OperationDef) -> Option<Type> {
 /// name exactly as it would inside an ordinary field. `pub(super)`: [`super::dart_result`] reads a
 /// declared error's Dart type the same way.
 pub(super) fn dart_type_of(ty: &Type) -> String {
-    dart_typename(&get_field_def("value", ty, ""))
+    dart_typename(&bare_field_def("value", ty))
 }
 
 /// The Dart expression that renders `ty`'s value at `expr` as URL- or header-safe text: an
@@ -1152,7 +1152,7 @@ fn writes_through_its_codec(ty: &Type) -> bool {
         return writes_through_its_codec(inner);
     }
     !matches!(
-        get_field_def("value", base, "").field_type,
+        bare_field_def("value", base).field_type,
         FieldDefType::String
             | FieldDefType::StringLiteral(_)
             | FieldDefType::Boolean
@@ -1182,7 +1182,7 @@ fn dart_header_out_decode(ty: &Type, raw: &str) -> (String, bool) {
             true,
         );
     }
-    match get_field_def("value", base, "").field_type {
+    match bare_field_def("value", base).field_type {
         FieldDefType::Boolean => (
             format!("switch ({raw}) {{ 'true' => true, 'false' => false, _ => null }}"),
             true,
@@ -1191,15 +1191,28 @@ fn dart_header_out_decode(ty: &Type, raw: &str) -> (String, bool) {
         | FieldDefType::U16
         | FieldDefType::U32
         | FieldDefType::U64
-        | FieldDefType::U64Digits
         | FieldDefType::I8
         | FieldDefType::I16
         | FieldDefType::I32
         | FieldDefType::I64
-        | FieldDefType::I64Digits
         | FieldDefType::Usize
         | FieldDefType::Isize => (format!("int.tryParse({raw})"), true),
         FieldDefType::F32 | FieldDefType::F64 => (format!("double.tryParse({raw})"), true),
+        // The digits of an `i64` and a `u64`, within the range of its type, as the Rust client
+        // reads them.
+        FieldDefType::I64Digits => (
+            format!(
+                "(RegExp(r'^-?(0|[1-9][0-9]*)$').hasMatch({raw}) ? int.tryParse({raw}) : null)"
+            ),
+            true,
+        ),
+        FieldDefType::U64Digits => (
+            format!(
+                "(RegExp(r'^(0|[1-9][0-9]*)$').hasMatch({raw}) && BigInt.parse({raw}) <= \
+                 BigInt.parse('18446744073709551615') ? BigInt.parse({raw}) : null)"
+            ),
+            true,
+        ),
         // The header text read as a JSON string, as the Rust client reads it, through the type's
         // own codec; a codec that refuses it is a malformed header.
         FieldDefType::SiblingType(_, _) => (

@@ -3,14 +3,16 @@
 //! call-error enum.
 
 use super::parse::{
-    HttpBinding, OperationDef, OperationInputs, OperationOutcome, PathSegment, ServiceDef,
-    error_declared_type, service_declares_a_stream, service_needs_body_source_seam, written,
+    HttpBinding, HttpShape, OperationDef, OperationInputs, OperationOutcome, PathSegment,
+    ServiceDef, error_declared_type, service_declares_a_stream, service_needs_body_source_seam,
+    tuple_elements, written,
 };
 use super::transport::Transport;
+use crate::model_schema::digits;
 use crate::rename_rule::RenameRule;
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote, quote_spanned};
-use syn::Ident;
+use syn::{Ident, Type};
 
 /// The service's own module, holding everything either half of a service reads and nothing that
 /// belongs to one of them.
@@ -141,6 +143,7 @@ pub fn emit(service: &ServiceDef, asked: &[Transport], non_exhaustive: bool) -> 
     let envelope = answered_envelope();
     let validation = message_validation();
     let messages = message_type_aliases(service);
+    let wires = digit_wires(service);
     let message_readers = message_readers(service);
     let validators = message_validators(service);
     let readers = violation_readers();
@@ -169,6 +172,7 @@ pub fn emit(service: &ServiceDef, asked: &[Transport], non_exhaustive: bool) -> 
             #envelope
             #validation
             #messages
+            #wires
             #message_readers
             #validators
             #readers
@@ -713,8 +717,57 @@ pub fn message_alias_ident(operation: &OperationDef) -> Ident {
     )
 }
 
+/// Each type `operation` carries bare, where no member holds it: the message it names, each
+/// `header_in` argument, and the success and the error of its reply with each header element
+/// beside them.
+pub fn bare_types(operation: &OperationDef) -> Vec<Type> {
+    let shape = HttpShape::of(operation);
+    let mut bare: Vec<Type> = Vec::new();
+    if let OperationInputs::Named(declared) = &operation.inputs {
+        bare.push((**declared).clone());
+    }
+    bare.extend(shape.header_in.iter().map(|header| header.ty.clone()));
+    if let OperationOutcome::Reply { error, success } = &operation.outcome {
+        for (replied, headers) in [
+            (success, shape.header_out.len()),
+            (error, shape.error_header_out.len()),
+        ] {
+            match tuple_elements(replied) {
+                Some(elements) if headers > 0 => bare.extend(elements.iter().cloned()),
+                Some(_) | None => bare.push((**replied).clone()),
+            }
+        }
+    }
+    bare
+}
+
+/// The type a bare value of `ty` travels through, where it holds a `u64` or an `i64`, and the one
+/// that borrows it: each written as the string of its digits.
+pub fn digits_wire(ty: &Type) -> Option<(Ident, Ident)> {
+    digits::service_held(ty).map(|_| digits::service_wires(ty))
+}
+
+/// The types each bare value of `service` that holds a `u64` or an `i64` travels through, once
+/// per type.
+fn digit_wires(service: &ServiceDef) -> TokenStream {
+    let mut named: Vec<String> = Vec::new();
+    let mut items = TokenStream::new();
+    for ty in service.operations.iter().flat_map(bare_types) {
+        let Some(held) = digits::service_held(&ty) else {
+            continue;
+        };
+        let wire = digits::service_wires(&ty).0.to_string();
+        if !named.contains(&wire) {
+            named.push(wire);
+            items.extend(digits::service_wire_items(&ty, &held));
+        }
+    }
+    items
+}
+
 /// One reader per operation: the operation's message read with no judgement of its own, at the
-/// concrete type an inherent `model_schema_read_unjudged` needs to win at. A dispatcher reads a
+/// concrete type an inherent `model_schema_read_unjudged` needs to win at. A bare message that
+/// holds a `u64` or an `i64` is read from its digits. A dispatcher reads a
 /// request through it and then asks the message to validate itself, so a broken bound is the
 /// validator's to report, with its field.
 fn message_readers(service: &ServiceDef) -> TokenStream {
@@ -725,6 +778,19 @@ fn message_readers(service: &ServiceDef) -> TokenStream {
             "The message of operation `{}`, read with no judgement of its own.",
             operation.wire_name
         );
+        if let OperationInputs::Named(declared) = &operation.inputs
+            && let Some((wire, _)) = digits_wire(declared)
+        {
+            return quote! {
+                #[doc = #doc]
+                pub fn #named<'de, D>(deserializer: D) -> ::core::result::Result<#message, D::Error>
+                where
+                    D: ::serde::Deserializer<'de>,
+                {
+                    <#wire as ::serde::Deserialize<'de>>::deserialize(deserializer).map(|read| read.0)
+                }
+            };
+        }
         quote! {
             #[doc = #doc]
             pub fn #named<'de, D>(deserializer: D) -> ::core::result::Result<#message, D::Error>

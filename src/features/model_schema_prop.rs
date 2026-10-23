@@ -50,8 +50,23 @@ pub struct FunctionName {
 #[derive(Clone, Debug, PartialEq)]
 pub enum LiteralValue {
     Bool(bool),
+    /// A number written with no fraction and no exponent, held exactly: a `u64` or an `i64`
+    /// holds integers no `f64` does.
+    Integer(i128),
     Number(f64),
     Str(String),
+}
+
+impl LiteralValue {
+    /// The number a numeric literal holds, an integer beyond what an `f64` holds exactly read as
+    /// the nearest one, and `None` for a literal of another kind.
+    pub fn number(&self) -> Option<f64> {
+        match self {
+            Self::Integer(value) => value.to_string().parse().ok(),
+            Self::Number(value) => Some(*value),
+            Self::Bool(_) | Self::Str(_) => None,
+        }
+    }
 }
 
 /// Metadata for `model_schema_prop` attributes applied to a field.
@@ -336,7 +351,7 @@ fn literal_prop_value(nested: &ParseNestedMeta) -> syn::Result<LiteralValue> {
     } else if let Lit::Bool(bool_lit) = &lit {
         Ok(LiteralValue::Bool(bool_lit.value()))
     } else if let Lit::Int(int_lit) = &lit {
-        Ok(LiteralValue::Number(int_lit.base10_parse()?))
+        Ok(LiteralValue::Integer(int_lit.base10_parse()?))
     } else if let Lit::Float(float_lit) = &lit {
         Ok(LiteralValue::Number(float_lit.base10_parse()?))
     } else {

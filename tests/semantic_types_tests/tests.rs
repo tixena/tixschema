@@ -289,8 +289,8 @@ fn test_struct_with_alias_fields_typescript() {
         "Should use DocumentId type alias. Got: {ts}"
     );
     assert!(
-        ts.contains("revision: Revision;"),
-        "Should use Revision type alias. Got: {ts}"
+        ts.contains("revision: bigint;"),
+        "An alias of an i64 is written as the digits of the integer it names. Got: {ts}"
     );
     assert!(
         ts.contains("score: Score;"),
@@ -535,12 +535,12 @@ fn test_struct_with_alias_json_schema() {
     );
 
     // A field written as an alias carries the alias module's schema, so what the field validates
-    // is what the alias publishes — every slot naming the alias agrees with every other.
+    // is what the alias publishes — every slot naming the alias agrees with every other. An alias
+    // of an `i64` is the one apart: the member is written as the digits of the integer.
     for (field, alias_schema) in [
         ("document_id", document_id_schema::Schema::json_schema()),
         ("is_active", is_active_schema::Schema::json_schema()),
         ("note", optional_note_schema::Schema::json_schema()),
-        ("revision", revision_schema::Schema::json_schema()),
         ("score", score_schema::Schema::json_schema()),
     ] {
         assert_eq!(
@@ -548,6 +548,11 @@ fn test_struct_with_alias_json_schema() {
             "for {field} in: {schema}"
         );
     }
+    assert_eq!(
+        schema["properties"]["revision"],
+        serde_json::json!({"type": "string", "pattern": "^-?(0|[1-9][0-9]*)$"}),
+        "the revision in: {schema}"
+    );
 }
 
 #[test]

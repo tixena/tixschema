@@ -6,14 +6,14 @@
 //! vector of nested tuple and map-key wrapper structs through every leaf.
 
 use crate::features::swift::lookup_swift_name;
-use crate::field_type::{FieldDef, FieldDefType, get_field_def, is_sequence_wrapper};
+use crate::field_type::{FieldDef, FieldDefType, bare_field_def, is_sequence_wrapper};
 use syn::Type;
 
 /// `ty`'s own Swift type name, read through the same `FieldDef` walk every field's type goes
 /// through — so a reference to a sibling `#[model_schema()]` type resolves to its published
 /// Swift name exactly as it would inside an ordinary field.
 pub(super) fn swift_typename_of(ty: &Type) -> String {
-    swift_typename(&get_field_def("value", ty, ""))
+    swift_typename(&bare_field_def("value", ty))
 }
 
 fn swift_typename(field: &FieldDef) -> String {
