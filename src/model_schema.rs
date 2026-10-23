@@ -19238,11 +19238,12 @@ fn literal_validate_body(
 
 /// The validator, the `validate()` fragment and the serde hook of a field that carries a
 /// `literal`: the literal is its only rule. Where the literal is held by each item of a list, the
-/// validator names nothing, and `validate()` names each item by its index.
+/// validator names nothing, and `validate()` names each item by its index. `index` is the field's
+/// place among its container's.
 #[cfg(feature = "serde")]
 fn generate_literal_validation(
     ctx: &FieldContext<'_>,
-    field: &Field,
+    (field, index): (&Field, usize),
     member: &CheckedMember,
     literal: &LiteralValue,
     gate: ConstraintGate,
@@ -19287,22 +19288,14 @@ fn generate_literal_validation(
     if gate == ConstraintGate::Validator {
         record_field_validator(module_name, stem, named, items);
     }
-    if gate == ConstraintGate::Deserializer
-        && !ends_on_a_borrow(&shape.wraps)
-        && !has_serde_read_hook(&field.attrs)
-    {
-        let path_lit = syn::LitStr::new(
+    if gate == ConstraintGate::Deserializer {
+        hang_bound_hook(
+            ctx,
+            (field, index),
             &format!("{module_name}::deserialize_{stem}"),
-            proc_macro2::Span::call_site(),
+            &shape.wraps,
+            injected_attrs,
         );
-        injected_attrs.push(syn::parse_quote! {
-            #[serde(deserialize_with = #path_lit)]
-        });
-        if needs_injected_default(&shape.wraps, has_serde_default(&field.attrs)) {
-            injected_attrs.push(syn::parse_quote! {
-                #[serde(default)]
-            });
-        }
     }
     let module_items = quote! {
         pub fn #validator(#param) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
@@ -19351,6 +19344,35 @@ fn interior_mutability_constraint_guard_error(
     .to_compile_error()
 }
 
+/// Hangs the hook `path` names on the member at `index`, whose bound chooses the variant of an
+/// untagged enum, with the `default` that keeps an optional key optional under it, and records
+/// both for the item's read. A borrow publishes no hook, and a member its author reads through a
+/// function of their own keeps that one: serde admits one reader per field. Its bound is then the
+/// validator's alone.
+#[cfg(feature = "serde")]
+fn hang_bound_hook(
+    ctx: &FieldContext<'_>,
+    (field, index): (&Field, usize),
+    path: &str,
+    wraps: &[ConstraintWrap],
+    injected_attrs: &mut Vec<syn::Attribute>,
+) {
+    if ends_on_a_borrow(wraps) || has_serde_read_hook(&field.attrs) {
+        return;
+    }
+    let path_lit = syn::LitStr::new(path, proc_macro2::Span::call_site());
+    let mut hung: Vec<syn::Attribute> = vec![syn::parse_quote! {
+        #[serde(deserialize_with = #path_lit)]
+    }];
+    if needs_injected_default(wraps, has_serde_default(&field.attrs)) {
+        hung.push(syn::parse_quote! {
+            #[serde(default)]
+        });
+    }
+    judged_read::record_bound_hook(ctx.variant_ident, index, &hung);
+    injected_attrs.extend(hung);
+}
+
 /// Generates per-field serde validation code — the static validator and the `deserialize_with`
 /// hook, both published into the schema module either way — and, where `gate` says the read is
 /// also a gate, collects the `#[serde(deserialize_with = ...)]` attribute into `injected_attrs`,
@@ -19389,10 +19411,17 @@ fn generate_field_validation(
                 interior_mutability_constraint_guard_error(field, &member.label, &wrapper, true);
             return (None, None, Some(refused));
         }
-        return generate_literal_validation(ctx, field, &member, literal, gate, injected_attrs)
-            .map_or((None, None, None), |(items, body)| {
-                (Some(items), Some(body), None)
-            });
+        return generate_literal_validation(
+            ctx,
+            (field, index),
+            &member,
+            literal,
+            gate,
+            injected_attrs,
+        )
+        .map_or((None, None, None), |(items, body)| {
+            (Some(items), Some(body), None)
+        });
     }
 
     let (Some(module_name), Some(shape)) = (ctx.schema_module_name, constrained_shape(&field.ty))
@@ -19442,23 +19471,14 @@ fn generate_field_validation(
     if gate == ConstraintGate::Validator {
         record_field_validator(module_name, helper_stem, member.reported.as_deref(), false);
     }
-    // A borrow publishes no hook, and a member its author reads through a function of their own
-    // keeps that one: serde admits one reader per field. Its bound is the validator's alone.
-    if gate == ConstraintGate::Deserializer
-        && !ends_on_a_borrow(&shape.wraps)
-        && !has_serde_read_hook(&field.attrs)
-    {
-        let deserialize_with_path = format!("{module_name}::deserialize_{helper_stem}");
-        let path_lit = syn::LitStr::new(&deserialize_with_path, proc_macro2::Span::call_site());
-        injected_attrs.push(syn::parse_quote! {
-            #[serde(deserialize_with = #path_lit)]
-        });
-        // Only alongside the hook.
-        if needs_injected_default(&shape.wraps, has_serde_default(&field.attrs)) {
-            injected_attrs.push(syn::parse_quote! {
-                #[serde(default)]
-            });
-        }
+    if gate == ConstraintGate::Deserializer {
+        hang_bound_hook(
+            ctx,
+            (field, index),
+            &format!("{module_name}::deserialize_{helper_stem}"),
+            &shape.wraps,
+            injected_attrs,
+        );
     }
 
     (

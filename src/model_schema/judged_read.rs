@@ -245,10 +245,21 @@ struct Reached {
     read_as: syn::Type,
 }
 
+/// The attributes the macro hangs on a member of the item being expanded to read the member's
+/// bound: the hook, and the `default` written beside it. Each is held as text, as a hook is.
+#[cfg(feature = "serde")]
+struct BoundHookHung {
+    attrs: Vec<String>,
+    index: usize,
+    variant: Option<String>,
+}
+
 #[cfg(feature = "serde")]
 thread_local! {
     /// The hooks of the item being expanded, in the order its members were walked.
     static MEMBER_HOOKS: RefCell<Vec<MemberHook>> = const { RefCell::new(Vec::new()) };
+    /// The attributes hung on the item's members to read their bounds, in the order walked.
+    static BOUND_HOOKS: RefCell<Vec<BoundHookHung>> = const { RefCell::new(Vec::new()) };
 }
 
 impl Corrects {
@@ -718,6 +729,58 @@ fn merged<'item>(predicates: impl Iterator<Item = &'item Predicate>) -> Vec<Toke
 #[cfg(feature = "serde")]
 pub fn forget_member_hooks() {
     MEMBER_HOOKS.with(|held| held.borrow_mut().clear());
+    BOUND_HOOKS.with(|held| held.borrow_mut().clear());
+}
+
+/// Records `attrs`, which the macro hangs on the member at `index` of `variant`, or of the
+/// struct, to read the member's bound.
+#[cfg(feature = "serde")]
+pub(super) fn record_bound_hook(variant: Option<&str>, index: usize, attrs: &[Attribute]) {
+    BOUND_HOOKS.with(|held| {
+        held.borrow_mut().push(BoundHookHung {
+            attrs: attrs
+                .iter()
+                .map(|attr| attr.to_token_stream().to_string())
+                .collect(),
+            index,
+            variant: variant.map(str::to_owned),
+        });
+    });
+}
+
+/// The bounds serde's derive writes on the `Deserialize` of `input` as its author wrote it. The
+/// hook the macro hangs to read a member's bound reads the member's type with its `Deserialize`,
+/// so it asks what serde asks of the member without it, and the `default` beside it asks nothing.
+#[cfg(feature = "serde")]
+pub fn authored_read_bounds(input: &DeriveInput) -> ReadBounds {
+    let mut authored = input.clone();
+    BOUND_HOOKS.with(|held| {
+        for hook in held.borrow().iter() {
+            let member = match &mut authored.data {
+                syn::Data::Struct(of_struct) if hook.variant.is_none() => {
+                    of_struct.fields.iter_mut().nth(hook.index)
+                }
+                syn::Data::Enum(of_enum) => of_enum
+                    .variants
+                    .iter_mut()
+                    .find(|variant| hook.variant.as_deref() == Some(&variant.ident.to_string()))
+                    .and_then(|variant| variant.fields.iter_mut().nth(hook.index)),
+                syn::Data::Struct(_) | syn::Data::Union(_) => None,
+            };
+            if let Some(field) = member {
+                field
+                    .attrs
+                    .retain(|attr| !hook.attrs.contains(&attr.to_token_stream().to_string()));
+            }
+        }
+    });
+    read_bounds(&authored)
+}
+
+/// No hook reads a member's bound in a build that reads no serde attribute.
+#[cfg(not(feature = "serde"))]
+pub fn authored_read_bounds(input: &DeriveInput) -> ReadBounds {
+    read_bounds(input)
 }
 
 /// What turns the refusal of a corrected payload, which is that payload's own, into the one the
@@ -1599,9 +1662,10 @@ fn hooked(
 
 /// The read alone of `input`, a function of the type under the name `unjudged`: serde's derive on
 /// a copy of the item, with each model a member holds read through that model's own `unjudged`
-/// read. It is written under the bounds serde's derive writes on the impl it would have written,
-/// which are answered beside it, or under none of its own where `asked_by_the_impl`: a bound
-/// asked twice, by the impl and by the function, is one the compiler cannot choose between.
+/// read. It is written under the bounds serde's derive writes on the impl it would have written
+/// for the item as its author wrote it, which are answered beside it, or under none of its own
+/// where `asked_by_the_impl`: a bound asked twice, by the impl and by the function, is one the
+/// compiler cannot choose between.
 ///
 /// Where the type names a `preprocess` of its own, the function reads the payload, calls each
 /// function on it, and hands what they answer to a second function, written beside it, which
@@ -1613,7 +1677,7 @@ fn unjudged_read(
     doc: &str,
     asked_by_the_impl: bool,
 ) -> (TokenStream, ReadBounds) {
-    let bounds = read_bounds(input);
+    let bounds = authored_read_bounds(input);
     // Each name the function declares is one the item does not write: the copy writes the item's
     // own types beside them.
     let written = written_names(input.to_token_stream());

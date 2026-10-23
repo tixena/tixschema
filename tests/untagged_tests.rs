@@ -28,3 +28,17 @@ mod null_models;
 #[cfg(feature = "serde")]
 #[path = "untagged_tests/nulls.rs"]
 mod nulls;
+
+/// A bound on a member whose type names the enum's own type parameter, held as the member is read.
+#[cfg(test)]
+#[cfg(feature = "serde")]
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[path = "untagged_tests/parameter_bounds.rs"]
+mod parameter_bounds;
+
+/// A rule of a model a member holds, which chooses no variant, and the README's statement of it.
+#[cfg(test)]
+#[cfg(feature = "serde")]
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[path = "untagged_tests/held_rules.rs"]
+mod held_rules;

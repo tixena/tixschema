@@ -1757,6 +1757,15 @@ has to keep.
   bound wider than the derive's refuses a type that builds without it. The copy is given the
   bounds as an explicit `bound(deserialize = ...)` wherever the item's container writes none,
   the derive holding the copy, and not the type, to `Default` for a container `default`.
+- The bounds are read off the item as its author wrote it (`authored_read_bounds`). The hook
+  `hang_bound_hook` hangs on a constrained member of an untagged enum reads the member's type
+  with its `Deserialize`, so it and the `default` beside it are recorded (`record_bound_hook`,
+  `BOUND_HOOKS`, cleared with the member hooks) and taken off a copy before `read_bounds` reads
+  it: a member over the enum's parameter asks `Deserialize<'de>` of it and no `Default`. The
+  recovering decode reads its `read_predicates` the same way.
+  `tests/untagged_tests/parameter_bounds.rs` holds the read,
+  `a_bound_hook_on_a_member_that_names_a_parameter_keeps_the_bounds_of_serdes_derive` the
+  text, and `tests/recovering_decode_tests/generic_types.rs` a filling with no `Default`.
 - A holder's hook is recorded as its members are walked (`hook_member`, from `member_read_hook`
   for a field and a slot and from `read_untagged_member_unjudged`), and written when the item's
   read is: `MEMBER_HOOKS` holds each as text, a token outliving no expansion, and
@@ -1804,6 +1813,12 @@ has to keep.
   a recovering decode lists a bounded brand from holds the value to it (`bounded_listed_read`,
   through `brand_recovering_decode`), so the walker lists a broken bound as the refusal of the
   value. A check a brand names chooses no variant: the enum's `validate()` refuses with it.
+- A rule of any other model a member of an untagged enum holds, its checks included, and the
+  bound on the slot of a struct of one slot, choose no variant, in serde's read and in the Dart,
+  Swift and Kotlin reads, by the owner's decision: the first variant whose shape reads is taken,
+  and the read then refuses the value. Zod's `z.union` and the JSON Schema's `anyOf` try the
+  next variant there, and the README states the limit with its `Picker`.
+  `tests/untagged_tests/held_rules.rs` holds serde's answers, the JSON Schema's and the README.
 - `named_read_hook` stays for a named field `reachable_nested_shape` walks and `reached` does
   not, a declared type in an `Arc` and in a fixed array among them. A model or a brand there,
   in a tuple and filling a type parameter judges itself as it is read, and ends the read at the

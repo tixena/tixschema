@@ -409,6 +409,36 @@ fn a_member_the_items_bounds_keep_from_a_hook_is_read_with_none() {
     }
 }
 
+/// The hook a bound of an untagged member is read through, and the `default` beside it, leave the
+/// read under the bounds serde's derive writes for the enum as it is written: `Deserialize<'de>`
+/// of the parameter the member names, and no `Default`.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[test]
+fn a_bound_hook_on_a_member_that_names_a_parameter_keeps_the_bounds_of_serdes_derive() {
+    let read = expansion_under(
+        "default_types(Key = String)",
+        "#[derive(Deserialize, Serialize)] #[serde(untagged)] pub enum CountedKeys<Key> { \
+         Listed { #[model_schema_prop(minLength = 1)] #[serde(skip_serializing_if = \
+         \"Option::is_none\")] listed: Option<Vec<Key>>, tag: u8 }, Text(String) }",
+    );
+    for written in [
+        "# [serde (deserialize_with = \"counted_keys_schema::deserialize_listed_listed\")] # \
+         [serde (default)] listed : Option < Vec < Key > >",
+        "# [serde (bound (deserialize = \"Key : serde :: Deserialize < 'de >\"))]",
+        "impl < 'de , Key > serde :: Deserialize < 'de > for CountedKeys < Key > where Key : \
+         serde :: Deserialize < 'de > {",
+    ] {
+        assert!(read.contains(written), "missing `{written}` in: {read}");
+    }
+    assert!(
+        !read.contains("Key : :: core :: default :: Default"),
+        "got: {read}"
+    );
+}
+
 /// A member of a variant serde never reads, under `skip` or `skip_deserializing`, is read by no
 /// hook under any tagging, and a bound of a member of an untagged one hangs no hook on it, where a
 /// member of a variant serde reads keeps each of its own.

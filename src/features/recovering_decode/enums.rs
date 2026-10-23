@@ -18,13 +18,12 @@ use super::{
     Walk, Walker, Written, added_to, binding, flattened_walker_call, not_the_shape,
     path_expression, slot_validator, unclaimed, written_names,
 };
-use crate::features::serde::read_bounds::read_bounds;
 use crate::features::serde::{
     Tagging, has_serde_skip_serializing, parse_read_renames, parse_serde_field_attributes,
     parse_serde_key_omission, parse_written_renames,
 };
 use crate::field_type::get_field_def;
-use crate::model_schema::judged_read::listed_read;
+use crate::model_schema::judged_read::{authored_read_bounds, listed_read};
 use crate::rename_rule::resolve_rename_rule;
 use crate::utils::{ident_schema_module_name, to_snake_case, type_parameters_in_scope};
 
@@ -716,7 +715,7 @@ pub fn enum_recovering_decode(item_enum: &ItemEnum, mongodb: bool) -> Recovering
             names,
             reach: &reach,
             read: listed_read(&DeriveInput::from(item_enum.clone())),
-            read_predicates: read_bounds(&DeriveInput::from(item_enum.clone())).predicates,
+            read_predicates: authored_read_bounds(&DeriveInput::from(item_enum.clone())).predicates,
         },
         &paths,
         |walker| {
