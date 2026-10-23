@@ -9,7 +9,7 @@ use super::{
 
 #[cfg(feature = "serde")]
 use super::{
-    CheckedMember, ConstraintGate, ConstraintLeaf, DigitRead, FieldContext, MemberAccess,
+    CheckedMember, ConstraintGate, ConstraintLeaf, FieldContext, MemberAccess,
     adjacent_collapsed_slot_guard_errors, build_field_validation, cfg_attr_guard_error,
     check_nullable_field_serialization, check_omitted_key_is_readable,
     check_optional_field_serialization, checked_member, collect_untagged_members,
@@ -5071,7 +5071,7 @@ fn the_record_every_build_with_serde_writes_proves_what_the_zod_surface_proves()
         ("Flag", Some(NonObject::Whole("boolean"))),
         ("Pair", Some(NonObject::Whole("array"))),
         ("Bag", Some(NonObject::Whole("array"))),
-        ("MaybeCount", branch("1", "string")),
+        ("MaybeCount", branch("1", "integer")),
         ("MaybePlain", None),
         ("Hue", None),
         ("Bare", None),
@@ -17787,14 +17787,9 @@ fn emitted_list_module(spelling: &str) -> String {
         min_length: Some(1),
         ..ModelSchemaPropMeta::default()
     };
-    generate_list_validation_code(
-        &checked_struct_field(),
-        &meta,
-        &shape.wraps,
-        DigitRead::Number,
-    )
-    .module_items
-    .to_string()
+    generate_list_validation_code(&checked_struct_field(), &meta, &shape.wraps)
+        .module_items
+        .to_string()
 }
 
 /// A list's validator and hook name no type the list holds, so one text serves every list.
@@ -17921,7 +17916,7 @@ fn a_bare_field_deserializes_the_constrained_value_itself() {
         "u32",
         &numeric_meta,
         &constrained_shape(&numeric_ty).unwrap(),
-        (&numeric_ty, DigitRead::Number),
+        &numeric_ty,
     )
     .module_items
     .to_string();
@@ -18390,7 +18385,7 @@ fn a_value_read_through_any_reference_publishes_its_validator_and_no_hook() {
             "u32",
             &minimum,
             &constrained_shape(&ty).unwrap(),
-            (&ty, DigitRead::Number),
+            &ty,
         )
         .module_items
         .to_string();

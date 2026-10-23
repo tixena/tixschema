@@ -7,7 +7,8 @@ fn a_declared_error_crosses_with_every_field_it_carries() {
     let written = ws_service_of(MIXED_SERVICE);
     assert!(
         written.contains(
-            "socket.send(JSON.stringify({ kind: \"reply\", id, service, ...envelope, ...replied }));"
+            "socket.send(JSON.stringify(usageServiceWsSent({ kind: \"reply\", id, service, \
+             ...envelope, ...replied })));"
         ),
         "the dispatcher's envelope is spread into the reply frame, its declared error whole. \
          Got: {written}"
@@ -80,7 +81,8 @@ fn the_listener_is_registered_when_the_attachment_returns() {
 fn a_frame_naming_another_service_and_non_json_text_are_both_dropped_before_the_kind_is_read() {
     let written = ws_service_of(MIXED_SERVICE);
     assert!(
-        written.contains("try { frame = JSON.parse(String(event.data)); } catch { return; }")
+        written
+            .contains("try { frame = usageServiceWsRead(String(event.data)); } catch { return; }")
             && written.contains("if (typeof frame !== \"object\" || frame === null) return;"),
         "non-JSON text, and a JSON value that is not an object, are dropped before a service or a \
          kind is read. Got: {written}"
@@ -128,8 +130,8 @@ fn a_request_is_answered_with_a_reply_frame_and_a_one_way_answer_is_synthesized(
     );
     assert!(
         written.contains(
-            "socket.send(JSON.stringify({ kind: \"reply\", id, service, ...envelope, ...replied \
-             }));"
+            "socket.send(JSON.stringify(usageServiceWsSent({ kind: \"reply\", id, service, \
+             ...envelope, ...replied })));"
         ),
         "got: {written}"
     );

@@ -127,7 +127,7 @@ pub const LITERAL_READS: [LiteralRead; 24] = [
     read(
         "touchmark as declared",
         "Touchmark",
-        r#"{"die":"crown","marks":["lion"],"punches":["3","3"],"serial":7,"tilt":-1}"#,
+        r#"{"die":"crown","marks":["lion"],"punches":[3,3],"serial":7,"tilt":-1}"#,
     ),
     read(
         "touchmark with no die and no marks",
@@ -137,7 +137,7 @@ pub const LITERAL_READS: [LiteralRead; 24] = [
     refused(
         "touchmark of other values",
         "Touchmark",
-        r#"{"die":"anchor","marks":["lion","anchor"],"punches":["3","4"],"serial":8,"tilt":1}"#,
+        r#"{"die":"anchor","marks":["lion","anchor"],"punches":[3,4],"serial":8,"tilt":1}"#,
         &[
             "'die': not the literal \"crown\", got anchor",
             "'marks.1': not the literal \"lion\", got anchor",
@@ -250,8 +250,7 @@ pub enum Ingot {
 }
 
 /// A literal under `nullable`, one on each item of an `Option` of a list and of a list of
-/// `i64`, written as their digits, and one on each width of integer a client compares in a way
-/// of its own.
+/// numbers, and one on each width of integer a client compares in a way of its own.
 #[model_schema()]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Touchmark {

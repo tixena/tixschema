@@ -475,30 +475,6 @@ pub fn serde_conversion(attrs: &[Attribute]) -> Option<(&'static str, Span)> {
     found
 }
 
-/// Every conversion of its author's a container reads or writes through: `remote`, `from`,
-/// `try_from` and `into`, each one written.
-#[cfg(feature = "serde")]
-pub fn serde_conversions(attrs: &[Attribute]) -> Vec<&'static str> {
-    let mut found: Vec<&'static str> = Vec::new();
-    for attr in attrs {
-        if !attr.path().is_ident("serde") {
-            continue;
-        }
-        attr.parse_nested_meta(|nested| {
-            found.extend(
-                CONVERSION_KEYS
-                    .into_iter()
-                    .find(|key| nested.path.is_ident(key)),
-            );
-            consume_unread_value(&nested)
-        })
-        .unwrap_or_else(|e| {
-            log::trace!("Failed to parse serde conversion attribute: {e}");
-        });
-    }
-    found
-}
-
 /// The function a field is read through, with the key that names it: `deserialize_with`, or
 /// `with`, which names the module that holds it. Read in every build: a field takes one.
 pub fn read_hook(attrs: &[Attribute]) -> Option<(&'static str, LitStr)> {

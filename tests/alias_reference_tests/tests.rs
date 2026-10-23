@@ -76,10 +76,9 @@ pub type LaterDeclaredId = String;
 
 /// A rename moves what the alias is *exported* as. It does not move the module its schema is
 /// published in — an override is not recoverable from the Rust ident, so a module named after the
-/// override would be one no forward reference could ever name. It names a `u32`: a reference to an
-/// alias of an `i64` declared above is written as the digits in place of the alias's name.
+/// override would be one no forward reference could ever name.
 #[model_schema(name = "RenamedLaterDeclaredCount")]
-pub type LaterDeclaredCount = u32;
+pub type LaterDeclaredCount = i64;
 
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -308,18 +307,18 @@ fn alias_zod_schema_name_matches_the_reference_emitted_by_the_struct() {
 #[test]
 fn aliases_declared_under_their_reference_expand_in_this_feature_combination() {
     let later = NamesAliasesDeclaredLater {
-        counts: vec![9_u32],
+        counts: vec![9_i64],
         ids: HashMap::from([("n".to_owned(), "doc-8".to_owned())]),
     };
     assert_eq!(later.ids.get("n"), Some(&"doc-8".to_owned()));
-    assert_eq!(later.counts, vec![9_u32]);
+    assert_eq!(later.counts, vec![9_i64]);
 
     let earlier = NamesAliasesDeclaredEarlier {
-        counts: vec![10_u32],
+        counts: vec![10_i64],
         ids: HashMap::new(),
     };
     assert!(earlier.ids.is_empty());
-    assert_eq!(earlier.counts, vec![10_u32]);
+    assert_eq!(earlier.counts, vec![10_i64]);
 }
 
 #[cfg(feature = "jsonschema")]

@@ -292,17 +292,17 @@ fn headers_ride_the_frame_s_own_headers_object_both_ways() {
     let written = ws_client_of(MIXED_SERVICE);
     assert!(
         written.contains(
-            "JSON.stringify({ kind: \"notify\", service, operation, payload, \
-             ...usageServiceWsHeaderTable(headers) })"
+            "JSON.stringify(usageServiceWsSent({ kind: \"notify\", service, operation, payload, \
+             ...usageServiceWsHeaderTable(headers) }))"
         ) && written.contains(
-            "JSON.stringify({ kind: \"request\", id, service, operation, payload, \
-             ...usageServiceWsHeaderTable(headers) })"
+            "JSON.stringify(usageServiceWsSent({ kind: \"request\", id, service, operation, \
+             payload, ...usageServiceWsHeaderTable(headers) }))"
         ),
         "got: {written}"
     );
     assert!(
         written.contains("if (headers.length === 0) return {};")
-            && written.contains("table[name] = JSON.parse(encoded);")
+            && written.contains("table[name] = usageServiceWsRead(encoded);")
             && written.contains("table[name] = encoded;"),
         "an empty list leaves the key off, and a text that is no JSON crosses as a string. \
          Got: {written}"
@@ -319,7 +319,7 @@ fn headers_ride_the_frame_s_own_headers_object_both_ways() {
          Got: {written}"
     );
     assert!(
-        written.contains("[name, JSON.stringify(value)] as const"),
+        written.contains("[name, JSON.stringify(usageServiceWsSent(value))] as const"),
         "got: {written}"
     );
 }

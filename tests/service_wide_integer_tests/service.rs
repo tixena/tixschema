@@ -284,10 +284,10 @@ fn headed(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
         .collect()
 }
 
-/// The `amqp_rpc` client sends a bare `i64` message and header as their digits, and reads the
-/// digits of the reply, its header and its declared error back into the integers.
+/// The `amqp_rpc` client sends a bare `i64` message and header as JSON numbers, and reads the
+/// reply, its header and its declared error back into the integers.
 #[test]
-fn an_i64_carried_bare_travels_as_its_digits_over_amqp() {
+fn an_i64_carried_bare_travels_as_a_number_over_amqp() {
     let client = amqp_client::LedgerServiceClient::new(AmqpLoop {
         carried: Mutex::new(Vec::new()),
     });
@@ -310,21 +310,21 @@ fn an_i64_carried_bare_travels_as_its_digits_over_amqp() {
         client.transport().carried.lock().unwrap().clone(),
         [
             (
-                r#""9223372036854775806""#.to_owned(),
-                headed(&[("x-offset", r#""1""#)]),
-                r#"{"ok":true,"value":"9223372036854775807"}"#.to_owned(),
+                "9223372036854775806".to_owned(),
+                headed(&[("x-offset", "1")]),
+                r#"{"ok":true,"value":9223372036854775807}"#.to_owned(),
                 Vec::new(),
             ),
             (
-                r#"["-9223372036854775807","-1"]"#.to_owned(),
+                "[-9223372036854775807,-1]".to_owned(),
                 Vec::new(),
-                r#"{"ok":true,"value":"-9223372036854775808"}"#.to_owned(),
+                r#"{"ok":true,"value":-9223372036854775808}"#.to_owned(),
                 Vec::new(),
             ),
             (
                 "[]".to_owned(),
                 Vec::new(),
-                r#"{"error":"-9223372036854775808","ok":false}"#.to_owned(),
+                r#"{"error":-9223372036854775808,"ok":false}"#.to_owned(),
                 Vec::new(),
             ),
         ],
@@ -332,10 +332,10 @@ fn an_i64_carried_bare_travels_as_its_digits_over_amqp() {
     );
 }
 
-/// A header beside the reply is written as its digits, and the dispatcher reads a message and a
+/// A header beside the reply is written as a JSON number, and the dispatcher reads a message and a
 /// header written as a number, as serde reads them.
 #[test]
-fn the_amqp_dispatcher_writes_a_reply_header_as_its_digits_and_reads_a_number() {
+fn the_amqp_dispatcher_writes_a_reply_header_as_a_number_and_reads_a_number() {
     let capture = AmqpCapture {
         settled: Mutex::new(None),
     };
@@ -356,12 +356,12 @@ fn the_amqp_dispatcher_writes_a_reply_header_as_its_digits_and_reads_a_number() 
     let (answered, replied) = capture.settled.into_inner().unwrap().unwrap();
     assert_eq!(
         String::from_utf8(answered).unwrap(),
-        r#"{"ok":true,"value":"4611686018427387903"}"#,
+        r#"{"ok":true,"value":4611686018427387903}"#,
         "the reply"
     );
     assert_eq!(
         replied,
-        headed(&[("x-doubled", r#""9223372036854775806""#)]),
+        headed(&[("x-doubled", "9223372036854775806")]),
         "the header beside it"
     );
     let client = amqp_client::LedgerServiceClient::new(AmqpLoop {
@@ -375,10 +375,11 @@ fn the_amqp_dispatcher_writes_a_reply_header_as_its_digits_and_reads_a_number() 
 }
 
 /// The `http_rest` client writes a bare `i64` message in the path, a header beside it in a header
-/// and a list of them as the body, the dispatcher answers the reply, its header and its declared
-/// error as their digits, and the client reads each back into the integers.
+/// and a list of them as the body, the dispatcher answers the reply and its declared error as JSON
+/// numbers and its header as the text of the number, and the client reads each back into the
+/// integers.
 #[test]
-fn an_i64_carried_bare_travels_as_its_digits_over_http() {
+fn an_i64_carried_bare_travels_as_a_number_over_http() {
     let client = http_rest_client::LedgerServiceClient::new(HttpLoop {
         exchanged: Mutex::new(Vec::new()),
     });
@@ -423,28 +424,28 @@ fn an_i64_carried_bare_travels_as_its_digits_over_http() {
                 headed(&[("x-offset", "-1")]).as_slice(),
                 "",
                 200,
-                r#""-9223372036854775808""#,
+                "-9223372036854775808",
             ),
             (
                 "GET /ledgers/4611686018427387903",
                 [].as_slice(),
                 "",
                 200,
-                r#""4611686018427387903""#,
+                "4611686018427387903",
             ),
             (
                 "POST /ledgers",
                 [].as_slice(),
-                r#"["9223372036854775807"]"#,
+                "[9223372036854775807]",
                 200,
-                r#""9223372036854775807""#,
+                "9223372036854775807",
             ),
             (
                 "POST /ledgers",
                 [].as_slice(),
                 "[]",
                 422,
-                r#""-9223372036854775808""#,
+                "-9223372036854775808",
             ),
         ],
         "what each call carried"
@@ -458,16 +459,16 @@ fn an_i64_carried_bare_travels_as_its_digits_over_http() {
     );
 }
 
-/// A one-way call sends its bare `i64` as its digits over each transport.
+/// A one-way call sends its bare `i64` as a JSON number over each transport.
 #[test]
-fn a_one_way_call_sends_a_bare_i64_as_its_digits() {
+fn a_one_way_call_sends_a_bare_i64_as_a_number() {
     let amqp = amqp_client::LedgerServiceClient::new(AmqpLoop {
         carried: Mutex::new(Vec::new()),
     });
     assert_eq!(poll_once(amqp.record(i64::MIN)), Some(Ok(())), "over amqp");
     assert_eq!(
         amqp.transport().carried.lock().unwrap()[0].0,
-        r#""-9223372036854775808""#,
+        "-9223372036854775808",
         "what amqp carried"
     );
     let http = http_rest_client::LedgerServiceClient::new(HttpLoop {
@@ -476,7 +477,7 @@ fn a_one_way_call_sends_a_bare_i64_as_its_digits() {
     assert_eq!(poll_once(http.record(i64::MAX)), Some(Ok(())), "over http");
     assert_eq!(
         http.transport().exchanged.lock().unwrap()[0].2,
-        r#""9223372036854775807""#,
+        "9223372036854775807",
         "what http carried"
     );
     let recorded = RECORDED.lock().unwrap().clone();
@@ -557,7 +558,7 @@ fn the_http_dispatcher_reads_a_body_written_as_numbers() {
     assert_eq!(answered.status(), 200, "the status");
     assert_eq!(
         answered.body(),
-        br#""9223372036854775807""#,
-        "the reply written as its digits"
+        b"9223372036854775807",
+        "the reply written as a number"
     );
 }

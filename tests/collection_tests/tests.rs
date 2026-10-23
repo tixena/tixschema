@@ -23,11 +23,12 @@ use tixschema::model_schema;
 #[cfg(any(feature = "typescript", feature = "zod"))]
 const SEQUENCE_WRAPPERS: [&str; 4] = ["BTreeSet", "BinaryHeap", "HashSet", "VecDeque"];
 
-/// The Zod schema of an `i64`: the string of its digits, decoded into a `bigint`.
+/// The Zod schema of an `i64`: a `bigint`, or a `number` a JavaScript reader holds exactly,
+/// decoded into a `bigint`.
 #[cfg(feature = "zod")]
-const I64_ZOD: &str = "z.codec(z.string().regex(/^-?(0|[1-9][0-9]*)$/), \
+const I64_ZOD: &str = "z.codec(z.union([z.bigint(), z.number().int()]), \
                        z.bigint().min(-9223372036854775808n).max(9223372036854775807n), { decode: \
-                       (text) => BigInt(text), encode: (value) => value.toString() })";
+                       (value) => BigInt(value), encode: (value) => value })";
 
 /// The check Zod writes on the array of a set, which refuses an array that repeats an item.
 #[cfg(feature = "zod")]
@@ -822,10 +823,10 @@ const fn trim(payload: Value) -> Value {
     payload
 }
 
-/// The JSON Schema of an `i64`: the string of its digits.
+/// The JSON Schema of an `i64`: the number serde writes.
 #[cfg(feature = "jsonschema")]
 fn i64_json_schema() -> Value {
-    serde_json::json!({ "type": "string", "pattern": "^-?(0|[1-9][0-9]*)$" })
+    serde_json::json!({ "type": "integer" })
 }
 
 /// `zod` with the repeat check of each set taken out: what a set writes beside what its `Vec`
@@ -1165,14 +1166,14 @@ fn test_comprehensive_hashmap_json_schema() {
     let properties = schema["properties"].as_object().unwrap();
 
     assert_hashmap_primitive_type(properties, "string_value", "string");
-    assert_hashmap_primitive_type(properties, "u64_value", "string");
-    assert_hashmap_primitive_type(properties, "i64_value", "string");
+    assert_hashmap_primitive_type(properties, "u64_value", "integer");
+    assert_hashmap_primitive_type(properties, "i64_value", "integer");
     assert_hashmap_primitive_type(properties, "f64_value", "number");
     assert_hashmap_primitive_type(properties, "bool_value", "boolean");
 
     assert_hashmap_array_type(properties, "string_array", "string");
-    assert_hashmap_array_type(properties, "u64_array", "string");
-    assert_hashmap_array_type(properties, "i64_array", "string");
+    assert_hashmap_array_type(properties, "u64_array", "integer");
+    assert_hashmap_array_type(properties, "i64_array", "integer");
     assert_hashmap_array_type(properties, "f64_array", "number");
     assert_hashmap_array_type(properties, "bool_array", "boolean");
 

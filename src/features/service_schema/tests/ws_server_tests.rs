@@ -77,7 +77,7 @@ export function createConversationClientServiceWsServer<Ctx>(
         if (pongDeadline !== undefined) { clearTimeout(pongDeadline); pongDeadline = undefined; }
         armIdle();
         let frame: unknown;
-        try { frame = JSON.parse(String(event.data)); } catch { return; }
+        try { frame = conversationClientServiceWsRead(String(event.data)); } catch { return; }
         if (typeof frame === "object" && frame !== null && (frame as { kind?: unknown }).kind === "ping") {
           socket.send(JSON.stringify({ kind: "pong" }));
         }

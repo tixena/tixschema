@@ -49,7 +49,7 @@ use super::fault;
 use super::left_to_http_rest;
 use super::message;
 use super::result::result_name;
-use crate::field_type::bare_field_def;
+use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, HttpShape, OperationDef, OperationOutcome, ServiceDef, is_unit_type, option_inner,
@@ -91,7 +91,7 @@ impl Rejoined<'_> {
         for (index, (name, ty)) in self.names.iter().zip(&self.types).enumerate() {
             let ident = format!("{}{index}", self.ident_prefix);
             let quoted = ts_quoted(name);
-            let schema = bare_field_def("value", ty).zod_slot_type();
+            let schema = get_field_def("value", ty, "").zod_slot_type();
             let _ = write!(
                 stmt,
                 "{margin}const {ident} = {prefix}ReplyHeader({wire}, replied, {quoted}, \
@@ -123,10 +123,13 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     ];
     // The readers land ahead of the factory that calls them, a bundle being read top to bottom.
     published.extend(fault_helpers(service));
-    published.push(message::wire_fn(&format!(
-        "{}Sent",
-        RenameRule::CamelCase.apply_to_variant(&service.ident.to_string())
-    )));
+    let prefix = RenameRule::CamelCase.apply_to_variant(&service.ident.to_string());
+    published.push(message::wire_fn(&format!("{prefix}Sent")));
+    published.push(message::checked_fn(
+        &format!("{prefix}Checked"),
+        &format!("{prefix}Sent"),
+    ));
+    published.push(message::read_fn(&format!("{prefix}Read")));
     published.push(factory(service));
     published
 }
@@ -334,9 +337,7 @@ fn method(service: &ServiceDef, operation: &OperationDef) -> String {
     let (headers_build, headers) = header_in_build_stmt(&prefix, operation);
     let sending = match &operation.outcome {
         OperationOutcome::OneWay => {
-            format!(
-                "      await transport.notify({wire}, {prefix}Sent(validated.data), {headers});"
-            )
+            format!("      await transport.notify({wire}, validated.sent, {headers});")
         }
         OperationOutcome::Reply { error, success }
             if !shape.header_out.is_empty() || !shape.error_header_out.is_empty() =>
@@ -345,7 +346,7 @@ fn method(service: &ServiceDef, operation: &OperationDef) -> String {
         }
         OperationOutcome::Reply { error, success } => format!(
             "      const {{ answered }} = await transport.request<{result}>({wire}, \
-             {prefix}Sent(validated.data), {headers});\n\
+             validated.sent, {headers});\n\
              {succeeded}{failed}",
             result = answers(&named, operation),
             succeeded = success_stmt(&prefix, wire, &shape, success),
@@ -362,7 +363,7 @@ fn method_params(operation: &OperationDef) -> String {
     once(format!("req: {}", message::typename(operation)))
         .chain(shape.header_in.iter().map(|header| {
             let name = message::parameter_name(&header.parameter);
-            let ty = bare_field_def(&name, &header.ty).typescript_typename();
+            let ty = get_field_def(&name, &header.ty, "").typescript_typename();
             format!("{name}: {ty}")
         }))
         .collect::<Vec<_>>()
@@ -384,7 +385,7 @@ fn header_in_build_stmt(prefix: &str, operation: &OperationDef) -> (String, Stri
     for header in &shape.header_in {
         let name = ts_quoted(&header.name);
         let parameter = message::parameter_name(&header.parameter);
-        let schema = bare_field_def(&parameter, &header.ty).zod_type();
+        let schema = get_field_def(&parameter, &header.ty, "").zod_type();
         let refusal = outbound_refusal(
             prefix,
             operation,
@@ -395,17 +396,17 @@ fn header_in_build_stmt(prefix: &str, operation: &OperationDef) -> (String, Stri
             ),
         );
         let value = if option_inner(&header.ty).is_some() {
-            "held.data ?? null"
+            "held.sent ?? null"
         } else {
-            "held.data"
+            "held.sent"
         };
         let _ = write!(
             stmt,
             "      {{\n        \
-             const held = {schema}.safeParse({prefix}Sent({parameter}));\n        \
+             const held = {prefix}Checked({schema}, {parameter});\n        \
              if (!held.success) {{\n{}        \
              }}\n        \
-             headers.push([{name}, JSON.stringify({prefix}Sent({value}))]);\n      \
+             headers.push([{name}, JSON.stringify({value})]);\n      \
              }}\n",
             message::deeper(&refusal, 2)
         );
@@ -430,14 +431,14 @@ fn header_tuple_answer(
     let value_ty = if is_unit_type(&success_body) {
         "undefined".to_owned()
     } else {
-        bare_field_def("value", &success_body).typescript_typename()
+        get_field_def("value", &success_body, "").typescript_typename()
     };
-    let error_ty = bare_field_def("error", error_body).typescript_typename();
+    let error_ty = get_field_def("error", error_body, "").typescript_typename();
     let mut stmt = format!(
         "      const {{ answered, headers: replied }} = await transport.request<\n        \
          | {{ ok: true; value: {value_ty} }}\n        \
          | {{ ok: false; error: {error_ty} | {{ isServiceFault: true; fault: {named}Fault }} }}\n      \
-         >({wire}, {prefix}Sent(validated.data), {headers});\n"
+         >({wire}, validated.sent, {headers});\n"
     );
     stmt.push_str(&success_stmt(prefix, wire, shape, success));
     stmt.push_str(&failure_stmt(prefix, wire, shape, error));
@@ -453,7 +454,7 @@ fn success_stmt(prefix: &str, wire: &str, shape: &HttpShape, success: &Type) -> 
     let value = if is_unit_type(&body) {
         "undefined"
     } else {
-        let schema = bare_field_def("value", &body).zod_type();
+        let schema = get_field_def("value", &body, "").zod_type();
         let _ = write!(
             stmt,
             "        const parsed = {schema}.safeParse(answered.value);\n        \
@@ -493,7 +494,7 @@ fn success_stmt(prefix: &str, wire: &str, shape: &HttpShape, success: &Type) -> 
 /// `error_header_out` elements are rejoined onto it.
 fn failure_stmt(prefix: &str, wire: &str, shape: &HttpShape, error: &Type) -> String {
     let body = message::body_type(shape.error_header_out.len(), error);
-    let schema = bare_field_def("error", body).zod_type();
+    let schema = get_field_def("error", body, "").zod_type();
     let mut stmt = format!(
         "      const error = answered.error;\n      \
          if (typeof error === \"object\" && error !== null && \"isServiceFault\" in error) {{\n        \
@@ -563,7 +564,7 @@ fn validation(service: &ServiceDef, operation: &OperationDef) -> String {
     let schema = message::schema(operation);
     let refusal = outbound_refusal(&prefix, operation, &wire, "validated.error.issues");
     format!(
-        "      const validated = {schema}.safeParse({prefix}Sent(req));\n      \
+        "      const validated = {prefix}Checked({schema}, req);\n      \
          if (!validated.success) {{\n{refusal}\n      \
          }}\n"
     )
@@ -651,7 +652,7 @@ fn reply_header_helpers(named: &str, prefix: &str) -> Vec<String> {
              let detail: string;\n  \
              try {{\n    \
              const parsed = schema.safeParse(carried === undefined ? null : \
-             JSON.parse(carried));\n    \
+             {prefix}Read(carried));\n    \
              if (parsed.success) return {{ ok: true, value: parsed.data }};\n    \
              detail = carried === undefined\n      \
              ? \"a declared reply header was missing\"\n      \

@@ -1,9 +1,9 @@
 //! An `i64` held in each place a member holds one: the value itself, a list's item, a map's value,
 //! an `Option`, a tuple's position, a brand's slot, a variant's member, an alias, a range's bound,
 //! a `Result`'s arm, a literal, a lock below a list, a map, an `Option` and a tuple, and beside the
-//! type's own parameter, each written as the string of its digits. Each client reads each payload
-//! serde writes and writes it back as serde does, and refuses each payload serde refuses: a digit
-//! string beyond an `i64`, a text of no digits, and a value beyond its bound.
+//! type's own parameter, each written as a JSON number. Each client reads each payload serde writes
+//! and writes it back as serde does, and refuses each payload serde refuses: a number beyond an
+//! `i64`, a fraction, the string of its digits, and a value beyond its bound.
 
 use alloc::collections::BTreeMap;
 use core::cell::RefCell;
@@ -18,35 +18,35 @@ use tixschema::model_schema;
 pub const WRITTEN: [(&str, &str); 11] = [
     (
         "SixtyTally",
-        r#"{"keyed":{"3":"-7"},"listed":["0","9223372036854775807"],"maybe":"-9223372036854775808","paired":["9","x"],"signed":"-1152921504606846976"}"#,
+        r#"{"keyed":{"3":-7},"listed":[0,9223372036854775807],"maybe":-9223372036854775808,"paired":[9,"x"],"signed":-1152921504606846976}"#,
     ),
     (
         "SixtyTally",
-        r#"{"keyed":{},"listed":[],"paired":["1","y"],"signed":"0"}"#,
+        r#"{"keyed":{},"listed":[],"paired":[1,"y"],"signed":0}"#,
     ),
-    ("SixtyId", r#""1152921504606846976""#),
-    ("SixtyEvent", r#"{"Counted":"5"}"#),
-    ("SixtyEvent", r#"{"Moved":{"from":"-1","to":"2"}}"#),
-    ("SixtyLevel", r#"{"level":"-5"}"#),
+    ("SixtyId", "1152921504606846976"),
+    ("SixtyEvent", r#"{"Counted":5}"#),
+    ("SixtyEvent", r#"{"Moved":{"from":-1,"to":2}}"#),
+    ("SixtyLevel", r#"{"level":-5}"#),
     (
         "SixtyReached",
-        r#"{"aliased":"-1152921504606846976","aliases":["1","9223372036854775807"],"fixed":"214","from":{"start":"-3"},"inclusive":{"start":"4","end":"5"},"ranged":{"start":"1","end":"1152921504606846976"},"resulted":{"Ok":"7"},"to":{"end":"6"},"wrong":{"Err":["8","-9"]}}"#,
+        r#"{"aliased":-1152921504606846976,"aliases":[1,9223372036854775807],"fixed":214,"from":{"start":-3},"inclusive":{"start":4,"end":5},"ranged":{"start":1,"end":1152921504606846976},"resulted":{"Ok":7},"to":{"end":6},"wrong":{"Err":[8,-9]}}"#,
     ),
     (
         "SixtyReached",
-        r#"{"aliased":"0","fixed":"214","from":{"start":"0"},"inclusive":{"start":"0","end":"0"},"ranged":{"start":"0","end":"0"},"resulted":{"Err":"e"},"to":{"end":"0"},"wrong":{"Ok":"o"}}"#,
+        r#"{"aliased":0,"fixed":214,"from":{"start":0},"inclusive":{"start":0,"end":0},"ranged":{"start":0,"end":0},"resulted":{"Err":"e"},"to":{"end":0},"wrong":{"Ok":"o"}}"#,
     ),
     (
         "SixtyLocked",
-        r#"{"keyed":{"4":"-7"},"listed":["9223372036854775807"],"maybe":"-9223372036854775808","paired":["9","x"]}"#,
+        r#"{"keyed":{"4":-7},"listed":[9223372036854775807],"maybe":-9223372036854775808,"paired":[9,"x"]}"#,
     ),
     (
         "SixtyLocked",
-        r#"{"keyed":{},"listed":[],"paired":["0","y"]}"#,
+        r#"{"keyed":{},"listed":[],"paired":[0,"y"]}"#,
     ),
     (
         "SixtyBeside<String>",
-        r#"{"keyed":{"a":"-9223372036854775808"}}"#,
+        r#"{"keyed":{"a":-9223372036854775808}}"#,
     ),
 ];
 
@@ -55,43 +55,43 @@ pub const WRITTEN: [(&str, &str); 11] = [
 pub const REFUSED: [(&str, &str, &str); 8] = [
     (
         "SixtyId",
-        r#""9223372036854775808""#,
-        r#"invalid value: string "9223372036854775808", expected an i64 as a string of its decimal digits"#,
+        "9223372036854775808",
+        "invalid value: integer `9223372036854775808`, expected i64",
     ),
     (
         "SixtyId",
-        r#""seven""#,
-        r#"invalid value: string "seven", expected an i64 as a string of its decimal digits"#,
+        r#""7""#,
+        r#"invalid type: string "7", expected i64"#,
     ),
     (
         "SixtyTally",
-        r#"{"keyed":{},"listed":["1","-9223372036854775809"],"paired":["1","y"],"signed":"0"}"#,
-        r#"invalid value: string "-9223372036854775809", expected an i64 as a string of its decimal digits"#,
+        r#"{"keyed":{},"listed":[1,-9223372036854775809],"paired":[1,"y"],"signed":0}"#,
+        "invalid type: floating point `-9.223372036854776e+18`, expected i64",
     ),
     (
         "SixtyEvent",
-        r#"{"Moved":{"from":"1.5","to":"2"}}"#,
-        r#"invalid value: string "1.5", expected an i64 as a string of its decimal digits"#,
+        r#"{"Moved":{"from":1.5,"to":2}}"#,
+        "invalid type: floating point `1.5`, expected i64",
     ),
     (
         "SixtyLevel",
-        r#"{"level":"6"}"#,
+        r#"{"level":6}"#,
         "'level': too large: maximum is 5, got 6",
     ),
     (
         "SixtyReached",
-        r#"{"aliased":"0","fixed":"214","from":{"start":"0"},"inclusive":{"start":"0","end":"0"},"ranged":{"start":"0","end":"9223372036854775808"},"resulted":{"Ok":"7"},"to":{"end":"0"},"wrong":{"Ok":"o"}}"#,
-        r#"invalid value: string "9223372036854775808", expected an i64 as a string of its decimal digits"#,
+        r#"{"aliased":0,"fixed":214,"from":{"start":0},"inclusive":{"start":0,"end":0},"ranged":{"start":0,"end":9223372036854775808},"resulted":{"Ok":7},"to":{"end":0},"wrong":{"Ok":"o"}}"#,
+        "invalid value: integer `9223372036854775808`, expected i64",
     ),
     (
         "SixtyReached",
-        r#"{"aliased":"0","fixed":"215","from":{"start":"0"},"inclusive":{"start":"0","end":"0"},"ranged":{"start":"0","end":"0"},"resulted":{"Ok":"7"},"to":{"end":"0"},"wrong":{"Ok":"o"}}"#,
+        r#"{"aliased":0,"fixed":215,"from":{"start":0},"inclusive":{"start":0,"end":0},"ranged":{"start":0,"end":0},"resulted":{"Ok":7},"to":{"end":0},"wrong":{"Ok":"o"}}"#,
         "'fixed': not the literal 214, got 215",
     ),
     (
         "SixtyLocked",
-        r#"{"keyed":{"4":"x"},"listed":[],"paired":["0","y"]}"#,
-        r#"invalid value: string "x", expected an i64 as a string of its decimal digits"#,
+        r#"{"keyed":{"4":"x"},"listed":[],"paired":[0,"y"]}"#,
+        r#"invalid type: string "x", expected i64"#,
     ),
 ];
 

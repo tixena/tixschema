@@ -7,11 +7,11 @@
 
 use core::fmt::Write as _;
 
-use super::bare_digit_rows::{BARE_EXCHANGES, bare_printed};
-use super::run_node_digits::tallying_bare_service_schema::{
+use super::bare_wide_integer_rows::{BARE_EXCHANGES, bare_printed};
+use super::run_node_wide_integers::tallying_bare_service_schema::{
     tallying_bare_service_fault_fields_kotlin, tallying_bare_service_fault_kind_kotlin,
 };
-use super::run_node_digits::{TallyingBareServiceSchema, tally_error_kotlin};
+use super::run_node_wide_integers::{TallyingBareServiceSchema, tally_error_kotlin};
 use super::runtime::ran_kotlin;
 
 const KOTLIN_IMPORTS: &str = "import kotlinx.coroutines.*\n\
@@ -52,7 +52,7 @@ fun shownTotal(result: TallyingBareServiceTotalResult): String = when (result) {
 /// Each call hands its transport the request the Rust client sends of it, and reads each response
 /// the Rust dispatcher answers back into the integers.
 #[test]
-fn a_bare_i64_travels_as_its_digits_through_the_kotlin_client() {
+fn a_bare_i64_travels_as_a_number_through_the_kotlin_client() {
     let mut responses = String::new();
     for exchange in &BARE_EXCHANGES {
         let headers: Vec<String> = exchange

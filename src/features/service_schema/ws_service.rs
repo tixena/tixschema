@@ -44,7 +44,7 @@ fn attach_dispatcher_fn(service: &ServiceDef) -> String {
          const dispatch = create{named}Dispatcher(impl);\n  \
          const onMessage = (event: {{ data: unknown }}) => {{\n    \
          let frame: unknown;\n    \
-         try {{ frame = JSON.parse(String(event.data)); }} catch {{ return; }}\n    \
+         try {{ frame = {prefix}WsRead(String(event.data)); }} catch {{ return; }}\n    \
          if (typeof frame !== \"object\" || frame === null) return;\n    \
          const {{ kind, id, service: named, operation, payload, headers }} = frame as \
          Record<string, unknown>;\n    \
@@ -65,8 +65,8 @@ fn attach_dispatcher_fn(service: &ServiceDef) -> String {
          (dispatched.answered as object);\n      \
          const replied = {prefix}WsHeaderTable(dispatched === undefined ? [] : \
          dispatched.headers);\n      \
-         socket.send(JSON.stringify({{ kind: \"reply\", id, service, ...envelope, ...replied \
-         }}));\n    \
+         socket.send(JSON.stringify({prefix}WsSent({{ kind: \"reply\", id, service, ...envelope, \
+         ...replied }})));\n    \
          }});\n  \
          }};\n  \
          socket.addEventListener(\"message\", onMessage);\n  \

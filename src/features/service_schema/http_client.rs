@@ -7,13 +7,13 @@ use super::message;
 use super::result::result_name;
 #[cfg(feature = "chrono")]
 use crate::field_type::FieldDefType;
-use crate::field_type::bare_field_def;
+use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HttpShape, OperationDef, OperationInputs,
-    OperationOutcome, PathSegment, ScalarKind, ServiceDef, is_scalar_named_type, is_unit_type,
-    option_inner, reads_its_digits, scalar_kind, service_declares_a_stream,
-    service_declares_multipart, tuple_elements, vec_inner, wire_key, written,
+    OperationOutcome, PathSegment, ScalarKind, ServiceDef, held_as_a_bigint, is_scalar_named_type,
+    is_unit_type, option_inner, scalar_kind, service_declares_a_stream, service_declares_multipart,
+    tuple_elements, vec_inner, wire_key, written,
 };
 use crate::utils::ts_quoted;
 use core::fmt::Write as _;
@@ -27,10 +27,13 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
         client_type(service),
     ];
     published.extend(fault_helpers(service));
-    published.push(message::wire_fn(&format!(
-        "{}HttpSent",
-        RenameRule::CamelCase.apply_to_variant(&service.ident.to_string())
-    )));
+    let prefix = RenameRule::CamelCase.apply_to_variant(&service.ident.to_string());
+    published.push(message::wire_fn(&format!("{prefix}HttpSent")));
+    published.push(message::checked_fn(
+        &format!("{prefix}HttpChecked"),
+        &format!("{prefix}HttpSent"),
+    ));
+    published.push(message::read_fn(&format!("{prefix}HttpRead")));
     published.push(factory(service));
     published
 }
@@ -179,7 +182,7 @@ fn method(service: &ServiceDef, operation: &OperationDef, has_multipart: bool) -
     let path_build = path_build_stmt(&prefix, operation, &shape);
     let query_build = query_build_stmt(&prefix, operation, &shape);
     let headers_build = header_in_build_stmt(&prefix, operation, &shape);
-    let body_build = body_build_stmt(&prefix, &shape);
+    let body_build = body_build_stmt(&shape);
     let parts_build = multipart_parts_build_stmt(&prefix, operation, &shape, has_multipart);
     let send = send_stmt(&prefix, operation, wire, shape.method.name(), has_multipart);
     let decode = decode_stmt(&prefix, operation, &shape, wire);
@@ -229,7 +232,7 @@ fn validation_stmt(prefix: &str, operation: &OperationDef, wire: &str) -> String
     let fault_expr = format!("{prefix}HttpOutboundFault({wire}, validated.error.issues)");
     let refusal = outbound_fault_stmt(prefix, operation, &fault_expr);
     format!(
-        "      const validated = {schema}.safeParse({prefix}HttpSent(req));\n      \
+        "      const validated = {prefix}HttpChecked({schema}, req);\n      \
          if (!validated.success) {{\n{refusal}      \
          }}\n"
     )
@@ -371,7 +374,7 @@ fn header_in_build_stmt(prefix: &str, operation: &OperationDef, shape: &HttpShap
     for header in &shape.header_in {
         let name = ts_quoted(&header.name);
         let parameter = message::parameter_name(&header.parameter);
-        let schema = bare_field_def(&parameter, &header.ty).zod_type();
+        let schema = get_field_def(&parameter, &header.ty, "").zod_type();
         let unparsed = outbound_fault_stmt(
             prefix,
             operation,
@@ -404,7 +407,7 @@ fn header_in_build_stmt(prefix: &str, operation: &OperationDef, shape: &HttpShap
         let _ = write!(
             stmt,
             "      {{\n        \
-             const held = {schema}.safeParse({prefix}HttpSent({parameter}));\n        \
+             const held = {schema}.safeParse({parameter});\n        \
              if (!held.success) {{\n{}        \
              }}\n\
              {pushed}      }}\n",
@@ -423,11 +426,9 @@ fn header_issues(name: &str) -> String {
     )
 }
 
-fn body_build_stmt(prefix: &str, shape: &HttpShape) -> String {
+fn body_build_stmt(shape: &HttpShape) -> String {
     if shape.method.carries_a_body() && !matches!(shape.body_kind, BodyKind::Multipart) {
-        format!(
-            "      const body = new TextEncoder().encode(JSON.stringify({prefix}HttpSent(sending)));\n"
-        )
+        "      const body = new TextEncoder().encode(JSON.stringify(validated.sent));\n".to_owned()
     } else {
         "      const body = new Uint8Array();\n".to_owned()
     }
@@ -612,7 +613,7 @@ fn error_decode_block(prefix: &str, wire: &str, shape: &HttpShape, error: &Type)
 /// Reads the response body into `local` through [`parsed_fn`]'s reader, answering the fault it
 /// returns where the body will not become `ty`.
 fn parsed_body_stmt(prefix: &str, wire: &str, local: &str, ty: &Type) -> String {
-    let schema = bare_field_def(local, ty).zod_type();
+    let schema = get_field_def(local, ty, "").zod_type();
     format!(
         "        const {local} = {prefix}HttpParsed({wire}, response.body, {schema});\n        \
          if (!{local}.ok) {{\n          \
@@ -890,7 +891,7 @@ fn header_value_read_stmts(
     {
         let raw_ident = format!("raw{capitalized_prefix}{index}");
         let ident = format!("{ident_prefix}{index}");
-        let slot_typename = bare_field_def("value", element_ty).typescript_slot_typename();
+        let slot_typename = get_field_def("value", element_ty, "").typescript_slot_typename();
         let _ = writeln!(
             stmt,
             "        const {raw_ident} = response.headers.find(\n          \
@@ -958,7 +959,7 @@ fn header_out_value_expr(ty: &Type, raw: &str) -> String {
     }
     match scalar_kind(base) {
         ScalarKind::Bool => format!("(({raw}) === \"true\")"),
-        ScalarKind::Number if reads_its_digits(base) => format!("BigInt({raw})"),
+        ScalarKind::Number if held_as_a_bigint(base) => format!("BigInt({raw})"),
         ScalarKind::Number => format!("Number({raw})"),
         ScalarKind::Text => raw.to_owned(),
     }
@@ -983,10 +984,10 @@ fn header_out_invalid_expr(ty: &Type, raw: &str) -> Option<String> {
         ScalarKind::Bool => Some(format!("{raw} !== \"true\" && {raw} !== \"false\"")),
         // The digits of a `u64` or an `i64`, within the range of its type, as the Rust client
         // reads them.
-        ScalarKind::Number if reads_its_digits(base) => {
-            let (least, most) = bare_field_def("value", base)
+        ScalarKind::Number if held_as_a_bigint(base) => {
+            let (least, most) = get_field_def("value", base, "")
                 .field_type
-                .digit_range()
+                .bigint_range()
                 .unwrap_or_default();
             let sign = if least.starts_with('-') { "-?" } else { "" };
             Some(format!(
@@ -1013,7 +1014,7 @@ fn header_out_invalid_expr(ty: &Type, raw: &str) -> Option<String> {
 #[cfg(feature = "chrono")]
 fn reads_a_date(ty: &Type) -> bool {
     matches!(
-        bare_field_def("value", ty).field_type,
+        get_field_def("value", ty, "").field_type,
         FieldDefType::DateTime
     )
 }
@@ -1213,7 +1214,7 @@ fn parsed_fn(named: &str, prefix: &str) -> String {
          let detail: string;\n  \
          try {{\n    \
          const text = new TextDecoder(\"utf-8\", {{ fatal: true }}).decode(body);\n    \
-         const parsed = schema.safeParse(JSON.parse(text));\n    \
+         const parsed = schema.safeParse({prefix}HttpRead(text));\n    \
          if (parsed.success) return {{ ok: true, value: parsed.data }};\n    \
          detail = parsed.error.issues\n      \
          .map((issue) =>\n        \
@@ -1246,7 +1247,7 @@ fn fault_from_body_fn(named: &str, prefix: &str) -> String {
          function {prefix}HttpFaultFromBody(operation: string, body: Uint8Array): {named}Fault {{\n  \
          try {{\n    \
          const text = new TextDecoder(\"utf-8\", {{ fatal: true }}).decode(body);\n    \
-         const parsed = JSON.parse(text) as {{\n      \
+         const parsed = {prefix}HttpRead(text) as {{\n      \
          detail?: unknown;\n      \
          field?: unknown;\n      \
          kind?: unknown;\n      \

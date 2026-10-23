@@ -1,16 +1,17 @@
-//! An `i64` read from the string of its digits and written back as it by the emitted Dart types
-//! under the Dart VM, against serde, in each place a member holds one, and each payload serde
-//! refuses refused with a `FormatException`. The analyzer passes every type.
+//! An `i64` read and written back as a JSON number by the emitted Dart types under the Dart VM,
+//! against serde, in each place a member holds one, and each payload serde refuses refused. The
+//! analyzer passes every type.
 
 #![cfg(all(feature = "dart", feature = "serde"))]
 
 use core::fmt::Write as _;
 
-use super::digit_models::{
-    REFUSED, WRITTEN, serde_refusal, serde_written, sixty_beside_dart, sixty_event_dart,
-    sixty_id_dart, sixty_level_dart, sixty_locked_dart, sixty_reached_dart, sixty_tally_dart,
-};
 use super::run_dart_validate::{dart, module};
+use super::wide_integer_models::{
+    REFUSED, WRITTEN, serde_refusal, serde_written, sixty_beside_dart, sixty_event_dart,
+    sixty_id_dart, sixty_level_dart, sixty_locked_dart, sixty_reached_dart, sixty_revision_dart,
+    sixty_tally_dart,
+};
 
 /// What prints a row: the value read, written back, or the class of what the read throws and its
 /// message.
@@ -28,19 +29,17 @@ void told(String at, Object? Function() read) {
 }
 ";
 
-/// What the Dart read answers of each payload of [`REFUSED`], in its order.
+/// What the Dart read answers of each payload of [`REFUSED`], in its order: `jsonDecode` reads a
+/// number beyond an `int` as a `double`, which the read's cast refuses.
 const DART_REFUSED: [&str; 8] = [
-    "FormatException: expected an i64 as a string of its decimal digits, found \
-     \"9223372036854775808\"",
-    "FormatException: expected an i64 as a string of its decimal digits, found \"seven\"",
-    "FormatException: expected an i64 as a string of its decimal digits, found \
-     \"-9223372036854775809\"",
-    "FormatException: expected an i64 as a string of its decimal digits, found \"1.5\"",
+    "_TypeError: type 'double' is not a subtype of type 'int' in type cast",
+    "_TypeError: type 'String' is not a subtype of type 'int' in type cast",
+    "_TypeError: type 'double' is not a subtype of type 'int' in type cast",
+    "_TypeError: type 'double' is not a subtype of type 'int' in type cast",
     "FormatException: 'level': too large: maximum is 5, got 6",
-    "FormatException: expected an i64 as a string of its decimal digits, found \
-     \"9223372036854775808\"",
+    "_TypeError: type 'double' is not a subtype of type 'int' in type cast",
     "FormatException: 'fixed': not the literal 214, got 215",
-    "FormatException: expected an i64 as a string of its decimal digits, found \"x\"",
+    "_TypeError: type 'String' is not a subtype of type 'int' in type cast",
 ];
 
 /// The emitted types every row reads.
@@ -50,6 +49,7 @@ fn definitions() -> Vec<String> {
         sixty_id_dart::dart_definition(),
         sixty_event_dart::dart_definition(),
         sixty_level_dart::dart_definition(),
+        sixty_revision_dart::dart_definition(),
         sixty_reached_dart::dart_definition(),
         sixty_locked_dart::dart_definition(),
         sixty_beside_dart::dart_definition(),
@@ -72,7 +72,7 @@ fn told(at: usize, read_as: &str, json: &str) -> String {
 /// Each payload serde writes is read and written back as serde writes it back, and each payload
 /// serde refuses is refused.
 #[test]
-fn an_i64_is_read_from_its_digits_and_written_as_them_in_dart() {
+fn an_i64_is_read_and_written_as_a_number_in_dart() {
     let mut main = String::from("void main() {\n");
     let mut expected = String::new();
     let mut at = 0;
@@ -93,7 +93,7 @@ fn an_i64_is_read_from_its_digits_and_written_as_them_in_dart() {
     }
     main.push_str("}\n");
     let source = module(&definitions(), &[TOLD], &main);
-    let Some((ran, printed)) = dart("digits", &[], &source) else {
+    let Some((ran, printed)) = dart("wide-integers", &[], &source) else {
         return;
     };
     assert!(ran, "{printed}");
@@ -102,13 +102,13 @@ fn an_i64_is_read_from_its_digits_and_written_as_them_in_dart() {
 
 /// The analyzer passes the types the rows read.
 #[test]
-fn the_emitted_digit_types_have_no_issue() {
+fn the_emitted_wide_integer_types_have_no_issue() {
     let source = module(
         &definitions(),
         &[TOLD],
         "void main() => told('id', () => SixtyId.fromJson('1').toJson());",
     );
-    let Some((clean, said)) = dart("digits-analyze", &["analyze"], &source) else {
+    let Some((clean, said)) = dart("wide-integers-analyze", &["analyze"], &source) else {
         return;
     };
     assert!(clean, "{said}");

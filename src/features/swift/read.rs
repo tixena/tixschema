@@ -443,12 +443,10 @@ pub(super) fn unjudged(
         | FieldDefType::U16
         | FieldDefType::U32
         | FieldDefType::U64
-        | FieldDefType::U64Digits
         | FieldDefType::I8
         | FieldDefType::I16
         | FieldDefType::I32
         | FieldDefType::I64
-        | FieldDefType::I64Digits
         | FieldDefType::F32
         | FieldDefType::F64
         | FieldDefType::Usize

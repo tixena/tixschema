@@ -1,6 +1,6 @@
-//! An `i64` read from the string of its digits and written back as it by the emitted Swift types
-//! compiled with warnings as errors, against serde, in each place a member holds one, and each
-//! payload serde refuses refused with `DecodingError.dataCorrupted`.
+//! An `i64` read and written back as a JSON number by the emitted Swift types compiled with
+//! warnings as errors, against serde, in each place a member holds one, and each payload serde
+//! refuses refused.
 
 #![cfg(all(feature = "swift", feature = "serde"))]
 
@@ -9,11 +9,12 @@ use core::fmt::Write as _;
 
 use serde_json::Value;
 
-use super::digit_models::{
-    REFUSED, WRITTEN, serde_refusal, serde_written, sixty_beside_swift, sixty_event_swift,
-    sixty_id_swift, sixty_level_swift, sixty_locked_swift, sixty_reached_swift, sixty_tally_swift,
-};
 use super::runtime::judged;
+use super::wide_integer_models::{
+    REFUSED, WRITTEN, serde_refusal, serde_written, sixty_beside_swift, sixty_event_swift,
+    sixty_id_swift, sixty_level_swift, sixty_locked_swift, sixty_reached_swift,
+    sixty_revision_swift, sixty_tally_swift,
+};
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
 const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
@@ -35,19 +36,19 @@ func told<Read: Codable>(_ at: Int, _ type: Read.Type, _ payload: String) {
 }
 "#;
 
-/// What the Swift read answers of each payload of [`REFUSED`], in its order.
+/// What the Swift read answers of each payload of [`REFUSED`], in its order: `JSONDecoder` answers
+/// a number beyond an `Int64` and a fraction as data that is not valid JSON.
 const SWIFT_REFUSED: [&str; 8] = [
-    "dataCorrupted: expected an i64 as a string of its decimal digits, found \
-     \"9223372036854775808\"",
-    "dataCorrupted: expected an i64 as a string of its decimal digits, found \"seven\"",
-    "dataCorrupted: expected an i64 as a string of its decimal digits, found \
-     \"-9223372036854775809\"",
-    "dataCorrupted: expected an i64 as a string of its decimal digits, found \"1.5\"",
+    "dataCorrupted: The given data was not valid JSON.",
+    "DecodingError.typeMismatch: expected value of type Int64. Debug description: Expected to \
+     decode Int64 but found a string instead.",
+    "dataCorrupted: The given data was not valid JSON.",
+    "dataCorrupted: The given data was not valid JSON.",
     "dataCorrupted: 'level': too large: maximum is 5, got 6",
-    "dataCorrupted: expected an i64 as a string of its decimal digits, found \
-     \"9223372036854775808\"",
+    "dataCorrupted: The given data was not valid JSON.",
     "dataCorrupted: 'fixed': not the literal 214, got 215",
-    "dataCorrupted: expected an i64 as a string of its decimal digits, found \"x\"",
+    "DecodingError.typeMismatch: expected value of type Int64. Path: keyed.4. Debug description: \
+     Expected to decode Int64 but found a string instead.",
 ];
 
 /// `json` with the keys of every object sorted, as the Swift encoder of the run writes them.
@@ -72,7 +73,7 @@ fn sorted(json: &str) -> String {
 /// Each payload serde writes is read and written back as serde writes it back, and each payload
 /// serde refuses is refused, under `-warnings-as-errors`.
 #[test]
-fn an_i64_is_read_from_its_digits_and_written_as_them_in_swift() {
+fn an_i64_is_read_and_written_as_a_number_in_swift() {
     let mut main = String::new();
     let mut expected = String::new();
     let mut at = 0_usize;
@@ -101,6 +102,7 @@ fn an_i64_is_read_from_its_digits_and_written_as_them_in_swift() {
         sixty_id_swift::swift_definition(),
         sixty_event_swift::swift_definition(),
         sixty_level_swift::swift_definition(),
+        sixty_revision_swift::swift_definition(),
         sixty_reached_swift::swift_definition(),
         sixty_locked_swift::swift_definition(),
         sixty_beside_swift::swift_definition(),
@@ -109,7 +111,7 @@ fn an_i64_is_read_from_its_digits_and_written_as_them_in_swift() {
     ]
     .join("\n\n");
     let Some(run) = judged(
-        "swift-digits",
+        "swift-wide-integers",
         RUNTIME_VAR,
         "swift",
         &["-warnings-as-errors"],

@@ -5,7 +5,7 @@
 use super::fault;
 use super::message;
 use super::result::{result_name, stream_success_ts_type};
-use crate::field_type::bare_field_def;
+use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, HttpShape, OperationDef, OperationOutcome, ServiceDef, is_unit_type, option_inner,
@@ -82,10 +82,9 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
     published.push(interface(service));
     published.push(dispatched_type(&service.ident.to_string()));
     published.extend(fault_helpers(service));
-    published.push(message::wire_fn(&format!(
-        "{}Answered",
-        RenameRule::CamelCase.apply_to_variant(&service.ident.to_string())
-    )));
+    let prefix = RenameRule::CamelCase.apply_to_variant(&service.ident.to_string());
+    published.push(message::wire_fn(&format!("{prefix}Answered")));
+    published.push(message::read_fn(&format!("{prefix}RequestRead")));
     published.push(dispatcher(service));
     published
 }
@@ -199,7 +198,7 @@ fn binding_reads(
     for header in &shape.header_in {
         let name = RenameRule::CamelCase.apply_to_field(&written(&header.parameter));
         let read = format!("{name}Header");
-        let schema = bare_field_def(&name, &header.ty).zod_type();
+        let schema = get_field_def(&name, &header.ty, "").zod_type();
         let _ = write!(
             stmt,
             "        const {read} = {prefix}RequestHeader({wire}, headers, {header_name}, \
@@ -370,7 +369,7 @@ fn request_header_fn(named: &str, prefix: &str) -> String {
          let issues: ReadonlyArray<{{ path: ReadonlyArray<PropertyKey>; message: string }}>;\n  \
          try {{\n    \
          const parsed = schema.safeParse(carried === undefined ? undefined : \
-         JSON.parse(carried));\n    \
+         {prefix}RequestRead(carried));\n    \
          if (parsed.success) return {{ ok: true, value: parsed.data }};\n    \
          issues = carried === undefined\n      \
          ? [{{ path: [name], message: \"a required header was not carried\" }}]\n      \
@@ -560,10 +559,10 @@ fn outcome_type(service: &str, operation: &OperationDef) -> Option<String> {
     } else if is_unit_type(success) {
         "{ ok: true }".to_owned()
     } else {
-        let value = bare_field_def("value", success).typescript_typename();
+        let value = get_field_def("value", success, "").typescript_typename();
         format!("{{ ok: true; value: {value} }}")
     };
-    let failure = bare_field_def("error", error).typescript_typename();
+    let failure = get_field_def("error", error, "").typescript_typename();
     let called = &operation.ts_name;
     Some(format!(
         "/**\n \

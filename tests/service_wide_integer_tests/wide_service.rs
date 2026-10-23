@@ -92,7 +92,8 @@ fn dispatched(
 }
 
 /// A path placeholder, a header and a body of `u64::MAX` are read exactly, and the reply is
-/// written as its digits.
+/// written as the JSON number, and a body of its digits as a string is refused, as serde refuses
+/// it.
 #[test]
 fn the_http_dispatcher_reads_a_bare_u64_beyond_an_i64_exactly() {
     assert_eq!(
@@ -102,7 +103,7 @@ fn the_http_dispatcher_reads_a_bare_u64_beyond_an_i64_exactly() {
             &[("x-before", "1")],
             b""
         ),
-        Some((200, r#""18446744073709551615""#.to_owned())),
+        Some((200, "18446744073709551615".to_owned())),
         "a placeholder"
     );
     assert_eq!(
@@ -112,16 +113,19 @@ fn the_http_dispatcher_reads_a_bare_u64_beyond_an_i64_exactly() {
             &[("x-before", "18446744073709551615")],
             b""
         ),
-        Some((200, r#""18446744073709551615""#.to_owned())),
+        Some((200, "18446744073709551615".to_owned())),
         "a header"
     );
-    for body in [&b"18446744073709551615"[..], br#""18446744073709551615""#] {
-        assert_eq!(
-            dispatched("POST", "/purges", &[], body),
-            Some((200, r#""18446744073709551615""#.to_owned())),
-            "a body"
-        );
-    }
+    assert_eq!(
+        dispatched("POST", "/purges", &[], b"18446744073709551615"),
+        Some((200, "18446744073709551615".to_owned())),
+        "a body"
+    );
+    assert_eq!(
+        dispatched("POST", "/purges", &[], br#""18446744073709551615""#).map(|(status, _)| status),
+        Some(400),
+        "a body of the digits as a string"
+    );
 }
 
 /// Each route the dispatcher answers, with its statuses, and a placeholder that is no `u64`

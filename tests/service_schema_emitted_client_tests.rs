@@ -72,10 +72,10 @@ mod run_node_ws_server;
 #[path = "service_schema_emitted_client_tests/run_node_wire_forms.rs"]
 mod run_node_wire_forms;
 
-/// An `i64` through each TypeScript client and dispatcher, as the string of its digits.
+/// An `i64` through each TypeScript client and dispatcher, as a JSON number read exactly.
 #[cfg(test)]
-#[path = "service_schema_emitted_client_tests/run_node_digits.rs"]
-mod run_node_digits;
+#[path = "service_schema_emitted_client_tests/run_node_wide_integers.rs"]
+mod run_node_wide_integers;
 
 /// The emitted `http_rest` server: the seven design requests, the reader forms, the query-read
 /// message, and the three body kinds compared against the Rust twins above.
@@ -745,46 +745,46 @@ mod run_swift_units;
 #[path = "service_schema_emitted_client_tests/run_kotlin_units.rs"]
 mod run_kotlin_units;
 
-/// An `i64` held in each place a member holds one, written as the string of its digits.
+/// An `i64` held in each place a member holds one, written as a JSON number.
 #[cfg(test)]
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
-#[path = "service_schema_emitted_client_tests/digit_models.rs"]
-mod digit_models;
+#[path = "service_schema_emitted_client_tests/wide_integer_models.rs"]
+mod wide_integer_models;
 
-/// An `i64`, read from its digits and written as them by the emitted Dart types.
+/// An `i64`, read and written as a JSON number by the emitted Dart types.
 #[cfg(test)]
-#[path = "service_schema_emitted_client_tests/run_dart_digits.rs"]
-mod run_dart_digits;
+#[path = "service_schema_emitted_client_tests/run_dart_wide_integers.rs"]
+mod run_dart_wide_integers;
 
-/// An `i64`, read from its digits and written as them by the emitted Swift types.
+/// An `i64`, read and written as a JSON number by the emitted Swift types.
 #[cfg(test)]
-#[path = "service_schema_emitted_client_tests/run_swift_digits.rs"]
-mod run_swift_digits;
+#[path = "service_schema_emitted_client_tests/run_swift_wide_integers.rs"]
+mod run_swift_wide_integers;
 
-/// An `i64`, read from its digits and written as them by the emitted Kotlin types.
+/// An `i64`, read and written as a JSON number by the emitted Kotlin types.
 #[cfg(test)]
-#[path = "service_schema_emitted_client_tests/run_kotlin_digits.rs"]
-mod run_kotlin_digits;
+#[path = "service_schema_emitted_client_tests/run_kotlin_wide_integers.rs"]
+mod run_kotlin_wide_integers;
 
 /// What each `http_rest` client sends and reads of a bare `i64`.
 #[cfg(test)]
-#[path = "service_schema_emitted_client_tests/bare_digit_rows.rs"]
-mod bare_digit_rows;
+#[path = "service_schema_emitted_client_tests/bare_wide_integer_rows.rs"]
+mod bare_wide_integer_rows;
 
-/// A bare `i64`, sent and read as its digits by the emitted Dart client.
+/// A bare `i64`, sent and read as a JSON number by the emitted Dart client.
 #[cfg(test)]
-#[path = "service_schema_emitted_client_tests/run_dart_bare_digits.rs"]
-mod run_dart_bare_digits;
+#[path = "service_schema_emitted_client_tests/run_dart_bare_wide_integers.rs"]
+mod run_dart_bare_wide_integers;
 
-/// A bare `i64`, sent and read as its digits by the emitted Swift client.
+/// A bare `i64`, sent and read as a JSON number by the emitted Swift client.
 #[cfg(test)]
-#[path = "service_schema_emitted_client_tests/run_swift_bare_digits.rs"]
-mod run_swift_bare_digits;
+#[path = "service_schema_emitted_client_tests/run_swift_bare_wide_integers.rs"]
+mod run_swift_bare_wide_integers;
 
-/// A bare `i64`, sent and read as its digits by the emitted Kotlin client.
+/// A bare `i64`, sent and read as a JSON number by the emitted Kotlin client.
 #[cfg(test)]
-#[path = "service_schema_emitted_client_tests/run_kotlin_bare_digits.rs"]
-mod run_kotlin_bare_digits;
+#[path = "service_schema_emitted_client_tests/run_kotlin_bare_wide_integers.rs"]
+mod run_kotlin_bare_wide_integers;
 
 /// A fixed array and a tuple of another length, refused by the emitted Swift types in serde's
 /// words, in each place a value is held, and read from an array of their length as serde reads

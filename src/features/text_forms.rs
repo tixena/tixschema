@@ -113,12 +113,10 @@ impl TextForm {
             | FieldDefType::U16
             | FieldDefType::U32
             | FieldDefType::U64
-            | FieldDefType::U64Digits
             | FieldDefType::I8
             | FieldDefType::I16
             | FieldDefType::I32
             | FieldDefType::I64
-            | FieldDefType::I64Digits
             | FieldDefType::Isize
             | FieldDefType::Usize
             | FieldDefType::F32

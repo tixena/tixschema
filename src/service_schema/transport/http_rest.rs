@@ -4,17 +4,17 @@
 use super::Transport;
 use super::amqp_rpc::{
     Generated, answers, call_arguments, call_message, outbound_refusal, panic_guard, placement_doc,
-    refusal_reader, wired_of,
+    refusal_reader,
 };
 use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HeaderIn, HttpShape, MultipartPart, OperationDef,
     OperationInputs, OperationOutcome, PathSegment, ScalarKind, ServiceDef, argument_local,
     error_declared_type, field_ident, is_scalar_named_type, is_unit_type, option_inner,
-    reads_its_digits, scalar_kind, service_declares_a_placeholder, service_declares_a_stream,
+    scalar_kind, service_declares_a_placeholder, service_declares_a_stream,
     service_declares_multipart, tuple_elements, vec_inner, wire_key, written,
 };
 use crate::service_schema::support::{
-    digits_wire, message_alias_ident, message_reader_ident, message_validator_ident, module_ident,
+    message_alias_ident, message_reader_ident, message_validator_ident, module_ident,
 };
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -63,16 +63,14 @@ fn decode_expr(ty: &Type, raw: &TokenStream) -> TokenStream {
                 other => ::serde_json::Value::String(other.to_owned()),
             }
         },
-        // Every `u64` and `i64` is read from the text of its digits, which the reader of a value
-        // that holds one reads, where a float would lose a digit.
-        ScalarKind::Number if reads_its_digits(base) => {
-            quote! { ::serde_json::Value::String((#raw).to_owned()) }
-        }
+        // A `u64` beyond `i64::MAX` is read as one, where a float would lose a digit.
         ScalarKind::Number => quote! {
             {
                 let raw_text = #raw;
                 if let ::core::result::Result::Ok(as_integer) = raw_text.parse::<i64>() {
                     ::serde_json::Value::from(as_integer)
+                } else if let ::core::result::Result::Ok(as_unsigned) = raw_text.parse::<u64>() {
+                    ::serde_json::Value::from(as_unsigned)
                 } else if let ::core::result::Result::Ok(as_float) = raw_text.parse::<f64>() {
                     match ::serde_json::Number::from_f64(as_float) {
                         ::core::option::Option::Some(number) => ::serde_json::Value::Number(number),
@@ -101,27 +99,6 @@ fn encode_expr(value: &TokenStream) -> TokenStream {
             ::core::result::Result::Err(_unserializable) => ::std::string::String::new(),
         }
     }
-}
-
-/// The read of `value`, a `serde_json::Value`, as a bare value of `ty`: through the type that reads
-/// each `u64` and `i64` it holds from its digits, where it holds one.
-fn from_value_through(module: &Ident, ty: &Type, value: &TokenStream) -> TokenStream {
-    digits_wire(ty).map_or_else(
-        || quote! { ::serde_json::from_value(#value) },
-        |(wire, _)| {
-            quote! { ::serde_json::from_value::<$crate::#module::#wire>(#value).map(|read| read.0) }
-        },
-    )
-}
-
-/// The read of `bytes` as a bare value of `ty`, as [`from_value_through`] reads a value.
-fn from_slice_through(module: &Ident, ty: &Type, bytes: &TokenStream) -> TokenStream {
-    digits_wire(ty).map_or_else(
-        || quote! { ::serde_json::from_slice::<#ty>(#bytes) },
-        |(wire, _)| {
-            quote! { ::serde_json::from_slice::<$crate::#module::#wire>(#bytes).map(|read| read.0) }
-        },
-    )
 }
 
 /// One row an adapter iterates to register a handler: the method and path template an operation
@@ -925,14 +902,13 @@ fn header_in_let(module: &Ident, wire: &str, header: &HeaderIn) -> TokenStream {
             ))
         }
     };
-    let read = from_value_through(module, declared_type, &quote! { source });
     quote! {
         let #held: #declared_type = {
             let source = match request.header(#name) {
                 ::core::option::Option::Some(text) => #decode,
                 ::core::option::Option::None => #absent,
             };
-            match #read {
+            match ::serde_json::from_value(source) {
                 ::core::result::Result::Ok(value) => value,
                 ::core::result::Result::Err(rejected) => return handler.on_fault(&refused_payload(#wire, &rejected)),
             }
@@ -1200,12 +1176,11 @@ fn declared_error_arm(
     module: &Ident,
 ) -> TokenStream {
     let status_expr = error_status_expr(shape, error_head);
-    let written = wired_of(module, error_head, &quote! { &declared_error });
     if shape.error_header_out.is_empty() {
         quote! {
             ::core::result::Result::Ok(::core::result::Result::Err(declared_error)) => {
                 let status = #status_expr;
-                return json_response(status, ::std::vec::Vec::new(), #written);
+                return json_response(status, ::std::vec::Vec::new(), &declared_error);
             }
         }
     } else {
@@ -1224,7 +1199,7 @@ fn declared_error_arm(
                 let status = #status_expr;
                 let mut headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)> = ::std::vec::Vec::new();
                 #pushes
-                return json_response(status, headers, #written);
+                return json_response(status, headers, &declared_error);
             }
         }
     }
@@ -1289,11 +1264,10 @@ fn answer_block(
                         }
                     }
                 } else {
-                    let written = wired_of(module, success, &quote! { &value });
                     quote! {
                         match #called {
                             ::core::result::Result::Ok(::core::result::Result::Ok(value)) => {
-                                return json_response(#ok_status, ::std::vec::Vec::new(), #written);
+                                return json_response(#ok_status, ::std::vec::Vec::new(), &value);
                             }
                             #error_arm
                             ::core::result::Result::Err(panicked) => { #panic_fault }
@@ -1311,17 +1285,12 @@ fn answer_block(
                     &header_idents,
                     &element_types,
                 );
-                let written = wired_of(
-                    module,
-                    elements.first().copied().unwrap_or(success),
-                    &quote! { &value },
-                );
                 quote! {
                     match #called {
                         ::core::result::Result::Ok(::core::result::Result::Ok((value, #(#header_idents),*))) => {
                             let mut headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)> = ::std::vec::Vec::new();
                             #header_pushes
-                            return json_response(#ok_status, headers, #written);
+                            return json_response(#ok_status, headers, &value);
                         }
                         #error_arm
                         ::core::result::Result::Err(panicked) => { #panic_fault }
@@ -1954,11 +1923,7 @@ fn client_method(
     let body_build = if is_multipart || !shape.method.carries_a_body() {
         quote! { let body = ::std::vec::Vec::new(); }
     } else {
-        let written = match &operation.inputs {
-            OperationInputs::Named(declared) => wired_of(module, declared, &quote! { &sending }),
-            OperationInputs::Empty | OperationInputs::Generated(_) => quote! { &sending },
-        };
-        quote! { let body = ::serde_json::to_vec(#written).unwrap_or_default(); }
+        quote! { let body = ::serde_json::to_vec(&sending).unwrap_or_default(); }
     };
     let parts_build = if has_multipart {
         multipart_parts_build_stmt(operation, &shape)
@@ -2293,7 +2258,7 @@ fn client_error_condition(shape: &HttpShape) -> TokenStream {
 /// The client's own header read-back, `header_out` and `error_header_out` alike: one `let` per
 /// declared entry, decoding the response header named for it.
 fn header_value_read_lets(
-    (wire, module): (&str, &Ident),
+    wire: &str,
     names: &[String],
     call_error: &TokenStream,
     fault: &TokenStream,
@@ -2307,7 +2272,6 @@ fn header_value_read_lets(
         .zip(elements.iter().skip(body_elements))
         .map(|((name, ident), element_ty)| {
             let decode = decode_expr(element_ty, &quote! { text });
-            let read = from_value_through(module, element_ty, &decode);
             // An `Option<T>` element reads a missing header as `None`; anything else faults.
             let absent = if option_inner(element_ty).is_some() {
                 quote! { ::core::option::Option::None }
@@ -2321,7 +2285,7 @@ fn header_value_read_lets(
             };
             quote! {
                 let #ident: #element_ty = match response.header(#name) {
-                    ::core::option::Option::Some(text) => match #read {
+                    ::core::option::Option::Some(text) => match ::serde_json::from_value(#decode) {
                         ::core::result::Result::Ok(value) => value,
                         ::core::result::Result::Err(_rejected) => return ::core::result::Result::Err(#call_error::Fault(
                             #fault::undeserializable_payload(
@@ -2340,16 +2304,15 @@ fn header_value_read_lets(
 /// The declared-error read every reply-decoding arm shares: the error's own head off the body,
 /// plus each `error_header_out` element off its own response header where any were declared.
 fn declared_error_read_block(
-    (wire, module): (&str, &Ident),
+    wire: &str,
     shape: &HttpShape,
     call_error: &TokenStream,
     fault: &TokenStream,
     error: &Type,
 ) -> TokenStream {
     if shape.error_header_out.is_empty() {
-        let read = from_slice_through(module, error, &quote! { response.body() });
         quote! {
-            return match #read {
+            return match ::serde_json::from_slice::<#error>(response.body()) {
                 ::core::result::Result::Ok(declared) => ::core::result::Result::Err(#call_error::Operation(declared)),
                 ::core::result::Result::Err(rejected) => ::core::result::Result::Err(#call_error::Fault(
                     #fault::undeserializable_payload(#wire, &rejected.to_string()),
@@ -2361,7 +2324,7 @@ fn declared_error_read_block(
         let head = elements.first().copied().unwrap_or(error);
         let header_idents = error_header_out_idents(shape.error_header_out.len());
         let header_lets = header_value_read_lets(
-            (wire, module),
+            wire,
             &shape.error_header_out,
             call_error,
             fault,
@@ -2369,9 +2332,8 @@ fn declared_error_read_block(
             &elements,
             1,
         );
-        let read = from_slice_through(module, head, &quote! { response.body() });
         quote! {
-            match #read {
+            match ::serde_json::from_slice::<#head>(response.body()) {
                 ::core::result::Result::Ok(declared_error) => {
                     #header_lets
                     return ::core::result::Result::Err(#call_error::Operation((declared_error, #(#header_idents),*)));
@@ -2437,7 +2399,7 @@ fn reply_decode(
             let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
             let header_idents = header_out_idents(shape.header_out.len());
             let header_lets = header_value_read_lets(
-                (wire, module),
+                wire,
                 &shape.header_out,
                 call_error,
                 fault,
@@ -2459,9 +2421,8 @@ fn reply_decode(
             // `#success`, not a literal `()`: answers a recorded unit struct by name too.
             quote! { return ::core::result::Result::Ok(#success); }
         } else {
-            let read = from_slice_through(module, success, &quote! { response.body() });
             quote! {
-                return match #read {
+                return match ::serde_json::from_slice::<#success>(response.body()) {
                     ::core::result::Result::Ok(value) => ::core::result::Result::Ok(value),
                     ::core::result::Result::Err(rejected) => ::core::result::Result::Err(#call_error::Fault(
                         #fault::undeserializable_payload(#wire, &rejected.to_string()),
@@ -2476,7 +2437,7 @@ fn reply_decode(
         let first = elements.first().copied().unwrap_or(success);
         let header_idents = header_out_idents(shape.header_out.len());
         let header_lets = header_value_read_lets(
-            (wire, module),
+            wire,
             &shape.header_out,
             call_error,
             fault,
@@ -2484,9 +2445,8 @@ fn reply_decode(
             &elements,
             1,
         );
-        let read = from_slice_through(module, first, &quote! { response.body() });
         quote! {
-            return match #read {
+            return match ::serde_json::from_slice::<#first>(response.body()) {
                 ::core::result::Result::Ok(value) => {
                     #header_lets
                     ::core::result::Result::Ok((value, #(#header_idents),*))
@@ -2497,7 +2457,7 @@ fn reply_decode(
             };
         }
     };
-    let error_block = declared_error_read_block((wire, module), shape, call_error, fault, error);
+    let error_block = declared_error_read_block(wire, shape, call_error, fault, error);
     quote! {
         let status = response.status();
         if status == #ok_status {
@@ -2532,7 +2492,7 @@ fn stream_reply_decode(
 ) -> TokenStream {
     let ok_status = shape.ok_status;
     let error_condition = client_error_condition(shape);
-    let error_block = declared_error_read_block((wire, module), shape, call_error, fault, error);
+    let error_block = declared_error_read_block(wire, shape, call_error, fault, error);
     let tail = quote! {
         if #error_condition {
             #error_block
@@ -2577,7 +2537,7 @@ fn stream_reply_decode(
         let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
         let header_idents = header_out_idents(shape.header_out.len());
         let header_lets = header_value_read_lets(
-            (wire, module),
+            wire,
             &shape.header_out,
             call_error,
             fault,

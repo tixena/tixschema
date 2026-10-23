@@ -81,10 +81,10 @@ mod untagged_millis;
 #[path = "../wire_forms_tests/models.rs"]
 mod wire_forms;
 
-/// The models of a `u64` and an `i64` a member writes itself, which travel as the string of their
-/// digits.
-#[path = "../digit_strings_tests/models.rs"]
-mod digit_strings;
+/// The models of a `u64` and an `i64` in each place a member holds one, which travel as JSON
+/// numbers.
+#[path = "../wide_integer_tests/models.rs"]
+mod wide_integers;
 
 /// Models whose names on the wire hold a `$`, a quote, a double quote and a backslash, and what
 /// serde writes of each.
@@ -699,30 +699,46 @@ console.log(
 );
 "#;
 
-/// What the driver of [`digit_strings_bundle`] prints of each payload: what the Zod schema reads,
-/// each `bigint` written as its digits and an `n`, or the message of each issue.
-const DIGIT_STRINGS_DRIVER: &str = r#"import * as lib from "./lib/index.js";
+/// What the driver of [`wide_integers_bundle`] prints of each payload: what the Zod schema reads,
+/// each `bigint` written as its digits and an `n`, or the message of each issue. A payload is read
+/// by `exactJson` where its row says so, and by `JSON.parse` otherwise.
+const WIDE_DRIVER: &str = r#"import * as lib from "./lib/index.js";
 
+WIRE_FORM
 const shown = (value) => JSON.stringify(value, (_, held) => (typeof held === "bigint" ? `${held}n` : held));
-for (const [schema, payload] of PAYLOADS) {
-  const read = lib[schema].safeParse(JSON.parse(payload));
+for (const [schema, payload, exact] of PAYLOADS) {
+  const read = lib[schema].safeParse(exact ? exactJson(payload) : JSON.parse(payload));
   console.log(read.success ? shown(read.data) : read.error.issues.map((issue) => issue.message).join("; "));
 }
-WIRE_FORM
-console.log(JSON.stringify(wireForm(lib.DigitTally$Schema.parse(JSON.parse(TALLY)))));
+console.log(JSON.stringify(wireForm(lib.WideTally$Schema.parse(exactJson(TALLY)))));
 "#;
 
-/// The digits serde writes of a `DigitTally` with an `i64` beyond what a JavaScript `number` holds
+/// What serde writes of a `WideTally` with an `i64` beyond what a JavaScript `number` holds
 /// exactly in each place.
-const DIGIT_TALLY: &str = r#"{"boxed":"-1152921504606846976","grid":["1","1152921504606846976"],"keyed":{"a":"-7"},"listed":["0","9223372036854775807"],"maybe":"-9223372036854775808","nested":[["3"],null],"paired":["9","x"],"set":["2","5"],"signed":"-1152921504606846976"}"#;
+const WIDE_TALLY: &str = r#"{"boxed":-1152921504606846976,"grid":[1,1152921504606846976],"keyed":{"a":-7},"listed":[0,9223372036854775807],"maybe":-9223372036854775808,"nested":[[3],null],"paired":[9,"x"],"set":[2,5],"signed":-1152921504606846976}"#;
 
-/// The digits serde writes of a `DigitReached` with an `i64` in each place it holds one.
-const DIGIT_REACHED: &str = r#"{"aliased":"-1152921504606846976","aliases":["1","9223372036854775807"],"fixed":"214","from":{"start":"-3"},"inclusive":{"start":"4","end":"5"},"ranged":{"start":"1","end":"1152921504606846976"},"resulted":{"Ok":"7"},"to":{"end":"6"},"wrong":{"Err":["8","-9"]}}"#;
+/// What serde writes of a `WideTally` whose every `i64` a JavaScript `number` holds exactly.
+const SAFE_TALLY: &str = r#"{"boxed":-7,"grid":[1,1719624000000],"keyed":{"a":-7},"listed":[0,9007199254740991],"nested":[[3],null],"paired":[9,"x"],"set":[2,5],"signed":-9007199254740991}"#;
 
-/// The value a client writes of a value its schema read, as each client's own helper writes it:
-/// each `bigint` as the string of its digits.
-const WIRE_FORM: &str = "function wireForm(value) {
-  if (typeof value === \"bigint\") return value.toString();
+/// What serde writes of a `WideReached` with an `i64` in each place it holds one.
+const WIDE_REACHED: &str = r#"{"aliased":-1152921504606846976,"aliases":[1,9223372036854775807],"fixed":214,"from":{"start":-3},"inclusive":{"start":4,"end":5},"ranged":{"start":1,"end":1152921504606846976},"resulted":{"Ok":7},"to":{"end":6},"wrong":{"Err":[8,-9]}}"#;
+
+/// The functions a client reads and writes JSON through, as the service code tixschema writes
+/// them: `exactJson` reads an integer a `number` does not hold exactly as a `bigint` from its
+/// source text, and `wireForm` writes each `bigint` through `JSON.rawJSON`, as the JSON number of
+/// its digits.
+const WIRE_FORM: &str = "function exactJson(text) {
+  return JSON.parse(text, (_key, value, context) =>
+    typeof value === \"number\" &&
+    !Number.isSafeInteger(value) &&
+    context?.source !== undefined &&
+    /^-?(0|[1-9][0-9]*)$/.test(context.source)
+      ? BigInt(context.source)
+      : value,
+  );
+}
+function wireForm(value) {
+  if (typeof value === \"bigint\") return JSON.rawJSON(value.toString());
   if (Array.isArray(value)) return value.map((held) => wireForm(held));
   if (typeof value === \"object\" && value !== null && Object.getPrototypeOf(value) === Object.prototype) {
     return Object.fromEntries(Object.entries(value).map(([key, held]) => [key, wireForm(held)]));
@@ -2906,56 +2922,56 @@ fn wire_forms_bundle() -> String {
     parts.join("\n\n")
 }
 
-/// The models of [`digit_strings`]: a bundle of their own, compiled with `tsc --strict` and loaded
+/// The models of [`wide_integers`]: a bundle of their own, compiled with `tsc --strict` and loaded
 /// under `node`.
-fn digit_strings_bundle() -> String {
+fn wide_integers_bundle() -> String {
     #[cfg(not(any(feature = "swift", feature = "kotlin")))]
     let wide = [
-        digit_strings::DigitWide::ts_definition(),
-        digit_strings::DigitWide::zod_schema(),
+        wide_integers::WideUnsigned::ts_definition(),
+        wide_integers::WideUnsigned::zod_schema(),
     ];
     #[cfg(any(feature = "swift", feature = "kotlin"))]
     let wide: [String; 0] = [];
     [
         PREAMBLE.to_owned(),
-        digit_strings::DigitTally::ts_definition(),
-        digit_strings::DigitTally::zod_schema(),
-        digit_strings::DigitId::ts_definition(),
-        digit_strings::DigitId::zod_schema(),
-        digit_strings::DigitEvent::ts_definition(),
-        digit_strings::DigitEvent::zod_schema(),
-        digit_strings::DigitBounded::ts_definition(),
-        digit_strings::DigitBounded::zod_schema(),
-        digit_strings::DigitHolder::<i64>::ts_definition(),
-        digit_strings::DigitHolder::<i64>::zod_schema(),
-        digit_strings::DigitKept::ts_definition(),
-        digit_strings::DigitKept::zod_schema(),
-        digit_strings::DigitPair::ts_definition(),
-        digit_strings::DigitPair::zod_schema(),
-        digit_strings::DigitTagged::ts_definition(),
-        digit_strings::DigitTagged::zod_schema(),
-        digit_strings::DigitAdjacent::ts_definition(),
-        digit_strings::DigitAdjacent::zod_schema(),
-        digit_strings::DigitUntagged::ts_definition(),
-        digit_strings::DigitUntagged::zod_schema(),
-        digit_strings::digit_revision_schema::Schema::ts_definition(),
-        digit_strings::digit_revision_schema::Schema::zod_schema(),
-        digit_strings::digit_revisions_schema::Schema::ts_definition(),
-        digit_strings::digit_revisions_schema::Schema::zod_schema(),
-        digit_strings::DigitReached::ts_definition(),
-        digit_strings::DigitReached::zod_schema(),
-        digit_strings::DigitLocked::ts_definition(),
-        digit_strings::DigitLocked::zod_schema(),
-        digit_strings::DigitBeside::<String>::ts_definition(),
-        digit_strings::DigitBeside::<String>::zod_schema(),
-        digit_strings::DigitChosen::<String>::ts_definition(),
-        digit_strings::DigitChosen::<String>::zod_schema(),
-        digit_strings::DigitLater::ts_definition(),
-        digit_strings::DigitLater::zod_schema(),
-        digit_strings::digit_later_revision_schema::Schema::ts_definition(),
-        digit_strings::digit_later_revision_schema::Schema::zod_schema(),
-        digit_strings::DigitBorrowed::ts_definition(),
-        digit_strings::DigitBorrowed::zod_schema(),
+        wide_integers::WideTally::ts_definition(),
+        wide_integers::WideTally::zod_schema(),
+        wide_integers::WideId::ts_definition(),
+        wide_integers::WideId::zod_schema(),
+        wide_integers::WideEvent::ts_definition(),
+        wide_integers::WideEvent::zod_schema(),
+        wide_integers::WideBounded::ts_definition(),
+        wide_integers::WideBounded::zod_schema(),
+        wide_integers::WideHolder::<i64>::ts_definition(),
+        wide_integers::WideHolder::<i64>::zod_schema(),
+        wide_integers::WideKept::ts_definition(),
+        wide_integers::WideKept::zod_schema(),
+        wide_integers::WidePair::ts_definition(),
+        wide_integers::WidePair::zod_schema(),
+        wide_integers::WideTagged::ts_definition(),
+        wide_integers::WideTagged::zod_schema(),
+        wide_integers::WideAdjacent::ts_definition(),
+        wide_integers::WideAdjacent::zod_schema(),
+        wide_integers::WideUntagged::ts_definition(),
+        wide_integers::WideUntagged::zod_schema(),
+        wide_integers::wide_revision_schema::Schema::ts_definition(),
+        wide_integers::wide_revision_schema::Schema::zod_schema(),
+        wide_integers::wide_revisions_schema::Schema::ts_definition(),
+        wide_integers::wide_revisions_schema::Schema::zod_schema(),
+        wide_integers::WideReached::ts_definition(),
+        wide_integers::WideReached::zod_schema(),
+        wide_integers::WideLocked::ts_definition(),
+        wide_integers::WideLocked::zod_schema(),
+        wide_integers::WideBeside::<String>::ts_definition(),
+        wide_integers::WideBeside::<String>::zod_schema(),
+        wide_integers::WideChosen::<String>::ts_definition(),
+        wide_integers::WideChosen::<String>::zod_schema(),
+        wide_integers::WideLater::ts_definition(),
+        wide_integers::WideLater::zod_schema(),
+        wide_integers::wide_later_revision_schema::Schema::ts_definition(),
+        wide_integers::wide_later_revision_schema::Schema::zod_schema(),
+        wide_integers::WideBorrowed::ts_definition(),
+        wide_integers::WideBorrowed::zod_schema(),
     ]
     .into_iter()
     .chain(wide)
@@ -2964,13 +2980,13 @@ fn digit_strings_bundle() -> String {
 }
 
 /// The JavaScript value a row of [`wire_forms::WIRE_FORMS`] hands the Zod schema of its model:
-/// a `Date` for a `DateTime<Tz>`, read from the text handed, a `bigint` for an `i64`, and the
-/// JSON handed for any other.
+/// a `Date` for a `DateTime<Tz>`, read from the text handed, a `bigint` for an `i64` and a `u64`,
+/// and the JSON handed for any other.
 #[cfg(feature = "chrono")]
 fn wire_form_handed(row: &wire_forms::WireFormRow) -> String {
     let value = if row.held_by == "ConveyedInstant" {
         format!("new Date({})", row.handed)
-    } else if row.held_by == "ConveyedI64" {
+    } else if matches!(row.held_by, "ConveyedI64" | "ConveyedU64") {
         format!("{}n", row.handed)
     } else {
         row.handed.to_owned()
@@ -4000,8 +4016,9 @@ fn type_check_an_untagged_member_under_as_number_is_parsed_as_the_number_serde_w
 
 /// Each value of [`wire_forms::WIRE_FORMS`] is sent by the Zod schema of its model under `node`
 /// in the form the table states, which is what the clients over every transport send, as the
-/// check's own output with each `bigint` written as its digits, and the schema reads every
-/// payload any client sends but a number a JavaScript `number` cannot hold, which it refuses.
+/// check's own output with each `bigint` written as the JSON number of its digits, and the schema
+/// reads every payload any client sends, read as a client reads it, but an integer TypeScript
+/// holds as a `number` that a `number` cannot hold, which it refuses.
 #[cfg(feature = "chrono")]
 #[test]
 fn type_check_each_value_is_sent_under_zod_in_the_form_every_target_reads() {
@@ -4048,13 +4065,13 @@ fn type_check_each_value_is_sent_under_zod_in_the_form_every_target_reads() {
         "import * as lib from \"./lib/index.js\";\n\n\
          {wire}\n\
          const sent = (schema, handed) => {{\n  \
-         const read = schema.safeParse(wireForm(handed));\n  \
+         const read = schema.safeParse(handed);\n  \
          return read.success ? JSON.stringify(wireForm(read.data)) : \"refused\";\n\
          }};\n\
          const {{ {schemas} }} = lib;\n\
          console.log(JSON.stringify([\n{handed}]));\n\
          console.log(JSON.stringify({read}.map(([schema, payload]) => \
-         lib[schema].safeParse(JSON.parse(payload)).success)));\n",
+         lib[schema].safeParse(exactJson(payload)).success)));\n",
         wire = WIRE_FORM,
         schemas = wire_forms::WIRE_FORMS
             .iter()
@@ -4095,39 +4112,38 @@ fn type_check_each_value_is_sent_under_zod_in_the_form_every_target_reads() {
     );
 }
 
-/// The Zod schema under `node` reads each `u64` and `i64` a member writes itself from the string
-/// of its digits into a `bigint`, exactly, and refuses one beyond its type or its bound in the
+/// The Zod schema under `node` reads each `i64` a member writes itself as a `bigint`, from a
+/// `bigint` the exact reader rebuilt and from a `number` that holds it exactly, and refuses one
+/// beyond its type, a `number` that does not hold it exactly or one beyond its bound in the
 /// sentence `validate()` writes, and what it reads is written back by a client as serde wrote it.
 #[test]
-fn type_check_a_64_bit_integer_is_read_as_a_bigint_from_its_digits_under_zod() {
-    assert_eq!(
-        serde_json::to_string(
-            &serde_json::from_str::<digit_strings::DigitTally>(DIGIT_TALLY).unwrap()
-        )
-        .unwrap(),
-        DIGIT_TALLY,
-        "serde writes the tally the driver reads"
-    );
+fn type_check_a_64_bit_integer_is_read_as_a_bigint_under_zod() {
+    for tally in [WIDE_TALLY, SAFE_TALLY] {
+        assert_eq!(
+            serde_json::to_string(
+                &serde_json::from_str::<wide_integers::WideTally>(tally).unwrap()
+            )
+            .unwrap(),
+            tally,
+            "serde writes the tally the driver reads"
+        );
+    }
     let payloads = [
-        ("DigitTally$Schema", DIGIT_TALLY.to_owned()),
-        (
-            "DigitTally$Schema",
-            DIGIT_TALLY.replace(r#""signed":"-1152921504606846976""#, r#""signed":-1"#),
-        ),
-        ("DigitId$Schema", r#""9223372036854775808""#.to_owned()),
-        ("DigitId$Schema", r#""1.5""#.to_owned()),
-        ("DigitEvent$Schema", r#"{"Counted":"5"}"#.to_owned()),
-        (
-            "DigitBounded$Schema",
-            r#"{"level":"6","start":"1"}"#.to_owned(),
-        ),
-        ("DigitBounded$Schema", r#"{"level":"-5"}"#.to_owned()),
+        ("WideTally$Schema", WIDE_TALLY, true),
+        ("WideTally$Schema", SAFE_TALLY, false),
+        ("WideId$Schema", "9223372036854775808", true),
+        ("WideId$Schema", "9007199254740993", false),
+        ("WideId$Schema", "1.5", false),
+        ("WideId$Schema", r#""5""#, false),
+        ("WideEvent$Schema", r#"{"Counted":5}"#, false),
+        ("WideBounded$Schema", r#"{"level":6,"start":1}"#, false),
+        ("WideBounded$Schema", r#"{"level":-5}"#, false),
     ];
-    let driver = DIGIT_STRINGS_DRIVER
+    let driver = WIDE_DRIVER
         .replace("PAYLOADS", &serde_json::to_string(&payloads).unwrap())
         .replace("WIRE_FORM", WIRE_FORM)
-        .replace("TALLY", &serde_json::to_string(DIGIT_TALLY).unwrap());
-    let Some((printed, failed)) = loaded_from("digit-strings", &digit_strings_bundle(), &driver)
+        .replace("TALLY", &serde_json::to_string(WIDE_TALLY).unwrap());
+    let Some((printed, failed)) = loaded_from("wide-integers", &wide_integers_bundle(), &driver)
     else {
         return;
     };
@@ -4135,78 +4151,80 @@ fn type_check_a_64_bit_integer_is_read_as_a_bigint_from_its_digits_under_zod() {
         printed,
         [
             r#"{"boxed":"-1152921504606846976n","grid":["1n","1152921504606846976n"],"keyed":{"a":"-7n"},"listed":["0n","9223372036854775807n"],"maybe":"-9223372036854775808n","nested":[["3n"],null],"paired":["9n","x"],"set":["2n","5n"],"signed":"-1152921504606846976n"}"#,
-            "Invalid input: expected string, received number",
+            r#"{"boxed":"-7n","grid":["1n","1719624000000n"],"keyed":{"a":"-7n"},"listed":["0n","9007199254740991n"],"nested":[["3n"],null],"paired":["9n","x"],"set":["2n","5n"],"signed":"-9007199254740991n"}"#,
             "Too big: expected bigint to be <=9223372036854775807",
-            "Invalid string: must match pattern /^-?(0|[1-9][0-9]*)$/",
+            "Too big: expected int to be <=9007199254740991",
+            "Invalid input",
+            "Invalid input",
             r#"{"Counted":"5n"}"#,
             "too large: maximum is 5, got 6",
             r#"{"level":"-5n","start":"7n"}"#,
-            DIGIT_TALLY,
+            WIDE_TALLY,
         ]
         .join("\n"),
         "the Zod schemas do not read each payload as stated:\n{failed}"
     );
 }
 
-/// An `i64` through an alias, as a range's bound, as a `Result`'s arm, under a `literal`, below a
-/// lock and beside the type's own parameter, in an untagged enum too, is read by its Zod schema
-/// under `node` as a `bigint` from its digits, refused as a number and beyond the literal, and
-/// written back as its digits. One through an alias declared below its holder is the number.
+/// An `i64` through an alias declared above or below its holder, as a range's bound, as a
+/// `Result`'s arm, under a `literal`, below a lock, behind a reference and beside the type's own
+/// parameter, in an untagged enum too, is read by its Zod schema under `node` as a `bigint`,
+/// refused beyond the literal, and written back as the JSON number serde wrote.
 #[test]
 fn type_check_a_64_bit_integer_in_each_place_its_holder_reaches_is_read_as_a_bigint_under_zod() {
     assert_eq!(
         serde_json::to_string(
-            &serde_json::from_str::<digit_strings::DigitReached>(DIGIT_REACHED).unwrap()
+            &serde_json::from_str::<wide_integers::WideReached>(WIDE_REACHED).unwrap()
         )
         .unwrap(),
-        DIGIT_REACHED,
+        WIDE_REACHED,
         "serde writes the payload the driver reads"
     );
-    let locked = r#"{"keyed":{"a":"-7"},"listed":["9223372036854775807"],"paired":["9","x"]}"#;
-    let beside = r#"{"keyed":{"a":"-7"},"paired":["b","1152921504606846976"]}"#;
-    let chosen = r#"{"listed":[["9223372036854775807","a"]]}"#;
+    let locked = r#"{"keyed":{"a":-7},"listed":[9223372036854775807],"paired":[9,"x"]}"#;
+    let beside = r#"{"keyed":{"a":-7},"paired":["b",1152921504606846976]}"#;
+    let chosen = r#"{"listed":[[9223372036854775807,"a"]]}"#;
+    let later = r#"{"revision":-7}"#;
     for (json, read) in [
         (
             locked,
-            serde_json::from_str::<digit_strings::DigitLocked>(locked).is_ok(),
+            serde_json::from_str::<wide_integers::WideLocked>(locked).is_ok(),
         ),
         (
             beside,
-            serde_json::from_str::<digit_strings::DigitBeside<String>>(beside).is_ok(),
+            serde_json::from_str::<wide_integers::WideBeside<String>>(beside).is_ok(),
         ),
         (
             chosen,
-            serde_json::from_str::<digit_strings::DigitChosen<String>>(chosen).is_ok(),
+            serde_json::from_str::<wide_integers::WideChosen<String>>(chosen).is_ok(),
+        ),
+        (
+            later,
+            serde_json::from_str::<wide_integers::WideLater>(later).is_ok(),
         ),
     ] {
         assert!(read, "serde reads {json}");
     }
+    let refused_literal = WIDE_REACHED.replace(r#""fixed":214"#, r#""fixed":215"#);
     let payloads = [
-        ("DigitReached$Schema", DIGIT_REACHED.to_owned()),
+        ("WideReached$Schema", WIDE_REACHED, true),
+        ("WideReached$Schema", refused_literal.as_str(), true),
+        ("WideLocked$Schema", locked, true),
+        ("WideBeside$SchemaDefault", beside, true),
+        ("WideChosen$SchemaDefault", chosen, true),
+        ("WideLater$Schema", later, false),
         (
-            "DigitReached$Schema",
-            DIGIT_REACHED.replace(r#""end":"6""#, r#""end":6"#),
-        ),
-        (
-            "DigitReached$Schema",
-            DIGIT_REACHED.replace(r#""fixed":"214""#, r#""fixed":"215""#),
-        ),
-        ("DigitLocked$Schema", locked.to_owned()),
-        ("DigitBeside$SchemaDefault", beside.to_owned()),
-        ("DigitChosen$SchemaDefault", chosen.to_owned()),
-        ("DigitLater$Schema", r#"{"revision":-7}"#.to_owned()),
-        (
-            "DigitBorrowed$Schema",
-            r#"{"counted":"-1","listed":["2"]}"#.to_owned(),
+            "WideBorrowed$Schema",
+            r#"{"counted":-1,"listed":[2]}"#,
+            false,
         ),
     ];
-    let driver = DIGIT_STRINGS_DRIVER
+    let driver = WIDE_DRIVER
         .replace("PAYLOADS", &serde_json::to_string(&payloads).unwrap())
         .replace("WIRE_FORM", WIRE_FORM)
-        .replace("DigitTally$Schema", "DigitReached$Schema")
-        .replace("TALLY", &serde_json::to_string(DIGIT_REACHED).unwrap());
+        .replace("WideTally$Schema", "WideReached$Schema")
+        .replace("TALLY", &serde_json::to_string(WIDE_REACHED).unwrap());
     let Some((printed, failed)) =
-        loaded_from("digit-strings-reached", &digit_strings_bundle(), &driver)
+        loaded_from("wide-integers-reached", &wide_integers_bundle(), &driver)
     else {
         return;
     };
@@ -4214,14 +4232,13 @@ fn type_check_a_64_bit_integer_in_each_place_its_holder_reaches_is_read_as_a_big
         printed,
         [
             r#"{"aliased":"-1152921504606846976n","aliases":["1n","9223372036854775807n"],"fixed":"214n","from":{"start":"-3n"},"inclusive":{"start":"4n","end":"5n"},"ranged":{"start":"1n","end":"1152921504606846976n"},"resulted":{"Ok":"7n"},"to":{"end":"6n"},"wrong":{"Err":["8n","-9n"]}}"#,
-            "Invalid input: expected string, received number",
             "not the literal 214, got 215",
             r#"{"keyed":{"a":"-7n"},"listed":["9223372036854775807n"],"paired":["9n","x"]}"#,
             r#"{"keyed":{"a":"-7n"},"paired":["b","1152921504606846976n"]}"#,
             r#"{"listed":[["9223372036854775807n","a"]]}"#,
-            r#"{"revision":-7}"#,
+            r#"{"revision":"-7n"}"#,
             r#"{"counted":"-1n","listed":["2n"]}"#,
-            DIGIT_REACHED,
+            WIDE_REACHED,
         ]
         .join("\n"),
         "the Zod schemas do not read each payload as stated:\n{failed}"

@@ -51,8 +51,6 @@ use crate::features::serde::{
 // Bring serde metadata types into scope (used by the serde parsing helpers below).
 #[cfg(feature = "serde")]
 use crate::features::serde::{SerdeFieldMeta, SerdeTypeMeta};
-#[cfg(feature = "serde")]
-use crate::model_schema::digits::alias_written_as_digits;
 
 /// The keys serde writes the two arms of a `Result` under, `Ok` first.
 pub const RESULT_ARMS: [&str; 2] = ["Ok", "Err"];
@@ -145,12 +143,8 @@ pub enum FieldDefType {
     F64,
     I16,
     I32,
-    /// An `i64` serde writes as its own type writes it: a number. One a member holds is
-    /// [`Self::I64Digits`] instead.
+    /// An `i64`: a JSON number on the wire, and a `bigint` in TypeScript.
     I64,
-    /// An `i64` the macro writes as a string of its decimal digits, as every `i64` a member holds
-    /// travels ([`FieldDef::with_digit_leaves`]).
-    I64Digits,
     I8,
     Isize,
     Map(Box<FieldDef>, Box<FieldDef>),
@@ -185,12 +179,8 @@ pub enum FieldDefType {
     TypeParam(String),
     U16,
     U32,
-    /// A `u64` serde writes as its own type writes it: a number. One a member holds is
-    /// [`Self::U64Digits`] instead.
+    /// A `u64`: a JSON number on the wire, and a `bigint` in TypeScript.
     U64,
-    /// A `u64` the macro writes as a string of its decimal digits, as every `u64` a member holds
-    /// travels ([`FieldDef::with_digit_leaves`]).
-    U64Digits,
     U8,
     /// A type no surface can name, described as any value: one written as no path (a function
     /// pointer, a trait object, a macro), a path with parenthesized arguments, and in Dart an
@@ -200,13 +190,13 @@ pub enum FieldDefType {
 }
 
 impl FieldDefType {
-    /// The least and the most value the digit string of a `u64` or an `i64` holds, as decimal
-    /// digits, and `None` for every other type.
-    #[cfg(any(feature = "zod", feature = "dart", feature = "kotlin"))]
-    pub const fn digit_range(&self) -> Option<(&'static str, &'static str)> {
-        if matches!(self, Self::U64Digits) {
+    /// The least and the most value of a `u64` or an `i64`, which TypeScript holds as a `bigint`,
+    /// as decimal digits, and `None` for every other type.
+    #[cfg(feature = "zod")]
+    pub const fn bigint_range(&self) -> Option<(&'static str, &'static str)> {
+        if matches!(self, Self::U64) {
             Some(("0", "18446744073709551615"))
-        } else if matches!(self, Self::I64Digits) {
+        } else if matches!(self, Self::I64) {
             Some(("-9223372036854775808", "9223372036854775807"))
         } else {
             None
@@ -227,8 +217,6 @@ impl FieldDefType {
             Self::I16 => (Some(-32_768.0), Some(32_767.0)),
             Self::I32 => (Some(-2_147_483_648.0), Some(2_147_483_647.0)),
             Self::I64
-            | Self::I64Digits
-            | Self::U64Digits
             | Self::Isize
             | Self::F32
             | Self::F64
@@ -263,12 +251,10 @@ impl FieldDefType {
                 | Self::U16
                 | Self::U32
                 | Self::U64
-                | Self::U64Digits
                 | Self::I8
                 | Self::I16
                 | Self::I32
                 | Self::I64
-                | Self::I64Digits
                 | Self::Usize
                 | Self::Isize
                 | Self::F32
@@ -282,11 +268,11 @@ impl FieldDefType {
             Self::U8 => Some("u8"),
             Self::U16 => Some("u16"),
             Self::U32 => Some("u32"),
-            Self::U64 | Self::U64Digits => Some("u64"),
+            Self::U64 => Some("u64"),
             Self::I8 => Some("i8"),
             Self::I16 => Some("i16"),
             Self::I32 => Some("i32"),
-            Self::I64 | Self::I64Digits => Some("i64"),
+            Self::I64 => Some("i64"),
             Self::Usize => Some("usize"),
             Self::Isize => Some("isize"),
             Self::F32 => Some("f32"),
@@ -308,18 +294,6 @@ impl FieldDefType {
             Self::ObjectId => None,
             #[cfg(feature = "chrono")]
             Self::DateTime | Self::NaiveDate | Self::NaiveDateTime | Self::NaiveTime => None,
-        }
-    }
-
-    /// What a `u64` or an `i64` a member writes itself is: the digit string the macro writes it
-    /// as. Every other type is itself.
-    fn with_digits(self) -> Self {
-        if matches!(self, Self::U64) {
-            Self::U64Digits
-        } else if matches!(self, Self::I64) {
-            Self::I64Digits
-        } else {
-            self
         }
     }
 }
@@ -435,12 +409,10 @@ impl FieldDef {
             | FieldDefType::U16
             | FieldDefType::U32
             | FieldDefType::U64
-            | FieldDefType::U64Digits
             | FieldDefType::I8
             | FieldDefType::I16
             | FieldDefType::I32
             | FieldDefType::I64
-            | FieldDefType::I64Digits
             | FieldDefType::Usize
             | FieldDefType::Isize
             | FieldDefType::F32
@@ -452,6 +424,18 @@ impl FieldDef {
             | FieldDefType::NaiveTime
             | FieldDefType::NaiveDateTime
             | FieldDefType::DateTime => None,
+        }
+    }
+
+    /// The value of the `literal` a `u64` or an `i64` member is held to, as decimal digits, and
+    /// `None` where it is held to none.
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    pub fn bigint_literal(&self) -> Option<String> {
+        let literal = self.model_schema_prop_meta.as_ref()?.literal.as_ref()?;
+        match literal {
+            LiteralValue::Integer(value) => Some(value.to_string()),
+            LiteralValue::Number(value) => Some(format_number_literal(*value)),
+            LiteralValue::Bool(_) | LiteralValue::Str(_) => None,
         }
     }
 
@@ -502,12 +486,10 @@ impl FieldDef {
             | FieldDefType::U16
             | FieldDefType::U32
             | FieldDefType::U64
-            | FieldDefType::U64Digits
             | FieldDefType::I8
             | FieldDefType::I16
             | FieldDefType::I32
             | FieldDefType::I64
-            | FieldDefType::I64Digits
             | FieldDefType::Usize
             | FieldDefType::Isize
             | FieldDefType::F32
@@ -563,12 +545,10 @@ impl FieldDef {
             | FieldDefType::U16
             | FieldDefType::U32
             | FieldDefType::U64
-            | FieldDefType::U64Digits
             | FieldDefType::I8
             | FieldDefType::I16
             | FieldDefType::I32
             | FieldDefType::I64
-            | FieldDefType::I64Digits
             | FieldDefType::Usize
             | FieldDefType::Isize
             | FieldDefType::F32
@@ -580,18 +560,6 @@ impl FieldDef {
             | FieldDefType::NaiveTime
             | FieldDefType::NaiveDateTime
             | FieldDefType::DateTime => false,
-        }
-    }
-
-    /// The value of the `literal` a `u64` or an `i64` member is held to, as decimal digits, and
-    /// `None` where it is held to none.
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-    pub fn digits_literal(&self) -> Option<String> {
-        let literal = self.model_schema_prop_meta.as_ref()?.literal.as_ref()?;
-        match literal {
-            LiteralValue::Integer(value) => Some(value.to_string()),
-            LiteralValue::Number(value) => Some(format_number_literal(*value)),
-            LiteralValue::Bool(_) | LiteralValue::Str(_) => None,
         }
     }
 
@@ -634,7 +602,7 @@ impl FieldDef {
             FieldDefType::F64 => ("F64", Vec::new(), &[]),
             FieldDefType::I16 => ("I16", Vec::new(), &[]),
             FieldDefType::I32 => ("I32", Vec::new(), &[]),
-            FieldDefType::I64 | FieldDefType::I64Digits => ("I64", Vec::new(), &[]),
+            FieldDefType::I64 => ("I64", Vec::new(), &[]),
             FieldDefType::I8 => ("I8", Vec::new(), &[]),
             FieldDefType::Isize => ("Isize", Vec::new(), &[]),
             FieldDefType::Map(_, value) => ("Map", Vec::new(), from_ref(&**value)),
@@ -671,7 +639,7 @@ impl FieldDef {
             FieldDefType::TypeParam(name) => ("TypeParam", vec![name.clone()], &[]),
             FieldDefType::U16 => ("U16", Vec::new(), &[]),
             FieldDefType::U32 => ("U32", Vec::new(), &[]),
-            FieldDefType::U64 | FieldDefType::U64Digits => ("U64", Vec::new(), &[]),
+            FieldDefType::U64 => ("U64", Vec::new(), &[]),
             FieldDefType::U8 => ("U8", Vec::new(), &[]),
             FieldDefType::Unknown => ("Unknown", Vec::new(), &[]),
             FieldDefType::Usize => ("Usize", Vec::new(), &[]),
@@ -746,12 +714,10 @@ impl FieldDef {
             | FieldDefType::U16
             | FieldDefType::U32
             | FieldDefType::U64
-            | FieldDefType::U64Digits
             | FieldDefType::I8
             | FieldDefType::I16
             | FieldDefType::I32
             | FieldDefType::I64
-            | FieldDefType::I64Digits
             | FieldDefType::Usize
             | FieldDefType::Isize
             | FieldDefType::F32
@@ -948,6 +914,12 @@ impl FieldDef {
         if matches!(self.field_type, FieldDefType::Boolean) {
             return MapKeyWire::Boolean;
         }
+        if matches!(self.field_type, FieldDefType::I64) {
+            return MapKeyWire::Signed64;
+        }
+        if matches!(self.field_type, FieldDefType::U64) {
+            return MapKeyWire::Unsigned64;
+        }
         #[cfg(feature = "chrono")]
         if matches!(self.field_type, FieldDefType::DateTime) {
             return MapKeyWire::Timestamp;
@@ -1022,12 +994,10 @@ impl FieldDef {
             | FieldDefType::U16
             | FieldDefType::U32
             | FieldDefType::U64
-            | FieldDefType::U64Digits
             | FieldDefType::I8
             | FieldDefType::I16
             | FieldDefType::I32
             | FieldDefType::I64
-            | FieldDefType::I64Digits
             | FieldDefType::Usize
             | FieldDefType::Isize
             | FieldDefType::F32
@@ -1084,12 +1054,10 @@ impl FieldDef {
             | FieldDefType::U16
             | FieldDefType::U32
             | FieldDefType::U64
-            | FieldDefType::U64Digits
             | FieldDefType::I8
             | FieldDefType::I16
             | FieldDefType::I32
             | FieldDefType::I64
-            | FieldDefType::I64Digits
             | FieldDefType::Usize
             | FieldDefType::Isize
             | FieldDefType::F32
@@ -1224,12 +1192,10 @@ impl FieldDef {
             | FieldDefType::U16
             | FieldDefType::U32
             | FieldDefType::U64
-            | FieldDefType::U64Digits
             | FieldDefType::I8
             | FieldDefType::I16
             | FieldDefType::I32
             | FieldDefType::I64
-            | FieldDefType::I64Digits
             | FieldDefType::Usize
             | FieldDefType::Isize
             | FieldDefType::F32
@@ -1257,36 +1223,6 @@ impl FieldDef {
         for nested in self.nested_type_positions() {
             nested.place_type_parameters(parameters);
         }
-    }
-
-    /// `target`, the field an alias names, placed under the levels this field, written with the
-    /// alias's name, holds it in.
-    #[cfg(feature = "serde")]
-    fn placed_over(&self, target: Self) -> Self {
-        let mut placed = target;
-        let below = placed.array_depth;
-        for level in &self.nullable_levels {
-            placed.mark_nullable_at(level.saturating_add(below));
-        }
-        for &(level, length) in &self.array_lengths {
-            placed.mark_fixed_length_at(level.saturating_add(below), length);
-        }
-        for level in &self.set_levels {
-            placed.mark_set_at(level.saturating_add(below));
-        }
-        placed.array_depth = placed.array_depth.saturating_add(self.array_depth);
-        placed.name.clone_from(&self.name);
-        placed.docs.clone_from(&self.docs);
-        placed
-            .model_schema_prop_meta
-            .clone_from(&self.model_schema_prop_meta);
-        placed.omits_value = self.omits_value;
-        placed.absent_from_wire = self.absent_from_wire;
-        #[cfg(any(feature = "zod", feature = "jsonschema"))]
-        placed.serde_default.clone_from(&self.serde_default);
-        #[cfg(feature = "jsonschema")]
-        placed.type_span.clone_from(&self.type_span);
-        placed
     }
 
     /// The first name this field reaches, at any depth, that `refused` answers for. A name is only
@@ -1327,12 +1263,10 @@ impl FieldDef {
             | FieldDefType::U16
             | FieldDefType::U32
             | FieldDefType::U64
-            | FieldDefType::U64Digits
             | FieldDefType::I8
             | FieldDefType::I16
             | FieldDefType::I32
             | FieldDefType::I64
-            | FieldDefType::I64Digits
             | FieldDefType::Usize
             | FieldDefType::Isize
             | FieldDefType::F32
@@ -1382,12 +1316,10 @@ impl FieldDef {
             | FieldDefType::U16
             | FieldDefType::U32
             | FieldDefType::U64
-            | FieldDefType::U64Digits
             | FieldDefType::I8
             | FieldDefType::I16
             | FieldDefType::I32
             | FieldDefType::I64
-            | FieldDefType::I64Digits
             | FieldDefType::Usize
             | FieldDefType::Isize
             | FieldDefType::F32
@@ -1494,12 +1426,10 @@ impl FieldDef {
             | FieldDefType::U16
             | FieldDefType::U32
             | FieldDefType::U64
-            | FieldDefType::U64Digits
             | FieldDefType::I8
             | FieldDefType::I16
             | FieldDefType::I32
             | FieldDefType::I64
-            | FieldDefType::I64Digits
             | FieldDefType::Usize
             | FieldDefType::Isize
             | FieldDefType::F32
@@ -1599,15 +1529,13 @@ impl FieldDef {
             FieldDefType::U8
             | FieldDefType::U16
             | FieldDefType::U32
-            | FieldDefType::U64
             | FieldDefType::I8
             | FieldDefType::I16
             | FieldDefType::I32
-            | FieldDefType::I64
             | FieldDefType::Usize
             | FieldDefType::Isize => "number".to_owned(),
-            FieldDefType::U64Digits | FieldDefType::I64Digits => self
-                .digits_literal()
+            FieldDefType::U64 | FieldDefType::I64 => self
+                .bigint_literal()
                 .map_or_else(|| "bigint".to_owned(), |literal| format!("{literal}n")),
             FieldDefType::F32 | FieldDefType::F64 => "number".to_owned(),
             #[cfg(feature = "mongodb")]
@@ -1647,6 +1575,7 @@ impl FieldDef {
         }
         match self.map_key_wire() {
             MapKeyWire::Boolean => BOOLEAN_KEY_TYPESCRIPT.to_owned(),
+            MapKeyWire::Signed64 | MapKeyWire::Unsigned64 => "number".to_owned(),
             #[cfg(feature = "chrono")]
             MapKeyWire::Timestamp => "string".to_owned(),
             MapKeyWire::Enumerated | MapKeyWire::Named => self.typescript_typename(),
@@ -1764,57 +1693,6 @@ impl FieldDef {
         value
     }
 
-    /// The field with each `u64` and `i64` it writes itself read as the digit string the macro
-    /// writes it as: the value, and what a tuple, a set, a map's value, a range's bound, a
-    /// `Result`'s arm and an alias declared above hold, at any depth. A map's key and what fills
-    /// another type's parameter are written by serde's own impl of what holds them, and keep the
-    /// number.
-    #[must_use]
-    pub fn with_digit_leaves(mut self) -> Self {
-        // The alias publishes the number its target writes elsewhere, so the digits are written
-        // here in its place, as a key loses an alias whose schema does not describe it.
-        #[cfg(feature = "serde")]
-        if let FieldDefType::SiblingType(name, arguments) = &self.field_type
-            && arguments.is_empty()
-            && let Some(target) = alias_written_as_digits(name)
-        {
-            let named = get_field_def(&self.name, &target, &self.docs);
-            return self.placed_over(named).with_digit_leaves();
-        }
-        self.field_type = if let FieldDefType::Tuple(elements) = self.field_type {
-            FieldDefType::Tuple(elements.into_iter().map(Self::with_digit_leaves).collect())
-        } else if let FieldDefType::Map(key, value) = self.field_type {
-            FieldDefType::Map(key, Box::new(value.with_digit_leaves()))
-        } else if let FieldDefType::Range(kind, bound) = self.field_type {
-            FieldDefType::Range(kind, Box::new(bound.with_digit_leaves()))
-        } else if let FieldDefType::Result(ok, err) = self.field_type {
-            FieldDefType::Result(
-                Box::new(ok.with_digit_leaves()),
-                Box::new(err.with_digit_leaves()),
-            )
-        } else if let FieldDefType::SiblingType(name, arguments) = self.field_type {
-            let held = if is_sequence_wrapper(&name) {
-                arguments.into_iter().map(Self::with_digit_leaves).collect()
-            } else {
-                arguments
-            };
-            FieldDefType::SiblingType(name, held)
-        } else {
-            self.field_type.with_digits()
-        };
-        self
-    }
-
-    /// [`Self::with_digit_leaves`] where `written` holds, and `self` as it is otherwise.
-    #[must_use]
-    pub fn with_digit_leaves_where(self, written: bool) -> Self {
-        if written {
-            self.with_digit_leaves()
-        } else {
-            self
-        }
-    }
-
     /// This field with each alias of an `Option` that declares a type parameter, at any depth,
     /// written in place at the arguments written for it: Kotlin declares no alias of a nullable
     /// type parameter.
@@ -1925,14 +1803,12 @@ impl FieldDef {
             FieldDefType::U8
             | FieldDefType::U16
             | FieldDefType::U32
-            | FieldDefType::U64
             | FieldDefType::I8
             | FieldDefType::I16
             | FieldDefType::I32
-            | FieldDefType::I64
             | FieldDefType::Usize
             | FieldDefType::Isize => self.zod_number_type("z.number().int()"),
-            FieldDefType::U64Digits | FieldDefType::I64Digits => self.zod_digits_type(),
+            FieldDefType::U64 | FieldDefType::I64 => self.zod_bigint_type(),
             FieldDefType::F32 => self.zod_number_type(&format!(
                 "z.number().gt(-{F32_READ_BOUND}).lt({F32_READ_BOUND})"
             )),
@@ -1991,40 +1867,28 @@ impl FieldDef {
         self.zod_preprocess_wrap(self.zod_checked_base())
     }
 
-    /// [`Self::zod_array_base`] with the checks the field names written on it: the schema of the
-    /// value a check takes, under any `Option` and inside any `preprocess`.
+    /// Builds the Zod codec of a `u64` or an `i64`: a `bigint`, or a `number` a JavaScript reader
+    /// holds exactly, read as a `bigint` held to the range of its type and to each declared bound,
+    /// or to its `literal`, and a `bigint` written back as it is. A side of the range a declared
+    /// bound narrows is left to the bound, which compares the bound the Rust validator casts it to.
     #[cfg(feature = "zod")]
-    fn zod_checked_base(&self) -> String {
-        zod_check_wrap(self.zod_array_base(), self.checks())
-    }
-
-    /// Builds the Zod codec of a `u64` or an `i64` written as its digit string: the string, read
-    /// as a `bigint` held to the range of its type and to each declared bound, and a `bigint`
-    /// written back as its digits. A side of the range a declared bound narrows is left to the
-    /// bound, which compares the bound the Rust validator casts it to.
-    #[cfg(feature = "zod")]
-    fn zod_digits_type(&self) -> String {
-        let Some((least, most)) = self.field_type.digit_range() else {
+    fn zod_bigint_type(&self) -> String {
+        let Some((least, most)) = self.field_type.bigint_range() else {
             return "z.never()".to_owned();
         };
-        let sign = if least.starts_with('-') { "-?" } else { "" };
-        let digits = format!("z.string().regex(/^{sign}(0|[1-9][0-9]*)$/)");
-        // The literal is held on the digits, where a `bigint` read from them would not narrow to
-        // the literal's type.
-        if let Some(literal) = self.digits_literal() {
-            let written = self.zod_literal_of(&format!("\"{literal}\""), "string");
+        // `z.number().int()` refuses a number beyond 2^53 - 1, which a reader has already rounded.
+        let read = "z.union([z.bigint(), z.number().int()])";
+        let declared = self.model_schema_prop_meta.as_ref();
+        if let Some(literal) = declared.and_then(|meta| meta.literal.as_ref())
+            && let Some(digits) = self.bigint_literal()
+        {
+            let reported = zod_error_arg(Bound::Literal(literal));
             return format!(
-                "z.codec({digits}.pipe({written}), z.literal({literal}n), {{ decode: (): \
-                 {literal}n => {literal}n, encode: (): \"{literal}\" => \"{literal}\" }})"
+                "z.codec({read}.check(z.refine((value) => BigInt(value) === {digits}n, \
+                 {reported})), z.literal({digits}n), {{ decode: (): {digits}n => {digits}n, \
+                 encode: (): {digits}n => {digits}n }})"
             );
         }
-        let codec = |held: &str| {
-            format!(
-                "z.codec({digits}, {held}, {{ decode: (text) => BigInt(text), encode: (value) => \
-                 value.toString() }})"
-            )
-        };
-        let declared = self.model_schema_prop_meta.as_ref();
         let minimum = declared.and_then(|meta| meta.minimum);
         let maximum = declared.and_then(|meta| meta.maximum);
         let (least_held, most_held) = (
@@ -2048,7 +1912,17 @@ impl FieldDef {
             let reported = zod_error_arg(Bound::Maximum(max));
             held = format!("{held}.max({}n, {reported})", whole(max));
         }
-        codec(&held)
+        format!(
+            "z.codec({read}, {held}, {{ decode: (value) => BigInt(value), encode: (value) => value \
+             }})"
+        )
+    }
+
+    /// [`Self::zod_array_base`] with the checks the field names written on it: the schema of the
+    /// value a check takes, under any `Option` and inside any `preprocess`.
+    #[cfg(feature = "zod")]
+    fn zod_checked_base(&self) -> String {
+        zod_check_wrap(self.zod_array_base(), self.checks())
     }
 
     /// Every factory call this field's schema is written with, outermost only and once each, in
@@ -2175,6 +2049,8 @@ impl FieldDef {
             MapKeyWire::Enumerated => {
                 format!("z.partialRecord({}, {value_schema})", self.zod_type())
             }
+            MapKeyWire::Signed64 => format!("z.record(z.number().int(), {value_schema})"),
+            MapKeyWire::Unsigned64 => format!("z.record(z.number().int().min(0), {value_schema})"),
             #[cfg(feature = "chrono")]
             MapKeyWire::Timestamp => format!("z.record({TIMESTAMP_KEY_ZOD}, {value_schema})"),
             MapKeyWire::Named => format!("z.record({}, {value_schema})", self.zod_type()),
@@ -3065,12 +2941,6 @@ fn literal_array_length(len: &syn::Expr) -> Option<usize> {
         return None;
     };
     literal.base10_parse::<usize>().ok()
-}
-
-/// The field of a value a service carries bare, where no member holds it: [`get_field_def`], each
-/// `u64` and `i64` it holds read as the digit string it travels as.
-pub fn bare_field_def(name: &str, ty: &Type) -> FieldDef {
-    get_field_def(name, ty, "").with_digit_leaves()
 }
 
 /// Debug logging: Set `RUST_LOG=trace` to see HashMap/SiblingType creation.

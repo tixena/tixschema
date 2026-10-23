@@ -32,7 +32,6 @@ mod across_modules;
 mod aliased;
 mod bounds;
 mod checks;
-mod digits;
 mod enum_shapes;
 mod flattened;
 mod flattened_shapes;
@@ -58,6 +57,7 @@ mod shadowing;
 #[cfg(all(feature = "chrono", feature = "mongodb"))]
 mod stored_record;
 mod struct_shapes;
+mod wide_integers;
 
 use alloc::borrow::Cow;
 use core::error::Error;

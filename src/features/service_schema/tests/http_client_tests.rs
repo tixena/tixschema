@@ -111,7 +111,7 @@ fn a_bodied_operation_fills_a_literal_path_and_serializes_the_validated_message_
         "a bodied method carries no query string. Got: {method}"
     );
     assert!(
-        method.contains("const body = new TextEncoder().encode(JSON.stringify(documentClientServiceHttpSent(sending)));"),
+        method.contains("const body = new TextEncoder().encode(JSON.stringify(validated.sent));"),
         "the body is the validated message, not the raw argument, as its UTF-8 bytes. \
          Got: {method}"
     );
@@ -214,7 +214,7 @@ fn a_header_in_binding_becomes_an_extra_argument_and_a_built_header() {
         method.contains("const headers: Array<[string, string]> = [];")
             && method.contains(
                 "        const held = z.union([z.null().transform(() => undefined), z.string(), \
-                 z.undefined()]).prefault(undefined).safeParse(documentClientServiceHttpSent(byteRange));\n        \
+                 z.undefined()]).prefault(undefined).safeParse(byteRange);\n        \
                  if (!held.success) {\n          \
                  return {\n            \
                  ok: false,\n            \
@@ -446,9 +446,7 @@ fn every_method_validates_before_it_ever_names_the_transport() {
         ("getVersion", "GetVersionRequest$Schema"),
     ] {
         let method = method_body(&written, call);
-        let checked = method.find(&format!(
-            "{schema}.safeParse(documentClientServiceHttpSent(req))"
-        ));
+        let checked = method.find(&format!("documentClientServiceHttpChecked({schema}, req)"));
         let reached = method.find("transport.send(");
         assert!(checked.is_some() && reached.is_some(), "got: {method}");
         assert!(
@@ -674,7 +672,7 @@ fn an_argument_named_after_a_word_typescript_refuses_takes_a_trailing_underscore
     let written = http_client_of(RESERVED_WORD_SERVICE);
     for moved in [
         "async for(req: ForRequest, default_: string | undefined) {",
-        "safeParse(lookupServiceHttpSent(default_));",
+        "safeParse(default_);",
         "const rendered = lookupServiceHttpWireText(held.data);",
         "headers.push([\"x-tenant\", rendered]);",
     ] {
@@ -687,8 +685,8 @@ fn an_argument_named_after_a_local_of_the_method_is_moved_off_it() {
     let written = http_client_of(SHADOWED_LOCAL_SERVICE);
     for moved in [
         "async shadow(req: ShadowRequest, headers_: string, path_: string | undefined) {",
-        "z.string().safeParse(shadowServiceHttpSent(headers_));",
-        "safeParse(shadowServiceHttpSent(path_));",
+        "z.string().safeParse(headers_);",
+        "safeParse(path_);",
     ] {
         assert!(written.contains(moved), "no `{moved}` in: {written}");
     }

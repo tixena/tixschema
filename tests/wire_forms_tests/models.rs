@@ -86,19 +86,15 @@ pub const WIRE_FORMS: &[WireFormRow] = &[
         "invalid value: integer `3000000000`, expected i32 at line 1 column 21",
         NARROW_REFUSED,
     ),
-    row(
-        "ConveyedI64",
-        "-9007199254740991",
-        r#"read, written back as {"keyed":{"-9007199254740991":true},"value":"-9007199254740991","values":["-9007199254740991"]}"#,
-        digits_apart(r#""-9007199254740991""#, "-9007199254740991"),
-    ),
+    row("ConveyedI64", "-9007199254740991", "read", ALL_HANDED),
+    // TypeScript holds a map's key of an `i64` as a `number`, which does not hold this one.
     row(
         "ConveyedI64",
         "1152921504606846976",
-        r#"read, written back as {"keyed":{"1152921504606846976":true},"value":"1152921504606846976","values":["1152921504606846976"]}"#,
+        "read",
         Clients {
             typescript: Sends::Unheld,
-            ..digits_apart(r#""1152921504606846976""#, "1152921504606846976")
+            ..ALL_HANDED
         },
     ),
     row("ConveyedIsize", "9007199254740991", "read", ALL_HANDED),
@@ -121,15 +117,8 @@ pub const WIRE_FORMS: &[WireFormRow] = &[
             ..WIDE_HANDED
         },
     ),
-    row(
-        "ConveyedU64",
-        "1152921504606846976",
-        "read",
-        Clients {
-            typescript: Sends::Unheld,
-            ..WIDE_HANDED
-        },
-    ),
+    row("ConveyedU64", "1152921504606846976", "read", WIDE_HANDED),
+    row("ConveyedU64", "18446744073709551615", "read", WIDE_HANDED),
     row("ConveyedUsize", "9007199254740991", "read", WIDE_HANDED),
     row(
         "ConveyedUsize",
@@ -567,8 +556,7 @@ pub struct ConveyedI32 {
     pub values: Vec<i32>,
 }
 
-/// An `i64`, written as the string of its digits but as a key, which serde writes as the text of
-/// the number.
+/// An `i64`, which TypeScript holds as a `bigint`.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedI64 {
@@ -709,18 +697,6 @@ pub struct ConveyedSlotted {
 pub struct ConveyedObjectId {
     pub value: ObjectId,
     pub values: Vec<ObjectId>,
-}
-
-/// Every client sends the value as the string of its digits, and the key as the number it was
-/// handed.
-const fn digits_apart(digits: &'static str, key: &'static str) -> Clients {
-    let sent = Sends::Apart(digits, key);
-    Clients {
-        dart: sent,
-        kotlin: sent,
-        swift: sent,
-        typescript: sent,
-    }
 }
 
 /// One row of [`WIRE_FORMS`].

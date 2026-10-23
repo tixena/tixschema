@@ -126,8 +126,8 @@ mod zod_ts_tests {
 
         let zod = SequenceNum::zod_schema();
         assert!(
-            zod.contains("z.codec(z.string().regex(/^-?(0|[1-9][0-9]*)$/), z.bigint()"),
-            "Should read an i64 from the string of its digits. Got: {zod}"
+            zod.contains("z.codec(z.union([z.bigint(), z.number().int()]), z.bigint()"),
+            "Should read an i64 from a bigint or a number. Got: {zod}"
         );
         assert!(
             zod.contains("SequenceNum$RawSchema"),

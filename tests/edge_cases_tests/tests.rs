@@ -267,7 +267,7 @@ fn test_original_bug_reproduction_json_schema() {
     );
     assert_eq!(
         properties["problematic_map"]["additionalProperties"]["items"]["type"],
-        "string"
+        "integer"
     );
 
     assert_eq!(
@@ -276,7 +276,7 @@ fn test_original_bug_reproduction_json_schema() {
     );
     assert_eq!(
         properties["string_to_vec_i64"]["additionalProperties"]["items"]["type"],
-        "string"
+        "integer"
     );
 
     assert_eq!(
