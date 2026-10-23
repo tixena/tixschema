@@ -4485,7 +4485,7 @@ parcel.validate();
 
 - `model_schema_read_unjudged` is a name of the type's own: a function of yours under that name on the same type is a duplicate definition (E0592). A type whose [`enable` list](#opting-in) holds `"decode_with"` gains `decode_with_read_unjudged` beside it.
 - A brand that carries a `pattern`, a `minLength` or a `maxLength` gains `model_schema_validate_bound` beside `validate()`: what the bound alone answers of the value, the checks the brand names apart. A member of an `#[serde(untagged)]` enum is held to it as it is read, and the recovering decode lists the brand from a read held to it. It is a name of the type's own as well.
-- The `Deserialize` is written under the bounds serde's derive writes. A container `#[serde(bound = ...)]` is used as written. Without one, each type parameter a read field names is asked `Deserialize<'de>`, a parameter used only in `PhantomData`, in a skipped field or in a field read through `with` or `deserialize_with` is asked nothing to read, a `default` asks `Default` of what it builds, and `'de` outlives each lifetime serde borrows for: a `&'a str`, a `&'a [u8]`, and what a `#[serde(borrow)]` names. A type that borrows for `'static` is read at `'static`.
+- The `Deserialize` is written under the bounds serde's derive writes. A container `#[serde(bound = ...)]` is used as written. Without one, each type parameter a read field names is asked `Deserialize<'de>`, a parameter used only in `PhantomData`, in a skipped field or in a field read through `with` or `deserialize_with` is asked nothing to read, a `default` asks `Default` of what it builds, and `'de` outlives each lifetime serde borrows for: a `&'a str`, a `&'a [u8]`, and what a `#[serde(borrow)]` names. A type that borrows for `'static` is read at `'static`. The bounds are those of the type as you wrote it: the hook the macro hangs on a constrained member of an `#[serde(untagged)]` enum, and the `default` it writes beside one, ask nothing more. So `listed: Vec<(u32, Key)>` under a `minLength`, in an enum that declares `Key`, asks `Key: Deserialize<'de>`, and `Option<Vec<Key>>` asks no `Default` of `Key`.
 - A unit struct with a check gains the `validate()` call in the `Deserialize` the macro already writes for it.
 - `#[serde(remote = ...)]`, `from`, `try_from` and `into` on a type that publishes `validate()` and derives `Deserialize` are refused, the macro having no place to put a judgement behind a conversion it does not write:
 
@@ -4497,8 +4497,35 @@ error: model_schema: type `Sealed`: `#[serde(try_from = ...)]` puts a conversion
 
 A field still generates both helpers into its schema module: `validate_{field}_value()`, which `validate()` calls, and `deserialize_{field}`, a serde hook an author may hang on a field of their own accord. A field read through a reference generates the validator alone. Two positions are checked while the members are read, ahead of the type's `validate()`, and both have to be:
 
-- **A member of an `#[serde(untagged)]` enum**, a struct variant's named member and a newtype variant's slot alike, where whether the member is admissible is what chooses which variant the payload is. The check is part of reading the value rather than part of judging it -- exactly as it is under `anyOf` and `z.union` on the two schema surfaces the same type publishes -- and `validate()` cannot stand in for it, since by the time it runs the variant has already been chosen. A wrapped member's hook deserializes the member's own declared type and then runs the same walk `validate()` runs over it; the two differ in that `validate()` answers with every violation in the instance while a `Deserializer` answers with one line, so the read stops at the first value that broke a bound and hands serde that value's violations joined by `; `. A member read through a reference, a borrowed `&str` or a borrowed list among them, and a member its author reads through a `deserialize_with` or a `with` of their own, serde admitting one reader per field, are the constrained members that choose no variant: each is read with no bound written, the first variant whose shape fits taking the payload, and the enum's read then refuses the value where it breaks the bound.
+- **A member of an `#[serde(untagged)]` enum**, a struct variant's named member and a newtype variant's slot alike, where whether the member is admissible is what chooses which variant the payload is. The check is part of reading the value rather than part of judging it, so the member's own bound chooses the variant as it does under `anyOf` and `z.union` on the two schema surfaces the same type publishes, and `validate()` cannot stand in for it, since by the time it runs the variant has already been chosen. A wrapped member's hook deserializes the member's own declared type and then runs the same walk `validate()` runs over it; the two differ in that `validate()` answers with every violation in the instance while a `Deserializer` answers with one line, so the read stops at the first value that broke a bound and hands serde that value's violations joined by `; `. A member read through a reference, a borrowed `&str` or a borrowed list among them, and a member its author reads through a `deserialize_with` or a `with` of their own, serde admitting one reader per field, are the constrained members that choose no variant: each is read with no bound written, the first variant whose shape fits taking the payload, and the enum's read then refuses the value where it breaks the bound.
 - **A constrained brand held by a member of an `#[serde(untagged)]` enum**, where the same reasoning applies: the member is held to the brand's `pattern`, `minLength` and `maxLength` as it is read, so a value the brand's bound refuses takes that variant out of the running. A [check](#checks-check) the brand names chooses no variant, as no check does: the variant is chosen first, and the enum's read then refuses the value with the check's messages. Held anywhere else, a brand is read with no judgement, as a model is, and the holder's `validate()` judges it.
+
+A rule of a model a member holds, its checks included, chooses no variant. The first variant whose shape reads the payload takes it, and the enum's read then refuses the value where the model breaks its rule. Zod's `z.union` and the JSON Schema's `anyOf` try the next variant there instead, so each of the two schema surfaces reads a payload serde refuses:
+
+```rust
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+pub struct Bale {
+    #[model_schema_prop(minLength = 1)]
+    pub label: String,
+}
+
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+pub struct Loose {
+    pub label: String,
+}
+
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Picker {
+    A(Bale),
+    B(Loose),
+}
+```
+
+`{"label":""}` read as `Picker` is `Picker::A`, the first variant whose shape reads it, and serde refuses it with `'label': too short: minimum length is 1, got 0`. `Picker$Schema.safeParse({ label: "" })` answers `{"success":true,"data":{"label":""}}`, the payload read as `B`, and the second branch of the JSON Schema's `anyOf` admits it. serde writes `Picker::B(Loose { label: String::new() })` as that payload, and does not read it back. A struct of one slot is such a model too: serde writes it as the slot's value, as it writes a brand, but a bound on its slot chooses no variant, so `0` read as `#[serde(untagged)] pub enum Chooser { A(Count), B(u32) }`, over `pub struct Count(#[model_schema_prop(minimum = 1)] pub u32);`, is refused with `too small: minimum is 1, got 0`, where Zod reads it as `B`. The [Dart](#the-dart-read-refuses-what-validate-refuses), [Swift](#a-swift-read-refuses-what-validate-refuses) and [Kotlin](#the-read-in-the-kotlin-client) reads take the variant serde takes, and refuse the value as serde does.
 
 The [recovering decode](#recovering-decode-decode_with) lists what a plain read refuses. `from_value_with` and `from_value_piped`, `from_bson_with` and `from_bson_piped` read with the type's read alone, run each field's validator on the value serde read, and the validator of each slot of a tuple struct and of a tagged tuple variant, and list the violations of each value as one issue, which is what lets a callback or a resolver repair a stored value. The [MongoDB reads](#rows-that-do-not-read-as-the-type) of a type that lists `"mongodb"` read each row the same way, so a row that breaks a bound is refused until a resolver repairs it. See [What each shape reports](#what-each-shape-reports). A [service's dispatcher](#service-validation) reads a request with the read alone as well and calls `validate()` next, so a broken bound is a `failed-validation` fault with its field.
 

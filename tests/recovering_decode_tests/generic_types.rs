@@ -78,6 +78,21 @@ struct Keyed<I, F> {
     id: I,
 }
 
+/// An untagged enum whose bounded member names its parameter: the hook its bound is read through,
+/// and the `default` beside it, ask no `Default` of the parameter.
+#[model_schema(enable = ["decode_with"], default_types(T = String))]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(untagged)]
+enum ProbeStowed<T> {
+    Pile {
+        #[model_schema_prop(minLength = 1)]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pile: Option<Vec<T>>,
+        tag: u8,
+    },
+    Text(String),
+}
+
 /// A type with no parameter, naming generic types filled with a model type and with text.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -414,5 +429,48 @@ fn a_type_whose_parameters_are_named_as_the_methods_own_builds_and_reads() {
             "format: missing: expected TypeParam(\"F\")",
             "id: invalid: expected TypeParam(\"I\"), found String(\"seven\"): invalid type: string \"seven\", expected u32",
         ]
+    );
+}
+
+#[test]
+fn an_untagged_member_bounded_over_the_parameter_reads_at_a_filling_with_no_default() {
+    let mut calls = 0_u32;
+    let stored = json!({ "pile": [{ "label": "a" }], "tag": 1_i32 });
+    let read = ProbeStowed::<Plain>::from_value_with(stored, |_raw, _found| {
+        calls += 1;
+        probe_stowed_schema::Verdict::Reject
+    });
+    assert_eq!(
+        read,
+        Ok(ProbeStowed::Pile {
+            pile: Some(vec![Plain {
+                label: "a".to_owned()
+            }]),
+            tag: 1,
+        })
+    );
+    let absent = ProbeStowed::<Plain>::from_value_with(json!({ "tag": 1_i32 }), |_raw, _found| {
+        calls += 1;
+        probe_stowed_schema::Verdict::Reject
+    });
+    assert_eq!(absent, Ok(ProbeStowed::Pile { pile: None, tag: 1 }));
+    assert_eq!(calls, 0);
+}
+
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn an_untagged_member_bounded_over_the_parameter_lists_its_count() {
+    let stored = json!({ "pile": [], "tag": 1_i32 });
+    let read = ProbeStowed::<Plain>::from_value_with(stored, |_raw, _found| {
+        probe_stowed_schema::Verdict::Reject
+    });
+    assert_eq!(
+        format!("{:?}", read.unwrap_err().issues),
+        "[NoVariant { path: Path([]), found: Object {\"pile\": Array [], \"tag\": Number(1)}, \
+         variants: [(\"Pile\", [Invalid { path: Path([Key(\"pile\")]), expected: \
+         Optional(Array(TypeParam(\"T\"))), found: Array [], reason: \"'pile': too short: minimum \
+         length is 1, got 0\" }]), (\"Text\", [Invalid { path: Path([]), expected: String, found: \
+         Object {\"pile\": Array [], \"tag\": Number(1)}, reason: \"invalid type: map, expected a \
+         string\" }])] }]"
     );
 }

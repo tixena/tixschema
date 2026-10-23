@@ -28,7 +28,6 @@ use syn::{
 
 use self::aliases::Reach;
 use crate::features::model_schema_prop::FunctionName;
-use crate::features::serde::read_bounds::read_bounds;
 use crate::features::serde::{
     Direction, NAMED_READ_HOOK_PREFIX, SerdeFieldHooks, Tagging, has_serde_default,
     has_serde_read_hook, has_serde_skip_serializing, has_serde_transparent, parse_read_renames,
@@ -41,7 +40,7 @@ use crate::field_type::{
 };
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use crate::model_schema::judged_read::bounded_listed_read;
-use crate::model_schema::judged_read::{listed_read, listed_reader};
+use crate::model_schema::judged_read::{authored_read_bounds, listed_read, listed_reader};
 use crate::model_schema::preprocess;
 use crate::model_schema::{helper_name_stem, recovering_bound_check};
 use crate::rename_rule::resolve_rename_rule;
@@ -2384,7 +2383,8 @@ fn listed_from(item_struct: &ItemStruct, read: TokenStream, mongodb: bool) -> Re
             names,
             reach: &reach,
             read,
-            read_predicates: read_bounds(&DeriveInput::from(item_struct.clone())).predicates,
+            read_predicates: authored_read_bounds(&DeriveInput::from(item_struct.clone()))
+                .predicates,
         },
         &paths,
         |walker| walker.methods(&shape, lone_bound.as_ref()),
