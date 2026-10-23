@@ -120,14 +120,14 @@ mod zod_ts_tests {
     fn test_branded_newtype_integer_inner() {
         let ts = SequenceNum::ts_definition();
         assert!(
-            ts.contains("export type SequenceNum = number & $brand<\"SequenceNum\">"),
-            "Should have number branded type. Got: {ts}"
+            ts.contains("export type SequenceNum = bigint & $brand<\"SequenceNum\">"),
+            "Should have a bigint branded type. Got: {ts}"
         );
 
         let zod = SequenceNum::zod_schema();
         assert!(
-            zod.contains("z.number().int()"),
-            "Should use z.number().int() for i64. Got: {zod}"
+            zod.contains("z.codec(z.string().regex(/^-?(0|[1-9][0-9]*)$/), z.bigint()"),
+            "Should read an i64 from the string of its digits. Got: {zod}"
         );
         assert!(
             zod.contains("SequenceNum$RawSchema"),

@@ -45,7 +45,7 @@ pub struct Inner {
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Outer {
-    Paired(Inner, i64),
+    Paired(Inner, isize),
     Wrapped(Inner),
 }
 
@@ -451,7 +451,7 @@ fn test_single_tuple_variant_typescript() {
     pub enum SingleTuple {
         Decimal(f64),
         Flag(bool),
-        Number(i64),
+        Number(isize),
         Text(String),
     }
 
@@ -478,7 +478,7 @@ fn test_single_tuple_variant_zod() {
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub enum SingleTupleZod {
         Flag(bool),
-        Number(i64),
+        Number(isize),
         Text(String),
     }
 
@@ -512,9 +512,9 @@ fn test_multi_tuple_variant_typescript() {
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub enum MultiTuple {
-        Pair(String, i64),
-        Quad(String, i64, bool, f64),
-        Triple(String, i64, bool),
+        Pair(String, isize),
+        Quad(String, isize, bool, f64),
+        Triple(String, isize, bool),
     }
 
     let ts = MultiTuple::ts_definition();
@@ -541,8 +541,8 @@ fn test_multi_tuple_variant_zod() {
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub enum MultiTupleZod {
-        Pair(String, i64),
-        Triple(String, i64, bool),
+        Pair(String, isize),
+        Triple(String, isize, bool),
     }
 
     let zod = MultiTupleZod::zod_schema();
@@ -614,7 +614,7 @@ fn test_mixed_variants_typescript() {
     pub enum Mixed {
         Empty,
         Named { field_a: String, field_b: bool },
-        Pair(String, i64),
+        Pair(String, isize),
         Text(String),
     }
 
@@ -655,7 +655,7 @@ fn test_mixed_variants_zod() {
     pub enum MixedZod {
         Empty,
         Named { field_a: String, field_b: bool },
-        Pair(String, i64),
+        Pair(String, isize),
         Text(String),
     }
 
@@ -700,7 +700,7 @@ fn test_tuple_json_schema() {
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub enum TupleSchema {
-        Double(String, i64),
+        Double(String, isize),
         Single(String),
     }
 
@@ -735,7 +735,7 @@ fn test_custom_content_field() {
     #[derive(Serialize, Deserialize, Debug, Clone)]
     #[serde(tag = "kind", content = "data")]
     pub enum CustomContent {
-        Number(i64),
+        Number(isize),
         Text(String),
     }
 
@@ -762,7 +762,7 @@ fn test_custom_content_field_zod() {
     #[derive(Serialize, Deserialize, Debug, Clone)]
     #[serde(tag = "kind", content = "data")]
     pub enum CustomContentZod {
-        Number(i64),
+        Number(isize),
         Text(String),
     }
 
@@ -953,7 +953,7 @@ fn test_optional_in_tuple() {
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub enum OptionalTuple {
         Maybe(Option<String>),
-        MaybePair(String, Option<i64>),
+        MaybePair(String, Option<isize>),
     }
 
     let ts = OptionalTuple::ts_definition();
@@ -1004,8 +1004,8 @@ fn test_serde_serialization_compatibility() {
     #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
     #[serde(tag = "type", content = "value")]
     pub enum SerdeCompat {
-        Number(i64),
-        Pair(String, i64),
+        Number(isize),
+        Pair(String, isize),
         Text(String),
     }
 
@@ -1037,7 +1037,7 @@ fn test_fixed_value_original_issue() {
         Boolean(bool),
         Decimal(f64),
         Image(String, Vec<u8>),
-        Integer(i64),
+        Integer(isize),
     }
 
     let ts = FixedValue::ts_definition();
@@ -1086,9 +1086,9 @@ fn test_fixed_value_ext_comprehensive() {
         Complex { a: String, b: bool },
         Decimal(f64),
         Image(String, Vec<u8>),
-        Integer(i64),
+        Integer(isize),
         SingleValue,
-        Tuple(i64, bool),
+        Tuple(isize, bool),
     }
 
     let ts = FixedValueExt::ts_definition();
@@ -1192,7 +1192,7 @@ fn test_jsdoc_comments() {
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub enum JsDoc {
-        Multi(String, i64),
+        Multi(String, isize),
         Single(String),
     }
 

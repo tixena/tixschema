@@ -99,7 +99,7 @@ struct ReallyComplexTest {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 struct SimpleComplexTest {
-    nested_map_of_arrays: HashMap<String, Vec<HashMap<String, i64>>>,
+    nested_map_of_arrays: HashMap<String, Vec<HashMap<String, isize>>>,
 }
 
 #[cfg(all(
@@ -117,11 +117,11 @@ struct SimpleComplexTest {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 struct NestedStringKeyedMaps {
-    counts_by_group: HashMap<String, HashMap<String, i64>>,
+    counts_by_group: HashMap<String, HashMap<String, isize>>,
     labels_by_group: HashMap<String, HashMap<String, String>>,
     rows_by_group: HashMap<String, Vec<HashMap<String, String>>>,
     scores_by_group: HashMap<String, HashMap<String, Option<f64>>>,
-    tallies_by_region: HashMap<String, HashMap<String, HashMap<String, i64>>>,
+    tallies_by_region: HashMap<String, HashMap<String, HashMap<String, isize>>>,
 }
 
 #[cfg(all(
@@ -267,7 +267,7 @@ fn test_original_bug_reproduction_json_schema() {
     );
     assert_eq!(
         properties["problematic_map"]["additionalProperties"]["items"]["type"],
-        "integer"
+        "string"
     );
 
     assert_eq!(
@@ -276,7 +276,7 @@ fn test_original_bug_reproduction_json_schema() {
     );
     assert_eq!(
         properties["string_to_vec_i64"]["additionalProperties"]["items"]["type"],
-        "integer"
+        "string"
     );
 
     assert_eq!(
@@ -312,8 +312,8 @@ fn test_original_bug_reproduction_json_schema() {
 fn test_original_bug_reproduction_typescript() {
     let ts_definition = OriginalBugReproduction::ts_definition();
 
-    assert!(ts_definition.contains("problematic_map: Partial<Record<string, Array<number>>>;"));
-    assert!(ts_definition.contains("string_to_vec_i64: Partial<Record<string, Array<number>>>;"));
+    assert!(ts_definition.contains("problematic_map: Partial<Record<string, Array<bigint>>>;"));
+    assert!(ts_definition.contains("string_to_vec_i64: Partial<Record<string, Array<bigint>>>;"));
     assert!(ts_definition.contains("string_to_vec_f64: Partial<Record<string, Array<number>>>;"));
     assert!(ts_definition.contains("string_to_vec_bool: Partial<Record<string, Array<boolean>>>;"));
     assert!(
@@ -321,12 +321,8 @@ fn test_original_bug_reproduction_typescript() {
     );
 
     let zod_schema = OriginalBugReproduction::zod_schema();
-    assert!(
-        zod_schema.contains("problematic_map: z.record(z.string(), z.array(z.number().int()))")
-    );
-    assert!(
-        zod_schema.contains("string_to_vec_i64: z.record(z.string(), z.array(z.number().int()))")
-    );
+    assert!(zod_schema.contains("problematic_map: z.record(z.string(), z.array(z.codec("));
+    assert!(zod_schema.contains("string_to_vec_i64: z.record(z.string(), z.array(z.codec("));
     assert!(zod_schema.contains("string_to_vec_f64: z.record(z.string(), z.array(z.number()))"));
     assert!(zod_schema.contains("string_to_vec_bool: z.record(z.string(), z.array(z.boolean()))"));
     assert!(zod_schema.contains("string_to_vec_string: z.record(z.string(), z.array(z.string()))"));

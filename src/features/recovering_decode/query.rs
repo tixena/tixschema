@@ -2070,12 +2070,13 @@ fn path_items() -> TokenStream {
             }
         }
 
-        /// Writes a value the way its type's own `Serialize` writes it.
+        /// Writes a value the way its type's own `Serialize` writes it, each integer written as
+        /// one where the macro writes its digits.
         fn write_plain<V>(value: V) -> ::core::result::Result<bson::Bson, WriteError>
         where
             V: ::serde::Serialize,
         {
-            ::serde::Serialize::serialize(&value, bson::Serializer::new())
+            ::serde::Serialize::serialize(&value, BsonIntegers(bson::Serializer::new()))
         }
     }
 }

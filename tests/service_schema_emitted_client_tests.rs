@@ -72,6 +72,11 @@ mod run_node_ws_server;
 #[path = "service_schema_emitted_client_tests/run_node_wire_forms.rs"]
 mod run_node_wire_forms;
 
+/// An `i64` through each TypeScript client and dispatcher, as the string of its digits.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_digits.rs"]
+mod run_node_digits;
+
 /// The emitted `http_rest` server: the seven design requests, the reader forms, the query-read
 /// message, and the three body kinds compared against the Rust twins above.
 #[cfg(test)]
@@ -739,6 +744,27 @@ mod run_swift_units;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin_units.rs"]
 mod run_kotlin_units;
+
+/// An `i64` held in each place a member holds one, written as the string of its digits.
+#[cfg(test)]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+#[path = "service_schema_emitted_client_tests/digit_models.rs"]
+mod digit_models;
+
+/// An `i64`, read from its digits and written as them by the emitted Dart types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_digits.rs"]
+mod run_dart_digits;
+
+/// An `i64`, read from its digits and written as them by the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_digits.rs"]
+mod run_swift_digits;
+
+/// An `i64`, read from its digits and written as them by the emitted Kotlin types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_digits.rs"]
+mod run_kotlin_digits;
 
 /// A fixed array and a tuple of another length, refused by the emitted Swift types in serde's
 /// words, in each place a value is held, and read from an array of their length as serde reads

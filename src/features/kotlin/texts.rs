@@ -5,6 +5,10 @@
 //! the Zod schema of it refuses: where serde and Zod part, the read follows Zod. Its write sends
 //! the form serde writes ([`TextForm`]), and throws for a text no rewrite turns into it.
 //!
+//! An `i64` a member writes as the string of its decimal digits is held as a `Long`, read from
+//! and written as that string through a serializer of the item's own as well, which throws for a
+//! text the Zod schema refuses.
+//!
 //! The plugin reads a declared value by the serializer its annotation names, and a serializer the
 //! emitter writes composes the one it reads a value with.
 
@@ -22,6 +26,9 @@ thread_local! {
     /// The serializer each form the item being expanded reads is read through, so every value of
     /// one form names one. Cleared with the tuple wrappers.
     static KOTLIN_TEXTS: RefCell<Vec<(TextForm, String)>> = const { RefCell::new(Vec::new()) };
+    /// The serializer the digits of an `i64` the item being expanded reads are read through.
+    /// Cleared with the tuple wrappers.
+    static KOTLIN_DIGITS: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
 /// The `object` named `named` that reads a text of `form`, refusing one Zod refuses, and writes
@@ -94,6 +101,41 @@ fn object_declared(form: TextForm, named: &str) -> String {
 /// Drops the serializers of the item just written.
 pub fn clear() {
     KOTLIN_TEXTS.with(|texts| texts.borrow_mut().clear());
+    KOTLIN_DIGITS.with(|digits| digits.borrow_mut().take());
+}
+
+/// The `object` named `named` that reads the digits of an `i64` as the `Long` they hold, refusing
+/// a text the Zod schema refuses, and writes a `Long` as its digits.
+fn digits_declared(named: &str) -> String {
+    let refused = "throw SerializationException(\"expected an i64 as a string of its decimal \
+                   digits, found \" + JsonPrimitive(text))";
+    format!(
+        "object {named} : KSerializer<Long> {{ {}override val descriptor: SerialDescriptor = \
+         PrimitiveSerialDescriptor(\"{named}\", PrimitiveKind.STRING); override fun \
+         serialize(encoder: Encoder, value: Long) {{ encoder.encodeString(value.toString()) }} \
+         override fun deserialize(decoder: Decoder): Long {{ val text = decoder.decodeString(); \
+         if (!form.matches(text)) {refused}; return text.toLongOrNull() ?: {refused} }} }}",
+        matched("form", "^-?(0|[1-9][0-9]*)$")
+    )
+}
+
+/// The serializer the digits of an `i64` are read through, declared once per item.
+pub fn digits_serializer() -> String {
+    KOTLIN_DIGITS.with(|digits| {
+        let mut written = digits.borrow_mut();
+        if let Some(named) = written.as_ref() {
+            return named.clone();
+        }
+        let index = KOTLIN_TUPLE_COUNTER.with(|counter| {
+            let next = counter.get() + 1;
+            counter.set(next);
+            next
+        });
+        let named = format!("KotlinDigits{index}");
+        KOTLIN_TUPLE_AUX.with(|aux| aux.borrow_mut().push(digits_declared(&named)));
+        *written = Some(named.clone());
+        named
+    })
 }
 
 /// The `Regex` property `named` a serializer matches a whole text against `pattern` through.
@@ -142,9 +184,10 @@ pub fn found(field: &FieldDef, written: bool, sought: fn(&FieldDef) -> bool) -> 
     }
 }
 
-/// Whether a value typed `field` is a text of one form at its innermost level.
+/// Whether a value typed `field` is a text of one form at its innermost level, the digits of an
+/// integer among them.
 fn is_a_text(field: &FieldDef) -> bool {
-    TextForm::of(field).is_some()
+    TextForm::of(field).is_some() || field.field_type.digit_range().is_some()
 }
 
 /// The type the alias written `name` names, where the emitter wrote it above with no type

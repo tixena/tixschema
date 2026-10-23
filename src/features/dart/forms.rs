@@ -2,8 +2,9 @@
 //! to what serde reads: a `char` and a chrono date or time, kept as a `String`, read as the Zod
 //! schema of their form reads them and sent in the form serde writes ([`TextForm`]); an integer
 //! narrower than a Dart `int`, and an `f32`, kept as a `double`, read and sent within the range
-//! of the Rust type. Each refuses with a `FormatException`, written inline, as every refusal of the
-//! Dart client is.
+//! of the Rust type; and a `u64` or an `i64` a member writes itself, kept as a `BigInt` or an
+//! `int`, read from and sent as the string of its decimal digits. Each refuses with a
+//! `FormatException`, written inline, as every refusal of the Dart client is.
 
 use super::declared;
 use crate::features::text_forms::TextForm;
@@ -95,4 +96,51 @@ pub fn number_held(field_type: &FieldDefType, number: &str) -> Option<String> {
         "(switch ({number}) {{ final {named} when {condition} => {named}, final {named} => throw \
          FormatException('expected {expected}, found ${named}') }})"
     ))
+}
+
+/// The digit string `text` read as the integer of `field_type`, a `u64` or an `i64` a member
+/// writes as its digits: a `BigInt` for a `u64` and an `int` for an `i64`, refused where it is no
+/// such string or holds a number outside the type's range, as the Zod schema refuses it.
+pub fn digits_read(field_type: &FieldDefType, text: &str) -> String {
+    let named = declared("digits");
+    let Some((least, most)) = field_type.digit_range() else {
+        return text.to_owned();
+    };
+    let (sign, rust, held) = if least.starts_with('-') {
+        ("-?", "an i64", format!("int.tryParse({named}) != null"))
+    } else {
+        (
+            "",
+            "a u64",
+            format!("BigInt.parse({named}) <= BigInt.parse('{most}')"),
+        )
+    };
+    let read = if least.starts_with('-') {
+        format!("int.parse({named})")
+    } else {
+        format!("BigInt.parse({named})")
+    };
+    format!(
+        "(switch ({text} as String) {{ final {named} when {}.hasMatch({named}) && {held} => \
+         {read}, final {named} => throw FormatException('expected {rust} as a string of its \
+         decimal digits, found ${{jsonEncode({named})}}') }})",
+        whole(&format!("{sign}(0|[1-9][0-9]*)"))
+    )
+}
+
+/// The digit string the Dart client sends of `value`, the integer of `field_type`: an `int`'s
+/// digits, and a `BigInt`'s where it is within the range of a `u64`, refused otherwise.
+pub fn digits_sent(field_type: &FieldDefType, value: &str) -> String {
+    let Some((least, most)) = field_type.digit_range() else {
+        return value.to_owned();
+    };
+    if least.starts_with('-') {
+        return format!("({value}).toString()");
+    }
+    let named = declared("number");
+    format!(
+        "(switch ({value}) {{ final {named} when {named} >= BigInt.zero && {named} <= \
+         BigInt.parse('{most}') => {named}.toString(), final {named} => throw \
+         FormatException('expected a u64, found ${named}') }})"
+    )
 }

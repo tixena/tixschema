@@ -11,7 +11,8 @@ fn a_declared_error_crosses_with_every_field_it_carries() {
     let written = service_of(MIXED_SERVICE);
     assert!(
         written.contains(
-            "return { answered: await impl.getAvailableBalance(ctx, received.data), headers: [] };"
+            "return { answered: usageServiceAnswered(await impl.getAvailableBalance(ctx, received.data)), \
+             headers: [] };"
         ),
         "the implementation's own outcome is what crosses, its declared error whole. \
          Got: {written}"
@@ -398,15 +399,18 @@ fn a_header_tuple_outcome_is_split_into_the_envelope_and_its_headers() {
              if (outcome.ok) {\n          \
              const [body0, headerOut0, headerOut1] = outcome.value;\n          \
              const replied: Array<[string, string]> = [];\n          \
-             replied.push([\"etag\", JSON.stringify(headerOut0)]);\n          \
-             if (headerOut1 != null) replied.push([\"x-age\", JSON.stringify(headerOut1)]);\n          \
-             return { answered: { ok: true, value: body0 }, headers: replied };\n        \
+             replied.push([\"etag\", JSON.stringify(versionServiceAnswered(headerOut0))]);\n          \
+             if (headerOut1 != null) replied.push([\"x-age\", \
+             JSON.stringify(versionServiceAnswered(headerOut1))]);\n          \
+             return { answered: versionServiceAnswered({ ok: true, value: body0 }), headers: \
+             replied };\n        \
              }\n        \
              const [body0, errorHeaderOut0] = outcome.error;\n        \
              const replied: Array<[string, string]> = [];\n        \
              if (errorHeaderOut0 != null) replied.push([\"x-reason\", \
-             JSON.stringify(errorHeaderOut0)]);\n        \
-             return { answered: { ok: false, error: body0 }, headers: replied };\n      \
+             JSON.stringify(versionServiceAnswered(errorHeaderOut0))]);\n        \
+             return { answered: versionServiceAnswered({ ok: false, error: body0 }), headers: \
+             replied };\n      \
              }"
         ),
         "got: {written}"
@@ -426,7 +430,8 @@ fn an_operation_binding_no_header_answers_its_outcome_with_no_headers() {
     let written = service_of(MIXED_SERVICE);
     assert!(
         written.contains(
-            "return { answered: await impl.getAvailableBalance(ctx, received.data), headers: [] };"
+            "return { answered: usageServiceAnswered(await impl.getAvailableBalance(ctx, received.data)), \
+             headers: [] };"
         ),
         "got: {written}"
     );

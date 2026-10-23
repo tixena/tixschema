@@ -50,7 +50,7 @@ enum DataElementSampleValueVariant {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 enum DateValue {
-    N(i64),
+    N(isize),
     S(DateString),
 }
 
@@ -59,7 +59,7 @@ enum DateValue {
 #[serde(untagged)]
 enum NamedUnion {
     A { x: String },
-    B { y: i64 },
+    B { y: isize },
 }
 
 // A struct variant's own `rename_all` cases its fields — distinct from the enum's own `rename_all`,
@@ -102,7 +102,7 @@ enum RenamedIdentifierUnion {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 enum CompliantUnion {
-    Count(i64),
+    Count(isize),
     Note {
         id: String,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -129,7 +129,7 @@ enum JsonValueUnion {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 enum SlotUnion {
-    Maybe(Option<i64>),
+    Maybe(Option<isize>),
     Plain(String),
 }
 
@@ -232,7 +232,7 @@ enum BucketBagUnion {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 enum ShapedUnion {
-    Pair { pair: (i64, String) },
+    Pair { pair: (isize, String) },
 }
 
 // The std wrappers serde writes as a JSON array of their element, written in untagged members: each
@@ -277,7 +277,7 @@ struct KeyedFields {
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ShapedFields {
-    pair: (i64, String),
+    pair: (isize, String),
 }
 
 #[cfg(feature = "jsonschema")]
@@ -1241,7 +1241,7 @@ fn test_untagged_map_member_wire() {
 #[test]
 fn test_untagged_tuple_member_wire() {
     let pair = ShapedUnion::Pair {
-        pair: (7_i64, "seven".to_owned()),
+        pair: (7_isize, "seven".to_owned()),
     };
 
     let wire = serde_json::to_value(&pair).unwrap();
@@ -1306,7 +1306,7 @@ fn test_untagged_map_member_schema_admits_the_captured_wire() {
 #[cfg(feature = "jsonschema")]
 fn test_untagged_tuple_member_schema_admits_the_captured_wire() {
     let pair = ShapedUnion::Pair {
-        pair: (7_i64, "seven".to_owned()),
+        pair: (7_isize, "seven".to_owned()),
     };
     let wire = serde_json::to_value(&pair).unwrap();
     let schema = ShapedUnion::json_schema();

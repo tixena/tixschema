@@ -115,6 +115,17 @@ pub enum Haul {
     Split(#[model_schema_prop(minLength = 1)] String, Parcel),
 }
 
+/// The serializer `definition` declares for an `i64` it writes as the string of its digits, by the
+/// name the emitter numbered it with.
+fn digits_serializer(definition: &str) -> String {
+    let named = definition
+        .split("object ")
+        .find(|declared| declared.starts_with("KotlinDigits"))
+        .and_then(|declared| declared.split_whitespace().next())
+        .unwrap_or_default();
+    named.to_owned()
+}
+
 fn without_duplicates(value: &[String]) -> Result<(), Vec<String>> {
     for (index, code) in value.iter().enumerate() {
         if value[..index].contains(code) {
@@ -419,39 +430,53 @@ fn a_plain_enum_carries_validate() {
 fn a_sealed_interface_declares_validate_and_each_variant_overrides_it() {
     let declared = "{ fun validate(): List<String> }";
     let overridden = format!("{{ override {NO_RULE} }}");
+    let window_error = window_error_kotlin::kotlin_definition();
+    let dynamic_value = dynamic_value_kotlin::kotlin_definition();
+    let date_value = date_value_kotlin::kotlin_definition();
     for (definition, interface, variants) in [
         (
-            window_error_kotlin::kotlin_definition(),
+            window_error.clone(),
             "WindowError",
             vec![
-                "data object WindowErrorNotFound : WindowError",
-                "data class WindowErrorRateLimited(@SerialName(\"retry_after_ms\") val \
-                 retryAfterMs: Long) : WindowError",
+                "data object WindowErrorNotFound : WindowError".to_owned(),
+                format!(
+                    "data class WindowErrorRateLimited(@SerialName(\"retry_after_ms\") val \
+                     retryAfterMs: @Serializable(with = {}::class) Long) : WindowError",
+                    digits_serializer(&window_error)
+                ),
             ],
         ),
         (
-            dynamic_value_kotlin::kotlin_definition(),
+            dynamic_value.clone(),
             "DynamicValue",
             vec![
-                "data class DynamicValueFlag(val value: Boolean) : DynamicValue",
-                "data object DynamicValueNothing : DynamicValue",
-                "data class DynamicValueNumber(val value: Long) : DynamicValue",
+                "data class DynamicValueFlag(val value: Boolean) : DynamicValue".to_owned(),
+                "data object DynamicValueNothing : DynamicValue".to_owned(),
+                format!(
+                    "data class DynamicValueNumber(val value: @Serializable(with = {}::class) \
+                     Long) : DynamicValue",
+                    digits_serializer(&dynamic_value)
+                ),
             ],
         ),
         (
             external_tagged_kotlin::kotlin_definition(),
             "ExternalTagged",
             vec![
-                "data class ExternalTaggedPing(val nonce: Int) : ExternalTagged",
-                "data class ExternalTaggedPong(val nonce: Int) : ExternalTagged",
+                "data class ExternalTaggedPing(val nonce: Int) : ExternalTagged".to_owned(),
+                "data class ExternalTaggedPong(val nonce: Int) : ExternalTagged".to_owned(),
             ],
         ),
         (
-            date_value_kotlin::kotlin_definition(),
+            date_value.clone(),
             "DateValue",
             vec![
-                "value class DateValueEpoch(val value: Long) : DateValue",
-                "value class DateValueIso(val value: String) : DateValue",
+                format!(
+                    "value class DateValueEpoch(val value: @Serializable(with = {}::class) Long) \
+                     : DateValue",
+                    digits_serializer(&date_value)
+                ),
+                "value class DateValueIso(val value: String) : DateValue".to_owned(),
             ],
         ),
     ] {
@@ -542,6 +567,7 @@ fn the_serializer_the_emitter_writes_for_each_struct_shape_is_its_unjudged_one()
 #[cfg(feature = "serde")]
 #[test]
 fn the_serializer_the_emitter_writes_for_each_enum_shape_is_its_unjudged_one() {
+    let dynamic_value = dynamic_value_kotlin::kotlin_definition();
     for (definition, unjudged, own) in [
         (
             simple_choice_kotlin::kotlin_definition(),
@@ -561,11 +587,12 @@ fn the_serializer_the_emitter_writes_for_each_enum_shape_is_its_unjudged_one() {
              \"None\" -> if (data is JsonNull) SimpleChoiceNone else throw \
              SerializationException(\"SimpleChoice: \" + tag + \" takes no value\"); \"Value\" -> \
              SimpleChoiceValue(input.json.decodeFromJsonElement(serializer<String>(), data)) else \
-             -> throw SerializationException(\"unknown tag \" + tag) } } }",
+             -> throw SerializationException(\"unknown tag \" + tag) } } }"
+                .to_owned(),
             judged("SimpleChoice"),
         ),
         (
-            dynamic_value_kotlin::kotlin_definition(),
+            dynamic_value.clone(),
             "object DynamicValueUnjudged : KSerializer<DynamicValue> { override val \
              descriptor: SerialDescriptor = buildClassSerialDescriptor(\"DynamicValue\"); \
              override fun serialize(encoder: Encoder, value: DynamicValue) { val output = encoder \
@@ -591,7 +618,8 @@ fn the_serializer_the_emitter_writes_for_each_enum_shape_is_its_unjudged_one() {
              -> \
              DynamicValueNumber(input.json.decodeFromJsonElement(serializer<Long>(), (data ?: \
              throw SerializationException(\"missing field `value`\")))) else -> throw \
-             SerializationException(\"unknown tag \" + tag) } } }",
+             SerializationException(\"unknown tag \" + tag) } } }"
+                .replace("serializer<Long>()", &digits_serializer(&dynamic_value)),
             judged("DynamicValue"),
         ),
         (
@@ -608,7 +636,8 @@ fn the_serializer_the_emitter_writes_for_each_enum_shape_is_its_unjudged_one() {
              input.json.decodeFromJsonElement(serializer<DateValueEpoch>(), element) as DateValue \
              }.recoverCatching { input.json.decodeFromJsonElement(serializer<DateValueIso>(), \
              element) as DateValue }.getOrElse { throw SerializationException(\"No variant of \
-             DateValue matched\") } } }",
+             DateValue matched\") } } }"
+                .to_owned(),
             judged("DateValue"),
         ),
     ] {

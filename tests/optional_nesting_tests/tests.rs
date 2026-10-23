@@ -16,7 +16,7 @@ use tixschema::model_schema;
 const REPEAT_CHECK: &str = ".check((ctx) => {
   const seen = new Set<string>();
   for (const item of ctx.value) {
-    const text = JSON.stringify(item);
+    const text = JSON.stringify(item, (_, held) => (typeof held === \"bigint\" ? held.toString() : held));
     if (seen.has(text)) {
       ctx.issues.push({ code: \"custom\", message: \"repeats an item: a set holds each item \
                             once\", input: ctx.value, continue: true });

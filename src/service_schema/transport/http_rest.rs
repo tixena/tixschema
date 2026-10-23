@@ -10,7 +10,7 @@ use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HeaderIn, HttpShape, MultipartPart, OperationDef,
     OperationInputs, OperationOutcome, PathSegment, ScalarKind, ServiceDef, argument_local,
     error_declared_type, field_ident, is_scalar_named_type, is_unit_type, option_inner,
-    scalar_kind, service_declares_a_placeholder, service_declares_a_stream,
+    reads_its_digits, scalar_kind, service_declares_a_placeholder, service_declares_a_stream,
     service_declares_multipart, tuple_elements, vec_inner, wire_key, written,
 };
 use crate::service_schema::support::{
@@ -46,9 +46,20 @@ pub fn emit(service: &ServiceDef, transport: Transport) -> TokenStream {
 /// [`encode_expr`]'s inverse reading) a `header_out` element — the two sides of one wire agreeing by
 /// construction rather than by two authors agreeing.
 fn decode_expr(ty: &Type, raw: &TokenStream) -> TokenStream {
+    decoded(ty, raw, false)
+}
+
+/// [`decode_expr`] for a member of a message the macro declares, which reads a `u64` and an `i64`
+/// from the text of its digits.
+fn decode_member_expr(ty: &Type, raw: &TokenStream) -> TokenStream {
+    decoded(ty, raw, true)
+}
+
+/// [`decode_expr`], each `u64` and `i64` kept as its text where `digits` holds.
+fn decoded(ty: &Type, raw: &TokenStream, digits: bool) -> TokenStream {
     let base = option_inner(ty).unwrap_or(ty);
     if let Some(inner) = vec_inner(base) {
-        let element = decode_expr(inner, &quote! { piece });
+        let element = decoded(inner, &quote! { piece }, digits);
         return quote! {
             ::serde_json::Value::Array(
                 (#raw).split(',').map(|piece: &str| #element).collect(),
@@ -63,6 +74,9 @@ fn decode_expr(ty: &Type, raw: &TokenStream) -> TokenStream {
                 other => ::serde_json::Value::String(other.to_owned()),
             }
         },
+        ScalarKind::Number if digits && reads_its_digits(base) => {
+            quote! { ::serde_json::Value::String((#raw).to_owned()) }
+        }
         ScalarKind::Number => quote! {
             {
                 let raw_text = #raw;
@@ -1027,11 +1041,11 @@ fn message_value_for_generated(
             let key = wire_key(field);
             if placeholder_names.contains(&field_name) {
                 let ident = placeholder_local(&field_name);
-                let decode = decode_expr(ty, &quote! { #ident.as_str() });
+                let decode = decode_member_expr(ty, &quote! { #ident.as_str() });
                 quote! { object.insert(#key.to_owned(), #decode); }
             } else if multipart {
                 let take = take_part_expr(&key);
-                let decode = decode_expr(ty, &quote! { text });
+                let decode = decode_member_expr(ty, &quote! { text });
                 quote! {
                     object.insert(#key.to_owned(), match #take {
                         ::core::option::Option::Some(IncomingPart::Text(text)) => {
@@ -1044,7 +1058,7 @@ fn message_value_for_generated(
             } else if bodied {
                 TokenStream::new()
             } else {
-                let decode = decode_expr(ty, &quote! { text });
+                let decode = decode_member_expr(ty, &quote! { text });
                 quote! {
                     object.insert(#key.to_owned(), match query_map.get(#key).map(::std::string::String::as_str) {
                         ::core::option::Option::Some(text) => #decode,

@@ -493,7 +493,7 @@ fn row_methods(module: &Ident) -> TokenStream {
         /// This value as the row MongoDB stores for it. A value serde writes as anything but a
         /// document is refused: a row is one.
         fn mongo_written_row(&self) -> ::core::result::Result<bson::Document, #module::OperationError> {
-            match ::serde::Serialize::serialize(self, bson::Serializer::new()).map_err(#module::OperationError::Unwritable)? {
+            match ::serde::Serialize::serialize(self, #module::BsonIntegers(bson::Serializer::new())).map_err(#module::OperationError::Unwritable)? {
                 bson::Bson::Document(row) => ::core::result::Result::Ok(row),
                 _ => ::core::result::Result::Err(#module::OperationError::Unwritable(
                     <#module::WriteError as ::serde::ser::Error>::custom(

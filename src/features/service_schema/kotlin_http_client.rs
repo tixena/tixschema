@@ -1338,10 +1338,12 @@ fn kotlin_header_out_decode(ty: &Type, raw: &str) -> String {
         | FieldDefType::U16
         | FieldDefType::U32
         | FieldDefType::U64
+        | FieldDefType::U64Digits
         | FieldDefType::I8
         | FieldDefType::I16
         | FieldDefType::I32
         | FieldDefType::I64
+        | FieldDefType::I64Digits
         | FieldDefType::Usize
         | FieldDefType::Isize
         | FieldDefType::F32
@@ -1399,10 +1401,12 @@ fn kotlin_header_out_decode_is_fallible(ty: &Type) -> bool {
             | FieldDefType::U16
             | FieldDefType::U32
             | FieldDefType::U64
+            | FieldDefType::U64Digits
             | FieldDefType::I8
             | FieldDefType::I16
             | FieldDefType::I32
             | FieldDefType::I64
+            | FieldDefType::I64Digits
             | FieldDefType::Usize
             | FieldDefType::Isize
             | FieldDefType::F32

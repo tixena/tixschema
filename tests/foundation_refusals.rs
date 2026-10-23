@@ -1,8 +1,8 @@
 //! What rustc prints for a crate tixschema refuses: a support library not written, an `enable`
 //! list it cannot read, an initializer written twice or handed an argument, a type that lists
 //! `"mongodb"` with a map keyed by a number, its own or a held model's, a map keyed by a number
-//! under `#[serde(flatten)]` and in an enum serde buffers, untagged or under a tag alone, and an
-//! enum that declares no variant, under a tag or not.
+//! under `#[serde(flatten)]` and in an enum serde buffers, untagged or under a tag alone, an enum
+//! that declares no variant, under a tag or not, and a member that holds an `i128`.
 //! Each case in `foundation_refusals/` is a crate of its own, held to the `.stderr` file beside
 //! it; the initializer written twice, in `foundation_refusals/written_twice/`, is held to the code
 //! and the name of each error, which rustc reports differently from one release to the next.

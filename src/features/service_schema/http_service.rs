@@ -41,6 +41,7 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
         request_type(&named, has_multipart),
         response_type(&named, has_stream),
         fault_handler_type(&named),
+        message::wire_fn(&format!("{prefix}HttpAnswered")),
         json_fn(&named, &prefix),
         default_fault_handler_fn(&named, &prefix),
         fault_fn(&named, &prefix),
@@ -212,7 +213,7 @@ fn json_fn(named: &str, prefix: &str) -> String {
         "function {prefix}HttpJson(status: number, headers: ReadonlyArray<readonly [string, \
          string]>, value: unknown): {named}HttpResponse {{\n  \
          return {{ status, headers: [...headers, [\"content-type\", \"application/json\"]], \
-         body: new TextEncoder().encode(JSON.stringify(value)) }};\n\
+         body: new TextEncoder().encode(JSON.stringify({prefix}HttpAnswered(value))) }};\n\
          }}"
     )
 }
@@ -469,7 +470,7 @@ fn named_message_build(
 }
 
 fn query_field_insert(key: &str, ty: &Type, prefix: &str) -> String {
-    let decode = message::decode_ts_expr(ty, "raw", prefix);
+    let decode = message::decode_member_ts_expr(ty, "raw", prefix);
     let quoted = ts_quoted(key);
     format!(
         "        {{\n          \
@@ -480,7 +481,7 @@ fn query_field_insert(key: &str, ty: &Type, prefix: &str) -> String {
 }
 
 fn multipart_field_insert(key: &str, ty: &Type, prefix: &str) -> String {
-    let decode = message::decode_ts_expr(ty, "raw", prefix);
+    let decode = message::decode_member_ts_expr(ty, "raw", prefix);
     let quoted = ts_quoted(key);
     format!(
         "        {{\n          \
@@ -527,8 +528,11 @@ fn generated_message_build(
         }
         let key = wire_key(field);
         if is_placeholder {
-            let decode =
-                message::decode_ts_expr(ty, &message::placeholder_local(&field_name), prefix);
+            let decode = message::decode_member_ts_expr(
+                ty,
+                &message::placeholder_local(&field_name),
+                prefix,
+            );
             let _ = writeln!(setup, "        message[{}] = {decode};", ts_quoted(&key));
         } else if multipart {
             setup.push_str(&multipart_field_insert(&key, ty, prefix));

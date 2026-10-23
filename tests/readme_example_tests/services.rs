@@ -416,12 +416,12 @@ fn the_one_way_refusal_the_client_throws_is_shown_as_emitted() {
     assert_shown(
         &UsageServiceSchema::ts_client(),
         "    async applyBundle(req) {\n      \
-         const validated = AvailableBalanceRequest$Schema.safeParse(req);\n      \
+         const validated = AvailableBalanceRequest$Schema.safeParse(usageServiceSent(req));\n      \
          if (!validated.success) {\n        \
          throw usageServiceRefused(usageServiceOutboundFault(\"apply-bundle\", \
          validated.error.issues));\n      \
          }\n      \
-         await transport.notify(\"apply-bundle\", validated.data, []);\n    },",
+         await transport.notify(\"apply-bundle\", usageServiceSent(validated.data), []);\n    },",
     );
 }
 
@@ -431,7 +431,7 @@ fn the_outbound_check_the_client_runs_before_the_transport_is_shown_as_emitted()
     assert_shown(
         &UsageServiceSchema::ts_client(),
         "    async expireCredit(req) {\n      \
-         const validated = ExpireCreditRequest$Schema.safeParse(req);\n      \
+         const validated = ExpireCreditRequest$Schema.safeParse(usageServiceSent(req));\n      \
          if (!validated.success) {\n        \
          return {\n          \
          ok: false,\n          \
@@ -442,8 +442,8 @@ fn the_outbound_check_the_client_runs_before_the_transport_is_shown_as_emitted()
          };\n      \
          }\n      \
          const { answered } = await \
-         transport.request<UsageServiceExpireCreditResult>(\"expire-credit\", validated.data, \
-         []);\n      \
+         transport.request<UsageServiceExpireCreditResult>(\"expire-credit\", \
+         usageServiceSent(validated.data), []);\n      \
          if (answered.ok) {\n        \
          const parsed = AvailableBalanceResponse$Schema.safeParse(answered.value);\n        \
          if (!parsed.success) {\n          \

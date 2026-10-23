@@ -4968,7 +4968,7 @@ fn the_record_every_build_with_serde_writes_proves_what_the_zod_surface_proves()
         ("Flag", Some(NonObject::Whole("boolean"))),
         ("Pair", Some(NonObject::Whole("array"))),
         ("Bag", Some(NonObject::Whole("array"))),
-        ("MaybeCount", branch("1", "integer")),
+        ("MaybeCount", branch("1", "string")),
         ("MaybePlain", None),
         ("Hue", None),
         ("Bare", None),
@@ -5780,6 +5780,137 @@ fn an_item_holding_a_json_value_expands_to_its_refusals_alone() {
         "got: {written}"
     );
     assert!(!written.contains("impl Holding"), "got: {written}");
+}
+
+/// The refusals [`super::undescribable_primitive_rejections`] answers for `source`, each as its
+/// message beside the text it is spanned on.
+fn undescribable_primitive_refusals(source: &str) -> Vec<(String, Option<String>)> {
+    let item: syn::Item = syn::parse_str(source).unwrap();
+    super::undescribable_primitive_rejections(&item)
+        .iter()
+        .map(|refusal| (refusal.to_string(), refusal.span().source_text()))
+        .collect()
+}
+
+/// The refusal of `primitive` reached at `subject` of the type `Wide`.
+fn undescribable_primitive_sentence(subject: &str, primitive: &str) -> String {
+    let instead = if primitive.starts_with('f') {
+        "Hold the value as an `f32` or an `f64`."
+    } else {
+        "Hold the value as an `i64` or a `u64`, or as a `#[model_schema]` brand over `String` that \
+         carries its digits."
+    };
+    format!(
+        "model_schema: type `Wide`: {subject} reaches `{primitive}`, which no surface describes: \
+         no TypeScript, Zod, JSON Schema, Dart, Swift or Kotlin type is written for it. {instead}"
+    )
+}
+
+#[test]
+fn each_undescribable_primitive_is_refused_at_any_depth_of_a_member() {
+    for primitive in ["i128", "u128", "f16", "f128"] {
+        for written in [
+            primitive.to_owned(),
+            format!("Option<{primitive}>"),
+            format!("Vec<{primitive}>"),
+            format!("HashMap<String, {primitive}>"),
+            format!("BTreeMap<{primitive}, u8>"),
+            format!("(u8, {primitive})"),
+            format!("[{primitive}; 2]"),
+            format!("Box<{primitive}>"),
+            format!("Wrapper<{primitive}>"),
+            format!("::core::primitive::{primitive}"),
+            format!("std::primitive::{primitive}"),
+        ] {
+            assert_eq!(
+                undescribable_primitive_refusals(&format!(
+                    "pub struct Wide {{ pub count: u8, pub x: {written} }}"
+                )),
+                [(
+                    undescribable_primitive_sentence("field `x`", primitive),
+                    Some(written.clone())
+                )],
+                "for {written}"
+            );
+        }
+    }
+}
+
+#[test]
+fn an_undescribable_primitive_is_refused_in_every_member_of_an_enum_by_its_place() {
+    let refusals = undescribable_primitive_refusals(
+        "#[serde(tag = \"kind\")] pub enum Wide { Held(i128), Named { kept: u8, x: Option<u128> \
+         }, Empty }",
+    );
+    assert_eq!(
+        refusals,
+        [
+            (
+                undescribable_primitive_sentence("slot 0 of variant `Held`", "i128"),
+                Some("i128".to_owned())
+            ),
+            (
+                undescribable_primitive_sentence("field `x` of variant `Named`", "u128"),
+                Some("Option<u128>".to_owned())
+            ),
+        ]
+    );
+}
+
+#[test]
+fn an_alias_of_an_undescribable_primitive_is_refused() {
+    assert_eq!(
+        undescribable_primitive_refusals("pub type Wide = Vec<f128>;"),
+        [(
+            undescribable_primitive_sentence("the type it names", "f128"),
+            Some("Vec<f128>".to_owned())
+        )]
+    );
+}
+
+/// A member serde neither writes nor reads, and a name the item declares as a type parameter, are
+/// not refused.
+#[test]
+fn an_undescribable_primitive_off_the_wire_or_named_by_a_parameter_is_not_refused() {
+    assert_eq!(
+        undescribable_primitive_refusals("pub struct Wide { #[serde(skip)] pub x: i128 }"),
+        []
+    );
+    assert_eq!(
+        undescribable_primitive_refusals("pub struct Wide<u128> { pub x: u128 }"),
+        []
+    );
+}
+
+/// The item expands to the refusal alone: no reference to a module named after the primitive,
+/// which nothing publishes.
+#[test]
+fn an_item_holding_an_undescribable_primitive_expands_to_its_refusal_alone() {
+    let expanded = super::exec_model_schema(
+        proc_macro2::TokenStream::new(),
+        syn::parse_str("pub struct FieldWide { pub x: i128 }").unwrap(),
+    );
+    let written = expanded.to_string();
+    assert_eq!(
+        identifiers_named(expanded, "compile_error"),
+        1,
+        "got: {written}"
+    );
+    assert!(!written.contains("i128_schema"), "got: {written}");
+    assert!(!written.contains("impl FieldWide"), "got: {written}");
+}
+
+/// The README quotes the refusal as the build answers it.
+#[test]
+fn the_readme_states_the_refusal_of_an_undescribable_primitive_as_the_build_answers_it() {
+    let item: syn::Item = syn::parse_str("pub struct FieldWide { pub x: i128 }").unwrap();
+    let refusals = super::undescribable_primitive_rejections(&item);
+    assert_eq!(refusals.len(), 1, "got: {refusals:?}");
+    let answered = format!("error: {}", refusals[0]);
+    assert!(
+        include_str!("../../README.md").contains(&answered),
+        "the README no longer quotes: {answered}"
+    );
 }
 
 /// Runs the field walk the way [`super::process_field`] does and renders the map-key guard failure
@@ -17554,7 +17685,7 @@ fn emitted_list_module(spelling: &str) -> String {
         min_length: Some(1),
         ..ModelSchemaPropMeta::default()
     };
-    generate_list_validation_code(&checked_struct_field(), &meta, &shape.wraps)
+    generate_list_validation_code(&checked_struct_field(), &meta, &shape.wraps, (&ty, None))
         .module_items
         .to_string()
 }
@@ -17683,7 +17814,7 @@ fn a_bare_field_deserializes_the_constrained_value_itself() {
         "u32",
         &numeric_meta,
         &constrained_shape(&numeric_ty).unwrap(),
-        &numeric_ty,
+        (&numeric_ty, None),
     )
     .module_items
     .to_string();
@@ -18152,7 +18283,7 @@ fn a_value_read_through_any_reference_publishes_its_validator_and_no_hook() {
             "u32",
             &minimum,
             &constrained_shape(&ty).unwrap(),
-            &ty,
+            (&ty, None),
         )
         .module_items
         .to_string();

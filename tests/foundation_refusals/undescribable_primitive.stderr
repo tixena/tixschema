@@ -1,0 +1,5 @@
+error: model_schema: type `FieldWide`: field `x` reaches `i128`, which no surface describes: no TypeScript, Zod, JSON Schema, Dart, Swift or Kotlin type is written for it. Hold the value as an `i64` or a `u64`, or as a `#[model_schema]` brand over `String` that carries its digits.
+ --> tests/foundation_refusals/undescribable_primitive.rs:9:12
+  |
+9 |     pub x: i128,
+  |            ^^^^

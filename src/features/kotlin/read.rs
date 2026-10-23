@@ -77,15 +77,19 @@ fn annotated_base(field: &FieldDef, annotated: Annotated) -> String {
         result_typename(ok, err, |arm| annotated_typename(arm, annotated))
     } else {
         let written = kotlin_base(&innermost(field));
-        TextForm::of(field).filter(|_| annotated.texts).map_or_else(
-            || written.clone(),
-            |form| {
-                format!(
-                    "@Serializable(with = {}::class) {written}",
-                    texts::serializer(form)
-                )
-            },
-        )
+        let digits = field
+            .field_type
+            .digit_range()
+            .filter(|_| annotated.texts)
+            .map(|_| texts::digits_serializer());
+        TextForm::of(field)
+            .filter(|_| annotated.texts)
+            .map(texts::serializer)
+            .or(digits)
+            .map_or_else(
+                || written.clone(),
+                |serializer| format!("@Serializable(with = {serializer}::class) {written}"),
+            )
     };
     (0..field.array_depth).fold(scalar, |wrapped, level| {
         let item = if field.is_nullable_at(level) {

@@ -81,6 +81,11 @@ mod untagged_millis;
 #[path = "../wire_forms_tests/models.rs"]
 mod wire_forms;
 
+/// The models of a `u64` and an `i64` a member writes itself, which travel as the string of their
+/// digits.
+#[path = "../digit_strings_tests/models.rs"]
+mod digit_strings;
+
 /// Models whose names on the wire hold a `$`, a quote, a double quote and a backslash, and what
 /// serde writes of each.
 #[path = "../dart_tests/quoted_models.rs"]
@@ -668,6 +673,34 @@ console.log(
   JSON.stringify(PAYLOADS.map(([schema, payload]) => lib[schema].safeParse(JSON.parse(payload)).success)),
 );
 "#;
+
+/// What the driver of [`digit_strings_bundle`] prints of each payload: what the Zod schema reads,
+/// each `bigint` written as its digits and an `n`, or the message of each issue.
+const DIGIT_STRINGS_DRIVER: &str = r#"import * as lib from "./lib/index.js";
+
+const shown = (value) => JSON.stringify(value, (_, held) => (typeof held === "bigint" ? `${held}n` : held));
+for (const [schema, payload] of PAYLOADS) {
+  const read = lib[schema].safeParse(JSON.parse(payload));
+  console.log(read.success ? shown(read.data) : read.error.issues.map((issue) => issue.message).join("; "));
+}
+WIRE_FORM
+console.log(JSON.stringify(wireForm(lib.DigitTally$Schema.parse(JSON.parse(TALLY)))));
+"#;
+
+/// The digits serde writes of a `DigitTally` with an `i64` beyond what a JavaScript `number` holds
+/// exactly in each place.
+const DIGIT_TALLY: &str = r#"{"boxed":"-1152921504606846976","grid":["1","1152921504606846976"],"keyed":{"a":"-7"},"listed":["0","9223372036854775807"],"maybe":"-9223372036854775808","nested":[["3"],null],"paired":["9","x"],"set":["2","5"],"signed":"-1152921504606846976"}"#;
+
+/// The value a client writes of a value its schema read, as each client's own helper writes it:
+/// each `bigint` as the string of its digits.
+const WIRE_FORM: &str = "function wireForm(value) {
+  if (typeof value === \"bigint\") return value.toString();
+  if (Array.isArray(value)) return value.map((held) => wireForm(held));
+  if (typeof value === \"object\" && value !== null && Object.getPrototypeOf(value) === Object.prototype) {
+    return Object.fromEntries(Object.entries(value).map(([key, held]) => [key, wireForm(held)]));
+  }
+  return value;
+}";
 
 /// The functions the checks of [`DeclaredSway`] and [`DeclaredLull`] name, which refuse the unit
 /// variant's bare name.
@@ -2728,12 +2761,54 @@ fn wire_forms_bundle() -> String {
     parts.join("\n\n")
 }
 
+/// The models of [`digit_strings`]: a bundle of their own, compiled with `tsc --strict` and loaded
+/// under `node`.
+fn digit_strings_bundle() -> String {
+    #[cfg(not(any(feature = "swift", feature = "kotlin")))]
+    let wide = [
+        digit_strings::DigitWide::ts_definition(),
+        digit_strings::DigitWide::zod_schema(),
+    ];
+    #[cfg(any(feature = "swift", feature = "kotlin"))]
+    let wide: [String; 0] = [];
+    [
+        PREAMBLE.to_owned(),
+        digit_strings::DigitTally::ts_definition(),
+        digit_strings::DigitTally::zod_schema(),
+        digit_strings::DigitId::ts_definition(),
+        digit_strings::DigitId::zod_schema(),
+        digit_strings::DigitEvent::ts_definition(),
+        digit_strings::DigitEvent::zod_schema(),
+        digit_strings::DigitBounded::ts_definition(),
+        digit_strings::DigitBounded::zod_schema(),
+        digit_strings::DigitHolder::<i64>::ts_definition(),
+        digit_strings::DigitHolder::<i64>::zod_schema(),
+        digit_strings::DigitKept::ts_definition(),
+        digit_strings::DigitKept::zod_schema(),
+        digit_strings::DigitPair::ts_definition(),
+        digit_strings::DigitPair::zod_schema(),
+        digit_strings::DigitTagged::ts_definition(),
+        digit_strings::DigitTagged::zod_schema(),
+        digit_strings::DigitAdjacent::ts_definition(),
+        digit_strings::DigitAdjacent::zod_schema(),
+        digit_strings::DigitUntagged::ts_definition(),
+        digit_strings::DigitUntagged::zod_schema(),
+    ]
+    .into_iter()
+    .chain(wide)
+    .collect::<Vec<_>>()
+    .join("\n\n")
+}
+
 /// The JavaScript value a row of [`wire_forms::WIRE_FORMS`] hands the Zod schema of its model:
-/// a `Date` for a `DateTime<Tz>`, read from the text handed, and the JSON handed for any other.
+/// a `Date` for a `DateTime<Tz>`, read from the text handed, a `bigint` for an `i64`, and the
+/// JSON handed for any other.
 #[cfg(feature = "chrono")]
 fn wire_form_handed(row: &wire_forms::WireFormRow) -> String {
     let value = if row.held_by == "ConveyedInstant" {
         format!("new Date({})", row.handed)
+    } else if row.held_by == "ConveyedI64" {
+        format!("{}n", row.handed)
     } else {
         row.handed.to_owned()
     };
@@ -3762,8 +3837,8 @@ fn type_check_an_untagged_member_under_as_number_is_parsed_as_the_number_serde_w
 
 /// Each value of [`wire_forms::WIRE_FORMS`] is sent by the Zod schema of its model under `node`
 /// in the form the table states, which is what the clients over every transport send, as the
-/// check's own output, and the schema reads every payload any client sends but a number a
-/// JavaScript `number` cannot hold, which it refuses.
+/// check's own output with each `bigint` written as its digits, and the schema reads every
+/// payload any client sends but a number a JavaScript `number` cannot hold, which it refuses.
 #[cfg(feature = "chrono")]
 #[test]
 fn type_check_each_value_is_sent_under_zod_in_the_form_every_target_reads() {
@@ -3808,14 +3883,16 @@ fn type_check_each_value_is_sent_under_zod_in_the_form_every_target_reads() {
         .collect();
     let driver = format!(
         "import * as lib from \"./lib/index.js\";\n\n\
+         {wire}\n\
          const sent = (schema, handed) => {{\n  \
-         const read = schema.safeParse(handed);\n  \
-         return read.success ? JSON.stringify(read.data) : \"refused\";\n\
+         const read = schema.safeParse(wireForm(handed));\n  \
+         return read.success ? JSON.stringify(wireForm(read.data)) : \"refused\";\n\
          }};\n\
          const {{ {schemas} }} = lib;\n\
          console.log(JSON.stringify([\n{handed}]));\n\
          console.log(JSON.stringify({read}.map(([schema, payload]) => \
          lib[schema].safeParse(JSON.parse(payload)).success)));\n",
+        wire = WIRE_FORM,
         schemas = wire_forms::WIRE_FORMS
             .iter()
             .map(|row| wire_form_schema(row.held_by))
@@ -3852,6 +3929,59 @@ fn type_check_each_value_is_sent_under_zod_in_the_form_every_target_reads() {
         misread.is_empty() && readable.len() == read.len(),
         "the Zod schemas read a payload a client sends otherwise than the table states, a \
          value a JavaScript number cannot hold being refused: {misread:?}\n{failed}"
+    );
+}
+
+/// The Zod schema under `node` reads each `u64` and `i64` a member writes itself from the string
+/// of its digits into a `bigint`, exactly, and refuses one beyond its type or its bound in the
+/// sentence `validate()` writes, and what it reads is written back by a client as serde wrote it.
+#[test]
+fn type_check_a_64_bit_integer_is_read_as_a_bigint_from_its_digits_under_zod() {
+    assert_eq!(
+        serde_json::to_string(
+            &serde_json::from_str::<digit_strings::DigitTally>(DIGIT_TALLY).unwrap()
+        )
+        .unwrap(),
+        DIGIT_TALLY,
+        "serde writes the tally the driver reads"
+    );
+    let payloads = [
+        ("DigitTally$Schema", DIGIT_TALLY.to_owned()),
+        (
+            "DigitTally$Schema",
+            DIGIT_TALLY.replace(r#""signed":"-1152921504606846976""#, r#""signed":-1"#),
+        ),
+        ("DigitId$Schema", r#""9223372036854775808""#.to_owned()),
+        ("DigitId$Schema", r#""1.5""#.to_owned()),
+        ("DigitEvent$Schema", r#"{"Counted":"5"}"#.to_owned()),
+        (
+            "DigitBounded$Schema",
+            r#"{"level":"6","start":"1"}"#.to_owned(),
+        ),
+        ("DigitBounded$Schema", r#"{"level":"-5"}"#.to_owned()),
+    ];
+    let driver = DIGIT_STRINGS_DRIVER
+        .replace("PAYLOADS", &serde_json::to_string(&payloads).unwrap())
+        .replace("WIRE_FORM", WIRE_FORM)
+        .replace("TALLY", &serde_json::to_string(DIGIT_TALLY).unwrap());
+    let Some((printed, failed)) = loaded_from("digit-strings", &digit_strings_bundle(), &driver)
+    else {
+        return;
+    };
+    assert_eq!(
+        printed,
+        [
+            r#"{"boxed":"-1152921504606846976n","grid":["1n","1152921504606846976n"],"keyed":{"a":"-7n"},"listed":["0n","9223372036854775807n"],"maybe":"-9223372036854775808n","nested":[["3n"],null],"paired":["9n","x"],"set":["2n","5n"],"signed":"-1152921504606846976n"}"#,
+            "Invalid input: expected string, received number",
+            "Too big: expected bigint to be <=9223372036854775807",
+            "Invalid string: must match pattern /^-?(0|[1-9][0-9]*)$/",
+            r#"{"Counted":"5n"}"#,
+            "too large: maximum is 5, got 6",
+            r#"{"level":"-5n","start":"7n"}"#,
+            DIGIT_TALLY,
+        ]
+        .join("\n"),
+        "the Zod schemas do not read each payload as stated:\n{failed}"
     );
 }
 

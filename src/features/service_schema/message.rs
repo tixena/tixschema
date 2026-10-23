@@ -3,8 +3,8 @@
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
-    BodyKind, HttpShape, OperationDef, OperationInputs, ScalarKind, option_inner, scalar_kind,
-    tuple_elements, vec_inner, written,
+    BodyKind, HttpShape, OperationDef, OperationInputs, ScalarKind, option_inner, reads_its_digits,
+    scalar_kind, tuple_elements, vec_inner, written,
 };
 use crate::utils::ts_commented;
 use syn::{Ident, Type};
@@ -125,6 +125,26 @@ const REFUSED_AS_A_NAME: [&str; 48] = [
     "with",
     "yield",
 ];
+
+/// The function named `function` that answers a value as it is written to the wire: each
+/// `bigint` in it, at any depth of a list or a plain object, written as the string of its decimal
+/// digits, as a `u64` and an `i64` travel. Every other value is answered as it is.
+pub fn wire_fn(function: &str) -> String {
+    format!(
+        "/** `value` as it is written to the wire: each `bigint` as the string of its decimal \
+         digits. */\n\
+         function {function}(value: unknown): unknown {{\n  \
+         if (typeof value === \"bigint\") return value.toString();\n  \
+         if (Array.isArray(value)) return value.map((held) => {function}(held));\n  \
+         if (typeof value === \"object\" && value !== null && Object.getPrototypeOf(value) === \
+         Object.prototype) {{\n    \
+         return Object.fromEntries(Object.entries(value).map(([key, held]) => [key, \
+         {function}(held)]));\n  \
+         }}\n  \
+         return value;\n\
+         }}"
+    )
+}
 
 /// `text` as a comment the TypeScript service code writes can hold it: each line terminator
 /// spelled as its escape, so a `//` comment keeps to its line, and the rest as [`ts_commented`]
@@ -252,15 +272,27 @@ pub fn header_types(headers: usize, ty: &Type) -> Vec<&Type> {
 /// same way; otherwise a boolean text, a numeric coercion, or the text itself. Shared by the REST
 /// server's query/path decoding and the dispatcher's header/part decoding.
 pub fn decode_ts_expr(ty: &Type, raw: &str, prefix: &str) -> String {
+    decoded(ty, raw, prefix, false)
+}
+
+/// [`decode_ts_expr`] for a member of a message the macro declares, which reads a `u64` and an
+/// `i64` from the text of its digits.
+pub fn decode_member_ts_expr(ty: &Type, raw: &str, prefix: &str) -> String {
+    decoded(ty, raw, prefix, true)
+}
+
+/// [`decode_ts_expr`], each `u64` and `i64` kept as its text where `digits` holds.
+fn decoded(ty: &Type, raw: &str, prefix: &str, digits: bool) -> String {
     let base = option_inner(ty).unwrap_or(ty);
     if let Some(inner) = vec_inner(base) {
-        let element = decode_ts_expr(inner, "piece", prefix);
+        let element = decoded(inner, "piece", prefix, digits);
         return format!("({raw}).split(\",\").map((piece: string) => {element})");
     }
     match scalar_kind(base) {
         ScalarKind::Bool => {
             format!("({raw} === \"true\" ? true : {raw} === \"false\" ? false : {raw})")
         }
+        ScalarKind::Number if digits && reads_its_digits(base) => raw.to_owned(),
         ScalarKind::Number => format!("{prefix}HttpCoerceNumber({raw})"),
         ScalarKind::Text => raw.to_owned(),
     }

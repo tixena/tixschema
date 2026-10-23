@@ -120,7 +120,7 @@ fn test_mixed_element_tuple_field() {
 
     let ts = Mixed::ts_definition();
     assert!(
-        ts.contains("triple: [string, number, boolean]"),
+        ts.contains("triple: [string, bigint, boolean]"),
         "Expected mixed tuple in TS. Got: {ts}"
     );
 }
@@ -137,7 +137,7 @@ fn test_mixed_element_tuple_field_zod() {
 
     let zod = Mixed::zod_schema();
     assert!(
-        zod.contains("triple: z.tuple([z.string(), z.number().int(), z.boolean()])"),
+        zod.contains("triple: z.tuple([z.string(), z.codec("),
         "Expected mixed tuple in Zod. Got: {zod}"
     );
 }

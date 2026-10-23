@@ -6,6 +6,8 @@ mod checks;
 pub mod enums;
 #[cfg(feature = "mongodb")]
 mod fields;
+#[cfg(feature = "bson")]
+mod integers;
 #[cfg(feature = "mongodb")]
 mod operations;
 #[cfg(feature = "mongodb")]
@@ -52,15 +54,22 @@ use crate::utils::{
 
 #[cfg(all(
     any(feature = "typescript", feature = "zod", feature = "jsonschema"),
-    not(feature = "mongodb")
+    not(feature = "bson")
 ))]
 const ADDED_TYPE_COUNT: usize = 15;
 
 #[cfg(all(
     any(feature = "typescript", feature = "zod", feature = "jsonschema"),
+    feature = "bson",
+    not(feature = "mongodb")
+))]
+const ADDED_TYPE_COUNT: usize = 16;
+
+#[cfg(all(
+    any(feature = "typescript", feature = "zod", feature = "jsonschema"),
     feature = "mongodb"
 ))]
-const ADDED_TYPE_COUNT: usize = 37;
+const ADDED_TYPE_COUNT: usize = 38;
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
@@ -75,6 +84,8 @@ const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
     #[cfg(feature = "mongodb")]
     "AsUpdate",
     "Asked",
+    #[cfg(feature = "bson")]
+    "BsonIntegers",
     #[cfg(feature = "mongodb")]
     "Element",
     "EntryOf",
@@ -137,6 +148,8 @@ const REEXPORT_REASON: &str = "tixschema re-exports the crate's support library 
 /// module re-exports by name.
 const DECODE_WITH_LIBRARY_NAMES: &[&str] = &[
     "Asked",
+    #[cfg(feature = "bson")]
+    "BsonIntegers",
     "Expected",
     "ExpectedToken",
     "Issue",
@@ -2670,9 +2683,11 @@ fn bson_library_items() -> TokenStream {
     let bound = bson_bound_items();
     let leaf = bson_leaf_items();
     let path = bson_path_helpers();
+    let integers = integers::bson_integer_items();
     quote! {
         #bound
         #leaf
+        #integers
 
         impl Path {
             #path
@@ -3168,7 +3183,8 @@ fn bson_leaf_items() -> TokenStream {
         }
 
         /// One BSON value read whole: refused by serde, or read but stored as a type `write`
-        /// does not give back.
+        /// does not give back. A 64-bit integer stored as a number or as its digits is stored as
+        /// either of its types.
         pub fn bson_leaf<T, I, E, R, W>(
             held: &bson::Bson,
             read: R,
@@ -3180,12 +3196,16 @@ fn bson_leaf_items() -> TokenStream {
         where
             E: ::core::fmt::Display,
             R: ::core::ops::FnOnce(bson::Deserializer) -> ::core::result::Result<T, E>,
-            W: ::core::ops::FnOnce(&T, bson::Serializer) -> ::core::option::Option<bson::Bson>,
+            W: ::core::ops::FnOnce(&T, BsonIntegers<bson::Serializer>) -> ::core::option::Option<bson::Bson>,
         {
             match read(bson::Deserializer::new(held.clone())) {
                 ::core::result::Result::Err(refused) => ::core::option::Option::Some(issue("Invalid", path, expected, ::core::option::Option::Some(held.clone()), ::core::option::Option::Some(refused.to_string()), ::std::vec::Vec::new())),
-                ::core::result::Result::Ok(read) => match write(&read, bson::Serializer::new()) {
-                    ::core::option::Option::Some(written) if !same_bracket(held, &written) => {
+                ::core::result::Result::Ok(read) => match write(&read, BsonIntegers(bson::Serializer::new())) {
+                    ::core::option::Option::Some(written)
+                        if !same_bracket(held, &written)
+                            && !(read_from_either_form(expected)
+                                && [held, &written].iter().all(|either| matches!(either, bson::Bson::Int32(_) | bson::Bson::Int64(_) | bson::Bson::String(_)))) =>
+                    {
                         ::core::option::Option::Some(issue("Mistyped", path, expected, ::core::option::Option::Some(held.clone()), ::core::option::Option::None, ::std::vec::Vec::new()))
                     }
                     _ => ::core::option::Option::None,
@@ -3611,6 +3631,7 @@ fn flattened_walker_call(
 
 /// The items one type's walker hands issues to another's with.
 fn handoff_items() -> TokenStream {
+    let leaf = leaf_items();
     quote! {
         /// One member of an `Expected`, written before the members under it: its name, the names
         /// it carries, and how many members follow under it.
@@ -3696,8 +3717,25 @@ fn handoff_items() -> TokenStream {
             }
         }
 
+        #leaf
+    }
+}
+
+/// `value_leaf`, the check of a JSON value read whole, and what it asks of an expected type.
+fn leaf_items() -> TokenStream {
+    quote! {
+        /// Whether a value of `expected` is a 64-bit integer, which serde reads from a number
+        /// and from the string of its digits alike.
+        fn read_from_either_form(expected: &[ExpectedToken]) -> bool {
+            expected
+                .iter()
+                .find(|(member, _, _)| *member != "Optional")
+                .is_some_and(|(member, _, _)| *member == "I64" || *member == "U64")
+        }
+
         /// One JSON value read whole: refused by serde, or read but held in a different shape
-        /// than `write` gives back.
+        /// than `write` gives back. A 64-bit integer held as a number or as its digits is held in
+        /// either of its shapes.
         pub fn value_leaf<'a, T, I, R, W>(
             held: &'a serde_json::Value,
             read: R,
@@ -3713,7 +3751,11 @@ fn handoff_items() -> TokenStream {
             match read(held) {
                 ::core::result::Result::Err(refused) => ::core::option::Option::Some(issue("Invalid", path, expected, ::core::option::Option::Some(held.clone()), ::core::option::Option::Some(refused.to_string()), ::std::vec::Vec::new())),
                 ::core::result::Result::Ok(read) => match write(&read) {
-                    ::core::option::Option::Some(written) if ::std::mem::discriminant(held) != ::std::mem::discriminant(&written) => {
+                    ::core::option::Option::Some(written)
+                        if ::std::mem::discriminant(held) != ::std::mem::discriminant(&written)
+                            && !(read_from_either_form(expected)
+                                && [held, &written].iter().all(|either| matches!(either, serde_json::Value::Number(_) | serde_json::Value::String(_)))) =>
+                    {
                         ::core::option::Option::Some(issue("Mistyped", path, expected, ::core::option::Option::Some(held.clone()), ::core::option::Option::None, ::std::vec::Vec::new()))
                     }
                     _ => ::core::option::Option::None,

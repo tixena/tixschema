@@ -47,7 +47,7 @@ pub trait PathBoundBesideQueryService<Ctx> {
         &self,
         ctx: &Ctx,
         org: String,
-        limit: Option<u32>,
+        limit: Option<i64>,
     ) -> Result<PathBoundDocument, PathBoundError>;
 }
 
@@ -74,7 +74,7 @@ impl PathBoundBesideQueryService<()> for BesideQueryBackEnd {
         &self,
         _ctx: &(),
         org: String,
-        limit: Option<u32>,
+        limit: Option<i64>,
     ) -> Result<PathBoundDocument, PathBoundError> {
         ready(()).await;
         Ok(PathBoundDocument {
@@ -139,6 +139,29 @@ fn the_query_reader_beside_it_still_reads_its_query() {
     let (status, body) = dispatched("/orgs/acme/documents", "limit=5");
     assert_eq!(status, 200);
     assert_eq!(body, br#"{"title":"acme limit=Some(5)"}"#);
+}
+
+/// The message the service declares reads its `i64` from the text of the query, which is its
+/// digits, in the full range of an `i64`, and refuses a text beyond it in those words.
+#[test]
+fn a_query_hands_an_i64_its_digits_in_the_full_range() {
+    let (least_status, least_body) =
+        dispatched("/orgs/acme/documents", "limit=-9223372036854775808");
+    assert_eq!(least_status, 200, "the least i64");
+    assert_eq!(
+        least_body,
+        br#"{"title":"acme limit=Some(-9223372036854775808)"}"#
+    );
+    let (beyond_status, beyond_body) =
+        dispatched("/orgs/acme/documents", "limit=9223372036854775808");
+    assert_eq!(beyond_status, 400, "beyond an i64");
+    let said = String::from_utf8(beyond_body).unwrap();
+    assert!(
+        said.contains(
+            r#"invalid value: string \"9223372036854775808\", expected an i64 as a string of its decimal digits"#
+        ),
+        "the refusal names the text: {said}"
+    );
 }
 
 /// The route table an adapter iterates to register a handler: one row per operation.

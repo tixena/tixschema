@@ -27,6 +27,10 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
         client_type(service),
     ];
     published.extend(fault_helpers(service));
+    published.push(message::wire_fn(&format!(
+        "{}HttpSent",
+        RenameRule::CamelCase.apply_to_variant(&service.ident.to_string())
+    )));
     published.push(factory(service));
     published
 }
@@ -175,7 +179,7 @@ fn method(service: &ServiceDef, operation: &OperationDef, has_multipart: bool) -
     let path_build = path_build_stmt(&prefix, operation, &shape);
     let query_build = query_build_stmt(&prefix, operation, &shape);
     let headers_build = header_in_build_stmt(&prefix, operation, &shape);
-    let body_build = body_build_stmt(&shape);
+    let body_build = body_build_stmt(&prefix, &shape);
     let parts_build = multipart_parts_build_stmt(&prefix, operation, &shape, has_multipart);
     let send = send_stmt(&prefix, operation, wire, shape.method.name(), has_multipart);
     let decode = decode_stmt(&prefix, operation, &shape, wire);
@@ -225,7 +229,7 @@ fn validation_stmt(prefix: &str, operation: &OperationDef, wire: &str) -> String
     let fault_expr = format!("{prefix}HttpOutboundFault({wire}, validated.error.issues)");
     let refusal = outbound_fault_stmt(prefix, operation, &fault_expr);
     format!(
-        "      const validated = {schema}.safeParse(req);\n      \
+        "      const validated = {schema}.safeParse({prefix}HttpSent(req));\n      \
          if (!validated.success) {{\n{refusal}      \
          }}\n"
     )
@@ -400,7 +404,7 @@ fn header_in_build_stmt(prefix: &str, operation: &OperationDef, shape: &HttpShap
         let _ = write!(
             stmt,
             "      {{\n        \
-             const held = {schema}.safeParse({parameter});\n        \
+             const held = {schema}.safeParse({prefix}HttpSent({parameter}));\n        \
              if (!held.success) {{\n{}        \
              }}\n\
              {pushed}      }}\n",
@@ -419,9 +423,11 @@ fn header_issues(name: &str) -> String {
     )
 }
 
-fn body_build_stmt(shape: &HttpShape) -> String {
+fn body_build_stmt(prefix: &str, shape: &HttpShape) -> String {
     if shape.method.carries_a_body() && !matches!(shape.body_kind, BodyKind::Multipart) {
-        "      const body = new TextEncoder().encode(JSON.stringify(sending));\n".to_owned()
+        format!(
+            "      const body = new TextEncoder().encode(JSON.stringify({prefix}HttpSent(sending)));\n"
+        )
     } else {
         "      const body = new Uint8Array();\n".to_owned()
     }

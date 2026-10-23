@@ -64,12 +64,14 @@ fn the_operation_name_travels_beside_the_payload() {
     assert!(
         written.contains(
             "const { answered } = await transport.request<UsageServiceGetAvailableBalanceResult>\
-             (\"get-available-balance\", validated.data, []);"
+             (\"get-available-balance\", usageServiceSent(validated.data), []);"
         ),
         "the name is an argument of its own, never a key inside the message. Got: {written}"
     );
     assert!(
-        written.contains("await transport.notify(\"apply-bundle\", validated.data, []);"),
+        written.contains(
+            "await transport.notify(\"apply-bundle\", usageServiceSent(validated.data), []);"
+        ),
         "got: {written}"
     );
 }
@@ -88,7 +90,7 @@ fn a_unit_success_normalizes_value_to_undefined_whatever_the_transport_answered(
     assert!(
         body.contains(
             "const { answered } = await transport.request<PingClientServicePingResult>(\"ping\", \
-             validated.data, []);"
+             pingClientServiceSent(validated.data), []);"
         ),
         "got: {body}"
     );
@@ -101,6 +103,33 @@ fn a_unit_success_normalizes_value_to_undefined_whatever_the_transport_answered(
     assert!(
         body.contains("PingError$Schema.safeParse(error)"),
         "a unit success still declares an error, and a failure is parsed against it. Got: {body}"
+    );
+}
+
+/// A client checks and sends the message as it is written to the wire, each `bigint` as the
+/// string of its digits, which the Zod schema of a 64-bit integer reads back into the `bigint`.
+#[test]
+fn a_message_is_checked_and_sent_with_each_bigint_as_its_digits() {
+    let written = client_of(MIXED_SERVICE);
+    assert!(
+        written.contains(
+            "function usageServiceSent(value: unknown): unknown {\n  \
+             if (typeof value === \"bigint\") return value.toString();\n  \
+             if (Array.isArray(value)) return value.map((held) => usageServiceSent(held));"
+        ),
+        "got: {written}"
+    );
+    let method = written
+        .split("    async getAvailableBalance(req) {")
+        .nth(1)
+        .and_then(|rest| rest.split_once("\n    },"))
+        .map(|(body, _)| body.to_owned());
+    assert!(method.is_some(), "got: {written}");
+    let body = method.unwrap();
+    assert!(
+        body.contains("AvailableBalanceRequest$Schema.safeParse(usageServiceSent(req))")
+            && body.contains("usageServiceSent(validated.data), []"),
+        "the message checked and the message sent are its wire form. Got: {body}"
     );
 }
 
@@ -136,7 +165,7 @@ fn a_message_that_fails_its_schema_answers_a_fault_before_the_transport_is_named
          Got: {body}"
     );
     assert!(
-        body.contains("AvailableBalanceRequest$Schema.safeParse(req)"),
+        body.contains("AvailableBalanceRequest$Schema.safeParse(usageServiceSent(req))"),
         "got: {body}"
     );
 }
@@ -376,15 +405,15 @@ fn a_header_in_argument_is_sent_json_encoded_beside_the_message() {
         written.contains(
             "      const headers: Array<[string, string]> = [];\n      \
              {\n        \
-             const held = z.string().safeParse(tenant);\n"
-        ) && written.contains("        headers.push([\"x-tenant\", JSON.stringify(held.data)]);\n")
+             const held = z.string().safeParse(versionServiceSent(tenant));\n"
+        ) && written.contains("        headers.push([\"x-tenant\", JSON.stringify(versionServiceSent(held.data))]);\n")
             && written.contains(
                 "        const held = z.union([z.null().transform(() => undefined), \
                  z.number().int().min(0).max(4294967295), \
-                 z.undefined()]).prefault(undefined).safeParse(trace);\n"
+                 z.undefined()]).prefault(undefined).safeParse(versionServiceSent(trace));\n"
             )
             && written.contains(
-                "        headers.push([\"x-trace\", JSON.stringify(held.data ?? null)]);\n"
+                "        headers.push([\"x-trace\", JSON.stringify(versionServiceSent(held.data ?? null))]);\n"
             ),
         "each header is parsed by its type's schema, then sent JSON-encoded. Got: {written}"
     );
@@ -402,7 +431,9 @@ fn a_header_in_argument_is_sent_json_encoded_beside_the_message() {
          before the transport is reached. Got: {written}"
     );
     assert!(
-        written.contains("await transport.notify(\"touch\", validated.data, headers);"),
+        written.contains(
+            "await transport.notify(\"touch\", versionServiceSent(validated.data), headers);"
+        ),
         "a one-way operation sends its header too. Got: {written}"
     );
 }
@@ -416,7 +447,7 @@ fn a_header_tuple_reply_is_rejoined_from_the_envelope_and_the_reply_headers() {
              | { ok: true; value: Document }\n        \
              | { ok: false; error: DocError | { isServiceFault: true; fault: VersionServiceFault } \
              }\n      \
-             >(\"get\", validated.data, headers);"
+             >(\"get\", versionServiceSent(validated.data), headers);"
         ),
         "the transport answers the body alone, typed as the envelope carries it. Got: {written}"
     );

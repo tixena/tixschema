@@ -22,6 +22,8 @@ struct SplitSide<'shape> {
     ident_prefix: &'static str,
     indent: &'static str,
     names: &'shape [String],
+    /// What the service's emitted functions are named from.
+    prefix: &'shape str,
     tuple: &'static str,
     types: Vec<&'shape Type>,
 }
@@ -30,9 +32,11 @@ impl SplitSide<'_> {
     /// Destructures the tuple, pushes each named header, and answers the envelope with the body
     /// in place of the tuple. With no header named, the outcome is answered as it is.
     fn stmt(&self, body_width: usize) -> String {
-        let margin = self.indent;
+        let (margin, prefix) = (self.indent, self.prefix);
         if self.names.is_empty() {
-            return format!("{margin}return {{ answered: outcome, headers: [] }};\n");
+            return format!(
+                "{margin}return {{ answered: {prefix}Answered(outcome), headers: [] }};\n"
+            );
         }
         let body: Vec<String> = (0..body_width)
             .map(|index| format!("body{index}"))
@@ -49,7 +53,7 @@ impl SplitSide<'_> {
         );
         for ((name, ty), ident) in self.names.iter().zip(&self.types).zip(&idents) {
             let push = format!(
-                "replied.push([{}, JSON.stringify({ident})]);",
+                "replied.push([{}, JSON.stringify({prefix}Answered({ident}))]);",
                 ts_quoted(name)
             );
             if option_inner(ty).is_some() {
@@ -66,7 +70,8 @@ impl SplitSide<'_> {
         let (before, after) = self.envelope;
         let _ = writeln!(
             stmt,
-            "{margin}return {{ answered: {before}{answered}{after}, headers: replied }};"
+            "{margin}return {{ answered: {prefix}Answered({before}{answered}{after}), headers: \
+             replied }};"
         );
         stmt
     }
@@ -77,6 +82,10 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
     published.push(interface(service));
     published.push(dispatched_type(&service.ident.to_string()));
     published.extend(fault_helpers(service));
+    published.push(message::wire_fn(&format!(
+        "{}Answered",
+        RenameRule::CamelCase.apply_to_variant(&service.ident.to_string())
+    )));
     published.push(dispatcher(service));
     published
 }
@@ -118,14 +127,19 @@ pub fn arm(service: &ServiceDef, operation: &OperationDef) -> String {
             if !shape.header_out.is_empty() || !shape.error_header_out.is_empty() =>
         {
             let mut split = format!("        const outcome = await impl.{call}({call_args});\n");
-            split.push_str(header_tuple_split(&shape, error, success).trim_end());
+            let prefix = RenameRule::CamelCase.apply_to_variant(&service.ident.to_string());
+            split.push_str(header_tuple_split(&prefix, &shape, error, success).trim_end());
             split
         }
         OperationOutcome::Reply {
             error: _error,
             success: _success,
         } => {
-            format!("        return {{ answered: await impl.{call}({call_args}), headers: [] }};")
+            let prefix = RenameRule::CamelCase.apply_to_variant(&service.ident.to_string());
+            format!(
+                "        return {{ answered: {prefix}Answered(await impl.{call}({call_args})), \
+                 headers: [] }};"
+            )
         }
     };
     format!("      case {wire}: {{\n{received}{bindings}{answering}\n      }}")
@@ -136,7 +150,7 @@ pub fn arm(service: &ServiceDef, operation: &OperationDef) -> String {
 /// declared name, an optional one holding `null` written nowhere. A body two elements wide —
 /// `body = "bytes"`'s bytes and content type — stays a pair, the value the operation would answer
 /// with no header declared.
-fn header_tuple_split(shape: &HttpShape, error: &Type, success: &Type) -> String {
+fn header_tuple_split(prefix: &str, shape: &HttpShape, error: &Type, success: &Type) -> String {
     let body_width = if matches!(shape.body_kind, BodyKind::Bytes) {
         2
     } else {
@@ -145,6 +159,7 @@ fn header_tuple_split(shape: &HttpShape, error: &Type, success: &Type) -> String
     let success_side = SplitSide {
         envelope: ("{ ok: true, value: ", " }"),
         ident_prefix: "headerOut",
+        prefix,
         indent: "          ",
         names: &shape.header_out,
         tuple: "outcome.value",
@@ -153,6 +168,7 @@ fn header_tuple_split(shape: &HttpShape, error: &Type, success: &Type) -> String
     let error_side = SplitSide {
         envelope: ("{ ok: false, error: ", " }"),
         ident_prefix: "errorHeaderOut",
+        prefix,
         indent: "        ",
         names: &shape.error_header_out,
         tuple: "outcome.error",

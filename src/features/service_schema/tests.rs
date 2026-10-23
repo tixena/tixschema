@@ -400,6 +400,23 @@ const QUERY_HTTP_SERVICE: &str = "
     }
 ";
 
+/// A bodyless `GET` whose generated message holds an `i64` the path binds, and an `i64` and a list
+/// of them the query binds, which serde reads from the text of their digits, beside a `u32`.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+const DIGIT_QUERY_HTTP_SERVICE: &str = "
+    pub trait TallyClientService<Ctx> {
+        #[service_schema_op(http(method = \"GET\", path = \"/tallies/{tally}\"))]
+        async fn tally(
+            &self,
+            ctx: &Ctx,
+            tally: i64,
+            limit: Option<i64>,
+            ids: Option<Vec<i64>>,
+            page: Option<u32>,
+        ) -> Result<SearchResponse, SearchError>;
+    }
+";
+
 /// A bodyless `GET` whose generated message's two fields are both bound by the path, beside a
 /// second operation whose `limit` the path leaves unbound.
 #[cfg(all(feature = "typescript", feature = "zod"))]
