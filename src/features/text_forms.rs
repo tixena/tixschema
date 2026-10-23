@@ -8,7 +8,11 @@
 //! The patterns are those of Zod 4.6.5, written with `\d` for an ASCII digit. The JSON Schema
 //! holds a time and a date and time with no zone to the form serde writes through them as well.
 
-#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+#[cfg(any(
+    all(feature = "dart", feature = "chrono"),
+    feature = "swift",
+    feature = "kotlin"
+))]
 use crate::field_type::{FieldDef, FieldDefType};
 
 /// A date as `z.iso.date()` reads it, and as serde writes it.
@@ -80,6 +84,11 @@ impl TextForm {
 
     /// The form of a value typed `field`, at its innermost level. A `DateTime<Tz>` under
     /// `as_number` is a number.
+    #[cfg(any(
+        all(feature = "dart", feature = "chrono"),
+        feature = "swift",
+        feature = "kotlin"
+    ))]
     pub fn of(field: &FieldDef) -> Option<Self> {
         match &field.field_type {
             FieldDefType::Char => Some(Self::Char),
