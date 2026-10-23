@@ -166,4 +166,4 @@ fn test_my_feature() {
 
 ## Architecture
 
-See [CLAUDE.md](CLAUDE.md) for detailed architecture documentation.
+See [docs/architecture.md](docs/architecture.md) for detailed architecture documentation.
