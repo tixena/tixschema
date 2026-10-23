@@ -4,7 +4,8 @@ use crate::model_schema::ranges::{any_json_bare, any_json_check, any_json_named}
 use crate::model_schema::{UndescribableStd, undescribable_std_message};
 use crate::rename_rule::RenameRule;
 use crate::utils::{
-    is_declared_ident, is_recorded_unit_struct_type, is_recorded_untagged_enum, is_wire_scalar_type,
+    WireScalarKind, is_declared_ident, is_recorded_unit_struct_type, is_recorded_untagged_enum,
+    is_wire_scalar_type, wire_scalar_kind,
 };
 use proc_macro2::{TokenStream, TokenTree};
 use quote::{ToTokens as _, format_ident};
@@ -519,30 +520,45 @@ pub fn service_needs_body_source_seam(service: &ServiceDef) -> bool {
 }
 
 pub fn scalar_kind(ty: &Type) -> ScalarKind {
-    let Type::Path(named) = ty else {
-        return ScalarKind::Text;
-    };
-    let Some(leaf) = named.path.segments.last() else {
-        return ScalarKind::Text;
-    };
-    match leaf.ident.to_string().as_str() {
-        "bool" => ScalarKind::Bool,
-        "u8" | "u16" | "u32" | "u64" | "u128" | "usize" | "i8" | "i16" | "i32" | "i64" | "i128"
-        | "isize" | "f32" | "f64" => ScalarKind::Number,
-        _ => ScalarKind::Text,
+    match wire_scalar_kind(ty) {
+        WireScalarKind::Bool => ScalarKind::Bool,
+        WireScalarKind::Float
+        | WireScalarKind::Integer
+        | WireScalarKind::Signed64
+        | WireScalarKind::Unsigned64 => ScalarKind::Number,
+        WireScalarKind::Text => ScalarKind::Text,
     }
 }
 
-/// Whether `ty` is a `u64` or an `i64`, which TypeScript holds as a `bigint`: the text of a path, a
-/// query, a header or a text part is read as one from its digits.
+/// Whether `ty` is a `u64` or an `i64`, or a brand, a struct of one slot or an alias over one
+/// declared above, which TypeScript holds as a `bigint`: the text of a path, a query, a header or
+/// a text part is read as one from its digits.
 #[cfg(all(feature = "typescript", feature = "zod"))]
 pub fn held_as_a_bigint(ty: &Type) -> bool {
-    let Type::Path(named) = ty else {
-        return false;
-    };
-    named.path.segments.last().is_some_and(|leaf| {
-        leaf.arguments.is_none() && matches!(leaf.ident.to_string().as_str(), "u64" | "i64")
-    })
+    wide_integer_range(ty).is_some()
+}
+
+/// The least and the most value, in decimal, of the `u64` or `i64` `ty` is or wraps.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+pub fn wide_integer_range(ty: &Type) -> Option<(&'static str, &'static str)> {
+    match wire_scalar_kind(ty) {
+        WireScalarKind::Unsigned64 => Some(("0", "18446744073709551615")),
+        WireScalarKind::Signed64 => Some(("-9223372036854775808", "9223372036854775807")),
+        WireScalarKind::Bool
+        | WireScalarKind::Float
+        | WireScalarKind::Integer
+        | WireScalarKind::Text => None,
+    }
+}
+
+/// Whether `ty` is an integer type, or a brand, a struct of one slot or an alias over one: the
+/// text a path, a query, a header or a text part carries for it holds whole digits.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+pub fn is_integer_scalar(ty: &Type) -> bool {
+    matches!(
+        wire_scalar_kind(ty),
+        WireScalarKind::Integer | WireScalarKind::Signed64 | WireScalarKind::Unsigned64
+    )
 }
 
 /// Whether a Named type's own declared type is one serde writes as a bare wire scalar — the only

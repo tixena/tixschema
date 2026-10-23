@@ -939,6 +939,23 @@ mod run_kotlin_unknown_keys;
 #[path = "service_schema_emitted_client_tests/run_node_quoted.rs"]
 mod run_node_quoted;
 
+/// Services that take a brand over a number, called through the emitted TypeScript `http_rest`
+/// clients and dispatchers under node.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/run_node_number_brands.rs"]
+mod run_node_number_brands;
+
+/// The `http_rest` dispatchers for `WharfClientService` and `WharfFilingClientService`, the Rust
+/// twins each request the node run writes is read by.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/wharf_http_rest_transport.rs"]
+mod wharf_http_rest_transport;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/wharf_filing_http_rest_transport.rs"]
+mod wharf_filing_http_rest_transport;
+
 /// The `http_rest` dispatcher for `ImpostClientService`, the Rust twin each request the node run
 /// writes is read by.
 #[cfg(test)]
@@ -1073,6 +1090,11 @@ mod run_option_aliases;
 use run_dart_preprocess::{IntakeClientService, intake_client_service_schema};
 #[cfg(all(test, feature = "dart"))]
 use run_dart_read::{ParcelClientService, parcel_client_service_schema};
+#[cfg(test)]
+use run_node_number_brands::{
+    WharfClientService, WharfFilingClientService, wharf_client_service_schema,
+    wharf_filing_client_service_schema,
+};
 #[cfg(test)]
 use run_node_quoted::{
     ImpostClientService, ImpostFilingClientService, impost_client_service_schema,

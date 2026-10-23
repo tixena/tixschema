@@ -198,6 +198,19 @@ fails.
      (`quoted`, `swift_quoted`, `kotlin_quoted`). `run_quoted_service.rs` compiles and calls each
      client of a service whose message name holds a line break, and the Rust dispatcher of
      `run_node_quoted.rs`, whose service declares the same operation, routes the path they carry
+   - A brand, a struct of one slot or an alias declared above its service is read from the text of a
+     path, a query, a header and a text part as the scalar it wraps: `record_wire_scalar_of` in
+     `src/utils.rs`, called by `record_wire_scalar_item` in every build with `serde`, records the
+     `WireScalarKind` (text, `bool`, float, integer, `i64`, `u64`) beside the wire-scalar record, and
+     `wire_scalar_kind` is the one reader. `scalar_kind` answers from it for the Rust `decode_expr` and
+     the TypeScript `decode_ts_expr`, `held_as_a_bigint` and `wide_integer_range` for the `bigint` read
+     and its range, `is_integer_scalar` for the whole-number check of a TypeScript `header_out`, and
+     `dart_header_out_decode`, `swift_header_out_decode` and `kotlin_header_out_decode` read a
+     `header_out` of a number brand from the JSON number its text is, where they read a brand over text
+     from the JSON string. A named type declared below its service is recorded by no one and stays
+     text. `tests/service_number_brand_tests.rs` holds the Rust client and dispatcher in a path, a
+     query, a header, a `header_out` and a text part, and `run_node_number_brands.rs` the TypeScript
+     clients and dispatchers beside the Rust dispatchers, and the Dart, Swift and Kotlin clients
    - The `http_rest` TypeScript dispatcher answers a declared error that takes one status whatever
      it holds at that status, written as a number (`fixed_error_status`, `error_status_of` in
      `src/features/service_schema/http_service.rs`): 422 where the operation declares no

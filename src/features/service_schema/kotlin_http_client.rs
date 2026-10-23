@@ -19,6 +19,7 @@ use crate::service_schema::parse::{
     tuple_elements, vec_inner, wire_key, written,
 };
 use crate::service_schema::support::fault_fields_typescript_name;
+use crate::utils::{WireScalarKind, wire_scalar_kind};
 use core::fmt::Write as _;
 use syn::{Ident, Type};
 
@@ -1348,10 +1349,20 @@ fn kotlin_header_out_decode(ty: &Type, raw: &str) -> String {
         | FieldDefType::F64 => format!("({raw}).to{}OrNull()", kotlin_type_of(base)),
         // The header text read as a JSON string, as the Rust client reads it, through the type's
         // own serializer; one that refuses it is a malformed header.
-        FieldDefType::SiblingType(_, _) | FieldDefType::Char => format!(
-            "runCatching {{ Json.decodeFromJsonElement({}, JsonPrimitive({raw})) }}.getOrNull()",
-            read_serializer(base)
-        ),
+        FieldDefType::SiblingType(_, _) | FieldDefType::Char => {
+            let primitive = match wire_scalar_kind(base) {
+                WireScalarKind::Text => raw.to_owned(),
+                WireScalarKind::Bool => format!("({raw}).toBooleanStrict()"),
+                WireScalarKind::Integer | WireScalarKind::Signed64 | WireScalarKind::Unsigned64 => {
+                    format!("({raw}).toLong()")
+                }
+                WireScalarKind::Float => format!("({raw}).toDouble()"),
+            };
+            format!(
+                "runCatching {{ Json.decodeFromJsonElement({}, JsonPrimitive({primitive})) }}.getOrNull()",
+                read_serializer(base)
+            )
+        }
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate | FieldDefType::NaiveTime | FieldDefType::NaiveDateTime => format!(
             "runCatching {{ Json.decodeFromJsonElement({}, JsonPrimitive({raw})) }}.getOrNull()",
