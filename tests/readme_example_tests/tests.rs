@@ -312,7 +312,7 @@ fn test_the_object_id_example_is_declarable_and_shows_what_it_emits() {
         "pub struct Document {",
         &Document::zod_schema(),
         &[
-            "  parent_id: z.union([z.null().transform(() => undefined), z.object({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: \"Invalid ObjectId\" }) }), z.undefined()]).prefault(undefined),",
+            "  parent_id: z.union([z.null().transform(() => undefined), z.strictObject({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: \"Invalid ObjectId\" }) }), z.undefined()]).prefault(undefined),",
         ],
     );
 }

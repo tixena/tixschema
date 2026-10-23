@@ -412,7 +412,20 @@ to serde and to Zod, and `tests/generic_types_tests/declarations.rs` parses each
 - `HashMap<String, T>` → `Partial<Record<string, T>>`
 - Custom types → Reference by the name the referenced type publishes (its ident, or its `name` override)
 - A unit struct (`pub struct Ping;`, no braces) → `Record<string, never>` (unchanged); the wire is `{}` both ways: the macro replaces the author's own `Serialize`/`Deserialize` derive with impls writing and reading `{}` (serde's own derive writes and reads `null`, refusing `{}`). Kotlin renders a serializable `object Ping` rather than a `class`; Dart and Swift render their own no-data type. Declared above a service as `Result<Ping, E>`, it reads like a `()` success on every client — a braced `struct Ping {}` is a different shape and is unaffected
-- `ObjectId` → `ObjectId` (with $oid validation)
+- `ObjectId` → `ObjectId` (with $oid validation): Zod a `z.strictObject` of `$oid` and the JSON
+  Schema an object of `$oid` with `additionalProperties: false`, refusing a key beside `$oid` as
+  serde refuses it wherever the `ObjectId` is held as a value. A flattened one is joined as a
+  flattened struct is, and so is one in the lone slot of a variant under a tag alone. The clients
+  name `ObjectId` and the consuming project declares it, and README.md's "MongoDB ObjectId
+  Support" section shows the Dart, Swift and Kotlin types to declare: each refuses a key beside
+  `$oid` and a `$oid` that is not 24 hexadecimal digits in lower case, and the Swift one is public
+  and `Sendable`. `tests/service_schema_emitted_client_tests/object_id_models.rs` holds an
+  `ObjectId` in each position and what serde, the schemas and each client take of each payload
+  (`rows`); `tests/generic_types_tests/declarations.rs` holds Zod under node after `tsc --strict`
+  and the JSON Schema to it, and `run_dart_object_ids.rs`, `run_swift_object_ids.rs` and
+  `run_kotlin_object_ids.rs` compile the README's blocks (`object_id_runs.rs`) beside the
+  emitted types, warnings as errors, and read and write each payload against serde, each client's
+  answer in a column of its own (`Told`). The tagged-slot runs read the README's types too.
 - `DateTime<Tz>` → `Date` (Zod `z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date())`, which refuses `null` and booleans that `z.coerce.date()` alone reads as 1970, ahead of the `null` arm and the boolean member a union lists after the date; `type_check_a_date_refuses_what_is_no_date_in_every_position_that_holds_one` in `tests/generic_types_tests/declarations.rs` loads the schema under `node` and holds each input to it); with `#[model_schema_prop(as_number)]` → `number` (inline epoch-ms coercer)
 - `NaiveTime` → `string` (Zod `z.iso.time()` wrapped in an inline preprocessor that also accepts millis-since-start-of-day, and writes the seconds `HH:MM` leaves out)
 - `NaiveDateTime` → `string` (Zod `z.iso.datetime({ local: true })` wrapped in an inline preprocessor that drops a `Z` and writes the seconds `T…HH:MM` leaves out, so a client sends the form serde reads: section 14)
@@ -2065,6 +2078,22 @@ consumer's view; this is what a change has to keep.
     answers is empty, and the enum's read of the entry where it holds one, which refuses an entry
     that does not read, as TypeScript and Zod refuse it, where serde reads `None`. Its variable,
     `entry`, calls no function either.
+  - `Taken::Only` of an `ObjectId` (`object_id_keys`), and of a brand or an alias over one that
+    `value_wrapper_tokens` records, `$oid`: the README's `ObjectId` refuses
+    any other key, where serde reads past one flattened, so `only` hands it an object of that key
+    alone, and `without` removes it from what the members after it are handed. An optional one
+    is looked for by the key, as a struct is. A holder hands such a value the same way through
+    the converter of a type parameter the generic type reads flattened (`argument_converters`).
+    `record_flattenings` records, per type, how it reads each parameter (`DART_FLATTENINGS`,
+    `parameter_reads`, a `Flattening`), the parameter itself flattened or an argument handed to a
+    type that reads it flattened. Read flattened alone (`Flattening::Alone`), the converter is
+    filtered. Read flattened and otherwise (`Flattening::Also`), the type's two reads take a
+    second converter, named optional (`{Held Function(dynamic)? heldFromFlattenedJson}`,
+    `generic_codec`), which its flattened reads call where it is handed and the converter of
+    the parameter otherwise (`parameter_read`, through `DART_FLATTENED_READ`, which
+    `flattened_decode` sets while it reads such a member), and the holder hands the filtered
+    converter there, and a parameter of its own its own converter of that kind. Every other
+    filling is handed what it was.
   - `Taken::Tagged` of an enum under a tag and a content key, which serde reads as a struct of
     the two, both of which it takes: `tag_and_content_when_flattened` in `src/features/serde.rs`,
     which the Swift and Kotlin emitters read too, answers them, none for an enum that names a
@@ -2580,6 +2609,19 @@ to keep.
   which `struct_declaration` takes) or where one of its reads names `taken`, so `handed_reads`
   writes its reads twice there, the second time with every member withheld from; one whose
   reads name none, and that nothing around hands keys, reads its members from its decoder.
+- **A flattened `ObjectId` is read from its `$oid` key alone**, as the README's `ObjectId` refuses
+  any other key, where serde reads past one flattened. `preprocess::only_keys` answers `$oid` for
+  an `ObjectId` and for a brand, a struct of one slot or an alias over one written above
+  (`ONLY_KEYS`, `preprocess::note_only_keys`), and `present_statement` reads such a member from
+  `read::Source::Keeping`, the decoder's object filtered to those keys. `keys_taken_by` answers the
+  same keys, so an optional one is looked for by `$oid` in the whole object it is read from, and
+  the members after it are handed the object without it. A flattened member that is a type
+  parameter itself (`preprocess::filled_alone`) is read behind a test at run time of the name
+  `String(describing:)` writes for its filling: `ObjectId`, and each brand and struct of one slot
+  over one written above that declares no parameter (`ONLY_NAMED`), is read from `$oid` alone,
+  and any other filling as before. The test names no type, so a crate with no `ObjectId` builds.
+  A type declared below the one that reads it is read as any other flattened member is, and the
+  README states the limit.
 - **A flattened externally tagged enum is read from its one entry.** `enum_swift_tokens` records,
   for an enum written above its holder, the names serde reads its variants under flattened
   (`preprocess::note_entries`, from `flattened_entries`): `variant_names_when_flattened`, none for
@@ -4040,12 +4082,12 @@ export type Document = {
 
 ```typescript
 export const Document$Schema = z.strictObject({
-  id: z.object({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) }),
-  author_id: z.object({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) }),
-  tags: z.array(z.object({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) })),
-  metadata: z.record(z.string(), z.object({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) })),
-  parent_id: z.union([z.null().transform(() => undefined), z.object({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) }), z.undefined()]).prefault(undefined),
-  related: z.record(z.string(), z.array(z.object({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) }))),
+  id: z.strictObject({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) }),
+  author_id: z.strictObject({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) }),
+  tags: z.array(z.strictObject({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) })),
+  metadata: z.record(z.string(), z.strictObject({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) })),
+  parent_id: z.union([z.null().transform(() => undefined), z.strictObject({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) }), z.undefined()]).prefault(undefined),
+  related: z.record(z.string(), z.array(z.strictObject({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) }))),
 }).meta({
   examples: []
 });

@@ -6,6 +6,7 @@
 //! tag and the content key of an enum under a tag key, which a flattened `Option` is tested by.
 
 use core::cell::RefCell;
+use core::iter;
 use std::collections::{HashMap, HashSet};
 
 use super::read::{Locals, Source, counted, unjudged};
@@ -13,6 +14,9 @@ use super::{Shaped, swift_member, swift_upper_camel};
 use crate::bound_message::swift_literal_text;
 use crate::features::model_schema_prop::FunctionName;
 use crate::field_type::{FieldDef, FieldDefType};
+
+/// The one key an `ObjectId` is written under.
+const OID: &str = "$oid";
 
 /// Any JSON value as a function is handed it, and the read of a type back from one, written into
 /// each type that names a function. `read` writes the coding path of the value into its errors.
@@ -135,6 +139,15 @@ thread_local! {
     /// The tag and the content key serde takes off its holder's object for each enum under both
     /// the emitter has written, read flattened: what serde hands no member flattened after it.
     static TAKEN_TAG_KEYS: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
+
+    /// The keys each brand, struct of one slot and alias over an `ObjectId` the emitter has
+    /// written reads alone, refusing any other beside them.
+    static ONLY_KEYS: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
+
+    /// The Rust ident and the Swift name of each brand and struct of one slot of those that
+    /// declares no parameter, in the order written: what a type parameter filled at one is told by
+    /// as it is read.
+    static ONLY_NAMED: RefCell<Vec<(String, String)>> = const { RefCell::new(Vec::new()) };
 }
 
 /// Records whether the type `rust_ident` names reads the keys the types around it took.
@@ -162,12 +175,93 @@ pub(super) fn note_keys(rust_ident: &str, keys: Vec<String>) {
     });
 }
 
+/// Records the keys `value`, the value of the brand, the struct of one slot or the alias
+/// `rust_ident`, reads alone ([`only_keys`]), for a holder written after it: none where `value` is
+/// `None`, a value read through a function of the type's own or an `Option`. `named` is the Swift
+/// name of a brand or a struct of one slot that declares no parameter.
+pub(super) fn note_only_keys(rust_ident: &str, named: Option<&str>, value: Option<&FieldDef>) {
+    let keys = value
+        .filter(|held| !held.is_optional())
+        .map_or_else(Vec::new, only_keys);
+    let swift_name = named.filter(|_| !keys.is_empty());
+    ONLY_KEYS.with(|recorded| {
+        if keys.is_empty() {
+            recorded.borrow_mut().remove(rust_ident);
+        } else {
+            recorded.borrow_mut().insert(rust_ident.to_owned(), keys);
+        }
+    });
+    ONLY_NAMED.with(|recorded| {
+        let mut named_alone = recorded.borrow_mut();
+        named_alone.retain(|(ident, _)| ident != rust_ident);
+        if let Some(written) = swift_name {
+            named_alone.push((rust_ident.to_owned(), written.to_owned()));
+        }
+    });
+}
+
+/// The test that a flattened member `def`, the type parameter `parameter` itself, holds an
+/// `ObjectId` or a brand or a struct of one slot over one written above, whose read refuses any
+/// key beside `$oid`, and those keys: `None` for any other member. A Swift alias is the type it
+/// names.
+pub(super) fn filled_alone(def: &FieldDef, parameter: &str) -> Option<(String, String)> {
+    if def.array_depth > 0
+        || def.is_optional()
+        || !functions(def).is_empty()
+        || !matches!(def.field_type, FieldDefType::TypeParam(_))
+    {
+        return None;
+    }
+    // A name the type need not declare: a crate with no `ObjectId` builds.
+    let names: Vec<String> = iter::once("ObjectId".to_owned())
+        .filter(|_| cfg!(feature = "mongodb"))
+        .chain(ONLY_NAMED.with(|recorded| {
+            recorded
+                .borrow()
+                .iter()
+                .map(|(_, written)| written.clone())
+                .collect::<Vec<_>>()
+        }))
+        .collect();
+    (!names.is_empty()).then(|| {
+        (
+            format!(
+                "{}.contains(String(describing: {parameter}.self))",
+                listed(&names)
+            ),
+            listed(&[OID.to_owned()]),
+        )
+    })
+}
+
+/// The keys a member `def` describes, flattened into its holder, is read from alone, its read
+/// refusing any other: an `ObjectId`'s `$oid`, and those of a type over one written above. None
+/// for any other member, and for one that names a function, which serde reads as a value.
+pub(super) fn only_keys(def: &FieldDef) -> Vec<String> {
+    if !functions(def).is_empty() || def.array_depth > 0 {
+        return Vec::new();
+    }
+    #[cfg(feature = "mongodb")]
+    if matches!(def.field_type, FieldDefType::ObjectId) {
+        return vec![OID.to_owned()];
+    }
+    let FieldDefType::SiblingType(name, _) = &def.field_type else {
+        return Vec::new();
+    };
+    ONLY_KEYS.with(|recorded| recorded.borrow().get(name).cloned().unwrap_or_default())
+}
+
 /// The keys a member `def` describes, flattened into its holder, takes off the object serde hands
 /// it: those of a struct written above, the tag and the content key of an enum under both written
-/// above, and none for a member that names a function, which serde reads as a value.
+/// above, those [`only_keys`] answers, and none for a member that names a function, which serde
+/// reads as a value.
 pub(super) fn keys_taken_by(def: &FieldDef) -> Vec<String> {
     if !functions(def).is_empty() {
         return Vec::new();
+    }
+    let only = only_keys(def);
+    if !only.is_empty() {
+        return only;
     }
     let keys = struct_keys(def);
     if !keys.is_empty() {
@@ -399,6 +493,15 @@ pub(super) fn taken_with<'own>(own: impl Iterator<Item = &'own str>) -> String {
     } else {
         format!("taken + [{}]", written.join(", "))
     }
+}
+
+/// `keys` as a Swift array of strings.
+pub(super) fn listed(keys: &[String]) -> String {
+    let written: Vec<String> = keys
+        .iter()
+        .map(|key| format!("\"{}\"", swift_literal_text(key)))
+        .collect();
+    format!("[{}]", written.join(", "))
 }
 
 /// Whether the object a flattened member reads from `decoder` holds one of `keys`, as a Swift

@@ -404,7 +404,7 @@ fn test_objectid_generates_proper_validation() {
     let zod = Document::zod_schema();
 
     assert!(
-        zod.contains("z.object({ $oid: z.string().regex("),
+        zod.contains("z.strictObject({ $oid: z.string().regex("),
         "ObjectId should have regex validation. Got: {zod}"
     );
     assert!(
@@ -412,12 +412,13 @@ fn test_objectid_generates_proper_validation() {
         "Should include error message. Got: {zod}"
     );
     assert!(
-        zod.contains("tag_ids: z.array(z.object({ $oid: z.string().regex("),
+        zod.contains("tag_ids: z.array(z.strictObject({ $oid: z.string().regex("),
         "Vec<ObjectId> should work. Got: {zod}"
     );
     assert!(
         zod.contains(
-            "author_id: z.union([z.null().transform(() => undefined), z.object({ $oid: z.string().regex("
+            "author_id: z.union([z.null().transform(() => undefined), z.strictObject({ $oid: \
+             z.string().regex("
         ),
         "Option<ObjectId> should work. Got: {zod}"
     );

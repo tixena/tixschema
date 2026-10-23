@@ -83,7 +83,7 @@ fn test_real_objectid_basic_types() {
     assert!(ts_definition.contains("email: string | undefined;"));
 
     let zod_schema = RealUser::zod_schema();
-    assert!(zod_schema.contains("id: z.object({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: \"Invalid ObjectId\" }) }),"));
+    assert!(zod_schema.contains("id: z.strictObject({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: \"Invalid ObjectId\" }) }),"));
     assert!(zod_schema.contains("name: z.string(),"));
     assert!(zod_schema.contains(
         "email: z.union([z.null().transform(() => undefined), z.string(), z.undefined()]).prefault(undefined),"
@@ -168,21 +168,21 @@ fn test_real_objectid_complex_structures() {
 
     let zod_schema = RealDocument::zod_schema();
     let regex_pattern = "z.string().regex(/^[a-f0-9]{24}$/, { message: \"Invalid ObjectId\" })";
-    assert!(zod_schema.contains(&format!("id: z.object({{ $oid: {regex_pattern} }}),")));
+    assert!(zod_schema.contains(&format!("id: z.strictObject({{ $oid: {regex_pattern} }}),")));
     assert!(zod_schema.contains(&format!(
-        "author_id: z.object({{ $oid: {regex_pattern} }}),"
+        "author_id: z.strictObject({{ $oid: {regex_pattern} }}),"
     )));
     assert!(zod_schema.contains(&format!(
-        "references: z.array(z.object({{ $oid: {regex_pattern} }})),"
+        "references: z.array(z.strictObject({{ $oid: {regex_pattern} }})),"
     )));
     assert!(zod_schema.contains(&format!(
-        "metadata: z.record(z.string(), z.object({{ $oid: {regex_pattern} }})),"
+        "metadata: z.record(z.string(), z.strictObject({{ $oid: {regex_pattern} }})),"
     )));
     assert!(zod_schema.contains(&format!(
-        "parent_id: z.union([z.null().transform(() => undefined), z.object({{ $oid: {regex_pattern} }}), z.undefined()]).prefault(undefined),"
+        "parent_id: z.union([z.null().transform(() => undefined), z.strictObject({{ $oid: {regex_pattern} }}), z.undefined()]).prefault(undefined),"
     )));
     assert!(zod_schema.contains(&format!(
-        "nested_refs: z.record(z.string(), z.array(z.object({{ $oid: {regex_pattern} }}))),"
+        "nested_refs: z.record(z.string(), z.array(z.strictObject({{ $oid: {regex_pattern} }}))),"
     )));
 }
 

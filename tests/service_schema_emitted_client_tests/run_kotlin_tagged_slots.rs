@@ -9,6 +9,8 @@
 
 use core::fmt::Write as _;
 
+#[cfg(feature = "mongodb")]
+use super::object_id_runs::readme_object_id;
 use super::runtime::ran_kotlin;
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use super::runtime::{node_modules, ran_with_modules, stand_down_modules};
@@ -52,13 +54,6 @@ fun <T> told(at: Int, serializer: KSerializer<T>, payload: String) {
     }
     println("$at: $told")
 }
-"#;
-
-/// The consumer's own `ObjectId`, as the README writes it.
-#[cfg(feature = "mongodb")]
-const OBJECT_ID: &str = r#"
-@Serializable
-data class ObjectId(@SerialName("\$oid") val oid: String)
 "#;
 
 /// The function `Docketed::Trimmed` and `Docketed::Pared` name, for the Zod schema.
@@ -345,7 +340,7 @@ fn an_object_id_beside_the_tag_is_read_and_written_back_by_kotlin_as_serde_write
     main.push_str("}\n");
     let source = [
         KOTLIN_IMPORTS.to_owned(),
-        OBJECT_ID.to_owned(),
+        readme_object_id("kotlin"),
         imprint_kotlin::kotlin_definition(),
         stamping_kotlin::kotlin_definition(),
         READ.to_owned(),

@@ -10,6 +10,8 @@ use core::fmt::Write as _;
 
 use serde_json::Value;
 
+#[cfg(feature = "mongodb")]
+use super::object_id_runs::readme_object_id;
 use super::runtime::judged;
 use super::tagged_slot_models::{
     ENTRIES_REFUSED, WRITTEN, ballast_swift, bunkered_swift, cradled_swift, demurrage_swift,
@@ -46,15 +48,6 @@ func told<Read: Codable>(_ at: Int, _ type: Read.Type, _ payload: String) {
   } catch {
     print("\(at): \(error)")
   }
-}
-"#;
-
-/// The consumer's own `ObjectId`, public and `Sendable` as the emitted enum that holds it is.
-#[cfg(feature = "mongodb")]
-const OBJECT_ID: &str = r#"
-public struct ObjectId: Codable, Sendable {
-  public let oid: String
-  enum CodingKeys: String, CodingKey { case oid = "$oid" }
 }
 "#;
 
@@ -193,7 +186,7 @@ fn an_object_id_beside_the_tag_is_read_and_written_back_by_swift_as_serde_writes
     let _ = writeln!(expected, "{}: {}", STAMPED.len(), STAMP_REFUSED.swift);
     let source = [
         "import Foundation".to_owned(),
-        OBJECT_ID.to_owned(),
+        readme_object_id("swift"),
         imprint_swift::swift_definition(),
         stamping_swift::swift_definition(),
         TOLD.to_owned(),

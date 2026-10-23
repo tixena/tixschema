@@ -23,11 +23,13 @@ pub fn get_object_id_zod_schema() -> String {
     get_object_id_zod_schema_with("")
 }
 
-/// The `$oid` object's Zod schema with `hex_checks` appended to the hex string it holds.
+/// The `$oid` object's Zod schema with `hex_checks` appended to the hex string it holds: a strict
+/// object, as serde refuses a key beside `$oid` where an `ObjectId` is held as a value.
 #[cfg(all(feature = "mongodb", any(test, feature = "zod")))]
 pub fn get_object_id_zod_schema_with(hex_checks: &str) -> String {
     format!(
-        "z.object({{ $oid: z.string().regex(/{OBJECT_ID_HEX_PATTERN}/, {{ message: \"Invalid ObjectId\" }}){hex_checks} }})"
+        "z.strictObject({{ $oid: z.string().regex(/{OBJECT_ID_HEX_PATTERN}/, \
+         {{ message: \"Invalid ObjectId\" }}){hex_checks} }})"
     )
 }
 

@@ -822,8 +822,8 @@ mod zod {
     fn an_argument_renders_through_the_renderer_that_already_answers_for_it() {
         let zod = MixedArguments::zod_schema();
         for call in [
-            "keyed: Inner$SchemaFactory(z.object({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { \
-             message: \"Invalid ObjectId\" }) })),",
+            "keyed: Inner$SchemaFactory(z.strictObject({ $oid: \
+             z.string().regex(/^[a-f0-9]{24}$/, { message: \"Invalid ObjectId\" }) })),",
             "sized: Inner$SchemaFactory(z.number().int().min(0).max(4294967295)),",
             "stamped: Inner$SchemaFactory(z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date())),",
         ] {
