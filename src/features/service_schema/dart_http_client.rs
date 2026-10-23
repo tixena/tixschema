@@ -16,6 +16,7 @@ use crate::service_schema::parse::{
     path_reads_a_named_field, tuple_elements, type_leaf_name, vec_inner, wire_key, written,
 };
 use crate::service_schema::support::fault_fields_typescript_name;
+use crate::utils::{WireScalarKind, wire_scalar_kind};
 use core::fmt::Write as _;
 use syn::{Ident, Type};
 
@@ -1198,15 +1199,28 @@ fn dart_header_out_decode(ty: &Type, raw: &str) -> (String, bool) {
         | FieldDefType::Usize
         | FieldDefType::Isize => (format!("int.tryParse({raw})"), true),
         FieldDefType::F32 | FieldDefType::F64 => (format!("double.tryParse({raw})"), true),
-        // The header text read as a JSON string, as the Rust client reads it, through the type's
-        // own codec; a codec that refuses it is a malformed header.
-        FieldDefType::SiblingType(_, _) => (
-            format!(
-                "(() {{ try {{ return {}; }} catch (_) {{ return null; }} }})()",
-                dart_json_decode(base, raw)
-            ),
-            true,
-        ),
+        // The header text read as the JSON value the type is, as the Rust client reads it, through
+        // the type's own codec; a text that is no such value, or that the codec refuses, is a
+        // malformed header.
+        FieldDefType::SiblingType(_, _) => {
+            let json = match wire_scalar_kind(base) {
+                WireScalarKind::Text => raw.to_owned(),
+                WireScalarKind::Bool => format!(
+                    "switch ({raw}) {{ 'true' => true, 'false' => false, _ => throw const FormatException('not a bool') }}"
+                ),
+                WireScalarKind::Integer | WireScalarKind::Signed64 | WireScalarKind::Unsigned64 => {
+                    format!("int.parse({raw})")
+                }
+                WireScalarKind::Float => format!("double.parse({raw})"),
+            };
+            (
+                format!(
+                    "(() {{ try {{ return {}; }} catch (_) {{ return null; }} }})()",
+                    dart_json_decode(base, &json)
+                ),
+                true,
+            )
+        }
         FieldDefType::BooleanLiteral(_)
         | FieldDefType::Char
         | FieldDefType::Map(_, _)

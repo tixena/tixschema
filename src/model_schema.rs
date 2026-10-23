@@ -255,7 +255,7 @@ use crate::utils::{
     bson_refused_holder, forwarded_key_maps, forwarded_key_parameter, is_recorded_bson_refused_key,
     is_recorded_untagged_enum, is_wire_scalar_type, record_bson_refused_holder,
     record_bson_refused_key, record_forwarded_key_maps, record_forwarded_key_parameter,
-    record_untagged_enum, record_wire_scalar,
+    record_untagged_enum, record_wire_scalar_of, wire_scalar_kind,
 };
 
 #[cfg(feature = "serde")]
@@ -7046,7 +7046,7 @@ fn record_wire_scalar_item(item: &Item) {
         return;
     };
     if is_wire_scalar_type(inner) {
-        record_wire_scalar(&name.to_string());
+        record_wire_scalar_of(&name.to_string(), wire_scalar_kind(inner));
     }
 }
 

@@ -110,6 +110,18 @@ pub enum AliasKind {
     Unknown,
 }
 
+/// What a bare wire scalar is read from the text of: text, a `bool`, a float, an integer, or a
+/// `u64` or an `i64`, which TypeScript holds as a `bigint`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum WireScalarKind {
+    Bool,
+    Float,
+    Integer,
+    Signed64,
+    Text,
+    Unsigned64,
+}
+
 /// The form a map key is written in on the two nominal surfaces. The name a key is written under
 /// stands wherever its value form spells a TypeScript property key, and is spent where it does not:
 /// `boolean`, `bigint` and `Date` are no property keys, and the only bindings a brand or alias over
@@ -647,6 +659,9 @@ thread_local! {
     /// of [`ALIAS_INFO`], which is written only where a generation surface is on: a transport
     /// reads this in every build.
     static WIRE_SCALARS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+    /// What each recorded wire scalar is read from the text of: a path, a query, a header or a
+    /// text part hands it as text, and a number is parsed before serde reads it.
+    static WIRE_SCALAR_KINDS: RefCell<HashMap<String, WireScalarKind>> = RefCell::new(HashMap::new());
     /// The names of enums declared `#[serde(untagged)]`. Kept out of [`ALIAS_INFO`] for the same
     /// reason as [`WIRE_SCALARS`]: a service macro reads this in every build.
     static UNTAGGED_ENUMS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
@@ -1471,6 +1486,44 @@ pub fn is_wire_scalar_type(ty: &Type) -> bool {
                 | "NaiveDateTime"
                 | "NaiveTime"
         )
+}
+
+/// The kind `ty` is read from the text of: a primitive by its name, a brand, a struct of one slot
+/// or an alias [`record_wire_scalar_of`] has seen by the kind it recorded, and any other name as
+/// text.
+pub fn wire_scalar_kind(ty: &Type) -> WireScalarKind {
+    let Type::Path(named) = ty else {
+        return WireScalarKind::Text;
+    };
+    let Some(leaf) = named.path.segments.last() else {
+        return WireScalarKind::Text;
+    };
+    let spelled = leaf.ident.to_string();
+    match spelled.as_str() {
+        "bool" => WireScalarKind::Bool,
+        "u64" if leaf.arguments.is_none() => WireScalarKind::Unsigned64,
+        "i64" if leaf.arguments.is_none() => WireScalarKind::Signed64,
+        "u8" | "u16" | "u32" | "u128" | "usize" | "i8" | "i16" | "i32" | "i128" | "isize" => {
+            WireScalarKind::Integer
+        }
+        "f32" | "f64" => WireScalarKind::Float,
+        _ => WIRE_SCALAR_KINDS.with(|kinds| {
+            kinds
+                .borrow()
+                .get(&spelled)
+                .copied()
+                .unwrap_or(WireScalarKind::Text)
+        }),
+    }
+}
+
+/// Records that `rust_ident` names an item serde writes as a bare wire scalar read from the text
+/// of `kind`.
+pub fn record_wire_scalar_of(rust_ident: &str, kind: WireScalarKind) {
+    record_wire_scalar(rust_ident);
+    WIRE_SCALAR_KINDS.with(|kinds| {
+        kinds.borrow_mut().insert(rust_ident.to_owned(), kind);
+    });
 }
 
 /// Records that `rust_ident` names an item serde writes as a bare wire scalar.

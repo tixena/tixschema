@@ -632,7 +632,7 @@ const read = (text: string): unknown =>
   );
 ```
 
-- **A text position holds the digits.** A path placeholder, a query parameter, a header and a text part hold the text of the number, which every client writes and every dispatcher reads exactly. The Rust `http_rest` dispatcher reads a `u64` message, header and path placeholder up to `u64::MAX`.
+- **A text position holds the digits.** A path placeholder, a query parameter, a header and a text part hold the text of the number, which every client writes and every dispatcher reads exactly, a brand, a struct of one slot or an alias over the number declared above the service included. The Rust `http_rest` dispatcher reads a `u64` message, header and path placeholder up to `u64::MAX`.
 - **A map's key is a `number`** in TypeScript, `z.number().int()` in Zod: serde writes the key as the text of the number, and the Zod schema refuses a key beyond `2^53 - 1` in size. The TypeScript writes a `@deprecated` note over each declaration that writes such a map, so an editor strikes the name through where it is read and shows the note. `tsc --strict` prints nothing for it:
 
 ```rust
@@ -3180,6 +3180,8 @@ service_schema: operation `get_widget`'s field `filter` is required and is bound
 ```
 
 An *optional* field a bodyless method leaves unbound becomes a query parameter instead, read out of the parsed query string on the way in and appended to it on the way out. A path placeholder, a query parameter and a `header_in` value are all read the same way, off the operation argument's own declared type: `true`/`false` become a JSON boolean, anything that parses as a number becomes a JSON number, anything else stays a JSON string, and a `Vec<T>` splits its raw text on `,` and coerces each piece the same way -- the dispatcher and the TypeScript client apply this judgement identically, from one shared rule, so the two sides of the wire cannot read a query string two different ways.
+
+A [brand](#branded-newtypes), a struct of one slot or an alias over a number or a `bool`, declared above the service, is read the way the number or the `bool` it wraps is: `pub struct Berth(pub u32);` handed `7` in a path, a query, a header or a text part is read as the number `7`, a brand over an `i64` or a `u64` is read exactly, and every client writes it as that text, and reads a `header_out` of it back from that text. A brand over a `String` stays text, whatever its digits: `pub struct Label(pub String);` handed `007` is read as `"007"`. The kind is recorded as the type expands, so a type declared below the service, or in another crate, is read as text, and a brand over a number declared there is refused with `invalid type: string "7", expected u32`; declare it above the service.
 
 A single-argument message -- the whole message already being the author's own type, or the argument list collapsed to one -- gives this macro no fields to read off the query string, so a bodyless method refuses it outright, naming what to write instead:
 

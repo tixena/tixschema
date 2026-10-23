@@ -11,9 +11,9 @@ use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HttpShape, OperationDef, OperationInputs,
-    OperationOutcome, PathSegment, ScalarKind, ServiceDef, held_as_a_bigint, is_scalar_named_type,
-    is_unit_type, option_inner, scalar_kind, service_declares_a_stream, service_declares_multipart,
-    tuple_elements, vec_inner, wire_key, written,
+    OperationOutcome, PathSegment, ScalarKind, ServiceDef, held_as_a_bigint, is_integer_scalar,
+    is_scalar_named_type, is_unit_type, option_inner, scalar_kind, service_declares_a_stream,
+    service_declares_multipart, tuple_elements, vec_inner, wide_integer_range, wire_key, written,
 };
 use crate::utils::ts_quoted;
 use core::fmt::Write as _;
@@ -989,10 +989,7 @@ fn header_out_invalid_expr(ty: &Type, raw: &str) -> Option<String> {
         // The digits of a `u64` or an `i64`, within the range of its type, as the Rust client
         // reads them.
         ScalarKind::Number if held_as_a_bigint(base) => {
-            let (least, most) = get_field_def("value", base, "")
-                .field_type
-                .bigint_range()
-                .unwrap_or_default();
+            let (least, most) = wide_integer_range(base).unwrap_or_default();
             let sign = if least.starts_with('-') { "-?" } else { "" };
             Some(format!(
                 "!/^{sign}(0|[1-9][0-9]*)$/.test({raw}) || BigInt({raw}) < {least}n || \
@@ -1027,20 +1024,6 @@ fn reads_a_date(ty: &Type) -> bool {
 #[cfg(not(feature = "chrono"))]
 const fn reads_a_date(_ty: &Type) -> bool {
     false
-}
-
-/// Whether `ty` — already known to be [`ScalarKind::Number`] — is one of the integer primitives
-/// rather than `f32`/`f64`; only an integer type refuses a non-integer decode.
-fn is_integer_scalar(ty: &Type) -> bool {
-    let Type::Path(named) = ty else {
-        return false;
-    };
-    named.path.segments.last().is_some_and(|leaf| {
-        matches!(
-            leaf.ident.to_string().as_str(),
-            "u8" | "u16" | "u32" | "u64" | "usize" | "i8" | "i16" | "i32" | "i64" | "isize"
-        )
-    })
 }
 
 /// The four fault-building readers every method reaches for, plus the one-way throw pair where the

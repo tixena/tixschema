@@ -12,6 +12,7 @@ use crate::service_schema::parse::{
     tuple_elements, vec_inner, wire_key, written,
 };
 use crate::service_schema::support::fault_fields_typescript_name;
+use crate::utils::{WireScalarKind, wire_scalar_kind};
 use core::fmt::Write as _;
 use syn::{Ident, Type};
 
@@ -1585,10 +1586,30 @@ fn swift_header_out_decode(fn_prefix: &str, ty: &Type, raw: &str) -> String {
         // The header text read as a JSON string, as the Rust client reads it, through the type's
         // own `Decodable` conformance and a `Date` as the model codec reads one; one that refuses
         // it is a malformed header.
-        FieldDefType::SiblingType(_, _) => format!(
-            "(try? {fn_prefix}DatedDecoder().decode({}.self, from: JSONEncoder().encode({raw})))",
-            swift_typename_of(base)
-        ),
+        FieldDefType::SiblingType(_, _) => {
+            let decoded = |value: &str| {
+                format!(
+                    "try? {fn_prefix}DatedDecoder().decode({}.self, from: JSONEncoder().encode({value}))",
+                    swift_typename_of(base)
+                )
+            };
+            let numbered = |number: &str| {
+                format!(
+                    "({number}({raw}).flatMap {{ number in {} }})",
+                    decoded("number")
+                )
+            };
+            match wire_scalar_kind(base) {
+                WireScalarKind::Text => format!("({})", decoded(raw)),
+                WireScalarKind::Bool => format!(
+                    "({raw} == \"true\" || {raw} == \"false\" ? ({}) : nil)",
+                    decoded(&format!("{raw} == \"true\""))
+                ),
+                WireScalarKind::Float => numbered("Double"),
+                WireScalarKind::Unsigned64 => numbered("UInt64"),
+                WireScalarKind::Integer | WireScalarKind::Signed64 => numbered("Int64"),
+            }
+        }
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime => format!(
             "(try? {fn_prefix}DatedDecoder().decode(Date.self, from: JSONEncoder().encode({raw})))"
