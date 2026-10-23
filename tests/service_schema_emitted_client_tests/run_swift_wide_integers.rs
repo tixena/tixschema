@@ -20,7 +20,8 @@ use super::wide_integer_models::{
 const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
 
 /// What prints a row: the value read, written back with its keys sorted, the description of a
-/// `dataCorrupted` the read throws, or any other error Swift's own read throws.
+/// `dataCorrupted` the read throws, the type and the path of a `typeMismatch`, whose description
+/// Foundation words differently from one version to the next, or any other error.
 const TOLD: &str = r#"
 func told<Read: Codable>(_ at: Int, _ type: Read.Type, _ payload: String) {
   do {
@@ -30,6 +31,9 @@ func told<Read: Codable>(_ at: Int, _ type: Read.Type, _ payload: String) {
     print("\(at): read \(String(data: try encoder.encode(read), encoding: .utf8)!)")
   } catch DecodingError.dataCorrupted(let context) {
     print("\(at): dataCorrupted: \(context.debugDescription)")
+  } catch DecodingError.typeMismatch(let expected, let context) {
+    let path = context.codingPath.map { $0.stringValue }.joined(separator: ".")
+    print("\(at): typeMismatch: \(expected) at '\(path)'")
   } catch {
     print("\(at): \(error)")
   }
@@ -40,15 +44,13 @@ func told<Read: Codable>(_ at: Int, _ type: Read.Type, _ payload: String) {
 /// a number beyond an `Int64` and a fraction as data that is not valid JSON.
 const SWIFT_REFUSED: [&str; 8] = [
     "dataCorrupted: The given data was not valid JSON.",
-    "DecodingError.typeMismatch: expected value of type Int64. Debug description: Expected to \
-     decode Int64 but found a string instead.",
+    "typeMismatch: Int64 at ''",
     "dataCorrupted: The given data was not valid JSON.",
     "dataCorrupted: The given data was not valid JSON.",
     "dataCorrupted: 'level': too large: maximum is 5, got 6",
     "dataCorrupted: The given data was not valid JSON.",
     "dataCorrupted: 'fixed': not the literal 214, got 215",
-    "DecodingError.typeMismatch: expected value of type Int64. Path: keyed.4. Debug description: \
-     Expected to decode Int64 but found a string instead.",
+    "typeMismatch: Int64 at 'keyed.4'",
 ];
 
 /// `json` with the keys of every object sorted, as the Swift encoder of the run writes them.
