@@ -1,9 +1,12 @@
-//! The models of `swift_tests/lone_slots.rs` and of
-//! `service_schema_emitted_client_tests/run_swift_lone_slots.rs`: a tuple struct that declares one
-//! slot, which serde writes as the slot's value, over a number with a bound, a text with a length,
-//! a model with a rule, a list, an optional, a map Swift keys natively and one under a key it
-//! wraps, a date and a tuple, in a type that declares a parameter and in one that declares none,
-//! and held in a field, in a list and in a variant's one slot under each tagging serde accepts.
+//! The models of `swift_tests/lone_slots.rs` and of the table
+//! `service_schema_emitted_client_tests/lone_slot_rows.rs` holds the Zod schema and each client to:
+//! a tuple struct that declares one slot, which serde writes as the slot's value, over a number
+//! with a bound, a text with a length, a model with a rule, a list, an optional, a map Swift keys
+//! natively and one under a key it wraps, a date and a tuple, in a type that declares a parameter
+//! and in one that declares none, and held in a field, in a list, as a map's value, as a type
+//! argument, flattened and in a variant's one slot under each tagging serde accepts. A struct of
+//! one slot and a brand over an externally tagged enum with a unit variant are flattened and held
+//! beside a tag, where serde writes the variant as an entry of its name over `null`.
 
 use std::collections::HashMap;
 
@@ -151,6 +154,93 @@ pub struct Tote {
     pub single: Single<u32>,
 }
 
+/// A model a brand holds.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Twine {
+    #[model_schema_prop(minLength = 1)]
+    pub twine: String,
+}
+
+/// A brand over a model, which serde writes as the model.
+#[model_schema(no_display)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct Twined(pub Twine);
+
+/// A struct of one slot over a text, a number, a model and a list, each under a key, in a list, as
+/// a map's value and as a type argument, and the one over a model flattened beside a flattened
+/// brand over a model.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Laden {
+    #[serde(flatten)]
+    pub baled: Baled,
+    pub bales: Bales,
+    pub carried_bales: Sack<Bales>,
+    pub carried_count: Sack<Count>,
+    pub carried_model: Sack<Baled>,
+    pub carried_moniker: Sack<Moniker>,
+    pub count: Count,
+    pub counts_by_name: HashMap<String, Count>,
+    pub models: Vec<Baled>,
+    pub models_by_name: HashMap<String, Baled>,
+    pub monikers: Vec<Moniker>,
+    pub monikers_by_name: HashMap<String, Moniker>,
+    pub stacks: Vec<Bales>,
+    pub stacks_by_name: HashMap<String, Bales>,
+    #[serde(flatten)]
+    pub twined: Twined,
+}
+
+/// An externally tagged enum with a unit variant, which serde writes flattened, and beside a tag,
+/// as an entry of its name over `null`.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum Sling {
+    Slack,
+    Taut { tension: u32 },
+}
+
+/// A struct of one slot over [`Sling`].
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Slung(pub Sling);
+
+/// A brand over [`Sling`].
+#[model_schema(no_display)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct Girth(pub Sling);
+
+/// [`Slung`] flattened beside a member of its holder's own.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Strop {
+    pub count: u32,
+    #[serde(flatten)]
+    pub slung: Slung,
+}
+
+/// [`Girth`] flattened beside a member of its holder's own.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Girthed {
+    pub count: u32,
+    #[serde(flatten)]
+    pub girth: Girth,
+}
+
+/// [`Slung`] and [`Girth`] in the one slot of a variant under a tag alone, which serde writes
+/// beside the tag.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "kind")]
+pub enum Rigger {
+    Girth(Girth),
+    Slung(Slung),
+}
+
 /// Each struct of one slot in a variant's one slot, under no tag attribute.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -160,6 +250,7 @@ pub enum Stow {
     Named(Moniker),
     Packed(Baled),
     Sacked(Sacked<u8>),
+    Stacked(Bales),
 }
 
 /// [`Stow`] under a tag and a content key.
@@ -172,6 +263,7 @@ pub enum AdjacentStow {
     Named(Moniker),
     Packed(Baled),
     Sacked(Sacked<u8>),
+    Stacked(Bales),
 }
 
 /// [`Stow`] under no tag, each variant read from a payload of another kind.

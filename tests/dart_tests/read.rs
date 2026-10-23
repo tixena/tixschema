@@ -276,8 +276,8 @@ fn a_wrapper_reads_unjudged_what_its_validate_runs() {
     );
 }
 
-/// A tuple struct reads each slot as a member. The struct of one slot is read as the array the
-/// backend writes it as.
+/// A tuple struct reads each slot as a member. The struct of one slot is read from the slot's
+/// value and written as it, as serde writes it.
 #[test]
 fn a_tuple_struct_reads_each_slot_as_a_member() {
     assert_written(
@@ -302,9 +302,7 @@ fn a_tuple_struct_reads_each_slot_as_a_member() {
     assert_written(
         &sleeve_dart::dart_definition(),
         &format!(
-            "{}=> Sleeve(switch (json as List<dynamic>) {{ final tuple when tuple.length == 1 => \
-             (tuple[0] as String,), final tuple => throw FormatException('invalid length \
-             ${{tuple.length}}, expected 1') }}); dynamic toJson() => [(value).$1];",
+            "{}=> Sleeve(json as String); dynamic toJson() => value;",
             pair("Sleeve", "dynamic json", "json")
         ),
     );

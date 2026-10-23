@@ -1,7 +1,9 @@
 //! An `ObjectId` in each position serde writes one: under a key, in a list, as a map's value, as a
 //! type argument, under a brand, in the lone slot of a variant under a tag alone, and flattened,
 //! beside a member of its holder's own, ahead of a flattened struct, under an `Option`, under a
-//! brand and an alias, and as the type parameter a generic type flattens. serde refuses a key
+//! brand and an alias, and as the type parameter a generic type flattens. A struct of one slot
+//! over one, which serde writes as the `ObjectId` itself, is held under a key, in a list, as a
+//! map's value, as a type argument, in the one slot of a variant and flattened. serde refuses a key
 //! beside `$oid`, and a `$oid` that is not 24 hexadecimal digits, wherever the `ObjectId` is held
 //! as a value, and reads past the key where it is flattened. A generic type that flattens an
 //! `Option` of its type parameter is filled at an `ObjectId` and at a struct as well: serde reads
@@ -17,7 +19,7 @@ use tixschema::model_schema;
 
 /// Each payload: an `ObjectId` in each position, a key beside its `$oid` there, a `$oid` that is
 /// not 24 hexadecimal digits, and one in upper case, which serde alone reads.
-const ROWS: [Row; 53] = [
+const ROWS: [Row; 58] = [
     Row {
         dart: Told::Serde,
         json: concat!(
@@ -501,30 +503,86 @@ const ROWS: [Row; 53] = [
         swift: Told::Serde,
     },
     Row {
-        dart: Told::Refused,
+        dart: Told::Serde,
         json: r#"{"wafer":{"$oid":"507f1f77bcf86cd799439011"}}"#,
-        kotlin: Told::Refused,
+        kotlin: Told::Serde,
         read_as: "Wafered",
         schema: true,
         serde: true,
         swift: Told::Serde,
     },
     Row {
-        dart: Told::Refused,
+        dart: Told::Serde,
         json: r#"{"note":"n","$oid":"507f1f77bcf86cd799439011"}"#,
-        kotlin: Told::Refused,
+        kotlin: Told::Serde,
         read_as: "Wafering",
         schema: true,
         serde: true,
         swift: Told::Serde,
     },
     Row {
-        dart: Told::Refused,
+        dart: Told::Serde,
         json: r#"{"envelope":{"$oid":"507f1f77bcf86cd799439011","note":"n"}}"#,
-        kotlin: Told::Refused,
+        kotlin: Told::Serde,
         read_as: "Enwafered",
         schema: true,
         serde: true,
+        swift: Told::Refused,
+    },
+    Row {
+        dart: Told::Serde,
+        json: concat!(
+            r#"{"carried":{"held":{"$oid":"507f1f77bcf86cd799439011"}},"#,
+            r#""listed":[{"$oid":"507f1f77bcf86cd799439011"}],"#,
+            r#""named":{"a":{"$oid":"507f1f77bcf86cd799439011"}}}"#,
+        ),
+        kotlin: Told::Serde,
+        read_as: "Wafers",
+        schema: true,
+        serde: true,
+        swift: Told::Serde,
+    },
+    Row {
+        dart: Told::Refused,
+        json: concat!(
+            r#"{"carried":{"held":{"$oid":"507f1f77bcf86cd799439011"}},"#,
+            r#""listed":[{"$oid":"507f1f77bcf86cd799439011","extra":1}],"#,
+            r#""named":{}}"#,
+        ),
+        kotlin: Told::Refused,
+        read_as: "Wafers",
+        schema: false,
+        serde: false,
+        swift: Told::Refused,
+    },
+    Row {
+        dart: Told::Refused,
+        json: concat!(
+            r#"{"carried":{"held":[{"$oid":"507f1f77bcf86cd799439011"}]},"#,
+            r#""listed":[],"named":{}}"#,
+        ),
+        kotlin: Told::Refused,
+        read_as: "Wafers",
+        schema: false,
+        serde: false,
+        swift: Told::Refused,
+    },
+    Row {
+        dart: Told::Serde,
+        json: r#"{"Pressed":{"$oid":"507f1f77bcf86cd799439011"}}"#,
+        kotlin: Told::Serde,
+        read_as: "Impressed",
+        schema: true,
+        serde: true,
+        swift: Told::Serde,
+    },
+    Row {
+        dart: Told::Refused,
+        json: r#"{"Pressed":[{"$oid":"507f1f77bcf86cd799439011"}]}"#,
+        kotlin: Told::Refused,
+        read_as: "Impressed",
+        schema: false,
+        serde: false,
         swift: Told::Refused,
     },
     Row {
@@ -816,8 +874,7 @@ pub struct Bullae {
     pub branded: Enveloping<Sigil>,
 }
 
-/// [`Wafer`] under a key. The Dart and Kotlin reads take a struct of one slot from an array of
-/// one item, where serde writes the slot's value itself.
+/// [`Wafer`] under a key.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Wafered {
@@ -839,6 +896,22 @@ pub struct Wafering {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Enwafered {
     pub envelope: Enveloping<Wafer>,
+}
+
+/// [`Wafer`] in a list, as a map's value and as a type argument.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Wafers {
+    pub carried: Countersigned<Wafer>,
+    pub listed: Vec<Wafer>,
+    pub named: HashMap<String, Wafer>,
+}
+
+/// [`Wafer`] in the one slot of a variant under no tag attribute.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum Impressed {
+    Pressed(Wafer),
 }
 
 /// A brand over an `ObjectId` declared below it, flattened ahead of a flattened struct.
@@ -909,6 +982,8 @@ pub fn serde_told(read_as: &str, json: &str) -> String {
         "Belated" => written_back::<Belated>(json),
         "Wafered" => written_back::<Wafered>(json),
         "Wafering" => written_back::<Wafering>(json),
+        "Wafers" => written_back::<Wafers>(json),
+        "Impressed" => written_back::<Impressed>(json),
         _ => written_back::<Enwafered>(json),
     }
 }

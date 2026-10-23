@@ -155,6 +155,14 @@ enum VariantPayload {
     Value(Box<FieldDef>),
 }
 
+/// The slots of a tuple struct as serde writes them: the value of the one slot of a struct that
+/// declares one, and an array of every other's.
+#[derive(Clone, Copy)]
+enum Slots<'slots> {
+    Array(&'slots [FieldDef]),
+    Lone(&'slots FieldDef),
+}
+
 /// How serde tags the variants of an enum, which is what names a variant's member in a message.
 #[derive(Clone, Copy)]
 enum Tagging<'tag> {
@@ -389,6 +397,16 @@ fn flattened_variant_names(def: &FieldDef) -> Option<(&str, Vec<Vec<String>>)> {
     }
     let names = KOTLIN_VARIANT_NAMES.with(|noted| noted.borrow().get(name).cloned())?;
     (!names.is_empty()).then_some((name.as_str(), names))
+}
+
+/// Records `rust_ident`, an alias, a brand or a struct of one slot whose value is `value`, as
+/// writing a unit variant as its bare name where `value` is an enum that writes one so.
+fn note_bare_named(rust_ident: &str, value: &FieldDef) {
+    if !value.is_list() && !value.is_optional() && writes_a_bare_name(value) {
+        KOTLIN_BARE_NAMED.with(|noted| {
+            noted.borrow_mut().insert(rust_ident.to_owned());
+        });
+    }
 }
 
 /// Whether a value typed `def`, flattened or beside the tag of a newtype variant under a tag
@@ -948,8 +966,10 @@ fn field_reaches_type_parameter(field: &FieldDef, type_parameters: &[String]) ->
             field_reaches_type_parameter(ok, type_parameters)
                 || field_reaches_type_parameter(err, type_parameters)
         }
-        FieldDefType::Tuple(_)
-        | FieldDefType::Unknown
+        FieldDefType::Tuple(elements) => elements
+            .iter()
+            .any(|element| field_reaches_type_parameter(element, type_parameters)),
+        FieldDefType::Unknown
         | FieldDefType::StringLiteral(_)
         | FieldDefType::BooleanLiteral(_)
         | FieldDefType::NumberLiteral(_)
@@ -1044,12 +1064,12 @@ fn kotlin_serializer_expr(field: &FieldDef, type_parameters: &[String]) -> Strin
         FieldDefType::Result(ok, err) => {
             result_serializer(ok, err, |arm| kotlin_serializer_expr(arm, type_parameters))
         }
+        FieldDefType::Tuple(elements) => tuple_wrapper_serializer(elements, false),
         FieldDefType::Char => texts::serializer(TextForm::Char),
         // None of these ever reaches a type parameter, a text of one form or an array of one
         // length at its innermost level (see `composed`), so this arm is unreached in practice; it
         // stays total rather than a wildcard.
-        FieldDefType::Tuple(_)
-        | FieldDefType::Unknown
+        FieldDefType::Unknown
         | FieldDefType::StringLiteral(_)
         | FieldDefType::BooleanLiteral(_)
         | FieldDefType::NumberLiteral(_)
@@ -1132,15 +1152,47 @@ fn kotlin_subclass_serializer_expr(subclass_name: &str, type_parameters: &[Strin
     }
 }
 
-/// The Kotlin type name for a Tuple-shaped field: queues a wrapper `data class` plus the
-/// `KSerializer` that reads and writes it as a JSON array, once per shape in the item being
-/// expanded. Monotonically numbered so two fields named alike in two different items never
-/// collide. `walked` says the tuple is held where a `validate()` walks its positions, so a model
-/// in one is read unjudged, which makes it a shape of its own. A tuple of no element is `()`,
-/// which [`unit_typename`] writes.
+/// The Kotlin type of a Tuple-shaped field: the wrapper [`tuple_wrapper`] queues, written with
+/// the type parameters its positions reach.
 fn tuple_wrapper_typename(elements: &[FieldDef], walked: bool) -> String {
+    let (named, parameters) = tuple_wrapper(elements, walked);
+    if parameters.is_empty() {
+        named
+    } else {
+        format!("{named}<{}>", parameters.join(", "))
+    }
+}
+
+/// The `KSerializer` of a Tuple-shaped field: the reified one of a wrapper that declares no type
+/// parameter, and the wrapper's serializer handed the serializer of each parameter it declares.
+fn tuple_wrapper_serializer(elements: &[FieldDef], walked: bool) -> String {
+    let (named, parameters) = tuple_wrapper(elements, walked);
+    if parameters.is_empty() {
+        format!("serializer<{named}>()")
+    } else {
+        let handed: Vec<String> = parameters
+            .iter()
+            .map(|parameter| kotlin_serializer_param_name(parameter))
+            .collect();
+        format!("{named}Serializer({})", handed.join(", "))
+    }
+}
+
+/// The wrapper of a Tuple-shaped field, and the type parameters it declares: queues a wrapper
+/// `data class` plus the `KSerializer` that reads and writes it as a JSON array, once per shape in
+/// the item being expanded. Monotonically numbered so two fields named alike in two different
+/// items never collide. Both are generic over the type parameters the positions reach, in the
+/// order a walk first reaches them, the serializer a class over one serializer per parameter.
+/// `walked` says the tuple is held where a `validate()` walks its positions, so a model in one is
+/// read unjudged, which makes it a shape of its own. A tuple of no element is `()`, which
+/// [`unit_typename`] writes.
+fn tuple_wrapper(elements: &[FieldDef], walked: bool) -> (String, Vec<String>) {
     if elements.is_empty() {
-        return unit_typename();
+        return (unit_typename(), Vec::new());
+    }
+    let mut parameters = Vec::new();
+    for element in elements {
+        element.reach_type_parameters(&mut parameters);
     }
     let declared_by = |element: &FieldDef| {
         if walked {
@@ -1157,9 +1209,9 @@ fn tuple_wrapper_typename(elements: &[FieldDef], walked: bool) -> String {
         .join(", ");
     let read_by = |element: &FieldDef| {
         if walked {
-            read::position_serializer(element)
+            read::position_serializer(element, &parameters)
         } else {
-            kotlin_serializer_expr(element, &[])
+            kotlin_serializer_expr(element, &parameters)
         }
     };
     let encode_entries = elements
@@ -1193,7 +1245,7 @@ fn tuple_wrapper_typename(elements: &[FieldDef], walked: bool) -> String {
             .find(|(declared, _)| *declared == shape)
             .map(|(_, named)| named.clone())
     }) {
-        return named;
+        return (named, parameters);
     }
     let index = KOTLIN_TUPLE_COUNTER.with(|counter| {
         let next = counter.get() + 1;
@@ -1201,24 +1253,72 @@ fn tuple_wrapper_typename(elements: &[FieldDef], walked: bool) -> String {
         next
     });
     let wrapper_name = format!("KotlinTuple{index}");
-    let serializer_name = format!("{wrapper_name}Serializer");
-    let class_text = format!(
-        "@Serializable(with = {serializer_name}::class) data class {wrapper_name}({params}) \
-         object {serializer_name} : KSerializer<{wrapper_name}> {{ \
-         override val descriptor: SerialDescriptor = buildClassSerialDescriptor(\"{wrapper_name}\"); \
-         override fun serialize(encoder: Encoder, value: {wrapper_name}) {{ \
-         val output = encoder as JsonEncoder; \
-         output.encodeJsonElement(buildJsonArray {{ {encode_entries} }}) }}; \
-         override fun deserialize(decoder: Decoder): {wrapper_name} {{ \
-         val input = decoder as JsonDecoder; {}; \
-         return {wrapper_name}({decode_entries}) }} }}",
-        tuple_array("input.decodeJsonElement()", elements.len())
+    let class_text = tuple_wrapper_declarations(
+        &wrapper_name,
+        &parameters,
+        &params,
+        &encode_entries,
+        &decode_entries,
+        elements.len(),
     );
     KOTLIN_TUPLE_AUX.with(|aux| aux.borrow_mut().push(class_text));
     KOTLIN_TUPLES.with(|tuples| {
         tuples.borrow_mut().push((shape, wrapper_name.clone()));
     });
-    wrapper_name
+    (wrapper_name, parameters)
+}
+
+/// The declarations of the wrapper `wrapper_name` of a tuple of `length` positions: the class
+/// over `params` and the serializer that writes `encode_entries` into an array and reads
+/// `decode_entries` back, each generic over `parameters`, the serializer a class over one
+/// serializer per parameter, and an `object` where there is none.
+fn tuple_wrapper_declarations(
+    wrapper_name: &str,
+    parameters: &[String],
+    params: &str,
+    encode_entries: &str,
+    decode_entries: &str,
+    length: usize,
+) -> String {
+    let serializer_name = format!("{wrapper_name}Serializer");
+    let (own, opened) = if parameters.is_empty() {
+        (wrapper_name.to_owned(), format!("object {serializer_name}"))
+    } else {
+        let listed = parameters.join(", ");
+        let bound: Vec<String> = parameters
+            .iter()
+            .map(|parameter| format!("{parameter} : Any"))
+            .collect();
+        let handed: Vec<String> = parameters
+            .iter()
+            .map(|parameter| {
+                format!(
+                    "private val {}: KSerializer<{parameter}>",
+                    kotlin_serializer_param_name(parameter)
+                )
+            })
+            .collect();
+        (
+            format!("{wrapper_name}<{listed}>"),
+            format!(
+                "class {serializer_name}<{}>({})",
+                bound.join(", "),
+                handed.join(", ")
+            ),
+        )
+    };
+    format!(
+        "@Serializable(with = {serializer_name}::class) data class {own}({params}) \
+         {opened} : KSerializer<{own}> {{ \
+         override val descriptor: SerialDescriptor = buildClassSerialDescriptor(\"{wrapper_name}\"); \
+         override fun serialize(encoder: Encoder, value: {own}) {{ \
+         val output = encoder as JsonEncoder; \
+         output.encodeJsonElement(buildJsonArray {{ {encode_entries} }}) }}; \
+         override fun deserialize(decoder: Decoder): {own} {{ \
+         val input = decoder as JsonDecoder; {}; \
+         return {wrapper_name}({decode_entries}) }} }}",
+        tuple_array("input.decodeJsonElement()", length)
+    )
 }
 
 /// The Kotlin type of `()`: an object, declared once per item beside the serializer that writes
@@ -1611,18 +1711,13 @@ fn named_member_rules(rules: &mut Rules<'_>, fields: &[KotlinField], under: Opti
     }
 }
 
-/// What each of `slots` adds to `rules`, read from `holder` and under its position after `under`:
-/// a lone slot is the value serde writes, and adds no position.
+/// What each of `slots`, the positions of the array serde writes, adds to `rules`, read from
+/// `holder` and under its position after `under`: one left in the array is at position `0`.
 fn slot_rules(rules: &mut Rules<'_>, slots: &[FieldDef], holder: &str, under: Option<&str>) {
     for (at, slot) in slots.iter().enumerate() {
-        let place = if slots.len() == 1 {
-            under.map(kotlin_template_text)
-        } else {
-            Some(place_under(under, &at.to_string()))
-        };
         rules.member(&Member {
             def: slot,
-            place,
+            place: Some(place_under(under, &at.to_string())),
             read: format!("{holder}slot{at}"),
         });
     }
@@ -2461,6 +2556,7 @@ fn value_class_tokens(
     let rust_ident = item_struct.ident.to_string();
     let export_name = compute_item_export_name(&rust_ident, args.name_override);
     register_kotlin_name(&rust_ident, &export_name);
+    note_bare_named(&rust_ident, &value_field);
 
     let generic_params = kotlin_generic_params(&item_struct.generics);
     let value_type = read::with_text_forms(&value_field);
@@ -2508,9 +2604,10 @@ fn value_class_tokens(
 }
 
 /// The Kotlin tokens for a non-branded tuple struct: a `data class` over one property per slot,
-/// read unjudged by the array `KSerializer` a Tuple-shaped field earns — the struct's own name
-/// stands in for what [`tuple_wrapper_typename`] would otherwise synthesize — and judged by its
-/// own.
+/// read unjudged by a `KSerializer` of its own and judged by its own. One that declares a single
+/// slot is that slot's value, which serde writes whatever the slot's attributes say; a wider one
+/// is the array of the slots serde writes, as a Tuple-shaped field is, the struct's own name
+/// standing in for what [`tuple_wrapper_typename`] would otherwise synthesize.
 fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> TokenStream {
     let type_parameters = type_parameters_in_scope(&item_struct.generics);
     let Fields::Unnamed(unnamed) = &item_struct.fields else {
@@ -2521,10 +2618,11 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
     register_kotlin_name(&rust_ident, &export_name);
     validate::note_model(&rust_ident);
 
+    let lone = unnamed.unnamed.len() == 1;
     let slots: Vec<FieldDef> = unnamed
         .unnamed
         .iter()
-        .filter(|slot| !parse_serde_key_omission(&slot.attrs).absent_from_wire())
+        .filter(|slot| lone || !parse_serde_key_omission(&slot.attrs).absent_from_wire())
         .map(|slot| {
             let mut field_def = field_def_with_prop_meta("slot", slot, args);
             field_def.erase_type_parameters(&type_parameters);
@@ -2541,34 +2639,28 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
         .map(|(slot, element)| format!("val slot{slot}: {}", read::declared_typename(element)))
         .collect::<Vec<_>>()
         .join(", ");
-    let encode_entries = slots
-        .iter()
-        .enumerate()
-        .map(|(slot, element)| {
-            format!(
-                "add(output.json.encodeToJsonElement({}, value.slot{slot}))",
-                read::member_serializer(element, &type_parameters)
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("; ");
-    let decode_entries = slots
-        .iter()
-        .enumerate()
-        .map(|(slot, element)| {
-            format!(
-                "input.json.decodeFromJsonElement({}, {})",
-                read::member_serializer(element, &type_parameters),
-                preprocess::corrected(preprocess::of(element), &format!("array[{slot}]"))
-            )
-        })
-        .collect::<Vec<_>>()
-        .join(", ");
     let payload = preprocess::corrected(args.preprocess, "input.decodeJsonElement()");
     let serializable = serialized_parameters(&item_struct.generics);
     let mut rules = Rules::of(&serializable);
-    slot_rules(&mut rules, &slots, "", None);
+    let lone_slot = slots.first().filter(|_| lone);
+    if let Some(only) = lone_slot {
+        note_bare_named(&rust_ident, only);
+        // The slot is the value serde writes for the struct, which is no step.
+        rules.member(&Member {
+            def: only,
+            place: None,
+            read: "slot0".to_owned(),
+        });
+    } else {
+        slot_rules(&mut rules, &slots, "", None);
+    }
     rules.own(args.check);
+    let (written, read_back) = tuple_struct_wire(
+        &export_name,
+        lone_slot.map_or(Slots::Array(&slots), Slots::Lone),
+        &type_parameters,
+        &payload,
+    );
     let validated = rules.written("");
     let alias = ident_typealias(&rust_ident, &export_name, &generic_params);
     // kotlinc refuses a data class of no property: a struct of no slot is a plain class.
@@ -2584,11 +2676,9 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
          override val descriptor: SerialDescriptor = buildClassSerialDescriptor(\"{export_name}\"); \
          override fun serialize(encoder: Encoder, value: {export_name}{generic_params}) {{ \
          val output = encoder as JsonEncoder; \
-         output.encodeJsonElement(buildJsonArray {{ {encode_entries} }}) }}; \
+         output.encodeJsonElement({written}) }}; \
          override fun deserialize(decoder: Decoder): {export_name}{generic_params} {{ \
-         val input = decoder as JsonDecoder; {}; \
-         return {export_name}({decode_entries}) }} }} {}{alias}",
-        tuple_array(&payload, slots.len()),
+         val input = decoder as JsonDecoder; {read_back} }} }} {}{alias}",
         read::judged(&export_name, &generic_params, &type_parameters, true)
     );
 
@@ -2598,6 +2688,56 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
         &kotlin_source,
         &SerdeDefaults::none(),
     )
+}
+
+/// What the serializer of the tuple struct `export_name` writes of `value`, and the statements it
+/// reads one back with from `payload`, as serde writes and reads its `slots`.
+fn tuple_struct_wire(
+    export_name: &str,
+    slots: Slots<'_>,
+    type_parameters: &[String],
+    payload: &str,
+) -> (String, String) {
+    let encoded = |slot: usize, element: &FieldDef| {
+        format!(
+            "output.json.encodeToJsonElement({}, value.slot{slot})",
+            read::member_serializer(element, type_parameters)
+        )
+    };
+    let decoded = |held: &str, element: &FieldDef| {
+        format!(
+            "input.json.decodeFromJsonElement({}, {})",
+            read::member_serializer(element, type_parameters),
+            preprocess::corrected(preprocess::of(element), held)
+        )
+    };
+    match slots {
+        Slots::Lone(only) => (
+            encoded(0, only),
+            format!("return {export_name}({})", decoded(payload, only)),
+        ),
+        Slots::Array(all) => {
+            let entries = all
+                .iter()
+                .enumerate()
+                .map(|(slot, element)| format!("add({})", encoded(slot, element)))
+                .collect::<Vec<_>>()
+                .join("; ");
+            let read_entries = all
+                .iter()
+                .enumerate()
+                .map(|(slot, element)| decoded(&format!("array[{slot}]"), element))
+                .collect::<Vec<_>>()
+                .join(", ");
+            (
+                format!("buildJsonArray {{ {entries} }}"),
+                format!(
+                    "{}; return {export_name}({read_entries})",
+                    tuple_array(payload, all.len())
+                ),
+            )
+        }
+    }
 }
 
 /// The Kotlin tokens a `type X = ...;` alias earns: a `typealias` pointing at the target's own
@@ -2624,12 +2764,7 @@ fn alias_kotlin_tokens(item_type: &ItemType, name_override: Option<&str>) -> Tok
     if type_parameters.is_empty() {
         texts::note_alias(&rust_ident, &target);
     }
-    // The alias of an enum that writes a unit variant as its bare name writes it so as well.
-    if !target.is_list() && !target.is_optional() && writes_a_bare_name(&target) {
-        KOTLIN_BARE_NAMED.with(|noted| {
-            noted.borrow_mut().insert(rust_ident.clone());
-        });
-    }
+    note_bare_named(&rust_ident, &target);
     let generic_params = kotlin_generic_params(&item_type.generics);
     let target_type = read::with_text_forms(&target);
     let alias = ident_typealias(&rust_ident, &export_name, &generic_params);

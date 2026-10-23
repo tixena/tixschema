@@ -604,10 +604,11 @@ fn a_tuple_struct_reads_its_slots_unjudged_and_judges_the_whole() {
     );
 }
 
-/// A tuple struct of one slot is read from an array, where serde writes the slot's value: the two
-/// serializers are written over that read.
+/// A tuple struct of one slot is read from the slot's value and written as it, as serde writes it,
+/// whatever the slot's attributes say: the two serializers are written over that read, and
+/// `validate()` names the slot by nothing.
 #[test]
-fn a_tuple_struct_of_one_slot_keeps_the_array_it_was_read_from() {
+fn a_tuple_struct_of_one_slot_is_the_value_of_its_slot() {
     let item: ItemStruct = syn::parse_quote! {
         struct Sealed(#[model_schema_prop(minLength = 1)] String);
     };
@@ -617,17 +618,78 @@ fn a_tuple_struct_of_one_slot_keeps_the_array_it_was_read_from() {
             "object SealedUnjudged : KSerializer<Sealed> { override val descriptor: \
              SerialDescriptor = buildClassSerialDescriptor(\"Sealed\"); override fun \
              serialize(encoder: Encoder, value: Sealed) { val output = encoder as JsonEncoder; \
-             output.encodeJsonElement(buildJsonArray { \
-             add(output.json.encodeToJsonElement(serializer<String>(), value.slot0)) }) }; \
-             override fun deserialize(decoder: Decoder): Sealed { val input = decoder as \
-             JsonDecoder; val array = input.decodeJsonElement().let { it as? JsonArray ?: throw \
-             SerializationException(\"expected an array, found \" + it) }; if (array.size != 1) \
-             throw SerializationException(\"invalid length \" + array.size + \", expected 1\"); \
-             return Sealed(input.json.decodeFromJsonElement(serializer<String>(), array[0])) } }"
+             output.encodeJsonElement(output.json.encodeToJsonElement(serializer<String>(), \
+             value.slot0)) }; override fun deserialize(decoder: Decoder): Sealed { val input = \
+             decoder as JsonDecoder; return \
+             Sealed(input.json.decodeFromJsonElement(serializer<String>(), \
+             input.decodeJsonElement())) } }"
+        ),
+        "got: {kotlin}"
+    );
+    assert!(
+        kotlin.contains(
+            "violations.add(\"too short: minimum length is 1, got ${slot0.codePointCount(0, \
+             slot0.length)}\")"
         ),
         "got: {kotlin}"
     );
     assert!(kotlin.ends_with(&judged("Sealed")), "got: {kotlin}");
+    let skipped: ItemStruct = syn::parse_quote! {
+        struct Unsealed(#[serde(skip)] String);
+    };
+    let unsealed = plain(&skipped);
+    assert!(
+        unsealed.contains(
+            "data class Unsealed(val slot0: String) { fun validate(): List<String> = emptyList() \
+             }"
+        ),
+        "got: {unsealed}"
+    );
+    assert!(
+        unsealed.contains(
+            "return Unsealed(input.json.decodeFromJsonElement(serializer<String>(), \
+             input.decodeJsonElement()))"
+        ),
+        "got: {unsealed}"
+    );
+}
+
+/// The one slot serde writes of a struct that declares two is the array of that slot, and
+/// `validate()` names it by its position there, as Rust's names it.
+#[cfg(feature = "serde")]
+#[test]
+fn the_one_slot_left_of_two_is_named_by_its_position() {
+    let item: ItemStruct = syn::parse_quote! {
+        struct Clasped(#[serde(skip)] u8, #[model_schema_prop(minLength = 1)] String);
+    };
+    let kotlin = plain(&item);
+    assert!(
+        kotlin.contains(
+            "violations.add(\"'0': too short: minimum length is 1, got \
+             ${slot0.codePointCount(0, slot0.length)}\")"
+        ),
+        "got: {kotlin}"
+    );
+    assert!(
+        kotlin.contains(
+            "output.encodeJsonElement(buildJsonArray { \
+             add(output.json.encodeToJsonElement(serializer<String>(), value.slot0)) })"
+        ),
+        "got: {kotlin}"
+    );
+    let variant: ItemEnum = syn::parse_quote! {
+        enum Clasping {
+            Held(#[serde(skip)] u8, #[model_schema_prop(minLength = 1)] String),
+        }
+    };
+    let clasping = definition(enum_kotlin_tokens(&variant, &plain_args()));
+    assert!(
+        clasping.contains(
+            "violations.add(\"'Held.0': too short: minimum length is 1, got \
+             ${value.slot0.codePointCount(0, value.slot0.length)}\")"
+        ),
+        "got: {clasping}"
+    );
 }
 
 /// A struct with a flattened member reads the model it merges, and the values of the map it
@@ -1124,5 +1186,56 @@ fn a_type_that_holds_itself_reads_itself_unjudged() {
              val label: String) {"
         ),
         "got: {kotlin}"
+    );
+}
+
+/// The wrapper of a tuple that reaches a type parameter of its holder, and its serializer, declare
+/// that parameter, and the holder hands it: where the plugin reads the holder, through the type
+/// it names, and where the emitter writes the read, through the serializer it composes.
+#[test]
+fn a_tuple_that_reaches_a_type_parameter_declares_it() {
+    let paired: ItemStruct = syn::parse_quote! {
+        struct Paired<Stowed> {
+            pair: (u8, Stowed),
+        }
+    };
+    let written = plain(&paired);
+    let wrapper = written
+        .split("data class ")
+        .nth(1)
+        .and_then(|declared| declared.split('<').next())
+        .unwrap_or_default()
+        .to_owned();
+    assert!(wrapper.starts_with("KotlinTuple"), "got: {written}");
+    for held in [
+        format!("data class {wrapper}<Stowed>(val slot0: UByte, val slot1: Stowed)"),
+        format!(
+            "class {wrapper}Serializer<Stowed : Any>(private val stowedSerializer: \
+             KSerializer<Stowed>) : KSerializer<{wrapper}<Stowed>>"
+        ),
+        "add(output.json.encodeToJsonElement(stowedSerializer, value.slot1))".to_owned(),
+        format!("data class Paired<Stowed>(val pair: {wrapper}<Stowed>)"),
+    ] {
+        assert!(written.contains(&held), "no `{held}` in: {written}");
+    }
+    let stowed: ItemStruct = syn::parse_quote! {
+        struct StowedPair<Stowed>((String, Stowed));
+    };
+    let slotted = plain(&stowed);
+    for held in [
+        "data class StowedPair<Stowed>(val slot0: KotlinTuple",
+        "Serializer(stowedSerializer), value.slot0))",
+    ] {
+        assert!(slotted.contains(held), "no `{held}` in: {slotted}");
+    }
+    let plain_pair: ItemStruct = syn::parse_quote! {
+        struct PlainPair {
+            pair: (u8, String),
+        }
+    };
+    let unparameterized = plain(&plain_pair);
+    assert!(
+        unparameterized.contains("(val slot0: UByte, val slot1: String) object KotlinTuple"),
+        "a tuple that reaches no parameter keeps its object: {unparameterized}"
     );
 }

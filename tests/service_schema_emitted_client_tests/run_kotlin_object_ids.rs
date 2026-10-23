@@ -12,11 +12,11 @@ use super::object_id_models::{
     belated_kotlin, bullae_kotlin, cachet_kotlin, cartouche_kotlin, cartouching_kotlin,
     countersealing_kotlin, countersigned_kotlin, crossed_kotlin, crossing_kotlin, docketing_kotlin,
     embossed_kotlin, endorsed_kotlin, endorsing_kotlin, enveloping_kotlin, enwafered_kotlin,
-    folding_kotlin, impress_kotlin, impressing_kotlin, late_cartouche_kotlin, late_sigil_kotlin,
-    latewaxed_kotlin, lettering_kotlin, notation_kotlin, relayed_kotlin, relaying_kotlin,
-    rewaxed_kotlin, rewaxing_kotlin, rows, sigil_kotlin, sigiled_kotlin, sigillary_kotlin,
-    sigillum_kotlin, stampage_kotlin, wafer_kotlin, wafered_kotlin, wafering_kotlin, waxing_kotlin,
-    waxwork_kotlin, waxworking_kotlin,
+    folding_kotlin, impress_kotlin, impressed_kotlin, impressing_kotlin, late_cartouche_kotlin,
+    late_sigil_kotlin, latewaxed_kotlin, lettering_kotlin, notation_kotlin, relayed_kotlin,
+    relaying_kotlin, rewaxed_kotlin, rewaxing_kotlin, rows, sigil_kotlin, sigiled_kotlin,
+    sigillary_kotlin, sigillum_kotlin, stampage_kotlin, wafer_kotlin, wafered_kotlin,
+    wafering_kotlin, wafers_kotlin, waxing_kotlin, waxwork_kotlin, waxworking_kotlin,
 };
 use super::object_id_runs::{printed, readme_object_id};
 use super::runtime::ran_kotlin;
@@ -102,6 +102,8 @@ fn an_object_id_is_read_and_written_back_by_kotlin_as_serde_reads_it() {
         wafered_kotlin::kotlin_definition(),
         wafering_kotlin::kotlin_definition(),
         enwafered_kotlin::kotlin_definition(),
+        wafers_kotlin::kotlin_definition(),
+        impressed_kotlin::kotlin_definition(),
         belated_kotlin::kotlin_definition(),
         late_sigil_kotlin::kotlin_definition(),
         late_cartouche_kotlin::kotlin_definition(),

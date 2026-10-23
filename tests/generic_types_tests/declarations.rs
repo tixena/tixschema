@@ -1248,7 +1248,7 @@ const STAMPS: [(&str, bool); 4] = [
 /// it: each variant's entry at the argument, a unit variant's over `null` among them, and not the
 /// member or the tag alone, an entry of another type, or beside the tag the entries of two
 /// variants.
-const LADINGS: [(&str, &str, &str, bool); 22] = [
+const LADINGS: [(&str, &str, &str, bool); 29] = [
     (
         "DeclaredBerth$Schema",
         "DeclaredBerth",
@@ -1380,6 +1380,48 @@ const LADINGS: [(&str, &str, &str, bool); 22] = [
         "DeclaredMarina<boolean>",
         r#"{"kind":"Laden","held_fast":7}"#,
         false,
+    ),
+    (
+        "DeclaredScuttle$Schema",
+        "DeclaredScuttle",
+        r#"{"Calm":null,"note":"n"}"#,
+        true,
+    ),
+    (
+        "DeclaredScuttle$Schema",
+        "DeclaredScuttle",
+        r#"{"Bay":{"label":"b"},"note":"n"}"#,
+        true,
+    ),
+    (
+        "DeclaredScuttle$Schema",
+        "DeclaredScuttle",
+        r#"{"note":"n"}"#,
+        false,
+    ),
+    (
+        "DeclaredCoaming$Schema",
+        "DeclaredCoaming",
+        r#"{"Calm":null,"note":"n"}"#,
+        true,
+    ),
+    (
+        "DeclaredCoaming$Schema",
+        "DeclaredCoaming",
+        r#"{"Dock":{"label":"d"},"note":"n"}"#,
+        true,
+    ),
+    (
+        "DeclaredCompanion$Schema",
+        "DeclaredCompanion",
+        r#"{"kind":"Hatched","Calm":null}"#,
+        true,
+    ),
+    (
+        "DeclaredCompanion$Schema",
+        "DeclaredCompanion",
+        r#"{"kind":"Marked","Bay":{"label":"b"}}"#,
+        true,
     ),
 ];
 
@@ -1886,6 +1928,45 @@ pub enum DeclaredMarina<Stowed> {
     Laden(DeclaredLading<Stowed>),
 }
 
+/// A struct of one slot over [`DeclaredHatch`], which serde writes as the enum.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeclaredHatched(pub DeclaredHatch);
+
+/// A brand over [`DeclaredHatch`].
+#[model_schema(no_display)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct DeclaredHatchMark(pub DeclaredHatch);
+
+/// [`DeclaredHatched`] flattened beside a member of its holder's own: serde writes a unit variant
+/// as an entry of its name over `null`.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeclaredScuttle {
+    #[serde(flatten)]
+    pub hatched: DeclaredHatched,
+    pub note: String,
+}
+
+/// [`DeclaredHatchMark`] flattened beside a member of its holder's own.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeclaredCoaming {
+    #[serde(flatten)]
+    pub mark: DeclaredHatchMark,
+    pub note: String,
+}
+
+/// [`DeclaredHatched`] and [`DeclaredHatchMark`] in the lone slot of a variant under a tag alone.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum DeclaredCompanion {
+    Hatched(DeclaredHatched),
+    Marked(DeclaredHatchMark),
+}
+
 /// The struct an untagged enum that declares a parameter is filled with.
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2053,6 +2134,16 @@ fn hatches_bundle() -> String {
         PREAMBLE.to_owned(),
         DeclaredHatch::ts_definition(),
         DeclaredHatch::zod_schema(),
+        DeclaredHatched::ts_definition(),
+        DeclaredHatched::zod_schema(),
+        DeclaredHatchMark::ts_definition(),
+        DeclaredHatchMark::zod_schema(),
+        DeclaredScuttle::ts_definition(),
+        DeclaredScuttle::zod_schema(),
+        DeclaredCoaming::ts_definition(),
+        DeclaredCoaming::zod_schema(),
+        DeclaredCompanion::ts_definition(),
+        DeclaredCompanion::zod_schema(),
         DeclaredLading::<String>::ts_definition(),
         DeclaredLading::<String>::zod_schema(),
         AS_GIVEN_OR_NULL.to_owned(),
@@ -2197,6 +2288,10 @@ fn object_ids_bundle() -> String {
         object_ids::Wafering::zod_schema(),
         object_ids::Enwafered::ts_definition(),
         object_ids::Enwafered::zod_schema(),
+        object_ids::Wafers::ts_definition(),
+        object_ids::Wafers::zod_schema(),
+        object_ids::Impressed::ts_definition(),
+        object_ids::Impressed::zod_schema(),
         object_ids::Belated::ts_definition(),
         object_ids::Belated::zod_schema(),
         object_ids::LateSigil::ts_definition(),
@@ -2233,6 +2328,8 @@ fn object_id_document(read_as: &str) -> serde_json::Value {
         "Belated" => object_ids::Belated::json_schema(),
         "Wafered" => object_ids::Wafered::json_schema(),
         "Wafering" => object_ids::Wafering::json_schema(),
+        "Wafers" => object_ids::Wafers::json_schema(),
+        "Impressed" => object_ids::Impressed::json_schema(),
         _ => object_ids::Enwafered::json_schema(),
     }
 }
@@ -4804,7 +4901,8 @@ fn type_check_an_object_id_with_a_key_beside_its_oid_is_refused_where_serde_refu
 /// `node` and by its TypeScript type under `tsc --strict` as serde writes and reads it: each
 /// variant's entry at the argument, a unit variant's over `null` among them, directly, at the
 /// holder's own parameter, flattened and beside the tag, and through an alias that declares a
-/// parameter of its own.
+/// parameter of its own. A struct of one slot and a brand over an externally tagged enum are taken
+/// by its entries too, flattened and beside the tag.
 #[test]
 fn type_check_an_enum_written_with_an_argument_takes_each_entry_at_the_argument() {
     let stated: Vec<bool> = LADINGS.iter().map(|&(_, _, _, taken)| taken).collect();
@@ -4815,6 +4913,9 @@ fn type_check_an_enum_written_with_an_argument_takes_each_entry_at_the_argument(
             "DeclaredPier" => serde_json::from_str::<DeclaredPier>(json).is_ok(),
             "DeclaredWharf" => serde_json::from_str::<DeclaredWharf>(json).is_ok(),
             "DeclaredMarina<boolean>" => serde_json::from_str::<DeclaredMarina<bool>>(json).is_ok(),
+            "DeclaredScuttle" => serde_json::from_str::<DeclaredScuttle>(json).is_ok(),
+            "DeclaredCoaming" => serde_json::from_str::<DeclaredCoaming>(json).is_ok(),
+            "DeclaredCompanion" => serde_json::from_str::<DeclaredCompanion>(json).is_ok(),
             _ => serde_json::from_str::<DeclaredQuay<bool>>(json).is_ok(),
         })
         .collect();
@@ -4836,8 +4937,8 @@ fn type_check_an_enum_written_with_an_argument_takes_each_entry_at_the_argument(
         return;
     };
     let mut payloads = String::from(
-        "import type { DeclaredBerth, DeclaredMarina, DeclaredPier, DeclaredQuay, DeclaredWharf } \
-         from \"./lib/index.js\";\n",
+        "import type { DeclaredBerth, DeclaredCoaming, DeclaredCompanion, DeclaredMarina, \
+         DeclaredPier, DeclaredQuay, DeclaredScuttle, DeclaredWharf } from \"./lib/index.js\";\n",
     );
     for (position, &(_, typed, json, _)) in LADINGS.iter().enumerate() {
         let _ = writeln!(payloads, "export const row{position}: {typed} = {json};");

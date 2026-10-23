@@ -633,7 +633,9 @@ fn a_date_a_field_a_member_and_a_brand_hold_is_read_as_it_was() {
              return try Self.swiftSchemaParseIso8601Date(wireValue, \
              codingPath: decoder.codingPath) }() }; "
                 .to_owned(),
-            "try container.encode(Self.swiftSchemaFormatIso8601Date(value)) }; ".to_owned(),
+            "let written = Self.swiftSchemaFormatIso8601Date(value); try written.encode(to: \
+             encoder) }; "
+                .to_owned(),
             helpers("Chimed", STORED),
         ],
     );

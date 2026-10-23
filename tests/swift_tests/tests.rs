@@ -340,7 +340,7 @@ fn an_untagged_enum_tries_each_member_in_turn() {
 }
 
 #[test]
-fn a_branded_newtype_earns_a_single_value_container_codec() {
+fn a_branded_newtype_is_read_from_a_single_value_and_written_as_its_value() {
     let swift = correlation_id_swift::swift_definition();
     assert!(
         swift.contains("public struct CorrelationId: Codable, Sendable"),
@@ -352,7 +352,9 @@ fn a_branded_newtype_earns_a_single_value_container_codec() {
         "got: {swift}"
     );
     assert!(
-        swift.contains("encoder.singleValueContainer()"),
+        swift.contains(
+            "public func encode(to encoder: Encoder) throws { try value.encode(to: encoder) }"
+        ),
         "got: {swift}"
     );
 }

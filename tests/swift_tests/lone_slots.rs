@@ -1,6 +1,6 @@
 //! What the Swift backend writes for a tuple struct that declares one slot, which serde writes as
-//! the slot's value: a struct of one `value`, read from its own decoder and written through a
-//! single-value container, the slot read unjudged where `validate()` walks what it holds and
+//! the slot's value: a struct of one `value`, read from its own decoder and written through the
+//! value's own `encode(to:)`, the slot read unjudged where `validate()` walks what it holds and
 //! reported under no step, in a type that declares a parameter and in one that declares none. A
 //! struct that declares several slots wraps the tuple of the ones serde reads.
 //! `service_schema_emitted_client_tests/run_swift_lone_slots.rs` compiles the models of
@@ -14,13 +14,15 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::lone_slots_models::{
-    AdjacentStow, Bale, BalePair, Baled, Bales, BalesByName, BalesByNumber, Clipped, Count,
-    LabelsByNumber, MaybeBale, Moniker, Sack, Sacked, Single, Stow, StowedByName, StowedByNumber,
-    StowedList, StowedMaybe, StowedPair, TaggedStow, Tote, Unskipped, UntaggedStow,
-    bale_pair_swift, baled_swift, bales_by_name_swift, bales_by_number_swift, bales_swift,
-    clipped_swift, count_swift, labels_by_number_swift, maybe_bale_swift, moniker_swift,
-    sacked_swift, single_swift, stowed_by_name_swift, stowed_by_number_swift, stowed_list_swift,
-    stowed_maybe_swift, stowed_pair_swift, unskipped_swift,
+    AdjacentStow, Bale, BalePair, Baled, Bales, BalesByName, BalesByNumber, Clipped, Count, Girth,
+    Girthed, LabelsByNumber, Laden, MaybeBale, Moniker, Rigger, Sack, Sacked, Single, Sling, Slung,
+    Stow, StowedByName, StowedByNumber, StowedList, StowedMaybe, StowedPair, Strop, TaggedStow,
+    Tote, Twine, Twined, Unskipped, UntaggedStow, bale_pair_swift, baled_swift,
+    bales_by_name_swift, bales_by_number_swift, bales_swift, clipped_swift, count_swift,
+    girthed_swift, labels_by_number_swift, laden_swift, maybe_bale_swift, moniker_swift,
+    rigger_swift, sacked_swift, single_swift, stowed_by_name_swift, stowed_by_number_swift,
+    stowed_list_swift, stowed_maybe_swift, stowed_pair_swift, strop_swift, twined_swift,
+    unskipped_swift,
 };
 #[cfg(feature = "chrono")]
 use super::lone_slots_models::{
@@ -30,9 +32,10 @@ use super::lone_slots_models::{
 /// What opens the read of a type alone.
 const UNJUDGED: &str = "public init(swiftSchemaUnjudged decoder: Decoder) throws { ";
 
-/// The write of every struct of one slot whose value Swift writes as it holds it.
-const WRITTEN: &str = "public func encode(to encoder: Encoder) throws { \
-     var container = encoder.singleValueContainer(); try container.encode(value) }; ";
+/// The write of every struct of one slot whose value Swift writes as it holds it: the value's own,
+/// through the struct's encoder.
+const WRITTEN: &str =
+    "public func encode(to encoder: Encoder) throws { try value.encode(to: encoder) }; ";
 
 /// The JSON serde writes for `held`, read back by serde as it was written.
 fn read_back<Held>(held: &Held) -> String
@@ -203,8 +206,105 @@ fn a_holder_writes_a_struct_of_one_slot_as_the_slots_value() {
     }
 }
 
-/// The reproduction: a number, read from the decoder itself and written through a single-value
-/// container, with no tuple written for it.
+/// A struct of one slot and a brand over a model write their value through their own encoder, so
+/// flattened, the model's keys join the holder's object beside its own members, as serde writes
+/// them.
+#[test]
+fn a_flattened_struct_of_one_slot_and_brand_join_their_keys_to_the_holder() {
+    let bales = || Bales(vec![bale()]);
+    let laden = Laden {
+        baled: Baled(bale()),
+        bales: bales(),
+        carried_bales: Sack {
+            label: "c".to_owned(),
+            stowed: bales(),
+        },
+        carried_count: Sack {
+            label: "c".to_owned(),
+            stowed: Count(2),
+        },
+        carried_model: Sack {
+            label: "c".to_owned(),
+            stowed: Baled(bale()),
+        },
+        carried_moniker: Sack {
+            label: "c".to_owned(),
+            stowed: Moniker("a".to_owned()),
+        },
+        count: Count(2),
+        counts_by_name: HashMap::new(),
+        models: Vec::new(),
+        models_by_name: HashMap::new(),
+        monikers: Vec::new(),
+        monikers_by_name: HashMap::new(),
+        stacks: Vec::new(),
+        stacks_by_name: HashMap::new(),
+        twined: Twined(Twine {
+            twine: "t".to_owned(),
+        }),
+    };
+    let written = read_back(&laden);
+    for key in [r#"{"label":"l","#, r#""count":2,"#, r#""twine":"t"}"#] {
+        assert!(written.contains(key), "{key} in: {written}");
+    }
+    holds(&baled_swift::swift_definition(), &[WRITTEN]);
+    holds(&twined_swift::swift_definition(), &[WRITTEN]);
+    holds(
+        &laden_swift::swift_definition(),
+        &[
+            "try self.baled.encode(to: encoder); ",
+            "try self.twined.encode(to: encoder) }",
+        ],
+    );
+}
+
+/// A struct of one slot and a brand over an externally tagged enum, flattened and beside a tag,
+/// write a unit variant as an entry of its name over `null`, as serde writes it, told by the
+/// wrapper's `value`.
+#[test]
+fn a_struct_of_one_slot_over_an_enum_writes_a_unit_variant_as_an_entry() {
+    assert_eq!(
+        read_back(&Strop {
+            count: 1,
+            slung: Slung(Sling::Slack),
+        }),
+        r#"{"count":1,"Slack":null}"#
+    );
+    assert_eq!(
+        read_back(&Girthed {
+            count: 1,
+            girth: Girth(Sling::Slack),
+        }),
+        r#"{"count":1,"Slack":null}"#
+    );
+    assert_eq!(
+        read_back(&Rigger::Slung(Slung(Sling::Slack))),
+        r#"{"kind":"Slung","Slack":null}"#
+    );
+    let entry = "case .slack: var entry = encoder.container(keyedBy: SwiftSchemaAnyKey.self); try \
+                 entry.encodeNil(forKey: SwiftSchemaAnyKey(stringValue: \"Slack\")!); ";
+    holds(
+        &strop_swift::swift_definition(),
+        &[&format!(
+            "switch self.slung.value {{ {entry}default: try self.slung.encode(to: encoder) }}"
+        )],
+    );
+    holds(
+        &girthed_swift::swift_definition(),
+        &[&format!(
+            "switch self.girth.value {{ {entry}default: try self.girth.encode(to: encoder) }}"
+        )],
+    );
+    holds(
+        &rigger_swift::swift_definition(),
+        &[&format!(
+            "switch payload.value {{ {entry}default: try payload.encode(to: encoder) }}"
+        )],
+    );
+}
+
+/// The reproduction: a number, read from the decoder itself and written through its own
+/// `encode(to:)`, with no tuple written for it.
 #[test]
 fn a_struct_of_one_slot_reads_and_writes_the_value_of_its_slot() {
     for (swift, opened, read_as) in [
@@ -316,7 +416,8 @@ fn a_slot_swift_converts_is_read_and_written_as_the_type_serde_writes() {
             "let container = try decoder.singleValueContainer(); self.value = try { \
              let wireValue = try container.decode(LabelsByNumberKeyedMap.self); \
              return wireValue.storage }() }; ",
-            "try container.encode(LabelsByNumberKeyedMap(storage: value)) }; ",
+            "let written = LabelsByNumberKeyedMap(storage: value); try written.encode(to: \
+             encoder) }; ",
         ],
     );
     holds(
@@ -325,7 +426,8 @@ fn a_slot_swift_converts_is_read_and_written_as_the_type_serde_writes() {
             "let container = try decoder.singleValueContainer(); self.value = try { \
              let wireValue = try container.decode(StowedByNumberKeyedMap<Stowed>.self); \
              return wireValue.storage }() }; ",
-            "try container.encode(StowedByNumberKeyedMap<Stowed>(storage: value)) }; ",
+            "let written = StowedByNumberKeyedMap<Stowed>(storage: value); try \
+             written.encode(to: encoder) }; ",
         ],
     );
 }
@@ -341,7 +443,8 @@ fn a_date_in_one_slot_is_read_and_written_as_serde_writes_it() {
             "let container = try decoder.singleValueContainer(); self.value = try { \
              let wireValue = try container.decode(String.self); \
              return try Self.swiftSchemaParseIso8601Date(wireValue, codingPath: decoder.codingPath) }() }; ",
-            "try container.encode(Self.swiftSchemaFormatIso8601Date(value)) }; ",
+            "let written = Self.swiftSchemaFormatIso8601Date(value); try written.encode(to: \
+             encoder) }; ",
             "extension Ticked { private static let swiftSchemaIso8601Formatter",
         ],
     );
