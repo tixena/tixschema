@@ -1,5 +1,7 @@
 //! The emitted bundle put through a real TypeScript compiler.
 
+#[cfg(feature = "zod")]
+use super::keyed::KeyedProbeServiceSchema;
 use super::the_bundle_one_registration_line_produces::{
     audit_seam, author_schemas, bundle, probe_seam,
 };
@@ -21,6 +23,8 @@ use std::io::Write as _;
 use std::io::stderr;
 #[cfg(feature = "zod")]
 use std::os::unix::fs::symlink;
+#[cfg(feature = "zod")]
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::{Command, id};
 use std::sync::Once;
@@ -108,6 +112,51 @@ const ZOD_PROJECT: &str = r#"{
   "files": ["bundle.ts", "caller.ts"]
 }
 "#;
+
+/// Names the runtime the language service is run under, for a machine that has one somewhere other
+/// than `PATH`.
+#[cfg(feature = "zod")]
+const NODE_VAR: &str = "TIXSCHEMA_NODE";
+
+/// Asks the TypeScript language service, the service an editor asks, what it says of the modules
+/// it is handed, the reader last.
+#[cfg(feature = "zod")]
+const DEPRECATED_READS: &str = include_str!("../generic_types_tests/deprecated_reads.mjs");
+
+/// A caller of `KeyedProbeService` that reads each method and each arm of a result that writes a
+/// map keyed by a 64-bit integer, and each that writes one keyed by a `u32` beside it.
+#[cfg(feature = "zod")]
+const KEYED_CALLER: &str = r#"import type * as lib from "./bundle.js";
+
+declare const client: lib.KeyedProbeServiceClient;
+declare const http: lib.KeyedProbeServiceHttpClient;
+declare const implementation: lib.KeyedProbeServiceImpl<null>;
+declare const stowed: lib.StowRequest;
+
+export async function read(): Promise<unknown[]> {
+  const read: unknown[] = [stowed.kept, stowed.note];
+  const narrowed = await client.narrow({});
+  if (narrowed.ok) read.push(narrowed.value);
+  const tallied = await client.tally({});
+  if (tallied.ok) read.push(tallied.value);
+  read.push(await http.tally({}));
+  const outcome = await implementation.tally(null, {});
+  if (outcome.ok) read.push(outcome.value);
+  return read;
+}
+"#;
+
+/// What the TypeScript language service reports of [`KEYED_CALLER`]: each deprecated name it
+/// reads, `6385`, and each deprecated method's signature, `6387`, in the order read.
+#[cfg(feature = "zod")]
+const KEYED_DEPRECATED: [&str; 6] = [
+    "6385 kept",
+    "6387 tally",
+    "6385 value",
+    "6387 tally",
+    "6387 tally",
+    "6385 value",
+];
 
 /// A caller reading each `bytes` reply of `BytesProbeService` off every TypeScript client as its
 /// result declares it: the bytes as an `Array<number>`, their content type, then the header.
@@ -784,6 +833,24 @@ fn bytes_probe_bundle() -> String {
     .join("\n\n")
 }
 
+/// Every surface of `KeyedProbeService`, beside the real `zod`.
+#[cfg(feature = "zod")]
+fn keyed_probe_bundle() -> String {
+    [
+        "import { z, type ZodType } from \"zod\";".to_owned(),
+        HeaderProbeError::ts_definition(),
+        HeaderProbeError::zod_schema(),
+        KeyedProbeServiceSchema::ts_definition(),
+        KeyedProbeServiceSchema::ts_client(),
+        KeyedProbeServiceSchema::ts_service(),
+        KeyedProbeServiceSchema::ts_ws_client(),
+        KeyedProbeServiceSchema::ts_ws_service(),
+        KeyedProbeServiceSchema::ts_http_client(),
+        KeyedProbeServiceSchema::ts_http_service(),
+    ]
+    .join("\n\n")
+}
+
 /// Every surface of `SpooledProbeService` and of `StreamedProbeService`, beside the real `zod`.
 #[cfg(feature = "zod")]
 fn http_alone_bundle() -> String {
@@ -814,6 +881,17 @@ fn http_alone_bundle() -> String {
 /// surface above.
 #[cfg(feature = "zod")]
 fn compiled_beside_zod(named: &str, files: &[(&str, String)]) -> Option<(bool, String)> {
+    compiled_beside_zod_then(named, files, |_| ()).map(|(accepted, said, ())| (accepted, said))
+}
+
+/// [`compiled_beside_zod`], with `then` handed the workspace once the compiler has run, before it
+/// is removed.
+#[cfg(feature = "zod")]
+fn compiled_beside_zod_then<Then>(
+    named: &str,
+    files: &[(&str, String)],
+    then: impl FnOnce(&Path) -> Then,
+) -> Option<(bool, String, Then)> {
     let Some(modules) = env::var(MODULES_VAR)
         .ok()
         .map(|named_at| PathBuf::from(named_at).join("node_modules"))
@@ -850,22 +928,26 @@ fn compiled_beside_zod(named: &str, files: &[(&str, String)]) -> Option<(bool, S
         .args(["--pretty", "false", "-p", "tsconfig.json"])
         .current_dir(&at)
         .output();
+    let after = run.is_ok().then(|| then(&at));
     fs::remove_dir_all(&at).unwrap();
-    let Ok(reported) = run else {
-        assert!(
-            named_compiler.is_none(),
-            "{COMPILER_VAR} names `{compiler}`, and no compiler could be started there: {}",
-            run.unwrap_err()
-        );
-        stand_down();
-        return None;
+    let reported = match run {
+        Ok(reported) => reported,
+        Err(failed) => {
+            assert!(
+                named_compiler.is_none(),
+                "{COMPILER_VAR} names `{compiler}`, and no compiler could be started there: \
+                 {failed}"
+            );
+            stand_down();
+            return None;
+        }
     };
     let said = format!(
         "{}{}",
         String::from_utf8_lossy(&reported.stdout),
         String::from_utf8_lossy(&reported.stderr)
     );
-    Some((reported.status.success(), said))
+    after.map(|then_answered| (reported.status.success(), said, then_answered))
 }
 
 /// Said on the process's own stderr rather than through `eprintln!`, which `cargo test` captures
@@ -1363,5 +1445,49 @@ fn a_service_with_an_operation_only_http_rest_carries_type_checks_against_the_re
             && told.contains("'stream' does not exist in type"),
         "a caller asking the transport-agnostic client or dispatcher for the streamed operation \
          is not refused:\n{told}"
+    );
+}
+
+/// Each method and each arm of a result of `KeyedProbeService` that writes a map keyed by a 64-bit
+/// integer carries a `@deprecated` note, which `tsc --strict` prints nothing for against the real
+/// `zod`, and which the TypeScript language service, the service an editor asks, reports where it
+/// is read; one keyed by a `u32` carries none.
+#[cfg(feature = "zod")]
+#[test]
+fn a_map_keyed_by_a_64_bit_integer_is_marked_where_an_editor_reads_it_on_every_surface() {
+    let files = [
+        ("bundle.ts", keyed_probe_bundle()),
+        ("caller.ts", KEYED_CALLER.to_owned()),
+    ];
+    let named_node = env::var(NODE_VAR).ok();
+    let node = named_node.clone().unwrap_or_else(|| "node".to_owned());
+    let Some((accepted, said, run)) = compiled_beside_zod_then("keyed", &files, |at| {
+        assert!(
+            at.join("node_modules/typescript").is_dir(),
+            "{MODULES_VAR} names a directory whose `node_modules` holds no `typescript`, which \
+             the language service is read from"
+        );
+        fs::write(at.join("deprecated_reads.mjs"), DEPRECATED_READS).unwrap();
+        Command::new(&node)
+            .args(["deprecated_reads.mjs", "bundle.ts", "caller.ts"])
+            .current_dir(at)
+            .output()
+    }) else {
+        return;
+    };
+    assert!(accepted && said.is_empty(), "tsc --strict reports:\n{said}");
+    let Ok(ran) = run else {
+        assert!(
+            named_node.is_none(),
+            "{NODE_VAR} names `{node}`, and no runtime could be started there: {}",
+            run.unwrap_err()
+        );
+        return;
+    };
+    assert_eq!(
+        String::from_utf8_lossy(&ran.stdout).trim(),
+        KEYED_DEPRECATED.join("\n"),
+        "the language service does not report each note where it is read:\n{}",
+        String::from_utf8_lossy(&ran.stderr)
     );
 }

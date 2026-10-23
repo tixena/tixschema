@@ -161,11 +161,15 @@ fn method_params(operation: &OperationDef, shape: &HttpShape) -> String {
 }
 
 fn method_doc(operation: &OperationDef, shape: &HttpShape) -> String {
-    format!(
-        "  /** Calls `{}` over `{} {}`. */",
-        message::commented(&operation.wire_name),
-        shape.method.name(),
-        message::commented(&shape.path_template())
+    message::method_jsdoc(
+        &format!(
+            "Calls `{}` over `{} {}`.",
+            message::commented(&operation.wire_name),
+            shape.method.name(),
+            message::commented(&shape.path_template())
+        ),
+        "",
+        operation,
     )
 }
 

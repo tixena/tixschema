@@ -77,9 +77,9 @@ use crate::utils::escape_js_double_quoted;
 #[cfg(feature = "typescript")]
 use crate::utils::ts_generic_params;
 use crate::utils::{
-    OptionTarget, PLACEHOLDER_CLOSES, PLACEHOLDER_OPENS, constraining_pattern, emittable_pattern,
-    parameter_placeholder, portable_pattern, record_option_alias, ts_commented, ts_quoted,
-    type_parameters_in_scope, written_type,
+    INEXACT_KEY_NOTE, OptionTarget, PLACEHOLDER_CLOSES, PLACEHOLDER_OPENS, constraining_pattern,
+    emittable_pattern, parameter_placeholder, portable_pattern, record_option_alias, ts_commented,
+    ts_quoted, type_parameters_in_scope, written_type,
 };
 
 #[cfg(feature = "zod")]
@@ -101,8 +101,8 @@ use crate::features::object_id::OBJECT_ID_HEX_PATTERN;
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use crate::utils::{
-    AliasKind, MapKeyWire, PublishedShape, ShapeQuestion, lookup_alias_info, record_key_wire,
-    record_shape_question, record_value_shape, shape_questions_for,
+    AliasKind, MapKeyWire, PublishedShape, ShapeQuestion, lookup_alias_info, record_inexact_key,
+    record_key_wire, record_shape_question, record_value_shape, shape_questions_for,
 };
 
 #[cfg(feature = "serde")]
@@ -232,7 +232,7 @@ use crate::utils::{
 #[cfg(feature = "typescript")]
 use crate::utils::get_item_docs;
 #[cfg(feature = "typescript")]
-use crate::utils::ident_reexport_ts;
+use crate::utils::{ident_reexport_ts, noted_ident_reexport_ts};
 
 #[cfg(feature = "zod")]
 use crate::utils::ident_reexport_zod;
@@ -2303,6 +2303,7 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
     register_alias_info(&rust_ident_str, &export_name, &module_name, kind);
     // An alias *is* its target, so a key written under its name renders in the target's wire form.
     record_key_wire(&rust_ident_str, alias_field_def.map_key_wire());
+    record_inexact_key(&rust_ident_str, alias_field_def.writes_an_inexact_key());
     // An alias's schema *is* its target's, so it publishes whatever the target publishes.
     Surface::written(&alias_field_def, &type_parameters_in_scope(&alias.generics))
         .record(&rust_ident_str);
@@ -7970,7 +7971,8 @@ fn check_slot_wire_is_readable(
     ))
 }
 
-/// Walks a tuple struct's slots.
+/// Walks a tuple struct's slots, and records whether they write a map keyed by a `u64` or an
+/// `i64`.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn collect_tuple_slots(
     fields: &mut syn::Fields,
@@ -8024,9 +8026,11 @@ fn collect_tuple_slots(
     if guard_errors.is_empty() {
         apply_deferred_field_attrs(fields.iter_mut(), deferred_attrs);
     }
+    let shape = tuple_struct_shape(declared_slots, slots);
+    record_inexact_key(type_name, tuple_struct_writes_an_inexact_key(&shape));
     TupleSlots {
         guard_errors,
-        shape: tuple_struct_shape(declared_slots, slots),
+        shape,
         validate_bodies,
         validation_fns,
     }
@@ -8328,19 +8332,32 @@ fn tuple_struct_json_body(item_name: &str, shape: &TupleStructShape) -> proc_mac
     }
 }
 
-/// Builds the `ts_definition()` method for a tuple struct's schema module.
+/// Whether a slot of `shape` writes a map keyed by a `u64` or an `i64`: the tuple struct carries
+/// the note on itself, a slot having no member of its own to carry it.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+fn tuple_struct_writes_an_inexact_key(shape: &TupleStructShape) -> bool {
+    match shape {
+        TupleStructShape::Array(slots) => slots.iter().any(FieldDef::slot_writes_an_inexact_key),
+        TupleStructShape::BareValue(slot) => slot.slot_writes_an_inexact_key(),
+    }
+}
+
+/// Builds the `ts_definition()` method for a tuple struct's schema module, under the note of a map
+/// keyed by a 64-bit integer where a slot writes one.
 #[cfg(feature = "typescript")]
 fn build_tuple_struct_ts_definition_method(
     docs: &str,
     item_name: &str,
     rust_ident: &str,
     ts_generics: &str,
-    ts_body: &str,
+    shape: &TupleStructShape,
 ) -> proc_macro2::TokenStream {
-    let reexport = ident_reexport_ts(rust_ident, item_name, ts_generics);
+    let noted = tuple_struct_writes_an_inexact_key(shape);
+    let reexport = noted_ident_reexport_ts(rust_ident, item_name, ts_generics, noted);
     let type_str = format!(
-        "{}\nexport type {item_name}{ts_generics} = {ts_body};{reexport}",
-        jsdoc_block(docs, "")
+        "{}\nexport type {item_name}{ts_generics} = {};{reexport}",
+        jsdoc_block(&inexact_key_noted(docs, noted), ""),
+        tuple_struct_ts_body(shape)
     );
     quote! {
         pub fn ts_definition() -> ::std::string::String {
@@ -8446,7 +8463,7 @@ fn process_tuple_struct(
             &item_name,
             &name.to_string(),
             &ts_generic_params(&item_struct.generics),
-            &tuple_struct_ts_body(&slots.shape),
+            &slots.shape,
         ),
         #[cfg(feature = "zod")]
         build_tuple_struct_zod_schema_method(
@@ -9266,12 +9283,13 @@ fn branded_value_inner(
     inner
 }
 
-/// Resolves the TypeScript inner type name and generic parameter list for a branded newtype.
+/// Resolves the TypeScript inner type name and generic parameter list for a branded newtype, and
+/// whether the inner writes a map keyed by a 64-bit integer.
 #[cfg(feature = "typescript")]
 fn branded_ts_type_and_generics(
     generic_params: &[String],
     inner_ty: &syn::Type,
-) -> (String, String) {
+) -> (String, String, bool) {
     let inner = get_field_def("_inner", inner_ty, "");
     let written = inner.typescript_typename();
     // The brand is an intersection, which binds tighter than the union a `Result` is written as.
@@ -9286,7 +9304,7 @@ fn branded_ts_type_and_generics(
     } else {
         format!("<{}>", generic_params.join(", "))
     };
-    (ts_inner_type, ts_generics)
+    (ts_inner_type, ts_generics, inner.writes_an_inexact_key())
 }
 
 /// Resolves the JSON schema shape for a branded newtype's inner field, read off the def
@@ -9440,19 +9458,27 @@ fn branded_zod_inner(args: &ModelSchemaArgs, inner: &FieldDef) -> String {
     format!("{}{checks}", inner.zod_type())
 }
 
-/// Builds the `ts_definition()` method for a branded newtype's schema module.
+/// Builds the `ts_definition()` method for a branded newtype's schema module. The type carries the
+/// note of a map keyed by a 64-bit integer where its value writes one.
 #[cfg(feature = "typescript")]
 fn build_branded_ts_definition_method(
     item_name: &str,
     rust_ident: &str,
-    ts_generics: &str,
-    ts_inner_type: &str,
+    generic_params: &[String],
+    inner_ty: &syn::Type,
 ) -> proc_macro2::TokenStream {
-    let reexport = ident_reexport_ts(rust_ident, item_name, ts_generics);
+    let (ts_inner_type, ts_generics, noted) =
+        branded_ts_type_and_generics(generic_params, inner_ty);
+    let reexport = noted_ident_reexport_ts(rust_ident, item_name, &ts_generics, noted);
+    let note = if noted {
+        format!("/** {INEXACT_KEY_NOTE} */\n")
+    } else {
+        String::new()
+    };
     #[cfg(feature = "zod")]
     {
         let type_str = format!(
-            "export type {item_name}{ts_generics} = {ts_inner_type} & $brand<\"{item_name}\">;{reexport}"
+            "{note}export type {item_name}{ts_generics} = {ts_inner_type} & $brand<\"{item_name}\">;{reexport}"
         );
         quote! {
             pub fn ts_definition() -> ::std::string::String {
@@ -9464,7 +9490,7 @@ fn build_branded_ts_definition_method(
     {
         let unique_symbol = format!("declare const __brand_{item_name}: unique symbol;");
         let type_str = format!(
-            "export type {item_name}{ts_generics} = {ts_inner_type} & {{ readonly [__brand_{item_name}]: true }};{reexport}"
+            "{note}export type {item_name}{ts_generics} = {ts_inner_type} & {{ readonly [__brand_{item_name}]: true }};{reexport}"
         );
         quote! {
             pub fn ts_definition() -> ::std::string::String {
@@ -9914,6 +9940,10 @@ fn register_branded_newtype(
     // A brand adds a name to its inner's wire and nothing else, so a key written under it renders
     // in whatever form the inner writes.
     record_key_wire(rust_ident, branded_key_wire(inner_field));
+    record_inexact_key(
+        rust_ident,
+        get_field_def("", &inner_field.ty, "").writes_an_inexact_key(),
+    );
     // A brand is written straight onto its inner's schema — `.brand()` hands back that same
     // instance — so it publishes whatever its inner publishes.
     Surface::written(
@@ -9975,10 +10005,6 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
     let held = brand_member(position, inner_field);
     let inner_ty = &inner_field.ty;
 
-    // `ts_pair`: (ts_inner_type, ts_generics).
-    #[cfg(feature = "typescript")]
-    let ts_pair = branded_ts_type_and_generics(&generic_params, inner_ty);
-
     #[cfg(not(any(feature = "typescript", feature = "zod")))]
     let _: &_ = &inner_ty;
 
@@ -9990,7 +10016,7 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
 
     #[cfg(feature = "typescript")]
     let ts_definition_method =
-        build_branded_ts_definition_method(&item_name, &rust_ident, &ts_pair.1, &ts_pair.0);
+        build_branded_ts_definition_method(&item_name, &rust_ident, &generic_params, inner_ty);
 
     #[cfg(feature = "zod")]
     let zod_schema_method = build_branded_zod_schema_method(
@@ -10411,6 +10437,16 @@ fn jsdoc_block(body: &str, indent: &str) -> String {
 /// member sits at.
 fn member_jsdoc_block(body: &str) -> String {
     jsdoc_block(body, MEMBER_INDENT)
+}
+
+/// `body`, a `JSDoc` body as [`item_jsdoc_body`] writes one, closed by [`INEXACT_KEY_NOTE`] where
+/// `noted`: the declaration it documents writes a map keyed by a `u64` or an `i64`.
+fn inexact_key_noted(body: &str, noted: bool) -> String {
+    match (noted, body.is_empty()) {
+        (false, _) => body.to_owned(),
+        (true, true) => format!(" * {INEXACT_KEY_NOTE}"),
+        (true, false) => format!("{body}\n * {INEXACT_KEY_NOTE}"),
+    }
 }
 
 /// The spelling a member key is written as on the text surfaces.
@@ -11726,10 +11762,16 @@ fn render_external_variant(
         quote! {}
     };
 
+    // A variant of members notes each member; one of slots notes the key its slots are under.
+    let noted = !matches!(variant.kind, VariantKind::Named)
+        && variant
+            .field_defs
+            .iter()
+            .any(FieldDef::slot_writes_an_inexact_key);
     (
         format!(
             "{{\n{}\n  {quoted}: {content_ts};\n}}",
-            member_jsdoc_block(docs)
+            member_jsdoc_block(&inexact_key_noted(docs, noted))
         ),
         zod,
         json,
@@ -14170,7 +14212,7 @@ fn write_named_variant_fields(
         let _ = writeln!(
             variant_type_code,
             "{}\n  {}{}: {};",
-            member_jsdoc_block(&fld.docs),
+            member_jsdoc_block(&inexact_key_noted(&fld.docs, fld.writes_an_inexact_key())),
             key,
             fld.optional_key_marker(),
             fld.typescript_typename()
@@ -14226,6 +14268,19 @@ fn push_single_tuple_json_field(
     });
 }
 
+/// The `JSDoc` the content key of a tagged variant's slots is written under: `summary` on one line,
+/// or a block that closes on [`INEXACT_KEY_NOTE`] where `noted`.
+fn content_jsdoc(summary: &str, noted: bool) -> String {
+    if noted {
+        member_jsdoc_block(&inexact_key_noted(
+            &item_jsdoc_body(&[summary.to_owned()]),
+            true,
+        ))
+    } else {
+        format!("{MEMBER_INDENT}/** {summary} */")
+    }
+}
+
 /// Writes the single-element tuple portion of a discriminated enum variant. The content key is a
 /// slot: a `None` there reaches the wire as `null` under the key rather than dropping it, read
 /// through the slot spellings for that reason.
@@ -14250,7 +14305,8 @@ fn write_tuple_single_variant_fields(
 
     let _ = writeln!(
         variant_type_code,
-        "  /** Tuple value */\n  {}: {};",
+        "{}\n  {}: {};",
+        content_jsdoc("Tuple value", fld.slot_writes_an_inexact_key()),
         content_key,
         fld.typescript_slot_typename()
     );
@@ -14306,8 +14362,11 @@ fn write_tuple_multiple_variant_fields(
     let content_key = ts_member_key(content_name);
     let _ = writeln!(
         variant_type_code,
-        "  /** Tuple: [{}] */\n  {}: {};",
-        tuple_desc.join(", "),
+        "{}\n  {}: {};",
+        content_jsdoc(
+            &format!("Tuple: [{}]", tuple_desc.join(", ")),
+            field_defs.iter().any(FieldDef::slot_writes_an_inexact_key)
+        ),
         content_key,
         ts_tuple
     );
@@ -15901,7 +15960,7 @@ fn write_field_type_and_schema(
     let _ = writeln!(
         type_code,
         "{}\n  {}{}: {};",
-        member_jsdoc_block(&fld.docs),
+        member_jsdoc_block(&inexact_key_noted(&fld.docs, fld.writes_an_inexact_key())),
         key,
         fld.optional_key_marker(),
         fld.typescript_typename()
@@ -21025,9 +21084,10 @@ fn generate_ts_alias_method(
 ) -> proc_macro2::TokenStream {
     let alias_name_ts = format!("{export_name}{ts_generics}");
     let target_ts = field_def.typescript_typename();
-    let reexport = ident_reexport_ts(rust_ident, export_name, ts_generics);
+    let noted = field_def.writes_an_inexact_key();
+    let reexport = noted_ident_reexport_ts(rust_ident, export_name, ts_generics, noted);
 
-    let docs_block = jsdoc_block(docs, "");
+    let docs_block = jsdoc_block(&inexact_key_noted(docs, noted), "");
 
     quote! {
         pub fn ts_definition() -> ::std::string::String {

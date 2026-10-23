@@ -529,13 +529,11 @@ fn failure_stmt(prefix: &str, wire: &str, shape: &HttpShape, error: &Type) -> St
 /// it does not. A one-way method's `Promise<void>` cannot say what the method throws, so the
 /// `JSDoc` is the only place it can be said.
 fn method_doc(service: &str, operation: &OperationDef) -> String {
-    let summary = method_summary(service, operation);
-    let thrown = throws_clause(service, operation);
-    if thrown.is_empty() {
-        format!("  /** {summary} */")
-    } else {
-        format!("  /**\n   * {summary}\n   *\n{thrown}\n   */")
-    }
+    message::method_jsdoc(
+        &method_summary(service, operation),
+        &throws_clause(service, operation),
+        operation,
+    )
 }
 
 /// A one-line summary for the method's own `JSDoc`, so a bundle reader learns what a method sends

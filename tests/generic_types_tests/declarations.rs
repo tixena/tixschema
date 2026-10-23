@@ -86,6 +86,10 @@ mod wire_forms;
 #[path = "../wide_integer_tests/models.rs"]
 mod wide_integers;
 
+/// Maps keyed by a `u64` or an `i64` in each position the TypeScript surface writes one.
+#[path = "../wide_integer_tests/keyed_models.rs"]
+mod wide_keyed;
+
 /// Models whose names on the wire hold a `$`, a quote, a double quote and a backslash, and what
 /// serde writes of each.
 #[path = "../dart_tests/quoted_models.rs"]
@@ -698,6 +702,81 @@ console.log(
   JSON.stringify(PAYLOADS.map(([schema, payload]) => lib[schema].safeParse(JSON.parse(payload)).success)),
 );
 "#;
+
+/// A module that reads each declaration of [`wide_keyed_bundle`] that writes a map keyed by a
+/// 64-bit integer, and the members and variants beside them that write none.
+const KEYED_READER: &str = r#"import type * as lib from "./index.js";
+
+declare const keyed: lib.WideKeyed;
+declare const event: lib.WideKeyedEvent;
+declare const adjacent: lib.WideKeyedAdjacent;
+
+export type Whole = [
+  lib.WideKeyedSlot,
+  lib.WideKeyedSlots,
+  lib.WideKeyedAliasType,
+  lib.WideKeyedAlias,
+  lib.WideKeyedBrand,
+];
+
+export function read(): unknown[] {
+  const read: unknown[] = [
+    keyed.aliased,
+    keyed.branded,
+    keyed.direct,
+    keyed.filled,
+    keyed.listed,
+    keyed.maybe,
+    keyed.named,
+    keyed.narrow,
+    keyed.nested,
+    keyed.paired,
+    keyed.slots,
+    keyed.slotted,
+  ];
+  if (event !== "Quiet") {
+    if (event.Counted !== undefined) read.push(event.Counted);
+    if (event.Kept !== undefined) read.push(event.Kept.keyed);
+    if (event.Narrow !== undefined) read.push(event.Narrow.keyed);
+    if (event.Tallied !== undefined) read.push(event.Tallied);
+  }
+  if (adjacent.kind === "Counted") read.push(adjacent.body);
+  if (adjacent.kind === "Kept") read.push(adjacent.body.keyed);
+  if (adjacent.kind === "Tallied") read.push(adjacent.body);
+  return read;
+}
+"#;
+
+/// What the TypeScript language service, the service an editor asks, reports of [`KEYED_READER`]:
+/// each deprecated name it reads, `6385`, in the order read.
+const KEYED_DEPRECATED: [&str; 22] = [
+    "6385 WideKeyedSlot",
+    "6385 WideKeyedSlots",
+    "6385 WideKeyedAliasType",
+    "6385 WideKeyedAlias",
+    "6385 WideKeyedBrand",
+    "6385 aliased",
+    "6385 branded",
+    "6385 direct",
+    "6385 filled",
+    "6385 listed",
+    "6385 maybe",
+    "6385 named",
+    "6385 nested",
+    "6385 paired",
+    "6385 slots",
+    "6385 slotted",
+    "6385 Counted",
+    "6385 keyed",
+    "6385 Tallied",
+    "6385 body",
+    "6385 keyed",
+    "6385 body",
+];
+
+/// Asks the TypeScript language service, the service an editor asks, what it says of the modules
+/// it is handed, the reader last.
+const DEPRECATED_READS: &str = include_str!("deprecated_reads.mjs");
 
 /// What the driver of [`wide_integers_bundle`] prints of each payload: what the Zod schema reads,
 /// each `bigint` written as its digits and an `n`, or the message of each issue. A payload is read
@@ -3019,6 +3098,43 @@ fn wire_forms_bundle() -> String {
     parts.join("\n\n")
 }
 
+/// The models of [`wide_keyed`]: a bundle of their own, compiled with `tsc --strict` and read by
+/// the TypeScript language service.
+fn wide_keyed_bundle() -> String {
+    #[cfg(not(any(feature = "swift", feature = "kotlin")))]
+    let unsigned = [
+        wide_keyed::WideUnsignedKeyed::ts_definition(),
+        wide_keyed::WideUnsignedKeyed::zod_schema(),
+    ];
+    #[cfg(any(feature = "swift", feature = "kotlin"))]
+    let unsigned: [String; 0] = [];
+    [
+        PREAMBLE.to_owned(),
+        wide_keyed::wide_keyed_revision_schema::Schema::ts_definition(),
+        wide_keyed::wide_keyed_revision_schema::Schema::zod_schema(),
+        wide_keyed::WideKeyedHolder::<bool>::ts_definition(),
+        wide_keyed::WideKeyedHolder::<bool>::zod_schema(),
+        wide_keyed::WideKeyedSlot::ts_definition(),
+        wide_keyed::WideKeyedSlot::zod_schema(),
+        wide_keyed::WideKeyedSlots::ts_definition(),
+        wide_keyed::WideKeyedSlots::zod_schema(),
+        wide_keyed::wide_keyed_alias_schema::Schema::ts_definition(),
+        wide_keyed::wide_keyed_alias_schema::Schema::zod_schema(),
+        wide_keyed::WideKeyedBrand::ts_definition(),
+        wide_keyed::WideKeyedBrand::zod_schema(),
+        wide_keyed::WideKeyed::ts_definition(),
+        wide_keyed::WideKeyed::zod_schema(),
+        wide_keyed::WideKeyedEvent::ts_definition(),
+        wide_keyed::WideKeyedEvent::zod_schema(),
+        wide_keyed::WideKeyedAdjacent::ts_definition(),
+        wide_keyed::WideKeyedAdjacent::zod_schema(),
+    ]
+    .into_iter()
+    .chain(unsigned)
+    .collect::<Vec<_>>()
+    .join("\n\n")
+}
+
 /// The models of [`wide_integers`]: a bundle of their own, compiled with `tsc --strict` and loaded
 /// under `node`.
 fn wide_integers_bundle() -> String {
@@ -4260,6 +4376,51 @@ fn type_check_a_64_bit_integer_is_read_as_a_bigint_under_zod() {
         ]
         .join("\n"),
         "the Zod schemas do not read each payload as stated:\n{failed}"
+    );
+}
+
+/// Each declaration that writes a map keyed by a `u64` or an `i64` carries a `@deprecated` note,
+/// which `tsc --strict` prints nothing for and the TypeScript language service, the service an
+/// editor asks, reports where the declaration is read; a map keyed by a `u32` carries none. The
+/// bundle's types share no declaration.
+#[test]
+fn type_check_a_map_keyed_by_a_64_bit_integer_is_marked_where_an_editor_reads_it() {
+    if let Some(modules) = node_modules() {
+        assert!(
+            modules.join("typescript").is_dir(),
+            "{MODULES_VAR} names a directory whose `node_modules` holds no `typescript`, which \
+             the language service is read from: {}",
+            modules.display()
+        );
+    }
+    let Some(at) = built_from("wide-keyed", &wide_keyed_bundle()) else {
+        return;
+    };
+    let (accepted, said) = compiled(&at, "tsconfig.json").unwrap();
+    assert!(accepted && said.is_empty(), "tsc --strict reports:\n{said}");
+    fs::write(at.join("src/reader.ts"), KEYED_READER).unwrap();
+    fs::write(at.join("deprecated_reads.mjs"), DEPRECATED_READS).unwrap();
+    let named_node = env::var(NODE_VAR).ok();
+    let node = named_node.clone().unwrap_or_else(|| "node".to_owned());
+    let run = Command::new(&node)
+        .args(["deprecated_reads.mjs", "src/index.ts", "src/reader.ts"])
+        .current_dir(&at)
+        .output();
+    fs::remove_dir_all(&at).unwrap();
+    let Ok(ran) = run else {
+        assert!(
+            named_node.is_none(),
+            "{NODE_VAR} names `{node}`, and no runtime could be started there: {}",
+            run.unwrap_err()
+        );
+        stand_down();
+        return;
+    };
+    assert_eq!(
+        String::from_utf8_lossy(&ran.stdout).trim(),
+        KEYED_DEPRECATED.join("\n"),
+        "the language service does not report each note where it is read:\n{}",
+        String::from_utf8_lossy(&ran.stderr)
     );
 }
 

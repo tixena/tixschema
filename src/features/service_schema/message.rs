@@ -6,7 +6,7 @@ use crate::service_schema::parse::{
     BodyKind, HttpShape, OperationDef, OperationInputs, ScalarKind, held_as_a_bigint, option_inner,
     scalar_kind, tuple_elements, vec_inner, written,
 };
-use crate::utils::ts_commented;
+use crate::utils::{INEXACT_KEY_NOTE, ts_commented};
 use syn::{Ident, Type};
 
 /// The locals and parameters an emitted dispatcher's arm writes around a path placeholder's own
@@ -293,6 +293,44 @@ pub fn binding_params(shape: &HttpShape) -> Vec<(String, String)> {
         ));
     }
     params
+}
+
+/// Whether an argument a method of the operation takes writes a map keyed by a `u64` or an `i64`:
+/// the message it names, a bound header or a bound part. A message the macro declares from the
+/// arguments carries the note on each member that writes one.
+pub fn sends_an_inexact_key(operation: &OperationDef) -> bool {
+    let shape = HttpShape::of(operation);
+    let named = match &operation.inputs {
+        OperationInputs::Named(declared) => {
+            get_field_def("req", declared, "").writes_an_inexact_key()
+        }
+        OperationInputs::Empty | OperationInputs::Generated(_) => false,
+    };
+    named
+        || shape
+            .header_in
+            .iter()
+            .map(|header| &header.ty)
+            .chain(shape.multipart_parts.iter().map(|part| &part.ty))
+            .any(|ty| get_field_def("value", ty, "").writes_an_inexact_key())
+}
+
+/// The `JSDoc` a method of a client or an implementation is written under: `summary` on one line,
+/// or a block of `summary` and `below`, the block's own lines, closed by [`INEXACT_KEY_NOTE`] where
+/// the method sends a map keyed by a `u64` or an `i64`.
+pub fn method_jsdoc(summary: &str, below: &str, operation: &OperationDef) -> String {
+    let mut lines: Vec<String> = Vec::new();
+    if !below.is_empty() {
+        lines.push(below.to_owned());
+    }
+    if sends_an_inexact_key(operation) {
+        lines.push(format!("   * {INEXACT_KEY_NOTE}"));
+    }
+    if lines.is_empty() {
+        format!("  /** {summary} */")
+    } else {
+        format!("  /**\n   * {summary}\n   *\n{}\n   */", lines.join("\n"))
+    }
 }
 
 /// The type a header tuple carries in its body slot: the tuple's first element where `headers`

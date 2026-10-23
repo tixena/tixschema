@@ -9,6 +9,8 @@ use crate::service_schema::parse::{BodyKind, HttpShape, ServiceDef, is_unit_type
 #[cfg(any(feature = "typescript", feature = "dart", feature = "kotlin"))]
 use crate::service_schema::parse::{OperationDef, OperationOutcome, written};
 #[cfg(feature = "typescript")]
+use crate::utils::INEXACT_KEY_NOTE;
+#[cfg(feature = "typescript")]
 use syn::Type;
 
 /// The TypeScript record a `body = "stream"` operation's success answers with: `contentRange` is
@@ -61,6 +63,13 @@ fn result_type(service: &str, operation: &OperationDef) -> Option<String> {
     };
     let failure = get_field_def("error", error, "").typescript_typename();
     let called = &operation.ts_name;
+    let succeeded = result_arm("ok: true", "value", &value, writes_an_inexact_key(success));
+    let failed = result_arm(
+        "ok: false",
+        "error",
+        &format!("{failure} | {{ isServiceFault: true; fault: {service}Fault }}"),
+        writes_an_inexact_key(error),
+    );
     Some(format!(
         "/**\n \
          * What `{called}` on `{service}` answers with: the value it declared, the error it \
@@ -68,9 +77,27 @@ fn result_type(service: &str, operation: &OperationDef) -> Option<String> {
          * or a fault it never declared.\n \
          */\n\
          export type {published} =\n  \
-         | {{ ok: true; value: {value} }}\n  \
-         | {{ ok: false; error: {failure} | {{ isServiceFault: true; fault: {service}Fault }} }};"
+         | {succeeded}\n  \
+         | {failed};"
     ))
+}
+
+/// One arm of a result type, `{ head; key: ty }`: on one line, or, where `noted`, with the member
+/// on lines of its own under [`INEXACT_KEY_NOTE`], since a comment on the line of another member
+/// documents that member.
+#[cfg(feature = "typescript")]
+pub fn result_arm(head: &str, key: &str, ty: &str, noted: bool) -> String {
+    if noted {
+        format!("{{\n      {head};\n      /** {INEXACT_KEY_NOTE} */\n      {key}: {ty};\n    }}")
+    } else {
+        format!("{{ {head}; {key}: {ty} }}")
+    }
+}
+
+/// Whether the TypeScript type of a reply's arm `ty` writes a map keyed by a `u64` or an `i64`.
+#[cfg(feature = "typescript")]
+pub fn writes_an_inexact_key(ty: &Type) -> bool {
+    get_field_def("value", ty, "").writes_an_inexact_key()
 }
 
 /// [`STREAMED_ANSWER_TS_TYPE`], wrapped in a tuple with one more element per declared `header_out`

@@ -1060,3 +1060,37 @@ fn test_a_union_hands_in_each_factory_call_once_and_leaves_a_longer_name_alone()
         "z.union([z.string(), z.null()])"
     );
 }
+
+/// A map keyed by a `u64` or an `i64` writes a key a `number` does not hold exactly wherever the
+/// type writes it, as a member and in a slot; a map keyed by a narrower integer writes none.
+#[test]
+fn a_map_keyed_by_a_64_bit_integer_writes_an_inexact_key_at_any_depth() {
+    for (spelling, inexact) in [
+        ("HashMap<u64, bool>", true),
+        ("BTreeMap<i64, bool>", true),
+        ("Option<HashMap<u64, bool>>", true),
+        ("Vec<HashMap<u64, bool>>", true),
+        ("VecDeque<BTreeMap<i64, bool>>", true),
+        ("HashMap<String, HashMap<u64, bool>>", true),
+        ("(HashMap<u64, bool>, u8)", true),
+        ("Result<HashMap<u64, bool>, String>", true),
+        ("Holder<HashMap<u64, bool>>", true),
+        ("HashMap<u32, bool>", false),
+        ("HashMap<String, u64>", false),
+        ("Vec<i64>", false),
+        ("u64", false),
+    ] {
+        let ty: syn::Type = syn::parse_str(spelling).unwrap();
+        let held = super::get_field_def("keyed", &ty, "");
+        assert_eq!(
+            held.writes_an_inexact_key(),
+            inexact,
+            "as a member: {spelling}"
+        );
+        assert_eq!(
+            held.slot_writes_an_inexact_key(),
+            inexact,
+            "in a slot: {spelling}"
+        );
+    }
+}

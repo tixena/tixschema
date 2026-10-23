@@ -1491,6 +1491,16 @@ impl FieldDef {
         }
     }
 
+    /// [`Self::writes_an_inexact_key`] of the field in a slot, which writes an alias of an
+    /// `Option` in place as [`Self::typescript_slot_typename`] does.
+    pub fn slot_writes_an_inexact_key(&self) -> bool {
+        #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+        if let Some(in_place) = self.written_in_place() {
+            return in_place.slot_writes_an_inexact_key();
+        }
+        self.writes_an_inexact_key()
+    }
+
     /// Whether this field's own value is an `Option`, written as one or as an alias of one.
     pub fn stands_for_an_option(&self) -> bool {
         self.is_optional() || (self.array_depth == 0 && self.option_alias_target().is_some())
@@ -1770,6 +1780,68 @@ impl FieldDef {
                 leveled
             }
             Some(_) | None => self.clone(),
+        }
+    }
+
+    /// Whether the TypeScript type [`Self::typescript_typename`] writes holds, at any depth, a map
+    /// keyed by a `u64` or an `i64`: its key is a `number`, which holds no key beyond `2^53 - 1` in
+    /// size exactly. A name holds one where the registry records the alias, the brand or the tuple
+    /// struct it names as one; a struct or an enum holds it in a member of its own.
+    pub fn writes_an_inexact_key(&self) -> bool {
+        #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+        if let Some(in_place) = self.items_written_in_place() {
+            return in_place.writes_an_inexact_key();
+        }
+        match &self.field_type {
+            FieldDefType::Map(key, value) => {
+                matches!(
+                    key.map_key_wire(),
+                    MapKeyWire::Signed64 | MapKeyWire::Unsigned64
+                ) || value.slot_writes_an_inexact_key()
+            }
+            FieldDefType::SiblingType(name, arguments) => {
+                if let [element] = arguments.as_slice()
+                    && is_sequence_wrapper(name)
+                {
+                    return self
+                        .collection_element_field(element)
+                        .writes_an_inexact_key();
+                }
+                lookup_alias_info(name).is_some_and(|info| info.inexact_key)
+                    || arguments.iter().any(Self::slot_writes_an_inexact_key)
+            }
+            FieldDefType::Range(_, bound) => bound.slot_writes_an_inexact_key(),
+            FieldDefType::Result(ok, err) => {
+                ok.slot_writes_an_inexact_key() || err.slot_writes_an_inexact_key()
+            }
+            FieldDefType::Tuple(elements) => elements.iter().any(Self::slot_writes_an_inexact_key),
+            FieldDefType::TypeParam(_)
+            | FieldDefType::Unknown
+            | FieldDefType::StringLiteral(_)
+            | FieldDefType::BooleanLiteral(_)
+            | FieldDefType::NumberLiteral(_)
+            | FieldDefType::Boolean
+            | FieldDefType::Char
+            | FieldDefType::String
+            | FieldDefType::U8
+            | FieldDefType::U16
+            | FieldDefType::U32
+            | FieldDefType::U64
+            | FieldDefType::I8
+            | FieldDefType::I16
+            | FieldDefType::I32
+            | FieldDefType::I64
+            | FieldDefType::Usize
+            | FieldDefType::Isize
+            | FieldDefType::F32
+            | FieldDefType::F64 => false,
+            #[cfg(feature = "mongodb")]
+            FieldDefType::ObjectId => false,
+            #[cfg(feature = "chrono")]
+            FieldDefType::NaiveDate
+            | FieldDefType::NaiveTime
+            | FieldDefType::NaiveDateTime
+            | FieldDefType::DateTime => false,
         }
     }
 

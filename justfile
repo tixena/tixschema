@@ -126,13 +126,14 @@ lint-sets:
     @echo "✅ All feature-set combinations lint passed!"
 
 # Type-check the emitted TypeScript with a real compiler; refuses to stand down. Set TIXSCHEMA_TSC
-# to a compiler off PATH, and TIXSCHEMA_NODE_MODULES to a directory whose node_modules holds `zod`.
+# to a compiler off PATH, and TIXSCHEMA_NODE_MODULES to a directory whose node_modules holds `zod`
+# and `typescript`, whose language service reads the notes an editor shows.
 typecheck-ts:
     @command -v "${TIXSCHEMA_TSC:-tsc}" >/dev/null 2>&1 || { echo "No TypeScript compiler: put \`tsc\` on PATH, or set TIXSCHEMA_TSC to one." >&2; exit 1; }
     @echo "Type-checking the emitted bundle with $(command -v "${TIXSCHEMA_TSC:-tsc}")..."
     TIXSCHEMA_TSC="$(command -v "${TIXSCHEMA_TSC:-tsc}")" cargo test --test service_schema_typescript_tests type_check
     TIXSCHEMA_TSC="$(command -v "${TIXSCHEMA_TSC:-tsc}")" cargo test --no-default-features --features "serde,typescript" --test service_schema_typescript_tests type_check
-    @test -n "${TIXSCHEMA_NODE_MODULES:-}" && [ -d "${TIXSCHEMA_NODE_MODULES}/node_modules/zod" ] || { echo "No zod: set TIXSCHEMA_NODE_MODULES to a directory whose node_modules holds zod." >&2; exit 1; }
+    @test -n "${TIXSCHEMA_NODE_MODULES:-}" && [ -d "${TIXSCHEMA_NODE_MODULES}/node_modules/zod" ] && [ -d "${TIXSCHEMA_NODE_MODULES}/node_modules/typescript" ] || { echo "No zod/typescript: set TIXSCHEMA_NODE_MODULES to a directory whose node_modules holds zod and typescript." >&2; exit 1; }
     @command -v "${TIXSCHEMA_NODE:-node}" >/dev/null 2>&1 || { echo "No node: put \`node\` on PATH, or set TIXSCHEMA_NODE to one." >&2; exit 1; }
     @echo "Compiling a second package against the bundle's declarations, and loading the bundle..."
     TIXSCHEMA_TSC="$(command -v "${TIXSCHEMA_TSC:-tsc}")" TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" cargo test --test generic_types_tests type_check

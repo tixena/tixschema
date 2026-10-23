@@ -4,7 +4,7 @@
 
 use super::fault;
 use super::message;
-use super::result::{result_name, stream_success_ts_type};
+use super::result::{result_arm, result_name, stream_success_ts_type, writes_an_inexact_key};
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
@@ -434,8 +434,8 @@ fn interface(service: &ServiceDef) -> String {
         .iter()
         .map(|operation| {
             format!(
-                "  /** {} */\n  {}({}): Promise<{}>;",
-                method_summary(&named, operation),
+                "{}\n  {}({}): Promise<{}>;",
+                message::method_jsdoc(&method_summary(&named, operation), "", operation),
                 operation.ts_name,
                 interface_method_params(operation),
                 implementation_answers(&named, operation)
@@ -552,17 +552,24 @@ fn outcome_type(service: &str, operation: &OperationDef) -> Option<String> {
     let published = outcome_name(service, operation)?;
     let shape = HttpShape::of(operation);
     let success_arm = if matches!(shape.body_kind, BodyKind::Stream) {
-        format!(
-            "{{ ok: true; value: {} }}",
-            stream_success_ts_type(&shape, success)
+        result_arm(
+            "ok: true",
+            "value",
+            &stream_success_ts_type(&shape, success),
+            writes_an_inexact_key(success),
         )
     } else if is_unit_type(success) {
         "{ ok: true }".to_owned()
     } else {
         let value = get_field_def("value", success, "").typescript_typename();
-        format!("{{ ok: true; value: {value} }}")
+        result_arm("ok: true", "value", &value, writes_an_inexact_key(success))
     };
-    let failure = get_field_def("error", error, "").typescript_typename();
+    let failure = result_arm(
+        "ok: false",
+        "error",
+        &get_field_def("error", error, "").typescript_typename(),
+        writes_an_inexact_key(error),
+    );
     let called = &operation.ts_name;
     Some(format!(
         "/**\n \
@@ -576,7 +583,7 @@ fn outcome_type(service: &str, operation: &OperationDef) -> Option<String> {
          */\n\
          export type {published} =\n  \
          | {success_arm}\n  \
-         | {{ ok: false; error: {failure} }};"
+         | {failure};"
     ))
 }
 
