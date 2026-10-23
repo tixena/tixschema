@@ -830,6 +830,7 @@ pub const fn variant_names_when_flattened(
 /// The field serde's derive in `direction` takes a `#[serde(transparent)]` struct as the value of,
 /// named or a slot: the one that derive does not skip, that is not written `PhantomData` and, read,
 /// that has no `default`. `None` for any other count, which that derive refuses.
+#[cfg(feature = "serde")]
 pub fn transparent_field(fields: &Fields, direction: Direction) -> Option<&Field> {
     transparent_slot(fields, direction).map(|(_, field)| field)
 }

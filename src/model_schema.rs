@@ -11,6 +11,7 @@ pub mod ranges;
 
 use alloc::borrow::ToOwned;
 use core::fmt::Write as _;
+#[cfg(feature = "serde")]
 use core::iter;
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use core::ops::Range;
