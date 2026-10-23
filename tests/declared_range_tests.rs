@@ -11,6 +11,8 @@
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "kotlin")]
+    use crate::kotlin_numbers::without_number_readers;
     use serde::{Deserialize, Serialize};
     use serde_json::json;
     use tixschema::model_schema;
@@ -75,8 +77,13 @@ mod tests {
     #[cfg(feature = "kotlin")]
     #[test]
     fn the_crates_own_range_keeps_its_description_in_kotlin() {
-        let kotlin = shelved_kotlin::kotlin_definition();
+        let kotlin = without_number_readers(&shelved_kotlin::kotlin_definition());
         assert!(kotlin.contains("val span: Range<UInt>"), "{kotlin}");
         assert!(!kotlin.contains("KotlinRange"), "{kotlin}");
     }
 }
+
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "support/kotlin_numbers.rs"]
+mod kotlin_numbers;

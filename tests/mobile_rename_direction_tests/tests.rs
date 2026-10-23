@@ -1,6 +1,8 @@
 //! A renaming written as a list whose two directions agree names one key, which every build
 //! takes: each client names that key, the one serde writes and reads.
 
+#[cfg(feature = "kotlin")]
+use crate::kotlin_numbers::without_number_readers;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tixschema::model_schema;
@@ -138,7 +140,7 @@ fn the_swift_definition_names_each_agreed_key() {
 #[test]
 fn the_kotlin_definition_names_each_agreed_key() {
     assert_names(
-        &parcel_kotlin::kotlin_definition(),
+        &without_number_readers(&parcel_kotlin::kotlin_definition()),
         &[
             "@SerialName(\"ref\") val reference: String",
             "val weightGrams: UInt",
@@ -146,7 +148,7 @@ fn the_kotlin_definition_names_each_agreed_key() {
         &["\"reference\"", "weight_grams"],
     );
     assert_names(
-        &carriage_kotlin::kotlin_definition(),
+        &without_number_readers(&carriage_kotlin::kotlin_definition()),
         &[
             "@SerialName(\"byAir\") @Serializable data class CarriageAir(val flightCode: String)",
             "@SerialName(\"over-land\") @Serializable data class CarriageOverLand(val roadName: \

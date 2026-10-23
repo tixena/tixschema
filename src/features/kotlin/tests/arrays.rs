@@ -31,10 +31,13 @@ fn each_level_of_one_length_names_the_class_of_its_length_where_the_plugin_reads
     let kotlin = plain(&item);
     assert!(
         kotlin.starts_with(&format!(
-            "{} {} {} data class Clasping(val grid: @Serializable(with = KotlinArray2::class) \
-             List<@Serializable(with = KotlinArray1::class) List<UByte>>, val pairs: \
-             List<@Serializable(with = KotlinArray1::class) List<UByte>>, val maybe: \
-             @Serializable(with = KotlinArray1::class) List<UByte>? = null) {{",
+            "{} {} {} {} data class Clasping(val grid: @Serializable(with = KotlinArray2::class) \
+             List<@Serializable(with = KotlinArray1::class) List<@Serializable(with = \
+             KotlinNumber1::class) UByte>>, val pairs: List<@Serializable(with = \
+             KotlinArray1::class) List<@Serializable(with = KotlinNumber1::class) UByte>>, val \
+             maybe: @Serializable(with = KotlinArray1::class) List<@Serializable(with = \
+             KotlinNumber1::class) UByte>? = null) {{",
+            number("KotlinNumber1", "UByte", "u8"),
             array("KotlinArray1", 2),
             array("KotlinArray2", 3),
             kept("Clasping")
@@ -52,14 +55,18 @@ fn where_the_emitter_writes_the_read_it_composes_the_class_of_the_length() {
     };
     let kotlin = plain(&item);
     assert!(
-        kotlin.starts_with(&array("KotlinArray1", 2)),
+        kotlin.starts_with(&format!(
+            "{} {}",
+            number("KotlinNumber1", "UByte", "u8"),
+            array("KotlinArray1", 2)
+        )),
         "got: {kotlin}"
     );
     for held in [
         "data class Slots(val slot0: List<UByte>, val slot1: List<List<UByte>>) {",
-        "return Slots(input.json.decodeFromJsonElement(KotlinArray1(serializer<UByte>()), \
+        "return Slots(input.json.decodeFromJsonElement(KotlinArray1(KotlinNumber1), \
          array[0]), \
-         input.json.decodeFromJsonElement(ListSerializer(KotlinArray1(serializer<UByte>())), \
+         input.json.decodeFromJsonElement(ListSerializer(KotlinArray1(KotlinNumber1)), \
          array[1]))",
     ] {
         assert!(kotlin.contains(held), "no `{held}` in: {kotlin}");
@@ -99,8 +106,9 @@ fn a_list_of_no_length_keeps_the_read_it_had() {
     assert!(
         !kotlin.contains("KotlinArray")
             && kotlin.contains(
-                "input.json.decodeFromJsonElement(serializer<List<UByte>>(), array[0]), \
-                 input.json.decodeFromJsonElement(serializer<List<List<UByte>>>(), array[1])"
+                "input.json.decodeFromJsonElement(ListSerializer(KotlinNumber1), array[0]), \
+                 input.json.decodeFromJsonElement(ListSerializer(ListSerializer(KotlinNumber1)), \
+                 array[1])"
             ),
         "got: {kotlin}"
     );

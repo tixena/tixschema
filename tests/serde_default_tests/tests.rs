@@ -13,6 +13,8 @@ use super::models::{
 use super::models::{Gangway, report};
 #[cfg(all(feature = "indexmap", any(feature = "zod", feature = "jsonschema")))]
 use super::models::{IndexedFleet, IndexedLogbook};
+#[cfg(feature = "kotlin")]
+use crate::kotlin_numbers::without_number_readers;
 
 /// The read of `Gangway`'s `u32`, held to its range.
 #[cfg(feature = "dart")]
@@ -528,7 +530,7 @@ fn a_type_with_no_default_writes_the_swift_text_it_wrote() {
 #[test]
 fn a_type_with_no_default_writes_the_kotlin_text_it_wrote() {
     assert_eq!(
-        super::models::gangway_kotlin::kotlin_definition(),
+        without_number_readers(&super::models::gangway_kotlin::kotlin_definition()),
         "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
          GangwaySerializer::class) @KeepGeneratedSerializer data class Gangway(val label: String, \
          val width: UInt) { fun validate(): List<String> = emptyList() } \

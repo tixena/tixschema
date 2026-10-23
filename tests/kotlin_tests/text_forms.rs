@@ -103,7 +103,7 @@ fn named_for(kotlin: &str, expected: &str) -> String {
 /// map's key, which the plugin reads them by, and each serializer is declared once beside the type.
 #[test]
 fn a_char_and_a_date_name_the_serializer_of_their_form_where_the_plugin_reads() {
-    let kotlin = chronometer_kotlin::kotlin_definition();
+    let kotlin = super::tests::renumbered(&chronometer_kotlin::kotlin_definition());
     let letter = named_for(&kotlin, "a character");
     let date = named_for(&kotlin, "a date");
     assert!(
@@ -129,7 +129,7 @@ fn a_char_and_a_date_name_the_serializer_of_their_form_where_the_plugin_reads() 
         "got: {kotlin}"
     );
     assert!(
-        kotlin.contains(&format!(
+        super::tests::without_number_readers(&kotlin).contains(&format!(
             "data class Chronometer(@SerialName(\"by_date\") val byDate: Map<@Serializable(with = \
              {date}::class) String, UByte>, @SerialName(\"by_letter\") val byLetter: \
              Map<@Serializable(with = {letter}::class) String, UByte>, val day: \
@@ -151,7 +151,7 @@ fn a_char_and_a_date_name_the_serializer_of_their_form_where_the_plugin_reads() 
 /// 3339.
 #[test]
 fn a_time_and_a_date_and_time_are_read_through_their_form_in_every_place() {
-    let timed = time_log_kotlin::kotlin_definition();
+    let timed = super::tests::renumbered(&time_log_kotlin::kotlin_definition());
     let time = named_for(&timed, "a time");
     assert!(
         timed.contains(&declared(
@@ -177,7 +177,7 @@ fn a_time_and_a_date_and_time_are_read_through_their_form_in_every_place() {
         )),
         "got: {timed}"
     );
-    let stamped = stamp_log_kotlin::kotlin_definition();
+    let stamped = super::tests::renumbered(&stamp_log_kotlin::kotlin_definition());
     let stamp = named_for(&stamped, "a date and time");
     let (steps, check) = unseconded("unzoned");
     assert!(
@@ -199,7 +199,7 @@ fn a_time_and_a_date_and_time_are_read_through_their_form_in_every_place() {
         )),
         "got: {stamped}"
     );
-    let instants = instant_log_kotlin::kotlin_definition();
+    let instants = super::tests::renumbered(&instant_log_kotlin::kotlin_definition());
     let zoned = named_for(&instants, "a date and time with its zone");
     assert!(
         instants.contains(&declared(
@@ -222,12 +222,12 @@ fn a_time_and_a_date_and_time_are_read_through_their_form_in_every_place() {
 /// the read the emitter writes names.
 #[test]
 fn a_flattened_maps_key_is_read_through_the_serializer_of_its_form() {
-    let kotlin = letter_lines_kotlin::kotlin_definition();
+    let kotlin = super::tests::renumbered(&letter_lines_kotlin::kotlin_definition());
     let letter = named_for(&kotlin, "a character");
     assert!(
         kotlin.contains(&format!(
             "value.lines.forEach {{ (k, v) -> put(output.json.encodeToJsonElement({letter}, \
-             k).jsonPrimitive.content, output.json.encodeToJsonElement(serializer<UByte>(), v)) }}"
+             k).jsonPrimitive.content, output.json.encodeToJsonElement(KotlinNumber1, v)) }}"
         )),
         "got: {kotlin}"
     );
@@ -235,7 +235,7 @@ fn a_flattened_maps_key_is_read_through_the_serializer_of_its_form() {
         kotlin.contains(&format!(
             "val lines = obj.entries.associate {{ (k, v) -> \
              input.json.decodeFromJsonElement({letter}, JsonPrimitive(k)) to \
-             input.json.decodeFromJsonElement(serializer<UByte>(), v) }}"
+             input.json.decodeFromJsonElement(KotlinNumber1, v) }}"
         )),
         "got: {kotlin}"
     );

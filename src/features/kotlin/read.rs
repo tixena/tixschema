@@ -6,10 +6,10 @@
 use super::texts;
 use super::{arrays, validate};
 use super::{
-    field_reaches_type_parameter, innermost, kotlin_base, kotlin_quoted, kotlin_serializer_expr,
-    kotlin_serializer_param_name, kotlin_typename, listed_serializer, lookup_kotlin_name,
-    marked_nullable_at, range_serializer, range_typename, result_serializer, result_typename,
-    sibling_typename, tuple_wrapper_serializer, tuple_wrapper_typename,
+    field_reaches_type_parameter, innermost, key_serializer_expr, kotlin_base, kotlin_quoted,
+    kotlin_serializer_expr, kotlin_serializer_param_name, kotlin_typename, listed_serializer,
+    lookup_kotlin_name, marked_nullable_at, range_serializer, range_typename, result_serializer,
+    result_typename, sibling_typename, tuple_wrapper_serializer, tuple_wrapper_typename,
 };
 use crate::features::text_forms::TextForm;
 use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
@@ -26,14 +26,25 @@ const OPTED_IN: &str = "@OptIn(ExperimentalSerializationApi::class)";
 const WRITTEN: Annotated = Annotated {
     models: false,
     texts: false,
+    numbers: Numbers::Plain,
     unjudged: true,
 };
+
+/// How a declaration reads a number and a `bool`: a map's key is written between quotes, and is
+/// read as the library reads it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Numbers {
+    Plain,
+    Refusing,
+}
 
 /// How a declaration names the serializer each value it holds is read by.
 #[derive(Clone, Copy)]
 struct Annotated {
     /// Each model `validate()` asks names its unjudged serializer, for the plugin to read it by.
     models: bool,
+    /// Whether a number and a `bool` name the serializer that refuses one written between quotes.
+    numbers: Numbers,
     /// Each text of one form names the serializer that refuses a text of any other, and each
     /// array of one length the class that refuses an array of any other.
     texts: bool,
@@ -49,7 +60,12 @@ fn annotated_base(field: &FieldDef, annotated: Annotated) -> String {
     let in_arguments = Annotated {
         models: false,
         texts: annotated.texts,
+        numbers: annotated.numbers,
         unjudged: false,
+    };
+    let in_keys = Annotated {
+        numbers: Numbers::Plain,
+        ..in_arguments
     };
     let scalar = if let FieldDefType::SiblingType(name, arguments) = &field.field_type {
         if let [element] = arguments.as_slice()
@@ -67,7 +83,7 @@ fn annotated_base(field: &FieldDef, annotated: Annotated) -> String {
     } else if let FieldDefType::Map(key, value) = &field.field_type {
         format!(
             "Map<{}, {}>",
-            annotated_typename(key, in_arguments),
+            annotated_typename(key, in_keys),
             annotated_typename(value, annotated)
         )
     } else if let FieldDefType::Tuple(positions) = &field.field_type {
@@ -78,14 +94,17 @@ fn annotated_base(field: &FieldDef, annotated: Annotated) -> String {
         result_typename(ok, err, |arm| annotated_typename(arm, annotated))
     } else {
         let written = kotlin_base(&innermost(field));
-        TextForm::of(field).filter(|_| annotated.texts).map_or_else(
+        let serializer = TextForm::of(field)
+            .filter(|_| annotated.texts)
+            .map(texts::serializer)
+            .or_else(|| {
+                texts::Primitive::of(field)
+                    .filter(|_| annotated.numbers == Numbers::Refusing)
+                    .map(texts::number_serializer)
+            });
+        serializer.map_or_else(
             || written.clone(),
-            |form| {
-                format!(
-                    "@Serializable(with = {}::class) {written}",
-                    texts::serializer(form)
-                )
-            },
+            |named| format!("@Serializable(with = {named}::class) {written}"),
         )
     };
     (0..field.array_depth).fold(scalar, |wrapped, level| {
@@ -379,6 +398,7 @@ pub fn plugin_read(field: &FieldDef) -> (String, String) {
             Annotated {
                 models,
                 texts: true,
+                numbers: Numbers::Refusing,
                 unjudged: models,
             },
         ),
@@ -468,6 +488,7 @@ pub fn with_text_forms(field: &FieldDef) -> String {
         Annotated {
             models: false,
             texts: true,
+            numbers: Numbers::Refusing,
             unjudged: false,
         },
     )
@@ -508,7 +529,7 @@ fn unjudged_serializer(field: &FieldDef, type_parameters: &[String]) -> String {
     } else if let FieldDefType::Map(key, value) = &field.field_type {
         format!(
             "MapSerializer({}, {})",
-            kotlin_serializer_expr(key, type_parameters),
+            key_serializer_expr(key, type_parameters),
             unjudged_serializer(value, type_parameters)
         )
     } else if let FieldDefType::Tuple(positions) = &field.field_type {

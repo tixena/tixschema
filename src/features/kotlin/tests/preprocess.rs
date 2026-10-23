@@ -483,7 +483,7 @@ fn a_member_the_emitter_reads_is_corrected_in_place() {
     assert!(
         slots.contains(
             "return Stretch(input.json.decodeFromJsonElement(serializer<String>(), \
-             trimmed(array[0])), input.json.decodeFromJsonElement(serializer<UInt>(), array[1]))"
+             trimmed(array[0])), input.json.decodeFromJsonElement(KotlinNumber1, array[1]))"
         ),
         "got: {slots}"
     );
@@ -617,7 +617,7 @@ fn a_member_and_a_slot_of_a_variant_are_corrected_where_each_is_read() {
         "\"Lone\" -> PortageLone(input.json.decodeFromJsonElement(serializer<String>(), \
          trimmed((data ?: throw SerializationException(\"missing field `detail`\"))))); ",
         "(input.json.decodeFromJsonElement(serializer<String>(), trimmed(array[0])), \
-         input.json.decodeFromJsonElement(serializer<UInt>(), array[1])) } }",
+         input.json.decodeFromJsonElement(KotlinNumber1, array[1])) } }",
     ] {
         assert!(portage.contains(held), "no `{held}` in: {portage}");
     }

@@ -1991,8 +1991,7 @@ fn a_flattened_option_of_an_enum_reads_in_kotlin_as_zod_does_where_its_keys_are_
         "serde no longer reads each payload as it did"
     );
     let mut in_kotlin: Vec<String> = rows.iter().map(|row| row.serde.clone()).collect();
-    let mistyped = "JsonDecodingException: Unexpected JSON token at offset 1: Failed to parse \
-                    type 'UInt' for input 'x' at path: $";
+    let mistyped = "SerializationException: invalid type: string \"x\", expected u32";
     for (at, refused) in [
         (3, mistyped),
         (4, "SerializationException: unknown tag Gale"),

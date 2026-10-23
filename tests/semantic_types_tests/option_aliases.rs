@@ -2,6 +2,8 @@
 //! `Option` it names, on TypeScript and Zod, and the JSON Schema admits the `null` serde writes
 //! there. A field keeps the alias's name, but under `nullable`, which writes it in place.
 
+#[cfg(feature = "kotlin")]
+use crate::kotlin_numbers::without_number_readers;
 #[cfg(feature = "jsonschema")]
 use serde_json::Value;
 
@@ -249,7 +251,7 @@ fn kotlin_writes_one_nullable_mark_over_an_alias_of_an_option() {
         ),
     ] {
         assert!(
-            definition.contains(written),
+            without_number_readers(&definition).contains(written),
             "no `{written}` in: {definition}"
         );
     }

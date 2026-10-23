@@ -194,7 +194,7 @@ fn every_fixture_is_written_as_serde_writes_it() {
 #[test]
 fn a_class_is_read_by_the_plugins_serializer_and_judged_by_its_own() {
     assert_eq!(
-        pallet_kotlin::kotlin_definition(),
+        super::tests::renumbered(&pallet_kotlin::kotlin_definition()),
         format!(
             "{} data class Pallet(val label: String) {{ {LABELLED} }} {}",
             kept("Pallet"),
@@ -208,7 +208,7 @@ fn a_class_is_read_by_the_plugins_serializer_and_judged_by_its_own() {
 /// read by its own serializer.
 #[test]
 fn a_holder_reads_each_model_it_walks_with_no_judgement() {
-    let bay = bay_kotlin::kotlin_definition();
+    let bay = super::tests::renumbered(&bay_kotlin::kotlin_definition());
     assert!(
         bay.starts_with(&format!(
             "{} data class Bay({UNJUDGED} val first: Pallet, val listed: List<{UNJUDGED} \
@@ -220,7 +220,7 @@ fn a_holder_reads_each_model_it_walks_with_no_judgement() {
     );
     assert!(bay.ends_with(&serializers("Bay")), "got: {bay}");
     assert_eq!(
-        trailer_kotlin::kotlin_definition(),
+        super::tests::renumbered(&trailer_kotlin::kotlin_definition()),
         format!(
             "{} data class Trailer(val plate: String) {{ {NO_RULE} }} {}",
             kept("Trailer"),
@@ -234,7 +234,7 @@ fn a_holder_reads_each_model_it_walks_with_no_judgement() {
 #[test]
 fn a_type_with_a_parameter_takes_one_serializer_per_parameter() {
     assert_eq!(
-        cask_kotlin::kotlin_definition(),
+        super::tests::renumbered(&cask_kotlin::kotlin_definition()),
         format!(
             "{} data class Cask<Held>(val held: List<Held>, val label: String) {{ {LABELLED} }} \
              @OptIn(ExperimentalSerializationApi::class) class CaskUnjudged<Held>(heldSerializer: \
@@ -244,11 +244,11 @@ fn a_type_with_a_parameter_takes_one_serializer_per_parameter() {
             judged_over("Cask", "Held", "", "heldSerializer")
         )
     );
-    let cellar = cellar_kotlin::kotlin_definition();
+    let cellar = super::tests::renumbered(&cellar_kotlin::kotlin_definition());
     assert!(
         cellar.contains(
             "data class Cellar(@Serializable(with = CaskUnjudged::class) val cask: Cask<Pallet>, \
-             val casks: List<@Serializable(with = CaskUnjudged::class) Cask<UInt>>) {"
+             val casks: List<@Serializable(with = CaskUnjudged::class) Cask<@Serializable(with = KotlinNumber1::class) UInt>>) {"
         ),
         "got: {cellar}"
     );
@@ -257,7 +257,7 @@ fn a_type_with_a_parameter_takes_one_serializer_per_parameter() {
 #[test]
 fn a_brand_is_read_by_the_plugins_serializer_and_judged_by_its_own() {
     assert_eq!(
-        seal_kotlin::kotlin_definition(),
+        super::tests::renumbered(&seal_kotlin::kotlin_definition()),
         format!(
             "{} value class Seal(val value: String) {{ fun kotlinSchemaText(): String = value; \
              {NO_RULE} }} {}",
@@ -271,7 +271,7 @@ fn a_brand_is_read_by_the_plugins_serializer_and_judged_by_its_own() {
 /// variant holds unjudged, and the enum's own serializer judges the variant it read.
 #[test]
 fn an_enum_reads_what_a_variant_holds_unjudged_and_judges_the_variant() {
-    let load = load_kotlin::kotlin_definition();
+    let load = super::tests::renumbered(&load_kotlin::kotlin_definition());
     for held in [
         format!(
             "@Serializable(with = LoadSerializer::class) sealed interface Load {{ fun validate(): \
@@ -325,23 +325,23 @@ fn array_class(kotlin: &str, length: usize) -> String {
 /// slot. A list of any length is read as it was.
 #[test]
 fn a_fixed_array_is_read_through_the_class_of_its_length() {
-    let bunt = bunt_kotlin::kotlin_definition();
+    let bunt = super::tests::renumbered(&bunt_kotlin::kotlin_definition());
     assert!(
-        bunt.contains("data class Bunt(val held: List<UByte>, val label: String)")
+        bunt.contains("data class Bunt(val held: List<@Serializable(with = KotlinNumber1::class) UByte>, val label: String)")
             && !bunt.contains("KotlinArray"),
         "got: {bunt}"
     );
-    let composed = |kotlin: &str| format!("{}(serializer<UByte>())", array_class(kotlin, 2));
+    let composed = |kotlin: &str| format!("{}(KotlinNumber1)", array_class(kotlin, 2));
     let annotated =
         |kotlin: &str| format!("@Serializable(with = {}::class)", array_class(kotlin, 2));
-    let reefband = reefband_kotlin::kotlin_definition();
-    let buntline = buntline_kotlin::kotlin_definition();
-    let shroud = shroud_kotlin::kotlin_definition();
-    let shrouding = shrouding_kotlin::kotlin_definition();
-    let fishing = fishing_kotlin::kotlin_definition();
-    let sheaving = sheaving_kotlin::kotlin_definition();
-    let cringling = cringling_kotlin::kotlin_definition();
-    let bitter = bitter_kotlin::kotlin_definition();
+    let reefband = super::tests::renumbered(&reefband_kotlin::kotlin_definition());
+    let buntline = super::tests::renumbered(&buntline_kotlin::kotlin_definition());
+    let shroud = super::tests::renumbered(&shroud_kotlin::kotlin_definition());
+    let shrouding = super::tests::renumbered(&shrouding_kotlin::kotlin_definition());
+    let fishing = super::tests::renumbered(&fishing_kotlin::kotlin_definition());
+    let sheaving = super::tests::renumbered(&sheaving_kotlin::kotlin_definition());
+    let cringling = super::tests::renumbered(&cringling_kotlin::kotlin_definition());
+    let bitter = super::tests::renumbered(&bitter_kotlin::kotlin_definition());
     for (kotlin, held) in [
         (
             &bitter,
@@ -409,6 +409,7 @@ fn a_fixed_array_is_read_through_the_class_of_its_length() {
             ),
         ),
     ] {
-        assert!(kotlin.contains(&held), "no `{held}` in: {kotlin}");
+        let plain = super::tests::without_number_readers(kotlin);
+        assert!(plain.contains(&held), "no `{held}` in: {kotlin}");
     }
 }

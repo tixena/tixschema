@@ -9,8 +9,9 @@ use super::quoted_models::{
 
 /// Asserts that `definition` holds each of `pieces`.
 fn holds_each(definition: &str, pieces: &[&str]) {
+    let types = super::tests::without_number_readers(definition);
     for piece in pieces {
-        assert!(definition.contains(piece), "no `{piece}` in: {definition}");
+        assert!(types.contains(piece), "no `{piece}` in: {definition}");
     }
 }
 

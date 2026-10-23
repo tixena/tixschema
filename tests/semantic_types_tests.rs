@@ -25,3 +25,8 @@ mod option_alias_models;
 #[cfg(feature = "serde")]
 #[path = "semantic_types_tests/option_aliases.rs"]
 mod option_aliases;
+
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "support/kotlin_numbers.rs"]
+mod kotlin_numbers;

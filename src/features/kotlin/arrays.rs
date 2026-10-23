@@ -42,7 +42,7 @@ pub fn declared(field: &FieldDef) -> bool {
 }
 
 /// Whether `field` itself holds an array of one length at one of its own levels.
-const fn has_a_length(field: &FieldDef) -> bool {
+const fn has_a_length(field: &FieldDef, _key: bool) -> bool {
     !field.array_lengths.is_empty()
 }
 

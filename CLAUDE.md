@@ -1392,6 +1392,23 @@ the consumer's view; this is what a change has to keep.
     `tests/kotlin_tests/text_forms.rs` pins the text, `run_kotlin_text_forms.rs` reads each payload
     under kotlinc, `tests/generic_types_tests/declarations.rs` holds Zod to the table under `node`,
     and `src/features/kotlin/tests/texts.rs` pins each shape and each limit.
+- **A number and a `bool` are read from an unquoted JSON value alone**, as serde, Zod and the other
+  clients read them: `kotlinx.serialization` 1.11.0 reads `"7"` for a `Long`, `Int`, `Short`,
+  `Byte`, `Double`, `Float`, `UByte`, `UShort` and `UInt`, and `"true"` for a `Boolean`.
+  `texts::Primitive` names each (`Primitive::of`, with `Millis` for a `DateTime<Tz>` under
+  `as_number`), and `texts::number_serializer` declares `object KotlinNumber{N} :
+  KSerializer<T>` once per item and primitive into the queue the tuple wrappers are written from
+  (`KOTLIN_NUMBERS`, cleared with it; the counter is not, so two types of one file share no name).
+  It reads the element through `decodeJsonElement()` and throws `SerializationException("invalid
+  type: string \"7\", expected i64")` for a string primitive, in the words serde uses with the
+  Rust type of the member (`a boolean` for a `bool`, `a unix timestamp in milliseconds` under
+  `as_number`), and hands anything else to the library's serializer. The places are the text
+  forms': `texts::found` walks them (`Annotated::numbers` names the serializer where the plugin
+  reads, `kotlin_serializer_expr` composes it where the emitter writes the read), and a map's key
+  is the one place it is skipped (`texts::found`'s `key` flag, `key_serializer_expr`), since JSON
+  writes a number key between quotes. `u64` and `usize` are refused before they are read.
+  `tests/service_schema_emitted_client_tests/run_kotlin_refusals.rs` reads a quoted value in every
+  place beside serde's refusal, and `run_kotlin_wide_integers.rs` pins the quoted `i64` refused.
 - **A fixed array is read from an array of its length alone**, at each level, by
   `src/features/kotlin/arrays.rs`. `arrays::serializer` declares, once per item and length, `class
   KotlinArray{N}<Item>(item: KSerializer<Item>) : KSerializer<List<Item>>` into the queue the tuple

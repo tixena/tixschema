@@ -96,6 +96,21 @@ fn plain(item: &ItemStruct) -> String {
     definition(struct_kotlin_tokens(item, &plain_args()))
 }
 
+/// The object that reads a number of Kotlin type `kotlin`, which serde words as `expected`,
+/// declared under `named`.
+fn number(named: &str, kotlin: &str, expected: &str) -> String {
+    format!(
+        "object {named} : KSerializer<{kotlin}> {{ private val held = serializer<{kotlin}>(); \
+         override val descriptor: SerialDescriptor = held.descriptor; override fun \
+         serialize(encoder: Encoder, value: {kotlin}) = held.serialize(encoder, value); override \
+         fun deserialize(decoder: Decoder): {kotlin} {{ val json = decoder as? JsonDecoder ?: \
+         return held.deserialize(decoder); val element = json.decodeJsonElement(); if (element is \
+         JsonPrimitive && element.isString) throw SerializationException(\"invalid type: string \" \
+         + element + \", expected {expected}\"); return json.json.decodeFromJsonElement(held, \
+         element) }} }}"
+    )
+}
+
 /// The arguments of an item that writes none: each member's own `model_schema_prop`, as written.
 fn plain_args() -> KotlinArgs<'static> {
     KotlinArgs {
@@ -200,7 +215,7 @@ fn a_member_named_after_what_the_method_writes_is_still_read() {
     };
     let kotlin = plain(&item);
     assert!(
-        kotlin.contains("data class Probe(val validate: String, val violations: Int) { fun validate(): List<String> {"),
+        kotlin.contains("data class Probe(val validate: String, val violations: @Serializable(with = KotlinNumber1::class) Int) { fun validate(): List<String> {"),
         "got: {kotlin}"
     );
     assert!(
