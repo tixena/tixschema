@@ -118,21 +118,6 @@ function conversationClientServiceHttpAnswered(value: unknown): unknown {
   return value;
 }
 
-/**
- * `text` read as JSON, each integer a `number` does not hold exactly rebuilt from its source text
- * as a `bigint`.
- */
-function conversationClientServiceHttpRequestRead(text: string): unknown {
-  return JSON.parse(text, (_key, value: unknown, context?: { source?: string }) =>
-    typeof value === \"number\" &&
-    !Number.isSafeInteger(value) &&
-    context?.source !== undefined &&
-    /^-?(0|[1-9][0-9]*)$/.test(context.source)
-      ? BigInt(context.source)
-      : value,
-  );
-}
-
 function conversationClientServiceHttpJson(status: number, headers: ReadonlyArray<readonly [string, string]>, value: unknown): ConversationClientServiceHttpResponse {
   return { status, headers: [...headers, [\"content-type\", \"application/json\"]], body: new TextEncoder().encode(JSON.stringify(conversationClientServiceHttpAnswered(value))) };
 }
@@ -423,13 +408,17 @@ fn the_answer_is_written_with_each_bigint_as_a_json_number() {
          const raw: unknown = Reflect.get(JSON, \"rawJSON\");\n    \
          if (typeof raw === \"function\") return raw(value.toString());",
         "body: new TextEncoder().encode(JSON.stringify(searchClientServiceHttpAnswered(value)))",
-        "function searchClientServiceHttpRequestRead(text: string): unknown {",
     ] {
         assert!(
             written.contains(expected),
             "missing {expected}. Got: {written}"
         );
     }
+    let bodied = http_service_of(MIXED_HTTP_SERVICE);
+    assert!(
+        bodied.contains("HttpRequestRead(text: string): unknown {"),
+        "a JSON body is read through a reader that rebuilds a `bigint`. Got: {bodied}"
+    );
 }
 
 #[test]

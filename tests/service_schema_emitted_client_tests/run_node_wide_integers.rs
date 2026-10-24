@@ -19,10 +19,20 @@ const RUNTIME_VAR: &str = "TIXSCHEMA_NODE";
 
 const REQUIRED_PACKAGES: &[&str] = &["zod"];
 
+/// The transport's own reader: `JSON.parse` with the source-text reviver the emitted readers use.
+const BUS_READ: &str = r#"
+const busRead = (text) =>
+  JSON.parse(text, (_key, value, context) =>
+    typeof value === "number" && !Number.isSafeInteger(value) && /^-?(0|[1-9][0-9]*)$/.test(context?.source ?? "")
+      ? BigInt(context.source)
+      : value,
+  );
+"#;
+
 /// Sends a tally through each client to the dispatcher of its transport, and prints the text each
 /// transport carried each way and what each client answered, a `bigint` written with an `n`. The
-/// bus is joined as an adapter joins it, each text read by the reader the side that receives it
-/// emits; the last call's reply is read by a plain `JSON.parse`.
+/// bus is joined as an adapter joins it, each text read by the harness's own source-text reader;
+/// the last call's reply is read by a plain `JSON.parse`.
 const DRIVER: &str = r#"
 const shown = (value) => JSON.parse(JSON.stringify(value, (_, held) => (typeof held === "bigint" ? `${held}n` : held)));
 
@@ -73,9 +83,9 @@ const overHttp = async (call) => {
 };
 
 const calls = [
-  [(client) => client.count({ tally: 9223372036854775806n }), tallyingClientServiceRead],
-  [(client) => client.fetch({ tally: -9223372036854775807n, limit: -1n }, 9007199254740993n), tallyingClientServiceRead],
-  [(client) => client.count({ tally: 9223372036854775807n }), tallyingClientServiceRead],
+  [(client) => client.count({ tally: 9223372036854775806n }), busRead],
+  [(client) => client.fetch({ tally: -9223372036854775807n, limit: -1n }, 9007199254740993n), busRead],
+  [(client) => client.count({ tally: 9223372036854775807n }), busRead],
   [(client) => client.count({ tally: 1719623999999n }), JSON.parse],
 ];
 const ran = [];
@@ -123,7 +133,7 @@ const overBus = async (call) => {
       const dispatched = await dispatch(undefined, operation, tallyingBareServiceRequestRead(sent), headers);
       const answered = JSON.stringify(dispatched.answered);
       carried.push(sent, headers, answered, dispatched.headers);
-      return { answered: tallyingBareServiceRead(answered), headers: dispatched.headers };
+      return { answered: busRead(answered), headers: dispatched.headers };
     },
   });
   return { carried, answered: shown(await call(client)) };
@@ -189,7 +199,7 @@ const run = async (tally) => {
       const dispatched = await dispatch(undefined, operation, tallyingClientServiceRequestRead(sent), headers);
       const answered = JSON.stringify(dispatched.answered);
       carried.push(sent, answered);
-      return { answered: tallyingClientServiceRead(answered), headers: dispatched.headers };
+      return { answered: busRead(answered), headers: dispatched.headers };
     },
   });
   return { carried, answered: shown(await client.count({ tally })) };
@@ -448,7 +458,7 @@ fn a_bare_i64_travels_as_a_number_through_each_typescript_client_and_dispatcher(
         );
         return;
     };
-    let module = format!("{}\n\n{BARE_DRIVER}", emitted());
+    let module = format!("{}\n\n{BUS_READ}\n{BARE_DRIVER}", emitted());
     let Some(wrote) = ran_with_modules(
         "bare-wide-integers",
         RUNTIME_VAR,
@@ -594,7 +604,7 @@ fn an_i64_travels_as_a_number_through_each_typescript_client_and_dispatcher() {
         stand_down_modules(REQUIRED_PACKAGES, "the emitted service's 64-bit integers");
         return;
     };
-    let module = format!("{}\n\n{DRIVER}", emitted());
+    let module = format!("{}\n\n{BUS_READ}\n{DRIVER}", emitted());
     let Some(wrote) = ran_with_modules(
         "wide-integers",
         RUNTIME_VAR,
@@ -639,7 +649,7 @@ fn without_raw_json_a_bigint_beyond_a_number_is_refused_and_any_other_is_sent_as
         );
         return;
     };
-    let module = format!("{}\n\n{FALLBACK_DRIVER}", emitted());
+    let module = format!("{}\n\n{BUS_READ}\n{FALLBACK_DRIVER}", emitted());
     let Some(wrote) = ran_with_modules(
         "wide-integers-fallback",
         RUNTIME_VAR,

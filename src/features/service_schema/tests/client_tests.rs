@@ -109,6 +109,12 @@ fn a_unit_success_normalizes_value_to_undefined_whatever_the_transport_answered(
 /// rebuilds an integer a `number` does not hold exactly as a `bigint`.
 #[test]
 fn a_message_is_checked_and_sent_with_each_bigint_as_a_json_number() {
+    const HEADER_REPLYING: &str = "
+        pub trait UsageService<Ctx> {
+            #[service_schema_op(http(method = \"POST\", path = \"/sweep\", header_out(\"etag\")))]
+            async fn sweep(&self, ctx: &Ctx) -> Result<(SweepReport, String), BalanceError>;
+        }
+    ";
     let written = client_of(MIXED_SERVICE);
     for expected in [
         "function usageServiceSent(value: unknown): unknown {\n  \
@@ -119,14 +125,20 @@ fn a_message_is_checked_and_sent_with_each_bigint_as_a_json_number() {
          throw new RangeError(",
         "function usageServiceChecked<Parsed>(\n  schema: ZodType<Parsed>,\n  value: unknown,\n):",
         "    return { success: true, data: parsed.data, sent: usageServiceSent(parsed.data) };",
-        "function usageServiceRead(text: string): unknown {\n  \
-         return JSON.parse(text, (_key, value: unknown, context?: { source?: string }) =>",
     ] {
         assert!(
             written.contains(expected),
             "missing `{expected}` in: {written}"
         );
     }
+    let replying = client_of(HEADER_REPLYING);
+    assert!(
+        replying.contains(
+            "function usageServiceRead(text: string): unknown {\n  \
+             return JSON.parse(text, (_key, value: unknown, context?: { source?: string }) =>"
+        ),
+        "a reply header is read through a reader that rebuilds a `bigint`. Got: {replying}"
+    );
     let method = written
         .split("    async getAvailableBalance(req) {")
         .nth(1)

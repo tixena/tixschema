@@ -159,6 +159,53 @@ pub fn wire_fn(function: &str) -> String {
     )
 }
 
+/// The name of the module-private function `item` declares, if it declares one.
+fn private_function(item: &str) -> Option<&str> {
+    item.lines()
+        .find_map(|line| line.strip_prefix("function "))
+        .and_then(|rest| rest.split(['(', '<']).next())
+}
+
+/// `items` without each module-private function named `{prefix}{suffix}` for a suffix of `helpers`
+/// that no other item calls, so a surface declares a helper only where its own text uses it. A
+/// function is dropped before the ones it calls are weighed, so a helper only a dropped helper
+/// called goes too. Any other function is kept: a bundle's other surfaces call it.
+pub fn without_uncalled(mut items: Vec<String>, prefix: &str, helpers: &[&str]) -> Vec<String> {
+    loop {
+        let uncalled = items.iter().enumerate().position(|(at, item)| {
+            private_function(item).is_some_and(|name| {
+                name.strip_prefix(prefix)
+                    .is_some_and(|suffix| helpers.contains(&suffix))
+                    && {
+                        let call = format!("{name}(");
+                        !items
+                            .iter()
+                            .enumerate()
+                            .any(|(other, text)| other != at && text.contains(&call))
+                    }
+            })
+        });
+        match uncalled {
+            Some(at) => {
+                items.remove(at);
+            }
+            None => return items,
+        }
+    }
+}
+
+/// Whether `text` names the local `name` as a whole identifier.
+pub fn reads_local(text: &str, name: &str) -> bool {
+    let is_identifier = |character: char| character.is_alphanumeric() || character == '_';
+    text.match_indices(name).any(|(at, _)| {
+        !text[..at].chars().next_back().is_some_and(is_identifier)
+            && !text[at + name.len()..]
+                .chars()
+                .next()
+                .is_some_and(is_identifier)
+    })
+}
+
 /// The function named `function` that reads a JSON text: each integer a `number` does not hold
 /// exactly rebuilt from its source text as a `bigint`, as a `u64` and an `i64` beyond `2^53 - 1`
 /// are written. A runtime that hands a reviver no source text keeps the `number`.

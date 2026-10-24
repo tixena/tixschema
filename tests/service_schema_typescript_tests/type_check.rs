@@ -1,6 +1,10 @@
 //! The emitted bundle put through a real TypeScript compiler.
 
 #[cfg(feature = "zod")]
+#[path = "unused_locals.rs"]
+mod unused_locals;
+
+#[cfg(feature = "zod")]
 use super::keyed::KeyedProbeServiceSchema;
 use super::the_bundle_one_registration_line_produces::{
     audit_seam, author_schemas, bundle, probe_seam,
@@ -892,6 +896,18 @@ fn compiled_beside_zod_then<Then>(
     files: &[(&str, String)],
     then: impl FnOnce(&Path) -> Then,
 ) -> Option<(bool, String, Then)> {
+    compiled_beside_zod_under(named, files, &[], then)
+}
+
+/// [`compiled_beside_zod_then`], with `extra` flags after the project's own, which the command
+/// line overrides.
+#[cfg(feature = "zod")]
+fn compiled_beside_zod_under<Then>(
+    named: &str,
+    files: &[(&str, String)],
+    extra: &[&str],
+    then: impl FnOnce(&Path) -> Then,
+) -> Option<(bool, String, Then)> {
     let Some(modules) = env::var(MODULES_VAR)
         .ok()
         .map(|named_at| PathBuf::from(named_at).join("node_modules"))
@@ -926,6 +942,7 @@ fn compiled_beside_zod_then<Then>(
     }
     let run = Command::new(&compiler)
         .args(["--pretty", "false", "-p", "tsconfig.json"])
+        .args(extra)
         .current_dir(&at)
         .output();
     let after = run.is_ok().then(|| then(&at));
@@ -981,6 +998,11 @@ fn workspace(named: &str) -> PathBuf {
 ///
 /// `None` says no compiler was reachable and nothing was compiled — never that a compile passed.
 fn compiled(named: &str, files: &[(&str, String)]) -> Option<(bool, String)> {
+    compiled_under(named, files, &[])
+}
+
+/// [`compiled`], with `extra` flags after [`UNDER`].
+fn compiled_under(named: &str, files: &[(&str, String)], extra: &[&str]) -> Option<(bool, String)> {
     let named_compiler = env::var(COMPILER_VAR).ok();
     let compiler = named_compiler.clone().unwrap_or_else(|| "tsc".to_owned());
     let at = workspace(named);
@@ -989,6 +1011,7 @@ fn compiled(named: &str, files: &[(&str, String)]) -> Option<(bool, String)> {
     }
     let run = Command::new(&compiler)
         .args(UNDER)
+        .args(extra)
         .args(files.iter().map(|(called, _)| *called))
         .current_dir(&at)
         .output();
@@ -1489,5 +1512,95 @@ fn a_map_keyed_by_a_64_bit_integer_is_marked_where_an_editor_reads_it_on_every_s
         KEYED_DEPRECATED.join("\n"),
         "the language service does not report each note where it is read:\n{}",
         String::from_utf8_lossy(&ran.stderr)
+    );
+}
+
+/// Every surface of the four services of `unused_locals`, beside the real `zod`.
+#[cfg(feature = "zod")]
+fn unused_locals_bundle() -> String {
+    use unused_locals::{
+        BodilessServiceSchema, InboundServiceSchema, OutboundServiceSchema, PlainServiceSchema,
+    };
+    let mut written = vec![
+        "import { z, type ZodType } from \"zod\";".to_owned(),
+        HeaderProbeDocument::ts_definition(),
+        HeaderProbeDocument::zod_schema(),
+        HeaderProbeError::ts_definition(),
+        HeaderProbeError::zod_schema(),
+    ];
+    macro_rules! surfaces {
+        ($($service:ident),*) => {
+            $(
+                written.extend([
+                    $service::ts_definition(),
+                    $service::ts_client(),
+                    $service::ts_service(),
+                    $service::ts_ws_client(),
+                    $service::ts_ws_service(),
+                    $service::ts_ws_server(),
+                    $service::ts_http_client(),
+                    $service::ts_http_service(),
+                ]);
+            )*
+        };
+    }
+    surfaces!(
+        PlainServiceSchema,
+        InboundServiceSchema,
+        OutboundServiceSchema,
+        BodilessServiceSchema
+    );
+    written.join("\n\n")
+}
+
+/// A module-private helper is declared only where its surface calls it, so no service of the
+/// group leaves a local unread.
+#[cfg(feature = "zod")]
+#[test]
+fn no_service_surface_declares_a_helper_nothing_calls() {
+    let mut refused = Vec::new();
+    for (named, written) in [
+        ("unused-four", unused_locals_bundle()),
+        ("unused-http-alone", http_alone_bundle()),
+        ("unused-keyed", keyed_probe_bundle()),
+        ("unused-bytes", bytes_probe_bundle()),
+    ] {
+        let files = [
+            ("bundle.ts", written),
+            ("caller.ts", "export {};\n".to_owned()),
+        ];
+        let Some((accepted, said, ())) =
+            compiled_beside_zod_under(named, &files, &["--noUnusedLocals"], |_| ())
+        else {
+            return;
+        };
+        if !accepted {
+            refused.push(said);
+        }
+    }
+    for (named, written) in [
+        ("unused-probe", bundle()),
+        ("unused-ws-seam", bundle_with_ws_seam()),
+        ("unused-http-service", bundle_with_http_service()),
+        ("unused-unit-ping", unit_ping_bundle()),
+        ("unused-header", header_probe_bundle()),
+        ("unused-spooled", spooled_probe_bundle()),
+        ("unused-lapsed", lapsed_probe_bundle()),
+        ("unused-reserved", reserved_probe_bundle()),
+        ("unused-quoted", quoted_probe_bundle()),
+    ] {
+        let Some((accepted, said)) =
+            compiled_under(named, &bundled(written), &["--noUnusedLocals"])
+        else {
+            return;
+        };
+        if !accepted {
+            refused.push(said);
+        }
+    }
+    assert!(
+        refused.is_empty(),
+        "a surface declares a helper nothing calls:\n{}",
+        refused.join("\n")
     );
 }

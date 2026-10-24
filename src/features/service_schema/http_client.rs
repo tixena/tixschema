@@ -35,7 +35,7 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
     ));
     published.push(message::read_fn(&format!("{prefix}HttpRead")));
     published.push(factory(service));
-    published
+    message::without_uncalled(published, &prefix, &["HttpRead"])
 }
 
 /// The one seam type a `{service}` client sends through: a request record in, a response record
@@ -190,19 +190,22 @@ fn method(service: &ServiceDef, operation: &OperationDef, has_multipart: bool) -
     let parts_build = multipart_parts_build_stmt(&prefix, operation, &shape, has_multipart);
     let send = send_stmt(&prefix, operation, wire, shape.method.name(), has_multipart);
     let decode = decode_stmt(&prefix, operation, &shape, wire);
-    format!(
-        "    async {call}({params}) {{\n\
-{validated}      \
-         const sending = validated.data;\n\
-{path_build}\
-{query_build}\
-{headers_build}\
-{body_build}\
-{parts_build}\
-{send}\
-{decode}\
-    }},"
-    )
+    let rest = [
+        path_build,
+        query_build,
+        headers_build,
+        body_build,
+        parts_build,
+        send,
+        decode,
+    ]
+    .concat();
+    let sending = if message::reads_local(&rest, "sending") {
+        "      const sending = validated.data;\n"
+    } else {
+        ""
+    };
+    format!("    async {call}({params}) {{\n{validated}{sending}{rest}}},")
 }
 
 /// What an outbound fault answers, before the transport is ever reached: a thrown refusal for a
