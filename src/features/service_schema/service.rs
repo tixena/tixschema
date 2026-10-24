@@ -86,7 +86,7 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
     published.push(message::wire_fn(&format!("{prefix}Answered")));
     published.push(message::read_fn(&format!("{prefix}RequestRead")));
     published.push(dispatcher(service));
-    published
+    message::without_uncalled(published, &prefix, &["RequestRead"])
 }
 
 /// The implementation `create{Service}Dispatcher` and the `ws_rpc` attachment drive:

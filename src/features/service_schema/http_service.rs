@@ -57,14 +57,18 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
     if service_writes_a_response_header(service) {
         items.push(legal_response_header_value_fn(&prefix));
     }
-    if service.operations.iter().any(|operation| {
-        let shape = HttpShape::of(operation);
-        !shape.header_out.is_empty() || !shape.error_header_out.is_empty()
-    }) {
-        items.push(replied_header_fn(&prefix));
-    }
+    items.push(replied_header_fn(&prefix));
     items.push(dispatcher_fn(service, &named, &prefix));
-    items
+    message::without_uncalled(
+        items,
+        &prefix,
+        &[
+            "HttpRequestRead",
+            "HttpParseQuery",
+            "HttpCoerceNumber",
+            "HttpRepliedHeader",
+        ],
+    )
 }
 
 /// Whether any operation ever pushes a runtime-computed value onto the response's headers.
@@ -587,13 +591,17 @@ fn dispatcher_fn(service: &ServiceDef, named: &str, prefix: &str) -> String {
         prefix,
         has_multipart: service_declares_multipart(service),
     };
-    let answer = answer_fn(&ctx);
     let dispatch = dispatch_stmt(service, named);
     let arms = service
         .operations
         .iter()
         .map(|operation| arm(operation, &ctx))
         .collect::<String>();
+    let answer = if arms.contains("answer(") {
+        format!("{}\n", answer_fn(&ctx))
+    } else {
+        String::new()
+    };
     format!(
         "/**\n \
          * Turns an implementation into the function an adapter drives it with: one request in, \
@@ -609,7 +617,7 @@ fn dispatcher_fn(service: &ServiceDef, named: &str, prefix: &str) -> String {
          onFault: {named}HttpFaultHandler = {prefix}HttpDefaultFaultHandler,\n\
          ): (ctx: Ctx, request: {named}HttpRequest) => Promise<{named}HttpResponse> {{\n\
          {dispatch}\
-         {answer}\n  \
+         {answer}  \
          return async (ctx, request) => {{\n    \
          const {{ method, path }} = request;\n\
 {arms}    \

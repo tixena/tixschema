@@ -131,7 +131,11 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     ));
     published.push(message::read_fn(&format!("{prefix}Read")));
     published.push(factory(service));
-    published
+    message::without_uncalled(
+        published,
+        &prefix,
+        &["Read", "Sent", "Checked", "OutboundFault"],
+    )
 }
 
 /// The client type: one method per operation, named the way a TypeScript caller expects to type it
