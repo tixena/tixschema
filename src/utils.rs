@@ -316,6 +316,10 @@ pub struct AliasInfo {
     /// and empty when nothing has been recorded at all.
     #[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
     pub wire: Vec<WireLeaf>,
+    /// Whether an untagged enum's Zod schema is a `z.discriminatedUnion`, which an object that
+    /// flattens it joins as one operand.
+    #[cfg(feature = "zod")]
+    pub zod_discriminated: bool,
     /// What an untagged enum's members are spelled as on the Zod surface, and empty for every other
     /// item.
     #[cfg(feature = "zod")]
@@ -1294,6 +1298,8 @@ pub fn register_alias_info(
                 wire: Vec::new(),
                 #[cfg(feature = "zod")]
                 zod_union_members: Vec::new(),
+                #[cfg(feature = "zod")]
+                zod_discriminated: false,
             },
         );
     });
@@ -1350,6 +1356,17 @@ pub fn record_zod_union_members(rust_ident: &str, members: &[ZodUnionMember]) {
     ALIAS_INFO.with(|map| {
         if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
             info.zod_union_members = members.to_vec();
+        }
+    });
+}
+
+/// Records whether an untagged enum's Zod schema is a discriminated union, on the entry that enum
+/// has already registered.
+#[cfg(feature = "zod")]
+pub fn record_zod_discriminated(rust_ident: &str, discriminated: bool) {
+    ALIAS_INFO.with(|map| {
+        if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
+            info.zod_discriminated = discriminated;
         }
     });
 }

@@ -42,3 +42,15 @@ mod parameter_bounds;
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[path = "untagged_tests/held_rules.rs"]
 mod held_rules;
+
+/// Untagged enums told apart by a `literal` on one shared key, and the enums that are not.
+#[cfg(test)]
+#[cfg(feature = "serde")]
+#[path = "untagged_tests/literal_models.rs"]
+mod literal_models;
+
+/// serde's read of those enums, and the Zod union each is written as.
+#[cfg(test)]
+#[cfg(all(feature = "serde", feature = "zod"))]
+#[path = "untagged_tests/literal_unions.rs"]
+mod literal_unions;

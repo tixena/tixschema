@@ -836,7 +836,7 @@ impl FieldDef {
     /// `check`: what the type it names splices in its own place is then no longer the whole of
     /// what the field validates.
     #[cfg(any(feature = "zod", all(feature = "serde", feature = "typescript")))]
-    fn is_written_around(&self) -> bool {
+    pub(crate) fn is_written_around(&self) -> bool {
         self.model_schema_prop_meta
             .as_ref()
             .is_some_and(|meta| !meta.preprocess.is_empty() || !meta.check.is_empty())
@@ -2042,6 +2042,19 @@ impl FieldDef {
     #[cfg(feature = "zod")]
     fn zod_checked_base(&self) -> String {
         zod_check_wrap(self.zod_array_base(), self.checks())
+    }
+
+    /// Whether the type this field names is an untagged enum whose Zod schema is a discriminated
+    /// union, as [`Self::zod_union_members`] reads the members of one that is not.
+    #[cfg(feature = "zod")]
+    pub fn zod_discriminated_union(&self) -> bool {
+        if self.array_depth > 0 || self.is_written_around() {
+            return false;
+        }
+        let FieldDefType::SiblingType(name, _) = &self.field_type else {
+            return false;
+        };
+        lookup_alias_info(name).is_some_and(|info| info.zod_discriminated)
     }
 
     /// Every factory call this field's schema is written with, outermost only and once each, in
