@@ -6,6 +6,8 @@ extern crate alloc;
 
 pub mod checks;
 pub mod judged_read;
+#[cfg(all(feature = "serde", feature = "zod"))]
+pub mod literal_union;
 pub mod preprocess;
 pub mod ranges;
 
@@ -238,7 +240,7 @@ use crate::utils::{ident_reexport_ts, noted_ident_reexport_ts};
 use crate::utils::ident_reexport_zod;
 
 #[cfg(feature = "zod")]
-use crate::utils::record_zod_union_members;
+use crate::utils::{record_zod_discriminated, record_zod_union_members};
 
 #[cfg(all(feature = "serde", feature = "zod"))]
 use crate::utils::ZodUnionMember;
@@ -430,8 +432,8 @@ type ZodMergeParts = Vec<String>;
 
 /// Per-member data from an untagged enum's member walk: TypeScript member types, their merged
 /// spelling, Zod member schemas, their merged contribution, JSON-schema value tokens,
-/// `compile_error!` tokens for guard violations, per-member serde validators, and the
-/// `validate()` match arms those validators run from.
+/// `compile_error!` tokens for guard violations, per-member serde validators, the
+/// `validate()` match arms those validators run from, and the Zod union options.
 #[cfg(feature = "serde")]
 type UntaggedMemberData = (
     Vec<String>,
@@ -442,7 +444,14 @@ type UntaggedMemberData = (
     Vec<proc_macro2::TokenStream>,
     Vec<proc_macro2::TokenStream>,
     Vec<proc_macro2::TokenStream>,
+    UnionCandidates,
 );
+
+/// What each variant is as an option of a Zod union, which decides how the union is joined.
+#[cfg(all(feature = "serde", feature = "zod"))]
+type UnionCandidates = Vec<literal_union::Candidate>;
+#[cfg(all(feature = "serde", not(feature = "zod")))]
+type UnionCandidates = Vec<()>;
 
 /// Per-field data collected from a struct: the regular field defs, the `#[serde(flatten)]` field
 /// defs, the serde validation functions, the `validate()` body fragments, and the
@@ -2314,6 +2323,8 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
     let placed = alias_target_placed(&alias_field_def, &alias.generics);
     #[cfg(all(feature = "serde", feature = "zod"))]
     record_zod_union_members(&rust_ident_str, &placed.zod_union_members());
+    #[cfg(all(feature = "serde", feature = "zod"))]
+    record_zod_discriminated(&rust_ident_str, placed.zod_discriminated_union());
     #[cfg(all(feature = "zod", not(feature = "serde")))]
     record_zod_union_members(&rust_ident_str, &alias_field_def.zod_union_members());
     #[cfg(all(feature = "serde", feature = "typescript"))]
@@ -2987,6 +2998,12 @@ fn flattened_zod_branches(fld: &FieldDef) -> Vec<String> {
     // The binding of a type that names a `preprocess` is the one schema that calls it, and the
     // one text that replaces the placeholder of a member's default.
     if fld.zod_read_whole() {
+        return Vec::new();
+    }
+    // A union that tells its variants apart by a key joins as the one operand it is: the key picks
+    // the variant before anything else is read, so no report of a losing variant reaches the
+    // intersection.
+    if fld.zod_discriminated_union() {
         return Vec::new();
     }
     let members = fld.zod_union_members();
@@ -7473,6 +7490,9 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
         return output;
     }
 
+    #[cfg(all(feature = "serde", feature = "zod"))]
+    record_object_model(&rust_ident, &item_struct, &collected, args);
+
     // A unit struct holds no member, so it publishes `validate()` for its own checks alone.
     #[cfg(feature = "serde")]
     let unit_struct_impls = unit_struct_impls_for(&mut item_struct, !args.check.is_empty());
@@ -7544,6 +7564,27 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
             &item_checks,
         )
     }
+}
+
+/// Records the members of the struct where its `$RawSchema` is one strict object of its named
+/// members and nothing else, and that it is not where it is anything else.
+#[cfg(all(feature = "serde", feature = "zod"))]
+fn record_object_model(
+    rust_ident: &str,
+    item_struct: &syn::ItemStruct,
+    (fields, flattened, ..): &StructFieldData,
+    args: &ModelSchemaArgs,
+) {
+    let one_object = matches!(item_struct.fields, syn::Fields::Named(_))
+        && item_struct.generics.params.is_empty()
+        && flattened.is_empty()
+        && !fields.is_empty()
+        && args.preprocess.is_empty()
+        && struct_tag(item_struct).is_none();
+    literal_union::record_model(
+        rust_ident,
+        one_object.then(|| literal_union::members_of(fields)),
+    );
 }
 
 /// The assembled schema module, with a unit struct's own serde impls and the `impl` `decode_with`
@@ -13530,6 +13571,10 @@ fn collect_untagged_members(
     #[cfg(any(feature = "typescript", feature = "zod"))]
     let mut recorded = UntaggedFlattenRecord::default();
     let mut zod_parts: Vec<String> = Vec::new();
+    #[cfg(feature = "zod")]
+    let mut candidates = UnionCandidates::new();
+    #[cfg(not(feature = "zod"))]
+    let candidates = UnionCandidates::new();
     let mut json_parts: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut guard_errors: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut validation_fns: Vec<proc_macro2::TokenStream> = Vec::new();
@@ -13574,6 +13619,8 @@ fn collect_untagged_members(
                     (&type_parameters, &enum_type_name),
                     (&ts, &zod),
                 );
+                #[cfg(feature = "zod")]
+                candidates.push(union_candidate(&kind, &walked, &zod, &enum_type_name));
                 ts_parts.push(ts);
                 zod_parts.push(zod);
                 json_parts.push(json_val);
@@ -13615,7 +13662,27 @@ fn collect_untagged_members(
         guard_errors,
         validation_fns,
         build_member_check_arms(per_variant_checks),
+        candidates,
     )
+}
+
+/// The variant `walked` as an option of the enum's Zod union, `zod` being its member of a plain one.
+#[cfg(all(feature = "serde", feature = "zod"))]
+fn union_candidate(
+    kind: &VariantKind,
+    walked: &UntaggedVariantMembers,
+    zod: &str,
+    enum_type_name: &str,
+) -> literal_union::Candidate {
+    match (kind, walked.field_defs.as_slice()) {
+        (VariantKind::Named, fields) => {
+            literal_union::named_candidate(zod, fields, &walked.flattened_fields)
+        }
+        (VariantKind::TupleSingle, [slot]) => {
+            literal_union::newtype_candidate(zod, slot, enum_type_name)
+        }
+        _ => literal_union::unreadable_candidate(zod),
+    }
 }
 
 /// What an object flattening an untagged enum spells in the enum's name's place, one operand per
@@ -13811,7 +13878,7 @@ fn build_untagged_schema_impl_items(
     docs_vec: Option<&[String]>,
     args: &ModelSchemaArgs,
     ts_parts: &[String],
-    zod_parts: &[String],
+    zod_union: &str,
     json_parts: &[proc_macro2::TokenStream],
 ) -> Vec<proc_macro2::TokenStream> {
     #[cfg(not(feature = "jsonschema"))]
@@ -13819,7 +13886,7 @@ fn build_untagged_schema_impl_items(
     #[cfg(not(feature = "typescript"))]
     let _: &_ = &(ts_parts, docs_vec);
     #[cfg(not(feature = "zod"))]
-    let _: &_ = &zod_parts;
+    let _: &_ = &zod_union;
     #[cfg(not(feature = "jsonschema"))]
     let _: &_ = &json_parts;
 
@@ -13841,7 +13908,7 @@ fn build_untagged_schema_impl_items(
     let type_code = ts_parts.join(" | ");
 
     #[cfg(feature = "zod")]
-    let schema_code = format!("z.union([{}])", zod_parts.join(", "));
+    let schema_code = zod_union;
 
     #[cfg(feature = "typescript")]
     let docs = build_jsdoc_body(docs_vec, item_name);
@@ -13869,7 +13936,7 @@ fn build_untagged_schema_impl_items(
         &item_enum.ident.to_string(),
         &type_parameters_in_scope(&item_enum.generics),
         args,
-        &schema_code,
+        schema_code,
     );
 
     #[cfg(feature = "jsonschema")]
@@ -13915,6 +13982,7 @@ fn process_untagged_enum(
     let item_checks = checks::ItemChecks::of(&args.check, variant_members(&item_enum));
 
     // Render each variant into its union member (TS / Zod / JSON parts).
+    #[cfg(feature = "zod")]
     let (
         ts_parts,
         ts_merge_parts,
@@ -13924,6 +13992,19 @@ fn process_untagged_enum(
         guard_errors,
         enum_validation_fns,
         validate_arms,
+        union_candidates,
+    ) = collect_untagged_members(&mut item_enum, enum_module_name_opt, args);
+    #[cfg(not(feature = "zod"))]
+    let (
+        ts_parts,
+        ts_merge_parts,
+        zod_parts,
+        zod_merge_parts,
+        json_parts,
+        guard_errors,
+        enum_validation_fns,
+        validate_arms,
+        _,
     ) = collect_untagged_members(&mut item_enum, enum_module_name_opt, args);
 
     // A violated field guard makes the whole contract unsound, so the schema surface is dropped
@@ -13932,9 +14013,14 @@ fn process_untagged_enum(
         return output;
     }
 
+    #[cfg(feature = "zod")]
+    let zod_union = literal_union::union_of(&union_candidates);
+
     // Recorded only past the guards, so nothing merges an enum whose own schema was dropped.
     #[cfg(feature = "zod")]
     record_zod_union_members(&name.to_string(), &zod_merge_parts);
+    #[cfg(feature = "zod")]
+    record_zod_discriminated(&name.to_string(), zod_union.discriminated);
     #[cfg(not(feature = "zod"))]
     let _: &_ = &zod_merge_parts;
     #[cfg(feature = "typescript")]
@@ -13943,7 +14029,8 @@ fn process_untagged_enum(
     let _: &_ = &ts_merge_parts;
 
     #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    let _: &_ = &(name, item_name, &ts_parts, &zod_parts, &json_parts);
+    let _: &_ = &(name, item_name, &ts_parts, &json_parts);
+    let _: &_ = &zod_parts;
     let decode_with = enum_decode_with(&item_enum, args);
 
     #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
@@ -13957,7 +14044,10 @@ fn process_untagged_enum(
         docs_vec.as_deref(),
         args,
         &ts_parts,
-        &zod_parts,
+        #[cfg(feature = "zod")]
+        &zod_union.code,
+        #[cfg(not(feature = "zod"))]
+        "",
         &json_parts,
     );
 

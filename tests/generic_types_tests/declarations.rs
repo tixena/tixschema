@@ -112,6 +112,11 @@ mod option_aliases;
 #[path = "../untagged_tests/null_models.rs"]
 mod null_models;
 
+/// Untagged enums told apart by a `literal` on one shared key, the enums that look like them, and
+/// the payloads serde reads and refuses for each.
+#[path = "../untagged_tests/literal_models.rs"]
+mod literal_unions;
+
 /// An `ObjectId` in each position serde writes one, and whether serde, the Zod schema, the JSON
 /// Schema and each client take each payload.
 #[cfg(feature = "mongodb")]
@@ -5481,5 +5486,87 @@ fn type_check_an_untagged_variant_over_an_option_holds_null() {
     assert!(
         typed,
         "TypeScript refuses a payload serde reads:\n{said}\n{payloads}"
+    );
+}
+
+/// Every enum told apart by a `literal` on one shared key, and every enum that looks like one,
+/// compiles under `tsc --strict`, and the Zod schema of each reads and refuses each payload as
+/// serde does, flattened beside other sources and held as a member.
+#[test]
+fn type_check_an_untagged_enum_told_apart_by_a_literal_is_read_as_serde_reads_it() {
+    use literal_unions::{
+        AliasedPanel, Amount, BothOptional, Calculation, CalculationHolder, Element, Formula,
+        FormulaBelow, Header, Kind, ModelBelow, OmitsAsModel, OmitsBesideOption, OmitsFirst,
+        OmitsLast, OmitsTwice, PlainBody, ROWS, SameLiteral, UnmarkedKey, Valued,
+        calculation_alias_schema,
+    };
+    let source = [
+        PREAMBLE.to_owned(),
+        Formula::ts_definition(),
+        Formula::zod_schema(),
+        Calculation::ts_definition(),
+        Calculation::zod_schema(),
+        Amount::ts_definition(),
+        Amount::zod_schema(),
+        Kind::ts_definition(),
+        Kind::zod_schema(),
+        Header::ts_definition(),
+        Header::zod_schema(),
+        Element::ts_definition(),
+        Element::zod_schema(),
+        CalculationHolder::ts_definition(),
+        CalculationHolder::zod_schema(),
+        BothOptional::ts_definition(),
+        BothOptional::zod_schema(),
+        UnmarkedKey::ts_definition(),
+        UnmarkedKey::zod_schema(),
+        FormulaBelow::ts_definition(),
+        FormulaBelow::zod_schema(),
+        ModelBelow::ts_definition(),
+        ModelBelow::zod_schema(),
+        SameLiteral::ts_definition(),
+        SameLiteral::zod_schema(),
+        OmitsLast::ts_definition(),
+        OmitsLast::zod_schema(),
+        OmitsFirst::ts_definition(),
+        OmitsFirst::zod_schema(),
+        OmitsBesideOption::ts_definition(),
+        OmitsBesideOption::zod_schema(),
+        OmitsTwice::ts_definition(),
+        OmitsTwice::zod_schema(),
+        PlainBody::ts_definition(),
+        PlainBody::zod_schema(),
+        OmitsAsModel::ts_definition(),
+        OmitsAsModel::zod_schema(),
+        calculation_alias_schema::Schema::ts_definition(),
+        calculation_alias_schema::Schema::zod_schema(),
+        AliasedPanel::ts_definition(),
+        AliasedPanel::zod_schema(),
+        Valued::<String>::ts_definition(),
+        Valued::<String>::zod_schema(),
+    ]
+    .join("\n\n");
+    let listed: Vec<(&str, &str)> = ROWS
+        .iter()
+        .map(|row| {
+            assert_eq!(
+                literal_unions::serde_reads(row.read_as, row.json),
+                Ok(row.serde_reads),
+                "serde answers {} read as {} otherwise",
+                row.json,
+                row.read_as
+            );
+            (row.read_as, row.json)
+        })
+        .collect();
+    let driver = VALUES_DRIVER.replace("PAYLOADS", &serde_json::to_string(&listed).unwrap());
+    let Some((printed, failed)) = loaded_from("untagged-literals", &source, &driver) else {
+        return;
+    };
+    let zod_reads: Vec<bool> = printed.lines().map(|line| line != "refused").collect();
+    let serde_reads: Vec<bool> = ROWS.iter().map(|row| row.serde_reads).collect();
+    assert_eq!(
+        zod_reads, serde_reads,
+        "Zod does not answer as serde does:\n{printed}\n{failed}"
     );
 }

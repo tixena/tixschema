@@ -1224,7 +1224,7 @@ fn untagged_member_carries_its_constraint_to_the_surfaces() {
             },
         }
     };
-    let (_, _, zod_parts, _, _, errors, _, _) = collect_untagged_members(
+    let (_, _, zod_parts, _, _, errors, _, _, _) = collect_untagged_members(
         &mut item,
         UNTAGGED_MODULE,
         &super::ModelSchemaArgs::default(),
@@ -1252,7 +1252,7 @@ fn untagged_member_constraint_generates_the_validator_and_hangs_it_on_the_member
             },
         }
     };
-    let (_, _, _, _, _, errors, validation_fns, _) = collect_untagged_members(
+    let (_, _, _, _, _, errors, validation_fns, _, _) = collect_untagged_members(
         &mut item,
         UNTAGGED_MODULE,
         &super::ModelSchemaArgs::default(),
@@ -1288,7 +1288,7 @@ fn untagged_member_constraint_generates_nothing_without_a_schema_module() {
             },
         }
     };
-    let (_, _, _, _, _, errors, validation_fns, _) =
+    let (_, _, _, _, _, errors, validation_fns, _, _) =
         collect_untagged_members(&mut item, None, &super::ModelSchemaArgs::default());
     assert!(errors.is_empty(), "got: {errors:?}");
     assert!(validation_fns.is_empty(), "got: {validation_fns:?}");
@@ -1352,7 +1352,7 @@ fn untagged_newtype_member_constraint_is_named_by_its_position_and_hung_on_the_s
             ),
         }
     };
-    let (_, _, _, _, _, errors, validation_fns, arms) = collect_untagged_members(
+    let (_, _, _, _, _, errors, validation_fns, arms, _) = collect_untagged_members(
         &mut item,
         UNTAGGED_MODULE,
         &super::ModelSchemaArgs::default(),
@@ -7509,7 +7509,7 @@ fn an_optional_untagged_member_is_hung_with_the_hook_and_the_default_it_answers_
             },
         }
     };
-    let (_, _, _, _, _, errors, _, _) = collect_untagged_members(
+    let (_, _, _, _, _, errors, _, _, _) = collect_untagged_members(
         &mut item,
         UNTAGGED_MODULE,
         &super::ModelSchemaArgs::default(),
@@ -19222,7 +19222,7 @@ fn a_scalar_union_member_is_recorded_as_the_type_serde_writes_it_as() {
             Many(Vec<Holder>),
         }
     };
-    let (_, _, _, merge_parts, _, errors, _, _) = collect_untagged_members(
+    let (_, _, _, merge_parts, _, errors, _, _, _) = collect_untagged_members(
         &mut item,
         UNTAGGED_MODULE,
         &super::ModelSchemaArgs::default(),
@@ -19333,7 +19333,7 @@ fn recorded_union_flatten_error(
     mut item: syn::ItemEnum,
     field: &syn::Field,
 ) -> Option<String> {
-    let (_, _, _, merge_parts, _, errors, _, _) = collect_untagged_members(
+    let (_, _, _, merge_parts, _, errors, _, _, _) = collect_untagged_members(
         &mut item,
         UNTAGGED_MODULE,
         &super::ModelSchemaArgs::default(),
@@ -19353,7 +19353,7 @@ fn recorded_union_flatten_error(
 /// write, in declaration order.
 #[cfg(all(feature = "serde", feature = "zod"))]
 fn recorded_member_trails(mut item: syn::ItemEnum) -> Vec<(String, Option<&'static str>)> {
-    let (_, _, _, merge_parts, _, errors, _, _) = collect_untagged_members(
+    let (_, _, _, merge_parts, _, errors, _, _, _) = collect_untagged_members(
         &mut item,
         UNTAGGED_MODULE,
         &super::ModelSchemaArgs::default(),
@@ -20300,7 +20300,7 @@ fn a_flattened_variant_field_over_a_multi_branch_source_is_accepted() {
             Second(Other),
         }
     };
-    let (_, _, _, merge_parts, _, errors, _, _) = collect_untagged_members(
+    let (_, _, _, merge_parts, _, errors, _, _, _) = collect_untagged_members(
         &mut choice,
         UNTAGGED_MODULE,
         &super::ModelSchemaArgs::default(),
@@ -20449,7 +20449,7 @@ fn a_flattened_untagged_variant_field_over_a_multi_branch_source_is_accepted() {
             Second(Other),
         }
     };
-    let (_, _, _, merge_parts, _, errors, _, _) = collect_untagged_members(
+    let (_, _, _, merge_parts, _, errors, _, _, _) = collect_untagged_members(
         &mut choice,
         UNTAGGED_MODULE,
         &super::ModelSchemaArgs::default(),
