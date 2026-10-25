@@ -9228,6 +9228,8 @@ fn an_unfilled_parameter_falls_back_to_the_standard_string_by_its_full_path() {
 #[cfg(feature = "zod")]
 #[test]
 fn every_block_is_built_in_a_scope_of_its_own_and_the_first_is_the_example() {
+    use crate::features::js_literal;
+
     let name: syn::Ident = syn::parse_quote!(Report);
     let blocks: [proc_macro2::TokenStream; 2] = [
         "Report { id: 1 }".parse().unwrap(),
@@ -9241,6 +9243,7 @@ fn every_block_is_built_in_a_scope_of_its_own_and_the_first_is_the_example() {
     )
     .unwrap()
     .to_string();
+    let writer = js_literal::writer();
     let written = quote::quote! {
         pub fn schema_examples() -> ::std::vec::Vec<serde_json::Value> {
             ::std::vec![
@@ -9253,6 +9256,21 @@ fn every_block_is_built_in_a_scope_of_its_own_and_the_first_is_the_example() {
                     serde_json::to_value(&value).unwrap()
                 }
             ]
+        }
+
+        fn schema_examples_zod_text() -> ::std::string::String {
+            #writer
+            let texts: ::std::vec::Vec<::std::string::String> = ::std::vec![
+                {
+                    let value: Report = { Report { id: 1 } };
+                    tixschema_bigint_writer::text(&value)
+                },
+                {
+                    let value: Report = { Report { id: 2 } };
+                    tixschema_bigint_writer::text(&value)
+                }
+            ];
+            ::std::format!("[{}]", texts.join(","))
         }
 
         pub fn schema_example() -> serde_json::Value {
@@ -9333,10 +9351,7 @@ fn a_type_that_writes_a_block_reads_its_list_off_schema_examples() {
     assert_eq!(zod_delegates.len(), 2, "{zod_delegates:?}");
     for delegate in zod_delegates {
         assert!(
-            delegate.contains(
-                "let examples_json = serde_json :: to_string (& Self :: schema_examples ()) . \
-                 unwrap () ;"
-            ),
+            delegate.contains("let examples_json = Self :: schema_examples_zod_text () ;"),
             "Got: {delegate}"
         );
     }

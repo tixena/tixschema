@@ -13,6 +13,9 @@ pub mod recovering_decode;
 #[cfg(feature = "zod")]
 pub mod zod;
 
+#[cfg(feature = "zod")]
+pub mod js_literal;
+
 #[cfg(feature = "jsonschema")]
 pub mod jsonschema;
 
