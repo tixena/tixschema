@@ -572,6 +572,7 @@ fn a_unit_struct_field_round_trips_as_an_empty_object() {
 fn thumbnail_module() -> String {
     [
         "import 'dart:convert';".to_owned(),
+        "import 'dart:typed_data';".to_owned(),
         thumbnail_error_dart::dart_definition(),
         ThumbnailClientServiceSchema::dart_definition(),
         ThumbnailClientServiceSchema::dart_http_client(),

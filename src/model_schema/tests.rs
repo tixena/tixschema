@@ -17033,6 +17033,7 @@ fn wrapped_u32_value(wrapper: &str) -> super::FieldDef {
         omits_value: false,
         #[cfg(any(feature = "zod", feature = "jsonschema"))]
         serde_default: None,
+        bytes: false,
         set_levels: Vec::new(),
         type_span: proc_macro2::Span::call_site(),
     }

@@ -90,6 +90,10 @@ mod wide_integers;
 #[path = "../wide_integer_tests/keyed_models.rs"]
 mod wide_keyed;
 
+/// The models of a `Vec<u8>` held as bytes, and of each sequence that stays an array.
+#[path = "../bytes_tests/models.rs"]
+mod bytes;
+
 /// Models whose names on the wire hold a `$`, a quote, a double quote and a backslash, and what
 /// serde writes of each.
 #[path = "../dart_tests/quoted_models.rs"]
@@ -145,6 +149,75 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, id};
 use std::sync::Once;
 use tixschema::model_schema;
+
+/// A literal array where bytes are held, which the type refuses.
+const BYTES_ARRAY_LITERAL: &str = r#"import type { BytesImage } from "./index.js";
+
+export const literal: BytesImage = { contentType: "image/png", data: [137, 80, 78, 71] };
+"#;
+
+/// What a consumer writes with the bytes of a `BytesImage`: hands them to `TextDecoder`, reads them
+/// as a `Uint8Array`, and builds them with `Uint8Array.from`.
+const BYTES_CONSUMER: &str = r#"import { BytesImage$Schema, type BytesImage, type BytesHolder } from "./index.js";
+
+export function textOf(image: BytesImage): string {
+  const bytes: Uint8Array = image.data;
+  return new TextDecoder().decode(bytes);
+}
+
+export function built(): BytesImage {
+  return { contentType: "image/png", data: Uint8Array.from([137, 80, 78, 71]) };
+}
+
+export function rows(holder: BytesHolder): Array<Uint8Array> {
+  return [holder.data, ...holder.rows, ...Object.values(holder.keyed).flatMap((held) => (held ? [held] : []))];
+}
+
+export const parsed: BytesImage = BytesImage$Schema.parse({ contentType: "a", data: [1] });
+"#;
+
+const BYTES_CONSUMER_PROJECT: &str = r#"{
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "ES2022",
+    "skipLibCheck": true
+  },
+  "files": ["src/index.ts", "src/consumer.ts"]
+}
+"#;
+
+/// What the driver of [`bytes_bundle`] prints: each payload a schema reads, the bytes written as
+/// `u8[..]`, or the issues it reports as `code@path: message`, then the JSON of what `encode` makes
+/// of a read, then the checks of the bytes a read answers.
+const BYTES_DRIVER: &str = r#"import * as lib from "./lib/index.js";
+
+const shown = (value) => JSON.stringify(value, (_, held) => (held instanceof Uint8Array ? `u8[${[...held]}]` : held));
+const issues = (error) => error.issues.map((issue) => `${issue.code}@${issue.path.join(".")}: ${issue.message}`).join(" | ");
+for (const [schema, payload] of PAYLOADS) {
+  const read = lib[schema].safeParse(payload);
+  console.log(read.success ? shown(read.data) : issues(read.error));
+}
+const holder = lib.BytesHolder$Schema.parse(JSON.parse(HOLDER));
+console.log(JSON.stringify(lib.BytesHolder$Schema.encode(holder)));
+console.log(JSON.stringify(lib.BytesHolder$Schema.encode(lib.BytesHolder$Schema.parse(holder))));
+console.log(shown(lib.BytesHolder$Schema.parse(holder)) === shown(holder));
+const image = lib.BytesImage$Schema.parse({ contentType: "image/png", data: [137, 80, 78, 71] });
+console.log(image.data instanceof Uint8Array, Array.isArray(image.data));
+console.log(JSON.stringify(lib.BytesImage$Schema.encode(image)));
+const again = lib.BytesImage$Schema.parse(image);
+console.log(shown(again) === shown(image), again.data instanceof Uint8Array);
+const looked = lib.BytesLookalikes$Schema.parse(JSON.parse(LOOKALIKES));
+console.log(Object.values(looked).every((held) => Array.isArray(held)), JSON.stringify(lib.BytesLookalikes$Schema.encode(looked)));
+"#;
+
+/// What serde writes of a `BytesHolder` with bytes in each place a member holds some.
+const BYTES_HOLDER: &str = r#"{"aliased":[9],"data":[137,80,78,71],"filled":{"held":[0,255]},"keyed":{"k":[1,2]},"outcome":{"Ok":[4,5]},"paired":[[6],"x"],"rows":[[7],[]]}"#;
+
+/// What serde writes of a `BytesLookalikes`.
+const BYTES_LOOKALIKES: &str = r#"{"boxed":[1],"digest":[1,2,3,4],"distinct":[1],"gaps":[null,2],"queued":[1],"sevens":[7],"signed":[-1],"wide":[300]}"#;
 
 /// What the bounded driver prints: each broken bound under its key in the bound's own words, and
 /// a value inside every bound as it was sent.
@@ -823,6 +896,7 @@ const WIRE_FORM: &str = "function exactJson(text) {
 }
 function wireForm(value) {
   if (typeof value === \"bigint\") return JSON.rawJSON(value.toString());
+  if (value instanceof Uint8Array) return Array.from(value);
   if (Array.isArray(value)) return value.map((held) => wireForm(held));
   if (typeof value === \"object\" && value !== null && Object.getPrototypeOf(value) === Object.prototype) {
     return Object.fromEntries(Object.entries(value).map(([key, held]) => [key, wireForm(held)]));
@@ -5569,4 +5643,141 @@ fn type_check_an_untagged_enum_told_apart_by_a_literal_is_read_as_serde_reads_it
         zod_reads, serde_reads,
         "Zod does not answer as serde does:\n{printed}\n{failed}"
     );
+}
+
+/// The models of [`bytes`]: a bundle of their own, compiled with `tsc --strict` and loaded under
+/// `node`.
+fn bytes_bundle() -> String {
+    [
+        PREAMBLE.to_owned(),
+        bytes::bytes_payload_schema::Schema::ts_definition(),
+        bytes::bytes_payload_schema::Schema::zod_schema(),
+        bytes::BytesBox::<String>::ts_definition(),
+        bytes::BytesBox::<String>::zod_schema(),
+        bytes::BytesImage::ts_definition(),
+        bytes::BytesImage::zod_schema(),
+        bytes::BytesHolder::ts_definition(),
+        bytes::BytesHolder::zod_schema(),
+        bytes::BytesOptional::ts_definition(),
+        bytes::BytesOptional::zod_schema(),
+        bytes::BytesCounted::ts_definition(),
+        bytes::BytesCounted::zod_schema(),
+        bytes::BytesEither::ts_definition(),
+        bytes::BytesEither::zod_schema(),
+        bytes::BytesExample::ts_definition(),
+        bytes::BytesExample::zod_schema(),
+        bytes::BytesLookalikes::ts_definition(),
+        bytes::BytesLookalikes::zod_schema(),
+    ]
+    .join("\n\n")
+}
+
+/// Each payload of a schema of a `Vec<u8>` under `node`: the JSON array and a `Uint8Array` are
+/// read as the bytes, an item that is no byte is refused before any `Uint8Array` is built, and
+/// what is read is written back as the JSON serde writes.
+#[test]
+fn type_check_a_vec_of_u8_is_read_as_a_uint8array_under_zod() {
+    let payloads = [
+        (
+            "BytesImage$Schema",
+            r#"{"contentType":"image/png","data":[137,80,78,71]}"#,
+        ),
+        ("BytesImage$Schema", r#"{"contentType":"a","data":[]}"#),
+        ("BytesImage$Schema", r#"{"contentType":"a","data":[256]}"#),
+        ("BytesImage$Schema", r#"{"contentType":"a","data":[-1]}"#),
+        ("BytesImage$Schema", r#"{"contentType":"a","data":[1.5]}"#),
+        ("BytesImage$Schema", r#"{"contentType":"a","data":["1"]}"#),
+        ("BytesImage$Schema", r#"{"contentType":"a","data":null}"#),
+        ("BytesOptional$Schema", "{}"),
+        ("BytesOptional$Schema", r#"{"maybe":[3]}"#),
+        ("BytesOptional$Schema", r#"{"maybe":null}"#),
+        ("BytesCounted$Schema", r#"{"data":[1,2,3]}"#),
+        ("BytesCounted$Schema", r#"{"data":[1]}"#),
+        ("BytesCounted$Schema", r#"{"data":[1,2,3,4,5]}"#),
+        ("BytesCounted$Schema", r#"{"data":[1,2,256]}"#),
+        ("BytesEither$Schema", "[1,2]"),
+        ("BytesEither$Schema", r#""x""#),
+        ("BytesExample$Schema", r#"{"data":[137,80,78,71]}"#),
+    ];
+    let mut rows: Vec<String> = payloads
+        .iter()
+        .map(|(schema, payload)| format!("[{schema:?}, JSON.parse({payload:?})]"))
+        .collect();
+    rows.extend([
+        r#"["BytesImage$Schema", { contentType: "a", data: new Uint8Array([1, 2]) }]"#.to_owned(),
+        r#"["BytesCounted$Schema", { data: new Uint8Array([1]) }]"#.to_owned(),
+        r#"["BytesCounted$Schema", { data: new Uint8Array([1, 2, 3, 4, 5]) }]"#.to_owned(),
+        r#"["BytesLookalikes$Schema", { ...JSON.parse(LOOKALIKES), boxed: new Uint8Array([1]) }]"#
+            .to_owned(),
+    ]);
+    let driver = BYTES_DRIVER
+        .replace("PAYLOADS", &format!("[{}]", rows.join(", ")))
+        .replace("HOLDER", &format!("{BYTES_HOLDER:?}"))
+        .replace("LOOKALIKES", &format!("{BYTES_LOOKALIKES:?}"));
+    let Some((printed, failed)) = loaded_from("bytes", &bytes_bundle(), &driver) else {
+        return;
+    };
+    assert_eq!(
+        printed,
+        [
+            r#"{"contentType":"image/png","data":"u8[137,80,78,71]"}"#,
+            r#"{"contentType":"a","data":"u8[]"}"#,
+            "too_big@data.0: Too big: expected number to be <=255",
+            "too_small@data.0: Too small: expected number to be >=0",
+            "invalid_union@data: Invalid input",
+            "invalid_union@data: Invalid input",
+            "invalid_union@data: Invalid input",
+            "{}",
+            r#"{"maybe":"u8[3]"}"#,
+            "{}",
+            r#"{"data":"u8[1,2,3]"}"#,
+            "too_small@data: too short: minimum length is 2, got 1",
+            "too_big@data: too long: maximum length is 4, got 5",
+            "too_big@data.2: Too big: expected number to be <=255",
+            r#""u8[1,2]""#,
+            r#""x""#,
+            r#"{"data":"u8[137,80,78,71]"}"#,
+            r#"{"contentType":"a","data":"u8[1,2]"}"#,
+            "custom@data: too short: minimum length is 2, got 1",
+            "custom@data: too long: maximum length is 4, got 5",
+            "invalid_type@boxed: Invalid input: expected array, received Uint8Array",
+            BYTES_HOLDER,
+            BYTES_HOLDER,
+            "true",
+            "true false",
+            r#"{"contentType":"image/png","data":[137,80,78,71]}"#,
+            "true true",
+            &format!("true {BYTES_LOOKALIKES}"),
+        ]
+        .join("\n"),
+        "the Zod schemas do not read each payload as stated:\n{failed}"
+    );
+    assert_eq!(
+        serde_json::to_string(&serde_json::from_str::<bytes::BytesHolder>(BYTES_HOLDER).unwrap())
+            .unwrap(),
+        BYTES_HOLDER,
+        "serde writes the holder the driver reads"
+    );
+}
+
+/// The published `Uint8Array` is the type `TextDecoder`, `Uint8Array.from` and the schema's parse hand
+/// bytes to and from under `tsc --strict`, and a literal array is refused where bytes are held.
+#[test]
+fn type_check_a_vec_of_u8_is_a_uint8array_a_consumer_holds() {
+    let Some(at) = built_from("bytes-consumer", &bytes_bundle()) else {
+        return;
+    };
+    fs::write(at.join("tsconfig.consumer.json"), BYTES_CONSUMER_PROJECT).unwrap();
+    fs::write(at.join("src/consumer.ts"), BYTES_CONSUMER).unwrap();
+    let accepted = compiled(&at, "tsconfig.consumer.json").unwrap();
+    fs::write(at.join("src/consumer.ts"), BYTES_ARRAY_LITERAL).unwrap();
+    let refused = compiled(&at, "tsconfig.consumer.json").unwrap();
+    fs::remove_dir_all(&at).unwrap();
+    assert!(accepted.0, "tsc --strict reports:\n{}", accepted.1);
+    assert!(
+        !refused.0,
+        "a literal array is held as bytes:\n{}",
+        refused.1
+    );
+    assert!(refused.1.contains("TS2740"), "{}", refused.1);
 }

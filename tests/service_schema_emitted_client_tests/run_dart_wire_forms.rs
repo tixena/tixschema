@@ -83,7 +83,13 @@ fn dart_handed(row: &WireFormRow) -> String {
         row.held_by,
         "NAME: ",
         &|key| format!("{{{key}: true}}"),
-        &|listed| format!("[{listed}]"),
+        &|listed| {
+            if row.held_by == "ConveyedU8" {
+                format!("Uint8List.fromList([{listed}])")
+            } else {
+                format!("[{listed}]")
+            }
+        },
         &value,
         &value,
     )

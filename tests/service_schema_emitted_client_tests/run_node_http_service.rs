@@ -462,7 +462,7 @@ const results = {
   anon: await client.getThumbnail("anon"),
   undeclared: await client.getThumbnail("undeclared"),
 };
-console.log(JSON.stringify(results));
+console.log(JSON.stringify(results, (_, held) => (held instanceof Uint8Array ? Array.from(held) : held)));
 "#;
 
 /// The three TypeScript clients of `getThumbnail`, a `bytes` operation with a `header_out` and an
@@ -485,8 +485,8 @@ function fakeSocket(onSend) {
 const impl = {
   async getThumbnail(ctx, documentId) {
     if (documentId === "missing") return { ok: false, error: [{ errorCode: "not-found" }, "archived"] };
-    if (documentId === "anon") return { ok: true, value: [[0x89, 0x50, 0x4e, 0x47], "image/png", null] };
-    return { ok: true, value: [[0x89, 0x50, 0x4e, 0x47], "image/png", `doc-${documentId}`] };
+    if (documentId === "anon") return { ok: true, value: [new Uint8Array([0x89, 0x50, 0x4e, 0x47]), "image/png", null] };
+    return { ok: true, value: [new Uint8Array([0x89, 0x50, 0x4e, 0x47]), "image/png", `doc-${documentId}`] };
   },
 };
 
@@ -526,7 +526,7 @@ async function main() {
     };
   }
   socketTransport.close();
-  console.log(JSON.stringify(results));
+  console.log(JSON.stringify(results, (_, held) => (held instanceof Uint8Array ? Array.from(held) : held)));
   process.exit(0);
 }
 main().catch((error) => { console.error(error); process.exit(1); });

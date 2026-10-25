@@ -103,7 +103,7 @@ fn a_stream_operations_ok_carries_the_same_record_the_rest_client_answers_with()
 fn a_bytes_operation_with_header_out_shares_its_success_type_with_the_client() {
     let written = dart_result_of(DART_BYTES_HEADER_OUT_SERVICE).join("\n\n");
     assert!(
-        written.contains("final (List<int>, String, String) value;"),
+        written.contains("final (Uint8List, String, String) value;"),
         "got: {written}"
     );
 }

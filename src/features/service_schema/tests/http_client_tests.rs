@@ -493,7 +493,7 @@ fn a_bytes_operation_reads_the_body_content_type_and_header_out_back() {
     );
     assert!(
         method.contains(
-            "return { ok: true, value: [Array.from(response.body), contentType, headerOut0] };"
+            "return { ok: true, value: [Uint8Array.from(response.body), contentType, headerOut0] };"
         ),
         "the bytes, as the `Array<number>` the result declares, and their content type ride \
          first, then the declared header - body-pair-first ordering. Got: {method}"

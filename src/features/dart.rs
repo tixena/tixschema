@@ -1430,6 +1430,9 @@ fn dart_base(field: &FieldDef) -> String {
         }
     };
     (0..field.array_depth).fold(scalar, |wrapped, level| {
+        if level == 0 && field.writes_bytes() {
+            return "Uint8List".to_owned();
+        }
         let item = if field.is_nullable_at(level) {
             format!("{wrapped}?")
         } else {
@@ -1721,7 +1724,12 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
             format!("(e) => {inner}")
         };
         let Some(length) = field.fixed_length_at(inner_level) else {
-            return format!("({expr} as List<dynamic>).map({mapper}).toList()");
+            let listed = format!("({expr} as List<dynamic>).map({mapper}).toList()");
+            return if field.writes_bytes() && inner_level == 0 {
+                format!("Uint8List.fromList({listed})")
+            } else {
+                listed
+            };
         };
         let array = declared("array");
         return format!(

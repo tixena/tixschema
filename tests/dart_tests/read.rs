@@ -493,7 +493,10 @@ fn a_fixed_array_is_read_from_an_array_of_its_length() {
     );
     assert_written(
         &vise,
-        &format!("listed: (json['listed'] as List<dynamic>).map((e) => {item}).toList(),"),
+        &format!(
+            "listed: Uint8List.fromList((json['listed'] as List<dynamic>).map((e) => \
+             {item}).toList()),"
+        ),
     );
     assert_written(
         &vise,
