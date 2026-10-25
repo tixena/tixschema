@@ -6642,6 +6642,7 @@ Key points:
 - Examples are **optional** -- a type that writes none publishes `examples: []`, and has no `schema_examples()` and no `schema_example()`.
 - Use the exact syntax: ` ```rust example` (note the space and `example` keyword).
 - Every block is published, in the order written. An empty block is skipped.
+- A `u64` or an `i64` in an example, and in a `#[serde(default)]`, is a bigint literal in the Zod source, `12n` or `9007199254740993n`, the way the bounds of its schema are written, so a value beyond `2^53 - 1` keeps its value. A `usize`, an `isize`, a date under `as_number` and every other number stay a number unless they lie beyond `2^53 - 1`, and a map's key stays a JSON string. A `#[serde(transparent)]` struct or an untagged enum's newtype variant over an `i64` writes a value within `2^53 - 1` as a number. `schema_examples()` and `schema_example()` answer plain `serde_json::Value`s.
 - An example is written as `serde_json` holds it. An object's keys are in the order serde wrote them where the crate's `serde_json` has `preserve_order` on, which the `bson` library turns on, and sorted where it is off.
 - Examples respect Serde attributes (field renaming, etc.).
 - Being Rust source, an example block is dropped from the JSDoc comment above the generated `export type`, whatever the type is declared as. On a struct or an enum it reaches the Zod `examples` list. A type alias builds no example: its block reaches no generated surface, and the alias publishes `examples: []`.

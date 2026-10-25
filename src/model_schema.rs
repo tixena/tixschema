@@ -146,6 +146,8 @@ use crate::features::serde::{
     variant_steps, written_and_read_by_the_author,
 };
 
+#[cfg(feature = "zod")]
+use crate::features::js_literal;
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -174,7 +176,7 @@ use crate::features::serde::defaults::SerdeDefaults;
 ))]
 use crate::features::serde::defaults::default_refusals;
 #[cfg(feature = "zod")]
-use crate::features::serde::defaults::{holds_a_placeholder, substituted};
+use crate::features::serde::defaults::{holds_a_placeholder, zod_substituted};
 
 #[cfg(feature = "serde")]
 use crate::field_type::{parse_serde_field_attributes, parse_serde_type_attributes};
@@ -2524,9 +2526,27 @@ fn schema_examples_methods(
             }
         }
     });
+    let texts = example_tokens.iter().map(|code_tokens| {
+        let text = js_literal::text(&quote! { &value });
+        quote! {
+            {
+                let value: #value_ty = {
+                    #code_tokens
+                };
+                #text
+            }
+        }
+    });
+    let writer = js_literal::writer();
     Some(quote! {
         pub fn schema_examples() -> ::std::vec::Vec<serde_json::Value> {
             ::std::vec![#(#blocks),*]
+        }
+
+        fn schema_examples_zod_text() -> ::std::string::String {
+            #writer
+            let texts: ::std::vec::Vec<::std::string::String> = ::std::vec![#(#texts),*];
+            ::std::format!("[{}]", texts.join(","))
         }
 
         pub fn schema_example() -> serde_json::Value {
@@ -7608,7 +7628,14 @@ fn struct_output_with_unit_impls(
         .chain([serde_defaults.holder()])
         .collect();
     #[cfg(any(feature = "zod", feature = "jsonschema"))]
-    let values = serde_defaults.values_impl(parts.module_ident);
+    let values = {
+        let literals = serde_defaults.values_impl(parts.module_ident);
+        #[cfg(feature = "zod")]
+        let zod_literals = serde_defaults.zod_values_impl(parts.module_ident);
+        #[cfg(not(feature = "zod"))]
+        let zod_literals = proc_macro2::TokenStream::new();
+        quote! { #literals #zod_literals }
+    };
     #[cfg(not(any(feature = "zod", feature = "jsonschema")))]
     let (module_items, values) = (
         parts.validation_fns.to_vec(),
@@ -7756,7 +7783,14 @@ fn enum_output_with_decode(
         .chain([serde_defaults.holder()])
         .collect();
     #[cfg(any(feature = "zod", feature = "jsonschema"))]
-    let values = serde_defaults.values_impl(parts.module_ident);
+    let values = {
+        let literals = serde_defaults.values_impl(parts.module_ident);
+        #[cfg(feature = "zod")]
+        let zod_literals = serde_defaults.zod_values_impl(parts.module_ident);
+        #[cfg(not(feature = "zod"))]
+        let zod_literals = proc_macro2::TokenStream::new();
+        quote! { #literals #zod_literals }
+    };
     #[cfg(not(any(feature = "zod", feature = "jsonschema")))]
     let (module_items, values) = (
         parts.validation_fns.to_vec(),
@@ -20708,7 +20742,7 @@ fn zod_checked_in_a_builder(
 #[cfg(feature = "zod")]
 fn zod_examples_json(has_example: bool) -> proc_macro2::TokenStream {
     if has_example {
-        quote! { serde_json::to_string(&Self::schema_examples()).unwrap() }
+        quote! { Self::schema_examples_zod_text() }
     } else {
         quote! { "[]" }
     }
@@ -20889,7 +20923,7 @@ fn generate_zod_schema_method(
             };
         }
         let written = Ident::new("written", proc_macro2::Span::call_site());
-        let replaced = substituted(&quote::quote! { SerdeDefaults }, &written, &[]);
+        let replaced = zod_substituted(&quote::quote! { SerdeDefaults }, &written);
         quote::quote! {
             pub fn zod_schema() -> ::std::string::String {
                 let mut #written = ::std::string::String::from(#body);
@@ -21117,7 +21151,7 @@ fn generate_discriminated_enum_zod_schema_method(
             };
         }
         let written = Ident::new("written", proc_macro2::Span::call_site());
-        let replaced = substituted(&quote::quote! { SerdeDefaults }, &written, &[]);
+        let replaced = zod_substituted(&quote::quote! { SerdeDefaults }, &written);
         quote::quote! {
             pub fn zod_schema() -> ::std::string::String {
                 let mut #written = ::std::string::String::from(#schema_str);

@@ -20,3 +20,16 @@ mod keyed;
 #[cfg(test)]
 #[path = "wide_integer_tests/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "wide_integer_tests/bigint_models.rs"]
+mod bigint_models;
+
+#[cfg(test)]
+#[cfg(not(any(feature = "swift", feature = "kotlin")))]
+#[path = "wide_integer_tests/bigint_u64_models.rs"]
+mod bigint_u64_models;
+
+#[cfg(test)]
+#[path = "wide_integer_tests/bigint.rs"]
+mod bigint;

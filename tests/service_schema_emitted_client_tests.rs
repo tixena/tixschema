@@ -82,6 +82,12 @@ mod run_node_wide_integers;
 #[path = "service_schema_emitted_client_tests/run_node_bytes.rs"]
 mod run_node_bytes;
 
+/// An `i64` and a `u64` in an example and in a default, read back as bigints by node.
+#[cfg(test)]
+#[cfg(feature = "zod")]
+#[path = "service_schema_emitted_client_tests/run_node_bigint_literals.rs"]
+mod run_node_bigint_literals;
+
 /// The emitted `http_rest` server: the seven design requests, the reader forms, the query-read
 /// message, and the three body kinds compared against the Rust twins above.
 #[cfg(test)]

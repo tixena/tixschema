@@ -4,6 +4,8 @@
 //! built: a placeholder at expansion, replaced by the run of the function that answers the text.
 //! A member of a variant whose default no target but Rust can read is refused.
 
+#[cfg(feature = "zod")]
+use crate::features::js_literal;
 #[cfg(feature = "serde")]
 use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
 use proc_macro2::TokenStream;
@@ -54,6 +56,11 @@ enum Written {
     Function(ExprPath),
 }
 
+/// The tokens that build a default: its `serde_json::Value`, and the text of it with a `u64` or an
+/// `i64` written as a bigint literal, which is empty without `zod`.
+#[cfg(feature = "serde")]
+type Built = (TokenStream, TokenStream);
+
 /// The members of one struct, or of the variants of one enum, serde reads as their default where
 /// the payload leaves the key out, each with the JSON of its default. A member whose default has
 /// no JSON is not among them: one of a type that does not derive both `Serialize` and
@@ -74,7 +81,7 @@ pub struct SerdeDefaults {
     /// Each member read as its default: the variant it is a member of, `None` for a struct's, the
     /// name serde reads, and the expression that builds the JSON of the default. One index runs
     /// across every variant, so no two members share a placeholder.
-    members: Vec<(Option<String>, String, TokenStream)>,
+    members: Vec<(Option<String>, String, TokenStream, TokenStream)>,
 }
 
 #[cfg(any(
@@ -109,7 +116,7 @@ impl SerdeDefaults {
     pub fn index(&self, variant: Option<&str>, field: &str) -> Option<usize> {
         self.members
             .iter()
-            .position(|(of, name, _)| of.as_deref() == variant && name == field)
+            .position(|(of, name, _, _)| of.as_deref() == variant && name == field)
     }
 
     /// The defaults of a type that has none.
@@ -167,7 +174,7 @@ impl SerdeDefaults {
             let held = match written_default(&field.attrs) {
                 Some(Written::Bare) if named_parameter => {
                     if let Some(empty) = empty_collection(ty, &field.attrs) {
-                        members.push((None, name, empty));
+                        members.push((None, name, empty.0, empty.1));
                     }
                     continue;
                 }
@@ -179,7 +186,8 @@ impl SerdeDefaults {
                 }
                 None => continue,
             };
-            members.push((None, name, serialized(&field.attrs, &held)));
+            let (value, text) = serialized(&field.attrs, &held);
+            members.push((None, name, value, text));
         }
         let container = whole
             .filter(|_| reads_the_whole)
@@ -201,8 +209,13 @@ impl SerdeDefaults {
         let mut members = Vec::new();
         if EnumRead::of(&item.attrs) == EnumRead::Written {
             for (variant, field) in read_members(item) {
-                if let Some(Ok(value)) = reach(field, &item.generics) {
-                    members.push((Some(variant.ident.to_string()), field_name(field), value));
+                if let Some(Ok((value, text))) = reach(field, &item.generics) {
+                    members.push((
+                        Some(variant.ident.to_string()),
+                        field_name(field),
+                        value,
+                        text,
+                    ));
                 }
             }
         }
@@ -225,13 +238,43 @@ impl SerdeDefaults {
             .members
             .iter()
             .enumerate()
-            .map(|(index, (_, _, value))| {
+            .map(|(index, (_, _, value, _))| {
                 let at = placeholder(index);
                 quote! { (#at, #value) }
             });
         quote! {
             impl #module::SerdeDefaults {
                 pub fn literals() -> [(&'static str, ::serde_json::Value); #count] {
+                    #container
+                    [#(#entries),*]
+                }
+            }
+        }
+    }
+
+    /// The function the holder `module` declares answers the Zod text of the defaults by, in the
+    /// order of the members: each placeholder and the text of its default, a `u64` or an `i64`
+    /// written as a bigint literal.
+    #[cfg(feature = "zod")]
+    pub fn zod_values_impl(&self, module: &proc_macro2::Ident) -> TokenStream {
+        if self.members.is_empty() {
+            return TokenStream::new();
+        }
+        let count = proc_macro2::Literal::usize_unsuffixed(self.members.len());
+        let container = &self.container;
+        let writer = js_literal::writer();
+        let entries = self
+            .members
+            .iter()
+            .enumerate()
+            .map(|(index, (_, _, _, text))| {
+                let at = placeholder(index);
+                quote! { (#at, #text) }
+            });
+        quote! {
+            impl #module::SerdeDefaults {
+                pub fn zod_literals() -> [(&'static str, ::std::string::String); #count] {
+                    #writer
                     #container
                     [#(#entries),*]
                 }
@@ -340,7 +383,7 @@ pub fn default_refusals(item: &ItemEnum) -> Vec<TokenStream> {
 /// and for a field serde writes through a function of its own, whose JSON of the empty value only
 /// that function knows.
 #[cfg(feature = "serde")]
-fn empty_collection(ty: &syn::Type, attrs: &[Attribute]) -> Option<TokenStream> {
+fn empty_collection(ty: &syn::Type, attrs: &[Attribute]) -> Option<Built> {
     let hooks = parse_serde_field_hooks(attrs);
     if hooks.serialize_with.is_some() || hooks.with.is_some() {
         return None;
@@ -350,12 +393,30 @@ fn empty_collection(ty: &syn::Type, attrs: &[Attribute]) -> Option<TokenStream> 
     };
     let last = path.path.segments.last()?.ident.to_string();
     if is_sequence_wrapper(&last) {
-        Some(quote! { ::serde_json::Value::Array(::std::vec::Vec::new()) })
+        Some((
+            quote! { ::serde_json::Value::Array(::std::vec::Vec::new()) },
+            empty_text("[]"),
+        ))
     } else if is_map_wrapper(&last) {
-        Some(quote! { ::serde_json::Value::Object(::serde_json::Map::new()) })
+        Some((
+            quote! { ::serde_json::Value::Object(::serde_json::Map::new()) },
+            empty_text("{}"),
+        ))
     } else {
         None
     }
+}
+
+/// The text of an empty collection, `written`, under `zod`.
+#[cfg(all(feature = "serde", feature = "zod"))]
+fn empty_text(written: &str) -> TokenStream {
+    quote! { ::std::string::String::from(#written) }
+}
+
+/// The text of an empty collection: none without `zod`.
+#[cfg(all(feature = "serde", not(feature = "zod")))]
+fn empty_text(_written: &str) -> TokenStream {
+    TokenStream::new()
 }
 
 /// The name serde reads `field` under, before any renaming.
@@ -482,7 +543,7 @@ pub fn placeholder(index: usize) -> String {
 /// serde never reads it, or the member is an `Option`, flattened or not, whose absence every
 /// target reads as `None`.
 #[cfg(feature = "serde")]
-fn reach(field: &Field, generics: &Generics) -> Option<Result<TokenStream, String>> {
+fn reach(field: &Field, generics: &Generics) -> Option<Result<Built, String>> {
     let written = written_default(&field.attrs)?;
     let omission = parse_serde_key_omission(&field.attrs);
     if omission.skips_deserializing {
@@ -536,9 +597,10 @@ fn read_members(item: &ItemEnum) -> impl Iterator<Item = (&Variant, &Field)> {
 
 /// The JSON of the value `held` borrows, written through the function serde writes the member
 /// with: `serialize_with`, the module `with` names, the one `as_number` hangs on a date, or the
-/// value's own `Serialize`.
+/// value's own `Serialize`; and under `zod` the text of it, where a `u64` or an `i64` is a bigint
+/// literal.
 #[cfg(feature = "serde")]
-fn serialized(attrs: &[Attribute], held: &TokenStream) -> TokenStream {
+fn serialized(attrs: &[Attribute], held: &TokenStream) -> Built {
     let hooks = parse_serde_field_hooks(attrs);
     let through: Option<Path> = if let Some(written) = hooks.serialize_with {
         written.parse().ok()
@@ -552,21 +614,24 @@ fn serialized(attrs: &[Attribute], held: &TokenStream) -> TokenStream {
     } else {
         None
     };
-    through.map_or_else(
+    let value = through.as_ref().map_or_else(
         || quote! { ::serde_json::to_value(#held).unwrap() },
         |function| quote! { #function(#held, ::serde_json::value::Serializer).unwrap() },
-    )
+    );
+    #[cfg(feature = "zod")]
+    let text = through.as_ref().map_or_else(
+        || js_literal::text(held),
+        |function| js_literal::text_through(&function.to_token_stream(), held),
+    );
+    #[cfg(not(feature = "zod"))]
+    let text = TokenStream::new();
+    (value, text)
 }
 
 /// The statements that write into `written`, a `String` the text is held in, the JSON of each
 /// default the holder `holder` answers in place of its placeholder, each character of `escaped`
 /// replaced by its escape.
-#[cfg(any(
-    feature = "zod",
-    feature = "dart",
-    feature = "swift",
-    feature = "kotlin"
-))]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 pub fn substituted(
     holder: &TokenStream,
     written: &proc_macro2::Ident,
@@ -582,6 +647,17 @@ pub fn substituted(
                 serde_default_at,
                 &serde_default_value.to_string() #(#replaced)*,
             );
+        }
+    }
+}
+
+/// The statements that write into `written`, a `String` the text is held in, the Zod text of each
+/// default the holder `holder` answers in place of its placeholder.
+#[cfg(feature = "zod")]
+pub fn zod_substituted(holder: &TokenStream, written: &proc_macro2::Ident) -> TokenStream {
+    quote! {
+        for (serde_default_at, serde_default_value) in #holder::zod_literals() {
+            #written = #written.replace(serde_default_at, &serde_default_value);
         }
     }
 }
