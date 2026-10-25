@@ -77,6 +77,11 @@ mod run_node_wire_forms;
 #[path = "service_schema_emitted_client_tests/run_node_wide_integers.rs"]
 mod run_node_wide_integers;
 
+/// A `Vec<u8>` through each TypeScript client and dispatcher, as a `Uint8Array` and a JSON array.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_bytes.rs"]
+mod run_node_bytes;
+
 /// The emitted `http_rest` server: the seven design requests, the reader forms, the query-read
 /// message, and the three body kinds compared against the Rust twins above.
 #[cfg(test)]
@@ -420,6 +425,16 @@ mod run_kotlin_results;
 #[cfg(all(test, any(feature = "dart", feature = "swift", feature = "kotlin")))]
 #[path = "set_tests/models.rs"]
 mod set_models;
+
+/// The models of the `Vec<u8>` held as bytes.
+#[cfg(all(test, feature = "dart"))]
+#[path = "bytes_tests/models.rs"]
+mod bytes_models;
+
+/// A `Vec<u8>` read and written by the emitted Dart types as a `Uint8List`.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_bytes.rs"]
+mod run_dart_bytes;
 
 /// A set that repeats an item, refused by the read of the emitted Dart types.
 #[cfg(test)]

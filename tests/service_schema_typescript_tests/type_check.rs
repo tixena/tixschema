@@ -163,7 +163,7 @@ const KEYED_DEPRECATED: [&str; 6] = [
 ];
 
 /// A caller reading each `bytes` reply of `BytesProbeService` off every TypeScript client as its
-/// result declares it: the bytes as an `Array<number>`, their content type, then the header.
+/// result declares it: the bytes as a `Uint8Array`, their content type, then the header.
 #[cfg(feature = "zod")]
 const BYTES_CALLER: &str = r#"import {
   createBytesProbeServiceClient,
@@ -188,7 +188,7 @@ export async function read(): Promise<string> {
   for (const client of clients) {
     const spooled = await client.spool("a");
     if (spooled.ok) {
-      const [bytes, contentType, id]: [Array<number>, string, string] = spooled.value;
+      const [bytes, contentType, id]: [Uint8Array, string, string] = spooled.value;
       said.push(`${bytes.length}:${contentType}:${id}`);
     } else if ("isServiceFault" in spooled.error) {
       said.push(spooled.error.fault.kind);
@@ -198,7 +198,7 @@ export async function read(): Promise<string> {
     }
     const dumped = await client.dump("a");
     if (dumped.ok) {
-      const [bytes, contentType]: [Array<number>, string] = dumped.value;
+      const [bytes, contentType]: [Uint8Array, string] = dumped.value;
       said.push(`${bytes.length}:${contentType}`);
     }
   }
@@ -1403,7 +1403,7 @@ fn a_declared_error_of_one_status_type_checks_at_the_http_dispatcher() {
 }
 
 /// Every TypeScript client of a `bytes` operation compiles under `--strict` against the real
-/// `zod`, and answers the bytes as the `Array<number>` its result declares: the `http_rest`
+/// `zod`, and answers the bytes as the `Uint8Array` its result declares: the `http_rest`
 /// client reads them off the seam's binary body, and the transport-agnostic client, over a bus
 /// and over `ws_rpc`, parses the pair of the bytes and their content type the dispatcher answers.
 #[cfg(feature = "zod")]

@@ -349,6 +349,8 @@ pub struct FieldDef {
     pub absent_from_wire: bool,
     pub array_depth: u8,
     pub array_lengths: Vec<(u8, usize)>,
+    /// Whether array level 0 is a `Vec<u8>`, which TypeScript and Dart hold as bytes.
+    pub bytes: bool,
     pub docs: String,
     pub field_type: FieldDefType,
     pub model_schema_prop_meta: Option<ModelSchemaPropMeta>,
@@ -373,6 +375,7 @@ impl PartialEq for FieldDef {
             && self.array_lengths == other.array_lengths
             && self.nullable_levels == other.nullable_levels
             && self.set_levels == other.set_levels
+            && self.bytes == other.bytes
             && self.field_type == other.field_type
     }
 }
@@ -452,6 +455,11 @@ impl FieldDef {
         arrayed.array_depth = element.array_depth.saturating_add(1);
         if matches!(&self.field_type, FieldDefType::SiblingType(name, _) if is_set_wrapper(name)) {
             arrayed.mark_set_at(element.array_depth);
+        }
+        if matches!(&self.field_type, FieldDefType::SiblingType(name, _) if is_std_vec(name))
+            && element.holds_a_byte()
+        {
+            arrayed.bytes = true;
         }
         self.levels_stacked_over(arrayed)
     }
@@ -763,6 +771,13 @@ impl FieldDef {
         self.model_schema_prop_meta
             .as_ref()
             .is_some_and(|m| m.nullable)
+    }
+
+    /// Whether the field is a `u8` and nothing else: no array level and no `Option`.
+    fn holds_a_byte(&self) -> bool {
+        self.array_depth == 0
+            && matches!(self.field_type, FieldDefType::U8)
+            && !self.is_nullable_at(0)
     }
 
     /// Whether the field describes an array at all — the question every surface asked of the
@@ -1437,6 +1452,7 @@ impl FieldDef {
                         omits_value: false,
                         #[cfg(any(feature = "zod", feature = "jsonschema"))]
                         serde_default: None,
+                        bytes: false,
                         set_levels: Vec::new(),
                         #[cfg(feature = "jsonschema")]
                         type_span: Span::call_site(),
@@ -1613,6 +1629,9 @@ impl FieldDef {
             }
         };
         (0..self.array_depth).fold(result, |wrapped, level| {
+            if level == 0 && self.writes_bytes() {
+                return "Uint8Array".to_owned();
+            }
             let item = if self.is_nullable_at(level) {
                 format!("{wrapped} | null")
             } else {
@@ -1747,6 +1766,7 @@ impl FieldDef {
         value.array_lengths.clear();
         value.nullable_levels.clear();
         value.set_levels.clear();
+        value.bytes = false;
         value
     }
 
@@ -1843,6 +1863,16 @@ impl FieldDef {
             | FieldDefType::NaiveDateTime
             | FieldDefType::DateTime => false,
         }
+    }
+
+    /// Whether array level 0 is written as bytes: a `Vec<u8>` whose items are held to no `literal`.
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "dart"))]
+    pub fn writes_bytes(&self) -> bool {
+        self.bytes
+            && self
+                .model_schema_prop_meta
+                .as_ref()
+                .is_none_or(|meta| meta.literal.is_none())
     }
 
     /// This field as a position outside a field writes it, where it names an alias of an
@@ -1975,7 +2005,20 @@ impl FieldDef {
         } else {
             String::new()
         };
-        format!("z.array({item}){bound}{counted}{distinct}")
+        let array = format!("z.array({item}){bound}{counted}{distinct}");
+        if level == 0 && self.writes_bytes() {
+            let counted_bytes = if level.saturating_add(1) == self.array_depth {
+                self.zod_byte_count_checks()
+            } else {
+                String::new()
+            };
+            let held = format!("z.instanceof(Uint8Array){counted_bytes}");
+            return format!(
+                "z.codec(z.union([{held}, {array}]), {held}, {{ decode: (value) => \
+                 Uint8Array.from(value), encode: (value) => Array.from(value) }})"
+            );
+        }
+        array
     }
 
     /// Builds the Zod schema before the struct-field optional wrap: the type match, the
@@ -2035,6 +2078,30 @@ impl FieldDef {
             "z.codec({read}, {held}, {{ decode: (value) => BigInt(value), encode: (value) => value \
              }})"
         )
+    }
+
+    /// The checks of a list's own `minLength` and `maxLength` on a `Uint8Array`, which has no
+    /// `.min` or `.max`.
+    #[cfg(feature = "zod")]
+    fn zod_byte_count_checks(&self) -> String {
+        let Some(meta) = &self.model_schema_prop_meta else {
+            return String::new();
+        };
+        let counted = |bound: Bound<'_>| {
+            zod_error_arg(bound).replace(
+                "Array.isArray(issue.input)",
+                "(Array.isArray(issue.input) || issue.input instanceof Uint8Array)",
+            )
+        };
+        let least = meta.min_items.map(|count| {
+            let reported = counted(Bound::MinItems(count));
+            format!(".refine((value) => value.length >= {count}, {reported})")
+        });
+        let most = meta.max_items.map(|count| {
+            let reported = counted(Bound::MaxItems(count));
+            format!(".refine((value) => value.length <= {count}, {reported})")
+        });
+        least.into_iter().chain(most).collect()
     }
 
     /// [`Self::zod_array_base`] with the checks the field names written on it: the schema of the
@@ -2672,6 +2739,11 @@ fn zod_factory_call(name: &str, arguments: &[FieldDef]) -> String {
     )
 }
 
+/// Whether `name` is the `Vec` whose `u8` items TypeScript and Dart hold as bytes.
+pub fn is_std_vec(name: &str) -> bool {
+    name == "Vec"
+}
+
 /// The one list of wrappers the crate renders as arrays, shared by every surface.
 pub fn is_sequence_wrapper(name: &str) -> bool {
     match name {
@@ -2800,6 +2872,7 @@ fn get_field_def_from_type_path(
             omits_value: false,
             #[cfg(any(feature = "zod", feature = "jsonschema"))]
             serde_default: None,
+            bytes: false,
             set_levels: Vec::new(),
             #[cfg(feature = "jsonschema")]
             type_span: type_path.span(),
@@ -2819,6 +2892,7 @@ fn get_field_def_from_type_path(
             omits_value: false,
             #[cfg(any(feature = "zod", feature = "jsonschema"))]
             serde_default: None,
+            bytes: false,
             set_levels: Vec::new(),
             // The name segment, not the whole path: it is what a generated module is named after,
             // so a reference the module cannot resolve is blamed on the name it was built from.
@@ -2845,6 +2919,7 @@ fn get_field_def_from_type_path(
             omits_value: false,
             #[cfg(any(feature = "zod", feature = "jsonschema"))]
             serde_default: None,
+            bytes: false,
             set_levels: Vec::new(),
             #[cfg(feature = "jsonschema")]
             type_span: segment.ident.span(),
@@ -2913,6 +2988,7 @@ fn get_field_def_from_generic_type(
             omits_value: false,
             #[cfg(any(feature = "zod", feature = "jsonschema"))]
             serde_default: None,
+            bytes: false,
             set_levels: Vec::new(),
             #[cfg(feature = "jsonschema")]
             type_span: type_ident.span(),
@@ -2958,6 +3034,7 @@ fn written_def(
         omits_value: false,
         #[cfg(any(feature = "zod", feature = "jsonschema"))]
         serde_default: None,
+        bytes: false,
         set_levels: Vec::new(),
         #[cfg(feature = "jsonschema")]
         type_span: type_ident.span(),
@@ -3051,7 +3128,10 @@ fn collapsed_wrapper_def(
     let mut result = element.clone();
     match ident {
         "Option" => result.mark_nullable_at(result.array_depth),
-        "Vec" => result.array_depth = result.array_depth.saturating_add(1),
+        "Vec" => {
+            result.bytes |= element.holds_a_byte();
+            result.array_depth = result.array_depth.saturating_add(1);
+        }
         _ if is_transparent_wrapper(ident) => {}
         _ => return None,
     }
@@ -3118,6 +3198,7 @@ pub fn get_field_def(name: &str, ty: &Type, field_docs: &str) -> FieldDef {
             omits_value: false,
             #[cfg(any(feature = "zod", feature = "jsonschema"))]
             serde_default: None,
+            bytes: false,
             set_levels: Vec::new(),
             #[cfg(feature = "jsonschema")]
             type_span: written.span(),
@@ -3135,6 +3216,7 @@ pub fn get_field_def(name: &str, ty: &Type, field_docs: &str) -> FieldDef {
             omits_value: false,
             #[cfg(any(feature = "zod", feature = "jsonschema"))]
             serde_default: None,
+            bytes: false,
             set_levels: Vec::new(),
             #[cfg(feature = "jsonschema")]
             type_span: written.span(),

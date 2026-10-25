@@ -102,7 +102,7 @@ export type ConversationClientServiceHttpFaultHandler = (fault: ConversationClie
 /**
  * `value` as it is written to the wire: each `bigint` through `JSON.rawJSON`, the JSON number of
  * its digits. Without `JSON.rawJSON`, a `bigint` a `number` holds exactly is that `number`, and any
- * other is refused.
+ * other is refused. Each `Uint8Array` is the plain array of its bytes.
  */
 function conversationClientServiceHttpAnswered(value: unknown): unknown {
   if (typeof value === \"bigint\") {
@@ -111,6 +111,7 @@ function conversationClientServiceHttpAnswered(value: unknown): unknown {
     if (Number.isSafeInteger(Number(value))) return Number(value);
     throw new RangeError(`${value} is written exactly only through JSON.rawJSON, which this runtime has not`);
   }
+  if (value instanceof Uint8Array) return Array.from(value);
   if (Array.isArray(value)) return value.map((held) => conversationClientServiceHttpAnswered(held));
   if (typeof value === \"object\" && value !== null && Object.getPrototypeOf(value) === Object.prototype) {
     return Object.fromEntries(Object.entries(value).map(([key, held]) => [key, conversationClientServiceHttpAnswered(held)]));

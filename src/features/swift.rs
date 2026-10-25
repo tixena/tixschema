@@ -3570,6 +3570,7 @@ fn tuple_struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>)
         omits_value: false,
         #[cfg(any(feature = "zod", feature = "jsonschema"))]
         serde_default: None,
+        bytes: false,
         set_levels: Vec::new(),
         #[cfg(feature = "jsonschema")]
         type_span: proc_macro2::Span::call_site(),

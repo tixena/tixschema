@@ -896,7 +896,7 @@ fn bytes_success_decode_block(
     if shape.header_out.is_empty() {
         let _ = writeln!(
             stmt,
-            "      return {result}Ok((response.body, contentType));"
+            "      return {result}Ok((Uint8List.fromList(response.body), contentType));"
         );
         return stmt;
     }
@@ -906,7 +906,7 @@ fn bytes_success_decode_block(
     stmt.push_str(&header_stmts);
     let _ = writeln!(
         stmt,
-        "      return {result}Ok((response.body, contentType, {}));",
+        "      return {result}Ok((Uint8List.fromList(response.body), contentType, {}));",
         header_idents.join(", ")
     );
     stmt

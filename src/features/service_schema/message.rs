@@ -129,8 +129,9 @@ const REFUSED_AS_A_NAME: [&str; 48] = [
 /// The function named `function` that answers a value as it is written to the wire: each
 /// `bigint` in it, at any depth of a list or a plain object, through `JSON.rawJSON`, which
 /// `JSON.stringify` writes as the JSON number of its digits. Without `JSON.rawJSON` a `bigint` a
-/// `number` holds exactly is that `number`, and any other is refused with a `RangeError`. Every
-/// other value is answered as it is.
+/// `number` holds exactly is that `number`, and any other is refused with a `RangeError`. Each
+/// `Uint8Array` is answered as the plain array of its bytes. Every other value is answered as it
+/// is.
 pub fn wire_fn(function: &str) -> String {
     format!(
         "/**\n \
@@ -138,7 +139,7 @@ pub fn wire_fn(function: &str) -> String {
          number of\n \
          * its digits. Without `JSON.rawJSON`, a `bigint` a `number` holds exactly is that \
          `number`, and any\n \
-         * other is refused.\n \
+         * other is refused. Each `Uint8Array` is the plain array of its bytes.\n \
          */\n\
          function {function}(value: unknown): unknown {{\n  \
          if (typeof value === \"bigint\") {{\n    \
@@ -148,6 +149,7 @@ pub fn wire_fn(function: &str) -> String {
          throw new RangeError(`${{value}} is written exactly only through JSON.rawJSON, which this \
          runtime has not`);\n  \
          }}\n  \
+         if (value instanceof Uint8Array) return Array.from(value);\n  \
          if (Array.isArray(value)) return value.map((held) => {function}(held));\n  \
          if (typeof value === \"object\" && value !== null && Object.getPrototypeOf(value) === \
          Object.prototype) {{\n    \

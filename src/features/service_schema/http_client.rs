@@ -706,7 +706,7 @@ fn success_decode_block(prefix: &str, wire: &str, shape: &HttpShape, success: &T
     stmt
 }
 
-/// A `body = "bytes"` operation's own success decode: the response's bytes, as the `Array<number>`
+/// A `body = "bytes"` operation's own success decode: the response's bytes, as the `Uint8Array`
 /// the result declares, with no `JSON.parse` on the success path at all, mirroring the Rust
 /// client's own bytes decode, which reaches for no `serde_json` either - `content-type` read back
 /// from the response headers, then any declared `header_out` element after it, the same
@@ -724,7 +724,7 @@ fn bytes_success_decode_block(
     );
     if shape.header_out.is_empty() {
         stmt.push_str(
-            "        return { ok: true, value: [Array.from(response.body), contentType] };\n",
+            "        return { ok: true, value: [Uint8Array.from(response.body), contentType] };\n",
         );
         return stmt;
     }
@@ -733,7 +733,7 @@ fn bytes_success_decode_block(
     stmt.push_str(&header_stmts);
     let _ = writeln!(
         stmt,
-        "        return {{ ok: true, value: [Array.from(response.body), contentType, {}] }};",
+        "        return {{ ok: true, value: [Uint8Array.from(response.body), contentType, {}] }};",
         header_idents.join(", ")
     );
     stmt

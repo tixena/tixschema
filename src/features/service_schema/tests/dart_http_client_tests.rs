@@ -421,7 +421,7 @@ fn a_bytes_operation_reads_the_body_and_content_type_back() {
         method.contains(
             "final contentType = _documentClientServiceHttpFindHeader(response.headers, 'content-type') ?? '';"
         ) && method.contains(
-            "return DocumentClientServiceGetThumbnailResultOk((response.body, contentType));"
+            "return DocumentClientServiceGetThumbnailResultOk((Uint8List.fromList(response.body), contentType));"
         ),
         "no `jsonDecode` runs on a bytes body — it is read bare, and the content type is read \
          back from the response header. Got: {method}"
@@ -472,7 +472,7 @@ fn a_bytes_operation_with_header_out_composes_body_content_type_and_the_header()
             && method.contains("if (rawHeaderOut0 == null) {")
             && method.contains("final headerOut0 = rawHeaderOut0;")
             && method.contains(
-                "return ThumbnailClientServiceGetThumbnailResultOk((response.body, contentType, headerOut0));"
+                "return ThumbnailClientServiceGetThumbnailResultOk((Uint8List.fromList(response.body), contentType, headerOut0));"
             ),
         "the declared header is read back the same way the JSON and stream paths read one, after \
          the bytes and their content type. Got: {method}"

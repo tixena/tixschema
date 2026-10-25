@@ -539,6 +539,12 @@ fn driver(cases: &[Case]) -> String {
 /// One Dart library: the emitted `definitions`, the functions their checks name, and `entry`.
 pub fn module(definitions: &[String], functions: &[&str], entry: &str) -> String {
     let mut parts = vec!["import 'dart:convert';".to_owned()];
+    if definitions
+        .iter()
+        .any(|written| written.contains("Uint8List"))
+    {
+        parts.push("import 'dart:typed_data';".to_owned());
+    }
     parts.extend(definitions.iter().cloned());
     parts.extend(functions.iter().map(|&written| written.to_owned()));
     parts.push(entry.to_owned());

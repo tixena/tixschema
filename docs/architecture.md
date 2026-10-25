@@ -50,7 +50,7 @@ How the macros turn a declaration into each surface, the data structures they sh
    - `ts_ws_server()`: the TypeScript connection-accepting WebSocket server for Node, wrapping the existing single-socket dispatcher attachment
    - `ts_http_client()`'s seam carries `body` as a `Uint8Array`, a JSON body as its UTF-8 text, as
      the Dart, Swift and Kotlin seams carry bytes; a `bytes` reply is answered as the
-     `Array<number>` its result declares, which the transport-agnostic and `ws_rpc` clients parse
+     `Uint8Array` its result declares, which the transport-agnostic and `ws_rpc` clients parse
      from the pair of the bytes and their content type the TypeScript dispatcher answers
      (`message::success_body`)
    - An operation only `http_rest` carries, a `body = "stream"` one and one with a `part(...)` file
