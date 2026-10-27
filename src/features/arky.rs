@@ -5,8 +5,8 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::Item;
 
-/// `TryFrom<&Type> for Value`, through `arky_core::value::to_value`, and `TryFrom<&Value> for
-/// Type`, through `arky_core::value::from_value`. A type with parameters bounds each impl on
+/// `TryFrom<&Type> for Value`, through `arky::value::to_value`, and `TryFrom<&Value> for
+/// Type`, through `arky::value::from_value`. A type with parameters bounds each impl on
 /// the type itself, so the bounds its serde derives write are the ones asked. Nothing for an item
 /// that is no struct or enum.
 pub fn conversions(item: &Item) -> TokenStream {
@@ -29,28 +29,28 @@ pub fn conversions(item: &Item) -> TokenStream {
     };
     quote! {
         impl #impl_generics ::core::convert::TryFrom<&#ident #type_generics>
-            for ::arky_core::parser::ast::Value
+            for ::arky::parser::ast::Value
         #written
         {
-            type Error = ::arky_core::value::ValueError;
+            type Error = ::arky::value::ValueError;
 
             fn try_from(
                 value: &#ident #type_generics,
             ) -> ::core::result::Result<Self, Self::Error> {
-                ::arky_core::value::to_value(value)
+                ::arky::value::to_value(value)
             }
         }
 
-        impl #impl_generics ::core::convert::TryFrom<&::arky_core::parser::ast::Value>
+        impl #impl_generics ::core::convert::TryFrom<&::arky::parser::ast::Value>
             for #ident #type_generics
         #read
         {
-            type Error = ::arky_core::value::ValueError;
+            type Error = ::arky::value::ValueError;
 
             fn try_from(
-                value: &::arky_core::parser::ast::Value,
+                value: &::arky::parser::ast::Value,
             ) -> ::core::result::Result<Self, Self::Error> {
-                ::arky_core::value::from_value(value)
+                ::arky::value::from_value(value)
             }
         }
     }
