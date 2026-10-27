@@ -7,7 +7,7 @@ description = "Declare a Rust type or service once and generate its TypeScript, 
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/tixena/tixschema"
-categories = ["development-tools::procedural-macros"]
+categories = ["development-tools", "web-programming"]
 keywords = ["typescript", "json-schema", "codegen", "rpc", "mobile"]
 include = ["/src/**/*.rs", "/src/**/*.md", "/README.md", "/LICENSE", "/THIRD-PARTY-NOTICES"]
 
