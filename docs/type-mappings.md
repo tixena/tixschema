@@ -265,7 +265,7 @@ to serde and to Zod, and `tests/generic_types_tests/declarations.rs` parses each
     reaches `serde_json::Value`, ...``. The message declared from several arguments is a
     `#[model_schema()]` struct, refused or checked by that expansion. tixschema's own APIs that
     take or answer a `serde_json::Value` (a `preprocess` function, `from_value_with`,
-    `from_value_piped`, `schema_examples()`, the archie conversions) are untouched
+    `from_value_piped`, `schema_examples()`, the arky conversions) are untouched
 
 ### 5. Zod v4 Requirements
 

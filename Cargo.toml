@@ -59,9 +59,9 @@ trybuild = "=1.0.121"
 # `mongodb`.
 stored_customers = { path = "tests/crates_apart/stored_customers" }
 invoice_lookups = { path = "tests/crates_apart/invoice_lookups" }
-# The crate whose frontmatter `Value` the `archie` entry converts to and from; the tests convert
+# The crate whose frontmatter `Value` the `arky` entry converts to and from; the tests convert
 # models through it.
-archie-core = { git = "https://github.com/tixena/archie.git" }
+arky-core = { git = "https://github.com/tixena/arky.git" }
 
 # Transitive dep floors — pinned to fix known vulnerabilities:
 # - bytes >=1.11.1: RUSTSEC-2026-0007 (integer overflow in BytesMut::reserve)
@@ -92,7 +92,7 @@ default = ["web"]
 web = ["serde", "zod", "jsonschema", "typescript"]
 # `serde` is here because a service's mobile clients need it; the type definitions alone do not.
 mobile = ["serde", "dart", "swift", "kotlin"]
-mongo = ["mongodb", "chrono", "indexmap", "archie"]
+mongo = ["mongodb", "chrono", "indexmap", "arky"]
 
 # Core features
 serde = [] # Serde integration for attribute parsing and field renaming
@@ -107,7 +107,7 @@ indexmap = [] # indexmap type support: IndexMap as a map, IndexSet as a list
 dart = [] # Dart type generation and a JSON fromJson/toJson codec, beside the TypeScript output
 swift = [] # Swift type generation with a Codable codec
 kotlin = [] # Kotlin type generation with kotlinx.serialization annotations
-archie = ["serde"] # Conversions to and from archie's frontmatter Value on types that opt in
+arky = ["serde"] # Conversions to and from arky's frontmatter Value on types that opt in
 
 [lints.rust]
 # `slow_tests` gates the tests that wait on a real clock; `just test-slow` sets it.

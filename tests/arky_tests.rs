@@ -1,14 +1,14 @@
-//! `enable = ["archie"]`: a model converted to archie's frontmatter `Value` and read back.
+//! `enable = ["arky"]`: a model converted to arky's frontmatter `Value` and read back.
 
-#![cfg(feature = "archie")]
+#![cfg(feature = "arky")]
 
 #[cfg(test)]
 mod tests {
-    use archie_core::parser::ast::{Mapping, Value};
+    use arky_core::parser::ast::{Mapping, Value};
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
 
-    #[model_schema(enable = ["archie"])]
+    #[model_schema(enable = ["arky"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(tag = "kind")]
     pub enum Source {
@@ -16,14 +16,14 @@ mod tests {
         Web { url: String },
     }
 
-    #[model_schema(enable = ["archie"])]
+    #[model_schema(enable = ["arky"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub enum Status {
         Draft,
         Published,
     }
 
-    #[model_schema(enable = ["archie"])]
+    #[model_schema(enable = ["arky"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct Note {
@@ -37,14 +37,14 @@ mod tests {
         pub views: u32,
     }
 
-    #[model_schema(enable = ["archie"], default_types(Id = String))]
+    #[model_schema(enable = ["arky"], default_types(Id = String))]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Tagged<Id> {
         pub id: Id,
         pub label: String,
     }
 
-    #[model_schema(enable = ["archie"])]
+    #[model_schema(enable = ["arky"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
     pub struct Sku(pub String);

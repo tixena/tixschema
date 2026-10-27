@@ -42,8 +42,8 @@ pub mod swift;
 #[cfg(feature = "kotlin")]
 pub mod kotlin;
 
-#[cfg(feature = "archie")]
-pub mod archie;
+#[cfg(feature = "arky")]
+pub mod arky;
 
 /// Module for parsing model_schema_prop attributes
 pub mod model_schema_prop;
@@ -96,8 +96,8 @@ impl Features {
         if Self::has_kotlin() {
             features.push("kotlin");
         }
-        if Self::has_archie() {
-            features.push("archie");
+        if Self::has_arky() {
+            features.push("arky");
         }
 
         if features.is_empty() {
@@ -107,9 +107,9 @@ impl Features {
         features
     }
 
-    /// Check if `archie` feature is enabled.
-    pub const fn has_archie() -> bool {
-        cfg!(feature = "archie")
+    /// Check if `arky` feature is enabled.
+    pub const fn has_arky() -> bool {
+        cfg!(feature = "arky")
     }
 
     pub const fn has_bson() -> bool {
