@@ -1866,7 +1866,6 @@ impl FieldDef {
     }
 
     /// Whether array level 0 is written as bytes: a `Vec<u8>` whose items are held to no `literal`.
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "dart"))]
     pub fn writes_bytes(&self) -> bool {
         self.bytes
             && self
