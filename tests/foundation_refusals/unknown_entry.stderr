@@ -1,4 +1,4 @@
-error: model_schema: type `InvoiceLookup`: tixschema: unknown entry `"decode_wth"`; the entries are `"archie"`, `"decode_with"` and `"mongodb"`
+error: model_schema: type `InvoiceLookup`: tixschema: unknown entry `"decode_wth"`; the entries are `"arky"`, `"decode_with"` and `"mongodb"`
   --> tests/foundation_refusals/unknown_entry.rs:10:26
    |
 10 | #[model_schema(enable = ["decode_wth"])]

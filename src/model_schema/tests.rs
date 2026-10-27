@@ -11102,7 +11102,7 @@ fn no_argument_the_parser_reads_is_rejected() {
 /// `enable` turns on each entry it lists, in any order, and nothing where it is not written.
 #[test]
 fn enable_turns_on_the_entries_it_lists() {
-    for (written, archie, decode_with, mongodb) in [
+    for (written, arky, decode_with, mongodb) in [
         ("", false, false, false),
         ("enable = [\"decode_with\"]", false, true, false),
         ("enable = [\"decode_with\", \"mongodb\"]", false, true, true),
@@ -11114,9 +11114,9 @@ fn enable_turns_on_the_entries_it_lists() {
             true,
             false,
         ),
-        ("enable = [\"archie\"]", true, false, false),
+        ("enable = [\"arky\"]", true, false, false),
         (
-            "enable = [\"decode_with\", \"archie\", \"mongodb\"]",
+            "enable = [\"decode_with\", \"arky\", \"mongodb\"]",
             true,
             true,
             true,
@@ -11124,27 +11124,27 @@ fn enable_turns_on_the_entries_it_lists() {
     ] {
         let args = super::parse_model_schema_args(syn::parse_str(written).unwrap());
         assert!(args.arg_rejection.is_none(), "for {written}");
-        assert_eq!(args.enable.archie, archie, "for {written}");
+        assert_eq!(args.enable.arky, arky, "for {written}");
         assert_eq!(args.enable.decode_with, decode_with, "for {written}");
         assert_eq!(args.enable.mongodb, mongodb, "for {written}");
     }
 }
 
-/// `"archie"` writes the two conversions under the `archie` feature, and nothing without it.
+/// `"arky"` writes the two conversions under the `arky` feature, and nothing without it.
 #[test]
-fn the_archie_entry_writes_both_conversions_under_its_feature() {
+fn the_arky_entry_writes_both_conversions_under_its_feature() {
     let expanded = expansion_under(
-        "enable = [\"archie\"]",
+        "enable = [\"arky\"]",
         "pub struct Note { pub title: String }",
     );
     assert!(!expanded.contains("compile_error"), "got: {expanded}");
     for call in [
-        "archie_core :: value :: to_value (value)",
-        "archie_core :: value :: from_value (value)",
+        "arky_core :: value :: to_value (value)",
+        "arky_core :: value :: from_value (value)",
     ] {
         assert_eq!(
             expanded.contains(call),
-            cfg!(feature = "archie"),
+            cfg!(feature = "arky"),
             "for {call}, got: {expanded}"
         );
     }
@@ -11152,8 +11152,8 @@ fn the_archie_entry_writes_both_conversions_under_its_feature() {
 
 /// A type alias names a type the conversions would have to be written for, in every build.
 #[test]
-fn the_archie_entry_is_refused_on_a_type_alias() {
-    let expanded = expansion_under("enable = [\"archie\"]", "pub type Short = String;");
+fn the_arky_entry_is_refused_on_a_type_alias() {
+    let expanded = expansion_under("enable = [\"arky\"]", "pub type Short = String;");
     assert!(expanded.contains("compile_error"), "got: {expanded}");
     assert!(
         expanded
@@ -11216,7 +11216,7 @@ fn enable_refuses_an_unknown_entry() {
             enable_refusal(written),
             (
                 format!(
-                    "tixschema: unknown entry `{entry}`; the entries are `\"archie\"`, \
+                    "tixschema: unknown entry `{entry}`; the entries are `\"arky\"`, \
                      `\"decode_with\"` and `\"mongodb\"`"
                 ),
                 entry.to_owned(),

@@ -1,12 +1,12 @@
-//! What `enable = ["archie"]` adds to a type: the conversion of a value of it to archie's
+//! What `enable = ["arky"]` adds to a type: the conversion of a value of it to arky's
 //! frontmatter `Value`, and the read of one back, both through serde.
 
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::Item;
 
-/// `TryFrom<&Type> for Value`, through `archie_core::value::to_value`, and `TryFrom<&Value> for
-/// Type`, through `archie_core::value::from_value`. A type with parameters bounds each impl on
+/// `TryFrom<&Type> for Value`, through `arky_core::value::to_value`, and `TryFrom<&Value> for
+/// Type`, through `arky_core::value::from_value`. A type with parameters bounds each impl on
 /// the type itself, so the bounds its serde derives write are the ones asked. Nothing for an item
 /// that is no struct or enum.
 pub fn conversions(item: &Item) -> TokenStream {
@@ -29,28 +29,28 @@ pub fn conversions(item: &Item) -> TokenStream {
     };
     quote! {
         impl #impl_generics ::core::convert::TryFrom<&#ident #type_generics>
-            for ::archie_core::parser::ast::Value
+            for ::arky_core::parser::ast::Value
         #written
         {
-            type Error = ::archie_core::value::ValueError;
+            type Error = ::arky_core::value::ValueError;
 
             fn try_from(
                 value: &#ident #type_generics,
             ) -> ::core::result::Result<Self, Self::Error> {
-                ::archie_core::value::to_value(value)
+                ::arky_core::value::to_value(value)
             }
         }
 
-        impl #impl_generics ::core::convert::TryFrom<&::archie_core::parser::ast::Value>
+        impl #impl_generics ::core::convert::TryFrom<&::arky_core::parser::ast::Value>
             for #ident #type_generics
         #read
         {
-            type Error = ::archie_core::value::ValueError;
+            type Error = ::arky_core::value::ValueError;
 
             fn try_from(
-                value: &::archie_core::parser::ast::Value,
+                value: &::arky_core::parser::ast::Value,
             ) -> ::core::result::Result<Self, Self::Error> {
-                ::archie_core::value::from_value(value)
+                ::arky_core::value::from_value(value)
             }
         }
     }
