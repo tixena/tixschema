@@ -2,12 +2,14 @@
 name = "tixschema"
 version = "0.1.0"
 edition = "2024"
-description = "TixSchema: Procedural macros for generating TypeScript types and Zod v4 schemas from Rust structs and enums, with MongoDB ObjectId support"
+authors = ["Eduardo Burgos <eduardo@tixena.com>"]
+description = "Declare a Rust type or service once and generate its TypeScript, Zod, JSON Schema, Dart, Swift and Kotlin forms, typed service clients and dispatchers, and MongoDB operations"
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/tixena/tixena"
+repository = "https://github.com/tixena/tixschema"
 categories = ["development-tools::procedural-macros"]
-keywords = ["macros", "proc-macro", "typescript", "zod", "codegen", "tixschema"]
+keywords = ["typescript", "json-schema", "codegen", "rpc", "mobile"]
+include = ["/src/**/*.rs", "/src/**/*.md", "/README.md", "/LICENSE", "/THIRD-PARTY-NOTICES"]
 
 [package.metadata.docs.rs]
 all-features = true
@@ -16,14 +18,14 @@ all-features = true
 proc-macro = true
 
 [dependencies]
-syn = { version = ">=3", features = ["full", "parsing", "extra-traits"] }
-quote = "1"
-proc-macro2 = "1"
-log = "0.4"
-regex = ">=1.10"
+syn = { version = "3", features = ["full", "parsing", "extra-traits"] }
+quote = "1.0.35"
+proc-macro2 = "1.0.91"
+log = "0.4.4"
+regex = "1.10"
 # The parser `regex::Regex::new` is built on: the `pattern` guard reads its AST. Capped below `0.9`
 # on purpose: the AST is matched exhaustively, so a new construct has to be classified.
-regex-syntax = "0.8"
+regex-syntax = "0.8.5"
 
 [dev-dependencies]
 mongodb = ">=3.7"
