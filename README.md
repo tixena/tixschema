@@ -10,7 +10,7 @@ Add the following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-tixschema = <path or crate_id or repo>  # eg: { git = "https://github.com/tixena/tixschema.git" }
+tixschema = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 ```
@@ -453,7 +453,7 @@ A JSON object is written with its keys in an order. The three maps describe as t
 `indexmap::IndexMap<K, V>` and the list beside it, `indexmap::IndexSet<T>`, are read under the `indexmap` feature. The feature adds no dependency to tixschema: the generated code names the types of the crate that declares them, so that crate lists `indexmap` itself, with its `serde` feature.
 
 ```toml
-tixschema = { version = "0.1.0", features = ["indexmap"] }
+tixschema = { version = "0.1", features = ["indexmap"] }
 indexmap = { version = "2", features = ["serde"] }
 ```
 
@@ -6788,7 +6788,7 @@ Elsewhere the `ObjectId` is handed the object any flattened member is handed, an
 Enable the `chrono` feature for chrono date/time type support. All chrono types map to `string` in TypeScript, with appropriate Zod validation for the specific date/time format.
 
 ```toml
-tixschema = { features = ["chrono"] }
+tixschema = { version = "0.1", features = ["chrono"] }
 ```
 
 A consumer enabling `chrono` on tixschema must also enable `serde` on its own `chrono` dependency — `as_number` (below) injects a `chrono::serde::ts_milliseconds` hook that only exists there.
@@ -8605,16 +8605,16 @@ Common configurations:
 
 ```toml
 # Default (serde + zod + jsonschema + typescript)
-tixschema = "0.1.0"
+tixschema = "0.1"
 
 # All features including optional ones
-tixschema = { features = ["serde", "zod", "jsonschema", "typescript", "mongodb", "bson", "chrono", "indexmap", "dart", "swift", "kotlin", "arky"] }
+tixschema = { version = "0.1", features = ["serde", "zod", "jsonschema", "typescript", "mongodb", "bson", "chrono", "indexmap", "dart", "swift", "kotlin", "arky"] }
 
 # Minimal (TypeScript only, no Zod or JSON Schema)
-tixschema = { default-features = false, features = ["typescript"] }
+tixschema = { version = "0.1", default-features = false, features = ["typescript"] }
 
 # TypeScript + Zod without JSON Schema
-tixschema = { default-features = false, features = ["serde", "zod", "typescript"] }
+tixschema = { version = "0.1", default-features = false, features = ["serde", "zod", "typescript"] }
 ```
 
 CI tests every combination of the feature sets (`web`, `mobile`, `mongo`) via `cargo-hack`; `just test` runs every combination of the plain features locally.
@@ -8875,7 +8875,7 @@ The JSON Schema lists `kind` in `required` as `{"type": "string", "const": "Tagg
 **Solutions:**
 ```toml
 # Option 1: Enable the mongodb feature
-tixschema = { features = ["mongodb"] }
+tixschema = { version = "0.1", features = ["mongodb"] }
 
 # Option 2: Use full path in your code
 # use mongodb::bson::oid::ObjectId;
@@ -8897,7 +8897,7 @@ error: `IndexMap` is read as a map under tixschema's `indexmap` feature: add `fe
 
 **Solution:**
 ```toml
-tixschema = { features = ["indexmap"] }
+tixschema = { version = "0.1", features = ["indexmap"] }
 ```
 
 A crate that declares a `#[model_schema()]` type of its own named `IndexMap` or `IndexSet`, above the type that holds it, is not refused: the name is that type.
@@ -8923,7 +8923,7 @@ error: model_schema: field `count`: `u64` has no Kotlin mapping; the Kotlin targ
 
 **Solution:**
 ```toml
-tixschema = { features = ["jsonschema"] }
+tixschema = { version = "0.1", features = ["jsonschema"] }
 ```
 
 #### Zod Schema Missing
@@ -8934,7 +8934,7 @@ tixschema = { features = ["jsonschema"] }
 
 **Solution:**
 ```toml
-tixschema = { features = ["zod"] }
+tixschema = { version = "0.1", features = ["zod"] }
 ```
 
 #### Serde Attributes Ignored
@@ -8945,7 +8945,7 @@ tixschema = { features = ["zod"] }
 
 **Solution:**
 ```toml
-tixschema = { features = ["serde"] }
+tixschema = { version = "0.1", features = ["serde"] }
 ```
 
 ### Compilation Errors
