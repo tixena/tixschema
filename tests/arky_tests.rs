@@ -4,7 +4,7 @@
 
 #[cfg(test)]
 mod tests {
-    use arky_core::parser::ast::{Mapping, Value};
+    use arky::parser::ast::{Mapping, Value};
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
 

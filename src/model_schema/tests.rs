@@ -11139,8 +11139,8 @@ fn the_arky_entry_writes_both_conversions_under_its_feature() {
     );
     assert!(!expanded.contains("compile_error"), "got: {expanded}");
     for call in [
-        "arky_core :: value :: to_value (value)",
-        "arky_core :: value :: from_value (value)",
+        "arky :: value :: to_value (value)",
+        "arky :: value :: from_value (value)",
     ] {
         assert_eq!(
             expanded.contains(call),
