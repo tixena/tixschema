@@ -190,11 +190,6 @@ pub struct WideUnsigned {
     pub signed: i64,
 }
 
-/// The default of [`WideBounded::start`].
-const fn seven() -> i64 {
-    7
-}
-
 /// An `i64` and a `u64` under the names a consumer writes them with.
 #[cfg(not(any(feature = "swift", feature = "kotlin")))]
 #[model_schema()]
@@ -203,4 +198,9 @@ const fn seven() -> i64 {
 pub struct Stamped {
     pub hold_bytes: u64,
     pub sounded_at: i64,
+}
+
+/// The default of [`WideBounded::start`].
+const fn seven() -> i64 {
+    7
 }

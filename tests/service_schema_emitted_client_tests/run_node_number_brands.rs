@@ -96,6 +96,7 @@ main().catch((error) => { console.error(error); process.exit(1); });
 
 /// What each client's driver prints: the request line, the headers and the text parts of each call
 /// its transport carried, then the `header_out` the second call read back.
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
 const CARRIED: &str = "\
 GET /wharf/7?ticket=9007199254740993&label=007&since=9&berths=1%2C2 [] []
 POST /wharf? [x-berth=7;x-ticket=9007199254740993;x-label=42] []
