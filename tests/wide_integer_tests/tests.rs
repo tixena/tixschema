@@ -64,7 +64,7 @@ fn a_64_bit_member_is_written_as_a_json_number() {
     use super::models::Stamped;
 
     let written = serde_json::to_string(&Stamped {
-        hold_bytes: 4_194_304,
+        hold_bytes: 0x0040_0000,
         sounded_at: 1_719_624_000_000,
     })
     .unwrap();
@@ -75,7 +75,7 @@ fn a_64_bit_member_is_written_as_a_json_number() {
     let read: Stamped = serde_json::from_str(&written).unwrap();
     assert_eq!(
         (read.sounded_at, read.hold_bytes),
-        (1_719_624_000_000, 4_194_304),
+        (1_719_624_000_000, 0x0040_0000),
         "serde reads each number back"
     );
 }

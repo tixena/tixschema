@@ -3221,6 +3221,8 @@ fn wide_integers_bundle() -> String {
     let wide = [
         wide_integers::WideUnsigned::ts_definition(),
         wide_integers::WideUnsigned::zod_schema(),
+        wide_integers::Stamped::ts_definition(),
+        wide_integers::Stamped::zod_schema(),
     ];
     #[cfg(any(feature = "swift", feature = "kotlin"))]
     let wide: [String; 0] = [];
