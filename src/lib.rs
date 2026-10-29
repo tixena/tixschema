@@ -1247,7 +1247,8 @@ export const Event$Schema: ZodType<Event> = Event$RawSchema.meta({
 ///   filling. JSON Schema is built at `default_types`.
 /// - **A branded newtype**, a `#[serde(transparent)]` struct of one field: TypeScript
 ///   `string & $brand<"UserId">` and Zod `.brand<"UserId">()`, so two ids over one inner type
-///   cannot be swapped. Its inner type implements `Display`, or the brand writes `no_display`.
+///   cannot be swapped. Its inner type implements `Display`, or the brand writes `no_display`; a
+///   brand over a parameter asks it of the declared default alone, and of a path default not at all.
 ///
 /// ## Numbers, options, dates and maps
 ///

@@ -752,11 +752,13 @@ thread_local! {
 pub enum Declared {
     /// A type alias that takes no parameter: the type it names, as it was written.
     Alias(String),
-    /// A struct or an enum serde writes under keys of its own.
-    Model,
+    /// A struct or an enum serde writes under keys of its own, and how many lifetime parameters it
+    /// declares.
+    Model(usize),
     /// A struct or an enum serde writes as one value: a struct written as the value of one slot,
-    /// a unit struct, an enum no variant of which holds a value and no attribute tags.
-    OneValue,
+    /// a unit struct, an enum no variant of which holds a value and no attribute tags. Holds how
+    /// many lifetime parameters it declares.
+    OneValue(usize),
 }
 
 #[cfg(feature = "serde")]
