@@ -497,11 +497,16 @@ the path an issue of the Zod schema holds, and the one the recovering decode lis
 - A map's key is the text serde writes for it. `written_key_items` declares `MapKey` in the walk's
   block: its `Display` hands the key's own `Serialize` the `Formatter`, serde's serializer for
   which (in serde from 1.0.108) writes a string, a number, a `bool`, a `char`, a unit variant's
-  written name and a newtype's inner. `written_key` answers `None` where serde writes no text,
-  and where the key's type has no `Serialize` in reach (`UnwrittenKey`, reached for `&MapKey`
-  alone), a type parameter that declares none among them: `validate()` is written under the
-  bounds the type declares. `keyed_under` then leaves the key out of the name. Nothing here
-  names `serde_json`.
+  written name and a newtype's inner. `written_key` answers `None` where serde writes no text
+  (`UnwrittenKey`, reached for `&MapKey` alone), and `keyed_under` then leaves the key out of the
+  name. `validate()` is written under the bounds the type declares, so a map of declared types
+  keyed by a type that names one of the item's own parameters is refused at expansion
+  (`unwritable_map_key_errors`, asked ahead of every shape, in every build with `serde`) unless the
+  item declares `Serialize` for that parameter, in its generics or in a `where` clause. The
+  consumer writes `K: Serialize` on the type and `#[serde(bound(serialize = ""))]` beside it: the
+  derive otherwise writes `K: Serialize` a second time, and clippy's `trait_duplication_in_bounds`
+  refuses that. A map of values that are no declared type is not walked and is refused nothing.
+  Nothing here names `serde_json`.
 - `nested_under` composes: a name is written into a report one run of steps at a time, innermost
   first, which is what lets a key be left out.
 

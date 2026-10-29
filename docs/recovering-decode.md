@@ -98,7 +98,12 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   `decode_with_read_unjudged`. A generic type's `impl` asks what that read asks beside
   `Deserialize` of a parameter (`read_under`), at every lifetime, and the function repeats none
   of it: a bound asked by the `impl` and by the function is one the compiler cannot choose
-  between (E0283). A list held to a count of its own is read whole through `listed_reader`. A
+  between (E0283). A list held to a count of its own is read whole through `listed_reader`, with
+  each model unjudged, as a type declared in the closure and generic over the parameters of the
+  item that the model names (`HookScope`, the rules the holder's own hook is written by): the same
+  read for `Vec<Tote<CodeType>>` and `Vec<Tote<String>>`, and for `Vec<Self>`. Where `HookScope`
+  turns the member away, or the type names a lifetime, the list is read whole through
+  `own_reader`, each model judged as it is read. A
   type that names a `preprocess` on itself is read through `decode_with_read_corrected`, from a
   value its functions corrected once (section 7, "A payload corrected before it is read").
 - **A walker is generic over the issue type.** Each walker method takes a type parameter for the
