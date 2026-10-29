@@ -389,10 +389,35 @@ const UNREAD_BRAND_FIELD_PROP_MESSAGE: &str = "`#[model_schema_prop]` is unread 
 const INDEXMAP_NAMES: [(&str, &str, usize); 2] =
     [("IndexMap", "a map", 2), ("IndexSet", "a list", 1)];
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 const WRITTEN_AS_ARRAY: &str = "a JSON array";
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 const WRITTEN_AS_NULL: &str = "null";
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 const WRITTEN_AS_OBJECT: &str = "a JSON object";
 
 /// What the object joins in place of a source read as the entries of a map, where serde reads it
@@ -813,7 +838,15 @@ impl MapMemberRejection {
 /// What a map key opens: an open member set, the members it enumerates, members under the text the
 /// key is written as, or no object at all — read the same way at every position a map is written
 /// in.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 enum MapKeyPath<'key> {
     /// A key named by a type path, whose `enum_members()` become the object's keys.
     Enumerated(&'key str),
@@ -830,7 +863,15 @@ enum MapKeyPath<'key> {
 /// Why a map key a field reaches has no rendering. Every reason carries the name the author can act
 /// on, and every one stands on every surface, the key being read off the field all three render
 /// from.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 #[derive(Debug)]
 enum MapKeyRejection {
     /// The registry proves the key type carries no `enum_members()`.
@@ -15121,7 +15162,15 @@ fn tuple_json_schema_of(
 /// What a sequence-spelled type holds, and `None` for everything else. A `Vec`/`[T; N]` collapses
 /// to array levels; every other sequence wrapper keeps its name, normalized onto its element at
 /// render time — both write the same JSON array.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn sequence_wrapper_element(fld: &FieldDef) -> Option<&FieldDef> {
     let FieldDefType::SiblingType(wrapper_name, wrapper_args) = &fld.field_type else {
         return None;
@@ -15139,8 +15188,36 @@ fn sequence_wrapper_field(fld: &FieldDef) -> Option<FieldDef> {
     sequence_wrapper_element(fld).map(|element| fld.collection_element_field(element))
 }
 
-/// The classification every position reads a map key through.
+/// The path a key named by a type path takes, by what the registry holds of the name.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+fn registered_key_path(key_type_name: &str) -> MapKeyPath<'_> {
+    match registered_key_kind(key_type_name) {
+        Some(AliasKind::StringWire) => MapKeyPath::Open,
+        Some(AliasKind::Stringified) => MapKeyPath::Unnarrowed,
+        _ => MapKeyPath::Enumerated(key_type_name),
+    }
+}
+
+/// A build with no schema surface records no alias kind, so a named key is left to the dispatch.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "swift", feature = "kotlin"),
+    not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
+))]
+const fn registered_key_path(key_type_name: &str) -> MapKeyPath<'_> {
+    MapKeyPath::Enumerated(key_type_name)
+}
+
+/// The classification every position reads a map key through.
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn map_key_path(key: &FieldDef) -> MapKeyPath<'_> {
     if key.array_depth > 0 || sequence_wrapper_element(key).is_some() {
         return MapKeyPath::Refused(MapKeyRejection::Sequenced(map_key_element_name(key)));
@@ -15153,11 +15230,7 @@ fn map_key_path(key: &FieldDef) -> MapKeyPath<'_> {
         // instantiation that serializes at all writes its keys as strings.
         FieldDefType::String | FieldDefType::TypeParam(_) => MapKeyPath::Open,
         FieldDefType::SiblingType(key_type_name, args) if args.is_empty() => {
-            match registered_key_kind(key_type_name) {
-                Some(AliasKind::StringWire) => MapKeyPath::Open,
-                Some(AliasKind::Stringified) => MapKeyPath::Unnarrowed,
-                _ => MapKeyPath::Enumerated(key_type_name.as_str()),
-            }
+            registered_key_path(key_type_name)
         }
         FieldDefType::Tuple(elements) if elements.is_empty() => {
             MapKeyPath::Refused(unwritable_key(key, WRITTEN_AS_NULL))
@@ -15197,7 +15270,15 @@ fn map_key_path(key: &FieldDef) -> MapKeyPath<'_> {
 
 /// The rejection a key earns for its own wire form, naming the key as written and what serde writes
 /// for it instead.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn unwritable_key(key: &FieldDef, written_as: &'static str) -> MapKeyRejection {
     MapKeyRejection::Unwritable {
         key_name: map_key_element_name(key),
@@ -15208,7 +15289,15 @@ fn unwritable_key(key: &FieldDef, written_as: &'static str) -> MapKeyRejection {
 /// Why this key has no rendering, and `None` for every key that may still have one. A key the
 /// dispatch already refuses is ruled out by its own spelling; otherwise only a target the registry
 /// positively rules out is named — an unregistered or not-yet-expanded name is left alone.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn key_rejection(key: &FieldDef) -> Option<MapKeyRejection> {
     match map_key_path(key) {
         MapKeyPath::Refused(rejection) => Some(rejection),
@@ -15219,7 +15308,15 @@ fn key_rejection(key: &FieldDef) -> Option<MapKeyRejection> {
 }
 
 /// The Rust spelling of what a map key holds, for the diagnostic a key with no rendering earns.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn map_key_element_name(key: &FieldDef) -> String {
     if let Some(element) = sequence_wrapper_element(key) {
         return map_key_element_name(element);
@@ -15276,6 +15373,16 @@ fn proves_no_enum_members(key_type_name: &str) -> bool {
     })
 }
 
+/// A build with no schema surface records no alias kind, so no registered type is ruled out.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "swift", feature = "kotlin"),
+    not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
+))]
+const fn proves_no_enum_members(_key_type_name: &str) -> bool {
+    false
+}
+
 /// What the registry says serde writes for a key spelled by this name, and `None` for a name it
 /// never saw registered — indistinguishable from a plain enum declared later, which is why the
 /// dispatch above leaves such a key on the enumerating path.
@@ -15285,7 +15392,15 @@ fn registered_key_kind(key_type_name: &str) -> Option<AliasKind> {
 }
 
 /// Why the first map key this field reaches, at any depth, has no rendering.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn map_key_rejection(fld: &FieldDef) -> Option<MapKeyRejection> {
     match &fld.field_type {
         FieldDefType::Map(key, value) => key_rejection(key)
@@ -15327,7 +15442,15 @@ fn map_key_rejection(fld: &FieldDef) -> Option<MapKeyRejection> {
 
 /// What a key with no members is reported as. The `subject` names where the map was written — a
 /// field, an alias — which is what the author can act on and all that differs between them.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn non_enum_map_key_message(subject: &str, key_type_name: &str) -> String {
     format!(
         "{subject}: a map key must be a plain `#[model_schema()]` enum, whose members become the object's keys — `{key_type_name}` resolves to a type with no `enum_members()`"
@@ -15336,7 +15459,15 @@ fn non_enum_map_key_message(subject: &str, key_type_name: &str) -> String {
 
 /// What a sequence-wrapped key is reported as, worded like its sibling above and carrying the same
 /// `subject`.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn sequenced_map_key_message(subject: &str, element_name: &str) -> String {
     format!(
         "{subject}: a map key must be a value serde writes as a string, which is what a JSON object key is — this key is a sequence of `{element_name}`, and serde refuses to serialize a map keyed by one at all"
@@ -15345,7 +15476,15 @@ fn sequenced_map_key_message(subject: &str, element_name: &str) -> String {
 
 /// What an `Option`-wrapped key is reported as, worded like its siblings above and carrying the same
 /// `subject`.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn optional_map_key_message(subject: &str, inner_name: &str) -> String {
     format!(
         "{subject}: a map key must be a value serde writes as a string, which is what a JSON object key is — this key is an `Option<{inner_name}>`, whose `Some` serde writes as the bare `{inner_name}` while a `None` has no string form at all and makes serde refuse the whole map; key it by `{inner_name}`"
@@ -15354,6 +15493,15 @@ fn optional_map_key_message(subject: &str, inner_name: &str) -> String {
 
 /// What a key serde writes as neither a string nor anything it stringifies for the author is
 /// reported as, worded like its siblings above and carrying the same `subject`.
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn unwritable_map_key_message(subject: &str, key_name: &str, written_as: &str) -> String {
     format!(
         "{subject}: a map key must be a value serde writes as a string, which is what a JSON object key is — serde writes `{key_name}` as {written_as}, and refuses to serialize a map keyed by one at all"
@@ -15361,7 +15509,15 @@ fn unwritable_map_key_message(subject: &str, key_name: &str, written_as: &str) -
 }
 
 /// What a map key with no rendering is reported as, whichever reason it has.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn map_key_rejection_message(subject: &str, rejection: &MapKeyRejection) -> String {
     match rejection {
         MapKeyRejection::NoEnumMembers(key_type_name) => {
@@ -15379,7 +15535,15 @@ fn map_key_rejection_message(subject: &str, rejection: &MapKeyRejection) -> Stri
 }
 
 /// Rejects a field reaching a map key no surface can write.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn check_map_key(field: &Field, field_def: &FieldDef, label: &str) -> Result<(), syn::Error> {
     let Some(rejection) = map_key_rejection(field_def) else {
         return Ok(());
@@ -18023,12 +18187,28 @@ fn collect_field_guard_errors(
     let label = field_label(raw_field_ident);
     let carried = on_the_wire && !parse_serde_key_omission(&field.attrs).absent_from_wire();
 
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        all(
+            feature = "serde",
+            any(feature = "dart", feature = "swift", feature = "kotlin")
+        )
+    ))]
     let map_key_error = check_map_key(field, field_def, &label)
         .err()
         .map(|err| err.to_compile_error());
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    let map_key_error = ranges::map_key_error(field, field_def, &label);
+    #[cfg(not(any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        all(
+            feature = "serde",
+            any(feature = "dart", feature = "swift", feature = "kotlin")
+        )
+    )))]
+    let map_key_error: Option<proc_macro2::TokenStream> = None;
 
     #[cfg(feature = "kotlin")]
     let kotlin_width_error = check_kotlin_width_field(field, field_def, &label)
