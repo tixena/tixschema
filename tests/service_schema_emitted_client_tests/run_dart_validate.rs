@@ -927,8 +927,8 @@ a yard: refused
     'byNumber.7.label': too short: minimum length is 1, got 0
     'codeList.2': c is one code too many
     'grid.0.1.label': too short: minimum length is 1, got 0
-    'parcelList': too short: minimum length is 2, got 1
     'parcelList.0.fragileItemCodes.0': y is outside of itemCodeList
+    'parcelList': too short: minimum length is 2, got 1
     'parcelList.0': the first parcel is known
     'spares.1.label': too short: minimum length is 1, got 0
 a bare yard: passes

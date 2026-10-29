@@ -484,6 +484,8 @@ fn each_bound_is_written_on_the_value_it_measures() {
              pattern '^[a-z]+\\$'\", \
              if (short_note case final held?) if (held.runes.length < 2) \"'shortNote': too \
              short: minimum length is 2, got ${held.runes.length}\", \
+             if (sort_code case final held?) for (final violation in held.validate()) \
+             _under('sortCode', violation), \
              if (sort_code case final held?) if (_boundText(held).runes.length < 1) \
              \"'sortCode': too short: minimum length is 1, got ${_boundText(held).runes.length}\", \
              if (unit_weight < 0.5) \"'unitWeight': too small: minimum is 0.5, got \
@@ -502,7 +504,10 @@ fn each_bound_is_written_on_the_value_it_measures() {
              value.toStringAsFixed(0) : value.toString();",
         ],
     );
-    assert!(!gauge.contains("_under"), "got: {gauge}");
+    assert_written(
+        &gauge,
+        &["static String _under(String place, String violation)"],
+    );
 }
 
 #[test]

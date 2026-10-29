@@ -160,6 +160,12 @@ fn asked_statement(read: &str, place: &str, least: u32) -> String {
     )
 }
 
+/// What a member typed with a declared type adds after its own bound: the type's `validate()`,
+/// each message under the member's key.
+fn held_statement(read: &str) -> String {
+    format!("violations.addAll({read}.validate().map {{ kotlinSchemaUnder(\"{read}\", it) }})")
+}
+
 /// The statements a variant of several slots runs, each slot under `place` and its position.
 fn split_statements(place: &str) -> String {
     format!(
@@ -301,12 +307,16 @@ fn a_bound_on_a_declared_type_measures_the_text_the_type_answers() {
     assert_eq!(
         super::tests::renumbered(&entry_kotlin::kotlin_definition()),
         format!(
-            "{} data class Entry(val late: LateSlug, val slug: Slug, val titled: TitleType) {{ \
-             fun validate(): List<String> {{ val violations = mutableListOf<String>(); {}; {}; \
-             {}; return violations }}; {TEXT} }} {}",
+            "{} data class Entry(val late: LateSlug, @Serializable(with = SlugUnjudged::class) \
+             val slug: Slug, val titled: TitleType) {{ fun validate(): List<String> {{ val \
+             violations = mutableListOf<String>(); {}; {}; {}; {}; {}; {}; return violations }}; \
+             private fun Any?.validate(): List<String> = emptyList(); {TEXT}; {UNDER} }} {}",
             kept("Entry"),
+            held_statement("late"),
             asked_statement("late", "'late': ", 3),
+            held_statement("slug"),
             asked_statement("slug", "'slug': ", 3),
+            held_statement("titled"),
             asked_statement("titled", "'titled': ", 2),
             serializers("Entry")
         )

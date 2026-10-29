@@ -1273,8 +1273,8 @@ fn rust_answers_each_place_and_each_bound_in_these_words() {
             "'firstParcel': an open parcel is not sealed",
             "'listsByDock.north.0.label': too short: minimum length is 1, got 0",
             "'parcelGrid.0.1.label': too short: minimum length is 1, got 0",
-            "'parcelList': too short: minimum length is 3, got 2",
             "'parcelList.1.label': too short: minimum length is 1, got 0",
+            "'parcelList': too short: minimum length is 3, got 2",
             "'parcelsByDock.north.label': too short: minimum length is 1, got 0",
             "'spareParcel.label': too short: minimum length is 1, got 0",
         ]

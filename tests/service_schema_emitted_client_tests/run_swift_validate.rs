@@ -536,10 +536,10 @@ fn a_member_runs_its_bounds_what_it_holds_then_its_checks() {
         expected,
         "\
 Ledger: refused
-    'parcelList': too short: minimum length is 3, got 2
     'parcelList.0.itemLabel': too short: minimum length is 1, got 0
     'parcelList.0.parcelCode': too short: minimum length is 2, got 1
     'parcelList.1.itemLabel': too short: minimum length is 1, got 0
+    'parcelList': too short: minimum length is 3, got 2
     'parcelList': a ledger holds no spare pair
 "
     );
@@ -551,7 +551,7 @@ Ledger: refused
 
 /// A bound on a field typed with a brand is measured through the member its wrapper answers its
 /// text with, declared above the field or below it, and on an alias of a string declared above as
-/// the string it is. The field's own bound stands in place of the one its type declares.
+/// the string it is.
 #[test]
 fn a_bound_on_a_named_type_measures_the_string_it_holds() {
     let waybill = |later_code: &str, short_code: &str, titled: &str| Waybill {
@@ -587,7 +587,8 @@ Waybill, each bound broken: refused
     'laterCode': too short: minimum length is 2, got 1
     'shortCode': too long: maximum length is 3, got 4
     'titled': too short: minimum length is 2, got 1
-Waybill, a code its own type refuses: passes
+Waybill, a code its own type refuses: refused
+    'shortCode': too short: minimum length is 2, got 1
 "
     );
     let Some(swift) = printed(&driver_of(&cases)) else {

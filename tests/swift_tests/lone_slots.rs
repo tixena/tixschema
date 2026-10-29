@@ -481,7 +481,7 @@ fn the_one_slot_is_reported_under_no_step() {
         ),
         (
             bales_swift::swift_definition(),
-            r#"if value.count < 1 { errors.append("too short: minimum length is 1, got \(value.count)") }; for (index, held) in value.enumerated() { errors += held.validate().map { Bales.swiftSchemaUnder("\(index)", $0) } }"#,
+            r#"for (index, held) in value.enumerated() { errors += held.validate().map { Bales.swiftSchemaUnder("\(index)", $0) } }; if value.count < 1 { errors.append("too short: minimum length is 1, got \(value.count)") }"#,
         ),
         (
             maybe_bale_swift::swift_definition(),
