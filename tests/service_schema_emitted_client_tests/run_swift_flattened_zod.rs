@@ -8,10 +8,10 @@
 use core::fmt::Write as _;
 
 use super::flattened_zod_models::{
-    CHECKED_REPORT, ROWS, berthage_swift, block_swift, booking_swift, checked_cases,
-    checked_report, deck_swift, gap_swift, hatch_swift, mole_swift, moorage_swift, paragraph_swift,
-    pause_swift, quote_swift, serde_report, slip_swift, span_swift, tenancy_swift, tethered_swift,
-    wharf_swift, wharfage_swift,
+    CHECKED_REPORT, ROWS, berthage_swift, block_swift, booking_swift, cargo_swift, checked_cases,
+    checked_report, deck_swift, gap_swift, hatch_swift, hold_swift, mole_swift, moorage_swift,
+    paragraph_swift, pause_swift, quote_swift, serde_report, slip_swift, span_swift, tally_swift,
+    tenancy_swift, tethered_swift, wharf_swift, wharfage_swift,
 };
 use super::run_swift_read::normalized;
 use super::runtime::judged;
@@ -77,6 +77,9 @@ fn source(calls: &str) -> String {
         wharfage_swift::swift_definition(),
         hatch_swift::swift_definition(),
         deck_swift::swift_definition(),
+        cargo_swift::swift_definition(),
+        hold_swift::swift_definition(),
+        tally_swift::swift_definition(),
         gap_swift::swift_definition(),
         pause_swift::swift_definition(),
         span_swift::swift_definition(),
