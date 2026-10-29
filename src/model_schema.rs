@@ -1437,6 +1437,7 @@ struct EnumCasing<'ctx> {
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum ContainerWire {
     OneWay,
+    #[cfg(feature = "serde")]
     RoundTrip,
 }
 
