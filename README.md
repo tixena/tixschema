@@ -4441,7 +4441,7 @@ pub struct Article {
 
 As the value is read, and by `validate()`.
 
-A bound written on a member is held beside the bounds its type declares, the member's own reported first: a `Slug` brand with `minLength = 3` on a field that writes `pattern = "^[a-z]+$"` reports `'slug': does not match pattern '^[a-z]+$'` and then `'slug': too short: minimum length is 3, got 2` for `Slug("AB")`.
+A bound written on a member is held beside the bounds its type declares, the type's reported first and the member's after, as the Zod schema reports them: a `Slug` brand with `minLength = 3` on a field that writes `pattern = "^[a-z]+$"` reports `'slug': too short: minimum length is 3, got 2` and then `'slug': does not match pattern '^[a-z]+$'` for `Slug("AB")`.
 
 #### A read refuses what `validate()` refuses
 
@@ -5216,7 +5216,7 @@ Error: The method 'withinParcel' isn't defined for the type 'Parcel'.
 | a `HashSet`, a `BTreeSet` or an `IndexSet`, with no key | `_repeats(value)`, ahead of the set's count: two items are one where the JSON the codec writes for each is one text, and the message is [`repeats an item: a set holds each item once`](#a-set-holds-each-item-once) |
 
 - **The sentence is the one Rust and Zod write**, from the same source. A whole number is quoted back without `.0`: `too large: maximum is 3, got 4` for a `double` holding `4.0`.
-- **The order is Rust's**: each member as declared, its bounds, then what the value it holds reports, then its checks, and the type's own checks last. The repeat of a set, which Rust never reports, runs ahead of the set's count.
+- **The order is Rust's**: each member as declared, what the value it holds reports, then its bounds, then its checks, and the type's own checks last. The repeat of a set, which Rust never reports, runs ahead of the set's count.
 - **An optional member is measured where it holds a value.** A member typed with a branded string is measured on the text the wrapper holds.
 - **A holder runs the `validate()` of what it holds**, through an optional, each level of a list, a map's values and the positions of a tuple, and writes the place in front: `'parcelList.1.fragileItemCodes.1'`, `'parcelsByDock.north.label'`. An entry of a map is named by the text its key is written as, in the order the map holds its keys. A value behind one of the type's own parameters is not reached, as in Rust.
 - **A brand runs its own string check on the value it wraps**, under no place. A brand over one of its own parameters holds its declared default and no other filling: `if (value case final String held) ...`. A brand over a list counts its items at every filling.
@@ -5405,8 +5405,8 @@ The `validate()` of the parcel `{"label":"","itemCodeList":["x","x"],"fragileIte
 'parcel.fragileItemCodes.1': y is outside of itemCodeList
 ```
 
-- **The order is Rust's.** Each member in the order declared: its bounds, then what the value it holds reports, then the checks it names. The type's own checks run last. Every rule runs, and none stops another.
-- **A member with a bound of its own** is asked for what its type declares too, its own bound first, as in Rust.
+- **The order is Rust's.** Each member in the order declared: what the value it holds reports, then its bounds, then the checks it names. The type's own checks run last. Every rule runs, and none stops another.
+- **A member with a bound of its own** is asked for what its type declares too, its own bound after the type's, as in Rust.
 - **Every function a type calls is in the type's own body.** `kotlinSchemaUnder` writes a holder's key into a message, and is written into each type that names a place. The emitted types are joined into one file, so no function is written beside a type, and tixschema ships no runtime library. The two serializers of a type are the only declarations beside it, each under the type's own name.
 - **A member named `validate` builds and keeps its key**, a property and a method being two names to Kotlin. A member named `violations` is read as `this.violations`.
 - **Every build with the `kotlin` feature writes the same `validate()`.** The emitter reads the declaration itself, so a build with no schema surface, where Rust holds no bound, still writes each bound a field declares into the Kotlin client.
@@ -5730,7 +5730,7 @@ let violations = parcel.validate()
 
 A type with no rule, which holds no type that has one, declares `public func validate() -> [String] { [] }`.
 
-**What runs** is what the Rust [`validate()`](#the-validate-method) of the type runs, in its order and in its words: a member's bounds, then what the value it holds reports, then the checks it names, member by member as declared, and the type's own checks last. A bound written on a member runs beside the bounds its type declares, the member's first.
+**What runs** is what the Rust [`validate()`](#the-validate-method) of the type runs, in its order and in its words: what the value a member holds reports, then the member's bounds, then the checks it names, member by member as declared, and the type's own checks last. A bound written on a member runs beside the bounds its type declares, the member's first.
 
 | Written in Rust | What Swift runs |
 |---|---|

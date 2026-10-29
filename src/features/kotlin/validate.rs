@@ -13,7 +13,7 @@ use core::mem;
 use std::collections::HashMap;
 
 use super::{kotlin_name, kotlin_quoted, kotlin_template_text, kotlin_typename, result_class};
-use crate::bound_message::{Bound, OWN_BOUND_FIRST, kotlin_repeated, kotlin_violation};
+use crate::bound_message::{Bound, kotlin_repeated, kotlin_violation};
 use crate::features::model_schema_prop::{FunctionName, LiteralValue, ModelSchemaPropMeta};
 use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, format_number_literal, is_sequence_wrapper,
@@ -482,9 +482,9 @@ impl<'item> Rules<'item> {
         vec![format!("if ({broken}) {VIOLATIONS}.add({reported})")]
     }
 
-    /// What `member` adds: the repeat of a set it is, its bounds, what the value it holds reports,
-    /// then the checks it names. Where the bounds
-    /// choose a variant, they are the member's own and those of each brand it holds.
+    /// What `member` adds: the repeat of a set it is, what the value it holds reports, its bounds,
+    /// then the checks it names. Where the bounds choose a variant, they are the member's own and
+    /// those of each brand it holds.
     pub fn member(&mut self, member: &Member<'_>) {
         let (held, read) = presented(member);
         let place = member.place.as_deref();
@@ -498,13 +498,8 @@ impl<'item> Rules<'item> {
         let mut statements = own_repeat_statements(&held, &read, place);
         let listed = held.without_own_set();
         let below = self.held_statements(&listed, &read, place, depth, Asked::Report);
-        if OWN_BOUND_FIRST {
-            statements.extend(bounds);
-            statements.extend(below);
-        } else {
-            statements.extend(below);
-            statements.extend(bounds);
-        }
+        statements.extend(below);
+        statements.extend(bounds);
         statements.extend(self.check_statements(member, &read));
         self.statements.extend(behind(member, &read, &statements));
     }

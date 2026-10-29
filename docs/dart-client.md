@@ -18,10 +18,9 @@ consumer's view; this is what a change has to keep.
   `Bound::stated()`, as `rust_violation` and `zod_error_arg` do, and
   `the_three_renderings_of_a_bound_hold_one_sentence` holds the three to it. `dart_escaped` writes
   a text between two quotes of a Dart string, which reads `$` as an interpolation.
-- **A member** is `member_elements`: its own bounds (`bound_elements`), then what the value it
-  holds reports (`held_elements`), then its checks (`check_elements`), the own bounds and the
-  held ones in the order `OWN_BOUND_FIRST` names. That is the order `named_member_validate_body`
-  and `then_checks` give Rust.
+- **A member** is `member_elements`: what the value it holds reports (`held_elements`), then
+  its own bounds (`bound_elements`), then its checks (`check_elements`). That is the order
+  `named_member_validate_body` and `then_checks` give Rust.
   A type's own checks come last (`own_check_elements`).
 - **A check is called under the name the attribute writes**, a function of the consumer's that
   answers its messages as a list: `List<String> withoutDuplicates(List<String> value)` for a

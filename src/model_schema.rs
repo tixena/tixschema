@@ -68,8 +68,6 @@ use crate::{
 #[cfg(any(feature = "serde", feature = "zod"))]
 use crate::bound_message::Bound;
 #[cfg(feature = "serde")]
-use crate::bound_message::OWN_BOUND_FIRST;
-#[cfg(feature = "serde")]
 use crate::bound_message::VIOLATION_STEMS;
 #[cfg(feature = "serde")]
 use crate::bound_message::rust_violation;
@@ -19072,7 +19070,7 @@ fn names_what_the_module_cannot_repeat(ty: &syn::Type, type_parameters: &[String
         .any(|word| word == "Self" || type_parameters.iter().any(|named| named == word))
 }
 
-/// What a member contributes to `validate()`: its own check, then the one its type declares. A
+/// What a member contributes to `validate()`: the check its type declares, then its own. A
 /// list's own check counts it, and its items' type holds each item.
 /// `place` is where the member is read and the name it is reported under.
 #[cfg(feature = "serde")]
@@ -19136,15 +19134,13 @@ fn held_member_checks(
     checks::member_calls(place, &field.ty, named, VALIDATE_SINK)
 }
 
-/// What a member's arm runs: its own check and the one its type declares, in the order
-/// `OWN_BOUND_FIRST` names.
+/// What a member's arm runs: the check its type declares, then its own, the order Zod reports.
 #[cfg(feature = "serde")]
 fn slot_validate_body(
     own: Option<proc_macro2::TokenStream>,
     nested: Option<proc_macro2::TokenStream>,
 ) -> Option<proc_macro2::TokenStream> {
     match (own, nested) {
-        (Some(declared), Some(below)) if OWN_BOUND_FIRST => Some(quote! { #declared #below }),
         (Some(declared), Some(below)) => Some(quote! { #below #declared }),
         (declared, below) => declared.or(below),
     }

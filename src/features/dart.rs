@@ -12,7 +12,7 @@ use quote::quote;
 use syn::ext::IdentExt as _;
 use syn::{Field, Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
 
-use crate::bound_message::{Bound, OWN_BOUND_FIRST, dart_repeated, dart_violation};
+use crate::bound_message::{Bound, dart_repeated, dart_violation};
 use crate::features::model_schema_prop::{FunctionName, LiteralValue, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{
@@ -3104,13 +3104,8 @@ fn member_elements(
     };
     let own = own_bound_elements(field, expr, named, depth, helpers);
     let held = held_elements(&walked, expr, place, depth, asked, helpers);
-    if OWN_BOUND_FIRST {
-        elements.extend(own);
-        elements.extend(held);
-    } else {
-        elements.extend(held);
-        elements.extend(own);
-    }
+    elements.extend(held);
+    elements.extend(own);
     if matches!(asked, Asked::Rules) {
         elements.extend(check_elements(field, expr, place, depth, helpers));
     }

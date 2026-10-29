@@ -14,10 +14,10 @@ the Swift client" section is the consumer's view; this is what a change to the e
   `member_prop_meta` with the enum's arguments where the item is an enum. Every member's bounds
   are read through it (`member_def`), so an enum's string check reaches in Swift the fields it
   reaches in Rust.
-- **`src/features/swift/validate.rs` writes the method.** `member_rules` is one member: its bounds
-  (`bound_rules`), what the value it holds reports (`held_walk`), then the checks it names
-  (`check_rules`). A bound of the member's own runs beside the walk, in the order `OWN_BOUND_FIRST`
-  names, which is `named_member_validate_body`'s and `slot_validate_body`'s rule. `own_checks` are the type's, last. `method` writes the method
+- **`src/features/swift/validate.rs` writes the method.** `member_rules` is one member: what the value it
+  holds reports (`held_walk`), then its bounds (`bound_rules`), then the checks it names
+  (`check_rules`). The type's message comes before the member's own, which is
+  `named_member_validate_body`'s and `slot_validate_body`'s rule. `own_checks` are the type's, last. `method` writes the method
   and the helpers its statements call, and `[]` for a type with no rule.
 - **One sentence source.** `swift_violation` in `src/bound_message.rs` is written from
   `Bound::stated()`, as `rust_violation` is, and

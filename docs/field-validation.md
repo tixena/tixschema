@@ -73,9 +73,9 @@ section is the consumer's view; this is what a change has to keep.
   a `pattern`, and a range for each number of a list has no place. `check_fixed_shape_constraints`
   asks nothing more of a list, whose items may be of any type.
 - A member's own bound does not stand in for what its type declares: `named_member_validate_body`
-  runs both, in the order `OWN_BOUND_FIRST` (`src/bound_message.rs`) names for Rust and the Dart,
-  Swift and Kotlin clients: the member's own first. The Zod schema reports the type's first, its
-  `.check(...)` running after the type's own. A list's own count and its items' type are two such bounds.
+  runs both, the type's message first and the member's own after, in Rust and in the Dart,
+  Swift, Kotlin and Zod surfaces alike (Zod's `.check(...)` runs after the type's own). A list's
+  own count and its items' type are two such bounds.
   The read of such a member takes the unjudged hook (`member_read_hook`), so the holder's read
   answers what its `validate()` answers.
 - The count is reported in a string's sentence (`Bound::MinItems`, `Bound::MaxItems`), and Zod reads

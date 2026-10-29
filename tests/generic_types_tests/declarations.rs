@@ -3825,7 +3825,7 @@ fn type_check_a_bound_on_a_field_typed_with_a_brand_loads_and_parses() {
 }
 
 /// The Zod schema of a member that bounds a brand reports under `node` the sentences `validate()`
-/// reports. Where both bounds break, Zod reports the brand's first and `validate()` the member's.
+/// reports, the brand's bound ahead of the member's where both break.
 #[test]
 fn type_check_a_member_bound_beside_a_brand_reports_under_zod_what_validate_reports() {
     let slugged = |slug: &str, spare: &str| DeclaredSlugged {
@@ -3841,8 +3841,8 @@ fn type_check_a_member_bound_beside_a_brand_reports_under_zod_what_validate_repo
         [
             vec!["'slug': too short: minimum length is 3, got 2"],
             vec![
-                "'slug': does not match pattern '^[a-z]+$'",
                 "'slug': too short: minimum length is 3, got 2",
+                "'slug': does not match pattern '^[a-z]+$'",
             ],
             vec!["'spare': too short: minimum length is 3, got 2"],
             vec![],
@@ -3853,17 +3853,8 @@ fn type_check_a_member_bound_beside_a_brand_reports_under_zod_what_validate_repo
     };
     let read: Vec<Vec<String>> = serde_json::from_str(&printed).unwrap();
     assert_eq!(
-        [&read[0], &read[2], &read[3]],
-        [&validated[0], &validated[2], &validated[3]],
-        "Zod reports what validate() reports where one bound breaks:\n{failed}"
-    );
-    assert_eq!(
-        read[1],
-        [
-            "'slug': too short: minimum length is 3, got 2",
-            "'slug': does not match pattern '^[a-z]+$'",
-        ],
-        "Zod reports the brand's bound ahead of the member's:\n{failed}"
+        read, validated,
+        "Zod reports what validate() reports, in the same order:\n{failed}"
     );
 }
 

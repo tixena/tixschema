@@ -536,10 +536,10 @@ fn a_member_runs_its_bounds_what_it_holds_then_its_checks() {
         expected,
         "\
 Ledger: refused
-    'parcelList': too short: minimum length is 3, got 2
     'parcelList.0.itemLabel': too short: minimum length is 1, got 0
     'parcelList.0.parcelCode': too short: minimum length is 2, got 1
     'parcelList.1.itemLabel': too short: minimum length is 1, got 0
+    'parcelList': too short: minimum length is 3, got 2
     'parcelList': a ledger holds no spare pair
 "
     );

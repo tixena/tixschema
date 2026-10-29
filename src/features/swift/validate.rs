@@ -12,9 +12,7 @@ use regex_syntax::ast::{
 };
 
 use super::{SwiftTypeArgs, keys, result_case, swift_full_real_type, swift_member};
-use crate::bound_message::{
-    Bound, OWN_BOUND_FIRST, swift_literal_text, swift_repeated, swift_violation,
-};
+use crate::bound_message::{Bound, swift_literal_text, swift_repeated, swift_violation};
 use crate::features::model_schema_prop::{FunctionName, LiteralValue, ModelSchemaPropMeta};
 use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, format_number_literal, get_field_def,
@@ -416,13 +414,8 @@ pub(super) fn member_rules(owner: &str, member: &Checked<'_>) -> Vec<String> {
         &place,
         &mut bindings,
     );
-    if OWN_BOUND_FIRST {
-        rules.extend(bounds);
-        rules.extend(held);
-    } else {
-        rules.extend(held);
-        rules.extend(bounds);
-    }
+    rules.extend(held);
+    rules.extend(bounds);
     if let Some(written) = meta {
         rules.extend(check_rules(owner, member, &written.check));
     }

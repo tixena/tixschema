@@ -121,8 +121,8 @@ Crate<Parcel>, the second code broken: refused
 Crate<Code>, a code broken: refused
     too short: minimum length is 2, got 1
 Docket, a code that breaks its own bound: refused
-    'code': too short: minimum length is 3, got 1
     'code': too short: minimum length is 2, got 1
+    'code': too short: minimum length is 3, got 1
 Hitch, its own bound and the trailer's broken: refused
     'plate': too short: minimum length is 1, got 0
 Rating, one its check refuses: read Rating
@@ -810,8 +810,8 @@ fn apart_rows() -> Vec<Sample> {
             "serializer<Docket>()",
             &docket(),
             Err(&[
-                "'code': too short: minimum length is 3, got 1",
                 "'code': too short: minimum length is 2, got 1",
+                "'code': too short: minimum length is 3, got 1",
             ]),
         ),
         pinned(
@@ -1032,7 +1032,7 @@ fn where_the_read_is_not_the_rust_reads_text_it_is_this() {
         [
             "'fragileItemCodes.1': y is outside of itemCodeList at line 1 column 134",
             "too short: minimum length is 2, got 1 at line 1 column 19",
-            "'code': too short: minimum length is 3, got 1; 'code': too short: minimum length is 2, got 1",
+            "'code': too short: minimum length is 2, got 1; 'code': too short: minimum length is 3, got 1",
             "'hook': too short: minimum length is 1, got 0; 'trailer.plate': too short: minimum \
              length is 1, got 0",
             "a slip is rated",

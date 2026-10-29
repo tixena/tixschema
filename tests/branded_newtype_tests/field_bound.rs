@@ -237,7 +237,7 @@ mod bounded_at_the_type_and_the_field {
         assert_eq!(Holder { slug: slug("ab") }.validate(), Err(vec![short(2)]));
         assert_eq!(
             Holder { slug: slug("AB") }.validate(),
-            Err(vec![WRONG_PATTERN.to_owned(), short(2)])
+            Err(vec![short(2), WRONG_PATTERN.to_owned()])
         );
         assert_eq!(Holder { slug: slug("abc") }.validate(), Ok(()));
         assert_eq!(Plain { slug: slug("ab") }.validate(), Err(vec![short(2)]));
@@ -251,7 +251,7 @@ mod bounded_at_the_type_and_the_field {
         );
         assert_eq!(
             Untagged::Named { slug: slug("AB") }.validate(),
-            Err(vec![WRONG_PATTERN.to_owned(), short(2)])
+            Err(vec![short(2), WRONG_PATTERN.to_owned()])
         );
     }
 
@@ -263,7 +263,7 @@ mod bounded_at_the_type_and_the_field {
         );
         assert_eq!(
             Tagged::Named { slug: slug("AB") }.validate(),
-            Err(vec![WRONG_PATTERN.to_owned(), short(2)])
+            Err(vec![short(2), WRONG_PATTERN.to_owned()])
         );
     }
 
@@ -272,8 +272,8 @@ mod bounded_at_the_type_and_the_field {
         assert_eq!(
             Tuple(slug("AB")).validate(),
             Err(vec![
-                "does not match pattern '^[a-z]+$'".to_owned(),
                 "too short: minimum length is 3, got 2".to_owned(),
+                "does not match pattern '^[a-z]+$'".to_owned(),
             ])
         );
     }

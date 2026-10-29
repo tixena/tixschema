@@ -312,12 +312,12 @@ fn a_bound_on_a_declared_type_measures_the_text_the_type_answers() {
              violations = mutableListOf<String>(); {}; {}; {}; {}; {}; {}; return violations }}; \
              private fun Any?.validate(): List<String> = emptyList(); {TEXT}; {UNDER} }} {}",
             kept("Entry"),
-            asked_statement("late", "'late': ", 3),
             held_statement("late"),
-            asked_statement("slug", "'slug': ", 3),
+            asked_statement("late", "'late': ", 3),
             held_statement("slug"),
-            asked_statement("titled", "'titled': ", 2),
+            asked_statement("slug", "'slug': ", 3),
             held_statement("titled"),
+            asked_statement("titled", "'titled': ", 2),
             serializers("Entry")
         )
     );
