@@ -659,12 +659,28 @@ fn nullable_ts_optional_conflict_ok_when_only_one_set() {
     check_nullable_ts_optional_conflict(&ModelSchemaPropMeta::default()).unwrap();
 }
 
+#[rustversion::since(1.98)]
+fn mapped_or_default<T, U>(value: Option<T>, map: impl FnOnce(T) -> U) -> U
+where
+    U: Default,
+{
+    value.map_or_default(map)
+}
+
+#[rustversion::before(1.98)]
+fn mapped_or_default<T, U>(value: Option<T>, map: impl FnOnce(T) -> U) -> U
+where
+    U: Default,
+{
+    value.map(map).unwrap_or_default()
+}
+
 /// Runs the guard over the sole field of `item`, deriving `is_optional` and `is_nullable` the way
 /// the generator does rather than re-sniffing the type.
 #[cfg(feature = "serde")]
 fn guard_result(item: &syn::ItemStruct) -> Result<(), syn::Error> {
     let field = item.fields.iter().next().unwrap();
-    let field_name = field.ident.as_ref().map_or_default(ToString::to_string);
+    let field_name = mapped_or_default(field.ident.as_ref(), ToString::to_string);
     let field_def = get_field_def(&field_name, &field.ty, "");
     let is_nullable = super::parse_model_schema_prop_attributes(&field.attrs).nullable;
     check_optional_field_serialization(field, field_def.stands_for_an_option(), is_nullable)
@@ -684,7 +700,7 @@ fn nullable_guard_result(item: &syn::ItemStruct) -> Result<(), syn::Error> {
 #[cfg(feature = "serde")]
 fn omitted_key_guard_result(item: &syn::ItemStruct) -> Result<(), syn::Error> {
     let field = item.fields.iter().next().unwrap();
-    let field_name = field.ident.as_ref().map_or_default(ToString::to_string);
+    let field_name = mapped_or_default(field.ident.as_ref(), ToString::to_string);
     let field_def = get_field_def(&field_name, &field.ty, "");
     check_omitted_key_is_readable(
         field,
@@ -1652,7 +1668,7 @@ fn variant_field_defs(source: &str, variant_name: &str) -> Vec<super::FieldDef> 
         .filter(|variant| variant.ident == variant_name)
         .flat_map(|variant| variant.fields.iter())
         .map(|field| {
-            let name = field.ident.as_ref().map_or_default(ToString::to_string);
+            let name = mapped_or_default(field.ident.as_ref(), ToString::to_string);
             get_field_def(&name, &field.ty, "")
         })
         .collect()
@@ -2196,8 +2212,10 @@ fn flattening_a_registered_plain_enum_is_rejected() {
     record_plain_enum("Payload", false);
 
     let rejected: syn::Field = syn::parse_quote! { pub tone: Hue };
-    let error = super::flattened_field_guard_error(&rejected, "Holder")
-        .map_or_default(|tokens| tokens.to_string());
+    let error = mapped_or_default(
+        super::flattened_field_guard_error(&rejected, "Holder"),
+        |tokens| tokens.to_string(),
+    );
     assert!(error.contains("field `tone`"), "got: {error}");
     assert!(error.contains("`Holder`"), "got: {error}");
     assert!(error.contains("`Hue`"), "got: {error}");
@@ -5403,7 +5421,7 @@ fn cfg_attr_without_serde_leaves_an_enum_alone() {
 #[cfg(feature = "serde")]
 fn field_cfg_attr_error(item: &syn::ItemStruct) -> Option<String> {
     let field = item.fields.iter().next()?;
-    let name = field.ident.as_ref().map_or_default(ToString::to_string);
+    let name = mapped_or_default(field.ident.as_ref(), ToString::to_string);
     parse_serde_field_attributes(&field.attrs)
         .cfg_attr_rejection
         .as_ref()
@@ -5429,7 +5447,7 @@ fn cfg_attr_wrapped_serde_on_a_field_is_rejected() {
 /// refusal.
 fn field_undescribable_std_refusal(item: &syn::ItemStruct) -> Option<syn::Error> {
     let field = item.fields.iter().next()?;
-    let name = field.ident.as_ref().map_or_default(ToString::to_string);
+    let name = mapped_or_default(field.ident.as_ref(), ToString::to_string);
     let field_def = get_field_def(&name, &field.ty, "");
     check_undescribable_std_field(field, &field_def, &field_label(&name)).err()
 }
@@ -7855,7 +7873,7 @@ fn a_container_short_of_its_wire_arity_still_falls_through_as_a_sibling() {
 /// the same channel that carries them to the emitted item.
 fn field_prop_guard_errors_in_scope(item: &syn::ItemStruct, parameters: &[String]) -> Vec<String> {
     let field = item.fields.iter().next().unwrap();
-    let name = field.ident.as_ref().map_or_default(ToString::to_string);
+    let name = mapped_or_default(field.ident.as_ref(), ToString::to_string);
     let written = get_field_def(&name, &field.ty, "");
     let mut rendered = written.clone();
     rendered.erase_type_parameters(parameters);
@@ -8933,7 +8951,7 @@ fn a_parameter_in_scope_only_refuses_the_field_that_carries_a_bound() {
 /// `parameters`.
 fn field_docs_after_meta_in_scope(item: &syn::ItemStruct, parameters: &[String]) -> String {
     let field = item.fields.iter().next().unwrap();
-    let name = field.ident.as_ref().map_or_default(ToString::to_string);
+    let name = mapped_or_default(field.ident.as_ref(), ToString::to_string);
     let mut field_def = get_field_def(&name, &field.ty, "");
     field_def.erase_type_parameters(parameters);
     let meta = super::parse_model_schema_prop_attributes(&field.attrs);

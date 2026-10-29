@@ -7137,10 +7137,7 @@ fn collect_struct_fields(
         };
         let (mut f_def, validation_fn, validate_body, field_guard_errors) =
             process_field(&ctx, field, index, &mut deferred_attrs);
-        let rust_name = field
-            .ident
-            .as_ref()
-            .map_or_default(|ident| ident.unraw().to_string());
+        let rust_name = field_ident_string(field);
         let serde_default = (container.serde_default)(&rust_name);
         #[cfg(any(feature = "zod", feature = "jsonschema"))]
         f_def.serde_default.clone_from(&serde_default);
@@ -10907,6 +10904,22 @@ fn item_plain_doc_lines(doc_lines: &[String]) -> Vec<String> {
         .collect()
 }
 
+#[rustversion::since(1.98)]
+fn flattened_or_empty(
+    docs_vec: Option<&[String]>,
+    flatten: impl FnOnce(&[String]) -> Vec<String>,
+) -> Vec<String> {
+    docs_vec.map_or_default(flatten)
+}
+
+#[rustversion::before(1.98)]
+fn flattened_or_empty(
+    docs_vec: Option<&[String]>,
+    flatten: impl FnOnce(&[String]) -> Vec<String>,
+) -> Vec<String> {
+    docs_vec.map(flatten).unwrap_or_default()
+}
+
 /// An item's doc lines, flattened the way the calling surface reads them, or the exported name
 /// (not the declared one) when it says nothing — so a `JSDoc` header never contradicts the
 /// `export type` line beneath it.
@@ -10915,7 +10928,7 @@ fn item_lines_or_name(
     item_name: &str,
     flatten: impl FnOnce(&[String]) -> Vec<String>,
 ) -> Vec<String> {
-    let lines = docs_vec.map_or_default(flatten);
+    let lines = flattened_or_empty(docs_vec, flatten);
     if lines.is_empty() {
         vec![item_name.to_owned()]
     } else {
@@ -18400,11 +18413,21 @@ fn check_nullable_ts_optional_conflict(flags: &ModelSchemaPropMeta) -> Result<()
 }
 
 /// The field's name as serde reads it, with no raw prefix; empty for a positional slot.
+#[rustversion::since(1.98)]
 fn field_ident_string(field: &Field) -> String {
     field
         .ident
         .as_ref()
         .map_or_default(|ident| ident.unraw().to_string())
+}
+
+#[rustversion::before(1.98)]
+fn field_ident_string(field: &Field) -> String {
+    field
+        .ident
+        .as_ref()
+        .map(|ident| ident.unraw().to_string())
+        .unwrap_or_default()
 }
 
 /// Hands the field def the two serde facts the object surfaces spend: whether the field's value

@@ -320,6 +320,17 @@ fn error_shape(published: &str, shape: &HttpShape, error: &Type) -> SuccessShape
     }
 }
 
+#[rustversion::since(1.98)]
+fn declaration_line(aux: Option<String>) -> String {
+    aux.map_or_default(|declared| format!("{declared}\n"))
+}
+
+#[rustversion::before(1.98)]
+fn declaration_line(aux: Option<String>) -> String {
+    aux.map(|declared| format!("{declared}\n"))
+        .unwrap_or_default()
+}
+
 fn result_interface(named: &str, operation: &OperationDef) -> Option<String> {
     let OperationOutcome::Reply { error, success } = &operation.outcome else {
         return None;
@@ -331,9 +342,7 @@ fn result_interface(named: &str, operation: &OperationDef) -> Option<String> {
         (String::new(), format!("  data object Ok : {published}"))
     } else {
         let shape_info = success_shape(&published, &shape, success);
-        let aux = shape_info
-            .aux_declaration
-            .map_or_default(|declared| format!("{declared}\n"));
+        let aux = declaration_line(shape_info.aux_declaration);
         (
             aux,
             format!(
@@ -343,9 +352,7 @@ fn result_interface(named: &str, operation: &OperationDef) -> Option<String> {
         )
     };
     let error_info = error_shape(&published, &shape, error);
-    let error_aux = error_info
-        .aux_declaration
-        .map_or_default(|declared| format!("{declared}\n"));
+    let error_aux = declaration_line(error_info.aux_declaration);
     let error_ty = error_info.type_name;
     let aux = format!("{ok_aux}{error_aux}");
     Some(format!(

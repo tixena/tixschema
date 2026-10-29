@@ -292,17 +292,35 @@ fn bound_sides(nested: &ParseNestedMeta<'_>) -> syn::Result<(Option<LitStr>, Opt
 
 /// The predicates a `bound` lists, none where its text is no list of predicates: serde's derive
 /// refuses that text itself.
+#[rustversion::since(1.98)]
 fn predicates_of(written: &LitStr) -> Vec<WherePredicate> {
     written
         .parse_with(Punctuated::<WherePredicate, Token![,]>::parse_terminated)
         .map_or_default(|listed| listed.into_iter().collect())
 }
 
+#[rustversion::before(1.98)]
+fn predicates_of(written: &LitStr) -> Vec<WherePredicate> {
+    written
+        .parse_with(Punctuated::<WherePredicate, Token![,]>::parse_terminated)
+        .map(|listed| listed.into_iter().collect())
+        .unwrap_or_default()
+}
+
 /// The lifetimes a `borrow = "'a + 'b"` lists.
+#[rustversion::since(1.98)]
 fn lifetimes_of(written: &LitStr) -> Vec<Lifetime> {
     written
         .parse_with(Punctuated::<Lifetime, Token![+]>::parse_terminated)
         .map_or_default(|listed| listed.into_iter().collect())
+}
+
+#[rustversion::before(1.98)]
+fn lifetimes_of(written: &LitStr) -> Vec<Lifetime> {
+    written
+        .parse_with(Punctuated::<Lifetime, Token![+]>::parse_terminated)
+        .map(|listed| listed.into_iter().collect())
+        .unwrap_or_default()
 }
 
 /// Every lifetime a type writes that a value of it could borrow for.

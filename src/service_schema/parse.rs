@@ -1016,11 +1016,27 @@ fn operation_outcome(
     }
 }
 
+#[rustversion::since(1.98)]
+fn mapped_or_default<T, U>(value: Option<T>, map: impl FnOnce(T) -> U) -> U
+where
+    U: Default,
+{
+    value.map_or_default(map)
+}
+
+#[rustversion::before(1.98)]
+fn mapped_or_default<T, U>(value: Option<T>, map: impl FnOnce(T) -> U) -> U
+where
+    U: Default,
+{
+    value.map(map).unwrap_or_default()
+}
+
 fn parse_operation(operation: &TraitItemFn, context: &Ident) -> Result<OperationDef, syn::Error> {
     let directive = OperationDirective::read(&operation.attrs)?;
     // `header_in` and `part` each claim one ordinary argument beside the message, out of the same
     // pool: neither becomes a field on the message [`operation_inputs`] declares one from.
-    let extra_claims: HashSet<String> = directive.http.as_ref().map_or_default(|raw| {
+    let extra_claims: HashSet<String> = mapped_or_default(directive.http.as_ref(), |raw| {
         raw.header_in
             .iter()
             .map(|(_, parameter)| written(parameter))
@@ -3106,8 +3122,8 @@ fn json_positions(operation: &OperationDef) -> Vec<(String, &Type)> {
         positions.push((format!("request part `{}`", part.name), &part.ty));
     }
     if let OperationOutcome::Reply { error, success } = &operation.outcome {
-        let header_out = binding.map_or_default(|http| http.header_out.as_slice());
-        let error_header_out = binding.map_or_default(|http| http.error_header_out.as_slice());
+        let header_out = mapped_or_default(binding, |http| http.header_out.as_slice());
+        let error_header_out = mapped_or_default(binding, |http| http.error_header_out.as_slice());
         positions.extend(arm_positions("the reply", "reply", success, header_out));
         positions.extend(arm_positions("the fault", "fault", error, error_header_out));
     }
