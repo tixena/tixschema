@@ -12,12 +12,13 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::held_dates_models::{
-    AdjacentCountedTide, AdjacentPlainTide, Chime, Chimed, CountedTide, Pannier, Pendulum,
-    PlainChart, PlainTide, StowedChart, StowedTicker, Ticker, Tock, UntaggedCountedTide,
-    UntaggedPlainTide, adjacent_counted_tide_swift, adjacent_plain_tide_swift, chime_swift,
-    chimed_swift, counted_tide_swift, first, pannier_swift, pendulum_swift, plain_chart_swift,
-    plain_tide_swift, second, stowed_chart_swift, stowed_ticker_swift, ticker_swift, tock_swift,
-    untagged_counted_tide_swift, untagged_plain_tide_swift,
+    AdjacentCountedTide, AdjacentPlainTide, Chime, Chimed, CountedTide, FirstHolder, Pannier,
+    Pendulum, PlainChart, PlainTide, SecondHolder, StowedChart, StowedTicker, Ticker, Tock,
+    TwinHolder, UntaggedCountedTide, UntaggedPlainTide, adjacent_counted_tide_swift,
+    adjacent_plain_tide_swift, chime_swift, chimed_swift, counted_tide_swift, first,
+    first_holder_swift, pannier_swift, pendulum_swift, plain_chart_swift, plain_tide_swift, second,
+    second_holder_swift, stowed_chart_swift, stowed_ticker_swift, ticker_swift, tock_swift,
+    twin_holder_swift, untagged_counted_tide_swift, untagged_plain_tide_swift,
 };
 use super::run_swift_read::normalized;
 use super::runtime::judged;
@@ -168,6 +169,53 @@ fn struct_rows() -> Vec<Row> {
         ),
         read_row("a tuple struct", "Tock", &Tock(first(), 2)),
         read_row("a brand", "Chimed", &Chimed(first())),
+    ]
+}
+
+/// A holder's three fillings of [`Pannier`], each date in the text chrono writes.
+fn holder_rows() -> Vec<Row> {
+    let dated = || Pannier { held: first() };
+    let numbered = || Pannier {
+        held: HashMap::from([(1, "a".to_owned())]),
+    };
+    let paired = || Pannier {
+        held: ("p".to_owned(), 1),
+    };
+    vec![
+        read_row(
+            "a date, a map and a tuple filling one generic type in a holder",
+            "FirstHolder",
+            &FirstHolder {
+                dated: dated(),
+                numbered: numbered(),
+                paired: paired(),
+            },
+        ),
+        read_row(
+            "the same fillings in a second holder",
+            "SecondHolder",
+            &SecondHolder {
+                dated: dated(),
+                numbered: numbered(),
+                paired: paired(),
+            },
+        ),
+        read_row(
+            "two fields of one holder filling one generic type the same way",
+            "TwinHolder",
+            &TwinHolder {
+                dated: dated(),
+                later: Pannier { held: second() },
+                numbered: numbered(),
+                other_numbered: Pannier {
+                    held: HashMap::from([(2, "b".to_owned())]),
+                },
+                other_paired: Pannier {
+                    held: ("q".to_owned(), 2),
+                },
+                paired: paired(),
+            },
+        ),
     ]
 }
 
@@ -363,6 +411,7 @@ fn refused_rows() -> Vec<Row> {
 #[test]
 fn each_date_held_in_a_slot_a_map_or_a_type_argument_reads_and_writes_in_swift_as_serde_does() {
     let mut rows = struct_rows();
+    rows.extend(holder_rows());
     rows.extend(variant_rows());
     rows.extend(counted_rows());
     rows.extend(refused_rows());
@@ -386,6 +435,9 @@ fn each_date_held_in_a_slot_a_map_or_a_type_argument_reads_and_writes_in_swift_a
         pannier_swift::swift_definition(),
         pendulum_swift::swift_definition(),
         chime_swift::swift_definition(),
+        first_holder_swift::swift_definition(),
+        second_holder_swift::swift_definition(),
+        twin_holder_swift::swift_definition(),
         plain_chart_swift::swift_definition(),
         stowed_chart_swift::swift_definition(),
         plain_tide_swift::swift_definition(),

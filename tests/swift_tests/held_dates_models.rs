@@ -49,6 +49,36 @@ pub struct PlainChart {
     pub swung: Pendulum<Vec<DateTime<Utc>>, Option<DateTime<Utc>>>,
 }
 
+/// What a date, a tuple and a map keyed by a number fill, in a holder of its own.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct FirstHolder {
+    pub dated: Pannier<DateTime<Utc>>,
+    pub numbered: Pannier<HashMap<u32, String>>,
+    pub paired: Pannier<(String, u8)>,
+}
+
+/// [`FirstHolder`] beside it, which fills one generic type the same way at the same position.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SecondHolder {
+    pub dated: Pannier<DateTime<Utc>>,
+    pub numbered: Pannier<HashMap<u32, String>>,
+    pub paired: Pannier<(String, u8)>,
+}
+
+/// One holder whose two fields fill one generic type the same way at the same position.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct TwinHolder {
+    pub dated: Pannier<DateTime<Utc>>,
+    pub later: Pannier<DateTime<Utc>>,
+    pub numbered: Pannier<HashMap<u32, String>>,
+    pub other_numbered: Pannier<HashMap<u32, String>>,
+    pub other_paired: Pannier<(String, u8)>,
+    pub paired: Pannier<(String, u8)>,
+}
+
 /// [`PlainChart`] in a type that declares a parameter.
 #[model_schema(default_types(Stowed = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]

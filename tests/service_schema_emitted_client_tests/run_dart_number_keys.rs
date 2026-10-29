@@ -8,9 +8,10 @@
 use core::fmt::Write as _;
 
 use super::number_key_rows::{
-    adjacent_pier_dart, anchor_dart, beacon_dart, burgee_dart, cutter_dart, dinghy_dart,
-    gauge_dart, hull_dart, ketch_dart, lanyard_dart, moorings_dart, pennant_dart, pier_dart, rows,
-    rudder_dart, signal_dart, skiff_dart, slips_dart, sloop_dart, soundings_dart, yawl_dart,
+    adjacent_pier_dart, anchor_dart, beacon_dart, burgee_dart, cutter_dart, depths_dart,
+    dinghy_dart, gauge_dart, hull_dart, ketch_dart, lanyard_dart, moorings_dart, pennant_dart,
+    pier_dart, rows, rudder_dart, shoal_dart, signal_dart, skiff_dart, slips_dart, sloop_dart,
+    soundings_dart, yawl_dart,
 };
 use super::run_dart_validate::{dart, module};
 
@@ -44,6 +45,7 @@ fn definitions() -> Vec<String> {
         anchor_dart::dart_definition(),
         burgee_dart::dart_definition(),
         cutter_dart::dart_definition(),
+        depths_dart::dart_definition(),
         dinghy_dart::dart_definition(),
         gauge_dart::dart_definition(),
         hull_dart::dart_definition(),
@@ -52,6 +54,7 @@ fn definitions() -> Vec<String> {
         moorings_dart::dart_definition(),
         pennant_dart::dart_definition(),
         pier_dart::dart_definition(),
+        shoal_dart::dart_definition(),
         signal_dart::dart_definition(),
         skiff_dart::dart_definition(),
         slips_dart::dart_definition(),

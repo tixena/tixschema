@@ -319,7 +319,7 @@ fn the_tuple_and_the_map_of_a_field_declare_the_parameter_they_reach() {
              public var storage: [UInt32: Cask<Stowed>]; ",
             "result[key] = try Cask<Stowed>(swiftSchemaUnjudged: \
              container.superDecoder(forKey: codingKey)) }; ",
-            "public struct CaskArgument0Tuple<Stowed: Codable & Sendable>: Codable, Sendable { \
+            "public struct StackCaskArgument0Tuple<Stowed: Codable & Sendable>: Codable, Sendable { \
              let slot0: Stowed; let slot1: UInt8; ",
         ],
     );
@@ -333,7 +333,7 @@ fn every_type_position_names_the_helper_at_its_parameters() {
             "public struct Stack<Stowed: Codable & Sendable>: Codable, Sendable { \
              public let byCask: [UInt32: Cask<Stowed>]; public let byCount: [UInt32: UInt8]; \
              public let byNumber: [UInt32: Stowed]; \
-             public let cask: Cask<CaskArgument0Tuple<Stowed>>; \
+             public let cask: Cask<StackCaskArgument0Tuple<Stowed>>; \
              public let listed: [[UInt32: Stowed]]; public let marks: StackMarksTuple; \
              public let numberedPair: StackNumberedPairTuple<Stowed>; \
              public let pair: StackPairTuple<Stowed>; \
@@ -342,7 +342,7 @@ fn every_type_position_names_the_helper_at_its_parameters() {
              container.superDecoder(forKey: .byCask)).storage; ",
             "let wireByNumber = try container.decode(StackByNumberKeyedMap<Stowed>.self, \
              forKey: .byNumber); self.byNumber = wireByNumber.storage; ",
-            "self.cask = try Cask<CaskArgument0Tuple<Stowed>>(swiftSchemaUnjudged: \
+            "self.cask = try Cask<StackCaskArgument0Tuple<Stowed>>(swiftSchemaUnjudged: \
              container.superDecoder(forKey: .cask)); ",
             "let wireListed = try container.decode([StackListedKeyedMap<Stowed>].self, \
              forKey: .listed); self.listed = wireListed.map { $0.storage }; ",

@@ -21,9 +21,10 @@ use crate::bound_message::swift_literal_text;
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{
-    brand_field, derives_hash, has_serde_skip_serializing, keys_taken_when_flattened,
-    parse_serde_key_omission, struct_tag, tag_and_content_when_flattened,
-    variant_names_when_flattened, variants_on_the_wire, written_slots,
+    brand_field, derives_hash, derives_partial_eq, has_serde_skip_serializing,
+    keys_taken_when_flattened, parse_serde_key_omission, struct_tag,
+    tag_and_content_when_flattened, variant_names_when_flattened, variants_on_the_wire,
+    written_slots,
 };
 use crate::features::text_forms::TextForm;
 use crate::field_type::{
@@ -47,6 +48,10 @@ pub const CHRONO_WHOLE_SECONDS: &str = ".replacingOccurrences(of: \".000Z\", wit
 /// The options of the formatter that reads and writes a fraction of a second.
 #[cfg(feature = "chrono")]
 pub const FRACTIONAL_OPTIONS: &str = ".withInternetDateTime, .withFractionalSeconds";
+
+/// The regex a float key's text must match whole: the number grammar JSON writes, which Swift's own
+/// parse is wider than (`+1`, `.5`, `0x10`).
+const JSON_NUMBER: &str = "^-?(0|[1-9][0-9]*)([.][0-9]+)?([eE][+-]?[0-9]+)?$";
 
 /// The words Swift reserves in a declaration, a statement or an expression. A word reserved in one
 /// context only, such as `get` or `type`, is not among them.
@@ -978,6 +983,8 @@ fn swift_map_key_scalar(key: &FieldDef) -> String {
         FieldDefType::I32 => "Int32".to_owned(),
         FieldDefType::I64 => "Int64".to_owned(),
         FieldDefType::Isize => "Int".to_owned(),
+        FieldDefType::F32 => "Float".to_owned(),
+        FieldDefType::F64 => "Double".to_owned(),
         FieldDefType::SiblingType(name, _) => {
             lookup_swift_name(name).unwrap_or_else(|| name.clone())
         }
@@ -992,8 +999,6 @@ fn swift_map_key_scalar(key: &FieldDef) -> String {
         | FieldDefType::Result(_, _)
         | FieldDefType::Tuple(_)
         | FieldDefType::U64
-        | FieldDefType::F32
-        | FieldDefType::F64
         | FieldDefType::Usize => "String".to_owned(),
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => "String".to_owned(),
@@ -1036,6 +1041,16 @@ fn swift_map_key_codec(key: &FieldDef, held: &str) -> (Option<String>, String) {
                 format!("String({held})"),
             )
         }
+        FieldDefType::F32 | FieldDefType::F64 => {
+            let swift_type = swift_map_key_scalar(key);
+            (
+                Some(format!(
+                    "(wireKey.range(of: \"{JSON_NUMBER}\", options: .regularExpression) != nil \
+                     ? {swift_type}(wireKey).flatMap {{ $0.isFinite ? $0 : nil }} : nil)"
+                )),
+                format!("\"\\({held})\""),
+            )
+        }
         FieldDefType::Char => (None, forms::sent_call(TextForm::Char, held)),
         FieldDefType::String
         | FieldDefType::StringLiteral(_)
@@ -1048,8 +1063,6 @@ fn swift_map_key_codec(key: &FieldDef, held: &str) -> (Option<String>, String) {
         | FieldDefType::Result(_, _)
         | FieldDefType::Tuple(_)
         | FieldDefType::U64
-        | FieldDefType::F32
-        | FieldDefType::F64
         | FieldDefType::Usize => (None, held.to_owned()),
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => (None, held.to_owned()),
@@ -1750,8 +1763,8 @@ fn slot_resolve(written: &FieldDef, name_hint: &str, aux: &mut Vec<String>) -> (
 /// A `SiblingType` leaf: the referenced item's own published name, with generic arguments rendered
 /// the same way a field's own type is. An argument whose read calls the date helpers, or holds an
 /// array to its length, is held in a wrapper that does so, as the type it fills reads it through
-/// `Decodable`. The struct of a range argument, and the wrapper of an argument that holds an array
-/// to its length, are named from `name_hint`, the holder's field, so no two holders declare one.
+/// `Decodable`. Every helper an argument needs is named from `name_hint`, the holder's field, so no
+/// two holders declare one.
 fn sibling_shape(
     name: &str,
     generics: &[FieldDef],
@@ -1767,16 +1780,7 @@ fn sibling_shape(
         .enumerate()
         .map(|(index, argument)| {
             let def = arrayed(argument.clone());
-            let hint = if read::holds_a_length(&def)
-                || holds_wrapped_map(&def)
-                || matches!(
-                    def.field_type,
-                    FieldDefType::Range(..) | FieldDefType::Result(..)
-                ) {
-                format!("{name_hint}Argument{index}")
-            } else {
-                format!("{class_name}Argument{index}")
-            };
+            let hint = format!("{name_hint}Argument{index}");
             let (real_type, shape) = swift_resolve(&def, &hint, aux);
             converted_type(&real_type, &Shaped { def, hint, shape }, aux)
         })
@@ -3322,7 +3326,7 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
                 text_member: validate::brand_text_member(&value_field),
             },
             &rules,
-            derives_hash(&item_struct.attrs),
+            hashes_as_key(&item_struct.attrs, &value_field),
         );
     }
     if matches!(item_struct.fields, Fields::Unnamed(_)) {
@@ -3416,18 +3420,29 @@ fn wrapper_validate(rust_ident: &str, wrapped: &Wrapped, rules: &[String]) -> St
     validate
 }
 
+/// Whether the Rust item can key a map by `value_field`: it derives `Hash`, or it holds a float,
+/// which has no `Hash`, and derives `PartialEq`.
+fn hashes_as_key(attrs: &[syn::Attribute], value_field: &FieldDef) -> bool {
+    derives_hash(attrs)
+        || (derives_partial_eq(attrs)
+            && matches!(
+                keys::leaf(value_field).field_type,
+                FieldDefType::F32 | FieldDefType::F64
+            ))
+}
+
 /// Records the brand `rust_ident` for the maps keyed by it below, and answers whether its Swift
-/// struct declares `Hashable`: where the Rust item derives `Hash`, declares no parameter and holds
-/// a value Swift hashes by itself.
+/// struct declares `Hashable`: where the Rust item can key a map (`hashes`), declares no parameter
+/// and holds a value Swift hashes by itself.
 fn note_brand_key(
     rust_ident: &str,
     wrapped: &Wrapped,
     value_field: &FieldDef,
     generic_params: &str,
-    derives_hash: bool,
+    hashes: bool,
 ) -> bool {
     let declared = generic_params.is_empty();
-    let hashable = derives_hash && declared && keys::hashable(value_field);
+    let hashable = hashes && declared && keys::hashable(value_field);
     keys::note_brand(
         rust_ident,
         (!matches!(wrapped, Wrapped::Tuple) && declared).then_some((value_field, hashable)),
@@ -3446,7 +3461,7 @@ fn value_wrapper_tokens(
     value_field: &FieldDef,
     wrapped: &Wrapped,
     rules: &[String],
-    derives_hash: bool,
+    hashes: bool,
 ) -> TokenStream {
     let rust_ident = ident.to_string();
     let export_name = compute_item_export_name(&rust_ident, args.name_override);
@@ -3457,13 +3472,7 @@ fn value_wrapper_tokens(
     }
 
     let generic_params = swift_generic_params(generics);
-    let hashable = note_brand_key(
-        &rust_ident,
-        wrapped,
-        value_field,
-        &generic_params,
-        derives_hash,
-    );
+    let hashable = note_brand_key(&rust_ident, wrapped, value_field, &generic_params, hashes);
     let mut aux = Vec::new();
     let (real_type, shaped) = if matches!(wrapped, Wrapped::Slot) {
         slot_resolve(value_field, &export_name, &mut aux)
@@ -3669,7 +3678,7 @@ fn tuple_struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>)
             &value_field,
             &Wrapped::Slot,
             &rules,
-            derives_hash(&item_struct.attrs),
+            hashes_as_key(&item_struct.attrs, &value_field),
         );
     }
     let slots: Vec<FieldDef> = unnamed

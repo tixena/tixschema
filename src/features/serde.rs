@@ -426,6 +426,12 @@ pub fn derives_hash(attrs: &[Attribute]) -> bool {
     derives(attrs, "Hash")
 }
 
+/// Whether `PartialEq` is among what the item derives, in any spelling of the path.
+#[cfg(feature = "swift")]
+pub fn derives_partial_eq(attrs: &[Attribute]) -> bool {
+    derives(attrs, "PartialEq")
+}
+
 /// Whether a derive list of the item names a path that ends on `named`.
 fn derives(attrs: &[Attribute], named: &str) -> bool {
     attrs
