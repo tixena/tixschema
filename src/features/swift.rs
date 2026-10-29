@@ -18,6 +18,7 @@ use syn::ext::IdentExt as _;
 use syn::{Field, Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
 
 use crate::bound_message::swift_literal_text;
+use crate::features::JSON_NUMBER;
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{
@@ -48,10 +49,6 @@ pub const CHRONO_WHOLE_SECONDS: &str = ".replacingOccurrences(of: \".000Z\", wit
 /// The options of the formatter that reads and writes a fraction of a second.
 #[cfg(feature = "chrono")]
 pub const FRACTIONAL_OPTIONS: &str = ".withInternetDateTime, .withFractionalSeconds";
-
-/// The regex a float key's text must match whole: the number grammar JSON writes, which Swift's own
-/// parse is wider than (`+1`, `.5`, `0x10`).
-const JSON_NUMBER: &str = "^-?(0|[1-9][0-9]*)([.][0-9]+)?([eE][+-]?[0-9]+)?$";
 
 /// The words Swift reserves in a declaration, a statement or an expression. A word reserved in one
 /// context only, such as `get` or `type`, is not among them.

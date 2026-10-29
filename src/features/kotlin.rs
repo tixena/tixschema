@@ -1112,24 +1112,22 @@ fn kotlin_serializer_expr(field: &FieldDef, type_parameters: &[String]) -> Strin
     listed_serializer(field, scalar)
 }
 
-/// The serializer a map's key is read through: a number key is the text serde writes it as, which
-/// the library reads as it is; a `bool` key is read through a serializer that refuses any other
-/// case than `true` and `false`; a key that reaches a number or a `bool` through an alias, or
-/// through a brand, is read as the number or the `bool` is.
+/// The serializer a map's key is read through: an integer key is the text serde writes it as, which
+/// the library reads as it is; a `bool` key refuses any other case than `true` and `false`, and a
+/// float key any text outside JSON's number grammar; a key that reaches a number or a `bool`
+/// through an alias, or through a brand, is read as the number or the `bool` is.
 pub fn key_serializer_expr(key: &FieldDef, type_parameters: &[String]) -> String {
-    match texts::Primitive::of(key).filter(|_| key.array_depth == 0) {
-        Some(texts::Primitive::Bool) => texts::number_serializer(texts::Primitive::BoolKey),
-        Some(_) => format!("serializer<{}>()", kotlin_typename(key)),
-        None => match texts::key_leaf(key) {
-            Some(texts::KeyLeaf::Brand(brand)) => key_object_name(&brand),
-            Some(texts::KeyLeaf::Primitive(texts::Primitive::Bool)) => {
-                texts::number_serializer(texts::Primitive::BoolKey)
-            }
-            Some(texts::KeyLeaf::Primitive(primitive)) => {
-                format!("serializer<{}>()", primitive.kotlin_type())
-            }
-            None => kotlin_serializer_expr(key, type_parameters),
-        },
+    let leaf = texts::Primitive::of(key)
+        .filter(|_| key.array_depth == 0)
+        .map(texts::KeyLeaf::Primitive)
+        .or_else(|| texts::key_leaf(key));
+    match leaf {
+        Some(texts::KeyLeaf::Brand(brand)) => key_object_name(&brand),
+        Some(texts::KeyLeaf::Primitive(primitive)) => texts::as_key(primitive).map_or_else(
+            || format!("serializer<{}>()", primitive.kotlin_type()),
+            texts::number_serializer,
+        ),
+        None => kotlin_serializer_expr(key, type_parameters),
     }
 }
 
@@ -1149,13 +1147,12 @@ fn key_object(export_name: &str, leaf: &texts::KeyLeaf) -> String {
             lookup_kotlin_name(inner).unwrap_or_else(|| inner.clone()),
             key_object_name(inner),
         ),
-        texts::KeyLeaf::Primitive(texts::Primitive::Bool) => (
-            "Boolean".to_owned(),
-            texts::number_serializer(texts::Primitive::BoolKey),
-        ),
         texts::KeyLeaf::Primitive(primitive) => (
             primitive.kotlin_type().to_owned(),
-            format!("serializer<{}>()", primitive.kotlin_type()),
+            texts::as_key(*primitive).map_or_else(
+                || format!("serializer<{}>()", primitive.kotlin_type()),
+                texts::number_serializer,
+            ),
         ),
     };
     format!(

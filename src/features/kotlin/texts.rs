@@ -18,6 +18,7 @@ use core::fmt::Write as _;
 use std::collections::{HashMap, HashSet};
 
 use super::{KOTLIN_TUPLE_AUX, KOTLIN_TUPLE_COUNTER, kotlin_template_text, validate};
+use crate::features::JSON_NUMBER;
 use crate::features::text_forms::TextForm;
 use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
 
@@ -43,7 +44,11 @@ pub enum Primitive {
     /// A `bool` that is a map's key: the text `true` or `false`, in that case alone.
     BoolKey,
     F32,
+    /// An `f32` that is a map's key: read only from the text serde reads, and only when finite.
+    F32Key,
     F64,
+    /// An `f64` that is a map's key, read as [`Self::F32Key`] is.
+    F64Key,
     I16,
     I32,
     I64,
@@ -110,8 +115,8 @@ impl Primitive {
             Self::U8 => ("UByte", "u8"),
             Self::U16 => ("UShort", "u16"),
             Self::U32 => ("UInt", "u32"),
-            Self::F32 => ("Float", "f32"),
-            Self::F64 => ("Double", "f64"),
+            Self::F32 | Self::F32Key => ("Float", "f32"),
+            Self::F64 | Self::F64Key => ("Double", "f64"),
             #[cfg(feature = "chrono")]
             Self::Millis => ("Long", "a unix timestamp in milliseconds"),
         }
@@ -132,6 +137,20 @@ fn number_declared(primitive: Primitive, named: &str) -> String {
              json.decodeJsonElement(); return when ((element as? JsonPrimitive)?.takeIf {{ \
              it.isString }}?.content) {{ \"true\" -> true; \"false\" -> false; else -> throw \
              SerializationException(\"invalid type: \" + element + \", expected {expected}\") }} }} }}"
+        );
+    }
+    if matches!(primitive, Primitive::F32Key | Primitive::F64Key) {
+        return format!(
+            "object {named} : KSerializer<{kotlin}> {{ private val held = serializer<{kotlin}>(); \
+             private val grammar = Regex(\"{JSON_NUMBER}\"); override val descriptor: \
+             SerialDescriptor = held.descriptor; override fun serialize(encoder: Encoder, value: \
+             {kotlin}) = held.serialize(encoder, value); override fun deserialize(decoder: \
+             Decoder): {kotlin} {{ val json = decoder as? JsonDecoder ?: return \
+             held.deserialize(decoder); val element = json.decodeJsonElement(); val text = \
+             (element as? JsonPrimitive)?.takeIf {{ it.isString }}?.content; val read = \
+             text?.takeIf {{ grammar.matches(it) }}?.to{kotlin}(); if (read == null || \
+             !read.isFinite()) throw SerializationException(\"invalid type: \" + element + \", \
+             expected {expected}\"); return read }} }}"
         );
     }
     format!(
@@ -276,7 +295,9 @@ fn walk(field: &FieldDef, written: bool, sought: fn(&FieldDef, bool) -> bool, ke
 /// an alias that reaches a number or a `bool`.
 fn is_a_form(field: &FieldDef, key: bool) -> bool {
     TextForm::of(field).is_some()
-        || Primitive::of(field).is_some_and(|primitive| !key || primitive == Primitive::Bool)
+        || Primitive::of(field).is_some_and(|primitive| {
+            !key || matches!(primitive, Primitive::Bool | Primitive::F32 | Primitive::F64)
+        })
         || (key
             && matches!(field.field_type, FieldDefType::SiblingType(_, _))
             && key_leaf(field).is_some())
@@ -363,6 +384,28 @@ pub fn serializer(form: TextForm) -> String {
         written.push((form, named.clone()));
         named
     })
+}
+
+/// The primitive a map key of `primitive` is read as: a `bool` and a float are read from text.
+pub const fn as_key(primitive: Primitive) -> Option<Primitive> {
+    match primitive {
+        Primitive::Bool => Some(Primitive::BoolKey),
+        Primitive::F32 => Some(Primitive::F32Key),
+        Primitive::F64 => Some(Primitive::F64Key),
+        Primitive::BoolKey
+        | Primitive::F32Key
+        | Primitive::F64Key
+        | Primitive::I16
+        | Primitive::I32
+        | Primitive::I64
+        | Primitive::I8
+        | Primitive::Isize
+        | Primitive::U16
+        | Primitive::U32
+        | Primitive::U8 => None,
+        #[cfg(feature = "chrono")]
+        Primitive::Millis => None,
+    }
 }
 
 /// The serializer a number or a `bool` is read through, declared once per item.
