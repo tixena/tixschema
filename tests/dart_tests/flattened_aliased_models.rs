@@ -6,9 +6,9 @@
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-use super::aliased_models::{
-    Careening, Scending, Surging, careening_schema, scending_schema, surging_schema, written_back,
-};
+use super::aliased_models::{Careening, Scending, Surging, written_back};
+#[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
+use super::aliased_models::{careening_schema, scending_schema, surging_schema};
 
 /// What [`Riding`] is read from: a variant's entry under its alias with a member under its alias,
 /// a variant of one value under its alias after the holder's member, a unit variant's entry over

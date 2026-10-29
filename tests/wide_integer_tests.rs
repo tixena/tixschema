@@ -10,6 +10,7 @@ extern crate alloc;
 mod models;
 
 #[cfg(test)]
+#[cfg(feature = "typescript")]
 #[path = "wide_integer_tests/keyed_models.rs"]
 mod keyed_models;
 
@@ -22,11 +23,12 @@ mod keyed;
 mod tests;
 
 #[cfg(test)]
+#[cfg(feature = "zod")]
 #[path = "wide_integer_tests/bigint_models.rs"]
 mod bigint_models;
 
 #[cfg(test)]
-#[cfg(not(any(feature = "swift", feature = "kotlin")))]
+#[cfg(all(feature = "zod", not(any(feature = "swift", feature = "kotlin"))))]
 #[path = "wide_integer_tests/bigint_u64_models.rs"]
 mod bigint_u64_models;
 

@@ -7,13 +7,14 @@ use alloc::rc::Rc;
 use alloc::sync::Arc;
 use core::any::type_name;
 
+#[cfg(feature = "zod")]
 use super::bigint_models::{
     Defaulted, EitherMany, EitherOne, Entry, Extremes, FarLines, FarPlain, Ledger, Lines, Narrow,
     NoLines, Positions,
 };
-#[cfg(feature = "chrono")]
+#[cfg(all(feature = "zod", feature = "chrono"))]
 use super::bigint_models::{Hooked, Stamped};
-#[cfg(not(any(feature = "swift", feature = "kotlin")))]
+#[cfg(all(feature = "zod", not(any(feature = "swift", feature = "kotlin"))))]
 use super::bigint_u64_models::{AccountNumber, Greatest, Keyed, Sizes, UnsignedDefault};
 
 /// Asserts that `zod` holds `expected`.

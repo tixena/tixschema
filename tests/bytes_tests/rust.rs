@@ -104,7 +104,7 @@ fn the_example_of_a_type_holding_bytes_is_the_array() {
 #[cfg(not(feature = "zod"))]
 #[test]
 fn the_example_type_is_declared() {
-    assert!(serde_json::to_string(&BytesExample { data: vec![1] }).is_ok());
+    serde_json::to_string(&BytesExample { data: vec![1] }).unwrap();
 }
 
 #[cfg(feature = "zod")]
