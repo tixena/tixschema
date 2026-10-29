@@ -237,6 +237,10 @@ check-all:
     cargo hack check --manifest-path bson3/Cargo.toml --feature-powerset
     @echo "✅ All feature combinations check passed!"
 
+# Check the library on the minimum supported Rust version.
+check-msrv:
+    cargo +1.91 check --all-features
+
 # Audit the dependencies each package resolves, with cargo-audit; what CI runs. Each package's lock
 # file is generated afresh and scanned on its own.
 audit:

@@ -7,7 +7,6 @@
 
 #![cfg(feature = "kotlin")]
 
-use alloc::borrow::Cow;
 use alloc::collections::BTreeMap;
 use core::fmt::Write as _;
 
@@ -51,6 +50,9 @@ fun takingParcels(value: ClosedDock): List<String> =
 
 fun <CodeType> withACode(value: Crate<CodeType>): List<String> =
     if (value.codes.isEmpty()) listOf("'codes': a crate holds at least one code") else emptyList()
+
+fun <IdType> withEntries(value: Casket<IdType>): List<String> =
+    if (value.entries.isEmpty()) listOf("'entries': a casket holds at least one entry") else emptyList()
 
 fun rated(value: Grade): List<String> =
     if (value == Grade.Unrated) listOf("a parcel is rated") else emptyList()
@@ -403,6 +405,57 @@ pub struct Crate<CodeType> {
     pub label: String,
 }
 
+/// A brand over a list, held by the members below.
+#[model_schema(no_display)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct Slogans(pub Vec<String>);
+
+/// An alias of a list.
+#[model_schema()]
+pub type Mottos = Vec<String>;
+
+/// A brand over a brand over a list, with a length of its own.
+#[model_schema(no_display, minLength = 1)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct SomeSlogans(pub Slogans);
+
+/// A generic brand whose declared default is a list.
+#[model_schema(no_display, minLength = 1, default_types(T = Vec<String>))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct Carried<T>(pub T);
+
+/// Members typed with the names above, each under a length of its own.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Poster {
+    pub carried: Carried<Vec<String>>,
+    #[model_schema_prop(minLength = 1)]
+    pub mottos: Mottos,
+    #[model_schema_prop(minLength = 1, maxLength = 2)]
+    pub slogans: Slogans,
+    #[model_schema_prop(maxLength = 2)]
+    pub some: SomeSlogans,
+}
+
+/// A type with a parameter, held by a member of another that reaches the same parameter.
+#[model_schema(default_types(IdType = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Casket<IdType> {
+    pub entries: Vec<String>,
+    pub owner_id: IdType,
+}
+
+/// A type with a parameter whose member holds a generic type at that parameter, under a check.
+#[model_schema(default_types(IdType = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Archive<IdType> {
+    #[model_schema_prop(check = ["withEntries"])]
+    pub casket: Casket<IdType>,
+}
+
 /// A member named after the method, one named after the list the method fills, and a member
 /// typed with a type declared below.
 #[model_schema()]
@@ -421,15 +474,6 @@ pub struct Probe {
 pub struct Later {
     #[model_schema_prop(minLength = 1)]
     pub label: String,
-}
-
-/// Rust publishes no text for a brand over a brand, and refuses a bound on a field typed with
-/// one. The fixture writes the text, so the declaration builds and Rust answers what Kotlin is
-/// held to.
-impl Badge {
-    pub fn model_schema_bound_text(&self) -> Cow<'_, str> {
-        Cow::Borrowed(&self.0.0)
-    }
 }
 
 fn without_duplicates(value: &[String]) -> Result<(), Vec<String>> {
@@ -479,6 +523,15 @@ fn taking_parcels(_value: &ClosedDock) -> Result<(), Vec<String>> {
 fn with_a_code<CodeType>(value: &Crate<CodeType>) -> Result<(), Vec<String>> {
     if value.codes.is_empty() {
         return Err(vec!["'codes': a crate holds at least one code".to_owned()]);
+    }
+    Ok(())
+}
+
+fn with_entries<IdType>(value: &Casket<IdType>) -> Result<(), Vec<String>> {
+    if value.entries.is_empty() {
+        return Err(vec![
+            "'entries': a casket holds at least one entry".to_owned(),
+        ]);
     }
     Ok(())
 }
@@ -920,6 +973,65 @@ fn entry_rows() -> Vec<Row> {
     ]
 }
 
+/// The rows of a type that holds another at its own parameter under a check, and of members typed
+/// with the name of a list or of a text under a length.
+fn counted_name_rows() -> Vec<Row> {
+    let archived = |entries: &[&str]| Archive::<String> {
+        casket: Casket {
+            entries: texts(entries),
+            owner_id: "o".to_owned(),
+        },
+    };
+    let archived_by_number = Archive::<u32> {
+        casket: Casket {
+            entries: Vec::new(),
+            owner_id: 7,
+        },
+    };
+    let (unfilled, filled) = (archived(&[]), archived(&["a"]));
+    let poster = |slogans: usize, mottos: usize, some: usize, carried: usize| Poster {
+        slogans: Slogans(texts(&vec!["w"; slogans])),
+        mottos: texts(&vec!["w"; mottos]),
+        some: SomeSlogans(Slogans(texts(&vec!["w"; some]))),
+        carried: Carried(texts(&vec!["w"; carried])),
+    };
+    let (poster_kept, poster_empty, poster_wide) =
+        (poster(1, 1, 1, 1), poster(0, 0, 0, 0), poster(3, 1, 3, 1));
+    vec![
+        row("Poster", "Poster", &poster_kept, poster_kept.validate()),
+        row(
+            "Poster, no item",
+            "Poster",
+            &poster_empty,
+            poster_empty.validate(),
+        ),
+        row(
+            "Poster, too many items",
+            "Poster",
+            &poster_wide,
+            poster_wide.validate(),
+        ),
+        row(
+            "Archive<String>, no entry",
+            "Archive<String>",
+            &unfilled,
+            unfilled.validate(),
+        ),
+        row(
+            "Archive<String>",
+            "Archive<String>",
+            &filled,
+            filled.validate(),
+        ),
+        row(
+            "Archive<UInt>, no entry",
+            "Archive<UInt>",
+            &archived_by_number,
+            archived_by_number.validate(),
+        ),
+    ]
+}
+
 /// A unit struct, a plain enum, a type with a parameter, and the members whose names the method
 /// writes itself.
 fn struct_rows() -> Vec<Row> {
@@ -1127,6 +1239,7 @@ fn every_row() -> Vec<Row> {
     rows.extend(holder_rows());
     rows.extend(brand_rows());
     rows.extend(struct_rows());
+    rows.extend(counted_name_rows());
     rows.extend(slot_rows());
     rows.extend(wrapped_variant_rows());
     rows.extend(bare_variant_rows());
@@ -1163,6 +1276,13 @@ fn shape_definitions() -> Vec<String> {
         reference_kotlin::kotlin_definition(),
         grade_kotlin::kotlin_definition(),
         crate_kotlin::kotlin_definition(),
+        slogans_kotlin::kotlin_definition(),
+        mottos_kotlin::kotlin_definition(),
+        some_slogans_kotlin::kotlin_definition(),
+        carried_kotlin::kotlin_definition(),
+        poster_kotlin::kotlin_definition(),
+        casket_kotlin::kotlin_definition(),
+        archive_kotlin::kotlin_definition(),
         probe_kotlin::kotlin_definition(),
         later_kotlin::kotlin_definition(),
     ]);
@@ -1186,6 +1306,7 @@ fn every_shape_runs_its_bounds_and_its_checks() {
     rows.extend(holder_rows());
     rows.extend(brand_rows());
     rows.extend(struct_rows());
+    rows.extend(counted_name_rows());
     rows.extend(slot_rows());
     rows.extend(wrapped_variant_rows());
     rows.extend(bare_variant_rows());

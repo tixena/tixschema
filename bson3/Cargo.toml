@@ -2,6 +2,7 @@
 name = "tixschema-bson3-tests"
 version = "0.0.0"
 edition = "2024"
+rust-version = "1.91.1"
 publish = false
 
 # A root of its own: its driver is built for bson 3, and the root package's for bson 2. In one
@@ -31,6 +32,7 @@ kotlin = ["tixschema/kotlin"]
 arky = ["tixschema/arky", "serde"]
 
 [dev-dependencies]
+rustversion = "1.0.23"
 tixschema = { path = "..", default-features = false }
 # `bson-3` in place of the driver's default `compat-3-0-0`, which turns `bson-2` on. `chrono-0_4` is
 # the feature its date hook sits behind.

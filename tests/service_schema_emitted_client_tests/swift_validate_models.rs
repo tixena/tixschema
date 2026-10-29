@@ -187,6 +187,57 @@ pub struct Crate<CodeType> {
     pub label: String,
 }
 
+/// A brand over a list, held by the members below.
+#[model_schema(no_display)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct Slogans(pub Vec<String>);
+
+/// An alias of a list.
+#[model_schema()]
+pub type Mottos = Vec<String>;
+
+/// A brand over a brand over a list, with a length of its own.
+#[model_schema(no_display, minLength = 1)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct SomeSlogans(pub Slogans);
+
+/// A generic brand whose declared default is a list.
+#[model_schema(no_display, minLength = 1, default_types(T = Vec<String>))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct Carried<T>(pub T);
+
+/// Members typed with the names above, each under a length of its own.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Poster {
+    pub carried: Carried<Vec<String>>,
+    #[model_schema_prop(minLength = 1)]
+    pub mottos: Mottos,
+    #[model_schema_prop(minLength = 1, maxLength = 2)]
+    pub slogans: Slogans,
+    #[model_schema_prop(maxLength = 2)]
+    pub some: SomeSlogans,
+}
+
+/// A type with a parameter, held by a member of another that reaches the same parameter.
+#[model_schema(default_types(IdType = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Casket<IdType> {
+    pub entries: Vec<String>,
+    pub owner_id: IdType,
+}
+
+/// A type with a parameter whose member holds a generic type at that parameter, under a check.
+#[model_schema(default_types(IdType = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Archive<IdType> {
+    #[model_schema_prop(check = ["withEntries"])]
+    pub casket: Casket<IdType>,
+}
+
 /// A brand with a parameter, whose bound holds the declared default alone.
 #[model_schema(minLength = 2, default_types(IdType = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -305,6 +356,15 @@ fn taking_parcels(_value: &ClosedDock) -> Result<(), Vec<String>> {
 fn with_a_code<CodeType>(value: &Crate<CodeType>) -> Result<(), Vec<String>> {
     if value.codes.is_empty() {
         return Err(vec!["'codes': a crate holds at least one code".to_owned()]);
+    }
+    Ok(())
+}
+
+fn with_entries<IdType>(value: &Casket<IdType>) -> Result<(), Vec<String>> {
+    if value.entries.is_empty() {
+        return Err(vec![
+            "'entries': a casket holds at least one entry".to_owned(),
+        ]);
     }
     Ok(())
 }

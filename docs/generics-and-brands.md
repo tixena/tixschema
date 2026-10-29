@@ -204,6 +204,14 @@ left once those are deferred cannot cycle. The deferral is a getter rather than 
 an operand
 position collapses the factory's inferred return type to `any`.
 
+A check written on a member of a generic struct that reaches one of the struct's parameters is
+run through a function written ahead of the builder, `{Item}${member}$Checked`, as the type's own
+checks are through `{Item}$Checked`: inside the builder the value a check is handed is typed by the
+parameter, which the developer's function, typed for one filling, does not take. The overload hands
+the schema back as it is, and the implementation takes a schema of the member's published type at
+every filling (`FieldDef::zod_check_helper_declaration`, `checked_in_a_builder`). A member that
+reaches no parameter keeps its checks in place.
+
 A union written around a factory's call -- the `Option` wrap, or the `nullable` one -- is checked
 against what each member takes and answers: `.prefault(undefined)` types its argument by the
 union's input, and `z.union` over a `z.record` of the call resolves the record's own output. Inside

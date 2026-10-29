@@ -260,6 +260,7 @@ fn a_brand_is_read_by_the_plugins_serializer_and_judged_by_its_own() {
         super::tests::renumbered(&seal_kotlin::kotlin_definition()),
         format!(
             "{} value class Seal(val value: String) {{ fun kotlinSchemaText(): String = value; \
+             fun kotlinSchemaLength(): Int = value.codePointCount(0, value.length); \
              {NO_RULE} }} {}",
             kept_inline("Seal"),
             serializers("Seal")

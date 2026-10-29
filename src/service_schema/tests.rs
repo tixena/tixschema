@@ -528,10 +528,26 @@ fn named_input(operation: &OperationDef) -> Option<&Type> {
     }
 }
 
+#[rustversion::since(1.98)]
+fn mapped_or_default<T, U>(value: Option<T>, map: impl FnOnce(T) -> U) -> U
+where
+    U: Default,
+{
+    value.map_or_default(map)
+}
+
+#[rustversion::before(1.98)]
+fn mapped_or_default<T, U>(value: Option<T>, map: impl FnOnce(T) -> U) -> U
+where
+    U: Default,
+{
+    value.map(map).unwrap_or_default()
+}
+
 fn refusals(source: &str) -> Vec<String> {
-    parse_service(&declared(source))
-        .err()
-        .map_or_default(|refusal| refusal.into_iter().map(|one| one.to_string()).collect())
+    mapped_or_default(parse_service(&declared(source)).err(), |refusal| {
+        refusal.into_iter().map(|one| one.to_string()).collect()
+    })
 }
 
 fn rendered(source: &str) -> String {
@@ -961,14 +977,12 @@ fn a_result_arm_naming_the_context_is_refused_too() {
 /// The refusals `parse_service` answers for `source`, each as its message beside the text it is
 /// spanned on.
 fn spanned_refusals(source: &str) -> Vec<(String, Option<String>)> {
-    parse_service(&declared(source))
-        .err()
-        .map_or_default(|refusal| {
-            refusal
-                .into_iter()
-                .map(|one| (one.to_string(), one.span().source_text()))
-                .collect()
-        })
+    mapped_or_default(parse_service(&declared(source)).err(), |refusal| {
+        refusal
+            .into_iter()
+            .map(|one| (one.to_string(), one.span().source_text()))
+            .collect()
+    })
 }
 
 /// The refusal of a JSON value at `position` of the operation `fetch`, beside the text it is

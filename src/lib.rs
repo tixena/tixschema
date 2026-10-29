@@ -91,8 +91,8 @@
 //! serde_json = "1"
 //! ```
 //!
-//! tixschema needs Rust 1.98 or later: it calls `Option::map_or_default`, stable since 1.98. The
-//! default features need `serde_json`, since `json_schema()` returns a `serde_json::Value`. Add
+//! tixschema needs Rust 1.91.1 or later. The default features need `serde_json`, since
+//! `json_schema()` returns a `serde_json::Value`. Add
 //! `regex = "1"` when a type declares a `pattern` that is more than a fixed text: the Rust check
 //! of such a pattern builds a `regex::Regex`. A fixed text, anchored or not, such as `^INV-`, is
 //! checked with `str` comparisons and needs no `regex`. The TypeScript project installs Zod 4

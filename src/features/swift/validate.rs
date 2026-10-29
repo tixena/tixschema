@@ -72,6 +72,8 @@ struct Noted {
     /// Whether the type is a brand with a bound of its own, which `swiftSchemaValidateBound`
     /// answers for alone.
     bounded: bool,
+    /// How what a length counts is read off a value of the type, where it holds a string or a list.
+    length: Option<Length>,
     /// How the string a bound measures is read off a value of the type, where it holds one.
     text: Option<Text>,
     /// Whether the `validate()` of the type runs a rule, and so whether a holder calls it. A type
@@ -101,6 +103,17 @@ enum Step {
 #[derive(Clone, Copy)]
 pub(super) enum Text {
     /// A brand's wrapper, which answers it with its own `swiftSchemaBoundText`.
+    Member,
+    /// An alias of a string, which is the string.
+    Plain,
+}
+
+/// How what a length counts is read off one value of a named type.
+#[derive(Clone, Copy)]
+pub(super) enum Length {
+    /// An alias of a list, which is the list.
+    Items,
+    /// A brand's wrapper, which answers it with its own `swiftSchemaBoundLength`.
     Member,
     /// An alias of a string, which is the string.
     Plain,
@@ -170,10 +183,20 @@ pub(super) fn note(rust_ident: &str, text: Option<Text>, validates: bool) {
             rust_ident.to_owned(),
             Noted {
                 bounded: false,
+                length: None,
                 text,
                 validates,
             },
         );
+    });
+}
+
+/// Records how what a length counts is read off a value of the name noted as `rust_ident`.
+pub(super) fn note_length(rust_ident: &str, length: Option<Length>) {
+    NOTED.with(|names| {
+        if let Some(seen) = names.borrow_mut().get_mut(rust_ident) {
+            seen.length = length;
+        }
     });
 }
 
@@ -498,6 +521,52 @@ pub(super) fn brand_text_member(inner: &FieldDef) -> Option<String> {
     ))
 }
 
+/// The member a brand over `inner` answers its length with, which a length written on a field
+/// typed with the brand counts: the code points of a string, the items of a list, and the member of
+/// the brand it holds for a brand over a brand. `None` for a brand that holds neither.
+pub(super) fn brand_length_member(inner: &FieldDef) -> Option<String> {
+    let read = length_of(inner).map(|length| length_expression("value", length))?;
+    Some(format!(
+        "public var swiftSchemaBoundLength: Int {{ {read} }}"
+    ))
+}
+
+/// How what a length counts is read off one value of `def`, where it is known to hold a string or a
+/// list.
+pub(super) fn length_of(def: &FieldDef) -> Option<Length> {
+    if def.is_optional() {
+        return None;
+    }
+    if def.is_list() {
+        return Some(Length::Items);
+    }
+    if matches!(def.field_type, FieldDefType::String) {
+        return Some(Length::Plain);
+    }
+    noted(declared_name(def)?)?.length
+}
+
+/// The expression that counts `value`, which holds what `length` says.
+fn length_expression(value: &str, length: Length) -> String {
+    match length {
+        Length::Items => format!("{value}.count"),
+        Length::Member => format!("{value}.swiftSchemaBoundLength"),
+        Length::Plain => format!("{value}.unicodeScalars.count"),
+    }
+}
+
+/// The expression that counts one value of `def` held at `value` for a length written on it, where
+/// it names a type: a string or a list the emitter wrote, or the wrapper of a brand, which answers
+/// for itself. `None` for a value that is none of these.
+fn length_read(def: &FieldDef, value: &str) -> Option<String> {
+    if def.is_list() || matches!(def.field_type, FieldDefType::String) {
+        return length_of(def).map(|length| length_expression(value, length));
+    }
+    declared_name(def)?;
+    let length = noted(declared_name(def)?).and_then(|seen| seen.length);
+    Some(length_expression(value, length.unwrap_or(Length::Member)))
+}
+
 /// How the string is read off one value of `def`, where it is known to hold one: a string and an
 /// alias of one as they are, and a brand over one through its member.
 pub(super) fn text_of(def: &FieldDef) -> Option<Text> {
@@ -711,6 +780,11 @@ fn bound_checks(
 ) -> Vec<String> {
     if def.is_list() {
         return length_checks(&format!("{value}.count"), place, meta, true);
+    }
+    if meta.patterns().next().is_none()
+        && let Some(measured) = length_read(def, value)
+    {
+        return length_checks(&measured, place, meta, false);
     }
     if let Some(read) = text_read(def) {
         let text = format!("{value}{read}");

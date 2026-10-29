@@ -127,11 +127,11 @@ fn a_length_on_a_named_type_is_measured_through_the_member_or_as_the_string() {
     let tokens = emitted(&holder);
     assert!(!tokens.contains("compile_error"), "got: {tokens}");
     for written in [
-        "if code.swiftSchemaBoundText.unicodeScalars.count < 2",
-        "if later.swiftSchemaBoundText.unicodeScalars.count < 2",
-        "if sealed.swiftSchemaBoundText.unicodeScalars.count < 2",
+        "if code.swiftSchemaBoundLength < 2",
+        "if later.swiftSchemaBoundLength < 2",
+        "if sealed.swiftSchemaBoundLength < 2",
         "if title.unicodeScalars.count < 2",
-        "if version.swiftSchemaBoundText.unicodeScalars.count < 2",
+        "if version.swiftSchemaBoundLength < 2",
     ] {
         assert!(tokens.contains(written), "{written} is not in: {tokens}");
     }

@@ -28,6 +28,10 @@ const FALLBACK: &str = "private fun Any?.validate(): List<String> = emptyList()"
 /// What a string answers where a declared type is asked for its text.
 const TEXT: &str = "private fun String.kotlinSchemaText(): String = this";
 
+/// What a string and a collection answer where a declared type is asked for its length.
+const LENGTH: &str = "private fun String.kotlinSchemaLength(): Int = codePointCount(0, length); \
+                      private fun Collection<*>.kotlinSchemaLength(): Int = size";
+
 /// What a type that names a place writes a message under it with.
 const UNDER: &str = "private fun kotlinSchemaUnder(place: String, violation: String): String { \
      val end = violation.indexOf('\\'', 1); \
@@ -152,8 +156,7 @@ fn parcel() -> Parcel {
 /// The statement that holds the text the declared type `read` answers to `least` characters,
 /// under `place`.
 fn asked_statement(read: &str, place: &str, least: u32) -> String {
-    let counted =
-        format!("{read}.kotlinSchemaText().codePointCount(0, {read}.kotlinSchemaText().length)");
+    let counted = format!("{read}.kotlinSchemaLength()");
     format!(
         "if ({counted} < {least}) violations.add(\"{place}too short: minimum length is {least}, \
          got ${{{counted}}}\")"
@@ -284,6 +287,7 @@ fn a_brand_answers_its_text() {
         super::tests::renumbered(&slug_kotlin::kotlin_definition()),
         format!(
             "{} value class Slug(val value: String) {{ fun kotlinSchemaText(): String = value; \
+             fun kotlinSchemaLength(): Int = value.codePointCount(0, value.length); \
              {NO_RULE} }} {}",
             kept_inline("Slug"),
             serializers("Slug")
@@ -293,7 +297,8 @@ fn a_brand_answers_its_text() {
         super::tests::renumbered(&badge_kotlin::kotlin_definition()),
         format!(
             "{} value class Badge(val value: Slug) {{ fun kotlinSchemaText(): String = \
-             value.kotlinSchemaText(); {NO_RULE}; {TEXT} }} {}",
+             value.kotlinSchemaText(); fun kotlinSchemaLength(): Int = \
+             value.kotlinSchemaLength(); {NO_RULE}; {LENGTH}; {TEXT} }} {}",
             kept_inline("Badge"),
             serializers("Badge")
         )
@@ -310,7 +315,7 @@ fn a_bound_on_a_declared_type_measures_the_text_the_type_answers() {
             "{} data class Entry(val late: LateSlug, @Serializable(with = SlugUnjudged::class) \
              val slug: Slug, val titled: TitleType) {{ fun validate(): List<String> {{ val \
              violations = mutableListOf<String>(); {}; {}; {}; {}; {}; {}; return violations }}; \
-             private fun Any?.validate(): List<String> = emptyList(); {TEXT}; {UNDER} }} {}",
+             private fun Any?.validate(): List<String> = emptyList(); {LENGTH}; {UNDER} }} {}",
             kept("Entry"),
             held_statement("late"),
             asked_statement("late", "'late': ", 3),
@@ -360,7 +365,8 @@ fn every_shape_carries_validate() {
             super::tests::renumbered(&correlation_id_kotlin::kotlin_definition()),
             format!(
                 "{} value class CorrelationId(val value: String) {{ fun kotlinSchemaText(): \
-                 String = value; {NO_RULE} }} {}",
+                 String = value; fun kotlinSchemaLength(): Int = value.codePointCount(0, \
+                 value.length); {NO_RULE} }} {}",
                 kept_inline("CorrelationId"),
                 serializers("CorrelationId")
             ),
