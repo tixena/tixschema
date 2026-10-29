@@ -994,6 +994,14 @@ impl FieldDef {
         Some((name, !arguments.is_empty()))
     }
 
+    /// Names `Self` as the enclosing type, then erases the item's own type parameters: what a
+    /// client emitter does to every member it builds.
+    #[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+    pub fn named_within(&mut self, type_name: &str, parameters: &[String]) {
+        self.resolve_self_references(type_name, parameters);
+        self.erase_type_parameters(parameters);
+    }
+
     /// Whether this field's rendering as a type argument reads any other item's own module-scope
     /// Zod binding — a factory call or a bare `$Schema` const — at any depth, wrapped or named
     /// directly. Deferral asks a wider question than the direct-sibling fold gate does:
@@ -2554,17 +2562,24 @@ impl FieldDef {
         }
     }
 
-    /// [`Self::zod_type`], with the value of a map that names a type declared below this one read
-    /// behind `z.lazy`: an alias binds its schema in a `const` of its own, which runs before a
-    /// `const` declared further down exists.
+    /// [`Self::zod_type`], with a map value, a list, an `Option` or a tuple that names a type
+    /// declared below this one read behind `z.lazy`: an alias binds its schema in a `const` of its
+    /// own, which runs before a `const` declared further down exists.
     #[cfg(feature = "zod")]
-    pub fn zod_type_deferring_a_later_map_value(&self) -> String {
+    pub fn zod_type_deferring_a_later_type(&self) -> String {
         if let FieldDefType::Map(key, value) = &self.field_type
             && self.array_depth == 0
             && !self.is_optional()
             && value.reaches_a_type_declared_later()
         {
             return key.zod_map_record_call(&format!("z.lazy(() => {})", value.zod_slot_type()));
+        }
+        let a_container = self.array_depth > 0
+            || self.is_optional()
+            || matches!(&self.field_type, FieldDefType::Tuple(elements) if !elements.is_empty())
+            || matches!(&self.field_type, FieldDefType::SiblingType(name, _) if is_sequence_wrapper(name));
+        if a_container && self.reaches_a_type_declared_later() {
+            return format!("z.lazy(() => {})", self.zod_type());
         }
         self.zod_type()
     }

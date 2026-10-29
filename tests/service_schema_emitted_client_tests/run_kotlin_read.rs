@@ -19,6 +19,7 @@ use tixschema::{model_schema, service_schema};
 use self::loading_client_service_schema::{
     loading_client_service_fault_fields_kotlin, loading_client_service_fault_kind_kotlin,
 };
+use super::named_by_rust_models::{Hitch, HitchedTrailer, hitch_kotlin, hitched_trailer_kotlin};
 use super::runtime::ran_kotlin;
 
 const KOTLIN_IMPORTS: &str = "import kotlinx.coroutines.*\n\
@@ -332,22 +333,6 @@ pub struct Slip {
 pub struct Docket {
     #[model_schema_prop(minLength = 3)]
     pub code: Code,
-}
-
-/// A holder of a type declared below it.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Hitch {
-    #[model_schema_prop(minLength = 1)]
-    pub hook: String,
-    pub trailer: HitchedTrailer,
-}
-
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct HitchedTrailer {
-    #[model_schema_prop(minLength = 1)]
-    pub plate: String,
 }
 
 #[model_schema()]

@@ -20,6 +20,7 @@ fn emitted(item: &Item) -> String {
             name_override: None,
             pattern: None,
             preprocess: &[],
+            type_name: "Probe",
         },
     )
     .to_string()

@@ -35,6 +35,7 @@ fn plain_args() -> DartTypeArgs<'static> {
         name_override: None,
         pattern: None,
         preprocess: &[],
+        type_name: "Probe",
     }
 }
 
@@ -80,6 +81,7 @@ fn a_flattened_option_of_an_enum_under_a_tag_key_is_looked_for_by_its_tag() {
             &bitt,
             &DartTypeArgs {
                 preprocess: &functions,
+                type_name: "Probe",
                 ..plain_args()
             },
         )),
@@ -161,6 +163,7 @@ fn a_struct_under_its_own_tag_checks_the_object_its_members_are_read_from() {
         &item,
         &DartTypeArgs {
             preprocess: &functions,
+            type_name: "Probe",
             ..plain_args()
         },
     ));

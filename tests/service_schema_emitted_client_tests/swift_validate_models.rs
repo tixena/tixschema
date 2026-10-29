@@ -222,6 +222,29 @@ pub struct Poster {
     pub some: SomeSlogans,
 }
 
+/// An alias of an `IndexSet`.
+#[cfg(feature = "indexmap")]
+#[model_schema()]
+pub type Queue = indexmap::IndexSet<String>;
+
+/// A brand over the alias of an `IndexSet`, with a length of its own.
+#[cfg(feature = "indexmap")]
+#[model_schema(no_display, minLength = 1)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct SomeQueue(pub Queue);
+
+/// Members typed with the alias of an `IndexSet` and with a brand over it, each under a length.
+#[cfg(feature = "indexmap")]
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Lineup {
+    #[model_schema_prop(minLength = 1, maxLength = 2)]
+    pub queue: Queue,
+    #[model_schema_prop(maxLength = 2)]
+    pub some: SomeQueue,
+}
+
 /// A type with a parameter, held by a member of another that reaches the same parameter.
 #[model_schema(default_types(IdType = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]

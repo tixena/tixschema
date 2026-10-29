@@ -306,6 +306,14 @@ pub struct AliasInfo {
     /// itself, one per variant in the order the union writes them, and empty for every other item.
     #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
     pub flatten_variants: Vec<FlattenVariant>,
+    /// Whether this name is an alias of an `IndexSet`, which a bound counts through the consumer's
+    /// own `indexmap`.
+    #[cfg(all(
+        feature = "serde",
+        feature = "indexmap",
+        any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    ))]
+    pub indexed_set: bool,
     /// Whether the TypeScript type written under this name is, or holds in a slot, a map keyed by a
     /// `u64` or an `i64`: an alias, a brand or a tuple struct, which carries [`INEXACT_KEY_NOTE`]
     /// on itself.
@@ -1309,6 +1317,12 @@ pub fn register_alias_info(
                 export_name: export_name.to_owned(),
                 #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
                 flatten_variants: Vec::new(),
+                #[cfg(all(
+                    feature = "serde",
+                    feature = "indexmap",
+                    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+                ))]
+                indexed_set: false,
                 inexact_key: false,
                 key_wire: MapKeyWire::Named,
                 kind,
@@ -1339,6 +1353,20 @@ pub fn record_counted(rust_ident: &str, counted: Counted) {
     ALIAS_INFO.with(|map| {
         if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
             info.counted = Some(counted);
+        }
+    });
+}
+
+/// Records that a name is an alias of an `IndexSet`, on the entry that name has just registered.
+#[cfg(all(
+    feature = "serde",
+    feature = "indexmap",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+pub fn record_indexed_set(rust_ident: &str) {
+    ALIAS_INFO.with(|map| {
+        if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
+            info.indexed_set = true;
         }
     });
 }
