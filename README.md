@@ -8912,20 +8912,47 @@ The JSON Schema lists `kind` in `required` as `{"type": "string", "const": "Tagg
 
 ### Feature-Related Errors
 
-#### ObjectId Errors
+#### `ObjectId` Without the Feature
 
-**Error:** `cannot find type 'ObjectId' in this scope`
+**Error:**
 
-**Cause:** Using `ObjectId` without the `mongodb` feature enabled.
-
-**Solutions:**
-```toml
-# Option 1: Enable the mongodb feature
-tixschema = { version = "0.2", features = ["mongodb"] }
-
-# Option 2: Use full path in your code
-# use mongodb::bson::oid::ObjectId;
 ```
+error: `ObjectId` is read as a MongoDB ObjectId under tixschema's `mongodb` feature: add `features = ["mongodb"]` to the `tixschema` dependency
+ --> src/main.rs:8:13
+  |
+8 |     pub id: ObjectId,
+  |             ^^^^^^^^
+```
+
+**Cause:** A type written `ObjectId` with the `mongodb` feature off.
+
+**Solution:**
+```toml
+tixschema = { version = "0.2", features = ["mongodb"] }
+```
+
+A crate that declares a `#[model_schema()]` type of its own named `ObjectId`, above the type that holds it, is not refused: the name is that type.
+
+#### `NaiveDate`, `NaiveTime`, `NaiveDateTime` or `DateTime<Tz>` Without the Feature
+
+**Error:**
+
+```
+error: `NaiveDate` is read as a date or a time under tixschema's `chrono` feature: add `features = ["chrono"]` to the `tixschema` dependency
+ --> src/main.rs:8:14
+  |
+8 |     pub day: NaiveDate,
+  |              ^^^^^^^^^
+```
+
+**Cause:** A type written `NaiveDate`, `NaiveTime`, `NaiveDateTime` or `DateTime<Tz>` with the `chrono` feature off. It is refused wherever the item writes it, as `IndexMap` is below.
+
+**Solution:**
+```toml
+tixschema = { version = "0.2", features = ["chrono"] }
+```
+
+A crate that declares a `#[model_schema()]` type of its own under one of these names, above the type that holds it, is not refused: the name is that type.
 
 #### `IndexMap` or `IndexSet` Without the Feature
 
