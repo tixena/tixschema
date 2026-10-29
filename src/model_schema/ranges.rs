@@ -629,7 +629,7 @@ fn text_read_members(item: &Item) -> Vec<TextReadMember<'_>> {
         } else {
             return Vec::new();
         };
-    let parameters = item_generics(item).map_or_default(parameter_names);
+    let parameters = parameters_of(item);
     let mut members = Vec::new();
     for (variant, fields) in levels {
         // The lone slot of a variant under a tag alone that writes a map is refused beside the
@@ -931,7 +931,7 @@ pub fn tagged_slot_map_error(
 /// one, and an untagged enum with a variant serde writes as one.
 #[cfg(feature = "serde")]
 pub fn writes_an_open_map(item: &Item) -> bool {
-    let parameters = item_generics(item).map_or_default(parameter_names);
+    let parameters = parameters_of(item);
     written_as_itself(item)
         .into_iter()
         .any(|ty| writes_a_map(ty, &parameters))
@@ -1538,6 +1538,18 @@ const fn flattened_at(filled: &FlattenedParameter) -> usize {
 #[cfg(feature = "serde")]
 const fn text_key_at(filled: &TextKeyParameter) -> usize {
     filled.at
+}
+
+#[cfg(feature = "serde")]
+#[rustversion::since(1.98)]
+fn parameters_of(item: &Item) -> Vec<String> {
+    item_generics(item).map_or_default(parameter_names)
+}
+
+#[cfg(feature = "serde")]
+#[rustversion::before(1.98)]
+fn parameters_of(item: &Item) -> Vec<String> {
+    item_generics(item).map(parameter_names).unwrap_or_default()
 }
 
 /// The names of the type parameters `generics` declares.

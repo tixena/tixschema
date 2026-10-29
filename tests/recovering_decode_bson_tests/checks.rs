@@ -132,12 +132,23 @@ fn sound() -> Document {
 }
 
 /// One line per issue, as `Unrecovered` displays them.
+#[rustversion::since(1.98)]
 fn lines<T, E>(read: Result<T, E>) -> Vec<String>
 where
     E: ToString,
 {
     read.err()
         .map_or_default(|refused| refused.to_string().lines().map(str::to_owned).collect())
+}
+
+#[rustversion::before(1.98)]
+fn lines<T, E>(read: Result<T, E>) -> Vec<String>
+where
+    E: ToString,
+{
+    read.err()
+        .map(|refused| refused.to_string().lines().map(str::to_owned).collect())
+        .unwrap_or_default()
 }
 
 /// Reads `stored` as a parcel with a callback that rejects, and answers every issue it listed.
