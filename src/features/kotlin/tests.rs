@@ -510,7 +510,8 @@ fn a_holder_reads_each_model_it_walks_with_no_judgement() {
              first: Parcel, val grid: List<List<{unjudged} Parcel?>>, val listed: \
              List<{unjudged} Parcel>, @SerialName(\"lists_by_dock\") val listsByDock: \
              Map<String, List<{unjudged} Parcel>>, val pair: KotlinTuple1, {unjudged} val spare: \
-             Parcel? = null, val stamped: Code, val trailing: Trailer) {{"
+             Parcel? = null, @Serializable(with = CodeUnjudged::class) val stamped: Code, val trailing: \
+             Trailer) {{"
         )),
         "got: {kotlin}"
     );

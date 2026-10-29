@@ -2252,8 +2252,7 @@ fn flatten_plan(
         } else if let FieldDefType::Map(map_key, map_value) = &field.field_def.field_type {
             let key_serializer = (kotlin_typename(map_key) != "String" || texts::reaches(map_key))
                 .then(|| kotlin_serializer_expr(map_key, type_parameters));
-            let value_serializer =
-                read::held_serializer(&field.field_def, map_value, type_parameters);
+            let value_serializer = read::held_serializer(map_value, type_parameters);
             let (serialize, decode) = flatten_map_field_plan(
                 &prop,
                 field.field_def.is_optional(),

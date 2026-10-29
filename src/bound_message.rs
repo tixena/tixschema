@@ -34,6 +34,16 @@ use crate::utils::escape_js_double_quoted;
 #[cfg(feature = "serde")]
 use quote::quote;
 
+/// Whether a member's own bound is reported ahead of the bounds its type declares, in the Rust
+/// `validate()` and in the `validate()` of the Dart, Swift and Kotlin clients alike.
+#[cfg(any(
+    feature = "serde",
+    feature = "dart",
+    feature = "kotlin",
+    feature = "swift"
+))]
+pub const OWN_BOUND_FIRST: bool = true;
+
 /// What every surface but Rust answers for a set whose payload repeats an item: Rust's read keeps
 /// one item of it.
 #[cfg(any(

@@ -72,8 +72,12 @@ section is the consumer's view; this is what a change has to keep.
   list's own words, with `item_rule_advice` saying where a rule for each item goes: a brand carries
   a `pattern`, and a range for each number of a list has no place. `check_fixed_shape_constraints`
   asks nothing more of a list, whose items may be of any type.
-- A list's own count does not stand in for what its items' type declares: `named_member_validate_body`
-  runs both, where every other member's own check is run in place of its type's.
+- A member's own bound does not stand in for what its type declares: `named_member_validate_body`
+  runs both, in the order `OWN_BOUND_FIRST` (`src/bound_message.rs`) names for Rust and the Dart,
+  Swift and Kotlin clients: the member's own first. The Zod schema reports the type's first, its
+  `.check(...)` running after the type's own. A list's own count and its items' type are two such bounds.
+  The read of such a member takes the unjudged hook (`member_read_hook`), so the holder's read
+  answers what its `validate()` answers.
 - The count is reported in a string's sentence (`Bound::MinItems`, `Bound::MaxItems`), and Zod reads
   the items off the issue behind `Array.isArray`.
 - A brand over a list (`held_as_a_list`: the list itself, or behind `Box`/`Rc`/`Arc`/`Cow`) takes the

@@ -1408,7 +1408,7 @@ fn tuple_shape(elements: &[FieldDef], name_hint: &str, aux: &mut Vec<String>) ->
             let stem = format!("slot{index}");
             let source = read::Source::Listed("container".to_owned());
             let held = |read: &str| format!("{stem} = {read}");
-            let walked = validate::walks(element, false);
+            let walked = validate::walks(element);
             let functions = preprocess::functions(element);
             let read = if !functions.is_empty() {
                 corrected_member(
@@ -1619,7 +1619,7 @@ fn result_shape(
             presence: read::Presence::Known,
         };
         let sink = |read: &str| format!("self = .{case}({read})");
-        let read = if validate::walks(def, false) {
+        let read = if validate::walks(def) {
             read::unjudged(def, &hint, &source, &sink, &mut locals)
         } else {
             slot.read(&held, &case, &source, &sink, &mut locals)
@@ -2191,7 +2191,7 @@ fn present_statement(
     twins: &mut Vec<String>,
 ) -> String {
     let member = |held: &str| format!("self.{} = {held}", field.swift_name);
-    let walked = validate::walks(&field.field_def, false);
+    let walked = validate::walks(&field.field_def);
     let functions = preprocess::functions(&field.field_def);
     if !functions.is_empty() {
         if field.flatten && field.field_def.is_optional() && held_map(&field.field_def).is_none() {
@@ -2283,7 +2283,7 @@ fn flattened_enum(
             real_type,
             stem: swift_bare(&field.swift_name),
             units: &[],
-            walked: validate::walks(&def, false),
+            walked: validate::walks(&def),
         },
         entries,
         taken,
@@ -2413,7 +2413,7 @@ fn corrected_option(
 ) -> String {
     let held = flattened_under_option(field);
     let keys = preprocess::struct_keys(&held.field_def);
-    let walked = validate::walks(&held.field_def, false);
+    let walked = validate::walks(&held.field_def);
     corrected_field(&held, functions, walked, source, Some(&keys), twins)
 }
 
@@ -2503,7 +2503,7 @@ fn default_statement(field: &SwiftField, at: &str, path: &str, twins: &mut Vec<S
             real_type: &field.real_type,
             stem: &stem,
             units: &[],
-            walked: validate::walks(&field.field_def, false),
+            walked: validate::walks(&field.field_def),
         },
         at,
         path,
@@ -3174,7 +3174,6 @@ fn field_rules(owner: &str, fields: &[SwiftField]) -> Vec<String> {
                 &validate::Checked {
                     access: validate::property_read(&field.swift_name),
                     def: &field.field_def,
-                    runs_both: false,
                     step: (!field.flatten).then(|| field.wire_name.clone()),
                 },
             )
@@ -3225,7 +3224,6 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
             &validate::Checked {
                 access: "value".to_owned(),
                 def: &value_field,
-                runs_both: false,
                 step: None,
             },
         );
@@ -3456,7 +3454,7 @@ fn lone_slot_read(
         read::Source::Decoder
     };
     let held = |read: &str| format!("self.value = {read}");
-    let walked = validate::walks(def, false) || handed_keys;
+    let walked = validate::walks(def) || handed_keys;
     let functions = preprocess::functions(def);
     if !functions.is_empty() {
         corrected_member(
@@ -3727,7 +3725,6 @@ fn named_payload(
                 &validate::Checked {
                     access: format!("payload.{}", field.swift_name),
                     def: &field.field_def,
-                    runs_both: false,
                     step: (!field.flatten).then(|| field.wire_name.clone()),
                 },
             )
@@ -3762,11 +3759,9 @@ fn slot_payload(
     field_def.erase_type_parameters(shape.type_parameters);
     let hint = format!("{export_name}{}Value", variant.ident);
     let (held, slot) = slot_resolve(&field_def, &hint, aux);
-    let runs_both = shape.tag_attrs.untagged;
     let checked = validate::Checked {
         access: "payload".to_owned(),
         def: &field_def,
-        runs_both,
         step: step.map(ToOwned::to_owned),
     };
     let rules = validate::member_rules(export_name, &checked);
@@ -3775,8 +3770,8 @@ fn slot_payload(
     let handed_keys = shape.tag_attrs.content.is_none()
         && (shape.tag_attrs.untagged || shape.tag_attrs.tag.is_some())
         && preprocess::beside(&field_def);
-    let walked = (validate::walks(&field_def, runs_both) || handed_keys)
-        .then(|| (field_def.clone(), hint.clone()));
+    let walked =
+        (validate::walks(&field_def) || handed_keys).then(|| (field_def.clone(), hint.clone()));
     // Under a tag alone a type that takes no keys is read from the object without the tag, but a
     // struct or an enum under a tag key written above, which reads the tag as TypeScript and Zod
     // read it.
@@ -3840,7 +3835,6 @@ fn slots_payload(
                 &validate::Checked {
                     access: format!("payload.slot{position}"),
                     def: slot,
-                    runs_both: false,
                     step: Some(position.to_string()),
                 },
             )

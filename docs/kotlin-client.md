@@ -17,8 +17,8 @@ section is the consumer's view; this is what a change has to keep.
   reads `enum_pattern` under the gate that field is compiled under.
 - **`Rules` is the one writer, and its order is Rust's.** `Rules::member` writes a member's bounds
   (`bound_statements`), then what the value it holds reports (`held_statements`), then its checks
-  (`check_statements`). A member with a bound of its own is not walked, a list apart, which runs
-  its count and then each item: `named_member_validate_body` is the Rust rule. `Rules::own` writes
+  (`check_statements`). A member's own bound runs beside what its type declares, in the order
+  `OWN_BOUND_FIRST` names, as `named_member_validate_body` does in Rust. `Rules::own` writes
   the type's checks last, `Rules::brand` a brand's own bounds and no walk, and `Rules::written` the
   method. A type with no statement writes `= emptyList()`.
 - **The sentence is `kotlin_violation`'s**, in `src/bound_message.rs`, written from

@@ -121,7 +121,8 @@ Crate<Parcel>, the second code broken: refused
 Crate<Code>, a code broken: refused
     too short: minimum length is 2, got 1
 Docket, a code that breaks its own bound: refused
-    too short: minimum length is 2, got 1
+    'code': too short: minimum length is 3, got 1
+    'code': too short: minimum length is 2, got 1
 Hitch, its own bound and the trailer's broken: refused
     'plate': too short: minimum length is 1, got 0
 Rating, one its check refuses: read Rating
@@ -324,7 +325,7 @@ pub struct Slip {
     pub rating: Rating,
 }
 
-/// A brand under a bound the member writes of its own, which stands in for the brand's.
+/// A brand under a bound the member writes of its own, held beside the brand's.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Docket {
@@ -808,7 +809,10 @@ fn apart_rows() -> Vec<Sample> {
             "Docket, a code that breaks its own bound",
             "serializer<Docket>()",
             &docket(),
-            Err(&["too short: minimum length is 2, got 1"]),
+            Err(&[
+                "'code': too short: minimum length is 3, got 1",
+                "'code': too short: minimum length is 2, got 1",
+            ]),
         ),
         pinned(
             "Hitch, its own bound and the trailer's broken",
@@ -1009,7 +1013,8 @@ fn where_the_read_is_not_the_rust_reads_text_it_is_this() {
     let rows = apart_rows();
     assert_eq!(report(&rows), APART_FROM_RUST);
     // What the Rust read answers of the same payloads. A model that judges itself is told at its
-    // position in the text, and a brand under its member's key. A model declared below its holder
+    // position in the text, and a brand under its member's key beside the member's own bound.
+    // A model declared below its holder
     // is read unjudged, so the holder's own message is answered too, and the trailer's at its
     // place. The plain enum is refused, where Kotlin hands it back.
     assert_eq!(
@@ -1027,7 +1032,7 @@ fn where_the_read_is_not_the_rust_reads_text_it_is_this() {
         [
             "'fragileItemCodes.1': y is outside of itemCodeList at line 1 column 134",
             "too short: minimum length is 2, got 1 at line 1 column 19",
-            "'code': too short: minimum length is 2, got 1 at line 1 column 12",
+            "'code': too short: minimum length is 3, got 1; 'code': too short: minimum length is 2, got 1",
             "'hook': too short: minimum length is 1, got 0; 'trailer.plate': too short: minimum \
              length is 1, got 0",
             "a slip is rated",

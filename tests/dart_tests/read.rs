@@ -232,13 +232,13 @@ fn a_value_validate_does_not_reach_judges_itself() {
     );
 }
 
-/// A member's own bound stands in for what its type declares, so `validate()` does not run the
-/// brand it holds, and the brand is read by its own judged read.
+/// A member's own bound runs beside what its type declares, so `validate()` runs the brand it
+/// holds, and the brand is read by its unjudged read.
 #[test]
-fn a_bounded_member_reads_the_type_it_holds_judged() {
+fn a_bounded_member_reads_the_type_it_holds_unjudged() {
     assert_written(
         &gauge_dart::dart_definition(),
-        "sort_code: (json['sortCode'] == null ? null : Code.fromJson(json['sortCode'])),",
+        "sort_code: (json['sortCode'] == null ? null : Code.fromJsonUnjudged(json['sortCode'])),",
     );
 }
 
