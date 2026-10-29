@@ -83,6 +83,13 @@ dynamic withoutFragile(dynamic payload) =>
     payload is Map<String, dynamic> ? {'fragileItemCodes': <dynamic>[], ...payload} : payload;
 ";
 
+/// The function of the type that reaches itself: an object with an empty `children` where it holds
+/// none.
+const WITH_CHILDREN: &str = "
+dynamic withChildren(dynamic payload) =>
+    payload is Map<String, dynamic> ? {'children': <dynamic>[], ...payload} : payload;
+";
+
 /// A stub transport that answers `weigh` with a parcel labelled as the request asks, which holds
 /// no `fragileItemCodes`, and what prints the answer of each call.
 const HTTP_DRIVER: &str = "
@@ -152,16 +159,10 @@ dynamic tag(dynamic payload) => payload is Map<String, dynamic> && payload.conta
 ";
 
 /// The rows of the shared table Dart does not read as the Rust read does, each with why.
-const NOT_READ: [(&str, &str); 2] = [
-    (
-        "a type that reaches itself",
-        "the backend writes `Self` as a type of that name",
-    ),
-    (
-        "a plain enum",
-        "the read of a plain enum takes a `String`, so an envelope does not reach its function",
-    ),
-];
+const NOT_READ: [(&str, &str); 1] = [(
+    "a plain enum",
+    "the read of a plain enum takes a `String`, so an envelope does not reach its function",
+)];
 
 /// What prints a row as every side prints it: its name and the value read, written back, or each
 /// message of the refusal on a line of its own.
@@ -594,6 +595,7 @@ fn reader_of(schema: &str) -> String {
 /// The emitted definitions of the models, without the one the SDK does not compile.
 fn model_definitions() -> Vec<String> {
     vec![
+        node_dart::dart_definition(),
         parcel_dart::dart_definition(),
         manifest_dart::dart_definition(),
         tagged_dart::dart_definition(),
@@ -735,7 +737,7 @@ fn every_position_and_every_shape_prints_the_line_of_the_shared_table() {
         "positions.dart",
         &module(
             &model_definitions(),
-            &[FUNCTIONS, CORRECTIONS, CHECK, ROW],
+            &[FUNCTIONS, WITH_CHILDREN, CORRECTIONS, CHECK, ROW],
             &driver(&rows),
         ),
     ) else {
@@ -744,16 +746,10 @@ fn every_position_and_every_shape_prints_the_line_of_the_shared_table() {
     assert_eq!(wrote, expected);
 }
 
-/// The two rows of the shared table Dart does not read: what the backend writes for a type that
-/// reaches itself, and what the read of a plain enum answers for an envelope.
+/// The row of the shared table Dart does not read: what the read of a plain enum answers for an
+/// envelope.
 #[test]
 fn the_rows_dart_does_not_read_are_the_ones_named() {
-    let node = node_dart::dart_definition();
-    assert!(
-        node.contains("final List<Self> children;"),
-        "{}: {node}",
-        NOT_READ[0].1
-    );
     let entry = "void main() {\n  try {\n    Grade.fromJson(jsonDecode(r'{\"payload\":\"Express\"}'));\n    \
                  print('read');\n  } on TypeError {\n    print('not read');\n  }\n  \
                  print(jsonEncode(Grade.fromJson('Express').toJson()));\n}\n";
@@ -766,7 +762,7 @@ fn the_rows_dart_does_not_read_are_the_ones_named() {
     ) else {
         return;
     };
-    assert_eq!(wrote, "not read\n\"Express\"\n", "{}", NOT_READ[1].1);
+    assert_eq!(wrote, "not read\n\"Express\"\n", "{}", NOT_READ[0].1);
 }
 
 /// Where serde hands a function fewer keys than the payload holds, Dart hands it the same keys:
