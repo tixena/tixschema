@@ -47,6 +47,16 @@ fun withoutFragile(payload: JsonElement): JsonElement =
 const SHAPE_FUNCTIONS: &str = r#"
 val calls = mutableListOf<String>()
 
+fun labelled(payload: JsonElement): JsonElement =
+    if (payload is JsonPrimitive && payload.isString) JsonObject(mapOf("label" to payload)) else payload
+
+fun hulled(payload: JsonElement): JsonElement =
+    if (payload is JsonPrimitive && payload.isString) {
+        JsonObject(mapOf("kind" to JsonPrimitive("Plain"), "label" to payload))
+    } else {
+        payload
+    }
+
 fun lowered(payload: JsonElement): JsonElement =
     if (payload is JsonPrimitive && payload.isString) JsonPrimitive(payload.content.lowercase()) else payload
 
@@ -649,6 +659,22 @@ pub struct Logged {
     pub note: Option<String>,
 }
 
+/// A class whose function reads a text as an object.
+#[model_schema(preprocess = ["labelled"])]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Sticker {
+    pub label: String,
+}
+
+/// An enum under a tag key whose function reads a text as an object.
+#[model_schema(preprocess = ["hulled"])]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "kind")]
+pub enum Hull {
+    Plain { label: String },
+    Tall { masts: u32 },
+}
+
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PacketRequest {
@@ -688,6 +714,22 @@ impl PacketClientService<()> for PacketBackEnd {
 thread_local! {
     /// Each payload `noted` was handed, as it is written.
     static NOTED: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+}
+
+fn labelled(payload: Value) -> Value {
+    if let Value::String(label) = payload {
+        json!({ "label": label })
+    } else {
+        payload
+    }
+}
+
+fn hulled(payload: Value) -> Value {
+    if let Value::String(label) = payload {
+        json!({ "kind": "Plain", "label": label })
+    } else {
+        payload
+    }
 }
 
 fn lowered(payload: Value) -> Value {
@@ -1116,6 +1158,8 @@ fn definitions() -> Vec<String> {
         stretch_kotlin::kotlin_definition(),
         pick_kotlin::kotlin_definition(),
         logged_kotlin::kotlin_definition(),
+        sticker_kotlin::kotlin_definition(),
+        hull_kotlin::kotlin_definition(),
     ]
 }
 
@@ -1162,6 +1206,31 @@ fn a_type_is_corrected_wherever_it_is_held_and_in_every_shape() {
         return;
     };
     assert_eq!(printed, POSITIONS);
+}
+
+/// A type that names a function is handed a payload of any kind: a text is read as the class and
+/// as the enum under a tag key its function turns it into, as the Rust read reads it.
+#[test]
+fn a_text_is_read_into_a_class_and_a_tagged_enum_through_the_function() {
+    let rows = vec![
+        row::<Sticker>("a class from a text", "Sticker", r#""A""#),
+        row::<Sticker>("a class from its object", "Sticker", r#"{"label":"A"}"#),
+        row::<Hull>("an enum under a tag key from a text", "Hull", r#""A""#),
+        row::<Hull>(
+            "an enum under a tag key from its object",
+            "Hull",
+            r#"{"kind":"Tall","masts":3}"#,
+        ),
+    ];
+    let expected = report(&rows);
+    assert!(expected.contains("a class from a text: read {\"label\":\"A\"}"));
+    let Some(printed) = ran_kotlin(&module(
+        &[SAMPLE_FUNCTIONS, SHAPE_FUNCTIONS, TOLD],
+        &statements(&rows),
+    )) else {
+        return;
+    };
+    assert_eq!(printed, expected);
 }
 
 /// A member's functions are called on the member's own payload, in the order written, wherever
