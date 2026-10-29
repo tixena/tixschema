@@ -14,14 +14,16 @@ use tixschema::model_schema;
 
 #[cfg(feature = "serde")]
 use super::corrected_options_models::{moused_kotlin, reeved_kotlin, wormed_kotlin};
+#[cfg(feature = "zod")]
+use super::flattened_models::Ensign;
 use super::flattened_models::{
     BELTING, BOWLINING, BROACHING, Belting, Bending, Bowlining, Brailing, Broaching, CHAFING,
     CHOCKED, CLEATING, Cathead, Chafing, Chock, Cleating, CorrectedLocker, DRESSING, DRESSING_TAGS,
-    Dipping, Dressing, ENSIGN, EmptiedLocker, Ensign, FLAG, FLAG_TAGS, FRAYING, Flag, Fraying,
-    GAFFING, GONFALON, Gaffing, Gammoning, Gasketing, Gonfalon, HEAVING, HITCHING, Hawsepipe,
-    Heaving, Hitching, Jibing, Knotting, LOCKER, Lanyarding, Luffing, MARLINE, Netting, Nipping,
-    PAYLOAD, PENNANT_TAGS, Pennant, ProbeLocker, Quaying, Rousing, SCARFING, SCUDDING, SEMAPHORE,
-    SNUBBED, STOWING, STROPPING, STRUCK, SWAYING, Scarfing, Scudding, Seizing, Semaphore, Sheeting,
+    Dipping, Dressing, ENSIGN, EmptiedLocker, FLAG, FLAG_TAGS, FRAYING, Flag, Fraying, GAFFING,
+    GONFALON, Gaffing, Gammoning, Gasketing, Gonfalon, HEAVING, HITCHING, Hawsepipe, Heaving,
+    Hitching, Jibing, Knotting, LOCKER, Lanyarding, Luffing, MARLINE, Netting, Nipping, PAYLOAD,
+    PENNANT_TAGS, Pennant, ProbeLocker, Quaying, Rousing, SCARFING, SCUDDING, SEMAPHORE, SNUBBED,
+    STOWING, STROPPING, STRUCK, SWAYING, Scarfing, Scudding, Seizing, Semaphore, Sheeting,
     Slinging, Snubbing, Splicing, Stoppering, Stowing, Striking, Stropping, Swaying, Tacking,
     UNDER_AN_ALIAS, UNDER_TWO_NAMES, UNWRITTEN, WHELPING, Whelping, Whipping, Yawing, read_of,
 };

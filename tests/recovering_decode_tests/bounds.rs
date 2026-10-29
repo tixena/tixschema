@@ -52,6 +52,7 @@ struct BoundedLabel(String);
 struct BoundedPath(String);
 
 /// A literal of each kind, one under an `Option` and one on each item of a list.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct BoundedSeal {

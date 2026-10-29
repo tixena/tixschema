@@ -385,7 +385,15 @@ impl PartialEq for FieldDef {
 impl FieldDef {
     /// The enclosing item's own type parameter this field reaches *below* its own position — the
     /// `T` a `Later<T>` hands to the type it names, and the same `T` inside a tuple or a map.
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        all(
+            feature = "serde",
+            any(feature = "dart", feature = "swift", feature = "kotlin")
+        )
+    ))]
     pub fn argument_parameter_name(&self) -> Option<&str> {
         match &self.field_type {
             FieldDefType::SiblingType(_, arguments) => arguments
@@ -784,7 +792,15 @@ impl FieldDef {
 
     /// Whether the field describes an array at all — the question every surface asked of the
     /// boolean this depth replaced. Asked only where a schema is generated.
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        all(
+            feature = "serde",
+            any(feature = "dart", feature = "swift", feature = "kotlin")
+        )
+    ))]
     pub const fn is_array(&self) -> bool {
         self.array_depth > 0
     }
@@ -1162,7 +1178,15 @@ impl FieldDef {
 
     /// The parameter this field is or reaches, which is what a nested position is asked for: below
     /// the top level the two questions have one answer.
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        all(
+            feature = "serde",
+            any(feature = "dart", feature = "swift", feature = "kotlin")
+        )
+    ))]
     fn parameter_or_argument_name(&self) -> Option<&str> {
         self.parameter_shape_name()
             .or_else(|| self.argument_parameter_name())
@@ -3290,16 +3314,6 @@ fn get_field_def_type_or_sibling(t_name: &str) -> FieldDefType {
             } else {
                 FieldDefType::SiblingType(t_name.to_owned(), vec![])
             }
-        }
-        #[cfg(not(feature = "mongodb"))]
-        "ObjectId" => {
-            eprintln!("warning: ObjectId type detected but the 'mongodb' feature is not enabled");
-            eprintln!(
-                "         ObjectId will be treated as a custom type (may cause compilation errors)"
-            );
-            eprintln!("         Enable the mongodb feature: features = [\"mongodb\"]");
-            eprintln!("         Or add the required ObjectId type definition to your code");
-            FieldDefType::SiblingType(t_name.to_owned(), vec![])
         }
         #[cfg(feature = "chrono")]
         "NaiveDate" => FieldDefType::NaiveDate,

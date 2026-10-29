@@ -45,7 +45,7 @@ mod held_rules;
 
 /// Untagged enums told apart by a `literal` on one shared key, and the enums that are not.
 #[cfg(test)]
-#[cfg(feature = "serde")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[path = "untagged_tests/literal_models.rs"]
 mod literal_models;
 

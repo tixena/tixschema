@@ -16,5 +16,6 @@ mod models;
 mod documents;
 
 #[cfg(test)]
+#[cfg(feature = "jsonschema")]
 #[path = "wire_forms_tests/tests.rs"]
 mod tests;
