@@ -343,6 +343,10 @@ pub enum Freight {
     },
     #[serde(rename = "under-seal")]
     Sealed(#[model_schema_prop(minLength = 1)] String),
+    Split(
+        #[model_schema_prop(minLength = 1)] String,
+        #[model_schema_prop(minimum = 1)] u32,
+    ),
 }
 
 /// An enum under a tag and a content key.
@@ -356,6 +360,10 @@ pub enum Haul {
         haul_label: String,
     },
     Sealed(#[model_schema_prop(minLength = 1)] String),
+    Split(
+        #[model_schema_prop(minLength = 1)] String,
+        #[model_schema_prop(minimum = 1)] u32,
+    ),
     Stacked {
         #[model_schema_prop(check = ["withoutDuplicates"])]
         stacked_codes: Vec<String>,
@@ -1152,6 +1160,21 @@ fn wrapped_variant_rows() -> Vec<Row> {
             &Freight::Sealed(String::new()),
             &[&format!("'under-seal': {short}")],
         ),
+        pinned(
+            "Freight, the slots of several",
+            "Freight",
+            &Freight::Split(String::new(), 0),
+            &[
+                &format!("'split.0': {short}"),
+                "'split.1': too small: minimum is 1, got 0",
+            ],
+        ),
+        pinned(
+            "Freight, the slots of several, held",
+            "Freight",
+            &Freight::Split("a".to_owned(), 1),
+            &[],
+        ),
         pinned("Freight, no member", "Freight", &Freight::Held, &[]),
         pinned(
             "Haul, a model in the one slot",
@@ -1172,6 +1195,12 @@ fn wrapped_variant_rows() -> Vec<Row> {
             "Haul",
             &Haul::Sealed(String::new()),
             &[&format!("'held': {short}")],
+        ),
+        pinned(
+            "Haul, the slots of several",
+            "Haul",
+            &Haul::Split("a".to_owned(), 0),
+            &["'held.1': too small: minimum is 1, got 0"],
         ),
         pinned(
             "Haul, a member's check",

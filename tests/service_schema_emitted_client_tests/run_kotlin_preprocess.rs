@@ -184,7 +184,7 @@ a slot of a variant that reaches a parameter: read {\"kind\":\"One\",\"detail\":
 const APART_FROM_RUST: &str = "\
 a key the payload leaves out: MissingFieldException: Field 'label' is required for type with serial name 'Packet', but it was missing at path: $
 a number left as it is: JsonDecodingException: String literal for value of key 'primitive' should be quoted at path: $.primitive
-a list left as it is: IndexOutOfBoundsException
+a list left as it is: SerializationException: 'label': STRING cannot be read from an array
 an item left as it is, below a type that names a function: JsonDecodingException: String literal for value of key '0' should be quoted at path: $.0
 the unjudged read: read Packet(fragileItemCodes=[], itemCodeList=[x], label=)
 a value built in code, written: read {\"fragileItemCodes\":[],\"itemCodeList\":[\"x\"],\"label\":\"  A  \"}
@@ -1317,9 +1317,10 @@ fn each_client_reads_a_reply_through_the_functions_of_its_type() {
     ] {
         assert_eq!(of_a_list[client]["kind"], kind);
         let detail = of_a_list[client]["detail"].as_str().unwrap();
-        assert!(
-            detail.starts_with("java.lang.IndexOutOfBoundsException"),
-            "got: {detail}"
+        assert_eq!(
+            detail,
+            "kotlinx.serialization.SerializationException: 'label': STRING cannot be read from \
+             an array"
         );
     }
 }
@@ -1381,7 +1382,7 @@ fn the_readme_shows_the_functions_and_the_rows_that_run() {
         "| 3 | `{\"label\":\"A\",\"itemCodeList\":[\"x\"]}` | read; `fragileItemCodes` is `[]` |",
         "| 5 | row 1 inside `Manifest`, under `parcel` | read; `parcel.label` is `\"A\"` |",
         "String literal for value of key 'primitive' should be quoted at path: $.primitive",
-        "`IndexOutOfBoundsException`",
+        "`'label': STRING cannot be read from an array`",
         "error: unresolved reference 'trimmed'.",
     ] {
         assert!(readme.contains(shown), "not in the README: {shown}");
