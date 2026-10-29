@@ -5129,6 +5129,141 @@ fn a_rename_naming_two_keys_is_refused_where_only_a_client_is_emitted() {
     );
 }
 
+/// A map key serde writes as an array is refused where only a client is emitted, in the words the
+/// schema surfaces use.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
+#[test]
+fn a_tuple_map_key_is_refused_in_every_build_that_describes_a_type() {
+    let expanded =
+        expansion_over("pub struct Ledger { pub by_pair: HashMap<(u8, u8), String> }").to_string();
+    assert_eq!(
+        expanded.matches("compile_error").count(),
+        1,
+        "got: {expanded}"
+    );
+    assert!(
+        expanded.contains(
+            "model_schema: field `by_pair`: a map key must be a value serde writes as a string, \
+             which is what a JSON object key is \u{2014} serde writes `(_, _)` as a JSON array, and \
+             refuses to serialize a map keyed by one at all"
+        ),
+        "got: {expanded}"
+    );
+}
+
+#[cfg(all(
+    feature = "serde",
+    feature = "mongodb",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
+#[test]
+fn an_object_id_map_key_is_refused_in_every_build_that_describes_a_type() {
+    let expanded =
+        expansion_over("pub struct Ledger { pub by_id: HashMap<ObjectId, String> }").to_string();
+    assert_eq!(
+        expanded.matches("compile_error").count(),
+        1,
+        "got: {expanded}"
+    );
+    assert!(
+        expanded.contains("serde writes `ObjectId` as a JSON object"),
+        "got: {expanded}"
+    );
+}
+
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
+#[test]
+fn nested_list_and_optional_map_keys_are_refused_in_every_build_that_describes_a_type() {
+    for (field_type, said) in [
+        (
+            "HashMap<HashMap<String, u8>, String>",
+            "`HashMap<_, _>` as a JSON object",
+        ),
+        (
+            "HashMap<Vec<String>, String>",
+            "this key is a sequence of `String`",
+        ),
+        (
+            "HashMap<Option<String>, String>",
+            "this key is an `Option<String>`",
+        ),
+    ] {
+        let expanded = expansion_over(&format!("pub struct Ledger {{ pub by_key: {field_type} }}"))
+            .to_string();
+        assert_eq!(
+            expanded.matches("compile_error").count(),
+            1,
+            "for `{field_type}`, got: {expanded}"
+        );
+        assert!(
+            expanded.contains(said),
+            "for `{field_type}`, got: {expanded}"
+        );
+    }
+}
+
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
+#[test]
+fn a_string_map_key_is_left_alone_in_every_build_that_describes_a_type() {
+    let expanded =
+        expansion_over("pub struct Ledger { pub by_name: HashMap<String, u8> }").to_string();
+    assert_eq!(
+        expanded.matches("compile_error").count(),
+        0,
+        "got: {expanded}"
+    );
+}
+
+/// No local build is of the clients alone, so the gates are read off the sources.
+#[test]
+fn the_map_key_guard_is_compiled_in_every_build_that_describes_a_type() {
+    let describing = quote::quote! {
+        any(
+            feature = "typescript",
+            feature = "zod",
+            feature = "jsonschema",
+            all(
+                feature = "serde",
+                any(feature = "dart", feature = "swift", feature = "kotlin")
+            )
+        )
+    };
+    let compiled = quote::quote!(cfg(#describing)).to_string();
+    let expansion = include_str!("../model_schema.rs");
+    for named in [
+        "WRITTEN_AS_ARRAY",
+        "WRITTEN_AS_NULL",
+        "WRITTEN_AS_OBJECT",
+        "sequence_wrapper_element",
+        "map_key_path",
+        "unwritable_key",
+        "key_rejection",
+        "map_key_element_name",
+        "map_key_rejection",
+        "non_enum_map_key_message",
+        "sequenced_map_key_message",
+        "optional_map_key_message",
+        "unwritable_map_key_message",
+        "map_key_rejection_message",
+        "check_map_key",
+    ] {
+        assert_eq!(
+            gates_above(expansion, named),
+            [compiled.as_str()],
+            "for `{named}`"
+        );
+    }
+}
+
 #[cfg(feature = "serde")]
 #[test]
 fn cfg_attr_without_serde_leaves_an_enum_alone() {
