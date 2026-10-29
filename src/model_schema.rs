@@ -116,6 +116,13 @@ use crate::utils::{
     shape_questions_for,
 };
 
+#[cfg(all(
+    feature = "serde",
+    feature = "indexmap",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+use crate::utils::record_indexed_set;
+
 #[cfg(feature = "serde")]
 use crate::utils::{
     Declared, NonObjectWire, SlotBesideTag, TrivialPattern, UnionParameter, WireLeaf, WrittenAs,
@@ -2467,6 +2474,10 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
     register_alias_info(&rust_ident_str, &export_name, &module_name, kind);
     if names_a_list(&alias.ty) {
         record_counted(&rust_ident_str, Counted::Items);
+        #[cfg(all(feature = "serde", feature = "indexmap"))]
+        if names_an_indexed_set(&alias.ty) {
+            record_indexed_set(&rust_ident_str);
+        }
     }
     // An alias *is* its target, so a key written under its name renders in the target's wire form.
     record_key_wire(&rust_ident_str, alias_field_def.map_key_wire());
@@ -6288,7 +6299,15 @@ fn deferred_shape_refusals(registering: Option<&Ident>) -> Vec<proc_macro2::Toke
         .into_iter()
         .filter_map(|question| {
             let shape = answered_shape(info.value_shape, &question.argument_shapes)?;
-            let message = named_inner_constraint_message(&question.brand, &rust_ident, shape);
+            let mut message = named_inner_constraint_message(&question.brand, &rust_ident, shape);
+            if shape == "container" {
+                let _ = write!(
+                    message,
+                    " A length counts the items of `{rust_ident}` only when it is declared above \
+                     `{brand}`: move `{rust_ident}` above `{brand}`.",
+                    brand = question.brand
+                );
+            }
             Some(syn::Error::new_spanned(name, message).to_compile_error())
         })
         .collect()
@@ -17862,6 +17881,7 @@ fn named_leaf_length_rendering(named: &syn::Type, message: &str) -> proc_macro2:
         "model_schema_bound_length",
         named.span().resolved_at(proc_macro2::Span::call_site()),
     );
+    let index_set = indexed_set_length(named);
     quote! {
         #[diagnostic::on_unimplemented(
             message = #message,
@@ -17926,6 +17946,7 @@ fn named_leaf_length_rendering(named: &syn::Type, message: &str) -> proc_macro2:
                 self.len()
             }
         }
+        #index_set
         trait UnbrandedLength {
             fn model_schema_bound_length(&self) -> usize
             where
@@ -17943,6 +17964,44 @@ fn named_leaf_length_rendering(named: &syn::Type, message: &str) -> proc_macro2:
         let _: usize = UnbrandedLength::model_schema_bound_length("");
         let length: usize = named.#read();
     }
+}
+
+/// The length of an `IndexSet`, written only for a name registered as an alias of one: the
+/// consumer's own `indexmap` is named where they use it, and nowhere else.
+#[cfg(all(
+    feature = "serde",
+    feature = "indexmap",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn indexed_set_length(named: &syn::Type) -> proc_macro2::TokenStream {
+    let syn::Type::Path(path) = written_type(named) else {
+        return proc_macro2::TokenStream::new();
+    };
+    let is_indexed = path.path.segments.last().is_some_and(|segment| {
+        lookup_alias_info(&segment.ident.to_string()).is_some_and(|info| info.indexed_set)
+    });
+    if !is_indexed {
+        return proc_macro2::TokenStream::new();
+    }
+    quote! {
+        impl<Item, Hasher> BoundedLength for ::indexmap::IndexSet<Item, Hasher> {
+            fn bounded_length(&self) -> usize {
+                self.len()
+            }
+        }
+    }
+}
+
+/// A build with no `IndexSet` support names no `indexmap`.
+#[cfg(all(
+    feature = "serde",
+    not(all(
+        feature = "indexmap",
+        any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    ))
+))]
+fn indexed_set_length(_named: &syn::Type) -> proc_macro2::TokenStream {
+    proc_macro2::TokenStream::new()
 }
 
 /// Whether a named leaf is held to lengths alone, which the type it names answers with the count
@@ -18568,6 +18627,16 @@ fn names_a_list(ty: &syn::Type) -> bool {
         matches!(segment.arguments, syn::PathArguments::AngleBracketed(_))
             && is_sequence_wrapper(&segment.ident.to_string())
     })
+}
+
+/// Whether a type is written as `IndexSet`, which is a list under the `indexmap` feature unless
+/// the consumer declares a type of that name.
+#[cfg(all(feature = "serde", feature = "indexmap"))]
+fn names_an_indexed_set(ty: &syn::Type) -> bool {
+    matches!(
+        written_type(ty),
+        syn::Type::Path(named) if named.path.segments.last().is_some_and(|segment| segment.ident == "IndexSet")
+    )
 }
 
 /// Whether a brand's inner is written as a list itself, or as one behind `Box`, `Rc`, `Arc` or

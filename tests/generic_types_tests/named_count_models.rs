@@ -45,3 +45,23 @@ pub struct Billboard {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct Carried<T>(pub T);
+
+#[cfg(feature = "indexmap")]
+#[model_schema()]
+pub type Ordered = indexmap::IndexSet<String>;
+
+#[cfg(feature = "indexmap")]
+#[model_schema(no_display, minLength = 1)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct SomeOrdered(pub Ordered);
+
+#[cfg(feature = "indexmap")]
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Lineup {
+    #[model_schema_prop(minLength = 1, maxLength = 2)]
+    pub ordered: Ordered,
+    #[model_schema_prop(maxLength = 2)]
+    pub some: SomeOrdered,
+}
