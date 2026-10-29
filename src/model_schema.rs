@@ -288,6 +288,8 @@ use crate::utils::to_snake_case;
 #[cfg(feature = "serde")]
 use crate::utils::{forget_checks, names_a_check, record_member_checks, record_own_checks};
 
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+use crate::rename_rule::RenameRule;
 use crate::rename_rule::resolve_rename_rule;
 
 /// Every argument the `model_schema` parser reads, in the order the unknown-argument rejection
@@ -2264,6 +2266,21 @@ fn process_shape(item: Item, args: &ModelSchemaArgs) -> TokenStream {
     }
 }
 
+/// The Rust name of the item a client emitter writes, which a member written `Self` is named as.
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+fn item_rust_name(item: &Item) -> String {
+    let ident = if let Item::Struct(item_struct) = item {
+        &item_struct.ident
+    } else if let Item::Enum(item_enum) = item {
+        &item_enum.ident
+    } else if let Item::Type(item_type) = item {
+        &item_type.ident
+    } else {
+        return String::new();
+    };
+    ident.to_string()
+}
+
 /// The Dart tokens `item` earns, or nothing without the `dart` feature — always callable, so the
 /// tokens that follow the item's own expansion never need a `#[cfg]`-gated `let` of their own.
 /// The backend is handed what it reads of `args`: the name, the checks, the `preprocess`, the
@@ -2284,6 +2301,7 @@ fn dart_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
             name_override: args.name_override.as_deref(),
             pattern: args.pattern.as_deref(),
             preprocess: &args.preprocess,
+            type_name: &item_rust_name(item),
         },
     )
 }
@@ -2311,6 +2329,7 @@ fn swift_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
             name_override: args.name_override.as_deref(),
             pattern: args.pattern.as_deref(),
             preprocess: &args.preprocess,
+            type_name: &item_rust_name(item),
         },
     )
 }
@@ -2338,6 +2357,7 @@ fn kotlin_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
             name_override: args.name_override.as_deref(),
             pattern: args.pattern.as_deref(),
             preprocess: &args.preprocess,
+            type_name: &item_rust_name(item),
         },
     )
 }
@@ -12034,6 +12054,17 @@ fn variant_serde_names(
         parse_serde_type_attributes(attrs)
             .rename_all
             .or_else(|| rename_all_fields.map(ToOwned::to_owned)),
+    )
+}
+
+/// The rule that names the members of `variant`, as the Rust, TypeScript, Zod and JSON Schema
+/// surfaces read it: its own `rename_all`, else the enum's `rename_all_fields`.
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+pub fn variant_field_rule(variant: &syn::Variant, rename_all_fields: Option<&str>) -> RenameRule {
+    resolve_rename_rule(
+        variant_serde_names(&variant.attrs, rename_all_fields)
+            .1
+            .as_deref(),
     )
 }
 

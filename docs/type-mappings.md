@@ -332,6 +332,14 @@ three read a payload whose key holds the struct's name, and refuse one without t
 another value under it, as TypeScript and Zod refuse it, where serde reads past the key ("The Dart
 read refuses what `validate()` refuses", "The Swift read" and "The Kotlin client's read", below).
 
+The Dart, Swift and Kotlin emitters name a member as Rust names it in two places. A member written
+`Self` goes through `FieldDef::named_within`, which writes the item's own name (`Vec<Self>` on
+`Bough` is `Vec<Bough>`, a generic item at its own parameters) before the item's type parameters are
+erased; `DartTypeArgs`, `SwiftTypeArgs` and `KotlinArgs` carry that name in `type_name`. A variant's
+members are cased by `variant_field_rule`: the variant's own `rename_all`, else the enum's
+`rename_all_fields`, the order `variant_serde_names` gives the other surfaces. A field's own
+`rename` wins over both.
+
 A variant serde neither writes nor reads, under `skip` or under `skip_serializing` and
 `skip_deserializing` together, is described on no surface and read and written by no client, as a
 member taken off the wire in both directions is (`push_described_field`). A variant under one of
