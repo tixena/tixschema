@@ -4758,7 +4758,7 @@ Where each row is stated in full:
 | Swift | [`preprocess` in the Swift client](#preprocess-in-the-swift-client) | [`validate()` in the Swift client](#validate-in-the-swift-client) | [A Swift read refuses what `validate()` refuses](#a-swift-read-refuses-what-validate-refuses) |
 | Kotlin | [`preprocess` in the Kotlin client](#preprocess-in-the-kotlin-client) | [`validate()` in the Kotlin client](#validate-in-the-kotlin-client) | [The read in the Kotlin client](#the-read-in-the-kotlin-client) |
 
-**Each client has limits of its own**, and the section of the client states them: the typed payload of a type's function in Dart, a bounded brand declared below an `#[serde(untagged)]` enum and a type declared below the type that reads it from its own decoder in Swift, and a model declared below its holder and a member that reaches a type parameter in Kotlin.
+**Each client has limits of its own**, and the section of the client states them: a bounded brand declared below an `#[serde(untagged)]` enum and a type declared below the type that reads it from its own decoder in Swift, and a model declared below its holder and a member that reaches a type parameter in Kotlin.
 
 #### The six shared cases
 
@@ -6350,7 +6350,7 @@ What resolves the error is a function `without_fragile` in scope where `Parcel` 
 With the `dart` feature, `fromJsonUnjudged` of every type `dart_definition()` writes calls the functions the type and its members name, each under the name the attribute writes. [`fromJson` is that read followed by `validate()`](#the-dart-read-refuses-what-validate-refuses), so both reads correct the payload, in [the order of a Rust read](#the-order-of-one-read): the type's functions, each member's as it is read, the value, then `validate()`. The parcel of the example is read by:
 
 ```dart
-factory Parcel.fromJsonUnjudged(Map<String, dynamic> payload) {
+factory Parcel.fromJsonUnjudged(dynamic payload) {
   final json = withoutFragile(payload) as Map<String, dynamic>;
   return Parcel(
     label: (json.containsKey('label') ? trimmed(json['label']) : null) as String,
@@ -6387,7 +6387,7 @@ With those two functions, `Parcel.fromJson` and `Manifest.fromJson` answer for t
 - **The payload is what `jsonDecode` holds**: a `Map<String, dynamic>`, a `List<dynamic>`, a `String`, a number, a `bool` or `null`. A function answers `dynamic`, and the read casts what it answers.
 - **A field's function is called where the payload holds the key**, a `null` it holds included. A key the payload does not hold calls no function and is read as it was: `{"itemCodeList":["x"],"fragileItemCodes":["x"]}` is refused with `type 'Null' is not a subtype of type 'String' in type cast`, where the Rust read answers ``missing field `label` ``. A key under `#[serde(default)]` that the payload does not hold is read as its default, and no function is called for it. A slot's function is called with what its position holds.
 - **Several functions run in the order written**, each over the answer of the one before: `preprocess = ["unwrapped", "withoutFragile"]` calls `withoutFragile(unwrapped(payload))`. One read calls each function once.
-- **A type's function takes the payload its read takes**, typed as the read types it: the object of a class and of an enum under a tag key, the text of a plain enum, and the payload as it is for a brand, a tuple struct and any other enum. A payload of another kind does not reach it: a text handed to the read of a class is refused with a `TypeError` ahead of the function, where the Rust read hands the function any payload.
+- **A type's function is handed the payload as it arrives**, of any kind, as the Rust read hands it. A type that names one takes `dynamic` in both reads, `factory Sticker.fromJson(dynamic json)` and `factory Sticker.fromJsonUnjudged(dynamic payload)`, and the cast after the functions refuses an answer of the wrong kind. A type that names none keeps the payload its read types.
 - **A type that holds another reads it through that type's own read**, so it is corrected wherever it is held: in a field, an optional, a list, a map's value, a variant and a `#[serde(flatten)]` member. A holder that names no function and flattens no member is written as it was.
 - **A flattened member is read from the entries the members beside it and the members flattened ahead of it do not take**, as serde hands them: `Tagged.fromJsonUnjudged(({...json}..remove('dock')))`. A function it names, and a function of the type it holds, is handed those keys. Under a tag key, a type flattened into a variant, the function of a variant's one slot and the type that slot holds are handed the object without the tag as well, as serde hands them.
 - **A flattened `Option` of any type but a map is read from what its functions answer as the Zod schema of its holder reads it**, where serde parts from Zod: where the type does not read the answer, `null` among it, the member is `null` where the object its functions are handed holds none of its struct's keys, or no key at all for a type whose keys are not known, an enum among them, and the payload is refused where it holds one, with the error of that read, as [the Dart read](#the-dart-read-refuses-what-validate-refuses) states. With `struct Reeved { note: String, #[model_schema_prop(preprocess = ["asGiven"])] #[serde(flatten, default, skip_serializing_if = "Option::is_none")] tholepin: Option<Tholepin> }` over a `Tholepin` that reads `label`, `{"note":"n"}` reads `tholepin` as `null`, and `{"label":5,"note":"n"}` is refused. serde refuses an answer its type does not read, the first as well, and reads `null` as `None`.
@@ -9248,7 +9248,7 @@ pub mod record {
 
 rustc's help line suggests `cargo add version_schema`; there is no such crate. The module is generated next to `Version`, in the module that declares it.
 
-With the `mongodb` feature on, a `#[model_schema(enable = ["decode_with", "mongodb"])]` type asks for the same import in every build, `jsonschema` or not, for each type that lists `"mongodb"` one of its fields is typed with: its typed MongoDB paths name that type's own. The error is then ``cannot find `version_schema` in `super` `` (`E0433`), reported at the field's type, and the same import resolves it. [Limits](#limits) has it beside the other limits of the paths.
+The import is the JSON Schema's alone. The typed MongoDB paths name no other type's module, so a type that lists `"mongodb"` and holds a model declared in another module builds with the model imported by itself in a build with `mongodb` and no `jsonschema`, whatever the other schema surfaces (`typescript`, `zod`) are.
 
 #### A Renaming That Names Two Keys
 

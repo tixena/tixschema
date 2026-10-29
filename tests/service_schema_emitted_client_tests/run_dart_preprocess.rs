@@ -19,11 +19,12 @@ use serde_json::Value;
 use tixschema::{model_schema, service_schema};
 
 use super::preprocess_models::{
-    POSITIONS, Parcel, Pinned, SAMPLE, SAMPLE_ROWS, Tagged, carrier_dart, closed_dock_dart,
-    consigned_dart, crate_dart, crated_dart, delivery_dart, either_dart, grade_dart, handover_dart,
-    label_dart, manifest_dart, node_dart, parcel_dart, pinned_dart, positions, reference_dart,
-    routed_dart, sample_report, shelf_dart, shipment_dart, slot_dart, stack_dart, tagged_dart,
-    tagged_schema, transfer_dart, trimmed, unnamed_dart, weighed_dart, with_its_keys, wrapped_dart,
+    Grade, POSITIONS, Parcel, Pinned, SAMPLE, SAMPLE_ROWS, Tagged, carrier_dart, closed_dock_dart,
+    consigned_dart, crate_dart, crated_dart, delivery_dart, either_dart, grade_dart, grade_schema,
+    handover_dart, label_dart, manifest_dart, node_dart, parcel_dart, pinned_dart, positions,
+    reference_dart, routed_dart, sample_report, shelf_dart, shipment_dart, slot_dart, stack_dart,
+    tagged_dart, tagged_schema, transfer_dart, trimmed, unnamed_dart, weighed_dart, with_its_keys,
+    wrapped_dart,
 };
 use super::run_dart_validate::{dart, from_until, module};
 use super::runtime::ran;
@@ -151,17 +152,11 @@ dynamic read(dynamic payload) => payload is String ? (int.tryParse(payload.trim(
 dynamic tag(dynamic payload) => payload is Map<String, dynamic> && payload.containsKey('held') ? payload['held'] : payload;
 ";
 
-/// The rows of the shared table Dart does not read as the Rust read does, each with why.
-const NOT_READ: [(&str, &str); 2] = [
-    (
-        "a type that reaches itself",
-        "the backend writes `Self` as a type of that name",
-    ),
-    (
-        "a plain enum",
-        "the read of a plain enum takes a `String`, so an envelope does not reach its function",
-    ),
-];
+/// The row of the shared table Dart does not read as the Rust read does, with why.
+const NOT_READ: [(&str, &str); 1] = [(
+    "a type that reaches itself",
+    "the backend writes `Self` as a type of that name",
+)];
 
 /// What prints a row as every side prints it: its name and the value read, written back, or each
 /// message of the refusal on a line of its own.
@@ -311,6 +306,118 @@ void main() async {
 }
 ";
 
+/// The functions that read a text as the object a type reads.
+const TEXT_FUNCTIONS: &str = "
+dynamic labelled(dynamic payload) => payload is String ? {'label': payload} : payload;
+
+dynamic hulled(dynamic payload) =>
+    payload is String ? {'kind': 'Plain', 'label': payload} : payload;
+";
+
+/// One row per payload of another kind than the one a type reads: the Dart expression that reads
+/// `@` and writes it back, and the payload.
+const KIND_ROWS: [(&str, &str, &str); 8] = [
+    (
+        "a class from a text",
+        "Sticker.fromJson(@).toJson()",
+        r#""A""#,
+    ),
+    (
+        "a class from its object",
+        "Sticker.fromJson(@).toJson()",
+        r#"{"label":"A"}"#,
+    ),
+    (
+        "an enum under a tag key from a text",
+        "Hull.fromJson(@).toJson()",
+        r#""A""#,
+    ),
+    (
+        "an enum under a tag key from its object",
+        "Hull.fromJson(@).toJson()",
+        r#"{"kind":"Tall","masts":3}"#,
+    ),
+    (
+        "a plain enum from an envelope",
+        "Grade.fromJson(@).toJson()",
+        r#"{"payload":"Express"}"#,
+    ),
+    (
+        "a plain enum from its text",
+        "Grade.fromJson(@).toJson()",
+        r#""Standard""#,
+    ),
+    (
+        "each of the three, held in a field, an optional, a list and a map",
+        "Cradle.fromJson(@).toJson()",
+        r#"{"sticker":"A","kept":"B","stickers":["C",{"label":"D"}],"stickerMap":{"e":"E"},"hull":"F","hulls":["G",{"kind":"Tall","masts":2}],"hullMap":{"h":"H"},"grade":{"payload":"Express"},"grades":[{"payload":"Standard"},"Express"],"gradeMap":{"i":{"payload":"Standard"}}}"#,
+    ),
+    (
+        "an optional held as null",
+        "Cradle.fromJson(@).toJson()",
+        r#"{"sticker":{"label":"A"},"kept":null,"stickers":[],"stickerMap":{},"hull":{"kind":"Tall","masts":1},"hulls":[],"hullMap":{},"grade":"Express","grades":[],"gradeMap":{}}"#,
+    ),
+];
+
+/// A stub transport that answers `stick` with a text, and what prints the sticker read from it.
+const STICKER_HTTP_DRIVER: &str = "
+class _Dispenser implements StickerClientServiceHttpTransport {
+  @override
+  Future<({int status, List<(String, String)> headers, List<int> body, Stream<List<int>> bodyStream})> send(
+    ({String method, String path, String query, List<(String, String)> headers, List<int> body, List<(String, dynamic)> parts}) request,
+  ) async {
+    return (
+      status: 200,
+      headers: <(String, String)>[],
+      body: utf8.encode(jsonEncode('A')),
+      bodyStream: const Stream<List<int>>.empty(),
+    );
+  }
+}
+
+void main() async {
+  final client = StickerClientServiceHttpClient(_Dispenser());
+  final result = await client.stick('A');
+  print(jsonEncode(switch (result) {
+    StickerClientServiceStickResultOk(:final value) => value.toJson(),
+    _ => 'not read',
+  }));
+}
+";
+
+/// Answers the `stick` the client sends over an in-memory stream pair with a text, and prints the
+/// sticker read from it.
+const STICKER_WS_DRIVER: &str = "
+void main() async {
+  final sentRaw = <dynamic>[];
+  final outbound = StreamController<dynamic>();
+  outbound.stream.listen(sentRaw.add);
+  final inbound = StreamController<dynamic>();
+  final transport = StickerClientServiceWsTransport(
+    sink: outbound.sink,
+    stream: inbound.stream,
+    heartbeat: StickerClientServiceWsHeartbeat.off(),
+  );
+  final client = StickerClientServiceWsClient(transport);
+  final stuck = client.stick('A');
+  await Future<void>.delayed(Duration.zero);
+  final frame = jsonDecode(sentRaw.last as String) as Map<String, dynamic>;
+  inbound.add(jsonEncode(<String, dynamic>{
+    'kind': 'reply',
+    'id': frame['id'],
+    'service': 'StickerClientService',
+    'ok': true,
+    'value': 'A',
+  }));
+  final result = await stuck;
+  transport.close();
+  print(jsonEncode(switch (result) {
+    StickerClientServiceStickResultOk(:final value) => value.toJson(),
+    _ => 'not read',
+  }));
+}
+";
+
 thread_local! {
     /// How often each function of the counted tally was called on this thread.
     static CALLS: RefCell<BTreeMap<&'static str, u32>> = const { RefCell::new(BTreeMap::new()) };
@@ -409,6 +516,48 @@ pub enum Speed {
 #[serde(transparent)]
 pub struct Mark<IdType>(pub IdType);
 
+/// A class whose function reads a text as an object.
+#[model_schema(preprocess = ["labelled"])]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Sticker {
+    pub label: String,
+}
+
+/// An enum under a tag key whose function reads a text as an object.
+#[model_schema(preprocess = ["hulled"])]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "kind")]
+pub enum Hull {
+    Plain { label: String },
+    Tall { masts: u32 },
+}
+
+/// A type that names no function on itself, which holds each shape that names one in a field, an
+/// optional, a list and a map.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Cradle {
+    pub grade: Grade,
+    pub grade_map: BTreeMap<String, Grade>,
+    pub grades: Vec<Grade>,
+    pub hull: Hull,
+    pub hull_map: BTreeMap<String, Hull>,
+    pub hulls: Vec<Hull>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kept: Option<Sticker>,
+    pub sticker: Sticker,
+    pub sticker_map: BTreeMap<String, Sticker>,
+    pub stickers: Vec<Sticker>,
+}
+
+/// One operation that answers a sticker.
+#[service_schema(transports = ["http_rest"])]
+pub trait StickerClientService<Ctx> {
+    #[service_schema_op(http(method = "POST", path = "/stick", error_status(Missing = 404)))]
+    async fn stick(&self, ctx: &Ctx, text: String) -> Result<Sticker, ShelfError>;
+}
+
 /// A type whose functions count their calls: one on the type, and one on a member of each kind
 /// whose read names its payload more than once.
 #[model_schema(preprocess = ["countedTally"])]
@@ -479,6 +628,34 @@ impl IntakeClientService<()> for Scale {
             item_code_list: vec!["x".to_owned()],
             label,
         })
+    }
+}
+
+/// A back end that answers every `stick` with the sticker its text labels.
+pub struct Dispenser;
+
+impl StickerClientService<()> for Dispenser {
+    async fn stick(&self, _ctx: &(), text: String) -> Result<Sticker, ShelfError> {
+        ready(()).await;
+        Ok(Sticker { label: text })
+    }
+}
+
+/// A text as the object a sticker reads, and any other payload as it is.
+fn labelled(payload: Value) -> Value {
+    if let Value::String(label) = payload {
+        serde_json::json!({ "label": label })
+    } else {
+        payload
+    }
+}
+
+/// A text as the plain hull it labels, and any other payload as it is.
+fn hulled(payload: Value) -> Value {
+    if let Value::String(label) = payload {
+        serde_json::json!({ "kind": "Plain", "label": label })
+    } else {
+        payload
     }
 }
 
@@ -744,8 +921,8 @@ fn every_position_and_every_shape_prints_the_line_of_the_shared_table() {
     assert_eq!(wrote, expected);
 }
 
-/// The two rows of the shared table Dart does not read: what the backend writes for a type that
-/// reaches itself, and what the read of a plain enum answers for an envelope.
+/// The row of the shared table Dart does not read: what the backend writes for a type that
+/// reaches itself.
 #[test]
 fn the_rows_dart_does_not_read_are_the_ones_named() {
     let node = node_dart::dart_definition();
@@ -754,19 +931,150 @@ fn the_rows_dart_does_not_read_are_the_ones_named() {
         "{}: {node}",
         NOT_READ[0].1
     );
-    let entry = "void main() {\n  try {\n    Grade.fromJson(jsonDecode(r'{\"payload\":\"Express\"}'));\n    \
-                 print('read');\n  } on TypeError {\n    print('not read');\n  }\n  \
-                 print(jsonEncode(Grade.fromJson('Express').toJson()));\n}\n";
+}
+
+/// A type that names a function is handed a payload of any kind, as the Rust read hands it, and
+/// the cast after the functions refuses an answer of the wrong kind.
+#[test]
+fn a_type_that_names_a_function_takes_a_payload_of_any_kind() {
+    let rust = |row: &str, reader: &str, payload: &str| match reader.split('.').next().unwrap() {
+        "Sticker" => rust_row::<Sticker>(row, payload),
+        "Hull" => rust_row::<Hull>(row, payload),
+        "Grade" => rust_row::<Grade>(row, payload),
+        _ => rust_row::<Cradle>(row, payload),
+    };
+    let printed: String = KIND_ROWS
+        .iter()
+        .map(|&(name, reader, payload)| rust(name, reader, payload))
+        .collect();
+    let rows: String = KIND_ROWS
+        .iter()
+        .map(|&(name, reader, payload)| dart_row(name, reader, payload))
+        .collect();
+    let definitions = [
+        sticker_dart::dart_definition(),
+        hull_dart::dart_definition(),
+        grade_dart::dart_definition(),
+        cradle_dart::dart_definition(),
+    ];
     let Some(wrote) = ran(
         "dart",
         RUNTIME_VAR,
         "dart",
-        "plain.dart",
-        &module(&[grade_dart::dart_definition()], &[CORRECTIONS], entry),
+        "kinds.dart",
+        &module(
+            &definitions,
+            &[TEXT_FUNCTIONS, CORRECTIONS, ROW],
+            &driver(&rows),
+        ),
     ) else {
         return;
     };
-    assert_eq!(wrote, "not read\n\"Express\"\n", "{}", NOT_READ[1].1);
+    assert_eq!(wrote, printed);
+    assert!(printed.contains("a class from a text: read {\"label\":\"A\"}"));
+    assert!(printed.contains("a plain enum from an envelope: read \"Express\""));
+}
+
+/// An answer of the wrong kind is refused by the cast after the functions, as serde refuses it.
+#[test]
+fn an_answer_of_the_wrong_kind_is_refused_after_the_functions() {
+    serde_json::from_str::<Sticker>("7").unwrap_err();
+    serde_json::from_str::<Hull>("7").unwrap_err();
+    let entry = "void main() {\n  for (final read in <Object? Function()>[\n    () => \
+                 Sticker.fromJson(7),\n    () => Hull.fromJson(7),\n  ]) {\n    try {\n      \
+                 read();\n      print('read');\n    } on TypeError {\n      \
+                 print('not read');\n    }\n  }\n}\n";
+    let Some(wrote) = ran(
+        "dart",
+        RUNTIME_VAR,
+        "dart",
+        "wrong_kind.dart",
+        &module(
+            &[
+                sticker_dart::dart_definition(),
+                hull_dart::dart_definition(),
+            ],
+            &[TEXT_FUNCTIONS],
+            entry,
+        ),
+    ) else {
+        return;
+    };
+    assert_eq!(wrote, "not read\nnot read\n");
+}
+
+/// The text a type that names no function on itself emits is the text it emitted before: it
+/// takes the payload its read types.
+#[test]
+fn a_type_that_names_no_function_keeps_the_payload_its_read_types() {
+    let held = cradle_dart::dart_definition();
+    assert!(
+        held.contains("factory Cradle.fromJson(Map<String, dynamic> json)"),
+        "{held}"
+    );
+    assert!(
+        held.contains("factory Cradle.fromJsonUnjudged(Map<String, dynamic> json)"),
+        "{held}"
+    );
+    let listed = listed_dart::dart_definition();
+    assert!(
+        listed.contains("factory Listed.fromJson(Map<String, dynamic> json)"),
+        "{listed}"
+    );
+    let sticker = sticker_dart::dart_definition();
+    assert!(
+        sticker.contains("factory Sticker.fromJson(dynamic json)"),
+        "{sticker}"
+    );
+    assert!(
+        sticker.contains("factory Sticker.fromJsonUnjudged(dynamic payload)"),
+        "{sticker}"
+    );
+}
+
+/// A client reads a reply of a type that names a function through it, from a payload of another
+/// kind than the type's own.
+#[test]
+fn the_clients_read_a_reply_of_a_text_through_its_functions() {
+    let library = |client: String, driver: &str| {
+        [
+            "import 'dart:async';".to_owned(),
+            "import 'dart:convert';".to_owned(),
+            sticker_dart::dart_definition(),
+            shelf_error_dart::dart_definition(),
+            TEXT_FUNCTIONS.to_owned(),
+            StickerClientServiceSchema::dart_definition(),
+            client,
+            driver.to_owned(),
+        ]
+        .join("\n\n")
+    };
+    let Some(over_http) = ran(
+        "dart",
+        RUNTIME_VAR,
+        "dart",
+        "sticker_http.dart",
+        &library(
+            StickerClientServiceSchema::dart_http_client(),
+            STICKER_HTTP_DRIVER,
+        ),
+    ) else {
+        return;
+    };
+    assert_eq!(over_http, "{\"label\":\"A\"}\n");
+    let Some(over_ws) = ran(
+        "dart",
+        RUNTIME_VAR,
+        "dart",
+        "sticker_ws.dart",
+        &library(
+            StickerClientServiceSchema::dart_ws_client(),
+            STICKER_WS_DRIVER,
+        ),
+    ) else {
+        return;
+    };
+    assert_eq!(over_ws, "{\"label\":\"A\"}\n");
 }
 
 /// Where serde hands a function fewer keys than the payload holds, Dart hands it the same keys:
@@ -993,10 +1301,21 @@ fn the_emitted_source_of_a_preprocess_has_no_issue() {
         recounted_dart::dart_definition(),
         keyed_dart::dart_definition(),
         tally_dart::dart_definition(),
+        sticker_dart::dart_definition(),
+        hull_dart::dart_definition(),
+        cradle_dart::dart_definition(),
     ];
     let shapes = module(
         &definitions,
-        &[FUNCTIONS, CORRECTIONS, CHECK, NAMED_FUNCTIONS, COUNTED, ROW],
+        &[
+            FUNCTIONS,
+            CORRECTIONS,
+            CHECK,
+            NAMED_FUNCTIONS,
+            COUNTED,
+            TEXT_FUNCTIONS,
+            ROW,
+        ],
         "void main() {\n  row('none', () => null);\n}\n",
     );
     let Some((passed, reported)) = dart("analyze-preprocess", &["analyze"], &shapes) else {
@@ -1018,6 +1337,21 @@ fn the_back_end_writes_a_label_with_its_spaces() {
     assert_eq!(
         serde_json::to_string(&answered.unwrap().unwrap()).unwrap(),
         r#"{"fragileItemCodes":[],"itemCodeList":["x"],"label":"  A  "}"#
+    );
+}
+
+/// Writing calls no function: the back end writes a sticker with the text it was handed.
+#[test]
+fn the_back_end_writes_a_sticker_with_its_text() {
+    let mut sticking = pin!(Dispenser.stick(&(), "A".to_owned()));
+    let mut polling = PollContext::from_waker(Waker::noop());
+    let answered = match sticking.as_mut().poll(&mut polling) {
+        Poll::Ready(answer) => Some(answer),
+        Poll::Pending => None,
+    };
+    assert_eq!(
+        serde_json::to_string(&answered.unwrap().unwrap()).unwrap(),
+        r#"{"label":"A"}"#
     );
 }
 

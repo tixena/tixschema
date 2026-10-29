@@ -3353,6 +3353,16 @@ fn judged_body(unjudged: &str) -> String {
     )
 }
 
+/// The kind a read takes its payload as: `typed` where the type names no function, and `dynamic`
+/// where it does, as a function is handed a payload of any kind.
+const fn payload_kind(corrects: &Corrects<'_>, typed: &'static str) -> &'static str {
+    if corrects.own.is_empty() {
+        typed
+    } else {
+        "dynamic"
+    }
+}
+
 /// The two reads of the class `named`, each taking its payload as a `kind` and then the
 /// converters of `codec`: `fromJson`, which judges what `fromJsonUnjudged` answers, and
 /// `fromJsonUnjudged`, which is `unjudged`.
@@ -3650,7 +3660,12 @@ fn tag_checked_reads(
         !fields.is_empty() || own_tag.is_some(),
         &answer,
     );
-    read_pair(class_name, "Map<String, dynamic>", codec, &unjudged)
+    read_pair(
+        class_name,
+        payload_kind(corrects, "Map<String, dynamic>"),
+        codec,
+        &unjudged,
+    )
 }
 
 /// The statements that refuse the object `object` names where it holds no `key`, or holds another
@@ -4370,7 +4385,7 @@ fn tagged_enum_dart_source(
         )
     } else {
         (
-            "Map<String, dynamic>",
+            payload_kind(&corrects, "Map<String, dynamic>"),
             " as Map<String, dynamic>",
             format!(
                 "final {tag} = {json}[{}] as String; switch ({tag}) {{ {} default: \
@@ -4567,12 +4582,13 @@ fn plain_enum_dart_source(
         )),
     );
     let (matched, taken_as) = (&unjudged.body, &unjudged.taken_as);
+    let payload_ty = payload_kind(&corrects, "String");
     // An enum that names no check has nothing to refuse, and one that names no function either
     // reads as it did.
     let reads = if !checks.is_empty() {
         format!(
-            "static {export_name} fromJson(String json) {} static {export_name} \
-             fromJsonUnjudged(String {taken_as}) {matched}",
+            "static {export_name} fromJson({payload_ty} json) {} static {export_name} \
+             fromJsonUnjudged({payload_ty} {taken_as}) {matched}",
             judged_body(&format!("{export_name}.fromJsonUnjudged(json)"))
         )
     } else if corrects.own.is_empty() {
@@ -4582,8 +4598,8 @@ fn plain_enum_dart_source(
         )
     } else {
         format!(
-            "static {export_name} fromJson(String json) => fromJsonUnjudged(json); static \
-             {export_name} fromJsonUnjudged(String {taken_as}) {matched}"
+            "static {export_name} fromJson(dynamic json) => fromJsonUnjudged(json); static \
+             {export_name} fromJsonUnjudged(dynamic {taken_as}) {matched}"
         )
     };
     let body = format!(
