@@ -709,6 +709,10 @@ the consumer's view; this is what a change has to keep.
   function (`ZOD_PREPROCESSED`), an alias of one included, and `flattened_zod_branches` and
   `zod_member_leaves` write no member of such a type in its place: a flattened choice that names
   one is joined by its binding, the one schema that calls the function.
+- **A holder hands the function its remaining keys.** `zod_beside_holder` in
+  `src/model_schema.rs` writes `z.preprocess` around each operand that names a function, ahead of
+  the binding, to take the holder's own keys off the payload as serde does; a payload that is no
+  object is handed on as it is, and a type that names no function is joined as before.
 - **The tests.** `src/model_schema/preprocess/tests.rs` holds the refusals and the emitted read;
   `tests/pattern_preprocess_tests/` the models, the reads of every shape (`read.rs`), the chained
   hooks (`chained.rs`), the Zod text (`zod.rs`) and the README (`readme.rs`);

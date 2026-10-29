@@ -541,6 +541,7 @@ type UntaggedMemberData = (
     Vec<proc_macro2::TokenStream>,
     Vec<proc_macro2::TokenStream>,
     UnionCandidates,
+    String,
 );
 
 /// What each variant is as an option of a Zod union, which decides how the union is joined.
@@ -3128,6 +3129,7 @@ fn build_enum_validate_method(
 #[cfg(any(feature = "typescript", feature = "zod"))]
 fn compute_flatten_outputs(
     flattened_fields: &[FieldDef],
+    own_keys: &[String],
 ) -> (Vec<MergedOperand>, Vec<MergedOperand>) {
     #[cfg(feature = "typescript")]
     let ts_types = flattened_fields
@@ -3149,15 +3151,42 @@ fn compute_flatten_outputs(
         .iter()
         .map(|fld| MergedOperand {
             absence: SourceAbsence::written(fld),
-            branches: flattened_zod_branches(fld),
+            branches: flattened_zod_branches(fld)
+                .iter()
+                .map(|branch| zod_beside_holder(fld, own_keys, branch))
+                .collect(),
             entries: flattened_as_entries(fld),
-            spelling: fld.zod_merged_schema(),
+            spelling: zod_beside_holder(fld, own_keys, &fld.zod_merged_schema()),
         })
         .collect();
     #[cfg(not(feature = "zod"))]
-    let zod_schemas = Vec::new();
+    let zod_schemas = {
+        let _: &_ = &own_keys;
+        Vec::new()
+    };
 
     (ts_types, zod_schemas)
+}
+
+/// `schema`, the Zod spelling of the flattened source `fld`, handed the keys the holder's own
+/// members `own_keys` do not take where the type names a `preprocess`, as serde hands its function
+/// them: an intersection hands both sides the whole object. A payload that is no object is handed
+/// on as it is.
+#[cfg(feature = "zod")]
+fn zod_beside_holder(fld: &FieldDef, own_keys: &[String], schema: &str) -> String {
+    if own_keys.is_empty() || !fld.zod_names_a_preprocess() {
+        return schema.to_owned();
+    }
+    let taken = own_keys
+        .iter()
+        .map(|key| ts_quoted(key))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "z.preprocess((held) => typeof held === \"object\" && held !== null && \
+         !Array.isArray(held) ? Object.fromEntries(Object.entries(held).filter(([key]) => \
+         ![{taken}].includes(key))) : held, {schema})"
+    )
 }
 
 /// Whether the registration a flattened source names offers its own absence, which is the second
@@ -3293,7 +3322,7 @@ fn struct_schema_impl_items(
     let ts_generics = ts_generic_params(generics);
     #[cfg(feature = "zod")]
     let type_parameters = type_parameters_in_scope(generics);
-    #[cfg(feature = "typescript")]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     let own_keys: Vec<String> = field_defs.iter().map(|fld| fld.name.clone()).collect();
     // bodies: (type_code, schema_code, json_schema_fields, fields_empty)
     #[cfg(all(feature = "zod", feature = "typescript"))]
@@ -3305,7 +3334,7 @@ fn struct_schema_impl_items(
     let bodies = render_struct_field_bodies(field_defs, Some(item_name));
     // flatten: (ts_types, zod_schemas)
     #[cfg(any(feature = "typescript", feature = "zod"))]
-    let flatten = compute_flatten_outputs(flattened_fields);
+    let flatten = compute_flatten_outputs(flattened_fields, &own_keys);
     vec![
         #[cfg(feature = "jsonschema")]
         generate_json_schema_method(
@@ -3407,6 +3436,22 @@ fn checked_in_variants(
 /// Without a TypeScript type to state what a check is handed, no function is written ahead.
 #[cfg(not(all(feature = "zod", feature = "typescript")))]
 const fn checked_in_variants(_: &mut [DiscriminatedVariant], _: &str, _: &[String]) -> String {
+    String::new()
+}
+
+/// [`checked_members`] over the members of the variant `index` of a generic untagged enum.
+#[cfg(all(feature = "serde", feature = "zod", feature = "typescript"))]
+fn checked_in_untagged_variant(
+    members: &mut [FieldDef],
+    (item_name, index): (&str, usize),
+    parameters: &[String],
+) -> String {
+    checked_members(members, &format!("{item_name}${index}"), parameters)
+}
+
+/// Without a TypeScript type to state what a check is handed, no function is written ahead.
+#[cfg(all(feature = "serde", not(all(feature = "zod", feature = "typescript"))))]
+const fn checked_in_untagged_variant(_: &mut [FieldDef], _: (&str, usize), _: &[String]) -> String {
     String::new()
 }
 
@@ -12612,6 +12657,7 @@ fn render_external_content(
             #[cfg(feature = "zod")]
             let zod = variant_flatten_zod(
                 &format!("z.strictObject({{\n{}}})", parts.schema_code),
+                &member_names(field_defs),
                 &variant.flattened_fields,
             );
             #[cfg(not(feature = "zod"))]
@@ -13474,17 +13520,18 @@ fn render_internal_variant(
         #[cfg(not(feature = "jsonschema"))]
         let json = quote! {};
 
+        let own_keys: Vec<String> = iter::once(tag_name.to_owned())
+            .chain(member_names(&variant.field_defs))
+            .collect();
         #[cfg(feature = "zod")]
         let zod = variant_flatten_zod(
             &format!("z.strictObject({})", parts.schema_code),
+            &own_keys,
             &variant.flattened_fields,
         );
         #[cfg(not(feature = "zod"))]
         let zod = String::new();
 
-        let own_keys: Vec<String> = iter::once(tag_name.to_owned())
-            .chain(member_names(&variant.field_defs))
-            .collect();
         return (
             format!(
                 "{}{}",
@@ -13557,7 +13604,11 @@ fn entries_beside_the_tag(
     }
     let flattened = slice::from_ref(inner);
     #[cfg(feature = "zod")]
-    let zod = variant_flatten_zod(&format!("z.strictObject({})", parts.schema_code), flattened);
+    let zod = variant_flatten_zod(
+        &format!("z.strictObject({})", parts.schema_code),
+        &[tag_name.to_owned()],
+        flattened,
+    );
     #[cfg(not(feature = "zod"))]
     let zod = String::new();
     Some((
@@ -13940,7 +13991,7 @@ fn render_untagged_named(
             }
         }
         body.push_str("})");
-        variant_flatten_zod(&body, &members.flattened_fields)
+        variant_flatten_zod(&body, &member_names(field_defs), &members.flattened_fields)
     };
     #[cfg(not(feature = "zod"))]
     let zod = {
@@ -14490,9 +14541,9 @@ fn collect_untagged_members(
     let mut json_parts: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut guard_errors: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut validation_fns: Vec<proc_macro2::TokenStream> = Vec::new();
-    let mut per_variant_checks: Vec<(proc_macro2::TokenStream, Vec<proc_macro2::TokenStream>)> =
-        Vec::new();
+    let mut per_variant_checks = Vec::new();
     let mut deferred_attrs: Vec<Vec<syn::Attribute>> = Vec::new();
+    let mut checked_ahead = String::new();
     let steps_by_variant = steps_of_variants(item_enum, rename_all_fields.as_deref());
     // Read before the walk, as a struct's are.
     let serde_default = variant_serde_defaults(item_enum);
@@ -14511,6 +14562,11 @@ fn collect_untagged_members(
         let kind = variant_wire_kind(variant);
         let total_fields = variant.fields.len();
         let mut walked = collect_untagged_variant_members(variant, &walk, steps);
+        checked_ahead.push_str(&checked_in_untagged_variant(
+            &mut walked.field_defs,
+            (&enum_type_name, per_variant_checks.len()),
+            &type_parameters,
+        ));
         guard_errors.append(&mut walked.guard_errors);
         validation_fns.append(&mut walked.validation_fns);
         deferred_attrs.append(&mut walked.deferred_attrs);
@@ -14576,6 +14632,7 @@ fn collect_untagged_members(
         validation_fns,
         build_member_check_arms(per_variant_checks),
         candidates,
+        checked_ahead,
     )
 }
 
@@ -14870,13 +14927,14 @@ fn build_untagged_schema_impl_items(
 }
 
 /// Records what an object that flattens the untagged enum `name` reads of its Zod surface, and
-/// answers the text of the enum's union and of the members it publishes beside it.
+/// answers the text of the enum's union and of what it publishes beside it: the functions that run
+/// the checks of its members, `checked_ahead`, then the members themselves.
 #[cfg(all(feature = "serde", feature = "zod"))]
 fn record_untagged_zod(
     (name, item_name, generics): (&syn::Ident, &str, &syn::Generics),
     args: &ModelSchemaArgs,
     union: &literal_union::ZodUnion,
-    merge_parts: &[ZodUnionMember],
+    (merge_parts, checked_ahead): (&[ZodUnionMember], &str),
 ) -> (String, String) {
     let recorded = name.to_string();
     record_zod_union_members(&recorded, merge_parts);
@@ -14895,7 +14953,10 @@ fn record_untagged_zod(
     );
     (
         union.code.clone(),
-        members.map_or_else(String::new, |published| published.block),
+        format!(
+            "{checked_ahead}{}",
+            members.map_or_else(String::new, |published| published.block)
+        ),
     )
 }
 
@@ -14927,7 +14988,6 @@ fn process_untagged_enum(
     let item_checks = checks::ItemChecks::of(&args.check, variant_members(&item_enum));
 
     // Render each variant into its union member (TS / Zod / JSON parts).
-    #[cfg(feature = "zod")]
     let (
         ts_parts,
         ts_merge_parts,
@@ -14938,18 +14998,7 @@ fn process_untagged_enum(
         enum_validation_fns,
         validate_arms,
         union_candidates,
-    ) = collect_untagged_members(&mut item_enum, enum_module_name_opt, args);
-    #[cfg(not(feature = "zod"))]
-    let (
-        ts_parts,
-        ts_merge_parts,
-        zod_parts,
-        zod_merge_parts,
-        json_parts,
-        guard_errors,
-        enum_validation_fns,
-        validate_arms,
-        _,
+        checked_ahead,
     ) = collect_untagged_members(&mut item_enum, enum_module_name_opt, args);
 
     // A violated field guard makes the whole contract unsound, so the schema surface is dropped
@@ -14967,7 +15016,7 @@ fn process_untagged_enum(
         (name, item_name, &item_enum.generics),
         args,
         &zod_union,
-        &zod_merge_parts,
+        (&zod_merge_parts, &checked_ahead),
     );
     #[cfg(not(feature = "zod"))]
     #[cfg(any(feature = "typescript", feature = "jsonschema"))]
@@ -14977,7 +15026,13 @@ fn process_untagged_enum(
 
     #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
     let _: &_ = &(name, item_name, &ts_parts, &json_parts);
-    let _: &_ = &(&zod_parts, &zod_merge_parts, &ts_merge_parts);
+    let _: &_ = &(
+        &zod_parts,
+        &zod_merge_parts,
+        &ts_merge_parts,
+        &checked_ahead,
+        &union_candidates,
+    );
     let decode_with = enum_decode_with(&item_enum, args);
 
     #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
@@ -15191,6 +15246,7 @@ fn write_adjacent_named_variant_fields(
         "  {content_key}: {},",
         variant_flatten_zod(
             &format!("z.strictObject({{\n{}}})", inner.schema_code),
+            &member_names(&variant.field_defs),
             &variant.flattened_fields
         )
     );
@@ -21254,7 +21310,10 @@ fn member_names(field_defs: &[FieldDef]) -> Vec<String> {
 /// where the variant flattens nothing.
 #[cfg(feature = "typescript")]
 fn variant_flatten_typescript(own_keys: &[String], flattened_fields: &[FieldDef]) -> String {
-    ts_intersection_suffix(own_keys, &compute_flatten_outputs(flattened_fields).0)
+    ts_intersection_suffix(
+        own_keys,
+        &compute_flatten_outputs(flattened_fields, own_keys).0,
+    )
 }
 
 /// Nothing closes the block where the surface is off.
@@ -21270,8 +21329,8 @@ const fn variant_flatten_typescript(
 /// closed with one `.and(...)` chain where the sources write a single key set between them, and one
 /// closed copy of `own` per key set inside a `z.union` where they write more.
 #[cfg(feature = "zod")]
-fn variant_flatten_zod(own: &str, flattened_fields: &[FieldDef]) -> String {
-    zod_merged_object(own, &compute_flatten_outputs(flattened_fields).1)
+fn variant_flatten_zod(own: &str, own_keys: &[String], flattened_fields: &[FieldDef]) -> String {
+    zod_merged_object(own, &compute_flatten_outputs(flattened_fields, own_keys).1)
 }
 
 /// What one merged source is written as inside the intersection, its absence leaving out the keys
