@@ -167,7 +167,7 @@ fn a_struct_under_its_own_tag_checks_the_object_its_members_are_read_from() {
             ..plain_args()
         },
     ));
-    let expected = "factory Halyard.fromJsonUnjudged(Map<String, dynamic> payload) { final json = \
+    let expected = "factory Halyard.fromJsonUnjudged(dynamic payload) { final json = \
                     asGiven(payload) as Map<String, dynamic>; final named = <String, dynamic>{}; \
                     for (final entry in json.entries) { final key = switch (entry.key) { 'name' => \
                     'label', final other => other }; if (named.containsKey(key)) throw \

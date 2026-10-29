@@ -1330,7 +1330,10 @@ mod run_node_plain_enum_replies;
 // The transport's expansion reaches each service through `$crate`, which is this binary's root:
 // every trait and its schema module are named here for it to resolve.
 #[cfg(all(test, feature = "dart"))]
-use run_dart_preprocess::{IntakeClientService, intake_client_service_schema};
+use run_dart_preprocess::{
+    IntakeClientService, StickerClientService, intake_client_service_schema,
+    sticker_client_service_schema,
+};
 #[cfg(all(test, feature = "dart"))]
 use run_dart_read::{ParcelClientService, parcel_client_service_schema};
 #[cfg(test)]

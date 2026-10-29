@@ -77,6 +77,11 @@ mod named_counts;
 #[path = "map_alias_models.rs"]
 mod map_aliases;
 
+/// A check at a generic holder's parameter on a variant member and a tuple slot, and aliases over a
+/// type declared below them.
+#[path = "deferred_models.rs"]
+mod deferred;
+
 /// A date under `as_number` in a member of an untagged enum, and what serde and the Zod schema
 /// answer of each payload.
 #[cfg(feature = "chrono")]
@@ -293,8 +298,76 @@ console.log(
 /// What [`NAMED_COUNTS_DRIVER`] prints.
 const NAMED_COUNTS: &str = r#"["taken","slogans: too short: minimum length is 1, got 0","slogans: too long: maximum length is 2, got 3","mottos: too short: minimum length is 1, got 0","later: too short: minimum length is 1, got 0","too short: minimum length is 1, got 0","taken","some: too long: maximum length is 2, got 3","some: too short: minimum length is 1, got 0","taken","too short: minimum length is 1, got 0","taken","taken"]"#;
 
+/// Parses a payload through the alias of an `IndexSet` and the brand over it, each under a length.
+#[cfg(feature = "indexmap")]
+const INDEX_SET_COUNTS_DRIVER: &str = r#"import * as lib from "./lib/index.js";
+
+const said = (schema, payload) => {
+  const read = schema.safeParse(payload);
+  const lead = (issue) => (issue.path.length > 0 ? `${issue.path.join(".")}: ` : "");
+  return read.success ? "taken" : read.error.issues.map((issue) => `${lead(issue)}${issue.message}`).join(" | ");
+};
+console.log(
+  JSON.stringify([
+    said(lib.Lineup$Schema, { ordered: ["a"], some: ["b"] }),
+    said(lib.Lineup$Schema, { ordered: [], some: ["b"] }),
+    said(lib.Lineup$Schema, { ordered: ["a", "b", "c"], some: ["b"] }),
+    said(lib.Lineup$Schema, { ordered: ["a"], some: [] }),
+    said(lib.Lineup$Schema, { ordered: ["a"], some: ["a", "b", "c"] }),
+    said(lib.SomeOrdered$Schema, []),
+    said(lib.SomeOrdered$Schema, ["a"]),
+  ]),
+);
+"#;
+
+/// What [`INDEX_SET_COUNTS_DRIVER`] prints.
+#[cfg(feature = "indexmap")]
+const INDEX_SET_COUNTS: &str = r#"["taken","ordered: too short: minimum length is 1, got 0","ordered: too long: maximum length is 2, got 3","some: too short: minimum length is 1, got 0","some: too long: maximum length is 2, got 3","too short: minimum length is 1, got 0","taken"]"#;
+
 /// What the aliased maps' driver prints: each payload an alias reads, as taken or refused.
 const MAP_ALIASES: &str = "[true,false,true,false,true,false,true,false,true,false]";
+
+/// Loads the bundle and parses a payload through each holder and alias.
+const DEFERRED_DRIVER: &str = r#"import * as lib from "./lib/index.js";
+import { z } from "zod";
+
+const kept = { owner: "o", records: ["a"] };
+const empty = { owner: "o", records: [] };
+const rows = [
+  [lib.Safe$SchemaDefault, { Named: { vault: kept } }],
+  [lib.Safe$SchemaDefault, { Named: { vault: empty } }],
+  [lib.Safe$SchemaDefault, { Single: kept }],
+  [lib.Safe$SchemaDefault, { Single: empty }],
+  [lib.Safe$SchemaFactory(z.number().int()), { Single: { owner: 7, records: [] } }],
+  [lib.Safe$SchemaFactory(z.number().int()), { Named: { vault: { owner: 7, records: ["a"] } } }],
+  [lib.Tagged$SchemaDefault, { kind: "Named", vault: kept }],
+  [lib.Tagged$SchemaDefault, { kind: "Named", vault: empty }],
+  [lib.Tagged$SchemaFactory(z.number().int()), { kind: "Named", vault: { owner: 7, records: [] } }],
+  [lib.Adjacent$SchemaDefault, { kind: "Single", body: kept }],
+  [lib.Adjacent$SchemaDefault, { kind: "Single", body: empty }],
+  [lib.Adjacent$SchemaFactory(z.number().int()), { kind: "Single", body: { owner: 7, records: [] } }],
+  [lib.Locker$SchemaDefault, [kept, "x"]],
+  [lib.Locker$SchemaDefault, [empty, "x"]],
+  [lib.Locker$SchemaFactory(z.number().int()), [{ owner: 7, records: [] }, "x"]],
+  [lib.Rows$Schema, [{ name: "a" }]],
+  [lib.Rows$Schema, [{ name: 5 }]],
+  [lib.Maybe$Schema, { name: "a" }],
+  [lib.Maybe$Schema, null],
+  [lib.Maybe$Schema, { name: 5 }],
+  [lib.Pair$Schema, [{ name: "a" }, 1]],
+  [lib.Pair$Schema, [{ name: 5 }, 1]],
+];
+const said = (schema, payload) => {
+  const read = schema.safeParse(payload);
+  return read.success
+    ? "taken"
+    : read.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join(" | ");
+};
+console.log(JSON.stringify(rows.map(([schema, payload]) => said(schema, payload))));
+"#;
+
+/// What the deferred driver prints.
+const DEFERRED: &str = r#"["taken","Named.vault.records: a vault holds a record | Named.vault.records: a vault holds a record","taken","Single.records: a vault holds a record | Single.records: a vault holds a record","Single.records: a vault holds a record | Single.records: a vault holds a record","taken","taken","vault.records: a vault holds a record | vault.records: a vault holds a record","vault.records: a vault holds a record | vault.records: a vault holds a record","taken","body.records: a vault holds a record | body.records: a vault holds a record","body.records: a vault holds a record | body.records: a vault holds a record","taken","0.records: a vault holds a record | 0.records: a vault holds a record","0.records: a vault holds a record | 0.records: a vault holds a record","taken","0.name: Invalid input: expected string, received number","taken","taken",": Invalid input","taken","0.name: Invalid input: expected string, received number"]"#;
 
 /// Loads the aliases of a map in the order the declarations write them and parses a payload
 /// through each.
@@ -519,6 +592,15 @@ export function shortList(value: Array<string>, ctx: ParsePayload<Array<string>>
 export function stackedLow(value: Array<Package>, ctx: ParsePayload<Array<Package>>): void {
   if (value.length > 2) {
     ctx.issues.push({ code: "custom", message: "a stack is at most two parcels high", path: [], input: value });
+  }
+}"#;
+
+/// The function `Vault`'s check names.
+const DEFERRED_CHECK: &str = r#"import type { ParsePayload } from "zod/v4/core";
+
+export function withRecords<IdType>(value: Vault<IdType>, ctx: ParsePayload<Vault<IdType>>): void {
+  if (value.records.length === 0) {
+    ctx.issues.push({ code: "custom", message: "a vault holds a record", path: ["records"], input: value });
   }
 }"#;
 
@@ -3988,6 +4070,33 @@ fn map_aliases_bundle() -> String {
     .join("\n\n")
 }
 
+/// The models of [`deferred`], the aliases ahead of the type they read.
+fn deferred_bundle() -> String {
+    [
+        PREAMBLE.to_owned(),
+        DEFERRED_CHECK.to_owned(),
+        deferred::Vault::<String>::ts_definition(),
+        deferred::Vault::<String>::zod_schema(),
+        deferred::Safe::<String>::ts_definition(),
+        deferred::Safe::<String>::zod_schema(),
+        deferred::Tagged::<String>::ts_definition(),
+        deferred::Tagged::<String>::zod_schema(),
+        deferred::Adjacent::<String>::ts_definition(),
+        deferred::Adjacent::<String>::zod_schema(),
+        deferred::Locker::<String>::ts_definition(),
+        deferred::Locker::<String>::zod_schema(),
+        deferred::rows_schema::Schema::ts_definition(),
+        deferred::rows_schema::Schema::zod_schema(),
+        deferred::maybe_schema::Schema::ts_definition(),
+        deferred::maybe_schema::Schema::zod_schema(),
+        deferred::pair_schema::Schema::ts_definition(),
+        deferred::pair_schema::Schema::zod_schema(),
+        deferred::Later::ts_definition(),
+        deferred::Later::zod_schema(),
+    ]
+    .join("\n\n")
+}
+
 /// A length written on a field typed with the name of a list, or on a brand over such a name, is
 /// counted under `node` as `validate()` counts it.
 #[test]
@@ -4055,6 +4164,71 @@ fn type_check_a_length_on_a_name_of_a_list_counts_its_items() {
     );
 }
 
+/// The alias of an `IndexSet`, the brand over it and the struct that holds both, in the order the
+/// declarations write them.
+#[cfg(feature = "indexmap")]
+fn index_set_counts_bundle() -> String {
+    [
+        PREAMBLE.to_owned(),
+        named_counts::ordered_schema::Schema::ts_definition(),
+        named_counts::ordered_schema::Schema::zod_schema(),
+        named_counts::SomeOrdered::ts_definition(),
+        named_counts::SomeOrdered::zod_schema(),
+        named_counts::Lineup::ts_definition(),
+        named_counts::Lineup::zod_schema(),
+    ]
+    .join("\n\n")
+}
+
+/// A length written on a field typed with an alias of an `IndexSet`, or on a brand over the alias,
+/// is counted under `node` as `validate()` counts it.
+#[cfg(feature = "indexmap")]
+#[test]
+fn type_check_a_length_on_an_alias_of_an_index_set_counts_its_items() {
+    use indexmap::IndexSet;
+    use named_counts::{Lineup, SomeOrdered};
+
+    let items = |count: usize| -> IndexSet<String> {
+        (0..count).map(|number| number.to_string()).collect()
+    };
+    let lineup = |ordered, some| Lineup {
+        ordered: items(ordered),
+        some: SomeOrdered(items(some)),
+    };
+    let broken: Vec<Vec<String>> = vec![
+        lineup(1, 1).validate(),
+        lineup(0, 1).validate(),
+        lineup(3, 1).validate(),
+        SomeOrdered(items(0)).validate(),
+        SomeOrdered(items(1)).validate(),
+    ]
+    .into_iter()
+    .map(|answered| answered.err().unwrap_or_default())
+    .collect();
+    assert_eq!(
+        broken,
+        [
+            Vec::<&str>::new(),
+            vec!["'ordered': too short: minimum length is 1, got 0"],
+            vec!["'ordered': too long: maximum length is 2, got 3"],
+            vec!["too short: minimum length is 1, got 0"],
+            vec![],
+        ],
+        "`validate()` does not answer what the rows state"
+    );
+    let Some((printed, failed)) = loaded_from(
+        "index-set-counts",
+        &index_set_counts_bundle(),
+        INDEX_SET_COUNTS_DRIVER,
+    ) else {
+        return;
+    };
+    assert_eq!(
+        printed, INDEX_SET_COUNTS,
+        "the bundle does not load and parse under node:\n{failed}"
+    );
+}
+
 /// An alias of a map whose values are a model publishes them as that model, loads when the enum
 /// that holds the alias is declared below it, and takes and refuses what serde does.
 #[test]
@@ -4094,6 +4268,66 @@ fn type_check_an_alias_of_a_map_of_models_loads_and_reads_its_values() {
     assert_eq!(
         printed, MAP_ALIASES,
         "the bundle does not load and parse under node:\n{failed}"
+    );
+}
+
+/// A check at a generic holder's parameter on an enum variant member and a tuple slot, and an alias
+/// of a list, an `Option` and a tuple over a type declared below it, load, compile and answer under
+/// `node` as serde and `validate()` do.
+#[test]
+fn type_check_a_check_on_a_holder_and_an_alias_ahead_of_its_type_load_and_answer() {
+    use deferred::{Adjacent, Locker, Maybe, Pair, Rows, Safe, Tagged, Vault};
+
+    let vault = |records: &[&str]| Vault {
+        owner: "o".to_owned(),
+        records: records.iter().map(|&text| text.to_owned()).collect(),
+    };
+    let answered = |checked: Result<(), Vec<String>>| checked.err().unwrap_or_default();
+    assert_eq!(
+        [
+            answered(
+                Safe::Named {
+                    vault: vault(&["a"])
+                }
+                .validate()
+            ),
+            answered(Safe::Named { vault: vault(&[]) }.validate()),
+            answered(Safe::Single(vault(&["a"])).validate()),
+            answered(Safe::Single(vault(&[])).validate()),
+            answered(Tagged::Named { vault: vault(&[]) }.validate()),
+            answered(Adjacent::Single(vault(&[])).validate()),
+            answered(Locker(vault(&["a"]), "x".to_owned()).validate()),
+            answered(Locker(vault(&[]), "x".to_owned()).validate()),
+        ],
+        [
+            Vec::<String>::new(),
+            vec!["'Named.vault.records': a vault holds a record".to_owned(); 2],
+            Vec::new(),
+            vec!["'Single.records': a vault holds a record".to_owned(); 2],
+            vec!["'vault.records': a vault holds a record".to_owned(); 2],
+            vec!["'body.records': a vault holds a record".to_owned(); 2],
+            Vec::new(),
+            vec!["'0.records': a vault holds a record".to_owned(); 2],
+        ],
+        "`validate()` does not answer what the rows state"
+    );
+    let reads = |json: &str| {
+        [
+            serde_json::from_str::<Rows>(json).is_ok(),
+            serde_json::from_str::<Maybe>(json).is_ok(),
+            serde_json::from_str::<Pair>(json).is_ok(),
+        ]
+    };
+    assert_eq!(reads(r#"[{"name":"a"}]"#), [true, false, false]);
+    assert_eq!(reads(r#"[{"name":"a"},1]"#), [false, false, true]);
+    assert_eq!(reads("null"), [false, true, false]);
+    let Some((printed, failed)) = loaded_from("deferred", &deferred_bundle(), DEFERRED_DRIVER)
+    else {
+        return;
+    };
+    assert_eq!(
+        printed, DEFERRED,
+        "the bundle does not load under node:\n{failed}"
     );
 }
 
