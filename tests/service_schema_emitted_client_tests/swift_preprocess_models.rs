@@ -21,6 +21,22 @@ thread_local! {
     static SPARE_CALLS: Cell<u32> = const { Cell::new(0) };
 }
 
+/// A class whose function reads a text as an object.
+#[model_schema(preprocess = ["labelled"])]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Sticker {
+    pub label: String,
+}
+
+/// An enum under a tag key whose function reads a text as an object.
+#[model_schema(preprocess = ["hulled"])]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "kind")]
+pub enum Hull {
+    Plain { label: String },
+    Tall { masts: u32 },
+}
+
 /// A label read from a number as its text.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -358,6 +374,24 @@ pub fn tallied_calls() -> (u32, u32) {
 
 const fn as_a_date(payload: Value) -> Value {
     payload
+}
+
+/// A text as the object a sticker reads, and any other payload as it is.
+fn labelled(payload: Value) -> Value {
+    if let Value::String(label) = payload {
+        serde_json::json!({ "label": label })
+    } else {
+        payload
+    }
+}
+
+/// A text as the plain hull it labels, and any other payload as it is.
+fn hulled(payload: Value) -> Value {
+    if let Value::String(label) = payload {
+        serde_json::json!({ "kind": "Plain", "label": label })
+    } else {
+        payload
+    }
 }
 
 fn counted_label(payload: Value) -> Value {
