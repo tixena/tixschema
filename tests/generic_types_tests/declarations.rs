@@ -127,6 +127,11 @@ mod literal_unions;
 #[path = "../service_schema_emitted_client_tests/object_id_models.rs"]
 mod object_ids;
 
+/// A flattened choice and an internally tagged struct variant, and what serde and `validate()`
+/// answer of each payload.
+#[path = "flattened_zod_models.rs"]
+mod flattened_zod;
+
 #[cfg(feature = "chrono")]
 use alloc::collections::BTreeSet;
 use core::fmt::Write as _;
@@ -474,6 +479,79 @@ const schemas = {
   Mooring: lib.Mooring$Schema,
   Measured: lib.Measured$Schema,
   Departure: lib.Departure$Schema,
+};
+const printed = [];
+for (const [name, schema, payload] of CASES) {
+  const read = schemas[schema].safeParse(JSON.parse(payload));
+  if (read.success) {
+    printed.push(`${name}: passes`);
+    continue;
+  }
+  printed.push(`${name}: refused`);
+  for (const issue of read.error.issues) {
+    const lead = issue.path.length > 0 ? `'${issue.path.join(".")}': ` : "";
+    printed.push(`    ${lead}${issue.message}`);
+  }
+}
+console.log(printed.join("\n"));
+"#;
+
+/// The functions the models above name, as a consumer writes them in TypeScript.
+const FLATTENED_ZOD_FUNCTIONS: &str = r#"import type { ParsePayload } from "zod/v4/core";
+
+export function asGiven(payload: unknown): unknown {
+  return payload;
+}
+
+export function aSpan(value: Span, ctx: ParsePayload<Span>): void {
+  if ("hours" in value && value.hours === 0) {
+    ctx.issues.push({ code: "custom", message: "a span is not empty", path: ["hours"], input: value });
+  }
+  if ("days" in value && value.days === "9") {
+    ctx.issues.push({ code: "custom", message: "a span is under nine days", path: ["days"], input: value });
+  }
+}
+
+export function notBlank(value: string, ctx: ParsePayload<string>): void {
+  if (value === "") {
+    ctx.issues.push({ code: "custom", message: "a day label is not blank", path: [], input: value });
+  }
+}"#;
+
+/// Parses the payload of each row through the schema its type publishes and prints what a serde
+/// read prints: the data read with its keys sorted, or `refused`.
+const FLATTENED_ZOD_READ_DRIVER: &str = r#"import * as lib from "./lib/index.js";
+
+const schemas = {
+  Slip: lib.Slip$Schema,
+  Deck: lib.Deck$Schema,
+  Block: lib.Block$Schema,
+  Wharfage: lib.Wharfage$Schema,
+  Wharf: lib.Wharf$Schema,
+  Mole: lib.Mole$Schema,
+  Pause: lib.Pause$Schema,
+};
+const sorted = (value) =>
+  Array.isArray(value)
+    ? value.map(sorted)
+    : value !== null && typeof value === "object"
+      ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, sorted(value[key])]))
+      : value;
+const printed = [];
+for (const [name, schema, payload] of CASES) {
+  const read = schemas[schema].safeParse(JSON.parse(payload));
+  printed.push(`${name}: ${read.success ? `read ${JSON.stringify(sorted(read.data))}` : "refused"}`);
+}
+console.log(printed.join("\n"));
+"#;
+
+/// Parses the payload of each case through the schema its type publishes and prints what
+/// `validate()` prints: a message under the path of its issue, and alone where that path is empty.
+const FLATTENED_ZOD_CHECKS_DRIVER: &str = r#"import * as lib from "./lib/index.js";
+
+const schemas = {
+  Booking: lib.Booking$Schema,
+  Tenancy: lib.Tenancy$Schema,
 };
 const printed = [];
 for (const [name, schema, payload] of CASES) {
@@ -3111,6 +3189,48 @@ fn untagged_millis_bundle() -> String {
     .join("\n\n")
 }
 
+/// The models of [`flattened_zod::ROWS`] and [`flattened_zod::checked_cases`]: a bundle of their
+/// own, compiled with `tsc --strict` before it is loaded.
+fn flattened_zod_bundle() -> String {
+    [
+        PREAMBLE.to_owned(),
+        flattened_zod::Moorage::ts_definition(),
+        flattened_zod::Moorage::zod_schema(),
+        flattened_zod::Gap::ts_definition(),
+        flattened_zod::Gap::zod_schema(),
+        flattened_zod::Pause::ts_definition(),
+        flattened_zod::Pause::zod_schema(),
+        flattened_zod::Tethered::ts_definition(),
+        flattened_zod::Tethered::zod_schema(),
+        flattened_zod::Mole::ts_definition(),
+        flattened_zod::Mole::zod_schema(),
+        flattened_zod::Wharf::ts_definition(),
+        flattened_zod::Wharf::zod_schema(),
+        flattened_zod::Slip::ts_definition(),
+        flattened_zod::Slip::zod_schema(),
+        flattened_zod::Hatch::ts_definition(),
+        flattened_zod::Hatch::zod_schema(),
+        flattened_zod::Deck::ts_definition(),
+        flattened_zod::Deck::zod_schema(),
+        flattened_zod::Span::ts_definition(),
+        flattened_zod::Span::zod_schema(),
+        flattened_zod::Booking::ts_definition(),
+        flattened_zod::Booking::zod_schema(),
+        flattened_zod::Tenancy::ts_definition(),
+        flattened_zod::Tenancy::zod_schema(),
+        flattened_zod::Wharfage::ts_definition(),
+        flattened_zod::Wharfage::zod_schema(),
+        flattened_zod::Block::ts_definition(),
+        flattened_zod::Block::zod_schema(),
+        flattened_zod::Paragraph::ts_definition(),
+        flattened_zod::Paragraph::zod_schema(),
+        flattened_zod::Quote::ts_definition(),
+        flattened_zod::Quote::zod_schema(),
+        FLATTENED_ZOD_FUNCTIONS.to_owned(),
+    ]
+    .join("\n\n")
+}
+
 /// The models of [`wire_forms::WIRE_FORMS`]: a bundle of their own, compiled with `tsc --strict`
 /// before it is loaded, beside the consumer's own `ObjectId`.
 #[cfg(feature = "chrono")]
@@ -4306,6 +4426,77 @@ fn type_check_an_untagged_member_under_as_number_is_parsed_as_the_number_serde_w
         expected,
         "the Zod schemas parse a payload otherwise than the table states:\n{failed}"
     );
+}
+
+/// Each row of [`flattened_zod::ROWS`] is read by the Zod schema of its type under `node` as serde
+/// reads it: the same value, or a refusal.
+#[test]
+fn type_check_a_flattened_or_tagged_shape_is_read_under_zod_as_serde_reads_it() {
+    assert_eq!(
+        flattened_zod::read_report(),
+        flattened_zod::READ_REPORT,
+        "serde reads a row otherwise than the table states"
+    );
+    let strict = flattened_zod::serde_report()
+        .lines()
+        .zip(flattened_zod::read_report().lines())
+        .filter(|(serde, zod)| serde != zod)
+        .count();
+    assert_eq!(
+        strict,
+        flattened_zod::ROWS
+            .iter()
+            .filter(|row| row.zod_refuses)
+            .count(),
+        "the rows Zod and serde read otherwise are the rows that hold a key no member reads"
+    );
+    let rows: Vec<(&str, &str, &str)> = flattened_zod::ROWS
+        .iter()
+        .map(|row| (row.name, row.schema, row.payload))
+        .collect();
+    let driver = FLATTENED_ZOD_READ_DRIVER.replace("CASES", &serde_json::to_string(&rows).unwrap());
+    let Some((printed, failed)) =
+        loaded_from("flattened-zod-read", &flattened_zod_bundle(), &driver)
+    else {
+        return;
+    };
+    assert_eq!(
+        printed,
+        flattened_zod::READ_REPORT.trim_end(),
+        "the schemas do not read what serde reads:\n{failed}"
+    );
+}
+
+/// Each value of [`flattened_zod::checked_cases`] is held by the Zod schema of its type under
+/// `node` to the checks `validate()` runs, with the same message at the same path.
+#[test]
+fn type_check_a_check_of_a_flattened_choice_answers_under_zod_what_validate_answers() {
+    let cases = flattened_zod::checked_cases();
+    let answered = flattened_zod::checked_report(&cases);
+    assert_eq!(answered, flattened_zod::CHECKED_REPORT);
+    let rows: Vec<(&str, &str, &str)> = cases
+        .iter()
+        .map(|case| (case.name, case.schema, case.payload.as_str()))
+        .collect();
+    let driver =
+        FLATTENED_ZOD_CHECKS_DRIVER.replace("CASES", &serde_json::to_string(&rows).unwrap());
+    let Some((printed, failed)) =
+        loaded_from("flattened-zod-checks", &flattened_zod_bundle(), &driver)
+    else {
+        return;
+    };
+    assert_eq!(
+        printed,
+        answered.trim_end(),
+        "the schemas do not answer what `validate()` answers:\n{failed}"
+    );
+}
+
+/// A flattened choice that names no check writes no check into its holder.
+#[test]
+fn a_flattened_choice_with_no_check_writes_none_into_its_holder() {
+    let pause = flattened_zod::Pause::zod_schema();
+    assert!(!pause.contains(".check("), "{pause}");
 }
 
 /// Each value of [`wire_forms::WIRE_FORMS`] is sent by the Zod schema of its model under `node`

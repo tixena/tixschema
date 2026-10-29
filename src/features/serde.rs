@@ -421,6 +421,7 @@ pub fn derives_serialize(attrs: &[Attribute]) -> bool {
 }
 
 /// Whether `Hash` is among what the item derives, in any spelling of the path.
+#[cfg(feature = "swift")]
 pub fn derives_hash(attrs: &[Attribute]) -> bool {
     derives(attrs, "Hash")
 }

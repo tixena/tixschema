@@ -242,7 +242,9 @@ use crate::utils::{ident_reexport_ts, noted_ident_reexport_ts};
 use crate::utils::ident_reexport_zod;
 
 #[cfg(feature = "zod")]
-use crate::utils::{record_zod_discriminated, record_zod_union_members};
+use crate::utils::{
+    record_zod_discriminated, record_zod_union_members, record_zod_union_publication,
+};
 
 #[cfg(all(feature = "serde", feature = "zod"))]
 use crate::utils::ZodUnionMember;
@@ -1399,6 +1401,14 @@ struct PublishedBinding<'binding> {
     republished: bool,
 }
 
+/// What an untagged enum publishes beside its own binding so an object that flattens it can join
+/// its members one by one: the binding's name and the text that declares it.
+#[cfg(feature = "zod")]
+struct PublishedMembers {
+    binding: String,
+    block: String,
+}
+
 /// The item a tuple struct's slots are written inside, which a slot may reach back to.
 #[cfg(feature = "zod")]
 struct SlotOwner<'item> {
@@ -2324,11 +2334,20 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
     #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
     let placed = alias_target_placed(&alias_field_def, &alias.generics);
     #[cfg(all(feature = "serde", feature = "zod"))]
-    record_zod_union_members(&rust_ident_str, &placed.zod_union_members());
+    record_zod_union_members(&rust_ident_str, &placed.zod_unchecked_union_members());
+    #[cfg(all(feature = "serde", feature = "zod"))]
+    record_zod_union_publication(
+        &rust_ident_str,
+        &placed.zod_union_checks(),
+        placed.zod_members_binding(),
+    );
     #[cfg(all(feature = "serde", feature = "zod"))]
     record_zod_discriminated(&rust_ident_str, placed.zod_discriminated_union());
     #[cfg(all(feature = "zod", not(feature = "serde")))]
-    record_zod_union_members(&rust_ident_str, &alias_field_def.zod_union_members());
+    record_zod_union_members(
+        &rust_ident_str,
+        &alias_field_def.zod_unchecked_union_members(),
+    );
     #[cfg(all(feature = "serde", feature = "typescript"))]
     record_ts_union_members(&rust_ident_str, &placed.ts_union_members());
     #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
@@ -3018,7 +3037,11 @@ fn flattened_zod_branches(fld: &FieldDef) -> Vec<String> {
     // The binding of a type that names a `preprocess` is the one schema that calls it, and the
     // one text that replaces the placeholder of a member's default.
     if fld.zod_read_whole() {
-        return Vec::new();
+        return fld
+            .zod_member_references()
+            .into_iter()
+            .map(|member| member.spelling)
+            .collect();
     }
     // A union that tells its variants apart by a key joins as the one operand it is: the key picks
     // the variant before anything else is read, so no report of a losing variant reaches the
@@ -13777,7 +13800,7 @@ fn zod_member_leaves(fld: &FieldDef, rendered: &str) -> Vec<ZodUnionMember> {
     // one text that replaces the placeholder of a member's default, so no member of it is written
     // in its place.
     let nested = if fld.zod_read_whole() {
-        Vec::new()
+        fld.zod_member_references()
     } else {
         fld.zod_union_members()
     };
@@ -13912,15 +13935,16 @@ fn build_untagged_schema_impl_items(
     docs_vec: Option<&[String]>,
     args: &ModelSchemaArgs,
     ts_parts: &[String],
-    zod_union: &str,
+    zod: (&str, &str),
     json_parts: &[proc_macro2::TokenStream],
 ) -> Vec<proc_macro2::TokenStream> {
     #[cfg(not(feature = "jsonschema"))]
     let _: &_ = &args;
     #[cfg(not(feature = "typescript"))]
     let _: &_ = &(ts_parts, docs_vec);
+    let (zod_union, zod_members) = zod;
     #[cfg(not(feature = "zod"))]
-    let _: &_ = &zod_union;
+    let _: &_ = &(zod_union, zod_members);
     #[cfg(not(feature = "jsonschema"))]
     let _: &_ = &json_parts;
 
@@ -13965,7 +13989,8 @@ fn build_untagged_schema_impl_items(
     );
 
     #[cfg(feature = "zod")]
-    let zod_schema_method = generate_discriminated_enum_zod_schema_method(
+    let zod_schema_method = generate_enum_zod_schema_method_after(
+        zod_members,
         item_name,
         &item_enum.ident.to_string(),
         &type_parameters_in_scope(&item_enum.generics),
@@ -13986,6 +14011,36 @@ fn build_untagged_schema_impl_items(
         #[cfg(feature = "zod")]
         zod_schema_method,
     ]
+}
+
+/// Records what an object that flattens the untagged enum `name` reads of its Zod surface, and
+/// answers the text of the enum's union and of the members it publishes beside it.
+#[cfg(all(feature = "serde", feature = "zod"))]
+fn record_untagged_zod(
+    (name, item_name, generics): (&syn::Ident, &str, &syn::Generics),
+    args: &ModelSchemaArgs,
+    union: &literal_union::ZodUnion,
+    merge_parts: &[ZodUnionMember],
+) -> (String, String) {
+    let recorded = name.to_string();
+    record_zod_union_members(&recorded, merge_parts);
+    record_zod_discriminated(&recorded, union.discriminated);
+    let members = zod_published_members(
+        item_name,
+        &type_parameters_in_scope(generics),
+        args,
+        union.discriminated,
+        merge_parts,
+    );
+    record_zod_union_publication(
+        &recorded,
+        &args.check,
+        members.as_ref().map(|published| published.binding.clone()),
+    );
+    (
+        union.code.clone(),
+        members.map_or_else(String::new, |published| published.block),
+    )
 }
 
 /// Processes an untagged enum (`#[serde(untagged)]`), emitting a TypeScript union (`A | B`), a Zod
@@ -14052,11 +14107,14 @@ fn process_untagged_enum(
 
     // Recorded only past the guards, so nothing merges an enum whose own schema was dropped.
     #[cfg(feature = "zod")]
-    record_zod_union_members(&name.to_string(), &zod_merge_parts);
-    #[cfg(feature = "zod")]
-    record_zod_discriminated(&name.to_string(), zod_union.discriminated);
+    let zod_text = record_untagged_zod(
+        (name, item_name, &item_enum.generics),
+        args,
+        &zod_union,
+        &zod_merge_parts,
+    );
     #[cfg(not(feature = "zod"))]
-    let _: &_ = &zod_merge_parts;
+    let (zod_text, _) = ((String::new(), String::new()), &zod_merge_parts);
     #[cfg(feature = "typescript")]
     record_ts_union_members(&name.to_string(), &ts_merge_parts);
     #[cfg(not(feature = "typescript"))]
@@ -14078,10 +14136,7 @@ fn process_untagged_enum(
         docs_vec.as_deref(),
         args,
         &ts_parts,
-        #[cfg(feature = "zod")]
-        &zod_union.code,
-        #[cfg(not(feature = "zod"))]
-        "",
+        (&zod_text.0, &zod_text.1),
         &json_parts,
     );
 
@@ -20172,6 +20227,41 @@ fn generate_ts_definition_method(
     }
 }
 
+/// The members of an untagged enum as a binding of their own, wherever the enum's own binding
+/// reads a payload whole (it names a `preprocess`, or a member's text holds the default of a
+/// member) and so cannot be joined to an object's keys: Zod's union refuses a payload that two of
+/// its members accept beside those keys. Nothing for a generic enum, whose binding is a factory,
+/// and for a union a key tells apart.
+#[cfg(feature = "zod")]
+fn zod_published_members(
+    item_name: &str,
+    parameters: &[String],
+    args: &ModelSchemaArgs,
+    discriminated: bool,
+    members: &[ZodUnionMember],
+) -> Option<PublishedMembers> {
+    let read_whole = !args.preprocess.is_empty()
+        || members
+            .iter()
+            .any(|member| holds_a_placeholder(&member.spelling));
+    if !parameters.is_empty() || discriminated || !read_whole || members.is_empty() {
+        return None;
+    }
+    let binding = format!("{item_name}$Members");
+    let written = members.iter().fold(String::new(), |mut acc, member| {
+        let _ = writeln!(
+            acc,
+            "  {},",
+            zod_preprocess_wrap(member.spelling.clone(), &args.preprocess)
+        );
+        acc
+    });
+    Some(PublishedMembers {
+        block: format!("export const {binding} = [\n{written}];\n\n"),
+        binding,
+    })
+}
+
 /// A schema an intersection is built from, written so the name it carries is read when the
 /// intersection is used rather than while the `const` holding it is being initialized.
 #[cfg(feature = "zod")]
@@ -21125,6 +21215,20 @@ fn generate_discriminated_enum_zod_schema_method(
     args: &ModelSchemaArgs,
     schema_code: &str,
 ) -> proc_macro2::TokenStream {
+    generate_enum_zod_schema_method_after("", item_name, rust_ident, parameters, args, schema_code)
+}
+
+/// [`generate_discriminated_enum_zod_schema_method`] with `preamble` written ahead of the
+/// enum's binding.
+#[cfg(feature = "zod")]
+fn generate_enum_zod_schema_method_after(
+    preamble: &str,
+    item_name: &str,
+    rust_ident: &str,
+    parameters: &[String],
+    args: &ModelSchemaArgs,
+    schema_code: &str,
+) -> proc_macro2::TokenStream {
     #[cfg(feature = "zod")]
     {
         let reexport = zod_binding_reexport(rust_ident, item_name, parameters);
@@ -21139,7 +21243,7 @@ fn generate_discriminated_enum_zod_schema_method(
                 preprocess: &args.preprocess,
                 republished: false,
             },
-            "",
+            preamble,
             schema_code,
             &reexport,
         );
@@ -21163,7 +21267,14 @@ fn generate_discriminated_enum_zod_schema_method(
 
     #[cfg(not(feature = "zod"))]
     {
-        let _: &_ = &(item_name, rust_ident, parameters, args, schema_code);
+        let _: &_ = &(
+            preamble,
+            item_name,
+            rust_ident,
+            parameters,
+            args,
+            schema_code,
+        );
         quote::quote! {
             // No method: the `zod` feature is off.
         }

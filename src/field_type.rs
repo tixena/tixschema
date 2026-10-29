@@ -1,6 +1,8 @@
 //! `FieldDef` and `FieldDefType`: how a Rust type is read into the description every surface
 //! renders from, and the TypeScript and Zod spellings of each.
 
+#[cfg(feature = "zod")]
+use core::mem;
 #[cfg(feature = "serde")]
 use core::slice::from_ref;
 
@@ -2255,6 +2257,36 @@ impl FieldDef {
         }
     }
 
+    /// The members of the untagged union this field names, each written as a reference to the
+    /// binding that publishes it and held to the union's checks: what an object joins in place of
+    /// the union's own binding, which reads a payload whole and refuses one that two of its members
+    /// accept beside the keys of the object. Nothing where the union publishes no such binding.
+    #[cfg(feature = "zod")]
+    pub fn zod_member_references(&self) -> Vec<ZodUnionMember> {
+        let Some(binding) = self.zod_members_binding() else {
+            return Vec::new();
+        };
+        let checks = self.zod_union_checks();
+        let mut members = self.zod_unchecked_union_members();
+        for (at, member) in members.iter_mut().enumerate() {
+            member.spelling = zod_check_wrap(format!("{binding}[{at}]"), &checks);
+        }
+        members
+    }
+
+    /// The binding that publishes, one by one, the members of the untagged union this field names.
+    #[cfg(feature = "zod")]
+    pub fn zod_members_binding(&self) -> Option<String> {
+        if self.array_depth > 0 || self.is_written_around() {
+            return None;
+        }
+        let FieldDefType::SiblingType(name, _) = &self.field_type else {
+            return None;
+        };
+        let info = lookup_alias_info(name)?;
+        info.zod_members_binding
+    }
+
     /// The same value on the Zod surface, for the same reason: what a merged source validates, with
     /// the outermost `Option` left to whatever assembles the merge. See
     /// [`Self::typescript_merged_typename`].
@@ -2481,12 +2513,9 @@ impl FieldDef {
         }
     }
 
-    /// The members of the untagged union this field names, as the registry recorded them, each of
-    /// the union's own type parameters filled with the argument written at its position, and
-    /// nothing for a field that names no such union or writes no argument at a position a member
-    /// names.
+    /// [`Self::zod_union_members`] before the union's checks are written on each member.
     #[cfg(feature = "zod")]
-    pub fn zod_union_members(&self) -> Vec<ZodUnionMember> {
+    pub fn zod_unchecked_union_members(&self) -> Vec<ZodUnionMember> {
         if self.array_depth > 0 || self.is_written_around() {
             return Vec::new();
         }
@@ -2504,6 +2533,32 @@ impl FieldDef {
             })
             .collect::<Option<Vec<ZodUnionMember>>>()
             .unwrap_or_default()
+    }
+
+    /// The checks the untagged union this field names carries.
+    #[cfg(feature = "zod")]
+    pub fn zod_union_checks(&self) -> Vec<FunctionName> {
+        if self.array_depth > 0 || self.is_written_around() {
+            return Vec::new();
+        }
+        let FieldDefType::SiblingType(name, _) = &self.field_type else {
+            return Vec::new();
+        };
+        lookup_alias_info(name).map_or_else(Vec::new, |info| info.zod_union_checks)
+    }
+
+    /// The members of the untagged union this field names, as the registry recorded them, each of
+    /// the union's own type parameters filled with the argument written at its position, each held
+    /// to the checks the union names, and nothing for a field that names no such union or writes no
+    /// argument at a position a member names.
+    #[cfg(feature = "zod")]
+    pub fn zod_union_members(&self) -> Vec<ZodUnionMember> {
+        let checks = self.zod_union_checks();
+        let mut members = self.zod_unchecked_union_members();
+        for member in &mut members {
+            member.spelling = zod_check_wrap(mem::take(&mut member.spelling), &checks);
+        }
+        members
     }
 }
 
