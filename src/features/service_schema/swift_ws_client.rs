@@ -597,7 +597,7 @@ fn one_way_method(
     let call = swift_call(operation);
     let wire = &swift_quoted(&operation.wire_name);
     let commented = on_one_line(&operation.wire_name);
-    let (param_ty, param_aux) = message_swift_type(operation);
+    let (param_ty, param_aux) = message_swift_type(named, operation);
     aux.extend(param_aux);
     let refusal = refusal_name(named);
     let shape = HttpShape::of(operation);
@@ -843,7 +843,7 @@ fn reply_method(
     let call = swift_call(operation);
     let wire = &swift_quoted(&operation.wire_name);
     let commented = on_one_line(&operation.wire_name);
-    let (param_ty, param_aux) = message_swift_type(operation);
+    let (param_ty, param_aux) = message_swift_type(named, operation);
     aux.extend(param_aux);
     let failure = failure_name(named, operation).unwrap();
     let shape = HttpShape::of(operation);
@@ -893,17 +893,21 @@ fn reply_method(
 /// [`crate::features::swift::swift_reference_type`] for the operation's own message: the type an
 /// operation's one argument already is, or the type the macro declared for an operation that
 /// named none — mirrors `dart_ws_client`'s own `message_dart_typename`.
-fn message_swift_type(operation: &OperationDef) -> (String, Vec<String>) {
+fn message_swift_type(service: &str, operation: &OperationDef) -> (String, Vec<String>) {
+    let hint = format!(
+        "{service}{}Req",
+        RenameRule::PascalCase.apply_to_field(&written(&operation.ident))
+    );
     match &operation.inputs {
         OperationInputs::Named(declared) => {
-            swift_reference_type(&get_field_def("req", declared, ""), "Req")
+            swift_reference_type(&get_field_def("req", declared, ""), &hint)
         }
         OperationInputs::Empty | OperationInputs::Generated(_) => {
             operation.generated_message_ident().map_or_else(
                 || ("String".to_owned(), Vec::new()),
                 |ident| {
                     let named: Type = syn::parse_quote! { #ident };
-                    swift_reference_type(&get_field_def("req", &named, ""), "Req")
+                    swift_reference_type(&get_field_def("req", &named, ""), &hint)
                 },
             )
         }

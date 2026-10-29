@@ -16,11 +16,12 @@ use super::generic_dates::{
     adjacent_tide_swift, chart_swift, tide_swift, untagged_tide_swift, waypoint_swift,
 };
 use super::held_dates_models::{
-    AdjacentCountedTide, AdjacentPlainTide, Chime, Chimed, CountedTide, Pannier, Pendulum,
-    PlainChart, PlainTide, StowedChart, StowedTicker, Ticker, Tock, UntaggedCountedTide,
-    UntaggedPlainTide, adjacent_counted_tide_swift, adjacent_plain_tide_swift, chimed_swift,
-    counted_tide_swift, first, plain_chart_swift, plain_tide_swift, second, stowed_chart_swift,
-    stowed_ticker_swift, ticker_swift, tock_swift, untagged_counted_tide_swift,
+    AdjacentCountedTide, AdjacentPlainTide, Chime, Chimed, CountedTide, FirstHolder, Pannier,
+    Pendulum, PlainChart, PlainTide, SecondHolder, StowedChart, StowedTicker, Ticker, Tock,
+    TwinHolder, UntaggedCountedTide, UntaggedPlainTide, adjacent_counted_tide_swift,
+    adjacent_plain_tide_swift, chimed_swift, counted_tide_swift, first, first_holder_swift,
+    plain_chart_swift, plain_tide_swift, second, second_holder_swift, stowed_chart_swift,
+    stowed_ticker_swift, ticker_swift, tock_swift, twin_holder_swift, untagged_counted_tide_swift,
     untagged_plain_tide_swift,
 };
 
@@ -174,6 +175,68 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
     ] {
         assert_eq!(held, written);
     }
+}
+
+#[test]
+fn two_holders_of_one_generic_type_name_the_helpers_of_its_type_arguments_after_themselves() {
+    let dated = || Pannier { held: first() };
+    let numbered = || Pannier {
+        held: HashMap::from([(1_u32, "a".to_owned())]),
+    };
+    let paired = || Pannier {
+        held: ("p".to_owned(), 1_u8),
+    };
+    let first_holder = FirstHolder {
+        dated: dated(),
+        numbered: numbered(),
+        paired: paired(),
+    };
+    let second_holder = SecondHolder {
+        dated: dated(),
+        numbered: numbered(),
+        paired: paired(),
+    };
+    let twin_holder = TwinHolder {
+        dated: dated(),
+        later: dated(),
+        numbered: numbered(),
+        other_numbered: numbered(),
+        other_paired: paired(),
+        paired: paired(),
+    };
+    for written in [
+        serde_json::to_string(&first_holder).unwrap(),
+        serde_json::to_string(&second_holder).unwrap(),
+        serde_json::to_string(&twin_holder).unwrap(),
+    ] {
+        assert!(written.contains(r#""dated":{"held":"#), "{written}");
+    }
+    let helpers = [
+        "public struct FirstHolderDatedArgument0Date: Codable, Sendable { ",
+        "public struct FirstHolderNumberedArgument0KeyedMap: Codable, Sendable { ",
+        "public struct FirstHolderPairedArgument0Tuple: Codable, Sendable { ",
+    ];
+    for (holder, swift) in [
+        ("FirstHolder", first_holder_swift::swift_definition()),
+        ("SecondHolder", second_holder_swift::swift_definition()),
+    ] {
+        for helper in helpers {
+            holds(&swift, &[helper.replace("FirstHolder", holder)]);
+        }
+        assert!(!swift.contains("PannierArgument"), "{swift}");
+    }
+    holds(
+        &twin_holder_swift::swift_definition(),
+        &[
+            "public struct TwinHolderDatedArgument0Date: Codable, Sendable { ".to_owned(),
+            "public struct TwinHolderLaterArgument0Date: Codable, Sendable { ".to_owned(),
+            "public struct TwinHolderPairedArgument0Tuple: Codable, Sendable { ".to_owned(),
+            "public struct TwinHolderOtherPairedArgument0Tuple: Codable, Sendable { ".to_owned(),
+            "public struct TwinHolderNumberedArgument0KeyedMap: Codable, Sendable { ".to_owned(),
+            "public struct TwinHolderOtherNumberedArgument0KeyedMap: Codable, Sendable { "
+                .to_owned(),
+        ],
+    );
 }
 
 #[test]
@@ -500,7 +563,7 @@ fn a_type_argument_holds_its_date_in_a_wrapper_that_reads_and_writes_its_text() 
     holds(
         &plain_chart_swift::swift_definition(),
         &[
-            "public struct PannierArgument0Date: Codable, Sendable { public let value: Date; \
+            "public struct PlainChartDatedArgument0Date: Codable, Sendable { public let value: Date; \
              public init(value: Date) { self.value = value }; \
              public init(swiftSchemaUnjudged decoder: Decoder) throws { \
              let container = try decoder.singleValueContainer(); \
@@ -513,19 +576,19 @@ fn a_type_argument_holds_its_date_in_a_wrapper_that_reads_and_writes_its_text() 
              try container.encode(Self.swiftSchemaFormatIso8601Date(value)) }; \
              public func validate() -> [String] { [] } };"
                 .to_owned(),
-            helpers("PannierArgument0Date", STORED),
-            "public struct PendulumArgument0Date: Codable, Sendable { public let value: [Date]; "
+            helpers("PlainChartDatedArgument0Date", STORED),
+            "public struct PlainChartSwungArgument0Date: Codable, Sendable { public let value: [Date]; "
                 .to_owned(),
             "let wireValue = try container.decode([String].self); \
              self.value = try wireValue.map { \
              try Self.swiftSchemaParseIso8601Date($0, codingPath: decoder.codingPath) } }; "
                 .to_owned(),
-            "public struct PendulumArgument1Date: Codable, Sendable { public let value: Date?; "
+            "public struct PlainChartSwungArgument1Date: Codable, Sendable { public let value: Date?; "
                 .to_owned(),
             "let wireValue = try container.decode(String?.self); ".to_owned(),
-            "public let dated: Pannier<PannierArgument0Date>; ".to_owned(),
-            "public let swung: Pendulum<PendulumArgument0Date, PendulumArgument1Date>; ".to_owned(),
-            "self.dated = try container.decode(Pannier<PannierArgument0Date>.self, \
+            "public let dated: Pannier<PlainChartDatedArgument0Date>; ".to_owned(),
+            "public let swung: Pendulum<PlainChartSwungArgument0Date, PlainChartSwungArgument1Date>; ".to_owned(),
+            "self.dated = try container.decode(Pannier<PlainChartDatedArgument0Date>.self, \
              forKey: .dated); "
                 .to_owned(),
             "try container.encode(self.dated, forKey: .dated); ".to_owned(),
@@ -534,10 +597,10 @@ fn a_type_argument_holds_its_date_in_a_wrapper_that_reads_and_writes_its_text() 
     holds(
         &stowed_chart_swift::swift_definition(),
         &[
-            "public struct ChimeArgument0Date: Codable, Sendable { public let value: Date; "
+            "public struct StowedChartDatedArgument0Date: Codable, Sendable { public let value: Date; "
                 .to_owned(),
-            helpers("ChimeArgument0Date", STORED),
-            "public let dated: Chime<ChimeArgument0Date, Stowed>; ".to_owned(),
+            helpers("StowedChartDatedArgument0Date", STORED),
+            "public let dated: Chime<StowedChartDatedArgument0Date, Stowed>; ".to_owned(),
         ],
     );
 }
