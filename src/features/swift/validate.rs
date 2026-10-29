@@ -62,9 +62,6 @@ pub(super) struct Checked<'member> {
     /// The expression the member is read from.
     pub access: String,
     pub def: &'member FieldDef,
-    /// Whether the member's own bound runs beside the one its type declares, where every other
-    /// member's stands in its place: the slot of an untagged variant.
-    pub runs_both: bool,
     /// The key or the position serde writes the member at, or `None` where it writes neither.
     pub step: Option<String>,
 }
@@ -258,38 +255,21 @@ pub(super) fn bound_member(bounds: &[String]) -> String {
 pub(super) fn bound_alone(owner: &str, member: &Checked<'_>) -> Vec<String> {
     let meta = member.def.model_schema_prop_meta.as_ref();
     let mut rules = meta.map_or_else(Vec::new, |written| bound_rules(owner, member, written));
-    if walked(member, &rules) {
-        rules.extend(held_walk(
-            Walk::Bound,
-            owner,
-            member.def,
-            &member.access,
-            &written_step(member.step.as_deref()),
-            &mut Bindings::default(),
-        ));
-    }
+    rules.extend(held_walk(
+        Walk::Bound,
+        owner,
+        member.def,
+        &member.access,
+        &written_step(member.step.as_deref()),
+        &mut Bindings::default(),
+    ));
     rules
-}
-
-/// Whether the walk below a member runs: where no bound of its own stands in its place.
-fn walked(member: &Checked<'_>, bounds: &[String]) -> bool {
-    bounds.is_empty() || member.runs_both || member.def.is_list()
 }
 
 /// Whether `validate()` runs the `validate()` of a value a member of `def` holds: what the read
 /// of the member leaves unjudged.
-pub(super) fn walks(def: &FieldDef, runs_both: bool) -> bool {
-    let member = Checked {
-        access: String::new(),
-        def,
-        runs_both,
-        step: None,
-    };
-    let bounds = def
-        .model_schema_prop_meta
-        .as_ref()
-        .map_or_else(Vec::new, |written| bound_rules("", &member, written));
-    walked(&member, &bounds) && reaches(def)
+pub(super) fn walks(def: &FieldDef) -> bool {
+    reaches(def)
 }
 
 /// Whether a walk of `def` reaches a value whose `validate()` it runs.
@@ -344,7 +324,6 @@ pub(super) fn slot_rules(owner: &str, slots: &[FieldDef]) -> Vec<String> {
                 &Checked {
                     access: format!("slot{position}"),
                     def: slot,
-                    runs_both: false,
                     step: Some(position.to_string()),
                 },
             )
@@ -362,7 +341,6 @@ pub(super) fn range_rules(owner: &str, kind: RangeKind, bound: &FieldDef) -> Vec
                 &Checked {
                     access: property_read(member),
                     def: bound,
-                    runs_both: false,
                     step: Some((*member).to_owned()),
                 },
             )
@@ -383,7 +361,6 @@ pub(super) fn result_rules(owner: &str, ok: &FieldDef, err: &FieldDef) -> Vec<St
                 &Checked {
                     access: "payload".to_owned(),
                     def,
-                    runs_both: false,
                     step: Some(arm.to_owned()),
                 },
             );
@@ -406,7 +383,6 @@ pub(super) fn lone_slot_rules(owner: &str, slot: &FieldDef) -> Vec<String> {
         &Checked {
             access: "value".to_owned(),
             def: slot,
-            runs_both: false,
             step: None,
         },
     )
@@ -423,26 +399,23 @@ pub(super) fn tuple_struct_rules(owner: &str, slots: &[FieldDef]) -> Vec<String>
 }
 
 /// What a member adds to `validate()`: the repeat of a set it is, its bounds, what the value it
-/// holds reports, then the checks it names. A bound of the member's own stands in place of what its
-/// type declares, but on a list, which is counted and walked.
+/// holds reports, then the checks it names.
 pub(super) fn member_rules(owner: &str, member: &Checked<'_>) -> Vec<String> {
     let meta = member.def.model_schema_prop_meta.as_ref();
     let bounds = meta.map_or_else(Vec::new, |written| bound_rules(owner, member, written));
     let mut rules = own_repeat_rules(owner, member);
-    let walks_below = walked(member, &bounds);
+    let place = written_step(member.step.as_deref());
+    let mut bindings = Bindings::default();
+    let held = held_walk(
+        Walk::Reported,
+        owner,
+        &member.def.without_own_set(),
+        &member.access,
+        &place,
+        &mut bindings,
+    );
+    rules.extend(held);
     rules.extend(bounds);
-    if walks_below {
-        let place = written_step(member.step.as_deref());
-        let mut bindings = Bindings::default();
-        rules.extend(held_walk(
-            Walk::Reported,
-            owner,
-            &member.def.without_own_set(),
-            &member.access,
-            &place,
-            &mut bindings,
-        ));
-    }
     if let Some(written) = meta {
         rules.extend(check_rules(owner, member, &written.check));
     }
@@ -506,7 +479,6 @@ pub(super) fn brand_rules(
         &Checked {
             access: "value".to_owned(),
             def: value_field,
-            runs_both: false,
             step: None,
         },
         &meta,

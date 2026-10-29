@@ -15,10 +15,10 @@ section is the consumer's view; this is what a change has to keep.
   `default_types`, and a brand's `minLength`, `maxLength` and `pattern`. `KotlinArgs::member_meta`
   is `member_prop_meta`, so an enum's own string check is each reached member's. `patterns_of`
   reads `enum_pattern` under the gate that field is compiled under.
-- **`Rules` is the one writer, and its order is Rust's.** `Rules::member` writes a member's bounds
-  (`bound_statements`), then what the value it holds reports (`held_statements`), then its checks
-  (`check_statements`). A member with a bound of its own is not walked, a list apart, which runs
-  its count and then each item: `named_member_validate_body` is the Rust rule. `Rules::own` writes
+- **`Rules` is the one writer, and its order is Rust's.** `Rules::member` writes what the value a member
+  holds reports (`held_statements`), then its bounds (`bound_statements`), then its checks
+  (`check_statements`). What its type declares comes before the member's own bound, as
+  `named_member_validate_body` does in Rust. `Rules::own` writes
   the type's checks last, `Rules::brand` a brand's own bounds and no walk, and `Rules::written` the
   method. A type with no statement writes `= emptyList()`.
 - **The sentence is `kotlin_violation`'s**, in `src/bound_message.rs`, written from

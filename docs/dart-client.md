@@ -18,9 +18,9 @@ consumer's view; this is what a change has to keep.
   `Bound::stated()`, as `rust_violation` and `zod_error_arg` do, and
   `the_three_renderings_of_a_bound_hold_one_sentence` holds the three to it. `dart_escaped` writes
   a text between two quotes of a Dart string, which reads `$` as an interpolation.
-- **A member** is `member_elements`: its own bounds (`bound_elements`), then what the value it
-  holds reports where the member writes no bound or is a list (`held_elements`), then its checks
-  (`check_elements`). That is the order `named_member_validate_body` and `then_checks` give Rust.
+- **A member** is `member_elements`: what the value it holds reports (`held_elements`), then
+  its own bounds (`bound_elements`), then its checks (`check_elements`). That is the order
+  `named_member_validate_body` and `then_checks` give Rust.
   A type's own checks come last (`own_check_elements`).
 - **A check is called under the name the attribute writes**, a function of the consumer's that
   answers its messages as a list: `List<String> withoutDuplicates(List<String> value)` for a
@@ -123,13 +123,11 @@ consumer's view; this is what a change has to keep.
   a header through the same codec. `run_dart_text_forms.rs` reads `TEXT_FORMS` under the Dart SDK,
   and `run_dart_wire_forms.rs` writes `WIRE_FORMS`.
 - **A declared type is read unjudged exactly where the holder's `validate()` runs it.** `Read` is
-  threaded through `dart_decode_expr` and `dart_decode_at`, and `Read::of_member` asks
-  `walks_what_it_holds`, the question `member_elements` asks: a member's own bound stands in for
-  what its type declares, a list's count apart. A value read unjudged where no `validate()`
+  threaded through `dart_decode_expr` and `dart_decode_at`, and `member_elements` walks every
+  member's type, so a member's own bound is held beside what its type declares. A value read unjudged where no `validate()`
   walks is a rule no read runs, so each of these is read judged and ends the read with its own
   messages: a converter handed for a type argument, the key of a map (`dart_map_key_decode`),
-  what a brand wraps, an alias of anything but a declared type itself, and a member under a
-  bound of its own. A flattened member is read unjudged whatever it writes, as `field_elements`
+  what a brand wraps, and an alias of anything but a declared type itself. A flattened member is read unjudged whatever it writes, as `field_elements`
   walks it.
 - **`dart_json_decode` stays judged**, so the clients' text is what it was: a reply is read
   through `fromJson` inside the `try` each client already writes. The HTTP client answers

@@ -232,6 +232,26 @@ const BOUNDED: &str = "[[\"later: too long: maximum length is 3, got 4\",\"many:
                        \"many\":[\"ab\",\"c\"],\"sort\":\"a.b\"},{\"later\":\"abc\",\"many\":[\"a\",\
                        \"b\"]}]";
 
+/// Prints, for each payload, the issues the Zod schema of [`DeclaredSlugged`] reports, each as the
+/// sentence `validate()` writes.
+const SLUGGED_DRIVER: &str = r#"import { DeclaredSlugged$Schema } from "./lib/index.js";
+
+const said = (value) => {
+  const read = DeclaredSlugged$Schema.safeParse(value);
+  return read.success
+    ? []
+    : read.error.issues.map((issue) => `'${issue.path.join(".")}': ${issue.message}`);
+};
+console.log(
+  JSON.stringify([
+    said({ slug: "ab", spare: "abc" }),
+    said({ slug: "AB", spare: "abc" }),
+    said({ slug: "abc", spare: "ab" }),
+    said({ slug: "abc", spare: "abc" }),
+  ]),
+);
+"#;
+
 /// Loads the compiled bundle and parses through the struct whose fields bound a brand.
 const BOUNDED_DRIVER: &str = r#"import { DeclaredBounded$Schema } from "./lib/index.js";
 
@@ -1911,6 +1931,21 @@ pub struct DeclaredExampledPair<IdType> {
     pub id: IdType,
 }
 
+/// A brand with a length of its own, and a member that writes a pattern beside it.
+#[model_schema(minLength = 3)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct DeclaredSlug(pub String);
+
+/// A member that bounds a brand whose type declares a bound of its own.
+#[model_schema()]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeclaredSlugged {
+    #[model_schema_prop(pattern = "^[a-z]+$")]
+    pub slug: DeclaredSlug,
+    pub spare: DeclaredSlug,
+}
+
 /// A one-slot tuple struct over a brand, which publishes the brand's own binding.
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2293,6 +2328,19 @@ pub struct DeclaredGangway {
     pub note: String,
     #[serde(flatten)]
     pub pick: DeclaredPickOf<bool>,
+}
+
+/// The models of [`DeclaredSlugged`]: a bundle of their own, compiled with `tsc --strict` and
+/// loaded under `node`.
+fn slugged_bundle() -> String {
+    [
+        PREAMBLE.to_owned(),
+        DeclaredSlug::ts_definition(),
+        DeclaredSlug::zod_schema(),
+        DeclaredSlugged::ts_definition(),
+        DeclaredSlugged::zod_schema(),
+    ]
+    .join("\n\n")
 }
 
 fn bundle() -> String {
@@ -3781,6 +3829,40 @@ fn type_check_a_bound_on_a_field_typed_with_a_brand_loads_and_parses() {
     assert_eq!(
         printed, BOUNDED,
         "the bundle does not load and parse under node:\n{failed}"
+    );
+}
+
+/// The Zod schema of a member that bounds a brand reports under `node` the sentences `validate()`
+/// reports, the brand's bound ahead of the member's where both break.
+#[test]
+fn type_check_a_member_bound_beside_a_brand_reports_under_zod_what_validate_reports() {
+    let slugged = |slug: &str, spare: &str| DeclaredSlugged {
+        slug: DeclaredSlug(slug.to_owned()),
+        spare: DeclaredSlug(spare.to_owned()),
+    };
+    let validated: Vec<Vec<String>> = [("ab", "abc"), ("AB", "abc"), ("abc", "ab"), ("abc", "abc")]
+        .iter()
+        .map(|&(slug, spare)| slugged(slug, spare).validate().err().unwrap_or_default())
+        .collect();
+    assert_eq!(
+        validated,
+        [
+            vec!["'slug': too short: minimum length is 3, got 2"],
+            vec![
+                "'slug': too short: minimum length is 3, got 2",
+                "'slug': does not match pattern '^[a-z]+$'",
+            ],
+            vec!["'spare': too short: minimum length is 3, got 2"],
+            vec![],
+        ]
+    );
+    let Some((printed, failed)) = loaded_from("slugged", &slugged_bundle(), SLUGGED_DRIVER) else {
+        return;
+    };
+    let read: Vec<Vec<String>> = serde_json::from_str(&printed).unwrap();
+    assert_eq!(
+        read, validated,
+        "Zod reports what validate() reports, in the same order:\n{failed}"
     );
 }
 

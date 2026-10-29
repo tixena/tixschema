@@ -219,10 +219,10 @@ fn handed(type_parameters: &[String], kept: &str) -> String {
         .join(", ")
 }
 
-/// A reference to the `KSerializer` a serializer the emitter writes reads `held` with, a value the
-/// member typed `member` holds: each model `validate()` asks of the member is read unjudged.
-pub fn held_serializer(member: &FieldDef, held: &FieldDef, type_parameters: &[String]) -> String {
-    if validate::asks_the_held(member) && holds_an_unjudged(held) {
+/// A reference to the `KSerializer` a serializer the emitter writes reads `held` with: each model
+/// `validate()` asks of the member is read unjudged.
+pub fn held_serializer(held: &FieldDef, type_parameters: &[String]) -> String {
+    if holds_an_unjudged(held) {
         unjudged_serializer(held, type_parameters)
     } else {
         kotlin_serializer_expr(held, type_parameters)
@@ -245,11 +245,11 @@ fn holds_an_unjudged(field: &FieldDef) -> bool {
     } else if let FieldDefType::Tuple(positions) = &field.field_type {
         positions.iter().any(in_a_position)
     } else if let FieldDefType::Range(_, bound) = &field.field_type {
-        validate::asks_the_held(bound) && holds_an_unjudged(bound)
+        holds_an_unjudged(bound)
     } else if let FieldDefType::Result(ok, err) = &field.field_type {
         [ok, err]
             .into_iter()
-            .any(|arm| !arm.is_unit() && validate::asks_the_held(arm) && holds_an_unjudged(arm))
+            .any(|arm| !arm.is_unit() && holds_an_unjudged(arm))
     } else {
         false
     }
@@ -258,9 +258,7 @@ fn holds_an_unjudged(field: &FieldDef) -> bool {
 /// Whether the position of a tuple typed `field` holds a model its wrapper reads unjudged: one
 /// `validate()` asks of the position. A tuple in a position keeps its own wrapper's serializer.
 fn in_a_position(field: &FieldDef) -> bool {
-    !matches!(field.field_type, FieldDefType::Tuple(_))
-        && validate::asks_the_held(field)
-        && holds_an_unjudged(field)
+    !matches!(field.field_type, FieldDefType::Tuple(_)) && holds_an_unjudged(field)
 }
 
 /// The serializer of `export_name`, the type's own: it reads through the unjudged one and throws
@@ -351,7 +349,7 @@ pub fn declared_serializer(field: &FieldDef, declared: &str, type_parameters: &[
 /// reads it by [`member_serializer`]: each tuple that serializer reads by its walked wrapper is
 /// named by it.
 pub fn declared_typename(field: &FieldDef) -> String {
-    if validate::asks_the_held(field) && holds_an_unjudged(field) {
+    if holds_an_unjudged(field) {
         annotated_typename(field, WRITTEN)
     } else {
         kotlin_typename(field)
@@ -361,12 +359,12 @@ pub fn declared_typename(field: &FieldDef) -> String {
 /// A reference to the `KSerializer` a serializer the emitter writes reads the member typed
 /// `field` with.
 pub fn member_serializer(field: &FieldDef, type_parameters: &[String]) -> String {
-    held_serializer(field, field, type_parameters)
+    held_serializer(field, type_parameters)
 }
 
 /// Whether [`member_serializer`] reads the member typed `field` with an unjudged serializer.
 pub fn member_read_unjudged(field: &FieldDef) -> bool {
-    validate::asks_the_held(field) && holds_an_unjudged(field)
+    holds_an_unjudged(field)
 }
 
 /// `<T, U>`, each parameter followed by `bound`.
@@ -406,7 +404,7 @@ pub fn position_typename(field: &FieldDef) -> String {
 /// written. A model is read unjudged where `validate()` asks it for what it reports, and nowhere
 /// else.
 pub fn plugin_read(field: &FieldDef) -> (String, String) {
-    let models = validate::asks_the_held(field) && holds_an_unjudged(field);
+    let models = holds_an_unjudged(field);
     if !models && !texts::declared(field) && !arrays::declared(field) {
         return (String::new(), kotlin_typename(field));
     }

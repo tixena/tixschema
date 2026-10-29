@@ -780,8 +780,8 @@ fn every_shape_refuses_what_its_validate_refuses_and_builds_it_unjudged() {
     assert_eq!(normalized(&swift), expected);
 }
 
-/// A model its holder does not walk judges itself as it is read, and the error is its own: a
-/// field with a bound of its own, and the value a brand wraps. The coding path says where.
+/// A field with a bound of its own is refused with the holder's `validate()` text, and a model its
+/// holder does not walk, the value a brand wraps, judges itself as it is read.
 #[test]
 fn a_model_its_holder_does_not_walk_judges_itself() {
     let waybill = Waybill {
@@ -789,7 +789,12 @@ fn a_model_its_holder_does_not_walk_judges_itself() {
         short_code: Code("a".to_owned()),
         titled: Title::from("ti"),
     };
-    assert_eq!(waybill.validate(), Ok(()));
+    assert_eq!(
+        waybill.validate(),
+        Err(vec![
+            "'shortCode': too short: minimum length is 2, got 1".to_owned()
+        ])
+    );
     let sealed = SealedCode(Code("a".to_owned()));
     assert_eq!(sealed.validate(), Ok(()));
     let reads = [
@@ -819,8 +824,8 @@ fn a_model_its_holder_does_not_walk_judges_itself() {
     assert_eq!(
         swift,
         "\
-Waybill: refused at [shortCode]
-    too short: minimum length is 2, got 1
+Waybill: refused at []
+    'shortCode': too short: minimum length is 2, got 1
 SealedCode: refused at []
     too short: minimum length is 2, got 1
 "

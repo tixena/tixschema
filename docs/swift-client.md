@@ -14,11 +14,10 @@ the Swift client" section is the consumer's view; this is what a change to the e
   `member_prop_meta` with the enum's arguments where the item is an enum. Every member's bounds
   are read through it (`member_def`), so an enum's string check reaches in Swift the fields it
   reaches in Rust.
-- **`src/features/swift/validate.rs` writes the method.** `member_rules` is one member: its bounds
-  (`bound_rules`), what the value it holds reports (`held_walk`), then the checks it names
-  (`check_rules`). A bound of the member's own stands in place of the walk, but on a list and on
-  the slot of an untagged variant (`Checked::runs_both`), which is `named_member_validate_body`'s
-  and `slot_validate_body`'s rule. `own_checks` are the type's, last. `method` writes the method
+- **`src/features/swift/validate.rs` writes the method.** `member_rules` is one member: what the value it
+  holds reports (`held_walk`), then its bounds (`bound_rules`), then the checks it names
+  (`check_rules`). The type's message comes before the member's own, which is
+  `named_member_validate_body`'s and `slot_validate_body`'s rule. `own_checks` are the type's, last. `method` writes the method
   and the helpers its statements call, and `[]` for a type with no rule.
 - **One sentence source.** `swift_violation` in `src/bound_message.rs` is written from
   `Bound::stated()`, as `rust_violation` is, and
@@ -71,9 +70,7 @@ to keep.
   tagging call it. A plain enum that names no check keeps the `init(from:)` Swift synthesizes, and
   its unjudged initializer is that read.
 - **A member is read unjudged exactly where `validate()` walks it.** `validate::walks` is the one
-  question: no bound of the member's own stands in place of the walk (`walked`, which
-  `member_rules` and `bound_alone` ask too) and `held_walk` ends on a value whose `validate()` it
-  runs (`reaches`). `read::unjudged` then takes the member apart as `held_walk` does: an `Option`,
+  question: `held_walk` ends on a value whose `validate()` it runs (`reaches`). `read::unjudged` then takes the member apart as `held_walk` does: an `Option`,
   each level of a list, a map's values, the struct written for a tuple, a named type. A step added
   to one is added to the other: a value the read leaves unjudged and the walk does not reach is
   judged by nothing.

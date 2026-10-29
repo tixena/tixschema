@@ -2073,8 +2073,8 @@ fn test_untagged_slot_runs_its_own_check_and_the_one_its_type_declares() {
             .validate()
             .unwrap_err(),
         vec![
-            "does not match pattern '^[a-z]+$'",
             "too short: minimum length is 3, got 1",
+            "does not match pattern '^[a-z]+$'",
         ]
     );
     assert_eq!(

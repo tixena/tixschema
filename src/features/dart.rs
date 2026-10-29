@@ -317,16 +317,6 @@ impl Read {
             Self::Unjudged => "fromJsonUnjudged",
         }
     }
-
-    /// This read for what the member `field` holds: judged where the member's own bound stands
-    /// in for what its type declares, so that no `validate()` of the holder runs it.
-    fn of_member(self, field: &FieldDef) -> Self {
-        if walks_what_it_holds(field) {
-            self
-        } else {
-            Self::Judged
-        }
-    }
 }
 
 /// One step of the place a message names.
@@ -1915,14 +1905,7 @@ fn tuple_decode(elements: &[FieldDef], expr: &str, read: Read) -> String {
     let rendered = elements
         .iter()
         .enumerate()
-        .map(|(index, element)| {
-            member_decode(
-                element,
-                &format!("{array}[{index}]"),
-                None,
-                read.of_member(element),
-            )
-        })
+        .map(|(index, element)| member_decode(element, &format!("{array}[{index}]"), None, read))
         .collect::<Vec<_>>()
         .join(", ");
     let record = if elements.len() == 1 {
@@ -1967,7 +1950,7 @@ fn keyed_decode(field: &FieldDef, decode: String, held: Option<&str>, key: Optio
 /// The read of a variant's one value from `source`, under the content key `key` where it has one:
 /// [`member_decode`], held to the key by [`keyed_decode`].
 fn content_decode(field: &FieldDef, source: &str, held: Option<&str>, key: Option<&str>) -> String {
-    let read = member_decode(field, source, held, Read::Unjudged.of_member(field));
+    let read = member_decode(field, source, held, Read::Unjudged);
     keyed_decode(field, read, held, key)
 }
 
@@ -1995,12 +1978,8 @@ fn range_decode(kind: RangeKind, bound: &FieldDef, expr: &str, read: Read) -> St
         .members()
         .iter()
         .map(|member| {
-            let decoded = member_decode(
-                bound,
-                &format!("{object}[{}]", quoted(member)),
-                None,
-                read.of_member(bound),
-            );
+            let decoded =
+                member_decode(bound, &format!("{object}[{}]", quoted(member)), None, read);
             format!("{member}: {decoded}")
         })
         .collect::<Vec<_>>()
@@ -2093,7 +2072,7 @@ fn result_decode(ok: &FieldDef, err: &FieldDef, expr: &str, read: Read) -> Strin
         if def.is_unit() {
             format!("final {object} when {named} && {held} == null => {class}{arm}{arguments}()")
         } else {
-            let decoded = member_decode(def, &held, None, read.of_member(def));
+            let decoded = member_decode(def, &held, None, read);
             format!("final {object} when {named} => {class}{arm}{arguments}({decoded})")
         }
     });
@@ -3100,14 +3079,8 @@ fn literal_elements(
     )]
 }
 
-/// Whether `validate()` runs what the member `field` holds: a member's own bound stands in for
-/// what its type declares, a list's count apart.
-fn walks_what_it_holds(field: &FieldDef) -> bool {
-    field.is_list() || own_bound_elements(field, "", &[], 0, &mut Helpers::default()).is_empty()
-}
-
 /// What a member adds, in the order Rust's `validate()` runs it: its own bounds, what the value
-/// it holds reports where the member writes no bound or is a list, then its checks. A set that
+/// it holds reports, then its checks. A set that
 /// repeats an item is reported ahead of its count. Where a bound is `asked`, the bounds name no
 /// place, and no repeat and no check is asked.
 fn member_elements(
@@ -3129,10 +3102,10 @@ fn member_elements(
             field.without_own_set(),
         ),
     };
-    elements.extend(own_bound_elements(field, expr, named, depth, helpers));
-    if walks_what_it_holds(field) {
-        elements.extend(held_elements(&walked, expr, place, depth, asked, helpers));
-    }
+    let own = own_bound_elements(field, expr, named, depth, helpers);
+    let held = held_elements(&walked, expr, place, depth, asked, helpers);
+    elements.extend(held);
+    elements.extend(own);
     if matches!(asked, Asked::Rules) {
         elements.extend(check_elements(field, expr, place, depth, helpers));
     }
@@ -3504,7 +3477,7 @@ fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>
                 decode
             }
         } else {
-            let read = Read::Unjudged.of_member(&field.field_def);
+            let read = Read::Unjudged;
             let key = quoted(&field.wire_name);
             let held = format!("{json}.containsKey({key})");
             let present = member_decode(
@@ -3878,12 +3851,7 @@ fn value_wrapper_tokens(
         ),
         Held::Value(value_field) => (
             dart_typename(value_field),
-            member_decode(
-                value_field,
-                &corrects.json,
-                None,
-                read.of_member(value_field),
-            ),
+            member_decode(value_field, &corrects.json, None, read),
             dart_encode_expr(value_field, "value", false),
         ),
     };
@@ -4442,8 +4410,7 @@ fn untagged_enum_dart_source(
                 )
             }
             VariantPayload::Value(field_def) => {
-                let decode =
-                    member_decode(field_def, json, None, Read::Unjudged.of_member(field_def));
+                let decode = member_decode(field_def, json, None, Read::Unjudged);
                 let encode = dart_encode_expr(field_def, "value", false);
                 (
                     format!(

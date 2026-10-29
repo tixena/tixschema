@@ -172,7 +172,7 @@ pub struct Carton {
 #[serde(transparent)]
 pub struct Tray(pub String);
 
-/// A member whose own bound stands in for what the brand it holds declares.
+/// A member whose own bound is held beside what the brand it holds declares.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Rack {
@@ -587,35 +587,37 @@ a tray its check refuses: refused (FormatException)
     assert_eq!(wrote, answered);
 }
 
-/// `validate()` of a rack measures the tray it holds and runs nothing of the tray's own, so the
-/// rack reads the tray judged, and a tray that breaks a rule of its own ends the read with the
-/// tray's messages. Rust reads it the same way, `serde_json` writing where it stopped, and
-/// writes the field's key in front of a bound's message, which Dart does not.
+/// `validate()` of a rack runs the tray's rules beside the member's, so the rack reads the tray
+/// unjudged. Rust and Dart answer the same messages, the field's key in front of each.
 #[test]
 fn a_brand_under_a_members_own_bound_judges_itself_as_it_is_read() {
     let (known, short) = (r#"{"tray":"XX"}"#, r#"{"tray":"T"}"#);
     assert_eq!(
         rust_read::<Rack>(known),
-        ["a tray is known at line 1 column 13"],
+        ["'tray': a tray is known"],
         "what the Rust read answers"
     );
     assert_eq!(
         rust_read::<Rack>(short),
-        ["'tray': too short: minimum length is 2, got 1 at line 1 column 12"],
+        ["'tray': too short: minimum length is 2, got 1"],
         "what the Rust read answers"
     );
     let held = Rack {
         tray: Tray("XX".to_owned()),
     };
-    assert_eq!(held.validate(), Ok(()), "what Rust's `validate()` answers");
+    assert_eq!(
+        held.validate(),
+        Err(vec!["'tray': a tray is known".to_owned()]),
+        "what Rust's `validate()` answers"
+    );
     let cases = [
         Case {
-            answered: texts(&["a tray is known"]),
+            answered: texts(&["'tray': a tray is known"]),
             built: format!("Rack.fromJson(jsonDecode(r'{known}'))"),
             name: "a rack of a known tray",
         },
         Case {
-            answered: texts(&["too short: minimum length is 2, got 1"]),
+            answered: texts(&["'tray': too short: minimum length is 2, got 1"]),
             built: format!("Rack.fromJson(jsonDecode(r'{short}'))"),
             name: "a rack of a short tray",
         },
