@@ -53,6 +53,10 @@ pub mod model_schema_prop;
 #[cfg(feature = "serde")]
 pub mod service_schema;
 
+/// The text serde reads a float map key from, as a regular expression that matches the whole text.
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+pub const JSON_NUMBER: &str = "^-?(0|[1-9][0-9]*)([.][0-9]+)?([eE][+-]?[0-9]+)?$";
+
 /// Feature detection utilities.
 #[cfg(test)]
 pub struct Features;

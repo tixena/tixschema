@@ -13,6 +13,7 @@ use syn::ext::IdentExt as _;
 use syn::{Field, Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
 
 use crate::bound_message::{Bound, dart_repeated, dart_violation};
+use crate::features::JSON_NUMBER;
 use crate::features::model_schema_prop::{FunctionName, LiteralValue, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{
@@ -1483,10 +1484,15 @@ fn dart_map_key_typename(key: &FieldDef) -> String {
     }
 }
 
-/// The number `expr`, a `String`, reads as for a key of `number`'s type, held to its range.
+/// The number `expr`, a `String`, reads as for a key of `number`'s type, held to its range. A float
+/// key is read only from the text serde reads, and only when finite.
 fn number_key_read(number: &FieldDefType, expr: &str) -> String {
     let read = if matches!(number, FieldDefType::F32 | FieldDefType::F64) {
-        format!("double.parse({expr})")
+        format!(
+            "(switch (RegExp(r'{JSON_NUMBER}').hasMatch({expr}) ? double.parse({expr}) : \
+             double.nan) {{ final key when key.isFinite => key, _ => throw \
+             FormatException('invalid float key') }})"
+        )
     } else {
         format!("int.parse({expr})")
     };

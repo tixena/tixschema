@@ -7,7 +7,8 @@
 ))]
 mod a_read_refuses_what_validate_refuses {
     use alloc::borrow::Cow;
-    use alloc::collections::BTreeMap;
+    use alloc::collections::{BTreeMap, BTreeSet, VecDeque};
+    use alloc::rc::Rc;
     use alloc::sync::Arc;
     use core::cell::Cell;
     use core::fmt::Debug;
@@ -74,7 +75,7 @@ mod a_read_refuses_what_validate_refuses {
         pub parcels: Vec<Parcel>,
     }
 
-    /// Holds a parcel in each of three places its own read reads through no hook.
+    /// Holds a parcel in an `Arc`, a fixed array and a tuple.
     #[model_schema()]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(rename_all = "camelCase")]
@@ -82,6 +83,56 @@ mod a_read_refuses_what_validate_refuses {
         pub arced_parcel: Arc<Parcel>,
         pub fixed_parcels: [Parcel; 1],
         pub paired_parcel: (Parcel, u32),
+    }
+
+    /// A model with a bound that can be held in a set.
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct Lot {
+        #[model_schema_prop(minLength = 1)]
+        pub lot_label: String,
+    }
+
+    /// Holds a lot in an `Rc`, a set and a deque.
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct Depot {
+        pub queued_lots: VecDeque<Lot>,
+        pub rc_lot: Rc<Lot>,
+        pub sorted_lots: BTreeSet<Lot>,
+    }
+
+    /// Holds a list of parcels in a tuple, and a tuple in a list.
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct Convoy {
+        pub counted_parcels: (Vec<Parcel>, u32),
+        pub paired_parcels: Vec<(Parcel, u32)>,
+    }
+
+    /// A tuple struct whose slots hold a parcel where `Yard` does.
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Shipment(pub Arc<Parcel>, pub [Parcel; 1], pub (Parcel, u32));
+
+    /// A tagged enum whose members hold a parcel where `Yard` does.
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "kind", rename_all_fields = "camelCase")]
+    pub enum Berth {
+        Arced { arced_parcel: Arc<Parcel> },
+        Fixed { fixed_parcels: [Parcel; 1] },
+        Paired { paired_parcel: (Parcel, u32) },
+    }
+
+    /// Holds whatever it is filled with in a field of its own type parameter.
+    #[model_schema(default_types(Item = String))]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Slung<Item> {
+        pub item: Item,
     }
 
     #[model_schema(minLength = 2)]
@@ -526,18 +577,20 @@ mod a_read_refuses_what_validate_refuses {
         assert_eq!(read.parcels, Vec::<Parcel>::new());
     }
 
-    #[test]
-    fn a_model_held_where_its_holder_reads_through_no_hook_judges_itself_as_it_is_read() {
-        let yard_of = |arced: &Parcel, fixed: &Parcel, paired: &Parcel| Yard {
+    fn yard_of(arced: &Parcel, fixed: &Parcel, paired: &Parcel) -> Yard {
+        Yard {
             arced_parcel: Arc::new(arced.clone()),
             fixed_parcels: [fixed.clone()],
             paired_parcel: (paired.clone(), 1),
-        };
+        }
+    }
+
+    #[test]
+    fn a_model_held_in_an_arc_an_array_or_a_tuple_is_refused_with_what_validate_answers() {
         let kept = yard_of(&sound(), &sound(), &sound());
         let written = serde_json::to_string(&kept).unwrap();
         assert_eq!(serde_json::from_str::<Yard>(&written).unwrap(), kept);
 
-        // `validate()` of the holder names what each place holds at its full path.
         assert_eq!(
             yard_of(&broken(), &broken(), &broken())
                 .validate()
@@ -560,15 +613,130 @@ mod a_read_refuses_what_validate_refuses {
             let refused = serde_json::from_str::<Yard>(&serde_json::to_string(&held).unwrap())
                 .unwrap_err()
                 .to_string();
-            // Each parcel judges itself as it is read, so the first broken one ends the read,
-            // with its own two messages.
-            for message in [
-                "too short: minimum length is 1, got 0",
-                "'fragileItemCodes.1': y is outside of itemCodeList",
+            let expected = refusal(&held.validate().unwrap_err());
+            assert!(refused.starts_with(&expected), "got: {refused}");
+            read_as_validated(&held, held.validate());
+        }
+    }
+
+    #[test]
+    fn a_model_held_in_an_rc_a_set_or_a_deque_is_refused_with_what_validate_answers() {
+        let lot = |label: &str| Lot {
+            lot_label: label.to_owned(),
+        };
+        let depot_of = |queued: &[&str], rc: &str, sorted: &[&str]| Depot {
+            queued_lots: queued.iter().map(|&label| lot(label)).collect(),
+            rc_lot: Rc::new(lot(rc)),
+            sorted_lots: sorted.iter().map(|&label| lot(label)).collect(),
+        };
+        for held in [
+            depot_of(&["a", "b"], "c", &["d"]),
+            depot_of(&["a", ""], "c", &["d"]),
+            depot_of(&["a"], "", &["d"]),
+            depot_of(&["a"], "c", &["", "d"]),
+            depot_of(&["", ""], "", &[""]),
+        ] {
+            read_as_validated(&held, held.validate());
+        }
+        assert_eq!(
+            refusal(&depot_of(&["", ""], "", &["", "d"]).validate().unwrap_err()),
+            "'queuedLots.0.lotLabel': too short: minimum length is 1, got 0; \
+             'queuedLots.1.lotLabel': too short: minimum length is 1, got 0; \
+             'rcLot.lotLabel': too short: minimum length is 1, got 0; \
+             'sortedLots.0.lotLabel': too short: minimum length is 1, got 0"
+        );
+        let twice = r#"{"queuedLots":[],"rcLot":{"lotLabel":"c"},"sortedLots":[{"lotLabel":"d"},{"lotLabel":"d"}]}"#;
+        let read: Depot = serde_json::from_str(twice).unwrap();
+        assert_eq!(read.sorted_lots.len(), 1);
+    }
+
+    #[test]
+    fn a_model_in_a_tuple_with_a_list_is_refused_with_what_validate_answers() {
+        let held = Convoy {
+            counted_parcels: (vec![sound(), broken()], 2),
+            paired_parcels: vec![(sound(), 1), (broken(), 2)],
+        };
+        assert_eq!(
+            held.validate().unwrap_err(),
+            [
+                "'countedParcels.0.1.itemLabel': too short: minimum length is 1, got 0",
+                "'countedParcels.0.1.fragileItemCodes.1': y is outside of itemCodeList",
+                "'pairedParcels.1.0.itemLabel': too short: minimum length is 1, got 0",
+                "'pairedParcels.1.0.fragileItemCodes.1': y is outside of itemCodeList",
+            ]
+        );
+        read_as_validated(&held, held.validate());
+        let kept = Convoy {
+            counted_parcels: (vec![sound()], 1),
+            paired_parcels: vec![(sound(), 1)],
+        };
+        read_as_validated(&kept, kept.validate());
+    }
+
+    #[test]
+    fn a_slot_and_a_variant_member_are_refused_with_what_validate_answers() {
+        let shipment_of = |arced: &Parcel, fixed: &Parcel, paired: &Parcel| {
+            Shipment(
+                Arc::new(arced.clone()),
+                [fixed.clone()],
+                (paired.clone(), 1),
+            )
+        };
+        for held in [
+            shipment_of(&sound(), &sound(), &sound()),
+            shipment_of(&broken(), &sound(), &sound()),
+            shipment_of(&sound(), &broken(), &sound()),
+            shipment_of(&sound(), &sound(), &broken()),
+            shipment_of(&broken(), &broken(), &broken()),
+        ] {
+            read_as_validated(&held, held.validate());
+        }
+        for parcel in [sound(), broken()] {
+            for held in [
+                Berth::Arced {
+                    arced_parcel: Arc::new(parcel.clone()),
+                },
+                Berth::Fixed {
+                    fixed_parcels: [parcel.clone()],
+                },
+                Berth::Paired {
+                    paired_parcel: (parcel, 1),
+                },
             ] {
-                assert_eq!(refused.matches(message).count(), 1, "got: {refused}");
+                read_as_validated(&held, held.validate());
             }
         }
+    }
+
+    #[test]
+    fn a_refusal_serde_raises_inside_an_arc_an_array_or_a_tuple_is_serdes_own_text() {
+        let written = serde_json::to_value(yard_of(&sound(), &sound(), &sound())).unwrap();
+        for at in [
+            "/arcedParcel/itemLabel",
+            "/fixedParcels/0/itemLabel",
+            "/pairedParcel/0/itemLabel",
+        ] {
+            let mut changed = written.clone();
+            *changed.pointer_mut(at).unwrap() = json!(5_i32);
+            let refused = serde_json::from_value::<Yard>(changed)
+                .unwrap_err()
+                .to_string();
+            assert_eq!(
+                refused, "invalid type: integer `5`, expected a string",
+                "at {at}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_model_under_a_type_parameter_judges_itself_as_it_is_read() {
+        let held = Slung { item: broken() };
+        let payload = serde_json::to_string(&held).unwrap();
+        let refused = serde_json::from_str::<Slung<Parcel>>(&payload)
+            .unwrap_err()
+            .to_string();
+        assert!(refused.starts_with(PARCEL_REFUSAL), "got: {refused}");
+        assert!(!refused.contains("'item."), "got: {refused}");
     }
 
     #[test]

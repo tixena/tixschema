@@ -9,9 +9,9 @@ use core::fmt::Write as _;
 
 use super::number_key_rows::{
     adjacent_pier_dart, anchor_dart, beacon_dart, burgee_dart, cutter_dart, depths_dart,
-    dinghy_dart, gauge_dart, hull_dart, ketch_dart, lanyard_dart, moorings_dart, pennant_dart,
-    pier_dart, rows, rudder_dart, shoal_dart, signal_dart, skiff_dart, slips_dart, sloop_dart,
-    soundings_dart, yawl_dart,
+    dinghy_dart, float_texts_serde_refuses, gauge_dart, hull_dart, ketch_dart, lanyard_dart,
+    moorings_dart, pennant_dart, pier_dart, rows, rudder_dart, shoal_dart, signal_dart, skiff_dart,
+    slips_dart, sloop_dart, soundings_dart, yawl_dart,
 };
 use super::run_dart_validate::{dart, module};
 
@@ -67,7 +67,8 @@ fn definitions() -> Vec<String> {
 /// Each payload is read and written back by the Dart read as serde reads and writes it.
 #[test]
 fn a_map_keyed_by_a_number_brand_or_alias_is_read_and_written_back_by_dart_as_serde_does() {
-    let rows = rows();
+    let mut rows = rows();
+    rows.extend(float_texts_serde_refuses());
     let mut main = String::from("void main() {\n");
     let mut expected = String::new();
     for (at, row) in rows.iter().enumerate() {

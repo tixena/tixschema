@@ -7563,7 +7563,7 @@ fn a_field_the_unjudged_read_does_not_reach_keeps_a_reader_in_the_schema_module(
         #[derive(serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct Enrolment {
-            organization_id: Arc<Slug>,
+            organization_id: Arc<[Slug]>,
         }
     };
     let collected = super::collect_struct_fields(
@@ -14423,14 +14423,14 @@ fn a_flagged_type_names_the_type_it_reaches_and_never_its_module() {
 ))]
 #[test]
 fn what_a_schema_module_already_held_reads_the_authors_scope_past_the_added_names() {
-    // A model in an `Arc` and in a fixed array is one the type's unjudged read does not reach, so
-    // its reader stays in the schema module.
-    let source = "#[derive(Deserialize)] pub struct DecodeTicket { pub issue: Arc<Issue>, pub trail: [Segment; 2] }";
+    // A model in a shared slice and in a boxed one is one the type's unjudged read does not reach,
+    // so its reader stays in the schema module.
+    let source = "#[derive(Deserialize)] pub struct DecodeTicket { pub issue: Arc<[Issue]>, pub trail: Box<[Segment]> }";
     let flagged = expansion_under("enable = [\"decode_with\", \"mongodb\"]", source);
     for scoped in [
-        "Result < Arc < super :: Issue > , D :: Error >",
-        "< Arc < super :: Issue > > :: deserialize (deserializer)",
-        "Result < [super :: Segment ; 2] , D :: Error >",
+        "Result < Arc < [super :: Issue] > , D :: Error >",
+        "< Arc < [super :: Issue] > > :: deserialize (deserializer)",
+        "Result < Box < [super :: Segment] > , D :: Error >",
     ] {
         assert!(
             flagged.contains(scoped),

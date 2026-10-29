@@ -542,8 +542,12 @@ has to keep.
 - A holder's hook is recorded as its members are walked (`hook_member`, from `member_read_hook`
   for a field and a slot and from `read_untagged_member_unjudged`), and written when the item's
   read is: `MEMBER_HOOKS` holds each as text, a token outliving no expansion, and
-  `exec_model_schema` clears it. `reached` reads the member's type: a declared type itself, or
-  under `Option`, `Vec`, `Box` and a map's value, in any nesting. A hook is recorded only where
+  `exec_model_schema` clears it. `walked_read` reads the member's type along the wrappers `validate()` walks
+  (`held_shape`): a declared type itself, or under `Option`, `Vec`, `Box`, `Rc`, `Arc`, a fixed
+  array, a set, a deque, a heap, a map's value and each position of a tuple, in any nesting. An
+  `Rc` and an `Arc` are read as what they hold and built back with `new`; a list but a `Vec` is
+  read as a `Vec` and collected, which is how serde reads it. The recovering decode's
+  `reached` reads `Option`, `Vec`, `Box` and a map's value alone. A hook is recorded only where
   `validate()` walks the same wrappers (`held_shape`), which is what judges what the hook leaves
   unjudged, and never for a member serde does not read, one read through a hook of its
   author's, or a type that names a lifetime. Nor is one hung on a member of a variant under
@@ -592,10 +596,9 @@ has to keep.
   and the read then refuses the value. Zod's `z.union` and the JSON Schema's `anyOf` try the
   next variant there, and the README states the limit with its `Picker`.
   `tests/untagged_tests/held_rules.rs` holds serde's answers, the JSON Schema's and the README.
-- `named_read_hook` stays for a named field `reachable_nested_shape` walks and `reached` does
-  not, a declared type in an `Arc` and in a fixed array among them. A model or a brand there,
-  in a tuple and filling a type parameter judges itself as it is read, and ends the read at the
-  first one that breaks a rule.
+- `named_read_hook` stays for a named field `reachable_nested_shape` walks and `walked_read` does
+  not. A model or a brand filling a type parameter judges itself as it is read, and ends the
+  read at the first one that breaks a rule.
 - A unit struct's `Deserialize` is the macro's already (`unit_struct_serde_impls`), and
   `unit_struct_read` gives it `model_schema_read_unjudged` and the `validate()` call where the
   struct has a check.
