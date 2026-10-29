@@ -366,6 +366,25 @@ pub struct Timeline {
     pub maybe_by_name: Option<HashMap<String, DateTime<Utc>>>,
 }
 
+/// A map of optional dates under a key Swift wraps, and one under a key Swift keys natively, whose
+/// values `validate()` walks.
+#[cfg(feature = "chrono")]
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Dateline {
+    pub maybe_by_name: HashMap<String, Option<Plank>>,
+    pub maybe_by_number: HashMap<u32, Option<DateTime<Utc>>>,
+}
+
+/// A model with a rule, the value of a map that holds none.
+#[cfg(feature = "chrono")]
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Plank {
+    #[model_schema_prop(minLength = 1)]
+    pub label: String,
+}
+
 /// The payload as it was written: the function [`Pantry`] and [`StowedPantry`] name.
 const fn verbatim(payload: Value) -> Value {
     payload

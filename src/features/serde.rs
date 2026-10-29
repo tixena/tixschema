@@ -420,6 +420,11 @@ pub fn derives_serialize(attrs: &[Attribute]) -> bool {
     derives(attrs, "Serialize")
 }
 
+/// Whether `Hash` is among what the item derives, in any spelling of the path.
+pub fn derives_hash(attrs: &[Attribute]) -> bool {
+    derives(attrs, "Hash")
+}
+
 /// Whether a derive list of the item names a path that ends on `named`.
 fn derives(attrs: &[Attribute], named: &str) -> bool {
     attrs

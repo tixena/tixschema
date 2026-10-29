@@ -358,7 +358,7 @@ fn a_map_under_a_key_swift_wraps_reads_and_writes_each_date_it_holds() {
             declared(&swift, wrapper),
             &[
                 format!(
-                    "public struct {wrapper}: Codable, Sendable {{ var storage: [UInt32: Date]; "
+                    "public struct {wrapper}: Codable, Sendable {{ public var storage: [UInt32: Date]; "
                 ),
                 read.to_owned(),
                 written.to_owned(),

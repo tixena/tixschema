@@ -2,6 +2,7 @@
 
 mod aliases;
 pub mod forms;
+mod keys;
 mod preprocess;
 mod read;
 mod validate;
@@ -20,9 +21,9 @@ use crate::bound_message::swift_literal_text;
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{
-    brand_field, has_serde_skip_serializing, keys_taken_when_flattened, parse_serde_key_omission,
-    struct_tag, tag_and_content_when_flattened, variant_names_when_flattened, variants_on_the_wire,
-    written_slots,
+    brand_field, derives_hash, has_serde_skip_serializing, keys_taken_when_flattened,
+    parse_serde_key_omission, struct_tag, tag_and_content_when_flattened,
+    variant_names_when_flattened, variants_on_the_wire, written_slots,
 };
 use crate::features::text_forms::TextForm;
 use crate::field_type::{
@@ -262,6 +263,14 @@ enum MapKeys {
     Whole,
     /// Through a wrapper written for the field.
     Wrapped,
+}
+
+/// How a map's wrapper reads the key of one entry from `wireKey`.
+enum KeyRead {
+    /// The expression answers the key, or `nil` for a key that does not parse.
+    Parsed(String),
+    /// The expression answers the key, or throws.
+    Whole(String),
 }
 
 /// A field's fully resolved Swift shape: the property type callers see, the type a `container`
@@ -944,7 +953,7 @@ fn has_as_number(field: &FieldDef) -> bool {
 /// The Swift type a map key with wire form `key` names when it needs no wrapper — a String, or a
 /// type whose own `Codable` conformance already spells a JSON object key (`Int` included).
 fn swift_map_key_scalar(key: &FieldDef) -> String {
-    match &key.field_type {
+    match &keys::peeled(key).field_type {
         FieldDefType::Boolean => "Bool".to_owned(),
         FieldDefType::Char | FieldDefType::String | FieldDefType::StringLiteral(_) => {
             "String".to_owned()
@@ -985,18 +994,20 @@ fn swift_map_key_scalar(key: &FieldDef) -> String {
 
 /// The expression parsing one map key from the `String` a wrapper's `DynamicCodingKey` always
 /// carries it as, `None` where the key is held as that text itself, and the expression writing one
-/// back into that `String` — the pair mirrors `dart::dart_map_key_decode`/`dart_map_key_encode`.
-fn swift_map_key_codec(key: &FieldDef) -> (Option<String>, String) {
+/// back into that `String` from `held` — the pair mirrors
+/// `dart::dart_map_key_decode`/`dart_map_key_encode`. A brand is read by [`read_map_key`] and
+/// written by [`write_map_key`].
+fn swift_map_key_codec(key: &FieldDef, held: &str) -> (Option<String>, String) {
     match &key.field_type {
         FieldDefType::Boolean => (
             Some("(wireKey == \"true\" ? true : wireKey == \"false\" ? false : nil)".to_owned()),
-            "(key ? \"true\" : \"false\")".to_owned(),
+            format!("({held} ? \"true\" : \"false\")"),
         ),
         FieldDefType::SiblingType(name, _) => {
             let type_name = lookup_swift_name(name).unwrap_or_else(|| name.clone());
             (
                 Some(format!("{type_name}(rawValue: wireKey)")),
-                "key.rawValue".to_owned(),
+                format!("{held}.rawValue"),
             )
         }
         FieldDefType::U8
@@ -1010,10 +1021,10 @@ fn swift_map_key_codec(key: &FieldDef) -> (Option<String>, String) {
             let swift_type = swift_map_key_scalar(key);
             (
                 Some(format!("{swift_type}(wireKey)")),
-                "String(key)".to_owned(),
+                format!("String({held})"),
             )
         }
-        FieldDefType::Char => (None, forms::sent_call(TextForm::Char, "key")),
+        FieldDefType::Char => (None, forms::sent_call(TextForm::Char, held)),
         FieldDefType::String
         | FieldDefType::StringLiteral(_)
         | FieldDefType::TypeParam(_)
@@ -1027,14 +1038,14 @@ fn swift_map_key_codec(key: &FieldDef) -> (Option<String>, String) {
         | FieldDefType::U64
         | FieldDefType::F32
         | FieldDefType::F64
-        | FieldDefType::Usize => (None, "key".to_owned()),
+        | FieldDefType::Usize => (None, held.to_owned()),
         #[cfg(feature = "mongodb")]
-        FieldDefType::ObjectId => (None, "key".to_owned()),
+        FieldDefType::ObjectId => (None, held.to_owned()),
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate | FieldDefType::NaiveTime | FieldDefType::NaiveDateTime => (
             None,
             forms::held_as_text(key)
-                .map_or_else(|| "key".to_owned(), |form| forms::sent_call(form, "key")),
+                .map_or_else(|| held.to_owned(), |form| forms::sent_call(form, held)),
         ),
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime => (
@@ -1043,9 +1054,43 @@ fn swift_map_key_codec(key: &FieldDef) -> (Option<String>, String) {
                  Self.isoWholeFormatterForKeys.date(from: wireKey)"
                     .to_owned(),
             ),
-            "Self.isoFormatterForKeys.string(from: key)".to_owned(),
+            format!("Self.isoFormatterForKeys.string(from: {held})"),
         ),
     }
+}
+
+/// The read of `key` from `wireKey`: through the alias it names, and through the `value` of the
+/// brand it names.
+fn read_map_key(written: &FieldDef) -> KeyRead {
+    let key = keys::peeled(written);
+    if let Some((rust_ident, value)) = keys::brand_of(&key) {
+        let name = lookup_swift_name(&rust_ident).unwrap_or(rust_ident);
+        return match read_map_key(&value) {
+            KeyRead::Whole(read) => KeyRead::Whole(format!("{name}(value: {read})")),
+            KeyRead::Parsed(read) => {
+                KeyRead::Parsed(format!("(({read}).map {{ {name}(value: $0) }})"))
+            }
+        };
+    }
+    if let Some(form) = forms::held_as_text(&key) {
+        return KeyRead::Whole(forms::read_call(
+            form,
+            "wireKey",
+            "container.codingPath + [codingKey]",
+        ));
+    }
+    swift_map_key_codec(&key, "key")
+        .0
+        .map_or_else(|| KeyRead::Whole("wireKey".to_owned()), KeyRead::Parsed)
+}
+
+/// The text of `held`, a key of type `key`, which a map's wrapper writes as the key of an entry.
+fn write_map_key(written: &FieldDef, held: &str) -> String {
+    let key = keys::peeled(written);
+    if let Some((_, value)) = keys::brand_of(&key) {
+        return write_map_key(&value, &format!("{held}.value"));
+    }
+    swift_map_key_codec(&key, held).1
 }
 
 /// The per-field wrapper struct a non-string-keyed map earns: a `Codable` type over its own
@@ -1061,7 +1106,7 @@ fn map_key_wrapper_struct(
     value: &Shaped,
     unjudged: Option<&str>,
 ) -> String {
-    let (_, encode_key) = swift_map_key_codec(key);
+    let encode_key = write_map_key(key, "key");
     let bound_key = wrapper_bound_key(key);
     let own_read = unjudged.map_or_else(String::new, |entry| {
         format!(
@@ -1082,7 +1127,7 @@ fn map_key_wrapper_struct(
     // Static, as the read uses it before `storage` is set, and computed, as a generic type stores
     // no static property and a stored `ISO8601DateFormatter` is not `Sendable`.
     #[cfg(feature = "chrono")]
-    let formatter_decl = if matches!(key.field_type, FieldDefType::DateTime) {
+    let formatter_decl = if matches!(keys::leaf(key).field_type, FieldDefType::DateTime) {
         "private static var isoFormatterForKeys: ISO8601DateFormatter { let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f }; \
          private static var isoWholeFormatterForKeys: ISO8601DateFormatter { let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime]; return f };"
     } else {
@@ -1092,12 +1137,12 @@ fn map_key_wrapper_struct(
     let formatter_decl = "";
     format!(
         "public struct {wrapper_name}{generic_params}: Codable, Sendable {{ \
-         var storage: [{key_type}: {value_type}]; \
+         public var storage: [{key_type}: {value_type}]; \
          {formatter_decl} \
          private struct DynamicCodingKey: CodingKey {{ \
          var stringValue: String; init?(stringValue: String) {{ self.stringValue = stringValue }}; \
          var intValue: Int? {{ nil }}; init?(intValue: Int) {{ nil }} }}; \
-         init(storage: [{key_type}: {value_type}]) {{ self.storage = storage }}; \
+         public init(storage: [{key_type}: {value_type}]) {{ self.storage = storage }}; \
          {own_read}\
          public init(from decoder: Decoder) throws {{ {entries} }}; \
          public func encode(to encoder: Encoder) throws {{ \
@@ -1111,21 +1156,13 @@ fn map_key_wrapper_struct(
 
 /// What a map's wrapper binds the key of one entry with, read from `wireKey` as `key` is.
 fn wrapper_bound_key(key: &FieldDef) -> String {
-    if let Some(form) = forms::held_as_text(key) {
-        return format!(
-            "let key = {}; ",
-            forms::read_call(form, "wireKey", "container.codingPath + [codingKey]")
-        );
+    match read_map_key(key) {
+        KeyRead::Whole(read) => format!("let key = {read}; "),
+        KeyRead::Parsed(parsed) => format!(
+            "guard let key = {parsed} else {{ \
+             throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, debugDescription: \"bad key \\(wireKey)\") }}; "
+        ),
     }
-    swift_map_key_codec(key).0.map_or_else(
-        || "let key = wireKey; ".to_owned(),
-        |parsed| {
-            format!(
-                "guard let key = {parsed} else {{ \
-                 throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, debugDescription: \"bad key \\(wireKey)\") }}; "
-            )
-        },
-    )
 }
 
 /// Where a map's wrapper reads the value of one entry from.
@@ -1143,7 +1180,7 @@ fn wrapper_plain_entry(value: &Shaped, value_type: &str) -> String {
         value_type,
         "value",
         &wrapper_entry_source(),
-        &|held| format!("result[key] = {held}"),
+        &|held| read::store_entry("result", "key", held, &value.def),
         &mut read::Locals::default(),
     )
 }
@@ -1156,7 +1193,7 @@ fn wrapper_unjudged_entry(value: &FieldDef, value_hint: &str) -> Option<String> 
             value,
             value_hint,
             &wrapper_entry_source(),
-            &|held| format!("result[key] = {held}"),
+            &|held| read::store_entry("result", "key", held, value),
             &mut read::Locals::default(),
         )
     })
@@ -1698,8 +1735,8 @@ fn sibling_shape(
         .enumerate()
         .map(|(index, argument)| {
             let def = arrayed(argument.clone());
-            let counted = read::holds_a_length(&def);
-            let hint = if counted
+            let hint = if read::holds_a_length(&def)
+                || holds_wrapped_map(&def)
                 || matches!(
                     def.field_type,
                     FieldDefType::Range(..) | FieldDefType::Result(..)
@@ -1709,16 +1746,32 @@ fn sibling_shape(
                 format!("{class_name}Argument{index}")
             };
             let (real_type, shape) = swift_resolve(&def, &hint, aux);
-            if counted || reads_a_date(&shape) {
-                let held = Shaped { def, hint, shape };
-                held_argument(&real_type, &held, aux)
-            } else {
-                real_type
-            }
+            converted_type(&real_type, &Shaped { def, hint, shape }, aux)
         })
         .collect::<Vec<_>>()
         .join(", ");
     direct_shape(format!("{class_name}<{arguments}>"))
+}
+
+/// Whether `def` is, or holds at any depth, a map Swift reads through a wrapper.
+fn holds_wrapped_map(def: &FieldDef) -> bool {
+    if let FieldDefType::Map(key, value) = &def.field_type {
+        matches!(map_keys(key), MapKeys::Wrapped) || holds_wrapped_map(value)
+    } else {
+        false
+    }
+}
+
+/// The Swift type a type argument or an alias of `held` names, `real_type` being its own: the
+/// wrapper that reads the wire form where the value converts, and `real_type` where it does not.
+fn converted_type(real_type: &str, held: &Shaped, aux: &mut Vec<String>) -> String {
+    if read::holds_a_length(&held.def) || reads_a_date(&held.shape) {
+        held_argument(real_type, held, aux)
+    } else if holds_wrapped_map(&held.def) {
+        wire_type(&held.def, &held.shape)
+    } else {
+        real_type.to_owned()
+    }
 }
 
 /// The wrapper a type argument of the Swift type `real_type` is held in, pushed into `aux` with the
@@ -1779,7 +1832,8 @@ fn held_argument(real_type: &str, argument: &Shaped, aux: &mut Vec<String>) -> S
 
 /// How Swift reads a map under `key`: a string-shaped key and an `isize` are the key of a native
 /// dictionary, and any other is read through a wrapper.
-fn map_keys(key: &FieldDef) -> MapKeys {
+fn map_keys(written: &FieldDef) -> MapKeys {
+    let key = &keys::peeled(written);
     if !matches!(
         key.map_key_wire(),
         MapKeyWire::Named | MapKeyWire::Signed64 | MapKeyWire::Unsigned64
@@ -1881,7 +1935,7 @@ fn map_shape(
         &wrapper_name,
         &generic_params,
         &[&entry.shape],
-        forms::held_as_text(key),
+        forms::held_as_text(&keys::leaf(key)),
     );
     if !helpers.is_empty() {
         aux.push(helpers);
@@ -2463,7 +2517,7 @@ fn flattened_map(
         };
         let stem = format!("{}Entry", swift_bare(&field.swift_name));
         read::read_entries(
-            key,
+            (key, value),
             &swift_full_real_type(&def, &field.hint, &mut Vec::new()),
             source,
             true,
@@ -3241,6 +3295,7 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
                 text_member: validate::brand_text_member(&value_field),
             },
             &rules,
+            derives_hash(&item_struct.attrs),
         );
     }
     if matches!(item_struct.fields, Fields::Unnamed(_)) {
@@ -3307,6 +3362,52 @@ fn brand_value_field(
     field_def
 }
 
+/// The `validate()` of the struct of one `value` named `rust_ident`, which records what its
+/// checks and bounds are for the types written below.
+fn wrapper_validate(rust_ident: &str, wrapped: &Wrapped, rules: &[String]) -> String {
+    let mut validate = validate::method(rules);
+    match wrapped {
+        Wrapped::Brand {
+            bounds,
+            text_member,
+        } => {
+            validate::note(
+                rust_ident,
+                text_member.as_ref().map(|_| validate::Text::Member),
+                !rules.is_empty(),
+            );
+            if let Some(member) = text_member {
+                write!(validate, "; {member}").unwrap();
+            }
+            if !bounds.is_empty() {
+                validate::note_bounded(rust_ident);
+                write!(validate, "; {}", validate::bound_member(bounds)).unwrap();
+            }
+        }
+        Wrapped::Slot | Wrapped::Tuple => validate::note(rust_ident, None, !rules.is_empty()),
+    }
+    validate
+}
+
+/// Records the brand `rust_ident` for the maps keyed by it below, and answers whether its Swift
+/// struct declares `Hashable`: where the Rust item derives `Hash`, declares no parameter and holds
+/// a value Swift hashes by itself.
+fn note_brand_key(
+    rust_ident: &str,
+    wrapped: &Wrapped,
+    value_field: &FieldDef,
+    generic_params: &str,
+    derives_hash: bool,
+) -> bool {
+    let declared = generic_params.is_empty();
+    let hashable = derives_hash && declared && keys::hashable(value_field);
+    keys::note_brand(
+        rust_ident,
+        (!matches!(wrapped, Wrapped::Tuple) && declared).then_some((value_field, hashable)),
+    );
+    hashable
+}
+
 /// The Swift tokens for a value that carries no shape of its own on the wire beyond one wrapped
 /// value: a branded newtype, or a non-branded tuple struct. Both publish a struct with one
 /// `public let value`, read from a single value and written by the value's own `encode(to:)`.
@@ -3318,36 +3419,24 @@ fn value_wrapper_tokens(
     value_field: &FieldDef,
     wrapped: &Wrapped,
     rules: &[String],
+    derives_hash: bool,
 ) -> TokenStream {
     let rust_ident = ident.to_string();
     let export_name = compute_item_export_name(&rust_ident, args.name_override);
     register_swift_name(&rust_ident, &export_name);
-    let mut validate = validate::method(rules);
-    match wrapped {
-        Wrapped::Brand {
-            bounds,
-            text_member,
-        } => {
-            validate::note(
-                &rust_ident,
-                text_member.as_ref().map(|_| validate::Text::Member),
-                !rules.is_empty(),
-            );
-            if let Some(member) = text_member {
-                write!(validate, "; {member}").unwrap();
-            }
-            if !bounds.is_empty() {
-                validate::note_bounded(&rust_ident);
-                write!(validate, "; {}", validate::bound_member(bounds)).unwrap();
-            }
-        }
-        Wrapped::Slot | Wrapped::Tuple => validate::note(&rust_ident, None, !rules.is_empty()),
-    }
+    let validate = wrapper_validate(&rust_ident, wrapped, rules);
     if !matches!(wrapped, Wrapped::Tuple) {
         note_value_entries(&rust_ident, value_field);
     }
 
     let generic_params = swift_generic_params(generics);
+    let hashable = note_brand_key(
+        &rust_ident,
+        wrapped,
+        value_field,
+        &generic_params,
+        derives_hash,
+    );
     let mut aux = Vec::new();
     let (real_type, shaped) = if matches!(wrapped, Wrapped::Slot) {
         slot_resolve(value_field, &export_name, &mut aux)
@@ -3404,8 +3493,13 @@ fn value_wrapper_tokens(
         generic_params.is_empty().then_some(export_name.as_str()),
         lone_value.then_some(value_field),
     );
+    let conformances = if hashable {
+        "Codable, Sendable, Hashable"
+    } else {
+        "Codable, Sendable"
+    };
     let body = format!(
-        "public struct {export_name}{generic_params}: Codable, Sendable {{ \
+        "public struct {export_name}{generic_params}: {conformances} {{ \
          public let value: {real_type}; \
          public init(value: {real_type}) {{ self.value = value }}; \
          {reads}\
@@ -3548,6 +3642,7 @@ fn tuple_struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>)
             &value_field,
             &Wrapped::Slot,
             &rules,
+            derives_hash(&item_struct.attrs),
         );
     }
     let slots: Vec<FieldDef> = unnamed
@@ -3582,6 +3677,7 @@ fn tuple_struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>)
         &tuple_field,
         &Wrapped::Tuple,
         &rules,
+        false,
     )
 }
 
@@ -3621,9 +3717,27 @@ fn alias_swift_tokens(item_type: &ItemType, name_override: Option<&str>) -> Toke
     });
     note_counted_alias(&item_type.ident.to_string(), counted);
     note_optional_alias(&item_type.ident.to_string(), held_as_optional(&target));
+    keys::note_alias(
+        &item_type.ident.to_string(),
+        type_parameters.is_empty().then_some(&target),
+    );
     let generic_params = swift_generic_params(&item_type.generics);
     let mut aux = Vec::new();
-    let target_type = swift_full_real_type(&target, &export_name, &mut aux);
+    let (real_type, shape) = swift_resolve(&target, &export_name, &mut aux);
+    let target_type = if target.array_depth == 0 && !target.is_optional() {
+        let hint = export_name.clone();
+        converted_type(
+            &real_type,
+            &Shaped {
+                def: target.clone(),
+                hint,
+                shape,
+            },
+            &mut aux,
+        )
+    } else {
+        real_type
+    };
     let body = format!("public typealias {export_name}{generic_params} = {target_type};");
     let rust_ident = item_type.ident.to_string();
     let typealias = ident_typealias(&rust_ident, &export_name, &generic_params);
