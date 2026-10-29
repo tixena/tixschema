@@ -342,11 +342,12 @@ fn a_brand_over_a_brand_answers_its_text_through_the_brand_it_holds() {
     for written in [
         "public let value: Slug; ",
         concat!(
-            "if value.swiftSchemaBoundText.unicodeScalars.count > 6 { errors.append(",
+            "if value.swiftSchemaBoundLength > 6 { errors.append(",
             r#""too long: maximum length is 6, got "#,
-            r#"\(value.swiftSchemaBoundText.unicodeScalars.count)") }"#,
+            r#"\(value.swiftSchemaBoundLength)") }"#,
         ),
         "public var swiftSchemaBoundText: String { value.swiftSchemaBoundText }",
+        "public var swiftSchemaBoundLength: Int { value.swiftSchemaBoundLength }",
     ] {
         assert!(swift.contains(written), "{written} is not in: {swift}");
     }
@@ -396,12 +397,12 @@ fn a_bound_on_a_named_type_measures_the_string_it_holds() {
     let swift = routing_swift::swift_definition();
     for written in [
         concat!(
-            "if seenCode.swiftSchemaBoundText.unicodeScalars.count > 3 ",
+            "if seenCode.swiftSchemaBoundLength > 3 ",
             "{ errors.append(\"'seenCode': too long",
         ),
         "if titled.unicodeScalars.count < 2 { errors.append(\"'titled': too short",
         concat!(
-            "if unseenCode.swiftSchemaBoundText.unicodeScalars.count < 2 ",
+            "if unseenCode.swiftSchemaBoundLength < 2 ",
             "{ errors.append(\"'unseenCode': too short",
         ),
     ] {

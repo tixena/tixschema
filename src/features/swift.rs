@@ -177,6 +177,7 @@ enum Wrapped {
     /// with.
     Brand {
         bounds: Vec<String>,
+        length_member: Option<String>,
         text_member: Option<String>,
     },
     /// The one slot of a tuple struct that declares one, which serde writes as the struct.
@@ -3320,6 +3321,7 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
             &value_field,
             &Wrapped::Brand {
                 bounds,
+                length_member: validate::brand_length_member(&value_field),
                 text_member: validate::brand_text_member(&value_field),
             },
             &rules,
@@ -3397,6 +3399,7 @@ fn wrapper_validate(rust_ident: &str, wrapped: &Wrapped, rules: &[String]) -> St
     match wrapped {
         Wrapped::Brand {
             bounds,
+            length_member,
             text_member,
         } => {
             validate::note(
@@ -3404,6 +3407,10 @@ fn wrapper_validate(rust_ident: &str, wrapped: &Wrapped, rules: &[String]) -> St
                 text_member.as_ref().map(|_| validate::Text::Member),
                 !rules.is_empty(),
             );
+            if let Some(member) = length_member {
+                validate::note_length(rust_ident, Some(validate::Length::Member));
+                write!(validate, "; {member}").unwrap();
+            }
             if let Some(member) = text_member {
                 write!(validate, "; {member}").unwrap();
             }
@@ -3726,6 +3733,7 @@ fn alias_swift_tokens(item_type: &ItemType, name_override: Option<&str>) -> Toke
         validate::text_of(&target),
         validate::names_a_validated_type(&target),
     );
+    validate::note_length(&item_type.ident.to_string(), validate::length_of(&target));
     if validate::names_a_bounded_type(&target) {
         validate::note_bounded(&item_type.ident.to_string());
     }

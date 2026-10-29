@@ -12,14 +12,16 @@ use serde::Serialize;
 
 use super::runtime::judged;
 use super::swift_validate_models::{
-    Base, Berth, Cargo, ClosedDock, Code, Consignment, Crate, Depot, Docket, Docking, Freight,
-    Gauge, Grade, Haul, Inspection, LaterCode, LaterTitle, Ledger, Lift, Manifest, Nameplate,
-    Package, Parcel, Quay, Sealed, SealedCode, Strongbox, Tally, Title, Waybill, Yard, base_swift,
-    berth_swift, cargo_swift, closed_dock_swift, code_swift, consignment_swift, crate_swift,
+    Archive, Base, Berth, Cargo, Carried, Casket, ClosedDock, Code, Consignment, Crate, Depot,
+    Docket, Docking, Freight, Gauge, Grade, Haul, Inspection, LaterCode, LaterTitle, Ledger, Lift,
+    Manifest, Nameplate, Package, Parcel, Poster, Quay, Sealed, SealedCode, Slogans, SomeSlogans,
+    Strongbox, Tally, Title, Waybill, Yard, archive_swift, base_swift, berth_swift, cargo_swift,
+    carried_swift, casket_swift, closed_dock_swift, code_swift, consignment_swift, crate_swift,
     depot_swift, docket_swift, docking_swift, freight_swift, gauge_swift, grade_swift, haul_swift,
     inspection_swift, later_code_swift, later_title_swift, ledger_swift, lift_swift,
-    manifest_swift, nameplate_swift, package_swift, parcel_swift, quay_swift, sealed_code_swift,
-    sealed_swift, strongbox_swift, tally_swift, title_swift, waybill_swift, yard_swift,
+    manifest_swift, mottos_swift, nameplate_swift, package_swift, parcel_swift, poster_swift,
+    quay_swift, sealed_code_swift, sealed_swift, slogans_swift, some_slogans_swift,
+    strongbox_swift, tally_swift, title_swift, waybill_swift, yard_swift,
 };
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -42,7 +44,7 @@ func withinParcel(_ value: Parcel) -> [String] {
 
 /// What the Swift compiler answers for a bound on an alias of a string declared below the field.
 const ALIAS_BELOW_ERROR: &str =
-    "value of type 'LaterTitle' (aka 'String') has no member 'swiftSchemaBoundText'";
+    "value of type 'LaterTitle' (aka 'String') has no member 'swiftSchemaBoundLength'";
 
 /// The developer's other functions, written by hand in Swift.
 pub const FUNCTIONS: &str = r#"
@@ -52,6 +54,10 @@ func takingParcels(_ value: ClosedDock) -> [String] {
 
 func withACode<CodeType>(_ value: Crate<CodeType>) -> [String] {
   value.codes.isEmpty ? ["'codes': a crate holds at least one code"] : []
+}
+
+func withEntries<IdType>(_ value: Casket<IdType>) -> [String] {
+  value.entries.isEmpty ? ["'entries': a casket holds at least one entry"] : []
 }
 
 func withALift(_ value: Lift) -> [String] {
@@ -179,6 +185,13 @@ pub fn definitions() -> Vec<String> {
         waybill_swift::swift_definition(),
         later_code_swift::swift_definition(),
         crate_swift::swift_definition(),
+        casket_swift::swift_definition(),
+        archive_swift::swift_definition(),
+        slogans_swift::swift_definition(),
+        mottos_swift::swift_definition(),
+        some_slogans_swift::swift_definition(),
+        carried_swift::swift_definition(),
+        poster_swift::swift_definition(),
         docket_swift::swift_definition(),
         consignment_swift::swift_definition(),
         sealed_swift::swift_definition(),
@@ -722,6 +735,54 @@ fn the_readme_shows_what_these_runs_compile_and_read() {
     }
 }
 
+/// The cases of a type that holds another at its own parameter under a check, and of members typed
+/// with the name of a list or of a text under a length.
+fn counted_name_cases() -> Vec<Case> {
+    let archived = |entries: &[&str]| Archive {
+        casket: Casket {
+            entries: entries.iter().map(|&entry| entry.to_owned()).collect(),
+            owner_id: "o".to_owned(),
+        },
+    };
+    let archived_by_number = Archive {
+        casket: Casket {
+            entries: Vec::new(),
+            owner_id: 7_u32,
+        },
+    };
+    let (unfilled, filled) = (archived(&[]), archived(&["a"]));
+    let poster = |slogans: usize, mottos: usize, some: usize, carried: usize| Poster {
+        slogans: Slogans(vec!["w".to_owned(); slogans]),
+        mottos: vec!["w".to_owned(); mottos],
+        some: SomeSlogans(Slogans(vec!["w".to_owned(); some])),
+        carried: Carried(vec!["w".to_owned(); carried]),
+    };
+    let (poster_kept, empty, wide) = (poster(1, 1, 1, 1), poster(0, 0, 0, 0), poster(3, 1, 3, 1));
+    vec![
+        case("Poster", "Poster", &poster_kept, poster_kept.validate()),
+        case("Poster, no item", "Poster", &empty, empty.validate()),
+        case("Poster, too many items", "Poster", &wide, wide.validate()),
+        case(
+            "Archive<String>, no entry",
+            "Archive<String>",
+            &unfilled,
+            unfilled.validate(),
+        ),
+        case(
+            "Archive<String>",
+            "Archive<String>",
+            &filled,
+            filled.validate(),
+        ),
+        case(
+            "Archive<UInt32>, no entry",
+            "Archive<UInt32>",
+            &archived_by_number,
+            archived_by_number.validate(),
+        ),
+    ]
+}
+
 #[test]
 fn a_check_runs_at_every_filling_and_on_a_type_that_holds_nothing() {
     let named: Crate<String> = Crate {
@@ -736,7 +797,8 @@ fn a_check_runs_at_every_filling_and_on_a_type_that_holds_nothing() {
         codes: vec![4],
         label: "c".to_owned(),
     };
-    let cases = [
+    let mut cases = counted_name_cases();
+    cases.extend([
         case(
             "Crate<String>, empty",
             "Crate<String>",
@@ -756,11 +818,25 @@ fn a_check_runs_at_every_filling_and_on_a_type_that_holds_nothing() {
             &ClosedDock,
             ClosedDock.validate(),
         ),
-    ];
+    ]);
     let expected = rust_report(&cases);
     assert_eq!(
         expected,
         "\
+Poster: passes
+Poster, no item: refused
+    'carried': too short: minimum length is 1, got 0
+    'mottos': too short: minimum length is 1, got 0
+    'slogans': too short: minimum length is 1, got 0
+    'some': too short: minimum length is 1, got 0
+Poster, too many items: refused
+    'slogans': too long: maximum length is 2, got 3
+    'some': too long: maximum length is 2, got 3
+Archive<String>, no entry: refused
+    'casket.entries': a casket holds at least one entry
+Archive<String>: passes
+Archive<UInt32>, no entry: refused
+    'casket.entries': a casket holds at least one entry
 Crate<String>, empty: refused
     'label': too short: minimum length is 1, got 0
     'codes': a crate holds at least one code

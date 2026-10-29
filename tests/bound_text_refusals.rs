@@ -42,19 +42,46 @@ mod tests {
     #[test]
     fn a_length_on_a_bool_is_refused_owned_and_read_through_a_reference() {
         let errors = errors_of_length_on_a_bool();
+        let list_or_string = "this type holds no string or list for the bound to measure";
         let expected = [
-            ("flag", "    pub flag: bool,"),
-            ("held_flag", "    pub held_flag: &'held bool,"),
+            (
+                "flag",
+                "minLength",
+                "bool",
+                list_or_string,
+                "    pub flag: bool,",
+            ),
+            (
+                "held_flag",
+                "minLength",
+                "bool",
+                list_or_string,
+                "    pub held_flag: &'held bool,",
+            ),
+            (
+                "version",
+                "minLength",
+                "Version",
+                list_or_string,
+                "    pub version: Version,",
+            ),
+            (
+                "keywords",
+                "pattern",
+                "Keywords",
+                "this type holds no string for the bound to measure",
+                "    pub keywords: Keywords,",
+            ),
         ];
         assert_eq!(errors.len(), expected.len(), "{errors:#?}");
-        for (field, source) in expected {
+        for (field, key, held, label, source) in expected {
             let message =
-                format!("model_schema: field `{field}`: `minLength` cannot apply to `bool`");
+                format!("model_schema: field `{field}`: `{key}` cannot apply to `{held}`");
             assert!(
                 errors.iter().any(|error| {
                     error.code == "E0277"
                         && error.message == message
-                        && error.label == "this type holds no string for the bound to measure"
+                        && error.label == label
                         && error.source == source
                 }),
                 "no E0277 refuses `{field}`: {errors:#?}"

@@ -486,8 +486,8 @@ fn each_bound_is_written_on_the_value_it_measures() {
              short: minimum length is 2, got ${held.runes.length}\", \
              if (sort_code case final held?) for (final violation in held.validate()) \
              _under('sortCode', violation), \
-             if (sort_code case final held?) if (_boundText(held).runes.length < 1) \
-             \"'sortCode': too short: minimum length is 1, got ${_boundText(held).runes.length}\", \
+             if (sort_code case final held?) if (_boundLength(held) < 1) \
+             \"'sortCode': too short: minimum length is 1, got ${_boundLength(held)}\", \
              if (unit_weight < 0.5) \"'unitWeight': too small: minimum is 0.5, got \
              ${_number(unit_weight)}\", \
              if (unit_weight > 3) \"'unitWeight': too large: maximum is 3, got \
@@ -498,8 +498,8 @@ fn each_bound_is_written_on_the_value_it_measures() {
     assert_written(
         &gauge,
         &[
-            "static String _boundText(Object held) => held is String ? held : \
-             _boundText((held as dynamic).value as Object);",
+            "static int _boundLength(Object held) => held is String ? held.runes.length : held \
+             is Iterable ? held.length : _boundLength((held as dynamic).value as Object);",
             "static String _number(double value) => value == value.truncateToDouble() ? \
              value.toStringAsFixed(0) : value.toString();",
         ],

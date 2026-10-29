@@ -686,3 +686,76 @@ mod a_key_on_a_list {
         );
     }
 }
+
+/// A key written on a field typed with the alias of a list counts the list, declared above or below
+/// the field's type.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+mod a_key_on_an_alias_of_a_list {
+    use serde::{Deserialize, Serialize};
+    use tixschema::model_schema;
+
+    #[model_schema()]
+    pub type Captions = Vec<String>;
+
+    #[model_schema()]
+    #[derive(Debug, Deserialize, Serialize)]
+    pub struct Album {
+        #[model_schema_prop(minLength = 1, maxLength = 2)]
+        pub captions: Captions,
+    }
+
+    fn album(count: usize) -> Album {
+        Album {
+            captions: vec!["c".to_owned(); count],
+        }
+    }
+
+    #[test]
+    fn validate_and_the_read_count_the_items() {
+        assert_eq!(
+            album(0).validate().unwrap_err(),
+            vec!["'captions': too short: minimum length is 1, got 0"]
+        );
+        assert_eq!(
+            album(3).validate().unwrap_err(),
+            vec!["'captions': too long: maximum length is 2, got 3"]
+        );
+        assert_eq!(album(1).validate(), Ok(()));
+        assert_eq!(
+            serde_json::from_str::<Album>(r#"{"captions":[]}"#)
+                .unwrap_err()
+                .to_string(),
+            "'captions': too short: minimum length is 1, got 0"
+        );
+    }
+
+    #[cfg(feature = "zod")]
+    #[test]
+    fn the_zod_schema_counts_the_named_array() {
+        let schema = Album::zod_schema();
+        assert!(
+            schema.contains(
+                "captions: CaptionsType$Schema.check(z.minLength(1, { error: (issue) => `too short: \
+                 minimum length is 1, got ${Array.isArray(issue.input) ? issue.input.length : \
+                 String(issue.input).length}` })"
+            ),
+            "{schema}"
+        );
+    }
+
+    #[cfg(feature = "jsonschema")]
+    #[test]
+    fn the_json_schema_writes_both_keywords_beside_the_name() {
+        let document = Album::json_schema();
+        let narrowing = &document["properties"]["captions"]["allOf"][1];
+        assert_eq!(
+            narrowing,
+            &serde_json::json!({
+                "minLength": 1_u32, "minItems": 1_u32, "maxLength": 2_u32, "maxItems": 2_u32
+            })
+        );
+    }
+}

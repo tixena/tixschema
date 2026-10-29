@@ -62,6 +62,19 @@ section is the consumer's view; this is what a change has to keep.
   writes them on the outermost array (`zod_item_count_checks`), the JSON Schema as `minItems` and
   `maxItems` beside a fixed array's own (`array_length_json_schema_bounds`, the longer minimum and
   the shorter maximum), and `apply_constraint_docs` in the words a string's length is stated in.
+- A length on a field typed with a name is asked of the name, not read off the type: with no
+  pattern written, `named_leaf_length_rendering` declares `BoundedLength` (a string, a path, a
+  slice, an array, `Vec`, `VecDeque`, `BinaryHeap`, `BTreeSet`, `HashSet`) and `UnbrandedLength`
+  beside it, and a brand's inherent `model_schema_bound_length` (`branded_bound_text_method`) is
+  found ahead of them. `AliasInfo::counted` records what a brand or an alias counts, so a brand
+  over a brand forwards (`counted_by`) and the guard (`branded_constraint_inner_error`) lets
+  two lengths through to a name that counts items. A pattern keeps asking for the text.
+  Zod writes `.check(z.minLength(..))` with `zod_named_error_arg`, whose sentence counts an array
+  by its items; the JSON Schema writes `minLength` beside `minItems` (`named_field_json_schema_value`);
+  a generic brand whose default is a list counts it at that filling alone, in the Zod default
+  (`items`) and the JSON Schema (`branded_layered_over`). Dart counts with `_boundLength`, Swift with
+  `swiftSchemaBoundLength` and Kotlin with `kotlinSchemaLength()`, which a brand carries and a
+  string or a collection answers as an extension.
 - `list_validator` and `list_deserializer` write `validate_{stem}_value` and `deserialize_{stem}`
   over any list: the list is the type parameter `L`, held to `for<'held> &'held L: IntoIterator`
   and counted by iterating it, and each transparent wrapper is a parameter named by what it derefs

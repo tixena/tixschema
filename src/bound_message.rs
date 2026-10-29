@@ -230,6 +230,19 @@ pub fn zod_error_arg(bound: Bound<'_>) -> String {
     }
 }
 
+/// [`zod_error_arg`] for a length written on a name, which holds a text or a list and is counted
+/// as whichever it holds: a list by its items, anything else by the characters it prints as.
+#[cfg(feature = "zod")]
+pub fn zod_named_error_arg(bound: Bound<'_>) -> String {
+    match bound.observed() {
+        Some(Observed::Length) => format!(
+            "{{ error: (issue) => `{}, got ${{Array.isArray(issue.input) ? issue.input.length : String(issue.input).length}}` }}",
+            js_template_text(&bound.stated())
+        ),
+        _ => zod_error_arg(bound),
+    }
+}
+
 /// `text` as it is written between the backticks of a JavaScript template literal, which reads it
 /// back exactly.
 #[cfg(feature = "zod")]

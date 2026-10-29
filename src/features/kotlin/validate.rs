@@ -38,6 +38,10 @@ enum Helper {
     /// What a held value answers where its type carries no `validate()`: a type of the
     /// consumer's own, and an alias of a string or of a list. A member is found ahead of it.
     Fallback,
+    /// What a string or a collection answers where a declared type is asked for its length: its
+    /// code points or its items. A brand answers with a member of its own, which is found ahead
+    /// of these.
+    Length,
     /// A float as Rust's `Display` writes one: no exponent, and no `.0` on a whole one.
     Shown,
     /// What a string answers where a declared type is asked for its text: itself. A brand
@@ -81,12 +85,28 @@ pub struct Member<'member> {
     pub read: String,
 }
 
+/// Whether a type answers a question a bound asks of it.
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum Answers {
+    No,
+    Yes,
+}
+
+impl Answers {
+    const fn of(answered: bool) -> Self {
+        if answered { Self::Yes } else { Self::No }
+    }
+}
+
 /// What a type the emitter wrote publishes to one written after it.
 #[derive(Clone, Copy)]
 struct Noted {
     /// Whether the type carries `kotlinSchemaBound()`, a brand with a bound of its own: `None`
     /// for an alias, which is whatever it names.
     bound: Option<bool>,
+    /// Whether a value of the type answers its length: a brand that carries
+    /// `kotlinSchemaLength()`, and an alias of a string, a list or such a brand.
+    length: Answers,
     /// Whether a value of the type answers its text: a brand that carries `kotlinSchemaText()`,
     /// and an alias of a string or of such a brand.
     text: bool,
@@ -120,6 +140,10 @@ impl Helper {
     const fn written(self) -> &'static str {
         match self {
             Self::Fallback => "private fun Any?.validate(): List<String> = emptyList()",
+            Self::Length => {
+                "private fun String.kotlinSchemaLength(): Int = codePointCount(0, length); \
+                 private fun Collection<*>.kotlinSchemaLength(): Int = size"
+            }
             Self::Shown => {
                 "private fun kotlinSchemaShown(shown: String): String = if (shown == \"NaN\" || \
                  shown.endsWith(\"Infinity\")) shown.replace(\"Infinity\", \"inf\") else \
@@ -212,6 +236,11 @@ impl<'item> Rules<'item> {
         if !bounds_a_text(meta) {
             return Vec::new();
         }
+        if patterns_of(meta).is_empty()
+            && let Some(counted) = self.length_read(held, read)
+        {
+            return length_statements(meta, &counted, place);
+        }
         self.text_read(held, read)
             .map_or_else(Vec::new, |text| text_statements(meta, &text, place))
     }
@@ -287,6 +316,14 @@ impl<'item> Rules<'item> {
         };
         if !bounds_a_text(meta) {
             return Vec::new();
+        }
+        if declared.is_list() {
+            // The item type is erased at run time: a filling that is any other list is counted.
+            return vec![format!(
+                "if ({} is Collection<*>) {{ {} }}",
+                member.read,
+                count_statements(meta, &member.read, None).join("; ")
+            )];
         }
         let Some(text) = self.text_read(declared, &member.read) else {
             return Vec::new();
@@ -412,6 +449,42 @@ impl<'item> Rules<'item> {
         } else {
             Some(format!("${entry}"))
         }
+    }
+
+    /// The member a brand answers its length with, where it holds a string, a list, or a declared
+    /// type that answers its own: `None` for a brand over anything else.
+    pub fn length_member(&mut self, held: &FieldDef) -> Option<String> {
+        if held.is_optional() {
+            return None;
+        }
+        if held.is_list() {
+            return Some("fun kotlinSchemaLength(): Int = value.size".to_owned());
+        }
+        match text_of(held) {
+            Text::Own => Some(
+                "fun kotlinSchemaLength(): Int = value.codePointCount(0, value.length)".to_owned(),
+            ),
+            Text::Asked if answers_a_length(held) => {
+                self.helpers.insert(Helper::Length);
+                Some("fun kotlinSchemaLength(): Int = value.kotlinSchemaLength()".to_owned())
+            }
+            Text::Absent | Text::Asked => None,
+        }
+    }
+
+    /// The Kotlin expression a length bound counts on `read`, a value typed `def` that is declared
+    /// elsewhere: what the type answers for its length, which a brand carries as a member and a
+    /// string or a list an extension answers.
+    fn length_read(&mut self, def: &FieldDef, read: &str) -> Option<String> {
+        if def.is_optional() || def.is_list() {
+            return None;
+        }
+        let (_, with_arguments) = def.named_shape()?;
+        if with_arguments {
+            return None;
+        }
+        self.helpers.insert(Helper::Length);
+        Some(format!("{read}.kotlinSchemaLength()"))
     }
 
     /// What `literal`, a member's only rule, adds for the value `def` describes at `read`: each
@@ -629,6 +702,48 @@ impl<'item> Rules<'item> {
     }
 }
 
+/// What `minLength` and `maxLength` add on `counted`, the length a declared type answers.
+fn length_statements(
+    meta: &ModelSchemaPropMeta,
+    counted: &str,
+    place: Option<&str>,
+) -> Vec<String> {
+    let mut statements = Vec::new();
+    if let Some(least) = meta.min_length {
+        let reported = kotlin_violation(Bound::MinLength(least), place, counted);
+        statements.push(format!(
+            "if ({counted} < {least}) {VIOLATIONS}.add({reported})"
+        ));
+    }
+    if let Some(most) = meta.max_length {
+        let reported = kotlin_violation(Bound::MaxLength(most), place, counted);
+        statements.push(format!(
+            "if ({counted} > {most}) {VIOLATIONS}.add({reported})"
+        ));
+    }
+    statements
+}
+
+/// Whether the declared type `def` names is one the emitter wrote that answers its length.
+fn answers_a_length(def: &FieldDef) -> bool {
+    def.named_shape().is_some_and(|(named, _)| {
+        NOTED.with(|seen| {
+            seen.borrow()
+                .get(named)
+                .is_some_and(|noted| noted.length == Answers::Yes)
+        })
+    })
+}
+
+/// Whether a value typed `def` answers a length: a string, a list, and a declared type that
+/// answers its own.
+fn counts_a_length(def: &FieldDef) -> bool {
+    if def.is_optional() {
+        return false;
+    }
+    def.is_list() || matches!(text_of(def), Text::Own) || answers_a_length(def)
+}
+
 /// Whether the declared type `def` names is one the emitter wrote that answers its text.
 fn answers_a_text(def: &FieldDef) -> bool {
     def.named_shape().is_some_and(|(named, _)| {
@@ -756,10 +871,12 @@ pub fn note_alias(rust_ident: &str, target: &FieldDef) {
         Text::Asked => answers_a_text(target),
         Text::Own => true,
     };
+    let length = Answers::of(counts_a_length(target));
     note(
         rust_ident,
         Noted {
             bound: None,
+            length,
             text,
             unjudged: false,
             validates: false,
@@ -767,13 +884,14 @@ pub fn note_alias(rust_ident: &str, target: &FieldDef) {
     );
 }
 
-/// Notes a brand, which carries `validate()`, `kotlinSchemaText()` where `text` says so and
-/// `kotlinSchemaBound()` where `bound` does.
-pub fn note_brand(rust_ident: &str, text: bool, bound: bool) {
+/// Notes a brand, which carries `validate()`, `kotlinSchemaText()` where `text` says so,
+/// `kotlinSchemaLength()` where `length` does and `kotlinSchemaBound()` where `bound` does.
+pub fn note_brand(rust_ident: &str, text: bool, length: bool, bound: bool) {
     note(
         rust_ident,
         Noted {
             bound: Some(bound),
+            length: Answers::of(length),
             text,
             unjudged: true,
             validates: true,
@@ -787,6 +905,7 @@ pub fn note_model(rust_ident: &str) {
         rust_ident,
         Noted {
             bound: Some(false),
+            length: Answers::No,
             text: false,
             unjudged: true,
             validates: true,
@@ -800,6 +919,7 @@ pub fn note_plain_enum(rust_ident: &str) {
         rust_ident,
         Noted {
             bound: Some(false),
+            length: Answers::No,
             text: false,
             unjudged: false,
             validates: true,

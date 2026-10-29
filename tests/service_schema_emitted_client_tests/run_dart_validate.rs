@@ -66,6 +66,9 @@ List<String> rated(Rating value) =>
 List<String> withACode<CodeType>(Crate<CodeType> value) =>
     value.codes.isEmpty ? const ["'codes': a crate holds at least one code"] : const [];
 
+List<String> withEntries<IdType>(Casket<IdType> value) =>
+    value.entries.isEmpty ? const ["'entries': a casket holds at least one entry"] : const [];
+
 List<String> takingParcels(ClosedDock value) => const ['a closed dock takes no parcel'];
 
 List<String> shortList(List<String> value) =>
@@ -231,6 +234,57 @@ pub struct Crate<CodeType> {
     pub codes: Vec<CodeType>,
     #[model_schema_prop(minLength = 1)]
     pub label: String,
+}
+
+/// A brand over a list, held by the members below.
+#[model_schema(no_display)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct Slogans(pub Vec<String>);
+
+/// An alias of a list.
+#[model_schema()]
+pub type Mottos = Vec<String>;
+
+/// A brand over a brand over a list, with a length of its own.
+#[model_schema(no_display, minLength = 1)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct SomeSlogans(pub Slogans);
+
+/// A generic brand whose declared default is a list.
+#[model_schema(no_display, minLength = 1, default_types(T = Vec<String>))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct Carried<T>(pub T);
+
+/// Members typed with the names above, each under a length of its own.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Poster {
+    pub carried: Carried<Vec<String>>,
+    #[model_schema_prop(minLength = 1)]
+    pub mottos: Mottos,
+    #[model_schema_prop(minLength = 1, maxLength = 2)]
+    pub slogans: Slogans,
+    #[model_schema_prop(maxLength = 2)]
+    pub some: SomeSlogans,
+}
+
+/// A type with a parameter, held by a member of another that reaches the same parameter.
+#[model_schema(default_types(IdType = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Casket<IdType> {
+    pub entries: Vec<String>,
+    pub owner_id: IdType,
+}
+
+/// A type with a parameter whose member holds a generic type at that parameter, under a check.
+#[model_schema(default_types(IdType = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Archive<IdType> {
+    #[model_schema_prop(check = ["withEntries"])]
+    pub casket: Casket<IdType>,
 }
 
 /// A unit struct with a check.
@@ -419,6 +473,15 @@ fn with_a_code<CodeType>(value: &Crate<CodeType>) -> Result<(), Vec<String>> {
     Ok(())
 }
 
+fn with_entries<IdType>(value: &Casket<IdType>) -> Result<(), Vec<String>> {
+    if value.entries.is_empty() {
+        return Err(vec![
+            "'entries': a casket holds at least one entry".to_owned(),
+        ]);
+    }
+    Ok(())
+}
+
 fn taking_parcels(_value: &ClosedDock) -> Result<(), Vec<String>> {
     Err(vec!["a closed dock takes no parcel".to_owned()])
 }
@@ -572,6 +635,13 @@ pub fn shape_definitions() -> Vec<String> {
         tag_dart::dart_definition(),
         batch_dart::dart_definition(),
         crate_dart::dart_definition(),
+        slogans_dart::dart_definition(),
+        mottos_dart::dart_definition(),
+        some_slogans_dart::dart_definition(),
+        carried_dart::dart_definition(),
+        poster_dart::dart_definition(),
+        casket_dart::dart_definition(),
+        archive_dart::dart_definition(),
         closed_dock_dart::dart_definition(),
         rating_dart::dart_definition(),
         audit_dart::dart_definition(),
@@ -991,6 +1061,69 @@ pub fn brand_cases() -> Vec<Case> {
     ]
 }
 
+/// A type with a parameter that holds another at its own parameter under a check, and members
+/// typed with the name of a list or of a text under a length, each with what Rust's `validate()`
+/// answers of it.
+pub fn counted_name_cases() -> Vec<Case> {
+    let archived = |entries: &[&str]| Archive {
+        casket: Casket {
+            entries: texts(entries),
+            owner_id: "o".to_owned(),
+        },
+    };
+    let archived_by_number = Archive {
+        casket: Casket {
+            entries: Vec::new(),
+            owner_id: 7_u32,
+        },
+    };
+    let poster = |slogans: usize, mottos: usize, some: usize, carried: usize| Poster {
+        slogans: Slogans(texts(&vec!["w"; slogans])),
+        mottos: texts(&vec!["w"; mottos]),
+        some: SomeSlogans(Slogans(texts(&vec!["w"; some]))),
+        carried: Carried(texts(&vec!["w"; carried])),
+    };
+    let (kept, empty, wide) = (poster(1, 1, 1, 1), poster(0, 0, 0, 0), poster(3, 1, 3, 1));
+    vec![
+        compared(
+            "Archive<String>, no entry",
+            &archived(&[]),
+            archived(&[]).validate(),
+            "Archive<String>.fromJsonUnjudged(@, (e) => e as String)",
+        ),
+        compared(
+            "Archive<String>",
+            &archived(&["a"]),
+            archived(&["a"]).validate(),
+            "Archive<String>.fromJsonUnjudged(@, (e) => e as String)",
+        ),
+        compared(
+            "Archive<int>, no entry",
+            &archived_by_number,
+            archived_by_number.validate(),
+            "Archive<int>.fromJsonUnjudged(@, (e) => e as int)",
+        ),
+        compared(
+            "Poster",
+            &kept,
+            kept.validate(),
+            "Poster.fromJsonUnjudged(@)",
+        ),
+        compared(
+            "Poster, no item",
+            &empty,
+            empty.validate(),
+            "Poster.fromJsonUnjudged(@)",
+        ),
+        compared(
+            "Poster, too many items",
+            &wide,
+            wide.validate(),
+            "Poster.fromJsonUnjudged(@)",
+        ),
+    ]
+}
+
 /// A type with a parameter at two fillings, a unit struct, a plain enum, a member serde writes no
 /// key for and an alias, each with what Rust's `validate()` answers of it.
 pub fn named_shape_cases() -> Vec<Case> {
@@ -1065,6 +1198,7 @@ pub fn named_shape_cases() -> Vec<Case> {
 fn each_shape_runs_its_rules_as_rust_runs_them() {
     let mut cases = brand_cases();
     cases.extend(named_shape_cases());
+    cases.extend(counted_name_cases());
     assert_eq!(
         report(&cases),
         "\
@@ -1096,6 +1230,20 @@ Docket, a parcel written beside its code: refused
     'label': too short: minimum length is 1, got 0
 Consignment: refused
     'label': too short: minimum length is 1, got 0
+Archive<String>, no entry: refused
+    'casket.entries': a casket holds at least one entry
+Archive<String>: passes
+Archive<int>, no entry: refused
+    'casket.entries': a casket holds at least one entry
+Poster: passes
+Poster, no item: refused
+    'carried': too short: minimum length is 1, got 0
+    'mottos': too short: minimum length is 1, got 0
+    'slogans': too short: minimum length is 1, got 0
+    'some': too short: minimum length is 1, got 0
+Poster, too many items: refused
+    'slogans': too long: maximum length is 2, got 3
+    'some': too long: maximum length is 2, got 3
 ",
         "what Rust's `validate()` answers"
     );

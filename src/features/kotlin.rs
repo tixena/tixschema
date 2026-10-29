@@ -2640,8 +2640,19 @@ fn value_class_tokens(
     );
     rules.own(args.check);
     let text = rules.text_member(&value_field);
-    validate::note_brand(&rust_ident, text.is_some(), rules.bounded());
-    let answered = text.map_or_else(String::new, |member| format!("{member}; "));
+    let length = rules.length_member(&value_field);
+    validate::note_brand(
+        &rust_ident,
+        text.is_some(),
+        length.is_some(),
+        rules.bounded(),
+    );
+    let answered = [text, length]
+        .into_iter()
+        .flatten()
+        .fold(String::new(), |written, member| {
+            format!("{written}{member}; ")
+        });
     let validated = rules.written("");
     let unjudged = if args.preprocess.is_empty() || type_parameters.is_empty() {
         kept_unjudged(

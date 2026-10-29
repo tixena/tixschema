@@ -1839,6 +1839,8 @@ The Kotlin client declares no `typealias` for an alias of an `Option` that decla
 
 An alias takes `name`, and `default_types` where it declares a type parameter. `pattern`, `minLength` and `maxLength` are refused on it at expansion: an alias is another name for the type it names, not a type of its own, so a check written on one has nothing to belong to and nothing to enforce it. A value that carries a rule is a branded newtype, which takes all three -- see [Branded Newtype Validation Constraints](#branded-newtype-validation-constraints) -- and a rule that holds a single field is written on that field, in `#[model_schema_prop(...)]`.
 
+The Zod record of an alias of a map whose values are a type declared below the alias is written with its values behind `z.lazy`, `z.record(z.string(), z.lazy(() => Cell$Schema))`, so a model that holds the alias and is declared after it loads: `pub type Sheet = HashMap<String, Cell>;` above `pub enum Cell { Nested(Sheet), .. }`.
+
 ### Type Parameters
 
 A struct, a tuple struct, an enum, an alias and a branded newtype can each name their own type parameters, and every surface reads such a name under one rule.
@@ -4120,6 +4122,27 @@ A brand carries `pattern`, `minLength` and `maxLength` and no range, so a range 
 
 The validator and the hook a list publishes, `validate_{field}_value(&list)` and `deserialize_{field}`, are written over any list: they name no type the list holds, so a `Vec<T>` of the item's own parameter and a `Vec<Self>` get them as a `Vec<String>` does.
 
+**A list that is named.** A length written where the field's type names a list counts the list's items, as it does where the list is written. That holds for a field typed with a [branded newtype](#branded-newtypes) over a list, with a `#[model_schema()]` alias of a list, with a brand over such a brand, and for a generic brand whose declared default is a list:
+
+```rust
+#[model_schema(no_display)]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Tags(pub Vec<String>);
+
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+pub struct Article {
+    #[model_schema_prop(minLength = 1)]
+    pub tags: Tags,
+}
+
+Article { tags: Tags(Vec::new()) }.validate();
+// Err(["'tags': too short: minimum length is 1, got 0"])
+```
+
+The name is resolved by the compiler, so the type may be declared below the field's. A brand over a text or a list publishes the count as `model_schema_bound_length()`, a brand over a brand answers through the brand it holds when that brand is declared above it, and an alias of a `String`, a path or a std list is counted as the type it names. Zod writes `Tags$Schema.check(z.minLength(1, { error: ... }))`, whose sentence counts an array by its items and anything else by its characters; the JSON Schema narrows the name from inside an `allOf` with `minLength` beside `minItems` (and both maxima), since each keyword constrains only the instance type it is for. `pattern` on any of them stays a compile error, as does a length on a type that holds neither a text nor a list, in words that name a string, a path and a list. Dart, Swift and Kotlin count the same: `_boundLength`, `swiftSchemaBoundLength` and `kotlinSchemaLength()`. A brand over a brand that writes no bound of its own, and a brand over a brand declared below it, publish no count, and a length on a field typed with one is refused.
+
 **What changed for a declaration that compiled.** A key written on a list used to be carried to each of its items. `minLength` or `maxLength` on a list of strings, of paths or of brands still compiles and now counts the items: `#[model_schema_prop(minLength = 3)] pub tags: Vec<String>` held each tag to three characters, and holds the list to three tags. The compiler does not report that change. `pattern`, `minimum` or `maximum` on a list no longer compiles.
 
 ### A bound of the wrong kind
@@ -5747,7 +5770,7 @@ A type with no rule, which holds no type that has one, declares `public func val
 - **A range no value of the type can break is not written**: `minimum = 0` on a `u32` adds no comparison, which Swift would warn of.
 - **A pattern is read by Foundation's regular expressions**, so a type that carries one needs `import Foundation`. Two constructs are written another way for that engine to read the pattern as the `regex` crate does: `$` as `\z`, since it otherwise also matches ahead of a line terminator that ends the string, and `\v` as `\u000B`, since it is otherwise every vertical space. The message quotes the pattern as you wrote it.
 - **A branded newtype runs its own bounds on the value it wraps**, under no path. One that declares a parameter runs them where the value is of its declared default's Swift type (`value as? String`), and at no other filling. A `String`, a `PathBuf` and a `char` are all a Swift `String`.
-- **A bound on a field typed with a brand** measures the text the brand's wrapper answers with `swiftSchemaBoundText`, a member every brand over a string or a path has; a brand over a brand answers through the brand it holds. The brand is declared above the field's type or below it. A bound on a field typed with an alias of a string measures the string.
+- **A bound on a field typed with a brand** measures the text the brand's wrapper answers with `swiftSchemaBoundText`, a member every brand over a string or a path has, and a length counts what it answers with `swiftSchemaBoundLength`, which a brand over a string, a path or a list has; a brand over a brand answers through the brand it holds. The brand is declared above the field's type or below it. A bound on a field typed with an alias of a string measures the string, and a length on one typed with an alias of a list counts its items.
 
 **A type that holds another** runs its `validate()` and writes each message under the place it holds it at:
 
@@ -5811,7 +5834,7 @@ error: cannot find 'withinParcel' in scope
 
 - **A field named `validate`** is declared `validate_`, the method having the name, and keeps its key: `case validate_ = "validate"`.
 - **A type tixschema has not written** is one a holder cannot tell from a model declared below it, so it calls its `validate()` and reads it through its `init(swiftSchemaUnjudged:)`: a type of your own that a generated type holds declares `func validate() -> [String] { [] }` and `init(swiftSchemaUnjudged decoder: Decoder) throws { try self.init(from: decoder) }`. An alias of a type that has none (`type LaterTitle = String;`) is declared above the type that holds it. Declared below, the Swift compiler answers `value of type 'LaterTitle' (aka 'String') has no member 'validate'`.
-- **An alias of a string that a field bounds** is declared above that field's type. Declared below, it is a name the emitter reads as a brand, and the Swift compiler answers `value of type 'LaterTitle' (aka 'String') has no member 'swiftSchemaBoundText'`. The same error answers a length or a pattern on a field typed with a struct or an enum, which holds no string to measure.
+- **An alias of a string that a field bounds** is declared above that field's type. Declared below, it is a name the emitter reads as a brand, and the Swift compiler answers `value of type 'LaterTitle' (aka 'String') has no member 'swiftSchemaBoundLength'`, or `'swiftSchemaBoundText'` for a pattern. The same error answers a length or a pattern on a field typed with a struct or an enum, which holds no string to measure.
 
 #### A Swift read refuses what `validate()` refuses
 
