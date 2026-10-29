@@ -131,8 +131,8 @@ fn a_named_type_takes_a_fields_length_and_pattern_as_one_check() {
         bounded
     };
     let checked = "MetricTag$Schema.check(\
-        z.minLength(1, { error: (issue) => `too short: minimum length is 1, got ${String(issue.input).length}` }), \
-        z.maxLength(9, { error: (issue) => `too long: maximum length is 9, got ${String(issue.input).length}` }), \
+        z.minLength(1, { error: (issue) => `too short: minimum length is 1, got ${Array.isArray(issue.input) ? issue.input.length : String(issue.input).length}` }), \
+        z.maxLength(9, { error: (issue) => `too long: maximum length is 9, got ${Array.isArray(issue.input) ? issue.input.length : String(issue.input).length}` }), \
         z.regex(/^[a-z]+$/, { error: \"does not match pattern '^[a-z]+$'\" }))";
     let named = || FieldDefType::SiblingType("MetricTag".to_owned(), vec![]);
     assert_eq!(bounded(named()).zod_type(), checked);

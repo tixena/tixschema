@@ -245,6 +245,10 @@ pub struct ModelSchemaPropMeta {
     /// The functions `preprocess` names, in the order written.
     pub preprocess: Vec<FunctionName>,
     pub ts_optional: bool,
+    /// The function written ahead of a generic type's builder that runs [`Self::check`] on the
+    /// member's schema at any filling, where the member reaches one of the type's parameters.
+    #[cfg(feature = "zod")]
+    pub zod_check_helper: Option<String>,
 }
 
 #[cfg(any(

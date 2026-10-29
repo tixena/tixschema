@@ -111,8 +111,9 @@ use crate::features::object_id::OBJECT_ID_HEX_PATTERN;
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use crate::utils::{
-    AliasKind, MapKeyWire, PublishedShape, ShapeQuestion, lookup_alias_info, record_inexact_key,
-    record_key_wire, record_shape_question, record_value_shape, shape_questions_for,
+    AliasKind, Counted, MapKeyWire, PublishedShape, ShapeQuestion, lookup_alias_info,
+    record_counted, record_inexact_key, record_key_wire, record_shape_question, record_value_shape,
+    shape_questions_for,
 };
 
 #[cfg(feature = "serde")]
@@ -1430,6 +1431,7 @@ struct EnumCasing<'ctx> {
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum ContainerWire {
     OneWay,
+    #[cfg(feature = "serde")]
     RoundTrip,
 }
 
@@ -1523,6 +1525,15 @@ struct PublishedBinding<'binding> {
 struct PublishedMembers {
     binding: String,
     block: String,
+}
+
+#[cfg(feature = "zod")]
+/// What a struct's `zod_schema()` is written around: the members of its object, what follows the
+/// object, and the functions written ahead of the builder that run the checks of a member.
+struct StructZod<'written> {
+    checked_ahead: &'written str,
+    schema_code: &'written str,
+    show_opts: &'written str,
 }
 
 /// The item a tuple struct's slots are written inside, which a slot may reach back to.
@@ -2455,6 +2466,9 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
     let alias_field_def = get_field_def(export_name.as_str(), &alias.ty, "");
     let kind = alias_target_kind(&alias_field_def);
     register_alias_info(&rust_ident_str, &export_name, &module_name, kind);
+    if names_a_list(&alias.ty) {
+        record_counted(&rust_ident_str, Counted::Items);
+    }
     // An alias *is* its target, so a key written under its name renders in the target's wire form.
     record_key_wire(&rust_ident_str, alias_field_def.map_key_wire());
     record_inexact_key(&rust_ident_str, alias_field_def.writes_an_inexact_key());
@@ -3276,6 +3290,12 @@ fn struct_schema_impl_items(
     #[cfg(feature = "typescript")]
     let own_keys: Vec<String> = field_defs.iter().map(|fld| fld.name.clone()).collect();
     // bodies: (type_code, schema_code, json_schema_fields, fields_empty)
+    #[cfg(all(feature = "zod", feature = "typescript"))]
+    let (checked_defs, checked_ahead) =
+        checked_in_a_builder(field_defs, item_name, &type_parameters);
+    #[cfg(all(feature = "zod", feature = "typescript"))]
+    let bodies = render_struct_field_bodies(checked_defs, Some(item_name));
+    #[cfg(not(all(feature = "zod", feature = "typescript")))]
     let bodies = render_struct_field_bodies(field_defs, Some(item_name));
     // flatten: (ts_types, zod_schemas)
     #[cfg(any(feature = "typescript", feature = "zod"))]
@@ -3304,11 +3324,51 @@ fn struct_schema_impl_items(
             rust_ident,
             &type_parameters,
             args,
-            &bodies.1,
-            "",
+            &StructZod {
+                #[cfg(all(feature = "zod", feature = "typescript"))]
+                checked_ahead: &checked_ahead,
+                #[cfg(not(all(feature = "zod", feature = "typescript")))]
+                checked_ahead: "",
+                schema_code: &bodies.1,
+                show_opts: "",
+            },
             &flatten.1,
         ),
     ]
+}
+
+/// Each member of a generic struct that names a check and reaches a parameter, set to run its
+/// checks through a function written ahead of the builder, and the text of those functions.
+#[cfg(all(feature = "zod", feature = "typescript"))]
+fn checked_in_a_builder(
+    mut field_defs: Vec<FieldDef>,
+    item_name: &str,
+    parameters: &[String],
+) -> (Vec<FieldDef>, String) {
+    let mut ahead = String::new();
+    for (index, member) in field_defs.iter_mut().enumerate() {
+        let written: String = member
+            .name
+            .chars()
+            .map(|c| {
+                if c.is_alphanumeric() || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        let named = if written == member.name {
+            written
+        } else {
+            format!("{written}${index}")
+        };
+        let helper = format!("{item_name}${named}$Checked");
+        if let Some(declaration) = member.zod_check_helper_declaration(&helper, parameters) {
+            ahead.push_str(&declaration);
+        }
+    }
+    (field_defs, ahead)
 }
 
 /// Renders the per-field TypeScript type code, Zod schema code, and JSON-schema fragments for a
@@ -6067,6 +6127,14 @@ fn branded_constraint_inner_error(
         && let FieldDefType::TypeParam(parameter) = &inner.field_type
     {
         let default = declared_default_field(parameter, &args.default_types);
+        let default_is_a_list = args
+            .default_types
+            .iter()
+            .find(|(declared, _)| declared == parameter)
+            .is_some_and(|(_, ty)| held_as_a_list(ty));
+        if args.pattern.is_none() && default_is_a_list {
+            return None;
+        }
         // `None` here means string-shaped, the `String` fallback for an entry the declaration left
         // out included.
         return non_string_inner_shape(&default).map(|_| {
@@ -6076,6 +6144,11 @@ fn branded_constraint_inner_error(
         });
     }
     let message = match (&inner.field_type, non_string_inner_shape(&inner)) {
+        (FieldDefType::SiblingType(..), Some(_))
+            if args.pattern.is_none() && counted_by(&inner_field.ty).is_some() =>
+        {
+            return None;
+        }
         (FieldDefType::SiblingType(inner_name, _), Some(shape)) => {
             named_inner_constraint_message(&name.to_string(), inner_name, shape)
         }
@@ -9054,6 +9127,10 @@ fn build_branded_validation(
     if held_as_a_list(inner_ty) {
         return branded_list_validation(args, inner_field, held);
     }
+    if let Some(counted) = branded_named_length_validation(args, generic_params, inner_field, held)
+    {
+        return Some(counted);
+    }
     args.has_string_constraints().then(|| {
         let measures_path = branded_inner_measures_path(inner_ty);
         let (checked_param, rendering) = checked_value_parts(measures_path);
@@ -9130,6 +9207,118 @@ fn build_branded_validation(
             validate_fn,
             validator: proc_macro2::Ident::new("validate_value", proc_macro2::Span::call_site()),
         }
+    })
+}
+
+/// Whether a brand's lengths alone are asked of a name an earlier expansion registered as one a
+/// bound counts, which answers for itself and is never rendered through `Display`.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn counts_a_named_inner(args: &ModelSchemaArgs, inner_ty: &syn::Type) -> bool {
+    args.pattern.is_none()
+        && (args.min_length.is_some() || args.max_length.is_some())
+        && constrained_shape(inner_ty).is_some_and(|shape| {
+            shape
+                .wraps
+                .iter()
+                .all(|wrap| matches!(wrap, ConstraintWrap::Transparent))
+                && matches!(&shape.leaf, ConstraintLeaf::Named(named) if counted_by(named).is_some())
+        })
+}
+
+/// [`build_branded_validation`] for a brand whose two lengths count what a name holds: the items
+/// of a list, or the characters of a text, as the name answers for itself. The inner is a name an
+/// earlier expansion registered as one a bound counts, or a parameter whose declared default is a
+/// list, which the lengths count at that filling alone.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn branded_named_length_validation(
+    args: &ModelSchemaArgs,
+    generic_params: &[String],
+    inner_field: &Field,
+    held: &syn::Member,
+) -> Option<BrandedValidation> {
+    if args.pattern.is_some() || (args.min_length.is_none() && args.max_length.is_none()) {
+        return None;
+    }
+    let validator = proc_macro2::Ident::new("validate_value", proc_macro2::Span::call_site());
+    let shape = constrained_shape(&inner_field.ty)?;
+    if !shape
+        .wraps
+        .iter()
+        .all(|wrap| matches!(wrap, ConstraintWrap::Transparent))
+    {
+        return None;
+    }
+    let ConstraintLeaf::Named(named) = &shape.leaf else {
+        return None;
+    };
+    if !generic_params.is_empty() {
+        let default_ty =
+            substitute_declared_defaults(&inner_field.ty, generic_params, &args.default_types);
+        let is_a_parameter = matches!(
+            &inner_field.ty,
+            syn::Type::Path(path) if generic_params.iter().any(|parameter| path.path.is_ident(parameter))
+        );
+        if !(is_a_parameter && held_as_a_list(&default_ty)) {
+            return None;
+        }
+        let type_identity = embedded_type_identity();
+        let at_the_default = embedded_validate_at_declared_default(&default_ty, &quote! { held });
+        return Some(BrandedValidation {
+            checked_inner: quote! { &self.#held },
+            validate_fn: {
+                let counted = list_validator(&validator, args.min_length, args.max_length, None);
+                quote! {
+                    #counted
+
+                    #type_identity
+
+                    #at_the_default
+                }
+            },
+            validator: proc_macro2::Ident::new(
+                "validate_at_declared_default",
+                proc_macro2::Span::call_site(),
+            ),
+        });
+    }
+    counted_by(named)?;
+    let rendering = named_leaf_length_rendering(named, "a brand's bound");
+    let measured = quote! { length };
+    let mut checks: Vec<proc_macro2::TokenStream> = Vec::new();
+    if let Some(min_len) = args.min_length {
+        let reported = rust_violation(Bound::MinLength(min_len), None, &measured);
+        checks.push(quote! {
+            if length < #min_len {
+                errors.push(#reported);
+            }
+        });
+    }
+    if let Some(max_len) = args.max_length {
+        let reported = rust_violation(Bound::MaxLength(max_len), None, &measured);
+        checks.push(quote! {
+            if length > #max_len {
+                errors.push(#reported);
+            }
+        });
+    }
+    let through = shape.wraps.iter().map(|_| quote! { * });
+    Some(BrandedValidation {
+        checked_inner: quote! { &#(#through)* self.#held },
+        validate_fn: quote! {
+            pub fn validate_value(named: &#named) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
+                #rendering
+                let mut errors: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
+                #(#checks)*
+                if errors.is_empty() { ::core::result::Result::Ok(()) } else { ::core::result::Result::Err(errors) }
+            }
+        },
+        validator,
     })
 }
 
@@ -9705,9 +9894,11 @@ fn branded_slot_json_schema(
     def_name: &str,
 ) -> proc_macro2::TokenStream {
     match build_tuple_element_json_schema(inner) {
-        // A list's count is written on its own array.
+        // A list's count is written on its own array, and a named list's on the narrowing its
+        // field type carries.
         Ok(value) if inner.is_list() => value,
-        Ok(value) => branded_layered_over(args, &value),
+        Ok(value) if carries_a_named_count(inner) => named_field_json_schema_value(inner, &value),
+        Ok(value) => branded_layered_over(args, &value, parameter_default_is_a_list(args, inner)),
         Err(rejection) => {
             let message = prefixed_guard_message(&map_member_rejection_message(
                 &format!("`{def_name}`"),
@@ -9718,21 +9909,56 @@ fn branded_slot_json_schema(
     }
 }
 
+/// Whether a brand's inner is a name that carries the brand's two lengths itself, as the field
+/// type of a holder carries a length written on the field.
+#[cfg(any(feature = "zod", feature = "jsonschema"))]
+fn carries_a_named_count(inner: &FieldDef) -> bool {
+    matches!(inner.field_type, FieldDefType::SiblingType(..))
+        && inner
+            .model_schema_prop_meta
+            .as_ref()
+            .is_some_and(|meta| meta.min_length.is_some() || meta.max_length.is_some())
+}
+
+/// Whether `inner` is a bare type parameter of the brand whose declared default is a list.
+#[cfg(any(feature = "zod", feature = "jsonschema"))]
+fn parameter_default_is_a_list(args: &ModelSchemaArgs, inner: &FieldDef) -> bool {
+    let FieldDefType::TypeParam(parameter) = &inner.field_type else {
+        return false;
+    };
+    !inner.is_array()
+        && args
+            .default_types
+            .iter()
+            .find(|(declared, _)| declared == parameter)
+            .is_some_and(|(_, ty)| held_as_a_list(ty))
+}
+
 /// `described` narrowed by the brand's own constraints from inside an `allOf`, or `described` alone
-/// when the brand declares none.
+/// when the brand declares none. The two lengths count items where `items` says the brand holds a
+/// list.
 #[cfg(feature = "jsonschema")]
 fn branded_layered_over(
     args: &ModelSchemaArgs,
     described: &proc_macro2::TokenStream,
+    items: bool,
 ) -> proc_macro2::TokenStream {
     let mut narrowing: Vec<proc_macro2::TokenStream> = Vec::new();
     if let Some(min_len) = args.min_length {
         let len = min_len as u64;
-        narrowing.push(quote! { "minLength": #len });
+        narrowing.push(if items {
+            quote! { "minItems": #len }
+        } else {
+            quote! { "minLength": #len }
+        });
     }
     if let Some(max_len) = args.max_length {
         let len = max_len as u64;
-        narrowing.push(quote! { "maxLength": #len });
+        narrowing.push(if items {
+            quote! { "maxItems": #len }
+        } else {
+            quote! { "maxLength": #len }
+        });
     }
     if let Some(pattern) = &args.pattern {
         narrowing.push(quote! { "pattern": #pattern });
@@ -9793,12 +10019,27 @@ fn branded_value_inner(
     args: &ModelSchemaArgs,
 ) -> FieldDef {
     let mut inner = surface_field_def(generics, &get_field_def("_inner", inner_ty, ""));
-    if held_as_a_list(inner_ty) && (args.min_length.is_some() || args.max_length.is_some()) {
-        inner.model_schema_prop_meta = Some(ModelSchemaPropMeta {
+    let lengths_alone = args.min_length.is_some() || args.max_length.is_some();
+    let meta = if held_as_a_list(inner_ty) && lengths_alone {
+        Some(ModelSchemaPropMeta {
             max_items: args.max_length,
             min_items: args.min_length,
             ..ModelSchemaPropMeta::default()
-        });
+        })
+    } else if args.pattern.is_none()
+        && lengths_alone
+        && counted_by(inner_ty) == Some(Counted::Items)
+    {
+        Some(ModelSchemaPropMeta {
+            max_length: args.max_length,
+            min_length: args.min_length,
+            ..ModelSchemaPropMeta::default()
+        })
+    } else {
+        None
+    };
+    if meta.is_some() {
+        inner.model_schema_prop_meta = meta;
     }
     inner
 }
@@ -9862,14 +10103,22 @@ fn branded_json_inner(inner: &FieldDef) -> BrandedJsonInner {
 /// The Zod string checks a branded newtype's `minLength`, `maxLength`, and `pattern` render to,
 /// or the empty string when it carries none.
 #[cfg(feature = "zod")]
-fn branded_zod_string_checks(args: &ModelSchemaArgs) -> String {
+fn branded_zod_string_checks(args: &ModelSchemaArgs, items: bool) -> String {
     let mut checks = String::new();
     if let Some(min_len) = args.min_length {
-        let reported = zod_error_arg(Bound::MinLength(min_len));
+        let reported = zod_error_arg(if items {
+            Bound::MinItems(min_len)
+        } else {
+            Bound::MinLength(min_len)
+        });
         checks = format!("{checks}.min({min_len}, {reported})");
     }
     if let Some(max_len) = args.max_length {
-        let reported = zod_error_arg(Bound::MaxLength(max_len));
+        let reported = zod_error_arg(if items {
+            Bound::MaxItems(max_len)
+        } else {
+            Bound::MaxLength(max_len)
+        });
         checks = format!("{checks}.max({max_len}, {reported})");
     }
     if let Some(pattern) = &args.pattern {
@@ -9884,14 +10133,22 @@ fn branded_zod_string_checks(args: &ModelSchemaArgs) -> String {
 /// `.check(...)` call over the base functions (`z.minLength`, `z.maxLength`, `z.regex`) — the
 /// surface every Zod schema exposes, unlike `.min`/`.max`, which live on `ZodString` alone.
 #[cfg(feature = "zod")]
-fn branded_zod_base_checks(args: &ModelSchemaArgs) -> String {
+fn branded_zod_base_checks(args: &ModelSchemaArgs, items: bool) -> String {
     let mut checks = Vec::new();
     if let Some(min_len) = args.min_length {
-        let reported = zod_error_arg(Bound::MinLength(min_len));
+        let reported = zod_error_arg(if items {
+            Bound::MinItems(min_len)
+        } else {
+            Bound::MinLength(min_len)
+        });
         checks.push(format!("z.minLength({min_len}, {reported})"));
     }
     if let Some(max_len) = args.max_length {
-        let reported = zod_error_arg(Bound::MaxLength(max_len));
+        let reported = zod_error_arg(if items {
+            Bound::MaxItems(max_len)
+        } else {
+            Bound::MaxLength(max_len)
+        });
         checks.push(format!("z.maxLength({max_len}, {reported})"));
     }
     if let Some(pattern) = &args.pattern {
@@ -9966,11 +10223,19 @@ fn branded_inner_is_composite(inner: &FieldDef) -> bool {
 /// Resolves the Zod base schema for a branded newtype's inner type, applying string constraints.
 #[cfg(feature = "zod")]
 fn branded_zod_inner(args: &ModelSchemaArgs, inner: &FieldDef) -> String {
-    // A list's count is written on its own array, and a bare parameter's on its default.
-    if inner.is_list() || matches!(inner.field_type, FieldDefType::TypeParam(_)) {
+    // A list's count is written on its own array, a bare parameter's on its default, and a named
+    // list's on the check its field type carries.
+    if inner.is_list()
+        || matches!(inner.field_type, FieldDefType::TypeParam(_))
+        || (matches!(inner.field_type, FieldDefType::SiblingType(..))
+            && inner
+                .model_schema_prop_meta
+                .as_ref()
+                .is_some_and(|meta| meta.min_length.is_some() || meta.max_length.is_some()))
+    {
         return inner.zod_type();
     }
-    let checks = branded_zod_string_checks(args);
+    let checks = branded_zod_string_checks(args, false);
     #[cfg(feature = "mongodb")]
     if branded_inner_is_object_id(inner) {
         return get_object_id_zod_schema_with(&checks);
@@ -10074,9 +10339,10 @@ fn build_branded_zod_schema_method(
     let body = if parameters.is_empty() {
         branded_zod_const_block(item_name, &expression, &reexport)
     } else {
-        let checks = branded_zod_string_checks(args);
+        let items = parameter_default_is_a_list(args, inner);
+        let checks = branded_zod_string_checks(args, items);
         let branded_checks = BrandedDefaultChecks {
-            base: branded_zod_base_checks(args),
+            base: branded_zod_base_checks(args, items),
             chained: checks,
         };
         let constrained_default = match (&inner.field_type, branded_checks.chained.is_empty()) {
@@ -10228,7 +10494,8 @@ fn build_branded_display_tokens(
     #[cfg(feature = "serde")]
     let validation_needs_display = args.has_string_constraints()
         && !branded_inner_measures_path(&inner_field.ty)
-        && !held_as_a_list(&inner_field.ty);
+        && !held_as_a_list(&inner_field.ty)
+        && !counts_a_named_inner(args, &inner_field.ty);
     #[cfg(not(feature = "serde"))]
     let validation_needs_display = false;
 
@@ -10594,7 +10861,10 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
     let validate_method = with_branded_checks(bound.held.as_ref(), &args.check);
 
     // The brand as it is emitted keeps no serde attribute where it derives `Deserialize` alone.
-    let bound_text_method = branded_bound_text_method(&item_struct);
+    let (bound_text_method, counted_as) = branded_bound_text_method(&item_struct);
+    if let Some(counted) = counted_as {
+        record_counted(&rust_ident, counted);
+    }
 
     let (decode_with, read_struct) = branded_read(
         item_struct,
@@ -10742,33 +11012,101 @@ fn brand_decode_with(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
 ))]
-fn branded_bound_text_method(item_struct: &syn::ItemStruct) -> proc_macro2::TokenStream {
+fn branded_bound_text_method(
+    item_struct: &syn::ItemStruct,
+) -> (proc_macro2::TokenStream, Option<Counted>) {
     let Some((position, inner_field)) = brand_slot(item_struct) else {
-        return quote! {};
+        return (quote! {}, None);
     };
     let held = brand_member(position, inner_field);
     let Some(shape) = constrained_shape(&inner_field.ty) else {
-        return quote! {};
+        return (quote! {}, None);
     };
     if !shape
         .wraps
         .iter()
         .all(|wrap| matches!(wrap, ConstraintWrap::Transparent))
     {
-        return quote! {};
+        return (quote! {}, None);
     }
-    let text = match shape.leaf {
-        ConstraintLeaf::Path => quote! { self.#held.to_string_lossy() },
-        ConstraintLeaf::Str => quote! { ::std::borrow::Cow::Borrowed(&*self.#held) },
-        ConstraintLeaf::List | ConstraintLeaf::Named(_) | ConstraintLeaf::Number(_) => {
-            return quote! {};
+    let through = shape.wraps.iter().map(|_| quote! { * });
+    let (text_read, length_read, counted) = match &shape.leaf {
+        ConstraintLeaf::Path => (
+            Some(quote! { self.#held.to_string_lossy() }),
+            Some(quote! { self.model_schema_bound_text().len() }),
+            Some(Counted::Characters),
+        ),
+        ConstraintLeaf::Str => (
+            Some(quote! { ::std::borrow::Cow::Borrowed(&*self.#held) }),
+            Some(quote! { self.model_schema_bound_text().len() }),
+            Some(Counted::Characters),
+        ),
+        ConstraintLeaf::List => (
+            None,
+            Some(quote! {
+                ::core::iter::IntoIterator::into_iter(&#(#through)* self.#held).count()
+            }),
+            Some(Counted::Items),
+        ),
+        ConstraintLeaf::Named(named) if counted_by(named).is_some() => {
+            let rendering = named_leaf_length_rendering(named, "a brand's bound");
+            (
+                None,
+                Some(quote! {
+                    let named: &#named = &#(#through)* self.#held;
+                    #rendering
+                    length
+                }),
+                counted_by(named),
+            )
         }
+        ConstraintLeaf::Named(_) | ConstraintLeaf::Number(_) => (None, None, None),
     };
-    quote! {
-        pub fn model_schema_bound_text(&self) -> ::std::borrow::Cow<'_, str> {
-            #text
+    let text_method = text_read.map(|read| {
+        quote! {
+            pub fn model_schema_bound_text(&self) -> ::std::borrow::Cow<'_, str> {
+                #read
+            }
         }
+    });
+    let length_method = length_read.map(|read| {
+        quote! {
+            pub fn model_schema_bound_length(&self) -> usize {
+                #read
+            }
+        }
+    });
+    (
+        quote! {
+            #text_method
+            #length_method
+        },
+        counted,
+    )
+}
+
+/// What a bound counts on `ty`, written as a name that an earlier expansion registered as one it
+/// counts the content of: a brand over a text or a list, and an alias of a list.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+fn counted_by(ty: &syn::Type) -> Option<Counted> {
+    let syn::Type::Path(path) = written_type(ty) else {
+        return None;
+    };
+    let segment = path.path.segments.last()?;
+    if path.qself.is_some() || !matches!(segment.arguments, syn::PathArguments::None) {
+        return None;
     }
+    lookup_alias_info(&segment.ident.to_string())?.counted
+}
+
+/// A build with no schema surface registers no name, so none counts.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "swift", feature = "kotlin"),
+    not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
+))]
+const fn counted_by(_ty: &syn::Type) -> Option<()> {
+    None
 }
 
 /// Without `serde` no validator is generated, so nothing measures a brand's text.
@@ -10776,8 +11114,10 @@ fn branded_bound_text_method(item_struct: &syn::ItemStruct) -> proc_macro2::Toke
     not(feature = "serde"),
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
 ))]
-fn branded_bound_text_method(_item_struct: &syn::ItemStruct) -> proc_macro2::TokenStream {
-    quote! {}
+fn branded_bound_text_method(
+    _item_struct: &syn::ItemStruct,
+) -> (proc_macro2::TokenStream, Option<Counted>) {
+    (quote! {}, None)
 }
 
 /// Processes an enum item and generates TypeScript and Zod schema definitions for it.
@@ -15272,13 +15612,15 @@ fn named_field_json_schema_value(
         return described.clone();
     };
     let mut narrowing: Vec<proc_macro2::TokenStream> = Vec::new();
+    // The name holds a text or a list, and a keyword constrains only the instance type it is for:
+    // whichever the name holds, one of the two applies and the other is inert.
     if let Some(min_len) = meta.min_length {
         let len = min_len as u64;
-        narrowing.push(quote! { "minLength": #len });
+        narrowing.push(quote! { "minLength": #len, "minItems": #len });
     }
     if let Some(max_len) = meta.max_length {
         let len = max_len as u64;
-        narrowing.push(quote! { "maxLength": #len });
+        narrowing.push(quote! { "maxLength": #len, "maxItems": #len });
     }
     if let Some(pattern) = &meta.pattern {
         narrowing.push(quote! { "pattern": #pattern });
@@ -17433,9 +17775,10 @@ fn string_leaf_parts(
     }
 }
 
-/// Reads the text of a named leaf. A brand's own expansion publishes `model_schema_bound_text`,
-/// and an inherent method is found ahead of a trait's; the trait declared here answers for an alias
-/// of a string or a path, and refuses every other type in the words written on it.
+/// Reads the text of a named leaf, or its length where no pattern is written. A brand's own
+/// expansion publishes `model_schema_bound_text` and `model_schema_bound_length`, and an inherent
+/// method is found ahead of a trait's; the traits declared here answer for an alias of a string,
+/// a path or a list, and refuse every other type in the words written on them.
 #[cfg(feature = "serde")]
 fn named_leaf_rendering(
     named: &syn::Type,
@@ -17455,6 +17798,9 @@ fn named_leaf_rendering(
         "model_schema: {}: `{keys}` cannot apply to `{{Self}}`",
         field_label(field_name)
     );
+    if meta.patterns().next().is_none() {
+        return named_leaf_length_rendering(named, &message);
+    }
     // Located on the field's type, with the macro's own hygiene: see `build_branded_validation`.
     let read = proc_macro2::Ident::new(
         "model_schema_bound_text",
@@ -17509,6 +17855,104 @@ fn named_leaf_rendering(
     }
 }
 
+/// [`named_leaf_rendering`] for a leaf whose bounds are lengths alone: what a text or a list of
+/// the leaf's type holds is counted, and nothing else is.
+#[cfg(feature = "serde")]
+fn named_leaf_length_rendering(named: &syn::Type, message: &str) -> proc_macro2::TokenStream {
+    let read = proc_macro2::Ident::new(
+        "model_schema_bound_length",
+        named.span().resolved_at(proc_macro2::Span::call_site()),
+    );
+    quote! {
+        #[diagnostic::on_unimplemented(
+            message = #message,
+            label = "this type holds no string or list for the bound to measure",
+            note = "a length is measured on a `String`, on a path, on a list, or on a `#[serde(transparent)]` brand over one of them that `#[model_schema]` was written on: declare the field as one of those, or drop the bound"
+        )]
+        trait BoundedLength {
+            fn bounded_length(&self) -> usize;
+        }
+        impl BoundedLength for str {
+            fn bounded_length(&self) -> usize {
+                self.len()
+            }
+        }
+        impl BoundedLength for ::std::string::String {
+            fn bounded_length(&self) -> usize {
+                self.len()
+            }
+        }
+        impl BoundedLength for ::std::path::Path {
+            fn bounded_length(&self) -> usize {
+                self.to_string_lossy().len()
+            }
+        }
+        impl BoundedLength for ::std::path::PathBuf {
+            fn bounded_length(&self) -> usize {
+                self.to_string_lossy().len()
+            }
+        }
+        impl<Item> BoundedLength for [Item] {
+            fn bounded_length(&self) -> usize {
+                self.len()
+            }
+        }
+        impl<Item, const WIDTH: usize> BoundedLength for [Item; WIDTH] {
+            fn bounded_length(&self) -> usize {
+                WIDTH
+            }
+        }
+        impl<Item> BoundedLength for ::std::vec::Vec<Item> {
+            fn bounded_length(&self) -> usize {
+                self.len()
+            }
+        }
+        impl<Item> BoundedLength for ::std::collections::VecDeque<Item> {
+            fn bounded_length(&self) -> usize {
+                self.len()
+            }
+        }
+        impl<Item> BoundedLength for ::std::collections::BinaryHeap<Item> {
+            fn bounded_length(&self) -> usize {
+                self.len()
+            }
+        }
+        impl<Item> BoundedLength for ::std::collections::BTreeSet<Item> {
+            fn bounded_length(&self) -> usize {
+                self.len()
+            }
+        }
+        impl<Item, Hasher> BoundedLength for ::std::collections::HashSet<Item, Hasher> {
+            fn bounded_length(&self) -> usize {
+                self.len()
+            }
+        }
+        trait UnbrandedLength {
+            fn model_schema_bound_length(&self) -> usize
+            where
+                Self: BoundedLength;
+        }
+        impl<T: ?::core::marker::Sized> UnbrandedLength for T {
+            fn model_schema_bound_length(&self) -> usize
+            where
+                Self: BoundedLength,
+            {
+                BoundedLength::bounded_length(self)
+            }
+        }
+        // Keeps both traits in use where the leaf answers with a method of its own.
+        let _: usize = UnbrandedLength::model_schema_bound_length("");
+        let length: usize = named.#read();
+    }
+}
+
+/// Whether a named leaf is held to lengths alone, which the type it names answers with the count
+/// of what it holds, a text or a list.
+#[cfg(feature = "serde")]
+fn counts_a_named_length(leaf: &ConstraintLeaf, meta: &ModelSchemaPropMeta) -> bool {
+    matches!(leaf, ConstraintLeaf::Named(_)) && meta.patterns().next().is_none()
+}
+
 /// Generates the static validator for a string-shaped field with constraints, plus the serde
 /// deserializer — written against the constrained value itself when the field is bare, and against
 /// the field's declared type when it is wrapped. A field read through a reference gets the
@@ -17531,13 +17975,17 @@ fn generate_string_validation_code(
     let named = member.reported.as_deref();
     let (checked_param, rendering, owned) = string_leaf_parts(&shape.leaf, &member.label, meta);
 
-    let measured = quote! { value.len() };
+    let measured = if counts_a_named_length(&shape.leaf, meta) {
+        quote! { length }
+    } else {
+        quote! { value.len() }
+    };
     let mut checks: Vec<proc_macro2::TokenStream> = Vec::new();
 
     if let Some(min_len) = meta.min_length {
         let reported = rust_violation(Bound::MinLength(min_len), named, &measured);
         checks.push(quote! {
-            if value.len() < #min_len {
+            if #measured < #min_len {
                 errors.push(#reported);
             }
         });
@@ -17546,7 +17994,7 @@ fn generate_string_validation_code(
     if let Some(max_len) = meta.max_length {
         let reported = rust_violation(Bound::MaxLength(max_len), named, &measured);
         checks.push(quote! {
-            if value.len() > #max_len {
+            if #measured > #max_len {
                 errors.push(#reported);
             }
         });
@@ -21586,12 +22034,16 @@ fn generate_zod_schema_method(
     rust_ident: &str,
     parameters: &[String],
     args: &ModelSchemaArgs,
-    schema_code: &str,
-    show_opts: &str,
+    written: &StructZod<'_>,
     flatten_schemas: &[MergedOperand],
 ) -> proc_macro2::TokenStream {
     #[cfg(feature = "zod")]
     {
+        let StructZod {
+            checked_ahead,
+            schema_code,
+            show_opts,
+        } = written;
         let reexport = zod_binding_reexport(rust_ident, item_name, parameters);
         let own = format!("z.strictObject({{\n{schema_code}}}){show_opts}");
         let (preamble, expression) = zod_merged_statements(item_name, &own, flatten_schemas);
@@ -21611,21 +22063,22 @@ fn generate_zod_schema_method(
             &expression,
             &reexport,
         );
+        let published = format!("{checked_ahead}{body}");
 
-        if !holds_a_placeholder(&body) {
+        if !holds_a_placeholder(&published) {
             return quote::quote! {
                 pub fn zod_schema() -> ::std::string::String {
-                    #body.to_owned()
+                    #published.to_owned()
                 }
             };
         }
-        let written = Ident::new("written", proc_macro2::Span::call_site());
-        let replaced = zod_substituted(&quote::quote! { SerdeDefaults }, &written);
+        let text = Ident::new("written", proc_macro2::Span::call_site());
+        let replaced = zod_substituted(&quote::quote! { SerdeDefaults }, &text);
         quote::quote! {
             pub fn zod_schema() -> ::std::string::String {
-                let mut #written = ::std::string::String::from(#body);
+                let mut #text = ::std::string::String::from(#published);
                 #replaced
-                #written
+                #text
             }
         }
     }
@@ -21637,8 +22090,7 @@ fn generate_zod_schema_method(
             rust_ident,
             parameters,
             args,
-            schema_code,
-            show_opts,
+            written,
             flatten_schemas,
         );
         quote::quote! {
@@ -22005,7 +22457,7 @@ fn generate_alias_zod_method(
         // The alias's rendered Zod is its `FieldDef` expression: `z.tuple([...])` for a tuple,
         // `z.string()` for a scalar, `Name$Schema` for a sibling.
         let surface = surface_field_def(&alias.generics, field_def);
-        let schema_code = surface.zod_type();
+        let schema_code = surface.zod_type_deferring_a_later_map_value();
         let parameters = type_parameters_in_scope(&alias.generics);
         let reexport = zod_binding_reexport(rust_ident, export_name, &parameters);
         let body = zod_published_binding(

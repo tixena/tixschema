@@ -42,6 +42,12 @@ use crate::features::serde::{parse_serde_field_attributes, parse_serde_type_attr
 const BOUND_TEXT_HELPER: &str = "static String _boundText(Object held) => held is String ? held : \
      _boundText((held as dynamic).value as Object);";
 
+/// The helper a type's `validate()` counts a named type with: the code points of a string, the
+/// items of a list, and a wrapper through the value it holds.
+const BOUND_LENGTH_HELPER: &str = "static int _boundLength(Object held) => held is String ? \
+     held.runes.length : held is Iterable ? held.length : \
+     _boundLength((held as dynamic).value as Object);";
+
 /// Appended to a UTC date's text: `toIso8601String` writes `.000Z` for a date of whole seconds,
 /// which chrono writes with no fraction.
 #[cfg(feature = "chrono")]
@@ -263,6 +269,7 @@ impl<'held> Bounds<'held> {
 /// A helper a type's `validate()` or the bounds of a variant call.
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Helper {
+    BoundLength,
     BoundText,
     HeldBound,
     Number,
@@ -2575,6 +2582,22 @@ fn text_elements(text: &str, named: Option<&str>, bounds: &Bounds<'_>) -> Vec<St
     elements
 }
 
+/// The length `bounds` hold the named type `value` to, which counts the code points of the string
+/// it holds or the items of the list it holds.
+fn named_length_elements(value: &str, named: Option<&str>, bounds: &Bounds<'_>) -> Vec<String> {
+    let length = format!("_boundLength({value})");
+    let mut elements = Vec::new();
+    if let Some(least) = bounds.min_length {
+        let said = dart_violation(Bound::MinLength(least), named, &length);
+        elements.push(format!("if ({length} < {least}) {said}"));
+    }
+    if let Some(most) = bounds.max_length {
+        let said = dart_violation(Bound::MaxLength(most), named, &length);
+        elements.push(format!("if ({length} > {most}) {said}"));
+    }
+    elements
+}
+
 /// The count `bounds` hold `list` to, a Dart `List`.
 fn count_elements(list: &str, named: Option<&str>, bounds: &Bounds<'_>) -> Vec<String> {
     let count = format!("{list}.length");
@@ -2624,6 +2647,13 @@ fn measured_elements(
     match &field.field_type {
         FieldDefType::Char | FieldDefType::String | FieldDefType::StringLiteral(_) => {
             text_elements(value, named, bounds)
+        }
+        FieldDefType::SiblingType(_, _) if bounds.patterns.is_empty() => {
+            let elements = named_length_elements(value, named, bounds);
+            if !elements.is_empty() {
+                helpers.call(Helper::BoundLength);
+            }
+            elements
         }
         FieldDefType::SiblingType(_, _) => {
             let elements = text_elements(&format!("_boundText({value})"), named, bounds);
@@ -3204,6 +3234,7 @@ fn validate_members(rules: &[String], helpers: &Helpers, overrides: bool) -> Str
     let mut written = format!("{annotation}List<String> validate() => {answered};");
     for (called, helper) in [
         (helpers.calls(Helper::Under), UNDER_HELPER),
+        (helpers.calls(Helper::BoundLength), BOUND_LENGTH_HELPER),
         (helpers.calls(Helper::BoundText), BOUND_TEXT_HELPER),
         (helpers.calls(Helper::Number), NUMBER_HELPER),
         (helpers.calls(Helper::Repeats), REPEATS_HELPER),

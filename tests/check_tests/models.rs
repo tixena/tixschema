@@ -70,6 +70,14 @@ Ledger<String>, no entry: refused
     'entries': a ledger holds at least one entry
 Ledger<String>: passes
 Ledger<u32>: passes
+Archive<String>, no entry: refused
+    'ledger.entries': a ledger holds at least one entry
+    'ledger.entries': a ledger holds at least one entry
+Archive<String>: passes
+Archive<u32>, no entry: refused
+    'ledger.entries': a ledger holds at least one entry
+    'ledger.entries': a ledger holds at least one entry
+Archive<u32>: passes
 ";
 
 /// The 13 lines of the shared table, in a build that holds `label` to its bound and runs a held
@@ -226,6 +234,16 @@ pub struct Ledger<IdType> {
     pub owner_id: IdType,
 }
 
+/// A type with a parameter whose member holds a generic type at the holder's own parameter, under
+/// a check of its own.
+#[model_schema(default_types(IdType = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Archive<IdType> {
+    pub label: String,
+    #[model_schema_prop(check = ["withEntries"])]
+    pub ledger: Ledger<IdType>,
+}
+
 fn without_duplicates(value: &[String]) -> Result<(), Vec<String>> {
     for (index, code) in value.iter().enumerate() {
         if value[..index].contains(code) {
@@ -367,6 +385,13 @@ fn with_entries<IdType>(value: &Ledger<IdType>) -> Result<(), Vec<String>> {
         ]);
     }
     Ok(())
+}
+
+fn archived<IdType>(entries: Vec<String>, owner_id: IdType) -> Archive<IdType> {
+    Archive {
+        ledger: Ledger { entries, owner_id },
+        label: "a".to_owned(),
+    }
 }
 
 fn texts(written: &[&str]) -> Vec<String> {
@@ -595,6 +620,26 @@ fn brand_and_generic_cases() -> Vec<Case> {
                 owner_id: 7_u32,
             }
             .validate(),
+        ),
+        case(
+            "Archive<String>, no entry",
+            &archived(Vec::new(), "o".to_owned()),
+            archived(Vec::new(), "o".to_owned()).validate(),
+        ),
+        case(
+            "Archive<String>",
+            &archived(texts(&["a"]), "o".to_owned()),
+            archived(texts(&["a"]), "o".to_owned()).validate(),
+        ),
+        case(
+            "Archive<u32>, no entry",
+            &archived(Vec::new(), 7_u32),
+            archived(Vec::new(), 7_u32).validate(),
+        ),
+        case(
+            "Archive<u32>",
+            &archived(texts(&["a"]), 7_u32),
+            archived(texts(&["a"]), 7_u32).validate(),
         ),
     ]
 }

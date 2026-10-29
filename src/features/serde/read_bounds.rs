@@ -511,6 +511,7 @@ fn read_fields<'item>(
 
 /// The predicates the `serialize` side of the container's `bound` lists, or `None` where the
 /// container writes none.
+#[cfg(feature = "serde")]
 pub fn serialize_bound(attrs: &[Attribute]) -> Option<Vec<WherePredicate>> {
     ReadAttrs::of(attrs).bound_serialize
 }
