@@ -1838,8 +1838,9 @@ fn kotlin_nothing_generic_args(generics: &syn::Generics) -> String {
 }
 
 /// One property declaration inside a constructor's parameter list: `@SerialName("...")` only where
-/// the wire spelling differs from the Kotlin property, then `val name: Type`, then `= null` for a
-/// field whose key may be absent — a bare `Option<T>` without `#[model_schema_prop(nullable)]`.
+/// the wire spelling differs from the Kotlin property, then `val name: Type`, then `= null` for an
+/// `Option<T>` member, which serde reads as `None` where its key is absent. Under
+/// `#[model_schema_prop(nullable)]` the property is `@EncodeDefault`, so its key is still written.
 /// `plugin` is the class where the plugin writes its serializer, which reads the member by the
 /// serializer the property names for it: a model's unjudged one, or the one that calls the
 /// member's own `preprocess`. Without it, the member is declared as the emitter's own serializer
@@ -1857,7 +1858,7 @@ fn property_declaration(field: &KotlinField, plugin: Option<&Plugin<'_>>) -> Str
     );
     let default = field.default_at.as_ref().map_or_else(
         || {
-            if field.field_def.is_optional() && !is_nullable_flag(&field.field_def) {
+            if field.field_def.is_optional() {
                 " = null".to_owned()
             } else {
                 String::new()
@@ -1883,7 +1884,15 @@ fn property_declaration(field: &KotlinField, plugin: Option<&Plugin<'_>>) -> Str
             }
         },
     );
-    format!("{annotation}{unjudged}val {prop_name}: {ty}{default}")
+    let written = if field.default_at.is_none()
+        && field.field_def.is_optional()
+        && is_nullable_flag(&field.field_def)
+    {
+        "@EncodeDefault "
+    } else {
+        ""
+    };
+    format!("{annotation}{written}{unjudged}val {prop_name}: {ty}{default}")
 }
 
 /// The constructor parameter list a set of [`KotlinField`]s earns, joined by `, `.

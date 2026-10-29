@@ -1592,7 +1592,6 @@ fn range_shape(
             decode_statement(
                 field,
                 "container",
-                false,
                 &Handed::default(),
                 &mut locals,
                 &mut twins,
@@ -2203,18 +2202,16 @@ fn wire_type(def: &FieldDef, shape: &SwiftFieldShape) -> String {
 
 /// The statements that read a field in the type's own read, ending on `self.{name} = ...`. A
 /// field `validate()` walks is read unjudged, one that names a function from what it answers, and
-/// one serde reads under an alias too under the name the payload holds it under. `synthesized`
-/// says Swift wrote the read before the emitter did, where an optional member took an absent key
-/// as `nil` whether its key is required or not.
+/// one serde reads under an alias too under the name the payload holds it under. An optional
+/// member takes an absent key as `nil`, as serde reads it, whether its key is required or not.
 fn decode_statement(
     field: &SwiftField,
     container: &str,
-    synthesized: bool,
     handed: &Handed,
     locals: &mut read::Locals,
     twins: &mut Vec<String>,
 ) -> String {
-    let absent_is_nil = field.field_def.is_optional() && (synthesized || !field.required);
+    let absent_is_nil = field.field_def.is_optional();
     let (keyed, key) = field.keyed_at(container);
     let source = if field.flatten {
         read::Source::Beside(handed.taken.clone())
@@ -3067,7 +3064,7 @@ fn struct_body_content(
 
     let memberwise_init = memberwise_initializer(fields);
     let mut twins = Vec::new();
-    let members = member_reads(fields, !unsynthesized, around, &mut twins);
+    let members = member_reads(fields, around, &mut twins);
     let keyed = if names_container(&members) {
         "let container = try decoder.container(keyedBy: CodingKeys.self); "
     } else {
@@ -3164,22 +3161,17 @@ fn names_container(statements: &str) -> bool {
 }
 
 /// The statements that read each of `fields` in the type's own read, in the order declared, a
-/// type written for one joining `twins`. `synthesized` says Swift wrote the read before the
-/// emitter did, and `around` that the types around the holder hand it keys it reads none of.
+/// type written for one joining `twins`. `around` says the types around the holder hand it keys it
+/// reads none of.
 /// Each flattened member is handed the object without the keys its holder's own members, the
 /// members flattened ahead of it and the types around its holder took, as serde reads it.
-fn member_reads(
-    fields: &[SwiftField],
-    synthesized: bool,
-    around: bool,
-    twins: &mut Vec<String>,
-) -> String {
-    let alone = handed_reads(fields, synthesized, false);
+fn member_reads(fields: &[SwiftField], around: bool, twins: &mut Vec<String>) -> String {
+    let alone = handed_reads(fields, false);
     // A holder of no member of its own is handed keys by the types around it where they hand it
     // some, or where one of its reads takes them.
     let (statements, written) =
         if fields.iter().all(|field| field.flatten) && (around || read::names_taken(&alone.0)) {
-            handed_reads(fields, synthesized, true)
+            handed_reads(fields, true)
         } else {
             alone
         };
@@ -3189,7 +3181,7 @@ fn member_reads(
 
 /// [`member_reads`] with the types written for the members, where `around` says the types around
 /// the holder hand it keys it takes.
-fn handed_reads(fields: &[SwiftField], synthesized: bool, around: bool) -> (String, Vec<String>) {
+fn handed_reads(fields: &[SwiftField], around: bool) -> (String, Vec<String>) {
     let mut locals = read::Locals::default();
     let mut twins = Vec::new();
     let mut taken_ahead: Vec<String> = fields
@@ -3221,14 +3213,7 @@ fn handed_reads(fields: &[SwiftField], synthesized: bool, around: bool) -> (Stri
                     found_ahead.push(preprocess::found(swift_bare(&field.swift_name)));
                 }
             }
-            decode_statement(
-                field,
-                "container",
-                synthesized,
-                &handed,
-                &mut locals,
-                &mut twins,
-            )
+            decode_statement(field, "container", &handed, &mut locals, &mut twins)
         })
         .collect::<Vec<_>>()
         .join("; ");
