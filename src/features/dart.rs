@@ -1483,7 +1483,10 @@ fn dart_map_key_decode(key: &FieldDef, expr: &str) -> String {
         return expr.to_owned();
     }
     match key.map_key_wire() {
-        MapKeyWire::Boolean => format!("({expr} == \"true\")"),
+        MapKeyWire::Boolean => format!(
+            "(switch ({expr}) {{ \"true\" => true, \"false\" => false, final refused => throw \
+             FormatException('Invalid bool key: $refused') }})"
+        ),
         #[cfg(feature = "chrono")]
         MapKeyWire::Timestamp => format!("DateTime.parse({expr})"),
         MapKeyWire::Enumerated => format!("{}.fromJson({expr})", dart_base(key)),

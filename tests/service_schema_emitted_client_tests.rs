@@ -482,6 +482,22 @@ mod run_dart_bytes;
 #[path = "service_schema_emitted_client_tests/run_dart_sets.rs"]
 mod run_dart_sets;
 
+/// The models a map keyed by a `bool` is held in, and the payloads each client is held to.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/bool_key_rows.rs"]
+mod bool_key_rows;
+
+/// A map keyed by a `bool` in each place a member holds one, read and written back by the
+/// emitted Dart types against serde, and passed by the analyzer.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_bool_keys.rs"]
+mod run_dart_bool_keys;
+
+/// The same, read and written back by the emitted Kotlin types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_bool_keys.rs"]
+mod run_kotlin_bool_keys;
+
 /// A map keyed by a `String` in each place a member holds one, read and written back by the
 /// emitted Dart types against serde, and passed by the analyzer.
 #[cfg(test)]
