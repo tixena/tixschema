@@ -223,7 +223,7 @@ async fn a_driver_error_is_told_as_a_database_error_and_is_its_source() {
 /// The resolver that settles it takes the `_id` out of the row before the second read.
 #[test]
 fn a_type_with_no_id_refuses_a_stored_row_until_a_resolver_settles_it() {
-    use customer_schema::{Issue as Found, Path, Resolution, Segment};
+    use customer_schema::{Issue as Found, Path, Resolution, Segment, Stored as _};
 
     let stored = doc! { "_id": seeded_id(), "name": "Acme", "openInvoices": 3_i64 };
     let refused = Customer::mongo_read_row(stored.clone(), &[]).unwrap_err();
@@ -248,7 +248,7 @@ fn a_type_with_no_id_refuses_a_stored_row_until_a_resolver_settles_it() {
         else {
             return Resolution::NotTouched;
         };
-        if path.remove_from_document(raw) {
+        if raw.remove_at(path) {
             Resolution::Settled
         } else {
             Resolution::Rejected
@@ -317,7 +317,7 @@ fn a_row_that_breaks_a_bound_is_unreadable_until_a_resolver_repairs_it() {
     let read = Invoice::mongo_read_row(nameless.clone(), &[]);
     #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     {
-        use super::invoice_schema::{Expected, Issue, Path, Resolution, Segment};
+        use super::invoice_schema::{Expected, Issue, Path, Resolution, Segment, Stored as _};
 
         let refused = read.unwrap_err();
         assert!(
@@ -356,8 +356,7 @@ fn a_row_that_breaks_a_bound_is_unreadable_until_a_resolver_repairs_it() {
             else {
                 return Resolution::NotTouched;
             };
-            let named =
-                held.is_empty() && path.set_in_document(raw, Bson::String("unnamed".to_owned()));
+            let named = held.is_empty() && raw.set_at(path, Bson::String("unnamed".to_owned()));
             if named {
                 Resolution::Settled
             } else {

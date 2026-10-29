@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-use record_schema::{Expected, Issue, Verdict};
+use record_schema::{Expected, Issue, Stored as _, Verdict};
 
 use super::oid;
 
@@ -29,7 +29,7 @@ fn repair_record(row: &mut Document, issues: &[Issue<Bson>]) -> Verdict {
             let Ok(id) = ObjectId::parse_str(hex) else {
                 return Verdict::Reject;
             };
-            path.set_in_document(row, Bson::ObjectId(id));
+            row.set_at(path, Bson::ObjectId(id));
         } else if let Issue::Invalid {
             path,
             expected: Expected::DateTime,
@@ -42,7 +42,7 @@ fn repair_record(row: &mut Document, issues: &[Issue<Bson>]) -> Verdict {
             else {
                 return Verdict::Reject;
             };
-            path.set_in_document(row, Bson::String(created.to_rfc3339()));
+            row.set_at(path, Bson::String(created.to_rfc3339()));
         } else if let Issue::Invalid {
             path,
             expected: Expected::DateTime,
@@ -54,7 +54,7 @@ fn repair_record(row: &mut Document, issues: &[Issue<Bson>]) -> Verdict {
             let Some(created) = DateTime::<Utc>::from_timestamp_millis(*millis) else {
                 return Verdict::Reject;
             };
-            path.set_in_document(row, Bson::String(created.to_rfc3339()));
+            row.set_at(path, Bson::String(created.to_rfc3339()));
         } else if let Issue::Invalid {
             path,
             expected: Expected::I32,
@@ -66,14 +66,14 @@ fn repair_record(row: &mut Document, issues: &[Issue<Bson>]) -> Verdict {
             let Ok(number) = text.parse::<i32>() else {
                 return Verdict::Reject;
             };
-            path.set_in_document(row, Bson::Int32(number));
+            row.set_at(path, Bson::Int32(number));
         } else if let Issue::Unknown {
             path,
             found: _found,
         } = issue
         {
             // a key no type declares, on the record or on one of its versions
-            path.remove_from_document(row);
+            row.remove_at(path);
         } else {
             return Verdict::Reject;
         }
@@ -82,7 +82,7 @@ fn repair_record(row: &mut Document, issues: &[Issue<Bson>]) -> Verdict {
 }";
 
 /// The line the README brings the callback's types into scope with.
-const DECLARED_IMPORT: &str = "use record_schema::{Expected, Issue, Verdict};";
+const DECLARED_IMPORT: &str = "use record_schema::{Expected, Issue, Stored, Verdict};";
 
 /// `Record` as the README declares it: what stands above its members, then each member in the
 /// README's order.
@@ -160,7 +160,7 @@ fn repair_record(row: &mut Document, issues: &[Issue<Bson>]) -> Verdict {
             let Ok(id) = ObjectId::parse_str(hex) else {
                 return Verdict::Reject;
             };
-            path.set_in_document(row, Bson::ObjectId(id));
+            row.set_at(path, Bson::ObjectId(id));
         } else if let Issue::Invalid {
             path,
             expected: Expected::DateTime,
@@ -173,7 +173,7 @@ fn repair_record(row: &mut Document, issues: &[Issue<Bson>]) -> Verdict {
             else {
                 return Verdict::Reject;
             };
-            path.set_in_document(row, Bson::String(created.to_rfc3339()));
+            row.set_at(path, Bson::String(created.to_rfc3339()));
         } else if let Issue::Invalid {
             path,
             expected: Expected::DateTime,
@@ -185,7 +185,7 @@ fn repair_record(row: &mut Document, issues: &[Issue<Bson>]) -> Verdict {
             let Some(created) = DateTime::<Utc>::from_timestamp_millis(*millis) else {
                 return Verdict::Reject;
             };
-            path.set_in_document(row, Bson::String(created.to_rfc3339()));
+            row.set_at(path, Bson::String(created.to_rfc3339()));
         } else if let Issue::Invalid {
             path,
             expected: Expected::I32,
@@ -197,14 +197,14 @@ fn repair_record(row: &mut Document, issues: &[Issue<Bson>]) -> Verdict {
             let Ok(number) = text.parse::<i32>() else {
                 return Verdict::Reject;
             };
-            path.set_in_document(row, Bson::Int32(number));
+            row.set_at(path, Bson::Int32(number));
         } else if let Issue::Unknown {
             path,
             found: _found,
         } = issue
         {
             // a key no type declares, on the record or on one of its versions
-            path.remove_from_document(row);
+            row.remove_at(path);
         } else {
             return Verdict::Reject;
         }

@@ -711,7 +711,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
-use order_line_schema::{Expected, Issue, Verdict};
+use order_line_schema::{Expected, Issue, Stored as _, Verdict};
 
 tixschema::decode_with_foundation!();
 
@@ -730,9 +730,9 @@ fn main() {
             let repaired = match issue {
                 Issue::Invalid { path, expected: Expected::U32, found: Value::String(text), .. } => {
                     text.parse::<u32>()
-                        .is_ok_and(|quantity| path.set_in_value(raw, Value::from(quantity)))
+                        .is_ok_and(|quantity| raw.set_at(path, Value::from(quantity)))
                 }
-                Issue::Unknown { path, .. } => path.remove_from_value(raw),
+                Issue::Unknown { path, .. } => raw.remove_at(path),
                 _ => false,
             };
             if !repaired {
@@ -1520,9 +1520,10 @@ pub fn model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
 ///   - `Undescribed { reason }`: a refusal the walk found no reason for. It carries no `path`.
 /// - `Expected`: what the field reads, such as `Expected::U32`, `Expected::String` or
 ///   `Expected::Model("Customer")`.
-/// - `Path` and `Segment`: where an issue is, displayed as `lines[1].quantity`. `set_in_value` and
-///   `remove_from_value` repair a JSON value, and under `bson` `set_in_document` and
-///   `remove_from_document` repair a BSON document; each answers whether it changed anything.
+/// - `Path` and `Segment`: where an issue is, displayed as `lines[1].quantity`.
+/// - `Stored`: the trait a callback repairs the raw value through, implemented for
+///   `serde_json::Value` and, under `bson`, for `bson::Document`. `set_at` and `remove_at` write
+///   at a `Path` and answer whether they changed anything; `at` reads there.
 /// - `Verdict`, `Resolution`, `Resolver<'r, D, V>` (a reference to a `Sync` function over the raw
 ///   value `D`), `Unrecovered<V>`, and `unsettled`, which runs resolvers over a list of issues.
 ///

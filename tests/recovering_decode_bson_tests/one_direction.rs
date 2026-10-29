@@ -169,7 +169,7 @@ fn a_wrong_value_under_a_read_key_is_listed_at_that_key_and_fixed_there() {
                     format!("{expected:?}"),
                     Some(held.clone()),
                 ));
-                path.set_in_document(raw, Bson::Int32(2_i32));
+                raw.set_at(path, Bson::Int32(2_i32));
             }
         }
         read_renamed_schema::Verdict::Fixed

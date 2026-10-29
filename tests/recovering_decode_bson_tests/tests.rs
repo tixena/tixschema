@@ -988,7 +988,7 @@ fn repair_record(
     row: &mut Document,
     issues: &[record_schema::Issue<Bson>],
 ) -> record_schema::Verdict {
-    use record_schema::{Expected, Issue, Verdict};
+    use record_schema::{Expected, Issue, Stored as _, Verdict};
 
     for issue in issues {
         if let Issue::Mistyped {
@@ -1000,7 +1000,7 @@ fn repair_record(
             let Ok(id) = ObjectId::parse_str(hex) else {
                 return Verdict::Reject;
             };
-            path.set_in_document(row, Bson::ObjectId(id));
+            row.set_at(path, Bson::ObjectId(id));
         } else if let Issue::Invalid {
             path,
             expected: Expected::DateTime,
@@ -1012,7 +1012,7 @@ fn repair_record(
             else {
                 return Verdict::Reject;
             };
-            path.set_in_document(row, Bson::String(created.to_rfc3339()));
+            row.set_at(path, Bson::String(created.to_rfc3339()));
         } else if let Issue::Invalid {
             path,
             expected: Expected::DateTime,
@@ -1023,7 +1023,7 @@ fn repair_record(
             let Some(created) = DateTime::<Utc>::from_timestamp_millis(*millis) else {
                 return Verdict::Reject;
             };
-            path.set_in_document(row, Bson::String(created.to_rfc3339()));
+            row.set_at(path, Bson::String(created.to_rfc3339()));
         } else if let Issue::Invalid {
             path,
             expected: Expected::I32,
@@ -1034,13 +1034,13 @@ fn repair_record(
             let Ok(number) = text.parse::<i32>() else {
                 return Verdict::Reject;
             };
-            path.set_in_document(row, Bson::Int32(number));
+            row.set_at(path, Bson::Int32(number));
         } else if let Issue::Unknown {
             path,
             found: _found,
         } = issue
         {
-            path.remove_from_document(row);
+            row.remove_at(path);
         } else {
             return Verdict::Reject;
         }
@@ -1284,6 +1284,7 @@ fn a_fixed_row_gets_one_more_read_and_fails_with_the_second_list() {
         raw: &mut Document,
         found: &[record_schema::Issue<Bson>],
     ) -> record_schema::Verdict {
+        use record_schema::Stored as _;
         for issue in found {
             if let record_schema::Issue::Mistyped {
                 path,
@@ -1291,7 +1292,7 @@ fn a_fixed_row_gets_one_more_read_and_fails_with_the_second_list() {
                 found: Bson::String(hex),
             } = issue
             {
-                path.set_in_document(raw, Bson::ObjectId(oid(hex)));
+                raw.set_at(path, Bson::ObjectId(oid(hex)));
             }
         }
         record_schema::Verdict::Fixed
@@ -1449,7 +1450,7 @@ fn a_plain_value_in_a_list_a_map_or_an_option_is_listed_and_fixed_at_its_own_pat
     };
     let mut seen: Vec<Told> = Vec::new();
     let read = CatalogByItem::from_bson_with(stored_row, |raw, found| {
-        use catalog_by_item_schema::{Issue, Verdict};
+        use catalog_by_item_schema::{Issue, Stored as _, Verdict};
 
         seen = told!(catalog_by_item_schema, found);
         for issue in found {
@@ -1459,7 +1460,7 @@ fn a_plain_value_in_a_list_a_map_or_an_option_is_listed_and_fixed_at_its_own_pat
                 found: Bson::String(hex),
             } = issue
             {
-                path.set_in_document(raw, Bson::ObjectId(oid(hex)));
+                raw.set_at(path, Bson::ObjectId(oid(hex)));
             } else if let Issue::Invalid {
                 path,
                 expected: _expected,
@@ -1470,7 +1471,7 @@ fn a_plain_value_in_a_list_a_map_or_an_option_is_listed_and_fixed_at_its_own_pat
                 let Ok(number) = written_as.parse::<i32>() else {
                     return Verdict::Reject;
                 };
-                path.set_in_document(raw, Bson::Int32(number));
+                raw.set_at(path, Bson::Int32(number));
             } else {
                 return Verdict::Reject;
             }
@@ -1708,6 +1709,7 @@ fn a_variants_field_a_hook_named_like_a_binding_refuses_is_invalid_at_the_field(
 
 #[test]
 fn a_key_stored_under_an_alias_is_its_field_and_an_issue_is_listed_at_the_alias() {
+    use aliased_schema::Stored as _;
     for key in ["name", "fullName", "label"] {
         let mut stored_row = Document::new();
         stored_row.insert(key, "Ada");
@@ -1743,7 +1745,7 @@ fn a_key_stored_under_an_alias_is_its_field_and_an_issue_is_listed_at_the_alias(
                 } else {
                     string("Ada")
                 };
-                path.set_in_document(raw, fixed);
+                raw.set_at(path, fixed);
             }
         }
         aliased_schema::Verdict::Fixed
@@ -1890,36 +1892,36 @@ fn a_refusal_the_walk_cannot_see_into_is_undescribed() {
 /// `Path` puts a value at the place an issue names inside a document, and takes one away from it.
 #[test]
 fn a_path_sets_and_removes_inside_a_bson_document() {
-    use record_schema::{Path, Segment};
+    use record_schema::{Path, Segment, Stored as _};
 
     let key = |name: &str| Segment::Key(name.to_owned());
     let number = Path(vec![key("versions"), Segment::Index(1), key("number")]);
     let mut raw = doc! { "versions": [{ "number": 1_i32 }, {}] };
-    assert!(number.set_in_document(&mut raw, Bson::Int32(2)));
+    assert!(raw.set_at(&number, Bson::Int32(2)));
     assert_eq!(
         raw,
         doc! { "versions": [{ "number": 1_i32 }, { "number": 2_i32 }] }
     );
-    assert!(number.set_in_document(&mut raw, Bson::Int32(3)));
+    assert!(raw.set_at(&number, Bson::Int32(3)));
     assert_eq!(
         raw,
         doc! { "versions": [{ "number": 1_i32 }, { "number": 3_i32 }] }
     );
-    assert!(number.remove_from_document(&mut raw));
-    assert!(!number.remove_from_document(&mut raw));
+    assert!(raw.remove_at(&number));
+    assert!(!raw.remove_at(&number));
 
     let third = Path(vec![key("versions"), Segment::Index(2)]);
-    assert!(!third.set_in_document(&mut raw, Bson::Null));
-    assert!(!third.remove_from_document(&mut raw));
+    assert!(!raw.set_at(&third, Bson::Null));
+    assert!(!raw.remove_at(&third));
     let first = Path(vec![key("versions"), Segment::Index(0)]);
-    assert!(first.set_in_document(&mut raw, Bson::Null));
+    assert!(raw.set_at(&first, Bson::Null));
     assert_eq!(raw, doc! { "versions": [Bson::Null, {}] });
-    assert!(first.remove_from_document(&mut raw));
+    assert!(raw.remove_at(&first));
     assert_eq!(raw, doc! { "versions": [{}] });
 
     let name = Path(vec![key("name")]);
-    assert!(name.set_in_document(&mut raw, string("Loan")));
-    assert!(name.set_in_document(&mut raw, string("Other")));
+    assert!(raw.set_at(&name, string("Loan")));
+    assert!(raw.set_at(&name, string("Other")));
     assert_eq!(raw, doc! { "versions": [{}], "name": "Other" });
 
     // A key is looked up in a document and a position in a list, and neither under a plain value.
@@ -1931,12 +1933,12 @@ fn a_path_sets_and_removes_inside_a_bson_document() {
         Path(vec![Segment::Index(0)]),
         Path::default(),
     ] {
-        assert!(!nowhere.set_in_document(&mut raw, Bson::Null));
-        assert!(!nowhere.remove_from_document(&mut raw));
+        assert!(!raw.set_at(&nowhere, Bson::Null));
+        assert!(!raw.remove_at(&nowhere));
     }
 
-    assert!(name.remove_from_document(&mut raw));
-    assert!(!name.remove_from_document(&mut raw));
+    assert!(raw.remove_at(&name));
+    assert!(!raw.remove_at(&name));
     assert_eq!(raw, doc! { "versions": [{}] });
 }
 
@@ -2010,6 +2012,7 @@ fn a_position_that_is_absent_is_missing() {
 
 #[test]
 fn a_position_the_type_does_not_declare_is_unknown_and_serde_reads_past_it() {
+    use placement_schema::Stored as _;
     let stored_row = doc! { "pair": ["a", 1_i32, true], "spot": ["b", 2_i32], "spots": [] };
     assert!(serde_reads::<Placement>(&stored_row));
     let mut seen: Vec<Told> = Vec::new();
@@ -2021,7 +2024,7 @@ fn a_position_the_type_does_not_declare_is_unknown_and_serde_reads_past_it() {
                 found: _found,
             } = issue
             {
-                path.remove_from_document(raw);
+                raw.remove_at(path);
             }
         }
         placement_schema::Verdict::Fixed
@@ -2082,7 +2085,7 @@ fn a_brand_a_single_slot_struct_and_a_unit_struct_are_walked_as_serde_writes_the
     };
     let mut seen: Vec<Told> = Vec::new();
     let read = Labelled::from_bson_with(stored_row, |raw, found| {
-        use labelled_schema::{Expected, Issue, Verdict};
+        use labelled_schema::{Expected, Issue, Stored as _, Verdict};
 
         seen = told!(labelled_schema, found);
         for issue in found {
@@ -2092,7 +2095,7 @@ fn a_brand_a_single_slot_struct_and_a_unit_struct_are_walked_as_serde_writes_the
                 found: Bson::String(hex),
             } = issue
             {
-                path.set_in_document(raw, Bson::ObjectId(oid(hex)));
+                raw.set_at(path, Bson::ObjectId(oid(hex)));
             } else if let Issue::Invalid {
                 path,
                 expected,
@@ -2105,13 +2108,13 @@ fn a_brand_a_single_slot_struct_and_a_unit_struct_are_walked_as_serde_writes_the
                 } else {
                     string("w")
                 };
-                path.set_in_document(raw, fixed);
+                raw.set_at(path, fixed);
             } else if let Issue::Unknown {
                 path,
                 found: _found,
             } = issue
             {
-                path.remove_from_document(raw);
+                raw.remove_at(path);
             } else {
                 return Verdict::Reject;
             }
@@ -2283,7 +2286,7 @@ fn a_transparent_struct_with_a_named_field_is_walked_as_the_value_its_field_hold
     };
     let mut seen: Vec<Told> = Vec::new();
     let read = Assigned::from_bson_with(stored_row, |raw, found| {
-        use assigned_schema::{Expected, Issue, Verdict};
+        use assigned_schema::{Expected, Issue, Stored as _, Verdict};
 
         seen = told!(assigned_schema, found);
         for issue in found {
@@ -2293,7 +2296,7 @@ fn a_transparent_struct_with_a_named_field_is_walked_as_the_value_its_field_hold
                 found: Bson::String(hex),
             } = issue
             {
-                path.set_in_document(raw, Bson::ObjectId(oid(hex)));
+                raw.set_at(path, Bson::ObjectId(oid(hex)));
             } else if let Issue::Invalid {
                 path,
                 expected: Expected::I32,
@@ -2301,13 +2304,13 @@ fn a_transparent_struct_with_a_named_field_is_walked_as_the_value_its_field_hold
                 reason: _reason,
             } = issue
             {
-                path.set_in_document(raw, Bson::Int32(3));
+                raw.set_at(path, Bson::Int32(3));
             } else if let Issue::Unknown {
                 path,
                 found: _found,
             } = issue
             {
-                path.remove_from_document(raw);
+                raw.remove_at(path);
             } else {
                 return Verdict::Reject;
             }
@@ -2411,7 +2414,7 @@ fn a_transparent_tuple_struct_is_walked_as_the_value_of_the_slot_serde_reads() {
     };
     let mut seen: Vec<Told> = Vec::new();
     let read = Filing::from_bson_with(stored_row, |raw, found| {
-        use filing_schema::{Expected, Issue, Verdict};
+        use filing_schema::{Expected, Issue, Stored as _, Verdict};
 
         seen = told!(filing_schema, found);
         for issue in found {
@@ -2421,7 +2424,7 @@ fn a_transparent_tuple_struct_is_walked_as_the_value_of_the_slot_serde_reads() {
                 found: Bson::String(hex),
             } = issue
             {
-                path.set_in_document(raw, Bson::ObjectId(oid(hex)));
+                raw.set_at(path, Bson::ObjectId(oid(hex)));
             } else if let Issue::Invalid {
                 path,
                 expected,
@@ -2434,13 +2437,13 @@ fn a_transparent_tuple_struct_is_walked_as_the_value_of_the_slot_serde_reads() {
                 } else {
                     string("b")
                 };
-                path.set_in_document(raw, fixed);
+                raw.set_at(path, fixed);
             } else if let Issue::Unknown {
                 path,
                 found: _found,
             } = issue
             {
-                path.remove_from_document(raw);
+                raw.remove_at(path);
             } else {
                 return Verdict::Reject;
             }
@@ -2571,6 +2574,7 @@ fn a_value_of_a_parameters_type_is_read_whole_at_its_field() {
 
 #[test]
 fn a_value_of_a_parameters_type_stored_as_another_type_is_mistyped() {
+    use pairing_schema::Stored as _;
     let stored_row = doc! { "left": "6a7cc592ca0574e6efdfe217", "right": 2_i64 };
     assert!(serde_reads::<Pairing<ObjectId, i32>>(&stored_row));
     let mut seen: Vec<Told> = Vec::new();
@@ -2583,7 +2587,7 @@ fn a_value_of_a_parameters_type_stored_as_another_type_is_mistyped() {
                 found: Bson::String(hex),
             } = issue
             {
-                path.set_in_document(raw, Bson::ObjectId(oid(hex)));
+                raw.set_at(path, Bson::ObjectId(oid(hex)));
             }
         }
         pairing_schema::Verdict::Fixed
@@ -2906,7 +2910,7 @@ fn an_issue_inside_a_variant_is_listed_and_fixed_at_its_full_path() {
     assert!(!serde_reads::<Drawing>(&stored_row));
     let mut seen: Vec<Told> = Vec::new();
     let read = Drawing::from_bson_with(stored_row, |raw, found| {
-        use drawing_schema::{Expected, Issue, Verdict};
+        use drawing_schema::{Expected, Issue, Stored as _, Verdict};
 
         seen = told!(drawing_schema, found);
         for issue in found {
@@ -2917,26 +2921,26 @@ fn an_issue_inside_a_variant_is_listed_and_fixed_at_its_full_path() {
                 reason: _reason,
             } = issue
             {
-                path.set_in_document(raw, Bson::Int32(3));
+                raw.set_at(path, Bson::Int32(3));
             } else if let Issue::Mistyped {
                 path,
                 expected: Expected::ObjectId,
                 found: Bson::String(hex),
             } = issue
             {
-                path.set_in_document(raw, Bson::ObjectId(oid(hex)));
+                raw.set_at(path, Bson::ObjectId(oid(hex)));
             } else if let Issue::Missing {
                 path,
                 expected: _expected,
             } = issue
             {
-                path.set_in_document(raw, Bson::Int32(2));
+                raw.set_at(path, Bson::Int32(2));
             } else if let Issue::Unknown {
                 path,
                 found: _found,
             } = issue
             {
-                path.remove_from_document(raw);
+                raw.remove_at(path);
             } else {
                 return Verdict::Reject;
             }
@@ -3433,6 +3437,7 @@ fn a_tag_stored_as_an_alias_names_its_variant_and_the_decider_never_runs() {
 
 #[test]
 fn an_issue_inside_a_variant_stored_under_an_alias_is_listed_and_fixed_under_the_stored_key() {
+    use contour_schema::Stored as _;
     let undeclared = doc! { "Round": { "extra": 1_i32, "radius": 1.5_f64 } };
     assert!(serde_reads::<Contour>(&undeclared));
     let read = Contour::from_bson_with(undeclared, |_raw, _found| contour_schema::Verdict::Reject);
@@ -3454,7 +3459,7 @@ fn an_issue_inside_a_variant_stored_under_an_alias_is_listed_and_fixed_under_the
                 reason: _reason,
             } = issue
             {
-                path.set_in_document(raw, Bson::Double(1.5_f64));
+                raw.set_at(path, Bson::Double(1.5_f64));
             } else {
                 return contour_schema::Verdict::Reject;
             }

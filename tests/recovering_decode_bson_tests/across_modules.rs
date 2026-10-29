@@ -36,6 +36,7 @@ fn count_as_text(
     raw: &mut Document,
     issue: &customer_schema::Issue<Bson>,
 ) -> customer_schema::Resolution {
+    use customer_schema::Stored as _;
     let customer_schema::Issue::Invalid {
         path,
         expected: customer_schema::Expected::U32,
@@ -47,7 +48,7 @@ fn count_as_text(
     };
     if text
         .parse::<i64>()
-        .is_ok_and(|count| path.set_in_document(raw, Bson::Int64(count)))
+        .is_ok_and(|count| raw.set_at(path, Bson::Int64(count)))
     {
         customer_schema::Resolution::Settled
     } else {

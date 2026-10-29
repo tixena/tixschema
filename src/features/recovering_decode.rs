@@ -54,13 +54,13 @@ use crate::utils::{
     any(feature = "typescript", feature = "zod", feature = "jsonschema"),
     not(feature = "mongodb")
 ))]
-const ADDED_TYPE_COUNT: usize = 15;
+const ADDED_TYPE_COUNT: usize = 16;
 
 #[cfg(all(
     any(feature = "typescript", feature = "zod", feature = "jsonschema"),
     feature = "mongodb"
 ))]
-const ADDED_TYPE_COUNT: usize = 37;
+const ADDED_TYPE_COUNT: usize = 38;
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
@@ -115,6 +115,7 @@ const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
     "Resolution",
     "Resolver",
     "Segment",
+    "Stored",
     "Taken",
     "TakenProbe",
     "Unrecovered",
@@ -145,6 +146,7 @@ const DECODE_WITH_LIBRARY_NAMES: &[&str] = &[
     "Resolution",
     "Resolver",
     "Segment",
+    "Stored",
     "Taken",
     "TakenProbe",
     "Unrecovered",
@@ -2704,20 +2706,17 @@ fn decode_with_library() -> TokenStream {
     }
 }
 
-/// What reads a BSON value: `bson_bound`, `bson_leaf` and its helpers, and the BSON helpers of
-/// `Path`.
+/// What reads a BSON value: `bson_bound`, `bson_leaf` and its helpers, and `Stored` for a document.
 #[cfg(feature = "bson")]
 fn bson_library_items() -> TokenStream {
     let bound = bson_bound_items();
     let leaf = bson_leaf_items();
-    let path = bson_path_helpers();
+    let path = bson_stored_items();
     quote! {
         #bound
         #leaf
 
-        impl Path {
-            #path
-        }
+        #path
     }
 }
 
@@ -3322,7 +3321,7 @@ fn bson_leaf_items() -> TokenStream {
                 if let Issue::Invalid { path, expected, found, .. } = issue {
                     match bson_digits_as_numbers(expected, found) {
                         ::core::option::Option::Some(stored) if stored != *found => {
-                            wrote |= path.set_in_document(root, stored);
+                            wrote |= Stored::set_at(root, path, stored);
                         }
                         _ => {}
                     }
@@ -3356,63 +3355,111 @@ fn bson_leaf_items() -> TokenStream {
     }
 }
 
-/// The helpers a callback fixes a BSON document through.
+/// `Stored` for a BSON document.
 #[cfg(feature = "bson")]
-fn bson_path_helpers() -> TokenStream {
+fn bson_stored_items() -> TokenStream {
     quote! {
-        /// Puts `value` at this path inside a BSON document, inserting the last key when it is absent.
-        pub fn set_in_document(&self, root: &mut bson::Document, value: bson::Bson) -> bool {
-            let ::core::option::Option::Some((Segment::Key(first), rest)) = self.0.split_first() else { return false };
-            let ::core::option::Option::Some((last, parents)) = rest.split_last() else {
-                root.insert(first.clone(), value);
-                return true;
-            };
-            let ::core::option::Option::Some(mut slot) = root.get_mut(first) else { return false };
-            for segment in parents {
-                let next = match (segment, slot) {
-                    (Segment::Key(key), bson::Bson::Document(object)) => object.get_mut(key),
-                    (Segment::Index(index), bson::Bson::Array(items)) => items.get_mut(*index),
-                    _ => ::core::option::Option::None,
-                };
-                let ::core::option::Option::Some(next) = next else { return false };
-                slot = next;
-            }
-            match (last, slot) {
-                (Segment::Key(key), bson::Bson::Document(object)) => {
-                    object.insert(key.clone(), value);
-                    true
-                }
-                (Segment::Index(index), bson::Bson::Array(items)) if *index < items.len() => {
-                    items[*index] = value;
-                    true
-                }
-                _ => false,
-            }
-        }
+        impl Stored for bson::Document {
+            type Value = bson::Bson;
 
-        /// Removes the key or item at this path inside a BSON document.
-        pub fn remove_from_document(&self, root: &mut bson::Document) -> bool {
-            let ::core::option::Option::Some((Segment::Key(first), rest)) = self.0.split_first() else { return false };
-            let ::core::option::Option::Some((last, parents)) = rest.split_last() else {
-                return root.remove(first).is_some();
-            };
-            let ::core::option::Option::Some(mut slot) = root.get_mut(first) else { return false };
-            for segment in parents {
-                let next = match (segment, slot) {
-                    (Segment::Key(key), bson::Bson::Document(object)) => object.get_mut(key),
-                    (Segment::Index(index), bson::Bson::Array(items)) => items.get_mut(*index),
-                    _ => ::core::option::Option::None,
+            fn set_at(&mut self, path: &Path, value: bson::Bson) -> bool {
+                let ::core::option::Option::Some((Segment::Key(first), rest)) = path.0.split_first() else { return false };
+                let ::core::option::Option::Some((last, parents)) = rest.split_last() else {
+                    self.insert(first.clone(), value);
+                    return true;
                 };
-                let ::core::option::Option::Some(next) = next else { return false };
-                slot = next;
-            }
-            match (last, slot) {
-                (Segment::Key(key), bson::Bson::Document(object)) => object.remove(key).is_some(),
-                (Segment::Index(index), bson::Bson::Array(items)) if *index < items.len() => {
-                    items.remove(*index);
-                    true
+                let ::core::option::Option::Some(mut slot) = self.get_mut(first) else { return false };
+                for segment in parents {
+                    let next = match (segment, slot) {
+                        (Segment::Key(key), bson::Bson::Document(object)) => object.get_mut(key),
+                        (Segment::Index(index), bson::Bson::Array(items)) => items.get_mut(*index),
+                        _ => ::core::option::Option::None,
+                    };
+                    let ::core::option::Option::Some(next) = next else { return false };
+                    slot = next;
                 }
-                _ => false,
+                match (last, slot) {
+                    (Segment::Key(key), bson::Bson::Document(object)) => {
+                        object.insert(key.clone(), value);
+                        true
+                    }
+                    (Segment::Index(index), bson::Bson::Array(items)) if *index < items.len() => {
+                        items[*index] = value;
+                        true
+                    }
+                    _ => false,
+                }
+            }
+
+            fn remove_at(&mut self, path: &Path) -> bool {
+                let ::core::option::Option::Some((Segment::Key(first), rest)) = path.0.split_first() else { return false };
+                let ::core::option::Option::Some((last, parents)) = rest.split_last() else {
+                    return self.remove(first).is_some();
+                };
+                let ::core::option::Option::Some(mut slot) = self.get_mut(first) else { return false };
+                for segment in parents {
+                    let next = match (segment, slot) {
+                        (Segment::Key(key), bson::Bson::Document(object)) => object.get_mut(key),
+                        (Segment::Index(index), bson::Bson::Array(items)) => items.get_mut(*index),
+                        _ => ::core::option::Option::None,
+                    };
+                    let ::core::option::Option::Some(next) = next else { return false };
+                    slot = next;
+                }
+                match (last, slot) {
+                    (Segment::Key(key), bson::Bson::Document(object)) => object.remove(key).is_some(),
+                    (Segment::Index(index), bson::Bson::Array(items)) if *index < items.len() => {
+                        items.remove(*index);
+                        true
+                    }
+                    _ => false,
+                }
+            }
+
+            fn at(&self, path: &Path) -> ::core::option::Option<&bson::Bson> {
+                let ::core::option::Option::Some((Segment::Key(first), rest)) = path.0.split_first() else {
+                    return ::core::option::Option::None;
+                };
+                let mut slot = self.get(first)?;
+                for segment in rest {
+                    slot = match (segment, slot) {
+                        (Segment::Key(key), bson::Bson::Document(object)) => object.get(key)?,
+                        (Segment::Index(index), bson::Bson::Array(items)) => items.get(*index)?,
+                        _ => return ::core::option::Option::None,
+                    };
+                }
+                ::core::option::Option::Some(slot)
+            }
+
+            fn text(value: &bson::Bson) -> ::core::option::Option<&str> {
+                value.as_str()
+            }
+
+            fn whole(value: &bson::Bson) -> ::core::option::Option<i64> {
+                match value {
+                    bson::Bson::Int32(number) => ::core::option::Option::Some(i64::from(*number)),
+                    bson::Bson::Int64(number) => ::core::option::Option::Some(*number),
+                    _ => ::core::option::Option::None,
+                }
+            }
+
+            fn real(value: &bson::Bson) -> ::core::option::Option<f64> {
+                match value {
+                    bson::Bson::Double(number) => ::core::option::Option::Some(*number),
+                    _ => ::core::option::Option::None,
+                }
+            }
+
+            fn from_text(text: ::std::string::String) -> bson::Bson {
+                bson::Bson::String(text)
+            }
+
+            fn from_whole(number: i64) -> bson::Bson {
+                bson::Bson::Int64(number)
+            }
+
+            fn from_real(number: f64) -> bson::Bson {
+                bson::Bson::Double(number)
             }
         }
     }
@@ -3917,7 +3964,7 @@ fn leaf_items() -> TokenStream {
                 if let Issue::Invalid { path, expected, found, .. } = issue {
                     match value_digits_as_numbers(expected, found) {
                         ::core::option::Option::Some(written) if written != *found => {
-                            wrote |= path.set_in_value(root, written);
+                            wrote |= Stored::set_at(root, path, written);
                         }
                         _ => {}
                     }
@@ -4311,28 +4358,47 @@ fn path_expression(segments: &[TokenStream]) -> TokenStream {
     quote! { [path, &[#(#segments),*]].concat() }
 }
 
-/// `Segment` and `Path`, with the helpers a callback fixes a JSON value through.
-fn path_items() -> TokenStream {
+/// The `Stored` trait.
+fn stored_trait_items() -> TokenStream {
     quote! {
-        #[derive(Clone, Debug, PartialEq, Eq)]
-        #[non_exhaustive]
-        pub enum Segment {
-            Key(::std::string::String),
-            Index(usize),
+        /// A value a resolver repairs at an issue's path: a JSON value, or a BSON document.
+        pub trait Stored {
+            /// What one place inside it holds.
+            type Value;
+            /// Puts `value` at `path`, inserting the last key when it is absent; whether anything changed.
+            fn set_at(&mut self, path: &Path, value: Self::Value) -> bool;
+            /// Takes out what is at `path`; whether anything changed.
+            fn remove_at(&mut self, path: &Path) -> bool;
+            /// What is at `path`, if anything.
+            fn at(&self, path: &Path) -> ::core::option::Option<&Self::Value>;
+            /// The text `value` holds.
+            fn text(value: &Self::Value) -> ::core::option::Option<&str>;
+            /// The whole number `value` holds.
+            fn whole(value: &Self::Value) -> ::core::option::Option<i64>;
+            /// The real number `value` holds.
+            fn real(value: &Self::Value) -> ::core::option::Option<f64>;
+            /// The value that holds `text`.
+            fn from_text(text: ::std::string::String) -> Self::Value;
+            /// The value that holds `number`.
+            fn from_whole(number: i64) -> Self::Value;
+            /// The value that holds `number`.
+            fn from_real(number: f64) -> Self::Value;
         }
+    }
+}
 
-        #[derive(Clone, Debug, Default, PartialEq, Eq)]
-        #[non_exhaustive]
-        pub struct Path(pub ::std::vec::Vec<Segment>);
+/// `Stored` for a JSON value.
+fn stored_json_items() -> TokenStream {
+    quote! {
+        impl Stored for serde_json::Value {
+            type Value = serde_json::Value;
 
-        impl Path {
-            /// Puts `value` at this path inside a JSON value, inserting the last key when it is absent.
-            pub fn set_in_value(&self, root: &mut serde_json::Value, value: serde_json::Value) -> bool {
-                let ::core::option::Option::Some((last, parents)) = self.0.split_last() else {
-                    *root = value;
+            fn set_at(&mut self, path: &Path, value: serde_json::Value) -> bool {
+                let ::core::option::Option::Some((last, parents)) = path.0.split_last() else {
+                    *self = value;
                     return true;
                 };
-                let mut slot = root;
+                let mut slot = self;
                 for segment in parents {
                     let next = match (segment, slot) {
                         (Segment::Key(key), serde_json::Value::Object(object)) => object.get_mut(key),
@@ -4355,10 +4421,9 @@ fn path_items() -> TokenStream {
                 }
             }
 
-            /// Removes the key or item at this path inside a JSON value.
-            pub fn remove_from_value(&self, root: &mut serde_json::Value) -> bool {
-                let ::core::option::Option::Some((last, parents)) = self.0.split_last() else { return false };
-                let mut slot = root;
+            fn remove_at(&mut self, path: &Path) -> bool {
+                let ::core::option::Option::Some((last, parents)) = path.0.split_last() else { return false };
+                let mut slot = self;
                 for segment in parents {
                     let next = match (segment, slot) {
                         (Segment::Key(key), serde_json::Value::Object(object)) => object.get_mut(key),
@@ -4377,7 +4442,65 @@ fn path_items() -> TokenStream {
                     _ => false,
                 }
             }
+
+            fn at(&self, path: &Path) -> ::core::option::Option<&serde_json::Value> {
+                let mut slot = self;
+                for segment in &path.0 {
+                    slot = match (segment, slot) {
+                        (Segment::Key(key), serde_json::Value::Object(object)) => object.get(key)?,
+                        (Segment::Index(index), serde_json::Value::Array(items)) => items.get(*index)?,
+                        _ => return ::core::option::Option::None,
+                    };
+                }
+                ::core::option::Option::Some(slot)
+            }
+
+            fn text(value: &serde_json::Value) -> ::core::option::Option<&str> {
+                value.as_str()
+            }
+
+            fn whole(value: &serde_json::Value) -> ::core::option::Option<i64> {
+                value.as_i64()
+            }
+
+            fn real(value: &serde_json::Value) -> ::core::option::Option<f64> {
+                value.as_f64()
+            }
+
+            fn from_text(text: ::std::string::String) -> serde_json::Value {
+                serde_json::Value::String(text)
+            }
+
+            fn from_whole(number: i64) -> serde_json::Value {
+                serde_json::Value::from(number)
+            }
+
+            fn from_real(number: f64) -> serde_json::Value {
+                serde_json::Value::from(number)
+            }
         }
+    }
+}
+
+/// `Segment` and `Path`, with the `Stored` trait and its JSON impl.
+fn path_items() -> TokenStream {
+    let stored_trait = stored_trait_items();
+    let stored_json = stored_json_items();
+    quote! {
+        #[derive(Clone, Debug, PartialEq, Eq)]
+        #[non_exhaustive]
+        pub enum Segment {
+            Key(::std::string::String),
+            Index(usize),
+        }
+
+        #[derive(Clone, Debug, Default, PartialEq, Eq)]
+        #[non_exhaustive]
+        pub struct Path(pub ::std::vec::Vec<Segment>);
+
+        #stored_trait
+
+        #stored_json
 
         impl ::core::fmt::Display for Path {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {

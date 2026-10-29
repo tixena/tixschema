@@ -69,7 +69,7 @@ fn record(numbers: &[i32]) -> Record {
 
 /// Repairs what the cases below leave in a `Record`, and rejects anything else.
 fn repair(raw: &mut Value, found: &[record_schema::Issue<Value>]) -> record_schema::Verdict {
-    use record_schema::{Expected, Issue, Verdict};
+    use record_schema::{Expected, Issue, Stored as _, Verdict};
 
     for issue in found {
         if let Issue::Invalid {
@@ -82,7 +82,7 @@ fn repair(raw: &mut Value, found: &[record_schema::Issue<Value>]) -> record_sche
             let Some(date) = epoch.as_i64().and_then(DateTime::from_timestamp_millis) else {
                 return Verdict::Reject;
             };
-            path.set_in_value(raw, Value::String(date.to_rfc3339()));
+            raw.set_at(path, Value::String(date.to_rfc3339()));
         } else if let Issue::Invalid {
             path,
             expected: Expected::I32,
@@ -93,20 +93,20 @@ fn repair(raw: &mut Value, found: &[record_schema::Issue<Value>]) -> record_sche
             let Ok(number) = text.parse::<i32>() else {
                 return Verdict::Reject;
             };
-            path.set_in_value(raw, Value::from(number));
+            raw.set_at(path, Value::from(number));
         } else if let Issue::Mistyped {
             path,
             expected: Expected::ObjectId,
             found: Value::String(hex),
         } = issue
         {
-            path.set_in_value(raw, json!({ "$oid": hex }));
+            raw.set_at(path, json!({ "$oid": hex }));
         } else if let Issue::Unknown {
             path,
             found: _found,
         } = issue
         {
-            path.remove_from_value(raw);
+            raw.remove_at(path);
         } else {
             return Verdict::Reject;
         }
@@ -210,6 +210,7 @@ fn value_4_a_fix_that_leaves_one_problem_fails_the_read() {
         raw: &mut Value,
         found: &[record_schema::Issue<Value>],
     ) -> record_schema::Verdict {
+        use record_schema::Stored as _;
         for issue in found {
             if let record_schema::Issue::Invalid {
                 path,
@@ -218,7 +219,7 @@ fn value_4_a_fix_that_leaves_one_problem_fails_the_read() {
                 reason: _reason,
             } = issue
             {
-                path.set_in_value(raw, json!("2025-10-04T17:46:40Z"));
+                raw.set_at(path, json!("2025-10-04T17:46:40Z"));
             }
         }
         record_schema::Verdict::Fixed
@@ -332,7 +333,7 @@ fn a_plain_value_in_a_list_a_map_or_an_option_is_listed_and_fixed_at_its_own_pat
     });
     let mut seen: Vec<String> = Vec::new();
     let read = CatalogByItem::from_value_with(stored, |raw, found| {
-        use catalog_by_item_schema::{Issue, Verdict};
+        use catalog_by_item_schema::{Issue, Stored as _, Verdict};
 
         seen = lines(&catalog_by_item_schema::Unrecovered {
             issues: found.to_vec(),
@@ -344,7 +345,7 @@ fn a_plain_value_in_a_list_a_map_or_an_option_is_listed_and_fixed_at_its_own_pat
                 found: Value::String(hex),
             } = issue
             {
-                path.set_in_value(raw, json!({ "$oid": hex }));
+                raw.set_at(path, json!({ "$oid": hex }));
             } else if let Issue::Invalid {
                 path,
                 expected: _expected,
@@ -355,7 +356,7 @@ fn a_plain_value_in_a_list_a_map_or_an_option_is_listed_and_fixed_at_its_own_pat
                 let Ok(number) = text.parse::<i32>() else {
                     return Verdict::Reject;
                 };
-                path.set_in_value(raw, Value::from(number));
+                raw.set_at(path, Value::from(number));
             } else {
                 return Verdict::Reject;
             }
@@ -403,6 +404,7 @@ fn a_list_or_map_field_held_as_something_else_is_one_issue_at_the_field() {
 
 #[test]
 fn an_id_held_as_text_under_a_brand_is_mistyped_at_the_brand() {
+    use owned_schema::Stored as _;
     let stored = json!({
         "owner": "6a7cc592ca0574e6efdfe217",
         "tagged": "6a7cc592ca0574e6efdfe218",
@@ -422,7 +424,7 @@ fn an_id_held_as_text_under_a_brand_is_mistyped_at_the_brand() {
                 found: Value::String(hex),
             } = issue
             {
-                path.set_in_value(raw, json!({ "$oid": hex }));
+                raw.set_at(path, json!({ "$oid": hex }));
             }
         }
         owned_schema::Verdict::Fixed

@@ -428,6 +428,7 @@ fn a_position_the_type_does_not_declare_is_unknown_beside_serdes_message() {
 
 #[test]
 fn a_decider_repairs_a_tuple_struct_by_the_position_it_is_handed() {
+    use pair_schema::Stored as _;
     let read = Pair::from_value_with(json!(["a", "7", true]), |raw, found| {
         for issue in found {
             if let pair_schema::Issue::Invalid {
@@ -437,13 +438,13 @@ fn a_decider_repairs_a_tuple_struct_by_the_position_it_is_handed() {
                 reason: _reason,
             } = issue
             {
-                path.set_in_value(raw, json!(7_i32));
+                raw.set_at(path, json!(7_i32));
             } else if let pair_schema::Issue::Unknown {
                 path,
                 found: _found,
             } = issue
             {
-                path.remove_from_value(raw);
+                raw.remove_at(path);
             } else {
                 return pair_schema::Verdict::Reject;
             }
@@ -547,6 +548,7 @@ fn an_optional_tuple_that_is_absent_or_null_is_no_issue() {
 
 #[test]
 fn a_decider_repairs_a_tuple_by_the_position_it_is_handed() {
+    use placement_schema::Stored as _;
     let mut stored = serde_json::to_value(placement()).unwrap();
     stored["spot"] = json!([4_i32, 4_i32, "extra"]);
     let read = Placement::from_value_with(stored, |raw, found| {
@@ -559,14 +561,14 @@ fn a_decider_repairs_a_tuple_by_the_position_it_is_handed() {
             } = issue
             {
                 assert_eq!(path.to_string(), "spot[0]");
-                path.set_in_value(raw, json!("s"));
+                raw.set_at(path, json!("s"));
             } else if let placement_schema::Issue::Unknown {
                 path,
                 found: _found,
             } = issue
             {
                 assert_eq!(path.to_string(), "spot[2]");
-                path.remove_from_value(raw);
+                raw.remove_at(path);
             } else {
                 return placement_schema::Verdict::Reject;
             }
@@ -941,6 +943,7 @@ fn a_transparent_struct_over_a_model_type_hands_its_fields_walk_to_that_type() {
 
 #[test]
 fn a_decider_repairs_a_transparent_struct_at_the_path_it_is_handed() {
+    use titled_schema::Stored as _;
     let mut stored = serde_json::to_value(titled()).unwrap();
     stored["current"] = json!({ "number": "1" });
     stored["slug"] = json!(5_i32);
@@ -960,7 +963,7 @@ fn a_decider_repairs_a_transparent_struct_at_the_path_it_is_handed() {
                     assert_eq!(path.to_string(), "slug");
                     json!("s")
                 };
-                path.set_in_value(raw, fixed);
+                raw.set_at(path, fixed);
             } else {
                 return titled_schema::Verdict::Reject;
             }
@@ -1164,6 +1167,7 @@ fn a_transparent_tuple_struct_is_walked_as_the_slot_serde_reads_past_a_default_a
 /// A unit struct is the `{}` tixschema makes it write: no key in it is the type's own.
 #[test]
 fn a_unit_struct_is_an_object_in_which_every_key_is_unknown() {
+    use ping_schema::Stored as _;
     let read = Ping::from_value_with(json!({ "x": 1_i32 }), |raw, found| {
         for issue in found {
             if let ping_schema::Issue::Unknown {
@@ -1172,7 +1176,7 @@ fn a_unit_struct_is_an_object_in_which_every_key_is_unknown() {
             } = issue
             {
                 assert_eq!(path.to_string(), "x");
-                path.remove_from_value(raw);
+                raw.remove_at(path);
             }
         }
         ping_schema::Verdict::Fixed

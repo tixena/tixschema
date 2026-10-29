@@ -216,6 +216,7 @@ fn a_generic_type_held_in_another_shape_is_listed_only_where_serde_refuses_it() 
 
 #[test]
 fn a_struct_with_two_parameters_reads_each_under_its_own_name() {
+    use pairing_schema::Stored as _;
     let stored = json!({ "left": 1_i32, "right": "x" });
     let read = Pairing::<String, i32>::from_value_with(stored, |raw, found| {
         let seen = lines(&pairing_schema::Unrecovered {
@@ -241,7 +242,7 @@ fn a_struct_with_two_parameters_reads_each_under_its_own_name() {
                 } else {
                     json!(2_i32)
                 };
-                path.set_in_value(raw, fixed);
+                raw.set_at(path, fixed);
             }
         }
         pairing_schema::Verdict::Fixed

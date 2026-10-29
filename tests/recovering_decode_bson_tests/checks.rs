@@ -152,6 +152,7 @@ fn dropping_what_is_outside(
     raw: &mut Document,
     issue: &checked_parcel_schema::Issue<Bson>,
 ) -> checked_parcel_schema::Resolution {
+    use checked_parcel_schema::Stored as _;
     let checked_parcel_schema::Issue::Invalid {
         path,
         expected: checked_parcel_schema::Expected::Unknown,
@@ -161,7 +162,7 @@ fn dropping_what_is_outside(
     else {
         return checked_parcel_schema::Resolution::NotTouched;
     };
-    if path.remove_from_document(raw) {
+    if raw.remove_at(path) {
         checked_parcel_schema::Resolution::Settled
     } else {
         checked_parcel_schema::Resolution::Rejected
@@ -237,6 +238,7 @@ fn the_piped_read_lists_a_broken_check_as_the_callback_read_does() {
 
 #[test]
 fn a_callback_repairs_a_check_through_the_path_of_its_issue() {
+    use checked_parcel_schema::Stored as _;
     let read = CheckedParcel::from_bson_with(outside(), |raw, found| {
         for issue in found {
             if let checked_parcel_schema::Issue::Invalid {
@@ -246,10 +248,7 @@ fn a_callback_repairs_a_check_through_the_path_of_its_issue() {
                 reason: _reason,
             } = issue
             {
-                assert!(
-                    path.remove_from_document(raw),
-                    "the path leads to the value"
-                );
+                assert!(raw.remove_at(path), "the path leads to the value");
             }
         }
         checked_parcel_schema::Verdict::Fixed

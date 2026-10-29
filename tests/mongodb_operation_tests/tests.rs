@@ -13,7 +13,9 @@ use bson::{Bson, Document, doc};
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-use invoice_schema::{Expected, Filter, Issue, OperationError, Path, Resolution, Segment};
+use invoice_schema::{
+    Expected, Filter, Issue, OperationError, Path, Resolution, Segment, Stored as _,
+};
 
 /// The `_id` of the row every check seeds.
 const SEEDED_ID: &str = "6a7cc592ca0574e6efdfe217";
@@ -157,7 +159,7 @@ fn whole_number_as_text(raw: &mut Document, issue: &Issue<Bson>) -> Resolution {
     let settled = text
         .trim()
         .parse::<i64>()
-        .is_ok_and(|number| number >= 0_i64 && path.set_in_document(raw, Bson::Int64(number)));
+        .is_ok_and(|number| number >= 0_i64 && raw.set_at(path, Bson::Int64(number)));
     if settled {
         Resolution::Settled
     } else {
