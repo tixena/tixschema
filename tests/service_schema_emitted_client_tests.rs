@@ -498,6 +498,49 @@ mod run_dart_bool_keys;
 #[path = "service_schema_emitted_client_tests/run_kotlin_bool_keys.rs"]
 mod run_kotlin_bool_keys;
 
+/// The models of a flattened choice and of an internally tagged struct variant, and the payloads
+/// each client is held to.
+#[cfg(test)]
+#[path = "generic_types_tests/flattened_zod_models.rs"]
+mod flattened_zod_models;
+
+/// What serde and `validate()` answer of the rows of [`flattened_zod_models`], whichever client
+/// runs them.
+#[cfg(test)]
+mod flattened_zod_rows {
+    use super::flattened_zod_models::{
+        CHECKED_REPORT, READ_REPORT, ROWS, checked_cases, checked_report, read_report, serde_report,
+    };
+
+    #[test]
+    fn serde_and_validate_answer_what_the_tables_state() {
+        assert_eq!(read_report(), READ_REPORT);
+        assert_eq!(checked_report(&checked_cases()), CHECKED_REPORT);
+        let strict = serde_report()
+            .lines()
+            .zip(read_report().lines())
+            .filter(|(serde, zod)| serde != zod)
+            .count();
+        assert_eq!(strict, ROWS.iter().filter(|row| row.zod_refuses).count());
+    }
+}
+
+/// A flattened choice and an internally tagged struct variant read by the emitted Dart types
+/// against serde and Rust's `validate()`.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_flattened_zod.rs"]
+mod run_dart_flattened_zod;
+
+/// The same, read by the emitted Kotlin types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_flattened_zod.rs"]
+mod run_kotlin_flattened_zod;
+
+/// The same, read by the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_flattened_zod.rs"]
+mod run_swift_flattened_zod;
+
 /// The models a map keyed by a brand over a number or a flag, or by an alias of a number, is held
 /// in, and the payloads each client is held to.
 #[cfg(test)]

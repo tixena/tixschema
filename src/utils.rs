@@ -320,6 +320,14 @@ pub struct AliasInfo {
     /// flattens it joins as one operand.
     #[cfg(feature = "zod")]
     pub zod_discriminated: bool,
+    /// The binding that publishes an untagged enum's members one by one, in the order of
+    /// [`Self::zod_union_members`], where the enum's own binding cannot be joined member by member.
+    #[cfg(feature = "zod")]
+    pub zod_members_binding: Option<String>,
+    /// The checks an untagged enum names, which each member is held to wherever the enum is
+    /// flattened.
+    #[cfg(feature = "zod")]
+    pub zod_union_checks: Vec<FunctionName>,
     /// What an untagged enum's members are spelled as on the Zod surface, and empty for every other
     /// item.
     #[cfg(feature = "zod")]
@@ -1300,6 +1308,10 @@ pub fn register_alias_info(
                 zod_union_members: Vec::new(),
                 #[cfg(feature = "zod")]
                 zod_discriminated: false,
+                #[cfg(feature = "zod")]
+                zod_members_binding: None,
+                #[cfg(feature = "zod")]
+                zod_union_checks: Vec::new(),
             },
         );
     });
@@ -1356,6 +1368,22 @@ pub fn record_zod_union_members(rust_ident: &str, members: &[ZodUnionMember]) {
     ALIAS_INFO.with(|map| {
         if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
             info.zod_union_members = members.to_vec();
+        }
+    });
+}
+
+/// Records the checks an untagged enum names and the binding that publishes its members, on the
+/// entry that enum has already registered.
+#[cfg(feature = "zod")]
+pub fn record_zod_union_publication(
+    rust_ident: &str,
+    checks: &[FunctionName],
+    members_binding: Option<String>,
+) {
+    ALIAS_INFO.with(|map| {
+        if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
+            info.zod_union_checks = checks.to_vec();
+            info.zod_members_binding = members_binding;
         }
     });
 }
