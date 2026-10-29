@@ -80,7 +80,7 @@ The serializer of a Kotlin type throws for a payload whose value breaks a bound 
 `src/features/kotlin/read.rs` writes it. `README.md`'s "The read in the Kotlin client" section is
 the consumer's view; this is what a change has to keep.
 
-- **A type has two serializers, a plain enum apart.** `{Type}Unjudged` reads and writes the type
+- **A type has two serializers, a plain enum that names no check apart.** `{Type}Unjudged` reads and writes the type
   and judges nothing. `{Type}Serializer` (`judged`) is the type's own, named by
   `@Serializable(with = ...)`: it reads through the first and throws
   `SerializationException(validate().joinToString("; "))`. It is also a `() ->
@@ -473,7 +473,7 @@ the consumer's view; this is what a change has to keep.
   writes for a class the plugin reads, a `JsonTransformingSerializer` over the plugin's, after the
   type's own functions and ahead of `preprocess::keyed`; in the object `flatten_merging_serializer`
   reads every member from; and in the object a tagged or an untagged enum hands a variant's class
-  (`members_renamed`). A plain enum that names no function is read by
+  (`members_renamed`). A plain enum that names no function or check is read by
   `aliases::plain_enum_serializer`, a `{Type}Unjudged` written by hand that reads each variant under
   its name and each alias, and carries no opt-in. One that names a function keeps
   `read::kept_plain`, and `aliases::text_named` reads the alias after the functions. The write keeps
@@ -533,9 +533,14 @@ say so.
   value class with a parameter unboxed to the `serialize` a `JsonTransformingSerializer` inherits,
   and the type's own serializer then throws `ClassCastException` on a write. So that one keeps
   the delegation and overrides `deserialize`.
-- **A plain enum that names a function carries `{Type}Unjudged` as its one serializer**
-  (`read::kept_plain`). `note_plain_enum` still says no holder names it: a holder reads the enum
-  by its own serializer, which is that one.
+- **A plain enum that names a check has the pair every type has.** `read::kept` or, for one that
+  reads a variant under an alias, `@Serializable(with = {Type}Serializer::class)`; `{Type}Unjudged`
+  is `kept_unjudged` over the plugin's serializer or `aliases::plain_enum_serializer`, and
+  `read::judged` is `{Type}Serializer`. `note_plain_enum` is told so, and a holder whose
+  `validate()` asks the enum reads it by `{Type}Unjudged`.
+- **A plain enum that names no check but a function carries `{Type}Unjudged` as its one
+  serializer** (`read::kept_plain`). `note_plain_enum` says no holder names it: a holder reads the
+  enum by its own serializer, which is that one.
 - **A member the plugin reads is read through a serializer of its own.** `Plugin::declared`
   queues `object {Owner}{Member}Preprocess : JsonTransformingSerializer<T>(...)`
   (`read::corrected_member`) and answers the annotation that names it. It reads through

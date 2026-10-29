@@ -584,32 +584,6 @@ where
     read_row(name, read_as, value, texts(expected))
 }
 
-/// A row of a plain enum, which keeps the plugin's serializer: it is read by it, and the read
-/// hands back a value `validate()` refuses.
-fn plain_enum_row<T>(
-    name: &'static str,
-    read_as: &str,
-    value: &T,
-    answered: Result<(), Vec<String>>,
-) -> Row
-where
-    T: Serialize,
-{
-    let read = format!(
-        "Json.decodeFromString(serializer<{read_as}>(), {})",
-        kotlin_string(&serde_json::to_string(value).unwrap())
-    );
-    Row {
-        expected: answered.err().unwrap_or_default(),
-        kotlin: read.clone(),
-        name,
-        read: Some(Read {
-            kotlin: read,
-            refused: Vec::new(),
-        }),
-    }
-}
-
 /// A row whose value is built in Kotlin, where the emitted serializer does not read what serde
 /// writes for the shape, or reads no variant of an untagged enum from it.
 fn built(name: &'static str, kotlin: &str, expected: &[&str]) -> Row {
@@ -979,13 +953,13 @@ fn struct_rows() -> Vec<Row> {
             &ClosedDock,
             ClosedDock.validate(),
         ),
-        plain_enum_row(
+        row(
             "Grade, unrated",
             "Grade",
             &Grade::Unrated,
             Grade::Unrated.validate(),
         ),
-        plain_enum_row(
+        row(
             "Grade, express",
             "Grade",
             &Grade::Express,
@@ -1226,7 +1200,7 @@ fn every_shape_runs_its_bounds_and_its_checks() {
 }
 
 /// The type's own serializer reads the payload of each row and throws what `validate()` answers
-/// of the value, each message at its full place, joined by `; `. A plain enum is read as it was.
+/// of the value, each message at its full place, joined by `; `.
 #[test]
 fn the_read_of_every_shape_throws_what_validate_answers() {
     let rows = every_row();
@@ -1240,21 +1214,10 @@ fn the_read_of_every_shape_throws_what_validate_answers() {
     assert_eq!(printed, read_report(&rows));
 }
 
-/// The one row whose read is not held to `validate()`: a plain enum keeps the plugin's
-/// serializer, and is handed back.
+/// serde reads no variant from a payload that breaks the bound of each, so the two rows of such a
+/// value are built in Kotlin.
 #[test]
-fn the_one_row_whose_read_is_not_what_validate_answers_is_a_plain_enums() {
-    let rows = every_row();
-    let differing: Vec<(&str, Vec<String>)> = rows
-        .iter()
-        .filter_map(|held| {
-            let read = held.read.as_ref()?;
-            (read.refused != held.expected).then(|| (held.name, read.refused.clone()))
-        })
-        .collect();
-    assert_eq!(differing, [("Grade, unrated", Vec::new())]);
-    // serde reads no variant from a payload that breaks the bound of each, so the two rows of
-    // such a value are built in Kotlin.
+fn serde_reads_no_variant_from_a_payload_that_breaks_the_bound_of_each() {
     serde_json::from_str::<Reference>("{\"name\":\"\"}").unwrap_err();
     serde_json::from_str::<Reference>("0").unwrap_err();
 }
