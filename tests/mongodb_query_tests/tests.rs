@@ -24,6 +24,7 @@ mod shadowing;
 mod shapes;
 mod stored;
 mod unseen;
+mod unwritten_bound;
 mod wrapper_names;
 mod written_names;
 

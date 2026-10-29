@@ -21,13 +21,14 @@ use quote::{ToTokens as _, format_ident, quote};
 use syn::ext::IdentExt as _;
 use syn::punctuated::Punctuated;
 use syn::{
-    DeriveInput, Field, Fields, FieldsNamed, GenericArgument, GenericParam, Generics, Item,
-    ItemStruct, LitStr, PathArguments, PredicateType, Token, Type, TypeParamBound, TypePath,
+    Attribute, DeriveInput, Field, Fields, FieldsNamed, GenericArgument, GenericParam, Generics,
+    Item, ItemStruct, LitStr, PathArguments, PredicateType, Token, Type, TypeParamBound, TypePath,
     Variant, WherePredicate, parse_quote,
 };
 
 use self::aliases::Reach;
 use crate::features::model_schema_prop::FunctionName;
+use crate::features::serde::read_bounds::serialize_bound;
 use crate::features::serde::{
     Direction, NAMED_READ_HOOK_PREFIX, SerdeFieldHooks, Tagging, has_serde_default,
     has_serde_read_hook, has_serde_skip_serializing, has_serde_transparent, parse_read_renames,
@@ -196,6 +197,12 @@ const MONGODB_LIBRARY_NAMES: &[&str] = &[
     "Update",
     "WriteError",
 ];
+
+/// A side's bounds, and the predicates the container's `bound` writes for it in their place.
+type Sides<'bound> = (
+    Punctuated<TypeParamBound, Token![+]>,
+    Option<&'bound [WherePredicate]>,
+);
 
 /// One arm reading a value that is there: the pattern it is held under, and what is listed for it.
 struct Arm {
@@ -645,14 +652,24 @@ impl Source {
 
     /// `generics` with what this source's walker reads and writes a value with joined to every type
     /// parameter and to the type itself, which carries whatever more serde's derive asks of one. A
-    /// parameter stays bounded in one place: its `where` predicate if it has one, else its name.
-    fn bounded(self, generics: &Generics) -> Generics {
-        let bounds: Punctuated<TypeParamBound, Token![+]> = match self {
+    /// parameter stays bounded in one place: its `where` predicate if it has one, else its name. A
+    /// side the container's `bound` writes joins nothing to the parameters.
+    fn bounded(self, generics: &Generics, bound: &WrittenBound) -> Generics {
+        let read: Sides<'_> = (
+            parse_quote!(serde::de::DeserializeOwned),
+            bound.read_written.then_some(&[][..]),
+        );
+        match self {
             #[cfg(feature = "bson")]
-            Self::Bson => parse_quote!(serde::de::DeserializeOwned + serde::Serialize),
-            Self::Json => parse_quote!(serde::de::DeserializeOwned),
-        };
-        bounded_by(generics, &bounds)
+            Self::Bson => bounded_by(
+                generics,
+                &[
+                    read,
+                    (parse_quote!(serde::Serialize), bound.write.as_deref()),
+                ],
+            ),
+            Self::Json => bounded_by(generics, &[read]),
+        }
     }
 
     /// The pattern a map is held under, binding its entries.
@@ -932,8 +949,28 @@ struct Whole {
     write: Option<TokenStream>,
 }
 
+/// What the container's `#[serde(bound)]` writes of the two sides.
+struct WrittenBound {
+    /// The `deserialize` side is written: `read_under` joins its predicates.
+    read_written: bool,
+    /// The predicates of the `serialize` side, where written.
+    write: Option<Vec<WherePredicate>>,
+}
+
+impl WrittenBound {
+    fn of(attrs: &[Attribute], read_written: bool) -> Self {
+        Self {
+            read_written,
+            write: serialize_bound(attrs),
+        }
+    }
+}
+
 /// What a type's item writes, as the walker's methods are written from it.
 struct Written<'reach> {
+    /// What the container's `bound` writes, which the generated impls take in place of serde's
+    /// own bounds on the type parameters.
+    bound: WrittenBound,
     /// `decode_with_check_messages`, written from the checks the item and its members name.
     check_messages: TokenStream,
     /// The item lists "mongodb" in `enable`: it is stored, and gets the MongoDB layer under
@@ -2358,6 +2395,7 @@ pub fn brand_recovering_decode(item_struct: &ItemStruct, mongodb: bool) -> Recov
 /// The recovering decode of a struct whose issues are listed from `read`.
 fn listed_from(item_struct: &ItemStruct, read: TokenStream, mongodb: bool) -> RecoveringDecode {
     let module_name = ident_schema_module_name(&item_struct.ident.to_string());
+    let authored = authored_read_bounds(&DeriveInput::from(item_struct.clone()));
     let parameters = type_parameters_in_scope(&item_struct.generics);
     let mut reach = Reach::new(&module_name);
     let mut walked = item_struct.clone();
@@ -2383,8 +2421,8 @@ fn listed_from(item_struct: &ItemStruct, read: TokenStream, mongodb: bool) -> Re
             names,
             reach: &reach,
             read,
-            read_predicates: authored_read_bounds(&DeriveInput::from(item_struct.clone()))
-                .predicates,
+            read_predicates: authored.predicates,
+            bound: WrittenBound::of(&item_struct.attrs, authored.written_by_container),
         },
         &paths,
         |walker| walker.methods(&shape, lone_bound.as_ref()),
@@ -2468,7 +2506,7 @@ where
     let mut type_impl = type_impls(
         name,
         generics,
-        &written.read_predicates,
+        written,
         (sources, &of_sources),
         &paths.type_items,
     );
@@ -2873,26 +2911,47 @@ fn bound_parameters(
     }
 }
 
-/// `generics` with `bounds` joined to every type parameter and to the type itself, which carries
-/// whatever more serde's derive asks of one.
-fn bounded_by(generics: &Generics, bounds: &Punctuated<TypeParamBound, Token![+]>) -> Generics {
+/// `generics` with every side's bounds joined to the type itself, which carries whatever more
+/// serde's derive asks of one, and to every type parameter unless the container writes the side.
+fn bounded_by(generics: &Generics, sides: &[Sides<'_>]) -> Generics {
     let mut bounded = generics.clone();
+    let itself: Punctuated<TypeParamBound, Token![+]> = sides
+        .iter()
+        .flat_map(|(bounds, _)| bounds.iter().cloned())
+        .collect();
     bounded
         .make_where_clause()
         .predicates
-        .push(parse_quote!(Self: #bounds));
-    bound_parameters(&mut bounded, bounds, None);
+        .push(parse_quote!(Self: #itself));
+    for (bounds, written) in sides {
+        if let Some(predicates) = written {
+            bounded
+                .make_where_clause()
+                .predicates
+                .extend(predicates.iter().cloned());
+        } else {
+            bound_parameters(&mut bounded, bounds, None);
+        }
+    }
     bounded
 }
 
 /// `generics` with what serde's derive asks to read the type beside `Deserialize` of a parameter,
 /// which a source's own bounds already ask: each of `predicates` that asks more, held at every
 /// lifetime serde reads at.
-fn read_under(generics: &Generics, predicates: &[WherePredicate]) -> Generics {
-    let asked_already: Vec<String> = generics
-        .type_params()
-        .map(|parameter| format!("{} : serde :: Deserialize < 'de >", parameter.ident))
-        .collect();
+fn read_under(
+    generics: &Generics,
+    predicates: &[WherePredicate],
+    source_joined_read: bool,
+) -> Generics {
+    let asked_already: Vec<String> = if source_joined_read {
+        generics
+            .type_params()
+            .map(|parameter| format!("{} : serde :: Deserialize < 'de >", parameter.ident))
+            .collect()
+    } else {
+        Vec::new()
+    };
     let mut bounded = generics.clone();
     for predicate in predicates {
         if asked_already.contains(&predicate.to_token_stream().to_string()) {
@@ -4610,7 +4669,7 @@ fn type_arguments(arguments: &PathArguments) -> impl Iterator<Item = &Type> {
 fn type_impls(
     name: &Ident,
     generics: &Generics,
-    read_predicates: &[WherePredicate],
+    written: &Written<'_>,
     (sources, methods): (&[Source], &[TokenStream]),
     paths: &TokenStream,
 ) -> TokenStream {
@@ -4624,7 +4683,11 @@ fn type_impls(
         };
     }
     let impls = sources.iter().zip(methods).map(|(source, of_source)| {
-        let bounded = read_under(&source.bounded(generics), read_predicates);
+        let bounded = read_under(
+            &source.bounded(generics, &written.bound),
+            &written.read_predicates,
+            !written.bound.read_written,
+        );
         let (impl_generics, type_generics, where_clause) = bounded.split_for_impl();
         quote! {
             impl #impl_generics #name #type_generics #where_clause {
@@ -4633,7 +4696,13 @@ fn type_impls(
         }
     });
     let of_paths = (!paths.is_empty()).then(|| {
-        let bounded = bounded_by(generics, &parse_quote!(::serde::Serialize));
+        let bounded = bounded_by(
+            generics,
+            &[(
+                parse_quote!(::serde::Serialize),
+                written.bound.write.as_deref(),
+            )],
+        );
         let (impl_generics, type_generics, where_clause) = bounded.split_for_impl();
         quote! {
             impl #impl_generics #name #type_generics #where_clause {

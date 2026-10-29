@@ -9,8 +9,8 @@ use quote::{ToTokens as _, format_ident, quote};
 use syn::ext::IdentExt as _;
 use syn::punctuated::Punctuated;
 use syn::{
-    Field, Fields, FieldsNamed, FieldsUnnamed, GenericParam, Generics, ItemEnum, ItemStruct, Token,
-    Type, TypeParamBound, Variant, WherePredicate, parse_quote,
+    Attribute, Field, Fields, FieldsNamed, FieldsUnnamed, GenericParam, Generics, ItemEnum,
+    ItemStruct, Token, Type, TypeParamBound, Variant, WherePredicate, parse_quote,
 };
 
 use super::aliases::PRIMITIVES;
@@ -19,6 +19,7 @@ use super::{
     Step, TypedPaths, bound_parameters, hooked_leaf, starts_at_a_parameter, type_arguments,
     unclaimed, unclaimed_parameter, value_slot, written_names,
 };
+use crate::features::serde::read_bounds::serialize_bound;
 use crate::features::serde::{
     Tagging, has_serde_skip_serializing, parse_serde_field_attributes, parse_serde_field_hooks,
     parse_serde_key_omission, parse_written_renames,
@@ -599,7 +600,12 @@ impl<'item> Emitter<'item> {
         self.own.typed(&field.ty, place, read && hooked.is_none())
     }
 
-    fn new(name: &'item Ident, generics: &'item Generics, written: &'item [String]) -> Self {
+    fn new(
+        name: &'item Ident,
+        generics: &'item Generics,
+        attrs: &[Attribute],
+        written: &'item [String],
+    ) -> Self {
         let module_name = ident_schema_module_name(&name.to_string());
         let named = |kept: fn(&GenericParam) -> Option<&Ident>| -> Vec<String> {
             generics
@@ -628,6 +634,7 @@ impl<'item> Emitter<'item> {
                     GenericParam::Const(_) | GenericParam::Lifetime(_) => None,
                 }),
                 value: unclaimed_parameter("Value", written),
+                write_bound: serialize_bound(attrs),
                 whole: unclaimed_parameter("Whole", written),
             },
             writers: Vec::new(),
@@ -779,6 +786,8 @@ struct Own<'item> {
     value: Ident,
     /// The parameter a type serde writes as one value carries its path as, named as `root` is.
     whole: Ident,
+    /// The predicates the container's `bound` writes for serializing, where it writes any.
+    write_bound: Option<Vec<WherePredicate>>,
 }
 
 impl Own<'_> {
@@ -1339,11 +1348,18 @@ impl Own<'_> {
                 .make_where_clause()
                 .predicates
                 .push(parse_quote!(#itself: ::serde::Serialize));
-            bound_parameters(
-                &mut bounded,
-                &parse_quote!(::serde::Serialize),
-                Some(&self.root),
-            );
+            if let Some(written) = &self.write_bound {
+                bounded
+                    .make_where_clause()
+                    .predicates
+                    .extend(written.iter().cloned());
+            } else {
+                bound_parameters(
+                    &mut bounded,
+                    &parse_quote!(::serde::Serialize),
+                    Some(&self.root),
+                );
+            }
         }
         bounded
     }
@@ -1510,7 +1526,7 @@ impl Shown {
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
 pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
-    let mut emitter = Emitter::new(&item.ident, &item.generics, written);
+    let mut emitter = Emitter::new(&item.ident, &item.generics, &item.attrs, written);
     let tagging = Tagging::of(item);
     let (put, named) = match &tagging {
         Tagging::Adjacent { content, tag } => (Put::Under(content), Some(Named::ByTag(tag))),
@@ -1921,7 +1937,7 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
 pub fn struct_paths(item: &ItemStruct, written: &[String]) -> TypedPaths {
-    let mut emitter = Emitter::new(&item.ident, &item.generics, written);
+    let mut emitter = Emitter::new(&item.ident, &item.generics, &item.attrs, written);
     let (declared, built, one_value) = match (value_slot(item), &item.fields) {
         (Some(slot), _) => {
             let (declared, built) = emitter.own.whole(is_text(slot));
