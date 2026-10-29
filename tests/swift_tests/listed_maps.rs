@@ -26,7 +26,7 @@ use super::listed_maps_models::{
     tagged_stowed_galley_swift, trug_swift, untagged_galley_swift, untagged_stowed_galley_swift,
 };
 #[cfg(feature = "chrono")]
-use super::listed_maps_models::{Timeline, timeline_swift};
+use super::listed_maps_models::{Dateline, Plank, Timeline, dateline_swift, timeline_swift};
 
 /// The JSON serde writes for `held`, read back by serde as it was written.
 fn read_back<Held>(held: &Held) -> String
@@ -715,7 +715,8 @@ fn a_map_hands_on_the_storage_of_each_map_it_holds() {
                  wireMaybeNumberListsByName.mapValues { $0.map { $0.map { $0.storage } } }; ",
                 "let wireValue = try \
                  container.decode(@heldMaybeRungsByRungValueKeyedMap@p?.self, \
-                 forKey: codingKey); result[key] = wireValue.map { $0.storage } }; ",
+                 forKey: codingKey); \
+                 _ = result.updateValue(wireValue.map { $0.storage }, forKey: key) }; ",
                 "self.numberListsByName = \
                  wireNumberListsByName.mapValues { $0.map { $0.storage } }; ",
                 "self.rungListsOrNoneByName = \
@@ -764,6 +765,44 @@ fn a_conversion_that_parses_a_date_keeps_its_try() {
             "let wireValue = try container.decode(String.self, forKey: codingKey); \
              result[key] = try Self.swiftSchemaParseIso8601Date(wireValue, \
              codingPath: decoder.codingPath) }",
+        ],
+    );
+}
+
+/// A map whose value is an optional is stored through `updateValue`, as assigning a `nil` through
+/// the subscript removes the entry: under a key Swift wraps, where the value is converted, and
+/// under a key Swift keys natively, where `validate()` walks the value.
+#[cfg(feature = "chrono")]
+#[test]
+fn an_optional_value_is_stored_with_update_value_so_a_null_entry_is_kept() {
+    let date = chrono::DateTime::from_timestamp_millis(1_704_164_645_678).unwrap();
+    assert_eq!(
+        read_back(&Dateline {
+            maybe_by_name: HashMap::from([("n".to_owned(), None)]),
+            maybe_by_number: HashMap::from([(1, Some(date))]),
+        }),
+        r#"{"maybe_by_name":{"n":null},"maybe_by_number":{"1":"2024-01-02T03:04:05.678Z"}}"#
+    );
+    assert_eq!(
+        read_back(&Dateline {
+            maybe_by_name: HashMap::from([(
+                "m".to_owned(),
+                Some(Plank {
+                    label: "a".to_owned()
+                })
+            )]),
+            maybe_by_number: HashMap::new(),
+        }),
+        r#"{"maybe_by_name":{"m":{"label":"a"}},"maybe_by_number":{}}"#
+    );
+    holds(
+        &dateline_swift::swift_definition(),
+        "",
+        "",
+        &[
+            "_ = result.updateValue(try wireValue.map { try Self.swiftSchemaParseIso8601Date($0, \
+             codingPath: decoder.codingPath) }, forKey: key) }",
+            "_ = entries.updateValue(nil, forKey: entry.stringValue) }",
         ],
     );
 }

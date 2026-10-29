@@ -177,7 +177,7 @@ fn an_alias_that_declares_a_parameter_republishes_its_ident_under_the_bound() {
         ),
         (
             quire_swift::swift_definition(),
-            "public typealias QuireType<Leaf: Codable & Sendable> = [UInt32: Leaf];",
+            "public typealias QuireType<Leaf: Codable & Sendable> = QuireTypeKeyedMap<Leaf>;",
             "public typealias Quire<Leaf: Codable & Sendable> = QuireType<Leaf>;",
         ),
     ] {

@@ -252,7 +252,7 @@ fn the_wrapper_of_a_date_key_is_written_whole() {
         &timetable_swift::swift_definition(),
         &[
             "public struct TimetableSailingsKeyedMap: Codable, Sendable { \
-           var storage: [Date: Sailing]; \
+           public var storage: [Date: Sailing]; \
            private static var isoFormatterForKeys: ISO8601DateFormatter { \
            let f = ISO8601DateFormatter(); \
            f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f }; \
@@ -262,7 +262,7 @@ fn the_wrapper_of_a_date_key_is_written_whole() {
            private struct DynamicCodingKey: CodingKey { var stringValue: String; \
            init?(stringValue: String) { self.stringValue = stringValue }; \
            var intValue: Int? { nil }; init?(intValue: Int) { nil } }; \
-           init(storage: [Date: Sailing]) { self.storage = storage }; \
+           public init(storage: [Date: Sailing]) { self.storage = storage }; \
            init(swiftSchemaUnjudged decoder: Decoder) throws { \
            let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
            var result: [Date: Sailing] = [:]; for codingKey in container.allKeys { \
@@ -296,7 +296,7 @@ fn the_wrapper_of_a_date_key_is_written_whole() {
         &tidetable_swift::swift_definition(),
         &[
             "public struct TidetableByAtKeyedMap<Stowed: Codable & Sendable>: Codable, Sendable { \
-             var storage: [Date: Stowed]; \
+             public var storage: [Date: Stowed]; \
              private static var isoFormatterForKeys: ISO8601DateFormatter { \
              let f = ISO8601DateFormatter(); \
              f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f }; ",
@@ -317,11 +317,11 @@ fn a_wrapper_of_a_parsed_key_is_written_as_it_was() {
     holds(
         &roll_swift::swift_definition(),
         &["public struct RollByCountKeyedMap: Codable, Sendable { \
-             var storage: [UInt32: Sailing];  \
+             public var storage: [UInt32: Sailing];  \
              private struct DynamicCodingKey: CodingKey { var stringValue: String; \
              init?(stringValue: String) { self.stringValue = stringValue }; \
              var intValue: Int? { nil }; init?(intValue: Int) { nil } }; \
-             init(storage: [UInt32: Sailing]) { self.storage = storage }; \
+             public init(storage: [UInt32: Sailing]) { self.storage = storage }; \
              init(swiftSchemaUnjudged decoder: Decoder) throws { \
              let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
              var result: [UInt32: Sailing] = [:]; for codingKey in container.allKeys { \
@@ -349,11 +349,11 @@ fn a_wrapper_of_a_parsed_key_is_written_as_it_was() {
         &muster_swift::swift_definition(),
         &[
             "public struct MusterByCountKeyedMap<Stowed: Codable & Sendable>: Codable, Sendable { \
-             var storage: [UInt32: Stowed];  \
+             public var storage: [UInt32: Stowed];  \
              private struct DynamicCodingKey: CodingKey { var stringValue: String; \
              init?(stringValue: String) { self.stringValue = stringValue }; \
              var intValue: Int? { nil }; init?(intValue: Int) { nil } }; \
-             init(storage: [UInt32: Stowed]) { self.storage = storage }; \
+             public init(storage: [UInt32: Stowed]) { self.storage = storage }; \
              public init(from decoder: Decoder) throws { \
              let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
              var result: [UInt32: Stowed] = [:]; for codingKey in container.allKeys { \
@@ -392,11 +392,11 @@ fn a_wrapper_of_a_text_key_or_a_flag_declares_no_formatter() {
         &roll_swift::swift_definition(),
         &[
             "public struct RollByDayKeyedMap: Codable, Sendable { \
-             var storage: [String: String];  \
+             public var storage: [String: String];  \
              private struct DynamicCodingKey: CodingKey { var stringValue: String; \
              init?(stringValue: String) { self.stringValue = stringValue }; \
              var intValue: Int? { nil }; init?(intValue: Int) { nil } }; \
-             init(storage: [String: String]) { self.storage = storage }; \
+             public init(storage: [String: String]) { self.storage = storage }; \
              public init(from decoder: Decoder) throws { \
              let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
              var result: [String: String] = [:]; for codingKey in container.allKeys { \
@@ -412,11 +412,11 @@ fn a_wrapper_of_a_text_key_or_a_flag_declares_no_formatter() {
              guard let codingKey = DynamicCodingKey(stringValue: wireKey) else { continue }; \
              try container.encode(value, forKey: codingKey) } } }; ",
             "public struct RollFlagsKeyedMap: Codable, Sendable { \
-             var storage: [Bool: UInt8];  \
+             public var storage: [Bool: UInt8];  \
              private struct DynamicCodingKey: CodingKey { var stringValue: String; \
              init?(stringValue: String) { self.stringValue = stringValue }; \
              var intValue: Int? { nil }; init?(intValue: Int) { nil } }; \
-             init(storage: [Bool: UInt8]) { self.storage = storage }; \
+             public init(storage: [Bool: UInt8]) { self.storage = storage }; \
              public init(from decoder: Decoder) throws { \
              let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
              var result: [Bool: UInt8] = [:]; for codingKey in container.allKeys { \
@@ -456,7 +456,7 @@ fn only_a_wrapper_of_a_date_key_declares_the_formatter() {
             seen += 1;
             assert_eq!(
                 wrapper.contains("isoFormatterForKeys"),
-                wrapper.contains("var storage: [Date: "),
+                wrapper.contains("public var storage: [Date: "),
                 "{wrapper}"
             );
         }

@@ -11,7 +11,7 @@ use regex_syntax::ast::{
     AssertionKind, Ast, ClassSet, ClassSetItem, Literal, LiteralKind, SpecialLiteralKind,
 };
 
-use super::{SwiftTypeArgs, result_case, swift_full_real_type, swift_member};
+use super::{SwiftTypeArgs, keys, result_case, swift_full_real_type, swift_member};
 use crate::bound_message::{Bound, swift_literal_text, swift_repeated, swift_violation};
 use crate::features::model_schema_prop::{FunctionName, LiteralValue, ModelSchemaPropMeta};
 use crate::field_type::{
@@ -1033,7 +1033,11 @@ fn held_walk(
 }
 
 /// The text serde writes for the key of a map's entry, read off `named`.
-fn key_text(key: &FieldDef, named: &str) -> String {
+fn key_text(written: &FieldDef, named: &str) -> String {
+    let key = keys::peeled(written);
+    if let Some((_, value)) = keys::brand_of(&key) {
+        return key_text(&value, &format!("{named}.value"));
+    }
     if matches!(key.field_type, FieldDefType::Boolean) {
         return format!("{named} ? \"true\" : \"false\"");
     }
@@ -1049,7 +1053,13 @@ fn key_text(key: &FieldDef, named: &str) -> String {
 
 /// What a map's entries are walked in the order of: the key itself where Swift orders its type,
 /// and the text serde writes for it where it does not.
-fn key_order(key: &FieldDef) -> String {
+fn key_order(written: &FieldDef) -> String {
+    let key = keys::peeled(written);
+    if let Some((_, value)) = keys::brand_of(&key) {
+        return key_order(&value)
+            .replace("$0.key", "$0.key.value")
+            .replace("$1.key", "$1.key.value");
+    }
     if matches!(key.field_type, FieldDefType::Boolean) {
         return "!$0.key && $1.key".to_owned();
     }
