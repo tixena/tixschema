@@ -41,6 +41,11 @@ use crate::features::serde::{parse_serde_field_attributes, parse_serde_type_attr
 const BOUND_TEXT_HELPER: &str = "static String _boundText(Object held) => held is String ? held : \
      _boundText((held as dynamic).value as Object);";
 
+/// Appended to a UTC date's text: `toIso8601String` writes `.000Z` for a date of whole seconds,
+/// which chrono writes with no fraction.
+#[cfg(feature = "chrono")]
+const CHRONO_WHOLE_SECONDS: &str = ".replaceFirst('.000Z', 'Z')";
+
 /// What a member of an emitted enum cannot be named beside the reserved words: a member every
 /// Dart enum or object already has, and one the emitted enum declares itself.
 const DART_ENUM_NAMES_TAKEN: [&str; 11] = [
@@ -1540,7 +1545,7 @@ fn dart_map_key_encode(key: &FieldDef, expr: &str) -> String {
     match key.map_key_wire() {
         MapKeyWire::Boolean => format!("({expr} ? \"true\" : \"false\")"),
         #[cfg(feature = "chrono")]
-        MapKeyWire::Timestamp => format!("{expr}.toUtc().toIso8601String()"),
+        MapKeyWire::Timestamp => format!("{expr}.toUtc().toIso8601String(){CHRONO_WHOLE_SECONDS}"),
         MapKeyWire::Enumerated => format!("({expr}).toJson()"),
         MapKeyWire::Named | MapKeyWire::Signed64 | MapKeyWire::Unsigned64 => {
             match &key.field_type {
@@ -1819,6 +1824,18 @@ fn map_decode(key: &FieldDef, value: &FieldDef, object: &str, read: Read) -> Str
     let value_ty = dart_typename(value);
     let key_decode = dart_map_key_decode(key, "e.key");
     let value_decode = dart_decode_expr(value, "e.value", read);
+    #[cfg(feature = "chrono")]
+    if matches!(key.map_key_wire(), MapKeyWire::Timestamp) {
+        let source = declared("source");
+        let held = declared("held");
+        let read_key = declared("readKey");
+        return format!(
+            "((Map<String, dynamic> {source}) {{ final {held} = <{key_ty}, {value_ty}>{{}}; \
+             for (final e in {source}.entries) {{ final {read_key} = {key_decode}; \
+             if ({held}.containsKey({read_key})) {{ throw FormatException('repeated key ${{e.key}}'); }} \
+             {held}[{read_key}] = {value_decode}; }} return {held}; }})({object})"
+        );
+    }
     format!(
         "Map<{key_ty}, {value_ty}>.fromEntries({object}.entries.map((e) => MapEntry({key_decode}, \
          {value_decode})))"
@@ -2365,7 +2382,7 @@ fn dart_encode_at(field: &FieldDef, level: u8, expr: &str) -> String {
             if has_as_number(field) {
                 expr.to_owned()
             } else {
-                format!("({expr}).toUtc().toIso8601String()")
+                format!("({expr}).toUtc().toIso8601String(){CHRONO_WHOLE_SECONDS}")
             }
         }
     }

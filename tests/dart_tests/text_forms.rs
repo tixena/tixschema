@@ -147,9 +147,9 @@ fn a_date_and_time_with_its_zone_is_written_in_utc() {
         &instant_log_dart::dart_definition(),
         &[
             "instant: DateTime.parse(json['instant'] as String),".to_owned(),
-            "'instant': (instant).toUtc().toIso8601String(),".to_owned(),
-            "MapEntry(e.key.toUtc().toIso8601String(), ".to_owned(),
-            "'instants': instants.map((e) => (e).toUtc().toIso8601String()).toList(),".to_owned(),
+            "'instant': (instant).toUtc().toIso8601String().replaceFirst('.000Z', 'Z'),".to_owned(),
+            "MapEntry(e.key.toUtc().toIso8601String().replaceFirst('.000Z', 'Z'), ".to_owned(),
+            "'instants': instants.map((e) => (e).toUtc().toIso8601String().replaceFirst('.000Z', 'Z')).toList(),".to_owned(),
         ],
     );
 }

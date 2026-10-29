@@ -7,6 +7,7 @@
 
 #![cfg(feature = "swift")]
 
+use core::fmt::Write as _;
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
@@ -14,10 +15,11 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::date_map_keys_models::{
-    AdjacentShift, AdjacentWatch, Chronicle, Daybook, Daybooks, Diary, Logbook, Sailing, Shift,
-    StowedLogbook, TaggedShift, TaggedWatch, Tidetable, Timetable, UntaggedShift, UntaggedWatch,
-    Watch, adjacent_shift_swift, adjacent_watch_swift, chronicle_swift, daybook_swift,
-    daybooks_swift, diary_swift, first, logbook_swift, sailing_swift, second, shift_swift,
+    AdjacentShift, AdjacentWatch, Chronicle, Convoy, Daybook, Daybooks, Diary, Logbook, Moment,
+    Reminder, Sailing, Shift, StowedLogbook, TaggedShift, TaggedWatch, Tidetable, Timetable,
+    UntaggedShift, UntaggedWatch, Watch, adjacent_shift_swift, adjacent_watch_swift,
+    chronicle_swift, convoy_swift, daybook_swift, daybooks_swift, diary_swift, first,
+    logbook_swift, moment_swift, reminder_swift, sailing_swift, second, shift_swift,
     stowed_logbook_swift, tagged_shift_swift, tagged_watch_swift, tidetable_swift, timetable_swift,
     untagged_shift_swift, untagged_watch_swift, watch_swift,
 };
@@ -47,6 +49,22 @@ func row<Read: Codable>(_ name: String, _ type: Read.Type, _ payload: String) {
 }
 "#;
 
+/// What a run prints of a payload whose keys read as one key: that it is refused with a message
+/// that names a key, which of the keys is the first one read being no order the payload fixes.
+const COLLISION_HARNESS: &str = r#"
+func collision<Read: Codable>(_ name: String, _ type: Read.Type, _ payload: String) {
+  do {
+    _ = try JSONDecoder().decode(type, from: Data(payload.utf8))
+    print("\(name): read")
+  } catch DecodingError.dataCorrupted(let context) {
+    let named = context.debugDescription.hasPrefix("repeated key 2024-01-02T03:04:05.678")
+    print("\(name): refused, naming a key: \(named)")
+  } catch {
+    print("\(name): \(error)")
+  }
+}
+"#;
+
 /// The key chrono writes for [`first`].
 const FIRST_WRITTEN: &str = r#""2024-01-02T03:04:05.678Z""#;
 
@@ -55,6 +73,13 @@ const NO_DATE: &str = r#""yesterday""#;
 
 /// What the Swift read prints for a payload that holds [`NO_DATE`] as a key.
 const BAD_KEY: &str = "refused\n    bad key yesterday";
+
+/// The payloads whose keys read as one key in Swift, each refused by naming a key.
+const COLLIDING: [(&str, &str, &str); 1] = [(
+    "keys finer than a millisecond",
+    "Timetable",
+    r#"{"by_at":{"2024-01-02T03:04:05.678100Z":1,"2024-01-02T03:04:05.678900Z":2},"sailings":{}}"#,
+)];
 
 /// One payload the run reads: its name, the Swift type that reads it, the payload, and what the
 /// Swift read is held to.
@@ -469,6 +494,203 @@ fn refused_variant_rows() -> Vec<Row> {
     ]
 }
 
+/// A model whose map is keyed by dates and whose value breaks its rule: the payload serde writes
+/// for `held`, refused by the Swift read with each message the Rust `validate()` answers, which
+/// names the key as serde writes it.
+fn validated_row<Held>(
+    name: &'static str,
+    read_as: &'static str,
+    held: &Held,
+    answered: Result<(), Vec<String>>,
+    key: &str,
+) -> Row
+where
+    Held: Serialize,
+{
+    let messages = answered.unwrap_err();
+    assert!(
+        messages.iter().all(|said| said.contains(key)),
+        "{messages:?}"
+    );
+    let lines = messages.iter().fold(String::new(), |mut lines, said| {
+        let _ = writeln!(lines, "    {said}");
+        lines
+    });
+    Row {
+        expected: format!("{name}: refused\n{lines}"),
+        name,
+        payload: serde_json::to_string(held).unwrap(),
+        read_as,
+    }
+}
+
+/// A model with the one date `at`, read from `payload` and written back as `written`.
+fn moment_row(name: &'static str, payload: &str, written: &str) -> Row {
+    assert!(serde_json::from_str::<Moment>(payload).is_ok(), "{payload}");
+    Row {
+        expected: format!("{name}: read {written}\n"),
+        name,
+        payload: payload.to_owned(),
+        read_as: "Moment",
+    }
+}
+
+/// A model with an optional date under `as_number`, read from `payload` as serde reads it.
+fn reminder_row(name: &'static str, payload: &str) -> Row {
+    let read: Reminder = serde_json::from_str(payload).unwrap();
+    Row {
+        expected: format!("{name}: read {}\n", serde_json::to_string(&read).unwrap()),
+        name,
+        payload: payload.to_owned(),
+        read_as: "Reminder",
+    }
+}
+
+/// A sailing whose label breaks its rule.
+fn unlabelled() -> Sailing {
+    Sailing {
+        label: String::new(),
+    }
+}
+
+/// A date of whole seconds, which chrono writes with no fraction.
+fn whole() -> DateTime<Utc> {
+    DateTime::from_timestamp(1_704_164_645, 0).unwrap()
+}
+
+/// The rows whose payload breaks a rule of a model held in a map keyed by a date, refused with
+/// the key named as serde writes it.
+fn validated_rows() -> Vec<Row> {
+    let key = "2024-01-02T03:04:05.678Z";
+    let timetable = Timetable {
+        by_at: HashMap::new(),
+        sailings: once(unlabelled()),
+    };
+    let whole_timetable = Timetable {
+        by_at: HashMap::new(),
+        sailings: HashMap::from([(whole(), unlabelled())]),
+    };
+    let logged = Watch::Logged {
+        by_at: HashMap::new(),
+        sailings: once(unlabelled()),
+    };
+    let tagged = TaggedWatch::Logged {
+        by_at: HashMap::new(),
+        sailings: once(unlabelled()),
+    };
+    let adjacent = AdjacentWatch::Logged {
+        by_at: HashMap::new(),
+        sailings: once(unlabelled()),
+    };
+    let untagged = UntaggedWatch::Logged {
+        by_at: HashMap::new(),
+        sailings: once(unlabelled()),
+    };
+    let logbook = Logbook {
+        listed: Vec::new(),
+        listed_or_none: Vec::new(),
+        maybe: None,
+        maybe_listed: None,
+        sailing_lists: vec![once(unlabelled())],
+    };
+    let convoy = Convoy {
+        held: "h".to_owned(),
+        sailings: once(unlabelled()),
+    };
+    vec![
+        validated_row(
+            "a struct whose key has a fraction",
+            "Timetable",
+            &timetable,
+            timetable.validate(),
+            key,
+        ),
+        validated_row(
+            "a struct whose key is whole seconds",
+            "Timetable",
+            &whole_timetable,
+            whole_timetable.validate(),
+            "2024-01-02T03:04:05Z",
+        ),
+        validated_row(
+            "a variant under no tag",
+            "Watch",
+            &logged,
+            logged.validate(),
+            key,
+        ),
+        validated_row(
+            "a variant under a tag",
+            "TaggedWatch",
+            &tagged,
+            tagged.validate(),
+            key,
+        ),
+        validated_row(
+            "a variant under a tag and a content key",
+            "AdjacentWatch",
+            &adjacent,
+            adjacent.validate(),
+            key,
+        ),
+        validated_row(
+            "an untagged variant",
+            "UntaggedWatch",
+            &untagged,
+            untagged.validate(),
+            key,
+        ),
+        validated_row(
+            "a list of maps",
+            "Logbook",
+            &logbook,
+            logbook.validate(),
+            key,
+        ),
+        validated_row(
+            "a type that declares a parameter",
+            "Convoy<String>",
+            &convoy,
+            convoy.validate(),
+            key,
+        ),
+    ]
+}
+
+/// The rows of a date written as chrono writes it: a key of whole seconds, a date field of whole
+/// seconds, of milliseconds and finer than a millisecond, which Swift's `Date` reads at the
+/// millisecond, and an optional date under `as_number`.
+fn written_as_serde_writes_rows() -> Vec<Row> {
+    let by_whole = Timetable {
+        by_at: HashMap::from([(whole(), 1)]),
+        sailings: HashMap::new(),
+    };
+    vec![
+        read_row("a key of whole seconds", "Timetable", &by_whole),
+        reminder_row(
+            "an optional date under as_number",
+            r#"{"due":1758000000000}"#,
+        ),
+        reminder_row("an optional date under as_number, null", r#"{"due":null}"#),
+        reminder_row("an optional date under as_number, absent", "{}"),
+        moment_row(
+            "a date of whole seconds",
+            r#"{"at":"2024-01-02T03:04:05Z"}"#,
+            r#"{"at":"2024-01-02T03:04:05Z"}"#,
+        ),
+        moment_row(
+            "a date of milliseconds",
+            r#"{"at":"2024-01-02T03:04:05.678Z"}"#,
+            r#"{"at":"2024-01-02T03:04:05.678Z"}"#,
+        ),
+        moment_row(
+            "a date finer than a millisecond",
+            r#"{"at":"2024-01-02T03:04:05.678901Z"}"#,
+            r#"{"at":"2024-01-02T03:04:05.678Z"}"#,
+        ),
+    ]
+}
+
 /// The text of every model compiles with warnings as errors, and every payload reads and writes in
 /// Swift as the serde read reads and writes it: each key in the text chrono writes, and a key that
 /// is no date refused.
@@ -478,6 +700,8 @@ fn each_map_keyed_by_a_date_reads_and_writes_in_swift_as_serde_does() {
     rows.extend(variant_rows());
     rows.extend(refused_struct_and_brand_rows());
     rows.extend(refused_variant_rows());
+    rows.extend(validated_rows());
+    rows.extend(written_as_serde_writes_rows());
     let expected: String = rows.iter().map(|row| row.expected.as_str()).collect();
     assert!(
         expected.contains("\"2024-01-02T03:04:05.678Z\":1")
@@ -493,6 +717,15 @@ fn each_map_keyed_by_a_date_reads_and_writes_in_swift_as_serde_does() {
             )
         })
         .collect();
+    let collisions: Vec<String> = COLLIDING
+        .iter()
+        .map(|(name, read_as, payload)| {
+            format!("collision(\"{name}\", {read_as}.self, #\"{payload}\"#)")
+        })
+        .collect();
+    let with_collisions = COLLIDING.iter().fold(expected, |printed, (name, _, _)| {
+        format!("{printed}{name}: refused, naming a key: true\n")
+    });
     let source = [
         "import Foundation".to_owned(),
         sailing_swift::swift_definition(),
@@ -512,8 +745,13 @@ fn each_map_keyed_by_a_date_reads_and_writes_in_swift_as_serde_does() {
         logbook_swift::swift_definition(),
         stowed_logbook_swift::swift_definition(),
         daybooks_swift::swift_definition(),
+        moment_swift::swift_definition(),
+        convoy_swift::swift_definition(),
+        reminder_swift::swift_definition(),
         HARNESS.to_owned(),
+        COLLISION_HARNESS.to_owned(),
         calls.join("\n"),
+        collisions.join("\n"),
     ]
     .join("\n\n");
     let Some(run) = judged(
@@ -531,5 +769,5 @@ fn each_map_keyed_by_a_date_reads_and_writes_in_swift_as_serde_does() {
         "`swift -warnings-as-errors main.swift` failed.\n--- stdout ---\n{}\n--- stderr ---\n{}\n--- source ---\n{source}",
         run.stdout, run.stderr
     );
-    assert_eq!(normalized(&run.stdout), normalized(&expected));
+    assert_eq!(normalized(&run.stdout), normalized(&with_collisions));
 }

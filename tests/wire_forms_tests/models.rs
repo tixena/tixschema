@@ -267,27 +267,38 @@ pub const WIRE_FORMS: &[WireFormRow] = &[
         "ConveyedInstant",
         r#""2024-01-05T10:20:30.000Z""#,
         r#"read, written back as {"keyed":{"2024-01-05T10:20:30Z":true},"value":"2024-01-05T10:20:30Z","values":["2024-01-05T10:20:30Z"]}"#,
-        ALL_HANDED,
+        Clients {
+            dart: Sends::As(r#""2024-01-05T10:20:30Z""#),
+            kotlin: Sends::Handed,
+            swift: Sends::As(r#""2024-01-05T10:20:30Z""#),
+            typescript: Sends::Handed,
+        },
     ),
     row(
         "ConveyedInstant",
         r#""2024-01-05T10:20:30Z""#,
         "read",
         Clients {
-            dart: Sends::As(r#""2024-01-05T10:20:30.000Z""#),
+            dart: Sends::As(r#""2024-01-05T10:20:30Z""#),
             kotlin: Sends::Handed,
-            swift: Sends::As(r#""2024-01-05T10:20:30.000Z""#),
+            swift: Sends::As(r#""2024-01-05T10:20:30Z""#),
             typescript: Sends::Apart(r#""2024-01-05T10:20:30.000Z""#, r#""2024-01-05T10:20:30Z""#),
         },
+    ),
+    row(
+        "ConveyedInstant",
+        r#""2024-01-05T10:20:30.500Z""#,
+        "read",
+        ALL_HANDED,
     ),
     row(
         "ConveyedInstant",
         r#""2024-01-05T10:20:30+02:00""#,
         r#"read, written back as {"keyed":{"2024-01-05T08:20:30Z":true},"value":"2024-01-05T08:20:30Z","values":["2024-01-05T08:20:30Z"]}"#,
         Clients {
-            dart: Sends::As(r#""2024-01-05T08:20:30.000Z""#),
+            dart: Sends::As(r#""2024-01-05T08:20:30Z""#),
             kotlin: Sends::Handed,
-            swift: Sends::As(r#""2024-01-05T08:20:30.000Z""#),
+            swift: Sends::As(r#""2024-01-05T08:20:30Z""#),
             typescript: Sends::Apart(
                 r#""2024-01-05T08:20:30.000Z""#,
                 r#""2024-01-05T10:20:30+02:00""#,
@@ -310,7 +321,7 @@ pub const WIRE_FORMS: &[WireFormRow] = &[
         r#""2024-01-05T10:20Z""#,
         "input contains invalid characters at line 1 column 29",
         Clients {
-            dart: Sends::As(r#""2024-01-05T10:20:00.000Z""#),
+            dart: Sends::As(r#""2024-01-05T10:20:00Z""#),
             kotlin: Sends::As(r#""2024-01-05T10:20:00Z""#),
             swift: Sends::Unheld,
             typescript: Sends::Refused,
@@ -853,6 +864,32 @@ fn serde_reads_every_payload_a_client_sends() {
                 told.starts_with("read"),
                 "serde refuses {sent}, which a client sends for {}: {told}",
                 row.held_by
+            );
+        }
+    }
+}
+
+/// A date a client sends, in every place the model holds it, is the instant it was handed.
+#[test]
+fn a_date_a_client_sends_is_the_instant_it_was_handed() {
+    for row in WIRE_FORMS
+        .iter()
+        .filter(|row| row.held_by == "ConveyedInstant")
+    {
+        let Ok(handed) = serde_json::from_str::<String>(row.handed) else {
+            continue;
+        };
+        let Ok(instant) = DateTime::parse_from_rfc3339(&handed) else {
+            continue;
+        };
+        for sent in row.sent() {
+            let read: ConveyedInstant = serde_json::from_str(&sent).unwrap();
+            assert_eq!(read.value, instant, "{sent} is not {handed}");
+            assert_eq!(read.values, vec![instant], "{sent} is not {handed}");
+            assert_eq!(
+                read.keyed.keys().copied().collect::<Vec<_>>(),
+                vec![instant],
+                "{sent} is not {handed}"
             );
         }
     }

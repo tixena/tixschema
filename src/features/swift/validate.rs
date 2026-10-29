@@ -1043,7 +1043,11 @@ fn key_text(written: &FieldDef, named: &str) -> String {
     }
     #[cfg(feature = "chrono")]
     if matches!(key.field_type, FieldDefType::DateTime) {
-        return format!("ISO8601DateFormatter().string(from: {named})");
+        return format!(
+            "{{ let f = ISO8601DateFormatter(); f.formatOptions = [{}]; return f }}().string(from: {named}){}",
+            super::FRACTIONAL_OPTIONS,
+            super::CHRONO_WHOLE_SECONDS
+        );
     }
     if matches!(key.field_type, FieldDefType::SiblingType(_, _)) {
         return format!("{named}.rawValue");

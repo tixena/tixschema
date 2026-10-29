@@ -488,6 +488,26 @@ mod run_dart_sets;
 #[path = "service_schema_emitted_client_tests/run_dart_text_keys.rs"]
 mod run_dart_text_keys;
 
+/// The models of the date runs of the emitted Dart, Kotlin and Swift types.
+#[cfg(all(test, feature = "chrono"))]
+#[path = "service_schema_emitted_client_tests/dates_models.rs"]
+mod dates_models;
+
+/// A date read and written back by the emitted Dart types against serde, at each precision.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_dates.rs"]
+mod run_dart_dates;
+
+/// A date read and written back by the emitted Kotlin types against serde.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_dates.rs"]
+mod run_kotlin_dates;
+
+/// A date read and written back by the emitted Swift types against serde, in every position.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_dates.rs"]
+mod run_swift_dates;
+
 /// A set that repeats an item, refused by the read of the emitted Swift types.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_swift_sets.rs"]

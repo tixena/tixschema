@@ -65,10 +65,17 @@ fn text_keys(swift: &str) -> usize {
 
 /// How a wrapper binds a key `parsed` from its text, ahead of the entry it reads.
 fn guarded(parsed: &str) -> String {
+    let repeated = if parsed.contains("isoFormatterForKeys") {
+        "if result.keys.contains(key) { \
+         throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
+         debugDescription: \"repeated key \\(wireKey)\") }; "
+    } else {
+        ""
+    };
     format!(
         "let wireKey = codingKey.stringValue; guard let key = {parsed} else {{ \
          throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
-         debugDescription: \"bad key \\(wireKey)\") }}; result[key] = "
+         debugDescription: \"bad key \\(wireKey)\") }}; {repeated}result[key] = "
     )
 }
 
