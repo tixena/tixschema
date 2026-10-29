@@ -1,6 +1,6 @@
 [package]
 name = "tixschema"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 authors = ["Eduardo Burgos <eduardo@tixena.com>"]
 description = "Declare a Rust type or service once and generate its TypeScript, Zod, JSON Schema, Dart, Swift and Kotlin forms, typed service clients and dispatchers, and MongoDB operations"
