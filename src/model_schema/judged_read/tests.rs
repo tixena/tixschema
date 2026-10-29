@@ -152,6 +152,44 @@ fn the_read_is_serdes_derive_on_a_copy_of_the_item_followed_by_validate() {
 }
 
 #[test]
+fn only_serdes_deserialize_is_taken_off_and_another_crates_is_kept() {
+    let (kept, written) = judged_struct(
+        "#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, rkyv::Archive, \
+         rkyv::Serialize, rkyv::Deserialize)] pub struct Berth { pub berth_label: String }",
+    );
+    assert_eq!(
+        kept,
+        "# [derive (Clone , Debug , PartialEq , serde :: Serialize , rkyv :: Archive , rkyv :: \
+         Serialize , rkyv :: Deserialize)] pub struct Berth { pub berth_label : String }"
+    );
+    assert!(!written.is_empty(), "no read written");
+
+    for spelling in ["Deserialize", "serde::Deserialize", "::serde::Deserialize"] {
+        let source = format!(
+            "#[derive(Serialize, {spelling}, rkyv::Deserialize)] pub struct Berth {{ pub \
+             berth_label: String }}"
+        );
+        let (left, read) = judged_struct(&source);
+        assert!(
+            left.contains("rkyv :: Deserialize"),
+            "for {spelling}: {left}"
+        );
+        assert!(
+            !left.contains("serde :: Deserialize"),
+            "for {spelling}: {left}"
+        );
+        assert!(!read.is_empty(), "for {spelling}");
+    }
+
+    let source = "#[derive(Serialize, rkyv::Deserialize)] pub struct Berth { pub berth_label: \
+                  String }";
+    let mut other: syn::ItemStruct = syn::parse_str(source).unwrap();
+    let before = other.to_token_stream().to_string();
+    assert!(of_struct(&mut other, true).is_empty());
+    assert_eq!(other.to_token_stream().to_string(), before);
+}
+
+#[test]
 fn an_item_that_only_reads_keeps_no_attribute_only_the_read_understood() {
     let (item, read) = judged_struct(
         "#[derive(serde::Deserialize)] #[serde(deny_unknown_fields)] pub struct Parcel { \
