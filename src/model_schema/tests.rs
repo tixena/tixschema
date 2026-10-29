@@ -3402,7 +3402,8 @@ fn a_tagged_newtype_variant_over_a_type_serde_writes_as_an_optional_is_refused_i
         let expanded = expansion_over(declared);
         assert_eq!(compile_error_count(&expanded), 0, "got: {expanded}");
     }
-    // A schema surface refuses a brand over an `Option` itself; the record is written either way.
+    // A build that describes a type refuses a brand over an `Option` itself; the record is written
+    // either way.
     let brand = expansion_over(
         "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct ProbeMaybeBrand(Box<\
          Option<ProbeFields>>);",
@@ -3412,7 +3413,10 @@ fn a_tagged_newtype_variant_over_a_type_serde_writes_as_an_optional_is_refused_i
         usize::from(cfg!(any(
             feature = "typescript",
             feature = "zod",
-            feature = "jsonschema"
+            feature = "jsonschema",
+            feature = "dart",
+            feature = "swift",
+            feature = "kotlin"
         ))),
         "got: {brand}"
     );
@@ -5223,6 +5227,71 @@ fn a_string_map_key_is_left_alone_in_every_build_that_describes_a_type() {
     );
 }
 
+/// The refusals below are the ones the schema surfaces already give, held in a build of the clients
+/// alone.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
+fn refusal_in_every_build(source: &str, said: &str) {
+    let expanded = expansion_over(source).to_string();
+    assert_eq!(
+        expanded.matches("compile_error").count(),
+        1,
+        "for `{source}`, got: {expanded}"
+    );
+    assert!(expanded.contains(said), "for `{source}`, got: {expanded}");
+}
+
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
+#[test]
+fn a_brand_over_an_option_is_refused_in_every_build_that_describes_a_type() {
+    refusal_in_every_build(
+        "#[serde(transparent)] pub struct Handle(Option<String>);",
+        "branded newtype `Handle` wraps an `Option`",
+    );
+}
+
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
+#[test]
+fn a_tuple_slot_dropped_from_one_direction_is_refused_in_every_build_that_describes_a_type() {
+    refusal_in_every_build(
+        "pub struct Pair(#[serde(skip_serializing)] String, u32);",
+        "slot 0 of tuple struct `Pair` carries a serde attribute that drops it from only one of \
+         serde's two directions",
+    );
+}
+
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
+#[test]
+fn an_alias_of_a_tuple_keyed_map_is_refused_in_every_build_that_describes_a_type() {
+    refusal_in_every_build(
+        "pub type Index = HashMap<(u8, u8), String>;",
+        "type alias `Index`: a map key must be a value serde writes as a string",
+    );
+}
+
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
+#[test]
+fn a_const_handed_to_a_written_type_is_refused_in_every_build_that_describes_a_type() {
+    refusal_in_every_build(
+        "pub struct Grid<const N: usize> { pub cells: Cells<N> }",
+        "cannot render the const parameter `N` as a type argument",
+    );
+}
+
 /// No local build is of the clients alone, so the gates are read off the sources.
 #[test]
 fn the_map_key_guard_is_compiled_in_every_build_that_describes_a_type() {
@@ -5262,6 +5331,58 @@ fn the_map_key_guard_is_compiled_in_every_build_that_describes_a_type() {
             "for `{named}`"
         );
     }
+}
+
+/// No local build is of the clients alone, so the gates are read off the sources.
+#[test]
+fn the_brand_slot_alias_and_const_guards_are_compiled_in_every_build_that_describes_a_type() {
+    let describing = quote::quote! {
+        any(
+            feature = "typescript",
+            feature = "zod",
+            feature = "jsonschema",
+            all(
+                feature = "serde",
+                any(feature = "dart", feature = "swift", feature = "kotlin")
+            )
+        )
+    };
+    let compiled = quote::quote!(cfg(#describing)).to_string();
+    let expansion = include_str!("../model_schema.rs");
+    for named in [
+        "branded_guard_errors",
+        "branded_option_inner_error",
+        "branded_constraint_inner_error",
+        "branded_pattern_error",
+        "branded_inner_value_surface",
+        "branded_undescribable_std_error",
+        "branded_map_key_error",
+        "held_as_a_list",
+        "declared_default_field",
+        "declared_default_type_name",
+        "declared_default_constraint_message",
+        "named_inner_constraint_message",
+        "non_string_inner_shape",
+        "surface_field_def",
+        "check_slot_wire_is_readable",
+        "slot_attributes_reach_the_wire",
+        "alias_map_key_guard_error",
+        "collect_const_arguments",
+        "bare_ident",
+        "const_parameter_argument_message",
+    ] {
+        assert_eq!(
+            gates_above(expansion, named),
+            [compiled.as_str()],
+            "for `{named}`"
+        );
+    }
+    let gates = gates_above(expansion, "const_parameter_argument_errors");
+    assert_eq!(
+        gates,
+        [compiled, quote::quote!(cfg(not(#describing))).to_string()],
+        "for `const_parameter_argument_errors`"
+    );
 }
 
 #[cfg(feature = "serde")]

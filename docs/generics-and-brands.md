@@ -262,8 +262,8 @@ them is split off. It refuses in both directions:
   filling at it describes as the one-character string serde writes.
 
 A const parameter earns its own refusal, from `const_parameter_argument_errors` at the same seam
-and gated on `typescript`/`jsonschema`: a const handed to a written type as an *argument* stands
-where a type is read, so the JSON side would call into a module named after it and the TypeScript
+and compiled in every build that describes a type, the Dart, Swift and Kotlin clients alone
+included: a const handed to a written type as an *argument* stands where a type is read, so the JSON side would call into a module named after it and the TypeScript
 side would write a name its declaration binds nothing for. A const written as an array length is
 untouched — that is the one position it renders in, as an unbounded array.
 
