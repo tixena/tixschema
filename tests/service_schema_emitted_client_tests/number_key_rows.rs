@@ -154,6 +154,24 @@ pub struct Soundings {
     pub gauge: BTreeMap<Gauge, u8>,
 }
 
+/// A list, an optional and a map of maps, over a brand over an `f64`.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Depths {
+    pub listed: Vec<BTreeMap<Gauge, u8>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maybe: Option<BTreeMap<Gauge, u8>>,
+    pub nested: BTreeMap<Hull, BTreeMap<Gauge, u8>>,
+}
+
+/// A variant that holds a map under a brand over an `f64`, under no tag attribute.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum Shoal {
+    Charted { gauge: BTreeMap<Gauge, u8> },
+    Marked(BTreeMap<Gauge, u8>),
+}
+
 /// A list, an optional and a map of maps, over a brand and an alias.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -270,7 +288,32 @@ pub fn rows() -> Vec<Row> {
         ),
         row::<Soundings>("Soundings", r#"{"gauge":{"1.5":1,"2.5":2}}"#),
         row::<Soundings>("Soundings", r#"{"gauge":{"x":1}}"#),
+        row::<Soundings>("Soundings", r#"{"gauge":{"1.0":1,"2.5":2}}"#),
+        row::<Soundings>("Soundings", r#"{"gauge":{"1e2":1}}"#),
+        row::<Soundings>("Soundings", r#"{"gauge":{"":1}}"#),
+        row::<Soundings>("Soundings", r#"{"gauge":{"-0.5":1,"2":2}}"#),
     ]);
+    let gauged = r#"{"1.5":1,"2.5":2}"#;
+    let depths = |listed: &str, maybe: &str, nested: &str| {
+        format!(r#"{{"listed":[{listed}],"maybe":{maybe},"nested":{nested}}}"#)
+    };
+    for json in [
+        depths(gauged, gauged, &format!(r#"{{"1":{gauged}}}"#)),
+        depths("", "null", "{}"),
+        depths(r#"{"x":1}"#, gauged, "{}"),
+        depths(gauged, r#"{"x":1}"#, "{}"),
+        depths(gauged, gauged, r#"{"1":{"x":1}}"#),
+    ] {
+        rows.push(row::<Depths>("Depths", &json));
+    }
+    for json in [
+        format!(r#"{{"Charted":{{"gauge":{gauged}}}}}"#),
+        r#"{"Charted":{"gauge":{"x":1}}}"#.to_owned(),
+        format!(r#"{{"Marked":{gauged}}}"#),
+        r#"{"Marked":{"x":1}}"#.to_owned(),
+    ] {
+        rows.push(row::<Shoal>("Shoal", &json));
+    }
     let nested = r#"{"1":{"false":1,"true":2}}"#;
     rows.extend([
         row::<Slips>("Slips", &slips_json(SOUND_BURGEE, SOUND_BURGEE, nested)),
@@ -317,6 +360,20 @@ pub fn rows() -> Vec<Row> {
         rows.push(row::<Anchor>("Anchor", &json));
     }
     rows
+}
+
+/// The float keys serde refuses that Swift's own float parse accepts.
+#[cfg(feature = "swift")]
+pub fn float_texts_serde_refuses() -> Vec<Row> {
+    [
+        r#"{"gauge":{"+1":1}}"#,
+        r#"{"gauge":{".5":1}}"#,
+        r#"{"gauge":{"0x10":1}}"#,
+        r#"{"gauge":{"1e999":1}}"#,
+    ]
+    .into_iter()
+    .map(|json| row::<Soundings>("Soundings", json))
+    .collect()
 }
 
 /// The payloads of a variant under one tagging: each member sound, each broken, and the tuple
