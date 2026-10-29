@@ -82,7 +82,7 @@ fn repair_record(row: &mut Document, issues: &[Issue<Bson>]) -> Verdict {
 }";
 
 /// The line the README brings the callback's types into scope with.
-const DECLARED_IMPORT: &str = "use record_schema::{Expected, Issue, Stored, Verdict};";
+const DECLARED_IMPORT: &str = "use record_schema::{Expected, Issue, Stored as _, Verdict};";
 
 /// `Record` as the README declares it: what stands above its members, then each member in the
 /// README's order.

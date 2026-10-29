@@ -157,7 +157,7 @@ fn id_dropped(
     raw: &mut Document,
     issue: &customer_schema::Issue<Bson>,
 ) -> customer_schema::Resolution {
-    use customer_schema::{Issue, Resolution, Stored};
+    use customer_schema::{Issue, Resolution, Stored as _};
 
     let Issue::Unknown {
         path,
