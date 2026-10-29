@@ -9248,7 +9248,7 @@ pub mod record {
 
 rustc's help line suggests `cargo add version_schema`; there is no such crate. The module is generated next to `Version`, in the module that declares it.
 
-With the `mongodb` feature on, a `#[model_schema(enable = ["decode_with", "mongodb"])]` type asks for the same import in every build, `jsonschema` or not, for each type that lists `"mongodb"` one of its fields is typed with: its typed MongoDB paths name that type's own. The error is then ``cannot find `version_schema` in `super` `` (`E0433`), reported at the field's type, and the same import resolves it. [Limits](#limits) has it beside the other limits of the paths.
+The import is the JSON Schema's alone. The typed MongoDB paths name no other type's module, so a type that lists `"mongodb"` and holds a model declared in another module builds with the model imported by itself in a build with `mongodb` and no `jsonschema`, whatever the other schema surfaces (`typescript`, `zod`) are.
 
 #### A Renaming That Names Two Keys
 
