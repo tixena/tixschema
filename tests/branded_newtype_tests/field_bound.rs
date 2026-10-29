@@ -169,3 +169,208 @@ mod bounded_at_the_field {
         );
     }
 }
+
+/// A field typed with a brand that declares a bound is held to that bound and to the one the
+/// field writes beside it.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+mod bounded_at_the_type_and_the_field {
+    use serde::{Deserialize, Serialize};
+    use tixschema::model_schema;
+
+    const WRONG_PATTERN: &str = "'slug': does not match pattern '^[a-z]+$'";
+
+    #[model_schema(minLength = 3)]
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(transparent)]
+    pub struct Slug(pub String);
+
+    #[model_schema()]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct Holder {
+        #[model_schema_prop(pattern = "^[a-z]+$")]
+        pub slug: Slug,
+    }
+
+    #[model_schema()]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct Plain {
+        pub slug: Slug,
+    }
+
+    #[model_schema()]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(untagged)]
+    pub enum Untagged {
+        Named {
+            #[model_schema_prop(pattern = "^[a-z]+$")]
+            slug: Slug,
+        },
+    }
+
+    #[model_schema()]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(tag = "kind")]
+    pub enum Tagged {
+        Named {
+            #[model_schema_prop(pattern = "^[a-z]+$")]
+            slug: Slug,
+        },
+    }
+
+    #[model_schema()]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct Tuple(#[model_schema_prop(pattern = "^[a-z]+$")] pub Slug);
+
+    fn slug(text: &str) -> Slug {
+        Slug(text.to_owned())
+    }
+
+    fn short(got: usize) -> String {
+        format!("'slug': too short: minimum length is 3, got {got}")
+    }
+
+    #[test]
+    fn a_struct_field_runs_the_type_bound_beside_its_own() {
+        assert_eq!(Holder { slug: slug("ab") }.validate(), Err(vec![short(2)]));
+        assert_eq!(
+            Holder { slug: slug("AB") }.validate(),
+            Err(vec![short(2), WRONG_PATTERN.to_owned()])
+        );
+        assert_eq!(Holder { slug: slug("abc") }.validate(), Ok(()));
+        assert_eq!(Plain { slug: slug("ab") }.validate(), Err(vec![short(2)]));
+    }
+
+    #[test]
+    fn an_untagged_named_member_runs_the_type_bound_beside_its_own() {
+        assert_eq!(
+            Untagged::Named { slug: slug("ab") }.validate(),
+            Err(vec![short(2)])
+        );
+        assert_eq!(
+            Untagged::Named { slug: slug("AB") }.validate(),
+            Err(vec![short(2), WRONG_PATTERN.to_owned()])
+        );
+    }
+
+    #[test]
+    fn a_tagged_named_member_runs_the_type_bound_beside_its_own() {
+        assert_eq!(
+            Tagged::Named { slug: slug("ab") }.validate(),
+            Err(vec![short(2)])
+        );
+        assert_eq!(
+            Tagged::Named { slug: slug("AB") }.validate(),
+            Err(vec![short(2), WRONG_PATTERN.to_owned()])
+        );
+    }
+
+    #[test]
+    fn a_slot_runs_the_type_bound_beside_its_own() {
+        assert_eq!(
+            Tuple(slug("AB")).validate(),
+            Err(vec![
+                "too short: minimum length is 3, got 2".to_owned(),
+                "does not match pattern '^[a-z]+$'".to_owned(),
+            ])
+        );
+    }
+
+    #[test]
+    fn the_read_answers_what_validate_answers() {
+        let built = Holder { slug: slug("AB") }
+            .validate()
+            .unwrap_err()
+            .join("; ");
+        let read = serde_json::from_str::<Holder>(r#"{"slug":"AB"}"#)
+            .map(|_| ())
+            .map_err(|error| error.to_string());
+        assert!(
+            read.as_ref().is_err_and(|text| text.starts_with(&built)),
+            "{read:?} does not start with {built}"
+        );
+        let tagged = serde_json::from_str::<Tagged>(r#"{"kind":"Named","slug":"ab"}"#)
+            .map(|_| ())
+            .map_err(|error| error.to_string());
+        assert!(
+            tagged
+                .as_ref()
+                .is_err_and(|text| text.starts_with(&short(2))),
+            "{tagged:?}"
+        );
+    }
+}
+
+/// The Crane of two codes, one with a bound of its own beside its brand's.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+mod bounded_crane {
+    use serde::{Deserialize, Serialize};
+    use tixschema::model_schema;
+
+    #[model_schema(minLength = 2)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(transparent)]
+    pub struct Code(pub String);
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct Crane {
+        #[model_schema_prop(maxLength = 5)]
+        pub load_code: Code,
+        pub spare_code: Code,
+    }
+
+    fn crane(load: &str, spare: &str) -> Crane {
+        Crane {
+            load_code: Code(load.to_owned()),
+            spare_code: Code(spare.to_owned()),
+        }
+    }
+
+    #[test]
+    fn validate_reports_the_brand_bound_and_the_field_bound() {
+        assert_eq!(
+            crane("a", "a").validate(),
+            Err(vec![
+                "'loadCode': too short: minimum length is 2, got 1".to_owned(),
+                "'spareCode': too short: minimum length is 2, got 1".to_owned(),
+            ])
+        );
+        assert_eq!(
+            crane("abcdefg", "ok").validate(),
+            Err(vec![
+                "'loadCode': too long: maximum length is 5, got 7".to_owned()
+            ])
+        );
+        assert_eq!(crane("ab", "ok").validate(), Ok(()));
+    }
+
+    #[test]
+    fn the_read_refuses_with_the_text_validate_answers() {
+        let built = crane("a", "ok").validate().unwrap_err().join("; ");
+        let read = serde_json::from_str::<Crane>(r#"{"loadCode":"a","spareCode":"ok"}"#)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            read.starts_with(&built),
+            "{read} does not start with {built}"
+        );
+    }
+
+    #[cfg(feature = "zod")]
+    #[test]
+    fn the_zod_schema_checks_the_brand_and_the_field() {
+        let zod = Crane::zod_schema();
+        assert!(
+            zod.contains("loadCode: Code$Schema.check(z.maxLength(5"),
+            "{zod}"
+        );
+        assert!(zod.contains("spareCode: Code$Schema,"), "{zod}");
+    }
+}

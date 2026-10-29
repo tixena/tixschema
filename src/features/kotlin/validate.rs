@@ -482,28 +482,24 @@ impl<'item> Rules<'item> {
         vec![format!("if ({broken}) {VIOLATIONS}.add({reported})")]
     }
 
-    /// What `member` adds: the repeat of a set it is, its bounds, what the value it holds reports
-    /// where no bound of its own stands in for that, then the checks it names. Where the bounds
-    /// choose a variant, they are the member's own and those of each brand it holds.
+    /// What `member` adds: the repeat of a set it is, what the value it holds reports, its bounds,
+    /// then the checks it names. Where the bounds choose a variant, they are the member's own and
+    /// those of each brand it holds.
     pub fn member(&mut self, member: &Member<'_>) {
         let (held, read) = presented(member);
         let place = member.place.as_deref();
         let depth = usize::from(member.def.is_optional());
         let bounds = self.bound_statements(member, &held, &read);
-        let asks_the_held = bounds.is_empty() || held.is_list();
         if self.chooses {
             let mut choosing = bounds.clone();
-            if asks_the_held {
-                choosing.extend(self.held_statements(&held, &read, place, depth, Asked::Bound));
-            }
+            choosing.extend(self.held_statements(&held, &read, place, depth, Asked::Bound));
             self.bounds.extend(behind(member, &read, &choosing));
         }
         let mut statements = own_repeat_statements(&held, &read, place);
+        let listed = held.without_own_set();
+        let below = self.held_statements(&listed, &read, place, depth, Asked::Report);
+        statements.extend(below);
         statements.extend(bounds);
-        if asks_the_held {
-            let listed = held.without_own_set();
-            statements.extend(self.held_statements(&listed, &read, place, depth, Asked::Report));
-        }
         statements.extend(self.check_statements(member, &read));
         self.statements.extend(behind(member, &read, &statements));
     }
@@ -638,21 +634,6 @@ fn answers_a_text(def: &FieldDef) -> bool {
     def.named_shape().is_some_and(|(named, _)| {
         NOTED.with(|seen| seen.borrow().get(named).is_some_and(|noted| noted.text))
     })
-}
-
-/// Whether `validate()` asks what a member typed `def` holds for what it reports: no bound of the
-/// member's own stands in for that, a list apart. A model is read unjudged there, and only there.
-pub fn asks_the_held(def: &FieldDef) -> bool {
-    let member = Member {
-        def,
-        place: None,
-        read: String::new(),
-    };
-    let (held, read) = presented(&member);
-    held.is_list()
-        || Rules::of(&[])
-            .bound_statements(&member, &held, &read)
-            .is_empty()
 }
 
 /// `statements`, which read `read`, behind the member's own `Option` where it has one.

@@ -338,8 +338,8 @@ mod a_key_on_a_list {
             .validate()
             .unwrap_err(),
             vec![
-                "'counted': too long: maximum length is 2, got 3",
                 "'counted.1': too short: minimum length is 3, got 2",
+                "'counted': too long: maximum length is 2, got 3",
             ],
             "the list is counted, and each item is still held by its brand"
         );

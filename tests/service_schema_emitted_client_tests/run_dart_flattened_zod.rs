@@ -7,10 +7,10 @@
 use core::fmt::Write as _;
 
 use super::flattened_zod_models::{
-    CHECKED_REPORT, ROWS, berthage_dart, block_dart, booking_dart, checked_cases, checked_report,
-    deck_dart, gap_dart, hatch_dart, mole_dart, moorage_dart, paragraph_dart, pause_dart,
-    quote_dart, serde_report, slip_dart, span_dart, tenancy_dart, tethered_dart, wharf_dart,
-    wharfage_dart,
+    CHECKED_REPORT, ROWS, berthage_dart, block_dart, booking_dart, cargo_dart, checked_cases,
+    checked_report, deck_dart, gap_dart, hatch_dart, hold_dart, mole_dart, moorage_dart,
+    paragraph_dart, pause_dart, quote_dart, serde_report, slip_dart, span_dart, tally_dart,
+    tenancy_dart, tethered_dart, wharf_dart, wharfage_dart,
 };
 use super::run_dart_validate::{dart, module};
 
@@ -71,6 +71,9 @@ fn definitions() -> Vec<String> {
         wharfage_dart::dart_definition(),
         hatch_dart::dart_definition(),
         deck_dart::dart_definition(),
+        cargo_dart::dart_definition(),
+        hold_dart::dart_definition(),
+        tally_dart::dart_definition(),
         gap_dart::dart_definition(),
         pause_dart::dart_definition(),
         span_dart::dart_definition(),

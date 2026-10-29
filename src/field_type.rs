@@ -2280,11 +2280,11 @@ impl FieldDef {
         if self.array_depth > 0 || self.is_written_around() {
             return None;
         }
-        let FieldDefType::SiblingType(name, _) = &self.field_type else {
+        let FieldDefType::SiblingType(name, arguments) = &self.field_type else {
             return None;
         };
-        let info = lookup_alias_info(name)?;
-        info.zod_members_binding
+        let binding = lookup_alias_info(name)?.zod_members_binding?;
+        placeholders_filled(&binding, |at| arguments.get(at).map(Self::zod_slot_type))
     }
 
     /// The same value on the Zod surface, for the same reason: what a merged source validates, with

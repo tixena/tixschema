@@ -8,10 +8,10 @@
 use core::fmt::Write as _;
 
 use super::flattened_zod_models::{
-    CHECKED_REPORT, ROWS, berthage_kotlin, block_kotlin, booking_kotlin, checked_cases,
-    checked_report, deck_kotlin, gap_kotlin, hatch_kotlin, mole_kotlin, moorage_kotlin,
-    paragraph_kotlin, pause_kotlin, quote_kotlin, read_report, slip_kotlin, span_kotlin,
-    tenancy_kotlin, tethered_kotlin, wharf_kotlin, wharfage_kotlin,
+    CHECKED_REPORT, ROWS, berthage_kotlin, block_kotlin, booking_kotlin, cargo_kotlin,
+    checked_cases, checked_report, deck_kotlin, gap_kotlin, hatch_kotlin, hold_kotlin, mole_kotlin,
+    moorage_kotlin, paragraph_kotlin, pause_kotlin, quote_kotlin, read_report, slip_kotlin,
+    span_kotlin, tally_kotlin, tenancy_kotlin, tethered_kotlin, wharf_kotlin, wharfage_kotlin,
 };
 use super::runtime::ran_kotlin;
 
@@ -38,6 +38,8 @@ fun notBlank(value: String): List<String> =
 /// What prints a row: the value read and written back with its keys sorted, or `refused`, and what
 /// prints a checked row.
 const HARNESS: &str = r#"
+val everyMember = Json { encodeDefaults = true }
+
 fun sorted(value: JsonElement): JsonElement = when (value) {
     is JsonObject -> JsonObject(value.entries.sortedBy { it.key }.associate { it.key to sorted(it.value) })
     is JsonArray -> JsonArray(value.map { sorted(it) })
@@ -46,7 +48,7 @@ fun sorted(value: JsonElement): JsonElement = when (value) {
 
 fun <T> told(at: String, serializer: KSerializer<T>, payload: String) {
     val printed = try {
-        "read ${sorted(Json.encodeToJsonElement(serializer, Json.decodeFromString(serializer, payload)))}"
+        "read ${sorted(everyMember.encodeToJsonElement(serializer, Json.decodeFromString(serializer, payload)))}"
     } catch (refused: SerializationException) {
         "refused"
     }
@@ -64,16 +66,6 @@ fun <T> checked(at: String, serializer: KSerializer<T>, payload: String) {
 }
 "#;
 
-/// The rows Kotlin reads otherwise than serde: `Slip` and `Wharfage` read none of their payloads,
-/// and `Mole` leaves the default of `dock` out of its second member.
-const NOT_READ_AS_SERDE_READS: [&str; 5] = [
-    "slip: a payload two members read",
-    "slip: the second member alone",
-    "slip: the first member alone",
-    "wharfage: a payload two members read",
-    "mole: the second member alone",
-];
-
 fn definitions() -> Vec<String> {
     vec![
         moorage_kotlin::kotlin_definition(),
@@ -85,6 +77,9 @@ fn definitions() -> Vec<String> {
         wharfage_kotlin::kotlin_definition(),
         hatch_kotlin::kotlin_definition(),
         deck_kotlin::kotlin_definition(),
+        cargo_kotlin::kotlin_definition(),
+        hold_kotlin::kotlin_definition(),
+        tally_kotlin::kotlin_definition(),
         gap_kotlin::kotlin_definition(),
         pause_kotlin::kotlin_definition(),
         span_kotlin::kotlin_definition(),
@@ -108,10 +103,7 @@ fn source(main: &str) -> String {
 #[test]
 fn a_flattened_choice_is_read_by_kotlin_as_serde_reads_it() {
     let mut main = String::from("fun main() {\n");
-    for row in ROWS
-        .iter()
-        .filter(|row| !NOT_READ_AS_SERDE_READS.contains(&row.name))
-    {
+    for row in ROWS {
         let _ = writeln!(
             main,
             "    told(\"{}\", serializer<{}>(), \"\"\"{}\"\"\")",
@@ -122,21 +114,7 @@ fn a_flattened_choice_is_read_by_kotlin_as_serde_reads_it() {
     let Some(printed) = ran_kotlin(&source(&main)) else {
         return;
     };
-    let kept = read_report();
-    let lines: Vec<&str> = kept
-        .lines()
-        .filter(|line| {
-            !NOT_READ_AS_SERDE_READS
-                .iter()
-                .any(|name| line.starts_with(&format!("{name}: ")))
-        })
-        .collect();
-    let expected = lines.join("\n");
-    assert_eq!(
-        printed,
-        format!("{expected}\n"),
-        "the Kotlin read is not serde's"
-    );
+    assert_eq!(printed, read_report(), "the Kotlin read is not serde's");
 }
 
 /// Each value of the checked rows is refused by Kotlin with the messages `validate()` answers.

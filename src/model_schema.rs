@@ -86,7 +86,7 @@ use crate::utils::{
 
 #[cfg(feature = "zod")]
 use crate::utils::{
-    escape_js_regex_literal, extract_examples_tokens, publishes_zod_factory,
+    escape_js_regex_literal, extract_examples_tokens, placeholders_filled, publishes_zod_factory,
     record_zod_default_arguments, record_zod_factory, record_zod_preprocess, zod_default_arguments,
     zod_factory_argument,
 };
@@ -18817,14 +18817,9 @@ fn process_field(
     // The read-time half of the reach `validate()` has below: what the field's own type turns
     // away before `validate()` is ever asked.
     #[cfg(feature = "serde")]
-    if let Some((hook, attrs)) = member_read_hook(
-        ctx,
-        field,
-        &field_def,
-        index,
-        validate_body.as_ref(),
-        place.reported.as_deref(),
-    ) {
+    if let Some((hook, attrs)) =
+        member_read_hook(ctx, field, &field_def, index, place.reported.as_deref())
+    {
         validation_fn = Some(match validation_fn {
             Some(already) => quote! { #already #hook },
             None => hook,
@@ -18967,13 +18962,9 @@ fn member_read_hook(
     field: &Field,
     field_def: &FieldDef,
     index: usize,
-    own_bound: Option<&proc_macro2::TokenStream>,
     reported: Option<&str>,
 ) -> Option<(proc_macro2::TokenStream, Vec<syn::Attribute>)> {
-    // A member's own bound stands in for what its type declares, a list's count apart, and a
-    // flattened member is walked whatever it writes.
-    let walked_below = own_bound.is_none() || field_def.is_list() || is_flattened_field(field);
-    if walked_below && read_unjudged_below(ctx, field, field_def, index, reported) {
+    if read_unjudged_below(ctx, field, field_def, index, reported) {
         return None;
     }
     named_read_hook(field, field_def, ctx, &field_ident_string(field), reported?)
@@ -19079,8 +19070,8 @@ fn names_what_the_module_cannot_repeat(ty: &syn::Type, type_parameters: &[String
         .any(|word| word == "Self" || type_parameters.iter().any(|named| named == word))
 }
 
-/// What a member contributes to `validate()`: its own check, or the one its type declares where
-/// it writes none. A list runs both: its own check counts it, and its items' type holds each item.
+/// What a member contributes to `validate()`: the check its type declares, then its own. A
+/// list's own check counts it, and its items' type holds each item.
 /// `place` is where the member is read and the name it is reported under.
 #[cfg(feature = "serde")]
 fn named_member_validate_body(
@@ -19089,9 +19080,6 @@ fn named_member_validate_body(
     field_def: &FieldDef,
     place: &MemberPlace,
 ) -> Option<proc_macro2::TokenStream> {
-    if own.is_some() && !field_def.is_list() {
-        return own;
-    }
     let below = if field.ident.is_some() {
         nested_validate_body(field, field_def, place)
     } else {
@@ -19146,14 +19134,14 @@ fn held_member_checks(
     checks::member_calls(place, &field.ty, named, VALIDATE_SINK)
 }
 
-/// What an untagged slot's arm runs: the slot's own check, then the one its type declares.
+/// What a member's arm runs: the check its type declares, then its own, the order Zod reports.
 #[cfg(feature = "serde")]
 fn slot_validate_body(
     own: Option<proc_macro2::TokenStream>,
     nested: Option<proc_macro2::TokenStream>,
 ) -> Option<proc_macro2::TokenStream> {
     match (own, nested) {
-        (Some(declared), Some(below)) => Some(quote! { #declared #below }),
+        (Some(declared), Some(below)) => Some(quote! { #below #declared }),
         (declared, below) => declared.or(below),
     }
 }
@@ -20230,8 +20218,8 @@ fn generate_ts_definition_method(
 /// The members of an untagged enum as a binding of their own, wherever the enum's own binding
 /// reads a payload whole (it names a `preprocess`, or a member's text holds the default of a
 /// member) and so cannot be joined to an object's keys: Zod's union refuses a payload that two of
-/// its members accept beside those keys. Nothing for a generic enum, whose binding is a factory,
-/// and for a union a key tells apart.
+/// its members accept beside those keys. A generic enum publishes a factory of them, one list per
+/// filling. Nothing for a union a key tells apart.
 #[cfg(feature = "zod")]
 fn zod_published_members(
     item_name: &str,
@@ -20244,21 +20232,41 @@ fn zod_published_members(
         || members
             .iter()
             .any(|member| holds_a_placeholder(&member.spelling));
-    if !parameters.is_empty() || discriminated || !read_whole || members.is_empty() {
+    if discriminated || !read_whole || members.is_empty() {
         return None;
     }
-    let binding = format!("{item_name}$Members");
     let written = members.iter().fold(String::new(), |mut acc, member| {
-        let _ = writeln!(
-            acc,
-            "  {},",
-            zod_preprocess_wrap(member.spelling.clone(), &args.preprocess)
-        );
+        let filled = placeholders_filled(&member.spelling, |at| {
+            parameters
+                .get(at)
+                .map(|parameter| zod_factory_argument(parameter))
+        })
+        .unwrap_or_else(|| member.spelling.clone());
+        let _ = writeln!(acc, "  {},", zod_preprocess_wrap(filled, &args.preprocess));
         acc
     });
+    if parameters.is_empty() {
+        let binding = format!("{item_name}$Members");
+        return Some(PublishedMembers {
+            block: format!("export const {binding} = [\n{written}];\n\n"),
+            binding,
+        });
+    }
+    #[cfg(feature = "typescript")]
+    let (bounds, closed) = (zod_factory_bounds(parameters), " as const");
+    #[cfg(not(feature = "typescript"))]
+    let (bounds, closed) = (String::new(), "");
+    let name = format!("{item_name}$MembersFactory");
+    let filling = (0..parameters.len())
+        .map(parameter_placeholder)
+        .collect::<Vec<_>>()
+        .join(", ");
     Some(PublishedMembers {
-        block: format!("export const {binding} = [\n{written}];\n\n"),
-        binding,
+        block: format!(
+            "export const {name} = {bounds}({}\n) => [\n{written}]{closed};\n\n",
+            zod_factory_arguments(parameters)
+        ),
+        binding: format!("{name}({filling})"),
     })
 }
 
@@ -21232,7 +21240,14 @@ fn generate_enum_zod_schema_method_after(
     #[cfg(feature = "zod")]
     {
         let reexport = zod_binding_reexport(rust_ident, item_name, parameters);
-        let schema_str = zod_published_binding(
+        // A factory's builder holds a preamble as statements, where the members' own factory is a
+        // binding of the module.
+        let (ahead, inside) = if parameters.is_empty() {
+            ("", preamble)
+        } else {
+            (preamble, "")
+        };
+        let binding = zod_published_binding(
             item_name,
             rust_ident,
             parameters,
@@ -21243,10 +21258,11 @@ fn generate_enum_zod_schema_method_after(
                 preprocess: &args.preprocess,
                 republished: false,
             },
-            preamble,
+            inside,
             schema_code,
             &reexport,
         );
+        let schema_str = format!("{ahead}{binding}");
         if !holds_a_placeholder(&schema_str) {
             return quote::quote! {
                 pub fn zod_schema() -> ::std::string::String {
