@@ -127,8 +127,8 @@ fn a_plain_enum_reads_a_variant_under_each_alias() {
     assert_eq!(
         lulling_dart::dart_definition(),
         "enum Lulling { ebb('Ebb'), flood('Flood'); const Lulling(this.wireValue); final String \
-         wireValue; static Lulling fromJson(String json) => fromJsonUnjudged(json); static \
-         Lulling fromJsonUnjudged(String payload) { final json = unpadded(payload) as String; \
+         wireValue; static Lulling fromJson(dynamic json) => fromJsonUnjudged(json); static \
+         Lulling fromJsonUnjudged(dynamic payload) { final json = unpadded(payload) as String; \
          return switch (json) { 'Ebb' || 'Low' => Lulling.ebb,'Flood' => Lulling.flood, _ => \
          throw FormatException('Unknown Lulling: ' + json) }; } String toJson() => wireValue; \
          List<String> validate() => const []; }"
