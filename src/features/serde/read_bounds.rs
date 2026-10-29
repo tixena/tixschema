@@ -40,6 +40,7 @@ enum Defaulted {
 struct ReadAttrs {
     borrow: Option<Borrow>,
     bound: Option<Vec<WherePredicate>>,
+    bound_serialize: Option<Vec<WherePredicate>>,
     defaulted: Defaulted,
     /// `deserialize_with` or `with`: a function of its author's reads the value.
     reads_itself: bool,
@@ -77,6 +78,7 @@ impl ReadAttrs {
         let mut read = Self {
             borrow: None,
             bound: None,
+            bound_serialize: None,
             defaulted: Defaulted::No,
             reads_itself: false,
             skipped: false,
@@ -105,8 +107,12 @@ impl ReadAttrs {
                 Defaulted::Bare
             };
         } else if nested.path.is_ident("bound") {
-            if let Some(written) = deserialize_side(nested)? {
+            let (deserialize, serialize) = bound_sides(nested)?;
+            if let Some(written) = deserialize {
                 self.bound = Some(predicates_of(&written));
+            }
+            if let Some(written) = serialize {
+                self.bound_serialize = Some(predicates_of(&written));
             }
             return Ok(());
         } else if nested.path.is_ident("borrow") {
@@ -259,23 +265,29 @@ impl<'item> NamedParameters<'item> {
     }
 }
 
-/// The `deserialize` side of a `bound`, in either spelling, or `None` for a list that leaves it
-/// out.
-fn deserialize_side(nested: &ParseNestedMeta<'_>) -> syn::Result<Option<LitStr>> {
+/// The `deserialize` and `serialize` sides of a `bound`, in either spelling, each `None` for a
+/// list that leaves it out.
+fn bound_sides(nested: &ParseNestedMeta<'_>) -> syn::Result<(Option<LitStr>, Option<LitStr>)> {
     if nested.input.peek(Token![=]) {
-        return nested.value()?.parse().map(Some);
+        let written: LitStr = nested.value()?.parse()?;
+        return Ok((Some(written.clone()), Some(written)));
     }
-    let mut written: Option<LitStr> = None;
+    let mut deserialize: Option<LitStr> = None;
+    let mut serialize: Option<LitStr> = None;
     if nested.input.peek(Paren) {
         nested.parse_nested_meta(|side| {
             let value: LitStr = side.value()?.parse()?;
             if side.path.is_ident("deserialize") {
-                written = Some(value);
+                deserialize = Some(value);
+            } else if side.path.is_ident("serialize") {
+                serialize = Some(value);
+            } else {
+                // Every other key leaves the bounds as they are.
             }
             Ok(())
         })?;
     }
-    Ok(written)
+    Ok((deserialize, serialize))
 }
 
 /// The predicates a `bound` lists, none where its text is no list of predicates: serde's derive
@@ -477,6 +489,12 @@ fn read_fields<'item>(
             .collect(),
         Data::Union(_) => Vec::new(),
     }
+}
+
+/// The predicates the `serialize` side of the container's `bound` lists, or `None` where the
+/// container writes none.
+pub fn serialize_bound(attrs: &[Attribute]) -> Option<Vec<WherePredicate>> {
+    ReadAttrs::of(attrs).bound_serialize
 }
 
 /// The bounds serde's derive writes on the `Deserialize` impl of `input`.

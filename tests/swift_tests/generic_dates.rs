@@ -291,7 +291,8 @@ fn a_struct_that_declares_a_parameter_computes_its_formatter() {
             helpers("Voyage", COMPUTED),
             "self.atMillis = try container.decode(Int64.self, forKey: .atMillis); ".to_owned(),
             "private static func swiftSchemaFormatIso8601Date(_ date: Date) -> String { \
-             swiftSchemaIso8601Formatter.string(from: date) } };"
+             swiftSchemaIso8601Formatter.string(from: date)\
+             .replacingOccurrences(of: \".000Z\", with: \"Z\") } };"
                 .to_owned(),
         ],
     );

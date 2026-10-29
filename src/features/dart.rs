@@ -41,6 +41,11 @@ use crate::features::serde::{parse_serde_field_attributes, parse_serde_type_attr
 const BOUND_TEXT_HELPER: &str = "static String _boundText(Object held) => held is String ? held : \
      _boundText((held as dynamic).value as Object);";
 
+/// Appended to a UTC date's text: `toIso8601String` writes `.000Z` for a date of whole seconds,
+/// which chrono writes with no fraction.
+#[cfg(feature = "chrono")]
+const CHRONO_WHOLE_SECONDS: &str = ".replaceFirst('.000Z', 'Z')";
+
 /// What a member of an emitted enum cannot be named beside the reserved words: a member every
 /// Dart enum or object already has, and one the emitted enum declares itself.
 const DART_ENUM_NAMES_TAKEN: [&str; 11] = [
@@ -443,6 +448,10 @@ thread_local! {
     /// stays its own small map.
     static DART_NAMES: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
 
+    /// What each brand and alias a class has been emitted for holds, by Rust ident: how a map keyed
+    /// by one reaches the type serde writes its keys as.
+    static DART_KEY_VALUES: RefCell<HashMap<String, FieldDef>> = RefCell::new(HashMap::new());
+
     /// The fields of each struct a class has been emitted for, by their Rust names: what a
     /// client reading one member off a declared message needs to name it as the class does.
     static DART_FIELDS: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
@@ -792,6 +801,15 @@ fn from_json_argument(parameter: &str) -> String {
 /// ident too, as a `typedef`.
 pub fn lookup_dart_name(rust_ident: &str) -> Option<String> {
     DART_NAMES.with(|names| names.borrow().get(rust_ident).cloned())
+}
+
+/// Records `held`, what the brand or alias `rust_ident` holds, for a map keyed by it below.
+fn note_key_value(rust_ident: &str, held: &FieldDef) {
+    DART_KEY_VALUES.with(|values| {
+        values
+            .borrow_mut()
+            .insert(rust_ident.to_owned(), held.clone());
+    });
 }
 
 /// Records the Dart name `rust_ident` publishes under, for a later sibling reference to read back.
@@ -1465,6 +1483,45 @@ fn dart_map_key_typename(key: &FieldDef) -> String {
     }
 }
 
+/// The number `expr`, a `String`, reads as for a key of `number`'s type, held to its range.
+fn number_key_read(number: &FieldDefType, expr: &str) -> String {
+    let read = if matches!(number, FieldDefType::F32 | FieldDefType::F64) {
+        format!("double.parse({expr})")
+    } else {
+        format!("int.parse({expr})")
+    };
+    forms::number_held(number, &read).unwrap_or(read)
+}
+
+/// The number type a key written as a brand or an alias reaches, once its aliases are peeled and
+/// its brands opened, or `None` for a key that reaches anything else.
+fn number_leaf(key: &FieldDef) -> Option<FieldDefType> {
+    let mut leaf = key.clone();
+    while let FieldDefType::SiblingType(name, arguments) = &leaf.field_type {
+        if leaf.array_depth > 0 || leaf.is_optional() || !arguments.is_empty() {
+            return None;
+        }
+        let held = DART_KEY_VALUES.with(|values| values.borrow().get(name).cloned())?;
+        leaf = held;
+    }
+    let (FieldDefType::U8
+    | FieldDefType::U16
+    | FieldDefType::U32
+    | FieldDefType::U64
+    | FieldDefType::I8
+    | FieldDefType::I16
+    | FieldDefType::I32
+    | FieldDefType::I64
+    | FieldDefType::Usize
+    | FieldDefType::Isize
+    | FieldDefType::F32
+    | FieldDefType::F64) = leaf.field_type
+    else {
+        return None;
+    };
+    (leaf.array_depth == 0 && !leaf.is_optional()).then_some(leaf.field_type)
+}
+
 /// The expression that reads one `Map` key back from the `String` JSON always writes it as — the
 /// counterpart of [`dart_map_key_typename`]. `expr` names a `String`. No `validate()` reaches a
 /// key, so a declared type there is read judged.
@@ -1473,7 +1530,10 @@ fn dart_map_key_decode(key: &FieldDef, expr: &str) -> String {
         return expr.to_owned();
     }
     match key.map_key_wire() {
-        MapKeyWire::Boolean => format!("({expr} == \"true\")"),
+        MapKeyWire::Boolean => format!(
+            "(switch ({expr}) {{ \"true\" => true, \"false\" => false, final refused => throw \
+             FormatException('Invalid bool key: $refused') }})"
+        ),
         #[cfg(feature = "chrono")]
         MapKeyWire::Timestamp => format!("DateTime.parse({expr})"),
         MapKeyWire::Enumerated => format!("{}.fromJson({expr})", dart_base(key)),
@@ -1488,18 +1548,25 @@ fn dart_map_key_decode(key: &FieldDef, expr: &str) -> String {
                 | FieldDefType::I32
                 | FieldDefType::I64
                 | FieldDefType::Usize
-                | FieldDefType::Isize => {
-                    let read = format!("int.parse({expr})");
-                    forms::number_held(&key.field_type, &read).unwrap_or(read)
-                }
-                FieldDefType::F32 | FieldDefType::F64 => format!("double.parse({expr})"),
+                | FieldDefType::Isize
+                | FieldDefType::F32
+                | FieldDefType::F64 => number_key_read(&key.field_type, expr),
                 // The key is a `String` already, and the analyzer reports a cast of it.
                 FieldDefType::String | FieldDefType::StringLiteral(_) => expr.to_owned(),
                 FieldDefType::Char => forms::text_read(TextForm::Char, expr),
+                FieldDefType::SiblingType(_, _) => number_leaf(key).map_or_else(
+                    || dart_decode_expr(key, expr, Read::Judged),
+                    |leaf| {
+                        format!(
+                            "{}.fromJson({})",
+                            dart_base(key),
+                            number_key_read(&leaf, expr)
+                        )
+                    },
+                ),
                 FieldDefType::Boolean
                 | FieldDefType::BooleanLiteral(_)
                 | FieldDefType::NumberLiteral(_)
-                | FieldDefType::SiblingType(_, _)
                 | FieldDefType::Map(_, _)
                 | FieldDefType::Range(_, _)
                 | FieldDefType::Result(_, _)
@@ -1530,7 +1597,7 @@ fn dart_map_key_encode(key: &FieldDef, expr: &str) -> String {
     match key.map_key_wire() {
         MapKeyWire::Boolean => format!("({expr} ? \"true\" : \"false\")"),
         #[cfg(feature = "chrono")]
-        MapKeyWire::Timestamp => format!("{expr}.toUtc().toIso8601String()"),
+        MapKeyWire::Timestamp => format!("{expr}.toUtc().toIso8601String(){CHRONO_WHOLE_SECONDS}"),
         MapKeyWire::Enumerated => format!("({expr}).toJson()"),
         MapKeyWire::Named | MapKeyWire::Signed64 | MapKeyWire::Unsigned64 => {
             match &key.field_type {
@@ -1552,6 +1619,9 @@ fn dart_map_key_encode(key: &FieldDef, expr: &str) -> String {
                 // The key is a `String` already, and the analyzer reports a cast of it.
                 FieldDefType::String | FieldDefType::StringLiteral(_) => expr.to_owned(),
                 FieldDefType::Char => forms::text_sent(TextForm::Char, expr),
+                FieldDefType::SiblingType(_, _) if number_leaf(key).is_some() => {
+                    format!("({expr}.toJson()).toString()")
+                }
                 FieldDefType::Boolean
                 | FieldDefType::BooleanLiteral(_)
                 | FieldDefType::NumberLiteral(_)
@@ -1809,6 +1879,18 @@ fn map_decode(key: &FieldDef, value: &FieldDef, object: &str, read: Read) -> Str
     let value_ty = dart_typename(value);
     let key_decode = dart_map_key_decode(key, "e.key");
     let value_decode = dart_decode_expr(value, "e.value", read);
+    #[cfg(feature = "chrono")]
+    if matches!(key.map_key_wire(), MapKeyWire::Timestamp) {
+        let source = declared("source");
+        let held = declared("held");
+        let read_key = declared("readKey");
+        return format!(
+            "((Map<String, dynamic> {source}) {{ final {held} = <{key_ty}, {value_ty}>{{}}; \
+             for (final e in {source}.entries) {{ final {read_key} = {key_decode}; \
+             if ({held}.containsKey({read_key})) {{ throw FormatException('repeated key ${{e.key}}'); }} \
+             {held}[{read_key}] = {value_decode}; }} return {held}; }})({object})"
+        );
+    }
     format!(
         "Map<{key_ty}, {value_ty}>.fromEntries({object}.entries.map((e) => MapEntry({key_decode}, \
          {value_decode})))"
@@ -2344,7 +2426,7 @@ fn dart_encode_at(field: &FieldDef, level: u8, expr: &str) -> String {
             if has_as_number(field) {
                 expr.to_owned()
             } else {
-                format!("({expr}).toUtc().toIso8601String()")
+                format!("({expr}).toUtc().toIso8601String(){CHRONO_WHOLE_SECONDS}")
             }
         }
     }
@@ -3617,6 +3699,9 @@ fn struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -> Toke
     let type_parameters = type_parameters_in_scope(&item_struct.generics);
     if let Some(held) = brand_field(item_struct) {
         let value_field = brand_value_field(held, &type_parameters, args);
+        if type_parameters.is_empty() {
+            note_key_value(&item_struct.ident.to_string(), &value_field);
+        }
         // A brand's `validate()` runs nothing of what it wraps, which judges itself.
         return value_wrapper_tokens(
             &item_struct.ident,
@@ -3866,6 +3951,9 @@ fn alias_dart_tokens(item_type: &ItemType, name_override: Option<&str>) -> Token
         .then(|| "...value.validate()".to_owned())
         .into_iter()
         .collect();
+    if type_parameters.is_empty() {
+        note_key_value(&item_type.ident.to_string(), &target);
+    }
     value_wrapper_tokens(
         &item_type.ident,
         &item_type.generics,

@@ -15,7 +15,7 @@
 
 use core::cell::{Cell, RefCell};
 use core::fmt::Write as _;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::{KOTLIN_TUPLE_AUX, KOTLIN_TUPLE_COUNTER, kotlin_template_text, validate};
 use crate::features::text_forms::TextForm;
@@ -24,6 +24,8 @@ use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
 thread_local! {
     /// The type each alias the emitter wrote with no type parameter names, by Rust ident.
     static KOTLIN_ALIASES: RefCell<HashMap<String, FieldDef>> = RefCell::new(HashMap::new());
+    /// The brands, by Rust ident, that write a serializer for a map key of their own.
+    static KOTLIN_KEYED: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
     /// The serializer each form the item being expanded reads is read through, so every value of
     /// one form names one. Cleared with the tuple wrappers.
     static KOTLIN_TEXTS: RefCell<Vec<(TextForm, String)>> = const { RefCell::new(Vec::new()) };
@@ -38,6 +40,8 @@ thread_local! {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Primitive {
     Bool,
+    /// A `bool` that is a map's key: the text `true` or `false`, in that case alone.
+    BoolKey,
     F32,
     F64,
     I16,
@@ -53,7 +57,19 @@ pub enum Primitive {
     U8,
 }
 
+/// What a map key reaches once its aliases are peeled, where it is read from the text serde writes.
+pub enum KeyLeaf {
+    /// A brand, by Rust ident, that writes a serializer for a map key of its own.
+    Brand(String),
+    Primitive(Primitive),
+}
+
 impl Primitive {
+    /// The Kotlin type the primitive is held as.
+    pub const fn kotlin_type(self) -> &'static str {
+        self.words().0
+    }
+
     /// The primitive a value typed `field` is at its innermost level. A `u64` and a `usize` are
     /// refused under `kotlin` before they are read.
     pub fn of(field: &FieldDef) -> Option<Self> {
@@ -85,7 +101,7 @@ impl Primitive {
     /// The Kotlin type, and the name serde words the refusal with.
     const fn words(self) -> (&'static str, &'static str) {
         match self {
-            Self::Bool => ("Boolean", "a boolean"),
+            Self::Bool | Self::BoolKey => ("Boolean", "a boolean"),
             Self::I8 => ("Byte", "i8"),
             Self::I16 => ("Short", "i16"),
             Self::I32 => ("Int", "i32"),
@@ -106,6 +122,18 @@ impl Primitive {
 /// written as a string, which it refuses in serde's words.
 fn number_declared(primitive: Primitive, named: &str) -> String {
     let (kotlin, expected) = primitive.words();
+    if primitive == Primitive::BoolKey {
+        return format!(
+            "object {named} : KSerializer<{kotlin}> {{ private val held = serializer<{kotlin}>(); \
+             override val descriptor: SerialDescriptor = held.descriptor; override fun \
+             serialize(encoder: Encoder, value: {kotlin}) = held.serialize(encoder, value); \
+             override fun deserialize(decoder: Decoder): {kotlin} {{ val json = decoder as? \
+             JsonDecoder ?: return held.deserialize(decoder); val element = \
+             json.decodeJsonElement(); return when ((element as? JsonPrimitive)?.takeIf {{ \
+             it.isString }}?.content) {{ \"true\" -> true; \"false\" -> false; else -> throw \
+             SerializationException(\"invalid type: \" + element + \", expected {expected}\") }} }} }}"
+        );
+    }
     format!(
         "object {named} : KSerializer<{kotlin}> {{ private val held = serializer<{kotlin}>(); \
          override val descriptor: SerialDescriptor = held.descriptor; override fun \
@@ -244,9 +272,54 @@ fn walk(field: &FieldDef, written: bool, sought: fn(&FieldDef, bool) -> bool, ke
 }
 
 /// Whether a value typed `field` is a text of one form at its innermost level, or a number or a
-/// `bool` that is no map's key.
+/// `bool`; a map's key is only a `bool`, which is read as `true` or `false` alone, or a brand or
+/// an alias that reaches a number or a `bool`.
 fn is_a_form(field: &FieldDef, key: bool) -> bool {
-    TextForm::of(field).is_some() || (!key && Primitive::of(field).is_some())
+    TextForm::of(field).is_some()
+        || Primitive::of(field).is_some_and(|primitive| !key || primitive == Primitive::Bool)
+        || (key
+            && matches!(field.field_type, FieldDefType::SiblingType(_, _))
+            && key_leaf(field).is_some())
+}
+
+/// What `key` reaches, or `None` for a key that reaches neither a brand with a key serializer nor
+/// a number or a `bool`.
+pub fn key_leaf(key: &FieldDef) -> Option<KeyLeaf> {
+    let mut held = key.clone();
+    loop {
+        if held.array_depth > 0 || held.is_optional() {
+            return None;
+        }
+        let FieldDefType::SiblingType(name, arguments) = &held.field_type else {
+            return Primitive::of(&held)
+                .filter(|&primitive| !is_epoch(primitive))
+                .map(KeyLeaf::Primitive);
+        };
+        if !arguments.is_empty() {
+            return None;
+        }
+        if KOTLIN_KEYED.with(|keyed| keyed.borrow().contains(name)) {
+            return Some(KeyLeaf::Brand(name.clone()));
+        }
+        held = named_by(name)?;
+    }
+}
+
+#[cfg(feature = "chrono")]
+fn is_epoch(primitive: Primitive) -> bool {
+    primitive == Primitive::Millis
+}
+
+#[cfg(not(feature = "chrono"))]
+fn is_epoch(_: Primitive) -> bool {
+    false
+}
+
+/// Notes the brand written `rust_ident`, which writes a serializer for a map key of its own.
+pub fn note_keyed(rust_ident: &str) {
+    KOTLIN_KEYED.with(|keyed| {
+        keyed.borrow_mut().insert(rust_ident.to_owned());
+    });
 }
 
 /// The type the alias written `name` names, where the emitter wrote it above with no type

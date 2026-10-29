@@ -543,6 +543,7 @@ fn an_issue_inside_a_variant_is_listed_at_its_full_path() {
 /// A decider repairs a value inside a variant through the path it is handed.
 #[test]
 fn a_decider_repairs_what_a_variant_holds_by_the_path_it_is_handed() {
+    use drawing_schema::Stored as _;
     let stored = json!({
         "fill": { "draft": true, "kind": "Versioned", "number": "3" },
         "outline": { "Circle": { "radius": "1.5" } },
@@ -562,19 +563,19 @@ fn a_decider_repairs_what_a_variant_holds_by_the_path_it_is_handed() {
                 } else {
                     json!(3_i32)
                 };
-                path.set_in_value(raw, fixed);
+                raw.set_at(path, fixed);
             } else if let drawing_schema::Issue::Missing {
                 path,
                 expected: _expected,
             } = issue
             {
-                path.set_in_value(raw, json!(2_i32));
+                raw.set_at(path, json!(2_i32));
             } else if let drawing_schema::Issue::Unknown {
                 path,
                 found: _found,
             } = issue
             {
-                path.remove_from_value(raw);
+                raw.remove_at(path);
             } else {
                 return drawing_schema::Verdict::Reject;
             }
@@ -1367,6 +1368,7 @@ fn an_issue_inside_a_variant_stored_under_an_alias_is_listed_under_the_stored_ke
 
 #[test]
 fn a_decider_repairs_what_an_aliased_variant_holds_by_the_path_it_is_handed() {
+    use contour_schema::Stored as _;
     let stored = json!({ "Round": { "radius": "1.5" } });
     let read = Contour::from_value_with(stored, |raw, found| {
         for issue in found {
@@ -1378,7 +1380,7 @@ fn a_decider_repairs_what_an_aliased_variant_holds_by_the_path_it_is_handed() {
             } = issue
             {
                 assert_eq!(path.to_string(), "Round.radius");
-                path.set_in_value(raw, json!(1.5_f64));
+                raw.set_at(path, json!(1.5_f64));
             } else {
                 return contour_schema::Verdict::Reject;
             }

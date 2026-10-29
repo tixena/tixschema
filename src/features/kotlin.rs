@@ -1112,14 +1112,61 @@ fn kotlin_serializer_expr(field: &FieldDef, type_parameters: &[String]) -> Strin
     listed_serializer(field, scalar)
 }
 
-/// The serializer a map's key is read through: a number or a `bool` key is the text serde writes
-/// it as, which the library reads as it is.
+/// The serializer a map's key is read through: a number key is the text serde writes it as, which
+/// the library reads as it is; a `bool` key is read through a serializer that refuses any other
+/// case than `true` and `false`; a key that reaches a number or a `bool` through an alias, or
+/// through a brand, is read as the number or the `bool` is.
 pub fn key_serializer_expr(key: &FieldDef, type_parameters: &[String]) -> String {
-    if texts::Primitive::of(key).is_some() && key.array_depth == 0 {
-        format!("serializer<{}>()", kotlin_typename(key))
-    } else {
-        kotlin_serializer_expr(key, type_parameters)
+    match texts::Primitive::of(key).filter(|_| key.array_depth == 0) {
+        Some(texts::Primitive::Bool) => texts::number_serializer(texts::Primitive::BoolKey),
+        Some(_) => format!("serializer<{}>()", kotlin_typename(key)),
+        None => match texts::key_leaf(key) {
+            Some(texts::KeyLeaf::Brand(brand)) => key_object_name(&brand),
+            Some(texts::KeyLeaf::Primitive(texts::Primitive::Bool)) => {
+                texts::number_serializer(texts::Primitive::BoolKey)
+            }
+            Some(texts::KeyLeaf::Primitive(primitive)) => {
+                format!("serializer<{}>()", primitive.kotlin_type())
+            }
+            None => kotlin_serializer_expr(key, type_parameters),
+        },
     }
+}
+
+/// The serializer the brand written `rust_ident` reads a map key through.
+pub fn key_object_name(rust_ident: &str) -> String {
+    format!(
+        "{}KeySerializer",
+        lookup_kotlin_name(rust_ident).unwrap_or_else(|| rust_ident.to_owned())
+    )
+}
+
+/// The `object` that reads the brand `export_name` as a map key: its value read from the text
+/// serde writes, then built and checked as the brand's own read builds and checks it.
+fn key_object(export_name: &str, leaf: &texts::KeyLeaf) -> String {
+    let (held, read) = match leaf {
+        texts::KeyLeaf::Brand(inner) => (
+            lookup_kotlin_name(inner).unwrap_or_else(|| inner.clone()),
+            key_object_name(inner),
+        ),
+        texts::KeyLeaf::Primitive(texts::Primitive::Bool) => (
+            "Boolean".to_owned(),
+            texts::number_serializer(texts::Primitive::BoolKey),
+        ),
+        texts::KeyLeaf::Primitive(primitive) => (
+            primitive.kotlin_type().to_owned(),
+            format!("serializer<{}>()", primitive.kotlin_type()),
+        ),
+    };
+    format!(
+        "object {export_name}KeySerializer : KSerializer<{export_name}> {{ private val leaf: \
+         KSerializer<{held}> = {read}; override val descriptor: SerialDescriptor = \
+         leaf.descriptor; override fun serialize(encoder: Encoder, value: {export_name}) = \
+         leaf.serialize(encoder, value.value); override fun deserialize(decoder: Decoder): \
+         {export_name} {{ val read = {export_name}(leaf.deserialize(decoder)); val violations = \
+         read.validate(); if (violations.isNotEmpty()) throw \
+         SerializationException(violations.joinToString(\"; \")); return read }} }}"
+    )
 }
 
 /// `scalar`, the serializer of what `field` holds at its innermost level, under each level of its
@@ -2605,11 +2652,20 @@ fn value_class_tokens(
         let correction = preprocess::corrected(args.preprocess, "input.decodeJsonElement()");
         read::transforming_inline(&export_name, &generic_params, &type_parameters, &correction)
     };
+    let keyed = if type_parameters.is_empty() {
+        texts::key_leaf(&value_field).map(|leaf| {
+            texts::note_keyed(&rust_ident);
+            key_object(&export_name, &leaf)
+        })
+    } else {
+        None
+    };
     let kotlin_source = format!(
         "{} value class {export_name}{generic_params}(val value: {value_type}) {{ \
-         {answered}{validated} }} {unjudged} {}{alias}",
+         {answered}{validated} }} {unjudged} {}{}{alias}",
         read::kept_inline(&export_name),
-        read::judged(&export_name, &generic_params, &type_parameters, false)
+        read::judged(&export_name, &generic_params, &type_parameters, false),
+        keyed.map_or_else(String::new, |object| format!(" {object}"))
     );
 
     kotlin_module_tokens(

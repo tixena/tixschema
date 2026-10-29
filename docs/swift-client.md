@@ -108,7 +108,7 @@ to keep.
   date helpers; a map's wrapper reads and writes a key of a form through them. A pattern is
   written with `[0-9]` for `\d`: Foundation's `\d` takes a digit of any script. A `DateTime<Tz>`
   is a `Date`, read by a formatter with a fraction of a second or by one without
-  (`swiftSchemaWholeIso8601Formatter`, `isoWholeFormatterForKeys`), and written by the first; under
+  (`swiftSchemaWholeIso8601Formatter`, `isoWholeFormatterForKeys`), and written by the first with the `.000Z` of a date of whole seconds written as `Z`, as chrono writes it (`CHRONO_WHOLE_SECONDS`; the formatter options are `FRACTIONAL_OPTIONS` and `WHOLE_OPTIONS`, shared by the field helpers, the key wrapper and `validate()`'s `key_text`). A wrapper of a date key refuses a second key that reads as the first, which Swift's millisecond makes one; under
   `as_number` it is an `Int64` read and written as the number serde writes.
   `run_swift_text_forms.rs` reads `TEXT_FORMS` under the toolchain, and `run_swift_wire_forms.rs`
   writes `WIRE_FORMS`.

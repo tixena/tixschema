@@ -3,8 +3,8 @@
 #![cfg(feature = "zod")]
 
 use super::models::{
-    ClosedDock, Crate, Grade, Handover, Label, Manifest, Parcel, Reference, Routed, Shipment,
-    Stack, Transfer, Weighed, Wrapped,
+    Carrier, ClosedDock, Crate, Grade, Handover, Label, Manifest, Parcel, Reference, Routed,
+    Shipment, Stack, Transfer, Weighed, Wrapped,
 };
 
 /// What `schema` binds first: the text after the `=` of its first binding, which is the raw
@@ -143,7 +143,8 @@ fn the_wrap_of_a_field_is_written_as_it_was() {
     );
 }
 
-/// A holder names the binding, which is the one schema that calls the function.
+/// A holder names the binding, which is the one schema that calls the function, or the members the
+/// binding publishes with the function written around each.
 #[test]
 fn a_holder_reads_the_binding_that_calls_the_function() {
     let manifest = Manifest::zod_schema();
@@ -153,14 +154,21 @@ fn a_holder_reads_the_binding_that_calls_the_function() {
     );
     assert!(!manifest.contains("z.preprocess("), "got: {manifest}");
 
-    // A choice flattened into its holder is joined by its binding, never member by member.
+    // A choice flattened into its holder is joined by the members its binding publishes, one
+    // branch each, never by text copied from the choice.
     let routed = Routed::zod_schema();
     if cfg!(feature = "serde") {
+        for member in ["Carrier$Members[0]", "Carrier$Members[1]"] {
+            assert!(
+                routed.contains(&format!("Routed$OwnSchema.and(z.lazy(() => {member}))")),
+                "got: {routed}"
+            );
+        }
+        assert!(!routed.contains("z.preprocess("), "got: {routed}");
+        let carrier = Carrier::zod_schema();
         assert!(
-            bound(&routed).starts_with(
-                "z.strictObject({\n  dock: z.string(),\n}).and(z.lazy(() => Carrier$Schema))"
-            ),
-            "got: {routed}"
+            carrier.contains("export const Carrier$Members = [\n  z.preprocess(trimmedPlate, z."),
+            "got: {carrier}"
         );
     }
     assert!(!routed.contains("plate"), "got: {routed}");

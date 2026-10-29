@@ -65,10 +65,17 @@ fn text_keys(swift: &str) -> usize {
 
 /// How a wrapper binds a key `parsed` from its text, ahead of the entry it reads.
 fn guarded(parsed: &str) -> String {
+    let repeated = if parsed.contains("isoFormatterForKeys") {
+        "if result.keys.contains(key) { \
+         throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
+         debugDescription: \"repeated key \\(wireKey)\") }; "
+    } else {
+        ""
+    };
     format!(
         "let wireKey = codingKey.stringValue; guard let key = {parsed} else {{ \
          throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
-         debugDescription: \"bad key \\(wireKey)\") }}; result[key] = "
+         debugDescription: \"bad key \\(wireKey)\") }}; {repeated}result[key] = "
     )
 }
 
@@ -314,7 +321,7 @@ fn the_parameter_as_a_key_is_held_as_its_text() {
         &gazetteer_swift::swift_definition(),
         &[
             "public struct GazetteerByStowedKeyedMap<Stowed: Codable & Sendable>: Codable, \
-             Sendable { var storage: [String: UInt32]; ",
+             Sendable { public var storage: [String: UInt32]; ",
             "public let byStowed: [String: UInt32]; ",
             &format!("{TEXT_KEY}try container.decode(UInt32.self, forKey: codingKey) }}; "),
         ],

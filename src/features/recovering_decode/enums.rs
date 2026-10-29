@@ -15,7 +15,7 @@ use super::aliases::Reach;
 use super::checks::enum_check_messages;
 use super::{
     Arm, Casing, FieldValidator, Handed, Keyed, Lookup, RecoveringDecode, Shape, Step, TypedPaths,
-    Walk, Walker, Written, added_to, binding, flattened_walker_call, not_the_shape,
+    Walk, Walker, Written, WrittenBound, added_to, binding, flattened_walker_call, not_the_shape,
     path_expression, slot_validator, unclaimed, written_names,
 };
 use crate::features::serde::{
@@ -687,6 +687,7 @@ impl EnumWalker<'_> {
 /// lists "mongodb" in `enable`.
 pub fn enum_recovering_decode(item_enum: &ItemEnum, mongodb: bool) -> RecoveringDecode {
     let module_name = ident_schema_module_name(&item_enum.ident.to_string());
+    let authored = authored_read_bounds(&DeriveInput::from(item_enum.clone()));
     let parameters = type_parameters_in_scope(&item_enum.generics);
     let mut reach = Reach::new(&module_name);
     let mut walked = item_enum.clone();
@@ -715,7 +716,8 @@ pub fn enum_recovering_decode(item_enum: &ItemEnum, mongodb: bool) -> Recovering
             names,
             reach: &reach,
             read: listed_read(&DeriveInput::from(item_enum.clone())),
-            read_predicates: authored_read_bounds(&DeriveInput::from(item_enum.clone())).predicates,
+            read_predicates: authored.predicates,
+            bound: WrittenBound::of(&item_enum.attrs, authored.written_by_container),
         },
         &paths,
         |walker| {

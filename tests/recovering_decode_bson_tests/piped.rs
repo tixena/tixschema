@@ -8,7 +8,7 @@ use bson::{Bson, Document, doc};
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-use invoice_schema::{Expected, Issue, Path, Resolution, Segment};
+use invoice_schema::{Expected, Issue, Path, Resolution, Segment, Stored as _};
 
 #[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -56,7 +56,7 @@ fn customer_as_text(raw: &mut Document, issue: &Issue<Bson>) -> Resolution {
     let Ok(Bson::Document(customer)) = parsed.serialize(bson::Serializer::new()) else {
         return Resolution::Rejected;
     };
-    if path.set_in_document(raw, Bson::Document(customer)) {
+    if raw.set_at(path, Bson::Document(customer)) {
         Resolution::Settled
     } else {
         Resolution::Rejected
@@ -77,7 +77,7 @@ fn whole_number_as_text(raw: &mut Document, issue: &Issue<Bson>) -> Resolution {
     let settled = text
         .trim()
         .parse::<i64>()
-        .is_ok_and(|number| number >= 0_i64 && path.set_in_document(raw, Bson::Int64(number)));
+        .is_ok_and(|number| number >= 0_i64 && raw.set_at(path, Bson::Int64(number)));
     if settled {
         Resolution::Settled
     } else {
@@ -102,7 +102,7 @@ fn number_without_prefix(raw: &mut Document, issue: &Issue<Bson>) -> Resolution 
     }
     let settled = bare
         .parse::<u32>()
-        .is_ok_and(|number| path.set_in_document(raw, Bson::String(format!("INV-{number:04}"))));
+        .is_ok_and(|number| raw.set_at(path, Bson::String(format!("INV-{number:04}"))));
     if settled {
         Resolution::Settled
     } else {

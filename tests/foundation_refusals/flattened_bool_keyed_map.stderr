@@ -1,0 +1,6 @@
+error: model_schema: type `Switches`: field `rest`: `#[serde(flatten)]` cannot hold a map keyed by `bool` — serde reads every key below a flattened member as text, and reads no number and no `bool` from text, so no entry of that map reads back. Key the map by a `String`, or write the field under a key of its own.
+  --> tests/foundation_refusals/flattened_bool_keyed_map.rs:11:5
+   |
+11 | /     #[serde(flatten)]
+12 | |     pub rest: BTreeMap<bool, u8>,
+   | |________________________________^

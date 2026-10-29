@@ -266,7 +266,7 @@ fn a_list_that_breaks_its_bound_is_one_issue_at_the_list() {
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_callback_that_sets_a_list_at_its_path_recovers_the_read() {
-    use bounded_group_schema::{Issue, Verdict};
+    use bounded_group_schema::{Issue, Stored as _, Verdict};
 
     let stored = doc! { "level": 1_i32, "source": "Items", "tags": ["a", "b", "c"], "title": "ok" };
     let read = BoundedGroup::from_bson_with(stored, |raw, found| {
@@ -281,8 +281,8 @@ fn a_callback_that_sets_a_list_at_its_path_recovers_the_read() {
         else {
             return Verdict::Reject;
         };
-        path.set_in_document(
-            raw,
+        raw.set_at(
+            path,
             Bson::Array(vec![
                 Bson::String("a".to_owned()),
                 Bson::String("b".to_owned()),
@@ -519,7 +519,7 @@ fn a_broken_bound_in_a_tuple_structs_slot_is_listed_at_the_slot() {
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_callback_that_sets_a_tuple_structs_slots_at_their_paths_recovers_the_read() {
-    use bounded_holder_schema::{Issue, Verdict};
+    use bounded_holder_schema::{Issue, Stored as _, Verdict};
 
     let stored = doc! { "lone": "a", "pair": ["ab", 0_i32] };
     let read = BoundedHolder::from_bson_with(stored, |raw, found| {
@@ -540,8 +540,8 @@ fn a_callback_that_sets_a_tuple_structs_slots_at_their_paths_recovers_the_read()
         else {
             return Verdict::Reject;
         };
-        lone.set_in_document(raw, Bson::String("ok".to_owned()));
-        second.set_in_document(raw, Bson::Int32(1));
+        raw.set_at(lone, Bson::String("ok".to_owned()));
+        raw.set_at(second, Bson::Int32(1));
         Verdict::Fixed
     });
     assert_eq!(
@@ -557,6 +557,7 @@ fn a_callback_that_sets_a_tuple_structs_slots_at_their_paths_recovers_the_read()
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_callback_that_removes_what_breaks_a_bound_recovers_the_read() {
+    use bounded_group_schema::Stored as _;
     let stored = doc! {
         "humanName": "", "labels": ["A", "ok"], "level": 1_i32, "sortField": "", "source": "Items",
         "tags": ["A"], "title": "ok",
@@ -570,7 +571,7 @@ fn a_callback_that_removes_what_breaks_a_bound_recovers_the_read() {
                 reason: _reason,
             } = issue
             {
-                path.remove_from_document(raw);
+                raw.remove_at(path);
             }
         }
         bounded_group_schema::Verdict::Fixed
@@ -594,7 +595,7 @@ fn a_callback_that_removes_what_breaks_a_bound_recovers_the_read() {
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_value_that_breaks_two_bounds_is_one_issue_at_its_path() {
-    use bounded_group_schema::{Issue, Verdict};
+    use bounded_group_schema::{Issue, Stored as _, Verdict};
 
     let stored = || {
         doc! { "level": 1_i32, "source": "Items", "tags": ["ok"], "title": "LONG" }
@@ -624,7 +625,7 @@ fn a_value_that_breaks_two_bounds_is_one_issue_at_its_path() {
         else {
             return Verdict::Reject;
         };
-        path.set_in_document(raw, Bson::String("aa".to_owned()));
+        raw.set_at(path, Bson::String("aa".to_owned()));
         Verdict::Fixed
     });
     assert_eq!(set_once.unwrap().title, "aa");
@@ -635,7 +636,7 @@ fn a_value_that_breaks_two_bounds_is_one_issue_at_its_path() {
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_slot_that_breaks_two_bounds_is_removed_alone() {
-    use bounded_slots_schema::{Issue, Verdict};
+    use bounded_slots_schema::{Issue, Stored as _, Verdict};
 
     let mut left = Document::new();
     let read = BoundedSlots::from_bson_with(doc! { "Titled": ["LONG", 1_i32] }, |raw, found| {
@@ -647,7 +648,7 @@ fn a_slot_that_breaks_two_bounds_is_removed_alone() {
                 reason: _reason,
             } = issue
             {
-                path.remove_from_document(raw);
+                raw.remove_at(path);
             }
         }
         left = raw.clone();

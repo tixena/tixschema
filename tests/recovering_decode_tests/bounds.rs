@@ -337,7 +337,7 @@ fn a_list_that_breaks_its_bound_is_one_issue_at_the_list() {
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_callback_that_sets_a_list_at_its_path_recovers_the_read() {
-    use bounded_group_schema::{Issue, Verdict};
+    use bounded_group_schema::{Issue, Stored as _, Verdict};
 
     let stored =
         json!({ "level": 1_u32, "source": "Items", "tags": ["a", "b", "c"], "title": "ok" });
@@ -353,7 +353,7 @@ fn a_callback_that_sets_a_list_at_its_path_recovers_the_read() {
         else {
             return Verdict::Reject;
         };
-        path.set_in_value(raw, json!(["a", "b"]));
+        raw.set_at(path, json!(["a", "b"]));
         Verdict::Fixed
     });
     assert_eq!(read.unwrap().tags, ["a", "b"]);
@@ -575,7 +575,7 @@ fn a_bound_written_on_the_enum_is_listed_at_each_string_it_reaches() {
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_callback_that_sets_a_slot_at_its_path_recovers_the_read() {
-    use bounded_slots_schema::{Issue, Verdict};
+    use bounded_slots_schema::{Issue, Stored as _, Verdict};
 
     let read = BoundedSlots::from_value_with(json!({ "Pair": ["ab", 0_u32] }), |raw, found| {
         let [
@@ -589,7 +589,7 @@ fn a_callback_that_sets_a_slot_at_its_path_recovers_the_read() {
         else {
             return Verdict::Reject;
         };
-        path.set_in_value(raw, json!(1_u32));
+        raw.set_at(path, json!(1_u32));
         Verdict::Fixed
     });
     assert_eq!(read, Ok(BoundedSlots::Pair("ab".to_owned(), 1)));
@@ -676,7 +676,7 @@ fn the_one_slot_of_a_struct_is_held_to_its_bound_as_its_hook_reads_it() {
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_callback_that_sets_a_tuple_structs_slots_at_their_paths_recovers_the_read() {
-    use bounded_holder_schema::{Issue, Verdict};
+    use bounded_holder_schema::{Issue, Stored as _, Verdict};
 
     let stored = json!({ "lone": "a", "pair": ["ab", 0_u32] });
     let read = BoundedHolder::from_value_with(stored, |raw, found| {
@@ -697,8 +697,8 @@ fn a_callback_that_sets_a_tuple_structs_slots_at_their_paths_recovers_the_read()
         else {
             return Verdict::Reject;
         };
-        lone.set_in_value(raw, json!("ok"));
-        second.set_in_value(raw, json!(1_u32));
+        raw.set_at(lone, json!("ok"));
+        raw.set_at(second, json!(1_u32));
         Verdict::Fixed
     });
     assert_eq!(
@@ -714,6 +714,7 @@ fn a_callback_that_sets_a_tuple_structs_slots_at_their_paths_recovers_the_read()
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_callback_that_removes_what_breaks_a_bound_recovers_the_read() {
+    use bounded_group_schema::Stored as _;
     let stored = json!({
         "humanName": "", "labels": ["A", "ok"], "level": 1_u32, "sortField": "", "source": "Items",
         "tags": ["A"], "title": "ok"
@@ -727,7 +728,7 @@ fn a_callback_that_removes_what_breaks_a_bound_recovers_the_read() {
                 reason: _reason,
             } = issue
             {
-                path.remove_from_value(raw);
+                raw.remove_at(path);
             }
         }
         bounded_group_schema::Verdict::Fixed
@@ -751,7 +752,7 @@ fn a_callback_that_removes_what_breaks_a_bound_recovers_the_read() {
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_value_that_breaks_two_bounds_is_one_issue_at_its_path() {
-    use bounded_group_schema::{Issue, Verdict};
+    use bounded_group_schema::{Issue, Stored as _, Verdict};
 
     let stored = || json!({ "level": 1_u32, "source": "Items", "tags": ["ok"], "title": "LONG" });
     let (listed, _calls) = rejected(stored());
@@ -775,7 +776,7 @@ fn a_value_that_breaks_two_bounds_is_one_issue_at_its_path() {
         else {
             return Verdict::Reject;
         };
-        path.set_in_value(raw, json!("aa"));
+        raw.set_at(path, json!("aa"));
         Verdict::Fixed
     });
     assert_eq!(set_once.unwrap().title, "aa");
@@ -786,7 +787,7 @@ fn a_value_that_breaks_two_bounds_is_one_issue_at_its_path() {
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_slot_that_breaks_two_bounds_is_removed_alone() {
-    use bounded_slots_schema::{Issue, Verdict};
+    use bounded_slots_schema::{Issue, Stored as _, Verdict};
 
     let mut left = Value::Null;
     let read = BoundedSlots::from_value_with(json!({ "Titled": ["LONG", 1_u32] }), |raw, found| {
@@ -798,7 +799,7 @@ fn a_slot_that_breaks_two_bounds_is_removed_alone() {
                 reason: _reason,
             } = issue
             {
-                path.remove_from_value(raw);
+                raw.remove_at(path);
             }
         }
         left = raw.clone();
@@ -901,7 +902,7 @@ fn a_slot_after_a_skipped_one_is_named_by_its_position_in_the_array() {
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_broken_literal_is_listed_once_at_its_value() {
-    use bounded_seal_schema::{Issue, Verdict};
+    use bounded_seal_schema::{Issue, Stored as _, Verdict};
 
     let stored =
         json!({ "metal": "tin", "stamps": 3_u8, "struck": false, "tags": ["x", "y", "x", "z"] });
@@ -934,7 +935,7 @@ fn a_broken_literal_is_listed_once_at_its_value() {
                 Value::Number(_) => json!(2_u8),
                 Value::Array(_) | Value::Bool(_) | Value::Null | Value::Object(_) => json!(true),
             };
-            path.set_in_value(raw, literal);
+            raw.set_at(path, literal);
         }
         Verdict::Fixed
     });

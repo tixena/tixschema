@@ -5,8 +5,8 @@
 use super::preprocess::{self, PAYLOAD, Written};
 use super::validate::{item_of, under_option};
 use super::{
-    MapKeys, Shaped, arrayed, held_at, keyed_map_wrapper, map_keys, swift_full_real_type,
-    swift_resolve, through_alias,
+    MapKeys, Shaped, arrayed, held_as_optional, held_at, keyed_map_wrapper, map_keys,
+    swift_full_real_type, swift_resolve, through_alias,
 };
 use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
 
@@ -529,7 +529,7 @@ pub(super) fn counted(
         shape: value_shape,
     };
     read_entries(
-        key,
+        (key, value),
         &shaped.real_type(),
         source,
         false,
@@ -572,7 +572,7 @@ fn map_unjudged(
     }
     let value_hint = format!("{hint}Value");
     read_entries(
-        key,
+        (key, value),
         &written_type(def, hint),
         source,
         false,
@@ -582,12 +582,23 @@ fn map_unjudged(
     )
 }
 
+/// The statement that stores `held` under `key` in the dictionary `entries`: through `updateValue`
+/// where `value`, what the dictionary holds, is an optional, as assigning a `nil` through the
+/// subscript removes the entry.
+pub(super) fn store_entry(entries: &str, key: &str, held: &str, value: &FieldDef) -> String {
+    if held_as_optional(value) {
+        format!("_ = {entries}.updateValue({held}, forKey: {key})")
+    } else {
+        format!("{entries}[{key}] = {held}")
+    }
+}
+
 /// The statements that read from `source` the entries of a map whose `key` Swift keys natively
 /// into a `written`, each value read under its key by `value`, and hand the map to `sink`. Where
 /// `skips_taken`, no entry is read under a key the types around the holder took: a map flattened
 /// beside another member is refused, so no member of the holder takes one.
 pub(super) fn read_entries(
-    key: &FieldDef,
+    (key, entry_value): (&FieldDef, &FieldDef),
     written: &str,
     source: &Source,
     skips_taken: bool,
@@ -608,7 +619,7 @@ pub(super) fn read_entries(
     };
     let read = value(
         &under,
-        &|held| format!("{entries}[{named}] = {held}"),
+        &|held| store_entry(&entries, &named, held, entry_value),
         locals,
     );
     let skipped = if skips_taken {

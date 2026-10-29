@@ -44,7 +44,8 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   `__tixschema_decode_with` (`DECODE_WITH_LIBRARY`): `decode_with_library`, which is `path_items`,
   `callback_items`, `handoff_items`, `taken_items` and `bound_items`, and under
   `#[cfg(feature = "bson")]` the three BSON pieces (`bson_bound_items`, `bson_leaf_items`, and
-  `bson_path_helpers` as an inherent `impl crate::__tixschema_decode_with::Path`). It names no
+  `bson_stored_items`, the `impl Stored for bson::Document`). `path_items` writes `Segment`, `Path`,
+  the `Stored` trait and its impl for `serde_json::Value`. It names no
   `bson` path in a build without `bson`. So a crate whose types list `"decode_with"` alone names
   `bson`, and lists it, wherever tixschema's `bson` feature is on, and never needs `mongodb`. The
   second writes `__tixschema_mongodb` (`MONGODB_LIBRARY`) under `mongodb`: `mongodb_library`, which

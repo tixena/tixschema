@@ -11,7 +11,7 @@ use self::declared::{RankedEntries, RankedLabels, RankedScores};
 #[cfg(feature = "jsonschema")]
 use self::declared::{ranked_entries_schema, ranked_labels_schema, ranked_scores_schema};
 use super::super::lines;
-use ranking_schema::{Expected, Issue, Resolution};
+use ranking_schema::{Expected, Issue, Resolution, Stored as _};
 
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -53,7 +53,7 @@ fn number_as_text(raw: &mut Value, issue: &Issue<Value>) -> Resolution {
     };
     let settled = text
         .parse::<i32>()
-        .is_ok_and(|number| path.set_in_value(raw, Value::from(number)));
+        .is_ok_and(|number| raw.set_at(path, Value::from(number)));
     if settled {
         Resolution::Settled
     } else {

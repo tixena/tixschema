@@ -21,6 +21,7 @@ fn count_as_text(
     raw: &mut Value,
     issue: &customer_schema::Issue<Value>,
 ) -> customer_schema::Resolution {
+    use customer_schema::Stored as _;
     let customer_schema::Issue::Invalid {
         path,
         expected: customer_schema::Expected::U32,
@@ -32,7 +33,7 @@ fn count_as_text(
     };
     if text
         .parse::<u32>()
-        .is_ok_and(|count| path.set_in_value(raw, json!(count)))
+        .is_ok_and(|count| raw.set_at(path, json!(count)))
     {
         customer_schema::Resolution::Settled
     } else {

@@ -900,6 +900,7 @@ fn an_issue_inside_each_flattened_type_is_listed_at_the_outer_documents_path() {
 
 #[test]
 fn an_id_stored_as_text_inside_a_flattened_type_is_mistyped_and_fixed() {
+    use filed_schema::Stored as _;
     let stored_row = doc! {
         "createdBy": "ada",
         "revision": 1_i32,
@@ -918,7 +919,7 @@ fn an_id_stored_as_text_inside_a_flattened_type_is_mistyped_and_fixed() {
                 found: Bson::String(hex),
             } = issue
             {
-                path.set_in_document(raw, Bson::ObjectId(oid(hex)));
+                raw.set_at(path, Bson::ObjectId(oid(hex)));
             } else {
                 return filed_schema::Verdict::Reject;
             }

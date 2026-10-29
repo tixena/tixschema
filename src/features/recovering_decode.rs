@@ -21,13 +21,14 @@ use quote::{ToTokens as _, format_ident, quote};
 use syn::ext::IdentExt as _;
 use syn::punctuated::Punctuated;
 use syn::{
-    DeriveInput, Field, Fields, FieldsNamed, GenericArgument, GenericParam, Generics, Item,
-    ItemStruct, LitStr, PathArguments, PredicateType, Token, Type, TypeParamBound, TypePath,
+    Attribute, DeriveInput, Field, Fields, FieldsNamed, GenericArgument, GenericParam, Generics,
+    Item, ItemStruct, LitStr, PathArguments, PredicateType, Token, Type, TypeParamBound, TypePath,
     Variant, WherePredicate, parse_quote,
 };
 
 use self::aliases::Reach;
 use crate::features::model_schema_prop::FunctionName;
+use crate::features::serde::read_bounds::serialize_bound;
 use crate::features::serde::{
     Direction, NAMED_READ_HOOK_PREFIX, SerdeFieldHooks, Tagging, has_serde_default,
     has_serde_read_hook, has_serde_skip_serializing, has_serde_transparent, parse_read_renames,
@@ -53,13 +54,13 @@ use crate::utils::{
     any(feature = "typescript", feature = "zod", feature = "jsonschema"),
     not(feature = "mongodb")
 ))]
-const ADDED_TYPE_COUNT: usize = 15;
+const ADDED_TYPE_COUNT: usize = 16;
 
 #[cfg(all(
     any(feature = "typescript", feature = "zod", feature = "jsonschema"),
     feature = "mongodb"
 ))]
-const ADDED_TYPE_COUNT: usize = 37;
+const ADDED_TYPE_COUNT: usize = 38;
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
@@ -114,6 +115,7 @@ const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
     "Resolution",
     "Resolver",
     "Segment",
+    "Stored",
     "Taken",
     "TakenProbe",
     "Unrecovered",
@@ -144,6 +146,7 @@ const DECODE_WITH_LIBRARY_NAMES: &[&str] = &[
     "Resolution",
     "Resolver",
     "Segment",
+    "Stored",
     "Taken",
     "TakenProbe",
     "Unrecovered",
@@ -196,6 +199,12 @@ const MONGODB_LIBRARY_NAMES: &[&str] = &[
     "Update",
     "WriteError",
 ];
+
+/// A side's bounds, and the predicates the container's `bound` writes for it in their place.
+type Sides<'bound> = (
+    Punctuated<TypeParamBound, Token![+]>,
+    Option<&'bound [WherePredicate]>,
+);
 
 /// One arm reading a value that is there: the pattern it is held under, and what is listed for it.
 struct Arm {
@@ -645,14 +654,24 @@ impl Source {
 
     /// `generics` with what this source's walker reads and writes a value with joined to every type
     /// parameter and to the type itself, which carries whatever more serde's derive asks of one. A
-    /// parameter stays bounded in one place: its `where` predicate if it has one, else its name.
-    fn bounded(self, generics: &Generics) -> Generics {
-        let bounds: Punctuated<TypeParamBound, Token![+]> = match self {
+    /// parameter stays bounded in one place: its `where` predicate if it has one, else its name. A
+    /// side the container's `bound` writes joins nothing to the parameters.
+    fn bounded(self, generics: &Generics, bound: &WrittenBound) -> Generics {
+        let read: Sides<'_> = (
+            parse_quote!(serde::de::DeserializeOwned),
+            bound.read_written.then_some(&[][..]),
+        );
+        match self {
             #[cfg(feature = "bson")]
-            Self::Bson => parse_quote!(serde::de::DeserializeOwned + serde::Serialize),
-            Self::Json => parse_quote!(serde::de::DeserializeOwned),
-        };
-        bounded_by(generics, &bounds)
+            Self::Bson => bounded_by(
+                generics,
+                &[
+                    read,
+                    (parse_quote!(serde::Serialize), bound.write.as_deref()),
+                ],
+            ),
+            Self::Json => bounded_by(generics, &[read]),
+        }
     }
 
     /// The pattern a map is held under, binding its entries.
@@ -932,8 +951,28 @@ struct Whole {
     write: Option<TokenStream>,
 }
 
+/// What the container's `#[serde(bound)]` writes of the two sides.
+struct WrittenBound {
+    /// The `deserialize` side is written: `read_under` joins its predicates.
+    read_written: bool,
+    /// The predicates of the `serialize` side, where written.
+    write: Option<Vec<WherePredicate>>,
+}
+
+impl WrittenBound {
+    fn of(attrs: &[Attribute], read_written: bool) -> Self {
+        Self {
+            read_written,
+            write: serialize_bound(attrs),
+        }
+    }
+}
+
 /// What a type's item writes, as the walker's methods are written from it.
 struct Written<'reach> {
+    /// What the container's `bound` writes, which the generated impls take in place of serde's
+    /// own bounds on the type parameters.
+    bound: WrittenBound,
     /// `decode_with_check_messages`, written from the checks the item and its members name.
     check_messages: TokenStream,
     /// The item lists "mongodb" in `enable`: it is stored, and gets the MongoDB layer under
@@ -2358,6 +2397,7 @@ pub fn brand_recovering_decode(item_struct: &ItemStruct, mongodb: bool) -> Recov
 /// The recovering decode of a struct whose issues are listed from `read`.
 fn listed_from(item_struct: &ItemStruct, read: TokenStream, mongodb: bool) -> RecoveringDecode {
     let module_name = ident_schema_module_name(&item_struct.ident.to_string());
+    let authored = authored_read_bounds(&DeriveInput::from(item_struct.clone()));
     let parameters = type_parameters_in_scope(&item_struct.generics);
     let mut reach = Reach::new(&module_name);
     let mut walked = item_struct.clone();
@@ -2383,8 +2423,8 @@ fn listed_from(item_struct: &ItemStruct, read: TokenStream, mongodb: bool) -> Re
             names,
             reach: &reach,
             read,
-            read_predicates: authored_read_bounds(&DeriveInput::from(item_struct.clone()))
-                .predicates,
+            read_predicates: authored.predicates,
+            bound: WrittenBound::of(&item_struct.attrs, authored.written_by_container),
         },
         &paths,
         |walker| walker.methods(&shape, lone_bound.as_ref()),
@@ -2468,7 +2508,7 @@ where
     let mut type_impl = type_impls(
         name,
         generics,
-        &written.read_predicates,
+        written,
         (sources, &of_sources),
         &paths.type_items,
     );
@@ -2666,20 +2706,17 @@ fn decode_with_library() -> TokenStream {
     }
 }
 
-/// What reads a BSON value: `bson_bound`, `bson_leaf` and its helpers, and the BSON helpers of
-/// `Path`.
+/// What reads a BSON value: `bson_bound`, `bson_leaf` and its helpers, and `Stored` for a document.
 #[cfg(feature = "bson")]
 fn bson_library_items() -> TokenStream {
     let bound = bson_bound_items();
     let leaf = bson_leaf_items();
-    let path = bson_path_helpers();
+    let path = bson_stored_items();
     quote! {
         #bound
         #leaf
 
-        impl Path {
-            #path
-        }
+        #path
     }
 }
 
@@ -2873,26 +2910,47 @@ fn bound_parameters(
     }
 }
 
-/// `generics` with `bounds` joined to every type parameter and to the type itself, which carries
-/// whatever more serde's derive asks of one.
-fn bounded_by(generics: &Generics, bounds: &Punctuated<TypeParamBound, Token![+]>) -> Generics {
+/// `generics` with every side's bounds joined to the type itself, which carries whatever more
+/// serde's derive asks of one, and to every type parameter unless the container writes the side.
+fn bounded_by(generics: &Generics, sides: &[Sides<'_>]) -> Generics {
     let mut bounded = generics.clone();
+    let itself: Punctuated<TypeParamBound, Token![+]> = sides
+        .iter()
+        .flat_map(|(bounds, _)| bounds.iter().cloned())
+        .collect();
     bounded
         .make_where_clause()
         .predicates
-        .push(parse_quote!(Self: #bounds));
-    bound_parameters(&mut bounded, bounds, None);
+        .push(parse_quote!(Self: #itself));
+    for (bounds, written) in sides {
+        if let Some(predicates) = written {
+            bounded
+                .make_where_clause()
+                .predicates
+                .extend(predicates.iter().cloned());
+        } else {
+            bound_parameters(&mut bounded, bounds, None);
+        }
+    }
     bounded
 }
 
 /// `generics` with what serde's derive asks to read the type beside `Deserialize` of a parameter,
 /// which a source's own bounds already ask: each of `predicates` that asks more, held at every
 /// lifetime serde reads at.
-fn read_under(generics: &Generics, predicates: &[WherePredicate]) -> Generics {
-    let asked_already: Vec<String> = generics
-        .type_params()
-        .map(|parameter| format!("{} : serde :: Deserialize < 'de >", parameter.ident))
-        .collect();
+fn read_under(
+    generics: &Generics,
+    predicates: &[WherePredicate],
+    source_joined_read: bool,
+) -> Generics {
+    let asked_already: Vec<String> = if source_joined_read {
+        generics
+            .type_params()
+            .map(|parameter| format!("{} : serde :: Deserialize < 'de >", parameter.ident))
+            .collect()
+    } else {
+        Vec::new()
+    };
     let mut bounded = generics.clone();
     for predicate in predicates {
         if asked_already.contains(&predicate.to_token_stream().to_string()) {
@@ -3263,7 +3321,7 @@ fn bson_leaf_items() -> TokenStream {
                 if let Issue::Invalid { path, expected, found, .. } = issue {
                     match bson_digits_as_numbers(expected, found) {
                         ::core::option::Option::Some(stored) if stored != *found => {
-                            wrote |= path.set_in_document(root, stored);
+                            wrote |= Stored::set_at(root, path, stored);
                         }
                         _ => {}
                     }
@@ -3297,63 +3355,111 @@ fn bson_leaf_items() -> TokenStream {
     }
 }
 
-/// The helpers a callback fixes a BSON document through.
+/// `Stored` for a BSON document.
 #[cfg(feature = "bson")]
-fn bson_path_helpers() -> TokenStream {
+fn bson_stored_items() -> TokenStream {
     quote! {
-        /// Puts `value` at this path inside a BSON document, inserting the last key when it is absent.
-        pub fn set_in_document(&self, root: &mut bson::Document, value: bson::Bson) -> bool {
-            let ::core::option::Option::Some((Segment::Key(first), rest)) = self.0.split_first() else { return false };
-            let ::core::option::Option::Some((last, parents)) = rest.split_last() else {
-                root.insert(first.clone(), value);
-                return true;
-            };
-            let ::core::option::Option::Some(mut slot) = root.get_mut(first) else { return false };
-            for segment in parents {
-                let next = match (segment, slot) {
-                    (Segment::Key(key), bson::Bson::Document(object)) => object.get_mut(key),
-                    (Segment::Index(index), bson::Bson::Array(items)) => items.get_mut(*index),
-                    _ => ::core::option::Option::None,
-                };
-                let ::core::option::Option::Some(next) = next else { return false };
-                slot = next;
-            }
-            match (last, slot) {
-                (Segment::Key(key), bson::Bson::Document(object)) => {
-                    object.insert(key.clone(), value);
-                    true
-                }
-                (Segment::Index(index), bson::Bson::Array(items)) if *index < items.len() => {
-                    items[*index] = value;
-                    true
-                }
-                _ => false,
-            }
-        }
+        impl Stored for bson::Document {
+            type Value = bson::Bson;
 
-        /// Removes the key or item at this path inside a BSON document.
-        pub fn remove_from_document(&self, root: &mut bson::Document) -> bool {
-            let ::core::option::Option::Some((Segment::Key(first), rest)) = self.0.split_first() else { return false };
-            let ::core::option::Option::Some((last, parents)) = rest.split_last() else {
-                return root.remove(first).is_some();
-            };
-            let ::core::option::Option::Some(mut slot) = root.get_mut(first) else { return false };
-            for segment in parents {
-                let next = match (segment, slot) {
-                    (Segment::Key(key), bson::Bson::Document(object)) => object.get_mut(key),
-                    (Segment::Index(index), bson::Bson::Array(items)) => items.get_mut(*index),
-                    _ => ::core::option::Option::None,
+            fn set_at(&mut self, path: &Path, value: bson::Bson) -> bool {
+                let ::core::option::Option::Some((Segment::Key(first), rest)) = path.0.split_first() else { return false };
+                let ::core::option::Option::Some((last, parents)) = rest.split_last() else {
+                    self.insert(first.clone(), value);
+                    return true;
                 };
-                let ::core::option::Option::Some(next) = next else { return false };
-                slot = next;
-            }
-            match (last, slot) {
-                (Segment::Key(key), bson::Bson::Document(object)) => object.remove(key).is_some(),
-                (Segment::Index(index), bson::Bson::Array(items)) if *index < items.len() => {
-                    items.remove(*index);
-                    true
+                let ::core::option::Option::Some(mut slot) = self.get_mut(first) else { return false };
+                for segment in parents {
+                    let next = match (segment, slot) {
+                        (Segment::Key(key), bson::Bson::Document(object)) => object.get_mut(key),
+                        (Segment::Index(index), bson::Bson::Array(items)) => items.get_mut(*index),
+                        _ => ::core::option::Option::None,
+                    };
+                    let ::core::option::Option::Some(next) = next else { return false };
+                    slot = next;
                 }
-                _ => false,
+                match (last, slot) {
+                    (Segment::Key(key), bson::Bson::Document(object)) => {
+                        object.insert(key.clone(), value);
+                        true
+                    }
+                    (Segment::Index(index), bson::Bson::Array(items)) if *index < items.len() => {
+                        items[*index] = value;
+                        true
+                    }
+                    _ => false,
+                }
+            }
+
+            fn remove_at(&mut self, path: &Path) -> bool {
+                let ::core::option::Option::Some((Segment::Key(first), rest)) = path.0.split_first() else { return false };
+                let ::core::option::Option::Some((last, parents)) = rest.split_last() else {
+                    return self.remove(first).is_some();
+                };
+                let ::core::option::Option::Some(mut slot) = self.get_mut(first) else { return false };
+                for segment in parents {
+                    let next = match (segment, slot) {
+                        (Segment::Key(key), bson::Bson::Document(object)) => object.get_mut(key),
+                        (Segment::Index(index), bson::Bson::Array(items)) => items.get_mut(*index),
+                        _ => ::core::option::Option::None,
+                    };
+                    let ::core::option::Option::Some(next) = next else { return false };
+                    slot = next;
+                }
+                match (last, slot) {
+                    (Segment::Key(key), bson::Bson::Document(object)) => object.remove(key).is_some(),
+                    (Segment::Index(index), bson::Bson::Array(items)) if *index < items.len() => {
+                        items.remove(*index);
+                        true
+                    }
+                    _ => false,
+                }
+            }
+
+            fn at(&self, path: &Path) -> ::core::option::Option<&bson::Bson> {
+                let ::core::option::Option::Some((Segment::Key(first), rest)) = path.0.split_first() else {
+                    return ::core::option::Option::None;
+                };
+                let mut slot = self.get(first)?;
+                for segment in rest {
+                    slot = match (segment, slot) {
+                        (Segment::Key(key), bson::Bson::Document(object)) => object.get(key)?,
+                        (Segment::Index(index), bson::Bson::Array(items)) => items.get(*index)?,
+                        _ => return ::core::option::Option::None,
+                    };
+                }
+                ::core::option::Option::Some(slot)
+            }
+
+            fn text(value: &bson::Bson) -> ::core::option::Option<&str> {
+                value.as_str()
+            }
+
+            fn whole(value: &bson::Bson) -> ::core::option::Option<i64> {
+                match value {
+                    bson::Bson::Int32(number) => ::core::option::Option::Some(i64::from(*number)),
+                    bson::Bson::Int64(number) => ::core::option::Option::Some(*number),
+                    _ => ::core::option::Option::None,
+                }
+            }
+
+            fn real(value: &bson::Bson) -> ::core::option::Option<f64> {
+                match value {
+                    bson::Bson::Double(number) => ::core::option::Option::Some(*number),
+                    _ => ::core::option::Option::None,
+                }
+            }
+
+            fn from_text(text: ::std::string::String) -> bson::Bson {
+                bson::Bson::String(text)
+            }
+
+            fn from_whole(number: i64) -> bson::Bson {
+                bson::Bson::Int64(number)
+            }
+
+            fn from_real(number: f64) -> bson::Bson {
+                bson::Bson::Double(number)
             }
         }
     }
@@ -3858,7 +3964,7 @@ fn leaf_items() -> TokenStream {
                 if let Issue::Invalid { path, expected, found, .. } = issue {
                     match value_digits_as_numbers(expected, found) {
                         ::core::option::Option::Some(written) if written != *found => {
-                            wrote |= path.set_in_value(root, written);
+                            wrote |= Stored::set_at(root, path, written);
                         }
                         _ => {}
                     }
@@ -4252,28 +4358,47 @@ fn path_expression(segments: &[TokenStream]) -> TokenStream {
     quote! { [path, &[#(#segments),*]].concat() }
 }
 
-/// `Segment` and `Path`, with the helpers a callback fixes a JSON value through.
-fn path_items() -> TokenStream {
+/// The `Stored` trait.
+fn stored_trait_items() -> TokenStream {
     quote! {
-        #[derive(Clone, Debug, PartialEq, Eq)]
-        #[non_exhaustive]
-        pub enum Segment {
-            Key(::std::string::String),
-            Index(usize),
+        /// A value a resolver repairs at an issue's path: a JSON value, or a BSON document.
+        pub trait Stored {
+            /// What one place inside it holds.
+            type Value;
+            /// Puts `value` at `path`, inserting the last key when it is absent; whether anything changed.
+            fn set_at(&mut self, path: &Path, value: Self::Value) -> bool;
+            /// Takes out what is at `path`; whether anything changed.
+            fn remove_at(&mut self, path: &Path) -> bool;
+            /// What is at `path`, if anything.
+            fn at(&self, path: &Path) -> ::core::option::Option<&Self::Value>;
+            /// The text `value` holds.
+            fn text(value: &Self::Value) -> ::core::option::Option<&str>;
+            /// The whole number `value` holds.
+            fn whole(value: &Self::Value) -> ::core::option::Option<i64>;
+            /// The real number `value` holds.
+            fn real(value: &Self::Value) -> ::core::option::Option<f64>;
+            /// The value that holds `text`.
+            fn from_text(text: ::std::string::String) -> Self::Value;
+            /// The value that holds `number`.
+            fn from_whole(number: i64) -> Self::Value;
+            /// The value that holds `number`.
+            fn from_real(number: f64) -> Self::Value;
         }
+    }
+}
 
-        #[derive(Clone, Debug, Default, PartialEq, Eq)]
-        #[non_exhaustive]
-        pub struct Path(pub ::std::vec::Vec<Segment>);
+/// `Stored` for a JSON value.
+fn stored_json_items() -> TokenStream {
+    quote! {
+        impl Stored for serde_json::Value {
+            type Value = serde_json::Value;
 
-        impl Path {
-            /// Puts `value` at this path inside a JSON value, inserting the last key when it is absent.
-            pub fn set_in_value(&self, root: &mut serde_json::Value, value: serde_json::Value) -> bool {
-                let ::core::option::Option::Some((last, parents)) = self.0.split_last() else {
-                    *root = value;
+            fn set_at(&mut self, path: &Path, value: serde_json::Value) -> bool {
+                let ::core::option::Option::Some((last, parents)) = path.0.split_last() else {
+                    *self = value;
                     return true;
                 };
-                let mut slot = root;
+                let mut slot = self;
                 for segment in parents {
                     let next = match (segment, slot) {
                         (Segment::Key(key), serde_json::Value::Object(object)) => object.get_mut(key),
@@ -4296,10 +4421,9 @@ fn path_items() -> TokenStream {
                 }
             }
 
-            /// Removes the key or item at this path inside a JSON value.
-            pub fn remove_from_value(&self, root: &mut serde_json::Value) -> bool {
-                let ::core::option::Option::Some((last, parents)) = self.0.split_last() else { return false };
-                let mut slot = root;
+            fn remove_at(&mut self, path: &Path) -> bool {
+                let ::core::option::Option::Some((last, parents)) = path.0.split_last() else { return false };
+                let mut slot = self;
                 for segment in parents {
                     let next = match (segment, slot) {
                         (Segment::Key(key), serde_json::Value::Object(object)) => object.get_mut(key),
@@ -4318,7 +4442,65 @@ fn path_items() -> TokenStream {
                     _ => false,
                 }
             }
+
+            fn at(&self, path: &Path) -> ::core::option::Option<&serde_json::Value> {
+                let mut slot = self;
+                for segment in &path.0 {
+                    slot = match (segment, slot) {
+                        (Segment::Key(key), serde_json::Value::Object(object)) => object.get(key)?,
+                        (Segment::Index(index), serde_json::Value::Array(items)) => items.get(*index)?,
+                        _ => return ::core::option::Option::None,
+                    };
+                }
+                ::core::option::Option::Some(slot)
+            }
+
+            fn text(value: &serde_json::Value) -> ::core::option::Option<&str> {
+                value.as_str()
+            }
+
+            fn whole(value: &serde_json::Value) -> ::core::option::Option<i64> {
+                value.as_i64()
+            }
+
+            fn real(value: &serde_json::Value) -> ::core::option::Option<f64> {
+                value.as_f64()
+            }
+
+            fn from_text(text: ::std::string::String) -> serde_json::Value {
+                serde_json::Value::String(text)
+            }
+
+            fn from_whole(number: i64) -> serde_json::Value {
+                serde_json::Value::from(number)
+            }
+
+            fn from_real(number: f64) -> serde_json::Value {
+                serde_json::Value::from(number)
+            }
         }
+    }
+}
+
+/// `Segment` and `Path`, with the `Stored` trait and its JSON impl.
+fn path_items() -> TokenStream {
+    let stored_trait = stored_trait_items();
+    let stored_json = stored_json_items();
+    quote! {
+        #[derive(Clone, Debug, PartialEq, Eq)]
+        #[non_exhaustive]
+        pub enum Segment {
+            Key(::std::string::String),
+            Index(usize),
+        }
+
+        #[derive(Clone, Debug, Default, PartialEq, Eq)]
+        #[non_exhaustive]
+        pub struct Path(pub ::std::vec::Vec<Segment>);
+
+        #stored_trait
+
+        #stored_json
 
         impl ::core::fmt::Display for Path {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
@@ -4610,7 +4792,7 @@ fn type_arguments(arguments: &PathArguments) -> impl Iterator<Item = &Type> {
 fn type_impls(
     name: &Ident,
     generics: &Generics,
-    read_predicates: &[WherePredicate],
+    written: &Written<'_>,
     (sources, methods): (&[Source], &[TokenStream]),
     paths: &TokenStream,
 ) -> TokenStream {
@@ -4624,7 +4806,11 @@ fn type_impls(
         };
     }
     let impls = sources.iter().zip(methods).map(|(source, of_source)| {
-        let bounded = read_under(&source.bounded(generics), read_predicates);
+        let bounded = read_under(
+            &source.bounded(generics, &written.bound),
+            &written.read_predicates,
+            !written.bound.read_written,
+        );
         let (impl_generics, type_generics, where_clause) = bounded.split_for_impl();
         quote! {
             impl #impl_generics #name #type_generics #where_clause {
@@ -4633,7 +4819,13 @@ fn type_impls(
         }
     });
     let of_paths = (!paths.is_empty()).then(|| {
-        let bounded = bounded_by(generics, &parse_quote!(::serde::Serialize));
+        let bounded = bounded_by(
+            generics,
+            &[(
+                parse_quote!(::serde::Serialize),
+                written.bound.write.as_deref(),
+            )],
+        );
         let (impl_generics, type_generics, where_clause) = bounded.split_for_impl();
         quote! {
             impl #impl_generics #name #type_generics #where_clause {

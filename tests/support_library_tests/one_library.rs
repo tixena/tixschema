@@ -42,6 +42,7 @@ fn number_as_text(
     raw: &mut Value,
     issue: &invoice_lookup_schema::Issue<Value>,
 ) -> parcel_lookup_schema::Resolution {
+    use customer_lookup_schema::Stored as _;
     let customer_lookup_schema::Issue::Invalid {
         path,
         expected: invoice_lookup_schema::Expected::String,
@@ -51,7 +52,7 @@ fn number_as_text(
     else {
         return customer_lookup_schema::Resolution::NotTouched;
     };
-    if path.set_in_value(raw, Value::String(number.to_string())) {
+    if raw.set_at(path, Value::String(number.to_string())) {
         invoice_lookup_schema::Resolution::Settled
     } else {
         invoice_lookup_schema::Resolution::Rejected

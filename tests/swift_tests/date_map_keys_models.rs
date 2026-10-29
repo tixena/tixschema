@@ -195,6 +195,30 @@ pub struct StowedLogbook<Stowed> {
 #[serde(transparent)]
 pub struct Daybooks(pub Vec<HashMap<DateTime<Utc>, String>>);
 
+/// A date, held beside a map keyed by dates.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Moment {
+    pub at: DateTime<Utc>,
+}
+
+/// An optional date under `as_number`.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Reminder {
+    #[model_schema_prop(as_number)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub due: Option<DateTime<Utc>>,
+}
+
+/// A map keyed by a date whose value is a model with a rule, in a type that declares a parameter.
+#[model_schema(default_types(Stowed = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Convoy<Stowed> {
+    pub held: Stowed,
+    pub sailings: HashMap<DateTime<Utc>, Sailing>,
+}
+
 /// A date with a fraction of whole milliseconds, which chrono writes with three digits.
 pub const fn first() -> DateTime<Utc> {
     DateTime::from_timestamp_millis(1_704_164_645_678).unwrap()

@@ -448,15 +448,16 @@ fn the_json_schema_states_the_default_of_each_member_of_a_variant() {
 
 /// No text of the defaults of the untagged enum reaches the Zod schema of a type that holds it,
 /// flattens it, flattens its alias, or flattens a union that holds it, nor of a type that
-/// flattens an enum under no tag attribute: each joins the enum by its binding.
+/// flattens an enum under no tag attribute: each joins the enum by its binding, or by the members
+/// it publishes.
 #[cfg(feature = "zod")]
 #[test]
 fn no_placeholder_reaches_the_zod_schema_of_another_type() {
     for (schema, binding) in [
         (Quay::zod_schema(), "berth: UntaggedBerthing$Schema,"),
-        (Slipway::zod_schema(), "UntaggedBerthing$Schema"),
-        (Pier::zod_schema(), "AliasedBerthingType$Schema"),
-        (Mooring::zod_schema(), "UntaggedBerthing$Schema"),
+        (Slipway::zod_schema(), "UntaggedBerthing$Members"),
+        (Pier::zod_schema(), "UntaggedBerthing$Members"),
+        (Mooring::zod_schema(), "UntaggedBerthing$Members"),
         (Wake::zod_schema(), "Towage$Schema"),
     ] {
         assert!(!schema.contains('\u{1}'), "{schema}");

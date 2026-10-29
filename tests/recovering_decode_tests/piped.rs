@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
-use invoice_schema::{Expected, Issue, Path, Resolution, Segment};
+use invoice_schema::{Expected, Issue, Path, Resolution, Segment, Stored as _};
 
 use super::lines;
 
@@ -54,7 +54,7 @@ fn customer_as_text(raw: &mut Value, issue: &Issue<Value>) -> Resolution {
     let Ok(parsed @ Value::Object(_)) = serde_json::from_str::<Value>(text) else {
         return Resolution::Rejected;
     };
-    if path.set_in_value(raw, parsed) {
+    if raw.set_at(path, parsed) {
         Resolution::Settled
     } else {
         Resolution::Rejected
@@ -75,7 +75,7 @@ fn whole_number_as_text(raw: &mut Value, issue: &Issue<Value>) -> Resolution {
     let settled = text
         .trim()
         .parse::<i64>()
-        .is_ok_and(|number| number >= 0_i64 && path.set_in_value(raw, Value::from(number)));
+        .is_ok_and(|number| number >= 0_i64 && raw.set_at(path, Value::from(number)));
     if settled {
         Resolution::Settled
     } else {
@@ -100,7 +100,7 @@ fn number_without_prefix(raw: &mut Value, issue: &Issue<Value>) -> Resolution {
     }
     let settled = bare
         .parse::<u32>()
-        .is_ok_and(|number| path.set_in_value(raw, Value::from(format!("INV-{number:04}"))));
+        .is_ok_and(|number| raw.set_at(path, Value::from(format!("INV-{number:04}"))));
     if settled {
         Resolution::Settled
     } else {

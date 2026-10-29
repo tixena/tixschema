@@ -633,27 +633,19 @@ fn impls_of_every_shape() -> Vec<(&'static str, proc_macro2::TokenStream)> {
     emitted
 }
 
-/// The methods of the `impl Path` blocks the two support libraries write, in the order written.
-fn path_methods() -> Vec<String> {
+/// The types `Stored` is implemented for in the support libraries, in the order written.
+fn stored_impls() -> Vec<String> {
     let added: syn::File = syn::parse2(module_items()).unwrap();
     added
         .items
         .iter()
         .filter_map(|item| {
             if let syn::Item::Impl(block) = item
-                && block.trait_.is_none()
-                && (block.self_ty == syn::parse_quote!(Path)
-                    || block.self_ty == syn::parse_quote!(crate::__tixschema_decode_with::Path))
+                && let Some((trait_path, _)) = &block.trait_
+                && trait_path.is_ident("Stored")
             {
-                Some(&block.items)
-            } else {
-                None
-            }
-        })
-        .flatten()
-        .filter_map(|member| {
-            if let syn::ImplItem::Fn(method) = member {
-                Some(method.sig.ident.to_string())
+                let self_ty = &block.self_ty;
+                Some(quote::quote!(#self_ty).to_string())
             } else {
                 None
             }
@@ -986,7 +978,7 @@ fn without_bson_nothing_of_the_bson_read_is_emitted() {
     for absent in ["bson", "same_bracket", "_document"] {
         assert!(!emitted.contains(absent), "found `{absent}` in: {emitted}");
     }
-    assert_eq!(path_methods(), ["set_in_value", "remove_from_value"]);
+    assert_eq!(stored_impls(), ["serde_json :: Value"]);
 }
 
 #[cfg(feature = "bson")]
@@ -1228,15 +1220,7 @@ fn the_schema_module_declares_what_a_resolver_answers_and_the_pipe_that_runs_the
 #[cfg(feature = "bson")]
 #[test]
 fn the_bson_items_are_emitted_beside_the_json_ones() {
-    assert_eq!(
-        path_methods(),
-        [
-            "set_in_value",
-            "remove_from_value",
-            "set_in_document",
-            "remove_from_document",
-        ]
-    );
+    assert_eq!(stored_impls(), ["serde_json :: Value", "bson :: Document"]);
     let added: syn::File = syn::parse2(module_items()).unwrap();
     let functions: Vec<String> = added
         .items
@@ -2395,7 +2379,7 @@ fn without_bson_the_decode_with_library_names_no_bson_path() {
 }
 
 /// Under `bson` the `decode_with` library holds what reads a BSON value: what holds a BSON value
-/// to a bound, the leaf and its helpers, and the BSON helpers of `Path`. It holds nothing of the
+/// to a bound, the leaf and its helpers, and `Stored` for a document. It holds nothing of the
 /// MongoDB layer.
 #[cfg(feature = "bson")]
 #[test]
@@ -2409,8 +2393,7 @@ fn under_bson_the_decode_with_library_holds_what_reads_a_bson_value() {
         "pub fn same_bracket (",
         "pub fn bson_leaf <",
         "pub fn bson_remaining <",
-        "pub fn set_in_document (",
-        "pub fn remove_from_document (",
+        "impl Stored for bson :: Document",
     ] {
         assert!(
             written.contains(declared),
@@ -3021,10 +3004,10 @@ fn a_tuple_in_a_fields_type_is_walked_by_position_wherever_it_is_held() {
     }
 }
 
-/// A bound serde's derive is told to ask of a parameter is written once where the source asks it
-/// too, in whatever path, and what it asks beyond that is written once beside it.
+/// A bound the container writes for the read is the only one the parameter takes, written once
+/// beside the type's own, and the source joins nothing of its own to the parameter.
 #[test]
-fn a_deserialize_bound_the_source_already_asks_is_written_once() {
+fn a_deserialize_bound_the_container_writes_is_the_only_one_the_parameter_takes() {
     let header_of = |bound: &str, at: usize| {
         added_impls(&format!(
             "#[serde(bound(deserialize = \"{bound}\"))] \
@@ -3034,30 +3017,40 @@ fn a_deserialize_bound_the_source_already_asks_is_written_once() {
         .nth(at)
         .map(|(header, _)| header)
     };
-    let asked_once = "impl < CodeType : Display + serde :: de :: DeserializeOwned > \
-                      Crate < CodeType > where Self : serde :: de :: DeserializeOwned";
-    for written in [
-        "CodeType: serde::de::DeserializeOwned",
-        "CodeType: DeserializeOwned",
-        "CodeType: serde::Deserialize<'de>",
+    let written_once = |predicate: &str| {
+        format!(
+            "impl < CodeType : Display > Crate < CodeType > \
+             where Self : serde :: de :: DeserializeOwned , {predicate}"
+        )
+    };
+    for (written, predicate) in [
+        (
+            "CodeType: serde::de::DeserializeOwned",
+            "CodeType : serde :: de :: DeserializeOwned",
+        ),
+        ("CodeType: DeserializeOwned", "CodeType : DeserializeOwned"),
+        (
+            "CodeType: serde::Deserialize<'de>",
+            "for < 'de > CodeType : serde :: Deserialize < 'de >",
+        ),
+        (
+            "CodeType: serde::de::DeserializeOwned + Clone",
+            "CodeType : serde :: de :: DeserializeOwned + Clone",
+        ),
     ] {
         assert_eq!(
-            header_of(written, 0).as_deref(),
-            Some(asked_once),
+            header_of(written, 0),
+            Some(written_once(predicate)),
             "for `{written}`"
         );
     }
-    assert_eq!(
-        header_of("CodeType: serde::de::DeserializeOwned + Clone", 0),
-        Some(format!("{asked_once} , CodeType : Clone"))
-    );
     if cfg!(feature = "bson") {
         assert_eq!(
             header_of("CodeType: serde::de::DeserializeOwned", 1).as_deref(),
             Some(
-                "impl < CodeType : Display + serde :: de :: DeserializeOwned + serde :: Serialize > \
-                 Crate < CodeType > \
-                 where Self : serde :: de :: DeserializeOwned + serde :: Serialize"
+                "impl < CodeType : Display + serde :: Serialize > Crate < CodeType > \
+                 where Self : serde :: de :: DeserializeOwned + serde :: Serialize , \
+                 CodeType : serde :: de :: DeserializeOwned"
             )
         );
     }

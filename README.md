@@ -10,7 +10,7 @@ Add the following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-tixschema = "0.1"
+tixschema = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 ```
@@ -285,7 +285,7 @@ serde reads `{"kind":"Docked","pier":3}` as `{"kind":"Docked","dock":"","pier":3
 - **Each surface writes the member as it writes a struct's**, in the variant's own object: the Zod member takes `.prefault("")`, the JSON Schema leaves the key out of the variant's `required` and states `"default": ""`, and the Dart, Swift and Kotlin clients read the default where the payload leaves the key out.
 - **A key the payload holds is read as it was**, on every surface.
 - **A default is judged as a payload is.** A default that breaks a bound of the member is refused with the member named, on every surface.
-- **A type that holds or flattens an untagged enum with such a member joins the enum's own schema in its Zod text.** The enum's schema is the one text the default is written into.
+- **A type that holds or flattens an untagged enum with such a member joins the enum's own schema in its Zod text.** The enum's schema is the one text the default is written into. A type that flattens the enum joins the members the enum publishes as `{Enum}$Members`, one branch each, so a payload that two members read is read as the first, as serde reads it.
 
 #### What does not build on a variant's member
 
@@ -453,7 +453,7 @@ A JSON object is written with its keys in an order. The three maps describe as t
 `indexmap::IndexMap<K, V>` and the list beside it, `indexmap::IndexSet<T>`, are read under the `indexmap` feature. The feature adds no dependency to tixschema: the generated code names the types of the crate that declares them, so that crate lists `indexmap` itself, with its `serde` feature.
 
 ```toml
-tixschema = { version = "0.1", features = ["indexmap"] }
+tixschema = { version = "0.2", features = ["indexmap"] }
 indexmap = { version = "2", features = ["serde"] }
 ```
 
@@ -1465,7 +1465,7 @@ Notes:
 - A flattened source reached through an `Option` is a choice rather than a key set. Serde writes its members beside the object's own for a `Some` and writes the object alone for a `None`, so the **JSON Schema** offers both under an `anyOf`: one branch with the source's members merged in, one naming the object's own keys alone. Folding the members into a single object would require keys the `None` payload never carries, and dropping them from `required` would admit a base written in part -- neither is a payload Serde produces. A union reached through an `Option` keeps its own spelling inside the branch and gains the absence outside it. Such a source takes no attribute that leaves a key out: `#[serde(flatten)] pub inner: Option<Inner>` builds, as serde writes nothing for its `None` and reads the payload back.
 - In **TypeScript** the absence of a source reached through an `Option` closes the source's keys to `never`, but for those the object's own members and its other sources write, which a payload holds on either branch: `struct Rubrail { #[serde(flatten, default, skip_serializing_if = "Option::is_none")] flag: Option<Garnet>, label: String }`, over a `Garnet` that reads `label`, is written `{ label: string; } & (Garnet | { [K in Exclude<keyof Garnet, "label">]?: never })`, which takes `{"label":"n"}`.
 - **An externally tagged enum is joined by the entry of each variant**, as serde writes it flattened: a variant that holds a value under its name, and a unit variant as its name over `null`, `{ "Calm": null; "Bay"?: never }` in TypeScript and `z.strictObject({ "Calm": z.null() })` in Zod, each closed to the other variants' names. A member that names a [`preprocess`](#preprocessing-preprocess) or a [`check`](#checks-check) is joined by the same entries, the functions written around them, so `{"note":"a","Calm":null}`, which serde writes, is read under a function too. An alias of the enum declared above is joined by the same entries, and so are a [brand](#branded-newtypes) and a tuple struct of one slot over it, which serde flattens as the enum, and so is the enum held by a newtype variant under a `tag` with no `content`, which serde writes beside the tag as it writes it flattened ([Internally Tagged Enums](#internally-tagged-enums-tag-with-no-content)). An enum that declares a type parameter, written with an argument, is joined by its entries with the parameter written as the argument: `#[serde(flatten)] pub choice: Choice<u32>` over `pub enum Choice<Load> { Carried(Load), Empty }` is `({ "Carried": number; "Empty"?: never; } | { "Empty": null; "Carried"?: never; })` in TypeScript and `z.strictObject({ "Carried": z.number().int() })` and `z.strictObject({ "Empty": z.null() })` in Zod. An argument that is one of the holder's own type parameters is written as the holder declares it, and an alias that declares a type parameter of its own is filled the same way. A check is handed the enum's own value, a unit variant's bare name `"Calm"`, which is what its parameter's type names, and a check the enum names on itself is run on each entry the same way, as serde runs it on the value it read.
-- **Zod** cannot name a choice as an operand, so it multiplies instead. An intersection recognizes exactly the keys its operands name; `z.discriminatedUnion` propagates its members' keys and is an operand like any other, while a plain `z.union` names none -- each of its branches would be asked to validate the whole payload alone and reject the keys the container and the sibling branches carry, which is every payload the object writes. So a flattened untagged enum, and a flattened source reached through an `Option`, are written as a union *of* intersections: one branch per combination, with the object's own keys bound once to `{Type}$OwnSchema` and read by every branch. A union nested inside a union contributes its leaves, the nesting writing no key of its own. With one combination there is nothing to choose between, so the object's own keys stay where they were. An untagged enum that declares a type parameter, written with an argument, is joined by its members with the parameter written as the argument: `#[serde(flatten)] pub either: Either<Crate>` beside `pub note: String` in `Flat`, over `#[serde(untagged)] pub enum Either<T> { Held(T), Counted { count: u32 } }`, is `Flat$OwnSchema.and(z.lazy(() => Crate$Schema))` and `Flat$OwnSchema.and(z.lazy(() => z.strictObject({ count: z.number().int(), })))`. In TypeScript the members of named fields are closed to each other's keys at the argument as well. An argument that is one of the holder's own type parameters is written as the holder declares it, and an alias that declares a type parameter of its own is filled the same way. An alias of the enum declared above is joined by the same members, in Zod and in TypeScript, where they are closed to each other's keys as the enum's own are: with `#[serde(untagged)] pub enum Skiff { Rowed { oars: u32 }, Sailed { sail: String } }` and `pub type SkiffAlias = Skiff;` declared above it, `#[serde(flatten)] pub skiff: SkiffAlias` beside `pub note: String` is `{ note: string; } & ({ oars: number; sail?: never } | { sail: string; oars?: never })`, which refuses `{"note":"n","oars":2,"sail":"s"}`, a payload serde never writes, as the Zod schema does.
+- **Zod** cannot name a choice as an operand, so it multiplies instead. An intersection recognizes exactly the keys its operands name; `z.discriminatedUnion` propagates its members' keys and is an operand like any other, while a plain `z.union` names none -- each of its branches would be asked to validate the whole payload alone and reject the keys the container and the sibling branches carry, which is every payload the object writes. So a flattened untagged enum, and a flattened source reached through an `Option`, are written as a union *of* intersections: one branch per combination, with the object's own keys bound once to `{Type}$OwnSchema` and read by every branch. A union nested inside a union contributes its leaves, the nesting writing no key of its own. With one combination there is nothing to choose between, so the object's own keys stay where they were. A check an untagged enum names is written on each member the holder joins, so the holder's Zod schema refuses what its `validate()` refuses, at the same path. An untagged enum that names a `preprocess`, or whose member is read as its default, publishes its members as `{Enum}$Members`, the `preprocess` written around each, and the holder joins `Holder$OwnSchema.and(z.lazy(() => {Enum}$Members[0]))` and one branch more per member: its own binding read beside the holder's keys refuses a payload that two members accept. An enum that declares a type parameter and is read that way is still joined by its binding. An untagged enum that declares a type parameter, written with an argument, is joined by its members with the parameter written as the argument: `#[serde(flatten)] pub either: Either<Crate>` beside `pub note: String` in `Flat`, over `#[serde(untagged)] pub enum Either<T> { Held(T), Counted { count: u32 } }`, is `Flat$OwnSchema.and(z.lazy(() => Crate$Schema))` and `Flat$OwnSchema.and(z.lazy(() => z.strictObject({ count: z.number().int(), })))`. In TypeScript the members of named fields are closed to each other's keys at the argument as well. An argument that is one of the holder's own type parameters is written as the holder declares it, and an alias that declares a type parameter of its own is filled the same way. An alias of the enum declared above is joined by the same members, in Zod and in TypeScript, where they are closed to each other's keys as the enum's own are: with `#[serde(untagged)] pub enum Skiff { Rowed { oars: u32 }, Sailed { sail: String } }` and `pub type SkiffAlias = Skiff;` declared above it, `#[serde(flatten)] pub skiff: SkiffAlias` beside `pub note: String` is `{ note: string; } & ({ oars: number; sail?: never } | { sail: string; oars?: never })`, which refuses `{"note":"n","oars":2,"sail":"s"}`, a payload serde never writes, as the Zod schema does.
 - **An `Option` of a map is no choice between two key sets.** serde reads a flattened `Option` of a map as `None` wherever an entry it hands the map does not read as the map's value type, and drops every entry with it, so it reads every object its holder reads. `pub struct Locker { #[serde(default, flatten, skip_serializing_if = "Option::is_none")] pub counts: Option<BTreeMap<String, u8>> }` reads `{"north":2}` with `counts: Some({"north": 2})`, and `{"north":"x"}` with `counts: None`, which it writes back as `{}`. The absence of such a map is therefore every key, with any value. In **Zod** it is joined after the branch that reads the map, and reads no entry: `Locker$OwnSchema.and(z.record(z.string(), z.unknown()).transform(() => ({})))`, so `{"north":"x"}` reads `{}`, as serde reads it. In the **JSON Schema** its branch admits every other key, `"additionalProperties": true`. That holds for a map under any key, for a type declared above the holder that serde writes as a map (an alias of a map, a [brand](#branded-newtypes) over one, a struct whose one member is a flattened map), reached through the field's own `Option` or through an alias of an `Option`, on a struct and in a variant under its name, under a `content` key or untagged. The TypeScript type is the one it was: serde writes `None` as no entry.
 - **An `Option` of a struct or an enum is read as absent where its keys do not read.** serde reads a flattened `Option` of a struct or an enum as `None` wherever the keys it hands the source do not read as the source, and drops those keys with it, with no error. `pub struct Hawser { #[serde(default, flatten, skip_serializing_if = "Option::is_none")] pub burgee: Option<Burgee> }`, where `Burgee` is `pub struct Burgee { pub label: String }`, reads `{"label":"a"}` with `burgee: Some(Burgee { label: "a" })`, and `{"label":3}` with `burgee: None`, which it writes back as `{}`. TypeScript, **Zod** and the **JSON Schema** refuse `{"label":3}`: each offers the source's keys as the source reads them, or none of them. So a client that runs these checks cannot send a key that does not read, and a server that reads one from a client that does not run them loses it with no error.
 - The same multiplication runs where an enum's own struct variant flattens such a source, on every tagging. A variant's object is a fragment of a larger literal with no name to bind beside it, so the combinations are written where the object stands: one `z.strictObject({ ... }).and(...)` per key set, joined in a `z.union`. The variant still contributes exactly one member to the enum's union -- that member is a union itself. Externally tagged, it sits under the variant-name key; adjacently tagged, under the content key, leaving the enclosing `z.discriminatedUnion` intact because the tag stays in the member's own object; internally tagged, it *is* the member, and the enclosing union drops to a plain `z.union` for the reason any flattened member forces it to; untagged, it is the member as well. Two separately written `z.strictObject`s over the same keys validate identically, so writing the object once per combination costs generated text and nothing else. TypeScript needs no equivalent -- it distributes an intersection over a union on its own -- and JSON Schema already multiplies these branches at run time.
@@ -3887,7 +3887,7 @@ Every client sends each value in the one form every target reads: serde, the Zod
 | `NaiveDate` | `2024-01-05` | `z.iso.date()` refuses `"2024-1-5"` | `FormatException: expected a date, found "2024-1-5"` | `EncodingError.invalidValue`: `expected a date, found "2024-1-5"` | `SerializationException: expected a date, found "2024-1-5"` |
 | `NaiveTime` | `10:20:30`, a fraction kept, and `10:20` as `10:20:00` | the schema's preprocessor rewrites | `toJson` rewrites | `encode(to:)` rewrites | the serializer rewrites |
 | `NaiveDateTime` | `2024-01-05T10:20:30`, a fraction kept, a `Z` dropped, and `T10:20` as `T10:20:00` | the schema's preprocessor rewrites | `toJson` rewrites | `encode(to:)` rewrites | the serializer rewrites |
-| `DateTime<Tz>` | RFC 3339 with its zone | a `Date`, which `JSON.stringify` writes `2024-01-05T10:20:30.000Z` | `toUtc().toIso8601String()` | a `Date`, written `2024-01-05T10:20:30.000Z` | the text, held to RFC 3339 with its zone, and `T10:20Z` as `T10:20:00Z` |
+| `DateTime<Tz>` | RFC 3339 with its zone | a `Date`, which `JSON.stringify` writes `2024-01-05T10:20:30.000Z` | `toUtc().toIso8601String()`, `.000Z` written as `Z` | a `Date`, written with a fraction of milliseconds where it has one: `2024-01-05T10:20:30Z`, `2024-01-05T10:20:30.500Z` | the text, held to RFC 3339 with its zone, and `T10:20Z` as `T10:20:00Z` |
 | `DateTime<Tz>` under `as_number` | the integer of epoch milliseconds | `z.number().int()` refuses `1.5` | an `int` | an `Int64` | a `Long` |
 
 A value already in that form is sent as it is, so no payload a client sent before changes. A map's key is sent in the form its value is, but a `DateTime<Tz>` key in TypeScript, a string the Zod schema holds to RFC 3339 with its zone and sends as it is. A `literal = 214` on an integer field is held in the field's own integer type, and written `214`. The rules hold for every value a client writes: the message, on every transport, and a value it writes as text into a path, a query, a header or a part, which is the text of the form the Rust dispatcher reads -- a number, a `bool`, a `char`, a date and a time as their form writes them, a plain enum as its name, a list joined with `,` -- and is refused before anything is sent where no form holds it, as the client refuses a message: the TypeScript and Swift clients answer the fault, and the Dart and Kotlin clients throw. A `DateTime<Tz>` the TypeScript client writes as text is the JavaScript `Date` its Zod schema reads the value into, written by `toISOString()`, so a text handed with no zone is read in the zone the program runs in. A header is refused as well where its text holds a character no HTTP header holds. The Dart and Kotlin `ws_rpc` dispatcher attachments hold what a handler answers to the same forms: a reply, a declared error or a `header_out` no form holds is answered as a `handler-panic` fault, the one a handler that threw is answered with.
@@ -4844,6 +4844,10 @@ Forty-seven rules meet a crate that upgrades. Each is stated with what a build o
 - **A brand or a tuple struct of one slot over an externally tagged enum with a unit variant, flattened or held by a newtype variant under a `tag` with no `content`, is joined by the enum's entries**, as an alias of the enum is: with `pub enum Hatch { Bay { label: String }, Calm }`, `pub struct Hatched(pub Hatch);` and `pub struct Scuttle { #[serde(flatten)] pub hatched: Hatched, pub note: String }`, `{"Calm":null,"note":"n"}`, which serde writes, is taken by the TypeScript type and the Zod schema, which refused it, and is read and written back by the Dart, Kotlin and Swift clients as serde writes it.
 - **The Kotlin `validate()` names the one slot `#[serde(skip)]` leaves of several by its position**, as Rust names it: with `pub struct Clasped(#[serde(skip)] pub u8, #[model_schema_prop(minLength = 1)] pub String);`, `'0': too short: minimum length is 1, got 0`, where it answered `too short: minimum length is 1, got 0`.
 - **The Kotlin read refuses a number or a `bool` written between quotes**, as serde, TypeScript, the Zod schema, Dart and Swift refuse it, where `Json` read it: with `pub struct Seat { pub row: i64 }`, `{"row":"7"}` is refused with ``SerializationException: invalid type: string "7", expected i64``, wherever the number is held. A map's number key, which JSON writes between quotes, is read as it was.
+- **The Swift client reads and writes a map keyed by a brand or an alias as serde does**: with `pub struct Callsign(pub String);` under `#[serde(transparent)]`, `HashMap<Callsign, u8>` is `[Callsign: UInt8]` and reads `{"alpha":1}`, where the text did not compile. A brand whose Rust item derives `Hash` and declares no parameter now also declares `Hashable`, so `Callsign` keys a dictionary; one that derives no `Hash` keeps its text. The key is read through the brand's `value` and written back as the text of `key.value`, and an alias is read as the type it names, so `pub type Hull = u32;` keys a map as `UInt32` does. A brand declared below the map it keys is read as a plain enum, as it was.
+- **The Swift client reads a map under a key it wraps, held as a type argument, as an object**: with `pub by_number: Pannier<HashMap<u32, String>>`, the field is `Pannier<{Holder}{Field}Argument0KeyedMap>`, where it was `Pannier<[UInt32: String]>`, which read an array of alternating keys and values and refused `{"held":{"1":"a"}}`. Read the entries through `.held.storage`. A map keyed by a `String` keeps its text.
+- **The Swift client reads an alias of a map under a key it wraps, and an alias of a `DateTime<Tz>`, as serde writes them**: `pub type Numbering<Stowed> = HashMap<u32, Stowed>;` is `NumberingType<Stowed> = NumberingTypeKeyedMap<Stowed>`, and `pub type Moonrise = DateTime<Utc>;` is `MoonriseType = MoonriseTypeDate`, a struct of one `value`, where each was the Swift type itself and read an array and a number. A field typed with the alias holds that struct, and an alias of a map keyed by a `String` keeps its text. The `storage` of each map wrapper and its `init(storage:)` are `public`, so a client can build and read one.
+- **The Swift client keeps a map's entry whose value is `null`** under a key it wraps and, where `validate()` walks the value, under a key it keys natively: `{"1":null}` read as `HashMap<u32, Option<DateTime<Utc>>>` holds the key `1` with `nil` and writes `{"1":null}`, where the entry was dropped.
 
 ### Checks (`check`)
 
@@ -5306,7 +5310,7 @@ Terminal with no spareParcel key, all good: read
 - **A sealed enum judges in its base.** The unjudged read of the base chooses the variant by the tag, and a variant with named members carries the two constructors as a class does.
 - **An `#[serde(untagged)]` enum takes the variant serde takes.** Its unjudged read takes the first variant whose payload decodes and whose bounds hold: each member's own, and the bound a brand it holds carries. A brand with a `pattern`, a `minLength` or a `maxLength` answers for that bound alone in `validateBound()`. A check, and what a model it holds reports, choose no variant: the variant is taken, and `fromJson` then refuses the value.
 - **A plain enum judges where it names a check**, and carries `fromJsonUnjudged` in every case.
-- **A number, a `char` and a chrono date, time, and date and time are read in the form every target reads.** An integer outside its type's range is refused with `FormatException: expected an integer from 0 to 255, found 256` for a `u8`, and an `f32` beyond what a 32-bit float holds with `expected a 32-bit float, found 1e+300`, as serde refuses each. A `char` of other than one code point is refused with `FormatException: expected a character, found "ab"`, as serde refuses it, and a text `z.iso.date()`, `z.iso.time()` or `z.iso.datetime({ local: true })` refuses with `expected a date, found "2024-1-5"`, `expected a time, ...` or `expected a date and time, ...`, each value quoted as JSON. Where serde and Zod part on a date, the read follows Zod: it refuses `2024-1-5`, which serde reads, and reads `2024-01-05T10:20Z`, which serde refuses. A `DateTime<Tz>` is a Dart `DateTime`, read by `DateTime.parse`.
+- **A number, a `char` and a chrono date, time, and date and time are read in the form every target reads.** An integer outside its type's range is refused with `FormatException: expected an integer from 0 to 255, found 256` for a `u8`, and an `f32` beyond what a 32-bit float holds with `expected a 32-bit float, found 1e+300`, as serde refuses each. A `char` of other than one code point is refused with `FormatException: expected a character, found "ab"`, as serde refuses it, and a text `z.iso.date()`, `z.iso.time()` or `z.iso.datetime({ local: true })` refuses with `expected a date, found "2024-1-5"`, `expected a time, ...` or `expected a date and time, ...`, each value quoted as JSON. Where serde and Zod part on a date, the read follows Zod: it refuses `2024-1-5`, which serde reads, and reads `2024-01-05T10:20Z`, which serde refuses. A `DateTime<Tz>` is a Dart `DateTime`, read by `DateTime.parse` and written by `toUtc().toIso8601String()` with the `.000Z` of a date of whole seconds written as `Z`, as chrono writes it. Dart holds a microsecond: a date finer than that is read at the microsecond, and a map keyed by dates that read as one key is refused with `FormatException: repeated key ...` where it kept one entry.
 - **`toJson` judges no bound and no check**: a value built in code that breaks one is written as it is. It writes each value in [the form every target reads](#the-form-each-client-sends): an integer outside its type's range, an `f32` beyond what a 32-bit float holds, a `char` of other than one code point and a date or time text no rewrite turns into its form throw a `FormatException` in the words of the read, a `NaiveDateTime` with a `Z`, and a `NaiveTime` or a `NaiveDateTime` without seconds, is written in the form serde writes, and a `DateTime` in UTC.
 - **A struct's member under `#[serde(skip_serializing)]` is read, and `toJson` writes no key for it**, as serde writes none, and spreads nothing of a flattened one. A flattened one that is no `Option` is read as any flattened member is, its `default` aside, as serde reads it: a payload without a key its struct requires, or with an entry its map does not read, is refused. A member under `skip_serializing_if` is written wherever it holds a value: `toJson` cannot call the Rust function, so under any function but `Option::is_none`, `Vec::is_empty` say, it writes the key where serde leaves it out.
 - **A `#[serde(flatten)]` member is read at its place, in the order declared**, as serde reads it: from the object without the keys the holder's own members take and the entries each member flattened ahead of it took. The function a flattened member names is handed that object, and so is a struct that hands the object it is read from to a function: one that names a [`preprocess`](#a-preprocess-in-the-dart-client) on itself, or flattens a member that names one. Every other struct, and an enum under a tag key, declared above its holder is read from the whole object, as TypeScript and Zod read it, so it reads a key a member of its holder's own, a struct flattened ahead of it or the tag of the variant that flattens it reads too, where serde refuses the payload with `missing field`: with `struct Parrel { #[serde(flatten)] flag: Garnet, label: String }` over a `Garnet` that reads `label`, `{"label":"n"}` reads `n` into both labels and is written back as it was. A struct takes the keys it reads off the object a member flattened after it is handed. A struct that names a [`preprocess`](#a-preprocess-in-the-dart-client) on itself, a flattened member that names one and a struct with a `#[serde(flatten)]` member of its own take no key, as serde reads each, so the function of a member flattened after one is handed its keys as well. A struct declared below its holder, or in another crate, is not known to take any: it is read from the object without the keys taken around it, and a member flattened after it is read from its keys as well, where serde reads it without them. A map is the [one member of its object](#intersection-types-serdeflatten), and is read from every key of it, but the tag of an enum under a tag key. An optional map writes no entry where it holds no value, and is `null` wherever an entry does not read as its key and value, as serde reads it: `#[serde(default, flatten, skip_serializing_if = "Option::is_none")] counts: Option<BTreeMap<String, u8>>` reads `{"north":2}` as that map, `{}` as an empty one, and `{"north":"x"}` as `null`, which is written back as `{}`, in a variant under its name, under a `content` key or untagged too, and keyed by a plain enum it reads a key that names no variant as `null`. A model it holds is read with no judgement, so one that breaks its rule still refuses the payload, as serde refuses it. Under a [`preprocess`](#a-preprocess-in-the-dart-client) it is read from what the function answers, and an entry there that does not read refuses the payload, as serde refuses it. `toJson` writes each flattened member at its place, and a key two of them hold is written once, with the last value, where serde writes it twice.
@@ -5534,7 +5538,7 @@ Both write the same payload, and writing judges nothing: a broken value built in
 - **A class, the `object` of a unit struct and the value class of a brand keep the serializer the plugin writes**, with `@KeepGeneratedSerializer`, and `{Type}Unjudged` is that serializer under a name: `object ParcelUnjudged : KSerializer<Parcel> by Parcel.generatedSerializer()`. A struct under its own `#[serde(tag = "...")]` holds the tag in a property the plugin reads and writes after the struct's members, so its `{Type}Unjudged` wraps the plugin's serializer, refuses a payload whose tag is not the struct's name (below), and writes the tag ahead of the members, as serde writes it: `#[serde(tag = "kind")] struct Flag { label: String }` is written `{"kind":"Flag","label":"n"}`, alone and flattened into a holder. The annotation is an experimental one of `kotlinx.serialization`, so each such type carries `@OptIn(ExperimentalSerializationApi::class)`. This repository compiles the emitted source with `kotlinx.serialization` 1.11.0, the version `just kotlin-libs` installs.
 - **A struct with a `#[serde(flatten)]` member, a struct with a member serde never writes, a tuple struct and an enum under every tagging** have a serializer tixschema writes, and it is the unjudged one. So does the class of a variant with a `#[serde(flatten)]` member or a member serde never writes, `{Enum}{Variant}Unjudged`, its one serializer: the enum's own serializer judges the variant.
 - **Every refusal of a serializer tixschema writes is a `SerializationException`**, the exception the plugin's own serializers throw, so a caller that catches it catches each. Its message says what the read expected and found: ``missing field `held` `` for a key serde requires, `expected an object, found [1]` for a value of another kind, `expected an object of one key, found {}` for an externally tagged enum read from an object of no entry or of several, `unknown tag Gale` for a tag no variant has, and `invalid length 3, expected 2` for the array of a tuple, or of a fixed array, of another length, a longer one among them, as serde refuses each.
-- **A `char`, a `NaiveDate`, a `NaiveTime` and a `NaiveDateTime`, which Kotlin holds as a `String`, are read in their one form wherever they are held**: a field, an item of a list, a key and a value of a map, a type argument, a range's bound, an arm of a `Result`, a position of a tuple, a variant's value, the key of a flattened map, the value of a brand and the type an alias names. Each is read through a serializer of the type's own, `object KotlinText1 : KSerializer<String>`, which the property names, `val letter: @Serializable(with = KotlinText1::class) String`, so the property keeps its type, and which throws `SerializationException` for any other text. A `char` is one code point, as serde reads it: `"ab"` and `""` are refused, the first with `SerializationException: expected a character, found "ab"`, and `"😀"` is read. A date, a time and a date and time are read where the generated Zod schema reads them, `z.iso.date()`, `z.iso.time()` and `z.iso.datetime({ local: true })`: `"x"` is refused with `SerializationException: expected a date, found "x"`, and with `expected a time` and `expected a date and time` where it is read as the other two. Where serde and Zod part, the read follows Zod: `"2024-1-6"`, a year before 0000 or after 9999, `"+12024-01-06"`, which serde writes with its sign, and the leap second `"23:59:60"`, all of which serde reads, are refused, and `"2024-01-05T11:20:30Z"` and `"2024-01-05T11:20"`, which serde refuses, are read as a `NaiveDateTime`. A `DateTime<Tz>` without `as_number` is read through a serializer of its own as any text: Zod reads any text a JavaScript `Date` reads, which no Kotlin check follows, and serde reads an RFC 3339 date and time. A read tixschema writes, of a struct with a `#[serde(flatten)]` member or a member serde never writes, of a tuple and of a variant's value, reads as any text an alias declared below its holder, and a `char` or a date that fills the type parameter of an alias, or of a generic type declared below its holder. The generated service clients and the WebSocket dispatcher read a request, a reply and a header that is itself a `char` or a date, or a list or a map of one, in its one form as well: a reply of another is answered with the client's fault, `undeserializable-payload` from the `http_rest` client and `failed-validation` from the `ws_rpc` one, and a header of another with the dispatcher's `failed-validation`, the refusal in its `detail`. The same serializer writes each in [the form every target reads](#the-form-each-client-sends): a `NaiveDateTime` with a `Z`, and a `NaiveTime` or a `NaiveDateTime` without seconds, in the form serde writes, `"2024-01-05T11:20:30Z"` as `"2024-01-05T11:20:30"`, and a text no such rewrite turns into its form is refused with the `SerializationException` of the read. A `DateTime<Tz>` is written held to RFC 3339 with its zone, `"2024-01-05T10:20Z"` as `"2024-01-05T10:20:00Z"`, and any other text is refused with `SerializationException: expected a date and time with its zone, found "x"`.
+- **A `char`, a `NaiveDate`, a `NaiveTime` and a `NaiveDateTime`, which Kotlin holds as a `String`, are read in their one form wherever they are held**: a field, an item of a list, a key and a value of a map, a type argument, a range's bound, an arm of a `Result`, a position of a tuple, a variant's value, the key of a flattened map, the value of a brand and the type an alias names. Each is read through a serializer of the type's own, `object KotlinText1 : KSerializer<String>`, which the property names, `val letter: @Serializable(with = KotlinText1::class) String`, so the property keeps its type, and which throws `SerializationException` for any other text. A `char` is one code point, as serde reads it: `"ab"` and `""` are refused, the first with `SerializationException: expected a character, found "ab"`, and `"😀"` is read. A date, a time and a date and time are read where the generated Zod schema reads them, `z.iso.date()`, `z.iso.time()` and `z.iso.datetime({ local: true })`: `"x"` is refused with `SerializationException: expected a date, found "x"`, and with `expected a time` and `expected a date and time` where it is read as the other two. Where serde and Zod part, the read follows Zod: `"2024-1-6"`, a year before 0000 or after 9999, `"+12024-01-06"`, which serde writes with its sign, and the leap second `"23:59:60"`, all of which serde reads, are refused, and `"2024-01-05T11:20:30Z"` and `"2024-01-05T11:20"`, which serde refuses, are read as a `NaiveDateTime`. A `DateTime<Tz>` without `as_number` is read through a serializer of its own as any text: Zod reads any text a JavaScript `Date` reads, which no Kotlin check follows, and serde reads an RFC 3339 date and time. A read tixschema writes, of a struct with a `#[serde(flatten)]` member or a member serde never writes, of a tuple and of a variant's value, reads as any text an alias declared below its holder, and a `char` or a date that fills the type parameter of an alias, or of a generic type declared below its holder. The generated service clients and the WebSocket dispatcher read a request, a reply and a header that is itself a `char` or a date, or a list or a map of one, in its one form as well: a reply of another is answered with the client's fault, `undeserializable-payload` from the `http_rest` client and `failed-validation` from the `ws_rpc` one, and a header of another with the dispatcher's `failed-validation`, the refusal in its `detail`. The same serializer writes each in [the form every target reads](#the-form-each-client-sends): a `NaiveDateTime` with a `Z`, and a `NaiveTime` or a `NaiveDateTime` without seconds, in the form serde writes, `"2024-01-05T11:20:30Z"` as `"2024-01-05T11:20:30"`, and a text no such rewrite turns into its form is refused with the `SerializationException` of the read. A `DateTime<Tz>` is written held to RFC 3339 with its zone, `"2024-01-05T10:20Z"` as `"2024-01-05T10:20:00Z"`, and any other text is refused with `SerializationException: expected a date and time with its zone, found "x"`. Kotlin holds the text as written, so a date of whole seconds, of a fraction of any length and of an offset crosses unchanged.
 - **A number and a `bool` are read from an unquoted JSON value alone, wherever they are held**, as serde, TypeScript and the generated Zod schema read them: `kotlinx.serialization` reads `"7"` as a `Long`, an `Int`, a `Short`, a `Byte`, a `Double`, a `Float`, an unsigned integer and `"true"` as a `Boolean`, and each is read here through an `object KotlinNumber{N}` declared once for each item and type that throws `SerializationException` in serde's words, ``invalid type: string "7", expected i64`` and ``invalid type: string "true", expected a boolean``, naming the Rust type of the member. It is named where the plugin reads, on a field, an item of a list, a map's value, a type argument, a range's bound, an arm of a `Result`, a position of a tuple and the value of a brand, and composed where tixschema writes the read. A map's key is read as it was, since JSON writes a number key between quotes, and a `DateTime<Tz>` under `as_number` is read as epoch milliseconds the same way.
 - **A fixed array `[T; N]` is read from an array of `N` items alone, at each level**, as serde and the generated Zod schema (`z.array(...).length(N)`) read it, wherever it is held: a field, beside a `#[serde(flatten)]` member, an item of a list, a map's value, under an `Option`, a position of a tuple, a variant's value, a type argument, the fixed array of a type parameter and the type an alias names. Each level is read through a class of the type's own, `class KotlinArray1<Item>(item: KSerializer<Item>) : KSerializer<List<Item>>`, which the property names, `val pair: @Serializable(with = KotlinArray1::class) List<UByte>`, so the property keeps its type, and which throws `SerializationException` for an array of another length: with `struct Clenching { pair: [u8; 2] }`, `{"pair":[1,2,3]}` is refused with `SerializationException: invalid length 3, expected 2` and `{"pair":[1]}` with `invalid length 1, expected 2`, and a `[[u8; 2]; 3]` refuses an inner array of another length in the same words, through the type's own serializer and its unjudged one. A list, `Vec<u8>`, is read at any length. A read tixschema writes, of a struct with a `#[serde(flatten)]` member or a member serde never writes, of a tuple and of a variant's value, reads at any length a fixed array an alias declared below its holder names, and one that fills the type parameter of an alias, or of a generic type declared below its holder, as it reads any text there.
 - **A struct under its own `#[serde(tag = "...")]` reads a payload whose tag is the struct's name, and refuses any other**, as TypeScript and the generated Zod schema refuse it, whose tag is the literal of that name. serde reads the struct whatever the tag holds, and where it is absent, and writes the name back. With `#[serde(tag = "kind")] struct Flag { label: String }`, `{"kind":"Flag","label":"n"}` reads, `{"label":"n"}` is refused with ``SerializationException: missing field `kind` ``, `{"kind":"Other","label":"n"}` with `SerializationException: expected tag "Flag", found "Other"`, and `{"kind":5,"label":"n"}` with `SerializationException: expected tag "Flag", found 5`, where serde reads each as `Flag { label: "n" }`. A struct with a `#[serde(flatten)]` member reads its tag the same way, and so does a struct flattened into a holder, from the object the holder hands it, so the holder refuses the same payloads.
@@ -5857,7 +5861,7 @@ public init(from decoder: Decoder) throws {
 - **Every struct declares its memberwise initializer**, `public init(label: String, itemCodeList: [String], fragileItemCodes: [String])` here: the one Swift synthesizes is gone once a struct writes an `init(from:)`. A value built with it is judged when you call `validate()`.
 - **`encode(to:)` judges no bound and no check.** Swift synthesizes it where it did, and the emitter writes it for a type that holds a `char` or a chrono date, time, or date and time, each held as a `String`, which it writes in [the form every target reads](#the-form-each-client-sends): a `NaiveDateTime` with a `Z`, and a `NaiveTime` or a `NaiveDateTime` without seconds, is written in the form serde writes, and a text no such rewrite turns into its form is refused with `EncodingError.invalidValue`, `expected a character, found "ab"` or `expected a date, found "2024-1-5"`, under the encoder's coding path.
 - **A brand and a tuple struct that declares one slot write their value through their own encoder**, as serde writes it, so a flattened one joins its value's keys to the holder's object. With `pub struct Baled(pub Bale);` over `pub struct Bale { pub label: String }`, flattened beside `count: u32`, the holder is written `{"label":"l","count":2}`.
-- **A `char` and a chrono date, time, and date and time are read in their one form**, as TypeScript and Zod read each: `"ab"` for a `char` is refused with `DecodingError.dataCorrupted` and `expected a character, found "ab"`, as serde refuses it, and a text `z.iso.date()`, `z.iso.time()` or `z.iso.datetime({ local: true })` refuses with `expected a date, found ...`, `expected a time, found ...` or `expected a date and time, found ...`, the value quoted as JSON, under the decoder's coding path, and a map's key under the path of its entry. Where serde and Zod part on a date, the read follows Zod: it refuses `2024-1-5`, which serde reads, and reads `2024-01-05T10:20Z`, which serde refuses. A `DateTime<Tz>` is a `Date`, read from RFC 3339 with or without a fraction of a second, and written with three digits of one, `2024-01-05T10:20:30.000Z`. Under `as_number` it is an `Int64`, the number serde writes. An integer is held in its own type, which holds its range.
+- **A `char` and a chrono date, time, and date and time are read in their one form**, as TypeScript and Zod read each: `"ab"` for a `char` is refused with `DecodingError.dataCorrupted` and `expected a character, found "ab"`, as serde refuses it, and a text `z.iso.date()`, `z.iso.time()` or `z.iso.datetime({ local: true })` refuses with `expected a date, found ...`, `expected a time, found ...` or `expected a date and time, found ...`, the value quoted as JSON, under the decoder's coding path, and a map's key under the path of its entry. Where serde and Zod part on a date, the read follows Zod: it refuses `2024-1-5`, which serde reads, and reads `2024-01-05T10:20Z`, which serde refuses. A `DateTime<Tz>` is a `Date`, read from RFC 3339 with or without a fraction of a second, and written as chrono writes it: no fraction for a date of whole seconds, `2024-01-05T10:20:30Z`, and three digits of one otherwise, `2024-01-05T10:20:30.500Z`. Swift holds a millisecond: a date finer than that is read at the millisecond, and a map keyed by dates that read as one key is refused with `repeated key ...` under the entry, where it kept one entry. `validate()` names a date key as serde writes it, fraction included. Under `as_number` it is an `Int64`, the number serde writes. An integer is held in its own type, which holds its range.
 - **A struct's member under `#[serde(skip_serializing)]` is read, and encoded under no key**, as serde writes none, and a flattened one encodes nothing into its holder. A flattened one that is no `Option` is read as any flattened member is, its `default` aside, as serde reads it: a payload without a key its struct requires, or with an entry its map does not read, is refused. A struct that holds a member under `skip_serializing` has an `encode(to:)` tixschema writes in place of Swift's, which would encode every property. A member under `skip_serializing_if` is encoded wherever it holds a value: `encode(to:)` cannot call the Rust function, so under any function but `Option::is_none`, `Vec::is_empty` say, it encodes the key where serde leaves it out.
 - **A plain enum that names no check** keeps the `init(from:)` Swift synthesizes, and its `init(swiftSchemaUnjudged:)` is that read.
 
@@ -6789,7 +6793,7 @@ Elsewhere the `ObjectId` is handed the object any flattened member is handed, an
 Enable the `chrono` feature for chrono date/time type support. All chrono types map to `string` in TypeScript, with appropriate Zod validation for the specific date/time format.
 
 ```toml
-tixschema = { version = "0.1", features = ["chrono"] }
+tixschema = { version = "0.2", features = ["chrono"] }
 ```
 
 A consumer enabling `chrono` on tixschema must also enable `serde` on its own `chrono` dependency — `as_number` (below) injects a `chrono::serde::ts_milliseconds` hook that only exists there.
@@ -6994,7 +6998,7 @@ A crate whose types list `"decode_with"` alone, and that writes `decode_with_fou
 
 What a callback, a resolver and a walker work with is the same for every flagged type, so a crate holds it once. Two initializers, each called once at the crate root, write it:
 
-- `tixschema::decode_with_foundation!();` writes the module `__tixschema_decode_with`: `Issue`, `Expected`, `Path` and `Segment`, `Verdict`, `Resolution`, `Resolver`, `Unrecovered`, `unsettled`, and what one type's walker hands another's. Under `bson` it holds as well what reads a BSON value and the helpers `set_in_document` and `remove_from_document` of `Path`, and it names no `bson` path in a build without `bson`. It writes nothing in a build without tixschema's `serde` feature.
+- `tixschema::decode_with_foundation!();` writes the module `__tixschema_decode_with`: `Issue`, `Expected`, `Path` and `Segment`, `Verdict`, `Resolution`, `Resolver`, `Stored`, `Unrecovered`, `unsettled`, and what one type's walker hands another's. Under `bson` it holds as well what reads a BSON value and the implementation of `Stored` for `bson::Document`, and it names no `bson` path in a build without `bson`. It writes nothing in a build without tixschema's `serde` feature.
 - `tixschema::mongodb_foundation!();` writes the module `__tixschema_mongodb` under tixschema's `mongodb` feature: the query types (`Filter`, `Update`, `ArmFilter`, `ArmUpdate`, the path kinds) and what the operations answer (`Read`, `OperationError`, `WriteError`). It reads the names of the first library, so it is written beside `decode_with_foundation!()`. In a build without `mongodb` it writes nothing, so the call stays in a crate whatever features the crate builds with.
 
 A crate whose types list `"decode_with"` writes the first, and a crate where one lists `"mongodb"` writes both. Each is written once per crate, at the crate root (`src/lib.rs` or `src/main.rs`), on its own line, anywhere outside a function, after the `mod` lines as well as before them:
@@ -7108,11 +7112,52 @@ The callback's types and the resolvers' are named through the flagged type's own
 - `Range(&'static str, Box<Expected>)`, a std range by the name it is declared under in `core::ops` and the type of its bounds: `Range("RangeInclusive", Box::new(U32))`;
 - `Variants(&'static [&'static str])`, the tag values a tagged enum accepts, for a tag naming none of them, and the two arms of a `Result`, `Variants(["Ok", "Err"])`, for an object that names neither or both.
 
-`Path` is where an issue sits: `Path(pub Vec<Segment>)`, a `Segment` being `Key(String)` or `Index(usize)`. It displays as `versions[1].number`, and the empty path is the value itself. It carries the helpers a callback fixes the raw value through, each answering whether it did so:
+`Path` is where an issue sits: `Path(pub Vec<Segment>)`, a `Segment` being `Key(String)` or `Index(usize)`. It displays as `versions[1].number`, and the empty path is the value itself.
 
-- `set_in_value(&self, root: &mut serde_json::Value, value: serde_json::Value) -> bool` puts `value` at the path, inserting the last key when it is absent. The empty path replaces the whole value. A parent that is not there, or an index past the end of its list, answers `false`.
-- `remove_from_value(&self, root: &mut serde_json::Value) -> bool` removes the key or the item at the path.
-- `set_in_document(&self, root: &mut bson::Document, value: bson::Bson) -> bool` and `remove_from_document(&self, root: &mut bson::Document) -> bool` do the same inside a BSON document, and are generated with the `bson` feature. A path into a document starts at a key, so the empty path sets and removes nothing there.
+`Stored` is the trait a callback or a resolver repairs the raw value through. It is implemented for `serde_json::Value` and, with the `bson` feature, for `bson::Document`, and each module of a type of the crate re-exports it. `Stored::Value` is what one place inside the raw value holds: `serde_json::Value`, or `bson::Bson`.
+
+- `set_at(&mut self, path: &Path, value: Self::Value) -> bool` puts `value` at the path, inserting the last key when it is absent, and answers whether it changed anything. On a JSON value the empty path replaces the whole value. A parent that is not there, or an index past the end of its list, answers `false`. A path into a document starts at a key, so the empty path sets nothing there.
+- `remove_at(&mut self, path: &Path) -> bool` removes the key or the item at the path, and answers whether it did.
+- `at(&self, path: &Path) -> Option<&Self::Value>` is what is at the path.
+- `text`, `whole` and `real` read a value as a `&str`, an `i64` and an `f64`, and `from_text`, `from_whole` and `from_real` build the value that holds one. A document holds a whole number as `Int32` or `Int64`, and `from_whole` builds an `Int64`.
+
+A resolver written over `D: Stored` serves a list of JSON resolvers and a list of BSON resolvers alike:
+
+```rust
+use invoice_schema::{Expected, Issue, Resolution, Resolver, Stored};
+
+fn count_as_text<D: Stored>(raw: &mut D, issue: &Issue<D::Value>) -> Resolution {
+    let Issue::Invalid { path, expected: Expected::U32, found, .. } = issue else {
+        return Resolution::NotTouched;
+    };
+    let Some(text) = D::text(found) else {
+        return Resolution::NotTouched;
+    };
+    match text.trim().parse::<i64>() {
+        Ok(number) if number >= 0 && raw.set_at(path, D::from_whole(number)) => Resolution::Settled,
+        _ => Resolution::Rejected,
+    }
+}
+
+const FROM_JSON: &[Resolver<'static, serde_json::Value, serde_json::Value>] =
+    &[&count_as_text::<serde_json::Value>];
+const FROM_BSON: &[Resolver<'static, bson::Document, bson::Bson>] =
+    &[&count_as_text::<bson::Document>];
+```
+
+**Breaking change in 0.2.0.** The four methods of `Path` that wrote at a path, a setter and a remover for a JSON value and a setter and a remover for a BSON document, are gone: `Stored` is the one way to write at a path. A resolver moves from a method of its path to a method of its raw value. Before, the repair above was two functions, one per kind of raw value, each writing through the method of `path` made for that kind:
+
+```rust
+fn count_as_text_json(raw: &mut serde_json::Value, issue: &Issue<serde_json::Value>) -> Resolution {
+    // ... the match and the parse, then a method of `path` that writes a JSON value into `raw`
+}
+
+fn count_as_text_bson(raw: &mut bson::Document, issue: &Issue<bson::Bson>) -> Resolution {
+    // ... the same match and parse, then a method of `path` that writes a BSON value into `raw`
+}
+```
+
+After, with `Stored` in scope, it is the one `count_as_text` above, which writes with `raw.set_at(path, D::from_whole(number))`. A resolver written against one kind changes its write to `raw.set_at(path, value)`, and its removal to `raw.remove_at(path)`.
 
 `Verdict` is the callback's answer, `Reject` or `Fixed`. `Resolution` is a resolver's answer for one issue, `Settled`, `Rejected` or `NotTouched`. `Resolver<'r, D, V>` is the type a `piped` method takes each resolver as, `&'r (dyn Fn(&mut D, &Issue<V>) -> Resolution + Sync)`: `D` is the raw value, `serde_json::Value` or `bson::Document`, and `V` what an issue holds. `unsettled(raw, issues, resolvers)` is the pipe a `piped` method runs, a public function of the module: it runs the resolvers in order and answers the issues none settled.
 
@@ -7290,7 +7335,7 @@ pub struct Record {
 The callback, a function over `Record` and its inner `Version`. An issue inside a version reaches it as `record_schema::Issue`, at its full path:
 
 ```rust
-use record_schema::{Expected, Issue, Verdict};
+use record_schema::{Expected, Issue, Stored as _, Verdict};
 
 /// Repairs what older writers left in a `Record` row, inner versions included, and rejects
 /// anything else.
@@ -7306,7 +7351,7 @@ fn repair_record(row: &mut Document, issues: &[Issue<Bson>]) -> Verdict {
             let Ok(id) = ObjectId::parse_str(hex) else {
                 return Verdict::Reject;
             };
-            path.set_in_document(row, Bson::ObjectId(id));
+            row.set_at(path, Bson::ObjectId(id));
         } else if let Issue::Invalid {
             path,
             expected: Expected::DateTime,
@@ -7319,7 +7364,7 @@ fn repair_record(row: &mut Document, issues: &[Issue<Bson>]) -> Verdict {
             else {
                 return Verdict::Reject;
             };
-            path.set_in_document(row, Bson::String(created.to_rfc3339()));
+            row.set_at(path, Bson::String(created.to_rfc3339()));
         } else if let Issue::Invalid {
             path,
             expected: Expected::DateTime,
@@ -7331,7 +7376,7 @@ fn repair_record(row: &mut Document, issues: &[Issue<Bson>]) -> Verdict {
             let Some(created) = DateTime::<Utc>::from_timestamp_millis(*millis) else {
                 return Verdict::Reject;
             };
-            path.set_in_document(row, Bson::String(created.to_rfc3339()));
+            row.set_at(path, Bson::String(created.to_rfc3339()));
         } else if let Issue::Invalid {
             path,
             expected: Expected::I32,
@@ -7343,14 +7388,14 @@ fn repair_record(row: &mut Document, issues: &[Issue<Bson>]) -> Verdict {
             let Ok(number) = text.parse::<i32>() else {
                 return Verdict::Reject;
             };
-            path.set_in_document(row, Bson::Int32(number));
+            row.set_at(path, Bson::Int32(number));
         } else if let Issue::Unknown {
             path,
             found: _found,
         } = issue
         {
             // a key no type declares, on the record or on one of its versions
-            path.remove_from_document(row);
+            row.remove_at(path);
         } else {
             return Verdict::Reject;
         }
@@ -7429,7 +7474,7 @@ pub struct Invoice {
 Two resolvers. Each looks for the one issue it repairs and answers `NotTouched` for any other:
 
 ```rust
-use invoice_schema::{Expected, Issue, Resolution};
+use invoice_schema::{Expected, Issue, Resolution, Stored as _};
 
 /// A customer an older writer stored as JSON text: parsed into a document.
 fn customer_as_text(raw: &mut Document, issue: &Issue<Bson>) -> Resolution {
@@ -7449,7 +7494,7 @@ fn customer_as_text(raw: &mut Document, issue: &Issue<Bson>) -> Resolution {
     let Ok(Bson::Document(customer)) = parsed.serialize(bson::Serializer::new()) else {
         return Resolution::Rejected;
     };
-    if path.set_in_document(raw, Bson::Document(customer)) {
+    if raw.set_at(path, Bson::Document(customer)) {
         Resolution::Settled
     } else {
         Resolution::Rejected
@@ -7470,7 +7515,7 @@ fn whole_number_as_text(raw: &mut Document, issue: &Issue<Bson>) -> Resolution {
     let settled = text
         .trim()
         .parse::<i64>()
-        .is_ok_and(|number| number >= 0_i64 && path.set_in_document(raw, Bson::Int64(number)));
+        .is_ok_and(|number| number >= 0_i64 && raw.set_at(path, Bson::Int64(number)));
     if settled {
         Resolution::Settled
     } else {
@@ -7556,7 +7601,7 @@ What the pipe holds every read to:
 - **A failed read holds the issues no resolver settled**, in the order they were found, as `Unrecovered`. With no resolver at all, `&[]`, that is every issue.
 - **A resolver is `Sync`.** It is a function, or a closure that holds what it needs, taken by reference: `&[&customer_as_text, &counted]`. A closure that counts in a `Cell` or a `RefCell` is refused (`E0277`, `` `Cell<u32>` cannot be shared between threads safely``), and one that counts in an atomic or behind a `Mutex` is taken. It is what lets a read that waits for MongoDB hold its resolvers and still move to another thread.
 
-`from_value_piped` is the same read of a `serde_json::Value`. Its resolvers take `&mut serde_json::Value` and `&Issue<serde_json::Value>`, and repair through `set_in_value` and `remove_from_value`.
+`from_value_piped` is the same read of a `serde_json::Value`. Its resolvers take `&mut serde_json::Value` and `&Issue<serde_json::Value>`, and repair through `Stored` for `serde_json::Value`.
 
 ## arky Frontmatter Conversions (`arky`)
 
@@ -8226,6 +8271,7 @@ use mongodb::options::{Collation, Hint};
 use mongodb::results::{DeleteResult, InsertOneResult, UpdateResult};
 use tokio::task::JoinHandle;
 
+use invoice_schema::Stored as _;
 use invoice_schema::{Expected, Filter, Issue, OperationError, Read, Resolution, Resolver};
 
 /// Every operation, each bound to what it answers.
@@ -8369,7 +8415,7 @@ fn id_dropped(
     raw: &mut Document,
     issue: &customer_schema::Issue<Bson>,
 ) -> customer_schema::Resolution {
-    use customer_schema::{Issue, Resolution};
+    use customer_schema::{Issue, Resolution, Stored as _};
 
     let Issue::Unknown {
         path,
@@ -8378,7 +8424,7 @@ fn id_dropped(
     else {
         return Resolution::NotTouched;
     };
-    if path.to_string() == "_id" && path.remove_from_document(raw) {
+    if path.to_string() == "_id" && raw.remove_at(path) {
         Resolution::Settled
     } else {
         Resolution::NotTouched
@@ -8606,16 +8652,16 @@ Common configurations:
 
 ```toml
 # Default (serde + zod + jsonschema + typescript)
-tixschema = "0.1"
+tixschema = "0.2"
 
 # All features including optional ones
-tixschema = { version = "0.1", features = ["serde", "zod", "jsonschema", "typescript", "mongodb", "bson", "chrono", "indexmap", "dart", "swift", "kotlin", "arky"] }
+tixschema = { version = "0.2", features = ["serde", "zod", "jsonschema", "typescript", "mongodb", "bson", "chrono", "indexmap", "dart", "swift", "kotlin", "arky"] }
 
 # Minimal (TypeScript only, no Zod or JSON Schema)
-tixschema = { version = "0.1", default-features = false, features = ["typescript"] }
+tixschema = { version = "0.2", default-features = false, features = ["typescript"] }
 
 # TypeScript + Zod without JSON Schema
-tixschema = { version = "0.1", default-features = false, features = ["serde", "zod", "typescript"] }
+tixschema = { version = "0.2", default-features = false, features = ["serde", "zod", "typescript"] }
 ```
 
 CI tests every combination of the feature sets (`web`, `mobile`, `mongo`) via `cargo-hack`; `just test` runs every combination of the plain features locally.
@@ -8876,7 +8922,7 @@ The JSON Schema lists `kind` in `required` as `{"type": "string", "const": "Tagg
 **Solutions:**
 ```toml
 # Option 1: Enable the mongodb feature
-tixschema = { version = "0.1", features = ["mongodb"] }
+tixschema = { version = "0.2", features = ["mongodb"] }
 
 # Option 2: Use full path in your code
 # use mongodb::bson::oid::ObjectId;
@@ -8898,7 +8944,7 @@ error: `IndexMap` is read as a map under tixschema's `indexmap` feature: add `fe
 
 **Solution:**
 ```toml
-tixschema = { version = "0.1", features = ["indexmap"] }
+tixschema = { version = "0.2", features = ["indexmap"] }
 ```
 
 A crate that declares a `#[model_schema()]` type of its own named `IndexMap` or `IndexSet`, above the type that holds it, is not refused: the name is that type.
@@ -8924,7 +8970,7 @@ error: model_schema: field `count`: `u64` has no Kotlin mapping; the Kotlin targ
 
 **Solution:**
 ```toml
-tixschema = { version = "0.1", features = ["jsonschema"] }
+tixschema = { version = "0.2", features = ["jsonschema"] }
 ```
 
 #### Zod Schema Missing
@@ -8935,7 +8981,7 @@ tixschema = { version = "0.1", features = ["jsonschema"] }
 
 **Solution:**
 ```toml
-tixschema = { version = "0.1", features = ["zod"] }
+tixschema = { version = "0.2", features = ["zod"] }
 ```
 
 #### Serde Attributes Ignored
@@ -8946,7 +8992,7 @@ tixschema = { version = "0.1", features = ["zod"] }
 
 **Solution:**
 ```toml
-tixschema = { version = "0.1", features = ["serde"] }
+tixschema = { version = "0.2", features = ["serde"] }
 ```
 
 ### Compilation Errors

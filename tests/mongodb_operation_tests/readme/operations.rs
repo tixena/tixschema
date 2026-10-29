@@ -21,6 +21,7 @@ use super::{
 };
 use crate::BSON_MAJOR;
 
+use invoice_schema::Stored as _;
 use invoice_schema::{Expected, Filter, Issue, OperationError, Read, Resolution, Resolver};
 
 /// The type the README reads the rows of an aggregation as, and the function that runs it on the
@@ -69,8 +70,8 @@ async fn billed(
 ];
 
 /// The line the README brings the operations' types into scope with.
-const DECLARED_IMPORT: &str =
-    "use invoice_schema::{Expected, Filter, Issue, OperationError, Read, Resolution, Resolver};";
+const DECLARED_IMPORT: &str = "use invoice_schema::Stored as _;
+use invoice_schema::{Expected, Filter, Issue, OperationError, Read, Resolution, Resolver};";
 
 /// The functions the README calls the operations in, character for character.
 const DECLARED_OPERATIONS: [&str; 4] = [
@@ -156,7 +157,7 @@ fn id_dropped(
     raw: &mut Document,
     issue: &customer_schema::Issue<Bson>,
 ) -> customer_schema::Resolution {
-    use customer_schema::{Issue, Resolution};
+    use customer_schema::{Issue, Resolution, Stored as _};
 
     let Issue::Unknown {
         path,
@@ -165,7 +166,7 @@ fn id_dropped(
     else {
         return Resolution::NotTouched;
     };
-    if path.to_string() == "_id" && path.remove_from_document(raw) {
+    if path.to_string() == "_id" && raw.remove_at(path) {
         Resolution::Settled
     } else {
         Resolution::NotTouched
@@ -201,7 +202,7 @@ fn whole_number_as_text(raw: &mut Document, issue: &Issue<Bson>) -> Resolution {
     let settled = text
         .trim()
         .parse::<i64>()
-        .is_ok_and(|number| number >= 0_i64 && path.set_in_document(raw, Bson::Int64(number)));
+        .is_ok_and(|number| number >= 0_i64 && raw.set_at(path, Bson::Int64(number)));
     if settled {
         Resolution::Settled
     } else {
@@ -430,7 +431,7 @@ fn id_dropped(
     raw: &mut Document,
     issue: &customer_schema::Issue<Bson>,
 ) -> customer_schema::Resolution {
-    use customer_schema::{Issue, Resolution};
+    use customer_schema::{Issue, Resolution, Stored as _};
 
     let Issue::Unknown {
         path,
@@ -439,7 +440,7 @@ fn id_dropped(
     else {
         return Resolution::NotTouched;
     };
-    if path.to_string() == "_id" && path.remove_from_document(raw) {
+    if path.to_string() == "_id" && raw.remove_at(path) {
         Resolution::Settled
     } else {
         Resolution::NotTouched
@@ -523,7 +524,7 @@ fn whole_number_as_text(raw: &mut Document, issue: &Issue<Bson>) -> Resolution {
     let settled = text
         .trim()
         .parse::<i64>()
-        .is_ok_and(|number| number >= 0_i64 && path.set_in_document(raw, Bson::Int64(number)));
+        .is_ok_and(|number| number >= 0_i64 && raw.set_at(path, Bson::Int64(number)));
     if settled {
         Resolution::Settled
     } else {

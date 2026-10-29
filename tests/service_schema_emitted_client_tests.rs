@@ -303,6 +303,41 @@ mod wrapped_maps_models;
 #[path = "service_schema_emitted_client_tests/run_swift_wrapped_maps.rs"]
 mod run_swift_wrapped_maps;
 
+/// The models a map keyed by a brand or an alias is written on.
+#[cfg(all(test, feature = "swift"))]
+#[path = "swift_tests/wrapped_keys_models.rs"]
+mod wrapped_keys_models;
+
+/// What the Swift backend writes for a map keyed by a brand or an alias.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "swift_tests/wrapped_keys.rs"]
+mod wrapped_keys;
+
+/// A map keyed by a brand or an alias, read and written by the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_wrapped_keys.rs"]
+mod run_swift_wrapped_keys;
+
+/// The models a map under a key Swift wraps, held as a type argument or named by an alias, is
+/// written on.
+#[cfg(all(test, feature = "swift"))]
+#[path = "swift_tests/held_maps_models.rs"]
+mod held_maps_models;
+
+/// What the Swift backend writes for a map under a key Swift wraps held as a type argument or
+/// named by an alias.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "swift_tests/held_maps.rs"]
+mod held_maps;
+
+/// A map under a key Swift wraps, held as a type argument or named by an alias, read and written
+/// by the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_held_maps.rs"]
+mod run_swift_held_maps;
+
 /// The models a tuple struct that declares one slot is written on.
 #[cfg(test)]
 #[path = "swift_tests/lone_slots_models.rs"]
@@ -447,11 +482,112 @@ mod run_dart_bytes;
 #[path = "service_schema_emitted_client_tests/run_dart_sets.rs"]
 mod run_dart_sets;
 
+/// The models a map keyed by a `bool` is held in, and the payloads each client is held to.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/bool_key_rows.rs"]
+mod bool_key_rows;
+
+/// A map keyed by a `bool` in each place a member holds one, read and written back by the
+/// emitted Dart types against serde, and passed by the analyzer.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_bool_keys.rs"]
+mod run_dart_bool_keys;
+
+/// The same, read and written back by the emitted Kotlin types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_bool_keys.rs"]
+mod run_kotlin_bool_keys;
+
+/// The models of a flattened choice and of an internally tagged struct variant, and the payloads
+/// each client is held to.
+#[cfg(test)]
+#[path = "generic_types_tests/flattened_zod_models.rs"]
+mod flattened_zod_models;
+
+/// What serde and `validate()` answer of the rows of [`flattened_zod_models`], whichever client
+/// runs them.
+#[cfg(test)]
+mod flattened_zod_rows {
+    use super::flattened_zod_models::{
+        CHECKED_REPORT, READ_REPORT, ROWS, checked_cases, checked_report, read_report, serde_report,
+    };
+
+    #[test]
+    fn serde_and_validate_answer_what_the_tables_state() {
+        assert_eq!(read_report(), READ_REPORT);
+        assert_eq!(checked_report(&checked_cases()), CHECKED_REPORT);
+        let strict = serde_report()
+            .lines()
+            .zip(read_report().lines())
+            .filter(|(serde, zod)| serde != zod)
+            .count();
+        assert_eq!(strict, ROWS.iter().filter(|row| row.zod_refuses).count());
+    }
+}
+
+/// A flattened choice and an internally tagged struct variant read by the emitted Dart types
+/// against serde and Rust's `validate()`.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_flattened_zod.rs"]
+mod run_dart_flattened_zod;
+
+/// The same, read by the emitted Kotlin types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_flattened_zod.rs"]
+mod run_kotlin_flattened_zod;
+
+/// The same, read by the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_flattened_zod.rs"]
+mod run_swift_flattened_zod;
+
+/// The models a map keyed by a brand over a number or a flag, or by an alias of a number, is held
+/// in, and the payloads each client is held to.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/number_key_rows.rs"]
+mod number_key_rows;
+
+/// A map keyed by a brand over a number or a flag, or by an alias of a number, read and written
+/// back by the emitted Dart types against serde, and passed by the analyzer.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_number_keys.rs"]
+mod run_dart_number_keys;
+
+/// The same, read and written back by the emitted Kotlin types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_number_keys.rs"]
+mod run_kotlin_number_keys;
+
+/// The same, read and written back by the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_number_keys.rs"]
+mod run_swift_number_keys;
+
 /// A map keyed by a `String` in each place a member holds one, read and written back by the
 /// emitted Dart types against serde, and passed by the analyzer.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_dart_text_keys.rs"]
 mod run_dart_text_keys;
+
+/// The models of the date runs of the emitted Dart, Kotlin and Swift types.
+#[cfg(all(test, feature = "chrono"))]
+#[path = "service_schema_emitted_client_tests/dates_models.rs"]
+mod dates_models;
+
+/// A date read and written back by the emitted Dart types against serde, at each precision.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_dates.rs"]
+mod run_dart_dates;
+
+/// A date read and written back by the emitted Kotlin types against serde.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_dates.rs"]
+mod run_kotlin_dates;
+
+/// A date read and written back by the emitted Swift types against serde, in every position.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_dates.rs"]
+mod run_swift_dates;
 
 /// A set that repeats an item, refused by the read of the emitted Swift types.
 #[cfg(test)]

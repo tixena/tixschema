@@ -141,7 +141,7 @@ fn a_wrong_value_under_a_read_key_is_listed_at_that_key_and_fixed_there() {
                 reason: _reason,
             } = issue
             {
-                path.set_in_value(raw, Value::from(2_u32));
+                raw.set_at(path, Value::from(2_u32));
             }
         }
         read_renamed_schema::Verdict::Fixed
