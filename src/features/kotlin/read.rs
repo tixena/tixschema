@@ -34,6 +34,9 @@ const WRITTEN: Annotated = Annotated {
 /// read as the library reads it.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Numbers {
+    /// A map's key under a declaration that refuses a number written between quotes: a `bool` key
+    /// is read only as `true` or `false`.
+    Key,
     Plain,
     Refusing,
 }
@@ -64,7 +67,11 @@ fn annotated_base(field: &FieldDef, annotated: Annotated) -> String {
         unjudged: false,
     };
     let in_keys = Annotated {
-        numbers: Numbers::Plain,
+        numbers: if annotated.numbers == Numbers::Refusing {
+            Numbers::Key
+        } else {
+            Numbers::Plain
+        },
         ..in_arguments
     };
     let scalar = if let FieldDefType::SiblingType(name, arguments) = &field.field_type {
@@ -99,7 +106,12 @@ fn annotated_base(field: &FieldDef, annotated: Annotated) -> String {
             .map(texts::serializer)
             .or_else(|| {
                 texts::Primitive::of(field)
-                    .filter(|_| annotated.numbers == Numbers::Refusing)
+                    .and_then(|primitive| match annotated.numbers {
+                        Numbers::Plain => None,
+                        Numbers::Refusing => Some(primitive),
+                        Numbers::Key => (primitive == texts::Primitive::Bool)
+                            .then_some(texts::Primitive::BoolKey),
+                    })
                     .map(texts::number_serializer)
             });
         serializer.map_or_else(

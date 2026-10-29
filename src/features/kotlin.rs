@@ -1112,13 +1112,14 @@ fn kotlin_serializer_expr(field: &FieldDef, type_parameters: &[String]) -> Strin
     listed_serializer(field, scalar)
 }
 
-/// The serializer a map's key is read through: a number or a `bool` key is the text serde writes
-/// it as, which the library reads as it is.
+/// The serializer a map's key is read through: a number key is the text serde writes it as, which
+/// the library reads as it is; a `bool` key is read through a serializer that refuses any other
+/// case than `true` and `false`.
 pub fn key_serializer_expr(key: &FieldDef, type_parameters: &[String]) -> String {
-    if texts::Primitive::of(key).is_some() && key.array_depth == 0 {
-        format!("serializer<{}>()", kotlin_typename(key))
-    } else {
-        kotlin_serializer_expr(key, type_parameters)
+    match texts::Primitive::of(key).filter(|_| key.array_depth == 0) {
+        Some(texts::Primitive::Bool) => texts::number_serializer(texts::Primitive::BoolKey),
+        Some(_) => format!("serializer<{}>()", kotlin_typename(key)),
+        None => kotlin_serializer_expr(key, type_parameters),
     }
 }
 

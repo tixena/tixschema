@@ -1,0 +1,17 @@
+error: model_schema: type `Latches`: variant `Latched`, field `0`: an untagged enum cannot hold a map keyed by `bool` — serde reads an untagged enum from a copy of the payload it buffers, where every key is text, and reads no number and no `bool` from text, so no entry of that map reads back. Key the map by a `String`.
+  --> tests/foundation_refusals/buffered_bool_keyed_map.rs:13:13
+   |
+13 |     Latched(BTreeMap<bool, u8>),
+   |             ^^^^^^^^^^^^^^^^^^
+
+error: model_schema: type `Hasped`: variant `Named`, field `latches`: an enum under a tag alone cannot hold a map keyed by `bool` — serde reads an enum under a tag alone from a copy of the payload it buffers, where every key is text, and reads no number and no `bool` from text, so no entry of that map reads back. Key the map by a `String`, or name a `content` key: serde writes the tag ahead of the content, and reads the content that follows it without a copy.
+  --> tests/foundation_refusals/buffered_bool_keyed_map.rs:20:13
+   |
+20 |     Named { latches: BTreeMap<bool, u8> },
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: model_schema: variant `Latched` of internally tagged enum `Wrapped` wraps a map, whose members the expansion cannot name: `#[serde(tag = "kind")]` with no `content` writes them beside the tag, and a schema closed around the tag alone rejects every one of them. Name a `content` key so the value gets an object of its own, or wrap it in a struct whose fields can sit beside the tag.
+  --> tests/foundation_refusals/buffered_bool_keyed_map.rs:27:13
+   |
+27 |     Latched(BTreeMap<bool, u8>),
+   |             ^^^^^^^^^^^^^^^^^^

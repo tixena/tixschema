@@ -38,6 +38,8 @@ thread_local! {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Primitive {
     Bool,
+    /// A `bool` that is a map's key: the text `true` or `false`, in that case alone.
+    BoolKey,
     F32,
     F64,
     I16,
@@ -85,7 +87,7 @@ impl Primitive {
     /// The Kotlin type, and the name serde words the refusal with.
     const fn words(self) -> (&'static str, &'static str) {
         match self {
-            Self::Bool => ("Boolean", "a boolean"),
+            Self::Bool | Self::BoolKey => ("Boolean", "a boolean"),
             Self::I8 => ("Byte", "i8"),
             Self::I16 => ("Short", "i16"),
             Self::I32 => ("Int", "i32"),
@@ -106,6 +108,18 @@ impl Primitive {
 /// written as a string, which it refuses in serde's words.
 fn number_declared(primitive: Primitive, named: &str) -> String {
     let (kotlin, expected) = primitive.words();
+    if primitive == Primitive::BoolKey {
+        return format!(
+            "object {named} : KSerializer<{kotlin}> {{ private val held = serializer<{kotlin}>(); \
+             override val descriptor: SerialDescriptor = held.descriptor; override fun \
+             serialize(encoder: Encoder, value: {kotlin}) = held.serialize(encoder, value); \
+             override fun deserialize(decoder: Decoder): {kotlin} {{ val json = decoder as? \
+             JsonDecoder ?: return held.deserialize(decoder); val element = \
+             json.decodeJsonElement(); return when ((element as? JsonPrimitive)?.takeIf {{ \
+             it.isString }}?.content) {{ \"true\" -> true; \"false\" -> false; else -> throw \
+             SerializationException(\"invalid type: \" + element + \", expected {expected}\") }} }} }}"
+        );
+    }
     format!(
         "object {named} : KSerializer<{kotlin}> {{ private val held = serializer<{kotlin}>(); \
          override val descriptor: SerialDescriptor = held.descriptor; override fun \
@@ -244,9 +258,10 @@ fn walk(field: &FieldDef, written: bool, sought: fn(&FieldDef, bool) -> bool, ke
 }
 
 /// Whether a value typed `field` is a text of one form at its innermost level, or a number or a
-/// `bool` that is no map's key.
+/// `bool`; a map's key is only a `bool`, which is read as `true` or `false` alone.
 fn is_a_form(field: &FieldDef, key: bool) -> bool {
-    TextForm::of(field).is_some() || (!key && Primitive::of(field).is_some())
+    TextForm::of(field).is_some()
+        || Primitive::of(field).is_some_and(|primitive| !key || primitive == Primitive::Bool)
 }
 
 /// The type the alias written `name` names, where the emitter wrote it above with no type
