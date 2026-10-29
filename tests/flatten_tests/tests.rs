@@ -468,6 +468,7 @@ struct FlatOverLaterUnitMember {
 }
 
 /// The same enum through an alias declared below the holder, which forwards the enum's record.
+#[cfg(feature = "jsonschema")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverLaterUnitAlias {
@@ -478,6 +479,7 @@ struct FlatOverLaterUnitAlias {
 
 /// The same enum through a struct of one slot declared below the holder, which forwards the
 /// enum's record.
+#[cfg(feature = "jsonschema")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverLaterUnitSlot {
@@ -486,9 +488,11 @@ struct FlatOverLaterUnitSlot {
     id: String,
 }
 
+#[cfg(feature = "jsonschema")]
 #[model_schema()]
 type LaterUnitAlias = LaterUnitMember;
 
+#[cfg(feature = "jsonschema")]
 #[model_schema(no_display)]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct LaterUnitSlot(LaterUnitMember);
@@ -504,6 +508,7 @@ enum LaterUnitMember {
 /// A generic untagged enum filled at `()`, flattened by a struct declared above it: its member is
 /// its own type parameter, and the enum publishes no record at a filling, so the merge reads the
 /// `null` of that member as no key.
+#[cfg(feature = "jsonschema")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverLaterHeldUnit {
@@ -512,6 +517,7 @@ struct FlatOverLaterHeldUnit {
     id: String,
 }
 
+#[cfg(feature = "jsonschema")]
 #[model_schema(default_types(T = String))]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
@@ -521,6 +527,7 @@ enum LaterHeldMember<T> {
 }
 
 /// A flattened `Option` of a struct declared below its holder: its `null` is the absence.
+#[cfg(feature = "jsonschema")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverLaterMaybeFields {
@@ -530,6 +537,7 @@ struct FlatOverLaterMaybeFields {
 }
 
 /// The same `Option` through an alias declared below its holder.
+#[cfg(feature = "jsonschema")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverLaterMaybeAlias {
@@ -539,6 +547,7 @@ struct FlatOverLaterMaybeAlias {
 }
 
 /// The same `Option` through a struct of one slot declared below its holder.
+#[cfg(feature = "jsonschema")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverLaterMaybeSlot {
@@ -547,13 +556,16 @@ struct FlatOverLaterMaybeSlot {
     id: String,
 }
 
+#[cfg(feature = "jsonschema")]
 #[model_schema()]
 type LaterMaybeAlias = Option<LaterFieldsBelow>;
 
+#[cfg(feature = "jsonschema")]
 #[model_schema(no_display)]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct LaterMaybeSlot(Option<LaterFieldsBelow>);
 
+#[cfg(feature = "jsonschema")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct LaterFieldsBelow {

@@ -14155,15 +14155,14 @@ fn process_untagged_enum(
         &zod_merge_parts,
     );
     #[cfg(not(feature = "zod"))]
-    let (zod_text, _) = ((String::new(), String::new()), &zod_merge_parts);
+    #[cfg(any(feature = "typescript", feature = "jsonschema"))]
+    let zod_text = (String::new(), String::new());
     #[cfg(feature = "typescript")]
     record_ts_union_members(&name.to_string(), &ts_merge_parts);
-    #[cfg(not(feature = "typescript"))]
-    let _: &_ = &ts_merge_parts;
 
     #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
     let _: &_ = &(name, item_name, &ts_parts, &json_parts);
-    let _: &_ = &zod_parts;
+    let _: &_ = &(&zod_parts, &zod_merge_parts, &ts_merge_parts);
     let decode_with = enum_decode_with(&item_enum, args);
 
     #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
