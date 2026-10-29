@@ -23,7 +23,7 @@ use crate::features::serde::{
     parse_serde_key_omission, parse_written_renames,
 };
 use crate::field_type::get_field_def;
-use crate::model_schema::judged_read::{authored_read_bounds, listed_read};
+use crate::model_schema::judged_read::{HookScope, authored_read_bounds, listed_read};
 use crate::rename_rule::resolve_rename_rule;
 use crate::utils::{ident_schema_module_name, to_snake_case, type_parameters_in_scope};
 
@@ -687,7 +687,9 @@ impl EnumWalker<'_> {
 /// lists "mongodb" in `enable`.
 pub fn enum_recovering_decode(item_enum: &ItemEnum, mongodb: bool) -> RecoveringDecode {
     let module_name = ident_schema_module_name(&item_enum.ident.to_string());
-    let authored = authored_read_bounds(&DeriveInput::from(item_enum.clone()));
+    let input = DeriveInput::from(item_enum.clone());
+    let authored = authored_read_bounds(&input);
+    let scope = HookScope::of(&input, &authored);
     let parameters = type_parameters_in_scope(&item_enum.generics);
     let mut reach = Reach::new(&module_name);
     let mut walked = item_enum.clone();
@@ -717,6 +719,7 @@ pub fn enum_recovering_decode(item_enum: &ItemEnum, mongodb: bool) -> Recovering
             reach: &reach,
             read: listed_read(&DeriveInput::from(item_enum.clone())),
             read_predicates: authored.predicates,
+            scope,
             bound: WrittenBound::of(&item_enum.attrs, authored.written_by_container),
         },
         &paths,

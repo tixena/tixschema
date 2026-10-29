@@ -40,6 +40,25 @@ struct Van {
     load: Tote<String>,
 }
 
+/// Holds a list of totes under its own type parameter, held to a count of its own.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[model_schema(enable = ["decode_with"], default_types(CodeType = String))]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(bound(deserialize = "CodeType: serde::de::DeserializeOwned"))]
+struct Convoy<CodeType: Display> {
+    #[model_schema_prop(minLength = 3)]
+    loads: Vec<Tote<CodeType>>,
+}
+
+/// [`Convoy`] with a concrete filling.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[model_schema(enable = ["decode_with"])]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+struct StringConvoy {
+    #[model_schema_prop(minLength = 3)]
+    loads: Vec<Tote<String>>,
+}
+
 /// A recursive checked type.
 #[model_schema(enable = ["decode_with"], check = ["withinCarton"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -70,6 +89,18 @@ struct SealedTruck<CodeType: Display> {
     load: SealedTote<CodeType>,
 }
 
+/// A recursive checked type whose list of itself is held to a count.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[model_schema(enable = ["decode_with"], check = ["withinStack"])]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Stack {
+    fragile_item_codes: Vec<String>,
+    item_code_list: Vec<String>,
+    #[model_schema_prop(minLength = 2)]
+    stacks: Vec<Self>,
+}
+
 fn outside(list: &[String], fragile: &[String]) -> Result<(), Vec<String>> {
     let outside: Vec<String> = fragile
         .iter()
@@ -90,6 +121,11 @@ fn within_tote<CodeType>(value: &Tote<CodeType>) -> Result<(), Vec<String>>
 where
     CodeType: Display,
 {
+    outside(&value.item_code_list, &value.fragile_item_codes)
+}
+
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+fn within_stack(value: &Stack) -> Result<(), Vec<String>> {
     outside(&value.item_code_list, &value.fragile_item_codes)
 }
 
@@ -215,5 +251,67 @@ fn a_plain_read_of_the_holder_names_the_check_at_its_full_path() {
             .unwrap_err()
             .to_string(),
         "'load.fragileItemCodes.1': y is outside of itemCodeList"
+    );
+}
+
+/// A payload that holds fewer totes than the list's count asks, the second of which breaks its
+/// check.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+fn too_few_and_broken() -> Value {
+    let sound = json!({ "itemCodeList": ["x"], "fragileItemCodes": ["x"] });
+    json!({ "loads": [sound, broken()] })
+}
+
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn a_counted_list_held_under_the_holders_type_parameter_lists_the_issues_of_a_concrete_filling() {
+    let mut generic = String::new();
+    Convoy::<String>::from_value_with(too_few_and_broken(), |_, issues| {
+        generic = format!("{issues:?}");
+        convoy_schema::Verdict::Reject
+    })
+    .unwrap_err();
+    let mut concrete = String::new();
+    StringConvoy::from_value_with(too_few_and_broken(), |_, issues| {
+        concrete = format!("{issues:?}");
+        string_convoy_schema::Verdict::Reject
+    })
+    .unwrap_err();
+    assert_eq!(generic, concrete);
+    assert!(
+        generic.contains("too short: minimum length is 3, got 2"),
+        "the count of the list is listed: {generic}"
+    );
+    assert!(
+        generic.contains(&listed_at(
+            r#"Key("loads"), Index(1), Key("fragileItemCodes"), Index(1)"#
+        )),
+        "the check of the second tote is listed at its path: {generic}"
+    );
+}
+
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn a_counted_list_of_self_lists_its_count_and_the_check_of_the_stack_it_holds() {
+    let mut inner = broken();
+    inner["stacks"] = json!([]);
+    let mut listed = String::new();
+    Stack::from_value_with(
+        json!({ "itemCodeList": [], "fragileItemCodes": [], "stacks": [inner] }),
+        |_, issues| {
+            listed = format!("{issues:?}");
+            stack_schema::Verdict::Reject
+        },
+    )
+    .unwrap_err();
+    assert!(
+        listed.contains("too short: minimum length is 2, got 1"),
+        "the count of the list is listed: {listed}"
+    );
+    assert!(
+        listed.contains(&listed_at(
+            r#"Key("stacks"), Index(0), Key("fragileItemCodes"), Index(1)"#
+        )),
+        "the check of the stack it holds is listed at its path: {listed}"
     );
 }
