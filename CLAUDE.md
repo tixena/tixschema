@@ -104,7 +104,7 @@ just docs
 ### The Gate (what a change is held to, here and in CI)
 ```bash
 just all
-# Runs, with every feature on: one clippy lint, one build, one test run
+# Runs, with every feature on: one clippy lint and one test run
 ```
 
 ### The Full Run (every few days)

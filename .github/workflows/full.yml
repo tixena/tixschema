@@ -70,12 +70,6 @@ jobs:
         kotlinc -version
         java -version
 
-    - name: Build project
-      id: build
-      run: |
-        echo "🏗️ Building project..."
-        cargo build --verbose
-
     - name: Run code checks
       id: check
       run: |
@@ -141,7 +135,6 @@ jobs:
         SERVER_URL: ${{ github.server_url }}
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         TIMESTAMP: ${{ github.event.head_commit.timestamp }}
-        BLD: ${{ steps.build.outcome }}
         CHK: ${{ steps.check.outcome }}
         LALL: ${{ steps.lint-all.outcome }}
         TBASIC: ${{ steps.test-basic.outcome }}
@@ -159,8 +152,7 @@ jobs:
         # Overall status + which step failed
         JOB_STATUS="success"
         FAILED_STEP="None"
-        if [[ "$BLD" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Build (cargo build)";
-        elif [[ "$CHK" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Code checks (just check)";
+        if [[ "$CHK" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Code checks (just check)";
         elif [[ "$LALL" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Lint the feature sets (just lint-sets)";
         elif [[ "$TBASIC" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Basic tests (cargo test)";
         elif [[ "$TEXT" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Feature-set tests (just test-sets)";
@@ -170,8 +162,8 @@ jobs:
         fi
 
         icon() { case "$1" in success) printf '✅';; failure) printf '❌';; *) printf '⏭️';; esac; }
-        STATUS_VALUE=$(printf '🏗️ Build: %s\n🔍 Check: %s\n🧹 Lint (all features): %s\n🧪 Basic Tests: %s\n🚀 Extensive Tests: %s\n🔎 Emitted TypeScript: %s\n🌐 Emitted Clients: %s\n🛡️ Audit: %s' \
-          "$(icon "$BLD")" "$(icon "$CHK")" "$(icon "$LALL")" "$(icon "$TBASIC")" "$(icon "$TEXT")" "$(icon "$TSC")" "$(icon "$EMIT")" "$(icon "$AUDIT")")
+        STATUS_VALUE=$(printf '🔍 Check: %s\n🧹 Lint (all features): %s\n🧪 Basic Tests: %s\n🚀 Extensive Tests: %s\n🔎 Emitted TypeScript: %s\n🌐 Emitted Clients: %s\n🛡️ Audit: %s' \
+          "$(icon "$CHK")" "$(icon "$LALL")" "$(icon "$TBASIC")" "$(icon "$TEXT")" "$(icon "$TSC")" "$(icon "$EMIT")" "$(icon "$AUDIT")")
 
         # Per-event details: commit message / author / PR link
         if [[ "$EVENT_NAME" == "pull_request" ]]; then
