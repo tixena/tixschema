@@ -1132,8 +1132,8 @@ impl Own<'_> {
             && sibling
             && !starts_at_a_parameter(named, &self.type_parameters);
         let one_value = match declared(&name) {
-            Some(Declared::Model) => false,
-            Some(Declared::OneValue) => true,
+            Some(Declared::Model(_)) => false,
+            Some(Declared::OneValue(_)) => true,
             Some(Declared::Alias(_)) | None => return None,
         };
         reached.then_some(Seen {

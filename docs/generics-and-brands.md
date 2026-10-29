@@ -314,3 +314,27 @@ declared default substituted in (`substitute_declared_defaults`, reading
 two types are one, so the read and `validate()` reach the same one filling `$SchemaDefault` does.
 `type_identity` is emitted into the schema module by `embedded_type_identity`, a copy of
 `typeid::of` (see `THIRD-PARTY-NOTICES`), so a consumer adds no dependency for it.
+
+Where `Display` is asked follows what is measured. The comparison and the checks are written for
+the inner type with each parameter's declared default substituted in, and `branded_inner_measures_path`
+asks that type, so a default that is a path is measured as a path, with no `Display`, and a
+default that is a string is rendered through `to_string()` on the default alone. The parameter is
+never asked for `Display`. A brand whose inner names no parameter at any depth, a `PathBuf` or a
+`String` beside a `PhantomData<Mark>` marker, takes the branch of a brand with no parameter:
+`validate()` calls `validate_value` on the inner at every filling, and no `type_identity` or
+`validate_at_declared_default` is emitted for it (`names_a_parameter`). The fallback for an entry
+`default_types` leaves out is the standard `String`, written `::std::string::String`, so it is the
+standard type beside a type of the consumer's named `String`.
+
+`validate_at_declared_default` reads the value as the default at the lifetime of its own borrow,
+which is sound only where the expansion sees every lifetime the default has to rewrite. A declared
+default is accepted when it is a standard type the field-definition dispatch has an arm for, a
+struct or an enum `#[model_schema]` was written on above that is written with every lifetime it
+declares (the registry notes the count in `Declared::Model` and `Declared::OneValue`), or an alias
+`#[model_schema]` was written on above whose target passes and writes no lifetime of its own.
+Any other default is refused at expansion, spanned on the `default_types` entry
+(`branded_unproven_default_errors`): a plain alias, a type of another crate, a type declared
+below the brand, a path that leaves out a lifetime its declaration has (`Tag` for `Tag<'text>`,
+which the message says to write `Tag<'_>`), and an alias that hides a lifetime. A generic brand
+with no string check is refused nothing, and so is a build with no schema surface, where the
+function is not emitted.

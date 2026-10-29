@@ -5079,7 +5079,7 @@ fn walks_itself(ty: &Type, depth: usize) -> bool {
         return true;
     }
     match declared(&last.ident.unraw().to_string()) {
-        Some(Declared::Model | Declared::OneValue) => true,
+        Some(Declared::Model(_) | Declared::OneValue(_)) => true,
         Some(Declared::Alias(aliased_as)) if depth < 8 => syn::parse_str::<Type>(&aliased_as)
             .is_ok_and(|aliased| walks_itself(&aliased, depth.saturating_add(1))),
         Some(Declared::Alias(_)) | None => false,
