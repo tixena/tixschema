@@ -119,7 +119,7 @@ consumer's view; this is what a change has to keep.
   holds an integer to `FieldDefType::integer_range` and an `f32` below `F32_READ_BOUND` in size,
   on the read and on the write, a map's key included: `expected an integer from 0 to 255, found
   256`, `expected a 32-bit float, found 1e+300`. A `DateTime<Tz>` is written
-  `toUtc().toIso8601String()`, as a value and as a map's key. The WebSocket client writes and reads
+  `toUtc().toIso8601String()` with `.000Z` written as `Z` (`CHRONO_WHOLE_SECONDS`), as a value and as a map's key; a map read by a date key refuses two keys that read as one with `repeated key`. The WebSocket client writes and reads
   a header through the same codec. `run_dart_text_forms.rs` reads `TEXT_FORMS` under the Dart SDK,
   and `run_dart_wire_forms.rs` writes `WIRE_FORMS`.
 - **A declared type is read unjudged exactly where the holder's `validate()` runs it.** `Read` is

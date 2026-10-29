@@ -40,6 +40,14 @@ use crate::utils::{
 #[cfg(feature = "serde")]
 use crate::features::serde::{parse_serde_field_attributes, parse_serde_type_attributes};
 
+/// Appended to a formatted date: chrono writes a date of whole seconds with no fraction.
+#[cfg(feature = "chrono")]
+pub const CHRONO_WHOLE_SECONDS: &str = ".replacingOccurrences(of: \".000Z\", with: \"Z\")";
+
+/// The options of the formatter that reads and writes a fraction of a second.
+#[cfg(feature = "chrono")]
+pub const FRACTIONAL_OPTIONS: &str = ".withInternetDateTime, .withFractionalSeconds";
+
 /// The words Swift reserves in a declaration, a statement or an expression. A word reserved in one
 /// context only, such as `get` or `type`, is not among them.
 const SWIFT_RESERVED: [&str; 51] = [
@@ -95,6 +103,10 @@ const SWIFT_RESERVED: [&str; 51] = [
     "where",
     "while",
 ];
+
+/// The options of the formatter that reads a date of whole seconds.
+#[cfg(feature = "chrono")]
+pub const WHOLE_OPTIONS: &str = ".withInternetDateTime";
 
 /// One field this module has decided belongs on the wire, resolved to the Swift property it
 /// earns: its Rust name, its lower-camel Swift name, its wire name, whether the key always
@@ -1054,7 +1066,7 @@ fn swift_map_key_codec(key: &FieldDef, held: &str) -> (Option<String>, String) {
                  Self.isoWholeFormatterForKeys.date(from: wireKey)"
                     .to_owned(),
             ),
-            format!("Self.isoFormatterForKeys.string(from: {held})"),
+            format!("Self.isoFormatterForKeys.string(from: {held}){CHRONO_WHOLE_SECONDS}"),
         ),
     }
 }
@@ -1128,13 +1140,15 @@ fn map_key_wrapper_struct(
     // no static property and a stored `ISO8601DateFormatter` is not `Sendable`.
     #[cfg(feature = "chrono")]
     let formatter_decl = if matches!(keys::leaf(key).field_type, FieldDefType::DateTime) {
-        "private static var isoFormatterForKeys: ISO8601DateFormatter { let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f }; \
-         private static var isoWholeFormatterForKeys: ISO8601DateFormatter { let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime]; return f };"
+        format!(
+            "private static var isoFormatterForKeys: ISO8601DateFormatter {{ let f = ISO8601DateFormatter(); f.formatOptions = [{FRACTIONAL_OPTIONS}]; return f }}; \
+             private static var isoWholeFormatterForKeys: ISO8601DateFormatter {{ let f = ISO8601DateFormatter(); f.formatOptions = [{WHOLE_OPTIONS}]; return f }};"
+        )
     } else {
-        ""
+        String::new()
     };
     #[cfg(not(feature = "chrono"))]
-    let formatter_decl = "";
+    let formatter_decl = String::new();
     format!(
         "public struct {wrapper_name}{generic_params}: Codable, Sendable {{ \
          public var storage: [{key_type}: {value_type}]; \
@@ -1160,9 +1174,27 @@ fn wrapper_bound_key(key: &FieldDef) -> String {
         KeyRead::Whole(read) => format!("let key = {read}; "),
         KeyRead::Parsed(parsed) => format!(
             "guard let key = {parsed} else {{ \
-             throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, debugDescription: \"bad key \\(wireKey)\") }}; "
+             throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, debugDescription: \"bad key \\(wireKey)\") }}; {}",
+            refused_repeat_of_a_date_key(key)
         ),
     }
+}
+
+/// A date key Swift holds to its millisecond: two keys finer than that read as one, so the read
+/// refuses the second instead of dropping an entry.
+#[cfg(feature = "chrono")]
+fn refused_repeat_of_a_date_key(key: &FieldDef) -> &'static str {
+    if matches!(keys::leaf(key).field_type, FieldDefType::DateTime) {
+        "if result.keys.contains(key) { \
+         throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, debugDescription: \"repeated key \\(wireKey)\") }; "
+    } else {
+        ""
+    }
+}
+
+#[cfg(not(feature = "chrono"))]
+const fn refused_repeat_of_a_date_key(_key: &FieldDef) -> &'static str {
+    ""
 }
 
 /// Where a map's wrapper reads the value of one entry from.
@@ -2804,12 +2836,9 @@ fn datetime_helpers(export_name: &str, declares_a_parameter: bool) -> String {
          swiftSchemaWholeIso8601Formatter.date(from: text) else {{ \
          throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: codingPath, debugDescription: \"bad ISO8601 date: \\(text)\")) }}; \
          return date }}; \
-         private static func swiftSchemaFormatIso8601Date(_ date: Date) -> String {{ swiftSchemaIso8601Formatter.string(from: date) }} }};",
-        formatter(
-            "swiftSchemaIso8601Formatter",
-            ".withInternetDateTime, .withFractionalSeconds"
-        ),
-        formatter("swiftSchemaWholeIso8601Formatter", ".withInternetDateTime"),
+         private static func swiftSchemaFormatIso8601Date(_ date: Date) -> String {{ swiftSchemaIso8601Formatter.string(from: date){CHRONO_WHOLE_SECONDS} }} }};",
+        formatter("swiftSchemaIso8601Formatter", FRACTIONAL_OPTIONS),
+        formatter("swiftSchemaWholeIso8601Formatter", WHOLE_OPTIONS),
     )
 }
 

@@ -1343,7 +1343,7 @@ fn dated_encoder_fn(fn_prefix: &str) -> String {
          let formatter = ISO8601DateFormatter()\n    \
          formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]\n    \
          var container = encoder.singleValueContainer()\n    \
-         try container.encode(formatter.string(from: date))\n  \
+         try container.encode(formatter.string(from: date).replacingOccurrences(of: \".000Z\", with: \"Z\"))\n  \
          }}\n  \
          return encoder\n\
          }}"

@@ -15,12 +15,12 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::date_map_keys_models::{
-    AdjacentShift, AdjacentWatch, Chronicle, Daybook, Daybooks, Diary, Logbook, Sailing, Shift,
-    StowedLogbook, TaggedShift, TaggedWatch, Tidetable, Timetable, UntaggedShift, UntaggedWatch,
-    Watch, adjacent_shift_swift, adjacent_watch_swift, chronicle_swift, daybook_swift,
-    daybooks_swift, diary_swift, first, logbook_swift, second, shift_swift, stowed_logbook_swift,
-    tagged_shift_swift, tagged_watch_swift, tidetable_swift, timetable_swift, untagged_shift_swift,
-    untagged_watch_swift, watch_swift,
+    AdjacentShift, AdjacentWatch, Chronicle, Convoy, Daybook, Daybooks, Diary, Logbook, Moment,
+    Reminder, Sailing, Shift, StowedLogbook, TaggedShift, TaggedWatch, Tidetable, Timetable,
+    UntaggedShift, UntaggedWatch, Watch, adjacent_shift_swift, adjacent_watch_swift,
+    chronicle_swift, daybook_swift, daybooks_swift, diary_swift, first, logbook_swift, second,
+    shift_swift, stowed_logbook_swift, tagged_shift_swift, tagged_watch_swift, tidetable_swift,
+    timetable_swift, untagged_shift_swift, untagged_watch_swift, watch_swift,
 };
 use super::text_map_keys_models::{almanac_swift, ephemeris_swift, gazetteer_swift};
 // The JSON Schema of `Roll` describes each value of its map keyed by a number by `Sailing`'s own.
@@ -42,10 +42,14 @@ const DATE_KEY: &str = "let wireKey = codingKey.stringValue; \
                         guard let key = Self.isoFormatterForKeys.date(from: wireKey) ?? \
                         Self.isoWholeFormatterForKeys.date(from: wireKey) else { \
                         throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
-                        debugDescription: \"bad key \\(wireKey)\") }; result[key] = ";
+                        debugDescription: \"bad key \\(wireKey)\") }; \
+                        if result.keys.contains(key) { \
+                        throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
+                        debugDescription: \"repeated key \\(wireKey)\") }; result[key] = ";
 
 /// How a wrapper writes a date key.
-const WRITTEN_DATE_KEY: &str = "let wireKey = Self.isoFormatterForKeys.string(from: key); ";
+const WRITTEN_DATE_KEY: &str = "let wireKey = Self.isoFormatterForKeys.string(from: key)\
+                                .replacingOccurrences(of: \".000Z\", with: \"Z\"); ";
 
 /// A map under a key Swift parses, a key it holds as its text and a key `Bool` reads.
 #[model_schema()]
@@ -211,6 +215,30 @@ fn a_date_of_whole_seconds_or_finer_than_milliseconds_is_written_as_chrono_write
     );
 }
 
+#[test]
+fn a_date_is_written_as_chrono_writes_it_by_the_models_the_swift_runs_read() {
+    let whole = DateTime::from_timestamp(1_704_164_645, 0).unwrap();
+    assert_eq!(
+        read_back(&Moment { at: whole }),
+        r#"{"at":"2024-01-02T03:04:05Z"}"#
+    );
+    assert_eq!(
+        read_back(&Reminder { due: Some(first()) }),
+        r#"{"due":1704164645678}"#
+    );
+    assert_eq!(read_back(&Reminder { due: None }), "{}");
+    let convoy = Convoy {
+        held: "h".to_owned(),
+        sailings: once(Sailing {
+            label: "s".to_owned(),
+        }),
+    };
+    assert_eq!(
+        read_back(&convoy),
+        r#"{"held":"h","sailings":{"2024-01-02T03:04:05.678Z":{"label":"s"}}}"#
+    );
+}
+
 /// Every wrapper of a date key computes its formatter, binds each key it reads with `guard`, one
 /// read per wrapper and two for the wrapper of a map whose value is a model, and writes each key
 /// with the formatter.
@@ -271,6 +299,9 @@ fn the_wrapper_of_a_date_key_is_written_whole() {
            Self.isoWholeFormatterForKeys.date(from: wireKey) else { \
            throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
            debugDescription: \"bad key \\(wireKey)\") }; \
+           if result.keys.contains(key) { \
+           throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
+           debugDescription: \"repeated key \\(wireKey)\") }; \
            result[key] = try Sailing(swiftSchemaUnjudged: \
            container.superDecoder(forKey: codingKey)) }; \
            storage = result }; \
@@ -282,12 +313,16 @@ fn the_wrapper_of_a_date_key_is_written_whole() {
            Self.isoWholeFormatterForKeys.date(from: wireKey) else { \
            throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
            debugDescription: \"bad key \\(wireKey)\") }; \
+           if result.keys.contains(key) { \
+           throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
+           debugDescription: \"repeated key \\(wireKey)\") }; \
            result[key] = try container.decode(Sailing.self, forKey: codingKey) }; \
            storage = result }; \
            public func encode(to encoder: Encoder) throws { \
            var container = encoder.container(keyedBy: DynamicCodingKey.self); \
            for (key, value) in storage { \
-           let wireKey = Self.isoFormatterForKeys.string(from: key); \
+           let wireKey = Self.isoFormatterForKeys.string(from: key)\
+           .replacingOccurrences(of: \".000Z\", with: \"Z\"); \
            guard let codingKey = DynamicCodingKey(stringValue: wireKey) else { continue }; \
            try container.encode(value, forKey: codingKey) } } }; ",
         ],

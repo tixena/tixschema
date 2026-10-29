@@ -155,10 +155,12 @@ fn a_brand_over_a_date_and_an_alias_of_one_declare_the_formatters_of_a_date_key(
                 "guard let key = ((Self.isoFormatterForKeys.date(from: wireKey) ?? \
                  Self.isoWholeFormatterForKeys.date(from: wireKey)).map { Postmark(value: $0) }) \
                  else {",
-                "let wireKey = Self.isoFormatterForKeys.string(from: key.value); ",
+                "let wireKey = Self.isoFormatterForKeys.string(from: key.value)\
+                 .replacingOccurrences(of: \".000Z\", with: \"Z\"); ",
                 "guard let key = Self.isoFormatterForKeys.date(from: wireKey) ?? \
                  Self.isoWholeFormatterForKeys.date(from: wireKey) else {",
-                "let wireKey = Self.isoFormatterForKeys.string(from: key); ",
+                "let wireKey = Self.isoFormatterForKeys.string(from: key)\
+                 .replacingOccurrences(of: \".000Z\", with: \"Z\"); ",
             ],
         );
     }
