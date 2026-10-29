@@ -498,6 +498,28 @@ mod run_dart_bool_keys;
 #[path = "service_schema_emitted_client_tests/run_kotlin_bool_keys.rs"]
 mod run_kotlin_bool_keys;
 
+/// The models a map keyed by a brand over a number or a flag, or by an alias of a number, is held
+/// in, and the payloads each client is held to.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/number_key_rows.rs"]
+mod number_key_rows;
+
+/// A map keyed by a brand over a number or a flag, or by an alias of a number, read and written
+/// back by the emitted Dart types against serde, and passed by the analyzer.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_number_keys.rs"]
+mod run_dart_number_keys;
+
+/// The same, read and written back by the emitted Kotlin types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_number_keys.rs"]
+mod run_kotlin_number_keys;
+
+/// The same, read and written back by the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_number_keys.rs"]
+mod run_swift_number_keys;
+
 /// A map keyed by a `String` in each place a member holds one, read and written back by the
 /// emitted Dart types against serde, and passed by the analyzer.
 #[cfg(test)]

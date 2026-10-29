@@ -6,10 +6,11 @@
 use super::texts;
 use super::{arrays, validate};
 use super::{
-    field_reaches_type_parameter, innermost, key_serializer_expr, kotlin_base, kotlin_quoted,
-    kotlin_serializer_expr, kotlin_serializer_param_name, kotlin_typename, listed_serializer,
-    lookup_kotlin_name, marked_nullable_at, range_serializer, range_typename, result_serializer,
-    result_typename, sibling_typename, tuple_wrapper_serializer, tuple_wrapper_typename,
+    field_reaches_type_parameter, innermost, key_object_name, key_serializer_expr, kotlin_base,
+    kotlin_quoted, kotlin_serializer_expr, kotlin_serializer_param_name, kotlin_typename,
+    listed_serializer, lookup_kotlin_name, marked_nullable_at, range_serializer, range_typename,
+    result_serializer, result_typename, sibling_typename, tuple_wrapper_serializer,
+    tuple_wrapper_typename,
 };
 use crate::features::text_forms::TextForm;
 use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
@@ -83,6 +84,22 @@ fn annotated_base(field: &FieldDef, annotated: Annotated) -> String {
         let written = sibling_typename(name, arguments, |argument| {
             annotated_typename(argument, in_arguments)
         });
+        let key_leaf = (annotated.numbers == Numbers::Key)
+            .then(|| texts::key_leaf(field))
+            .flatten();
+        if let Some(leaf) = key_leaf {
+            return match leaf {
+                texts::KeyLeaf::Brand(brand) => format!(
+                    "@Serializable(with = {}::class) {written}",
+                    key_object_name(&brand)
+                ),
+                texts::KeyLeaf::Primitive(texts::Primitive::Bool) => format!(
+                    "@Serializable(with = {}::class) Boolean",
+                    texts::number_serializer(texts::Primitive::BoolKey)
+                ),
+                texts::KeyLeaf::Primitive(primitive) => primitive.kotlin_type().to_owned(),
+            };
+        }
         unjudged_of(name).filter(|_| annotated.models).map_or_else(
             || written.clone(),
             |unjudged| format!("@Serializable(with = {unjudged}::class) {written}"),
