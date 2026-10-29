@@ -23,16 +23,16 @@ use super::swift_preprocess_models::shipping_client_service_schema::{
     shipping_client_service_fault_fields_swift, shipping_client_service_fault_kind_swift,
 };
 use super::swift_preprocess_models::{
-    Ahead, Barged, Binned, Boxed, Branch, Choice, Chosen, Dated, Docked, Ferried, Loaded, Lodged,
-    Lone, Loosed, Marked, Moved, Paired, Quayside, Sampled, Sealing, Shifted, ShippingBackEnd,
-    ShippingClientService as _, ShippingClientServiceSchema, ShippingError, Shouldered, Spared,
-    Stamped, Stowed, Strapped, Tallied, Twice, ahead_swift, banded_swift, barged_swift,
-    behind_swift, binned_swift, boxed_swift, branch_swift, choice_swift, chosen_swift, dated_swift,
-    docked_swift, ferried_swift, listing_swift, loaded_swift, lodged_swift, lone_swift,
-    loosed_swift, marked_swift, moved_swift, paired_swift, quayside_swift, sampled_swift,
-    sealing_swift, shifted_swift, shipping_error_swift, shouldered_swift, sided_swift,
-    spared_swift, stamped_swift, stowed_swift, strapped_swift, tallied_calls, tallied_swift,
-    twice_swift,
+    Ahead, Barged, Binned, Boxed, Branch, Choice, Chosen, Dated, Docked, Ferried, Hull, Loaded,
+    Lodged, Lone, Loosed, Marked, Moved, Paired, Quayside, Sampled, Sealing, Shifted,
+    ShippingBackEnd, ShippingClientService as _, ShippingClientServiceSchema, ShippingError,
+    Shouldered, Spared, Stamped, Sticker, Stowed, Strapped, Tallied, Twice, ahead_swift,
+    banded_swift, barged_swift, behind_swift, binned_swift, boxed_swift, branch_swift,
+    choice_swift, chosen_swift, dated_swift, docked_swift, ferried_swift, hull_swift,
+    listing_swift, loaded_swift, lodged_swift, lone_swift, loosed_swift, marked_swift, moved_swift,
+    paired_swift, quayside_swift, sampled_swift, sealing_swift, shifted_swift,
+    shipping_error_swift, shouldered_swift, sided_swift, spared_swift, stamped_swift,
+    sticker_swift, stowed_swift, strapped_swift, tallied_calls, tallied_swift, twice_swift,
 };
 #[cfg(feature = "chrono")]
 use super::swift_preprocess_models::{Timed, timed_swift};
@@ -99,6 +99,16 @@ func orUnnamed(_ payload: Any) -> Any {
 func textual(_ payload: Any) -> Any {
   if let whole = payload as? Int64 { return String(whole) }
   return payload
+}
+
+func labelled(_ payload: Any) -> Any {
+  guard let text = payload as? String else { return payload }
+  return ["label": text]
+}
+
+func hulled(_ payload: Any) -> Any {
+  guard let text = payload as? String else { return payload }
+  return ["kind": "Plain", "label": text]
 }
 
 func trimmedPlate(_ payload: Any) -> Any {
@@ -360,6 +370,8 @@ fn definitions() -> Vec<String> {
         branch_swift::swift_definition(),
         binned_swift::swift_definition(),
         dated_swift::swift_definition(),
+        sticker_swift::swift_definition(),
+        hull_swift::swift_definition(),
     ]
 }
 
@@ -467,6 +479,40 @@ fn every_position_and_every_shape_reads_the_corrected_payload() {
         return;
     };
     assert_eq!(normalized(&swift), normalized(POSITIONS));
+}
+
+/// A type that names a function is handed a payload of any kind: a text is read as the class and
+/// as the enum under a tag key its function turns it into, as the Rust read reads it.
+#[test]
+fn a_text_is_read_into_a_class_and_a_tagged_enum_through_the_function() {
+    let cases = [
+        ("a class from a text", "Sticker", r#""A""#),
+        ("a class from its object", "Sticker", r#"{"label":"A"}"#),
+        ("an enum under a tag key from a text", "Hull", r#""A""#),
+        (
+            "an enum under a tag key from its object",
+            "Hull",
+            r#"{"kind":"Tall","masts":3}"#,
+        ),
+    ];
+    let rust = |name: &str, read_as: &str, payload: &str| match read_as {
+        "Sticker" => rust_row::<Sticker>(name, payload),
+        _ => rust_row::<Hull>(name, payload),
+    };
+    let expected: String = cases
+        .iter()
+        .map(|&(name, read_as, payload)| rust(name, read_as, payload))
+        .collect();
+    assert!(expected.contains("a class from a text: read {\"label\":\"A\"}"));
+    let lines = cases
+        .iter()
+        .map(|&(name, read_as, payload)| row_line(name, read_as, payload))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let Some(swift) = printed(&lines) else {
+        return;
+    };
+    assert_eq!(normalized(&swift), normalized(&expected));
 }
 
 /// A function is called where the payload holds the key, a `null` included, and for no key the

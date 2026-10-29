@@ -48,7 +48,7 @@ use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, get_field_def, is_plain_enum,
     is_sequence_wrapper,
 };
-use crate::model_schema::variant_wire_kind;
+use crate::model_schema::{variant_field_rule, variant_wire_kind};
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
 use crate::utils::{
     compute_alias_export_name, compute_item_export_name, option_alias, to_snake_case,
@@ -114,6 +114,8 @@ pub struct KotlinArgs<'args> {
     pub pattern: Option<&'args str>,
     /// The functions `preprocess` names on the type, each taking the whole payload.
     pub preprocess: &'args [FunctionName],
+    /// The Rust name of the item, which a member written `Self` is named as.
+    pub type_name: &'args str,
 }
 
 /// One field this module has decided belongs on the wire: its Rust name (camel-cased into the
@@ -229,9 +231,9 @@ struct DispatchedTaggedContext<'ctx> {
     /// The defaults of the members of the enum's variants.
     defaults: &'ctx SerdeDefaults,
     export_name: &'ctx str,
-    field_rule: RenameRule,
     generic_params: &'ctx str,
     nothing_generic_args: &'ctx str,
+    rename_all_fields: Option<&'ctx str>,
     serializable: &'ctx [String],
     tag_key: &'ctx str,
     /// [`Tagging::Unwrapped`] is a tag alone here: an untagged enum is written elsewhere.
@@ -567,7 +569,7 @@ fn brand_value_field(held: &Field, type_parameters: &[String], args: &KotlinArgs
         pattern: args.pattern.map(ToOwned::to_owned),
         ..ModelSchemaPropMeta::default()
     });
-    field_def.erase_type_parameters(type_parameters);
+    field_def.named_within(args.type_name, type_parameters);
     field_def
 }
 
@@ -812,7 +814,7 @@ fn collect_kotlin_fields(
         }
         let wire_name = wire_field_name(&rust_name, rename_override(&field.attrs).as_deref(), rule);
         let mut field_def = field_def_with_prop_meta(&rust_name, field, args);
-        field_def.erase_type_parameters(type_parameters);
+        field_def.named_within(args.type_name, type_parameters);
         let flatten = field_is_flatten(&field.attrs);
         if flatten
             && field_def.array_depth == 0
@@ -2715,7 +2717,7 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
         .filter(|slot| lone || !parse_serde_key_omission(&slot.attrs).absent_from_wire())
         .map(|slot| {
             let mut field_def = field_def_with_prop_meta("slot", slot, args);
-            field_def.erase_type_parameters(&type_parameters);
+            field_def.named_within(args.type_name, &type_parameters);
             field_def
         })
         .collect();
@@ -2989,7 +2991,7 @@ fn variant_rules(
 /// module. A member is read as the default `defaults` holds for it in this variant.
 fn variant_payload(
     variant: &Variant,
-    field_rule: RenameRule,
+    rename_all_fields: Option<&str>,
     type_parameters: &[String],
     args: &KotlinArgs<'_>,
     defaults: &SerdeDefaults,
@@ -2999,7 +3001,7 @@ fn variant_payload(
         VariantKind::Unit => VariantPayload::Unit,
         VariantKind::Named => VariantPayload::Named(collect_kotlin_fields(
             &variant.fields,
-            field_rule,
+            variant_field_rule(variant, rename_all_fields),
             type_parameters,
             args,
             &|field| defaults.at(Some(&variant_name), field),
@@ -3010,7 +3012,7 @@ fn variant_payload(
                 || get_field_def("value", &syn::parse_quote!(()), ""),
                 |field| {
                     let mut field_def = field_def_with_prop_meta("value", field, args);
-                    field_def.erase_type_parameters(type_parameters);
+                    field_def.named_within(args.type_name, type_parameters);
                     field_def
                 },
             )))
@@ -3018,7 +3020,7 @@ fn variant_payload(
         VariantKind::TupleMultiple => {
             VariantPayload::Value(Box::new(written_slots(variant, |field| {
                 let mut field_def = field_def_with_prop_meta("slot", field, args);
-                field_def.erase_type_parameters(type_parameters);
+                field_def.named_within(args.type_name, type_parameters);
                 field_def
             })))
         }
@@ -3208,7 +3210,7 @@ fn dispatched_tagged_variant(
     let subclass_name = format!("{}{variant_rust_name}", ctx.export_name);
     let payload = variant_payload(
         variant,
-        ctx.field_rule,
+        ctx.rename_all_fields,
         ctx.type_parameters,
         ctx.args,
         ctx.defaults,
@@ -3324,7 +3326,6 @@ fn dispatched_tagged_enum_kotlin_source(
     defaults: &SerdeDefaults,
 ) -> String {
     let variant_rule = resolve_rename_rule(tag_attrs.rename_all.as_deref());
-    let field_rule = resolve_rename_rule(tag_attrs.rename_all_fields.as_deref());
     let type_parameters = type_parameters_in_scope(&item_enum.generics);
     let generic_params = kotlin_generic_params(&item_enum.generics);
     let nothing_generic_args = kotlin_nothing_generic_args(&item_enum.generics);
@@ -3340,9 +3341,9 @@ fn dispatched_tagged_enum_kotlin_source(
         args,
         defaults,
         export_name,
-        field_rule,
         generic_params: &generic_params,
         nothing_generic_args: &nothing_generic_args,
+        rename_all_fields: tag_attrs.rename_all_fields.as_deref(),
         serializable: &serializable,
         tag_key,
         tagging,
@@ -3427,7 +3428,7 @@ fn untagged_enum_kotlin_source(
     args: &KotlinArgs<'_>,
     defaults: &SerdeDefaults,
 ) -> String {
-    let field_rule = resolve_rename_rule(tag_attrs.rename_all_fields.as_deref());
+    let fields_rule = tag_attrs.rename_all_fields.as_deref();
     let type_parameters = type_parameters_in_scope(&item_enum.generics);
     let generic_params = kotlin_generic_params(&item_enum.generics);
     let nothing_generic_args = kotlin_nothing_generic_args(&item_enum.generics);
@@ -3439,7 +3440,7 @@ fn untagged_enum_kotlin_source(
     for variant in &item_enum.variants {
         let variant_rust_name = variant.ident.to_string();
         let subclass_name = format!("{export_name}{variant_rust_name}");
-        let payload = variant_payload(variant, field_rule, &type_parameters, args, defaults);
+        let payload = variant_payload(variant, fields_rule, &type_parameters, args, defaults);
         let bare_value = matches!(payload, VariantPayload::Value(_));
         let mut rules = Rules::choosing(&serializable);
         variant_rules(&mut rules, &payload, Tagging::Unwrapped, "", args);

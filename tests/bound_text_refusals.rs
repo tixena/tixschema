@@ -41,7 +41,7 @@ mod tests {
 
     #[test]
     fn a_length_on_a_bool_is_refused_owned_and_read_through_a_reference() {
-        let errors = errors_of_length_on_a_bool();
+        let errors = errors_of("length_on_a_bool");
         let list_or_string = "this type holds no string or list for the bound to measure";
         let expected = [
             (
@@ -89,16 +89,46 @@ mod tests {
         }
     }
 
+    /// A length on a brand over a brand declared below it is refused in words that name the order
+    /// that builds: the inner is moved above the brand that holds it.
+    #[test]
+    fn a_length_on_a_brand_over_a_later_brand_names_the_order_that_builds() {
+        let errors = errors_of("length_on_a_later_brand");
+        let refusals: Vec<&Reported> = errors
+            .iter()
+            .filter(|error| error.source == "pub struct Behind(pub Vec<String>);")
+            .collect();
+        assert_eq!(
+            refusals.len(),
+            1,
+            "one refusal is spanned on `Behind`: {errors:#?}"
+        );
+        for refusal in refusals {
+            assert!(
+                refusal.message.starts_with(
+                    "model_schema: branded newtype `SomeBehind` applies string constraints"
+                ),
+                "{refusal:#?}"
+            );
+            assert!(
+                refusal.message.ends_with(
+                    "only when it is declared above `SomeBehind`: move `Behind` above `SomeBehind`."
+                ),
+                "{refusal:#?}"
+            );
+        }
+    }
+
     /// Each error rustc reports for the case, read from cargo's JSON messages, the closing count
     /// apart.
-    fn errors_of_length_on_a_bool() -> Vec<Reported> {
+    fn errors_of(case: &str) -> Vec<Reported> {
         let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let at = Path::new(env!("CARGO_TARGET_TMPDIR")).join("length_on_a_bool");
+        let at = Path::new(env!("CARGO_TARGET_TMPDIR")).join(case);
         fs::create_dir_all(at.join("src")).unwrap();
         fs::write(
             at.join("Cargo.toml"),
             format!(
-                "[package]\nname = \"length_on_a_bool\"\nversion = \"0.0.0\"\nedition = \"2024\"\n\
+                "[package]\nname = \"{case}\"\nversion = \"0.0.0\"\nedition = \"2024\"\n\
                  publish = false\n\n[dependencies]\n\
                  tixschema = {{ path = {:?}, default-features = false, features = [{FEATURES}] }}\n\
                  serde = {{ version = \"1\", features = [\"derive\"] }}\n\
@@ -108,7 +138,7 @@ mod tests {
         )
         .unwrap();
         fs::copy(
-            manifest_dir.join("tests/bound_text_refusals/length_on_a_bool/main.rs"),
+            manifest_dir.join(format!("tests/bound_text_refusals/{case}/main.rs")),
             at.join("src/main.rs"),
         )
         .unwrap();

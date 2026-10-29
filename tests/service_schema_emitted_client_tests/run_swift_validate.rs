@@ -168,7 +168,7 @@ fn driver_of(cases: &[Case]) -> String {
 
 /// Every emitted definition the runs read, in the order they are declared.
 pub fn definitions() -> Vec<String> {
-    vec![
+    let mut definitions = vec![
         parcel_swift::swift_definition(),
         manifest_swift::swift_definition(),
         gauge_swift::swift_definition(),
@@ -204,7 +204,14 @@ pub fn definitions() -> Vec<String> {
         lift_swift::swift_definition(),
         tally_swift::swift_definition(),
         berth_swift::swift_definition(),
-    ]
+    ];
+    #[cfg(feature = "indexmap")]
+    definitions.extend([
+        super::swift_validate_models::queue_swift::swift_definition(),
+        super::swift_validate_models::some_queue_swift::swift_definition(),
+        super::swift_validate_models::lineup_swift::swift_definition(),
+    ]);
+    definitions
 }
 
 /// The conformance the harness asks of each type `lines` read, written once per type.
@@ -1112,4 +1119,43 @@ fn a_check_with_no_swift_function_does_not_build() {
         let named = format!("error: cannot find '{missing}' in scope");
         assert!(run.stderr.contains(&named), "got: {}", run.stderr);
     }
+}
+
+/// A length written on a member typed with the alias of an `IndexSet`, or on a brand over it,
+/// counts the items as Rust's `validate()` does.
+#[cfg(feature = "indexmap")]
+#[test]
+fn a_length_on_an_alias_of_an_index_set_counts_the_items() {
+    use super::swift_validate_models::{Lineup, SomeQueue};
+
+    let items = |count: usize| -> indexmap::IndexSet<String> {
+        (0..count).map(|number| number.to_string()).collect()
+    };
+    let lineup = |queue: usize, some: usize| Lineup {
+        queue: items(queue),
+        some: SomeQueue(items(some)),
+    };
+    let (kept, empty, wide) = (lineup(1, 1), lineup(0, 0), lineup(3, 3));
+    let cases = [
+        case("Lineup", "Lineup", &kept, kept.validate()),
+        case("Lineup, no item", "Lineup", &empty, empty.validate()),
+        case("Lineup, too many items", "Lineup", &wide, wide.validate()),
+    ];
+    let expected = rust_report(&cases);
+    assert_eq!(
+        expected,
+        "\
+Lineup: passes
+Lineup, no item: refused
+    'queue': too short: minimum length is 1, got 0
+    'some': too short: minimum length is 1, got 0
+Lineup, too many items: refused
+    'queue': too long: maximum length is 2, got 3
+    'some': too long: maximum length is 2, got 3
+"
+    );
+    let Some(swift) = printed(&driver_of(&cases)) else {
+        return;
+    };
+    assert_eq!(swift, expected);
 }

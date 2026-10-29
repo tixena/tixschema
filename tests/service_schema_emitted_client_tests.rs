@@ -412,6 +412,31 @@ mod run_swift_literals;
 #[path = "service_schema_emitted_client_tests/run_kotlin_literals.rs"]
 mod run_kotlin_literals;
 
+/// The models the emitted types are named from as Rust names them.
+#[cfg(all(test, any(feature = "dart", feature = "swift", feature = "kotlin")))]
+#[path = "service_schema_emitted_client_tests/named_by_rust_models.rs"]
+mod named_by_rust_models;
+
+/// The payloads each client reads the models named as Rust names them from.
+#[cfg(all(test, any(feature = "dart", feature = "swift", feature = "kotlin")))]
+#[path = "service_schema_emitted_client_tests/named_by_rust_rows.rs"]
+mod named_by_rust_rows;
+
+/// Names as Rust names them, read by the emitted Dart types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_named_by_rust.rs"]
+mod run_dart_named_by_rust;
+
+/// Names as Rust names them, read by the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_named_by_rust.rs"]
+mod run_swift_named_by_rust;
+
+/// Names as Rust names them, read by the emitted Kotlin types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_named_by_rust.rs"]
+mod run_kotlin_named_by_rust;
+
 /// The models the four std ranges are written on, and the payloads serde writes and refuses.
 #[cfg(all(test, any(feature = "dart", feature = "swift", feature = "kotlin")))]
 #[path = "std_range_tests/models.rs"]
@@ -1313,7 +1338,10 @@ mod run_node_plain_enum_replies;
 // The transport's expansion reaches each service through `$crate`, which is this binary's root:
 // every trait and its schema module are named here for it to resolve.
 #[cfg(all(test, feature = "dart"))]
-use run_dart_preprocess::{IntakeClientService, intake_client_service_schema};
+use run_dart_preprocess::{
+    IntakeClientService, StickerClientService, intake_client_service_schema,
+    sticker_client_service_schema,
+};
 #[cfg(all(test, feature = "dart"))]
 use run_dart_read::{ParcelClientService, parcel_client_service_schema};
 #[cfg(test)]

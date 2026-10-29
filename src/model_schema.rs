@@ -116,6 +116,13 @@ use crate::utils::{
     shape_questions_for,
 };
 
+#[cfg(all(
+    feature = "serde",
+    feature = "indexmap",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+use crate::utils::record_indexed_set;
+
 #[cfg(feature = "serde")]
 use crate::utils::{
     Declared, NonObjectWire, SlotBesideTag, TrivialPattern, UnionParameter, WireLeaf, WrittenAs,
@@ -281,6 +288,8 @@ use crate::utils::to_snake_case;
 #[cfg(feature = "serde")]
 use crate::utils::{forget_checks, names_a_check, record_member_checks, record_own_checks};
 
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+use crate::rename_rule::RenameRule;
 use crate::rename_rule::resolve_rename_rule;
 
 /// Every argument the `model_schema` parser reads, in the order the unknown-argument rejection
@@ -504,12 +513,14 @@ struct DiscriminatedVariant {
 
 /// Per-variant data collected from a discriminated enum, plus the collected serde validators, the
 /// `compile_error!` tokens for any field-level guard violations, and the `validate()` match arms,
-/// empty where no variant carries a constrained member and there is nothing to aggregate.
+/// empty where no variant carries a constrained member and there is nothing to aggregate, and the
+/// functions written ahead of a generic enum's builder that run the checks of its members.
 type DiscriminatedVariantData = (
     Vec<DiscriminatedVariant>,
     Vec<proc_macro2::TokenStream>,
     Vec<proc_macro2::TokenStream>,
     Vec<proc_macro2::TokenStream>,
+    String,
 );
 
 /// Rendered per-variant output for a discriminated enum: TypeScript fragments, Zod fragments, and
@@ -791,6 +802,8 @@ enum HeldEnd {
 #[cfg(feature = "serde")]
 struct HeldShape {
     end: HeldEnd,
+    /// The key type of each map in `wraps`, outermost first.
+    keys: Vec<syn::Type>,
     /// The wrappers the walk reads through to its end, outermost first.
     wraps: Vec<ConstraintWrap>,
 }
@@ -1298,6 +1311,10 @@ enum TupleStructShape {
 /// What walking a tuple struct's slots yields.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 struct TupleSlots {
+    /// The functions written ahead of a generic tuple struct's builder that run the checks of its
+    /// slots.
+    #[cfg(feature = "zod")]
+    checked_ahead: String,
     /// The `compile_error!` tokens of every guard a slot violates.
     guard_errors: Vec<proc_macro2::TokenStream>,
     shape: TupleStructShape,
@@ -1431,6 +1448,7 @@ struct EnumCasing<'ctx> {
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum ContainerWire {
     OneWay,
+    #[cfg(feature = "serde")]
     RoundTrip,
 }
 
@@ -2123,6 +2141,11 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     {
         return output;
     }
+    // A map `validate()` names by its key, keyed by a parameter the item declares no `Serialize`
+    // for, could not be written into a message.
+    if let Some(output) = refused_item_output(&item, &unwritable_map_key_errors(&item)) {
+        return output;
+    }
     // A list-form serde rename whose two directions name two keys is refused here, at the one seam
     // a container, a variant and a member are all reachable from, and so is a transparent struct
     // whose two derives take two different fields as its value.
@@ -2250,6 +2273,21 @@ fn process_shape(item: Item, args: &ModelSchemaArgs) -> TokenStream {
     }
 }
 
+/// The Rust name of the item a client emitter writes, which a member written `Self` is named as.
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+fn item_rust_name(item: &Item) -> String {
+    let ident = if let Item::Struct(item_struct) = item {
+        &item_struct.ident
+    } else if let Item::Enum(item_enum) = item {
+        &item_enum.ident
+    } else if let Item::Type(item_type) = item {
+        &item_type.ident
+    } else {
+        return String::new();
+    };
+    ident.to_string()
+}
+
 /// The Dart tokens `item` earns, or nothing without the `dart` feature — always callable, so the
 /// tokens that follow the item's own expansion never need a `#[cfg]`-gated `let` of their own.
 /// The backend is handed what it reads of `args`: the name, the checks, the `preprocess`, the
@@ -2270,6 +2308,7 @@ fn dart_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
             name_override: args.name_override.as_deref(),
             pattern: args.pattern.as_deref(),
             preprocess: &args.preprocess,
+            type_name: &item_rust_name(item),
         },
     )
 }
@@ -2297,6 +2336,7 @@ fn swift_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
             name_override: args.name_override.as_deref(),
             pattern: args.pattern.as_deref(),
             preprocess: &args.preprocess,
+            type_name: &item_rust_name(item),
         },
     )
 }
@@ -2324,6 +2364,7 @@ fn kotlin_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
             name_override: args.name_override.as_deref(),
             pattern: args.pattern.as_deref(),
             preprocess: &args.preprocess,
+            type_name: &item_rust_name(item),
         },
     )
 }
@@ -2467,6 +2508,10 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
     register_alias_info(&rust_ident_str, &export_name, &module_name, kind);
     if names_a_list(&alias.ty) {
         record_counted(&rust_ident_str, Counted::Items);
+        #[cfg(all(feature = "serde", feature = "indexmap"))]
+        if names_an_indexed_set(&alias.ty) {
+            record_indexed_set(&rust_ident_str);
+        }
     }
     // An alias *is* its target, so a key written under its name renders in the target's wire form.
     record_key_wire(&rust_ident_str, alias_field_def.map_key_wire());
@@ -3344,8 +3389,15 @@ fn checked_in_a_builder(
     item_name: &str,
     parameters: &[String],
 ) -> (Vec<FieldDef>, String) {
+    let ahead = checked_members(&mut field_defs, item_name, parameters);
+    (field_defs, ahead)
+}
+
+/// [`checked_in_a_builder`] over the members of `scope`, a name no other group of members shares.
+#[cfg(all(feature = "zod", feature = "typescript"))]
+fn checked_members(members: &mut [FieldDef], scope: &str, parameters: &[String]) -> String {
     let mut ahead = String::new();
-    for (index, member) in field_defs.iter_mut().enumerate() {
+    for (index, member) in members.iter_mut().enumerate() {
         let written: String = member
             .name
             .chars()
@@ -3362,12 +3414,72 @@ fn checked_in_a_builder(
         } else {
             format!("{written}${index}")
         };
-        let helper = format!("{item_name}${named}$Checked");
+        let helper = format!("{scope}${named}$Checked");
         if let Some(declaration) = member.zod_check_helper_declaration(&helper, parameters) {
             ahead.push_str(&declaration);
         }
     }
-    (field_defs, ahead)
+    ahead
+}
+
+/// [`checked_members`] over the members of each variant of a generic enum.
+#[cfg(all(feature = "zod", feature = "typescript"))]
+fn checked_in_variants(
+    variants: &mut [DiscriminatedVariant],
+    item_name: &str,
+    parameters: &[String],
+) -> String {
+    variants
+        .iter_mut()
+        .enumerate()
+        .map(|(index, variant)| {
+            checked_members(
+                &mut variant.field_defs,
+                &format!("{item_name}${index}"),
+                parameters,
+            )
+        })
+        .collect()
+}
+
+/// Without a TypeScript type to state what a check is handed, no function is written ahead.
+#[cfg(not(all(feature = "zod", feature = "typescript")))]
+const fn checked_in_variants(_: &mut [DiscriminatedVariant], _: &str, _: &[String]) -> String {
+    String::new()
+}
+
+/// [`checked_members`] over the slots of a generic tuple struct, each in a scope of its own: a
+/// slot's name is not unique.
+#[cfg(all(feature = "zod", feature = "typescript"))]
+fn checked_in_slots(
+    shape: &mut TupleStructShape,
+    item_name: &str,
+    parameters: &[String],
+) -> String {
+    let slots = match shape {
+        TupleStructShape::Array(slots) => slots.as_mut_slice(),
+        TupleStructShape::BareValue(slot) => slice::from_mut(&mut **slot),
+    };
+    slots
+        .iter_mut()
+        .enumerate()
+        .map(|(index, slot)| {
+            checked_members(
+                slice::from_mut(slot),
+                &format!("{item_name}${index}"),
+                parameters,
+            )
+        })
+        .collect()
+}
+
+/// Without a TypeScript type to state what a check is handed, no function is written ahead.
+#[cfg(all(
+    any(feature = "typescript", feature = "zod", feature = "jsonschema"),
+    not(all(feature = "zod", feature = "typescript"))
+))]
+const fn checked_in_slots(_: &mut TupleStructShape, _: &str, _: &[String]) -> String {
+    String::new()
 }
 
 /// Renders the per-field TypeScript type code, Zod schema code, and JSON-schema fragments for a
@@ -5093,6 +5205,144 @@ fn default_types_guard_errors(
         .collect()
 }
 
+/// The refusal each map `validate()` walks earns when its key names a type parameter the item
+/// declares no `Serialize` for: `validate()` is written under the item's own bounds and could not
+/// write the key into a message. Spanned on the key's type.
+#[cfg(feature = "serde")]
+fn unwritable_map_key_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
+    let Some(generics) = item_generics(item) else {
+        return Vec::new();
+    };
+    let parameters = type_parameters_in_scope(generics);
+    let unwritable: Vec<&String> = parameters
+        .iter()
+        .filter(|parameter| !declares_serialize(generics, parameter))
+        .collect();
+    if unwritable.is_empty() {
+        return Vec::new();
+    }
+    let own = item_schema_ident(item)
+        .map(ToString::to_string)
+        .unwrap_or_default();
+    let mut errors = Vec::new();
+    for (label, field) in walked_members(item) {
+        let mut def = get_field_def("_key", &field.ty, "");
+        def.erase_type_parameters(&parameters);
+        let Some(shape) = held_shape(&field.ty, &def) else {
+            continue;
+        };
+        for key in map_keys_of(&shape) {
+            let written = quote! { #key };
+            for parameter in unwritable
+                .iter()
+                .filter(|parameter| tokens_name_any(&written, &[(**parameter).clone()]))
+            {
+                errors.push(
+                    syn::Error::new_spanned(
+                        key,
+                        prefixed_guard_message(&format!(
+                            "{label}: `validate()` names each entry of this map by its key, as \
+                             serde writes it, and `{parameter}` declares no `Serialize` on \
+                             `{own}`. Write `{parameter}: Serialize` on the type."
+                        )),
+                    )
+                    .to_compile_error(),
+                );
+            }
+        }
+    }
+    errors
+}
+
+/// Without `serde` `validate()` is not written, and no key is named in a message.
+#[cfg(not(feature = "serde"))]
+const fn unwritable_map_key_errors(_item: &Item) -> Vec<proc_macro2::TokenStream> {
+    Vec::new()
+}
+
+/// Every key type of the maps a walk reads, at any depth.
+#[cfg(feature = "serde")]
+fn map_keys_of(shape: &HeldShape) -> Vec<&syn::Type> {
+    let mut keys: Vec<&syn::Type> = shape.keys.iter().collect();
+    match &shape.end {
+        HeldEnd::Arms(arms) => keys.extend(arms.iter().flat_map(|(_, held)| map_keys_of(held))),
+        HeldEnd::Declared => {}
+        HeldEnd::Positions(positions) => {
+            keys.extend(positions.iter().flat_map(|(_, held)| map_keys_of(held)));
+        }
+    }
+    keys
+}
+
+/// The members `validate()` walks, each beside the label a refusal names it by: those serde writes
+/// or reads.
+#[cfg(feature = "serde")]
+fn walked_members(item: &Item) -> Vec<(String, &Field)> {
+    let label = |field: &Field| {
+        field_label(
+            &field
+                .ident
+                .as_ref()
+                .map_or_else(String::new, ToString::to_string),
+        )
+    };
+    let carried = |field: &&Field| !parse_serde_key_omission(&field.attrs).absent_from_wire();
+    let mut members: Vec<(String, &Field)> = Vec::new();
+    if let Item::Struct(item_struct) = item {
+        members.extend(
+            item_struct
+                .fields
+                .iter()
+                .filter(carried)
+                .map(|field| (label(field), field)),
+        );
+    } else if let Item::Enum(item_enum) = item {
+        for variant in item_enum
+            .variants
+            .iter()
+            .filter(|variant| variant_on_the_wire(variant))
+        {
+            members.extend(
+                variant
+                    .fields
+                    .iter()
+                    .filter(carried)
+                    .map(|field| (label(field), field)),
+            );
+        }
+    } else {
+        // Nothing else holds a member.
+    }
+    members
+}
+
+/// Whether a bound whose last path segment is `Serialize` is written for `parameter`, in the
+/// generics or in a `where` clause.
+#[cfg(feature = "serde")]
+fn declares_serialize(generics: &syn::Generics, parameter: &str) -> bool {
+    generics.params.iter().any(|param| {
+        matches!(param, syn::GenericParam::Type(declared)
+            if declared.ident == parameter && names_serialize(declared.bounds.iter()))
+    }) || generics
+        .where_clause
+        .iter()
+        .flat_map(|clause| &clause.predicates)
+        .any(|predicate| {
+            matches!(predicate, syn::WherePredicate::Type(bounded)
+                if matches!(&bounded.bounded_ty, syn::Type::Path(named) if named.path.is_ident(parameter))
+                    && names_serialize(bounded.bounds.iter()))
+        })
+}
+
+/// Whether one of `bounds` is a trait whose last path segment is `Serialize`.
+#[cfg(feature = "serde")]
+fn names_serialize<'bound>(mut bounds: impl Iterator<Item = &'bound syn::TypeParamBound>) -> bool {
+    bounds.any(|bound| {
+        matches!(bound, syn::TypeParamBound::Trait(held)
+            if held.path.segments.last().is_some_and(|segment| segment.ident == "Serialize"))
+    })
+}
+
 /// The refusal every `default_types` entry that names no type parameter of the item earns, spanned
 /// on the entry as written.
 fn entries_naming_no_parameter(
@@ -6288,7 +6538,15 @@ fn deferred_shape_refusals(registering: Option<&Ident>) -> Vec<proc_macro2::Toke
         .into_iter()
         .filter_map(|question| {
             let shape = answered_shape(info.value_shape, &question.argument_shapes)?;
-            let message = named_inner_constraint_message(&question.brand, &rust_ident, shape);
+            let mut message = named_inner_constraint_message(&question.brand, &rust_ident, shape);
+            if shape == "container" {
+                let _ = write!(
+                    message,
+                    " A length counts the items of `{rust_ident}` only when it is declared above \
+                     `{brand}`: move `{rust_ident}` above `{brand}`.",
+                    brand = question.brand
+                );
+            }
             Some(syn::Error::new_spanned(name, message).to_compile_error())
         })
         .collect()
@@ -8610,9 +8868,14 @@ fn collect_tuple_slots(
     if guard_errors.is_empty() {
         apply_deferred_field_attrs(fields.iter_mut(), deferred_attrs);
     }
-    let shape = tuple_struct_shape(declared_slots, slots);
+    let mut shape = tuple_struct_shape(declared_slots, slots);
     record_inexact_key(type_name, tuple_struct_writes_an_inexact_key(&shape));
+    let checked_ahead = checked_in_slots(&mut shape, type_name, &type_parameters);
+    #[cfg(not(feature = "zod"))]
+    let _: &_ = &checked_ahead;
     TupleSlots {
+        #[cfg(feature = "zod")]
+        checked_ahead,
         guard_errors,
         shape,
         validate_bodies,
@@ -8955,6 +9218,7 @@ fn build_tuple_struct_ts_definition_method(
 /// parameters.
 #[cfg(feature = "zod")]
 fn build_tuple_struct_zod_schema_method(
+    checked_ahead: &str,
     item_name: &str,
     rust_ident: &str,
     parameters: &[String],
@@ -8962,8 +9226,11 @@ fn build_tuple_struct_zod_schema_method(
     zod_body: &str,
 ) -> proc_macro2::TokenStream {
     let reexport = zod_binding_reexport(rust_ident, item_name, parameters);
-    let schema_str = zod_published_binding(
-        item_name, rust_ident, parameters, published, "", zod_body, &reexport,
+    let schema_str = format!(
+        "{checked_ahead}{}",
+        zod_published_binding(
+            item_name, rust_ident, parameters, published, "", zod_body, &reexport
+        )
     );
     quote! {
         pub fn zod_schema() -> ::std::string::String {
@@ -9051,6 +9318,7 @@ fn process_tuple_struct(
         ),
         #[cfg(feature = "zod")]
         build_tuple_struct_zod_schema_method(
+            &slots.checked_ahead,
             &item_name,
             &name.to_string(),
             &type_parameters_in_scope(&item_struct.generics),
@@ -10554,7 +10822,12 @@ fn type_mentions_generic_param(ty: &syn::Type, generics: &syn::Generics) -> bool
 }
 
 /// Reports whether `tokens` contains an identifier from `names` at any nesting depth.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "serde",
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema"
+))]
 fn tokens_name_any(tokens: &proc_macro2::TokenStream, names: &[String]) -> bool {
     tokens.clone().into_iter().any(|tree| match tree {
         proc_macro2::TokenTree::Ident(ident) => names.iter().any(|name| ident == name.as_str()),
@@ -11934,6 +12207,17 @@ fn variant_serde_names(
     )
 }
 
+/// The rule that names the members of `variant`, as the Rust, TypeScript, Zod and JSON Schema
+/// surfaces read it: its own `rename_all`, else the enum's `rename_all_fields`.
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+pub fn variant_field_rule(variant: &syn::Variant, rename_all_fields: Option<&str>) -> RenameRule {
+    resolve_rename_rule(
+        variant_serde_names(&variant.attrs, rename_all_fields)
+            .1
+            .as_deref(),
+    )
+}
+
 /// No declaration is read where nothing parses serde's attributes.
 #[cfg(not(feature = "serde"))]
 const fn variant_serde_names(
@@ -12126,11 +12410,9 @@ fn collect_discriminated_variants(
         ));
 
         if on_the_wire {
-            let discriminator_docs =
-                build_jsdoc_body(get_variant_docs(item).as_deref(), &final_name);
             variants.push(DiscriminatedVariant {
+                docs: build_jsdoc_body(get_variant_docs(item).as_deref(), &final_name),
                 discriminator_value: final_name,
-                docs: discriminator_docs,
                 field_defs,
                 flattened_fields,
                 kind: wire_kind,
@@ -12148,11 +12430,13 @@ fn collect_discriminated_variants(
         );
     }
 
+    let checked_ahead = checked_in_variants(&mut variants, &enum_type_name, &type_parameters);
     (
         variants,
         enum_validation_fns,
         guard_errors,
         build_member_check_arms(per_variant_checks),
+        checked_ahead,
     )
 }
 
@@ -12324,6 +12608,7 @@ fn process_discriminated_enum(
     // method on the type to avoid `super::` resolution issues.
     #[cfg(feature = "zod")]
     let zod_schema_method = generate_discriminated_enum_zod_schema_method(
+        &variants.4,
         item_name,
         &name.to_string(),
         &type_parameters_in_scope(&item_enum.generics),
@@ -12936,6 +13221,7 @@ fn process_externally_tagged_enum(
 
     #[cfg(feature = "zod")]
     let zod_schema_method = generate_discriminated_enum_zod_schema_method(
+        &variants.4,
         item_name,
         &name.to_string(),
         &type_parameters_in_scope(&item_enum.generics),
@@ -13611,6 +13897,7 @@ fn process_internally_tagged_enum(
 
     #[cfg(feature = "zod")]
     let zod_schema_method = generate_discriminated_enum_zod_schema_method(
+        &variants.4,
         item_name,
         &name.to_string(),
         &type_parameters_in_scope(&item_enum.generics),
@@ -17862,6 +18149,7 @@ fn named_leaf_length_rendering(named: &syn::Type, message: &str) -> proc_macro2:
         "model_schema_bound_length",
         named.span().resolved_at(proc_macro2::Span::call_site()),
     );
+    let index_set = indexed_set_length(named);
     quote! {
         #[diagnostic::on_unimplemented(
             message = #message,
@@ -17926,6 +18214,7 @@ fn named_leaf_length_rendering(named: &syn::Type, message: &str) -> proc_macro2:
                 self.len()
             }
         }
+        #index_set
         trait UnbrandedLength {
             fn model_schema_bound_length(&self) -> usize
             where
@@ -17943,6 +18232,44 @@ fn named_leaf_length_rendering(named: &syn::Type, message: &str) -> proc_macro2:
         let _: usize = UnbrandedLength::model_schema_bound_length("");
         let length: usize = named.#read();
     }
+}
+
+/// The length of an `IndexSet`, written only for a name registered as an alias of one: the
+/// consumer's own `indexmap` is named where they use it, and nowhere else.
+#[cfg(all(
+    feature = "serde",
+    feature = "indexmap",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn indexed_set_length(named: &syn::Type) -> proc_macro2::TokenStream {
+    let syn::Type::Path(path) = written_type(named) else {
+        return proc_macro2::TokenStream::new();
+    };
+    let is_indexed = path.path.segments.last().is_some_and(|segment| {
+        lookup_alias_info(&segment.ident.to_string()).is_some_and(|info| info.indexed_set)
+    });
+    if !is_indexed {
+        return proc_macro2::TokenStream::new();
+    }
+    quote! {
+        impl<Item, Hasher> BoundedLength for ::indexmap::IndexSet<Item, Hasher> {
+            fn bounded_length(&self) -> usize {
+                self.len()
+            }
+        }
+    }
+}
+
+/// A build with no `IndexSet` support names no `indexmap`.
+#[cfg(all(
+    feature = "serde",
+    not(all(
+        feature = "indexmap",
+        any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    ))
+))]
+fn indexed_set_length(_named: &syn::Type) -> proc_macro2::TokenStream {
+    proc_macro2::TokenStream::new()
 }
 
 /// Whether a named leaf is held to lengths alone, which the type it names answers with the count
@@ -18386,6 +18713,7 @@ fn nested_shape(ty: &syn::Type) -> Option<Vec<ConstraintWrap>> {
 #[cfg(feature = "serde")]
 fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
     let mut wraps = Vec::new();
+    let mut keys: Vec<syn::Type> = Vec::new();
     let mut current = ty;
     let mut held = def;
     loop {
@@ -18414,6 +18742,7 @@ fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
                 .collect();
             return (!positions.is_empty()).then_some(HeldShape {
                 end: HeldEnd::Positions(positions),
+                keys,
                 wraps,
             });
         } else if let syn::Type::Path(path) = current {
@@ -18441,6 +18770,7 @@ fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
                         .collect();
                     return (!arms.is_empty()).then_some(HeldShape {
                         end: HeldEnd::Arms(arms),
+                        keys,
                         wraps,
                     });
                 }
@@ -18449,6 +18779,7 @@ fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
                         return None;
                     };
                     wraps.push(ConstraintWrap::Map);
+                    keys.push(map_key_argument(args)?.clone());
                     current = map_value_argument(args)?;
                     held = of_values;
                     continue;
@@ -18456,6 +18787,7 @@ fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
                 let Some(wrap) = generic_wrap(&ident) else {
                     return (declared && !reads_through(&ident)).then_some(HeldShape {
                         end: HeldEnd::Declared,
+                        keys,
                         wraps,
                     });
                 };
@@ -18465,6 +18797,7 @@ fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
             } else if matches!(segment.arguments, syn::PathArguments::None) {
                 return declared.then_some(HeldShape {
                     end: HeldEnd::Declared,
+                    keys,
                     wraps,
                 });
             } else {
@@ -18489,19 +18822,28 @@ fn list_item_def<'def>(def: &'def FieldDef, wrapper: &str) -> &'def FieldDef {
     }
 }
 
+/// The type of a map's keys, its first type argument.
+#[cfg(feature = "serde")]
+fn map_key_argument(args: &syn::AngleBracketedGenericArguments) -> Option<&syn::Type> {
+    type_arguments(args).next()
+}
+
 /// The type of a map's values, its second type argument.
 #[cfg(feature = "serde")]
 fn map_value_argument(args: &syn::AngleBracketedGenericArguments) -> Option<&syn::Type> {
-    args.args
-        .iter()
-        .filter_map(|arg| {
-            if let syn::GenericArgument::Type(ty) = arg {
-                Some(ty)
-            } else {
-                None
-            }
-        })
-        .nth(1)
+    type_arguments(args).nth(1)
+}
+
+/// The type arguments of an angle-bracketed list, lifetimes and consts left out.
+#[cfg(feature = "serde")]
+fn type_arguments(args: &syn::AngleBracketedGenericArguments) -> impl Iterator<Item = &syn::Type> {
+    args.args.iter().filter_map(|arg| {
+        if let syn::GenericArgument::Type(ty) = arg {
+            Some(ty)
+        } else {
+            None
+        }
+    })
 }
 
 /// Whether a generic name stands for a std container the crate describes by what it holds, rather
@@ -18568,6 +18910,16 @@ fn names_a_list(ty: &syn::Type) -> bool {
         matches!(segment.arguments, syn::PathArguments::AngleBracketed(_))
             && is_sequence_wrapper(&segment.ident.to_string())
     })
+}
+
+/// Whether a type is written as `IndexSet`, which is a list under the `indexmap` feature unless
+/// the consumer declares a type of that name.
+#[cfg(all(feature = "serde", feature = "indexmap"))]
+fn names_an_indexed_set(ty: &syn::Type) -> bool {
+    matches!(
+        written_type(ty),
+        syn::Type::Path(named) if named.path.segments.last().is_some_and(|segment| segment.ident == "IndexSet")
+    )
 }
 
 /// Whether a brand's inner is written as a list itself, or as one behind `Box`, `Rc`, `Arc` or
@@ -19901,6 +20253,7 @@ fn member_held_shape(field: &Field, field_def: &FieldDef) -> Option<HeldShape> {
     held_shape(&field.ty, field_def).or_else(|| {
         reachable_nested_shape(field, field_def).map(|wraps| HeldShape {
             end: HeldEnd::Declared,
+            keys: Vec::new(),
             wraps,
         })
     })
@@ -22267,13 +22620,21 @@ fn generate_discriminated_enum_ts_definition_method(
 /// Generates the Zod schema method for discriminated enums (Zod schemas only)
 /// Note: Example injection is handled by the delegating method on the type itself.
 fn generate_discriminated_enum_zod_schema_method(
+    checked_ahead: &str,
     item_name: &str,
     rust_ident: &str,
     parameters: &[String],
     args: &ModelSchemaArgs,
     schema_code: &str,
 ) -> proc_macro2::TokenStream {
-    generate_enum_zod_schema_method_after("", item_name, rust_ident, parameters, args, schema_code)
+    generate_enum_zod_schema_method_after(
+        checked_ahead,
+        item_name,
+        rust_ident,
+        parameters,
+        args,
+        schema_code,
+    )
 }
 
 /// [`generate_discriminated_enum_zod_schema_method`] with `preamble` written ahead of the
@@ -22456,7 +22817,7 @@ fn generate_alias_zod_method(
         // The alias's rendered Zod is its `FieldDef` expression: `z.tuple([...])` for a tuple,
         // `z.string()` for a scalar, `Name$Schema` for a sibling.
         let surface = surface_field_def(&alias.generics, field_def);
-        let schema_code = surface.zod_type_deferring_a_later_map_value();
+        let schema_code = surface.zod_type_deferring_a_later_type();
         let parameters = type_parameters_in_scope(&alias.generics);
         let reexport = zod_binding_reexport(rust_ident, export_name, &parameters);
         let body = zod_published_binding(

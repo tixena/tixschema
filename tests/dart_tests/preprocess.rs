@@ -450,7 +450,7 @@ fn a_class_calls_its_function_on_its_payload_and_a_fields_on_its_key() {
              as String).toList(),item_code_list: (json['itemCodeList'] as List<dynamic>).map((e) \
              => e as String).toList(),label: (json.containsKey('label') ? trimmed(json['label']) : \
              null) as String,); }} Map<String, dynamic> toJson() =>",
-            plain_pair("Parcel", "Map<String, dynamic>", "payload")
+            plain_pair("Parcel", "dynamic", "payload")
         ),
     );
 }
@@ -503,7 +503,7 @@ fn a_unit_struct_calls_its_function_on_its_payload() {
         &format!(
             "{}{{ unwrapped(payload) as Map<String, dynamic>; return ClosedDock(); }} Map<String, \
              dynamic> toJson() =>",
-            plain_pair("ClosedDock", "Map<String, dynamic>", "payload")
+            plain_pair("ClosedDock", "dynamic", "payload")
         ),
     );
 }
@@ -565,7 +565,7 @@ fn a_type_with_a_parameter_calls_its_function_at_every_filling() {
              Map<String, dynamic> toJson(",
             pair(
                 "Crate",
-                "Map<String, dynamic>",
+                "dynamic",
                 "payload",
                 code_converter,
                 ", codeTypeFromJson"
@@ -580,16 +580,16 @@ fn a_type_with_a_parameter_calls_its_function_at_every_filling() {
 fn a_plain_enum_calls_its_function_on_the_text_it_takes() {
     assert_written(
         &grade_dart::dart_definition(),
-        "static Grade fromJson(String json) => fromJsonUnjudged(json); static Grade \
-         fromJsonUnjudged(String payload) { final json = trimmed(payload) as String; return \
+        "static Grade fromJson(dynamic json) => fromJsonUnjudged(json); static Grade \
+         fromJsonUnjudged(dynamic payload) { final json = trimmed(payload) as String; return \
          switch (json) { 'Express' => Grade.express,'Standard' => Grade.standard, _ => throw \
          FormatException('Unknown Grade: ' + json) }; } String toJson() => wireValue;",
     );
     assert_written(
         &rating_dart::dart_definition(),
         &format!(
-            "static Rating fromJson(String json) {{ final read = Rating.fromJsonUnjudged(json); \
-             {JUDGED} static Rating fromJsonUnjudged(String payload) {{ final json = \
+            "static Rating fromJson(dynamic json) {{ final read = Rating.fromJsonUnjudged(json); \
+             {JUDGED} static Rating fromJsonUnjudged(dynamic payload) {{ final json = \
              trimmed(payload) as String; return switch (json) {{ 'Express' => \
              Rating.express,'Unrated' => Rating.unrated, _ => throw FormatException('Unknown \
              Rating: ' + json) }}; }} String toJson() => wireValue;"
@@ -648,7 +648,7 @@ fn an_enum_under_a_tag_key_hands_a_function_the_object_without_the_tag() {
              ShipmentBoxed(Listed.fromJsonUnjudged(withItsKeys(({{...json}}..remove('kind'))))); \
              case 'Ground': return ShipmentGround(); default: throw FormatException('Unknown \
              Shipment: ' + tag); }} }} dynamic toJson();",
-            plain_pair("Shipment", "Map<String, dynamic>", "payload")
+            plain_pair("Shipment", "dynamic", "payload")
         ),
     );
     assert_written(
@@ -674,7 +674,7 @@ fn an_enum_under_a_content_key_calls_a_slots_function_where_the_key_is_held() {
              HandoverLeft((json.containsKey('detail') ? trimmed(json['detail']) : null) as \
              String); case 'Signed': return HandoverSigned.fromJsonUnjudged(json['detail']); \
              default: throw FormatException('Unknown Handover: ' + tag); }} }} dynamic toJson();",
-            plain_pair("Handover", "Map<String, dynamic>", "payload")
+            plain_pair("Handover", "dynamic", "payload")
         ),
     );
 }
@@ -751,7 +751,7 @@ fn a_name_the_read_declares_is_numbered_where_a_function_is_called_under_it() {
             "{}{{ final json2 = payload(payload2) as Map<String, dynamic>; return Renamed(label: \
              (json2.containsKey('label') ? json(json2['label']) : null) as String,); }} \
              Map<String, dynamic> toJson() =>",
-            plain_pair("Renamed", "Map<String, dynamic>", "payload2")
+            plain_pair("Renamed", "dynamic", "payload2")
         ),
     );
     assert_written(

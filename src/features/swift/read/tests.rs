@@ -37,6 +37,7 @@ fn emitted_with(item: &Item, min_length: Option<usize>) -> String {
             name_override: None,
             pattern: None,
             preprocess: &[],
+            type_name: "Probe",
         },
     )
     .to_string()

@@ -21,6 +21,7 @@ fn named(names: &[&str]) -> Vec<FunctionName> {
 fn naming(functions: &[FunctionName]) -> KotlinArgs<'_> {
     KotlinArgs {
         preprocess: functions,
+        type_name: "Probe",
         ..plain_args()
     }
 }

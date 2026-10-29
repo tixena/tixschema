@@ -27,7 +27,7 @@ use crate::field_type::{
     dart_lower_camel, dart_to_json_argument, format_number_literal, get_field_def, is_plain_enum,
     is_sequence_wrapper,
 };
-use crate::model_schema::variant_wire_kind;
+use crate::model_schema::{variant_field_rule, variant_wire_kind};
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
 use crate::utils::{
     MapKeyWire, compute_alias_export_name, compute_item_export_name, to_snake_case,
@@ -241,6 +241,8 @@ pub struct DartTypeArgs<'args> {
     pub pattern: Option<&'args str>,
     /// The functions `preprocess` names on the type, in the order written.
     pub preprocess: &'args [FunctionName],
+    /// The Rust name of the item, which a member written `Self` is named as.
+    pub type_name: &'args str,
 }
 
 /// The bounds one value is held to, as `validate()` reports them: a length, then each pattern,
@@ -1324,7 +1326,7 @@ fn collect_dart_fields(
         }
         let wire_name = wire_field_name(&rust_name, rename_override(&field.attrs).as_deref(), rule);
         let mut field_def = field_def_with_prop_meta(&rust_name, field, args);
-        field_def.erase_type_parameters(type_parameters);
+        field_def.named_within(args.type_name, type_parameters);
         let flatten = field_is_flatten(&field.attrs);
         // A flattened member has no key to leave out, and serde reads it whatever it writes.
         if omission.omits_key && !flatten && !field_def.is_optional() {
@@ -3353,6 +3355,16 @@ fn judged_body(unjudged: &str) -> String {
     )
 }
 
+/// The kind a read takes its payload as: `typed` where the type names no function, and `dynamic`
+/// where it does, as a function is handed a payload of any kind.
+const fn payload_kind(corrects: &Corrects<'_>, typed: &'static str) -> &'static str {
+    if corrects.own.is_empty() {
+        typed
+    } else {
+        "dynamic"
+    }
+}
+
 /// The two reads of the class `named`, each taking its payload as a `kind` and then the
 /// converters of `codec`: `fromJson`, which judges what `fromJsonUnjudged` answers, and
 /// `fromJsonUnjudged`, which is `unjudged`.
@@ -3650,7 +3662,12 @@ fn tag_checked_reads(
         !fields.is_empty() || own_tag.is_some(),
         &answer,
     );
-    read_pair(class_name, "Map<String, dynamic>", codec, &unjudged)
+    read_pair(
+        class_name,
+        payload_kind(corrects, "Map<String, dynamic>"),
+        codec,
+        &unjudged,
+    )
 }
 
 /// The statements that refuse the object `object` names where it holds no `key`, or holds another
@@ -3834,7 +3851,7 @@ fn brand_value_field(
     args: &DartTypeArgs<'_>,
 ) -> FieldDef {
     let mut field_def = field_def_with_prop_meta("value", held, args);
-    field_def.erase_type_parameters(type_parameters);
+    field_def.named_within(args.type_name, type_parameters);
     field_def
 }
 
@@ -3927,7 +3944,7 @@ fn tuple_struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -
     };
     let slot_def = |slot: &Field, name: &str| {
         let mut field_def = field_def_with_prop_meta(name, slot, args);
-        field_def.erase_type_parameters(&type_parameters);
+        field_def.named_within(args.type_name, &type_parameters);
         field_def
     };
     let mut helpers = Helpers::default();
@@ -4057,7 +4074,7 @@ fn enum_dart_tokens(declared: &ItemEnum, args: &DartTypeArgs<'_>) -> TokenStream
 /// module. A member is read as the default `defaults` holds for it in this variant.
 fn variant_payload(
     variant: &Variant,
-    field_rule: RenameRule,
+    rename_all_fields: Option<&str>,
     type_parameters: &[String],
     args: &DartTypeArgs<'_>,
     defaults: &SerdeDefaults,
@@ -4067,7 +4084,7 @@ fn variant_payload(
         VariantKind::Unit => VariantPayload::Unit,
         VariantKind::Named => VariantPayload::Named(collect_dart_fields(
             &variant.fields,
-            field_rule,
+            variant_field_rule(variant, rename_all_fields),
             type_parameters,
             args,
             &|field| defaults.at(Some(&variant_name), field),
@@ -4078,7 +4095,7 @@ fn variant_payload(
                 || get_field_def("value", &syn::parse_quote!(()), ""),
                 |field| {
                     let mut field_def = field_def_with_prop_meta("value", field, args);
-                    field_def.erase_type_parameters(type_parameters);
+                    field_def.named_within(args.type_name, type_parameters);
                     field_def
                 },
             )))
@@ -4086,7 +4103,7 @@ fn variant_payload(
         VariantKind::TupleMultiple => {
             VariantPayload::Value(Box::new(written_slots(variant, |field| {
                 let mut field_def = field_def_with_prop_meta("slot", field, args);
-                field_def.erase_type_parameters(type_parameters);
+                field_def.named_within(args.type_name, type_parameters);
                 field_def
             })))
         }
@@ -4291,7 +4308,7 @@ fn tagged_enum_dart_source(
         tag_key,
     };
     let variant_rule = resolve_rename_rule(tag_attrs.rename_all.as_deref());
-    let field_rule = resolve_rename_rule(tag_attrs.rename_all_fields.as_deref());
+    let fields_rule = tag_attrs.rename_all_fields.as_deref();
     let type_parameters = type_parameters_in_scope(&item_enum.generics);
     let generic_params = dart_generic_params(&item_enum.generics);
     let codec = generic_codec(&type_parameters);
@@ -4309,7 +4326,7 @@ fn tagged_enum_dart_source(
             .unwrap_or_else(|| variant_rule.apply_to_variant(&variant_rust_name));
         let names = read_as(wire_tag.clone(), read_aliases(&variant.attrs));
         let subclass_name = format!("{export_name}{variant_rust_name}");
-        let payload = variant_payload(variant, field_rule, &type_parameters, args, defaults);
+        let payload = variant_payload(variant, fields_rule, &type_parameters, args, defaults);
         let validate = variant_validate(
             &payload,
             &tagged_variant_steps(&wire_tag, &shape),
@@ -4370,7 +4387,7 @@ fn tagged_enum_dart_source(
         )
     } else {
         (
-            "Map<String, dynamic>",
+            payload_kind(&corrects, "Map<String, dynamic>"),
             " as Map<String, dynamic>",
             format!(
                 "final {tag} = {json}[{}] as String; switch ({tag}) {{ {} default: \
@@ -4404,7 +4421,7 @@ fn untagged_enum_dart_source(
     args: &DartTypeArgs<'_>,
     defaults: &SerdeDefaults,
 ) -> String {
-    let field_rule = resolve_rename_rule(tag_attrs.rename_all_fields.as_deref());
+    let fields_rule = tag_attrs.rename_all_fields.as_deref();
     let type_parameters = type_parameters_in_scope(&item_enum.generics);
     let generic_params = dart_generic_params(&item_enum.generics);
     let codec = generic_codec(&type_parameters);
@@ -4418,7 +4435,7 @@ fn untagged_enum_dart_source(
     for variant in &item_enum.variants {
         let variant_rust_name = variant.ident.to_string();
         let subclass_name = format!("{export_name}{variant_rust_name}");
-        let payload = variant_payload(variant, field_rule, &type_parameters, args, defaults);
+        let payload = variant_payload(variant, fields_rule, &type_parameters, args, defaults);
         reads_unit |= matches!(&payload, VariantPayload::Value(held) if reads_a_unit(held));
         let bounds = variant_bounds(&payload);
         // serde writes an untagged variant as its value, so no step leads to its members.
@@ -4567,12 +4584,13 @@ fn plain_enum_dart_source(
         )),
     );
     let (matched, taken_as) = (&unjudged.body, &unjudged.taken_as);
+    let payload_ty = payload_kind(&corrects, "String");
     // An enum that names no check has nothing to refuse, and one that names no function either
     // reads as it did.
     let reads = if !checks.is_empty() {
         format!(
-            "static {export_name} fromJson(String json) {} static {export_name} \
-             fromJsonUnjudged(String {taken_as}) {matched}",
+            "static {export_name} fromJson({payload_ty} json) {} static {export_name} \
+             fromJsonUnjudged({payload_ty} {taken_as}) {matched}",
             judged_body(&format!("{export_name}.fromJsonUnjudged(json)"))
         )
     } else if corrects.own.is_empty() {
@@ -4582,8 +4600,8 @@ fn plain_enum_dart_source(
         )
     } else {
         format!(
-            "static {export_name} fromJson(String json) => fromJsonUnjudged(json); static \
-             {export_name} fromJsonUnjudged(String {taken_as}) {matched}"
+            "static {export_name} fromJson(dynamic json) => fromJsonUnjudged(json); static \
+             {export_name} fromJsonUnjudged(dynamic {taken_as}) {matched}"
         )
     };
     let body = format!(
