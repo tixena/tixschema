@@ -794,14 +794,15 @@ pub fn note_model(rust_ident: &str) {
     );
 }
 
-/// Notes a plain enum, which carries `validate()` and keeps the one serializer the plugin writes.
-pub fn note_plain_enum(rust_ident: &str) {
+/// Notes a plain enum, which carries `validate()`. One that names a check is read by two
+/// serializers, as `unjudged` says; any other keeps the one serializer it has.
+pub fn note_plain_enum(rust_ident: &str, unjudged: bool) {
     note(
         rust_ident,
         Noted {
             bound: Some(false),
             text: false,
-            unjudged: false,
+            unjudged,
             validates: true,
         },
     );

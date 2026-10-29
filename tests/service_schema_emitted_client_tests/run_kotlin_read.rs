@@ -109,12 +109,14 @@ Cargo, a pallet that breaks its bound: refused
     'label': too short: minimum length is 1, got 0
 Slip, a rating its check refuses: refused
     'rating': a slip is rated
+Rating, read on its own, one its check refuses: refused
+    a slip is rated
 ";
 
 /// What the read answers where it is not the text of the Rust read. A model judges itself as it
 /// is read behind a type parameter, under a bound a member writes of its own on a brand, and
 /// where its type is declared below its holder: the first broken one ends the read with its own
-/// messages, under no place. A plain enum keeps the plugin's serializer, and is handed back.
+/// messages, under no place.
 const APART_FROM_RUST: &str = "\
 Crate<Parcel>, the second code broken: refused
     'fragileItemCodes.1': y is outside of itemCodeList
@@ -125,7 +127,6 @@ Docket, a code that breaks its own bound: refused
     'code': too short: minimum length is 3, got 1
 Hitch, its own bound and the trailer's broken: refused
     'plate': too short: minimum length is 1, got 0
-Rating, one its check refuses: read Rating
 ";
 
 /// What `{Type}Unjudged` answers of a payload the type's own serializer refuses: the value.
@@ -787,6 +788,12 @@ fn enum_rows() -> Vec<Sample> {
             },
             |_| "Slip",
         ),
+        sample(
+            "Rating, read on its own, one its check refuses",
+            "Rating",
+            &Rating::Unrated,
+            |_| "Rating",
+        ),
     ]
 }
 
@@ -819,12 +826,6 @@ fn apart_rows() -> Vec<Sample> {
             "serializer<Hitch>()",
             &hitch(),
             Err(&["'plate': too short: minimum length is 1, got 0"]),
-        ),
-        pinned(
-            "Rating, one its check refuses",
-            "serializer<Rating>()",
-            &Rating::Unrated,
-            Ok("Rating"),
         ),
     ]
 }
@@ -1016,7 +1017,7 @@ fn where_the_read_is_not_the_rust_reads_text_it_is_this() {
     // position in the text, and a brand under its member's key beside the member's own bound.
     // A model declared below its holder
     // is read unjudged, so the holder's own message is answered too, and the trailer's at its
-    // place. The plain enum is refused, where Kotlin hands it back.
+    // place.
     assert_eq!(
         [
             refused_by_rust(&sealed_crate(vec![held(), outside()], "A", "ab")),
@@ -1027,7 +1028,6 @@ fn where_the_read_is_not_the_rust_reads_text_it_is_this() {
             )),
             refused_by_rust(&docket()),
             refused_by_rust(&hitch()),
-            refused_by_rust(&Rating::Unrated),
         ],
         [
             "'fragileItemCodes.1': y is outside of itemCodeList at line 1 column 134",
@@ -1035,7 +1035,6 @@ fn where_the_read_is_not_the_rust_reads_text_it_is_this() {
             "'code': too short: minimum length is 2, got 1; 'code': too short: minimum length is 3, got 1",
             "'hook': too short: minimum length is 1, got 0; 'trailer.plate': too short: minimum \
              length is 1, got 0",
-            "a slip is rated",
         ]
     );
     let body: Vec<String> = rows.iter().map(|row| row.kotlin.clone()).collect();

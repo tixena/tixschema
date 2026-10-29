@@ -142,3 +142,9 @@ mod unwired_models;
 #[cfg(feature = "kotlin")]
 #[path = "kotlin_tests/unwired.rs"]
 mod unwired;
+
+/// An enum published under another name republishes its Rust ident as a `typealias`.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "kotlin_tests/renamed_enums.rs"]
+mod renamed_enums;
