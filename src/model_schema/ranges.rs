@@ -25,10 +25,7 @@ use crate::field_type::{
 };
 use crate::utils::{written_names, written_type};
 
-#[cfg(any(
-    feature = "serde",
-    not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
-))]
+#[cfg(feature = "serde")]
 use super::prefixed_guard_message;
 #[cfg(feature = "serde")]
 use super::{
@@ -38,16 +35,11 @@ use super::{
     refused_member_named, type_arguments_of, writes_an_optional, written_as_an_entry,
     written_spelling,
 };
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-use super::{WRITTEN_AS_OBJECT, unwritable_map_key_message};
 #[cfg(feature = "serde")]
 use crate::features::serde::{
     Tagging, brand_field, has_serde_read_hook, parse_serde_field_attributes, struct_tag,
 };
-#[cfg(any(
-    feature = "serde",
-    not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
-))]
+#[cfg(feature = "serde")]
 use crate::field_type::FieldDef;
 #[cfg(feature = "serde")]
 use crate::field_type::{
@@ -1555,16 +1547,6 @@ fn parameter_names(generics: &syn::Generics) -> Vec<String> {
         .type_params()
         .map(|parameter| parameter.ident.to_string())
         .collect()
-}
-
-/// Refuses a field whose type reaches a map keyed by a std range or a std `Result`, in the words of
-/// the map key guard, which a build with no schema surface does not run: serde writes either as an
-/// object.
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-pub fn map_key_error(field: &syn::Field, field_def: &FieldDef, label: &str) -> Option<TokenStream> {
-    let key_name = field_def.object_map_key()?;
-    let message = unwritable_map_key_message(label, &key_name, WRITTEN_AS_OBJECT);
-    Some(syn::Error::new_spanned(field, prefixed_guard_message(&message)).to_compile_error())
 }
 
 #[cfg(test)]

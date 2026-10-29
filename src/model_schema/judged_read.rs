@@ -50,7 +50,8 @@ use crate::features::serde::{
 use crate::field_type::is_ownership_wrapper;
 #[cfg(feature = "serde")]
 use crate::field_type::{
-    RESULT_ARMS, RangeKind, get_field_def, is_map_wrapper, written_std_range, written_std_result,
+    RESULT_ARMS, RangeKind, get_field_def, is_map_wrapper, is_refused_sequence_wrapper,
+    is_sequence_wrapper, written_std_range, written_std_result,
 };
 use crate::utils::{to_snake_case, written_names, written_type};
 
@@ -856,20 +857,45 @@ fn reached(ty: &syn::Type, depth: usize, held_as: &Ident) -> Option<Reached> {
 }
 
 /// How a value of type `ty` is read with every model `validate()` walks to read unjudged, where
-/// the walk reads through `wraps` and ends on `end`: one model, or the arms of a `Result`. Each
-/// model is read as a type named after `taken`, the names written beside it, which it joins.
-/// `None` where `ty` writes another wrapper than the walk reads, or where the walk ends on a tuple.
+/// the walk reads through `wraps` and ends on `end`: one model, the arms of a `Result` or the
+/// positions of a tuple. Each model is read as a type named after `taken`, the names written
+/// beside it, which it joins. `None` where `ty` writes another wrapper than the walk reads.
 #[cfg(feature = "serde")]
 fn walked_read(
     ty: &syn::Type,
     depth: usize,
+    walk: (&[ConstraintWrap], &HeldEnd),
+    taken: &mut Vec<String>,
+) -> Option<Reached> {
+    match written_type(ty) {
+        syn::Type::Path(named) => walked_path(named, depth, walk, taken),
+        syn::Type::Array(array) => walked_array(array, depth, walk, taken),
+        syn::Type::Tuple(tuple) => walked_tuple(tuple, depth, walk, taken),
+        syn::Type::FnPtr(_)
+        | syn::Type::Group(_)
+        | syn::Type::ImplTrait(_)
+        | syn::Type::Infer(_)
+        | syn::Type::Macro(_)
+        | syn::Type::Never(_)
+        | syn::Type::Paren(_)
+        | syn::Type::Ptr(_)
+        | syn::Type::Reference(_)
+        | syn::Type::Slice(_)
+        | syn::Type::TraitObject(_)
+        | syn::Type::Verbatim(_)
+        | _ => None,
+    }
+}
+
+/// [`walked_read`] of a type written as a path.
+#[cfg(feature = "serde")]
+fn walked_path(
+    named: &syn::TypePath,
+    depth: usize,
     (wraps, end): (&[ConstraintWrap], &HeldEnd),
     taken: &mut Vec<String>,
 ) -> Option<Reached> {
-    let written = written_type(ty);
-    let syn::Type::Path(named) = written else {
-        return None;
-    };
+    let written = syn::Type::Path(named.clone());
     let last = named.path.segments.last()?;
     let held = held_binding(depth);
     let Some((walked, rest)) = wraps.split_first() else {
@@ -889,7 +915,7 @@ fn walked_read(
                 taken.push(held_as.to_string());
                 Some(Reached {
                     back: quote! { #held.0 },
-                    leaves: vec![(written.clone(), held_as.clone())],
+                    leaves: vec![(written, held_as.clone())],
                     read_as: syn::parse_quote! { #held_as },
                 })
             }
@@ -900,12 +926,78 @@ fn walked_read(
     let syn::PathArguments::AngleBracketed(arguments) = &last.arguments else {
         return None;
     };
-    let (wrap, position, held_type) = wrapped_by(named, arguments)?;
+    let (wrap, position, held_type) = walked_wrapper(named, arguments)?;
     if wrap != *walked {
         return None;
     }
     let below = walked_read(held_type, depth.saturating_add(1), (rest, end), taken)?;
     Some(held_under(named, wrap, position, depth, below))
+}
+
+/// [`walked_read`] of a fixed array, which the walk reads as a sequence.
+#[cfg(feature = "serde")]
+fn walked_array(
+    array: &syn::TypeArray,
+    depth: usize,
+    (wraps, end): (&[ConstraintWrap], &HeldEnd),
+    taken: &mut Vec<String>,
+) -> Option<Reached> {
+    let Some((ConstraintWrap::Sequence, rest)) = wraps.split_first() else {
+        return None;
+    };
+    let below = walked_read(&array.elem, depth.saturating_add(1), (rest, end), taken)?;
+    let (held, inner) = (held_binding(depth), held_binding(depth.saturating_add(1)));
+    let value = &below.back;
+    let mut read_as = array.clone();
+    *read_as.elem = below.read_as;
+    Some(Reached {
+        back: quote! { #held.map(|#inner| #value) },
+        leaves: below.leaves,
+        read_as: syn::Type::Array(read_as),
+    })
+}
+
+/// [`walked_read`] of a tuple the walk ends on: each position the walk reaches is read as the
+/// walk below it says, and every other position as it is written.
+#[cfg(feature = "serde")]
+fn walked_tuple(
+    tuple: &syn::TypeTuple,
+    depth: usize,
+    walk: (&[ConstraintWrap], &HeldEnd),
+    taken: &mut Vec<String>,
+) -> Option<Reached> {
+    let ([], HeldEnd::Positions(positions)) = walk else {
+        return None;
+    };
+    let (held, inner) = (held_binding(depth), held_binding(depth.saturating_add(1)));
+    let mut read_as = tuple.clone();
+    let mut leaves = Vec::new();
+    let mut names = Vec::new();
+    let mut values = Vec::new();
+    for (at, position) in tuple.elems.iter().enumerate() {
+        let name = Ident::new(&format!("position_{depth}_{at}"), Span::call_site());
+        let Some((_, shape)) = positions.iter().find(|(reached, _)| *reached == at) else {
+            values.push(quote! { #name });
+            names.push(name);
+            continue;
+        };
+        let below = walked_read(
+            position,
+            depth.saturating_add(1),
+            (&shape.wraps, &shape.end),
+            taken,
+        )?;
+        let value = &below.back;
+        values.push(quote! { { let #inner = #name; #value } });
+        names.push(name);
+        *read_as.elems.iter_mut().nth(at)? = below.read_as;
+        leaves.extend(below.leaves);
+    }
+    Some(Reached {
+        back: quote! { { let (#(#names,)*) = #held; (#(#values,)*) } },
+        leaves,
+        read_as: syn::Type::Tuple(read_as),
+    })
 }
 
 /// The std `Result` `named` read with the models `arms` walk to in either arm read unjudged, built
@@ -978,6 +1070,27 @@ fn wrapped_by<'ty>(
     Some((wrap, 0, sole_type_argument(arguments)?))
 }
 
+/// [`wrapped_by`], and the wrappers the walk of `validate()` reads that the recovering decode does
+/// not: an `Rc` and an `Arc`, and every list but a `Vec`.
+#[cfg(feature = "serde")]
+fn walked_wrapper<'ty>(
+    named: &'ty syn::TypePath,
+    arguments: &'ty syn::AngleBracketedGenericArguments,
+) -> Option<(ConstraintWrap, usize, &'ty syn::Type)> {
+    if let Some(found) = wrapped_by(named, arguments) {
+        return Some(found);
+    }
+    let wrapper = named.path.segments.last()?.ident.to_string();
+    let wrap = if matches!(wrapper.as_str(), "Rc" | "Arc") {
+        ConstraintWrap::Transparent
+    } else if is_sequence_wrapper(&wrapper) || is_refused_sequence_wrapper(&wrapper) {
+        ConstraintWrap::Sequence
+    } else {
+        return None;
+    };
+    Some((wrap, 0, sole_type_argument(arguments)?))
+}
+
 /// The value of `named`, the wrapper `wrap` over its argument at `position`, read as `below`
 /// reads that argument and built back from it.
 #[cfg(feature = "serde")]
@@ -991,6 +1104,14 @@ fn held_under(
     let written = syn::Type::Path(named.clone());
     let (held, inner) = (held_binding(depth), held_binding(depth.saturating_add(1)));
     let value = &below.back;
+    let wrapper = named
+        .path
+        .segments
+        .last()
+        .map_or_else(String::new, |last| last.ident.to_string());
+    // serde reads an `Rc` and an `Arc` as the value they hold, and every list from a sequence.
+    let shared = matches!(wrapper.as_str(), "Rc" | "Arc");
+    let listed = wrap == ConstraintWrap::Sequence && wrapper != "Vec";
     let back = match wrap {
         ConstraintWrap::Map => {
             let key = Ident::new(&format!("key_{depth}"), Span::call_site());
@@ -1001,14 +1122,25 @@ fn held_under(
         ConstraintWrap::Sequence => {
             quote! { #held.into_iter().map(|#inner| #value).collect::<#written>() }
         }
+        ConstraintWrap::Transparent if shared => {
+            quote! { <#written>::new({ let #inner = #held; #value }) }
+        }
         ConstraintWrap::Borrowed | ConstraintWrap::Transparent => {
             quote! { <#written>::new({ let #inner = *#held; #value }) }
         }
     };
+    let below_as = &below.read_as;
+    let read_as = if shared {
+        below.read_as.clone()
+    } else if listed {
+        syn::parse_quote! { ::std::vec::Vec<#below_as> }
+    } else {
+        with_argument(named, position, &below.read_as)
+    };
     Reached {
         back,
         leaves: below.leaves,
-        read_as: with_argument(named, position, &below.read_as),
+        read_as,
     }
 }
 
@@ -1072,8 +1204,8 @@ pub fn named_refusal(named: &str) -> TokenStream {
 }
 
 /// The hook a member reads the models it holds unjudged through, recorded for the read of the
-/// item being expanded: the member's type is read with each model under `Option`, `Vec`, `Box`
-/// and a map's values read through its unjudged read. `shape` is the walk `validate()` makes of
+/// item being expanded: the member's type is read with each model `validate()` walks to read
+/// through its unjudged read. `shape` is the walk `validate()` makes of
 /// the same member, which is what judges what the hook leaves unjudged. Answers whether the
 /// member was given one. The read writes it generic over the item's parameters the member names,
 /// or leaves the member to its own `Deserialize` where the item's bounds keep it from one.
@@ -1138,8 +1270,15 @@ fn derive_list(attr: &Attribute) -> Option<Punctuated<syn::Path, Token![,]>> {
         .ok()
 }
 
-fn ends_on(path: &syn::Path, named: &str) -> bool {
-    path.segments.last().is_some_and(|last| last.ident == named)
+/// Whether `path` is serde's derive: `Deserialize` bare, or `serde::Deserialize`. Another crate's
+/// derive of that name, such as `rkyv::Deserialize`, is not.
+fn is_serde_deserialize(path: &syn::Path) -> bool {
+    let mut names = path.segments.iter().map(|segment| &segment.ident);
+    match (names.next(), names.next(), names.next()) {
+        (Some(only), None, None) => only == "Deserialize",
+        (Some(krate), Some(only), None) => krate == "serde" && only == "Deserialize",
+        _ => false,
+    }
 }
 
 /// The path the item derives `Deserialize` by, as its author wrote it.
@@ -1148,7 +1287,7 @@ fn deserialize_derive(attrs: &[Attribute]) -> Option<syn::Path> {
         .iter()
         .filter_map(derive_list)
         .flatten()
-        .find(|path| ends_on(path, "Deserialize"))
+        .find(is_serde_deserialize)
 }
 
 /// `attrs` with `Deserialize` taken off every derive list, and a list left empty taken off whole.
@@ -1159,12 +1298,12 @@ fn without_deserialize(attrs: Vec<Attribute>) -> Vec<Attribute> {
             let Some(listed) = derive_list(&attr) else {
                 return Some(attr);
             };
-            if !listed.iter().any(|path| ends_on(path, "Deserialize")) {
+            if !listed.iter().any(is_serde_deserialize) {
                 return Some(attr);
             }
             let kept: Vec<&syn::Path> = listed
                 .iter()
-                .filter(|path| !ends_on(path, "Deserialize"))
+                .filter(|path| !is_serde_deserialize(path))
                 .collect();
             (!kept.is_empty()).then(|| syn::parse_quote! { #[derive(#(#kept),*)] })
         })

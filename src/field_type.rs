@@ -1102,24 +1102,6 @@ impl FieldDef {
         }
     }
 
-    /// The std range or the std `Result` the key of the first map this field reaches is written
-    /// as, at any depth, by the name a refusal writes it under.
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    pub fn object_map_key(&self) -> Option<String> {
-        if let FieldDefType::Map(key, _) = &self.field_type {
-            if let FieldDefType::Range(kind, _) = key.field_type {
-                return Some(format!("{}<_>", kind.name()));
-            }
-            if matches!(key.field_type, FieldDefType::Result(_, _)) {
-                return Some("Result<_, _>".to_owned());
-            }
-        }
-        self.clone()
-            .nested_type_positions()
-            .into_iter()
-            .find_map(|nested| nested.object_map_key())
-    }
-
     /// Reads each of the enclosing item's own type parameters this field reaches, at any depth, as
     /// a value no surface describes: what such a value writes is then its own, read with no
     /// converter of the codec's.
