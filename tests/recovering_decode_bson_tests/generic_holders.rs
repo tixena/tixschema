@@ -35,6 +35,25 @@ struct Van {
     load: Tote<String>,
 }
 
+/// Holds a list of totes under its own type parameter, held to a count of its own.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(CodeType = String))]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(bound(deserialize = "CodeType: serde::de::DeserializeOwned"))]
+struct Convoy<CodeType: Display> {
+    #[model_schema_prop(minLength = 3)]
+    loads: Vec<Tote<CodeType>>,
+}
+
+/// [`Convoy`] with a concrete filling.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[model_schema(enable = ["decode_with", "mongodb"])]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+struct StringConvoy {
+    #[model_schema_prop(minLength = 3)]
+    loads: Vec<Tote<String>>,
+}
+
 /// A recursive checked type.
 #[model_schema(enable = ["decode_with", "mongodb"], check = ["withinCarton"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -126,4 +145,23 @@ fn a_check_held_with_a_concrete_filling_is_listed_at_its_path_as_it_was() {
         van_schema::Verdict::Reject
     });
     assert_eq!(lines(read), [listed_at("load.fragileItemCodes[1]")]);
+}
+
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn a_counted_list_held_under_the_holders_type_parameter_lists_the_issues_of_a_concrete_filling() {
+    let sound = doc! { "itemCodeList": ["x"], "fragileItemCodes": ["x"] };
+    let stored = doc! { "loads": [sound, broken()] };
+    let generic = lines(Convoy::<String>::from_bson_with(stored.clone(), |_, _| {
+        convoy_schema::Verdict::Reject
+    }));
+    let concrete = lines(StringConvoy::from_bson_with(stored, |_, _| {
+        string_convoy_schema::Verdict::Reject
+    }));
+    assert_eq!(generic, concrete);
+    assert_eq!(generic.len(), 2, "the count and the check: {generic:?}");
+    assert!(
+        generic.contains(&listed_at("loads[1].fragileItemCodes[1]")),
+        "got: {generic:?}"
+    );
 }

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 #[cfg(feature = "serde")]
-use super::read::judged;
+use super::read::{DECODED, judged};
 use super::read::{judged_over, kept, kept_inline, serializers};
 #[cfg(feature = "serde")]
 use super::tests::{
@@ -506,7 +506,7 @@ fn a_flattened_member_is_reported_under_no_name() {
 #[cfg(feature = "serde")]
 #[test]
 fn the_serializer_the_emitter_writes_for_each_struct_shape_is_its_unjudged_one() {
-    for (definition, unjudged, own) in [
+    for (definition, written, own) in [
         (
             super::tests::renumbered(&audit_kotlin::kotlin_definition()),
             "object AuditUnjudged : KSerializer<Audit> { override val descriptor: \
@@ -518,8 +518,8 @@ fn the_serializer_the_emitter_writes_for_each_struct_shape_is_its_unjudged_one()
              v) -> put(k, v) } }) }; override fun deserialize(decoder: Decoder): Audit { val \
              input = decoder as JsonDecoder; val obj = input.decodeJsonElement().let { it as? \
              JsonObject ?: throw SerializationException(\"expected an object, found \" + it) }; \
-             val id = input.json.decodeFromJsonElement(serializer<String>(), (obj[\"id\"] ?: \
-             throw SerializationException(\"missing field `id`\"))); \
+             val id = kotlinSchemaDecoded(input.json, serializer<String>(), (obj[\"id\"] ?: \
+             throw SerializationException(\"missing field `id`\")), \"id\"); \
              val stampKeys = setOf(\"created_at\", \"updated_at\"); val stamp = \
              input.json.decodeFromJsonElement(StampUnjudged, JsonObject(obj.filterKeys { it in \
              setOf(\"created_at\", \"updated_at\") })); \
@@ -542,11 +542,20 @@ fn the_serializer_the_emitter_writes_for_each_struct_shape_is_its_unjudged_one()
              JsonDecoder; val array = input.decodeJsonElement().let { it as? JsonArray ?: throw \
              SerializationException(\"expected an array, found \" + it) }; if (array.size != 2) \
              throw SerializationException(\"invalid length \" + array.size + \", expected 2\"); \
-             return GenericPair(input.json.decodeFromJsonElement(tSerializer, array[0]), \
-             input.json.decodeFromJsonElement(KotlinNumber1, array[1])) } }",
+             return GenericPair(kotlinSchemaDecoded(input.json, tSerializer, array[0], \"0\"), \
+             kotlinSchemaDecoded(input.json, KotlinNumber1, array[1], \"1\")) } }",
             judged_over("GenericPair", "T", ": Any", "tSerializer"),
         ),
     ] {
+        let unjudged = if written.contains("kotlinSchemaDecoded(") {
+            written.replacen(
+                "override fun deserialize",
+                &format!("{DECODED}override fun deserialize"),
+                1,
+            )
+        } else {
+            written.to_owned()
+        };
         assert!(
             definition.ends_with(&format!("{unjudged} {own}")),
             "the serializers moved in: {definition}"
@@ -559,7 +568,7 @@ fn the_serializer_the_emitter_writes_for_each_struct_shape_is_its_unjudged_one()
 #[cfg(feature = "serde")]
 #[test]
 fn the_serializer_the_emitter_writes_for_each_enum_shape_is_its_unjudged_one() {
-    for (definition, unjudged, own) in [
+    for (definition, written, own) in [
         (
             super::tests::renumbered(&simple_choice_kotlin::kotlin_definition()),
             "object SimpleChoiceUnjudged : KSerializer<SimpleChoice> { override val \
@@ -577,8 +586,8 @@ fn the_serializer_the_emitter_writes_for_each_enum_shape_is_its_unjudged_one() {
              when (tag) { \
              \"None\" -> if (data is JsonNull) SimpleChoiceNone else throw \
              SerializationException(\"SimpleChoice: \" + tag + \" takes no value\"); \"Value\" -> \
-             SimpleChoiceValue(input.json.decodeFromJsonElement(serializer<String>(), data)) else \
-             -> throw SerializationException(\"unknown tag \" + tag) } } }",
+             SimpleChoiceValue(kotlinSchemaDecoded(input.json, serializer<String>(), data, \
+             \"Value\")) else -> throw SerializationException(\"unknown tag \" + tag) } } }",
             judged("SimpleChoice"),
         ),
         (
@@ -601,13 +610,13 @@ fn the_serializer_the_emitter_writes_for_each_enum_shape_is_its_unjudged_one() {
              (!input.json.configuration.ignoreUnknownKeys) (obj - \"type\" - \
              \"value\").keys.firstOrNull()?.let { throw SerializationException(\"Encountered an \
              unknown key '\" + it + \"'\") }; return when (tag) { \"Flag\" -> \
-             DynamicValueFlag(input.json.decodeFromJsonElement(KotlinNumber1, (data ?: \
-             throw SerializationException(\"missing field `value`\")))); \"Nothing\" -> if \
+             DynamicValueFlag(kotlinSchemaDecoded(input.json, KotlinNumber1, (data ?: \
+             throw SerializationException(\"missing field `value`\")), \"value\")); \"Nothing\" -> if \
              (data == null) DynamicValueNothing else throw \
              SerializationException(\"DynamicValue: \" + tag + \" takes no value\"); \"Number\" \
              -> \
-             DynamicValueNumber(input.json.decodeFromJsonElement(KotlinNumber2, (data ?: \
-             throw SerializationException(\"missing field `value`\")))) else -> throw \
+             DynamicValueNumber(kotlinSchemaDecoded(input.json, KotlinNumber2, (data ?: \
+             throw SerializationException(\"missing field `value`\")), \"value\")) else -> throw \
              SerializationException(\"unknown tag \" + tag) } } }",
             judged("DynamicValue"),
         ),
@@ -629,6 +638,15 @@ fn the_serializer_the_emitter_writes_for_each_enum_shape_is_its_unjudged_one() {
             judged("DateValue"),
         ),
     ] {
+        let unjudged = if written.contains("kotlinSchemaDecoded(") {
+            written.replacen(
+                "override fun deserialize",
+                &format!("{DECODED}override fun deserialize"),
+                1,
+            )
+        } else {
+            written.to_owned()
+        };
         assert!(
             definition.ends_with(&format!("{unjudged} {own}")),
             "the serializers moved in: {definition}"
