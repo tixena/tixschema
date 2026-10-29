@@ -3316,7 +3316,14 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
         );
         rules.extend(bounds.iter().cloned());
         rules.extend(validate::own_checks(args.check));
-        return value_wrapper_tokens(
+        let bare = if let FieldDefType::TypeParam(parameter) = &value_field.field_type
+            && !value_field.is_list()
+        {
+            type_parameters.iter().position(|named| named == parameter)
+        } else {
+            None
+        };
+        let tokens = value_wrapper_tokens(
             &item_struct.ident,
             &item_struct.generics,
             args,
@@ -3329,6 +3336,8 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
             &rules,
             hashes_as_key(&item_struct.attrs, &value_field),
         );
+        validate::note_bare(&rust_ident, bare);
+        return tokens;
     }
     if matches!(item_struct.fields, Fields::Unnamed(_)) {
         return tuple_struct_swift_tokens(item_struct, args);

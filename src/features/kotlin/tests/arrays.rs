@@ -64,10 +64,10 @@ fn where_the_emitter_writes_the_read_it_composes_the_class_of_the_length() {
     );
     for held in [
         "data class Slots(val slot0: List<UByte>, val slot1: List<List<UByte>>) {",
-        "return Slots(input.json.decodeFromJsonElement(KotlinArray1(KotlinNumber1), \
-         array[0]), \
-         input.json.decodeFromJsonElement(ListSerializer(KotlinArray1(KotlinNumber1)), \
-         array[1]))",
+        "return Slots(kotlinSchemaDecoded(input.json, KotlinArray1(KotlinNumber1), \
+         array[0], \"0\"), \
+         kotlinSchemaDecoded(input.json, ListSerializer(KotlinArray1(KotlinNumber1)), \
+         array[1], \"1\"))",
     ] {
         assert!(kotlin.contains(held), "no `{held}` in: {kotlin}");
     }
@@ -106,9 +106,9 @@ fn a_list_of_no_length_keeps_the_read_it_had() {
     assert!(
         !kotlin.contains("KotlinArray")
             && kotlin.contains(
-                "input.json.decodeFromJsonElement(ListSerializer(KotlinNumber1), array[0]), \
-                 input.json.decodeFromJsonElement(ListSerializer(ListSerializer(KotlinNumber1)), \
-                 array[1])"
+                "kotlinSchemaDecoded(input.json, ListSerializer(KotlinNumber1), array[0], \
+                 \"0\"), kotlinSchemaDecoded(input.json, \
+                 ListSerializer(ListSerializer(KotlinNumber1)), array[1], \"1\")"
             ),
         "got: {kotlin}"
     );

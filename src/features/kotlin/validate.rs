@@ -22,6 +22,9 @@ use crate::field_type::{
 /// The list `validate()` collects its messages in.
 const VIOLATIONS: &str = "violations";
 
+/// The name a brand's value is bound to where its bounds read the value it holds.
+const FILLING: &str = "kotlinSchemaHeld";
+
 /// What a walk asks each value of a declared type it reaches for.
 #[derive(Clone, Copy)]
 enum Asked {
@@ -38,6 +41,10 @@ enum Helper {
     /// What a held value answers where its type carries no `validate()`: a type of the
     /// consumer's own, and an alias of a string or of a list. A member is found ahead of it.
     Fallback,
+    /// The text serde writes for a map's key typed with a type parameter, read from the
+    /// serializer of the class the key is an instance of; a class of a parameter of its own has
+    /// none to find, and its key is written as Kotlin prints it.
+    Key,
     /// What a string or a collection answers where a declared type is asked for its length: its
     /// code points or its items. A brand answers with a member of its own, which is found ahead
     /// of these.
@@ -101,6 +108,9 @@ impl Answers {
 /// What a type the emitter wrote publishes to one written after it.
 #[derive(Clone, Copy)]
 struct Noted {
+    /// The position of the type parameter a brand holds bare: the one whose argument its value is
+    /// of.
+    bare: Option<usize>,
     /// Whether the type carries `kotlinSchemaBound()`, a brand with a bound of its own: `None`
     /// for an alias, which is whatever it names.
     bound: Option<bool>,
@@ -140,6 +150,11 @@ impl Helper {
     const fn written(self) -> &'static str {
         match self {
             Self::Fallback => "private fun Any?.validate(): List<String> = emptyList()",
+            Self::Key => {
+                "private fun kotlinSchemaKey(key: Any?): String = \
+                 serializerOrNull(key!!::class.java)?.let { \
+                 Json.encodeToJsonElement(it, key).jsonPrimitive.content } ?: key.toString()"
+            }
             Self::Length => {
                 "private fun String.kotlinSchemaLength(): Int = codePointCount(0, length); \
                  private fun Collection<*>.kotlinSchemaLength(): Int = size"
@@ -325,6 +340,9 @@ impl<'item> Rules<'item> {
                 count_statements(meta, &member.read, None).join("; ")
             )];
         }
+        if let Some(held) = bare_argument(declared) {
+            return self.filling_statements(member, declared, held, meta);
+        }
         let Some(text) = self.text_read(declared, &member.read) else {
             return Vec::new();
         };
@@ -333,6 +351,32 @@ impl<'item> Rules<'item> {
             member.read,
             kotlin_typename(declared),
             text_statements(meta, &text, None).join("; ")
+        )]
+    }
+
+    /// What a brand's bounds add where the declared default is a brand written with arguments,
+    /// `declared`: the JVM keeps no argument to tell the filling by, so the bounds run where the
+    /// value is of that brand's class and the value it holds is of the type `held` the default
+    /// gives its parameter.
+    fn filling_statements(
+        &mut self,
+        member: &Member<'_>,
+        declared: &FieldDef,
+        held: &FieldDef,
+        meta: &ModelSchemaPropMeta,
+    ) -> Vec<String> {
+        let inside = FILLING;
+        let Some(text) = self.text_read(held, inside) else {
+            return Vec::new();
+        };
+        let written = kotlin_typename(declared);
+        let class = written.split('<').next().unwrap_or(&written);
+        let bounds = text_statements(meta, &text, None).join("; ");
+        vec![format!(
+            "if ({read} is {class}<*>) {{ val {inside} = {read}.value; if ({inside} is {held_type}) \
+             {{ {bounds} }} }}",
+            read = member.read,
+            held_type = kotlin_typename(held),
         )]
     }
 
@@ -435,12 +479,13 @@ impl<'item> Rules<'item> {
 
     /// The step the key of a map's entry adds to a place, as the text serde writes for the key,
     /// or `None` for a key typed with a parameter the item declares no `Serialize` for.
-    fn key_step(&self, key: &FieldDef, entry: &str) -> Option<String> {
+    fn key_step(&mut self, key: &FieldDef, entry: &str) -> Option<String> {
         if let FieldDefType::TypeParam(parameter) = &key.field_type {
-            self.serializable
-                .iter()
-                .any(|declared| declared == parameter)
-                .then(|| format!("${entry}"))
+            let declared = self.serializable.iter().any(|named| named == parameter);
+            if declared {
+                self.helpers.insert(Helper::Key);
+            }
+            declared.then(|| format!("${{kotlinSchemaKey({entry})}}"))
         } else if matches!(key.field_type, FieldDefType::SiblingType(_, _)) {
             Some(format!(
                 "${{Json.encodeToJsonElement(serializer<{}>(), {entry}).jsonPrimitive.content}}",
@@ -744,6 +789,16 @@ fn counts_a_length(def: &FieldDef) -> bool {
     def.is_list() || matches!(text_of(def), Text::Own) || answers_a_length(def)
 }
 
+/// The type a brand written with arguments gives the parameter its class holds bare, as `def`
+/// names it: `None` for a type that is no brand of that kind.
+fn bare_argument(def: &FieldDef) -> Option<&FieldDef> {
+    let FieldDefType::SiblingType(named, arguments) = &def.field_type else {
+        return None;
+    };
+    let position = NOTED.with(|seen| seen.borrow().get(named).and_then(|noted| noted.bare))?;
+    arguments.get(position)
+}
+
 /// Whether the declared type `def` names is one the emitter wrote that answers its text.
 fn answers_a_text(def: &FieldDef) -> bool {
     def.named_shape().is_some_and(|(named, _)| {
@@ -875,6 +930,7 @@ pub fn note_alias(rust_ident: &str, target: &FieldDef) {
     note(
         rust_ident,
         Noted {
+            bare: None,
             bound: None,
             length,
             text,
@@ -885,11 +941,17 @@ pub fn note_alias(rust_ident: &str, target: &FieldDef) {
 }
 
 /// Notes a brand, which carries `validate()`, `kotlinSchemaText()` where `text` says so,
-/// `kotlinSchemaLength()` where `length` does and `kotlinSchemaBound()` where `bound` does.
-pub fn note_brand(rust_ident: &str, text: bool, length: bool, bound: bool) {
+/// `kotlinSchemaLength()` where `length` does and `kotlinSchemaBound()` where `bound` does, and
+/// holds the type parameter at `bare` as its value.
+pub fn note_brand(
+    rust_ident: &str,
+    (text, length, bound): (bool, bool, bool),
+    bare: Option<usize>,
+) {
     note(
         rust_ident,
         Noted {
+            bare,
             bound: Some(bound),
             length: Answers::of(length),
             text,
@@ -904,6 +966,7 @@ pub fn note_model(rust_ident: &str) {
     note(
         rust_ident,
         Noted {
+            bare: None,
             bound: Some(false),
             length: Answers::No,
             text: false,
@@ -919,6 +982,7 @@ pub fn note_plain_enum(rust_ident: &str, unjudged: bool) {
     note(
         rust_ident,
         Noted {
+            bare: None,
             bound: Some(false),
             length: Answers::No,
             text: false,

@@ -50,7 +50,12 @@ section is the consumer's view; this is what a change has to keep.
   for the one slot of a struct or a variant that declares one.
 - **A map's key is `key_step`'s**: the key itself for a string, a number and a `Boolean`, the text
   its serializer writes for a declared type, and a type parameter's only where
-  `serialized_parameters` finds `Serialize` declared for it, as Rust writes it.
+  `serialized_parameters` finds `Serialize` declared for it, as Rust writes it: through
+  `kotlinSchemaKey`, a private function of the type that finds the serializer of the key's class
+  (`serializerOrNull(key::class.java)`) and reads the primitive it writes, so a plain enum under
+  `rename_all` and a brand are named by the text serde writes. The type holds no serializer for
+  its parameter, only its serializers do. A class that declares a parameter of its own has no
+  serializer to find from the key alone, and its key is written as Kotlin prints it.
 - **One wrapper is written per tuple shape per item.** `tuple_wrapper` queues a wrapper
   class the first time the item asks for a shape, and answers its name to every later ask of that
   shape (`KOTLIN_TUPLES`, cleared with the queue in `kotlin_module_tokens`). A shape is the
@@ -65,8 +70,15 @@ section is the consumer's view; this is what a change has to keep.
   is an `object`, written as it was. `Yoked` in `run_kotlin_lone_slots.rs` reads a tuple of a
   parameter filled at a text and at a model under kotlinc.
 - **A brand with a parameter** runs its bounds behind `if (value is {Default})`, the Kotlin type
-  of the parameter's declared default (`declared_default`). A default written with arguments
-  writes no bound: the JVM keeps no argument to tell the filling by.
+  of the parameter's declared default (`declared_default`). A default that is a brand written
+  with arguments, which the JVM keeps none of, runs them behind
+  `if (value is {Class}<*>) { val kotlinSchemaHeld = value.value; if (kotlinSchemaHeld is {Held}) ...`
+  (`filling_statements`), where `{Held}` is the type the default gives the parameter the class
+  holds bare (`Noted::bare`, which `note_brand` records). A `{Class}` built by hand with another
+  argument that holds a `{Held}` is judged as well, the one difference from Rust, pinned by
+  `run_kotlin_generic_bounds.rs`, which also runs both declarations in Dart and in Swift. Swift
+  tells the filling by `value as? {Class}<{Held}>`, which keeps the arguments, and measures the
+  value the class holds.
 - **The tests.** `tests/kotlin_tests/validate.rs` pins the text in every build with `kotlin`, a
   build with no schema surface included: Rust holds no bound there and Kotlin holds every one.
   `tests/service_schema_emitted_client_tests/run_kotlin_validate.rs` compiles the emitted types
@@ -359,12 +371,25 @@ the consumer's view; this is what a change has to keep.
   4). `tests/kotlin_tests/flattened_models.rs` holds `Cathead`, `Hawsepipe` and `Snubbing` and
   serde's reads of `CHOCKED` and `SNUBBED`, and `run_kotlin_flattened.rs` holds the Kotlin read
   of each to serde's.
+- **A value of the wrong kind is a `SerializationException` that names the member**
+  (`read::decoded`, `read::DECODED`): `kotlinx.serialization` 1.11.0 throws
+  `IndexOutOfBoundsException` for a text read from a list or an object. Each serializer the
+  emitter writes that reads an element itself holds two private functions,
+  `kotlinSchemaKinded` and `kotlinSchemaDecoded`, written ahead of its `deserialize` only where
+  a read names them. They ask the serializer's descriptor for its kind, looking through an
+  inline one to its element, and throw where a primitive kind meets an array or an object, a list
+  an element that is no array, or a map one that is no object, naming the member's key or the
+  slot's position: `'label': STRING cannot be read from an array`. A class kind is not asked:
+  the serializers the emitter writes for a tuple or a plain enum declare a class and read an
+  array or a text. Reads of an object the emitter builds itself, and those of a lenient
+  `Json`, are handed on as they were. A member that names a `preprocess` is read by a
+  `JsonTransformingSerializer` that asks `kotlinSchemaKinded` of what the function answered.
+  `run_kotlin_wrong_kinds.rs` holds the payloads and what each read throws.
 - **An optional flattened map is `null` where serde reads `None`** (`flatten_map_field_plan`):
   written through `value.{member}?.forEach`, so `null` writes no entry, and read inside
   `runCatching { ... }.getOrNull()`, so an entry that throws as the map's value reads the map as
   `null`, as serde's untagged read of an `Option` reads `None`. The decode of an entry throws
-  `SerializationException`, and `IndexOutOfBoundsException` for a list or an object where a text
-  or a number is read, so the read catches whatever is thrown, as the untagged enum's
+  `SerializationException`, so the read catches whatever is thrown, as the untagged enum's
   `recoverCatching` chain does. A map that is not optional is read as it was.
   `tests/kotlin_tests/flattened_models.rs` holds `ProbeLocker` and serde's reads of `LOCKER`, and
   `run_kotlin_flattened.rs` holds the Kotlin read of each to serde's.
@@ -573,8 +598,7 @@ say so.
   does not read as the map's value (`CorrectedLocker`, `EmptiedLocker`).
 - **The path of a refusal below a function starts at the value the function answered**: a
   member and a type that name one are each read from a JSON value of their own. A list or an
-  object where a text or a number is read is thrown by `kotlinx.serialization` 1.11.0 as
-  `IndexOutOfBoundsException`, as it is by every read the emitter writes itself.
+  object where a text or a number is read is a `SerializationException` that names the member.
   `run_kotlin_preprocess.rs` pins both, and that each client answers its fault for the second.
 - **The tests.** `src/features/kotlin/tests/preprocess.rs` pins the text of each shape, and the
   README's block to what the emitter writes for the documents' parcel.

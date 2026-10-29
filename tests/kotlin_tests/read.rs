@@ -12,6 +12,20 @@ use super::fixed_arrays_models::{
     sheaving_kotlin, shroud_kotlin, shrouding_kotlin,
 };
 
+/// The private functions a serializer holds ahead of its `deserialize` where it reads an element
+/// itself.
+pub const DECODED: &str = "private fun kotlinSchemaKinded(serializer: DeserializationStrategy<*>, \
+     element: JsonElement, at: String): JsonElement { var held = serializer.descriptor; \
+     while (held.isInline && held.elementsCount == 1) held = held.getElementDescriptor(0); \
+     val kind = held.kind; if ((kind is PrimitiveKind && element !is JsonPrimitive) || (kind == StructureKind.LIST && \
+     element !is JsonArray) || (kind == StructureKind.MAP && element !is JsonObject)) throw \
+     SerializationException(\"'\" + at + \"': \" + kind + \" cannot be read from \" + when (element) { \
+     is JsonArray -> \"an array\"; is JsonObject -> \"an object\"; else -> \"a primitive\" }); \
+     return element }; private fun <KotlinSchemaRead> kotlinSchemaDecoded(json: Json, serializer: \
+     DeserializationStrategy<KotlinSchemaRead>, element: JsonElement, at: String): \
+     KotlinSchemaRead = json.decodeFromJsonElement(serializer, kotlinSchemaKinded(serializer, \
+     element, at)); ";
+
 /// What a type with no rule answers.
 const NO_RULE: &str = "fun validate(): List<String> = emptyList()";
 
@@ -285,7 +299,8 @@ fn an_enum_reads_what_a_variant_holds_unjudged_and_judges_the_variant() {
         "is LoadBoxed -> buildJsonObject { put(\"Boxed\", \
          output.json.encodeToJsonElement(PalletUnjudged, value.value)) }"
             .to_owned(),
-        "\"Boxed\" -> LoadBoxed(input.json.decodeFromJsonElement(PalletUnjudged, data))".to_owned(),
+        "\"Boxed\" -> LoadBoxed(kotlinSchemaDecoded(input.json, PalletUnjudged, data, \"Boxed\"))"
+            .to_owned(),
     ] {
         assert!(load.contains(&held), "no `{held}` in: {load}");
     }
@@ -358,15 +373,15 @@ fn a_fixed_array_is_read_through_the_class_of_its_length() {
         (
             &reefband,
             format!(
-                "val pair = input.json.decodeFromJsonElement({}, (obj[\"pair\"] ?: throw \
-                 SerializationException(\"missing field `pair`\")));",
+                "val pair = kotlinSchemaDecoded(input.json, {}, (obj[\"pair\"] ?: throw \
+                 SerializationException(\"missing field `pair`\")), \"pair\");",
                 composed(&reefband)
             ),
         ),
         (
             &buntline,
             format!(
-                "input.json.decodeFromJsonElement({}, array[1])",
+                "kotlinSchemaDecoded(input.json, {}, array[1], \"1\")",
                 composed(&buntline)
             ),
         ),
@@ -380,7 +395,7 @@ fn a_fixed_array_is_read_through_the_class_of_its_length() {
         (
             &shroud,
             format!(
-                "\"Paired\" -> ShroudPaired(input.json.decodeFromJsonElement({}, data));",
+                "\"Paired\" -> ShroudPaired(kotlinSchemaDecoded(input.json, {}, data, \"Paired\"));",
                 composed(&shroud)
             ),
         ),

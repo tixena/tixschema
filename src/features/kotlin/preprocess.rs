@@ -36,7 +36,7 @@ impl Plugin<'_> {
     /// How the member `rust_name`, typed `def`, is declared: the annotation that names its
     /// serializer, and its type. A member that names a function and reaches no type parameter is
     /// read through a serializer of its own, which this queues.
-    pub fn declared(&self, rust_name: &str, def: &FieldDef) -> (String, String) {
+    pub fn declared(&self, rust_name: &str, wire_name: &str, def: &FieldDef) -> (String, String) {
         let functions = of(def);
         if functions.is_empty() || self.reaches(def) {
             return read::plugin_read(def);
@@ -47,8 +47,13 @@ impl Plugin<'_> {
             self.owner,
             RenameRule::PascalCase.apply_to_field(rust_name)
         );
-        let written =
-            read::corrected_member(&named, &ty, &read_by, &corrected(functions, "element"));
+        let written = read::corrected_member(
+            &named,
+            &ty,
+            &read_by,
+            &corrected(functions, "element"),
+            wire_name,
+        );
         SERIALIZERS.with(|queued| queued.borrow_mut().push(written));
         (format!("@Serializable(with = {named}::class) "), ty)
     }
