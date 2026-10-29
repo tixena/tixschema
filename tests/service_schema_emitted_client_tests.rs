@@ -483,7 +483,7 @@ mod run_dart_bytes;
 mod run_dart_sets;
 
 /// The models a map keyed by a `bool` is held in, and the payloads each client is held to.
-#[cfg(test)]
+#[cfg(all(test, any(feature = "dart", feature = "kotlin")))]
 #[path = "service_schema_emitted_client_tests/bool_key_rows.rs"]
 mod bool_key_rows;
 
@@ -509,7 +509,8 @@ mod flattened_zod_models;
 #[cfg(test)]
 mod flattened_zod_rows {
     use super::flattened_zod_models::{
-        CHECKED_REPORT, READ_REPORT, ROWS, checked_cases, checked_report, read_report, serde_report,
+        Booking, CHECKED_REPORT, READ_REPORT, ROWS, Tenancy, checked_cases, checked_report,
+        read_report, serde_report,
     };
 
     #[test]
@@ -522,6 +523,19 @@ mod flattened_zod_rows {
             .filter(|(serde, zod)| serde != zod)
             .count();
         assert_eq!(strict, ROWS.iter().filter(|row| row.zod_refuses).count());
+    }
+
+    #[test]
+    fn a_checked_payload_is_read_back_as_its_schema_and_refused_when_validate_refuses() {
+        for case in checked_cases() {
+            let read_back = if case.schema == "Booking" {
+                serde_json::from_str::<Booking>(&case.payload).is_ok()
+            } else {
+                assert_eq!(case.schema, "Tenancy", "{}", case.name);
+                serde_json::from_str::<Tenancy>(&case.payload).is_ok()
+            };
+            assert_eq!(read_back, case.answered.is_ok(), "{}", case.name);
+        }
     }
 }
 
@@ -543,7 +557,7 @@ mod run_swift_flattened_zod;
 
 /// The models a map keyed by a brand over a number or a flag, or by an alias of a number, is held
 /// in, and the payloads each client is held to.
-#[cfg(test)]
+#[cfg(all(test, any(feature = "dart", feature = "swift", feature = "kotlin")))]
 #[path = "service_schema_emitted_client_tests/number_key_rows.rs"]
 mod number_key_rows;
 
@@ -1297,7 +1311,7 @@ use text_position_rows::{TextPlacingClientService, text_placing_client_service_s
 
 /// A plain enum that names a check, read on its own and held by another type: its models and the
 /// payloads each emitted client is held to.
-#[cfg(all(test, any(feature = "dart", feature = "swift", feature = "kotlin")))]
+#[cfg(test)]
 #[path = "service_schema_emitted_client_tests/plain_enum_check_rows.rs"]
 mod plain_enum_check_rows;
 
