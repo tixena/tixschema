@@ -362,14 +362,15 @@ pub fn rows() -> Vec<Row> {
     rows
 }
 
-/// The float keys serde refuses that Swift's own float parse accepts.
-#[cfg(feature = "swift")]
+/// The float keys serde refuses that a client's own float parse accepts.
 pub fn float_texts_serde_refuses() -> Vec<Row> {
     [
         r#"{"gauge":{"+1":1}}"#,
         r#"{"gauge":{".5":1}}"#,
         r#"{"gauge":{"0x10":1}}"#,
         r#"{"gauge":{"1e999":1}}"#,
+        r#"{"gauge":{"Infinity":1}}"#,
+        r#"{"gauge":{"NaN":1}}"#,
     ]
     .into_iter()
     .map(|json| row::<Soundings>("Soundings", json))
