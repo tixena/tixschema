@@ -39,6 +39,12 @@ pause: no member reads it: refused
 deck: a payload two members read: read {"dock":"d","label":"q","other":""}
 deck: a payload both read whole: read {"dock":"d","label":"q","other":"o"}
 deck: no member reads it: refused
+hold: a payload two members read: read {"dock":"d","label":"q","other":""}
+hold: a payload both read whole: read {"dock":"d","label":"q","other":"o"}
+hold: no member reads it: refused
+tally: a payload two members read: read {"dock":3,"label":"q","other":""}
+tally: a payload both read whole: read {"dock":3,"label":"q","other":"o"}
+tally: the filling does not read it: refused
 block: a paragraph: read {"li":[],"t":"paragraph"}
 block: a paragraph of lines: read {"li":["a","b"],"t":"paragraph"}
 block: a key no variant names: refused
@@ -143,6 +149,42 @@ pub const ROWS: &[Row] = &[
     },
     Row {
         zod_refuses: false,
+        name: "hold: a payload two members read",
+        schema: "Hold",
+        payload: r#"{"label":"q","dock":"d","other":""}"#,
+    },
+    Row {
+        zod_refuses: false,
+        name: "hold: a payload both read whole",
+        schema: "Hold",
+        payload: r#"{"label":"q","dock":"d","other":"o"}"#,
+    },
+    Row {
+        zod_refuses: false,
+        name: "hold: no member reads it",
+        schema: "Hold",
+        payload: r#"{"label":"q","dock":"d"}"#,
+    },
+    Row {
+        zod_refuses: false,
+        name: "tally: a payload two members read",
+        schema: "Tally",
+        payload: r#"{"label":"q","dock":3,"other":""}"#,
+    },
+    Row {
+        zod_refuses: false,
+        name: "tally: a payload both read whole",
+        schema: "Tally",
+        payload: r#"{"label":"q","dock":3,"other":"o"}"#,
+    },
+    Row {
+        zod_refuses: false,
+        name: "tally: the filling does not read it",
+        schema: "Tally",
+        payload: r#"{"label":"q","dock":"d","other":"o"}"#,
+    },
+    Row {
+        zod_refuses: false,
         name: "block: a paragraph",
         schema: "Block",
         payload: r#"{"t":"paragraph","li":[]}"#,
@@ -228,6 +270,23 @@ pub enum Hatch {
     },
     Sealed {
         dock: String,
+        #[model_schema_prop(minLength = 1)]
+        other: String,
+    },
+}
+
+/// A generic untagged enum that names a `preprocess`, whose members both read a payload that
+/// holds a refused `other`.
+#[model_schema(default_types(Load = String), preprocess = ["asGiven"])]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum Cargo<Load> {
+    Opened {
+        dock: Load,
+        other: String,
+    },
+    Sealed {
+        dock: Load,
         #[model_schema_prop(minLength = 1)]
         other: String,
     },
@@ -337,6 +396,24 @@ pub struct Mole {
     pub label: String,
     #[serde(flatten)]
     pub tether: Tethered,
+}
+
+/// A struct that flattens [`Cargo`] filled with text.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct Hold {
+    #[serde(flatten)]
+    pub cargo: Cargo<String>,
+    pub label: String,
+}
+
+/// A struct that flattens [`Cargo`] filled with a number.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct Tally {
+    #[serde(flatten)]
+    pub cargo: Cargo<u32>,
+    pub label: String,
 }
 
 #[model_schema()]
@@ -523,9 +600,11 @@ fn report_of(as_zod: bool) -> String {
         let read = match row.schema {
             "Block" => read_as::<Block>(row.payload),
             "Deck" => read_as::<Deck>(row.payload),
+            "Hold" => read_as::<Hold>(row.payload),
             "Mole" => read_as::<Mole>(row.payload),
             "Pause" => read_as::<Pause>(row.payload),
             "Slip" => read_as::<Slip>(row.payload),
+            "Tally" => read_as::<Tally>(row.payload),
             "Wharf" => read_as::<Wharf>(row.payload),
             "Wharfage" => read_as::<Wharfage>(row.payload),
             other => format!("no model named {other}"),

@@ -2466,6 +2466,12 @@ fn kept_unjudged(
     }
 }
 
+/// Forgets the keys a struct of the same ident noted, so an enum is never read by them.
+fn forget_struct_keys(rust_ident: &str) {
+    KOTLIN_TAKEN_KEYS.with(|noted| noted.borrow_mut().remove(rust_ident));
+    KOTLIN_READ_KEYS.with(|noted| noted.borrow_mut().remove(rust_ident));
+}
+
 /// Notes the keys the struct written under `rust_ident` is read from when it is flattened.
 fn note_taken_keys(rust_ident: &str, keys: Vec<String>) {
     KOTLIN_TAKEN_KEYS.with(|noted| {
@@ -2863,6 +2869,7 @@ fn enum_kotlin_tokens(declared: &ItemEnum, args: &KotlinArgs<'_>) -> TokenStream
     register_kotlin_name(&rust_ident, &export_name);
     let tag_attrs = enum_tag_attrs(&item_enum.attrs);
     note_tag_keys(&rust_ident, tag_keys(&tag_attrs, args.preprocess));
+    forget_struct_keys(&rust_ident);
     KOTLIN_TAKEN_TAG_KEYS.with(|noted| {
         let taken = tag_and_content_when_flattened(item_enum, args.preprocess);
         if taken.is_empty() {
