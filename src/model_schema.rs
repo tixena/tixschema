@@ -3384,65 +3384,64 @@ fn checked_members(members: &mut [FieldDef], scope: &str, parameters: &[String])
     ahead
 }
 
-/// [`checked_members`] over the members of each variant of a generic enum, and nothing where
-/// there is no TypeScript type to state what a check is handed.
+/// [`checked_members`] over the members of each variant of a generic enum.
+#[cfg(all(feature = "zod", feature = "typescript"))]
 fn checked_in_variants(
     variants: &mut [DiscriminatedVariant],
     item_name: &str,
     parameters: &[String],
 ) -> String {
-    #[cfg(all(feature = "zod", feature = "typescript"))]
-    {
-        variants
-            .iter_mut()
-            .enumerate()
-            .map(|(index, variant)| {
-                checked_members(
-                    &mut variant.field_defs,
-                    &format!("{item_name}${index}"),
-                    parameters,
-                )
-            })
-            .collect()
-    }
-    #[cfg(not(all(feature = "zod", feature = "typescript")))]
-    {
-        let _: &_ = &(variants, item_name, parameters);
-        String::new()
-    }
+    variants
+        .iter_mut()
+        .enumerate()
+        .map(|(index, variant)| {
+            checked_members(
+                &mut variant.field_defs,
+                &format!("{item_name}${index}"),
+                parameters,
+            )
+        })
+        .collect()
+}
+
+/// Without a TypeScript type to state what a check is handed, no function is written ahead.
+#[cfg(not(all(feature = "zod", feature = "typescript")))]
+const fn checked_in_variants(_: &mut [DiscriminatedVariant], _: &str, _: &[String]) -> String {
+    String::new()
 }
 
 /// [`checked_members`] over the slots of a generic tuple struct, each in a scope of its own: a
 /// slot's name is not unique.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 fn checked_in_slots(
     shape: &mut TupleStructShape,
     item_name: &str,
     parameters: &[String],
 ) -> String {
-    #[cfg(all(feature = "zod", feature = "typescript"))]
-    {
-        let slots = match shape {
-            TupleStructShape::Array(slots) => slots.as_mut_slice(),
-            TupleStructShape::BareValue(slot) => slice::from_mut(&mut **slot),
-        };
-        slots
-            .iter_mut()
-            .enumerate()
-            .map(|(index, slot)| {
-                checked_members(
-                    slice::from_mut(slot),
-                    &format!("{item_name}${index}"),
-                    parameters,
-                )
-            })
-            .collect()
-    }
-    #[cfg(not(all(feature = "zod", feature = "typescript")))]
-    {
-        let _: &_ = &(shape, item_name, parameters);
-        String::new()
-    }
+    let slots = match shape {
+        TupleStructShape::Array(slots) => slots.as_mut_slice(),
+        TupleStructShape::BareValue(slot) => slice::from_mut(&mut **slot),
+    };
+    slots
+        .iter_mut()
+        .enumerate()
+        .map(|(index, slot)| {
+            checked_members(
+                slice::from_mut(slot),
+                &format!("{item_name}${index}"),
+                parameters,
+            )
+        })
+        .collect()
+}
+
+/// Without a TypeScript type to state what a check is handed, no function is written ahead.
+#[cfg(all(
+    any(feature = "typescript", feature = "zod", feature = "jsonschema"),
+    not(all(feature = "zod", feature = "typescript"))
+))]
+const fn checked_in_slots(_: &mut TupleStructShape, _: &str, _: &[String]) -> String {
+    String::new()
 }
 
 /// Renders the per-field TypeScript type code, Zod schema code, and JSON-schema fragments for a
