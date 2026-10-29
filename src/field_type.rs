@@ -3315,16 +3315,6 @@ fn get_field_def_type_or_sibling(t_name: &str) -> FieldDefType {
                 FieldDefType::SiblingType(t_name.to_owned(), vec![])
             }
         }
-        #[cfg(not(feature = "mongodb"))]
-        "ObjectId" => {
-            eprintln!("warning: ObjectId type detected but the 'mongodb' feature is not enabled");
-            eprintln!(
-                "         ObjectId will be treated as a custom type (may cause compilation errors)"
-            );
-            eprintln!("         Enable the mongodb feature: features = [\"mongodb\"]");
-            eprintln!("         Or add the required ObjectId type definition to your code");
-            FieldDefType::SiblingType(t_name.to_owned(), vec![])
-        }
         #[cfg(feature = "chrono")]
         "NaiveDate" => FieldDefType::NaiveDate,
         #[cfg(feature = "chrono")]
