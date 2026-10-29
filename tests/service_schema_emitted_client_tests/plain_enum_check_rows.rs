@@ -2,12 +2,16 @@
 //! none: the models, and the payloads each emitted client is held to. A payload is read as serde
 //! reads it, and prints what that read prints.
 
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 use alloc::collections::BTreeMap;
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 use core::fmt::Write as _;
 use core::future::ready;
 
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 use serde_json::Value;
 use tixschema::{model_schema, service_schema};
 
@@ -20,6 +24,7 @@ pub enum Verdict {
     Upheld,
 }
 
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 /// A plain enum that names a check and a function, one variant of which is read under an alias.
 #[model_schema(check = ["allowed"], preprocess = ["tidied"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -29,6 +34,7 @@ pub enum Ruling {
     Granted,
 }
 
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 /// A plain enum that names no check.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -37,6 +43,7 @@ pub enum Bench {
     Upper,
 }
 
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 /// A holder of the enum in a member.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -44,6 +51,7 @@ pub struct Appeal {
     pub verdict: Verdict,
 }
 
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 /// A holder of the enum in a list and in a map.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -80,6 +88,7 @@ impl AppraisalClientService<()> for Court {
     }
 }
 
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 /// One payload, the type it is read as, how serde reads it, and whether the sentence of a refusal
 /// is held to Rust's.
 pub struct Row {
@@ -90,6 +99,7 @@ pub struct Row {
     pub read_as: &'static str,
 }
 
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 fn allowed(value: &Ruling) -> Result<(), Vec<String>> {
     if matches!(value, Ruling::Denied) {
         return Err(vec!["a ruling is allowed".to_owned()]);
@@ -104,6 +114,7 @@ fn affirmed(value: &Verdict) -> Result<(), Vec<String>> {
     Ok(())
 }
 
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 fn tidied(payload: Value) -> Value {
     if let Value::String(text) = payload {
         Value::String(text.trim().to_owned())
@@ -112,6 +123,7 @@ fn tidied(payload: Value) -> Value {
     }
 }
 
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 fn answered<T>(row: &Row) -> String
 where
     T: DeserializeOwned + Serialize,
@@ -142,6 +154,7 @@ where
     text
 }
 
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 fn row<T>(name: &'static str, read_as: &'static str, payload: &'static str) -> Row
 where
     T: DeserializeOwned + Serialize,
@@ -155,6 +168,7 @@ where
     }
 }
 
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 /// The payloads of the table. A name that is no case is refused in words each language has.
 pub fn rows() -> Vec<Row> {
     vec![
@@ -188,6 +202,7 @@ pub fn rows() -> Vec<Row> {
     ]
 }
 
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 /// What the serde read prints of every row.
 pub fn expected(rows: &[Row]) -> String {
     rows.iter().map(|row| (row.answer)(row)).collect()
@@ -196,7 +211,9 @@ pub fn expected(rows: &[Row]) -> String {
 #[cfg(test)]
 mod tests {
     use super::super::tests::poll_once;
-    use super::{AppraisalClientService as _, Court, Verdict, expected, rows};
+    use super::{AppraisalClientService as _, Court, Verdict};
+    #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+    use super::{expected, rows};
 
     /// The reply the clients below are handed is one the Rust back end writes, and the serde read
     /// refuses it with the check's sentence.
@@ -216,6 +233,7 @@ mod tests {
     }
 
     /// The refusals the serde read gives the table, which every client is held to.
+    #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
     #[test]
     fn the_serde_read_refuses_what_the_check_refuses() {
         assert_eq!(
