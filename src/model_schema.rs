@@ -7111,30 +7111,8 @@ fn collect_struct_fields(
     let mut guard_errors: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut deferred_attrs: Vec<Vec<syn::Attribute>> = Vec::new();
     let steps = steps_of_members(fields, &[], rename_all);
-    #[cfg(all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin"),
-        not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
-    ))]
-    let positional_slots = matches!(fields, syn::Fields::Unnamed(_)).then(|| fields.len());
 
     for (index, field) in fields.iter_mut().enumerate() {
-        #[cfg(all(
-            feature = "serde",
-            any(feature = "dart", feature = "swift", feature = "kotlin"),
-            not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
-        ))]
-        if let Some(declared_slots) = positional_slots
-            && let Err(rejection) = check_slot_wire_is_readable(
-                field,
-                index,
-                declared_slots,
-                type_name,
-                parse_serde_key_omission(&field.attrs),
-            )
-        {
-            guard_errors.push(rejection.to_compile_error());
-        }
         // Read before the field is processed, which strips the attributes the declaration carried.
         let is_flatten = is_flattened_field(field);
 
@@ -7789,7 +7767,8 @@ fn struct_members(
     let serde_default = |field: &str| serde_defaults.index(None, field);
     #[cfg(not(any(feature = "zod", feature = "jsonschema")))]
     let serde_default = |_: &str| None;
-    let from_fields = collect_struct_fields(
+    let slot_refusals = tuple_slot_refusals(item_struct);
+    let mut from_fields = collect_struct_fields(
         &mut item_struct.fields,
         rename_all,
         module_name_opt,
@@ -7802,6 +7781,7 @@ fn struct_members(
             serde_default: &serde_default,
         },
     );
+    from_fields.4.splice(0..0, slot_refusals);
     #[cfg(feature = "serde")]
     {
         with_struct_tag(item_struct, from_fields)
@@ -7810,6 +7790,47 @@ fn struct_members(
     {
         from_fields
     }
+}
+
+/// The slot refusals of a tuple struct that no brand stands for, which the schema surfaces
+/// refuse in the same cases.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "swift", feature = "kotlin"),
+    not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
+))]
+fn tuple_slot_refusals(item_struct: &syn::ItemStruct) -> Vec<proc_macro2::TokenStream> {
+    if !matches!(item_struct.fields, syn::Fields::Unnamed(_)) || is_branded_newtype(item_struct) {
+        return Vec::new();
+    }
+    let declared_slots = item_struct.fields.len();
+    let type_name = item_struct.ident.to_string();
+    item_struct
+        .fields
+        .iter()
+        .enumerate()
+        .filter_map(|(index, field)| {
+            check_slot_wire_is_readable(
+                field,
+                index,
+                declared_slots,
+                &type_name,
+                parse_serde_key_omission(&field.attrs),
+            )
+            .err()
+        })
+        .map(|rejection| rejection.to_compile_error())
+        .collect()
+}
+
+/// Where a schema surface runs the slot refusal itself, there is nothing to add.
+#[cfg(not(all(
+    feature = "serde",
+    any(feature = "dart", feature = "swift", feature = "kotlin"),
+    not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
+)))]
+const fn tuple_slot_refusals(_item_struct: &syn::ItemStruct) -> Vec<proc_macro2::TokenStream> {
+    Vec::new()
 }
 
 /// The expansion of a brand, or `None` for a struct that is no brand. Where no schema surface
