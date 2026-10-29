@@ -22697,3 +22697,25 @@ fn the_guards_of_the_wire_refuse_a_variant_serde_drops_in_one_direction() {
         assert!(expanded.contains(refusal), "for {source}, got: {expanded}");
     }
 }
+
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
+#[test]
+fn a_transparent_tuple_struct_with_a_one_way_slot_expands_and_a_plain_one_is_refused() {
+    let transparent = refusal_texts(&expansion_over(
+        "#[derive(Deserialize, Serialize)] #[serde(transparent)] \
+         struct Marked(PhantomData<u8>, String, #[serde(default, skip_serializing)] u32);",
+    ));
+    assert_eq!(transparent, Vec::<String>::new());
+    let plain = refusal_texts(&expansion_over(
+        "#[derive(Deserialize, Serialize)] \
+         struct Pair(#[serde(skip_serializing)] String, u32);",
+    ));
+    assert_eq!(plain.len(), 1, "got: {plain:?}");
+    assert!(
+        plain[0].contains("slot 0 of tuple struct `Pair`"),
+        "got: {plain:?}"
+    );
+}
