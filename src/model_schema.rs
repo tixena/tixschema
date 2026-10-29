@@ -504,12 +504,14 @@ struct DiscriminatedVariant {
 
 /// Per-variant data collected from a discriminated enum, plus the collected serde validators, the
 /// `compile_error!` tokens for any field-level guard violations, and the `validate()` match arms,
-/// empty where no variant carries a constrained member and there is nothing to aggregate.
+/// empty where no variant carries a constrained member and there is nothing to aggregate, and the
+/// functions written ahead of a generic enum's builder that run the checks of its members.
 type DiscriminatedVariantData = (
     Vec<DiscriminatedVariant>,
     Vec<proc_macro2::TokenStream>,
     Vec<proc_macro2::TokenStream>,
     Vec<proc_macro2::TokenStream>,
+    String,
 );
 
 /// Rendered per-variant output for a discriminated enum: TypeScript fragments, Zod fragments, and
@@ -1298,6 +1300,10 @@ enum TupleStructShape {
 /// What walking a tuple struct's slots yields.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 struct TupleSlots {
+    /// The functions written ahead of a generic tuple struct's builder that run the checks of its
+    /// slots.
+    #[cfg(feature = "zod")]
+    checked_ahead: String,
     /// The `compile_error!` tokens of every guard a slot violates.
     guard_errors: Vec<proc_macro2::TokenStream>,
     shape: TupleStructShape,
@@ -3344,8 +3350,15 @@ fn checked_in_a_builder(
     item_name: &str,
     parameters: &[String],
 ) -> (Vec<FieldDef>, String) {
+    let ahead = checked_members(&mut field_defs, item_name, parameters);
+    (field_defs, ahead)
+}
+
+/// [`checked_in_a_builder`] over the members of `scope`, a name no other group of members shares.
+#[cfg(all(feature = "zod", feature = "typescript"))]
+fn checked_members(members: &mut [FieldDef], scope: &str, parameters: &[String]) -> String {
     let mut ahead = String::new();
-    for (index, member) in field_defs.iter_mut().enumerate() {
+    for (index, member) in members.iter_mut().enumerate() {
         let written: String = member
             .name
             .chars()
@@ -3362,12 +3375,73 @@ fn checked_in_a_builder(
         } else {
             format!("{written}${index}")
         };
-        let helper = format!("{item_name}${named}$Checked");
+        let helper = format!("{scope}${named}$Checked");
         if let Some(declaration) = member.zod_check_helper_declaration(&helper, parameters) {
             ahead.push_str(&declaration);
         }
     }
-    (field_defs, ahead)
+    ahead
+}
+
+/// [`checked_members`] over the members of each variant of a generic enum, and nothing where
+/// there is no TypeScript type to state what a check is handed.
+fn checked_in_variants(
+    variants: &mut [DiscriminatedVariant],
+    item_name: &str,
+    parameters: &[String],
+) -> String {
+    #[cfg(all(feature = "zod", feature = "typescript"))]
+    {
+        variants
+            .iter_mut()
+            .enumerate()
+            .map(|(index, variant)| {
+                checked_members(
+                    &mut variant.field_defs,
+                    &format!("{item_name}${index}"),
+                    parameters,
+                )
+            })
+            .collect()
+    }
+    #[cfg(not(all(feature = "zod", feature = "typescript")))]
+    {
+        let _: &_ = &(variants, item_name, parameters);
+        String::new()
+    }
+}
+
+/// [`checked_members`] over the slots of a generic tuple struct, each in a scope of its own: a
+/// slot's name is not unique.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+fn checked_in_slots(
+    shape: &mut TupleStructShape,
+    item_name: &str,
+    parameters: &[String],
+) -> String {
+    #[cfg(all(feature = "zod", feature = "typescript"))]
+    {
+        let slots = match shape {
+            TupleStructShape::Array(slots) => slots.as_mut_slice(),
+            TupleStructShape::BareValue(slot) => slice::from_mut(&mut **slot),
+        };
+        slots
+            .iter_mut()
+            .enumerate()
+            .map(|(index, slot)| {
+                checked_members(
+                    slice::from_mut(slot),
+                    &format!("{item_name}${index}"),
+                    parameters,
+                )
+            })
+            .collect()
+    }
+    #[cfg(not(all(feature = "zod", feature = "typescript")))]
+    {
+        let _: &_ = &(shape, item_name, parameters);
+        String::new()
+    }
 }
 
 /// Renders the per-field TypeScript type code, Zod schema code, and JSON-schema fragments for a
@@ -8610,9 +8684,14 @@ fn collect_tuple_slots(
     if guard_errors.is_empty() {
         apply_deferred_field_attrs(fields.iter_mut(), deferred_attrs);
     }
-    let shape = tuple_struct_shape(declared_slots, slots);
+    let mut shape = tuple_struct_shape(declared_slots, slots);
     record_inexact_key(type_name, tuple_struct_writes_an_inexact_key(&shape));
+    let checked_ahead = checked_in_slots(&mut shape, type_name, &type_parameters);
+    #[cfg(not(feature = "zod"))]
+    let _: &_ = &checked_ahead;
     TupleSlots {
+        #[cfg(feature = "zod")]
+        checked_ahead,
         guard_errors,
         shape,
         validate_bodies,
@@ -8955,6 +9034,7 @@ fn build_tuple_struct_ts_definition_method(
 /// parameters.
 #[cfg(feature = "zod")]
 fn build_tuple_struct_zod_schema_method(
+    checked_ahead: &str,
     item_name: &str,
     rust_ident: &str,
     parameters: &[String],
@@ -8962,8 +9042,11 @@ fn build_tuple_struct_zod_schema_method(
     zod_body: &str,
 ) -> proc_macro2::TokenStream {
     let reexport = zod_binding_reexport(rust_ident, item_name, parameters);
-    let schema_str = zod_published_binding(
-        item_name, rust_ident, parameters, published, "", zod_body, &reexport,
+    let schema_str = format!(
+        "{checked_ahead}{}",
+        zod_published_binding(
+            item_name, rust_ident, parameters, published, "", zod_body, &reexport
+        )
     );
     quote! {
         pub fn zod_schema() -> ::std::string::String {
@@ -9051,6 +9134,7 @@ fn process_tuple_struct(
         ),
         #[cfg(feature = "zod")]
         build_tuple_struct_zod_schema_method(
+            &slots.checked_ahead,
             &item_name,
             &name.to_string(),
             &type_parameters_in_scope(&item_struct.generics),
@@ -12126,11 +12210,9 @@ fn collect_discriminated_variants(
         ));
 
         if on_the_wire {
-            let discriminator_docs =
-                build_jsdoc_body(get_variant_docs(item).as_deref(), &final_name);
             variants.push(DiscriminatedVariant {
+                docs: build_jsdoc_body(get_variant_docs(item).as_deref(), &final_name),
                 discriminator_value: final_name,
-                docs: discriminator_docs,
                 field_defs,
                 flattened_fields,
                 kind: wire_kind,
@@ -12148,11 +12230,13 @@ fn collect_discriminated_variants(
         );
     }
 
+    let checked_ahead = checked_in_variants(&mut variants, &enum_type_name, &type_parameters);
     (
         variants,
         enum_validation_fns,
         guard_errors,
         build_member_check_arms(per_variant_checks),
+        checked_ahead,
     )
 }
 
@@ -12324,6 +12408,7 @@ fn process_discriminated_enum(
     // method on the type to avoid `super::` resolution issues.
     #[cfg(feature = "zod")]
     let zod_schema_method = generate_discriminated_enum_zod_schema_method(
+        &variants.4,
         item_name,
         &name.to_string(),
         &type_parameters_in_scope(&item_enum.generics),
@@ -12936,6 +13021,7 @@ fn process_externally_tagged_enum(
 
     #[cfg(feature = "zod")]
     let zod_schema_method = generate_discriminated_enum_zod_schema_method(
+        &variants.4,
         item_name,
         &name.to_string(),
         &type_parameters_in_scope(&item_enum.generics),
@@ -13611,6 +13697,7 @@ fn process_internally_tagged_enum(
 
     #[cfg(feature = "zod")]
     let zod_schema_method = generate_discriminated_enum_zod_schema_method(
+        &variants.4,
         item_name,
         &name.to_string(),
         &type_parameters_in_scope(&item_enum.generics),
@@ -22267,13 +22354,21 @@ fn generate_discriminated_enum_ts_definition_method(
 /// Generates the Zod schema method for discriminated enums (Zod schemas only)
 /// Note: Example injection is handled by the delegating method on the type itself.
 fn generate_discriminated_enum_zod_schema_method(
+    checked_ahead: &str,
     item_name: &str,
     rust_ident: &str,
     parameters: &[String],
     args: &ModelSchemaArgs,
     schema_code: &str,
 ) -> proc_macro2::TokenStream {
-    generate_enum_zod_schema_method_after("", item_name, rust_ident, parameters, args, schema_code)
+    generate_enum_zod_schema_method_after(
+        checked_ahead,
+        item_name,
+        rust_ident,
+        parameters,
+        args,
+        schema_code,
+    )
 }
 
 /// [`generate_discriminated_enum_zod_schema_method`] with `preamble` written ahead of the
@@ -22456,7 +22551,7 @@ fn generate_alias_zod_method(
         // The alias's rendered Zod is its `FieldDef` expression: `z.tuple([...])` for a tuple,
         // `z.string()` for a scalar, `Name$Schema` for a sibling.
         let surface = surface_field_def(&alias.generics, field_def);
-        let schema_code = surface.zod_type_deferring_a_later_map_value();
+        let schema_code = surface.zod_type_deferring_a_later_type();
         let parameters = type_parameters_in_scope(&alias.generics);
         let reexport = zod_binding_reexport(rust_ident, export_name, &parameters);
         let body = zod_published_binding(
