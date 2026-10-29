@@ -123,7 +123,9 @@ pub(super) fn hashable(value: &FieldDef) -> bool {
         | FieldDefType::I16
         | FieldDefType::I32
         | FieldDefType::I64
-        | FieldDefType::Isize => true,
+        | FieldDefType::Isize
+        | FieldDefType::F32
+        | FieldDefType::F64 => true,
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime
         | FieldDefType::NaiveDate
@@ -142,8 +144,6 @@ pub(super) fn hashable(value: &FieldDef) -> bool {
         | FieldDefType::Result(_, _)
         | FieldDefType::Tuple(_)
         | FieldDefType::U64
-        | FieldDefType::F32
-        | FieldDefType::F64
         | FieldDefType::Usize => false,
     }
 }
