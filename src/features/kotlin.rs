@@ -48,7 +48,7 @@ use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, get_field_def, is_plain_enum,
     is_sequence_wrapper,
 };
-use crate::model_schema::variant_wire_kind;
+use crate::model_schema::{variant_field_rule, variant_wire_kind};
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
 use crate::utils::{
     compute_alias_export_name, compute_item_export_name, option_alias, to_snake_case,
@@ -114,6 +114,8 @@ pub struct KotlinArgs<'args> {
     pub pattern: Option<&'args str>,
     /// The functions `preprocess` names on the type, each taking the whole payload.
     pub preprocess: &'args [FunctionName],
+    /// The Rust name of the item, which a member written `Self` is named as.
+    pub type_name: &'args str,
 }
 
 /// One field this module has decided belongs on the wire: its Rust name (camel-cased into the
@@ -229,9 +231,9 @@ struct DispatchedTaggedContext<'ctx> {
     /// The defaults of the members of the enum's variants.
     defaults: &'ctx SerdeDefaults,
     export_name: &'ctx str,
-    field_rule: RenameRule,
     generic_params: &'ctx str,
     nothing_generic_args: &'ctx str,
+    rename_all_fields: Option<&'ctx str>,
     serializable: &'ctx [String],
     tag_key: &'ctx str,
     /// [`Tagging::Unwrapped`] is a tag alone here: an untagged enum is written elsewhere.
@@ -567,7 +569,7 @@ fn brand_value_field(held: &Field, type_parameters: &[String], args: &KotlinArgs
         pattern: args.pattern.map(ToOwned::to_owned),
         ..ModelSchemaPropMeta::default()
     });
-    field_def.erase_type_parameters(type_parameters);
+    field_def.named_within(args.type_name, type_parameters);
     field_def
 }
 
@@ -812,7 +814,7 @@ fn collect_kotlin_fields(
         }
         let wire_name = wire_field_name(&rust_name, rename_override(&field.attrs).as_deref(), rule);
         let mut field_def = field_def_with_prop_meta(&rust_name, field, args);
-        field_def.erase_type_parameters(type_parameters);
+        field_def.named_within(args.type_name, type_parameters);
         let flatten = field_is_flatten(&field.attrs);
         if flatten
             && field_def.array_depth == 0
@@ -1291,10 +1293,11 @@ fn tuple_wrapper(elements: &[FieldDef], walked: bool) -> (String, Vec<String>) {
         .iter()
         .enumerate()
         .map(|(slot, element)| {
-            format!(
-                "input.json.decodeFromJsonElement({}, {})",
-                read_by(element),
-                preprocess::corrected(preprocess::of(element), &format!("array[{slot}]"))
+            read::decoded(
+                "input.json",
+                &read_by(element),
+                &preprocess::corrected(preprocess::of(element), &format!("array[{slot}]")),
+                &kotlin_quoted(&slot.to_string()),
             )
         })
         .collect::<Vec<_>>()
@@ -1376,9 +1379,10 @@ fn tuple_wrapper_declarations(
          override fun serialize(encoder: Encoder, value: {own}) {{ \
          val output = encoder as JsonEncoder; \
          output.encodeJsonElement(buildJsonArray {{ {encode_entries} }}) }}; \
-         override fun deserialize(decoder: Decoder): {own} {{ \
+         {}override fun deserialize(decoder: Decoder): {own} {{ \
          val input = decoder as JsonDecoder; {}; \
          return {wrapper_name}({decode_entries}) }} }}",
+        read::helpers_for(decode_entries),
         tuple_array("input.decodeJsonElement()", length)
     )
 }
@@ -1851,7 +1855,7 @@ fn property_declaration(field: &KotlinField, plugin: Option<&Plugin<'_>>) -> Str
     };
     let (unjudged, ty) = plugin.map_or_else(
         || (String::new(), read::declared_typename(&field.field_def)),
-        |reader| reader.declared(&field.rust_name, &field.field_def),
+        |reader| reader.declared(&field.rust_name, &field.wire_name, &field.field_def),
     );
     let default = field.default_at.as_ref().map_or_else(
         || {
@@ -1924,25 +1928,22 @@ fn own_field_plan(
         Some(put)
     };
     let functions = preprocess::of(&field.field_def);
+    let decoded = |element: &str| read::decoded("input.json", &field_serializer, element, &key);
     let decode_expr = if field.field_def.is_optional() {
         format!(
-            "obj[{key}]?.let {{ input.json.decodeFromJsonElement({field_serializer}, {}) }}",
-            preprocess::corrected(functions, "it")
+            "obj[{key}]?.let {{ {} }}",
+            decoded(&preprocess::corrected(functions, "it"))
         )
     } else if let Some(at) = &field.default_at {
         format!(
-            "obj[{key}]?.let {{ input.json.decodeFromJsonElement({field_serializer}, {}) }} \
-             ?: input.json.decodeFromString({field_serializer}, \"{at}\")",
-            preprocess::corrected(functions, "it")
+            "obj[{key}]?.let {{ {} }} ?: input.json.decodeFromString({field_serializer}, \"{at}\")",
+            decoded(&preprocess::corrected(functions, "it"))
         )
     } else {
-        format!(
-            "input.json.decodeFromJsonElement({field_serializer}, {})",
-            preprocess::corrected(
-                functions,
-                &present(&format!("obj[{key}]"), &field.wire_name)
-            )
-        )
+        decoded(&preprocess::corrected(
+            functions,
+            &present(&format!("obj[{key}]"), &field.wire_name),
+        ))
     };
     (serialize, format!("val {prop} = {decode_expr}"))
 }
@@ -2217,16 +2218,13 @@ fn flatten_map_field_plan(
     let serialize = format!(
         "value.{prop}{held}.forEach {{ (k, v) -> put({written_key}, output.json.encodeToJsonElement({value_serializer}, v)) }}"
     );
+    let value = read::decoded("input.json", value_serializer, "v", "k");
     let entries = |object: &str| {
         key_serializer.map_or_else(
-            || {
-                format!(
-                    "{object}.mapValues {{ (_, v) -> input.json.decodeFromJsonElement({value_serializer}, v) }}"
-                )
-            },
+            || format!("{object}.mapValues {{ (k, v) -> {value} }}"),
             |key| {
                 format!(
-                    "{object}.entries.associate {{ (k, v) -> input.json.decodeFromJsonElement({key}, JsonPrimitive(k)) to input.json.decodeFromJsonElement({value_serializer}, v) }}"
+                    "{object}.entries.associate {{ (k, v) -> input.json.decodeFromJsonElement({key}, JsonPrimitive(k)) to {value} }}"
                 )
             },
         )
@@ -2404,7 +2402,7 @@ fn flatten_merging_serializer(
             unknown_key_refused(&format!("(obj{read}{tag}).keys"))
         )
     });
-    let deserialize_body = format!(
+    let deserialize_fn = format!(
         "override fun deserialize(decoder: Decoder): {self_type} {{ \
          val input = decoder as JsonDecoder; val obj = {}; {tag_held}{}; {unknown}\
          return {export_name}({}) }}",
@@ -2418,6 +2416,7 @@ fn flatten_merging_serializer(
         plan.deserialize_stmts.join("; "),
         plan.ctor_args.join(", "),
     );
+    let deserialize_body = read::with_decoded(&deserialize_fn);
     format!(
         "{serializer_head} : KSerializer<{self_type}> {{ \
          override val descriptor: SerialDescriptor = buildClassSerialDescriptor(\"{export_name}\"); \
@@ -2641,11 +2640,17 @@ fn value_class_tokens(
     rules.own(args.check);
     let text = rules.text_member(&value_field);
     let length = rules.length_member(&value_field);
+    let bare = if let FieldDefType::TypeParam(parameter) = &value_field.field_type
+        && !value_field.is_list()
+    {
+        type_parameters.iter().position(|named| named == parameter)
+    } else {
+        None
+    };
     validate::note_brand(
         &rust_ident,
-        text.is_some(),
-        length.is_some(),
-        rules.bounded(),
+        (text.is_some(), length.is_some(), rules.bounded()),
+        bare,
     );
     let answered = [text, length]
         .into_iter()
@@ -2712,7 +2717,7 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
         .filter(|slot| lone || !parse_serde_key_omission(&slot.attrs).absent_from_wire())
         .map(|slot| {
             let mut field_def = field_def_with_prop_meta("slot", slot, args);
-            field_def.erase_type_parameters(&type_parameters);
+            field_def.named_within(args.type_name, &type_parameters);
             field_def
         })
         .collect();
@@ -2764,8 +2769,9 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
          override fun serialize(encoder: Encoder, value: {export_name}{generic_params}) {{ \
          val output = encoder as JsonEncoder; \
          output.encodeJsonElement({written}) }}; \
-         override fun deserialize(decoder: Decoder): {export_name}{generic_params} {{ \
+         {}override fun deserialize(decoder: Decoder): {export_name}{generic_params} {{ \
          val input = decoder as JsonDecoder; {read_back} }} }} {}{alias}",
+        read::helpers_for(&read_back),
         read::judged(&export_name, &generic_params, &type_parameters, true)
     );
 
@@ -2791,17 +2797,18 @@ fn tuple_struct_wire(
             read::member_serializer(element, type_parameters)
         )
     };
-    let decoded = |held: &str, element: &FieldDef| {
-        format!(
-            "input.json.decodeFromJsonElement({}, {})",
-            read::member_serializer(element, type_parameters),
-            preprocess::corrected(preprocess::of(element), held)
+    let decoded = |held: &str, element: &FieldDef, at: usize| {
+        read::decoded(
+            "input.json",
+            &read::member_serializer(element, type_parameters),
+            &preprocess::corrected(preprocess::of(element), held),
+            &kotlin_quoted(&at.to_string()),
         )
     };
     match slots {
         Slots::Lone(only) => (
             encoded(0, only),
-            format!("return {export_name}({})", decoded(payload, only)),
+            format!("return {export_name}({})", decoded(payload, only, 0)),
         ),
         Slots::Array(all) => {
             let entries = all
@@ -2813,7 +2820,7 @@ fn tuple_struct_wire(
             let read_entries = all
                 .iter()
                 .enumerate()
-                .map(|(slot, element)| decoded(&format!("array[{slot}]"), element))
+                .map(|(slot, element)| decoded(&format!("array[{slot}]"), element, slot))
                 .collect::<Vec<_>>()
                 .join(", ");
             (
@@ -2984,7 +2991,7 @@ fn variant_rules(
 /// module. A member is read as the default `defaults` holds for it in this variant.
 fn variant_payload(
     variant: &Variant,
-    field_rule: RenameRule,
+    rename_all_fields: Option<&str>,
     type_parameters: &[String],
     args: &KotlinArgs<'_>,
     defaults: &SerdeDefaults,
@@ -2994,7 +3001,7 @@ fn variant_payload(
         VariantKind::Unit => VariantPayload::Unit,
         VariantKind::Named => VariantPayload::Named(collect_kotlin_fields(
             &variant.fields,
-            field_rule,
+            variant_field_rule(variant, rename_all_fields),
             type_parameters,
             args,
             &|field| defaults.at(Some(&variant_name), field),
@@ -3005,7 +3012,7 @@ fn variant_payload(
                 || get_field_def("value", &syn::parse_quote!(()), ""),
                 |field| {
                     let mut field_def = field_def_with_prop_meta("value", field, args);
-                    field_def.erase_type_parameters(type_parameters);
+                    field_def.named_within(args.type_name, type_parameters);
                     field_def
                 },
             )))
@@ -3013,7 +3020,7 @@ fn variant_payload(
         VariantKind::TupleMultiple => {
             VariantPayload::Value(Box::new(written_slots(variant, |field| {
                 let mut field_def = field_def_with_prop_meta("slot", field, args);
-                field_def.erase_type_parameters(type_parameters);
+                field_def.named_within(args.type_name, type_parameters);
                 field_def
             })))
         }
@@ -3055,6 +3062,30 @@ fn variant_serializer(
             &aliases::of_members(fields),
         )
     })
+}
+
+/// The read of the one slot of the variant `subclass_name`, typed `field_def` and read by `read_by`,
+/// from `data` as the slot's own `preprocess` corrects it; a refusal names `at`.
+fn slot_read(
+    subclass_name: &str,
+    field_def: &FieldDef,
+    read_by: &str,
+    (data, at): (&str, &str),
+) -> String {
+    let corrected = preprocess::corrected(preprocess::of(field_def), data);
+    format!(
+        "{subclass_name}({})",
+        read::decoded("input.json", read_by, &corrected, at)
+    )
+}
+
+/// The key or the variant name a refusal of the content of a variant names: the content key under
+/// a tag and a content key, and the variant's wire name under any other tagging.
+fn content_at(tagging: Tagging<'_>, wire_tag: &str) -> String {
+    match tagging {
+        Tagging::Adjacent(content) => kotlin_quoted(content),
+        Tagging::External | Tagging::Unwrapped => kotlin_quoted(wire_tag),
+    }
 }
 
 /// One variant's own subclass declaration, implementing `export_name`. `bare_value` selects a
@@ -3179,7 +3210,7 @@ fn dispatched_tagged_variant(
     let subclass_name = format!("{}{variant_rust_name}", ctx.export_name);
     let payload = variant_payload(
         variant,
-        ctx.field_rule,
+        ctx.rename_all_fields,
         ctx.type_parameters,
         ctx.args,
         ctx.defaults,
@@ -3229,14 +3260,12 @@ fn dispatched_tagged_variant(
         ),
         (VariantPayload::Value(field_def), Some(held)) => {
             let read_by = read::declared_serializer(field_def, held, ctx.type_parameters);
+            let at = content_at(ctx.tagging, &wire_tag);
             (
                 Some(format!(
                     "output.json.encodeToJsonElement({read_by}, value.value)"
                 )),
-                format!(
-                    "{subclass_name}(input.json.decodeFromJsonElement({read_by}, {}))",
-                    preprocess::corrected(preprocess::of(field_def), &data)
-                ),
+                slot_read(&subclass_name, field_def, &read_by, (&data, &at)),
             )
         }
         // A variant of members is its subclass's own object.
@@ -3297,7 +3326,6 @@ fn dispatched_tagged_enum_kotlin_source(
     defaults: &SerdeDefaults,
 ) -> String {
     let variant_rule = resolve_rename_rule(tag_attrs.rename_all.as_deref());
-    let field_rule = resolve_rename_rule(tag_attrs.rename_all_fields.as_deref());
     let type_parameters = type_parameters_in_scope(&item_enum.generics);
     let generic_params = kotlin_generic_params(&item_enum.generics);
     let nothing_generic_args = kotlin_nothing_generic_args(&item_enum.generics);
@@ -3313,9 +3341,9 @@ fn dispatched_tagged_enum_kotlin_source(
         args,
         defaults,
         export_name,
-        field_rule,
         generic_params: &generic_params,
         nothing_generic_args: &nothing_generic_args,
+        rename_all_fields: tag_attrs.rename_all_fields.as_deref(),
         serializable: &serializable,
         tag_key,
         tagging,
@@ -3377,9 +3405,10 @@ fn dispatched_tagged_enum_kotlin_source(
          override fun serialize(encoder: Encoder, value: {export_name}{generic_params}) {{ \
          val output = encoder as JsonEncoder; \
          output.encodeJsonElement(when (value) {{ {} }}) }}; \
-         override fun deserialize(decoder: Decoder): {export_name}{generic_params} {{ \
+         {}override fun deserialize(decoder: Decoder): {export_name}{generic_params} {{ \
          val input = decoder as JsonDecoder; {deserialize_body} }} }}",
         serialize_arms.join("; "),
+        read::helpers_for(&deserialize_body),
     );
 
     format!(
@@ -3399,7 +3428,7 @@ fn untagged_enum_kotlin_source(
     args: &KotlinArgs<'_>,
     defaults: &SerdeDefaults,
 ) -> String {
-    let field_rule = resolve_rename_rule(tag_attrs.rename_all_fields.as_deref());
+    let fields_rule = tag_attrs.rename_all_fields.as_deref();
     let type_parameters = type_parameters_in_scope(&item_enum.generics);
     let generic_params = kotlin_generic_params(&item_enum.generics);
     let nothing_generic_args = kotlin_nothing_generic_args(&item_enum.generics);
@@ -3411,7 +3440,7 @@ fn untagged_enum_kotlin_source(
     for variant in &item_enum.variants {
         let variant_rust_name = variant.ident.to_string();
         let subclass_name = format!("{export_name}{variant_rust_name}");
-        let payload = variant_payload(variant, field_rule, &type_parameters, args, defaults);
+        let payload = variant_payload(variant, fields_rule, &type_parameters, args, defaults);
         let bare_value = matches!(payload, VariantPayload::Value(_));
         let mut rules = Rules::choosing(&serializable);
         variant_rules(&mut rules, &payload, Tagging::Unwrapped, "", args);

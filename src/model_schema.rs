@@ -290,6 +290,8 @@ use crate::utils::to_snake_case;
 #[cfg(feature = "serde")]
 use crate::utils::{forget_checks, names_a_check, record_member_checks, record_own_checks};
 
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+use crate::rename_rule::RenameRule;
 use crate::rename_rule::resolve_rename_rule;
 
 /// Every argument the `model_schema` parser reads, in the order the unknown-argument rejection
@@ -817,6 +819,8 @@ enum HeldEnd {
 #[cfg(feature = "serde")]
 struct HeldShape {
     end: HeldEnd,
+    /// The key type of each map in `wraps`, outermost first.
+    keys: Vec<syn::Type>,
     /// The wrappers the walk reads through to its end, outermost first.
     wraps: Vec<ConstraintWrap>,
 }
@@ -2154,6 +2158,11 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     {
         return output;
     }
+    // A map `validate()` names by its key, keyed by a parameter the item declares no `Serialize`
+    // for, could not be written into a message.
+    if let Some(output) = refused_item_output(&item, &unwritable_map_key_errors(&item)) {
+        return output;
+    }
     // A list-form serde rename whose two directions name two keys is refused here, at the one seam
     // a container, a variant and a member are all reachable from, and so is a transparent struct
     // whose two derives take two different fields as its value.
@@ -2281,6 +2290,21 @@ fn process_shape(item: Item, args: &ModelSchemaArgs) -> TokenStream {
     }
 }
 
+/// The Rust name of the item a client emitter writes, which a member written `Self` is named as.
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+fn item_rust_name(item: &Item) -> String {
+    let ident = if let Item::Struct(item_struct) = item {
+        &item_struct.ident
+    } else if let Item::Enum(item_enum) = item {
+        &item_enum.ident
+    } else if let Item::Type(item_type) = item {
+        &item_type.ident
+    } else {
+        return String::new();
+    };
+    ident.to_string()
+}
+
 /// The Dart tokens `item` earns, or nothing without the `dart` feature — always callable, so the
 /// tokens that follow the item's own expansion never need a `#[cfg]`-gated `let` of their own.
 /// The backend is handed what it reads of `args`: the name, the checks, the `preprocess`, the
@@ -2301,6 +2325,7 @@ fn dart_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
             name_override: args.name_override.as_deref(),
             pattern: args.pattern.as_deref(),
             preprocess: &args.preprocess,
+            type_name: &item_rust_name(item),
         },
     )
 }
@@ -2328,6 +2353,7 @@ fn swift_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
             name_override: args.name_override.as_deref(),
             pattern: args.pattern.as_deref(),
             preprocess: &args.preprocess,
+            type_name: &item_rust_name(item),
         },
     )
 }
@@ -2355,6 +2381,7 @@ fn kotlin_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
             name_override: args.name_override.as_deref(),
             pattern: args.pattern.as_deref(),
             preprocess: &args.preprocess,
+            type_name: &item_rust_name(item),
         },
     )
 }
@@ -5193,6 +5220,144 @@ fn default_types_guard_errors(
         .iter()
         .map(|rejection| attr_guard_error(rejection, &item_label(item)))
         .collect()
+}
+
+/// The refusal each map `validate()` walks earns when its key names a type parameter the item
+/// declares no `Serialize` for: `validate()` is written under the item's own bounds and could not
+/// write the key into a message. Spanned on the key's type.
+#[cfg(feature = "serde")]
+fn unwritable_map_key_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
+    let Some(generics) = item_generics(item) else {
+        return Vec::new();
+    };
+    let parameters = type_parameters_in_scope(generics);
+    let unwritable: Vec<&String> = parameters
+        .iter()
+        .filter(|parameter| !declares_serialize(generics, parameter))
+        .collect();
+    if unwritable.is_empty() {
+        return Vec::new();
+    }
+    let own = item_schema_ident(item)
+        .map(ToString::to_string)
+        .unwrap_or_default();
+    let mut errors = Vec::new();
+    for (label, field) in walked_members(item) {
+        let mut def = get_field_def("_key", &field.ty, "");
+        def.erase_type_parameters(&parameters);
+        let Some(shape) = held_shape(&field.ty, &def) else {
+            continue;
+        };
+        for key in map_keys_of(&shape) {
+            let written = quote! { #key };
+            for parameter in unwritable
+                .iter()
+                .filter(|parameter| tokens_name_any(&written, &[(**parameter).clone()]))
+            {
+                errors.push(
+                    syn::Error::new_spanned(
+                        key,
+                        prefixed_guard_message(&format!(
+                            "{label}: `validate()` names each entry of this map by its key, as \
+                             serde writes it, and `{parameter}` declares no `Serialize` on \
+                             `{own}`. Write `{parameter}: Serialize` on the type."
+                        )),
+                    )
+                    .to_compile_error(),
+                );
+            }
+        }
+    }
+    errors
+}
+
+/// Without `serde` `validate()` is not written, and no key is named in a message.
+#[cfg(not(feature = "serde"))]
+const fn unwritable_map_key_errors(_item: &Item) -> Vec<proc_macro2::TokenStream> {
+    Vec::new()
+}
+
+/// Every key type of the maps a walk reads, at any depth.
+#[cfg(feature = "serde")]
+fn map_keys_of(shape: &HeldShape) -> Vec<&syn::Type> {
+    let mut keys: Vec<&syn::Type> = shape.keys.iter().collect();
+    match &shape.end {
+        HeldEnd::Arms(arms) => keys.extend(arms.iter().flat_map(|(_, held)| map_keys_of(held))),
+        HeldEnd::Declared => {}
+        HeldEnd::Positions(positions) => {
+            keys.extend(positions.iter().flat_map(|(_, held)| map_keys_of(held)));
+        }
+    }
+    keys
+}
+
+/// The members `validate()` walks, each beside the label a refusal names it by: those serde writes
+/// or reads.
+#[cfg(feature = "serde")]
+fn walked_members(item: &Item) -> Vec<(String, &Field)> {
+    let label = |field: &Field| {
+        field_label(
+            &field
+                .ident
+                .as_ref()
+                .map_or_else(String::new, ToString::to_string),
+        )
+    };
+    let carried = |field: &&Field| !parse_serde_key_omission(&field.attrs).absent_from_wire();
+    let mut members: Vec<(String, &Field)> = Vec::new();
+    if let Item::Struct(item_struct) = item {
+        members.extend(
+            item_struct
+                .fields
+                .iter()
+                .filter(carried)
+                .map(|field| (label(field), field)),
+        );
+    } else if let Item::Enum(item_enum) = item {
+        for variant in item_enum
+            .variants
+            .iter()
+            .filter(|variant| variant_on_the_wire(variant))
+        {
+            members.extend(
+                variant
+                    .fields
+                    .iter()
+                    .filter(carried)
+                    .map(|field| (label(field), field)),
+            );
+        }
+    } else {
+        // Nothing else holds a member.
+    }
+    members
+}
+
+/// Whether a bound whose last path segment is `Serialize` is written for `parameter`, in the
+/// generics or in a `where` clause.
+#[cfg(feature = "serde")]
+fn declares_serialize(generics: &syn::Generics, parameter: &str) -> bool {
+    generics.params.iter().any(|param| {
+        matches!(param, syn::GenericParam::Type(declared)
+            if declared.ident == parameter && names_serialize(declared.bounds.iter()))
+    }) || generics
+        .where_clause
+        .iter()
+        .flat_map(|clause| &clause.predicates)
+        .any(|predicate| {
+            matches!(predicate, syn::WherePredicate::Type(bounded)
+                if matches!(&bounded.bounded_ty, syn::Type::Path(named) if named.path.is_ident(parameter))
+                    && names_serialize(bounded.bounds.iter()))
+        })
+}
+
+/// Whether one of `bounds` is a trait whose last path segment is `Serialize`.
+#[cfg(feature = "serde")]
+fn names_serialize<'bound>(mut bounds: impl Iterator<Item = &'bound syn::TypeParamBound>) -> bool {
+    bounds.any(|bound| {
+        matches!(bound, syn::TypeParamBound::Trait(held)
+            if held.path.segments.last().is_some_and(|segment| segment.ident == "Serialize"))
+    })
 }
 
 /// The refusal every `default_types` entry that names no type parameter of the item earns, spanned
@@ -10898,7 +11063,12 @@ fn type_mentions_generic_param(ty: &syn::Type, generics: &syn::Generics) -> bool
 }
 
 /// Reports whether `tokens` contains an identifier from `names` at any nesting depth.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "serde",
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema"
+))]
 fn tokens_name_any(tokens: &proc_macro2::TokenStream, names: &[String]) -> bool {
     tokens.clone().into_iter().any(|tree| match tree {
         proc_macro2::TokenTree::Ident(ident) => names.iter().any(|name| ident == name.as_str()),
@@ -12275,6 +12445,17 @@ fn variant_serde_names(
         parse_serde_type_attributes(attrs)
             .rename_all
             .or_else(|| rename_all_fields.map(ToOwned::to_owned)),
+    )
+}
+
+/// The rule that names the members of `variant`, as the Rust, TypeScript, Zod and JSON Schema
+/// surfaces read it: its own `rename_all`, else the enum's `rename_all_fields`.
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+pub fn variant_field_rule(variant: &syn::Variant, rename_all_fields: Option<&str>) -> RenameRule {
+    resolve_rename_rule(
+        variant_serde_names(&variant.attrs, rename_all_fields)
+            .1
+            .as_deref(),
     )
 }
 
@@ -18773,6 +18954,7 @@ fn nested_shape(ty: &syn::Type) -> Option<Vec<ConstraintWrap>> {
 #[cfg(feature = "serde")]
 fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
     let mut wraps = Vec::new();
+    let mut keys: Vec<syn::Type> = Vec::new();
     let mut current = ty;
     let mut held = def;
     loop {
@@ -18801,6 +18983,7 @@ fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
                 .collect();
             return (!positions.is_empty()).then_some(HeldShape {
                 end: HeldEnd::Positions(positions),
+                keys,
                 wraps,
             });
         } else if let syn::Type::Path(path) = current {
@@ -18828,6 +19011,7 @@ fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
                         .collect();
                     return (!arms.is_empty()).then_some(HeldShape {
                         end: HeldEnd::Arms(arms),
+                        keys,
                         wraps,
                     });
                 }
@@ -18836,6 +19020,7 @@ fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
                         return None;
                     };
                     wraps.push(ConstraintWrap::Map);
+                    keys.push(map_key_argument(args)?.clone());
                     current = map_value_argument(args)?;
                     held = of_values;
                     continue;
@@ -18843,6 +19028,7 @@ fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
                 let Some(wrap) = generic_wrap(&ident) else {
                     return (declared && !reads_through(&ident)).then_some(HeldShape {
                         end: HeldEnd::Declared,
+                        keys,
                         wraps,
                     });
                 };
@@ -18852,6 +19038,7 @@ fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
             } else if matches!(segment.arguments, syn::PathArguments::None) {
                 return declared.then_some(HeldShape {
                     end: HeldEnd::Declared,
+                    keys,
                     wraps,
                 });
             } else {
@@ -18876,19 +19063,28 @@ fn list_item_def<'def>(def: &'def FieldDef, wrapper: &str) -> &'def FieldDef {
     }
 }
 
+/// The type of a map's keys, its first type argument.
+#[cfg(feature = "serde")]
+fn map_key_argument(args: &syn::AngleBracketedGenericArguments) -> Option<&syn::Type> {
+    type_arguments(args).next()
+}
+
 /// The type of a map's values, its second type argument.
 #[cfg(feature = "serde")]
 fn map_value_argument(args: &syn::AngleBracketedGenericArguments) -> Option<&syn::Type> {
-    args.args
-        .iter()
-        .filter_map(|arg| {
-            if let syn::GenericArgument::Type(ty) = arg {
-                Some(ty)
-            } else {
-                None
-            }
-        })
-        .nth(1)
+    type_arguments(args).nth(1)
+}
+
+/// The type arguments of an angle-bracketed list, lifetimes and consts left out.
+#[cfg(feature = "serde")]
+fn type_arguments(args: &syn::AngleBracketedGenericArguments) -> impl Iterator<Item = &syn::Type> {
+    args.args.iter().filter_map(|arg| {
+        if let syn::GenericArgument::Type(ty) = arg {
+            Some(ty)
+        } else {
+            None
+        }
+    })
 }
 
 /// Whether a generic name stands for a std container the crate describes by what it holds, rather
@@ -20298,6 +20494,7 @@ fn member_held_shape(field: &Field, field_def: &FieldDef) -> Option<HeldShape> {
     held_shape(&field.ty, field_def).or_else(|| {
         reachable_nested_shape(field, field_def).map(|wraps| HeldShape {
             end: HeldEnd::Declared,
+            keys: Vec::new(),
             wraps,
         })
     })

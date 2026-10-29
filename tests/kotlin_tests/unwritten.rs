@@ -35,7 +35,7 @@ fn a_member_serde_never_writes_is_read_and_has_no_put() {
     assert!(
         furling.contains(
             "val spare = obj[\"spare\"]?.let { \
-             input.json.decodeFromJsonElement(KotlinNumber1.nullable, it) }"
+             kotlinSchemaDecoded(input.json, KotlinNumber1.nullable, it, \"spare\") }"
         ),
         "got: {furling}"
     );
@@ -57,7 +57,7 @@ fn a_member_serde_never_writes_beside_a_flattened_one_has_no_put() {
     assert!(
         reefing.contains(
             "val spare = obj[\"spare\"]?.let { \
-             input.json.decodeFromJsonElement(KotlinNumber1.nullable, it) }"
+             kotlinSchemaDecoded(input.json, KotlinNumber1.nullable, it, \"spare\") }"
         ),
         "got: {reefing}"
     );
@@ -112,7 +112,7 @@ fn a_variant_with_a_member_serde_never_writes_names_the_serializer_the_emitter_w
         assert!(
             kotlin.contains(&format!(
                 "val spare = obj[\"spare\"]?.let {{ \
-                 input.json.decodeFromJsonElement(KotlinNumber1.nullable, it) }}; if \
+                 kotlinSchemaDecoded(input.json, KotlinNumber1.nullable, it, \"spare\") }}; if \
                  (!input.json.configuration.ignoreUnknownKeys) (obj - setOf(\"label\", \
                  \"spare\"{tag})).keys.firstOrNull()?.let {{ throw \
                  SerializationException(\"Encountered an unknown key '\" + it + \"'\") }}; return \
@@ -161,8 +161,8 @@ fn a_flattened_member_serde_never_writes_merges_nothing() {
     for held in [
         "data class Ranging(val counts: Map<String, UByte>)",
         "output.encodeJsonElement(buildJsonObject {  })",
-        "val counts = obj.mapValues { (_, v) -> \
-         input.json.decodeFromJsonElement(KotlinNumber1, v) };",
+        "val counts = obj.mapValues { (k, v) -> \
+         kotlinSchemaDecoded(input.json, KotlinNumber1, v, k) };",
     ] {
         assert!(ranging.contains(held), "no `{held}` in: {ranging}");
     }

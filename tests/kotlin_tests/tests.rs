@@ -668,7 +668,8 @@ fn test_external_tagged_unit_variant_round_trip_source() {
     );
     assert!(
         kotlin.contains(
-            "\"Value\" -> SimpleChoiceValue(input.json.decodeFromJsonElement(serializer<String>(), data))"
+            "\"Value\" -> SimpleChoiceValue(kotlinSchemaDecoded(input.json, serializer<String>(), \
+             data, \"Value\"))"
         ),
         "got: {kotlin}"
     );
@@ -853,8 +854,8 @@ fn test_flatten_map() {
     );
     assert!(
         kotlin.contains(
-            "val tags = obj.mapValues { (_, v) -> \
-             input.json.decodeFromJsonElement(serializer<String>(), v) }"
+            "val tags = obj.mapValues { (k, v) -> \
+             kotlinSchemaDecoded(input.json, serializer<String>(), v, k) }"
         ),
         "a flattened map takes every key of the object. got: {kotlin}"
     );
@@ -1101,7 +1102,7 @@ fn a_flattened_map_is_read_from_every_key_and_written_entry_by_entry() {
          output.json.encodeToJsonElement(KotlinNumber1, v)) } }",
         "val obj = input.decodeJsonElement().let { it as? JsonObject ?: throw \
          SerializationException(\"expected an object, found \" + it) }; val rest = obj.mapValues \
-         { (_, v) -> input.json.decodeFromJsonElement(KotlinNumber1, v) }; return \
+         { (k, v) -> kotlinSchemaDecoded(input.json, KotlinNumber1, v, k) }; return \
          Netting(rest = rest) }",
     ] {
         assert!(netting.contains(held), "no `{held}` in: {netting}");
@@ -1147,7 +1148,7 @@ fn serde_reads_an_optional_flattened_map_as_none_where_an_entry_does_not_read() 
 #[test]
 #[cfg(feature = "serde")]
 fn an_optional_flattened_map_is_read_as_null_where_an_entry_does_not_read() {
-    let entries = "mapValues { (_, v) -> input.json.decodeFromJsonElement(KotlinNumber1, v) }";
+    let entries = "mapValues { (k, v) -> kotlinSchemaDecoded(input.json, KotlinNumber1, v, k) }";
     for (kotlin, held) in [
         (
             renumbered(&probe_locker_kotlin::kotlin_definition()),
@@ -1242,7 +1243,7 @@ fn a_flattened_map_keyed_by_an_enum_writes_and_reads_each_key_through_its_serial
                          output.json.encodeToJsonElement(KotlinNumber1, v)) }";
     let entries = "entries.associate { (k, v) -> input.json.decodeFromJsonElement(\
                    serializer<Chock>(), JsonPrimitive(k)) to \
-                   input.json.decodeFromJsonElement(KotlinNumber1, v) }";
+                   kotlinSchemaDecoded(input.json, KotlinNumber1, v, k) }";
     for (kotlin, held) in [
         (
             renumbered(&cathead_kotlin::kotlin_definition()),
@@ -2008,8 +2009,8 @@ fn a_variant_with_a_flattened_member_is_read_by_a_serializer_of_its_own() {
         ),
         (
             renumbered(&gaffing_kotlin::kotlin_definition()),
-            "val counts = obj.mapValues { (_, v) -> \
-             input.json.decodeFromJsonElement(KotlinNumber1, v) }; return \
+            "val counts = obj.mapValues { (k, v) -> \
+             kotlinSchemaDecoded(input.json, KotlinNumber1, v, k) }; return \
              GaffingCounted(counts = counts) }",
         ),
         (
@@ -2100,7 +2101,7 @@ fn test_generic_dispatched_enum_serializer_class() {
     );
     assert!(
         kotlin.contains(
-            "\"Value\" -> ChoiceValue(input.json.decodeFromJsonElement(tSerializer, data))"
+            "\"Value\" -> ChoiceValue(kotlinSchemaDecoded(input.json, tSerializer, data, \"Value\"))"
         ),
         "got: {kotlin}"
     );
@@ -2238,8 +2239,8 @@ fn test_generic_flatten_own_field() {
     );
     assert!(
         kotlin.contains(
-            "val id = input.json.decodeFromJsonElement(tSerializer, (obj[\"id\"] ?: throw \
-             SerializationException(\"missing field `id`\")))"
+            "val id = kotlinSchemaDecoded(input.json, tSerializer, (obj[\"id\"] ?: throw \
+             SerializationException(\"missing field `id`\")), \"id\")"
         ),
         "got: {kotlin}"
     );

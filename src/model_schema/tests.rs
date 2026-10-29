@@ -22892,3 +22892,88 @@ fn a_transparent_tuple_struct_with_a_one_way_slot_expands_and_a_plain_one_is_ref
         "got: {plain:?}"
     );
 }
+
+#[cfg(feature = "serde")]
+fn map_key_refusal(parameter: &str, source: &str) -> Vec<String> {
+    refusal_texts(&super::exec_model_schema(
+        syn::parse_str(&format!("default_types({parameter} = String)")).unwrap(),
+        syn::parse_str(&format!("#[derive(Deserialize, Serialize)] {source}")).unwrap(),
+    ))
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_map_of_models_keyed_by_a_parameter_with_no_serialize_is_refused() {
+    assert_eq!(
+        map_key_refusal(
+            "K",
+            "pub struct Shelf<K: Ord> { pub by_key: BTreeMap<K, Parcel> }"
+        ),
+        [
+            "model_schema: field `by_key`: `validate()` names each entry of this map by its key, \
+             as serde writes it, and `K` declares no `Serialize` on `Shelf`. Write `K: Serialize` \
+             on the type."
+        ]
+    );
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_map_key_that_wraps_a_parameter_or_sits_in_an_enum_variant_is_refused() {
+    let wrapped = map_key_refusal(
+        "K",
+        "struct Shelf<K: Ord> { by_bay: BTreeMap<Bay<K>, Parcel> }",
+    );
+    let variant = map_key_refusal(
+        "K",
+        "enum Stock<K: Ord> { Keyed { by_key: BTreeMap<K, Parcel> } }",
+    );
+    let nested = map_key_refusal(
+        "K",
+        "struct Shelf<K: Ord> { rows: Vec<(u8, BTreeMap<K, Parcel>)>, lone: BTreeMap<K, Parcel> }",
+    );
+    assert_eq!(
+        [wrapped.len(), variant.len(), nested.len()],
+        [1, 1, 2],
+        "got: {wrapped:?} {variant:?} {nested:?}"
+    );
+    assert!(variant[0].contains("`Stock`"), "got: {variant:?}");
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_map_key_is_accepted_where_the_parameter_declares_serialize_or_the_walk_reads_no_key() {
+    let accepted = [
+        (
+            "Key",
+            "struct Rack<Key: Ord + Serialize> { by_key: BTreeMap<Key, Parcel> }",
+        ),
+        (
+            "Key",
+            "struct Rack<Key: Ord + serde::Serialize> { by_key: BTreeMap<Key, Parcel> }",
+        ),
+        (
+            "Key",
+            "struct Rack<Key> where Key: Ord + Serialize { by_key: BTreeMap<Key, Parcel> }",
+        ),
+        (
+            "K",
+            "struct Ledger<K: Ord> { counts_by_key: BTreeMap<K, u32> }",
+        ),
+        (
+            "K",
+            "struct Docks<K: Ord> { by_dock: BTreeMap<String, Parcel>, other: K }",
+        ),
+        (
+            "K",
+            "struct Skipped<K: Ord> { #[serde(skip)] by_key: BTreeMap<K, Parcel> }",
+        ),
+    ];
+    for (parameter, source) in accepted {
+        assert_eq!(
+            map_key_refusal(parameter, source),
+            Vec::<String>::new(),
+            "for {source}"
+        );
+    }
+}

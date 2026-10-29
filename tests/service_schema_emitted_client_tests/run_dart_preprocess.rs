@@ -84,6 +84,13 @@ dynamic withoutFragile(dynamic payload) =>
     payload is Map<String, dynamic> ? {'fragileItemCodes': <dynamic>[], ...payload} : payload;
 ";
 
+/// The function of the type that reaches itself: an object with an empty `children` where it holds
+/// none.
+const WITH_CHILDREN: &str = "
+dynamic withChildren(dynamic payload) =>
+    payload is Map<String, dynamic> ? {'children': <dynamic>[], ...payload} : payload;
+";
+
 /// A stub transport that answers `weigh` with a parcel labelled as the request asks, which holds
 /// no `fragileItemCodes`, and what prints the answer of each call.
 const HTTP_DRIVER: &str = "
@@ -151,12 +158,6 @@ dynamic read(dynamic payload) => payload is String ? (int.tryParse(payload.trim(
 
 dynamic tag(dynamic payload) => payload is Map<String, dynamic> && payload.containsKey('held') ? payload['held'] : payload;
 ";
-
-/// The row of the shared table Dart does not read as the Rust read does, with why.
-const NOT_READ: [(&str, &str); 1] = [(
-    "a type that reaches itself",
-    "the backend writes `Self` as a type of that name",
-)];
 
 /// What prints a row as every side prints it: its name and the value read, written back, or each
 /// message of the refusal on a line of its own.
@@ -771,6 +772,7 @@ fn reader_of(schema: &str) -> String {
 /// The emitted definitions of the models, without the one the SDK does not compile.
 fn model_definitions() -> Vec<String> {
     vec![
+        node_dart::dart_definition(),
         parcel_dart::dart_definition(),
         manifest_dart::dart_definition(),
         tagged_dart::dart_definition(),
@@ -884,27 +886,16 @@ fn a_label_the_payload_does_not_hold_is_not_read() {
 }
 
 /// Every position another type reads a preprocessed type in, and every shape the key is written
-/// on, read in Dart: each row but the ones listed prints the line of the shared table.
+/// on, read in Dart: each row prints the line of the shared table.
 #[test]
 fn every_position_and_every_shape_prints_the_line_of_the_shared_table() {
     let read = positions();
     let printed: String = read.iter().map(|(_, _, _, line)| line.as_str()).collect();
     assert_eq!(printed, POSITIONS, "what the Rust read answers");
-    let skipped = |name: &str| NOT_READ.iter().any(|&(row, _)| row == name);
     let rows: String = read
         .iter()
-        .filter(|(name, ..)| !skipped(name))
         .map(|(name, schema, payload, _)| dart_row(name, &reader_of(schema), payload))
         .collect();
-    let expected: String = read
-        .iter()
-        .filter(|(name, ..)| !skipped(name))
-        .map(|(_, _, _, line)| line.as_str())
-        .collect();
-    assert_eq!(
-        read.iter().filter(|(name, ..)| skipped(name)).count(),
-        NOT_READ.len()
-    );
     let Some(wrote) = ran(
         "dart",
         RUNTIME_VAR,
@@ -912,25 +903,13 @@ fn every_position_and_every_shape_prints_the_line_of_the_shared_table() {
         "positions.dart",
         &module(
             &model_definitions(),
-            &[FUNCTIONS, CORRECTIONS, CHECK, ROW],
+            &[FUNCTIONS, WITH_CHILDREN, CORRECTIONS, CHECK, ROW],
             &driver(&rows),
         ),
     ) else {
         return;
     };
-    assert_eq!(wrote, expected);
-}
-
-/// The row of the shared table Dart does not read: what the backend writes for a type that
-/// reaches itself.
-#[test]
-fn the_rows_dart_does_not_read_are_the_ones_named() {
-    let node = node_dart::dart_definition();
-    assert!(
-        node.contains("final List<Self> children;"),
-        "{}: {node}",
-        NOT_READ[0].1
-    );
+    assert_eq!(wrote, printed);
 }
 
 /// A type that names a function is handed a payload of any kind, as the Rust read hands it, and

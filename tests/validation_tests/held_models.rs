@@ -99,7 +99,7 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
     /// A struct whose one field is a map of models, and the struct that holds it.
     #[model_schema()]
     #[derive(Clone, Debug, Deserialize, Serialize)]
-    #[serde(rename_all = "camelCase")]
+    #[serde(rename_all = "camelCase", bound(serialize = ""))]
     pub struct Racks {
         pub by_aisle: BTreeMap<String, Parcel>,
     }
@@ -212,12 +212,12 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
         pub parcels_by_gate: BTreeMap<String, Parcel>,
     }
 
-    /// A key typed with a parameter that declares no `Serialize`, beside a borrowed key. The
+    /// A key typed with a parameter that declares `Serialize`, beside a borrowed key. The
     /// lifetime and the parameter are named as the walk names its own.
     #[model_schema(default_types(K = String))]
     #[derive(Clone, Debug, Deserialize, Serialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct Shelf<'held, K: Ord> {
+    #[serde(rename_all = "camelCase", bound(serialize = ""))]
+    pub struct Shelf<'held, K: Ord + Serialize> {
         pub by_key: BTreeMap<K, Parcel>,
         #[serde(borrow)]
         pub by_name: BTreeMap<&'held str, Parcel>,
@@ -225,13 +225,10 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
     }
 
     /// A key typed with a parameter that declares `Serialize`, which the derive is told not to
-    /// write a second time.
+    /// write a second time: the type already carries it.
     #[model_schema(default_types(Key = String))]
     #[derive(Clone, Debug, Deserialize, Serialize)]
-    #[serde(
-        rename_all = "camelCase",
-        bound(serialize = "", deserialize = "Key: Deserialize<'de>")
-    )]
+    #[serde(rename_all = "camelCase", bound(serialize = ""))]
     pub struct Rack<Key: Ord + Serialize> {
         pub by_key: BTreeMap<Key, Parcel>,
         pub rack_parcel: Parcel,
@@ -698,12 +695,12 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
             [
                 Err(vec![unlabelled_at("byKey.north.itemLabel")]),
                 Err(vec![
-                    unlabelled_at("byKey.itemLabel"),
+                    unlabelled_at("byKey.north.itemLabel"),
                     unlabelled_at("byName.west.itemLabel"),
                 ]),
             ],
-            "`validate()` is written under the bounds the type declares, and names no key it \
-             cannot ask serde to write"
+            "`validate()` is written under the bounds the type declares, and the macro refuses a \
+             parameter that declares no `Serialize` to name a key"
         );
     }
 
@@ -854,7 +851,7 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
                 "'deckPair.1.itemLabel'",
                 "'north.itemLabel'",
                 "'byKey.north.itemLabel'",
-                "'byKey.itemLabel'",
+                "'byKey.north.itemLabel'",
             ]
         );
         // The README names a brand's key and a `char`'s in words, and every other path as it is.

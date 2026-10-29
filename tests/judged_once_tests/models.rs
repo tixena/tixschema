@@ -77,7 +77,8 @@ pub struct Wrapped<IdType> {
 /// The parameter is named by the map's key alone, and the model it holds names none.
 #[model_schema(default_types(IdType = String))]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Index<IdType: Eq + Hash> {
+#[serde(bound(serialize = ""))]
+pub struct Index<IdType: Eq + Hash + Serialize> {
     pub tags: HashMap<IdType, Tag>,
 }
 

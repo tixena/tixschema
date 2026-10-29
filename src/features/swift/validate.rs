@@ -69,6 +69,9 @@ pub(super) struct Checked<'member> {
 /// What a name the emitter has written stands for, as a type that holds it reads it.
 #[derive(Clone, Copy)]
 struct Noted {
+    /// The position of the type parameter a brand holds bare: the one whose argument its value is
+    /// of.
+    bare: Option<usize>,
     /// Whether the type is a brand with a bound of its own, which `swiftSchemaValidateBound`
     /// answers for alone.
     bounded: bool,
@@ -182,12 +185,22 @@ pub(super) fn note(rust_ident: &str, text: Option<Text>, validates: bool) {
         names.borrow_mut().insert(
             rust_ident.to_owned(),
             Noted {
+                bare: None,
                 bounded: false,
                 length: None,
                 text,
                 validates,
             },
         );
+    });
+}
+
+/// Records the position of the type parameter the brand noted as `rust_ident` holds bare.
+pub(super) fn note_bare(rust_ident: &str, position: Option<usize>) {
+    NOTED.with(|names| {
+        if let Some(seen) = names.borrow_mut().get_mut(rust_ident) {
+            seen.bare = position;
+        }
     });
 }
 
@@ -487,7 +500,9 @@ pub(super) fn brand_rules(
         && !value_field.is_list()
     {
         let filling = declared_default(args, parameter);
-        let checks = bound_checks(owner, &filling, "held", None, &meta);
+        let (measured, access) =
+            bare_argument(&filling).map_or((&filling, "held"), |held| (held, "held.value"));
+        let checks = bound_checks(owner, measured, access, None, &meta);
         if checks.is_empty() {
             return Vec::new();
         }
@@ -632,6 +647,16 @@ fn text_read(def: &FieldDef) -> Option<&'static str> {
     } else {
         Some(".swiftSchemaBoundText")
     }
+}
+
+/// The type a brand written with arguments gives the parameter its struct holds bare, as `def`
+/// names it: the bounds are measured on what the struct holds, whose type Swift keeps at run time.
+fn bare_argument(def: &FieldDef) -> Option<&FieldDef> {
+    let FieldDefType::SiblingType(named, arguments) = &def.field_type else {
+        return None;
+    };
+    let position = noted(named)?.bare?;
+    arguments.get(position)
 }
 
 /// The type declared for `parameter` in `default_types`, or `String` where none is.
