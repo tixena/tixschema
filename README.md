@@ -10,7 +10,7 @@ Add the following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-tixschema = "0.1"
+tixschema = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 ```
@@ -453,7 +453,7 @@ A JSON object is written with its keys in an order. The three maps describe as t
 `indexmap::IndexMap<K, V>` and the list beside it, `indexmap::IndexSet<T>`, are read under the `indexmap` feature. The feature adds no dependency to tixschema: the generated code names the types of the crate that declares them, so that crate lists `indexmap` itself, with its `serde` feature.
 
 ```toml
-tixschema = { version = "0.1", features = ["indexmap"] }
+tixschema = { version = "0.2", features = ["indexmap"] }
 indexmap = { version = "2", features = ["serde"] }
 ```
 
@@ -6792,7 +6792,7 @@ Elsewhere the `ObjectId` is handed the object any flattened member is handed, an
 Enable the `chrono` feature for chrono date/time type support. All chrono types map to `string` in TypeScript, with appropriate Zod validation for the specific date/time format.
 
 ```toml
-tixschema = { version = "0.1", features = ["chrono"] }
+tixschema = { version = "0.2", features = ["chrono"] }
 ```
 
 A consumer enabling `chrono` on tixschema must also enable `serde` on its own `chrono` dependency — `as_number` (below) injects a `chrono::serde::ts_milliseconds` hook that only exists there.
@@ -6997,7 +6997,7 @@ A crate whose types list `"decode_with"` alone, and that writes `decode_with_fou
 
 What a callback, a resolver and a walker work with is the same for every flagged type, so a crate holds it once. Two initializers, each called once at the crate root, write it:
 
-- `tixschema::decode_with_foundation!();` writes the module `__tixschema_decode_with`: `Issue`, `Expected`, `Path` and `Segment`, `Verdict`, `Resolution`, `Resolver`, `Unrecovered`, `unsettled`, and what one type's walker hands another's. Under `bson` it holds as well what reads a BSON value and the helpers `set_in_document` and `remove_from_document` of `Path`, and it names no `bson` path in a build without `bson`. It writes nothing in a build without tixschema's `serde` feature.
+- `tixschema::decode_with_foundation!();` writes the module `__tixschema_decode_with`: `Issue`, `Expected`, `Path` and `Segment`, `Verdict`, `Resolution`, `Resolver`, `Stored`, `Unrecovered`, `unsettled`, and what one type's walker hands another's. Under `bson` it holds as well what reads a BSON value and the implementation of `Stored` for `bson::Document`, and it names no `bson` path in a build without `bson`. It writes nothing in a build without tixschema's `serde` feature.
 - `tixschema::mongodb_foundation!();` writes the module `__tixschema_mongodb` under tixschema's `mongodb` feature: the query types (`Filter`, `Update`, `ArmFilter`, `ArmUpdate`, the path kinds) and what the operations answer (`Read`, `OperationError`, `WriteError`). It reads the names of the first library, so it is written beside `decode_with_foundation!()`. In a build without `mongodb` it writes nothing, so the call stays in a crate whatever features the crate builds with.
 
 A crate whose types list `"decode_with"` writes the first, and a crate where one lists `"mongodb"` writes both. Each is written once per crate, at the crate root (`src/lib.rs` or `src/main.rs`), on its own line, anywhere outside a function, after the `mod` lines as well as before them:
@@ -7111,11 +7111,52 @@ The callback's types and the resolvers' are named through the flagged type's own
 - `Range(&'static str, Box<Expected>)`, a std range by the name it is declared under in `core::ops` and the type of its bounds: `Range("RangeInclusive", Box::new(U32))`;
 - `Variants(&'static [&'static str])`, the tag values a tagged enum accepts, for a tag naming none of them, and the two arms of a `Result`, `Variants(["Ok", "Err"])`, for an object that names neither or both.
 
-`Path` is where an issue sits: `Path(pub Vec<Segment>)`, a `Segment` being `Key(String)` or `Index(usize)`. It displays as `versions[1].number`, and the empty path is the value itself. It carries the helpers a callback fixes the raw value through, each answering whether it did so:
+`Path` is where an issue sits: `Path(pub Vec<Segment>)`, a `Segment` being `Key(String)` or `Index(usize)`. It displays as `versions[1].number`, and the empty path is the value itself.
 
-- `set_in_value(&self, root: &mut serde_json::Value, value: serde_json::Value) -> bool` puts `value` at the path, inserting the last key when it is absent. The empty path replaces the whole value. A parent that is not there, or an index past the end of its list, answers `false`.
-- `remove_from_value(&self, root: &mut serde_json::Value) -> bool` removes the key or the item at the path.
-- `set_in_document(&self, root: &mut bson::Document, value: bson::Bson) -> bool` and `remove_from_document(&self, root: &mut bson::Document) -> bool` do the same inside a BSON document, and are generated with the `bson` feature. A path into a document starts at a key, so the empty path sets and removes nothing there.
+`Stored` is the trait a callback or a resolver repairs the raw value through. It is implemented for `serde_json::Value` and, with the `bson` feature, for `bson::Document`, and each module of a type of the crate re-exports it. `Stored::Value` is what one place inside the raw value holds: `serde_json::Value`, or `bson::Bson`.
+
+- `set_at(&mut self, path: &Path, value: Self::Value) -> bool` puts `value` at the path, inserting the last key when it is absent, and answers whether it changed anything. On a JSON value the empty path replaces the whole value. A parent that is not there, or an index past the end of its list, answers `false`. A path into a document starts at a key, so the empty path sets nothing there.
+- `remove_at(&mut self, path: &Path) -> bool` removes the key or the item at the path, and answers whether it did.
+- `at(&self, path: &Path) -> Option<&Self::Value>` is what is at the path.
+- `text`, `whole` and `real` read a value as a `&str`, an `i64` and an `f64`, and `from_text`, `from_whole` and `from_real` build the value that holds one. A document holds a whole number as `Int32` or `Int64`, and `from_whole` builds an `Int64`.
+
+A resolver written over `D: Stored` serves a list of JSON resolvers and a list of BSON resolvers alike:
+
+```rust
+use invoice_schema::{Expected, Issue, Resolution, Resolver, Stored};
+
+fn count_as_text<D: Stored>(raw: &mut D, issue: &Issue<D::Value>) -> Resolution {
+    let Issue::Invalid { path, expected: Expected::U32, found, .. } = issue else {
+        return Resolution::NotTouched;
+    };
+    let Some(text) = D::text(found) else {
+        return Resolution::NotTouched;
+    };
+    match text.trim().parse::<i64>() {
+        Ok(number) if number >= 0 && raw.set_at(path, D::from_whole(number)) => Resolution::Settled,
+        _ => Resolution::Rejected,
+    }
+}
+
+const FROM_JSON: &[Resolver<'static, serde_json::Value, serde_json::Value>] =
+    &[&count_as_text::<serde_json::Value>];
+const FROM_BSON: &[Resolver<'static, bson::Document, bson::Bson>] =
+    &[&count_as_text::<bson::Document>];
+```
+
+**Breaking change in 0.2.0.** The four methods of `Path` that wrote at a path, a setter and a remover for a JSON value and a setter and a remover for a BSON document, are gone: `Stored` is the one way to write at a path. A resolver moves from a method of its path to a method of its raw value. Before, the repair above was two functions, one per kind of raw value, each writing through the method of `path` made for that kind:
+
+```rust
+fn count_as_text_json(raw: &mut serde_json::Value, issue: &Issue<serde_json::Value>) -> Resolution {
+    // ... the match and the parse, then a method of `path` that writes a JSON value into `raw`
+}
+
+fn count_as_text_bson(raw: &mut bson::Document, issue: &Issue<bson::Bson>) -> Resolution {
+    // ... the same match and parse, then a method of `path` that writes a BSON value into `raw`
+}
+```
+
+After, with `Stored` in scope, it is the one `count_as_text` above, which writes with `raw.set_at(path, D::from_whole(number))`. A resolver written against one kind changes its write to `raw.set_at(path, value)`, and its removal to `raw.remove_at(path)`.
 
 `Verdict` is the callback's answer, `Reject` or `Fixed`. `Resolution` is a resolver's answer for one issue, `Settled`, `Rejected` or `NotTouched`. `Resolver<'r, D, V>` is the type a `piped` method takes each resolver as, `&'r (dyn Fn(&mut D, &Issue<V>) -> Resolution + Sync)`: `D` is the raw value, `serde_json::Value` or `bson::Document`, and `V` what an issue holds. `unsettled(raw, issues, resolvers)` is the pipe a `piped` method runs, a public function of the module: it runs the resolvers in order and answers the issues none settled.
 
@@ -7293,7 +7334,7 @@ pub struct Record {
 The callback, a function over `Record` and its inner `Version`. An issue inside a version reaches it as `record_schema::Issue`, at its full path:
 
 ```rust
-use record_schema::{Expected, Issue, Verdict};
+use record_schema::{Expected, Issue, Stored as _, Verdict};
 
 /// Repairs what older writers left in a `Record` row, inner versions included, and rejects
 /// anything else.
@@ -7309,7 +7350,7 @@ fn repair_record(row: &mut Document, issues: &[Issue<Bson>]) -> Verdict {
             let Ok(id) = ObjectId::parse_str(hex) else {
                 return Verdict::Reject;
             };
-            path.set_in_document(row, Bson::ObjectId(id));
+            row.set_at(path, Bson::ObjectId(id));
         } else if let Issue::Invalid {
             path,
             expected: Expected::DateTime,
@@ -7322,7 +7363,7 @@ fn repair_record(row: &mut Document, issues: &[Issue<Bson>]) -> Verdict {
             else {
                 return Verdict::Reject;
             };
-            path.set_in_document(row, Bson::String(created.to_rfc3339()));
+            row.set_at(path, Bson::String(created.to_rfc3339()));
         } else if let Issue::Invalid {
             path,
             expected: Expected::DateTime,
@@ -7334,7 +7375,7 @@ fn repair_record(row: &mut Document, issues: &[Issue<Bson>]) -> Verdict {
             let Some(created) = DateTime::<Utc>::from_timestamp_millis(*millis) else {
                 return Verdict::Reject;
             };
-            path.set_in_document(row, Bson::String(created.to_rfc3339()));
+            row.set_at(path, Bson::String(created.to_rfc3339()));
         } else if let Issue::Invalid {
             path,
             expected: Expected::I32,
@@ -7346,14 +7387,14 @@ fn repair_record(row: &mut Document, issues: &[Issue<Bson>]) -> Verdict {
             let Ok(number) = text.parse::<i32>() else {
                 return Verdict::Reject;
             };
-            path.set_in_document(row, Bson::Int32(number));
+            row.set_at(path, Bson::Int32(number));
         } else if let Issue::Unknown {
             path,
             found: _found,
         } = issue
         {
             // a key no type declares, on the record or on one of its versions
-            path.remove_from_document(row);
+            row.remove_at(path);
         } else {
             return Verdict::Reject;
         }
@@ -7432,7 +7473,7 @@ pub struct Invoice {
 Two resolvers. Each looks for the one issue it repairs and answers `NotTouched` for any other:
 
 ```rust
-use invoice_schema::{Expected, Issue, Resolution};
+use invoice_schema::{Expected, Issue, Resolution, Stored as _};
 
 /// A customer an older writer stored as JSON text: parsed into a document.
 fn customer_as_text(raw: &mut Document, issue: &Issue<Bson>) -> Resolution {
@@ -7452,7 +7493,7 @@ fn customer_as_text(raw: &mut Document, issue: &Issue<Bson>) -> Resolution {
     let Ok(Bson::Document(customer)) = parsed.serialize(bson::Serializer::new()) else {
         return Resolution::Rejected;
     };
-    if path.set_in_document(raw, Bson::Document(customer)) {
+    if raw.set_at(path, Bson::Document(customer)) {
         Resolution::Settled
     } else {
         Resolution::Rejected
@@ -7473,7 +7514,7 @@ fn whole_number_as_text(raw: &mut Document, issue: &Issue<Bson>) -> Resolution {
     let settled = text
         .trim()
         .parse::<i64>()
-        .is_ok_and(|number| number >= 0_i64 && path.set_in_document(raw, Bson::Int64(number)));
+        .is_ok_and(|number| number >= 0_i64 && raw.set_at(path, Bson::Int64(number)));
     if settled {
         Resolution::Settled
     } else {
@@ -7559,7 +7600,7 @@ What the pipe holds every read to:
 - **A failed read holds the issues no resolver settled**, in the order they were found, as `Unrecovered`. With no resolver at all, `&[]`, that is every issue.
 - **A resolver is `Sync`.** It is a function, or a closure that holds what it needs, taken by reference: `&[&customer_as_text, &counted]`. A closure that counts in a `Cell` or a `RefCell` is refused (`E0277`, `` `Cell<u32>` cannot be shared between threads safely``), and one that counts in an atomic or behind a `Mutex` is taken. It is what lets a read that waits for MongoDB hold its resolvers and still move to another thread.
 
-`from_value_piped` is the same read of a `serde_json::Value`. Its resolvers take `&mut serde_json::Value` and `&Issue<serde_json::Value>`, and repair through `set_in_value` and `remove_from_value`.
+`from_value_piped` is the same read of a `serde_json::Value`. Its resolvers take `&mut serde_json::Value` and `&Issue<serde_json::Value>`, and repair through `Stored` for `serde_json::Value`.
 
 ## arky Frontmatter Conversions (`arky`)
 
@@ -8229,6 +8270,7 @@ use mongodb::options::{Collation, Hint};
 use mongodb::results::{DeleteResult, InsertOneResult, UpdateResult};
 use tokio::task::JoinHandle;
 
+use invoice_schema::Stored as _;
 use invoice_schema::{Expected, Filter, Issue, OperationError, Read, Resolution, Resolver};
 
 /// Every operation, each bound to what it answers.
@@ -8372,7 +8414,7 @@ fn id_dropped(
     raw: &mut Document,
     issue: &customer_schema::Issue<Bson>,
 ) -> customer_schema::Resolution {
-    use customer_schema::{Issue, Resolution};
+    use customer_schema::{Issue, Resolution, Stored as _};
 
     let Issue::Unknown {
         path,
@@ -8381,7 +8423,7 @@ fn id_dropped(
     else {
         return Resolution::NotTouched;
     };
-    if path.to_string() == "_id" && path.remove_from_document(raw) {
+    if path.to_string() == "_id" && raw.remove_at(path) {
         Resolution::Settled
     } else {
         Resolution::NotTouched
@@ -8609,16 +8651,16 @@ Common configurations:
 
 ```toml
 # Default (serde + zod + jsonschema + typescript)
-tixschema = "0.1"
+tixschema = "0.2"
 
 # All features including optional ones
-tixschema = { version = "0.1", features = ["serde", "zod", "jsonschema", "typescript", "mongodb", "bson", "chrono", "indexmap", "dart", "swift", "kotlin", "arky"] }
+tixschema = { version = "0.2", features = ["serde", "zod", "jsonschema", "typescript", "mongodb", "bson", "chrono", "indexmap", "dart", "swift", "kotlin", "arky"] }
 
 # Minimal (TypeScript only, no Zod or JSON Schema)
-tixschema = { version = "0.1", default-features = false, features = ["typescript"] }
+tixschema = { version = "0.2", default-features = false, features = ["typescript"] }
 
 # TypeScript + Zod without JSON Schema
-tixschema = { version = "0.1", default-features = false, features = ["serde", "zod", "typescript"] }
+tixschema = { version = "0.2", default-features = false, features = ["serde", "zod", "typescript"] }
 ```
 
 CI tests every combination of the feature sets (`web`, `mobile`, `mongo`) via `cargo-hack`; `just test` runs every combination of the plain features locally.
@@ -8879,7 +8921,7 @@ The JSON Schema lists `kind` in `required` as `{"type": "string", "const": "Tagg
 **Solutions:**
 ```toml
 # Option 1: Enable the mongodb feature
-tixschema = { version = "0.1", features = ["mongodb"] }
+tixschema = { version = "0.2", features = ["mongodb"] }
 
 # Option 2: Use full path in your code
 # use mongodb::bson::oid::ObjectId;
@@ -8901,7 +8943,7 @@ error: `IndexMap` is read as a map under tixschema's `indexmap` feature: add `fe
 
 **Solution:**
 ```toml
-tixschema = { version = "0.1", features = ["indexmap"] }
+tixschema = { version = "0.2", features = ["indexmap"] }
 ```
 
 A crate that declares a `#[model_schema()]` type of its own named `IndexMap` or `IndexSet`, above the type that holds it, is not refused: the name is that type.
@@ -8927,7 +8969,7 @@ error: model_schema: field `count`: `u64` has no Kotlin mapping; the Kotlin targ
 
 **Solution:**
 ```toml
-tixschema = { version = "0.1", features = ["jsonschema"] }
+tixschema = { version = "0.2", features = ["jsonschema"] }
 ```
 
 #### Zod Schema Missing
@@ -8938,7 +8980,7 @@ tixschema = { version = "0.1", features = ["jsonschema"] }
 
 **Solution:**
 ```toml
-tixschema = { version = "0.1", features = ["zod"] }
+tixschema = { version = "0.2", features = ["zod"] }
 ```
 
 #### Serde Attributes Ignored
@@ -8949,7 +8991,7 @@ tixschema = { version = "0.1", features = ["zod"] }
 
 **Solution:**
 ```toml
-tixschema = { version = "0.1", features = ["serde"] }
+tixschema = { version = "0.2", features = ["serde"] }
 ```
 
 ### Compilation Errors

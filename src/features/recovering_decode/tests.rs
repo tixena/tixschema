@@ -633,27 +633,19 @@ fn impls_of_every_shape() -> Vec<(&'static str, proc_macro2::TokenStream)> {
     emitted
 }
 
-/// The methods of the `impl Path` blocks the two support libraries write, in the order written.
-fn path_methods() -> Vec<String> {
+/// The types `Stored` is implemented for in the support libraries, in the order written.
+fn stored_impls() -> Vec<String> {
     let added: syn::File = syn::parse2(module_items()).unwrap();
     added
         .items
         .iter()
         .filter_map(|item| {
             if let syn::Item::Impl(block) = item
-                && block.trait_.is_none()
-                && (block.self_ty == syn::parse_quote!(Path)
-                    || block.self_ty == syn::parse_quote!(crate::__tixschema_decode_with::Path))
+                && let Some((trait_path, _)) = &block.trait_
+                && trait_path.is_ident("Stored")
             {
-                Some(&block.items)
-            } else {
-                None
-            }
-        })
-        .flatten()
-        .filter_map(|member| {
-            if let syn::ImplItem::Fn(method) = member {
-                Some(method.sig.ident.to_string())
+                let self_ty = &block.self_ty;
+                Some(quote::quote!(#self_ty).to_string())
             } else {
                 None
             }
@@ -986,7 +978,7 @@ fn without_bson_nothing_of_the_bson_read_is_emitted() {
     for absent in ["bson", "same_bracket", "_document"] {
         assert!(!emitted.contains(absent), "found `{absent}` in: {emitted}");
     }
-    assert_eq!(path_methods(), ["set_in_value", "remove_from_value"]);
+    assert_eq!(stored_impls(), ["serde_json :: Value"]);
 }
 
 #[cfg(feature = "bson")]
@@ -1228,15 +1220,7 @@ fn the_schema_module_declares_what_a_resolver_answers_and_the_pipe_that_runs_the
 #[cfg(feature = "bson")]
 #[test]
 fn the_bson_items_are_emitted_beside_the_json_ones() {
-    assert_eq!(
-        path_methods(),
-        [
-            "set_in_value",
-            "remove_from_value",
-            "set_in_document",
-            "remove_from_document",
-        ]
-    );
+    assert_eq!(stored_impls(), ["serde_json :: Value", "bson :: Document"]);
     let added: syn::File = syn::parse2(module_items()).unwrap();
     let functions: Vec<String> = added
         .items
@@ -2395,7 +2379,7 @@ fn without_bson_the_decode_with_library_names_no_bson_path() {
 }
 
 /// Under `bson` the `decode_with` library holds what reads a BSON value: what holds a BSON value
-/// to a bound, the leaf and its helpers, and the BSON helpers of `Path`. It holds nothing of the
+/// to a bound, the leaf and its helpers, and `Stored` for a document. It holds nothing of the
 /// MongoDB layer.
 #[cfg(feature = "bson")]
 #[test]
@@ -2409,8 +2393,7 @@ fn under_bson_the_decode_with_library_holds_what_reads_a_bson_value() {
         "pub fn same_bracket (",
         "pub fn bson_leaf <",
         "pub fn bson_remaining <",
-        "pub fn set_in_document (",
-        "pub fn remove_from_document (",
+        "impl Stored for bson :: Document",
     ] {
         assert!(
             written.contains(declared),

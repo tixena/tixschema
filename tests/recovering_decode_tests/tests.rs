@@ -386,6 +386,7 @@ fn a_value_serde_wrote_is_read_and_the_decider_never_runs() {
 
 #[test]
 fn every_issue_reaches_the_decider_once_and_a_fixed_value_is_read() {
+    use ledger_schema::Stored as _;
     let stored = json!({
         "name": "Loan",
         "versions": [{ "number": 1_i32 }, { "number": "2" }],
@@ -409,13 +410,13 @@ fn every_issue_reaches_the_decider_once_and_a_fixed_value_is_read() {
                 let Ok(number) = text.parse::<i32>() else {
                     return ledger_schema::Verdict::Reject;
                 };
-                path.set_in_value(raw, Value::from(number));
+                raw.set_at(path, Value::from(number));
             } else if let ledger_schema::Issue::Unknown {
                 path,
                 found: _found,
             } = issue
             {
-                path.remove_from_value(raw);
+                raw.remove_at(path);
             } else {
                 return ledger_schema::Verdict::Reject;
             }
@@ -452,6 +453,7 @@ fn a_missing_key_is_listed_and_a_rejected_read_fails_with_the_list() {
 
 #[test]
 fn a_fixed_value_gets_one_more_read_and_fails_with_the_second_list() {
+    use ledger_schema::Stored as _;
     let stored = json!({ "name": 7_i32, "versions": [{ "number": "two" }] });
     let mut calls = 0_u32;
     let read = Ledger::from_value_with(stored, |raw, found| {
@@ -464,7 +466,7 @@ fn a_fixed_value_gets_one_more_read_and_fails_with_the_second_list() {
                 reason: _reason,
             } = issue
             {
-                path.set_in_value(raw, Value::from("Loan"));
+                raw.set_at(path, Value::from("Loan"));
             }
         }
         ledger_schema::Verdict::Fixed
@@ -483,10 +485,14 @@ fn a_fixed_value_gets_one_more_read_and_fails_with_the_second_list() {
 fn an_issue_the_fix_itself_leaves_fails_the_read() {
     let stored = json!({ "name": "Loan", "versions": [], "legacyField": true });
     let read = Ledger::from_value_with(stored, |raw, _found| {
-        ledger_schema::Path(vec![ledger_schema::Segment::Key("legacyField".to_owned())])
-            .remove_from_value(raw);
-        ledger_schema::Path(vec![ledger_schema::Segment::Key("name".to_owned())])
-            .remove_from_value(raw);
+        ledger_schema::Stored::remove_at(
+            raw,
+            &ledger_schema::Path(vec![ledger_schema::Segment::Key("legacyField".to_owned())]),
+        );
+        ledger_schema::Stored::remove_at(
+            raw,
+            &ledger_schema::Path(vec![ledger_schema::Segment::Key("name".to_owned())]),
+        );
         ledger_schema::Verdict::Fixed
     });
     assert_eq!(
@@ -680,6 +686,7 @@ fn a_key_stored_under_an_alias_is_its_field() {
 /// The path is the key the value is stored under, so a decider that sets it fixes the stored key.
 #[test]
 fn an_issue_under_an_alias_is_listed_at_the_alias() {
+    use aliased_schema::Stored as _;
     let read = Aliased::from_value_with(json!({ "fullName": 7_i32 }), |raw, found| {
         for issue in found {
             if let aliased_schema::Issue::Invalid {
@@ -690,7 +697,7 @@ fn an_issue_under_an_alias_is_listed_at_the_alias() {
             } = issue
             {
                 assert_eq!(path.to_string(), "fullName");
-                path.set_in_value(raw, Value::from("Ada"));
+                raw.set_at(path, Value::from("Ada"));
             }
         }
         aliased_schema::Verdict::Fixed
@@ -988,6 +995,7 @@ fn an_optional_model_type_that_is_absent_or_null_is_no_issue() {
 /// A plain value inside a list or a map is read on its own, at its own path, with its own type.
 #[test]
 fn a_plain_value_in_a_list_or_a_map_is_listed_at_its_own_path() {
+    use tally_schema::Stored as _;
     let stored = json!({
         "counts": [1_i32, "2"],
         "grid": [[1_i32, "x"], 7_i32],
@@ -1021,7 +1029,7 @@ fn a_plain_value_in_a_list_or_a_map_is_listed_at_its_own_path() {
                 } else {
                     json!([])
                 };
-                path.set_in_value(raw, fixed);
+                raw.set_at(path, fixed);
             }
         }
         tally_schema::Verdict::Fixed
@@ -1104,7 +1112,7 @@ fn a_flagged_type_never_read_is_still_a_type() {
 /// `Path` puts a value at the place an issue names, and takes one away from it.
 #[test]
 fn a_path_sets_and_removes_inside_a_json_value() {
-    use ledger_schema::{Path, Segment};
+    use ledger_schema::{Path, Segment, Stored as _};
 
     let number = Path(vec![
         Segment::Key("versions".to_owned()),
@@ -1115,25 +1123,25 @@ fn a_path_sets_and_removes_inside_a_json_value() {
     assert_eq!(Path::default().to_string(), "");
 
     let mut raw = json!({ "versions": [{ "number": 1_i32 }, {}] });
-    assert!(number.set_in_value(&mut raw, json!(2_i32)));
+    assert!(raw.set_at(&number, json!(2_i32)));
     assert_eq!(
         raw,
         json!({ "versions": [{ "number": 1_i32 }, { "number": 2_i32 }] })
     );
-    assert!(number.remove_from_value(&mut raw));
-    assert!(!number.remove_from_value(&mut raw));
+    assert!(raw.remove_at(&number));
+    assert!(!raw.remove_at(&number));
 
     let third = Path(vec![Segment::Key("versions".to_owned()), Segment::Index(2)]);
-    assert!(!third.set_in_value(&mut raw, json!({})));
-    assert!(!third.remove_from_value(&mut raw));
+    assert!(!raw.set_at(&third, json!({})));
+    assert!(!raw.remove_at(&third));
     let first = Path(vec![Segment::Key("versions".to_owned()), Segment::Index(0)]);
-    assert!(first.remove_from_value(&mut raw));
+    assert!(raw.remove_at(&first));
     assert_eq!(raw, json!({ "versions": [{}] }));
 
-    assert!(Path::default().set_in_value(&mut raw, json!("whole")));
+    assert!(raw.set_at(&Path::default(), json!("whole")));
     assert_eq!(raw, json!("whole"));
-    assert!(!Path::default().remove_from_value(&mut raw));
-    assert!(!number.set_in_value(&mut raw, json!(2_i32)));
+    assert!(!raw.remove_at(&Path::default()));
+    assert!(!raw.set_at(&number, json!(2_i32)));
 }
 
 /// `?` carries a failed read into a caller's own error type, and it displays one line per issue.

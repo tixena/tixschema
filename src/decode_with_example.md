@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
-use invoice_schema::{Expected, Issue, Resolution, Resolver};
+use invoice_schema::{Expected, Issue, Resolution, Resolver, Stored as _};
 
 tixschema::decode_with_foundation!();
 
@@ -19,7 +19,7 @@ pub struct Invoice {
 /// Takes out a key the type no longer declares.
 fn drop_unknown_key(raw: &mut Value, issue: &Issue<Value>) -> Resolution {
     match issue {
-        Issue::Unknown { path, .. } if path.remove_from_value(raw) => Resolution::Settled,
+        Issue::Unknown { path, .. } if raw.remove_at(path) => Resolution::Settled,
         _ => Resolution::NotTouched,
     }
 }
@@ -31,7 +31,7 @@ fn count_from_text(raw: &mut Value, issue: &Issue<Value>) -> Resolution {
         return Resolution::NotTouched;
     };
     match text.parse::<u32>() {
-        Ok(count) if path.set_in_value(raw, Value::from(count)) => Resolution::Settled,
+        Ok(count) if raw.set_at(path, Value::from(count)) => Resolution::Settled,
         _ => Resolution::Rejected,
     }
 }

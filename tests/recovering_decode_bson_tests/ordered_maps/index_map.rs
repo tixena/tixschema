@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::super::written;
-use ranking_schema::{Expected, Issue, Resolution};
+use ranking_schema::{Expected, Issue, Resolution, Stored as _};
 
 #[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -43,7 +43,7 @@ fn number_as_text(raw: &mut Document, issue: &Issue<Bson>) -> Resolution {
     };
     let settled = text
         .parse::<i32>()
-        .is_ok_and(|number| path.set_in_document(raw, Bson::Int32(number)));
+        .is_ok_and(|number| raw.set_at(path, Bson::Int32(number)));
     if settled {
         Resolution::Settled
     } else {

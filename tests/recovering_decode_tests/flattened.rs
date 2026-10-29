@@ -619,6 +619,7 @@ fn an_issue_inside_each_flattened_type_is_listed_at_the_outer_objects_path() {
 
 #[test]
 fn a_decider_repairs_a_flattened_types_value_by_the_path_it_is_handed() {
+    use note_schema::Stored as _;
     let stored = json!({ "createdBy": 7_i32, "pinned": true, "revision": 1_i32, "text": "hello" });
     assert!(!serde_reads::<Note>(&stored));
     let mut seen: Vec<String> = Vec::new();
@@ -634,13 +635,13 @@ fn a_decider_repairs_a_flattened_types_value_by_the_path_it_is_handed() {
                 reason: _reason,
             } = issue
             {
-                path.set_in_value(raw, Value::from(number.to_string()));
+                raw.set_at(path, Value::from(number.to_string()));
             } else if let note_schema::Issue::Unknown {
                 path,
                 found: _found,
             } = issue
             {
-                path.remove_from_value(raw);
+                raw.remove_at(path);
             } else {
                 return note_schema::Verdict::Reject;
             }

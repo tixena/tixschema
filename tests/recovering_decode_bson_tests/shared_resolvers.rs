@@ -5,7 +5,7 @@ use bson::{Bson, Document, doc};
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-use invoice_schema::{Expected, Issue, Resolution, Resolver};
+use invoice_schema::{Expected, Issue, Resolution, Resolver, Stored as _};
 
 /// The resolvers the stored rows of this crate's types are read through, in order.
 const STORED: &[Resolver<'static, Document, Bson>] = &[&whole_number_as_text];
@@ -39,7 +39,7 @@ fn whole_number_as_text(raw: &mut Document, issue: &Issue<Bson>) -> Resolution {
     let settled = text
         .trim()
         .parse::<i64>()
-        .is_ok_and(|number| number >= 0_i64 && path.set_in_document(raw, Bson::Int64(number)));
+        .is_ok_and(|number| number >= 0_i64 && raw.set_at(path, Bson::Int64(number)));
     if settled {
         Resolution::Settled
     } else {
@@ -59,7 +59,7 @@ fn order_number_as_integer(raw: &mut Document, issue: &Issue<Bson>) -> Resolutio
     else {
         return Resolution::NotTouched;
     };
-    if path.set_in_document(raw, Bson::String(format!("ORD-{number:04}"))) {
+    if raw.set_at(path, Bson::String(format!("ORD-{number:04}"))) {
         Resolution::Settled
     } else {
         Resolution::Rejected
