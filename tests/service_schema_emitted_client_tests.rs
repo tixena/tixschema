@@ -1241,6 +1241,53 @@ mod option_alias_models;
 #[path = "service_schema_emitted_client_tests/run_option_aliases.rs"]
 mod run_option_aliases;
 
+/// A plain enum that names a check, read on its own and held by another type: its models and the
+/// payloads each emitted client is held to.
+#[cfg(all(test, any(feature = "dart", feature = "swift", feature = "kotlin")))]
+#[path = "service_schema_emitted_client_tests/plain_enum_check_rows.rs"]
+mod plain_enum_check_rows;
+
+/// A plain enum that names a check, read on its own by the emitted Dart types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_plain_enum_reads.rs"]
+mod run_dart_plain_enum_reads;
+
+/// A plain enum that names a check, read on its own by the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_plain_enum_reads.rs"]
+mod run_swift_plain_enum_reads;
+
+/// A plain enum that names a check, read on its own by the emitted Kotlin types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_plain_enum_reads.rs"]
+mod run_kotlin_plain_enum_reads;
+
+/// An enum published under another name, read and written by the emitted Kotlin types through each
+/// of its names.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_renamed_enums.rs"]
+mod run_kotlin_renamed_enums;
+
+/// A reply typed with a plain enum that names a check, handed to the emitted Kotlin clients.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_plain_enum_replies.rs"]
+mod run_kotlin_plain_enum_replies;
+
+/// A reply typed with a plain enum that names a check, handed to the emitted Dart clients.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_plain_enum_replies.rs"]
+mod run_dart_plain_enum_replies;
+
+/// A reply typed with a plain enum that names a check, handed to the emitted Swift client.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_plain_enum_replies.rs"]
+mod run_swift_plain_enum_replies;
+
+/// A reply typed with a plain enum that names a check, handed to the emitted TypeScript clients.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_plain_enum_replies.rs"]
+mod run_node_plain_enum_replies;
+
 // The transport's expansion reaches each service through `$crate`, which is this binary's root:
 // every trait and its schema module are named here for it to resolve.
 #[cfg(all(test, feature = "dart"))]
@@ -1294,50 +1341,3 @@ use tests::{ShelfClientService, shelf_client_service_schema};
     any(feature = "dart", feature = "kotlin", feature = "swift")
 ))]
 use text_position_rows::{TextPlacingClientService, text_placing_client_service_schema};
-
-/// A plain enum that names a check, read on its own and held by another type: its models and the
-/// payloads each emitted client is held to.
-#[cfg(all(test, any(feature = "dart", feature = "swift", feature = "kotlin")))]
-#[path = "service_schema_emitted_client_tests/plain_enum_check_rows.rs"]
-mod plain_enum_check_rows;
-
-/// A plain enum that names a check, read on its own by the emitted Dart types.
-#[cfg(test)]
-#[path = "service_schema_emitted_client_tests/run_dart_plain_enum_reads.rs"]
-mod run_dart_plain_enum_reads;
-
-/// A plain enum that names a check, read on its own by the emitted Swift types.
-#[cfg(test)]
-#[path = "service_schema_emitted_client_tests/run_swift_plain_enum_reads.rs"]
-mod run_swift_plain_enum_reads;
-
-/// A plain enum that names a check, read on its own by the emitted Kotlin types.
-#[cfg(test)]
-#[path = "service_schema_emitted_client_tests/run_kotlin_plain_enum_reads.rs"]
-mod run_kotlin_plain_enum_reads;
-
-/// An enum published under another name, read and written by the emitted Kotlin types through each
-/// of its names.
-#[cfg(test)]
-#[path = "service_schema_emitted_client_tests/run_kotlin_renamed_enums.rs"]
-mod run_kotlin_renamed_enums;
-
-/// A reply typed with a plain enum that names a check, handed to the emitted Kotlin clients.
-#[cfg(test)]
-#[path = "service_schema_emitted_client_tests/run_kotlin_plain_enum_replies.rs"]
-mod run_kotlin_plain_enum_replies;
-
-/// A reply typed with a plain enum that names a check, handed to the emitted Dart clients.
-#[cfg(test)]
-#[path = "service_schema_emitted_client_tests/run_dart_plain_enum_replies.rs"]
-mod run_dart_plain_enum_replies;
-
-/// A reply typed with a plain enum that names a check, handed to the emitted Swift client.
-#[cfg(test)]
-#[path = "service_schema_emitted_client_tests/run_swift_plain_enum_replies.rs"]
-mod run_swift_plain_enum_replies;
-
-/// A reply typed with a plain enum that names a check, handed to the emitted TypeScript clients.
-#[cfg(test)]
-#[path = "service_schema_emitted_client_tests/run_node_plain_enum_replies.rs"]
-mod run_node_plain_enum_replies;
