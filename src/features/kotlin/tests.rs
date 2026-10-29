@@ -558,7 +558,8 @@ fn a_brand_is_judged_by_its_own_serializer_and_answers_its_bounds_alone() {
         format!(
             "@OptIn(ExperimentalSerializationApi::class) @JvmInline @Serializable(with = \
              CodeSerializer::class) @KeepGeneratedSerializer value class Code(val value: String) \
-             {{ fun kotlinSchemaText(): String = value; fun validate(): List<String> {{ val \
+             {{ fun kotlinSchemaText(): String = value; fun kotlinSchemaLength(): Int = \
+             value.codePointCount(0, value.length); fun validate(): List<String> {{ val \
              violations = mutableListOf<String>(); {bound}; violations.addAll(unreserved(this)); \
              return violations }}; fun kotlinSchemaBound(): List<String> {{ val violations = \
              mutableListOf<String>(); {bound}; return violations }} }} {} {}",

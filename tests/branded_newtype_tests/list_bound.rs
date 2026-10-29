@@ -196,3 +196,178 @@ mod a_length_on_a_brand_over_a_list {
         );
     }
 }
+
+/// A length written where a list is named, not written: a brand over a list at a field, a brand
+/// over a brand over a list, and a generic brand whose declared default is a list.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+mod a_length_through_a_name {
+    use serde::{Deserialize, Serialize};
+    use tixschema::model_schema;
+
+    #[model_schema(no_display)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(transparent)]
+    pub struct Keywords(pub Vec<String>);
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Article {
+        #[model_schema_prop(minLength = 1)]
+        pub below: LaterKeywords,
+        #[model_schema_prop(minLength = 1, maxLength = 2)]
+        pub keywords: Keywords,
+    }
+
+    #[model_schema(no_display)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(transparent)]
+    pub struct LaterKeywords(pub Vec<String>);
+
+    #[model_schema(no_display, minLength = 1)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(transparent)]
+    pub struct SomeKeywords(pub Keywords);
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Collected {
+        #[model_schema_prop(maxLength = 2)]
+        pub some: SomeKeywords,
+    }
+
+    #[model_schema(no_display, minLength = 1, default_types(T = Vec<String>))]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(transparent)]
+    pub struct Held<T>(pub T);
+
+    fn words(count: usize) -> Vec<String> {
+        vec!["w".to_owned(); count]
+    }
+
+    fn article(keywords: usize, below: usize) -> Article {
+        Article {
+            keywords: Keywords(words(keywords)),
+            below: LaterKeywords(words(below)),
+        }
+    }
+
+    #[test]
+    fn a_field_typed_with_a_brand_over_a_list_counts_its_items() {
+        assert_eq!(article(1, 1).validate(), Ok(()));
+        assert_eq!(
+            article(0, 0).validate().unwrap_err(),
+            vec![
+                "'below': too short: minimum length is 1, got 0",
+                "'keywords': too short: minimum length is 1, got 0",
+            ]
+        );
+        assert_eq!(
+            article(3, 1).validate().unwrap_err(),
+            vec!["'keywords': too long: maximum length is 2, got 3"]
+        );
+    }
+
+    #[test]
+    fn the_read_refuses_what_validate_refuses_for_a_brand_over_a_list() {
+        assert_eq!(
+            serde_json::from_str::<Article>(r#"{"keywords":[],"below":["a"]}"#)
+                .unwrap_err()
+                .to_string(),
+            "'keywords': too short: minimum length is 1, got 0"
+        );
+        assert_eq!(
+            serde_json::from_str::<Article>(r#"{"keywords":["w"],"below":["w"]}"#).unwrap(),
+            article(1, 1)
+        );
+    }
+
+    #[test]
+    fn a_brand_over_a_brand_over_a_list_takes_the_two_lengths_on_the_type() {
+        assert_eq!(
+            SomeKeywords(Keywords(Vec::new())).validate().unwrap_err(),
+            vec!["too short: minimum length is 1, got 0"]
+        );
+        assert_eq!(SomeKeywords(Keywords(words(2))).validate(), Ok(()));
+        assert_eq!(
+            serde_json::from_str::<SomeKeywords>("[]")
+                .unwrap_err()
+                .to_string(),
+            "too short: minimum length is 1, got 0"
+        );
+        let collected = |count| Collected {
+            some: SomeKeywords(Keywords(words(count))),
+        };
+        assert_eq!(
+            collected(3).validate().unwrap_err(),
+            vec!["'some': too long: maximum length is 2, got 3"]
+        );
+        assert_eq!(collected(1).validate(), Ok(()));
+    }
+
+    #[test]
+    fn a_generic_brand_whose_default_is_a_list_counts_the_default_filling() {
+        assert_eq!(
+            Held(Vec::<String>::new()).validate().unwrap_err(),
+            vec!["too short: minimum length is 1, got 0"]
+        );
+        assert_eq!(Held(words(1)).validate(), Ok(()));
+        assert_eq!(
+            serde_json::from_str::<Held<Vec<String>>>("[]")
+                .unwrap_err()
+                .to_string(),
+            "too short: minimum length is 1, got 0"
+        );
+    }
+
+    #[cfg(feature = "zod")]
+    #[test]
+    fn the_zod_schema_counts_the_items_of_the_named_array() {
+        let said = "Array.isArray(issue.input) ? issue.input.length : String(issue.input).length";
+        let article = Article::zod_schema();
+        assert!(
+            article.contains(&format!(
+                "keywords: Keywords$Schema.check(z.minLength(1, {{ error: (issue) => `too \
+                 short: minimum length is 1, got ${{{said}}}` }})"
+            )),
+            "{article}"
+        );
+        let some = SomeKeywords::zod_schema();
+        assert!(
+            some.contains("Keywords$Schema.check(z.minLength(1, { error: (issue) =>"),
+            "{some}"
+        );
+        let held = Held::<String>::zod_schema();
+        assert!(
+            held.contains(
+                "z.array(z.string()).min(1, { error: (issue) => `too short: minimum length is 1, \
+                 got ${Array.isArray(issue.input) ? issue.input.length : 0}` })"
+            ),
+            "{held}"
+        );
+    }
+
+    #[cfg(feature = "jsonschema")]
+    #[test]
+    fn the_json_schema_writes_the_count_beside_the_name() {
+        use serde_json::json;
+
+        let listed = json!({ "type": "array", "items": { "type": "string" } });
+        assert_eq!(
+            Article::json_schema()["properties"]["keywords"],
+            json!({ "allOf": [listed, {
+                "minLength": 1_u32, "minItems": 1_u32, "maxLength": 2_u32, "maxItems": 2_u32
+            }] })
+        );
+        assert_eq!(
+            SomeKeywords::json_schema(),
+            json!({ "allOf": [listed, { "minLength": 1_u32, "minItems": 1_u32 }] })
+        );
+        assert_eq!(
+            Held::<String>::json_schema(),
+            json!({ "allOf": [listed, { "minItems": 1_u32 }] })
+        );
+    }
+}

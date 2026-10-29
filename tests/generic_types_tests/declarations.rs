@@ -69,6 +69,14 @@ mod text_forms;
 #[path = "commented_models.rs"]
 mod commented;
 
+/// Names of lists that take a length: a brand, an alias, a brand over a brand and a generic brand.
+#[path = "named_count_models.rs"]
+mod named_counts;
+
+/// Aliases of a map whose values are a model, one of them declared above the enum that holds it.
+#[path = "map_alias_models.rs"]
+mod map_aliases;
+
 /// A date under `as_number` in a member of an untagged enum, and what serde and the Zod schema
 /// answer of each payload.
 #[cfg(feature = "chrono")]
@@ -250,6 +258,61 @@ console.log(
     said({ slug: "abc", spare: "abc" }),
   ]),
 );
+"#;
+
+/// Loads the names of lists that take a length and parses a payload through each: the verdicts
+/// `validate()` gives the same values.
+const NAMED_COUNTS_DRIVER: &str = r#"import * as lib from "./lib/index.js";
+import { z } from "zod";
+
+const said = (schema, payload) => {
+  const read = schema.safeParse(payload);
+  const lead = (issue) => (issue.path.length > 0 ? `${issue.path.join(".")}: ` : "");
+  return read.success ? "taken" : read.error.issues.map((issue) => `${lead(issue)}${issue.message}`).join(" | ");
+};
+const poster = (slogans, mottos, later) => ({ slogans, mottos, later });
+console.log(
+  JSON.stringify([
+    said(lib.Poster$Schema, poster(["a"], ["b"], ["c"])),
+    said(lib.Poster$Schema, poster([], ["b"], ["c"])),
+    said(lib.Poster$Schema, poster(["a", "b", "c"], ["b"], ["c"])),
+    said(lib.Poster$Schema, poster(["a"], [], ["c"])),
+    said(lib.Poster$Schema, poster(["a"], ["b"], [])),
+    said(lib.SomeSlogans$Schema, []),
+    said(lib.SomeSlogans$Schema, ["a"]),
+    said(lib.Billboard$Schema, { some: ["a", "b", "c"] }),
+    said(lib.Billboard$Schema, { some: [] }),
+    said(lib.Billboard$Schema, { some: ["a"] }),
+    said(lib.Carried$SchemaDefault, []),
+    said(lib.Carried$SchemaDefault, ["a"]),
+    said(lib.Carried$SchemaFactory(z.number().int()), 7),
+  ]),
+);
+"#;
+
+/// What [`NAMED_COUNTS_DRIVER`] prints.
+const NAMED_COUNTS: &str = r#"["taken","slogans: too short: minimum length is 1, got 0","slogans: too long: maximum length is 2, got 3","mottos: too short: minimum length is 1, got 0","later: too short: minimum length is 1, got 0","too short: minimum length is 1, got 0","taken","some: too long: maximum length is 2, got 3","some: too short: minimum length is 1, got 0","taken","too short: minimum length is 1, got 0","taken","taken"]"#;
+
+/// What the aliased maps' driver prints: each payload an alias reads, as taken or refused.
+const MAP_ALIASES: &str = "[true,false,true,false,true,false,true,false,true,false]";
+
+/// Loads the aliases of a map in the order the declarations write them and parses a payload
+/// through each.
+const MAP_ALIASES_DRIVER: &str = r#"import * as lib from "./lib/index.js";
+
+const rows = [
+  [lib.Bazaar$Schema, { a: { goods: "x" } }],
+  [lib.Bazaar$Schema, { a: 5 }],
+  [lib.Souk$Schema, { a: { goods: "x" } }],
+  [lib.Souk$Schema, { a: 5 }],
+  [lib.Sheet$Schema, { a: { Flag: true } }],
+  [lib.Sheet$Schema, { a: 5 }],
+  [lib.Sheet$Schema, { a: { Nested: { b: { Text: "t" } } } }],
+  [lib.Sheet$Schema, { a: { Nested: { b: 5 } } }],
+  [lib.Cell$Schema, { Row: [{ Nested: { a: { Flag: false } } }] }],
+  [lib.Cell$Schema, { Row: [{ Nested: { a: 5 } }] }],
+];
+console.log(JSON.stringify(rows.map(([schema, payload]) => schema.safeParse(payload).success)));
 "#;
 
 /// Loads the compiled bundle and parses through the struct whose fields bound a brand.
@@ -483,6 +546,8 @@ const schemas = {
   "Batch<u32>": lib.Batch$SchemaFactory(z.number().int()),
   "Ledger<String>": lib.Ledger$SchemaDefault,
   "Ledger<u32>": lib.Ledger$SchemaFactory(z.number().int()),
+  "Archive<String>": lib.Archive$SchemaDefault,
+  "Archive<u32>": lib.Archive$SchemaFactory(z.number().int()),
   Pallet: lib.Pallet$Schema,
   Package: lib.Package$Schema,
   Docket: lib.Docket$Schema,
@@ -2651,6 +2716,8 @@ fn checks() -> Vec<String> {
         checked::Batch::<String>::zod_schema(),
         checked::Ledger::<String>::ts_definition(),
         checked::Ledger::<String>::zod_schema(),
+        checked::Archive::<String>::ts_definition(),
+        checked::Archive::<String>::zod_schema(),
         checked::Pallet::ts_definition(),
         checked::Pallet::zod_schema(),
         checked::places::Package::ts_definition(),
@@ -3877,6 +3944,156 @@ fn type_check_every_schema_holds_its_examples_once_loaded() {
     assert_eq!(
         printed, EXAMPLES,
         "the bundle does not load and hold its examples under node:\n{failed}"
+    );
+}
+
+/// The names of lists that take a length, in the order the declarations write them.
+fn named_counts_bundle() -> String {
+    [
+        PREAMBLE.to_owned(),
+        named_counts::Slogans::ts_definition(),
+        named_counts::Slogans::zod_schema(),
+        named_counts::mottos_schema::Schema::ts_definition(),
+        named_counts::mottos_schema::Schema::zod_schema(),
+        named_counts::Poster::ts_definition(),
+        named_counts::Poster::zod_schema(),
+        named_counts::LaterSlogans::ts_definition(),
+        named_counts::LaterSlogans::zod_schema(),
+        named_counts::SomeSlogans::ts_definition(),
+        named_counts::SomeSlogans::zod_schema(),
+        named_counts::Billboard::ts_definition(),
+        named_counts::Billboard::zod_schema(),
+        named_counts::Carried::<String>::ts_definition(),
+        named_counts::Carried::<String>::zod_schema(),
+    ]
+    .join("\n\n")
+}
+
+/// The aliases of [`map_aliases`], in the order the declarations write them: the alias of a map
+/// of an enum above the enum that holds it.
+fn map_aliases_bundle() -> String {
+    [
+        PREAMBLE.to_owned(),
+        map_aliases::Stall::ts_definition(),
+        map_aliases::Stall::zod_schema(),
+        map_aliases::bazaar_schema::Schema::ts_definition(),
+        map_aliases::bazaar_schema::Schema::zod_schema(),
+        map_aliases::souk_schema::Schema::ts_definition(),
+        map_aliases::souk_schema::Schema::zod_schema(),
+        map_aliases::sheet_schema::Schema::ts_definition(),
+        map_aliases::sheet_schema::Schema::zod_schema(),
+        map_aliases::Cell::ts_definition(),
+        map_aliases::Cell::zod_schema(),
+    ]
+    .join("\n\n")
+}
+
+/// A length written on a field typed with the name of a list, or on a brand over such a name, is
+/// counted under `node` as `validate()` counts it.
+#[test]
+fn type_check_a_length_on_a_name_of_a_list_counts_its_items() {
+    use named_counts::{Billboard, Carried, LaterSlogans, Mottos, Poster, Slogans, SomeSlogans};
+
+    let words = |count: usize| vec!["w".to_owned(); count];
+    let poster = |slogans, mottos: Mottos, later| Poster {
+        slogans: Slogans(words(slogans)),
+        mottos,
+        later: LaterSlogans(words(later)),
+    };
+    let broken: Vec<Vec<String>> = vec![
+        poster(1, words(1), 1).validate(),
+        poster(0, words(1), 1).validate(),
+        poster(3, words(1), 1).validate(),
+        poster(1, Vec::new(), 1).validate(),
+        poster(1, words(1), 0).validate(),
+        SomeSlogans(Slogans(Vec::new())).validate(),
+        SomeSlogans(Slogans(words(1))).validate(),
+        Billboard {
+            some: SomeSlogans(Slogans(words(3))),
+        }
+        .validate(),
+        Billboard {
+            some: SomeSlogans(Slogans(Vec::new())),
+        }
+        .validate(),
+        Billboard {
+            some: SomeSlogans(Slogans(words(1))),
+        }
+        .validate(),
+        Carried(Vec::<String>::new()).validate(),
+        Carried(words(1)).validate(),
+    ]
+    .into_iter()
+    .map(|answered| answered.err().unwrap_or_default())
+    .collect();
+    assert_eq!(
+        broken,
+        [
+            Vec::<&str>::new(),
+            vec!["'slogans': too short: minimum length is 1, got 0"],
+            vec!["'slogans': too long: maximum length is 2, got 3"],
+            vec!["'mottos': too short: minimum length is 1, got 0"],
+            vec!["'later': too short: minimum length is 1, got 0"],
+            vec!["too short: minimum length is 1, got 0"],
+            vec![],
+            vec!["'some': too long: maximum length is 2, got 3"],
+            vec!["'some': too short: minimum length is 1, got 0"],
+            vec![],
+            vec!["too short: minimum length is 1, got 0"],
+            vec![],
+        ],
+        "`validate()` does not answer what the rows state"
+    );
+    let Some((printed, failed)) =
+        loaded_from("named-counts", &named_counts_bundle(), NAMED_COUNTS_DRIVER)
+    else {
+        return;
+    };
+    assert_eq!(
+        printed, NAMED_COUNTS,
+        "the bundle does not load and parse under node:\n{failed}"
+    );
+}
+
+/// An alias of a map whose values are a model publishes them as that model, loads when the enum
+/// that holds the alias is declared below it, and takes and refuses what serde does.
+#[test]
+fn type_check_an_alias_of_a_map_of_models_loads_and_reads_its_values() {
+    let read = |json: &str| {
+        [
+            serde_json::from_str::<map_aliases::Bazaar>(json).is_ok(),
+            serde_json::from_str::<map_aliases::Souk>(json).is_ok(),
+        ]
+    };
+    assert_eq!(read(r#"{"a":{"goods":"x"}}"#), [true, true]);
+    assert_eq!(read(r#"{"a":5}"#), [false, false]);
+    let cells = |json: &str| serde_json::from_str::<map_aliases::Sheet>(json).is_ok();
+    assert_eq!(
+        [
+            cells(r#"{"a":{"Flag":true}}"#),
+            cells(r#"{"a":5}"#),
+            cells(r#"{"a":{"Nested":{"b":{"Text":"t"}}}}"#),
+            cells(r#"{"a":{"Nested":{"b":5}}}"#),
+        ],
+        [true, false, true, false],
+        "serde does not read what the rows state"
+    );
+    assert!(
+        map_aliases::bazaar_schema::Schema::ts_definition()
+            .contains("Partial<Record<string, Stall>>")
+    );
+    assert!(
+        map_aliases::sheet_schema::Schema::ts_definition()
+            .contains("Partial<Record<string, Cell>>")
+    );
+    let Some((printed, failed)) =
+        loaded_from("map-aliases", &map_aliases_bundle(), MAP_ALIASES_DRIVER)
+    else {
+        return;
+    };
+    assert_eq!(
+        printed, MAP_ALIASES,
+        "the bundle does not load and parse under node:\n{failed}"
     );
 }
 

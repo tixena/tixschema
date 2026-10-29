@@ -25,7 +25,7 @@ use crate::utils::{
 };
 
 #[cfg(feature = "zod")]
-use crate::bound_message::{Bound, zod_error_arg, zod_repeat_check};
+use crate::bound_message::{Bound, zod_error_arg, zod_named_error_arg, zod_repeat_check};
 #[cfg(feature = "zod")]
 use crate::features::serde::defaults::{holds_a_placeholder, placeholder};
 #[cfg(feature = "zod")]
@@ -2111,11 +2111,46 @@ impl FieldDef {
         least.into_iter().chain(most).collect()
     }
 
+    /// Where this member reaches a parameter of the generic type that holds it, the checks run
+    /// through a function written ahead of the builder, which takes the member's schema at any
+    /// filling: inside the builder the value a check is handed is typed by the parameter, not by
+    /// the published type. Returns that function's declaration and has the member call it as
+    /// `name`; nothing for a member that names no check or reaches no parameter.
+    #[cfg(all(feature = "zod", feature = "typescript"))]
+    pub fn zod_check_helper_declaration(
+        &mut self,
+        name: &str,
+        parameters: &[String],
+    ) -> Option<String> {
+        if self.checks().is_empty() || self.parameter_or_argument_name().is_none() {
+            return None;
+        }
+        let held = typescript_with_identifiers_as(
+            &self.typescript_base(),
+            parameters,
+            "ZodType[\"_zod\"][\"output\"]",
+        );
+        let run = zod_check_wrap("built".to_owned(), self.checks());
+        self.model_schema_prop_meta.as_mut()?.zod_check_helper = Some(name.to_owned());
+        Some(format!(
+            "function {name}<Built extends ZodType>(built: Built): Built;\nfunction \
+             {name}(built: ZodType<{held}>): ZodType {{\n  return {run};\n}}\n\n"
+        ))
+    }
+
     /// [`Self::zod_array_base`] with the checks the field names written on it: the schema of the
     /// value a check takes, under any `Option` and inside any `preprocess`.
     #[cfg(feature = "zod")]
     fn zod_checked_base(&self) -> String {
-        zod_check_wrap(self.zod_array_base(), self.checks())
+        let base = self.zod_array_base();
+        match self
+            .model_schema_prop_meta
+            .as_ref()
+            .and_then(|meta| meta.zod_check_helper.as_deref())
+        {
+            Some(helper) => format!("{helper}({base})"),
+            None => zod_check_wrap(base, self.checks()),
+        }
     }
 
     /// Whether the type this field names is an untagged enum whose Zod schema is a discriminated
@@ -2347,11 +2382,11 @@ impl FieldDef {
         };
         let mut checks: Vec<String> = Vec::new();
         if let Some(min_len) = meta.min_length {
-            let reported = zod_error_arg(Bound::MinLength(min_len));
+            let reported = zod_named_error_arg(Bound::MinLength(min_len));
             checks.push(format!("z.minLength({min_len}, {reported})"));
         }
         if let Some(max_len) = meta.max_length {
-            let reported = zod_error_arg(Bound::MaxLength(max_len));
+            let reported = zod_named_error_arg(Bound::MaxLength(max_len));
             checks.push(format!("z.maxLength({max_len}, {reported})"));
         }
         if let Some(pattern) = &meta.pattern {
@@ -2519,6 +2554,21 @@ impl FieldDef {
         }
     }
 
+    /// [`Self::zod_type`], with the value of a map that names a type declared below this one read
+    /// behind `z.lazy`: an alias binds its schema in a `const` of its own, which runs before a
+    /// `const` declared further down exists.
+    #[cfg(feature = "zod")]
+    pub fn zod_type_deferring_a_later_map_value(&self) -> String {
+        if let FieldDefType::Map(key, value) = &self.field_type
+            && self.array_depth == 0
+            && !self.is_optional()
+            && value.reaches_a_type_declared_later()
+        {
+            return key.zod_map_record_call(&format!("z.lazy(() => {})", value.zod_slot_type()));
+        }
+        self.zod_type()
+    }
+
     /// [`Self::zod_union_members`] before the union's checks are written on each member.
     #[cfg(feature = "zod")]
     pub fn zod_unchecked_union_members(&self) -> Vec<ZodUnionMember> {
@@ -2566,6 +2616,28 @@ impl FieldDef {
         }
         members
     }
+}
+
+/// `text` with each identifier in `names` written as `replacement`.
+#[cfg(all(feature = "zod", feature = "typescript"))]
+fn typescript_with_identifiers_as(text: &str, names: &[String], replacement: &str) -> String {
+    let mut written = String::new();
+    let mut word = String::new();
+    for character in text.chars().chain(Some(' ')) {
+        if character.is_alphanumeric() || matches!(character, '_' | '$') {
+            word.push(character);
+            continue;
+        }
+        if names.contains(&word) {
+            written.push_str(replacement);
+        } else {
+            written.push_str(&word);
+        }
+        word.clear();
+        written.push(character);
+    }
+    written.pop();
+    written
 }
 
 /// `name` with each of `arguments` written as a slot is, where it takes any.

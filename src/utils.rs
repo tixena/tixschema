@@ -110,6 +110,15 @@ pub enum AliasKind {
     Unknown,
 }
 
+/// What `minLength` and `maxLength` count on a value: the characters of a text, or the items of a
+/// list.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Counted {
+    Characters,
+    Items,
+}
+
 /// What a bare wire scalar is read from the text of: text, a `bool`, a float, an integer, or a
 /// `u64` or an `i64`, which TypeScript holds as a `bigint`.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -288,6 +297,10 @@ pub struct OptionTarget {
 /// reads to reference it.
 #[derive(Clone)]
 pub struct AliasInfo {
+    /// What a bound written on a field of this name counts, where it counts anything: a brand over
+    /// a text or a list publishes the count, and an alias of a list.
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    pub counted: Option<Counted>,
     pub export_name: String,
     /// What an externally tagged enum's variants are spelled as where an object flattens the enum
     /// itself, one per variant in the order the union writes them, and empty for every other item.
@@ -1291,6 +1304,8 @@ pub fn register_alias_info(
         map.borrow_mut().insert(
             rust_ident.to_owned(),
             AliasInfo {
+                #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+                counted: None,
                 export_name: export_name.to_owned(),
                 #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
                 flatten_variants: Vec::new(),
@@ -1314,6 +1329,17 @@ pub fn register_alias_info(
                 zod_union_checks: Vec::new(),
             },
         );
+    });
+}
+
+/// Records what a bound written on a field of this name counts, on the entry that name has just
+/// registered.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+pub fn record_counted(rust_ident: &str, counted: Counted) {
+    ALIAS_INFO.with(|map| {
+        if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
+            info.counted = Some(counted);
+        }
     });
 }
 
