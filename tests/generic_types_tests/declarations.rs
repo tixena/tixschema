@@ -298,6 +298,32 @@ console.log(
 /// What [`NAMED_COUNTS_DRIVER`] prints.
 const NAMED_COUNTS: &str = r#"["taken","slogans: too short: minimum length is 1, got 0","slogans: too long: maximum length is 2, got 3","mottos: too short: minimum length is 1, got 0","later: too short: minimum length is 1, got 0","too short: minimum length is 1, got 0","taken","some: too long: maximum length is 2, got 3","some: too short: minimum length is 1, got 0","taken","too short: minimum length is 1, got 0","taken","taken"]"#;
 
+/// Parses a payload through the alias of an `IndexSet` and the brand over it, each under a length.
+#[cfg(feature = "indexmap")]
+const INDEX_SET_COUNTS_DRIVER: &str = r#"import * as lib from "./lib/index.js";
+
+const said = (schema, payload) => {
+  const read = schema.safeParse(payload);
+  const lead = (issue) => (issue.path.length > 0 ? `${issue.path.join(".")}: ` : "");
+  return read.success ? "taken" : read.error.issues.map((issue) => `${lead(issue)}${issue.message}`).join(" | ");
+};
+console.log(
+  JSON.stringify([
+    said(lib.Lineup$Schema, { ordered: ["a"], some: ["b"] }),
+    said(lib.Lineup$Schema, { ordered: [], some: ["b"] }),
+    said(lib.Lineup$Schema, { ordered: ["a", "b", "c"], some: ["b"] }),
+    said(lib.Lineup$Schema, { ordered: ["a"], some: [] }),
+    said(lib.Lineup$Schema, { ordered: ["a"], some: ["a", "b", "c"] }),
+    said(lib.SomeOrdered$Schema, []),
+    said(lib.SomeOrdered$Schema, ["a"]),
+  ]),
+);
+"#;
+
+/// What [`INDEX_SET_COUNTS_DRIVER`] prints.
+#[cfg(feature = "indexmap")]
+const INDEX_SET_COUNTS: &str = r#"["taken","ordered: too short: minimum length is 1, got 0","ordered: too long: maximum length is 2, got 3","some: too short: minimum length is 1, got 0","some: too long: maximum length is 2, got 3","too short: minimum length is 1, got 0","taken"]"#;
+
 /// What the aliased maps' driver prints: each payload an alias reads, as taken or refused.
 const MAP_ALIASES: &str = "[true,false,true,false,true,false,true,false,true,false]";
 
@@ -4134,6 +4160,71 @@ fn type_check_a_length_on_a_name_of_a_list_counts_its_items() {
     };
     assert_eq!(
         printed, NAMED_COUNTS,
+        "the bundle does not load and parse under node:\n{failed}"
+    );
+}
+
+/// The alias of an `IndexSet`, the brand over it and the struct that holds both, in the order the
+/// declarations write them.
+#[cfg(feature = "indexmap")]
+fn index_set_counts_bundle() -> String {
+    [
+        PREAMBLE.to_owned(),
+        named_counts::ordered_schema::Schema::ts_definition(),
+        named_counts::ordered_schema::Schema::zod_schema(),
+        named_counts::SomeOrdered::ts_definition(),
+        named_counts::SomeOrdered::zod_schema(),
+        named_counts::Lineup::ts_definition(),
+        named_counts::Lineup::zod_schema(),
+    ]
+    .join("\n\n")
+}
+
+/// A length written on a field typed with an alias of an `IndexSet`, or on a brand over the alias,
+/// is counted under `node` as `validate()` counts it.
+#[cfg(feature = "indexmap")]
+#[test]
+fn type_check_a_length_on_an_alias_of_an_index_set_counts_its_items() {
+    use indexmap::IndexSet;
+    use named_counts::{Lineup, SomeOrdered};
+
+    let items = |count: usize| -> IndexSet<String> {
+        (0..count).map(|number| number.to_string()).collect()
+    };
+    let lineup = |ordered, some| Lineup {
+        ordered: items(ordered),
+        some: SomeOrdered(items(some)),
+    };
+    let broken: Vec<Vec<String>> = vec![
+        lineup(1, 1).validate(),
+        lineup(0, 1).validate(),
+        lineup(3, 1).validate(),
+        SomeOrdered(items(0)).validate(),
+        SomeOrdered(items(1)).validate(),
+    ]
+    .into_iter()
+    .map(|answered| answered.err().unwrap_or_default())
+    .collect();
+    assert_eq!(
+        broken,
+        [
+            Vec::<&str>::new(),
+            vec!["'ordered': too short: minimum length is 1, got 0"],
+            vec!["'ordered': too long: maximum length is 2, got 3"],
+            vec!["too short: minimum length is 1, got 0"],
+            vec![],
+        ],
+        "`validate()` does not answer what the rows state"
+    );
+    let Some((printed, failed)) = loaded_from(
+        "index-set-counts",
+        &index_set_counts_bundle(),
+        INDEX_SET_COUNTS_DRIVER,
+    ) else {
+        return;
+    };
+    assert_eq!(
+        printed, INDEX_SET_COUNTS,
         "the bundle does not load and parse under node:\n{failed}"
     );
 }

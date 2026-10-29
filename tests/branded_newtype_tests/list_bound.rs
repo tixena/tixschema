@@ -371,3 +371,127 @@ mod a_length_through_a_name {
         );
     }
 }
+
+/// A length written where an alias of an `IndexSet` is named, and on a brand over that alias.
+#[cfg(all(
+    feature = "serde",
+    feature = "indexmap",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+mod a_length_through_an_alias_of_an_index_set {
+    use indexmap::IndexSet;
+    use serde::{Deserialize, Serialize};
+    use tixschema::model_schema;
+
+    #[model_schema()]
+    pub type Queue = IndexSet<String>;
+
+    #[model_schema(no_display, minLength = 1)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(transparent)]
+    pub struct SomeQueue(pub Queue);
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Roster {
+        #[model_schema_prop(minLength = 1, maxLength = 2)]
+        pub queue: Queue,
+        #[model_schema_prop(maxLength = 2)]
+        pub some: SomeQueue,
+    }
+
+    fn queue(count: usize) -> Queue {
+        (0..count).map(|number| number.to_string()).collect()
+    }
+
+    fn roster(queued: usize, some: usize) -> Roster {
+        Roster {
+            queue: queue(queued),
+            some: SomeQueue(queue(some)),
+        }
+    }
+
+    #[test]
+    fn validate_counts_the_items() {
+        assert_eq!(roster(1, 1).validate(), Ok(()));
+        assert_eq!(
+            roster(0, 0).validate().unwrap_err(),
+            vec![
+                "'queue': too short: minimum length is 1, got 0",
+                "'some': too short: minimum length is 1, got 0",
+            ]
+        );
+        assert_eq!(
+            roster(3, 3).validate().unwrap_err(),
+            vec![
+                "'queue': too long: maximum length is 2, got 3",
+                "'some': too long: maximum length is 2, got 3",
+            ]
+        );
+        assert_eq!(
+            SomeQueue(queue(0)).validate().unwrap_err(),
+            vec!["too short: minimum length is 1, got 0"]
+        );
+    }
+
+    #[test]
+    fn the_read_refuses_what_validate_refuses() {
+        assert_eq!(
+            serde_json::from_str::<Roster>(r#"{"queue":[],"some":["a"]}"#)
+                .unwrap_err()
+                .to_string(),
+            "'queue': too short: minimum length is 1, got 0"
+        );
+        assert_eq!(
+            serde_json::from_str::<Roster>(r#"{"queue":["a","a","b","b","c"],"some":["a"]}"#)
+                .unwrap_err()
+                .to_string(),
+            "'queue': too long: maximum length is 2, got 3",
+            "a set keeps each item once before it is counted"
+        );
+        assert_eq!(
+            serde_json::from_str::<SomeQueue>("[]")
+                .unwrap_err()
+                .to_string(),
+            "too short: minimum length is 1, got 0"
+        );
+        assert_eq!(
+            serde_json::from_str::<Roster>(r#"{"queue":["a"],"some":["a"]}"#).unwrap(),
+            Roster {
+                queue: IndexSet::from(["a".to_owned()]),
+                some: SomeQueue(IndexSet::from(["a".to_owned()])),
+            }
+        );
+    }
+
+    #[cfg(feature = "zod")]
+    #[test]
+    fn the_zod_schema_counts_the_items() {
+        let said = "Array.isArray(issue.input) ? issue.input.length : String(issue.input).length";
+        let roster = Roster::zod_schema();
+        assert!(
+            roster.contains(&format!(
+                "queue: QueueType$Schema.check(z.minLength(1, {{ error: (issue) => `too \
+                 short: minimum length is 1, got ${{{said}}}` }})"
+            )),
+            "{roster}"
+        );
+        let some = SomeQueue::zod_schema();
+        assert!(
+            some.contains("QueueType$Schema.check(z.minLength(1, { error: (issue) =>"),
+            "{some}"
+        );
+    }
+
+    #[cfg(feature = "jsonschema")]
+    #[test]
+    fn the_json_schema_writes_the_count_beside_the_name() {
+        let narrowing = &Roster::json_schema()["properties"]["queue"]["allOf"][1];
+        assert_eq!(
+            narrowing,
+            &serde_json::json!({
+                "minLength": 1_u32, "minItems": 1_u32, "maxLength": 2_u32, "maxItems": 2_u32
+            })
+        );
+    }
+}

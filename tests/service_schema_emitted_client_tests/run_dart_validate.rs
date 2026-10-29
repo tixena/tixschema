@@ -271,6 +271,28 @@ pub struct Poster {
     pub some: SomeSlogans,
 }
 
+/// An alias of an `IndexSet`.
+#[cfg(feature = "indexmap")]
+#[model_schema()]
+pub type Queue = indexmap::IndexSet<String>;
+
+/// Members typed with the alias of an `IndexSet` and with a brand over it, each under a length.
+#[cfg(feature = "indexmap")]
+#[model_schema(no_display, minLength = 1)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct SomeQueue(pub Queue);
+
+#[cfg(feature = "indexmap")]
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Lineup {
+    #[model_schema_prop(minLength = 1, maxLength = 2)]
+    pub queue: Queue,
+    #[model_schema_prop(maxLength = 2)]
+    pub some: SomeQueue,
+}
+
 /// A type with a parameter, held by a member of another that reaches the same parameter.
 #[model_schema(default_types(IdType = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -657,6 +679,12 @@ pub fn shape_definitions() -> Vec<String> {
         terminal_dart::dart_definition(),
         docket_dart::dart_definition(),
         lift_dart::dart_definition(),
+    ]);
+    #[cfg(feature = "indexmap")]
+    definitions.extend([
+        queue_dart::dart_definition(),
+        some_queue_dart::dart_definition(),
+        lineup_dart::dart_definition(),
     ]);
     definitions
 }
@@ -1567,4 +1595,42 @@ fn the_readme_shows_what_is_declared_emitted_and_printed() {
         section.contains("Error: The method 'withinParcel' isn't defined for the type 'Parcel'."),
         "{section}"
     );
+}
+
+/// A length written on a member typed with the alias of an `IndexSet`, or on a brand over it,
+/// counts the items as Rust's `validate()` does.
+#[cfg(feature = "indexmap")]
+#[test]
+fn a_length_on_an_alias_of_an_index_set_counts_the_items() {
+    let items = |count: usize| -> indexmap::IndexSet<String> {
+        (0..count).map(|number| number.to_string()).collect()
+    };
+    let lineup = |queue: usize, some: usize| Lineup {
+        queue: items(queue),
+        some: SomeQueue(items(some)),
+    };
+    let reader = "Lineup.fromJsonUnjudged(@)";
+    let (kept, empty, wide) = (lineup(1, 1), lineup(0, 0), lineup(3, 3));
+    let cases = [
+        compared("Lineup", &kept, kept.validate(), reader),
+        compared("Lineup, no item", &empty, empty.validate(), reader),
+        compared("Lineup, too many items", &wide, wide.validate(), reader),
+    ];
+    assert_eq!(
+        report(&cases),
+        "\
+Lineup: passes
+Lineup, no item: refused
+    'queue': too short: minimum length is 1, got 0
+    'some': too short: minimum length is 1, got 0
+Lineup, too many items: refused
+    'queue': too long: maximum length is 2, got 3
+    'some': too long: maximum length is 2, got 3
+",
+        "what Rust's `validate()` answers"
+    );
+    let Some(wrote) = printed("index_set.dart", &cases) else {
+        return;
+    };
+    assert_eq!(wrote, report(&cases));
 }
