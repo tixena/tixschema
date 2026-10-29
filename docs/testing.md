@@ -208,12 +208,11 @@ fn test_complex_nested() {
 
 ## CI/CD Integration
 
-A change is held to the gate, [.github/workflows/ci.yml](../.github/workflows/ci.yml), on every push and pull request to `master`. It is `just all`, three lines with every feature on:
+A change is held to the gate, [.github/workflows/ci.yml](../.github/workflows/ci.yml), on every push and pull request to `master`. It is `just all`, two lines with every feature on:
 
 1. `cargo clippy --all-targets --all-features -- -D warnings`
-2. `cargo build --all-features`
-3. `cargo test --all-features`
-4. Discord notification with build status
+2. `cargo test --all-features`
+3. Discord notification with build status
 
 The full run, [.github/workflows/full.yml](../.github/workflows/full.yml), is started every three days and by hand. No change waits for it:
 

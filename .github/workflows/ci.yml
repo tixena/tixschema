@@ -1,6 +1,6 @@
 name: CI Pipeline
 
-# The gate a change is held to: every feature on, one lint, one build, one test run. The feature
+# The gate a change is held to: every feature on, one lint and one test run. The feature
 # sets, the emitted clients' own run and the audit are in `full.yml`.
 on:
   push:
@@ -77,12 +77,6 @@ jobs:
         echo "🧹 Linting with every feature on..."
         cargo clippy --all-targets --all-features -- -D warnings
 
-    - name: Build with every feature on
-      id: build
-      run: |
-        echo "🏗️ Building with every feature on..."
-        cargo build --all-features
-
     - name: Test with every feature on
       id: test
       run: |
@@ -109,7 +103,6 @@ jobs:
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         TIMESTAMP: ${{ github.event.head_commit.timestamp }}
         LINT: ${{ steps.lint.outcome }}
-        BLD: ${{ steps.build.outcome }}
         TEST: ${{ steps.test.outcome }}
       run: |
         # Validate repository to prevent forks from sending notifications
@@ -122,13 +115,12 @@ jobs:
         JOB_STATUS="success"
         FAILED_STEP="None"
         if [[ "$LINT" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Lint (cargo clippy --all-features)";
-        elif [[ "$BLD" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Build (cargo build --all-features)";
         elif [[ "$TEST" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Tests (cargo test --all-features)";
         fi
 
         icon() { case "$1" in success) printf '✅';; failure) printf '❌';; *) printf '⏭️';; esac; }
-        STATUS_VALUE=$(printf '🧹 Lint: %s\n🏗️ Build: %s\n🧪 Tests: %s' \
-          "$(icon "$LINT")" "$(icon "$BLD")" "$(icon "$TEST")")
+        STATUS_VALUE=$(printf '🧹 Lint: %s\n🧪 Tests: %s' \
+          "$(icon "$LINT")" "$(icon "$TEST")")
 
         # Per-event details: commit message / author / PR link
         if [[ "$EVENT_NAME" == "pull_request" ]]; then

@@ -261,11 +261,10 @@ clean:
     cargo clean --manifest-path bson3/Cargo.toml
     @echo "✅ Build artifacts cleaned!"
 
-# The gate (standardized `all` entry point across tixena repos): every feature on, one lint, one
-# build, one test run. It is what a change is held to, here and in CI.
+# The gate (standardized `all` entry point across tixena repos): every feature on, one lint and
+# one test run. It is what a change is held to, here and in CI.
 all:
     cargo clippy --all-targets --all-features -- -D warnings
-    cargo build --all-features
     cargo test --all-features
     @echo "All checks completed successfully!"
 
