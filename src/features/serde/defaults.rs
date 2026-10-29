@@ -421,11 +421,22 @@ fn empty_text(_written: &str) -> TokenStream {
 
 /// The name serde reads `field` under, before any renaming.
 #[cfg(feature = "serde")]
+#[rustversion::since(1.98)]
 fn field_name(field: &Field) -> String {
     field
         .ident
         .as_ref()
         .map_or_default(|ident| ident.unraw().to_string())
+}
+
+#[cfg(feature = "serde")]
+#[rustversion::before(1.98)]
+fn field_name(field: &Field) -> String {
+    field
+        .ident
+        .as_ref()
+        .map(|ident| ident.unraw().to_string())
+        .unwrap_or_default()
 }
 
 /// The first of `Self`, a lifetime other than `'static` and the parameters `declared` that `tokens`

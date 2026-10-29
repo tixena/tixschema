@@ -208,24 +208,22 @@ fn test_complex_nested() {
 
 ## CI/CD Integration
 
-A change is held to the gate, [.github/workflows/ci.yml](../.github/workflows/ci.yml), on every push and pull request to `master`. It is `just all`, three lines with every feature on:
+A change is held to the gate, [.github/workflows/ci.yml](../.github/workflows/ci.yml), on every push and pull request to `master`. It is `just all`, two lines with every feature on:
 
 1. `cargo clippy --all-targets --all-features -- -D warnings`
-2. `cargo build --all-features`
-3. `cargo test --all-features`
-4. Discord notification with build status
+2. `cargo test --all-features`
+3. Discord notification with build status
 
 The full run, [.github/workflows/full.yml](../.github/workflows/full.yml), is started every three days and by hand. No change waits for it:
 
-1. `cargo build --verbose`
-2. `just check` (cargo check + clippy)
-3. `just lint-sets` (clippy over every combination of the feature sets, in this package and in `bson3/`)
-4. `cargo test --verbose` (basic tests)
-5. `just test-sets` (every combination of the `web`, `mobile` and `mongo` feature sets via cargo-hack, in this package and in `bson3/`)
-6. `just typecheck-ts` (the emitted TypeScript through a real `tsc --strict`, and a second package compiled against the declarations emitted for it)
-7. `just test-slow` (the emitted Node, Dart, Swift and Kotlin clients run under their own toolchains, through `test-emitted`, with the tests that wait on a real clock)
-8. `just audit` (`cargo audit` over a lock file generated for each package, this one and `bson3/`)
-9. Discord notification with build status
+1. `just check` (cargo check + clippy)
+2. `just lint-sets` (clippy over every combination of the feature sets, in this package and in `bson3/`)
+3. `cargo test --verbose` (basic tests)
+4. `just test-sets` (every combination of the `web`, `mobile` and `mongo` feature sets via cargo-hack, in this package and in `bson3/`)
+5. `just typecheck-ts` (the emitted TypeScript through a real `tsc --strict`, and a second package compiled against the declarations emitted for it)
+6. `just test-slow` (the emitted Node, Dart, Swift and Kotlin clients run under their own toolchains, through `test-emitted`, with the tests that wait on a real clock)
+7. `just audit` (`cargo audit` over a lock file generated for each package, this one and `bson3/`)
+8. Discord notification with build status
 
 The gate builds one feature selection of one package. What only the full run builds: a build with `serde` and no schema surface (the `mobile` and `mongo` sets), a build without `serde`, and `bson3/`, the package that tests against version 3 of the `bson` library. A break there is found at the next full run.
 

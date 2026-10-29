@@ -272,20 +272,34 @@ fn driver(cases: &[Case]) -> String {
     written
 }
 
+#[rustversion::since(1.98)]
+fn mapped_or_default<T, U>(value: Option<T>, map: impl FnOnce(T) -> U) -> U
+where
+    U: Default,
+{
+    value.map_or_default(map)
+}
+
+#[rustversion::before(1.98)]
+fn mapped_or_default<T, U>(value: Option<T>, map: impl FnOnce(T) -> U) -> U
+where
+    U: Default,
+{
+    value.map(map).unwrap_or_default()
+}
+
 /// What the Rust read answers of `payload` as a `T`: nothing, or its messages.
 fn rust_read<T>(payload: &str) -> Vec<String>
 where
     T: DeserializeOwned,
 {
-    serde_json::from_str::<T>(payload)
-        .err()
-        .map_or_default(|refused| {
-            refused
-                .to_string()
-                .split("; ")
-                .map(ToOwned::to_owned)
-                .collect()
-        })
+    mapped_or_default(serde_json::from_str::<T>(payload).err(), |refused| {
+        refused
+            .to_string()
+            .split("; ")
+            .map(ToOwned::to_owned)
+            .collect()
+    })
 }
 
 /// A terminal that holds a broken parcel in a field, a list, a map and an optional.
@@ -507,10 +521,7 @@ fn each_shape_is_refused_with_what_its_validate_answers() {
 /// the variant it takes, or the messages it is refused with.
 fn stuck(name: &'static str, payload: &str) -> (Case, String) {
     let taken = serde_json::from_str::<Sticker>(payload);
-    let answered = taken
-        .as_ref()
-        .err()
-        .map_or_default(|refused| vec![refused.to_string()]);
+    let answered = mapped_or_default(taken.as_ref().err(), |refused| vec![refused.to_string()]);
     let line = taken.map_or_else(
         |_| {
             format!(

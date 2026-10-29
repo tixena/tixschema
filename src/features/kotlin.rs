@@ -2890,7 +2890,7 @@ fn enum_kotlin_tokens(declared: &ItemEnum, args: &KotlinArgs<'_>) -> TokenStream
         tag_attrs.tag.is_none() && tag_attrs.content.is_none() && !tag_attrs.untagged;
     let defaults = SerdeDefaults::of_enum(item_enum);
     let kotlin_source = if plain && writes_bare_variant_names {
-        validate::note_plain_enum(&rust_ident);
+        validate::note_plain_enum(&rust_ident, !args.check.is_empty());
         plain_enum_kotlin_source(item_enum, &export_name, args)
     } else {
         validate::note_model(&rust_ident);
@@ -2921,10 +2921,15 @@ fn enum_kotlin_tokens(declared: &ItemEnum, args: &KotlinArgs<'_>) -> TokenStream
             )
         }
     };
+    let alias = ident_typealias(
+        &rust_ident,
+        &export_name,
+        &kotlin_generic_params(&item_enum.generics),
+    );
     kotlin_module_tokens(
         &rust_ident,
         item_enum.ident.span(),
-        &kotlin_source,
+        &format!("{kotlin_source}{alias}"),
         &defaults,
     )
 }
@@ -3493,6 +3498,7 @@ fn plain_enum_member(variant: &Variant, rule: RenameRule) -> (String, String) {
 
 /// The Kotlin tokens a plain (all-unit, string-wire) enum earns: a serializable `enum class`,
 /// `@SerialName` only where the wire spelling differs from the Rust ident. One that names a
+/// check has the pair of serializers every other type has. Without a check, one that names a
 /// `preprocess` is read by `{Type}Unjudged`, its one serializer, and so is one that reads a
 /// variant under an alias, whose serializer is written by hand.
 fn plain_enum_kotlin_source(
@@ -3532,10 +3538,25 @@ fn plain_enum_kotlin_source(
             read_under.iter().map(|alias| (alias.clone(), wire.clone()))
         })
         .collect();
-    if !args.preprocess.is_empty() {
-        // The enum's one serializer is the plugin's behind its functions.
-        let correction =
-            aliases::text_named(&preprocess::corrected(args.preprocess, ELEMENT), &renamed);
+    let correction =
+        aliases::text_named(&preprocess::corrected(args.preprocess, ELEMENT), &renamed);
+    if !args.check.is_empty() {
+        let (kept, unjudged) = if args.preprocess.is_empty() && !renamed.is_empty() {
+            (
+                format!("@Serializable(with = {export_name}Serializer::class)"),
+                aliases::plain_enum_serializer(export_name, &variants),
+            )
+        } else {
+            (
+                read::kept(export_name),
+                kept_unjudged(export_name, "", &[], &correction, None),
+            )
+        };
+        format!(
+            "{kept} {body} {unjudged} {}",
+            read::judged(export_name, "", &[], false)
+        )
+    } else if !args.preprocess.is_empty() {
         format!(
             "{} {body} {}",
             read::kept_plain(export_name),

@@ -4758,7 +4758,7 @@ Where each row is stated in full:
 | Swift | [`preprocess` in the Swift client](#preprocess-in-the-swift-client) | [`validate()` in the Swift client](#validate-in-the-swift-client) | [A Swift read refuses what `validate()` refuses](#a-swift-read-refuses-what-validate-refuses) |
 | Kotlin | [`preprocess` in the Kotlin client](#preprocess-in-the-kotlin-client) | [`validate()` in the Kotlin client](#validate-in-the-kotlin-client) | [The read in the Kotlin client](#the-read-in-the-kotlin-client) |
 
-**Each client has limits of its own**, and the section of the client states them: the typed payload of a type's function in Dart, a bounded brand declared below an `#[serde(untagged)]` enum and a type declared below the type that reads it from its own decoder in Swift, and a model declared below its holder, the read of a plain enum and a member that reaches a type parameter in Kotlin.
+**Each client has limits of its own**, and the section of the client states them: the typed payload of a type's function in Dart, a bounded brand declared below an `#[serde(untagged)]` enum and a type declared below the type that reads it from its own decoder in Swift, and a model declared below its holder and a member that reaches a type parameter in Kotlin.
 
 #### The six shared cases
 
@@ -5548,7 +5548,7 @@ Json.decodeFromString<Parcel>("""{"label":"","itemCodeList":["x"],"fragileItemCo
 // SerializationException: 'label': too short: minimum length is 1, got 0; 'fragileItemCodes.1': y is outside of itemCodeList
 ```
 
-**Every type has two serializers**, a plain enum apart:
+**Every type has two serializers**, a plain enum that names no check apart:
 
 | | What it reads | Who names it |
 |---|---|---|
@@ -5577,7 +5577,7 @@ Both write the same payload, and writing judges nothing: a broken value built in
 - **A tuple is a data class of its own, `KotlinTuple{N}`, generic over each type parameter of its holder its positions reach**, read from and written as the array serde writes: with `pub struct Yoked<Stowed> { pub pair: (u8, Stowed) }`, `pair` is a `KotlinTuple{N}<Stowed>`, and `Yoked<String>` reads `{"pair":[1,"a"]}` and writes it back as serde does. An array of another length is refused with `SerializationException: invalid length 1, expected 2`, as serde refuses it.
 - **A tuple struct that declares one slot is read from the value of its slot and written as that value**, as serde writes it, whatever the slot's attributes say, and its data class keeps the slot as `slot0`. With `pub struct Wafer(pub ObjectId);` held under the key `wafer`, `{"wafer":{"$oid":"507f1f77bcf86cd799439011"}}` is read and written back as it was, and so is such a struct in a list, as a map's value, as a type argument, flattened and in the one slot of a variant. A tuple struct that declares no slot or several is the array of the slots serde writes.
 - **An enum under a tag alone is read by a serializer tixschema writes as well.** The plugin refuses `@KeepGeneratedSerializer` on a sealed interface, so the enum carries no `@JsonClassDiscriminator`: its unjudged serializer reads the tag key, takes it off the object and reads the rest as the variant, and writes the variant with the tag ahead of its members. A tag no variant has, and a payload with no tag, throw `SerializationException`. A newtype variant reads the rest as the value it holds, and writes that value's members after the tag, as serde writes them and as TypeScript and Zod read them: with `#[serde(tag = "kind")] enum Docketed { Weighed(Tonnage) }` over `struct Tonnage { cost: String }`, `{"kind":"Weighed","cost":"c"}` reads `Weighed` and is written back as it was read, and `{"kind":"Weighed","value":{"cost":"c"}}` is refused with `SerializationException: Encountered an unknown key 'value' at path: $`, as serde and Zod refuse it. The variant's class keeps its `value` property. An externally tagged enum held there writes a unit variant as an entry of its name over `null`, as serde writes it and as TypeScript and Zod describe it.
-- **A plain enum keeps the one serializer the plugin writes**, and its read judges nothing. One that names a check is refused by the read of a type that holds it, and by your own call of `validate()`. One that names a [`preprocess`](#preprocess-in-the-kotlin-client), or reads a variant under an alias, is read by `{Type}Unjudged`, the one serializer it then has.
+- **A plain enum that names a check has the two serializers every type has**, so `Json.decodeFromString<Rating>("\"Unrated\"")` throws what `validate()` answers, as the Rust read does, and a type that holds it reads it through `RatingUnjudged` and names it once. One that names no check keeps the one serializer the plugin writes, and its read judges nothing. One that names no check but a [`preprocess`](#preprocess-in-the-kotlin-client), or reads a variant under an alias, is read by `{Type}Unjudged`, the one serializer it then has.
 - **A refusal the decoder raises itself is its own, unchanged**: a missing key, a value of another type. No value was read for `validate()` to judge.
 
 **The file the definitions are written into imports what they name.** The two serializers of every type name `KSerializer` and `SerializationException` of `kotlinx.serialization`, `SerialDescriptor` of its `descriptors` package, and `Encoder` and `Decoder` of its `encoding` package. A serializer tixschema writes names the `json` package as well, and `builtins` where it composes the serializer of a list, a map or a nullable:
@@ -8935,20 +8935,47 @@ The JSON Schema lists `kind` in `required` as `{"type": "string", "const": "Tagg
 
 ### Feature-Related Errors
 
-#### ObjectId Errors
+#### `ObjectId` Without the Feature
 
-**Error:** `cannot find type 'ObjectId' in this scope`
+**Error:**
 
-**Cause:** Using `ObjectId` without the `mongodb` feature enabled.
-
-**Solutions:**
-```toml
-# Option 1: Enable the mongodb feature
-tixschema = { version = "0.2", features = ["mongodb"] }
-
-# Option 2: Use full path in your code
-# use mongodb::bson::oid::ObjectId;
 ```
+error: `ObjectId` is read as a MongoDB ObjectId under tixschema's `mongodb` feature: add `features = ["mongodb"]` to the `tixschema` dependency
+ --> src/main.rs:8:13
+  |
+8 |     pub id: ObjectId,
+  |             ^^^^^^^^
+```
+
+**Cause:** A type written `ObjectId` with the `mongodb` feature off.
+
+**Solution:**
+```toml
+tixschema = { version = "0.2", features = ["mongodb"] }
+```
+
+A crate that declares a `#[model_schema()]` type of its own named `ObjectId`, above the type that holds it, is not refused: the name is that type.
+
+#### `NaiveDate`, `NaiveTime`, `NaiveDateTime` or `DateTime<Tz>` Without the Feature
+
+**Error:**
+
+```
+error: `NaiveDate` is read as a date or a time under tixschema's `chrono` feature: add `features = ["chrono"]` to the `tixschema` dependency
+ --> src/main.rs:8:14
+  |
+8 |     pub day: NaiveDate,
+  |              ^^^^^^^^^
+```
+
+**Cause:** A type written `NaiveDate`, `NaiveTime`, `NaiveDateTime` or `DateTime<Tz>` with the `chrono` feature off. It is refused wherever the item writes it, as `IndexMap` is below.
+
+**Solution:**
+```toml
+tixschema = { version = "0.2", features = ["chrono"] }
+```
+
+A crate that declares a `#[model_schema()]` type of its own under one of these names, above the type that holds it, is not refused: the name is that type.
 
 #### `IndexMap` or `IndexSet` Without the Feature
 

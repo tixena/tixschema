@@ -374,7 +374,12 @@ fn a_types_own_check_is_called_on_the_whole_value() {
     };
     assert_eq!(
         definition(enum_kotlin_tokens(&graded, &args)),
-        format!("@Serializable enum class Grade {{ Express, Unrated; {called} }}")
+        format!(
+            "{} enum class Grade {{ Express, Unrated; {called} }} {} {}",
+            kept("Grade"),
+            generated("Grade"),
+            judged("Grade")
+        )
     );
     let closed: ItemStruct = syn::parse_quote! {
         struct ClosedDock;

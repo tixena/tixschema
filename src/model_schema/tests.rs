@@ -659,12 +659,28 @@ fn nullable_ts_optional_conflict_ok_when_only_one_set() {
     check_nullable_ts_optional_conflict(&ModelSchemaPropMeta::default()).unwrap();
 }
 
+#[rustversion::since(1.98)]
+fn mapped_or_default<T, U>(value: Option<T>, map: impl FnOnce(T) -> U) -> U
+where
+    U: Default,
+{
+    value.map_or_default(map)
+}
+
+#[rustversion::before(1.98)]
+fn mapped_or_default<T, U>(value: Option<T>, map: impl FnOnce(T) -> U) -> U
+where
+    U: Default,
+{
+    value.map(map).unwrap_or_default()
+}
+
 /// Runs the guard over the sole field of `item`, deriving `is_optional` and `is_nullable` the way
 /// the generator does rather than re-sniffing the type.
 #[cfg(feature = "serde")]
 fn guard_result(item: &syn::ItemStruct) -> Result<(), syn::Error> {
     let field = item.fields.iter().next().unwrap();
-    let field_name = field.ident.as_ref().map_or_default(ToString::to_string);
+    let field_name = mapped_or_default(field.ident.as_ref(), ToString::to_string);
     let field_def = get_field_def(&field_name, &field.ty, "");
     let is_nullable = super::parse_model_schema_prop_attributes(&field.attrs).nullable;
     check_optional_field_serialization(field, field_def.stands_for_an_option(), is_nullable)
@@ -684,7 +700,7 @@ fn nullable_guard_result(item: &syn::ItemStruct) -> Result<(), syn::Error> {
 #[cfg(feature = "serde")]
 fn omitted_key_guard_result(item: &syn::ItemStruct) -> Result<(), syn::Error> {
     let field = item.fields.iter().next().unwrap();
-    let field_name = field.ident.as_ref().map_or_default(ToString::to_string);
+    let field_name = mapped_or_default(field.ident.as_ref(), ToString::to_string);
     let field_def = get_field_def(&field_name, &field.ty, "");
     check_omitted_key_is_readable(
         field,
@@ -1652,7 +1668,7 @@ fn variant_field_defs(source: &str, variant_name: &str) -> Vec<super::FieldDef> 
         .filter(|variant| variant.ident == variant_name)
         .flat_map(|variant| variant.fields.iter())
         .map(|field| {
-            let name = field.ident.as_ref().map_or_default(ToString::to_string);
+            let name = mapped_or_default(field.ident.as_ref(), ToString::to_string);
             get_field_def(&name, &field.ty, "")
         })
         .collect()
@@ -2196,8 +2212,10 @@ fn flattening_a_registered_plain_enum_is_rejected() {
     record_plain_enum("Payload", false);
 
     let rejected: syn::Field = syn::parse_quote! { pub tone: Hue };
-    let error = super::flattened_field_guard_error(&rejected, "Holder")
-        .map_or_default(|tokens| tokens.to_string());
+    let error = mapped_or_default(
+        super::flattened_field_guard_error(&rejected, "Holder"),
+        |tokens| tokens.to_string(),
+    );
     assert!(error.contains("field `tone`"), "got: {error}");
     assert!(error.contains("`Holder`"), "got: {error}");
     assert!(error.contains("`Hue`"), "got: {error}");
@@ -5403,7 +5421,7 @@ fn cfg_attr_without_serde_leaves_an_enum_alone() {
 #[cfg(feature = "serde")]
 fn field_cfg_attr_error(item: &syn::ItemStruct) -> Option<String> {
     let field = item.fields.iter().next()?;
-    let name = field.ident.as_ref().map_or_default(ToString::to_string);
+    let name = mapped_or_default(field.ident.as_ref(), ToString::to_string);
     parse_serde_field_attributes(&field.attrs)
         .cfg_attr_rejection
         .as_ref()
@@ -5429,7 +5447,7 @@ fn cfg_attr_wrapped_serde_on_a_field_is_rejected() {
 /// refusal.
 fn field_undescribable_std_refusal(item: &syn::ItemStruct) -> Option<syn::Error> {
     let field = item.fields.iter().next()?;
-    let name = field.ident.as_ref().map_or_default(ToString::to_string);
+    let name = mapped_or_default(field.ident.as_ref(), ToString::to_string);
     let field_def = get_field_def(&name, &field.ty, "");
     check_undescribable_std_field(field, &field_def, &field_label(&name)).err()
 }
@@ -6874,6 +6892,7 @@ fn a_refused_pattern_leaves_no_hook_naming_the_dropped_module() {
             defaulted: false,
             read_back: false,
             serde_default: &|_| None,
+            wire: super::ContainerWire::OneWay,
         },
     )
     .4;
@@ -6906,6 +6925,7 @@ fn a_constraint_refused_its_placement_leaves_no_hook_naming_the_dropped_module()
             defaulted: false,
             read_back: false,
             serde_default: &|_| None,
+            wire: super::ContainerWire::OneWay,
         },
     )
     .4;
@@ -6942,6 +6962,7 @@ fn a_literal_reached_through_an_interior_mutability_wrapper_is_refused() {
             defaulted: false,
             read_back: false,
             serde_default: &|_| None,
+            wire: super::ContainerWire::OneWay,
         },
     )
     .4;
@@ -6979,6 +7000,7 @@ fn a_renamed_field_is_refused_by_its_rust_name_and_reported_under_its_key() {
             defaulted: false,
             read_back: false,
             serde_default: &|_| None,
+            wire: super::ContainerWire::OneWay,
         },
     );
     assert_eq!(collected.4.len(), 1, "got: {:?}", collected.4);
@@ -7055,6 +7077,7 @@ fn a_struct_field_that_clears_the_guards_is_hung_with_no_hook() {
             defaulted: false,
             read_back: false,
             serde_default: &|_| None,
+            wire: super::ContainerWire::OneWay,
         },
     );
     assert!(collected.4.is_empty(), "got: {:?}", collected.4);
@@ -7098,6 +7121,7 @@ fn a_field_whose_type_could_publish_a_validator_contributes_a_body_that_runs_it(
             defaulted: false,
             read_back: false,
             serde_default: &|_| None,
+            wire: super::ContainerWire::OneWay,
         },
     );
     assert!(collected.4.is_empty(), "got: {:?}", collected.4);
@@ -7198,6 +7222,7 @@ fn a_nested_report_is_placed_under_its_key_and_the_index_of_each_list_level() {
             defaulted: false,
             read_back: false,
             serde_default: &|_| None,
+            wire: super::ContainerWire::OneWay,
         },
     )
     .3
@@ -7227,6 +7252,7 @@ fn walked_bodies(item: &mut syn::ItemStruct) -> String {
             defaulted: false,
             read_back: false,
             serde_default: &|_| None,
+            wire: super::ContainerWire::OneWay,
         },
     )
     .3
@@ -7453,6 +7479,7 @@ fn a_map_and_a_tuple_of_declared_types_are_hung_with_no_reader() {
             defaulted: false,
             read_back: true,
             serde_default: &|_| None,
+            wire: super::ContainerWire::OneWay,
         },
     );
     assert!(collected.4.is_empty(), "got: {:?}", collected.4);
@@ -7488,6 +7515,7 @@ fn a_field_holding_a_declared_type_is_read_through_one_that_names_the_field() {
             defaulted: false,
             read_back: true,
             serde_default: &|_| None,
+            wire: super::ContainerWire::OneWay,
         },
     );
     assert!(collected.4.is_empty(), "got: {:?}", collected.4);
@@ -7539,6 +7567,7 @@ fn the_names_a_read_declares_are_never_names_the_item_writes() {
             defaulted: false,
             read_back: true,
             serde_default: &|_| None,
+            wire: super::ContainerWire::OneWay,
         },
     );
     assert!(collected.4.is_empty(), "got: {:?}", collected.4);
@@ -7576,6 +7605,7 @@ fn a_field_the_unjudged_read_does_not_reach_keeps_a_reader_in_the_schema_module(
             defaulted: false,
             read_back: true,
             serde_default: &|_| None,
+            wire: super::ContainerWire::OneWay,
         },
     );
     assert!(collected.4.is_empty(), "got: {:?}", collected.4);
@@ -7632,6 +7662,7 @@ fn a_field_the_reader_would_displace_is_left_to_read_itself() {
             defaulted: false,
             read_back: true,
             serde_default: &|_| None,
+            wire: super::ContainerWire::OneWay,
         },
     );
     let rendered = walked_field_attrs(item.fields.iter());
@@ -7670,6 +7701,7 @@ fn a_container_that_is_not_read_back_publishes_no_reader() {
             defaulted: false,
             read_back: super::derives_deserialize(&item.attrs),
             serde_default: &|_| None,
+            wire: super::ContainerWire::OneWay,
         },
     );
     assert!(
@@ -7704,6 +7736,7 @@ fn a_field_the_crate_renders_itself_contributes_no_body_to_reach_into() {
             defaulted: false,
             read_back: false,
             serde_default: &|_| None,
+            wire: super::ContainerWire::OneWay,
         },
     );
     assert!(collected.4.is_empty(), "got: {:?}", collected.4);
@@ -7738,6 +7771,7 @@ fn an_optional_struct_field_is_hung_with_neither_the_hook_nor_the_default_it_ans
             defaulted: false,
             read_back: false,
             serde_default: &|_| None,
+            wire: super::ContainerWire::OneWay,
         },
     );
     assert!(collected.4.is_empty(), "got: {:?}", collected.4);
@@ -7839,7 +7873,7 @@ fn a_container_short_of_its_wire_arity_still_falls_through_as_a_sibling() {
 /// the same channel that carries them to the emitted item.
 fn field_prop_guard_errors_in_scope(item: &syn::ItemStruct, parameters: &[String]) -> Vec<String> {
     let field = item.fields.iter().next().unwrap();
-    let name = field.ident.as_ref().map_or_default(ToString::to_string);
+    let name = mapped_or_default(field.ident.as_ref(), ToString::to_string);
     let written = get_field_def(&name, &field.ty, "");
     let mut rendered = written.clone();
     rendered.erase_type_parameters(parameters);
@@ -8917,7 +8951,7 @@ fn a_parameter_in_scope_only_refuses_the_field_that_carries_a_bound() {
 /// `parameters`.
 fn field_docs_after_meta_in_scope(item: &syn::ItemStruct, parameters: &[String]) -> String {
     let field = item.fields.iter().next().unwrap();
-    let name = field.ident.as_ref().map_or_default(ToString::to_string);
+    let name = mapped_or_default(field.ident.as_ref(), ToString::to_string);
     let mut field_def = get_field_def(&name, &field.ty, "");
     field_def.erase_type_parameters(parameters);
     let meta = super::parse_model_schema_prop_attributes(&field.attrs);
@@ -11580,6 +11614,27 @@ fn expansion_under(args: &str, source: &str) -> String {
     .to_string()
 }
 
+/// A transparent struct that serde writes without a key it still requires on read is refused only
+/// when it derives both directions.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
+#[test]
+fn a_one_direction_transparent_struct_is_not_refused_for_a_skipped_key() {
+    let body = "#[serde(transparent)] pub struct Received { #[serde(default)] pub count: u32, \
+                #[serde(skip_serializing)] pub text: String }";
+    for derives in ["Debug, Deserialize", "Debug, Serialize"] {
+        let expanded = expansion_under("", &format!("#[derive({derives})] {body}"));
+        assert!(!expanded.contains("compile_error"), "{derives}: {expanded}");
+    }
+    let expanded = expansion_under(
+        "",
+        &format!("#[derive(Debug, Serialize, Deserialize)] {body}"),
+    );
+    assert!(expanded.contains("compile_error"), "got: {expanded}");
+}
+
 /// How many times `tokens` write `name` as an identifier, the text of a literal aside.
 fn identifiers_named(tokens: proc_macro2::TokenStream, name: &str) -> usize {
     tokens
@@ -11630,6 +11685,11 @@ fn an_item_refused_before_its_members_are_walked_is_re_emitted_without_their_key
             "",
             "pub enum Size { Empty(), Named { #[model_schema_prop(maxLength = 9)] label: String } }",
             "variant `Empty`: `Empty()` is a tuple variant with no field",
+        ),
+        (
+            "default_types(IdType = String)",
+            "pub enum Size { Named { #[model_schema_prop(maxLength = 9)] label: String }, Bare }",
+            "`default_types` entry `IdType` names a type parameter, but this item declares none",
         ),
         (
             "enable = [\"decode_with\"]",
@@ -15557,11 +15617,10 @@ fn a_type_the_crate_declares_as_map_is_what_a_field_written_after_it_holds() {
 /// from text so each refusal's span can be read back as the source it points at.
 #[cfg(not(feature = "indexmap"))]
 fn indexmap_refusals(source: &str) -> Vec<proc_macro2::TokenStream> {
-    super::indexmap_feature_errors(&syn::parse_str(source).unwrap())
+    super::gated_name_errors(&syn::parse_str(source).unwrap())
 }
 
 /// `sentence` as the `compile_error!` it is told through.
-#[cfg(not(feature = "indexmap"))]
 fn told_as_a_compile_error(sentence: &str) -> String {
     syn::Error::new(proc_macro2::Span::call_site(), sentence)
         .to_compile_error()
@@ -15592,7 +15651,7 @@ fn an_index_map_written_with_the_feature_off_is_refused_with_the_feature_named()
 fn the_readme_shows_the_refusal_of_an_index_map_written_with_the_feature_off() {
     let shown = format!(
         "error: {}\n --> src/main.rs:8:15",
-        super::indexmap_feature_message("IndexMap", "a map")
+        super::gated_name_message("IndexMap", "indexmap", "a map")
     );
     assert!(
         include_str!("../../README.md").contains(&shown),
@@ -15684,6 +15743,157 @@ fn a_type_of_the_crates_own_keeps_a_name_the_indexmap_feature_reads() {
     assert_eq!(indexmap_refusals(source).len(), 1);
     assert!(claim_published_name("IndexSet", "IndexSet").is_none());
     assert!(indexmap_refusals(source).is_empty());
+}
+
+/// The sentence a name a feature reads earns with the feature off, told as the `compile_error!` it
+/// is, and the source text its span points at.
+#[cfg(any(not(feature = "chrono"), not(feature = "mongodb")))]
+fn assert_refused_naming_the_feature(source: &str, refused: &str, sentence: &str) {
+    let refusals = super::gated_name_errors(&syn::parse_str(source).unwrap());
+    assert_eq!(refusals.len(), 1, "for {source}: {refusals:?}");
+    assert_eq!(
+        refusals[0].to_string(),
+        told_as_a_compile_error(sentence),
+        "for {source}"
+    );
+    assert_eq!(
+        refusals[0].span().source_text().as_deref(),
+        Some(refused),
+        "for {source}"
+    );
+}
+
+#[cfg(not(feature = "chrono"))]
+#[test]
+fn a_chrono_type_written_with_the_feature_off_is_refused_with_the_feature_named() {
+    for (field, name) in [
+        ("NaiveDate", "NaiveDate"),
+        ("NaiveTime", "NaiveTime"),
+        ("NaiveDateTime", "NaiveDateTime"),
+        ("DateTime<Utc>", "DateTime"),
+        ("Option<chrono::NaiveDate>", "NaiveDate"),
+        ("Vec<DateTime<chrono::Utc>>", "DateTime"),
+    ] {
+        assert_refused_naming_the_feature(
+            &format!("pub struct Visit {{ pub day: {field} }}"),
+            name,
+            &format!(
+                "`{name}` is read as a date or a time under tixschema's `chrono` feature: add \
+                 `features = [\"chrono\"]` to the `tixschema` dependency"
+            ),
+        );
+    }
+}
+
+/// The README prints each refusal as the compiler does, held here to what the guard says.
+#[cfg(not(feature = "chrono"))]
+#[test]
+fn the_readme_shows_the_refusal_of_a_chrono_type_written_with_the_feature_off() {
+    let shown = format!(
+        "error: {}\n --> src/main.rs:8:14",
+        super::gated_name_message("NaiveDate", "chrono", "a date or a time")
+    );
+    assert!(
+        include_str!("../../README.md").contains(&shown),
+        "the README no longer shows: {shown}"
+    );
+}
+
+#[cfg(not(feature = "mongodb"))]
+#[test]
+fn the_readme_shows_the_refusal_of_an_object_id_written_with_the_feature_off() {
+    let shown = format!(
+        "error: {}\n --> src/main.rs:8:13",
+        super::gated_name_message("ObjectId", "mongodb", "a MongoDB ObjectId")
+    );
+    assert!(
+        include_str!("../../README.md").contains(&shown),
+        "the README no longer shows: {shown}"
+    );
+}
+
+#[cfg(not(feature = "chrono"))]
+#[test]
+fn a_date_time_without_a_type_argument_is_no_chrono_type() {
+    let source = "pub struct Visit { pub day: DateTime }";
+    assert!(super::gated_name_errors(&syn::parse_str(source).unwrap()).is_empty());
+}
+
+#[cfg(not(feature = "chrono"))]
+#[test]
+fn a_type_of_the_crates_own_keeps_a_name_the_chrono_feature_reads() {
+    let source = "pub struct Visit { pub day: NaiveDate }";
+    assert_eq!(
+        super::gated_name_errors(&syn::parse_str(source).unwrap()).len(),
+        1
+    );
+    assert!(super::claim_published_name("NaiveDate", "NaiveDate").is_none());
+    assert!(super::gated_name_errors(&syn::parse_str(source).unwrap()).is_empty());
+}
+
+#[cfg(not(feature = "mongodb"))]
+#[test]
+fn an_object_id_written_with_the_feature_off_is_refused_with_the_feature_named() {
+    for field in ["ObjectId", "Option<bson::oid::ObjectId>", "Vec<ObjectId>"] {
+        assert_refused_naming_the_feature(
+            &format!("pub struct Record {{ pub id: {field} }}"),
+            "ObjectId",
+            "`ObjectId` is read as a MongoDB ObjectId under tixschema's `mongodb` feature: add \
+             `features = [\"mongodb\"]` to the `tixschema` dependency",
+        );
+    }
+}
+
+#[cfg(not(feature = "mongodb"))]
+#[test]
+fn a_type_of_the_crates_own_keeps_a_name_the_mongodb_feature_reads() {
+    let source = "pub struct Record { pub id: ObjectId }";
+    assert_eq!(
+        super::gated_name_errors(&syn::parse_str(source).unwrap()).len(),
+        1
+    );
+    assert!(super::claim_published_name("ObjectId", "ObjectId").is_none());
+    assert!(super::gated_name_errors(&syn::parse_str(source).unwrap()).is_empty());
+}
+
+/// Holds the table to a name of each shape the features gate, whatever features this build has on.
+#[test]
+fn a_table_of_gated_names_refuses_each_name_with_its_own_feature() {
+    static TABLE: &[super::GatedName] = &[
+        super::GatedName {
+            feature: "dates",
+            least_arguments: 0,
+            name: "Stamp",
+            read_as: "a date",
+        },
+        super::GatedName {
+            feature: "zones",
+            least_arguments: 1,
+            name: "Zoned",
+            read_as: "a zoned date",
+        },
+    ];
+    let item: syn::Item = syn::parse_str(
+        "pub struct Visit { pub day: Stamp, pub at: Option<Zoned<Utc>>, pub bare: Zoned }",
+    )
+    .unwrap();
+    let refusals: Vec<String> = super::gated_name_errors_in(&item, TABLE)
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    assert_eq!(
+        refusals,
+        [
+            told_as_a_compile_error(
+                "`Stamp` is read as a date under tixschema's `dates` feature: add `features = \
+                 [\"dates\"]` to the `tixschema` dependency"
+            ),
+            told_as_a_compile_error(
+                "`Zoned` is read as a zoned date under tixschema's `zones` feature: add `features \
+                 = [\"zones\"]` to the `tixschema` dependency"
+            ),
+        ]
+    );
 }
 
 /// The refused item is emitted as it was written, and nothing beside it names a module a map
@@ -18242,6 +18452,7 @@ fn generated_validation_under(
     let ctx = FieldContext {
         container_defaulted: false,
         container_read_back: false,
+        container_wire: super::ContainerWire::OneWay,
         enum_args: None,
         member_steps: &steps,
         on_the_wire: true,
@@ -18794,6 +19005,7 @@ fn a_field_read_through_a_reference_is_given_no_read_hook() {
     let ctx = FieldContext {
         container_defaulted: false,
         container_read_back: true,
+        container_wire: super::ContainerWire::OneWay,
         enum_args: None,
         member_steps: &steps,
         on_the_wire: true,
@@ -18840,6 +19052,7 @@ fn a_field_read_through_a_reference_is_given_no_read_hook() {
             defaulted: false,
             read_back: true,
             serde_default: &|_| None,
+            wire: super::ContainerWire::OneWay,
         },
     );
     assert!(collected.4.is_empty(), "got: {:?}", collected.4);
@@ -20626,6 +20839,7 @@ fn walked_untagged_variant(variant: &mut syn::Variant) -> super::UntaggedVariant
             schema_module_name: UNTAGGED_MODULE,
             serde_default: &|_, _| None,
             type_parameters: &[],
+            wire: super::ContainerWire::OneWay,
         },
         &[],
     )
@@ -21646,6 +21860,7 @@ fn a_field_bottoming_out_in_a_declared_type_is_walked_and_a_primitive_one_is_not
             defaulted: false,
             read_back: false,
             serde_default: &|_| None,
+            wire: super::ContainerWire::OneWay,
         },
     );
     assert!(collected.4.is_empty(), "got: {:?}", collected.4);
@@ -22481,4 +22696,26 @@ fn the_guards_of_the_wire_refuse_a_variant_serde_drops_in_one_direction() {
         .to_string();
         assert!(expanded.contains(refusal), "for {source}, got: {expanded}");
     }
+}
+
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
+#[test]
+fn a_transparent_tuple_struct_with_a_one_way_slot_expands_and_a_plain_one_is_refused() {
+    let transparent = refusal_texts(&expansion_over(
+        "#[derive(Deserialize, Serialize)] #[serde(transparent)] \
+         struct Marked(PhantomData<u8>, String, #[serde(default, skip_serializing)] u32);",
+    ));
+    assert_eq!(transparent, Vec::<String>::new());
+    let plain = refusal_texts(&expansion_over(
+        "#[derive(Deserialize, Serialize)] \
+         struct Pair(#[serde(skip_serializing)] String, u32);",
+    ));
+    assert_eq!(plain.len(), 1, "got: {plain:?}");
+    assert!(
+        plain[0].contains("slot 0 of tuple struct `Pair`"),
+        "got: {plain:?}"
+    );
 }

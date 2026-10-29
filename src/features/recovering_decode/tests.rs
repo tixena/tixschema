@@ -464,19 +464,27 @@ fn own_type_parameters(type_impl: proc_macro2::TokenStream) -> Vec<String> {
 #[cfg(feature = "mongodb")]
 fn row_parameter(module_items: proc_macro2::TokenStream) -> String {
     let declared: syn::File = syn::parse2(module_items).unwrap();
-    declared
-        .items
-        .iter()
-        .find_map(|item| {
-            if let syn::Item::Struct(paths) = item
-                && paths.ident == "MongoFields"
-            {
-                paths.generics.type_params().next()
-            } else {
-                None
-            }
-        })
-        .map_or_default(|row| row.ident.to_string())
+    parameter_name(declared.items.iter().find_map(|item| {
+        if let syn::Item::Struct(paths) = item
+            && paths.ident == "MongoFields"
+        {
+            paths.generics.type_params().next()
+        } else {
+            None
+        }
+    }))
+}
+
+#[cfg(feature = "mongodb")]
+#[rustversion::since(1.98)]
+fn parameter_name(found: Option<&syn::TypeParam>) -> String {
+    found.map_or_default(|row| row.ident.to_string())
+}
+
+#[cfg(feature = "mongodb")]
+#[rustversion::before(1.98)]
+fn parameter_name(found: Option<&syn::TypeParam>) -> String {
+    found.map(|row| row.ident.to_string()).unwrap_or_default()
 }
 
 /// What the typed paths add to every type: under `mongodb`, the const that holds them, and

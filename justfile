@@ -237,6 +237,10 @@ check-all:
     cargo hack check --manifest-path bson3/Cargo.toml --feature-powerset
     @echo "✅ All feature combinations check passed!"
 
+# Check the library on the minimum supported Rust version.
+check-msrv:
+    cargo +1.91 check --all-features
+
 # Audit the dependencies each package resolves, with cargo-audit; what CI runs. Each package's lock
 # file is generated afresh and scanned on its own.
 audit:
@@ -261,11 +265,10 @@ clean:
     cargo clean --manifest-path bson3/Cargo.toml
     @echo "✅ Build artifacts cleaned!"
 
-# The gate (standardized `all` entry point across tixena repos): every feature on, one lint, one
-# build, one test run. It is what a change is held to, here and in CI.
+# The gate (standardized `all` entry point across tixena repos): every feature on, one lint and one
+# test run. It is what a change is held to, here and in CI.
 all:
     cargo clippy --all-targets --all-features -- -D warnings
-    cargo build --all-features
     cargo test --all-features
     @echo "All checks completed successfully!"
 

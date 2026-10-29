@@ -57,9 +57,9 @@ use serde::de::DeserializeOwned;
 #[cfg(feature = "jsonschema")]
 use super::documents::admits;
 #[cfg(feature = "serde")]
-use super::untagged_millis_models::{
-    MILLIS_ROWS, MillisLater, MillisMaybe, MillisNamed, MillisOrFlag, serde_written,
-};
+use super::untagged_millis_models::{MILLIS_ROWS, MillisNamed, MillisOrFlag, serde_written};
+#[cfg(all(feature = "serde", feature = "jsonschema"))]
+use super::untagged_millis_models::{MillisLater, MillisMaybe};
 
 /// The epoch milliseconds serde writes for `2024-01-02T03:04:05.678Z` under `as_number`.
 #[cfg(feature = "jsonschema")]
@@ -225,6 +225,7 @@ struct CustomEpochHook {
 }
 
 /// A date under `as_number` in an `Option`, which drops its key, and in a `nullable` one.
+#[cfg(feature = "jsonschema")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 struct HeldMillis {
@@ -236,6 +237,7 @@ struct HeldMillis {
 }
 
 /// A date under `as_number` in a named member of a variant.
+#[cfg(feature = "jsonschema")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 enum MillisEvent {
@@ -246,6 +248,7 @@ enum MillisEvent {
 }
 
 /// A date under `as_number` in a slot of a tuple struct.
+#[cfg(feature = "jsonschema")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 struct MillisPair(#[model_schema_prop(as_number)] DateTime<Utc>, u8);
