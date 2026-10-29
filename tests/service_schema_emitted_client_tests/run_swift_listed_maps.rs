@@ -5,8 +5,8 @@
 //! map's value and in a variant's slot, in a type that declares a parameter and in one that
 //! declares none. Each payload the serde read reads prints what it prints, and a key that is no
 //! number is refused, as the serde read refuses it. A null as the value of a map under a key Swift
-//! wraps, and a null in the one slot of an untagged variant, are left out: Swift reads each
-//! otherwise than serde for a reason of its own.
+//! wraps is kept, as serde keeps it; a null in the one slot of an untagged variant is left out:
+//! Swift reads it otherwise than serde for a reason of its own.
 
 #![cfg(feature = "swift")]
 
@@ -32,7 +32,9 @@ use super::listed_maps_models::{
     untagged_stowed_galley_swift,
 };
 #[cfg(feature = "chrono")]
-use super::listed_maps_models::{Timeline, timeline_swift};
+use super::listed_maps_models::{
+    Dateline, Plank, Timeline, dateline_swift, plank_swift, timeline_swift,
+};
 use super::run_swift_read::normalized;
 use super::runtime::judged;
 
@@ -295,6 +297,18 @@ fn struct_rows() -> Vec<Row> {
         ),
         #[cfg(feature = "chrono")]
         read_row(
+            "a null entry under a key Swift wraps and under one it keys natively",
+            "Dateline",
+            &Dateline {
+                maybe_by_name: HashMap::from([
+                    ("n".to_owned(), None),
+                    ("m".to_owned(), Some(Plank { label: text() })),
+                ]),
+                maybe_by_number: HashMap::from([(1, Some(date())), (2, None)]),
+            },
+        ),
+        #[cfg(feature = "chrono")]
+        read_row(
             "a list of maps of dates",
             "Timeline",
             &Timeline {
@@ -369,7 +383,10 @@ fn holder_rows() -> Vec<Row> {
                     ("m".to_owned(), Some(vec![numbered(&text())])),
                     ("n".to_owned(), None),
                 ]),
-                maybe_rungs_by_rung: HashMap::from([(Rung::Low, Some(rungs(&text())))]),
+                maybe_rungs_by_rung: HashMap::from([
+                    (Rung::Low, Some(rungs(&text()))),
+                    (Rung::High, None),
+                ]),
                 number_lists_by_name: HashMap::from([("n".to_owned(), vec![numbered(&text())])]),
                 rung_lists_or_none_by_name: HashMap::from([(
                     "r".to_owned(),
@@ -383,7 +400,10 @@ fn holder_rows() -> Vec<Row> {
             &StowedAttic {
                 flag_lists_by_number: numbered(&vec![flagged(&text())]),
                 maybe_number_lists_by_name: HashMap::from([("n".to_owned(), None)]),
-                maybe_rungs_by_rung: HashMap::from([(Rung::Low, Some(rungs(&text())))]),
+                maybe_rungs_by_rung: HashMap::from([
+                    (Rung::Low, Some(rungs(&text()))),
+                    (Rung::High, None),
+                ]),
                 number_lists_by_name: HashMap::new(),
                 rung_lists_or_none_by_name: HashMap::from([("r".to_owned(), vec![None])]),
             },
@@ -672,7 +692,11 @@ fn a_list_or_an_optional_of_maps_swift_wraps_reads_and_writes_in_swift_as_serde_
         untagged_stowed_galley_swift::swift_definition(),
     ];
     #[cfg(feature = "chrono")]
-    parts.push(timeline_swift::swift_definition());
+    parts.extend([
+        timeline_swift::swift_definition(),
+        plank_swift::swift_definition(),
+        dateline_swift::swift_definition(),
+    ]);
     parts.extend([HARNESS.to_owned(), calls.join("\n")]);
     let source = parts.join("\n\n");
     let Some(run) = judged(

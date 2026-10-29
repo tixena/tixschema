@@ -314,7 +314,7 @@ fn the_parameter_as_a_key_is_held_as_its_text() {
         &gazetteer_swift::swift_definition(),
         &[
             "public struct GazetteerByStowedKeyedMap<Stowed: Codable & Sendable>: Codable, \
-             Sendable { var storage: [String: UInt32]; ",
+             Sendable { public var storage: [String: UInt32]; ",
             "public let byStowed: [String: UInt32]; ",
             &format!("{TEXT_KEY}try container.decode(UInt32.self, forKey: codingKey) }}; "),
         ],

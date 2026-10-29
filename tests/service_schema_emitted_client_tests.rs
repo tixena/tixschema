@@ -303,6 +303,41 @@ mod wrapped_maps_models;
 #[path = "service_schema_emitted_client_tests/run_swift_wrapped_maps.rs"]
 mod run_swift_wrapped_maps;
 
+/// The models a map keyed by a brand or an alias is written on.
+#[cfg(all(test, feature = "swift"))]
+#[path = "swift_tests/wrapped_keys_models.rs"]
+mod wrapped_keys_models;
+
+/// What the Swift backend writes for a map keyed by a brand or an alias.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "swift_tests/wrapped_keys.rs"]
+mod wrapped_keys;
+
+/// A map keyed by a brand or an alias, read and written by the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_wrapped_keys.rs"]
+mod run_swift_wrapped_keys;
+
+/// The models a map under a key Swift wraps, held as a type argument or named by an alias, is
+/// written on.
+#[cfg(all(test, feature = "swift"))]
+#[path = "swift_tests/held_maps_models.rs"]
+mod held_maps_models;
+
+/// What the Swift backend writes for a map under a key Swift wraps held as a type argument or
+/// named by an alias.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "swift_tests/held_maps.rs"]
+mod held_maps;
+
+/// A map under a key Swift wraps, held as a type argument or named by an alias, read and written
+/// by the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_held_maps.rs"]
+mod run_swift_held_maps;
+
 /// The models a tuple struct that declares one slot is written on.
 #[cfg(test)]
 #[path = "swift_tests/lone_slots_models.rs"]

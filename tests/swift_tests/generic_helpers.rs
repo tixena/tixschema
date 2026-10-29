@@ -310,13 +310,13 @@ fn the_tuple_and_the_map_of_a_field_declare_the_parameter_they_reach() {
              let slot0: Stowed; let slot1: UInt32; ",
             "public init(slot0: Stowed, slot1: UInt32) { ",
             "public struct StackByNumberKeyedMap<Stowed: Codable & Sendable>: Codable, Sendable { \
-             var storage: [UInt32: Stowed]; ",
-            "init(storage: [UInt32: Stowed]) { self.storage = storage }; ",
+             public var storage: [UInt32: Stowed]; ",
+            "public init(storage: [UInt32: Stowed]) { self.storage = storage }; ",
             "result[key] = try container.decode(Stowed.self, forKey: codingKey) }; ",
             "public struct StackListedKeyedMap<Stowed: Codable & Sendable>: Codable, Sendable { \
-             var storage: [UInt32: Stowed]; ",
+             public var storage: [UInt32: Stowed]; ",
             "public struct StackByCaskKeyedMap<Stowed: Codable & Sendable>: Codable, Sendable { \
-             var storage: [UInt32: Cask<Stowed>]; ",
+             public var storage: [UInt32: Cask<Stowed>]; ",
             "result[key] = try Cask<Stowed>(swiftSchemaUnjudged: \
              container.superDecoder(forKey: codingKey)) }; ",
             "public struct CaskArgument0Tuple<Stowed: Codable & Sendable>: Codable, Sendable { \
@@ -362,14 +362,14 @@ fn a_helper_held_by_another_declares_the_parameter_both_reach() {
             "public struct StackPairedByNumberValueTuple<Stowed: Codable & Sendable>: Codable, \
              Sendable { let slot0: Stowed; let slot1: UInt8; ",
             "public struct StackPairedByNumberKeyedMap<Stowed: Codable & Sendable>: Codable, \
-             Sendable { var storage: [UInt32: StackPairedByNumberValueTuple<Stowed>]; ",
+             Sendable { public var storage: [UInt32: StackPairedByNumberValueTuple<Stowed>]; ",
             "result[key] = try container.decode(StackPairedByNumberValueTuple<Stowed>.self, \
              forKey: codingKey) }; ",
             "let wirePairedByNumber = try \
              container.decode(StackPairedByNumberKeyedMap<Stowed>.self, forKey: \
              .pairedByNumber); ",
             "public struct StackNumberedPairTupleSlot0KeyedMap<Stowed: Codable & Sendable>: \
-             Codable, Sendable { var storage: [UInt32: Stowed]; ",
+             Codable, Sendable { public var storage: [UInt32: Stowed]; ",
             "public struct StackNumberedPairTuple<Stowed: Codable & Sendable>: Codable, Sendable { \
              let slot0: [UInt32: Stowed]; let slot1: UInt8; ",
             "self.numberedPair = try container.decode(StackNumberedPairTuple<Stowed>.self, \
@@ -415,7 +415,7 @@ fn the_key_of_a_map_reaches_the_parameter() {
         &ranked_swift::swift_definition(),
         &[
             "public struct RankedByStowedKeyedMap<Stowed: Codable & Sendable>: Codable, Sendable { \
-             var storage: [String: UInt32]; ",
+             public var storage: [String: UInt32]; ",
             "public let byStowed: [String: UInt32]; ",
             "let wireByStowed = try container.decode(RankedByStowedKeyedMap<Stowed>.self, \
              forKey: .byStowed); ",
@@ -445,7 +445,7 @@ fn the_tuple_of_a_tuple_struct_declares_the_parameter_its_slots_reach() {
         &register_swift::swift_definition(),
         &[
             "public struct RegisterTupleSlot0KeyedMap<Stowed: Codable & Sendable>: Codable, \
-             Sendable { var storage: [UInt32: Stowed]; ",
+             Sendable { public var storage: [UInt32: Stowed]; ",
             "public struct RegisterTuple<Stowed: Codable & Sendable>: Codable, Sendable { \
              let slot0: [UInt32: Stowed]; let slot1: UInt8; ",
             "public let value: RegisterTuple<Stowed>; ",
@@ -459,7 +459,7 @@ fn a_brand_and_an_alias_name_the_helper_at_its_parameters() {
         &hoard_swift::swift_definition(),
         &[
             "public struct HoardKeyedMap<Stowed: Codable & Sendable>: Codable, Sendable { \
-             var storage: [UInt32: Stowed]; ",
+             public var storage: [UInt32: Stowed]; ",
             "let wireValue = try container.decode(HoardKeyedMap<Stowed>.self); ",
             "let written = HoardKeyedMap<Stowed>(storage: value); try written.encode(to: encoder) \
              }; ",
@@ -478,7 +478,7 @@ fn a_brand_and_an_alias_name_the_helper_at_its_parameters() {
         &numbering_swift::swift_definition(),
         &[
             "public struct NumberingTypeKeyedMap<Stowed: Codable & Sendable>: Codable, Sendable { \
-           var storage: [UInt32: Stowed]; ",
+           public var storage: [UInt32: Stowed]; ",
         ],
     );
 }
@@ -491,15 +491,15 @@ fn a_variant_holds_its_helper_at_the_parameters_it_declares_under_no_tag_attribu
             "public struct SplitHalvesTuple<Stowed: Codable & Sendable>: Codable, Sendable { \
              let slot0: Stowed; let slot1: UInt8; ",
             "public struct SplitKeyedTupleSlot0KeyedMap<Stowed: Codable & Sendable>: Codable, \
-             Sendable { var storage: [UInt32: Stowed]; ",
+             Sendable { public var storage: [UInt32: Stowed]; ",
             "public struct SplitKeyedTuple<Stowed: Codable & Sendable>: Codable, Sendable { \
              let slot0: [UInt32: Stowed]; let slot1: UInt8; ",
             "public struct SplitNumberedValueKeyedMap<Stowed: Codable & Sendable>: Codable, \
-             Sendable { var storage: [UInt32: Stowed]; ",
+             Sendable { public var storage: [UInt32: Stowed]; ",
             "public struct SplitPairedValueTuple<Stowed: Codable & Sendable>: Codable, Sendable { \
              let slot0: Stowed; let slot1: UInt32; ",
             "public struct SplitStackedPayloadByNumberKeyedMap<Stowed: Codable & Sendable>: \
-             Codable, Sendable { var storage: [UInt32: Stowed]; ",
+             Codable, Sendable { public var storage: [UInt32: Stowed]; ",
             "public struct SplitStackedPayloadPairTuple<Stowed: Codable & Sendable>: Codable, \
              Sendable { let slot0: Stowed; let slot1: UInt32; ",
             "public enum Split<Stowed: Codable & Sendable>: Codable, Sendable { \
@@ -525,7 +525,7 @@ fn a_variant_holds_its_helper_at_the_parameters_it_declares_under_a_tag_alone() 
         &tagged_split_swift::swift_definition(),
         &[
             "public struct TaggedSplitStackedPayloadByDeckKeyedMap<Stowed: Codable & Sendable>: \
-             Codable, Sendable { var storage: [Deck: Stowed]; ",
+             Codable, Sendable { public var storage: [Deck: Stowed]; ",
             "public struct TaggedSplitStackedPayloadPairTuple<Stowed: Codable & Sendable>: \
              Codable, Sendable { let slot0: Stowed; let slot1: UInt32; ",
             "public let byDeck: [Deck: Stowed]; \
@@ -566,7 +566,7 @@ fn a_variant_holds_its_helper_at_the_parameters_it_declares_untagged() {
         &untagged_split_swift::swift_definition(),
         &[
             "public struct UntaggedSplitDeckedValueKeyedMap<Stowed: Codable & Sendable>: \
-             Codable, Sendable { var storage: [Deck: Stowed]; ",
+             Codable, Sendable { public var storage: [Deck: Stowed]; ",
             "public struct UntaggedSplitPairedValueTuple<Stowed: Codable & Sendable>: Codable, \
              Sendable { ",
             "case decked([Deck: Stowed]); case paired(UntaggedSplitPairedValueTuple<Stowed>); \
