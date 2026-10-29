@@ -93,11 +93,16 @@ fn annotated_base(field: &FieldDef, annotated: Annotated) -> String {
                     "@Serializable(with = {}::class) {written}",
                     key_object_name(&brand)
                 ),
-                texts::KeyLeaf::Primitive(texts::Primitive::Bool) => format!(
-                    "@Serializable(with = {}::class) Boolean",
-                    texts::number_serializer(texts::Primitive::BoolKey)
+                texts::KeyLeaf::Primitive(primitive) => texts::as_key(primitive).map_or_else(
+                    || primitive.kotlin_type().to_owned(),
+                    |key| {
+                        format!(
+                            "@Serializable(with = {}::class) {}",
+                            texts::number_serializer(key),
+                            primitive.kotlin_type()
+                        )
+                    },
                 ),
-                texts::KeyLeaf::Primitive(primitive) => primitive.kotlin_type().to_owned(),
             };
         }
         unjudged_of(name).filter(|_| annotated.models).map_or_else(
@@ -126,8 +131,7 @@ fn annotated_base(field: &FieldDef, annotated: Annotated) -> String {
                     .and_then(|primitive| match annotated.numbers {
                         Numbers::Plain => None,
                         Numbers::Refusing => Some(primitive),
-                        Numbers::Key => (primitive == texts::Primitive::Bool)
-                            .then_some(texts::Primitive::BoolKey),
+                        Numbers::Key => texts::as_key(primitive),
                     })
                     .map(texts::number_serializer)
             });

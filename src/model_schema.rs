@@ -39,7 +39,15 @@ use quote::quote_spanned;
 ))]
 use syn::spanned::Spanned as _;
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 use syn::Ident;
 
 #[cfg(all(feature = "zod", feature = "typescript"))]
@@ -1552,7 +1560,15 @@ impl MapMemberItem {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 impl ModelSchemaArgs {
     const fn has_string_constraints(&self) -> bool {
         self.pattern.is_some() || self.min_length.is_some() || self.max_length.is_some()
@@ -2255,7 +2271,15 @@ fn alias_target_kind(alias_field_def: &FieldDef) -> AliasKind {
 /// The `compile_error!` tokens an alias whose target reaches a map key with no `enum_members()`
 /// earns, or `None` when it reaches none. Spanned on the target, which is where the key was
 /// written.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn alias_map_key_guard_error(
     alias: &ItemType,
     alias_field_def: &FieldDef,
@@ -2445,6 +2469,17 @@ fn process_type_alias(item_type: ItemType, _args: &ModelSchemaArgs) -> TokenStre
     alias
         .attrs
         .retain(|attr| !attr.path().is_ident("model_schema"));
+    #[cfg(all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    ))]
+    if let Some(error) = alias_map_key_guard_error(
+        &alias,
+        &get_field_def(&alias.ident.to_string(), &alias.ty, ""),
+    ) && let Some(output) = guard_failure_output(&alias, Some(&alias.ident), &[error])
+    {
+        return output;
+    }
     quote! { #alias }
 }
 
@@ -5354,7 +5389,15 @@ fn const_parameter_example_message(consts: &[&syn::Ident]) -> String {
 
 /// The `compile_error!` tokens an item earns for handing one of its own const parameters to a
 /// generic type it writes, or none where no type written on it does that.
-#[cfg(any(feature = "typescript", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn const_parameter_argument_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
     let Some(generics) = item_generics(item) else {
         return Vec::new();
@@ -5391,8 +5434,15 @@ fn const_parameter_argument_errors(item: &Item) -> Vec<proc_macro2::TokenStream>
 /// Every type an item writes out: a struct's field types, an enum's variant field types, an alias's
 /// target. The types whose spelling reaches a surface, which is where an argument is written.
 #[cfg(any(
-    feature = "typescript",
-    feature = "jsonschema",
+    any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        all(
+            feature = "serde",
+            any(feature = "dart", feature = "swift", feature = "kotlin")
+        )
+    ),
     not(feature = "indexmap")
 ))]
 fn item_written_types(item: &Item) -> Vec<&syn::Type> {
@@ -5413,7 +5463,15 @@ fn item_written_types(item: &Item) -> Vec<&syn::Type> {
 
 /// Every place one of `consts` is handed to a written type as an argument, collected as the ident
 /// it was written at so the refusal points there.
-#[cfg(any(feature = "typescript", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn collect_const_arguments(written: &syn::Type, consts: &[String], found: &mut Vec<syn::Ident>) {
     match written {
         syn::Type::Path(type_path) => {
@@ -5475,7 +5533,15 @@ fn collect_const_arguments(written: &syn::Type, consts: &[String], found: &mut V
 }
 
 /// The ident a type is written as when it is written as a bare name and nothing else, or `None`.
-#[cfg(any(feature = "typescript", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn bare_ident(written: &syn::Type) -> Option<syn::Ident> {
     let syn::Type::Path(type_path) = written else {
         return None;
@@ -5487,35 +5553,41 @@ fn bare_ident(written: &syn::Type) -> Option<syn::Ident> {
 }
 
 /// Why a const handed to a written type as an argument is refused: where the const does render,
-/// where this one stands instead, what each surface would emit, what the features have to do with
-/// it, and the way out.
-#[cfg(any(feature = "typescript", feature = "jsonschema"))]
+/// where this one stands instead, what each surface would emit, and the way out.
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn const_parameter_argument_message(name: &str) -> String {
-    let surfaces = if cfg!(feature = "typescript") && cfg!(feature = "jsonschema") {
-        "the `typescript` and `jsonschema` features are enabled, the two surfaces that render an \
-         argument list"
-    } else if cfg!(feature = "typescript") {
-        "the `typescript` feature is enabled, a surface that renders an argument list"
-    } else {
-        "the `jsonschema` feature is enabled, a surface that renders an argument list"
-    };
     format!(
         "`#[model_schema]` cannot render the const parameter `{name}` as a type argument. An \
          argument list is read as a list of types — that is what every surface writes one from — so \
          `{name}` standing in one is taken for a type, and no surface can spell it: the JSON \
-         document would call into a `{}_schema` module nothing publishes, and the TypeScript \
+         document would call into a `{}_schema` module nothing publishes, the TypeScript \
          declaration would write `{name}` where nothing binds it, a const being dropped from the \
-         declaration it was written on. This is refused because {surfaces}. A const does render as \
-         an array length — `[T; {name}]`, which describes as an unbounded array — so hold the value \
-         that way, or fill the argument with a type.",
+         declaration it was written on, and no Dart, Swift or Kotlin type declares it. This is \
+         refused in every build that describes a type. A const does render as an array length — \
+         `[T; {name}]`, which describes as an unbounded array — so hold the value that way, or \
+         fill the argument with a type.",
         name.to_lowercase()
     )
 }
 
-/// Nothing, in a build that renders no argument list: Zod names the schema the *item* published and
-/// a const-declaring item publishes the one schema it has, so the const never stands where a type
-/// is read.
-#[cfg(not(any(feature = "typescript", feature = "jsonschema")))]
+/// Nothing, in a build that describes no type.
+#[cfg(not(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+)))]
 const fn const_parameter_argument_errors(_item: &Item) -> Vec<proc_macro2::TokenStream> {
     Vec::new()
 }
@@ -5844,7 +5916,15 @@ fn enum_cfg_attr_guard_errors(
 
 /// The `compile_error!` tokens for a branded newtype whose inner type is `Option`, or `None` for
 /// every other inner type.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn branded_option_inner_error(
     name: &Ident,
     inner_field: &Field,
@@ -5869,7 +5949,15 @@ fn branded_option_inner_error(
 /// The `compile_error!` tokens for a branded newtype that applies `pattern`, `minLength`, or
 /// `maxLength` to an inner type whose schema is not a string, or `None` when the inner can carry
 /// them. A list carries the two lengths, which count its items, and no `pattern`.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn branded_constraint_inner_error(
     generics: &syn::Generics,
     name: &Ident,
@@ -5939,7 +6027,15 @@ fn branded_constraint_inner_error(
 /// The Rust spelling of `parameter`'s declared default, for the refusal that names it — the same
 /// `String` fallback [`declared_default_field`] resolves a `FieldDef` from. Practically
 /// unreachable here, but total anyway rather than leaving a lookup miss unspelled.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn declared_default_type_name(
     parameter: &str,
     default_types: &[(syn::Ident, syn::Type)],
@@ -5953,7 +6049,15 @@ fn declared_default_type_name(
 /// Why a constrained brand's bare-parameter inner is refused when its *declared default* — not the
 /// parameter — turns out not to be string-shaped: the default is what `$SchemaDefault` composes
 /// the checks onto, so a default the checks cannot measure is refused in its place.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn declared_default_constraint_message(name: &Ident, parameter: &str, default_ty: &str) -> String {
     format!(
         "model_schema: branded newtype `{name}` applies string constraints (pattern, minLength, \
@@ -6181,7 +6285,15 @@ const fn swift_width_refusals(_item: &Item) -> Vec<proc_macro2::TokenStream> {
 
 /// How a constrained brand over a name the registry proves publishes no string is refused, in the
 /// one wording both orders of the two declarations reach it by.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn named_inner_constraint_message(brand: &str, inner: &str, shape: &str) -> String {
     format!(
         "model_schema: branded newtype `{brand}` applies string constraints (pattern, minLength, \
@@ -6196,7 +6308,15 @@ fn named_inner_constraint_message(brand: &str, inner: &str, shape: &str) -> Stri
 
 /// Names the shape an inner type resolves to that has no string for the constraints to measure, or
 /// `None` when it writes exactly one and so can carry them.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn non_string_inner_shape(inner: &FieldDef) -> Option<&'static str> {
     if inner.is_array() || sequence_wrapper_element(inner).is_some() {
         return Some("container");
@@ -6246,6 +6366,19 @@ fn instantiated_value_shape(rust_ident: &str, arguments: &[FieldDef]) -> Option<
         PublishedShape::Flat(shape) => shape,
         PublishedShape::Parameter(position) => non_string_inner_shape(arguments.get(position)?),
     }
+}
+
+/// A build with no schema surface records no alias, so no name has a shape to answer with.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "swift", feature = "kotlin"),
+    not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
+))]
+const fn instantiated_value_shape(
+    _rust_ident: &str,
+    _arguments: &[FieldDef],
+) -> Option<&'static str> {
+    None
 }
 
 /// The JSON type keyword a recorded name's wire describes as, when the leaves `leaves_of` reads
@@ -6344,7 +6477,15 @@ fn published_parameter_position(target: &FieldDef, parameters: &[String]) -> Opt
 /// carries: on the type and on its inner slot, which is positional and so has no name to print.
 #[cfg(all(
     feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        all(
+            feature = "serde",
+            any(feature = "dart", feature = "swift", feature = "kotlin")
+        )
+    )
 ))]
 fn branded_cfg_attr_guard_errors(
     item_struct: &syn::ItemStruct,
@@ -6367,7 +6508,15 @@ fn branded_cfg_attr_guard_errors(
 
 #[cfg(all(
     not(feature = "serde"),
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        all(
+            feature = "serde",
+            any(feature = "dart", feature = "swift", feature = "kotlin")
+        )
+    )
 ))]
 const fn branded_cfg_attr_guard_errors(
     _item_struct: &syn::ItemStruct,
@@ -6380,7 +6529,15 @@ const fn branded_cfg_attr_guard_errors(
 /// when it carries none or it clears them. An enum answers for its own in
 /// [`enum_string_check_refusal_output`]; every other shape is refused the argument before a surface
 /// is built.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn branded_pattern_error(name: &Ident, args: &ModelSchemaArgs) -> Option<proc_macro2::TokenStream> {
     args.pattern_rejection
         .as_ref()
@@ -6390,7 +6547,15 @@ fn branded_pattern_error(name: &Ident, args: &ModelSchemaArgs) -> Option<proc_ma
 /// The inner type as the two validating surfaces receive it, with the brand's own type parameters
 /// already classified as parameters. The guard and the registration both read the inner through
 /// this one call, so what a brand is refused for and what it records cannot come apart.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn branded_inner_value_surface(generics: &syn::Generics, inner_field: &Field) -> FieldDef {
     surface_field_def(generics, &get_field_def("_inner", &inner_field.ty, ""))
 }
@@ -6420,7 +6585,15 @@ fn branded_key_wire(inner_field: &Field) -> MapKeyWire {
 
 /// The `compile_error!` tokens for a branded newtype whose inner reaches a std type serde has no
 /// wire form for, or `None` when it reaches none. Spanned on the inner as written.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn branded_undescribable_std_error(
     name: &Ident,
     inner_field: &Field,
@@ -6436,7 +6609,15 @@ fn branded_undescribable_std_error(
 
 /// The `compile_error!` tokens for a branded newtype whose inner reaches a map key no surface can
 /// write, or `None` when it reaches none.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn branded_map_key_error(name: &Ident, inner_field: &Field) -> Option<proc_macro2::TokenStream> {
     let inner = get_field_def("", &inner_field.ty, "");
     let rejection = map_key_rejection(&inner)?;
@@ -6452,7 +6633,15 @@ fn branded_map_key_error(name: &Ident, inner_field: &Field) -> Option<proc_macro
 /// over an inner type that cannot carry them, a `pattern` that is not a regex, a std type the inner
 /// reaches that serde has no wire form for, and a map key the inner reaches that no surface can
 /// write.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn branded_guard_errors(
     item_struct: &syn::ItemStruct,
     args: &ModelSchemaArgs,
@@ -6834,8 +7023,30 @@ fn collect_struct_fields(
     let mut guard_errors: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut deferred_attrs: Vec<Vec<syn::Attribute>> = Vec::new();
     let steps = steps_of_members(fields, &[], rename_all);
+    #[cfg(all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin"),
+        not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
+    ))]
+    let positional_slots = matches!(fields, syn::Fields::Unnamed(_)).then(|| fields.len());
 
     for (index, field) in fields.iter_mut().enumerate() {
+        #[cfg(all(
+            feature = "serde",
+            any(feature = "dart", feature = "swift", feature = "kotlin"),
+            not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
+        ))]
+        if let Some(declared_slots) = positional_slots
+            && let Err(rejection) = check_slot_wire_is_readable(
+                field,
+                index,
+                declared_slots,
+                type_name,
+                parse_serde_key_omission(&field.attrs),
+            )
+        {
+            guard_errors.push(rejection.to_compile_error());
+        }
         // Read before the field is processed, which strips the attributes the declaration carried.
         let is_flatten = is_flattened_field(field);
 
@@ -7511,10 +7722,47 @@ fn struct_members(
     }
 }
 
+/// The expansion of a brand, or `None` for a struct that is no brand. Where no schema surface
+/// registers a brand, only the guards it earns for a client are read.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+fn branded_output(item_struct: &syn::ItemStruct, args: &ModelSchemaArgs) -> Option<TokenStream> {
+    is_branded_newtype(item_struct).then(|| process_branded_newtype(item_struct.clone(), args))
+}
+
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "swift", feature = "kotlin"),
+    not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
+))]
+fn branded_output(item_struct: &syn::ItemStruct, args: &ModelSchemaArgs) -> Option<TokenStream> {
+    if !is_branded_newtype(item_struct) {
+        return None;
+    }
+    refused_item_output(
+        &Item::Struct(item_struct.clone()),
+        &branded_guard_errors(item_struct, args),
+    )
+}
+
+#[cfg(not(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+)))]
+const fn branded_output(
+    _item_struct: &syn::ItemStruct,
+    _args: &ModelSchemaArgs,
+) -> Option<TokenStream> {
+    None
+}
+
 fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> TokenStream {
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-    if is_branded_newtype(&item_struct) {
-        return process_branded_newtype(item_struct, args);
+    if let Some(output) = branded_output(&item_struct, args) {
+        return output;
     }
 
     #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
@@ -8078,14 +8326,30 @@ const fn is_tuple_struct(item_struct: &syn::ItemStruct) -> bool {
 
 /// Whether the slot at `index` of a tuple struct declaring `declared_slots` slots carries serde
 /// attributes the wire answers for.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 const fn slot_attributes_reach_the_wire(declared_slots: usize) -> bool {
     declared_slots > 1
 }
 
 /// Rejects a tuple-struct slot whose serde attributes drop it out of one of serde's two directions
 /// and not the other.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn check_slot_wire_is_readable(
     field: &Field,
     index: usize,
@@ -9395,7 +9659,15 @@ fn build_branded_json_schema_method(
 
 /// The `FieldDef` every surface renders from: the written one with each name that is one of the
 /// enclosing item's own type parameters classified as the parameter it is.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn surface_field_def(generics: &syn::Generics, written: &FieldDef) -> FieldDef {
     let mut erased = written.clone();
     erased.erase_type_parameters(&type_parameters_in_scope(generics));
@@ -17737,7 +18009,15 @@ fn names_a_list(ty: &syn::Type) -> bool {
 /// Whether a brand's inner is written as a list itself, or as one behind `Box`, `Rc`, `Arc` or
 /// `Cow`: the reach `constrained_shape` has through transparent wrappers alone, asked in a build
 /// without `serde`.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn held_as_a_list(ty: &syn::Type) -> bool {
     let mut current = ty;
     loop {
@@ -20636,7 +20916,15 @@ fn zod_factory_memoized_binding(item_name: &str, parameters: &[String]) -> Strin
 /// The `FieldDef` one `default_types` entry parses as: the declared filling for `parameter`, or —
 /// absent one — `String`, [`schema_example_value_type`]'s own fallback for the identical gap. Only
 /// `jsonschema` requires a declared default; the constrained-brand guard reads this regardless.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 fn declared_default_field(parameter: &str, default_types: &[(syn::Ident, syn::Type)]) -> FieldDef {
     default_types
         .iter()
