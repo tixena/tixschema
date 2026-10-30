@@ -2,6 +2,7 @@
 
 mod aliases;
 pub mod forms;
+mod forwarded;
 mod keys;
 mod preprocess;
 mod read;
@@ -678,7 +679,8 @@ fn through_alias(def: &FieldDef) -> Option<Shaped> {
 /// The Swift tokens `item` earns, given what `#[model_schema(...)]` says of it. Dispatches on the
 /// item's own shape; an item this module has nothing to say about earns nothing.
 pub fn swift_schema_dispatch(item: &Item, args: &SwiftTypeArgs<'_>) -> TokenStream {
-    if let Item::Struct(item_struct) = item {
+    forwarded::record(item, args);
+    let tokens = if let Item::Struct(item_struct) = item {
         struct_swift_tokens(item_struct, args)
     } else if let Item::Enum(item_enum) = item {
         enum_swift_tokens(item_enum, args)
@@ -686,7 +688,9 @@ pub fn swift_schema_dispatch(item: &Item, args: &SwiftTypeArgs<'_>) -> TokenStre
         alias_swift_tokens(item_type, args.name_override)
     } else {
         TokenStream::new()
-    }
+    };
+    forwarded::clear();
+    tokens
 }
 
 /// Whether `field`'s own declared type has no Swift mapping — a `u64` or `usize`, refused rather
@@ -726,11 +730,12 @@ fn swift_module_tokens(
 ) -> TokenStream {
     let module_ident = swift_module_ident(rust_ident, span);
     let holder = defaults.holder();
+    let full_source = format!("{}{swift_source}", forwarded::take());
     if holder.is_empty() {
         return quote! {
             pub mod #module_ident {
                 pub fn swift_definition() -> ::std::string::String {
-                    #swift_source.to_owned()
+                    #full_source.to_owned()
                 }
             }
         };
@@ -747,7 +752,7 @@ fn swift_module_tokens(
             #holder
 
             pub fn swift_definition() -> ::std::string::String {
-                let mut #written = ::std::string::String::from(#swift_source);
+                let mut #written = ::std::string::String::from(#full_source);
                 #replaced
                 #written
             }
@@ -3259,6 +3264,7 @@ fn field_rules(owner: &str, fields: &[SwiftField]) -> Vec<String> {
             validate::member_rules(
                 owner,
                 &validate::Checked {
+                    real_type: Some(field.real_type.as_str()),
                     access: validate::property_read(&field.swift_name),
                     def: &field.field_def,
                     step: (!field.flatten).then(|| field.wire_name.clone()),
@@ -3309,6 +3315,7 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
         let mut rules = validate::own_repeat_rules(
             &export_name,
             &validate::Checked {
+                real_type: None,
                 access: "value".to_owned(),
                 def: &value_field,
                 step: None,
@@ -3891,6 +3898,7 @@ fn named_payload(
             validate::bound_alone(
                 export_name,
                 &validate::Checked {
+                    real_type: None,
                     access: format!("payload.{}", field.swift_name),
                     def: &field.field_def,
                     step: (!field.flatten).then(|| field.wire_name.clone()),
@@ -3928,6 +3936,7 @@ fn slot_payload(
     let hint = format!("{export_name}{}Value", variant.ident);
     let (held, slot) = slot_resolve(&field_def, &hint, aux);
     let checked = validate::Checked {
+        real_type: None,
         access: "payload".to_owned(),
         def: &field_def,
         step: step.map(ToOwned::to_owned),
@@ -4001,6 +4010,7 @@ fn slots_payload(
             validate::bound_alone(
                 export_name,
                 &validate::Checked {
+                    real_type: None,
                     access: format!("payload.slot{position}"),
                     def: slot,
                     step: Some(position.to_string()),

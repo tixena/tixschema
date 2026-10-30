@@ -5201,7 +5201,7 @@ List<String> withinParcel(Parcel value) => [
 
 - **A field's check takes the field's own value** and names no place: `validate()` writes each message under the field's key. Under an `Option` it is called where a value is held.
 - **A type's check takes the whole value** and leads each message with the place of what it refuses, in single quotes, as [the Rust function does](#the-messages). The check of an enum takes the enum, and each variant hands itself over. The check of a brand takes the wrapper.
-- **A member of the type hides a function of its name** inside the class: a check named `label` on a type with a field `label` does not compile. Name the check after the rule.
+- **A check may share a name with a member of its type.** A check named `label` on a type with a field `label` is called through a private forwarder declared ahead of the class (`final _parcelCheckLabel = label;`), which names your function where the class would read the member. A check that shares a name with no member is called by that name.
 
 With those two functions, the `validate()` of six values, each read with `fromJsonUnjudged` from the payload serde writes for it, answers what the Rust `validate()` answers of the same values:
 
@@ -6405,7 +6405,7 @@ With those two functions, `Parcel.fromJson` and `Manifest.fromJson` answer for t
 - **A sealed enum calls its functions in its base**, once, ahead of the dispatch on the tag, and an `#[serde(untagged)]` one ahead of every attempt. A plain enum calls them on the text, in `fromJsonUnjudged`.
 - **The service clients read a reply through `fromJson`**, so a reply is corrected as any other payload is.
 - **A name with no function does not compile**, and the Dart compiler reports the call: `Error: Method not found: 'trimmed'.`
-- **A member of the type hides a function of its name** inside the class, as it hides a [check](#the-functions-you-write-in-dart): a `preprocess` named `label` on a type with a field `label` is reported as a name with no function. The names a read declares itself hide none: `json`, `payload`, `map`, `tag`, `read` and the converter it takes for a type parameter, `codeTypeFromJson`, are numbered where a function is called under one, `json2`.
+- **A function may share a name with a member of its type.** A `preprocess` named `label` on a type with a field `label` is called through a private forwarder declared ahead of the class, as a [check](#the-functions-you-write-in-dart) is. The names a read declares itself hide none: `json`, `payload`, `map`, `tag`, `read` and the converter it takes for a type parameter, `codeTypeFromJson`, are numbered where a function is called under one, `json2`.
 
 #### `preprocess` in the Swift client
 
