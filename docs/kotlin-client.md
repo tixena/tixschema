@@ -68,8 +68,11 @@ section is the consumer's view; this is what a change has to keep.
   (`Rules::serializers_for`, from the positions `note_hands` noted for the held type): the
   holder's own serializer where the argument is one of the holder's parameters, the reified
   `serializer<Tag<String>>()` where the argument is concrete, and `null`, which keeps the class
-  lookup, where the holder holds none (a value built by hand) or the argument composes one of its
-  parameters. A holder with a concrete argument has no value built by hand to keep the lookup: its
+  lookup, where the holder holds none (a value built by hand). An argument built from the holder's
+  parameters (`Tag<KeyType>`, `Tag<Tag<KeyType>>`) is handed the serializer of the argument's type
+  composed from the holder's own: `Tag.serializer(keyTypeSerializer)`, nested for a deeper
+  argument, guarded by a null check on each serializer it reads, so the value built by hand keeps
+  the class lookup. A holder with a concrete argument has no value built by hand to keep the lookup: its
   `validate()` always hands the reified serializer, so it names the key as Rust does.
 - **One wrapper is written per tuple shape per item.** `tuple_wrapper` queues a wrapper
   class the first time the item asks for a shape, and answers its name to every later ask of that

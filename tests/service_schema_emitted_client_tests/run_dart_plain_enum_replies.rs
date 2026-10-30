@@ -8,7 +8,7 @@
 use super::plain_enum_check_rows::{
     AppraisalClientServiceSchema, Verdict, appraisal_error_dart, verdict_dart,
 };
-use super::run_dart_validate::module;
+use super::run_dart_validate::{analyzed, module};
 use super::runtime::ran;
 
 const RUNTIME_VAR: &str = "TIXSCHEMA_DART";
@@ -132,17 +132,13 @@ fn held_to_serde() {
 #[test]
 fn the_dart_http_client_refuses_a_reply_typed_with_a_plain_enum_that_names_a_check() {
     held_to_serde();
-    let Some(wrote) = ran(
-        "dart",
-        RUNTIME_VAR,
-        "dart",
-        "court_http.dart",
-        &library(
-            &[],
-            AppraisalClientServiceSchema::dart_http_client(),
-            HTTP_DRIVER,
-        ),
-    ) else {
+    let source = library(
+        &[],
+        AppraisalClientServiceSchema::dart_http_client(),
+        HTTP_DRIVER,
+    );
+    analyzed("court-http-analyze", &source);
+    let Some(wrote) = ran("dart", RUNTIME_VAR, "dart", "court_http.dart", &source) else {
         return;
     };
     let written: serde_json::Value = serde_json::from_str(wrote.trim()).unwrap();
@@ -152,17 +148,13 @@ fn the_dart_http_client_refuses_a_reply_typed_with_a_plain_enum_that_names_a_che
 #[test]
 fn the_dart_ws_client_refuses_a_reply_typed_with_a_plain_enum_that_names_a_check() {
     held_to_serde();
-    let Some(wrote) = ran(
-        "dart",
-        RUNTIME_VAR,
-        "dart",
-        "court_ws.dart",
-        &library(
-            &["import 'dart:async';".to_owned()],
-            AppraisalClientServiceSchema::dart_ws_client(),
-            WS_DRIVER,
-        ),
-    ) else {
+    let source = library(
+        &["import 'dart:async';".to_owned()],
+        AppraisalClientServiceSchema::dart_ws_client(),
+        WS_DRIVER,
+    );
+    analyzed("court-ws-analyze", &source);
+    let Some(wrote) = ran("dart", RUNTIME_VAR, "dart", "court_ws.dart", &source) else {
         return;
     };
     let written: serde_json::Value = serde_json::from_str(wrote.trim()).unwrap();

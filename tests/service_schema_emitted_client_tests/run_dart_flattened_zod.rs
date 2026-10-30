@@ -12,7 +12,7 @@ use super::flattened_zod_models::{
     paragraph_dart, pause_dart, quote_dart, serde_report, slip_dart, span_dart, tally_dart,
     tenancy_dart, tethered_dart, wharf_dart, wharfage_dart,
 };
-use super::run_dart_validate::{dart, module};
+use super::run_dart_validate::{analyzed, dart, module};
 
 /// The functions the models name, as a consumer writes them in Dart.
 const FUNCTIONS: &str = r#"
@@ -101,6 +101,7 @@ fn a_flattened_choice_is_read_by_dart_as_serde_reads_it() {
         );
     }
     main.push_str("}\n");
+    analyzed("flattened-zod-read-analyze", &source(&main));
     let Some((ran, printed)) = dart("flattened-zod-read", &[], &source(&main)) else {
         return;
     };
@@ -122,6 +123,7 @@ fn a_check_of_a_flattened_choice_answers_in_dart_what_validate_answers() {
         );
     }
     main.push_str("}\n");
+    analyzed("flattened-zod-checks-analyze", &source(&main));
     let Some((ran, printed)) = dart("flattened-zod-checks", &[], &source(&main)) else {
         return;
     };

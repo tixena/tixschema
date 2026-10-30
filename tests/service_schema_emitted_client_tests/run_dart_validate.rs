@@ -9,6 +9,7 @@
 
 use alloc::collections::BTreeMap;
 use core::fmt::Write as _;
+use core::sync::atomic::{AtomicUsize, Ordering};
 use std::env;
 use std::fs;
 use std::process::{Command, id};
@@ -20,6 +21,9 @@ use super::runtime::ran;
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
 const RUNTIME_VAR: &str = "TIXSCHEMA_DART";
+
+/// The runs so far, which keeps two runs of one name in directories apart.
+static RUNS: AtomicUsize = AtomicUsize::new(0);
 
 /// The functions the checks of the shared table's model name, written by hand as a consumer
 /// writes them, and as the README shows them.
@@ -731,7 +735,11 @@ pub fn dart(named: &str, arguments: &[&str], source: &str) -> Option<(bool, Stri
         "reachable.dart",
         "void main() {}",
     )?;
-    let at = env::temp_dir().join(format!("tixschema-emitted-dart-{named}-{}", id()));
+    let at = env::temp_dir().join(format!(
+        "tixschema-emitted-dart-{named}-{}-{}",
+        id(),
+        RUNS.fetch_add(1, Ordering::Relaxed)
+    ));
     if at.exists() {
         fs::remove_dir_all(&at).unwrap();
     }
@@ -753,6 +761,16 @@ pub fn dart(named: &str, arguments: &[&str], source: &str) -> Option<(bool, Stri
             String::from_utf8_lossy(&reported.stderr)
         ),
     ))
+}
+
+/// Asserts that `dart analyze` finds no issue in `source`; a machine with no Dart runtime has said
+/// so already.
+pub fn analyzed(named: &str, source: &str) {
+    let Some((clean, said)) = dart(named, &["analyze"], source) else {
+        return;
+    };
+    assert!(clean, "{said}\n--- source ---\n{source}");
+    assert!(said.contains("No issues found!"), "{said}");
 }
 
 /// The six cases of the shared table, each with what Rust's `validate()` answers of it.

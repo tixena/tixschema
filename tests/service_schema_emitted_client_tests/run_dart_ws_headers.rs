@@ -3,6 +3,7 @@
 
 #![cfg(feature = "dart")]
 
+use super::run_dart_validate::analyzed;
 use super::runtime::ran;
 use super::stamp_client_service_schema::CallError;
 #[cfg(slow_tests)]
@@ -158,7 +159,7 @@ void main() async {
     onFault: (fault) { faults.add(fault.kind.name); answered(); },
   );
   for (final frame in FRAMES) {
-    served.add(jsonDecode(frame as String) as Map<String, dynamic>);
+    served.add(jsonDecode(frame) as Map<String, dynamic>);
   }
   await settled.future;
   detach();
@@ -193,6 +194,7 @@ fn run(named: &str, preamble: &str, driver: &str) -> Option<Value> {
         driver.to_owned(),
     ]
     .join("\n\n");
+    analyzed(&format!("{named}-analyze"), &module);
     let wrote = ran(named, RUNTIME_VAR, "dart", "headers.dart", &module)?;
     Some(serde_json::from_str(wrote.trim()).unwrap())
 }
@@ -452,16 +454,23 @@ void main() async {
       timeout: Duration(seconds: 1000),
     ),
   );
-  await until(() => probes.isNotEmpty);
+  final probeArrived = await until(() => probes.isNotEmpty);
   transport.close();
-  print(probes.first);
+  print(jsonEncode(<String, dynamic>{
+    'probeArrived': probeArrived,
+    'probe': probeArrived ? jsonDecode(probes.first as String) : null,
+  }));
 }
 ",
     ) else {
         return;
     };
     assert_eq!(
-        written,
+        written["probeArrived"], true,
+        "the heartbeat probe was written in time. got: {written}"
+    );
+    assert_eq!(
+        written["probe"],
         serde_json::from_str::<Value>(&ping_frame()).unwrap()
     );
 }

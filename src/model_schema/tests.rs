@@ -12505,6 +12505,32 @@ fn a_string_check_on_a_generic_type_alias_is_refused() {
 }
 
 #[test]
+fn the_brand_an_alias_refusal_suggests_carries_the_aliass_type_parameters() {
+    let one = expansion_under(
+        "maxLength = 9, default_types(T = String)",
+        "pub type Named<T> = Vec<T>;",
+    );
+    assert!(one.contains("pub struct Named<T>(Vec<T>);"), "got: {one}");
+    assert!(
+        one.contains("where its inner type's schema is a string and a schema surface is on"),
+        "got: {one}"
+    );
+    assert!(!one.contains("Declare a branded newtype"), "got: {one}");
+
+    let two = expansion_under(
+        "maxLength = 9, default_types(T = String, U = String)",
+        "pub type Pair<T, U> = (T, U);",
+    );
+    assert!(two.contains("pub struct Pair<T, U>((T, U));"), "got: {two}");
+
+    let plain = expansion_under("minLength = 1", "pub type UnlistedMimeType = String;");
+    assert!(
+        plain.contains("pub struct UnlistedMimeType(String);"),
+        "got: {plain}"
+    );
+}
+
+#[test]
 fn an_alias_with_no_string_check_is_not_refused() {
     let expanded = expansion_under("name = \"DocumentId\"", "pub type DocumentId = String;");
     assert!(!expanded.contains("compile_error"), "got: {expanded}");

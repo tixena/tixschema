@@ -170,6 +170,31 @@ pub struct Annex<KeyType: Ord + Serialize> {
     pub shelf: Shelf<KeyType>,
 }
 
+/// A generic holder whose field is a `Shelf` filled with a generic brand built from its parameter.
+#[model_schema(default_types(KeyType = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(bound(serialize = "", deserialize = "KeyType: Deserialize<'de>"))]
+pub struct Armoire<KeyType: Ord + Serialize> {
+    pub shelf: Shelf<Tag<KeyType>>,
+}
+
+/// A generic holder whose `Shelf` is filled with a generic brand over a generic brand of its
+/// parameter.
+#[model_schema(default_types(KeyType = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(bound(serialize = "", deserialize = "KeyType: Deserialize<'de>"))]
+pub struct Wardrobe<KeyType: Ord + Serialize> {
+    pub shelf: Shelf<Tag<Tag<KeyType>>>,
+}
+
+/// A read: its name, the Kotlin type, the payload and what Rust's `validate()` answers of the value.
+type HeldRead = (
+    &'static str,
+    &'static str,
+    &'static str,
+    Result<(), Vec<String>>,
+);
+
 /// One row: the Kotlin expression of a value and the messages Rust's `validate()` answers of the
 /// same value.
 struct Row {
@@ -381,13 +406,9 @@ fn kotlin_names_a_key_filled_with_a_generic_brand_as_rust_does_when_it_reads() {
     assert_eq!(printed, expected);
 }
 
-/// A map keyed by a generic brand is named by the text its serializer writes when a judged
-/// serializer reads it from a variant of a tagged and of an untagged enum, and from a type held by
-/// another, and by the class's own print for a value built by hand.
-#[test]
-fn kotlin_names_a_key_filled_with_a_generic_brand_as_rust_does_in_a_variant_and_a_held_type() {
+fn held_reads() -> [HeldRead; 6] {
     let stocked = || BTreeMap::from([(Tag("t".to_owned()), item(""))]);
-    let reads = [
+    [
         (
             "tagged variant",
             "Depot<Tag<String>>",
@@ -418,7 +439,35 @@ fn kotlin_names_a_key_filled_with_a_generic_brand_as_rust_does_in_a_variant_and_
             }
             .validate(),
         ),
-    ];
+        (
+            "brand of the holder's parameter",
+            "Armoire<String>",
+            r#"{"shelf":{"by_slot":{"t":{"label":""}}}}"#,
+            Armoire {
+                shelf: Shelf { by_slot: stocked() },
+            }
+            .validate(),
+        ),
+        (
+            "brand of a brand of the holder's parameter",
+            "Wardrobe<String>",
+            r#"{"shelf":{"by_slot":{"t":{"label":""}}}}"#,
+            Wardrobe {
+                shelf: Shelf {
+                    by_slot: BTreeMap::from([(Tag(Tag("t".to_owned())), item(""))]),
+                },
+            }
+            .validate(),
+        ),
+    ]
+}
+
+/// A map keyed by a generic brand is named by the text its serializer writes when a judged
+/// serializer reads it from a variant of a tagged and of an untagged enum, and from a type held by
+/// another, and by the class's own print for a value built by hand.
+#[test]
+fn kotlin_names_a_key_filled_with_a_generic_brand_as_rust_does_in_a_variant_and_a_held_type() {
+    let reads = held_reads();
     let built = [
         (
             "hand built tagged variant",
@@ -434,6 +483,11 @@ fn kotlin_names_a_key_filled_with_a_generic_brand_as_rust_does_in_a_variant_and_
             "hand built generic holder",
             "Annex<Tag<String>>(Shelf(mapOf(Tag(\"t\") to Item(\"\")))).validate()",
             reads[3].3.clone(),
+        ),
+        (
+            "hand built brand of the holder's parameter",
+            "Armoire<String>(Shelf(mapOf(Tag(\"t\") to Item(\"\")))).validate()",
+            reads[4].3.clone(),
         ),
     ];
     let mut main = String::from("fun main() {\n");
@@ -470,6 +524,8 @@ fn kotlin_names_a_key_filled_with_a_generic_brand_as_rust_does_in_a_variant_and_
         pallet_kotlin::kotlin_definition(),
         aisle_kotlin::kotlin_definition(),
         annex_kotlin::kotlin_definition(),
+        armoire_kotlin::kotlin_definition(),
+        wardrobe_kotlin::kotlin_definition(),
         REPORT.to_owned(),
         READ.to_owned(),
         main,

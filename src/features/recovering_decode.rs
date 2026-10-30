@@ -3455,7 +3455,8 @@ fn callback_items() -> TokenStream {
         #[derive(Clone, Debug, PartialEq)]
         #[non_exhaustive]
         pub enum Issue<V> {
-            /// The key is there, and its field cannot be read from what it holds.
+            /// The key is there, and either serde refuses what it holds for its field, or serde reads it
+            /// and it breaks a bound the field declares, or a check refuses it.
             Invalid { path: Path, expected: Expected, found: V, reason: ::std::string::String },
             /// The type requires the key, and it is not there.
             Missing { path: Path, expected: Expected },

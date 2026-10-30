@@ -10,7 +10,7 @@ use core::fmt::Write as _;
 
 #[cfg(feature = "mongodb")]
 use super::object_id_runs::readme_object_id;
-use super::run_dart_validate::{dart, module};
+use super::run_dart_validate::{analyzed, dart, module};
 use super::tagged_slot_models::{
     ENTRIES_REFUSED, WRITTEN, ballast_dart, bunkered_dart, cradled_dart, demurrage_dart,
     docketed_dart, dray_dart, drayage_dart, freighted_dart, lashing_dart, lighter_dart,
@@ -97,6 +97,7 @@ fn a_slot_beside_the_tag_is_read_and_written_back_by_dart_as_serde_writes_it() {
         &[TOLD],
         &main,
     );
+    analyzed("tagged-slots-analyze", &source);
     let Some((ran, printed)) = dart("tagged-slots", &[], &source) else {
         return;
     };
@@ -161,6 +162,7 @@ fn an_object_id_beside_the_tag_is_read_and_written_back_by_dart_as_serde_writes_
         &[TOLD],
         &main,
     );
+    analyzed("tagged-object-ids-analyze", &source);
     let Some((ran, printed)) = dart("tagged-object-ids", &[], &source) else {
         return;
     };
