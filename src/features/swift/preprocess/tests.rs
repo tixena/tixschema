@@ -39,6 +39,7 @@ fn text_read(functions: &[FunctionName], source: &Source) -> (String, Vec<String
     let read = member(
         &Member {
             def: &def,
+            flat: false,
             functions,
             hint: "Hint",
             keys: "CodingKeys",
@@ -164,6 +165,7 @@ fn a_walked_member_is_read_through_a_type_written_for_it() {
     let read = member(
         &Member {
             def: &def,
+            flat: false,
             functions: &named(&["unwrapped"]),
             hint: "Hint",
             keys: "CodingKeys",
@@ -207,6 +209,7 @@ fn a_member_read_as_another_type_is_turned_into_its_own_from_the_local() {
     let read = member(
         &Member {
             def: &def,
+            flat: false,
             functions: &named(&["unwrapped"]),
             hint: "Hint",
             keys: "CodingKeys",
@@ -408,6 +411,7 @@ fn an_optional_member_that_names_a_function_is_nil_where_the_object_holds_none_o
         optional(
             &Member {
                 def: &def,
+                flat: false,
                 functions: &functions,
                 hint: "Hint",
                 keys: "CodingKeys",

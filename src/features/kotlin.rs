@@ -423,6 +423,19 @@ fn writes_a_bare_name(def: &FieldDef) -> bool {
     KOTLIN_BARE_NAMED.with(|noted| noted.borrow().contains(name))
 }
 
+/// Whether a flattened member typed `def` is a type the emitter has not written when it writes the
+/// holder: a model declared below it, or a type parameter. A plain enum is one of them, which
+/// serde writes as the name of an entry over `null`.
+fn is_unseen(def: &FieldDef) -> bool {
+    if def.array_depth != 0 {
+        return false;
+    }
+    if let FieldDefType::SiblingType(name, _) = &def.field_type {
+        return lookup_kotlin_name(name).is_none();
+    }
+    matches!(def.field_type, FieldDefType::TypeParam(_))
+}
+
 /// The keys serde reads the struct a flattened member typed `def` holds from, where the emitter
 /// wrote that struct: `None` for any other type.
 fn recorded_keys(def: &FieldDef) -> Option<Vec<String>> {
@@ -1987,7 +2000,12 @@ fn flatten_struct_field_plan(
         flattened_struct_keys(&base, &inner_serializer)
     )];
     let functions = preprocess::of(&field.field_def);
-    let corrected = preprocess::corrected(functions, rest);
+    let handed = preprocess::corrected(functions, rest);
+    let corrected = if is_unseen(&base) {
+        read::flat(&inner_serializer, &handed)
+    } else {
+        handed
+    };
     let known = read_keys(&base);
     let decoded = known.as_ref().map_or_else(
         || format!("lenient.decodeFromJsonElement({inner_serializer}, {corrected})"),
@@ -2139,7 +2157,7 @@ fn flattened_merge(field: &KotlinField, prop: &str, inner_serializer: &str) -> O
 /// written as JSON, holds in the object being built, beside the keys already there: its members,
 /// or, for a variant written as its bare name, that name over `null`, as serde writes it there.
 fn merged_beside(def: &FieldDef, written: &str) -> String {
-    if writes_a_bare_name(def) {
+    if writes_a_bare_name(def) || is_unseen(def) {
         format!(
             "when (val written = {written}) {{ is JsonPrimitive -> put(written.content, \
              JsonNull); else -> written.jsonObject.forEach {{ (k, v) -> put(k, v) }} }}"

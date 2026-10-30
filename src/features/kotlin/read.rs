@@ -29,6 +29,22 @@ pub const DECODED: &str = "private fun kotlinSchemaKinded(serializer: Deserializ
      KotlinSchemaRead = json.decodeFromJsonElement(serializer, kotlinSchemaKinded(serializer, \
      element, at)); ";
 
+/// The private function a serializer holds where a flattened member's type is not one the emitter
+/// wrote above it. A plain enum has no members to read from an object: serde writes its variant as
+/// the name of an entry over `null`, and the function hands the enum's serializer that name.
+const FLATTENED_NAME: &str = "private fun kotlinSchemaFlat(serializer: DeserializationStrategy<*>, \
+     element: JsonElement): JsonElement { val kind = serializer.descriptor.kind; \
+     if (kind != SerialKind.ENUM || element !is JsonObject) return element; val named = element.filterKeys { key -> runCatching { \
+     Json.decodeFromJsonElement(serializer, JsonPrimitive(key)) }.isSuccess }; \
+     if (named.isEmpty()) throw SerializationException(\"no variant of enum \" + \
+     serializer.descriptor.serialName + \" found in flattened data\"); \
+     if (named.size > 1) throw SerializationException(\"more than one variant of enum \" + \
+     serializer.descriptor.serialName + \" found in flattened data: \" + \
+     named.keys.joinToString(\", \")); if (named.values.single() != JsonNull) throw \
+     SerializationException(\"variant \" + named.keys.single() + \" of enum \" + \
+     serializer.descriptor.serialName + \" is read over null\"); \
+     return JsonPrimitive(named.keys.single()) }; ";
+
 /// What a serializer the emitter writes binds each type parameter to: `KSerializer<T>.nullable`
 /// requires it, for an `Option<T>` member.
 const COMPOSED: &str = ": Any";
@@ -517,18 +533,26 @@ pub fn kinded(serializer: &str, element: &str, at: &str) -> String {
 }
 
 /// The private functions the reads in `declarations`, the members of a serializer, name.
-pub fn helpers_for(declarations: &str) -> &'static str {
-    if declarations.contains("kotlinSchemaDecoded(") || declarations.contains("kotlinSchemaKinded(")
-    {
-        DECODED
-    } else {
-        ""
-    }
+pub fn helpers_for(declarations: &str) -> String {
+    let decoded = declarations.contains("kotlinSchemaDecoded(")
+        || declarations.contains("kotlinSchemaKinded(");
+    let flat = declarations.contains("kotlinSchemaFlat(");
+    format!(
+        "{}{}",
+        if decoded { DECODED } else { "" },
+        if flat { FLATTENED_NAME } else { "" }
+    )
 }
 
 /// `declarations`, the members of a serializer, behind the private functions its reads name.
 pub fn with_decoded(declarations: &str) -> String {
     format!("{}{declarations}", helpers_for(declarations))
+}
+
+/// `element`, the Kotlin expression of the object a flattened member is handed, as the member's
+/// serializer reads it: a plain enum is handed the name of the one entry it is written as.
+pub fn flat(serializer: &str, element: &str) -> String {
+    format!("kotlinSchemaFlat({serializer}, {element})")
 }
 
 /// What a serializer that corrects its payload, or refuses a struct's own tag of another value,

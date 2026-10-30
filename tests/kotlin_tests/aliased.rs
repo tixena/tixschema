@@ -84,9 +84,11 @@ fn a_plain_enum_reads_a_variant_under_each_alias() {
     assert_eq!(
         swell_kotlin::kotlin_definition(),
         "@Serializable(with = SwellUnjudged::class) enum class Swell { Ebb, Flood; fun \
-         validate(): List<String> = emptyList() } object SwellUnjudged : KSerializer<Swell> { \
-         override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor(\"Swell\", \
-         PrimitiveKind.STRING); override fun serialize(encoder: Encoder, value: Swell) = \
+         validate(): List<String> = emptyList() } @OptIn(InternalSerializationApi::class) object \
+         SwellUnjudged : KSerializer<Swell> { override val descriptor: SerialDescriptor = \
+         buildSerialDescriptor(\"Swell\", SerialKind.ENUM) { element(\"Ebb\", \
+         buildSerialDescriptor(\"Ebb\", StructureKind.OBJECT)); element(\"Flood\", \
+         buildSerialDescriptor(\"Flood\", StructureKind.OBJECT)) }; override fun serialize(encoder: Encoder, value: Swell) = \
          encoder.encodeString(when (value) { Swell.Ebb -> \"Ebb\"; Swell.Flood -> \"Flood\" }); \
          override fun deserialize(decoder: Decoder): Swell = when (val name = \
          decoder.decodeString()) { \"Ebb\", \"Low\", \"Neap\" -> Swell.Ebb; \"Flood\" -> \

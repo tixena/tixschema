@@ -669,7 +669,8 @@ fn a_brand_and_an_alias_hand_the_keys_and_a_type_declared_below_is_handed_a_payl
                 "let behindPayload = try SwiftSchemaPayload(from: decoder, ",
                 r#"without: taken + ["dock"]).value; "#,
                 "self.behind = try SwiftSchemaPayload.read(SwiftSchemaReadBehind.self, ",
-                "from: behindPayload, at: decoder.codingPath).value; ",
+                "from: SwiftSchemaPayload.flat(SwiftSchemaReadBehind.self, behindPayload, ",
+                "at: decoder.codingPath), at: decoder.codingPath).value; ",
             ),
         ],
     );

@@ -293,9 +293,10 @@ fn the_kotlin_text_reads_and_writes_the_slot_beside_the_tag() {
     );
     let waybilled = waybilled_kotlin::kotlin_definition();
     for held in [
-        "is WaybilledHeld -> buildJsonObject { put(\"kind\", \"Held\"); \
-         output.json.encodeToJsonElement(heldSerializer, value.value).jsonObject.forEach { (k, \
-         v) -> put(k, v) } }",
+        "is WaybilledHeld -> buildJsonObject { put(\"kind\", \"Held\"); when (val written = \
+         output.json.encodeToJsonElement(heldSerializer, value.value)) { is JsonPrimitive -> \
+         put(written.content, JsonNull); else -> written.jsonObject.forEach { (k, v) -> put(k, v) \
+         } } }",
         "\"Held\" -> WaybilledHeld(kotlinSchemaDecoded(input.json, heldSerializer, \
          JsonObject(obj - \"kind\"), \"Held\"))",
     ] {

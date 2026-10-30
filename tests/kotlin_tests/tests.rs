@@ -1471,15 +1471,20 @@ fn an_optional_struct_that_takes_no_key_is_read_wherever_its_read_succeeds() {
 #[cfg(feature = "serde")]
 fn an_optional_type_of_no_recorded_key_is_read_where_its_descriptor_names_no_element() {
     let read = |prop: &str, serializer: &str, rest: &str| {
-        let decoded = format!("lenient.decodeFromJsonElement({serializer}, {rest})");
+        let handed = if serializer.ends_with("Unjudged") {
+            rest.to_owned()
+        } else {
+            format!("kotlinSchemaFlat({serializer}, {rest})")
+        };
+        let decoded = format!("lenient.decodeFromJsonElement({serializer}, {handed})");
         let tried = if serializer.ends_with("Unjudged") {
             format!("runCatching {{ {decoded} }}.getOrNull()")
         } else {
             format!(
                 "runCatching {{ {decoded} }}.getOrElse {{ refused -> if (runCatching {{ \
                  lenient.decodeFromJsonElement(({serializer} as? Function0<*>)?.invoke() as? \
-                 DeserializationStrategy<*> ?: {serializer}, {rest}) }}.isSuccess) throw refused \
-                 else null }}"
+                 DeserializationStrategy<*> ?: {serializer}, {handed}) }}.isSuccess) throw \
+                 refused else null }}"
             )
         };
         format!(
@@ -1845,8 +1850,8 @@ fn a_flattened_enum_is_read_from_the_one_entry_under_a_variants_name() {
         ),
         (
             renumbered(&luffing_kotlin::kotlin_definition()),
-            "val quaying = lenient.decodeFromJsonElement(serializer<Quaying>(), JsonObject(obj - \
-             setOf(\"note\")));"
+            "val quaying = lenient.decodeFromJsonElement(serializer<Quaying>(), \
+             kotlinSchemaFlat(serializer<Quaying>(), JsonObject(obj - setOf(\"note\"))));"
                 .to_owned(),
         ),
     ] {

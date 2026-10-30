@@ -2,7 +2,7 @@
 //! read, and `init(from:)` runs it and then `validate()`. A member is read unjudged wherever
 //! `validate()` runs the `validate()` of what it holds, so the whole value is judged once.
 
-use super::preprocess::{self, PAYLOAD, Written};
+use super::preprocess::{self, Written};
 use super::validate::{item_of, under_option};
 use super::{
     MapKeys, Shaped, arrayed, held_as_optional, held_at, keyed_map_wrapper, map_keys,
@@ -322,7 +322,7 @@ pub(super) fn both(body: &str, written: &Written<'_>) -> String {
         any_key(&read)
     };
     let payload = if !written.own.is_empty() || read.contains("SwiftSchemaPayload") {
-        format!("{PAYLOAD}; ")
+        format!("{}; ", preprocess::payload_for(&read))
     } else {
         String::new()
     };

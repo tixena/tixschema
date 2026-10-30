@@ -807,7 +807,8 @@ fn a_flattened_struct_takes_the_keys_serde_reads_where_the_emitter_wrote_it() {
          input.json.decodeFromJsonElement(PennantUnjudged, JsonObject(obj.filterKeys { it in \
          setOf(\"label\", \"name\", \"spare\", \"kind\") }));",
         "val unseenKeys = (serializer<Unseen>()).descriptor.elementNames.toSet(); val unseen = \
-         lenient.decodeFromJsonElement(serializer<Unseen>(), JsonObject(obj - pennantKeys));",
+         lenient.decodeFromJsonElement(serializer<Unseen>(), \
+         kotlinSchemaFlat(serializer<Unseen>(), JsonObject(obj - pennantKeys)));",
     ] {
         assert!(kotlin.contains(held), "no `{held}` in: {kotlin}");
     }
