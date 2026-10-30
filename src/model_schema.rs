@@ -126,10 +126,13 @@ use crate::utils::{
 use crate::utils::record_indexed_set;
 
 #[cfg(feature = "serde")]
+use crate::utils::declared;
+
+#[cfg(feature = "serde")]
 use crate::utils::{
     Declared, NonObjectWire, SlotBesideTag, TrivialPattern, UnionParameter, WireLeaf, WrittenAs,
-    declared, forget_field_validators, is_recorded_plain_enum, record_declared,
-    record_field_validator, record_flattened_parameters, record_non_object_wire, record_open_map,
+    forget_field_validators, is_recorded_plain_enum, record_declared, record_field_validator,
+    record_flattened_parameters, record_non_object_wire, record_open_map,
     record_open_map_parameters, record_plain_enum, record_text_key_parameters,
     record_union_parameters, record_value_parameter, recorded_non_object_wire, trivial_pattern,
     union_parameters, value_parameter,
@@ -199,10 +202,14 @@ use crate::features::serde::defaults::{holds_a_placeholder, zod_substituted};
 #[cfg(feature = "serde")]
 use crate::field_type::{parse_serde_field_attributes, parse_serde_type_attributes};
 
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+use crate::field_type::is_a_standard_type_name;
+
 #[cfg(feature = "serde")]
-use crate::field_type::{
-    is_a_standard_type_name, is_interior_mutability_wrapper, is_refused_sequence_wrapper,
-};
+use crate::field_type::{is_interior_mutability_wrapper, is_refused_sequence_wrapper};
 use crate::field_type::{
     is_map_wrapper, is_ownership_wrapper, is_sequence_wrapper, is_transparent_wrapper,
     written_std_range, written_std_result,
@@ -8757,9 +8764,9 @@ fn record_declaration(item: &Item) {
     } else if let Some(ident) = item_schema_ident(item) {
         let lifetimes = item_lifetime_count(item);
         let declares = if written_as_one_value(item) {
-            Declared::OneValue(lifetimes)
+            Declared::one_value(lifetimes)
         } else {
-            Declared::Model(lifetimes)
+            Declared::model(lifetimes)
         };
         record_declared(&ident.to_string(), declares);
     } else {

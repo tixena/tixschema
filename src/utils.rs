@@ -761,11 +761,62 @@ pub enum Declared {
     Alias(String),
     /// A struct or an enum serde writes under keys of its own, and how many lifetime parameters it
     /// declares.
-    Model(usize),
+    Model(
+        #[cfg(all(
+            feature = "serde",
+            any(feature = "typescript", feature = "zod", feature = "jsonschema")
+        ))]
+        usize,
+    ),
     /// A struct or an enum serde writes as one value: a struct written as the value of one slot,
     /// a unit struct, an enum no variant of which holds a value and no attribute tags. Holds how
     /// many lifetime parameters it declares.
-    OneValue(usize),
+    OneValue(
+        #[cfg(all(
+            feature = "serde",
+            any(feature = "typescript", feature = "zod", feature = "jsonschema")
+        ))]
+        usize,
+    ),
+}
+
+#[cfg(feature = "serde")]
+impl Declared {
+    /// A model serde writes under keys of its own, declaring `lifetimes` lifetime parameters.
+    #[cfg(all(
+        feature = "serde",
+        any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    ))]
+    pub const fn model(lifetimes: usize) -> Self {
+        Self::Model(lifetimes)
+    }
+
+    /// A model serde writes under keys of its own; only a schema surface reads the lifetimes.
+    #[cfg(not(all(
+        feature = "serde",
+        any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    )))]
+    pub const fn model(_lifetimes: usize) -> Self {
+        Self::Model()
+    }
+
+    /// A type serde writes as one value, declaring `lifetimes` lifetime parameters.
+    #[cfg(all(
+        feature = "serde",
+        any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    ))]
+    pub const fn one_value(lifetimes: usize) -> Self {
+        Self::OneValue(lifetimes)
+    }
+
+    /// A type serde writes as one value; only a schema surface reads the lifetimes.
+    #[cfg(not(all(
+        feature = "serde",
+        any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    )))]
+    pub const fn one_value(_lifetimes: usize) -> Self {
+        Self::OneValue()
+    }
 }
 
 #[cfg(feature = "serde")]

@@ -258,7 +258,7 @@ fn public_names(items: proc_macro2::TokenStream) -> Vec<String> {
 fn seen_as_models(tokens: proc_macro2::TokenStream) {
     for name in written_names(tokens) {
         if name.starts_with(char::is_uppercase) {
-            record_declared(&name, Declared::Model(0));
+            record_declared(&name, Declared::model(0));
         }
     }
 }
@@ -5063,7 +5063,7 @@ fn a_field_typed_with_an_alias_seen_above_is_walked_as_the_type_the_alias_names(
         "Marks",
         Declared::Alias("BTreeMap < Tier , Vec < Mark > >".to_owned()),
     );
-    record_declared("Mark", Declared::Model(0));
+    record_declared("Mark", Declared::model(0));
     let item: syn::ItemStruct =
         syn::parse_str("pub struct Tally { pub marks: types::Marks }").unwrap();
     let added = super::struct_recovering_decode(&item, true);
@@ -5096,7 +5096,7 @@ fn an_alias_of_an_index_map_or_an_index_set_is_walked_as_the_type_indexmap_decla
         "Ranked",
         Declared::Alias("IndexMap < String , IndexSet < Mark > >".to_owned()),
     );
-    record_declared("Mark", Declared::Model(0));
+    record_declared("Mark", Declared::model(0));
     let item: syn::ItemStruct = syn::parse_str("pub struct Tally { pub ranked: Ranked }").unwrap();
     let added = super::struct_recovering_decode(&item, true);
     let (walker, module) = (added.type_impl.to_string(), added.schema_module.to_string());
@@ -5134,7 +5134,7 @@ fn an_alias_of_a_name_the_indexmap_feature_reads_is_left_as_it_is_written_withou
 #[test]
 fn a_field_typed_with_an_alias_of_a_model_type_is_left_as_it_is_written() {
     record_declared("Featured", Declared::Alias("Entry".to_owned()));
-    record_declared("Entry", Declared::Model(0));
+    record_declared("Entry", Declared::model(0));
     let item: syn::ItemStruct =
         syn::parse_str("pub struct Shelf { pub featured: Featured }").unwrap();
     let added = super::struct_recovering_decode(&item, true);
@@ -5155,9 +5155,9 @@ fn a_field_typed_with_an_alias_of_a_model_type_is_left_as_it_is_written() {
 #[cfg(feature = "mongodb")]
 fn typed_paths_of(source: &str, seen: &[&str]) -> (String, String) {
     let item: syn::ItemStruct = syn::parse_str(source).unwrap();
-    record_declared(&item.ident.to_string(), Declared::Model(0));
+    record_declared(&item.ident.to_string(), Declared::model(0));
     for name in seen {
-        record_declared(name, Declared::Model(0));
+        record_declared(name, Declared::model(0));
     }
     let paths = super::fields::struct_paths(&item, &written_names(item.to_token_stream()));
     let (in_the_impl, beside) = (paths.type_items, paths.beside);
@@ -5174,9 +5174,9 @@ fn typed_paths_of(source: &str, seen: &[&str]) -> (String, String) {
 #[cfg(feature = "mongodb")]
 fn typed_enum_paths_of(source: &str, seen: &[&str]) -> (String, String) {
     let item: syn::ItemEnum = syn::parse_str(source).unwrap();
-    record_declared(&item.ident.to_string(), Declared::Model(0));
+    record_declared(&item.ident.to_string(), Declared::model(0));
     for name in seen {
-        record_declared(name, Declared::Model(0));
+        record_declared(name, Declared::model(0));
     }
     let paths = super::fields::enum_paths(&item, &written_names(item.to_token_stream()));
     let (in_the_impl, beside) = (paths.type_items, paths.beside);

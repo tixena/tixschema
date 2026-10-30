@@ -12738,12 +12738,12 @@ fn an_item_is_recorded_as_one_value_where_serde_writes_it_as_one() {
         let name = super::item_schema_ident(&item).unwrap().to_string();
         let _expanded = expansion_under("", source);
         assert_eq!(
-            matches!(declared(&name), Some(Declared::OneValue(_))),
+            matches!(declared(&name), Some(Declared::OneValue(..))),
             one_value,
             "for {source}"
         );
         assert_eq!(
-            matches!(declared(&name), Some(Declared::Model(_))),
+            matches!(declared(&name), Some(Declared::Model(..))),
             !one_value,
             "for {source}"
         );
