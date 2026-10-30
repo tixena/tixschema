@@ -134,6 +134,20 @@ pub struct Code(pub String);
 #[serde(transparent)]
 pub struct Mark(pub String);
 
+/// A brand over a brand over a string, with no rule of its own.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct Plaque(pub Mark);
+
+/// A member typed with the brand over a brand, under a length of its own.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Shield {
+    #[model_schema_prop(minLength = 3)]
+    pub plaque: Plaque,
+}
+
 /// One field per key a bound is written with, on each kind of value it measures.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -650,6 +664,8 @@ pub fn shape_definitions() -> Vec<String> {
     definitions.extend([
         code_dart::dart_definition(),
         mark_dart::dart_definition(),
+        plaque_dart::dart_definition(),
+        shield_dart::dart_definition(),
         gauge_dart::dart_definition(),
         initial_dart::dart_definition(),
         dock_dart::dart_definition(),
@@ -890,6 +906,39 @@ held: passes
         "what Rust's `validate()` answers"
     );
     let Some(wrote) = printed("bounds.dart", &cases) else {
+        return;
+    };
+    assert_eq!(wrote, report(&cases));
+}
+
+/// A brand over a brand measures the text of the string it holds, as Rust does.
+#[test]
+fn a_brand_over_a_brand_is_measured_on_its_text() {
+    let shield = |text: &str| Shield {
+        plaque: Plaque(Mark(text.to_owned())),
+    };
+    let cases = [
+        pinned(
+            "a short plaque",
+            &shield("a"),
+            &["'plaque': too short: minimum length is 3, got 1"],
+            "Shield.fromJsonUnjudged(@)",
+        ),
+        pinned(
+            "a long plaque",
+            &shield("abc"),
+            &[],
+            "Shield.fromJsonUnjudged(@)",
+        ),
+    ];
+    assert_eq!(
+        shield("a").validate(),
+        Err(vec![
+            "'plaque': too short: minimum length is 3, got 1".to_owned()
+        ])
+    );
+    assert_eq!(shield("abc").validate(), Ok(()));
+    let Some(wrote) = printed("plaque.dart", &cases) else {
         return;
     };
     assert_eq!(wrote, report(&cases));
