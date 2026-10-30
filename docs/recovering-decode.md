@@ -71,8 +71,12 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   `serde`, so each call stays in a crate whatever it builds with, and no consumer writes a line
   for the BSON pieces. Each writes beside its module a private marker trait implemented for `()`,
   `__TixschemaDecodeWithFoundation` and `__TixschemaMongodbFoundation`, whose one method the probes
-  look for. `each_initializer_writes_its_module_and_its_marker` and
-  `the_two_libraries_share_no_name` hold them.
+  look for. The first also writes the
+  macro `__tixschema_decode_with_impl`, re-exported with `pub(crate) use`, which each flagged
+  type's `impl` of `DecodeWith` is written inside: in a crate without the foundation the call is
+  the only unresolved name, so rustc still reaches the probe and reports its message.
+  `each_initializer_writes_its_module_and_its_marker` and `the_two_libraries_share_no_name` hold
+  them.
 - **Each `{type}_schema` module re-exports the libraries, name by name.** `library_reexport`
   writes `pub use crate::__tixschema_decode_with::{...};` from `DECODE_WITH_LIBRARY_NAMES`, whose
   five BSON pieces (`bson_bound`, `bson_digits_settled`, `bson_leaf`, `bson_remaining`,
