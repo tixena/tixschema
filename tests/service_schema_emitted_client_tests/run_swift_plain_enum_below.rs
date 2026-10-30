@@ -6,8 +6,8 @@
 use core::fmt::Write as _;
 
 use super::plain_enum_below_models::{
-    REFUSED, ROWS, assert_printed_as_serde_writes, casement_swift, glazing_swift, mullion_swift,
-    pane_swift, transom_swift, weathering_swift,
+    BRANDED, REFUSED, ROWS, assert_printed_as_serde_writes, bobstay_swift, casement_swift,
+    glazing_swift, mullion_swift, pane_swift, reefing_swift, transom_swift, weathering_swift,
 };
 use super::runtime::judged;
 
@@ -37,6 +37,8 @@ fn main_of_the_rows() -> String {
     for (name, payload) in REFUSED {
         let _ = writeln!(main, "refuses(\"{name}\", {name}.self, #\"{payload}\"#)");
     }
+    let (name, payload) = BRANDED;
+    let _ = writeln!(main, "refuses(\"{name}\", {name}.self, #\"{payload}\"#)");
     main
 }
 
@@ -51,6 +53,8 @@ fn a_plain_enum_flattened_below_its_holder_is_read_and_written_back_in_swift() {
         mullion_swift::swift_definition(),
         weathering_swift::swift_definition(),
         pane_swift::swift_definition(),
+        reefing_swift::swift_definition(),
+        bobstay_swift::swift_definition(),
         glazing_swift::swift_definition(),
         TOLD.to_owned(),
         main_of_the_rows(),
@@ -72,5 +76,7 @@ fn a_plain_enum_flattened_below_its_holder_is_read_and_written_back_in_swift() {
          ---\n{}\n--- source ---\n{source}",
         run.stdout, run.stderr
     );
-    assert_printed_as_serde_writes(&run.stdout);
+    let (rows, branded) = run.stdout.trim_end().rsplit_once('\n').unwrap();
+    assert_eq!(branded, "Reefing refused: true", "{}", run.stdout);
+    assert_printed_as_serde_writes(&format!("{rows}\n"));
 }

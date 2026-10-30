@@ -72,16 +72,16 @@ pub struct Pane {
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Reefing {
-    pub breadth: u32,
     #[serde(flatten)]
-    pub cringle: Cringle,
+    pub bobstay: Bobstay,
+    pub breadth: u32,
 }
 
 /// The brand [`Reefing`] flattens.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Cringle(pub String);
+pub struct Bobstay(pub String);
 
 /// The plain enum the models above flatten.
 #[model_schema()]
