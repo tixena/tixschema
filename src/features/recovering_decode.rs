@@ -133,6 +133,9 @@ const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
 /// The crate-root module `decode_with_foundation!()` writes.
 const DECODE_WITH_LIBRARY: &str = "__tixschema_decode_with";
 
+/// The macro the foundation writes, which wraps each flagged type's `DecodeWith` impl.
+const DECODE_WITH_IMPL_MACRO: &str = "__tixschema_decode_with_impl";
+
 /// The reason the `#[expect(clippy::pub_use)]` on each re-export of a support library gives.
 const REEXPORT_REASON: &str = "tixschema re-exports the crate's support library in each schema \
                                module by name, so every `{type}_schema::Name` path stays \
@@ -2662,6 +2665,14 @@ pub fn decode_with_foundation() -> TokenStream {
             #items
         }
 
+        macro_rules! __tixschema_decode_with_impl {
+            ($($item:tt)*) => {
+                $($item)*
+            };
+        }
+
+        pub(crate) use __tixschema_decode_with_impl;
+
         trait __TixschemaDecodeWithFoundation {
             fn __tixschema_decode_with_foundation(&self) {}
         }
@@ -4804,14 +4815,17 @@ fn type_impls(
         let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
         let inherent = methods.iter().map(|(inherent, _)| inherent);
         let reads = methods.iter().map(|(_, reads)| reads);
+        let reads_macro = Ident::new(DECODE_WITH_IMPL_MACRO, Span::call_site());
         return quote! {
             impl #impl_generics #name #type_generics #where_clause {
                 #(#inherent)*
                 #paths
             }
 
-            impl #impl_generics #module::DecodeWith for #name #type_generics #where_clause {
-                #(#reads)*
+            crate::#reads_macro! {
+                impl #impl_generics #module::DecodeWith for #name #type_generics #where_clause {
+                    #(#reads)*
+                }
             }
         };
     }
@@ -4832,12 +4846,15 @@ fn type_impls(
         }
     });
     let reads = methods.iter().map(|(_, reads)| reads);
+    let reads_macro = Ident::new(DECODE_WITH_IMPL_MACRO, Span::call_site());
     let of_reads = sources.last().map(|last| {
         let bounded = bounded_by_source(last);
         let (impl_generics, type_generics, where_clause) = bounded.split_for_impl();
         quote! {
-            impl #impl_generics #module::DecodeWith for #name #type_generics #where_clause {
-                #(#reads)*
+            crate::#reads_macro! {
+                impl #impl_generics #module::DecodeWith for #name #type_generics #where_clause {
+                    #(#reads)*
+                }
             }
         }
     });
