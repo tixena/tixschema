@@ -171,15 +171,15 @@ pub enum Palleted {
 
 /// An alias of [`Palleted`].
 #[model_schema()]
-pub type Lashing = Palleted;
+pub type Shrinkwrapped = Palleted;
 
-/// [`Lashing`] flattened beside a member of its holder's own.
+/// [`Shrinkwrapped`] flattened beside a member of its holder's own.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Trussed {
     pub note: String,
     #[serde(flatten)]
-    pub pallet: Lashing,
+    pub pallet: Shrinkwrapped,
 }
 
 /// An enum with no tag attribute that declares a parameter, of a variant that holds it and a unit
@@ -240,7 +240,7 @@ pub enum Docketed {
     Hired(Stevedore),
     Idle,
     Inner(Demurrage),
-    Lashed(Lashing),
+    Lashed(Shrinkwrapped),
     Merged(Freighted),
     Pared(#[model_schema_prop(preprocess = ["lightened"])] Palleted),
     Sorted(Ballast),

@@ -18,13 +18,13 @@ use super::runtime::{node_modules, ran_with_modules, stand_down_modules};
 use super::tagged_slot_models::{
     Ballast, Bunkered, Cradled, Demurrage, Docketed, Dray, Freighted, Lighter, Lightering,
     Palleted, Stevedore, Swaddled, Tonnage, Trussed, Waybilled, Wharfage, drayage_schema,
-    lashing_schema,
+    shrinkwrapped_schema,
 };
 use super::tagged_slot_models::{
     ENTRIES_REFUSED, WRITTEN, ballast_kotlin, bunkered_kotlin, cradled_kotlin, demurrage_kotlin,
-    docketed_kotlin, dray_kotlin, drayage_kotlin, freighted_kotlin, lashing_kotlin, lighter_kotlin,
-    lightering_kotlin, palleted_kotlin, serde_told, stevedore_kotlin, swaddled_kotlin,
-    tonnage_kotlin, trussed_kotlin, waybilled_kotlin, wharfage_kotlin,
+    docketed_kotlin, dray_kotlin, drayage_kotlin, freighted_kotlin, lighter_kotlin,
+    lightering_kotlin, palleted_kotlin, serde_told, shrinkwrapped_kotlin, stevedore_kotlin,
+    swaddled_kotlin, tonnage_kotlin, trussed_kotlin, waybilled_kotlin, wharfage_kotlin,
 };
 #[cfg(feature = "mongodb")]
 use super::tagged_slot_models::{STAMP_REFUSED, STAMPED, imprint_kotlin, stamping_kotlin};
@@ -246,7 +246,7 @@ fn a_slot_beside_the_tag_is_read_and_written_by_kotlin_as_serde_and_zod_read_it(
         demurrage_kotlin::kotlin_definition(),
         bunkered_kotlin::kotlin_definition(),
         palleted_kotlin::kotlin_definition(),
-        lashing_kotlin::kotlin_definition(),
+        shrinkwrapped_kotlin::kotlin_definition(),
         trussed_kotlin::kotlin_definition(),
         cradled_kotlin::kotlin_definition(),
         swaddled_kotlin::kotlin_definition(),
@@ -381,8 +381,8 @@ fn zod_module() -> String {
         Bunkered::zod_schema(),
         Palleted::ts_definition(),
         Palleted::zod_schema(),
-        lashing_schema::Schema::ts_definition(),
-        lashing_schema::Schema::zod_schema(),
+        shrinkwrapped_schema::Schema::ts_definition(),
+        shrinkwrapped_schema::Schema::zod_schema(),
         Trussed::ts_definition(),
         Trussed::zod_schema(),
         Cradled::<String>::ts_definition(),
