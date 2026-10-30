@@ -518,7 +518,9 @@ the consumer's view; this is what a change has to keep.
   reads every member from; and in the object a tagged or an untagged enum hands a variant's class
   (`members_renamed`). A plain enum that names no function or check is read by
   `aliases::plain_enum_serializer`, a `{Type}Unjudged` written by hand that reads each variant under
-  its name and each alias, and carries no opt-in. One that names a function keeps
+  its name and each alias, and takes `{Type}.generatedSerializer().descriptor` as its descriptor,
+  so the enum carries `read::kept_plain` and the kind stays `ENUM`; no emitted Kotlin names
+  `InternalSerializationApi` or `buildSerialDescriptor`. One that names a function keeps
   `read::kept_plain`, and `aliases::text_named` reads the alias after the functions. The write keeps
   the written name. A struct records in `KOTLIN_TAKEN_KEYS` the keys `keys_taken_when_flattened`
   answers, its aliases among them, which its descriptor's `elementNames` do not hold. `@JsonNames`
@@ -576,8 +578,8 @@ say so.
   value class with a parameter unboxed to the `serialize` a `JsonTransformingSerializer` inherits,
   and the type's own serializer then throws `ClassCastException` on a write. So that one keeps
   the delegation and overrides `deserialize`.
-- **A plain enum that names a check has the pair every type has.** `read::kept` or, for one that
-  reads a variant under an alias, `@Serializable(with = {Type}Serializer::class)`; `{Type}Unjudged`
+- **A plain enum that names a check has the pair every type has.** `read::kept`, for one that
+  reads a variant under an alias too; `{Type}Unjudged`
   is `kept_unjudged` over the plugin's serializer or `aliases::plain_enum_serializer`, and
   `read::judged` is `{Type}Serializer`. `note_plain_enum` is told so, and a holder whose
   `validate()` asks the enum reads it by `{Type}Unjudged`.
