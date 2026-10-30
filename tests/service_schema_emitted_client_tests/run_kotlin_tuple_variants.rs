@@ -8,10 +8,7 @@
 #![cfg(feature = "kotlin")]
 
 use core::fmt::Write as _;
-#[cfg(all(
-    not(feature = "jsonschema"),
-    any(feature = "typescript", feature = "zod")
-))]
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use std::collections::HashMap;
 
 use serde::Serialize;
@@ -19,16 +16,16 @@ use serde::de::DeserializeOwned;
 
 use super::runtime::ran_kotlin;
 use super::tuple_variants_models::{
-    Banding, Bundling, Crating, Grading, Palleting, Piling, Racking, Ranking, Slotting, Spooling,
-    Stacking, Strapping, Wrapping, banding_kotlin, bundling_kotlin, crating_kotlin, grading_kotlin,
-    labelling_kotlin, palleting_kotlin, piling_kotlin, racking_kotlin, ranking_kotlin,
-    slotting_kotlin, spooling_kotlin, stacking_kotlin, stencil_kotlin, strapping_kotlin,
-    wrapping_kotlin,
+    Banding, Bundling, Crating, Grading, Lashing, Palleting, Piling, Racking, Ranking, Slotting,
+    Spooling, Stacking, Strapping, Wrapping, banding_kotlin, bundling_kotlin, crating_kotlin,
+    grading_kotlin, labelling_kotlin, lashing_kotlin, palleting_kotlin, piling_kotlin,
+    racking_kotlin, ranking_kotlin, slotting_kotlin, spooling_kotlin, stacking_kotlin,
+    stencil_kotlin, strapping_kotlin, wrapping_kotlin,
 };
 #[cfg(not(feature = "jsonschema"))]
 use super::tuple_variants_models::{
-    Binning, Coiling, Heaping, Lashing, Tallying, binning_kotlin, coiling_kotlin, heaping_kotlin,
-    lashing_kotlin, tallying_kotlin,
+    Binning, Coiling, Heaping, Tallying, binning_kotlin, coiling_kotlin, heaping_kotlin,
+    tallying_kotlin,
 };
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use super::tuple_variants_models::{Labelling, Stencil};
@@ -176,10 +173,9 @@ const LIST_REFUSED: &str = "'pairs.0.0.code': too short: minimum length is 1, go
 #[cfg(not(feature = "jsonschema"))]
 const KEYED_PAIR_REFUSED: &str = "'pair.0.north.0.code': too short: minimum length is 1, got 0";
 
-/// What the holder's `validate()` answers of a flattened map of pairs whose model breaks its
-/// bound under the key `north`.
-#[cfg(not(feature = "jsonschema"))]
-const FLATTENED_REFUSED: &str = "'north.0.code': too short: minimum length is 1, got 0";
+/// What the holder's `validate()` answers of a map of pairs under a key of its own whose model
+/// breaks its bound under the key `north`.
+const OWN_KEY_REFUSED: &str = "'extra.north.0.code': too short: minimum length is 1, got 0";
 
 /// What the holder's `validate()` answers of a map of pairs, read through a function a
 /// `preprocess` names, whose model breaks its bound under the key `north`.
@@ -282,10 +278,9 @@ fn refused_at_the_keyed_pair(_json: &str) -> String {
     format!("refused: {KEYED_PAIR_REFUSED}")
 }
 
-/// What a row refused with [`FLATTENED_REFUSED`] prints.
-#[cfg(not(feature = "jsonschema"))]
-fn refused_at_the_flattened_key(_json: &str) -> String {
-    format!("refused: {FLATTENED_REFUSED}")
+/// What a row refused with [`OWN_KEY_REFUSED`] prints.
+fn refused_at_the_own_key(_json: &str) -> String {
+    format!("refused: {OWN_KEY_REFUSED}")
 }
 
 /// What a row refused with [`PREPROCESSED_REFUSED`] prints.
@@ -598,28 +593,29 @@ fn a_map_of_tuples_holding_a_model_in_a_tuple_is_refused_at_the_entrys_path_in_k
     assert_eq!(printed, expected);
 }
 
-/// A flattened map of tuples holding a model beside a member of the holder's own, read and written
-/// back as serde does, and refused at the key's path where the model breaks its bound.
-#[cfg(not(feature = "jsonschema"))]
+/// A map of tuples holding a model under a key of its own beside a member of the holder's own, read
+/// and written back as serde does, and refused at the key's path where the model breaks its bound.
 #[test]
-fn a_flattened_map_of_tuples_holding_a_model_is_refused_at_the_keys_path_in_kotlin() {
+fn a_map_of_tuples_holding_a_model_under_its_own_key_is_refused_at_the_keys_path_in_kotlin() {
     let rows = [
         Row {
-            json: r#"{"dock":"south","north":[{"code":"north"},2]}"#,
-            name: "a flattened map of tuples holding a model",
+            json: r#"{"dock":"south","extra":{"north":[{"code":"north"},2]}}"#,
+            name: "a map of tuples holding a model under its own key",
             read_as: "Lashing",
             written: written_back::<Lashing>,
         },
         Row {
-            json: r#"{"dock":"south","north":[{"code":""},2]}"#,
-            name: "a flattened map of tuples holding a broken model",
+            json: r#"{"dock":"south","extra":{"north":[{"code":""},2]}}"#,
+            name: "a map of tuples holding a broken model under its own key",
             read_as: "Lashing",
-            written: refused_at_the_flattened_key,
+            written: refused_at_the_own_key,
         },
     ];
     let expected = expected(&rows);
     assert!(
-        expected.contains(r#"holding a model: {"dock":"south","north":[{"code":"north"},2]}"#),
+        expected.contains(
+            r#"holding a model under its own key: {"dock":"south","extra":{"north":[{"code":"north"},2]}}"#
+        ),
         "{expected}"
     );
     let definitions = vec![
@@ -728,14 +724,13 @@ fn the_refusals_held_here_are_what_the_holders_validate_answers() {
         .validate(),
         Err(vec![KEYED_PAIR_REFUSED.to_owned()])
     );
-    #[cfg(not(feature = "jsonschema"))]
     assert_eq!(
         Lashing {
             dock: "south".to_owned(),
             extra: HashMap::from([("north".to_owned(), broken())])
         }
         .validate(),
-        Err(vec![FLATTENED_REFUSED.to_owned()])
+        Err(vec![OWN_KEY_REFUSED.to_owned()])
     );
     #[cfg(not(feature = "jsonschema"))]
     assert_eq!(

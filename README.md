@@ -19,12 +19,12 @@ A crate that declares any `pattern` also names `regex`, because the generated ch
 
 ### Frontend Dependencies (Zod v4)
 
-**Important:** This crate requires Zod v4 for full functionality, especially JSON schema generation. Zod v3 is not supported.
+**Important:** This crate requires Zod 4.3.2 or later. Zod v3 is not supported. An earlier Zod 4 release refuses every payload of a variant that holds a struct under `#[serde(tag = "...")]`: the schema intersects the tag's strict object with the struct's, and before 4.3.2 each side refuses the other's keys.
 
 ```bash
-npm install zod@^4.0.0
+npm install zod@^4.3.2
 # or
-yarn add zod@^4.0.0
+yarn add zod@^4.3.2
 ```
 
 ## Quick Start
@@ -1806,6 +1806,8 @@ export type DocumentRecord = {
   revision: Revision;
 };
 ```
+
+Under the `swift` feature, an alias of a list, a map or an `Option` is declared above every type whose field names it, as [the Swift client](#validate-in-the-swift-client) states.
 
 An alias of an `Option` is named by a field alone, but under `nullable`. Its own type describes the `Option` of a field, `T | undefined`, whose `None` leaves the key out. Everywhere else serde writes `None` as `null`: an item of a list, a value of a map, a position of a tuple, a type argument, an arm of a `Result`, a slot of a tuple struct and the slot of a variant. There the holder writes the type the alias names in place, as an `Option` written there is written:
 
@@ -5849,6 +5851,7 @@ error: cannot find 'withinParcel' in scope
 
 - **A field named `validate`** is declared `validate_`, the method having the name, and keeps its key: `case validate_ = "validate"`.
 - **A type tixschema has not written** is one a holder cannot tell from a model declared below it, so it calls its `validate()` and reads it through its `init(swiftSchemaUnjudged:)`: a type of your own that a generated type holds declares `func validate() -> [String] { [] }`, `func swiftSchemaValidateBound() -> [String] { [] }` and `init(swiftSchemaUnjudged decoder: Decoder) throws { try self.init(from: decoder) }`. An alias of a type that has none (`type LaterTitle = String;`) is declared above the type that holds it. Declared below, the Swift compiler answers `value of type 'LaterTitle' (aka 'String') has no member 'validate'`.
+- **A type alias of a list, a map or an `Option` is declared above every type whose field names it.** Declared below, the holder reads it as a model, and the emitted Swift does not compile: `incorrect argument label in call (have 'swiftSchemaUnjudged:', expected 'from:')` and `value of type 'ProbeList' (aka 'Array<String>') has no member 'validate'`. Move the alias above the holder.
 - **An alias of a string that a field bounds** is declared above that field's type. Declared below, it is a name the emitter reads as a brand, and the Swift compiler answers `value of type 'LaterTitle' (aka 'String') has no member 'swiftSchemaBoundLength'`, or `'swiftSchemaBoundText'` for a pattern. The same error answers a length or a pattern on a field typed with a struct or an enum, which holds no string to measure.
 
 #### A Swift read refuses what `validate()` refuses

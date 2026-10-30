@@ -13,8 +13,8 @@ use super::object_id_runs::readme_object_id;
 use super::run_dart_validate::{analyzed, dart, module};
 use super::tagged_slot_models::{
     ENTRIES_REFUSED, WRITTEN, ballast_dart, bunkered_dart, cradled_dart, demurrage_dart,
-    docketed_dart, dray_dart, drayage_dart, freighted_dart, lashing_dart, lighter_dart,
-    lightering_dart, palleted_dart, serde_told, stevedore_dart, swaddled_dart, tonnage_dart,
+    docketed_dart, dray_dart, drayage_dart, freighted_dart, lighter_dart, lightering_dart,
+    palleted_dart, serde_told, shrinkwrapped_dart, stevedore_dart, swaddled_dart, tonnage_dart,
     trussed_dart, waybilled_dart, wharfage_dart,
 };
 #[cfg(feature = "mongodb")]
@@ -83,7 +83,7 @@ fn a_slot_beside_the_tag_is_read_and_written_back_by_dart_as_serde_writes_it() {
             demurrage_dart::dart_definition(),
             bunkered_dart::dart_definition(),
             palleted_dart::dart_definition(),
-            lashing_dart::dart_definition(),
+            shrinkwrapped_dart::dart_definition(),
             trussed_dart::dart_definition(),
             cradled_dart::dart_definition(),
             swaddled_dart::dart_definition(),

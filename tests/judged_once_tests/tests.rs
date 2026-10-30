@@ -6,8 +6,9 @@ use core::fmt::Debug;
 use serde::de::DeserializeOwned;
 
 use super::models::{
-    Book, Corrected, DisplayedLedger, Entry, Index, Ledger, Node, Pair, Posting, Shelf,
-    StringLedger, Tag, TiedPair, Tree, Wrapped, corrections_taken, taken,
+    Book, BoundedPair, Corrected, DefaultedPair, DefaultedTree, DisplayedLedger, Entry, Index,
+    Ledger, Node, Pair, Posting, Shelf, StringLedger, Tag, TiedPair, Tree, Wrapped,
+    corrections_taken, taken,
 };
 
 /// A ledger of two sound entries and two tags.
@@ -130,6 +131,44 @@ fn a_member_that_names_one_of_two_parameters_reads_its_model_unjudged() {
         refusal_of_reading::<Pair<String, u32>>(&BROKEN_LEDGER.replace("tags", "held")),
         BROKEN_ENTRIES
     );
+}
+
+#[test]
+fn a_container_default_does_not_keep_a_member_from_the_unjudged_read() {
+    assert_eq!(
+        checks_of_reading::<DefaultedPair<String, String>>(ENTRIES),
+        [2, 0, 0]
+    );
+    assert_eq!(
+        refusal_of_reading::<DefaultedPair<String, String>>(&BROKEN_LEDGER.replace("tags", "held")),
+        BROKEN_ENTRIES
+    );
+    let defaulted = serde_json::from_str::<DefaultedPair<String, String>>("{}").unwrap();
+    assert_eq!(defaulted, DefaultedPair::default());
+}
+
+#[test]
+fn a_bound_written_on_the_item_does_not_keep_a_member_from_the_unjudged_read() {
+    assert_eq!(
+        checks_of_reading::<BoundedPair<String, String>>(ENTRIES),
+        [2, 0, 0]
+    );
+    assert_eq!(
+        refusal_of_reading::<BoundedPair<String, String>>(&BROKEN_LEDGER.replace("tags", "held")),
+        BROKEN_ENTRIES
+    );
+}
+
+#[test]
+fn a_type_that_holds_itself_under_a_container_default_is_judged_once_per_node() {
+    assert_eq!(
+        checks_of_reading::<DefaultedTree<u32>>(
+            r#"{"id":1,"children":[{"id":2,"children":[{"id":3,"children":[]}]}]}"#
+        ),
+        [0, 0, 3]
+    );
+    let defaulted = serde_json::from_str::<DefaultedTree<u32>>("{}").unwrap();
+    assert_eq!(defaulted, DefaultedTree::default());
 }
 
 #[test]

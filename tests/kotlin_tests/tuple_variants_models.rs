@@ -5,9 +5,7 @@
 //! names its wrapper more than once, and a tuple holding a model `validate()` walks to in each
 //! place a writer reads the tuple by a wrapper of its own.
 
-#[cfg(not(feature = "jsonschema"))]
-use std::collections::HashMap;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
@@ -162,14 +160,11 @@ pub struct Coiling {
     pub pair: (HashMap<String, (Stencil, u8)>, u8),
 }
 
-/// A flattened map of tuples holding a model, beside a member of the holder's own. A JSON Schema
-/// refuses a tuple as a map value.
-#[cfg(not(feature = "jsonschema"))]
+/// A map of tuples holding a model, under a key of its own beside a member of the holder's own.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Lashing {
     pub dock: String,
-    #[serde(flatten)]
     pub extra: HashMap<String, (Stencil, u8)>,
 }
 
