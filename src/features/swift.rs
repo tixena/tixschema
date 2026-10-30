@@ -378,6 +378,7 @@ impl VariantPayload {
             return corrected_member(
                 &preprocess::Member {
                     def,
+                    flat: false,
                     functions: preprocess::functions(def),
                     hint,
                     keys: from.keys,
@@ -1511,6 +1512,7 @@ fn tuple_shape(elements: &[FieldDef], name_hint: &str, aux: &mut Vec<String>) ->
                 corrected_member(
                     &preprocess::Member {
                         def: element,
+                        flat: false,
                         functions,
                         hint: &hint,
                         keys: "",
@@ -2379,6 +2381,7 @@ fn flattened_enum(
     preprocess::entry(
         &preprocess::Member {
             def: &def,
+            flat: false,
             functions: &[],
             hint: &field.hint,
             keys: "CodingKeys",
@@ -2600,6 +2603,7 @@ fn default_statement(field: &SwiftField, at: &str, path: &str, twins: &mut Vec<S
     preprocess::defaulted(
         &preprocess::Member {
             def: &field.field_def,
+            flat: false,
             functions: &[],
             hint: &field.hint,
             keys: "CodingKeys",
@@ -2638,6 +2642,7 @@ fn corrected_field(
     };
     let member = preprocess::Member {
         def: &field.field_def,
+        flat: field.flatten && preprocess::is_unseen(&field.field_def),
         functions,
         hint: &field.hint,
         keys: "CodingKeys",
@@ -2802,7 +2807,17 @@ fn encode_statement(field: &SwiftField, container: &str) -> String {
 /// encoder. A unit variant of an externally tagged enum written above is an entry of its name over
 /// `null`, as serde writes it: the bare name the enum writes is dropped by the holder's object.
 fn flattened_write(def: &FieldDef, held: &str, written: &str) -> String {
-    unit_entries_write(&unit_entries_of(def), &entries_held(def, held), written)
+    let entries = unit_entries_of(def);
+    if entries.is_empty() && preprocess::is_unseen(def) {
+        // A plain enum is the name of an entry over `null`, and any other type writes its members.
+        return format!(
+            "if let plain = ({written} as Any) as? any RawRepresentable, let name = plain.rawValue \
+             as? String {{ var entry = encoder.container(keyedBy: SwiftSchemaAnyKey.self); \
+             try entry.encodeNil(forKey: SwiftSchemaAnyKey(stringValue: name)!) }} else {{ \
+             try {written}.encode(to: encoder) }}"
+        );
+    }
+    unit_entries_write(&entries, &entries_held(def, held), written)
 }
 
 /// The statement that writes `held`, a value of an enum whose unit variants are `entries`, as
@@ -3670,6 +3685,7 @@ fn lone_slot_read(
         corrected_member(
             &preprocess::Member {
                 def,
+                flat: false,
                 functions,
                 hint,
                 keys: "",

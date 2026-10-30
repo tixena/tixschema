@@ -177,7 +177,8 @@ fn the_swift_text_reads_a_flattened_type_parameter_filled_at_an_object_id_from_i
             "if [{named}].contains(String(describing: Held.self)) {{ let heldPayload = (try \
              SwiftSchemaPayload(from: decoder).value as? [String: Any] ?? [:]).filter {{ \
              [\"$oid\"].contains($0.key) }}; self.held = try SwiftSchemaPayload.read(Held.self, \
-             from: heldPayload, at: decoder.codingPath) }} else {{ {otherwise} }}"
+             from: SwiftSchemaPayload.flat(Held.self, heldPayload, at: decoder.codingPath), at: \
+             decoder.codingPath) }} else {{ {otherwise} }}"
         )
     };
     let above = r#""ObjectId", "Sigil""#;
@@ -199,7 +200,8 @@ fn the_swift_text_reads_a_flattened_type_parameter_filled_at_an_object_id_from_i
                 r#""ObjectId", "Sigil", "Wafer""#,
                 "let heldPayload = try SwiftSchemaPayload(from: decoder, without: taken + \
                  [\"spare\"]).value; self.held = try SwiftSchemaPayload.read(Held.self, from: \
-                 heldPayload, at: decoder.codingPath)",
+                 SwiftSchemaPayload.flat(Held.self, heldPayload, at: decoder.codingPath), at: \
+                 decoder.codingPath)",
             ),
         ),
     ] {

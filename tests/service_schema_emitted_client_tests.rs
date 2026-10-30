@@ -1473,6 +1473,27 @@ mod run_swift_all_flattened;
 #[path = "service_schema_emitted_client_tests/run_kotlin_all_flattened.rs"]
 mod run_kotlin_all_flattened;
 
+/// A plain enum flattened into a holder declared above it.
+#[cfg(test)]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+#[path = "service_schema_emitted_client_tests/plain_enum_below_models.rs"]
+mod plain_enum_below_models;
+
+/// That enum, under the Dart analyzer.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_plain_enum_below.rs"]
+mod run_dart_plain_enum_below;
+
+/// Those models, read and written back by the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_plain_enum_below.rs"]
+mod run_swift_plain_enum_below;
+
+/// Those models, read and written back by the emitted Kotlin types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_plain_enum_below.rs"]
+mod run_kotlin_plain_enum_below;
+
 #[cfg(test)]
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 #[path = "service_schema_emitted_client_tests/member_named_rows.rs"]

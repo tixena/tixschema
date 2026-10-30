@@ -64,6 +64,15 @@ pub(super) const PAYLOAD: &str = "private struct SwiftSchemaPayload: Decodable {
      init?(stringValue: String) { self.stringValue = stringValue }; \
      init?(intValue: Int) { nil } } }";
 
+/// Added to [`PAYLOAD`] where a flattened member holds a type the emitter has not written: the
+/// payload is the name of the one entry over `null` that reads as the type, where there is one, as
+/// a plain enum is written flattened, and the payload itself for any other type.
+const FLAT: &str = "static func flat<Read: Decodable>(_ type: Read.Type, _ payload: Any, \
+     at path: [CodingKey]) -> Any { guard let entries = payload as? [String: Any] else { \
+     return payload }; let named = entries.filter { $0.value is NSNull && \
+     (try? read(type, from: $0.key, at: path)) != nil }; \
+     return named.count == 1 ? named.keys.first! : payload }; ";
+
 /// A name serde reads a variant of an externally tagged enum flattened into a holder under.
 #[derive(Clone)]
 pub(super) struct Entry {
@@ -78,6 +87,9 @@ pub(super) struct Entry {
 /// One member that names functions, as its read is written.
 pub(super) struct Member<'member> {
     pub def: &'member FieldDef,
+    /// Whether the member is flattened and holds a type the emitter has not written, a plain enum
+    /// among them: serde writes that as the name of an entry over `null`.
+    pub flat: bool,
     pub functions: &'member [FunctionName],
     /// What the types written for the member are named from.
     pub hint: &'member str,
@@ -685,7 +697,12 @@ fn value(
         member.units,
     );
     let read = |read_as: &str| {
-        format!("try SwiftSchemaPayload.read({read_as}.self, from: {corrected}, at: {path})")
+        let from = if member.flat {
+            format!("SwiftSchemaPayload.flat({read_as}.self, {corrected}, at: {path})")
+        } else {
+            corrected.clone()
+        };
+        format!("try SwiftSchemaPayload.read({read_as}.self, from: {from}, at: {path})")
     };
     let held = |value: &str| format!("self.value = {value}");
     let statements = if member.walked {
@@ -760,6 +777,31 @@ pub(super) fn units_of(def: &FieldDef) -> Vec<Entry> {
                 entries.iter().filter(|entry| entry.unit).cloned().collect()
             })
     })
+}
+
+/// [`PAYLOAD`], with the functions the reads in `read` name.
+pub(super) fn payload_for(read: &str) -> String {
+    if read.contains("SwiftSchemaPayload.flat(") {
+        PAYLOAD.replacen(
+            "private struct Key",
+            &format!("{FLAT}private struct Key"),
+            1,
+        )
+    } else {
+        PAYLOAD.to_owned()
+    }
+}
+
+/// Whether a flattened member typed `def` is a type the emitter has not written when it writes the
+/// holder: a model declared below it, or a type parameter.
+pub(super) fn is_unseen(def: &FieldDef) -> bool {
+    if def.array_depth != 0 {
+        return false;
+    }
+    if let FieldDefType::SiblingType(name, _) = &def.field_type {
+        return lookup_swift_name(name).is_none();
+    }
+    matches!(def.field_type, FieldDefType::TypeParam(_))
 }
 
 /// `written` with the type `Self` names in `named` under that name: in a type declared inside

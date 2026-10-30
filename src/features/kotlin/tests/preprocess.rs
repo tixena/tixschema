@@ -535,7 +535,10 @@ fn every_flattened_member_is_handed_what_no_member_ahead_of_it_takes() {
     for held in [
         whole.to_owned(),
         format!("val keyed = lenient.decodeFromJsonElement(KeyedUnjudged, {rest});"),
-        format!("val later = lenient.decodeFromJsonElement(serializer<Later>(), {rest});"),
+        format!(
+            "val later = lenient.decodeFromJsonElement(serializer<Later>(), \
+             kotlinSchemaFlat(serializer<Later>(), {rest}));"
+        ),
         whole.replace("val base", "val again"),
     ] {
         assert!(kotlin.contains(&held), "no `{held}` in: {kotlin}");

@@ -87,7 +87,11 @@ fn a_flattened_option_of_an_enum_writes_a_unit_variant_as_its_name_over_null() {
     );
     assert_written(
         &pitching_swift::swift_definition(),
-        "if let held = self.shackle { try held.encode(to: encoder) }",
+        "if let held = self.shackle { if let plain = (held as Any) as? any RawRepresentable, \
+         let name = plain.rawValue as? String { var entry = \
+         encoder.container(keyedBy: SwiftSchemaAnyKey.self); try \
+         entry.encodeNil(forKey: SwiftSchemaAnyKey(stringValue: name)!) } else { try \
+         held.encode(to: encoder) } }",
     );
     assert_written(
         &lowering_swift::swift_definition(),
@@ -174,9 +178,10 @@ fn a_flattened_option_of_a_type_whose_keys_are_not_known_reads_nil_where_it_thro
         "public init(swiftSchemaUnjudged decoder: Decoder) throws { do { self.nippering = try \
          Nippering(swiftSchemaUnjudged: decoder) } catch { self.nippering = nil } }",
     );
+    let read = ratline.split_once("public init(from decoder").unwrap().0;
     assert!(
-        !ratline.contains("SwiftSchemaAnyKey"),
-        "a read that tests no key declares no key type: {ratline}"
+        !read.contains("SwiftSchemaAnyKey"),
+        "a read that tests no key names no key type: {ratline}"
     );
 }
 
@@ -224,7 +229,8 @@ fn a_flattened_option_of_an_enum_reads_nil_where_none_of_its_keys_is_there() {
         "self.note = try container.decode(String.self, forKey: .note); do { let shacklePayload = \
          try SwiftSchemaPayload(from: decoder, without: taken + [\"note\"]).value; \
          self.shackle = try SwiftSchemaPayload.read(SwiftSchemaReadShackle.self, from: \
-         shacklePayload, at: decoder.codingPath).value } catch { self.shackle = nil } }",
+         SwiftSchemaPayload.flat(SwiftSchemaReadShackle.self, shacklePayload, at: \
+         decoder.codingPath), at: decoder.codingPath).value } catch { self.shackle = nil } }",
     );
 }
 
