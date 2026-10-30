@@ -218,6 +218,21 @@ mod run_kotlin_preprocess;
 #[path = "serde_default_tests/models.rs"]
 mod serde_default_models;
 
+/// The models a nullable member is read on, and what a serde read prints for each payload.
+#[cfg(all(test, any(feature = "dart", feature = "kotlin")))]
+#[path = "service_schema_emitted_client_tests/nullable_member_models.rs"]
+mod nullable_member_models;
+
+/// An absent key of a nullable member, read by the emitted Dart types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_nullable_members.rs"]
+mod run_dart_nullable_members;
+
+/// An absent key of a nullable member, read by the emitted Kotlin types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_nullable_members.rs"]
+mod run_kotlin_nullable_members;
+
 /// A key under `#[serde(default)]` the payload leaves out, read by the emitted Dart types.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_dart_serde_default.rs"]
@@ -1411,3 +1426,25 @@ use tests::{ShelfClientService, shelf_client_service_schema};
     any(feature = "dart", feature = "kotlin", feature = "swift")
 ))]
 use text_position_rows::{TextPlacingClientService, text_placing_client_service_schema};
+
+/// A struct whose every member is flattened, and an enum whose variant holds only a flattened
+/// member, under each tagging.
+#[cfg(test)]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+#[path = "service_schema_emitted_client_tests/all_flattened_models.rs"]
+mod all_flattened_models;
+
+/// Those models, read and written back by the emitted Dart types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_all_flattened.rs"]
+mod run_dart_all_flattened;
+
+/// Those models, read and written back by the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_all_flattened.rs"]
+mod run_swift_all_flattened;
+
+/// Those models, read and written back by the emitted Kotlin types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_all_flattened.rs"]
+mod run_kotlin_all_flattened;

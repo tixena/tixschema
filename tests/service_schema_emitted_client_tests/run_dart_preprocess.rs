@@ -140,6 +140,9 @@ dynamic unwrapped(dynamic payload) =>
 
 dynamic withItsKeys(dynamic payload) =>
     payload is Map<String, dynamic> ? {...payload, 'keys': (payload.keys.toList()..sort())} : payload;
+
+dynamic withItsSeen(dynamic payload) =>
+    payload is Map<String, dynamic> ? {...payload, 'seen': (payload.keys.toList()..sort())} : payload;
 ";
 
 /// The functions named after the names a read declares: each trims a text.
@@ -179,11 +182,16 @@ const RUNTIME_VAR: &str = "TIXSCHEMA_DART";
 
 /// One row per shape declared here: its name, the Dart expression that reads `@` and writes it
 /// back, and the payload. The type the Rust read reads it as is the one the expression names.
-const SHAPE_ROWS: [(&str, &str, &str); 12] = [
+const SHAPE_ROWS: [(&str, &str, &str); 13] = [
     (
         "a flattened type",
         "Pinned.fromJson(@).toJson()",
         r#"{"dock":"north","tag":"t"}"#,
+    ),
+    (
+        "two flattened types that read their keys",
+        "Twinned.fromJson(@).toJson()",
+        r#"{"dock":"north","mark":"m","tag":"t"}"#,
     ),
     (
         "a function on a flattened member",
@@ -246,6 +254,7 @@ const SHAPE_ROWS: [(&str, &str, &str); 12] = [
 /// than the payload holds, a slot's function, and a text a plain enum's function corrects.
 const SHAPES: &str = "\
 a flattened type: read {\"dock\":\"north\",\"keys\":[\"tag\"],\"tag\":\"t\"}
+two flattened types that read their keys: read {\"dock\":\"north\",\"mark\":\"m\",\"seen\":[\"mark\",\"tag\"],\"keys\":[\"mark\",\"tag\"],\"tag\":\"t\"}
 a function on a flattened member: read {\"dock\":\"north\",\"keys\":[\"tag\"],\"tag\":\"t\",\"pier\":\"p\"}
 a type flattened into a variant under a tag: read {\"kind\":\"Loose\",\"dock\":\"north\",\"keys\":[\"tag\"],\"tag\":\"t\"}
 a slot's function under a tag: read {\"kind\":\"Slot\",\"keys\":[\"tag\"],\"tag\":\"t\"}
@@ -430,6 +439,34 @@ thread_local! {
 pub struct Listed {
     pub keys: Vec<String>,
     pub tag: String,
+}
+
+/// A type whose function writes, under `seen`, the keys of the object it was handed.
+#[model_schema(preprocess = ["withItsSeen"])]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Sighted {
+    pub mark: String,
+    pub seen: Vec<String>,
+}
+
+/// A type whose function writes, under `keys`, the keys of the object it was handed.
+#[model_schema(preprocess = ["withItsKeys"])]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Noted {
+    pub keys: Vec<String>,
+    pub tag: String,
+}
+
+/// Two types flattened into their holder: each one's function is handed the keys the holder's own
+/// members do not take.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Twinned {
+    pub dock: String,
+    #[serde(flatten)]
+    pub first: Sighted,
+    #[serde(flatten)]
+    pub second: Noted,
 }
 
 /// A flattened member that names a function, between two members of its holder.
@@ -725,6 +762,19 @@ fn tag(payload: Value) -> Value {
     held(payload)
 }
 
+/// An object that lists, under `seen`, the keys it was handed, in order.
+fn with_its_seen(mut payload: Value) -> Value {
+    if let Some(object) = payload.as_object_mut() {
+        let mut keys: Vec<String> = object.keys().cloned().collect();
+        keys.sort_unstable();
+        object.insert(
+            "seen".to_owned(),
+            Value::Array(keys.into_iter().map(Value::String).collect()),
+        );
+    }
+    payload
+}
+
 /// What a serde read of `payload` as a `T` prints under `row`: the value written back, or each
 /// message of the refusal on a line of its own.
 fn rust_row<T>(row: &str, payload: &str) -> String
@@ -805,6 +855,9 @@ fn shape_definitions() -> Vec<String> {
     vec![
         tagged_dart::dart_definition(),
         pinned_dart::dart_definition(),
+        sighted_dart::dart_definition(),
+        noted_dart::dart_definition(),
+        twinned_dart::dart_definition(),
         listed_dart::dart_definition(),
         sorted_dart::dart_definition(),
         berth_dart::dart_definition(),
@@ -1064,17 +1117,18 @@ fn each_shape_declared_here_prints_what_the_rust_read_prints() {
     let rows = SHAPE_ROWS;
     let printed = [
         rust_row::<Pinned>(rows[0].0, rows[0].2),
-        rust_row::<Sorted>(rows[1].0, rows[1].2),
-        rust_row::<Berth>(rows[2].0, rows[2].2),
+        rust_row::<Twinned>(rows[1].0, rows[1].2),
+        rust_row::<Sorted>(rows[2].0, rows[2].2),
         rust_row::<Berth>(rows[3].0, rows[3].2),
-        rust_row::<Quay>(rows[4].0, rows[4].2),
-        rust_row::<Moored>(rows[5].0, rows[5].2),
-        rust_row::<Ledger>(rows[6].0, rows[6].2),
-        rust_row::<Dropped>(rows[7].0, rows[7].2),
-        rust_row::<Quay>(rows[8].0, rows[8].2),
-        rust_row::<Bundle>(rows[9].0, rows[9].2),
-        rust_row::<Speed>(rows[10].0, rows[10].2),
-        rust_row::<Mark<String>>(rows[11].0, rows[11].2),
+        rust_row::<Berth>(rows[4].0, rows[4].2),
+        rust_row::<Quay>(rows[5].0, rows[5].2),
+        rust_row::<Moored>(rows[6].0, rows[6].2),
+        rust_row::<Ledger>(rows[7].0, rows[7].2),
+        rust_row::<Dropped>(rows[8].0, rows[8].2),
+        rust_row::<Quay>(rows[9].0, rows[9].2),
+        rust_row::<Bundle>(rows[10].0, rows[10].2),
+        rust_row::<Speed>(rows[11].0, rows[11].2),
+        rust_row::<Mark<String>>(rows[12].0, rows[12].2),
     ]
     .concat();
     assert_eq!(printed, SHAPES, "what the Rust read answers");

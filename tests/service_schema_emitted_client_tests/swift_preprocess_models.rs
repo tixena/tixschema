@@ -160,6 +160,25 @@ pub struct Twice {
     pub second: Sided,
 }
 
+/// A type whose function writes, under `seen`, the keys of the object it was handed.
+#[model_schema(preprocess = ["withItsSeen"])]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Spotted {
+    pub mark: String,
+    pub seen: Vec<String>,
+}
+
+/// Two flattened types whose different functions list the keys they are handed.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Duplexed {
+    pub dock: String,
+    #[serde(flatten)]
+    pub spotted: Spotted,
+    #[serde(flatten)]
+    pub tagged: Tagged,
+}
+
 /// An internally tagged enum whose variant flattens the type whose function lists its keys.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -438,4 +457,17 @@ fn textual(payload: Value) -> Value {
     } else {
         payload
     }
+}
+
+/// An object that lists, under `seen`, the keys it was handed, in order.
+fn with_its_seen(mut payload: Value) -> Value {
+    if let Some(object) = payload.as_object_mut() {
+        let mut keys: Vec<String> = object.keys().cloned().collect();
+        keys.sort_unstable();
+        object.insert(
+            "seen".to_owned(),
+            Value::Array(keys.into_iter().map(Value::String).collect()),
+        );
+    }
+    payload
 }

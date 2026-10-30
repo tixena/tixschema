@@ -278,11 +278,11 @@ pub struct Wrapped {
 /// One payload a type reads: the name of the case, the schema that reads it under node, the
 /// payload, and what a serde read of it as a `T` prints.
 #[cfg(feature = "serde")]
-type Position = (&'static str, &'static str, &'static str, String);
+pub type Position = (&'static str, &'static str, &'static str, String);
 
 /// The position `name`: `payload` read as a `T`, which the schema `schema` reads under node.
 #[cfg(feature = "serde")]
-fn position<T>(name: &'static str, schema: &'static str, payload: &'static str) -> Position
+pub fn position<T>(name: &'static str, schema: &'static str, payload: &'static str) -> Position
 where
     T: DeserializeOwned + Serialize,
 {
