@@ -243,7 +243,14 @@ fn a_key_typed_with_a_parameter_is_written_where_the_type_declares_serialize() {
     assert!(
         written_under_its_key.contains(
             "for ((key, held) in byKey) { violations.addAll(held.validate().map { \
-             kotlinSchemaUnder(\"by_key.${kotlinSchemaKey(key)}\", it) }) }"
+             kotlinSchemaUnder(\"by_key.${kotlinSchemaKey(key, keySerializer)}\", it) }) }"
+        ),
+        "got: {written_under_its_key}"
+    );
+    assert!(
+        written_under_its_key.contains(
+            "fun validate(): List<String> = validate(null); \
+             fun validate(keySerializer: KSerializer<Key>?): List<String>"
         ),
         "got: {written_under_its_key}"
     );

@@ -289,12 +289,14 @@ fn in_a_position(field: &FieldDef) -> bool {
 /// The serializer of `export_name`, the type's own: it reads through the unjudged one and throws
 /// what `validate()` answers of the value read, joined by `; `. Called, it answers the unjudged
 /// one, which a holder that cannot name it reads by. `composed` says the unjudged one is written
-/// by the emitter, which binds each type parameter to `Any`.
+/// by the emitter, which binds each type parameter to `Any`. The serializer of each parameter in
+/// `keyed` is kept and handed to `validate()`, which names a map's key by it.
 pub fn judged(
     export_name: &str,
     generic_params: &str,
     type_parameters: &[String],
     composed: bool,
+    keyed: &[String],
 ) -> String {
     let own = format!("{export_name}{generic_params}");
     let (opens, property, unjudged) = if type_parameters.is_empty() {
@@ -309,7 +311,7 @@ pub fn judged(
             format!(
                 "class {export_name}Serializer{}({})",
                 parameter_list(type_parameters, bound),
-                handed(type_parameters, "")
+                kept_parameters(type_parameters, keyed)
             ),
             format!(
                 "private val kotlinSchemaUnjudged = {export_name}Unjudged({}); ",
@@ -318,15 +320,39 @@ pub fn judged(
             "kotlinSchemaUnjudged".to_owned(),
         )
     };
+    let handing = keyed
+        .iter()
+        .map(|parameter| kotlin_serializer_param_name(parameter))
+        .collect::<Vec<_>>()
+        .join(", ");
     format!(
         "{opens} : KSerializer<{own}>, () -> KSerializer<{own}> {{ {property}override fun \
          invoke(): KSerializer<{own}> = {unjudged}; override val descriptor: SerialDescriptor = \
          {unjudged}.descriptor; override fun serialize(encoder: Encoder, value: {own}) = \
          {unjudged}.serialize(encoder, value); override fun deserialize(decoder: Decoder): {own} \
-         {{ val read = {unjudged}.deserialize(decoder); val violations = read.validate(); if \
+         {{ val read = {unjudged}.deserialize(decoder); val violations = read.validate({handing}); if \
          (violations.isNotEmpty()) throw SerializationException(violations.joinToString(\"; \")); \
          return read }} }}"
     )
+}
+
+/// [`handed`] with the serializer of each parameter in `kept` held as a property.
+fn kept_parameters(type_parameters: &[String], kept: &[String]) -> String {
+    type_parameters
+        .iter()
+        .map(|parameter| {
+            let held = if kept.contains(parameter) {
+                "private val "
+            } else {
+                ""
+            };
+            format!(
+                "{held}{}: KSerializer<{parameter}>",
+                kotlin_serializer_param_name(parameter)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// The annotations of a class the plugin writes a serializer for, which it keeps beside the
