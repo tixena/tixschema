@@ -1276,6 +1276,18 @@ mod below_brand_models;
 #[path = "service_schema_emitted_client_tests/run_below_brands.rs"]
 mod run_below_brands;
 
+/// Untagged enums over an alias of a string declared above and below them.
+#[cfg(test)]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+#[path = "service_schema_emitted_client_tests/alias_order_models.rs"]
+mod alias_order_models;
+
+/// That enum, read by each emitted client as serde reads it.
+#[cfg(test)]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+#[path = "service_schema_emitted_client_tests/run_alias_order.rs"]
+mod run_alias_order;
+
 /// Tuple variants with a slot serde neither writes nor reads.
 #[cfg(test)]
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
