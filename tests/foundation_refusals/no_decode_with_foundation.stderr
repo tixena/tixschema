@@ -5,3 +5,35 @@ error[E0432]: unresolved import `crate`
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `__tixschema_decode_with` in the crate root
   |
   = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0433]: cannot find `__tixschema_decode_with_impl` in the crate root
+ --> tests/foundation_refusals/no_decode_with_foundation.rs:8:1
+  |
+8 | #[model_schema(enable = ["decode_with"])]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `__tixschema_decode_with_impl` in the crate root
+  |
+  = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: tixschema: this crate has `#[model_schema(enable = ["decode_with"])]` types but no `tixschema::decode_with_foundation!();`
+ --> tests/foundation_refusals/no_decode_with_foundation.rs:8:1
+  |
+8 | #[model_schema(enable = ["decode_with"])]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this type needs the decode_with support library, which `tixschema::decode_with_foundation!();` writes once per crate
+  |
+help: the trait `FoundationWritten` is not implemented for `Missing`
+ --> tests/foundation_refusals/no_decode_with_foundation.rs:8:1
+  |
+8 | #[model_schema(enable = ["decode_with"])]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = note: Fix: add the line `tixschema::decode_with_foundation!();` at the crate root (src/lib.rs or src/main.rs), on its own line, anywhere outside a function. Add it once per crate; nothing else is needed.
+help: the trait `FoundationWritten` is implemented for `()`
+ --> tests/foundation_refusals/no_decode_with_foundation.rs:8:1
+  |
+8 | #[model_schema(enable = ["decode_with"])]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+note: required by a bound in `need`
+ --> tests/foundation_refusals/no_decode_with_foundation.rs:8:1
+  |
+8 | #[model_schema(enable = ["decode_with"])]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `need`
+  = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)

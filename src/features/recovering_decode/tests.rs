@@ -6,8 +6,8 @@ use super::aliases::entry_of_items;
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use super::{ADDED_TYPE_NAMES, Source, read_whole_items, reading_the_authors_scope};
 use super::{
-    DECODE_WITH_LIBRARY_NAMES, RecoveringDecode, decode_with_foundation, decode_with_library,
-    written_names,
+    DECODE_WITH_IMPL_MACRO, DECODE_WITH_LIBRARY_NAMES, RecoveringDecode, decode_with_foundation,
+    decode_with_library, written_names,
 };
 #[cfg(feature = "mongodb")]
 use super::{MONGODB_LIBRARY_NAMES, mongodb_foundation, mongodb_library};
@@ -281,6 +281,33 @@ fn whole_impl_of(source: &str) -> String {
     struct_recovering_decode(&item).type_impl.to_string()
 }
 
+/// `type_impl` as a file, with the items inside each call of the macro that wraps a `DecodeWith`
+/// impl written in place of the call.
+fn unwrapped_file(type_impl: proc_macro2::TokenStream) -> syn::File {
+    let mut file: syn::File = syn::parse2(type_impl).unwrap();
+    file.items = file
+        .items
+        .into_iter()
+        .flat_map(|item| {
+            if let syn::Item::Macro(call) = &item
+                && call
+                    .mac
+                    .path
+                    .segments
+                    .last()
+                    .is_some_and(|last| last.ident == DECODE_WITH_IMPL_MACRO)
+            {
+                syn::parse2::<syn::File>(call.mac.tokens.clone())
+                    .unwrap()
+                    .items
+            } else {
+                vec![item]
+            }
+        })
+        .collect();
+    file
+}
+
 /// The inherent `impl` the flag adds to the enum `source` declares, as text.
 fn enum_impl_of(source: &str) -> String {
     let item: syn::ItemEnum = syn::parse_str(source).unwrap();
@@ -291,7 +318,7 @@ fn enum_impl_of(source: &str) -> String {
 fn inherent_text(type_impl: proc_macro2::TokenStream) -> String {
     use quote::ToTokens as _;
 
-    let added: syn::File = syn::parse2(type_impl).unwrap();
+    let added = unwrapped_file(type_impl);
     added
         .items
         .iter()
@@ -408,7 +435,7 @@ fn reads_under_their_types(impls: Vec<(String, Vec<String>)>) -> Vec<(String, Ve
 
 /// The type's own `impl` among `type_impl`: the first, ahead of what is written beside the type.
 fn own_impl(type_impl: proc_macro2::TokenStream) -> syn::ItemImpl {
-    let added: syn::File = syn::parse2(type_impl).unwrap();
+    let added = unwrapped_file(type_impl);
     added
         .items
         .into_iter()
@@ -431,7 +458,7 @@ fn added_enum_impls(source: &str) -> Vec<(String, Vec<String>)> {
 /// Every `impl` among `type_impl`: its header as text, with the trait it implements, and its
 /// members in the order written.
 fn impls_in(type_impl: proc_macro2::TokenStream) -> Vec<(String, Vec<String>)> {
-    let added: syn::File = syn::parse2(type_impl).unwrap();
+    let added = unwrapped_file(type_impl);
     let impls: Vec<(String, Vec<String>)> = added
         .items
         .iter()
@@ -476,7 +503,7 @@ fn member_name(member: &syn::ImplItem) -> Option<String> {
 
 /// The names the methods among `type_impl` give type parameters of their own, each once, sorted.
 fn own_type_parameters(type_impl: proc_macro2::TokenStream) -> Vec<String> {
-    let added: syn::File = syn::parse2(type_impl).unwrap();
+    let added = unwrapped_file(type_impl);
     let mut named: Vec<String> = added
         .items
         .iter()
@@ -636,7 +663,7 @@ fn leaf_tokens(tokens: proc_macro2::TokenStream, leaves: &mut Vec<String>) {
 fn body_of(type_impl: proc_macro2::TokenStream, named: &str) -> String {
     use quote::ToTokens as _;
 
-    let added: syn::File = syn::parse2(type_impl).unwrap();
+    let added = unwrapped_file(type_impl);
     let bodies: Vec<String> = added
         .items
         .iter()
@@ -963,7 +990,7 @@ fn the_bson_methods_carry_the_signatures_of_their_json_twins() {
     let item: syn::ItemStruct = syn::parse_str("pub struct Named { pub title: String }").unwrap();
     let type_impl = struct_recovering_decode(&item).type_impl;
     let added = own_impl(type_impl.clone());
-    let every: syn::File = syn::parse2(type_impl).unwrap();
+    let every = unwrapped_file(type_impl);
     let signatures: Vec<String> = every
         .items
         .iter()
@@ -2470,7 +2497,7 @@ fn under_bson_the_decode_with_library_holds_what_reads_a_bson_value() {
 }
 
 /// The attributes on each item an initializer writes at the crate root, as text, by the item's
-/// position: a module, a trait or an `impl`, and any other item as itself.
+/// position: a module, a trait, an `impl`, a macro or a `use`, and any other item as itself.
 fn crate_root_attributes(written: &syn::File) -> Vec<String> {
     written
         .items
@@ -2481,6 +2508,10 @@ fn crate_root_attributes(written: &syn::File) -> Vec<String> {
             } else if let syn::Item::Trait(declared) = item {
                 Some(&declared.attrs)
             } else if let syn::Item::Impl(declared) = item {
+                Some(&declared.attrs)
+            } else if let syn::Item::Macro(declared) = item {
+                Some(&declared.attrs)
+            } else if let syn::Item::Use(declared) = item {
                 Some(&declared.attrs)
             } else {
                 None
@@ -2516,7 +2547,7 @@ fn each_initializer_writes_its_module_and_its_marker() {
     );
     assert_eq!(
         crate_root_attributes(&written),
-        ["# [doc (hidden)]", "", ""]
+        ["# [doc (hidden)]", "", "", "", ""]
     );
     #[cfg(feature = "mongodb")]
     {
