@@ -8,10 +8,10 @@
 use super::named_by_rust_models::{
     bough_swift, carriage_adjacent_swift, carriage_external_swift, carriage_swift,
     carriage_untagged_swift, fork_swift, hauler_swift, hitch_swift, hitched_trailer_swift,
-    rope_swift, spur_swift, towed_trailer_swift,
+    rope_swift, spur_swift, tip_swift, towed_trailer_swift,
 };
 use super::named_by_rust_rows::{
-    BELOW_ROWS, CARRIAGE_ROWS, Row, SELF_ROWS, declares_a_parameter, expected, normalized,
+    BELOW_ROWS, CARRIAGE_ROWS, Row, SELF_ROWS, TIP_ROWS, declares_a_parameter, expected, normalized,
 };
 use super::runtime::judged;
 
@@ -91,6 +91,13 @@ fn a_field_written_self_names_its_type_in_swift() {
             rope_swift::swift_definition(),
         ],
     );
+}
+
+/// An `Option` over a `Box` of `Self` is held behind a box the struct writes, and reads and
+/// writes the chain serde does.
+#[test]
+fn an_optional_box_of_self_names_its_type_in_swift() {
+    compared("swift-tip", &TIP_ROWS, vec![tip_swift::swift_definition()]);
 }
 
 /// A model declared below the model that holds it is refused with the text of the Rust read.

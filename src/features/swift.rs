@@ -110,6 +110,13 @@ const SWIFT_RESERVED: [&str; 51] = [
 #[cfg(feature = "chrono")]
 pub const WHOLE_OPTIONS: &str = ".withInternetDateTime";
 
+/// Whether a member is a stored property of its struct or sits in a box.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Storage {
+    Boxed,
+    Direct,
+}
+
 /// One field this module has decided belongs on the wire, resolved to the Swift property it
 /// earns: its Rust name, its lower-camel Swift name, its wire name, whether the key always
 /// reaches the wire, whether it is a `#[serde(flatten)]` source, and the shape that drives its
@@ -122,6 +129,9 @@ struct SwiftField {
     default_at: Option<String>,
     field_def: FieldDef,
     flatten: bool,
+    /// How the member is stored: an `Option` of the type that holds it cannot be a stored
+    /// property of that type, so it is held behind a box.
+    held: Storage,
     /// What the types written for the field are named from.
     hint: String,
     /// Whether serde never writes the member: it is under `skip_serializing`.
@@ -1565,6 +1575,7 @@ fn range_shape(
                 field_def,
                 flatten: false,
                 hint: hint.clone(),
+                held: Storage::Direct,
                 never_written: false,
                 real_type: real_type.clone(),
                 required: true,
@@ -2477,6 +2488,7 @@ fn flattened_under_option(field: &SwiftField) -> SwiftField {
         field_def: validate::under_option(&field.field_def),
         flatten: true,
         hint: field.hint.clone(),
+        held: Storage::Direct,
         never_written: field.never_written,
         real_type: field
             .real_type
@@ -2969,6 +2981,15 @@ fn collect_swift_fields(
         if flatten {
             aux.extend(flattened_wrapper_read(&field_def, &field_hint));
         }
+        let held = if !flatten
+            && field_def.array_depth == 0
+            && field_def.is_optional()
+            && matches!(&field_def.field_type, FieldDefType::SiblingType(name, _) if name == args.type_name)
+        {
+            Storage::Boxed
+        } else {
+            Storage::Direct
+        };
         collected.push(SwiftField {
             aliases: if flatten || omission.skips_deserializing {
                 Vec::new()
@@ -2979,6 +3000,7 @@ fn collect_swift_fields(
             field_def,
             flatten,
             hint: field_hint,
+            held,
             never_written: has_serde_skip_serializing(&field.attrs),
             real_type,
             required: !omission.omits_key,
@@ -3045,11 +3067,21 @@ fn struct_body_content(
     around: bool,
 ) -> String {
     let props = fields.iter().fold(String::new(), |mut acc, field| {
-        write!(
-            acc,
-            "public let {}: {}; ",
-            field.swift_name, field.real_type
-        )
+        if field.held == Storage::Boxed {
+            write!(
+                acc,
+                "@{} public private(set) var {}: {}; ",
+                indirection_name(owner),
+                field.swift_name,
+                field.real_type
+            )
+        } else {
+            write!(
+                acc,
+                "public let {}: {}; ",
+                field.swift_name, field.real_type
+            )
+        }
         .unwrap();
         acc
     });
@@ -3268,6 +3300,37 @@ fn field_rules(owner: &str, fields: &[SwiftField]) -> Vec<String> {
         .collect()
 }
 
+/// The property wrapper a struct names for its members that hold an `Option` of its own type.
+fn indirection_name(owner: &str) -> String {
+    format!("{owner}SwiftSchemaIndirect")
+}
+
+/// The property wrapper `name`, which keeps its value in a class so that a struct can hold an
+/// `Option` of itself, and reads and writes the `Option` as the plain one is: an absent key is
+/// `nil`, and `nil` is written as no key.
+fn indirection(name: &str) -> String {
+    format!(
+        "@propertyWrapper public struct {name}<Wrapped: Codable & Sendable>: Codable, Sendable {{ \
+         private final class Box: Sendable {{ let value: Wrapped?; \
+         init(_ value: Wrapped?) {{ self.value = value }} }}; \
+         private var box: Box; \
+         public init(wrappedValue: Wrapped?) {{ box = Box(wrappedValue) }}; \
+         public var wrappedValue: Wrapped? {{ get {{ box.value }} set {{ box = Box(newValue) }} }}; \
+         public init(from decoder: Decoder) throws {{ \
+         let container = try decoder.singleValueContainer(); \
+         box = Box(container.decodeNil() ? nil : try container.decode(Wrapped.self)) }}; \
+         public func encode(to encoder: Encoder) throws {{ \
+         var container = encoder.singleValueContainer(); \
+         if let value = box.value {{ try container.encode(value) }} else {{ try container.encodeNil() }} }} }}; \
+         extension KeyedDecodingContainer {{ \
+         func decode<Wrapped>(_ type: {name}<Wrapped>.Type, forKey key: Key) throws -> {name}<Wrapped> {{ \
+         {name}(wrappedValue: try decodeIfPresent(Wrapped.self, forKey: key)) }} }}; \
+         extension KeyedEncodingContainer {{ \
+         mutating func encode<Wrapped>(_ value: {name}<Wrapped>, forKey key: Key) throws {{ \
+         try encodeIfPresent(value.wrappedValue, forKey: key) }} }};"
+    )
+}
+
 /// The `public struct {export_name}{generics}: Codable, Sendable { ... }` a named-field struct or
 /// a struct-shaped variant payload earns, with the `DateTime` helpers appended when a field needs
 /// them. `rules` is what its `validate()` runs, `corrects` the functions it names on itself, and
@@ -3291,7 +3354,10 @@ fn struct_declaration(
         around,
     );
     let shapes: Vec<&SwiftFieldShape> = fields.iter().map(|field| &field.shape).collect();
-    let helpers = leaf_helpers_for(export_name, generic_params, &shapes, None);
+    let mut helpers = leaf_helpers_for(export_name, generic_params, &shapes, None);
+    if fields.iter().any(|field| field.held == Storage::Boxed) {
+        helpers.push_str(&indirection(&indirection_name(export_name)));
+    }
     format!(
         "public struct {export_name}{generic_params}: Codable, Sendable {{ {content} }}; {helpers}"
     )
