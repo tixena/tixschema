@@ -10504,7 +10504,7 @@ fn branded_slot_json_schema(
 
 /// Whether a brand's inner is a name that carries the brand's two lengths itself, as the field
 /// type of a holder carries a length written on the field.
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
+#[cfg(feature = "jsonschema")]
 fn carries_a_named_count(inner: &FieldDef) -> bool {
     matches!(inner.field_type, FieldDefType::SiblingType(..))
         && inner
