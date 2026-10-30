@@ -5,7 +5,9 @@
 
 #[cfg(feature = "dart")]
 mod dart {
-    use super::super::below_brand_models::{PAYLOADS, fastening_dart, gasket_dart, rivet_dart};
+    use super::super::below_brand_models::{
+        PAYLOADS, fastening_dart, finish_dart, gasket_dart, rivet_dart,
+    };
     use super::expected;
     use core::fmt::Write as _;
 
@@ -32,6 +34,7 @@ void told(int at, String payload) {
                 fastening_dart::dart_definition(),
                 rivet_dart::dart_definition(),
                 gasket_dart::dart_definition(),
+                finish_dart::dart_definition(),
             ],
             &[DRIVER],
             &main,
@@ -64,7 +67,7 @@ void told(int at, String payload) {
 #[cfg(feature = "kotlin")]
 mod kotlin {
     use super::super::below_brand_models::{
-        PAYLOADS, fastening_kotlin, gasket_kotlin, rivet_kotlin,
+        PAYLOADS, fastening_kotlin, finish_kotlin, gasket_kotlin, rivet_kotlin,
     };
     use super::expected;
     use core::fmt::Write as _;
@@ -99,6 +102,7 @@ fun told(at: Int, payload: String) {
             fastening_kotlin::kotlin_definition(),
             rivet_kotlin::kotlin_definition(),
             gasket_kotlin::kotlin_definition(),
+            finish_kotlin::kotlin_definition(),
             DRIVER.to_owned(),
             main,
         ]
@@ -116,7 +120,9 @@ fun told(at: Int, payload: String) {
 
 #[cfg(feature = "swift")]
 mod swift {
-    use super::super::below_brand_models::{PAYLOADS, fastening_swift, gasket_swift, rivet_swift};
+    use super::super::below_brand_models::{
+        PAYLOADS, fastening_swift, finish_swift, gasket_swift, rivet_swift,
+    };
     use super::expected;
     use core::fmt::Write as _;
 
@@ -126,6 +132,7 @@ mod swift {
 func told(_ at: Int, _ payload: String) {
   do {
     switch try JSONDecoder().decode(Fastening.self, from: Data(payload.utf8)) {
+    case .anodized: print("\(at): Anodized")
     case .coded: print("\(at): Coded")
     case .listed: print("\(at): Listed")
     case .maybe: print("\(at): Maybe")
@@ -149,6 +156,7 @@ func told(_ at: Int, _ payload: String) {
             fastening_swift::swift_definition(),
             rivet_swift::swift_definition(),
             gasket_swift::swift_definition(),
+            finish_swift::swift_definition(),
             DRIVER.to_owned(),
             main,
         ]
