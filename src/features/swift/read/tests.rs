@@ -307,8 +307,8 @@ fn the_readme_shows_the_reads_of_the_documents_parcel() {
 }
 
 /// A brand with a bound chooses a variant of an untagged enum declared below it, and so does an
-/// alias of it. One declared below the enum is a name the emitter has not written, and one with
-/// no bound has nothing to choose by.
+/// alias of it. One declared below the enum is a name the emitter has not written, and is asked
+/// all the same; a type with no bound answers `[]` and is not asked where it is known.
 #[cfg(feature = "serde")]
 #[test]
 fn a_bounded_brand_declared_above_an_untagged_enum_chooses_its_variant() {
@@ -336,7 +336,9 @@ fn a_bounded_brand_declared_above_an_untagged_enum_chooses_its_variant() {
         "public func swiftSchemaValidateBound() -> [String] { var errors: [String] = []; ",
         "if value.unicodeScalars.count < 2 {",
     )));
-    assert!(!emitted(&unbounded).contains("swiftSchemaValidateBound"));
+    assert!(
+        emitted(&unbounded).contains("public func swiftSchemaValidateBound() -> [String] { [] }")
+    );
     emitted(&alias);
     let written = emitted(&choice);
     for chosen in [
@@ -355,9 +357,15 @@ fn a_bounded_brand_declared_above_an_untagged_enum_chooses_its_variant() {
     ] {
         assert!(written.contains(chosen), "{chosen} is not in: {written}");
     }
-    for unwritten in ["swiftSchemaBoundLater", "swiftSchemaBoundNoted"] {
-        assert!(!written.contains(unwritten), "got: {written}");
-    }
+    assert!(
+        written.contains(concat!(
+            "private static func swiftSchemaBoundLater(_ payload: ChoiceLaterPin) -> [String] ",
+            "{ var errors: [String] = []; errors += payload.swiftSchemaValidateBound(); ",
+            "return errors }; ",
+        )),
+        "got: {written}"
+    );
+    assert!(!written.contains("swiftSchemaBoundNoted"), "got: {written}");
 }
 
 /// A brand over an optional value Swift converts reads it in a closure that throws, called with

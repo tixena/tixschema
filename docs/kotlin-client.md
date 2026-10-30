@@ -51,11 +51,17 @@ section is the consumer's view; this is what a change has to keep.
 - **A map's key is `key_step`'s**: the key itself for a string, a number and a `Boolean`, the text
   its serializer writes for a declared type, and a type parameter's only where
   `serialized_parameters` finds `Serialize` declared for it, as Rust writes it: through
-  `kotlinSchemaKey`, a private function of the type that finds the serializer of the key's class
-  (`serializerOrNull(key::class.java)`) and reads the primitive it writes, so a plain enum under
-  `rename_all` and a brand are named by the text serde writes. The type holds no serializer for
-  its parameter, only its serializers do. A class that declares a parameter of its own has no
-  serializer to find from the key alone, and its key is written as Kotlin prints it.
+  `kotlinSchemaKey`, a private function of the type that reads the primitive the key's serializer
+  writes, so a plain enum under `rename_all` and a brand are named by the text serde writes. The
+  type holds no serializer for its parameter, only its serializers do. A type read by its judged
+  serializer (`Rules::judged`) has `validate()` overloaded with one nullable serializer per
+  parameter a map is keyed by, and the judged serializer hands it the ones it holds, so a key
+  filled with a class that declares a parameter of its own, such as `Tag<String>`, is named by the
+  text it writes. The plain `validate()` of a value built by hand passes none and finds the
+  serializer of the key's class (`serializerOrNull(key::class.java)`); a class that declares a
+  parameter of its own has none to find from the key alone, and its key is written as Kotlin
+  prints it. A type held inside another is judged through the holder's `validate()` and keeps that
+  lookup, as does a variant of an enum.
 - **One wrapper is written per tuple shape per item.** `tuple_wrapper` queues a wrapper
   class the first time the item asks for a shape, and answers its name to every later ask of that
   shape (`KOTLIN_TUPLES`, cleared with the queue in `kotlin_module_tokens`). A shape is the

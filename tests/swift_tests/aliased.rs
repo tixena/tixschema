@@ -64,7 +64,8 @@ fn a_plain_enum_reads_a_variant_under_each_alias() {
          \"Flood\"; public init?(rawValue: String) { switch rawValue { case \"Ebb\", \"Low\", \
          \"Neap\": self = .ebb; case \"Flood\": self = .flood; default: return nil } }; public \
          init(swiftSchemaUnjudged decoder: Decoder) throws { try self.init(from: decoder) }; \
-         public func validate() -> [String] { [] } }",
+         public func validate() -> [String] { [] }; public func swiftSchemaValidateBound() -> \
+         [String] { [] } }",
         "the text of a plain enum with a variant under two aliases"
     );
     let lulling = lulling_swift::swift_definition();
@@ -149,7 +150,8 @@ fn a_struct_with_no_alias_is_read_as_it_was() {
          throws { try self.init(swiftSchemaUnjudged: decoder); let violations = validate(); if \
          !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(\
          codingPath: decoder.codingPath, debugDescription: violations.joined(separator: \"; \
-         \"))) } }; public func validate() -> [String] { [] } }; ",
+         \"))) } }; public func validate() -> [String] { [] }; public func \
+         swiftSchemaValidateBound() -> [String] { [] } }; ",
         "the text of a struct with no alias"
     );
 }

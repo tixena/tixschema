@@ -148,6 +148,7 @@ a list, a map and an Option: read {\"by_dock\":{\"north\":{\"fragileItemCodes\":
 a flattened type: read {\"dock\":\"north\",\"fragileItemCodes\":[],\"itemCodeList\":[\"x\"],\"label\":\"A\"}
 the keys a flattened type is handed: read {\"dock\":\"north\",\"keys\":[\"tag\"],\"tag\":\"t\"}
 two flattened types that read their keys: read {\"dock\":\"north\",\"mark\":\"m\",\"seen\":[\"mark\",\"tag\"],\"keys\":[\"mark\",\"tag\"],\"tag\":\"t\"}
+a variant under a tag alone, handed the object without the tag: read {\"kind\":\"Held\",\"keys\":[\"tag\"],\"tag\":\"t\"}
 a variant beside its tag: read {\"kind\":\"Held\",\"detail\":{\"fragileItemCodes\":[],\"itemCodeList\":[\"x\"],\"label\":\"A\"}}
 a variant under its name: read {\"Held\":{\"fragileItemCodes\":[],\"itemCodeList\":[\"x\"],\"label\":\"A\"}}
 an untagged variant: read {\"fragileItemCodes\":[],\"itemCodeList\":[\"x\"],\"label\":\"A\"}
@@ -333,6 +334,15 @@ pub struct Coupled {
     pub itemized: Itemized,
 }
 
+/// An internally tagged enum whose variant holds an `Itemized`.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "kind")]
+pub enum Stowed {
+    Held(Itemized),
+    Lost,
+}
+
 /// A choice of two objects, whose function trims the plate of the one that holds one.
 #[model_schema(preprocess = ["trimmedPlate"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -377,8 +387,7 @@ pub enum OneOf {
     Packet(Packet),
 }
 
-/// An internally tagged enum whose variant holds a packet: the emitted type reads the packet
-/// under a `value` key, where serde writes its keys beside the tag, so no row runs it.
+/// An internally tagged enum whose variant holds a packet.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "kind")]
@@ -962,6 +971,11 @@ fn held_rows() -> Vec<Reading> {
             "Coupled",
             r#"{"dock":"north","mark":"m","tag":"t"}"#,
         ),
+        row::<Stowed>(
+            "a variant under a tag alone, handed the object without the tag",
+            "Stowed",
+            r#"{"kind":"Held","tag":"t"}"#,
+        ),
         row::<Entrusted>(
             "a variant beside its tag",
             "Entrusted",
@@ -1173,6 +1187,7 @@ fn definitions() -> Vec<String> {
         niche_kotlin::kotlin_definition(),
         one_of_kotlin::kotlin_definition(),
         handoff_kotlin::kotlin_definition(),
+        stowed_kotlin::kotlin_definition(),
         shut_gate_kotlin::kotlin_definition(),
         pile_kotlin::kotlin_definition(),
         caption_kotlin::kotlin_definition(),
@@ -1456,8 +1471,7 @@ fn a_preprocess_with_no_kotlin_function_does_not_compile() {
 }
 
 /// The variant of an enum under a tag alone reads the packet it holds through the packet's
-/// unjudged serializer, which calls the packet's functions. The emitted subclass reads it under a
-/// `value` key, where serde writes the packet's keys beside the tag, so the row is not run.
+/// unjudged serializer, which calls the packet's functions.
 #[test]
 fn a_variant_under_a_tag_alone_reads_what_it_holds_through_its_functions() {
     assert_eq!(

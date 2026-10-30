@@ -522,7 +522,8 @@ fn a_type_with_no_default_writes_the_swift_text_it_wrote() {
          throws { try self.init(swiftSchemaUnjudged: decoder); let violations = validate(); if \
          !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: \
          decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }; public \
-         func validate() -> [String] { [] } }; "
+         func validate() -> [String] { [] }; public func swiftSchemaValidateBound() -> [String] \
+         { [] } }; "
     );
 }
 
