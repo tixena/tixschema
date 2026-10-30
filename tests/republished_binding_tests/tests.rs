@@ -240,37 +240,37 @@ fn an_alias_of_a_brand_reads_its_annotation_off_the_binding_it_republishes() {
         (
             correlation_ref_schema::Schema::zod_schema(),
             "export const CorrelationRefType$Schema: typeof CorrelationRefType$RawSchema = \
-             CorrelationRefType$RawSchema.meta({\n  examples: []\n});",
+             CorrelationRefType$RawSchema;",
         ),
         (
             slot_brand_ref_schema::Schema::zod_schema(),
             "export const SlotBrandRefType$Schema: typeof SlotBrandRefType$RawSchema = \
-             SlotBrandRefType$RawSchema.meta({\n  examples: []\n});",
+             SlotBrandRefType$RawSchema;",
         ),
         (
             bool_brand_ref_schema::Schema::zod_schema(),
             "export const BoolBrandRefType$Schema: typeof BoolBrandRefType$RawSchema = \
-             BoolBrandRefType$RawSchema.meta({\n  examples: []\n});",
+             BoolBrandRefType$RawSchema;",
         ),
         (
             num_brand_ref_schema::Schema::zod_schema(),
             "export const NumBrandRefType$Schema: typeof NumBrandRefType$RawSchema = \
-             NumBrandRefType$RawSchema.meta({\n  examples: []\n});",
+             NumBrandRefType$RawSchema;",
         ),
         (
             num_brand_over_brand_ref_schema::Schema::zod_schema(),
             "export const NumBrandOverBrandRefType$Schema: typeof \
-             NumBrandOverBrandRefType$RawSchema = NumBrandOverBrandRefType$RawSchema.meta({\n  examples: []\n});",
+             NumBrandOverBrandRefType$RawSchema = NumBrandOverBrandRefType$RawSchema;",
         ),
         (
             struct_brand_ref_schema::Schema::zod_schema(),
             "export const StructBrandRefType$Schema: typeof StructBrandRefType$RawSchema = \
-             StructBrandRefType$RawSchema.meta({\n  examples: []\n});",
+             StructBrandRefType$RawSchema;",
         ),
         (
             plain_struct_ref_schema::Schema::zod_schema(),
             "export const PlainStructRefType$Schema: typeof PlainStructRefType$RawSchema = \
-             PlainStructRefType$RawSchema.meta({\n  examples: []\n});",
+             PlainStructRefType$RawSchema;",
         ),
     ] {
         assert!(zod.contains(line), "want: {line}\ngot: {zod}");
@@ -285,7 +285,7 @@ fn an_alias_of_a_datetime_brand_reads_its_annotation_off_the_binding_it_republis
     assert!(
         zod.contains(
             "export const StampBrandRefType$Schema: typeof StampBrandRefType$RawSchema = \
-             StampBrandRefType$RawSchema.meta({\n  examples: []\n});"
+             StampBrandRefType$RawSchema;"
         ),
         "got: {zod}"
     );
@@ -299,7 +299,7 @@ fn an_alias_declared_above_its_brand_reads_the_same_annotation() {
     assert!(
         zod.contains(
             "export const ForwardBrandRefType$Schema: typeof ForwardBrandRefType$RawSchema = \
-             ForwardBrandRefType$RawSchema.meta({\n  examples: []\n});"
+             ForwardBrandRefType$RawSchema;"
         ),
         "got: {zod}"
     );
@@ -318,7 +318,7 @@ fn an_alias_of_an_alias_of_a_brand_forwards_the_annotation() {
     assert!(
         zod.contains(
             "export const ChainedBrandRefType$Schema: typeof ChainedBrandRefType$RawSchema = \
-             ChainedBrandRefType$RawSchema.meta({\n  examples: []\n});"
+             ChainedBrandRefType$RawSchema;"
         ),
         "got: {zod}"
     );
@@ -336,7 +336,7 @@ fn a_one_slot_tuple_struct_reads_its_annotation_off_the_binding_it_republishes()
     assert!(
         zod.contains(
             "export const SlotWrapper$Schema: typeof SlotWrapper$RawSchema = \
-             SlotWrapper$RawSchema.meta({\n  examples: []\n});"
+             SlotWrapper$RawSchema;"
         ),
         "got: {zod}"
     );
@@ -354,7 +354,7 @@ fn a_one_slot_tuple_struct_over_a_bound_generic_brand_reads_the_call_back() {
     assert!(
         zod.contains(
             "export const BoundBrandSlot$Schema: typeof BoundBrandSlot$RawSchema = \
-             BoundBrandSlot$RawSchema.meta({\n  examples: []\n});"
+             BoundBrandSlot$RawSchema;"
         ),
         "got: {zod}"
     );
@@ -388,7 +388,7 @@ fn a_non_generic_alias_of_a_generic_brand_reads_the_bound_call_back() {
     assert!(
         zod.contains(
             "export const GenericBrandBoundAliasType$Schema: typeof \
-             GenericBrandBoundAliasType$RawSchema = GenericBrandBoundAliasType$RawSchema.meta({\n  examples: []\n});"
+             GenericBrandBoundAliasType$RawSchema = GenericBrandBoundAliasType$RawSchema;"
         ),
         "got: {zod}"
     );

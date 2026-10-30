@@ -9754,13 +9754,14 @@ fn a_type_that_writes_no_block_gets_no_example_method() {
 fn a_type_that_writes_no_block_names_no_serde_json_for_its_empty_list() {
     let module: syn::Ident = syn::parse_quote!(report_schema);
     let zod_delegates: Vec<String> = [
-        super::build_struct_delegate_items(&module, "Report", "Report", &[], None),
+        super::build_struct_delegate_items(&module, "Report", "Report", &[], None, false),
         super::build_struct_delegate_items(
             &module,
             "Report",
             "Report",
             &["IdType".to_owned()],
             None,
+            false,
         ),
         super::build_branded_delegate_items(&module, false),
     ]
@@ -9787,7 +9788,7 @@ fn a_type_that_writes_a_block_reads_its_list_off_schema_examples() {
     let module: syn::Ident = syn::parse_quote!(report_schema);
     let methods = quote::quote! { pub fn schema_examples() {} };
     let zod_delegates: Vec<String> = [
-        super::build_struct_delegate_items(&module, "Report", "Report", &[], Some(&methods)),
+        super::build_struct_delegate_items(&module, "Report", "Report", &[], Some(&methods), false),
         super::build_branded_delegate_items(&module, true),
     ]
     .into_iter()
@@ -9929,7 +9930,8 @@ fn a_parameter_with_no_declared_default_falls_back_to_string() {
 fn branded_json_schema_method_carries_no_cfg_attribute() {
     let args = super::ModelSchemaArgs::default();
     for inner in branded_json_inners() {
-        let tokens = super::build_branded_json_schema_method(&args, &inner, "DocumentId", &[]);
+        let tokens =
+            super::build_branded_json_schema_method(&args, &inner, "DocumentId", &[], None);
         assert_no_cfg_attribute(&tokens, "build_branded_json_schema_method");
     }
 }
@@ -15713,9 +15715,17 @@ fn an_item_the_example_convention_covers_earns_no_refusal() {
 
 #[cfg(feature = "zod")]
 #[test]
-fn a_const_declaring_alias_is_left_alone() {
+fn a_doc_example_on_a_const_declaring_alias_is_refused() {
     let source = format!("{EXAMPLE_DOC_BLOCK}pub type Probe<const WIDTH: usize> = [u8; WIDTH];");
     let messages = const_example_messages(&source);
+    assert_eq!(messages.len(), 1, "got: {messages:?}");
+    assert!(messages[0].contains("type `Probe`"), "got: {messages:?}");
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn a_const_declaring_alias_with_no_example_is_left_alone() {
+    let messages = const_example_messages("pub type Probe<const WIDTH: usize> = [u8; WIDTH];");
     assert!(messages.is_empty(), "got: {messages:?}");
 }
 
@@ -17962,6 +17972,7 @@ fn brand_json_schema_over(inner_ty: &syn::Type) -> String {
         &super::branded_json_inner(&super::get_field_def("_inner", inner_ty, "")),
         "Wrapped",
         &[],
+        None,
     )
     .to_string()
 }
@@ -23232,4 +23243,45 @@ fn a_map_key_is_accepted_where_the_parameter_declares_serialize_or_the_walk_read
             "for {source}"
         );
     }
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn a_type_that_republishes_a_binding_and_writes_no_block_states_no_examples_of_its_own() {
+    let module: syn::Ident = syn::parse_quote!(report_schema);
+    let delegates: Vec<String> =
+        super::build_struct_delegate_items(&module, "Report", "Report", &[], None, true)
+            .iter()
+            .map(ToString::to_string)
+            .filter(|item| item.contains("fn zod_schema"))
+            .collect();
+
+    assert_eq!(delegates.len(), 1, "{delegates:?}");
+    assert!(!delegates[0].contains("examples"), "Got: {}", delegates[0]);
+}
+
+#[cfg(feature = "jsonschema")]
+#[test]
+fn the_delegate_forwards_the_schema_module_document_unchanged() {
+    let module: syn::Ident = syn::parse_quote!(report_schema);
+    let delegate = super::json_schema_delegate(&module).to_string();
+
+    assert!(!delegate.contains("examples"), "Got: {delegate}");
+}
+
+#[cfg(feature = "jsonschema")]
+#[test]
+fn a_type_that_writes_examples_gets_the_keyword_in_its_schema_modules_document() {
+    let attrs: Vec<syn::Attribute> = vec![
+        syn::parse_quote!(#[doc = " ```rust example"]),
+        syn::parse_quote!(#[doc = " 1"]),
+        syn::parse_quote!(#[doc = " ```"]),
+    ];
+    let written = super::json_schema_examples(&attrs).map(|values| values.to_string());
+
+    assert!(
+        written.is_some_and(|values| values.contains("json_examples")),
+        "an example earns the keyword"
+    );
+    assert!(super::json_schema_examples(&[]).is_none());
 }

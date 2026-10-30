@@ -16,6 +16,23 @@ pub struct DocumentedStruct {
     pub label: String,
 }
 
+/// A documented struct whose example imports over several lines.
+/// ```rust example
+/// use std::collections::{
+///     BTreeMap,
+///     HashMap,
+/// };
+/// let item = WrappedImportStruct {
+///     label: "alpha".to_string(),
+/// };
+/// println!("Item: {:?}", item);
+/// ```
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct WrappedImportStruct {
+    pub label: String,
+}
+
 /// A documented tuple struct.
 /// ```rust example
 /// let item = DocumentedTuple("alpha".to_string(), 7);
@@ -95,6 +112,14 @@ pub enum DocumentedSlot {
 /// ```
 #[model_schema()]
 pub type DocumentedAlias = u32;
+
+/// An alias of a documented struct, which writes no block of its own.
+#[model_schema()]
+pub type DocumentedStructRef = DocumentedStruct;
+
+/// An alias of a primitive, which writes no block.
+#[model_schema()]
+pub type UndocumentedCount = u32;
 
 /// A struct whose documented member is a field.
 #[model_schema()]
@@ -326,15 +351,49 @@ fn a_documented_member_never_carries_its_rust_example_into_the_emitted_typescrip
     }
 }
 
-/// An alias builds no example, so nothing of its block reaches its schema.
+/// An alias builds its block as a type does: the value reaches its `.meta` and nothing else of the
+/// block does.
 #[cfg(feature = "zod")]
 #[test]
-fn a_documented_alias_carries_none_of_its_rust_example_into_its_zod_schema() {
+fn a_documented_alias_publishes_its_rust_example_as_one_example() {
     let zod = documented_alias_schema::Schema::zod_schema();
     for leaked in ["```", "let item", "println!", "example:"] {
         assert!(!zod.contains(leaked), "{leaked} reached: {zod}");
     }
-    assert_eq!(zod.matches("example").count(), 1, "Got: {zod}");
+    assert!(zod.contains(".meta({\n  examples: [3]\n});"), "Got: {zod}");
+    assert_eq!(
+        documented_alias_schema::Schema::schema_examples(),
+        vec![serde_json::json!(3_u32)]
+    );
+    assert_eq!(
+        documented_alias_schema::Schema::schema_example(),
+        serde_json::json!(3_u32)
+    );
+}
+
+/// An alias that names a published type and writes no block states no examples of its own.
+#[cfg(feature = "zod")]
+#[test]
+fn an_alias_with_no_block_publishes_the_examples_of_the_type_it_names() {
+    let held: DocumentedStructRef = DocumentedStruct {
+        label: "alpha".to_owned(),
+    };
+    assert_eq!(held.label, "alpha");
+    let zod = documented_struct_ref_schema::Schema::zod_schema();
+    assert!(!zod.contains(".meta("), "Got: {zod}");
+    assert!(
+        zod.contains("const DocumentedStructRefType$RawSchema = DocumentedStruct$Schema;"),
+        "Got: {zod}"
+    );
+}
+
+/// An alias of a primitive that writes no block has nothing to show through.
+#[cfg(feature = "zod")]
+#[test]
+fn an_alias_of_a_primitive_with_no_block_publishes_no_examples() {
+    let count: UndocumentedCount = 4;
+    assert_eq!(count, 4);
+    let zod = undocumented_count_schema::Schema::zod_schema();
     assert!(zod.contains(".meta({\n  examples: []\n});"), "Got: {zod}");
 }
 
@@ -432,4 +491,102 @@ fn every_documented_shape_opens_its_jsdoc_identically() {
             "expected {description} to open: {ts}"
         );
     }
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn an_example_importing_over_several_lines_builds_and_is_published() {
+    assert_eq!(
+        WrappedImportStruct::schema_examples(),
+        vec![serde_json::json!({"label": "alpha"})]
+    );
+    assert!(
+        WrappedImportStruct::zod_schema().contains("examples: [{\"label\":\"alpha\"}]"),
+        "Got: {}",
+        WrappedImportStruct::zod_schema()
+    );
+}
+
+#[cfg(feature = "jsonschema")]
+#[test]
+fn a_type_with_examples_writes_them_under_the_json_schema_examples_keyword() {
+    assert_eq!(
+        DocumentedStruct::json_schema()["examples"],
+        serde_json::json!([{"label": "alpha"}])
+    );
+    assert_eq!(
+        documented_alias_schema::Schema::json_schema()["examples"],
+        serde_json::json!([3_u32])
+    );
+}
+
+#[cfg(feature = "jsonschema")]
+#[test]
+fn a_type_with_no_example_writes_no_json_schema_examples_keyword() {
+    assert!(
+        undocumented_count_schema::Schema::json_schema()
+            .get("examples")
+            .is_none()
+    );
+}
+
+#[cfg(feature = "jsonschema")]
+#[test]
+fn the_schema_module_and_the_type_write_one_document_with_the_examples_in_it() {
+    let documents = [
+        (
+            DocumentedStruct::json_schema(),
+            documented_struct_schema::Schema::json_schema(),
+        ),
+        (
+            DocumentedTuple::json_schema(),
+            documented_tuple_schema::Schema::json_schema(),
+        ),
+        (
+            DocumentedAdjacent::json_schema(),
+            documented_adjacent_schema::Schema::json_schema(),
+        ),
+        (
+            DocumentedExternal::json_schema(),
+            documented_external_schema::Schema::json_schema(),
+        ),
+        (
+            DocumentedInternal::json_schema(),
+            documented_internal_schema::Schema::json_schema(),
+        ),
+        (
+            DocumentedUntagged::json_schema(),
+            documented_untagged_schema::Schema::json_schema(),
+        ),
+        (
+            DocumentedSlot::json_schema(),
+            documented_slot_schema::Schema::json_schema(),
+        ),
+    ];
+    for (of_the_type, of_the_module) in documents {
+        assert!(of_the_module.get("examples").is_some(), "{of_the_module}");
+        assert_eq!(of_the_type, of_the_module);
+    }
+}
+
+#[cfg(all(feature = "zod", feature = "jsonschema"))]
+#[test]
+fn a_brand_writes_its_examples_in_the_document_of_its_schema_module_too() {
+    assert_eq!(
+        ExampleOnlyBrand::json_schema(),
+        example_only_brand_schema::Schema::json_schema()
+    );
+    assert_eq!(
+        example_only_brand_schema::Schema::json_schema()["examples"],
+        serde_json::json!(["alpha"])
+    );
+}
+
+#[cfg(feature = "jsonschema")]
+#[test]
+fn an_alias_of_a_documented_type_with_no_block_carries_its_examples_in_json_schema() {
+    assert_eq!(
+        documented_struct_ref_schema::Schema::json_schema()["examples"],
+        DocumentedStruct::json_schema()["examples"]
+    );
 }

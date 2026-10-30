@@ -693,7 +693,7 @@ fn a_lifetime_item_renders_its_example_with_the_lifetime_elided() {
     );
 }
 
-#[cfg(not(feature = "zod"))]
+#[cfg(not(any(feature = "zod", feature = "jsonschema")))]
 #[test]
 fn a_const_declaring_item_keeps_its_example_where_no_example_is_read() {
     /// A const-bearing type carrying an example block.

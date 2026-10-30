@@ -50,11 +50,14 @@ pub struct SchemaParameter {
     pub default: proc_macro2::TokenStream,
 }
 
-/// The JSON-schema methods a schema module publishes.
+/// The JSON-schema methods a schema module publishes, whose standalone documents also hold the
+/// `examples` keyword, `examples` being the expression that answers its values as an
+/// `Option<serde_json::Value>`, `None` leaving the keyword out.
 pub fn json_schema_methods(
     def_name: &str,
     body: &proc_macro2::TokenStream,
     parameters: &[SchemaParameter],
+    examples: Option<&proc_macro2::TokenStream>,
 ) -> proc_macro2::TokenStream {
     let in_flight_type = in_flight_type();
     if parameters.is_empty() {
@@ -66,6 +69,7 @@ pub fn json_schema_methods(
         );
         let rooted = rooted_document(
             &quote::quote! { Self::json_schema_within(&mut in_flight, &mut hoisted_defs) },
+            examples,
         );
         return quote::quote! {
             pub fn json_schema() -> serde_json::Value {
@@ -83,9 +87,11 @@ pub fn json_schema_methods(
     let described = guarded_description(def_name, body, &bound_filling(parameters), true);
     let rooted = rooted_document(
         &quote::quote! { Self::json_schema_within(&mut in_flight, &mut hoisted_defs) },
+        examples,
     );
     let rooted_at_arguments = rooted_document(
         &quote::quote! { Self::json_schema_within_with(&mut in_flight, &mut hoisted_defs, args) },
+        examples,
     );
     let declared = declared_delegation(parameters);
     let bindings = argument_bindings(parameters);
@@ -232,13 +238,29 @@ fn refilled_cycle_refusal(def_name: &str) -> proc_macro2::TokenStream {
 }
 
 /// A document standing on its own: `within` run against a fresh document, with whatever it hoisted
-/// joined to the root.
-fn rooted_document(described: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+/// joined to the root, and the `examples` keyword where the type has any.
+fn rooted_document(
+    described: &proc_macro2::TokenStream,
+    examples: Option<&proc_macro2::TokenStream>,
+) -> proc_macro2::TokenStream {
     let in_flight_type = in_flight_type();
+    let mutability = examples.map(|_| quote::quote! { mut });
+    let example_keyword = examples.map(|values| {
+        quote::quote! {
+            if let (
+                serde_json::Value::Object(members),
+                ::core::option::Option::Some(values),
+            ) = (&mut described, #values)
+            {
+                members.insert("examples".to_string(), values);
+            }
+        }
+    });
     quote::quote! {
         let mut in_flight: #in_flight_type = ::std::vec::Vec::new();
         let mut hoisted_defs = serde_json::Map::new();
-        let described = #described;
+        let #mutability described = #described;
+        #example_keyword
         if hoisted_defs.is_empty() {
             return described;
         }
@@ -285,13 +307,14 @@ pub fn generate_struct_json_schema_method(
     flatten_json_schemas: &[MergedSource],
     def_name: &str,
     parameters: &[SchemaParameter],
+    examples: Option<&proc_macro2::TokenStream>,
 ) -> proc_macro2::TokenStream {
     let body = if flatten_json_schemas.is_empty() {
         closed_object_body(json_schema_fields)
     } else {
         flattened_object_body(json_schema_fields, flatten_json_schemas, def_name)
     };
-    json_schema_methods(def_name, &body, parameters)
+    json_schema_methods(def_name, &body, parameters, examples)
 }
 
 /// The struct's own fields as one closed object.
@@ -958,6 +981,7 @@ pub fn generate_plain_enum_json_schema_method(
     enumerated: &[proc_macro2::TokenStream],
     def_name: &str,
     parameters: &[SchemaParameter],
+    examples: Option<&proc_macro2::TokenStream>,
 ) -> proc_macro2::TokenStream {
     let body = quote::quote! {
         {
@@ -970,7 +994,7 @@ pub fn generate_plain_enum_json_schema_method(
             serde_json::Value::Object(schema_obj)
         }
     };
-    json_schema_methods(def_name, &body, parameters)
+    json_schema_methods(def_name, &body, parameters, examples)
 }
 
 #[cfg(test)]

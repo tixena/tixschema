@@ -474,6 +474,60 @@ fn test_extract_example_multiline() {
 
 #[cfg(feature = "zod")]
 #[test]
+fn a_use_written_over_several_lines_is_dropped_from_an_example() {
+    let attrs = struct_attrs_with_docs(&[
+        "```rust example",
+        "use example_crate::{",
+        "    Label,",
+        "};",
+        "let value = Label { text: \"Fragile\".to_string() };",
+        "value",
+        "```",
+    ]);
+    assert_eq!(
+        only_example_tokens(&attrs).to_string(),
+        rendered("let value = Label { text: \"Fragile\".to_string() }; value")
+    );
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn a_use_with_nested_braces_is_dropped_from_an_example() {
+    let attrs = struct_attrs_with_docs(&[
+        "```rust example",
+        "use example_crate::{",
+        "    models::{Label, Tag},",
+        "    Count,",
+        "};",
+        "use example_crate::Other;",
+        "Label { count: 1 }",
+        "```",
+    ]);
+    assert_eq!(
+        only_example_tokens(&attrs).to_string(),
+        rendered("Label { count: 1 }")
+    );
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn a_statement_that_is_not_a_use_is_kept_over_several_lines() {
+    let attrs = struct_attrs_with_docs(&[
+        "```rust example",
+        "let value = Label {",
+        "    count: 1,",
+        "};",
+        "value",
+        "```",
+    ]);
+    assert_eq!(
+        only_example_tokens(&attrs).to_string(),
+        rendered("let value = Label { count: 1, }; value")
+    );
+}
+
+#[cfg(feature = "zod")]
+#[test]
 fn extract_examples_tokens_answers_every_block_in_order() {
     let attrs = struct_attrs_with_docs(&[
         "Multiple examples",
