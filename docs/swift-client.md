@@ -517,3 +517,12 @@ change to the emitter has to keep.
   with `-warnings-as-errors` and holds what they read to `SAMPLE` and `POSITIONS` of
   `tests/pattern_preprocess_tests/models.rs`, the table the Rust read and the Zod schemas are
   held to, to the Rust read of each payload of its own models, and each client to its reply.
+
+- **A function named after a member of the type is called through a forwarder.** A check or a
+  `preprocess` whose name is that of a property, a case, `validate`, `encode` or `value` of the
+  emitted type is read by Swift as the member. `swift/forwarded.rs` records the names a member may
+  be written as and, where a function meets one, declares a `private func` ahead of the item
+  (`_parcelCheckLabel(_ swiftSchemaChecked: Parcel) -> [String]`, or
+  `_parcelPreprocessNote(_ swiftSchemaPayload: Any) -> Any`) that names the module's function.
+  A check on a member is typed by the member's Swift type, and carries the type's parameters it
+  names. A function that meets no member is called by its own name.

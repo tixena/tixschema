@@ -48,7 +48,8 @@ use crate::model_schema::preprocess;
 use crate::model_schema::{helper_name_stem, recovering_bound_check};
 use crate::rename_rule::resolve_rename_rule;
 use crate::utils::{
-    Declared, declared, field_validator_judges_items, field_validator_name, holds_field_validator,
+    Declared, asked_of, asked_trait, asking_more, asks_one_of, declared,
+    field_validator_judges_items, field_validator_name, holds_field_validator,
     ident_schema_module_name, to_snake_case, type_parameters_in_scope, written_names, written_type,
 };
 
@@ -2978,77 +2979,6 @@ fn read_under(
         bounded.make_where_clause().predicates.push(at_every_read);
     }
     bounded
-}
-
-/// `predicate` with the bounds `generics` do not ask yet of the parameter it bounds, or `None`
-/// where they ask every one. A bound asked twice of one parameter is one clippy reports in the
-/// consumer's crate.
-fn asking_more(generics: &Generics, predicate: &WherePredicate) -> Option<WherePredicate> {
-    let WherePredicate::Type(of_type) = predicate else {
-        return Some(predicate.clone());
-    };
-    let Type::Path(named) = &of_type.bounded_ty else {
-        return Some(predicate.clone());
-    };
-    let Some(parameter) = named.path.get_ident() else {
-        return Some(predicate.clone());
-    };
-    let asked = asked_of(generics, parameter);
-    let more: Punctuated<TypeParamBound, Token![+]> = of_type
-        .bounds
-        .iter()
-        .filter(|bound| !asks_one_of(bound, &asked))
-        .cloned()
-        .collect();
-    if more.is_empty() {
-        return None;
-    }
-    let mut asking = of_type.clone();
-    asking.bounds = more;
-    Some(WherePredicate::Type(asking))
-}
-
-/// The trait a bound asks, by its own name and arguments, whatever path it is written with.
-fn asked_trait(bound: &TypeParamBound) -> Option<String> {
-    let TypeParamBound::Trait(of_trait) = bound else {
-        return None;
-    };
-    of_trait
-        .path
-        .segments
-        .last()
-        .map(|named| named.to_token_stream().to_string())
-}
-
-/// The traits `generics` ask of the parameter `named`, on its name and in its `where` predicates.
-fn asked_of(generics: &Generics, named: &Ident) -> Vec<String> {
-    let on_its_name = generics
-        .type_params()
-        .filter(|parameter| parameter.ident == *named)
-        .flat_map(|parameter| &parameter.bounds);
-    let in_where = generics
-        .where_clause
-        .iter()
-        .flat_map(|clause| &clause.predicates)
-        .filter_map(|predicate| {
-            if let WherePredicate::Type(bounding) = predicate
-                && matches!(&bounding.bounded_ty, Type::Path(path) if path.path.is_ident(named))
-            {
-                Some(&bounding.bounds)
-            } else {
-                None
-            }
-        })
-        .flatten();
-    on_its_name
-        .chain(in_where)
-        .filter_map(asked_trait)
-        .collect()
-}
-
-/// Whether `bound` asks a trait `asked` lists.
-fn asks_one_of(bound: &TypeParamBound, asked: &[String]) -> bool {
-    asked_trait(bound).is_some_and(|of_trait| asked.contains(&of_trait))
 }
 
 /// `value_bound`: what holds a JSON value serde read to the bound its field declares.

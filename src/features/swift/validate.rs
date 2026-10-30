@@ -11,7 +11,7 @@ use regex_syntax::ast::{
     AssertionKind, Ast, ClassSet, ClassSetItem, Literal, LiteralKind, SpecialLiteralKind,
 };
 
-use super::{SwiftTypeArgs, keys, result_case, swift_full_real_type, swift_member};
+use super::{SwiftTypeArgs, keys, result_case, swift_full_real_type};
 use crate::bound_message::{Bound, swift_literal_text, swift_repeated, swift_violation};
 use crate::features::model_schema_prop::{FunctionName, LiteralValue, ModelSchemaPropMeta};
 use crate::field_type::{
@@ -65,6 +65,8 @@ pub(super) struct Checked<'member> {
     /// The expression the member is read from.
     pub access: String,
     pub def: &'member FieldDef,
+    /// The Swift type the member is declared with, where the emitter has it.
+    pub real_type: Option<&'member str>,
     /// The key or the position serde writes the member at, or `None` where it writes neither.
     pub step: Option<String>,
 }
@@ -326,7 +328,7 @@ pub(super) fn reaches(def: &FieldDef) -> bool {
 pub(super) fn own_checks(checks: &[FunctionName]) -> Vec<String> {
     checks
         .iter()
-        .map(|check| format!("errors += {}(self)", swift_member(&check.name)))
+        .map(|check| format!("errors += {}(self)", super::forwarded::check(check, None)))
         .collect()
 }
 
@@ -367,6 +369,7 @@ pub(super) fn slot_rules(owner: &str, slots: &[FieldDef]) -> Vec<String> {
             member_rules(
                 owner,
                 &Checked {
+                    real_type: None,
                     access: format!("slot{position}"),
                     def: slot,
                     step: Some(position.to_string()),
@@ -384,6 +387,7 @@ pub(super) fn range_rules(owner: &str, kind: RangeKind, bound: &FieldDef) -> Vec
             member_rules(
                 owner,
                 &Checked {
+                    real_type: None,
                     access: property_read(member),
                     def: bound,
                     step: Some((*member).to_owned()),
@@ -404,6 +408,7 @@ pub(super) fn result_rules(owner: &str, ok: &FieldDef, err: &FieldDef) -> Vec<St
             let rules = member_rules(
                 owner,
                 &Checked {
+                    real_type: None,
                     access: "payload".to_owned(),
                     def,
                     step: Some(arm.to_owned()),
@@ -426,6 +431,7 @@ pub(super) fn lone_slot_rules(owner: &str, slot: &FieldDef) -> Vec<String> {
     member_rules(
         owner,
         &Checked {
+            real_type: None,
             access: "value".to_owned(),
             def: slot,
             step: None,
@@ -524,6 +530,7 @@ pub(super) fn brand_rules(
     bound_rules(
         owner,
         &Checked {
+            real_type: None,
             access: "value".to_owned(),
             def: value_field,
             step: None,
@@ -966,7 +973,26 @@ fn check_rules(owner: &str, member: &Checked<'_>, checks: &[FunctionName]) -> Ve
             reporting(
                 owner,
                 &place,
-                &format!("{}({value})", swift_member(&check.name)),
+                &format!(
+                    "{}({value})",
+                    super::forwarded::check(
+                        check,
+                        Some(&|| {
+                            member.real_type.map_or_else(
+                                || {
+                                    swift_full_real_type(
+                                        &under_option(member.def),
+                                        "",
+                                        &mut Vec::new(),
+                                    )
+                                },
+                                |declared| {
+                                    declared.strip_suffix('?').unwrap_or(declared).to_owned()
+                                },
+                            )
+                        })
+                    )
+                ),
             )
         })
         .collect();

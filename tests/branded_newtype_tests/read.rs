@@ -7,7 +7,7 @@
 ))]
 mod a_brand_is_read_as_a_model_is {
     use alloc::collections::BTreeMap;
-    use core::fmt::Debug;
+    use core::fmt::{Debug, Display};
     use serde::de::DeserializeOwned;
     use serde::{Deserialize, Serialize};
     use std::path::PathBuf;
@@ -78,6 +78,21 @@ mod a_brand_is_read_as_a_model_is {
     pub struct Tag<CodeType>(pub CodeType)
     where
         CodeType: Default + PartialEq;
+
+    /// A brand whose parameter states `Display` beside its name, which the emitted `Display` impl
+    /// asks as well.
+    #[model_schema(minLength = 2, default_types(CodeType = String), check = ["notBlank"])]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(transparent)]
+    pub struct Shown<CodeType: Display>(pub CodeType);
+
+    /// The same brand with the `Display` bound in a `where` clause.
+    #[model_schema(minLength = 2, default_types(CodeType = String), check = ["spelledNotBlank"])]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(transparent)]
+    pub struct Spelled<CodeType>(pub CodeType)
+    where
+        CodeType: Display;
 
     /// Holds a label in each place a holder reads a model unjudged.
     #[model_schema()]
@@ -188,6 +203,26 @@ mod a_brand_is_read_as_a_model_is {
     {
         if value.0 == CodeType::default() {
             return Err(vec!["a tag is not empty".to_owned()]);
+        }
+        Ok(())
+    }
+
+    fn not_blank<CodeType>(value: &Shown<CodeType>) -> Result<(), Vec<String>>
+    where
+        CodeType: Display,
+    {
+        if value.0.to_string().trim().is_empty() {
+            return Err(vec!["a shown value is not blank".to_owned()]);
+        }
+        Ok(())
+    }
+
+    fn spelled_not_blank<CodeType>(value: &Spelled<CodeType>) -> Result<(), Vec<String>>
+    where
+        CodeType: Display,
+    {
+        if value.0.to_string().trim().is_empty() {
+            return Err(vec!["a spelled value is not blank".to_owned()]);
         }
         Ok(())
     }
@@ -336,6 +371,21 @@ mod a_brand_is_read_as_a_model_is {
             let held = plain(text);
             read_as_validated(&held, held.validate());
         }
+    }
+
+    #[test]
+    fn a_brand_that_states_display_itself_is_judged_and_read() {
+        let blank = Shown(" ".to_owned());
+        assert_eq!(
+            refusal(&blank.validate().unwrap_err()),
+            "too short: minimum length is 2, got 1; a shown value is not blank"
+        );
+        let held = Shown("ab".to_owned());
+        assert_eq!(held.to_string(), "ab");
+        read_as_validated(&held, held.validate());
+        let spelled = Spelled(7_u32);
+        assert_eq!(spelled.to_string(), "7");
+        read_as_validated(&spelled, spelled.validate());
     }
 
     #[test]
