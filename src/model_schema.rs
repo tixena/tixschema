@@ -20533,30 +20533,24 @@ fn process_field(
 
 /// The wrapper chain a field's own type is reached through, where the field is a reference to a
 /// declared type under an `Option`, a list, the transparent wrappers and every borrow, and `None`
-/// for any other.
-///
-/// Which types are is the crate's own answer rather than a second list: every leaf a surface
-/// renders itself — a primitive, a date, an `ObjectId`, a map, a tuple, one of the item's own
-/// parameters — is no reference to a declared type.
+/// for any other. A list is read by what it holds, as [`held_shape`] reads it, so a set of strings
+/// is no reference to a declared type.
 #[cfg(feature = "serde")]
 fn reachable_nested_shape(field: &Field, field_def: &FieldDef) -> Option<Vec<ConstraintWrap>> {
-    matches!(field_def.field_type, FieldDefType::SiblingType(_, _))
-        .then(|| nested_shape(&field.ty))
-        .flatten()
+    let held = held_shape(&field.ty, field_def)?;
+    (matches!(held.end, HeldEnd::Declared)
+        && !held
+            .wraps
+            .iter()
+            .any(|wrap| matches!(*wrap, ConstraintWrap::Range(_))))
+    .then(|| nested_shape(&field.ty))
+    .flatten()
 }
 
-/// [`held_shape`] of a named member, of a flattened one and of an untagged variant's slot. A set, a
-/// deque and a heap are described as a declared type is, so such a member was walked to whatever
-/// it holds before a map and a tuple were read, and still is.
+/// [`held_shape`] of a named member, of a flattened one and of an untagged variant's slot.
 #[cfg(feature = "serde")]
 fn member_held_shape(field: &Field, field_def: &FieldDef) -> Option<HeldShape> {
-    held_shape(&field.ty, field_def).or_else(|| {
-        reachable_nested_shape(field, field_def).map(|wraps| HeldShape {
-            end: HeldEnd::Declared,
-            keys: Vec::new(),
-            wraps,
-        })
-    })
+    held_shape(&field.ty, field_def)
 }
 
 /// The `validate()` contribution of what a member's *own type* declares — a constrained brand, or
@@ -20570,17 +20564,6 @@ fn nested_validate_body(
     place: &MemberPlace,
 ) -> Option<proc_macro2::TokenStream> {
     member_held_shape(field, field_def).map(|shape| build_nested_validation(&shape, place))
-}
-
-/// [`nested_validate_body`] for a slot of a tuple struct and of a tagged variant, read by what its
-/// def holds alone.
-#[cfg(feature = "serde")]
-fn slot_nested_validate_body(
-    field: &Field,
-    field_def: &FieldDef,
-    place: &MemberPlace,
-) -> Option<proc_macro2::TokenStream> {
-    held_shape(&field.ty, field_def).map(|shape| build_nested_validation(&shape, place))
 }
 
 /// The wrappers a named field's own type is reached through, where a refusal it raises as it is
@@ -20771,12 +20754,7 @@ fn named_member_validate_body(
     field_def: &FieldDef,
     place: &MemberPlace,
 ) -> Option<proc_macro2::TokenStream> {
-    let below = if field.ident.is_some() {
-        nested_validate_body(field, field_def, place)
-    } else {
-        slot_nested_validate_body(field, field_def, place)
-    };
-    slot_validate_body(own, below)
+    slot_validate_body(own, nested_validate_body(field, field_def, place))
 }
 
 /// What a member adds to `validate()`: what its bounds and its type declare, then the checks it
