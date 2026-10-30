@@ -602,7 +602,7 @@ fn an_enum_with_no_default_writes_the_swift_text_it_wrote() {
          !violations.isEmpty { throw \
          DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
          debugDescription: violations.joined(separator: \"; \"))) } }; public func validate() -> \
-         [String] { [] } };  public enum Tide: Codable, Sendable { case \
+         [String] { [] }; public func swiftSchemaValidateBound() -> [String] { [] } };  public enum Tide: Codable, Sendable { case \
          ebbing(TideEbbingPayload); case slack;  private enum SwiftSchemaTagCodingKeys: String, \
          CodingKey { case swiftSchemaTag = \"kind\" }; public init(swiftSchemaUnjudged decoder: \
          Decoder) throws { let container = try decoder.container(keyedBy: \
@@ -619,7 +619,8 @@ fn an_enum_with_no_default_writes_the_swift_text_it_wrote() {
          SwiftSchemaTagCodingKeys.self); switch self { case .ebbing(let payload): try \
          container.encode(\"Ebbing\", forKey: .swiftSchemaTag); try payload.encode(to: encoder); \
          case .slack: try container.encode(\"Slack\", forKey: .swiftSchemaTag);  } }; public \
-         func validate() -> [String] { [] } }"
+         func validate() -> [String] { [] }; public func swiftSchemaValidateBound() -> [String] \
+         { [] } }"
     );
 }
 

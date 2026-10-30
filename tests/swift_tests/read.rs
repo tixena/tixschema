@@ -401,11 +401,10 @@ fn every_struct_has_a_public_memberwise_initializer() {
     );
 }
 
-/// An absent key and a `null` are read as they were. A struct whose read Swift synthesized took
-/// an absent key of any optional member as `nil`, and one whose read was written refused the
-/// absent key of a nullable member.
+/// An absent key and a `null` are both read as `nil` for an optional and for a nullable member,
+/// in a struct whose read Swift synthesized and in one whose read was written.
 #[test]
-fn an_optional_and_a_nullable_member_keep_the_rule_they_had() {
+fn an_absent_key_and_a_null_of_an_optional_and_a_nullable_member_are_read_as_nil() {
     holds(
         &mooring_swift::swift_definition(),
         &[
@@ -426,10 +425,10 @@ fn an_optional_and_a_nullable_member_keep_the_rule_they_had() {
     holds(
         &anchorage_swift::swift_definition(),
         &[
-            "self.anchorNote = try container.decode(String?.self, forKey: .anchorNote); ",
+            "self.anchorNote = try container.decodeIfPresent(String.self, forKey: .anchorNote); ",
             "self.flattened = try FlattenedExtra(from: decoder); ",
             concat!(
-                "if try !container.decodeNil(forKey: .heldParcel) ",
+                "if container.contains(.heldParcel), try !container.decodeNil(forKey: .heldParcel) ",
                 "{ self.heldParcel = try Parcel(swiftSchemaUnjudged: ",
                 "container.superDecoder(forKey: .heldParcel)) } else { self.heldParcel = nil }",
             ),
@@ -583,7 +582,7 @@ fn a_brand_has_both_reads_and_answers_for_its_bound_alone() {
     let unbounded = correlation_id_swift::swift_definition();
     assert!(unbounded.contains(&unjudged), "got: {unbounded}");
     assert!(
-        !unbounded.contains("swiftSchemaValidateBound"),
+        unbounded.contains("public func swiftSchemaValidateBound() -> [String] { [] }"),
         "got: {unbounded}"
     );
     holds(

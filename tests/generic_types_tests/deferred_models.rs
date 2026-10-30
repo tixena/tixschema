@@ -23,6 +23,33 @@ pub enum Safe<IdType> {
 
 #[model_schema(default_types(IdType = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum Open<IdType> {
+    Named {
+        #[model_schema_prop(check = ["withRecords"])]
+        vault: Vault<IdType>,
+    },
+    Single(#[model_schema_prop(check = ["withRecords"])] Vault<IdType>),
+}
+
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Hasp {
+    pub label: String,
+    #[serde(flatten)]
+    pub open: Open<String>,
+}
+
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Latch {
+    pub label: String,
+    #[serde(flatten)]
+    pub open: Open<u32>,
+}
+
+#[model_schema(default_types(IdType = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "kind")]
 pub enum Tagged<IdType> {
     Named {

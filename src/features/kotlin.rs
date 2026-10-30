@@ -1840,8 +1840,9 @@ fn kotlin_nothing_generic_args(generics: &syn::Generics) -> String {
 }
 
 /// One property declaration inside a constructor's parameter list: `@SerialName("...")` only where
-/// the wire spelling differs from the Kotlin property, then `val name: Type`, then `= null` for a
-/// field whose key may be absent — a bare `Option<T>` without `#[model_schema_prop(nullable)]`.
+/// the wire spelling differs from the Kotlin property, then `val name: Type`, then `= null` for an
+/// `Option<T>` member, which serde reads as `None` where its key is absent. Under
+/// `#[model_schema_prop(nullable)]` the property is `@EncodeDefault`, so its key is still written.
 /// `plugin` is the class where the plugin writes its serializer, which reads the member by the
 /// serializer the property names for it: a model's unjudged one, or the one that calls the
 /// member's own `preprocess`. Without it, the member is declared as the emitter's own serializer
@@ -1859,7 +1860,7 @@ fn property_declaration(field: &KotlinField, plugin: Option<&Plugin<'_>>) -> Str
     );
     let default = field.default_at.as_ref().map_or_else(
         || {
-            if field.field_def.is_optional() && !is_nullable_flag(&field.field_def) {
+            if field.field_def.is_optional() {
                 " = null".to_owned()
             } else {
                 String::new()
@@ -1885,7 +1886,15 @@ fn property_declaration(field: &KotlinField, plugin: Option<&Plugin<'_>>) -> Str
             }
         },
     );
-    format!("{annotation}{unjudged}val {prop_name}: {ty}{default}")
+    let written = if field.default_at.is_none()
+        && field.field_def.is_optional()
+        && is_nullable_flag(&field.field_def)
+    {
+        "@EncodeDefault "
+    } else {
+        ""
+    };
+    format!("{annotation}{written}{unjudged}val {prop_name}: {ty}{default}")
 }
 
 /// The constructor parameter list a set of [`KotlinField`]s earns, joined by `, `.
@@ -2535,7 +2544,7 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
         )
     };
     let serializable = serialized_parameters(&item_struct.generics);
-    let mut rules = Rules::of(&serializable);
+    let mut rules = Rules::handing(&serializable);
     named_member_rules(&mut rules, &fields, None);
     rules.own(args.check);
     let validated = rules.written("");
@@ -2552,7 +2561,7 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
         format!(
             "@Serializable(with = {export_name}Serializer::class) {body} {{ {validated} }} \
              {unjudged} {}{alias}",
-            read::judged(&export_name, &generic_params, &type_parameters, true)
+            rules.judged(&export_name, &generic_params, &type_parameters, true)
         )
     } else {
         // A struct's own tag: a property outside the constructor, always written and holding the
@@ -2577,7 +2586,7 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
                 ),
                 own_tag.as_ref()
             ),
-            read::judged(&export_name, &generic_params, &type_parameters, false)
+            rules.judged(&export_name, &generic_params, &type_parameters, false)
         )
     };
 
@@ -2628,7 +2637,7 @@ fn value_class_tokens(
     let value_type = read::with_text_forms(&value_field);
     let alias = ident_typealias(&rust_ident, &export_name, &generic_params);
     let serializable = serialized_parameters(&item_struct.generics);
-    let mut rules = Rules::of(&serializable);
+    let mut rules = Rules::handing(&serializable);
     rules.brand(
         &Member {
             def: &value_field,
@@ -2683,7 +2692,7 @@ fn value_class_tokens(
         "{} value class {export_name}{generic_params}(val value: {value_type}) {{ \
          {answered}{validated} }} {unjudged} {}{}{alias}",
         read::kept_inline(&export_name),
-        read::judged(&export_name, &generic_params, &type_parameters, false),
+        rules.judged(&export_name, &generic_params, &type_parameters, false),
         keyed.map_or_else(String::new, |object| format!(" {object}"))
     );
 
@@ -2733,7 +2742,7 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
         .join(", ");
     let payload = preprocess::corrected(args.preprocess, "input.decodeJsonElement()");
     let serializable = serialized_parameters(&item_struct.generics);
-    let mut rules = Rules::of(&serializable);
+    let mut rules = Rules::handing(&serializable);
     let lone_slot = slots.first().filter(|_| lone);
     if let Some(only) = lone_slot {
         note_bare_named(&rust_ident, only);
@@ -2772,7 +2781,7 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
          {}override fun deserialize(decoder: Decoder): {export_name}{generic_params} {{ \
          val input = decoder as JsonDecoder; {read_back} }} }} {}{alias}",
         read::helpers_for(&read_back),
-        read::judged(&export_name, &generic_params, &type_parameters, true)
+        rules.judged(&export_name, &generic_params, &type_parameters, true)
     );
 
     kotlin_module_tokens(
@@ -3414,7 +3423,7 @@ fn dispatched_tagged_enum_kotlin_source(
     format!(
         "{base} {} {serializer_object} {}",
         subclasses.join(" "),
-        read::judged(export_name, &generic_params, &type_parameters, true)
+        read::judged(export_name, &generic_params, &type_parameters, true, &[])
     )
 }
 
@@ -3513,7 +3522,7 @@ fn untagged_enum_kotlin_source(
     format!(
         "{base} {} {serializer_object} {}",
         subclasses.join(" "),
-        read::judged(export_name, &generic_params, &type_parameters, true)
+        read::judged(export_name, &generic_params, &type_parameters, true, &[])
     )
 }
 
@@ -3583,7 +3592,7 @@ fn plain_enum_kotlin_source(
         };
         format!(
             "{kept} {body} {unjudged} {}",
-            read::judged(export_name, "", &[], false)
+            read::judged(export_name, "", &[], false, &[])
         )
     } else if !args.preprocess.is_empty() {
         format!(

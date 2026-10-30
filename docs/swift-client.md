@@ -329,10 +329,11 @@ to keep.
 - **An untagged enum takes the variant serde takes.** `validate::bound_alone` is what chooses: a
   member's own bounds, and `held_walk` under `Walk::Bound`, which asks each brand the member
   holds for `swiftSchemaValidateBound()`, the member the wrapper of a bounded brand declares
-  (`bound_member`). The enum writes one `swiftSchemaBound{Variant}` per variant that has such a
+  (`bound_member`) and every other generated type declares as `[]` (`validate::method`). The enum writes one `swiftSchemaBound{Variant}` per variant that has such a
   rule, and one `swiftSchemaRead{Variant}` where a slot is read in several statements. A check and
-  a model choose nothing. The registry says which name is a bounded brand (`note_bounded`), so one
-  declared below the enum chooses nothing. A variant whose payload Swift holds as an optional
+  a model choose nothing. The registry says which name is a bounded brand (`note_bounded`); a name it
+  does not hold yet, a type declared below the enum, is asked as well, so a brand declared below
+  chooses as one declared above. A variant whose payload Swift holds as an optional
   (`VariantPayload::optional`: an `Option`, or an alias `note_optional_alias` noted as one) is
   tried in `do { let value = try ...; ... } catch {}`, where `try?` would take a read that
   answered `nil` for one that threw, so `null` takes it, as serde reads it as `None`. Every other

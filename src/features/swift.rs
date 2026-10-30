@@ -111,6 +111,13 @@ const SWIFT_RESERVED: [&str; 51] = [
 #[cfg(feature = "chrono")]
 pub const WHOLE_OPTIONS: &str = ".withInternetDateTime";
 
+/// Whether a member is a stored property of its struct or sits in a box.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Storage {
+    Boxed,
+    Direct,
+}
+
 /// One field this module has decided belongs on the wire, resolved to the Swift property it
 /// earns: its Rust name, its lower-camel Swift name, its wire name, whether the key always
 /// reaches the wire, whether it is a `#[serde(flatten)]` source, and the shape that drives its
@@ -123,6 +130,9 @@ struct SwiftField {
     default_at: Option<String>,
     field_def: FieldDef,
     flatten: bool,
+    /// How the member is stored: an `Option` of the type that holds it cannot be a stored
+    /// property of that type, so it is held behind a box.
+    held: Storage,
     /// What the types written for the field are named from.
     hint: String,
     /// Whether serde never writes the member: it is under `skip_serializing`.
@@ -1570,6 +1580,7 @@ fn range_shape(
                 field_def,
                 flatten: false,
                 hint: hint.clone(),
+                held: Storage::Direct,
                 never_written: false,
                 real_type: real_type.clone(),
                 required: true,
@@ -1597,7 +1608,6 @@ fn range_shape(
             decode_statement(
                 field,
                 "container",
-                false,
                 &Handed::default(),
                 &mut locals,
                 &mut twins,
@@ -2208,18 +2218,16 @@ fn wire_type(def: &FieldDef, shape: &SwiftFieldShape) -> String {
 
 /// The statements that read a field in the type's own read, ending on `self.{name} = ...`. A
 /// field `validate()` walks is read unjudged, one that names a function from what it answers, and
-/// one serde reads under an alias too under the name the payload holds it under. `synthesized`
-/// says Swift wrote the read before the emitter did, where an optional member took an absent key
-/// as `nil` whether its key is required or not.
+/// one serde reads under an alias too under the name the payload holds it under. An optional
+/// member takes an absent key as `nil`, as serde reads it, whether its key is required or not.
 fn decode_statement(
     field: &SwiftField,
     container: &str,
-    synthesized: bool,
     handed: &Handed,
     locals: &mut read::Locals,
     twins: &mut Vec<String>,
 ) -> String {
-    let absent_is_nil = field.field_def.is_optional() && (synthesized || !field.required);
+    let absent_is_nil = field.field_def.is_optional();
     let (keyed, key) = field.keyed_at(container);
     let source = if field.flatten {
         read::Source::Beside(handed.taken.clone())
@@ -2482,6 +2490,7 @@ fn flattened_under_option(field: &SwiftField) -> SwiftField {
         field_def: validate::under_option(&field.field_def),
         flatten: true,
         hint: field.hint.clone(),
+        held: Storage::Direct,
         never_written: field.never_written,
         real_type: field
             .real_type
@@ -2974,6 +2983,15 @@ fn collect_swift_fields(
         if flatten {
             aux.extend(flattened_wrapper_read(&field_def, &field_hint));
         }
+        let held = if !flatten
+            && field_def.array_depth == 0
+            && field_def.is_optional()
+            && matches!(&field_def.field_type, FieldDefType::SiblingType(name, _) if name == args.type_name)
+        {
+            Storage::Boxed
+        } else {
+            Storage::Direct
+        };
         collected.push(SwiftField {
             aliases: if flatten || omission.skips_deserializing {
                 Vec::new()
@@ -2984,6 +3002,7 @@ fn collect_swift_fields(
             field_def,
             flatten,
             hint: field_hint,
+            held,
             never_written: has_serde_skip_serializing(&field.attrs),
             real_type,
             required: !omission.omits_key,
@@ -3050,11 +3069,21 @@ fn struct_body_content(
     around: bool,
 ) -> String {
     let props = fields.iter().fold(String::new(), |mut acc, field| {
-        write!(
-            acc,
-            "public let {}: {}; ",
-            field.swift_name, field.real_type
-        )
+        if field.held == Storage::Boxed {
+            write!(
+                acc,
+                "@{} public private(set) var {}: {}; ",
+                indirection_name(owner),
+                field.swift_name,
+                field.real_type
+            )
+        } else {
+            write!(
+                acc,
+                "public let {}: {}; ",
+                field.swift_name, field.real_type
+            )
+        }
         .unwrap();
         acc
     });
@@ -3072,7 +3101,7 @@ fn struct_body_content(
 
     let memberwise_init = memberwise_initializer(fields);
     let mut twins = Vec::new();
-    let members = member_reads(fields, !unsynthesized, around, &mut twins);
+    let members = member_reads(fields, around, &mut twins);
     let keyed = if names_container(&members) {
         "let container = try decoder.container(keyedBy: CodingKeys.self); "
     } else {
@@ -3169,22 +3198,17 @@ fn names_container(statements: &str) -> bool {
 }
 
 /// The statements that read each of `fields` in the type's own read, in the order declared, a
-/// type written for one joining `twins`. `synthesized` says Swift wrote the read before the
-/// emitter did, and `around` that the types around the holder hand it keys it reads none of.
+/// type written for one joining `twins`. `around` says the types around the holder hand it keys it
+/// reads none of.
 /// Each flattened member is handed the object without the keys its holder's own members, the
 /// members flattened ahead of it and the types around its holder took, as serde reads it.
-fn member_reads(
-    fields: &[SwiftField],
-    synthesized: bool,
-    around: bool,
-    twins: &mut Vec<String>,
-) -> String {
-    let alone = handed_reads(fields, synthesized, false);
+fn member_reads(fields: &[SwiftField], around: bool, twins: &mut Vec<String>) -> String {
+    let alone = handed_reads(fields, false);
     // A holder of no member of its own is handed keys by the types around it where they hand it
     // some, or where one of its reads takes them.
     let (statements, written) =
         if fields.iter().all(|field| field.flatten) && (around || read::names_taken(&alone.0)) {
-            handed_reads(fields, synthesized, true)
+            handed_reads(fields, true)
         } else {
             alone
         };
@@ -3194,7 +3218,7 @@ fn member_reads(
 
 /// [`member_reads`] with the types written for the members, where `around` says the types around
 /// the holder hand it keys it takes.
-fn handed_reads(fields: &[SwiftField], synthesized: bool, around: bool) -> (String, Vec<String>) {
+fn handed_reads(fields: &[SwiftField], around: bool) -> (String, Vec<String>) {
     let mut locals = read::Locals::default();
     let mut twins = Vec::new();
     let mut taken_ahead: Vec<String> = fields
@@ -3226,14 +3250,7 @@ fn handed_reads(fields: &[SwiftField], synthesized: bool, around: bool) -> (Stri
                     found_ahead.push(preprocess::found(swift_bare(&field.swift_name)));
                 }
             }
-            decode_statement(
-                field,
-                "container",
-                synthesized,
-                &handed,
-                &mut locals,
-                &mut twins,
-            )
+            decode_statement(field, "container", &handed, &mut locals, &mut twins)
         })
         .collect::<Vec<_>>()
         .join("; ");
@@ -3274,6 +3291,37 @@ fn field_rules(owner: &str, fields: &[SwiftField]) -> Vec<String> {
         .collect()
 }
 
+/// The property wrapper a struct names for its members that hold an `Option` of its own type.
+fn indirection_name(owner: &str) -> String {
+    format!("{owner}SwiftSchemaIndirect")
+}
+
+/// The property wrapper `name`, which keeps its value in a class so that a struct can hold an
+/// `Option` of itself, and reads and writes the `Option` as the plain one is: an absent key is
+/// `nil`, and `nil` is written as no key.
+fn indirection(name: &str) -> String {
+    format!(
+        "@propertyWrapper public struct {name}<Wrapped: Codable & Sendable>: Codable, Sendable {{ \
+         private final class Box: Sendable {{ let value: Wrapped?; \
+         init(_ value: Wrapped?) {{ self.value = value }} }}; \
+         private var box: Box; \
+         public init(wrappedValue: Wrapped?) {{ box = Box(wrappedValue) }}; \
+         public var wrappedValue: Wrapped? {{ get {{ box.value }} set {{ box = Box(newValue) }} }}; \
+         public init(from decoder: Decoder) throws {{ \
+         let container = try decoder.singleValueContainer(); \
+         box = Box(container.decodeNil() ? nil : try container.decode(Wrapped.self)) }}; \
+         public func encode(to encoder: Encoder) throws {{ \
+         var container = encoder.singleValueContainer(); \
+         if let value = box.value {{ try container.encode(value) }} else {{ try container.encodeNil() }} }} }}; \
+         extension KeyedDecodingContainer {{ \
+         func decode<Wrapped>(_ type: {name}<Wrapped>.Type, forKey key: Key) throws -> {name}<Wrapped> {{ \
+         {name}(wrappedValue: try decodeIfPresent(Wrapped.self, forKey: key)) }} }}; \
+         extension KeyedEncodingContainer {{ \
+         mutating func encode<Wrapped>(_ value: {name}<Wrapped>, forKey key: Key) throws {{ \
+         try encodeIfPresent(value.wrappedValue, forKey: key) }} }};"
+    )
+}
+
 /// The `public struct {export_name}{generics}: Codable, Sendable { ... }` a named-field struct or
 /// a struct-shaped variant payload earns, with the `DateTime` helpers appended when a field needs
 /// them. `rules` is what its `validate()` runs, `corrects` the functions it names on itself, and
@@ -3297,7 +3345,10 @@ fn struct_declaration(
         around,
     );
     let shapes: Vec<&SwiftFieldShape> = fields.iter().map(|field| &field.shape).collect();
-    let helpers = leaf_helpers_for(export_name, generic_params, &shapes, None);
+    let mut helpers = leaf_helpers_for(export_name, generic_params, &shapes, None);
+    if fields.iter().any(|field| field.held == Storage::Boxed) {
+        helpers.push_str(&indirection(&indirection_name(export_name)));
+    }
     format!(
         "public struct {export_name}{generic_params}: Codable, Sendable {{ {content} }}; {helpers}"
     )
@@ -3413,7 +3464,7 @@ fn brand_value_field(
 /// The `validate()` of the struct of one `value` named `rust_ident`, which records what its
 /// checks and bounds are for the types written below.
 fn wrapper_validate(rust_ident: &str, wrapped: &Wrapped, rules: &[String]) -> String {
-    let mut validate = validate::method(rules);
+    let mut validate = validate::rules_method(rules);
     match wrapped {
         Wrapped::Brand {
             bounds,
@@ -3432,12 +3483,17 @@ fn wrapper_validate(rust_ident: &str, wrapped: &Wrapped, rules: &[String]) -> St
             if let Some(member) = text_member {
                 write!(validate, "; {member}").unwrap();
             }
-            if !bounds.is_empty() {
+            if bounds.is_empty() {
+                write!(validate, "; {}", validate::EMPTY_BOUND).unwrap();
+            } else {
                 validate::note_bounded(rust_ident);
                 write!(validate, "; {}", validate::bound_member(bounds)).unwrap();
             }
         }
-        Wrapped::Slot | Wrapped::Tuple => validate::note(rust_ident, None, !rules.is_empty()),
+        Wrapped::Slot | Wrapped::Tuple => {
+            validate::note(rust_ident, None, !rules.is_empty());
+            write!(validate, "; {}", validate::EMPTY_BOUND).unwrap();
+        }
     }
     validate
 }

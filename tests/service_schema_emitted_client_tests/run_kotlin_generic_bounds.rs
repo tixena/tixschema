@@ -32,6 +32,19 @@ fun report(name: String, violations: List<String>) {
 }
 "#;
 
+/// What the read of a payload prints: `passes`, or `refused` and each message the read throws.
+const READ: &str = r#"
+fun read(name: String, payload: String) {
+    try {
+        Json.decodeFromString<Shelf<Tag<String>>>(payload)
+        println("$name: passes")
+    } catch (thrown: SerializationException) {
+        println("$name: refused")
+        thrown.message!!.split("; ").forEach { println("    $it") }
+    }
+}
+"#;
+
 /// What a row of the Dart run prints.
 #[cfg(feature = "dart")]
 const DART_REPORT: &str = "
@@ -290,6 +303,42 @@ fn kotlin_answers_a_generic_brands_bound_and_a_maps_key_as_rust_does() {
             let _ = writeln!(expected, "    {message}");
         }
     }
+    assert_eq!(printed, expected);
+}
+
+/// A map keyed by a generic brand is named by the text its serializer writes when the judged
+/// serializer reads it, as Rust names it, and by the class's own print for a hand-built value.
+#[test]
+fn kotlin_names_a_key_filled_with_a_generic_brand_as_rust_does_when_it_reads() {
+    let shelf = Shelf {
+        by_slot: BTreeMap::from([(Tag("t".to_owned()), item(""))]),
+    };
+    let messages = shelf.validate().err().unwrap_or_default();
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        tag_kotlin::kotlin_definition(),
+        item_kotlin::kotlin_definition(),
+        shelf_kotlin::kotlin_definition(),
+        REPORT.to_owned(),
+        READ.to_owned(),
+        "fun main() {\n    read(\"read\", \"\"\"{\"by_slot\":{\"t\":{\"label\":\"\"}}}\"\"\")\n    \
+         report(\"hand built\", Shelf<Tag<String>>(mapOf(Tag(\"t\") to Item(\"\"))).validate())\n}\n"
+            .to_owned(),
+    ];
+    let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
+        return;
+    };
+    let mut expected = String::from("read: refused\n");
+    let mut built = String::from("hand built: refused\n");
+    for message in &messages {
+        let _ = writeln!(expected, "    {message}");
+        let _ = writeln!(
+            built,
+            "    {}",
+            message.replace("by_slot.t.", "by_slot.Tag(value=t).")
+        );
+    }
+    expected.push_str(&built);
     assert_eq!(printed, expected);
 }
 
