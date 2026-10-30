@@ -16037,6 +16037,44 @@ fn generic_display_impl_bounds_every_type_parameter() {
     );
 }
 
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn display_impl_states_the_display_bound_of_a_parameter_once() {
+    let header_of = |source: &str| {
+        let item: syn::ItemStruct = syn::parse_str(source).unwrap();
+        let field = item.fields.iter().next().unwrap();
+        let tokens = super::build_branded_display_impl(
+            &item.generics,
+            &item.ident,
+            field,
+            &super::brand_member(0, field),
+        );
+        let written: syn::ItemImpl = syn::parse2(tokens).unwrap();
+        let (impl_generics, _, where_clause) = written.generics.split_for_impl();
+        format!(
+            "{} {}",
+            quote::quote!(#impl_generics),
+            quote::quote!(#where_clause)
+        )
+    };
+    assert_eq!(
+        header_of("pub struct Tag<CodeType: Display>(pub CodeType);"),
+        "< CodeType : Display > "
+    );
+    assert_eq!(
+        header_of("pub struct Tag<CodeType>(pub CodeType) where CodeType: Display;"),
+        "< CodeType > where CodeType : Display"
+    );
+    assert_eq!(
+        header_of("pub struct Tag<CodeType>(pub CodeType);"),
+        "< CodeType > where CodeType : :: std :: fmt :: Display"
+    );
+    assert_eq!(
+        header_of("pub struct Tag<CodeType>(pub CodeType) where CodeType: Default + PartialEq;"),
+        "< CodeType > where CodeType : Default + PartialEq , CodeType : :: std :: fmt :: Display"
+    );
+}
+
 /// Builds the whole `Display` block — assertion plus impl — for the sole field of `source`.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn display_tokens(source: &str, args: &proc_macro2::TokenStream) -> String {
