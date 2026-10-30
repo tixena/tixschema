@@ -63,7 +63,7 @@ const ADDED_TYPE_COUNT: usize = 17;
     any(feature = "typescript", feature = "zod", feature = "jsonschema"),
     feature = "mongodb"
 ))]
-const ADDED_TYPE_COUNT: usize = 39;
+const ADDED_TYPE_COUNT: usize = 40;
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
@@ -71,6 +71,8 @@ const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
     "Arm",
     #[cfg(feature = "mongodb")]
     "ArmFilter",
+    #[cfg(feature = "mongodb")]
+    "ArmPaths",
     #[cfg(feature = "mongodb")]
     "ArmUpdate",
     #[cfg(feature = "mongodb")]
@@ -185,6 +187,7 @@ const MONGODB_LIBRARY: &str = "__tixschema_mongodb";
 #[cfg(feature = "mongodb")]
 const MONGODB_LIBRARY_NAMES: &[&str] = &[
     "ArmFilter",
+    "ArmPaths",
     "ArmUpdate",
     "AsFilter",
     "AsUpdate",

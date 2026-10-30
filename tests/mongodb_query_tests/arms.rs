@@ -111,6 +111,34 @@ enum Route {
     Then(Box<Self>),
 }
 
+/// Adjacently tagged, with fields written in the variants: named fields, and several slots.
+#[model_schema(enable = ["decode_with", "mongodb"])]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "docType", content = "body", rename_all = "kebab-case")]
+enum Slip {
+    Blank,
+    Pair(String, u32),
+    Signed { clerk: String },
+}
+
+/// A generic enum whose arm writes its fields in the variant.
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(T = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "kind")]
+enum Crate<T> {
+    Open,
+    Sealed { load: T, seal: String },
+}
+
+/// A tag key whose snake case starts with a digit: its arm functions begin with `_`.
+#[model_schema(enable = ["decode_with", "mongodb"])]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "2fa")]
+enum Gate {
+    Open,
+    Shut,
+}
+
 /// Compiles only where `arm` is the arm filter `A`.
 const fn held<A>(_arm: &A) {}
 
@@ -219,12 +247,15 @@ fn an_arm_that_holds_the_enum_itself_takes_an_arm_of_it() {
     );
 }
 
-/// A condition on fields written in the variant joins through the plain `and`.
+/// A condition on fields written in the variant joins through the plain `and`, which takes any
+/// filter over the enum.
 #[test]
 fn an_arm_that_holds_no_model_answers_its_tag() {
     let shipping = Shipping::MONGO_FIELDS;
     held::<shipping_schema::ArmFilter<Shipping, ()>>(&shipping.type__collected());
-    held::<shipping_schema::ArmFilter<Shipping, ()>>(&shipping.type__locker());
+    held::<shipping_schema::ArmFilter<Shipping, shipping_schema::mongo_arms::Locker>>(
+        &shipping.type__locker(),
+    );
     assert_eq!(
         shown(shipping.type__collected()),
         r#"{ "type": { "$eq": "Collected" } }"#
@@ -234,6 +265,82 @@ fn an_arm_that_holds_no_model_answers_its_tag() {
         shown(in_the_bay.and(shipping.type__locker())),
         r#"{ "$and": [{ "bayNumber": { "$eq": "B-2" } }, { "type": { "$eq": "Locker" } }] }"#
     );
+}
+
+#[test]
+fn an_arm_whose_fields_are_written_in_the_variant_takes_conditions_on_them_through_with() {
+    let shipping = Shipping::MONGO_FIELDS;
+    let lockers = shipping
+        .type__locker()
+        .with(|locker| locker.bay_number().eq("B-2".to_owned()))
+        .unwrap();
+    assert_eq!(
+        shown(lockers),
+        r#"{ "$and": [{ "type": { "$eq": "Locker" } }, { "bayNumber": { "$eq": "B-2" } }] }"#
+    );
+    let in_the_bay = shipping.locker().bay_number().eq("B-2".to_owned()).unwrap();
+    assert_eq!(shown(in_the_bay), r#"{ "bayNumber": { "$eq": "B-2" } }"#);
+}
+
+#[test]
+fn with_writes_the_fields_of_a_variant_under_the_content_key() {
+    let slip = Slip::MONGO_FIELDS;
+    held::<slip_schema::ArmFilter<Slip, slip_schema::mongo_arms::Signed>>(&slip.doc_type__signed());
+    held::<slip_schema::ArmFilter<Slip, slip_schema::mongo_arms::Pair>>(&slip.doc_type__pair());
+    held::<slip_schema::ArmFilter<Slip, ()>>(&slip.doc_type__blank());
+    assert_eq!(
+        shown(
+            slip.doc_type__signed()
+                .with(|signed| signed.clerk().eq("Ana".to_owned()))
+                .unwrap()
+        ),
+        r#"{ "$and": [{ "docType": { "$eq": "signed" } }, { "body.clerk": { "$eq": "Ana" } }] }"#
+    );
+    assert_eq!(
+        shown(slip.doc_type__pair().with(|pair| pair.1.lt(9_u32)).unwrap()),
+        r#"{ "$and": [{ "docType": { "$eq": "pair" } }, { "body.1": { "$lt": Int64(9) } }] }"#
+    );
+    assert_eq!(
+        shown(slip.doc_type__blank()),
+        r#"{ "docType": { "$eq": "blank" } }"#
+    );
+}
+
+#[test]
+fn with_takes_a_second_condition_and_reaches_the_variant_of_a_generic_enum() {
+    let sealed = Crate::<String>::MONGO_FIELDS
+        .kind__sealed()
+        .with(|sealed| sealed.seal().eq("S-1".to_owned()))
+        .unwrap()
+        .with(|sealed| sealed.load().eq("sand".to_owned()))
+        .unwrap();
+    assert_eq!(
+        shown(sealed),
+        r#"{ "$and": [{ "kind": { "$eq": "Sealed" } }, { "seal": { "$eq": "S-1" } }, { "load": { "$eq": "sand" } }] }"#
+    );
+    held::<crate_schema::ArmFilter<Crate<u8>, ()>>(&Crate::<u8>::MONGO_FIELDS.kind__open());
+    assert_eq!(
+        shown(
+            Crate::<u8>::MONGO_FIELDS
+                .kind__sealed()
+                .with(|lot| lot.load().gt(3_u8))
+                .unwrap()
+        ),
+        r#"{ "$and": [{ "kind": { "$eq": "Sealed" } }, { "load": { "$gt": Int32(3) } }] }"#
+    );
+}
+
+#[test]
+fn a_tag_key_that_starts_with_a_digit_has_arm_functions_after_a_leading_underscore() {
+    assert_eq!(
+        shown(Gate::MONGO_FIELDS._2fa__open()),
+        r#"{ "2fa": { "$eq": "Open" } }"#
+    );
+    assert_eq!(
+        shown(Gate::MONGO_FIELDS._2fa__shut()),
+        r#"{ "2fa": { "$eq": "Shut" } }"#
+    );
+    assert_ne!(gate_schema::Arm::Open, gate_schema::Arm::Shut);
 }
 
 #[test]
