@@ -126,10 +126,13 @@ use crate::utils::{
 use crate::utils::record_indexed_set;
 
 #[cfg(feature = "serde")]
+use crate::utils::declared;
+
+#[cfg(feature = "serde")]
 use crate::utils::{
     Declared, NonObjectWire, SlotBesideTag, TrivialPattern, UnionParameter, WireLeaf, WrittenAs,
-    declared, forget_field_validators, is_recorded_plain_enum, record_declared,
-    record_field_validator, record_flattened_parameters, record_non_object_wire, record_open_map,
+    forget_field_validators, is_recorded_plain_enum, record_declared, record_field_validator,
+    record_flattened_parameters, record_non_object_wire, record_open_map,
     record_open_map_parameters, record_plain_enum, record_text_key_parameters,
     record_union_parameters, record_value_parameter, recorded_non_object_wire, trivial_pattern,
     union_parameters, value_parameter,
@@ -199,10 +202,14 @@ use crate::features::serde::defaults::{holds_a_placeholder, zod_substituted};
 #[cfg(feature = "serde")]
 use crate::field_type::{parse_serde_field_attributes, parse_serde_type_attributes};
 
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+use crate::field_type::is_a_standard_type_name;
+
 #[cfg(feature = "serde")]
-use crate::field_type::{
-    is_a_standard_type_name, is_interior_mutability_wrapper, is_refused_sequence_wrapper,
-};
+use crate::field_type::{is_interior_mutability_wrapper, is_refused_sequence_wrapper};
 use crate::field_type::{
     is_map_wrapper, is_ownership_wrapper, is_sequence_wrapper, is_transparent_wrapper,
     written_std_range, written_std_result,
@@ -8757,9 +8764,9 @@ fn record_declaration(item: &Item) {
     } else if let Some(ident) = item_schema_ident(item) {
         let lifetimes = item_lifetime_count(item);
         let declares = if written_as_one_value(item) {
-            Declared::OneValue(lifetimes)
+            Declared::one_value(lifetimes)
         } else {
-            Declared::Model(lifetimes)
+            Declared::model(lifetimes)
         };
         record_declared(&ident.to_string(), declares);
     } else {
@@ -10497,7 +10504,7 @@ fn branded_slot_json_schema(
 
 /// Whether a brand's inner is a name that carries the brand's two lengths itself, as the field
 /// type of a holder carries a length written on the field.
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
+#[cfg(feature = "jsonschema")]
 fn carries_a_named_count(inner: &FieldDef) -> bool {
     matches!(inner.field_type, FieldDefType::SiblingType(..))
         && inner
@@ -20733,30 +20740,24 @@ fn process_field(
 
 /// The wrapper chain a field's own type is reached through, where the field is a reference to a
 /// declared type under an `Option`, a list, the transparent wrappers and every borrow, and `None`
-/// for any other.
-///
-/// Which types are is the crate's own answer rather than a second list: every leaf a surface
-/// renders itself — a primitive, a date, an `ObjectId`, a map, a tuple, one of the item's own
-/// parameters — is no reference to a declared type.
+/// for any other. A list is read by what it holds, as [`held_shape`] reads it, so a set of strings
+/// is no reference to a declared type.
 #[cfg(feature = "serde")]
 fn reachable_nested_shape(field: &Field, field_def: &FieldDef) -> Option<Vec<ConstraintWrap>> {
-    matches!(field_def.field_type, FieldDefType::SiblingType(_, _))
-        .then(|| nested_shape(&field.ty))
-        .flatten()
+    let held = held_shape(&field.ty, field_def)?;
+    (matches!(held.end, HeldEnd::Declared)
+        && !held
+            .wraps
+            .iter()
+            .any(|wrap| matches!(*wrap, ConstraintWrap::Range(_))))
+    .then(|| nested_shape(&field.ty))
+    .flatten()
 }
 
-/// [`held_shape`] of a named member, of a flattened one and of an untagged variant's slot. A set, a
-/// deque and a heap are described as a declared type is, so such a member was walked to whatever
-/// it holds before a map and a tuple were read, and still is.
+/// [`held_shape`] of a named member, of a flattened one and of an untagged variant's slot.
 #[cfg(feature = "serde")]
 fn member_held_shape(field: &Field, field_def: &FieldDef) -> Option<HeldShape> {
-    held_shape(&field.ty, field_def).or_else(|| {
-        reachable_nested_shape(field, field_def).map(|wraps| HeldShape {
-            end: HeldEnd::Declared,
-            keys: Vec::new(),
-            wraps,
-        })
-    })
+    held_shape(&field.ty, field_def)
 }
 
 /// The `validate()` contribution of what a member's *own type* declares — a constrained brand, or
@@ -20770,17 +20771,6 @@ fn nested_validate_body(
     place: &MemberPlace,
 ) -> Option<proc_macro2::TokenStream> {
     member_held_shape(field, field_def).map(|shape| build_nested_validation(&shape, place))
-}
-
-/// [`nested_validate_body`] for a slot of a tuple struct and of a tagged variant, read by what its
-/// def holds alone.
-#[cfg(feature = "serde")]
-fn slot_nested_validate_body(
-    field: &Field,
-    field_def: &FieldDef,
-    place: &MemberPlace,
-) -> Option<proc_macro2::TokenStream> {
-    held_shape(&field.ty, field_def).map(|shape| build_nested_validation(&shape, place))
 }
 
 /// The wrappers a named field's own type is reached through, where a refusal it raises as it is
@@ -20971,12 +20961,7 @@ fn named_member_validate_body(
     field_def: &FieldDef,
     place: &MemberPlace,
 ) -> Option<proc_macro2::TokenStream> {
-    let below = if field.ident.is_some() {
-        nested_validate_body(field, field_def, place)
-    } else {
-        slot_nested_validate_body(field, field_def, place)
-    };
-    slot_validate_body(own, below)
+    slot_validate_body(own, nested_validate_body(field, field_def, place))
 }
 
 /// What a member adds to `validate()`: what its bounds and its type declare, then the checks it

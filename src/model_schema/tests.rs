@@ -7438,21 +7438,72 @@ fn a_map_a_tuple_and_a_slot_that_hold_no_declared_type_add_nothing_to_validate()
     );
 }
 
-/// A set is described as a declared type is, so a field written as one was walked to whatever it
-/// holds before a map and a tuple were read, and still is.
+/// A set, a deque and a heap are walked only where they hold a declared type, as a `Vec` is.
 #[cfg(feature = "serde")]
 #[test]
-fn a_field_written_as_a_set_is_walked_as_it_was() {
+fn a_field_written_as_a_set_of_values_no_declared_type_describes_adds_no_token() {
+    for held in ["String", "u32", "T"] {
+        for list in ["HashSet", "BTreeSet", "VecDeque", "BinaryHeap", "IndexSet"] {
+            let written: syn::Type = syn::parse_str(&format!("{list}<{held}>")).unwrap();
+            let mut named: syn::ItemStruct = syn::parse_quote! {
+                struct Terminal<T> {
+                    dock_names: #written,
+                }
+            };
+            assert_eq!(walked_bodies(&mut named), "", "named, for {list}<{held}>");
+
+            let mut flattened: syn::ItemStruct = syn::parse_quote! {
+                struct Terminal<T> {
+                    #[serde(flatten)]
+                    dock_names: #written,
+                }
+            };
+            assert_eq!(
+                walked_bodies(&mut flattened),
+                "",
+                "flattened, for {list}<{held}>"
+            );
+
+            let mut slots: syn::ItemStruct = syn::parse_quote! {
+                struct Docket<T>(#written);
+            };
+            let generics = slots.generics.clone();
+            let walked = super::collect_tuple_slots(
+                &mut slots.fields,
+                None,
+                "docket_schema",
+                "Docket",
+                &generics,
+                false,
+                false,
+            );
+            assert_eq!(
+                walked
+                    .validate_bodies
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<String>(),
+                "",
+                "slot, for {list}<{held}>"
+            );
+        }
+    }
+}
+
+/// A set of declared types keeps its walk, each item named by its index.
+#[cfg(feature = "serde")]
+#[test]
+fn a_field_written_as_a_set_of_declared_types_is_walked_item_by_item() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
         struct Terminal {
-            dock_names: HashSet<String>,
+            parcels: BTreeSet<Parcel>,
         }
     };
     let body = walked_bodies(&mut item);
     for written in [
         "for (index_1 , value_1) in value_0 . into_iter () . enumerate ()",
         "value_1 . validate ()",
-        r#"nested_under (& format ! ("dockNames.{index_1}") , violation)"#,
+        r#"nested_under (& format ! ("parcels.{index_1}") , violation)"#,
     ] {
         assert!(body.contains(written), "{written} is not in {body}");
     }
@@ -12738,12 +12789,12 @@ fn an_item_is_recorded_as_one_value_where_serde_writes_it_as_one() {
         let name = super::item_schema_ident(&item).unwrap().to_string();
         let _expanded = expansion_under("", source);
         assert_eq!(
-            matches!(declared(&name), Some(Declared::OneValue(_))),
+            matches!(declared(&name), Some(Declared::OneValue(..))),
             one_value,
             "for {source}"
         );
         assert_eq!(
-            matches!(declared(&name), Some(Declared::Model(_))),
+            matches!(declared(&name), Some(Declared::Model(..))),
             !one_value,
             "for {source}"
         );

@@ -89,6 +89,7 @@ impl TextForm {
         feature = "swift",
         feature = "kotlin"
     ))]
+    #[cfg(feature = "chrono")]
     pub fn of(field: &FieldDef) -> Option<Self> {
         match &field.field_type {
             FieldDefType::Char => Some(Self::Char),
@@ -133,9 +134,45 @@ impl TextForm {
         }
     }
 
+    /// Without `chrono` the `char` is the one text form.
+    #[cfg(any(feature = "swift", feature = "kotlin"))]
+    #[cfg(not(feature = "chrono"))]
+    pub const fn of(field: &FieldDef) -> Option<Self> {
+        match &field.field_type {
+            FieldDefType::Char => Some(Self::Char),
+            #[cfg(feature = "mongodb")]
+            FieldDefType::ObjectId => None,
+            FieldDefType::SiblingType(_, _)
+            | FieldDefType::Map(_, _)
+            | FieldDefType::Tuple(_)
+            | FieldDefType::Range(_, _)
+            | FieldDefType::Result(_, _)
+            | FieldDefType::TypeParam(_)
+            | FieldDefType::Unknown
+            | FieldDefType::StringLiteral(_)
+            | FieldDefType::BooleanLiteral(_)
+            | FieldDefType::NumberLiteral(_)
+            | FieldDefType::Boolean
+            | FieldDefType::String
+            | FieldDefType::U8
+            | FieldDefType::U16
+            | FieldDefType::U32
+            | FieldDefType::U64
+            | FieldDefType::I8
+            | FieldDefType::I16
+            | FieldDefType::I32
+            | FieldDefType::I64
+            | FieldDefType::Isize
+            | FieldDefType::Usize
+            | FieldDefType::F32
+            | FieldDefType::F64 => None,
+        }
+    }
+
     /// The pattern a text a client reads matches whole, as the Zod schema of the form reads it:
     /// `None` for a `char`, which is one code point, and for a date and time with its zone, which
     /// is any text.
+    #[cfg(feature = "chrono")]
     pub fn read(self) -> Option<String> {
         match self {
             Self::Char => None,
@@ -147,6 +184,14 @@ impl TextForm {
             Self::Time => Some(TIME.to_owned()),
             #[cfg(feature = "chrono")]
             Self::Zoned => None,
+        }
+    }
+
+    /// A `char` is the one form without the `chrono` feature.
+    #[cfg(not(feature = "chrono"))]
+    pub const fn read(self) -> Option<String> {
+        match self {
+            Self::Char => None,
         }
     }
 
@@ -176,6 +221,7 @@ impl TextForm {
 
     /// The pattern a text a client sends matches whole, the form serde writes: `None` for a
     /// `char`, which is one code point.
+    #[cfg(feature = "chrono")]
     pub fn sent(self) -> Option<String> {
         match self {
             Self::Char => None,
@@ -190,8 +236,17 @@ impl TextForm {
         }
     }
 
+    /// A `char` is the one form without the `chrono` feature.
+    #[cfg(not(feature = "chrono"))]
+    pub const fn sent(self) -> Option<String> {
+        match self {
+            Self::Char => None,
+        }
+    }
+
     /// The pattern of a text a client sends with its seconds written as `:00`, where it leaves
     /// them out: the text up to the minute in its first group, and a zone in its second.
+    #[cfg(feature = "chrono")]
     pub fn unsecond(self) -> Option<String> {
         match self {
             Self::Char => None,
@@ -203,6 +258,14 @@ impl TextForm {
             Self::Time => Some(format!("({HOUR_MINUTE})()")),
             #[cfg(feature = "chrono")]
             Self::Zoned => Some(format!("({DATE}T{HOUR_MINUTE})({OFFSET})")),
+        }
+    }
+
+    /// A `char` is the one form without the `chrono` feature.
+    #[cfg(not(feature = "chrono"))]
+    pub const fn unsecond(self) -> Option<String> {
+        match self {
+            Self::Char => None,
         }
     }
 
