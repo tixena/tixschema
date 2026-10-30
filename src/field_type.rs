@@ -2941,6 +2941,21 @@ fn container_wire_arity(name: &str) -> Option<usize> {
     }
 }
 
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+/// Whether the dispatch that describes a field's type has an arm for the standard type `name`: a
+/// scalar, a text, a path, or a wrapper or container the crate reads through.
+pub fn is_a_standard_type_name(name: &str) -> bool {
+    !matches!(
+        get_field_def_type_or_sibling(name),
+        FieldDefType::SiblingType(..)
+    ) || container_wire_arity(name).is_some()
+        || matches!(name, "Option" | "Vec")
+        || is_transparent_wrapper(name)
+}
+
 /// The one list of std wrappers the crate reads straight through to what they hold: everything
 /// serde writes as the value alone, with no wrapper of its own on the wire.
 pub fn is_transparent_wrapper(name: &str) -> bool {

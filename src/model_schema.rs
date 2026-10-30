@@ -126,8 +126,8 @@ use crate::utils::record_indexed_set;
 #[cfg(feature = "serde")]
 use crate::utils::{
     Declared, NonObjectWire, SlotBesideTag, TrivialPattern, UnionParameter, WireLeaf, WrittenAs,
-    forget_field_validators, is_recorded_plain_enum, record_declared, record_field_validator,
-    record_flattened_parameters, record_non_object_wire, record_open_map,
+    declared, forget_field_validators, is_recorded_plain_enum, record_declared,
+    record_field_validator, record_flattened_parameters, record_non_object_wire, record_open_map,
     record_open_map_parameters, record_plain_enum, record_text_key_parameters,
     record_union_parameters, record_value_parameter, recorded_non_object_wire, trivial_pattern,
     union_parameters, value_parameter,
@@ -198,7 +198,9 @@ use crate::features::serde::defaults::{holds_a_placeholder, zod_substituted};
 use crate::field_type::{parse_serde_field_attributes, parse_serde_type_attributes};
 
 #[cfg(feature = "serde")]
-use crate::field_type::{is_interior_mutability_wrapper, is_refused_sequence_wrapper};
+use crate::field_type::{
+    is_a_standard_type_name, is_interior_mutability_wrapper, is_refused_sequence_wrapper,
+};
 use crate::field_type::{
     is_map_wrapper, is_ownership_wrapper, is_sequence_wrapper, is_transparent_wrapper,
     written_std_range, written_std_result,
@@ -613,6 +615,21 @@ struct BrandedValidation {
     /// The schema-module function `validate()` calls: `validate_value`, or for a brand that
     /// declares a parameter the one that runs it where the filling is the declared default.
     validator: proc_macro2::Ident,
+}
+
+/// A declared default a generic brand's string check reads its value as, and what keeps the
+/// expansion from proving it writes every lifetime it has.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+enum UnprovenDefault {
+    /// An alias whose target writes a lifetime, which the alias hides from the cast.
+    Hides,
+    /// A name that declares lifetimes the default leaves out.
+    LeavesOut(String),
+    /// A name no expansion has read, or a standard type the dispatch has no arm for.
+    Unseen,
 }
 
 /// The JSON schema shape a branded newtype's inner field describes.
@@ -6460,8 +6477,9 @@ fn declared_default_constraint_message(name: &Ident, parameter: &str, default_ty
 }
 
 /// `parameter`'s declared default as a `syn::Type`, for substituting a concrete Rust type rather
-/// than spelling one for a diagnostic. Falls back to `String` for an entry left out — the same
-/// fallback [`declared_default_type_name`] and [`declared_default_field`] use, so all three agree.
+/// than spelling one for a diagnostic. Falls back to the standard `String` for an entry left out,
+/// written at its full path, which is the type [`declared_default_type_name`] and
+/// [`declared_default_field`] name for the same gap.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -6473,7 +6491,10 @@ fn declared_default_syn_type(
     default_types
         .iter()
         .find(|(declared, _)| declared == parameter)
-        .map_or_else(|| syn::parse_quote!(String), |(_, ty)| ty.clone())
+        .map_or_else(
+            || syn::parse_quote!(::std::string::String),
+            |(_, ty)| ty.clone(),
+        )
 }
 
 /// The consult a constrained brand leaves unanswered, for the expansion that registers the name to
@@ -7045,6 +7066,16 @@ fn branded_guard_errors(
     args: &ModelSchemaArgs,
 ) -> Vec<proc_macro2::TokenStream> {
     let inner_field = brand_field(item_struct).unwrap();
+    #[cfg(all(
+        feature = "serde",
+        any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    ))]
+    let unproven_defaults = branded_unproven_default_errors(item_struct, inner_field, args);
+    #[cfg(not(all(
+        feature = "serde",
+        any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    )))]
+    let unproven_defaults: Vec<proc_macro2::TokenStream> = Vec::new();
     branded_cfg_attr_guard_errors(item_struct, inner_field)
         .into_iter()
         .chain(branded_option_inner_error(&item_struct.ident, inner_field))
@@ -7060,6 +7091,190 @@ fn branded_guard_errors(
             inner_field,
         ))
         .chain(branded_map_key_error(&item_struct.ident, inner_field))
+        .chain(unproven_defaults)
+        .collect()
+}
+
+/// Why `ty` cannot be proven to write every lifetime it has, or `None` where it can: a standard
+/// type, or a name `#[model_schema]` was written on above that is written with every lifetime it
+/// declares, or an alias of a type that passes and writes no lifetime of its own.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn unproven_default(ty: &syn::Type, depth: usize) -> Option<UnprovenDefault> {
+    match ty {
+        syn::Type::Path(path) if path.qself.is_none() => {
+            let last = path.path.segments.last()?;
+            let name = last.ident.to_string().trim_start_matches("r#").to_owned();
+            let arguments = match &last.arguments {
+                syn::PathArguments::AngleBracketed(bracketed) => bracketed.args.iter().collect(),
+                syn::PathArguments::None | syn::PathArguments::Parenthesized(_) => Vec::new(),
+            };
+            let written = arguments
+                .iter()
+                .filter(|argument| matches!(argument, syn::GenericArgument::Lifetime(_)))
+                .count();
+            match declared(&name) {
+                Some(Declared::Model(lifetimes) | Declared::OneValue(lifetimes)) => {
+                    if written < lifetimes {
+                        return Some(UnprovenDefault::LeavesOut(name));
+                    }
+                }
+                Some(Declared::Alias(named)) => {
+                    let Ok(target) = syn::parse_str::<syn::Type>(&named) else {
+                        return Some(UnprovenDefault::Unseen);
+                    };
+                    if depth >= 8 {
+                        return Some(UnprovenDefault::Unseen);
+                    }
+                    if let Some(unproven) = unproven_default(&target, depth.saturating_add(1)) {
+                        return Some(unproven);
+                    }
+                    if tokens_write_a_lifetime(&quote! { #target }) {
+                        return Some(UnprovenDefault::Hides);
+                    }
+                }
+                None => {
+                    if !is_a_standard_type_name(&name) {
+                        return Some(UnprovenDefault::Unseen);
+                    }
+                }
+            }
+            arguments.iter().find_map(|argument| match argument {
+                syn::GenericArgument::Type(inner) => unproven_default(inner, depth),
+                syn::GenericArgument::Lifetime(_)
+                | syn::GenericArgument::Const(_)
+                | syn::GenericArgument::AssocType(_)
+                | syn::GenericArgument::AssocConst(_)
+                | syn::GenericArgument::Constraint(_)
+                | _ => None,
+            })
+        }
+        syn::Type::Reference(reference) => unproven_default(&reference.elem, depth),
+        syn::Type::Array(array) => unproven_default(&array.elem, depth),
+        syn::Type::Slice(slice) => unproven_default(&slice.elem, depth),
+        syn::Type::Paren(paren) => unproven_default(&paren.elem, depth),
+        syn::Type::Group(group) => unproven_default(&group.elem, depth),
+        syn::Type::Tuple(tuple) => tuple
+            .elems
+            .iter()
+            .find_map(|elem| unproven_default(elem, depth)),
+        syn::Type::Path(_)
+        | syn::Type::FnPtr(_)
+        | syn::Type::ImplTrait(_)
+        | syn::Type::Infer(_)
+        | syn::Type::Macro(_)
+        | syn::Type::Never(_)
+        | syn::Type::Ptr(_)
+        | syn::Type::TraitObject(_)
+        | syn::Type::Verbatim(_)
+        | _ => Some(UnprovenDefault::Unseen),
+    }
+}
+
+/// Whether `tokens` write a lifetime or a reference, which carries one.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn tokens_write_a_lifetime(tokens: &proc_macro2::TokenStream) -> bool {
+    tokens.clone().into_iter().any(|tree| match tree {
+        proc_macro2::TokenTree::Punct(mark) => matches!(mark.as_char(), '\'' | '&'),
+        proc_macro2::TokenTree::Group(group) => tokens_write_a_lifetime(&group.stream()),
+        proc_macro2::TokenTree::Ident(_) | proc_macro2::TokenTree::Literal(_) => false,
+    })
+}
+
+/// The refusal of each declared default a generic brand's string check reads its value as that
+/// the expansion cannot prove writes every lifetime it has, spanned on the `default_types` entry.
+/// Nothing for a brand whose inner names no parameter, or that carries no string check.
+///
+/// A plain alias hides the lifetime its `Display` is written for:
+///
+/// ```rust,compile_fail
+/// use core::fmt;
+/// use serde::Serialize;
+/// use tixschema::model_schema;
+///
+/// #[model_schema(no_display)]
+/// #[derive(Serialize)]
+/// #[serde(transparent)]
+/// pub struct Tag<'text>(pub &'text str);
+///
+/// impl fmt::Display for Tag<'static> {
+///     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+///         f.write_str(self.0)
+///     }
+/// }
+///
+/// pub type Kept = Tag<'static>;
+///
+/// #[model_schema(minLength = 2, default_types(Text = Kept))]
+/// #[derive(Serialize)]
+/// #[serde(transparent)]
+/// pub struct Stamp<Text>(pub Text);
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: model_schema: a string check on the generic brand `Stamp` reads the value as the declared
+///        default `Kept`, and `Kept` is a type this expansion has not read: declare it with
+///        `#[model_schema]` above the brand, or write the type it names
+///   --> tests/zz_probe.rs:18:52
+///    |
+/// 18 | #[model_schema(minLength = 2, default_types(Text = Kept))]
+///    |                                                    ^^^^
+/// ```
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn branded_unproven_default_errors(
+    item_struct: &syn::ItemStruct,
+    inner_field: &Field,
+    args: &ModelSchemaArgs,
+) -> Vec<proc_macro2::TokenStream> {
+    let generic_params = type_parameters_in_scope(&item_struct.generics);
+    if !args.has_string_constraints()
+        || held_as_a_list(&inner_field.ty)
+        || !names_a_parameter(&inner_field.ty, &generic_params)
+    {
+        return Vec::new();
+    }
+    let name = &item_struct.ident;
+    args.default_types
+        .iter()
+        .filter(|(parameter, _)| {
+            tokens_name_any(&quote! { #inner_field }, &[parameter.to_string()])
+        })
+        .filter_map(|(_, default)| {
+            let unproven = unproven_default(default, 0)?;
+            let shown = quote! { #default }
+                .to_string()
+                .replace(" < ", "<")
+                .replace(" >", ">");
+            let reason = match unproven {
+                UnprovenDefault::Unseen => format!(
+                    "`{shown}` is a type this expansion has not read: declare it with \
+                     `#[model_schema]` above the brand, or write the type it names"
+                ),
+                UnprovenDefault::LeavesOut(left_out) => format!(
+                    "`{left_out}` declares a lifetime the default leaves out: write \
+                     `{left_out}<'_>`"
+                ),
+                UnprovenDefault::Hides => format!(
+                    "`{shown}` is an alias that hides a lifetime from this expansion: write the \
+                     type it names"
+                ),
+            };
+            let message = format!(
+                "model_schema: a string check on the generic brand `{name}` reads the value as \
+                 the declared default `{shown}`, and {reason}"
+            );
+            Some(syn::Error::new_spanned(default, message).to_compile_error())
+        })
         .collect()
 }
 
@@ -8458,10 +8673,11 @@ fn record_declaration(item: &Item) {
             );
         }
     } else if let Some(ident) = item_schema_ident(item) {
+        let lifetimes = item_lifetime_count(item);
         let declares = if written_as_one_value(item) {
-            Declared::OneValue
+            Declared::OneValue(lifetimes)
         } else {
-            Declared::Model
+            Declared::Model(lifetimes)
         };
         record_declared(&ident.to_string(), declares);
     } else {
@@ -8472,6 +8688,19 @@ fn record_declaration(item: &Item) {
 /// Without `serde` nothing reads a value, so nothing reads what an item declares.
 #[cfg(all(feature = "zod", not(feature = "serde")))]
 const fn record_declaration(_item: &Item) {}
+
+/// How many lifetime parameters the struct or enum `item` declares.
+#[cfg(feature = "serde")]
+fn item_lifetime_count(item: &Item) -> usize {
+    let generics = if let Item::Struct(declared) = item {
+        &declared.generics
+    } else if let Item::Enum(declared) = item {
+        &declared.generics
+    } else {
+        return 0;
+    };
+    generics.lifetimes().count()
+}
 
 /// What `decode_with` adds to a struct, read off the struct as it is emitted. Empty without the
 /// flag.
@@ -9390,7 +9619,7 @@ fn build_branded_validation(
     held: &syn::Member,
 ) -> Option<BrandedValidation> {
     let inner_ty = &inner_field.ty;
-    let is_generic = !generic_params.is_empty();
+    let reads_at_the_default = names_a_parameter(inner_ty, generic_params);
     if held_as_a_list(inner_ty) {
         return branded_list_validation(args, inner_field, held);
     }
@@ -9399,7 +9628,8 @@ fn build_branded_validation(
         return Some(counted);
     }
     args.has_string_constraints().then(|| {
-        let measures_path = branded_inner_measures_path(inner_ty);
+        let default_ty = substitute_declared_defaults(inner_ty, generic_params, &args.default_types);
+        let measures_path = branded_inner_measures_path(&default_ty);
         let (checked_param, rendering) = checked_value_parts(measures_path);
         // `resolved_at` keeps the inner field's location while giving the token the macro's own
         // hygiene, so a consumer's lints judge it as generated.
@@ -9439,11 +9669,9 @@ fn build_branded_validation(
             }
         };
 
-        // A generic brand's checks are its declared default's, so its `validate()` hands the value
-        // over as it is and asks nothing of the parameter.
-        if is_generic {
-            let default_ty =
-                substitute_declared_defaults(inner_ty, generic_params, &args.default_types);
+        // A brand over a parameter judges its declared default's value, so its `validate()` hands
+        // the value over as it is and asks nothing of the parameter.
+        if reads_at_the_default {
             let type_identity = embedded_type_identity();
             let at_the_default = embedded_validate_at_declared_default(
                 &default_ty,
@@ -9475,6 +9703,15 @@ fn build_branded_validation(
             validator: proc_macro2::Ident::new("validate_value", proc_macro2::Span::call_site()),
         }
     })
+}
+
+/// Whether `ty` names one of the brand's type parameters, at any depth.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn names_a_parameter(ty: &syn::Type, generic_params: &[String]) -> bool {
+    !generic_params.is_empty() && tokens_name_any(&quote! { #ty }, generic_params)
 }
 
 /// Whether a brand's lengths alone are asked of a name an earlier expansion registered as one a
@@ -10760,7 +10997,11 @@ fn build_branded_display_tokens(
     // Only the serde build emits the validation functions that call `to_string()`.
     #[cfg(feature = "serde")]
     let validation_needs_display = args.has_string_constraints()
-        && !branded_inner_measures_path(&inner_field.ty)
+        && !branded_inner_measures_path(&substitute_declared_defaults(
+            &inner_field.ty,
+            &type_parameters_in_scope(generics),
+            &args.default_types,
+        ))
         && !held_as_a_list(&inner_field.ty)
         && !counts_a_named_inner(args, &inner_field.ty);
     #[cfg(not(feature = "serde"))]

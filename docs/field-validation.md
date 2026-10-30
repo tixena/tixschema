@@ -739,7 +739,8 @@ this is what a change has to keep.
   to `validate_at_declared_default`, which `embedded_validate_at_declared_default` emits beside
   `type_identity`: where the two types are one it reads the value as the declared default
   through a pointer cast and runs `validate_value`, and at any other filling it answers `Ok(())`,
-  so nothing asks `Display` of the parameter. `TypeId` does not tell two lifetimes apart, so the
+  so nothing asks `Display` of the parameter. A brand whose inner names no parameter takes the
+  plain `validate_value` and none of this. `TypeId` does not tell two lifetimes apart, so the
   function declares `'held` for its borrow and `at_one_lifetime` writes the default with every
   lifetime it writes replaced by that one: the value outlives the borrow, and is never read at
   a lifetime longer than its own. It answers the result and no reference. A brand over a list
