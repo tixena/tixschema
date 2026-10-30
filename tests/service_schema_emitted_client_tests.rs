@@ -1229,6 +1229,18 @@ mod run_dart_tagged_slots;
 #[path = "service_schema_emitted_client_tests/run_swift_tagged_slots.rs"]
 mod run_swift_tagged_slots;
 
+/// An untagged enum over a bounded brand declared below it.
+#[cfg(test)]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+#[path = "service_schema_emitted_client_tests/below_brand_models.rs"]
+mod below_brand_models;
+
+/// That enum, read by each emitted client as serde reads it.
+#[cfg(test)]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+#[path = "service_schema_emitted_client_tests/run_below_brands.rs"]
+mod run_below_brands;
+
 /// Tuple variants with a slot serde neither writes nor reads.
 #[cfg(test)]
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]

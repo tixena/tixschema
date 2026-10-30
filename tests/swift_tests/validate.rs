@@ -203,7 +203,8 @@ fn a_struct_runs_its_bounds_its_fields_checks_then_its_own() {
             r#"let end = violation.dropFirst().firstIndex(of: "'") { "#,
             r#"return "'\(place).\(violation[violation.index(after: violation.startIndex)..<end])'"#,
             r#"\(violation[violation.index(after: end)...])" }; "#,
-            r#"return "'\(place)': \(violation)" } }; "#,
+            r#"return "'\(place)': \(violation)" }; "#,
+            "public func swiftSchemaValidateBound() -> [String] { [] } }; ",
         )
     );
 }

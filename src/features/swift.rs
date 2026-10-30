@@ -3406,7 +3406,7 @@ fn brand_value_field(
 /// The `validate()` of the struct of one `value` named `rust_ident`, which records what its
 /// checks and bounds are for the types written below.
 fn wrapper_validate(rust_ident: &str, wrapped: &Wrapped, rules: &[String]) -> String {
-    let mut validate = validate::method(rules);
+    let mut validate = validate::rules_method(rules);
     match wrapped {
         Wrapped::Brand {
             bounds,
@@ -3425,12 +3425,17 @@ fn wrapper_validate(rust_ident: &str, wrapped: &Wrapped, rules: &[String]) -> St
             if let Some(member) = text_member {
                 write!(validate, "; {member}").unwrap();
             }
-            if !bounds.is_empty() {
+            if bounds.is_empty() {
+                write!(validate, "; {}", validate::EMPTY_BOUND).unwrap();
+            } else {
                 validate::note_bounded(rust_ident);
                 write!(validate, "; {}", validate::bound_member(bounds)).unwrap();
             }
         }
-        Wrapped::Slot | Wrapped::Tuple => validate::note(rust_ident, None, !rules.is_empty()),
+        Wrapped::Slot | Wrapped::Tuple => {
+            validate::note(rust_ident, None, !rules.is_empty());
+            write!(validate, "; {}", validate::EMPTY_BOUND).unwrap();
+        }
     }
     validate
 }

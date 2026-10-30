@@ -583,7 +583,7 @@ fn a_brand_has_both_reads_and_answers_for_its_bound_alone() {
     let unbounded = correlation_id_swift::swift_definition();
     assert!(unbounded.contains(&unjudged), "got: {unbounded}");
     assert!(
-        !unbounded.contains("swiftSchemaValidateBound"),
+        unbounded.contains("public func swiftSchemaValidateBound() -> [String] { [] }"),
         "got: {unbounded}"
     );
     holds(

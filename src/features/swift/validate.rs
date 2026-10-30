@@ -19,6 +19,9 @@ use crate::field_type::{
     is_sequence_wrapper,
 };
 
+/// The answer of a type with no bound of its own to the question of its bound.
+pub(super) const EMPTY_BOUND: &str = "public func swiftSchemaValidateBound() -> [String] { [] }";
+
 /// The helpers a statement of `validate()` calls, each with the text that calls it.
 const HELPERS: [(&str, &str); 3] = [
     ("swiftSchemaUnder(", UNDER_HELPER),
@@ -251,9 +254,15 @@ pub(super) fn property_read(name: &str) -> String {
     }
 }
 
-/// `validate()` as a type declares it, with the helpers its statements call. A type with no rule
-/// answers an empty list.
+/// `validate()` as a type declares it, with the helpers its statements call, and the empty answer
+/// to the question of its bound that an untagged enum asks of every named type it holds. A type
+/// with no rule answers an empty list.
 pub(super) fn method(rules: &[String]) -> String {
+    format!("{}; {EMPTY_BOUND}", rules_method(rules))
+}
+
+/// `validate()` alone, for a brand that answers the question of its bound itself.
+pub(super) fn rules_method(rules: &[String]) -> String {
     if rules.is_empty() {
         return "public func validate() -> [String] { [] }".to_owned();
     }
@@ -629,9 +638,10 @@ fn validates(rust_ident: &str) -> bool {
     noted(rust_ident).is_none_or(|seen| seen.validates)
 }
 
-/// Whether `rust_ident` names a brand the emitter has written with a bound of its own.
+/// Whether an untagged enum asks the type `rust_ident` names for its bound: a brand the emitter
+/// has written with one, and a name it has not written yet, a type declared below.
 fn bounded(rust_ident: &str) -> bool {
-    noted(rust_ident).is_some_and(|seen| seen.bounded)
+    noted(rust_ident).is_none_or(|seen| seen.bounded)
 }
 
 /// What reads the string a bound measures off one value of `def`: nothing for a string and for an
