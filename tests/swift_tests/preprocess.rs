@@ -489,7 +489,7 @@ fn a_type_that_names_no_function_is_written_as_it_was() {
     assert!(!holder.contains("swiftSchemaWithout"), "got: {holder}");
 }
 
-/// A member's function is called where the key is held: a member whose absent key is `nil` is
+/// A member's function is called where the key is held: an optional member, nullable or not, is
 /// asked for its key first, and any other is read as a required one. The value is read from what
 /// the function answers in the way the member was read: a model through its own read alone, in a
 /// type written for the member, and a map Swift reads through a wrapper through that wrapper.
@@ -516,9 +516,10 @@ fn a_member_is_read_from_what_its_functions_answer_in_the_way_it_was_read() {
                 "from: unwrapped(firstCartonPayload), at: container.codingPath + [CodingKeys.firstCarton]).value; ",
             ),
             concat!(
+                "if container.contains(.quayNote) { ",
                 "let quayNotePayload = try container.decode(SwiftSchemaPayload.self, forKey: .quayNote).value; ",
                 "self.quayNote = try SwiftSchemaPayload.read(String?.self, from: orUnnamed(quayNotePayload), ",
-                "at: container.codingPath + [CodingKeys.quayNote]); ",
+                "at: container.codingPath + [CodingKeys.quayNote]) } else { self.quayNote = nil }; ",
             ),
             concat!(
                 "if container.contains(.spareCarton) { ",

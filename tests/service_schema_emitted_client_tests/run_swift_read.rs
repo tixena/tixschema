@@ -917,16 +917,18 @@ fn absent_and_null() -> [(&'static str, &'static str, String); 15] {
     ]
 }
 
-/// An absent key and a `null` are read as they were before a read was written: these answers are
-/// the ones the unchanged emitter gave. serde reads the absent key of a nullable member as `None`
-/// in both structs.
+/// An absent key and a `null` of a nullable member are both read as `nil`, as serde reads them,
+/// in a struct Swift reads by itself and in one that flattens a member.
 #[test]
-fn an_absent_key_and_a_null_are_read_as_they_were() {
+fn an_absent_key_and_a_null_of_a_nullable_member_are_read_as_nil() {
     let unnoted: Anchorage =
         serde_json::from_str(r#"{"baseName":"home","heldPackage":null}"#).unwrap();
     assert_eq!(unnoted.anchor_note, None);
     let unmoored: Mooring = serde_json::from_str("{}").unwrap();
     assert_eq!(unmoored.berth_note, None);
+    let unheld: Anchorage =
+        serde_json::from_str(r#"{"anchorNote":null,"baseName":"home"}"#).unwrap();
+    assert!(unheld.held_package.is_none());
     let lines = absent_and_null()
         .iter()
         .map(|(name, read_as, payload)| {
@@ -944,8 +946,8 @@ fn an_absent_key_and_a_null_are_read_as_they_were() {
 Mooring, no key: read {{\"berthNote\":null,\"heldPackage\":null}}
 Mooring, each a null: read {{\"berthNote\":null,\"heldPackage\":null}}
 Mooring, each held: read {{\"berthNote\":\"m\",\"heldPackage\":{PACKED},\"spareNote\":\"s\",\"sparePackage\":{PACKED}}}
-Anchorage, no anchorNote: no key anchorNote at []
-Anchorage, no heldPackage: no key heldPackage at []
+Anchorage, no anchorNote: read {{\"anchorNote\":null,\"baseName\":\"home\",\"heldPackage\":null}}
+Anchorage, no heldPackage: read {{\"anchorNote\":null,\"baseName\":\"home\",\"heldPackage\":null}}
 Anchorage, each a null: read {{\"anchorNote\":null,\"baseName\":\"home\",\"heldPackage\":null}}
 Manifest, no firstParcel: no key firstParcel at []
 Manifest, firstParcel a null: no value at [firstParcel]
