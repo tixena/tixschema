@@ -98,6 +98,35 @@ pub struct DisplayedLedger<IdType: Display> {
     pub entries: Vec<Entry<IdType>>,
 }
 
+/// Two parameters under a container default, which bounds the item itself.
+#[model_schema(default_types(IdType = String, Held = String))]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(default)]
+pub struct DefaultedPair<IdType, Held> {
+    pub entries: Vec<Entry<IdType>>,
+    pub held: Vec<Held>,
+}
+
+/// Two parameters under a container bound written on the item itself.
+#[model_schema(default_types(IdType = String, Held = String))]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(bound(
+    deserialize = "IdType: serde::de::DeserializeOwned, Held: serde::de::DeserializeOwned, Self: Sized"
+))]
+pub struct BoundedPair<IdType, Held> {
+    pub entries: Vec<Entry<IdType>>,
+    pub held: Vec<Held>,
+}
+
+/// A checked type that holds itself, written as `Self`, under a container default.
+#[model_schema(default_types(IdType = String), check = ["countedDefaultedTree"])]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(default)]
+pub struct DefaultedTree<IdType> {
+    pub children: Vec<Self>,
+    pub id: IdType,
+}
+
 /// A bound that ties the parameter the member names to one it does not: the member is read with
 /// the entries judged as they are read, and again by the holder.
 #[model_schema(default_types(IdType = String, Held = String))]
@@ -172,6 +201,11 @@ fn counted_node(value: &Node) -> Result<(), Vec<String>> {
 }
 
 fn counted_tree<IdType>(value: &Tree<IdType>) -> Result<(), Vec<String>> {
+    counted(2);
+    at_most_two_children(value.children.len())
+}
+
+fn counted_defaulted_tree<IdType>(value: &DefaultedTree<IdType>) -> Result<(), Vec<String>> {
     counted(2);
     at_most_two_children(value.children.len())
 }
