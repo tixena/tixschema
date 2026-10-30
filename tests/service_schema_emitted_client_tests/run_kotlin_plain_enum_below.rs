@@ -6,7 +6,7 @@
 use core::fmt::Write as _;
 
 use super::plain_enum_below_models::{
-    BRANDED, REFUSED, ROWS, assert_printed_as_serde_writes, casement_kotlin, cringle_kotlin,
+    BRANDED, REFUSED, ROWS, assert_printed_as_serde_writes, bobstay_kotlin, casement_kotlin,
     glazing_kotlin, mullion_kotlin, pane_kotlin, reefing_kotlin, transom_kotlin, weathering_kotlin,
 };
 use super::runtime::ran_kotlin;
@@ -55,7 +55,7 @@ fn a_plain_enum_flattened_below_its_holder_is_read_and_written_back_in_kotlin() 
         mullion_kotlin::kotlin_definition(),
         weathering_kotlin::kotlin_definition(),
         reefing_kotlin::kotlin_definition(),
-        cringle_kotlin::kotlin_definition(),
+        bobstay_kotlin::kotlin_definition(),
         pane_kotlin::kotlin_definition(),
         glazing_kotlin::kotlin_definition(),
         main_of_the_rows(),

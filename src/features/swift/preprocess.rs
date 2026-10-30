@@ -70,7 +70,8 @@ pub(super) const PAYLOAD: &str = "private struct SwiftSchemaPayload: Decodable {
 const FLAT: &str = "static func flat<Read: Decodable>(_ type: Read.Type, _ payload: Any, \
      at path: [CodingKey]) -> Any { guard let entries = payload as? [String: Any] else { \
      return payload }; let named = entries.filter { $0.value is NSNull && \
-     (try? read(type, from: $0.key, at: path)) != nil }; \
+     (try? read(type, from: $0.key, at: path)).map { \
+     Mirror(reflecting: $0).children.first?.value is any RawRepresentable } == true }; \
      return named.count == 1 ? named.keys.first! : payload }; ";
 
 /// A name serde reads a variant of an externally tagged enum flattened into a holder under.
