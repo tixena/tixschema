@@ -4,7 +4,7 @@
 
 #![cfg(feature = "dart")]
 
-use super::run_dart_validate::{dart, module};
+use super::run_dart_validate::{analyzed, dart, module};
 use super::unwritten_models::{
     FLATTENED, PAYLOAD, REFUSED, WRITTEN, braiding_dart, flemishing_dart, furling_dart,
     ranging_dart, reefing_dart, splaying_dart,
@@ -70,6 +70,7 @@ fn a_member_serde_never_writes_is_read_and_not_written_in_dart() {
         &[],
         &MAIN.replace("PAYLOAD", PAYLOAD),
     );
+    analyzed("unwritten-analyze", &source);
     let Some((ran, printed)) = dart("unwritten", &[], &source) else {
         return;
     };
@@ -97,6 +98,7 @@ fn a_flattened_member_serde_never_writes_is_read_and_not_written_in_dart() {
         &[],
         &flattened_main(),
     );
+    analyzed("unwritten-flattened-analyze", &source);
     let Some((ran, printed)) = dart("unwritten-flattened", &[], &source) else {
         return;
     };
@@ -143,6 +145,7 @@ fn a_variants_member_serde_never_writes_is_read_and_not_written_in_dart() {
         &[],
         &variants_main(),
     );
+    analyzed("unwritten-variants-analyze", &source);
     let Some((ran, printed)) = dart("unwritten-variants", &[], &source) else {
         return;
     };

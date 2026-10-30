@@ -1247,7 +1247,8 @@ fn writes_a_name(def: &FieldDef) -> bool {
 /// The entries `encode`, what a value of `def` writes, adds to the object it joins: a unit variant
 /// of an externally tagged enum emitted above as an entry of its name over `null`, as serde writes
 /// it, where the enum's own `toJson` writes the bare name. A value Dart types
-/// `Map<String, dynamic>` already is not cast to it.
+/// `Map<String, dynamic>` already is not cast to it, and a class whose `toJson` may be emitted after
+/// its holder is cast inside a closure over an `Object?`, which the analyzer never calls needless.
 fn joined_entries(def: &FieldDef, encode: &str) -> String {
     if writes_a_name(def) {
         format!(
@@ -1256,6 +1257,11 @@ fn joined_entries(def: &FieldDef, encode: &str) -> String {
         )
     } else if writes_an_object(def) {
         encode.to_owned()
+    } else if matches!(def.field_type, FieldDefType::SiblingType(_, _))
+        && def.array_depth == 0
+        && !def.is_optional()
+    {
+        format!("((Object? held) => held as Map<String, dynamic>)({encode})")
     } else {
         format!("({encode} as Map<String, dynamic>)")
     }
