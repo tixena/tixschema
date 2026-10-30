@@ -3,9 +3,10 @@
 
 use bson::{Bson, Document, doc};
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use tixschema::model_schema;
 
-use invoice_schema::{Expected, Issue, Resolution, Resolver, Stored as _};
+use invoice_schema::{DecodeWith, Expected, Issue, Resolution, Resolver, Stored as _};
 
 /// The resolvers the stored rows of this crate's types are read through, in order.
 const STORED: &[Resolver<'static, Document, Bson>] = &[&whole_number_as_text];
@@ -23,6 +24,26 @@ pub struct Invoice {
 pub struct Order {
     pub lines: u32,
     pub number: String,
+}
+
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(T = u32))]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Holder<T> {
+    pub held: T,
+}
+
+fn read_stored<Row>(document: Document) -> Row
+where
+    Row: DecodeWith,
+{
+    Row::from_bson_piped(document, STORED).unwrap()
+}
+
+fn read_json<Row>(value: Value) -> Row
+where
+    Row: DecodeWith,
+{
+    Row::from_value_piped(value, &[]).unwrap()
 }
 
 /// A whole number an older writer stored as text; a negative count is refused.
@@ -152,4 +173,28 @@ fn a_type_with_a_repair_of_its_own_reads_through_a_list_of_its_own() {
         shown.starts_with("number: invalid: expected String, found Int32(7): "),
         "got: {shown}"
     );
+}
+
+#[test]
+fn one_generic_function_reads_two_types_of_a_crate_through_the_same_resolvers() {
+    let invoice: Invoice = read_stored(doc! { "number": "INV-0042", "openLines": "3" });
+    let order: Order = read_stored(doc! { "lines": "3", "number": "ORD-0007" });
+    assert_eq!(invoice.open_lines, 3);
+    assert_eq!(order.lines, 3);
+}
+
+#[test]
+fn one_generic_function_reads_two_types_of_a_crate_from_json() {
+    let invoice: Invoice = read_json(json!({ "number": "INV-0042", "openLines": 3_i32 }));
+    let order: Order = read_json(json!({ "lines": 3_i32, "number": "ORD-0007" }));
+    assert_eq!(invoice.open_lines, 3);
+    assert_eq!(order.lines, 3);
+}
+
+#[test]
+fn a_generic_type_is_read_through_the_same_bound() {
+    let held: Holder<u32> = read_stored(doc! { "held": 4_i32 });
+    let from_json: Holder<u32> = read_json(json!({ "held": 4_i32 }));
+    assert_eq!(held, Holder { held: 4 });
+    assert_eq!(from_json, held);
 }

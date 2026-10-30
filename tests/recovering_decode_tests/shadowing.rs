@@ -4,6 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use ticket_schema::DecodeWith as _;
 use tixschema::model_schema;
 
 #[model_schema(enable = ["decode_with"])]

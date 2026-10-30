@@ -8,6 +8,7 @@
 ))]
 mod plain;
 
+use invoice_lookup_schema::DecodeWith as _;
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};

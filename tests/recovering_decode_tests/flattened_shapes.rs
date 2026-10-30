@@ -5,6 +5,7 @@
 
 use alloc::collections::BTreeMap;
 use core::fmt::Debug;
+use counts_schema::DecodeWith as _;
 use std::collections::HashMap;
 
 use serde::{Deserialize, Deserializer, Serialize};

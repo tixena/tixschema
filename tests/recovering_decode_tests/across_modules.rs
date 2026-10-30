@@ -5,6 +5,7 @@
 mod billing;
 mod customers;
 
+use invoice_schema::DecodeWith as _;
 use serde_json::{Value, json};
 
 use self::billing::{Invoice, invoice_schema};

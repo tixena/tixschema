@@ -4885,6 +4885,7 @@ Forty-seven rules meet a crate that upgrades. Each is stated with what a build o
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tixschema::{model_schema, model_schema_prop};
+use parcel_schema::DecodeWith as _;
 
 tixschema::decode_with_foundation!();
 
@@ -6923,9 +6924,9 @@ Chrono types also work in collections (`Vec<NaiveDate>` generates `z.array(z.iso
 
 ## Recovering Decode (`decode_with`)
 
-A type that opts in gets methods that read a value the caller already holds: `from_value_with` and `from_value_piped` read a `serde_json::Value`, and, in a build with tixschema's `bson` feature on, `from_bson_with` and `from_bson_piped` read a `bson::Document`. Serde reads the value with the type's read alone, ahead of the `validate()` [a plain read of the type ends on](#a-read-refuses-what-validate-refuses), so a broken bound and a broken check are issues to list and never a refusal that hides them. When serde reads it, the value is held in the form the type writes and it breaks no bound a field declares, the decoded value comes back and nothing else happens. When serde refuses it, when it carries a key the type does not declare, when a value reads but is held in another form than its field writes, or when a value reads but breaks a bound its field declares, the raw value and every issue found in it are handed over, once. A `with` method hands them to a callback supplied with that call, which rejects the record or fixes the raw value. A `piped` method hands them to [resolvers](#resolvers) supplied with that call, small functions that each answer one issue at a time. Either way serde then gets one more read, the same way.
+A type that opts in implements `DecodeWith`, the crate's trait of the methods that read a value the caller already holds: `from_value_with` and `from_value_piped` read a `serde_json::Value`, and, in a build with tixschema's `bson` feature on, `from_bson_with` and `from_bson_piped` read a `bson::Document`. A caller imports `DecodeWith` to call them, from the `{type}_schema` module of any flagged type of the crate: `use invoice_schema::DecodeWith;`. Serde reads the value with the type's read alone, ahead of the `validate()` [a plain read of the type ends on](#a-read-refuses-what-validate-refuses), so a broken bound and a broken check are issues to list and never a refusal that hides them. When serde reads it, the value is held in the form the type writes and it breaks no bound a field declares, the decoded value comes back and nothing else happens. When serde refuses it, when it carries a key the type does not declare, when a value reads but is held in another form than its field writes, or when a value reads but breaks a bound its field declares, the raw value and every issue found in it are handed over, once. A `with` method hands them to a callback supplied with that call, which rejects the record or fixes the raw value. A `piped` method hands them to [resolvers](#resolvers) supplied with that call, small functions that each answer one issue at a time. Either way serde then gets one more read, the same way.
 
-The entry `"decode_with"` adds these methods. The types the callback and the resolvers work with are the crate's [support library](#the-support-libraries), which the crate writes once, at its root, and every flagged type's module re-exports. A generated dispatcher reads a request with the read alone and then calls `validate()`, as [Service Validation](#service-validation) says, and in a build without the `mongodb` feature nothing tixschema generates calls them. With `mongodb` on, a type that lists `"mongodb"` also reads and writes its own rows in a collection, and those reads go through `from_bson_piped`: see [MongoDB Operations and Typed Filters](#mongodb-operations-and-typed-filters).
+The entry `"decode_with"` implements the trait. The types the callback and the resolvers work with are the crate's [support library](#the-support-libraries), which the crate writes once, at its root, and every flagged type's module re-exports. A generated dispatcher reads a request with the read alone and then calls `validate()`, as [Service Validation](#service-validation) says, and in a build without the `mongodb` feature nothing tixschema generates calls them. With `mongodb` on, a type that lists `"mongodb"` also reads and writes its own rows in a collection, and those reads go through `from_bson_piped`: see [MongoDB Operations and Typed Filters](#mongodb-operations-and-typed-filters).
 
 ### Opting in
 
@@ -6963,17 +6964,17 @@ What each entry generates on a type, by the features tixschema is built with:
 
 | Entry | tixschema built with | Generates, per type |
 |-------|----------------------|---------------------|
-| `"decode_with"` | `serde` | `from_value_with`, `from_value_piped` and their walkers, the type's own items in its `{type}_schema` module, and the re-export of the `decode_with` library there |
-| `"decode_with"` | `bson`, which `mongodb` turns on | The row above, and `from_bson_with`, `from_bson_piped` and the BSON walkers, and the BSON pieces of the `decode_with` library among the names the module re-exports. No operation, no `MONGO_FIELDS` and no typed path |
+| `"decode_with"` | `serde` | An `impl` of `DecodeWith` with `from_value_with` and `from_value_piped`, their walkers, the type's own items in its `{type}_schema` module, and the re-export of the `decode_with` library there |
+| `"decode_with"` | `bson`, which `mongodb` turns on | The row above, and `from_bson_with` and `from_bson_piped` in the same `impl`, the BSON walkers, and the BSON pieces of the `decode_with` library among the names the module re-exports. No operation, no `MONGO_FIELDS` and no typed path |
 | `"mongodb"` | `mongodb` | The operations `find_one`, `find_one_with`, `find`, `find_with`, `count`, `insert_one`, `update_one`, `update_many`, `delete_one` and `delete_many`, `MONGO_FIELDS`, `MongoFields`, the typed paths, and the re-export of the MongoDB library: the query types and what the operations answer |
 
 The BSON decode follows the `bson` feature alone: every flagged type has it in a build with `bson` on, whether it lists `"mongodb"` or not, so a type read from a BSON document and never stored lists `"decode_with"` alone. A type without `"mongodb"` gets none of the last row, under any feature, and a type that lists `"mongodb"` gets nothing of it in a build without the `mongodb` feature.
 
-On a type `Record` that lists `"decode_with"`, in a build with `bson` on, the list generates these methods:
+On a type `Record` that lists `"decode_with"`, in a build with `bson` on, the list generates this `impl`:
 
 ```rust
-impl Record {
-    pub fn from_value_with<F>(
+impl record_schema::DecodeWith for Record {
+    fn from_value_with<F>(
         mut value: serde_json::Value,
         decide: F,
     ) -> core::result::Result<Self, record_schema::Unrecovered<serde_json::Value>>
@@ -6981,13 +6982,13 @@ impl Record {
         F: FnOnce(&mut serde_json::Value, &[record_schema::Issue<serde_json::Value>]) -> record_schema::Verdict,
     { /* ... */ }
 
-    pub fn from_value_piped(
+    fn from_value_piped(
         mut value: serde_json::Value,
         resolvers: &[record_schema::Resolver<'_, serde_json::Value, serde_json::Value>],
     ) -> core::result::Result<Self, record_schema::Unrecovered<serde_json::Value>>
     { /* ... */ }
 
-    pub fn from_bson_with<F>(
+    fn from_bson_with<F>(
         document: bson::Document,
         decide: F,
     ) -> core::result::Result<Self, record_schema::Unrecovered<bson::Bson>>
@@ -6995,7 +6996,7 @@ impl Record {
         F: FnOnce(&mut bson::Document, &[record_schema::Issue<bson::Bson>]) -> record_schema::Verdict,
     { /* ... */ }
 
-    pub fn from_bson_piped(
+    fn from_bson_piped(
         document: bson::Document,
         resolvers: &[record_schema::Resolver<'_, bson::Document, bson::Bson>],
     ) -> core::result::Result<Self, record_schema::Unrecovered<bson::Bson>>
@@ -7007,6 +7008,27 @@ impl Record {
 - The resolvers of a `piped` method are a slice, in the order they are to run: `&[&first, &second]`. An empty slice, `&[]`, is a read any issue refuses.
 - `record_schema` is the module tixschema writes for `Record`. The callback's types and the resolvers' are the crate's support library, which `record_schema` re-exports name by name: `record_schema::Verdict` and `record_schema::Issue` are the crate's one `Verdict` and one `Issue` ([One library per crate](#one-library-per-crate)).
 - `from_value_with` and `from_value_piped` are generated in a build with tixschema's `serde` feature on, and `from_bson_with` and `from_bson_piped` in a build with its `bson` feature on, which `mongodb` turns on, whether the type lists `"mongodb"` or not.
+- `DecodeWith` is written once per crate, by `decode_with_foundation!()`, and every flagged type's module re-exports it. A flagged type of another crate implements that crate's `DecodeWith`, so a caller imports the trait from that crate's module. The reads are methods of the trait alone: a type has no inherent `from_value_with`, `from_value_piped`, `from_bson_with` or `from_bson_piped`, so a module that calls one imports the trait, and a call keeps its spelling, `Record::from_value_with(value, decide)`.
+
+#### Reading several types through one function
+
+`DecodeWith` is the bound that lets one function read every flagged type of a crate, through the same resolvers:
+
+```rust
+use bson::{Bson, Document};
+use invoice_schema::{DecodeWith, Resolver};
+
+const STORED: &[Resolver<'static, Document, Bson>] = &[&whole_number_as_text];
+
+fn read<Row: DecodeWith>(document: Document) -> Row {
+    Row::from_bson_piped(document, STORED).unwrap()
+}
+
+let invoice: Invoice = read(doc! { "number": "INV-0042", "openLines": "3" });
+let order: Order = read(doc! { "lines": "3", "number": "ORD-0007" });
+```
+
+`whole_number_as_text` is a resolver as [Resolvers](#resolvers) writes one. `from_value_piped` reads a `serde_json::Value` through the same bound.
 
 The list is read in every build. Each of these is refused, spanned on what is written, with a message that says what to write instead. The error opens with the type it is written on, ``model_schema: type `Record`:``, and goes on with the message:
 
@@ -7264,7 +7286,7 @@ Read as a struct holding `name: String` and `versions: Vec<Version>`, `{ "name":
 - Some flattened fields are walked by nothing: an `Option` of a map, an `ObjectId`, which serde writes as an object and so flattens, and a second field that takes the keys nothing else declares, after the first one. Every key then counts as declared, so none is `Unknown`, and serde's verdict is the read's: a value serde refuses there is one `Undescribed`.
 - A flattened field of a variant is walked in the object the variant's fields sit in, wherever the enum's form puts that object.
 
-**A generic type** gets its methods on `impl`s of their own, which bound every type parameter, and the type itself, `serde::de::DeserializeOwned`, and `serde::Serialize` as well for `from_bson_with`. A type that itself bounds a parameter `Serialize` or `DeserializeOwned` has that bound written a second time on these `impl`s, which clippy reports at the declaration as `trait_duplication_in_bounds` (a `nursery` lint), as it already does for the `Serialize` bound serde's own derive repeats; leave the bound off the type and neither is reported, serde's derive and these `impl`s each adding what they need. A value of a parameter's type is read whole, with that parameter's own reader, and so is a list, a map, an `Option` or a tuple that holds one: read as `Page<Version>`, where `Page<T>` declares `items: Vec<T>`, a bad number inside one item is a single `Invalid` at `items`, expected `Array(TypeParam("T"))`. From a JSON value such a value is never `Mistyped`, nothing there being bound to write it back. From a BSON document it is: an id filling a parameter and stored as text is `Mistyped` at its field.
+**A generic type** gets its walkers on `impl`s of their own, one per source, which bound every type parameter, and the type itself, `serde::de::DeserializeOwned`, and `serde::Serialize` as well for the BSON one. Its one `impl` of `DecodeWith` is written under the bounds of the last source, so in a build with `bson` on its JSON reads ask `serde::Serialize` of the parameters too. A type that itself bounds a parameter `Serialize` or `DeserializeOwned` has that bound written a second time on these `impl`s, which clippy reports at the declaration as `trait_duplication_in_bounds` (a `nursery` lint), as it already does for the `Serialize` bound serde's own derive repeats; leave the bound off the type and neither is reported, serde's derive and these `impl`s each adding what they need. A value of a parameter's type is read whole, with that parameter's own reader, and so is a list, a map, an `Option` or a tuple that holds one: read as `Page<Version>`, where `Page<T>` declares `items: Vec<T>`, a bad number inside one item is a single `Invalid` at `items`, expected `Array(TypeParam("T"))`. From a JSON value such a value is never `Mistyped`, nothing there being bound to write it back. From a BSON document it is: an id filling a parameter and stored as text is `Mistyped` at its field.
 
 ### Nested types
 
@@ -7378,7 +7400,7 @@ pub struct Record {
 The callback, a function over `Record` and its inner `Version`. An issue inside a version reaches it as `record_schema::Issue`, at its full path:
 
 ```rust
-use record_schema::{Expected, Issue, Stored as _, Verdict};
+use record_schema::{DecodeWith as _, Expected, Issue, Stored as _, Verdict};
 
 /// Repairs what older writers left in a `Record` row, inner versions included, and rejects
 /// anything else.
@@ -7517,7 +7539,7 @@ pub struct Invoice {
 Two resolvers. Each looks for the one issue it repairs and answers `NotTouched` for any other:
 
 ```rust
-use invoice_schema::{Expected, Issue, Resolution, Stored as _};
+use invoice_schema::{DecodeWith as _, Expected, Issue, Resolution, Stored as _};
 
 /// A customer an older writer stored as JSON text: parsed into a document.
 fn customer_as_text(raw: &mut Document, issue: &Issue<Bson>) -> Resolution {
@@ -8314,6 +8336,7 @@ use mongodb::options::{Collation, Hint};
 use mongodb::results::{DeleteResult, InsertOneResult, UpdateResult};
 use tokio::task::JoinHandle;
 
+use invoice_schema::DecodeWith as _;
 use invoice_schema::Stored as _;
 use invoice_schema::{Expected, Filter, Issue, OperationError, Read, Resolution, Resolver};
 

@@ -4,6 +4,7 @@
 #![deny(unused)]
 
 use bson::doc;
+use receipt_schema::DecodeWith as _;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 

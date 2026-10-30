@@ -4,6 +4,7 @@
 //! declared. Each case holds the walker's list to what plain serde says of the same value.
 
 use alloc::collections::BTreeMap;
+use note_schema::DecodeWith as _;
 use std::collections::HashMap;
 
 use serde::de::Error as _;

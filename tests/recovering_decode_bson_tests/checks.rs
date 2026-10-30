@@ -2,6 +2,7 @@
 //! JSON value: serde builds the value, the checks run on it, and each message is one `Invalid`
 //! at the place it names in the document.
 
+use checked_parcel_schema::DecodeWith as _;
 use std::collections::HashMap;
 
 use bson::{Bson, Document, doc};

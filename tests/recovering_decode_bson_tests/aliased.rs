@@ -7,6 +7,7 @@
 
 mod declared;
 
+use block_schema::DecodeWith as _;
 use core::any::TypeId;
 use std::collections::HashMap;
 

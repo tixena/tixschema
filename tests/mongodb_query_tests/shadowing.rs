@@ -7,6 +7,7 @@
 //! it.
 
 use bson::doc;
+use search_schema::DecodeWith as _;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 

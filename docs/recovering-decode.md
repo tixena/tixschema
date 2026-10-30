@@ -4,7 +4,8 @@ The recovering decode (`decode_with`): its entry points, walkers, support librar
 
 ### Recovering Decode
 
-`#[model_schema(enable = ["decode_with"])]` gives a type `from_value_with`, and `from_bson_with`
+`#[model_schema(enable = ["decode_with"])]` makes a type implement `DecodeWith`, the trait its
+crate's library holds, whose methods are `from_value_with`, and `from_bson_with`
 as well under `bson`: serde reads the value with the type's read alone, a walker lists every issue
 in it, and a callback supplied with the call rejects the record or fixes it once.
 `from_value_piped` and `from_bson_piped` are the same reads over resolvers run in order, each
@@ -26,7 +27,8 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   `the_bare_decode_with_flag_is_refused_with_the_enable_list_it_moved_to` and the `enable_refuses_*`
   tests in `src/model_schema/tests.rs` hold each message.
 - **What each entry generates, and under which feature.** `"decode_with"` is the recovering
-  decode: `from_value_with`, `from_value_piped`, their walkers, the type's own module items and the
+  decode: an `impl` of `DecodeWith` holding `from_value_with` and `from_value_piped`, their
+  walkers, the type's own module items and the
   re-export of the `decode_with` library, and under `bson` the BSON source as well.
   `Source::read_by()` takes no argument and answers `Source::GENERATED`, which holds `Bson` under
   `bson` alone, so every flagged type is walked from BSON in a build with `bson`, and
@@ -36,12 +38,24 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   `Source::entry_methods` hands it `written.mongodb`, and the re-export of the MongoDB library and
   its probe. `Written::mongodb` carries the entry through the walk. The expansion test in
   `recovering_decode/tests.rs` holds a type that lists `"decode_with"` alone, under `mongodb`, to
-  `from_bson_with`, `from_bson_piped` and the BSON walkers, and to no name of `OPERATIONS`, no
+  `from_bson_with`, `from_bson_piped` (in the `DecodeWith` impl) and the BSON walkers, and to no name of `OPERATIONS`, no
   `MONGO_FIELDS` and no `MongoFields`.
+- **The reads are methods of `DecodeWith` alone.** `type_impls` writes each source's helpers and
+  walkers into the type's inherent `impl` and the four reads, which `Source::entry_methods`
+  answers apart as `Entry::reads`, into one `impl` of `DecodeWith`, so no type has an inherent
+  and a trait method of one name (clippy's `same_name_method`). A trait has one `impl` per type,
+  so a generic type's is written under the bounds of the last source, which hold the others'
+  (`Source::bounded`, `read_under`): in a build with `bson`, its JSON reads ask `Serialize` of the
+  parameters too. The `impl` names the trait as `#module::DecodeWith`; `DecodeWith` is in
+  `ADDED_TYPE_NAMES`, so a type of the author's named `DecodeWith` stays the author's. A crate without
+  `decode_with_foundation!()` gets the unresolved import of its library and no more: a trait
+  `impl` naming an unresolved trait stops rustc before the type check that holds the foundation
+  probe's message.
 - **The two initializers write the support libraries, once per crate.** `src/foundation.rs` refuses
   any argument (`refused_arguments`) and hands each macro to `decode_with_foundation` and
   `mongodb_foundation` in `recovering_decode.rs`. The first writes the module
-  `__tixschema_decode_with` (`DECODE_WITH_LIBRARY`): `decode_with_library`, which is `path_items`,
+  `__tixschema_decode_with` (`DECODE_WITH_LIBRARY`): `decode_with_library`, which is `trait_items` (the `DecodeWith` trait, with the BSON methods
+  from `bson_trait_methods` under `bson`), `path_items`,
   `callback_items`, `handoff_items`, `taken_items` and `bound_items`, and under
   `#[cfg(feature = "bson")]` the three BSON pieces (`bson_bound_items`, `bson_leaf_items`, and
   `bson_stored_items`, the `impl Stored for bson::Document`). `path_items` writes `Segment`, `Path`,

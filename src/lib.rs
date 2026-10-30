@@ -60,7 +60,7 @@
 //! | Kotlin `kotlinx.serialization` classes with `validate()` | `{type}_kotlin::kotlin_definition()` | `kotlin` |
 //! | Serde renames, tags, flattening and defaults, read on every surface | the `#[serde(...)]` attributes already on the type | `serde` |
 //! | Field and type rules | `#[model_schema_prop(...)]` on a field and `#[model_schema(check = [...])]` on the type, giving `T::validate()` and a serde read that refuses what `validate()` refuses | `serde` with `typescript`, `zod` or `jsonschema`; a `check` in every build |
-//! | Recovering decode of old or untrusted values | `#[model_schema(enable = ["decode_with"])]` and `tixschema::decode_with_foundation!()`, giving `T::from_value_with` and `T::from_value_piped` | `serde`; `bson` adds `T::from_bson_with` and `T::from_bson_piped` |
+//! | Recovering decode of old or untrusted values | `#[model_schema(enable = ["decode_with"])]` and `tixschema::decode_with_foundation!()`, giving `T::from_value_with` and `T::from_value_piped` through the crate's `DecodeWith` trait | `serde`; `bson` adds `T::from_bson_with` and `T::from_bson_piped` |
 //! | `MongoDB` typed paths, filters, updates and operations | `enable = ["decode_with", "mongodb"]` and `tixschema::mongodb_foundation!()`, giving `T::MONGO_FIELDS`, `T::find_one`, `T::find`, `T::count`, `value.insert_one`, `T::update_one`, `T::delete_one` and their siblings | `mongodb` |
 //! | `ObjectId` fields, chrono dates and times, `IndexMap` and `IndexSet` | a field of that type | `mongodb`, `chrono`, `indexmap` |
 //! | Conversions to and from arky's frontmatter `Value` | `enable = ["arky"]`, giving `TryFrom` in both directions | `arky` |
@@ -711,7 +711,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
-use order_line_schema::{Expected, Issue, Stored as _, Verdict};
+use order_line_schema::{DecodeWith as _, Expected, Issue, Stored as _, Verdict};
 
 tixschema::decode_with_foundation!();
 
@@ -748,7 +748,8 @@ fn main() {
 )]
 //!
 //! `from_value_piped` takes small resolver functions in place of one callback, and under the `bson`
-//! feature `from_bson_with` and `from_bson_piped` read a BSON document. See
+//! feature `from_bson_with` and `from_bson_piped` read a BSON document. The four are methods of
+//! the crate's `DecodeWith` trait, which a caller imports from any flagged type's module. See
 //! [`decode_with_foundation`](macro.decode_with_foundation.html) and the README's
 //! [Recovering Decode](https://github.com/tixena/tixschema/blob/master/README.md#recovering-decode-decode_with).
 //!
@@ -769,7 +770,7 @@ fn main() {
 //! | `dart` | `{type}_dart::dart_definition()`, and the Dart service clients. | Nothing in Rust. The Dart file imports `dart:convert`, and `dart:typed_data` or `dart:async` where the code names them; the code uses Dart 3 sealed classes, records and patterns. |
 //! | `swift` | `{type}_swift::swift_definition()`, and the Swift service clients. | Nothing in Rust. The Swift file imports `Foundation`. |
 //! | `kotlin` | `{type}_kotlin::kotlin_definition()`, and the Kotlin service clients. | Nothing in Rust. The Kotlin build applies the `kotlin("plugin.serialization")` plugin and depends on `kotlinx-serialization-json`. The Kotlin file imports `kotlinx.serialization.*` and its `builtins`, `descriptors`, `encoding` and `json` packages, and the build step writes its `package` line. `kotlin_ws_client()`, and the `kotlin_http_client()` of a service with a `body = "stream"` operation, also need `kotlinx-coroutines-core`. |
-//! | `bson` | `T::from_bson_with` and `T::from_bson_piped` on a type whose `enable` list holds `"decode_with"`. | `bson`, under that name, in every crate with such a type. |
+//! | `bson` | `T::from_bson_with` and `T::from_bson_piped`, methods of `DecodeWith`, on a type whose `enable` list holds `"decode_with"`. | `bson`, under that name, in every crate with such a type. |
 //! | `mongodb` | The `ObjectId` mapping, and `MONGO_FIELDS`, filters, updates and operations on a type whose `enable` list holds `"mongodb"`. | `mongodb`, and `bson` at the major version the driver is built for: `mongodb = "3.9"` with `bson = "2.15"`. |
 //! | `chrono` | `NaiveDate`, `NaiveTime`, `NaiveDateTime` and `DateTime<Tz>` fields, and `#[model_schema_prop(as_number)]`. | `chrono` with its `serde` feature. |
 //! | `indexmap` | `IndexMap` read as a map and `IndexSet` as a list. | `indexmap` with its `serde` feature. |
@@ -957,7 +958,8 @@ use service_schema::exec_service_schema;
 /// - `enable = ["decode_with", "mongodb", "arky"]`: code this type opts into. Each entry is written
 ///   once, and the list is never empty. An entry whose feature is off adds nothing.
 ///   - `"decode_with"`: the recovering decode, `T::from_value_with` and `T::from_value_piped`, and
-///     under `bson` also `T::from_bson_with` and `T::from_bson_piped`. The crate writes
+///     under `bson` also `T::from_bson_with` and `T::from_bson_piped`, methods of the crate's
+///     `DecodeWith` trait. The crate writes
 ///     [`decode_with_foundation!()`](macro.decode_with_foundation.html) at its root. Refused on an
 ///     alias and on a type that borrows.
 ///   - `"mongodb"`: `T::MONGO_FIELDS` and the `MongoDB` operations, under the `mongodb` feature.
@@ -1490,6 +1492,10 @@ pub fn model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
 /// line stays whatever the crate builds with.
 ///
 /// # What a type that lists `"decode_with"` gains
+///
+/// The type implements `DecodeWith`, the crate's trait of these four reads, which this macro
+/// writes. A caller imports it from any flagged type's module, `use invoice_schema::DecodeWith;`,
+/// and a function generic over several flagged types bounds on it.
 ///
 /// - `T::from_value_with(value: serde_json::Value, decide)`: reads `value` with the type's own read
 ///   and walks it. A clean value is returned at once. Otherwise `decide(&mut value, &issues)` is

@@ -3,6 +3,7 @@
 //! it is below a member with a concrete filling.
 
 use core::fmt::Display;
+use truck_schema::DecodeWith as _;
 
 use bson::{Document, doc};
 use serde::{Deserialize, Serialize};

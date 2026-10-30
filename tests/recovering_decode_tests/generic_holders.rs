@@ -4,6 +4,7 @@
 
 use core::fmt::Display;
 use std::collections::HashMap;
+use truck_schema::DecodeWith as _;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};

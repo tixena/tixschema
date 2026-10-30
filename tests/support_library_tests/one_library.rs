@@ -1,6 +1,7 @@
 //! Three types of one crate, each re-exporting the crate's one library: what a callback and a
 //! resolver work with is one type for the three, and one resolver serves the reads of all three.
 
+use invoice_lookup_schema::DecodeWith as _;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;

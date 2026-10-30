@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tixschema::model_schema;
 
-use super::invoice_schema::{Field, Filter, MongoPath, OperationError, Resolver};
+use super::invoice_schema::{DecodeWith as _, Field, Filter, MongoPath, OperationError, Resolver};
 use super::{
     Customer, Invoice, InvoiceStatus, SEEDED_ID, customer_schema, invoice, invoice_status_schema,
     names_the_unreadable_row, readable, seeded_id, unreadable, whole_number_as_text,

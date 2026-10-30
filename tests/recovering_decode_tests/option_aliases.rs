@@ -5,6 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sounded_schema::DecodeWith as _;
 use tixschema::model_schema;
 
 /// An alias of an `Option`.

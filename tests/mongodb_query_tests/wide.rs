@@ -82,6 +82,7 @@ enum Keyed {
 #[cfg(test)]
 mod tests {
     use core::mem::size_of;
+    use root_schema::DecodeWith as _;
 
     use bson::{Bson, Document, doc};
 

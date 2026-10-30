@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::super::written;
-use ranking_schema::{Expected, Issue, Resolution, Stored as _};
+use ranking_schema::{DecodeWith as _, Expected, Issue, Resolution, Stored as _};
 
 #[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]

@@ -5,6 +5,7 @@
 mod named_as_indexmap;
 mod named_value;
 
+use holder_schema::DecodeWith as _;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tixschema::model_schema;

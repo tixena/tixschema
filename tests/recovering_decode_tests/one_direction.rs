@@ -4,6 +4,7 @@
 //! A build that describes a type refuses such a list, so this module is compiled where nothing
 //! describes one.
 
+use read_renamed_schema::DecodeWith;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;

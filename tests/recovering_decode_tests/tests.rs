@@ -64,6 +64,7 @@ use core::error::Error;
 use core::fmt::Display;
 use core::str::FromStr;
 use core::sync::atomic::{AtomicUsize, Ordering};
+use ledger_schema::DecodeWith as _;
 use std::collections::HashMap;
 
 use serde::de::Error as _;

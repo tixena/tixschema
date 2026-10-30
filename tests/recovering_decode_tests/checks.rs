@@ -2,6 +2,7 @@
 //! checks run on it, and each message is one `Invalid` at the place it names in the raw value.
 
 use alloc::collections::BTreeMap;
+use checked_parcel_schema::DecodeWith as _;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};

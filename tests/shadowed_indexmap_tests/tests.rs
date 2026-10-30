@@ -5,6 +5,7 @@ use crate::kotlin_numbers::without_number_readers;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tixschema::model_schema;
+use walked_schema::DecodeWith as _;
 
 const WRITTEN: &str = r#"{"held":{"key":"k","value":7},"listed":{"only":"x"}}"#;
 

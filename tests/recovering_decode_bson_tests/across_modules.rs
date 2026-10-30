@@ -7,6 +7,7 @@ mod billing;
 mod customers;
 
 use core::fmt::Debug;
+use invoice_schema::DecodeWith as _;
 
 use bson::{Bson, Document, doc};
 use serde_json::{Value, json};

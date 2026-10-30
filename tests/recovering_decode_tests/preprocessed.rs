@@ -5,6 +5,7 @@
 
 use core::cell::Cell;
 use std::sync::Mutex;
+use stored_parcel_schema::DecodeWith as _;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};

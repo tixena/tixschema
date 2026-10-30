@@ -5,6 +5,7 @@
 
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
 use core::marker::PhantomData;
+use pair_schema::DecodeWith as _;
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
 use std::collections::HashMap;
 

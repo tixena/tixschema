@@ -486,7 +486,7 @@ fn row_methods(module: &Ident) -> TokenStream {
             resolvers: &[#module::Resolver<'_, bson::Document, bson::Bson>],
         ) -> ::core::result::Result<Self, #module::OperationError> {
             let id = row.get("_id").map_or_else(|| ::std::string::String::from("without an _id"), ::std::string::ToString::to_string);
-            Self::from_bson_piped(row, resolvers)
+            <Self as #module::DecodeWith>::from_bson_piped(row, resolvers)
                 .map_err(|refused| #module::OperationError::Unreadable { row: id, issues: refused.issues })
         }
 
