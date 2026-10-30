@@ -622,14 +622,15 @@ fn a_member_named_after_a_reserved_word_is_written_between_backticks() {
          throws { try self.init(swiftSchemaUnjudged: decoder); let violations = validate(); if \
          !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: \
          decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }; public \
-         func validate() -> [String] { [] } }; "
+         func validate() -> [String] { [] }; public func swiftSchemaValidateBound() -> [String] \
+         { [] } }; "
     );
     assert_eq!(
         reserved_member_swift::swift_definition(),
         "public enum ReservedMember: String, Codable, Sendable { case `default` = \"Default\"; \
          case `in` = \"In\"; case other = \"Other\"; public init(swiftSchemaUnjudged decoder: \
          Decoder) throws { try self.init(from: decoder) }; public func validate() -> [String] { [] \
-         } }"
+         }; public func swiftSchemaValidateBound() -> [String] { [] } }"
     );
     assert_eq!(
         serde_json::to_value(ReservedMembers {
