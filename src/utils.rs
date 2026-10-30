@@ -3,7 +3,6 @@
 
 use core::cell::RefCell;
 use core::fmt::Write as _;
-#[cfg(feature = "zod")]
 use core::mem;
 use core::ops::Range;
 #[cfg(feature = "serde")]
@@ -374,7 +373,6 @@ struct JsSpelling {
 /// A doc-comment line paired with the span of the `#[doc = "..."]` literal it came from. Each
 /// `///` line lowers to its own doc attribute with a real source span; a block comment's
 /// embedded lines share the span of the one literal that carries all of them.
-#[cfg(feature = "zod")]
 #[derive(Clone)]
 struct DocLine {
     span: proc_macro2::Span,
@@ -2065,7 +2063,6 @@ pub fn to_snake_case(name: &str) -> String {
 }
 
 /// [`DocLine`]s for every doc attribute on `attrs`, one per physical line.
-#[cfg(feature = "zod")]
 fn doc_lines_with_spans(attrs: &[Attribute]) -> Vec<DocLine> {
     let mut lines = Vec::new();
     for attr in attrs {
@@ -2092,7 +2089,6 @@ fn doc_lines_with_spans(attrs: &[Attribute]) -> Vec<DocLine> {
 
 /// The [`DocLine`]s inside each ` ```rust example ` fence, in the order they are written. A fence
 /// never closed holds every line after it.
-#[cfg(feature = "zod")]
 fn example_blocks(lines: &[DocLine]) -> Vec<Vec<DocLine>> {
     let mut blocks: Vec<Vec<DocLine>> = Vec::new();
     let mut current: Option<Vec<DocLine>> = None;
@@ -2116,16 +2112,7 @@ fn example_blocks(lines: &[DocLine]) -> Vec<Vec<DocLine>> {
     blocks
 }
 
-/// Whether `line` (already trimmed) is a bare `use` statement — the one pattern
-/// `transform_example_code` strips regardless of where it sits, so it is dropped line-by-line up
-/// front rather than through the whole-example regex.
-#[cfg(feature = "zod")]
-fn is_use_statement(line: &str) -> bool {
-    regex::Regex::new(r"^use\s+[^;]+;$").unwrap().is_match(line)
-}
-
 /// Recursively respans every token, and every group's own delimiter span, onto `span`.
-#[cfg(feature = "zod")]
 fn respan(tokens: proc_macro2::TokenStream, span: proc_macro2::Span) -> proc_macro2::TokenStream {
     tokens
         .into_iter()
@@ -2150,7 +2137,6 @@ fn respan(tokens: proc_macro2::TokenStream, span: proc_macro2::Span) -> proc_mac
 /// their own, pairing each run's source text with the span of the line it starts on. A single
 /// statement occupies its own run in the common case; a value split across lines (a multi-line
 /// struct literal, say) is the smallest run whose delimiters close.
-#[cfg(feature = "zod")]
 fn raw_statement_groups(lines: &[DocLine]) -> Vec<(String, proc_macro2::Span)> {
     let mut groups = Vec::new();
     let mut buffer = String::new();
@@ -2179,13 +2165,17 @@ fn raw_statement_groups(lines: &[DocLine]) -> Vec<(String, proc_macro2::Span)> {
 /// split across lines, the first line of the run. `transform_example_code`'s `println!`/`let _`
 /// unwrapping only matches a whole example's trailing statement, so it is applied to the last group
 /// alone; every earlier group keeps its own raw tokens, respanned but otherwise untouched.
-#[cfg(feature = "zod")]
 fn respan_example_tokens(lines: &[DocLine]) -> proc_macro2::TokenStream {
+    let mut in_use = false;
     let content: Vec<DocLine> = lines
         .iter()
         .filter(|line| {
             let trimmed = line.text.trim();
-            !trimmed.is_empty() && !is_use_statement(trimmed)
+            if in_use || trimmed.starts_with("use ") {
+                in_use = !trimmed.ends_with(';');
+                return false;
+            }
+            !trimmed.is_empty()
         })
         .cloned()
         .collect();
@@ -2209,7 +2199,6 @@ fn respan_example_tokens(lines: &[DocLine]) -> proc_macro2::TokenStream {
 /// Each example's tokens, respanned line-by-line onto the `///` lines that wrote them.
 /// `str::parse::<TokenStream>()` alone stamps every token with `Span::call_site()`, the whole
 /// `#[model_schema(...)]` invocation, where a typo inside an example would be reported.
-#[cfg(feature = "zod")]
 pub fn extract_examples_tokens(attrs: &[Attribute]) -> Vec<proc_macro2::TokenStream> {
     example_blocks(&doc_lines_with_spans(attrs))
         .iter()
@@ -2218,7 +2207,6 @@ pub fn extract_examples_tokens(attrs: &[Attribute]) -> Vec<proc_macro2::TokenStr
 }
 
 /// Transforms doctest-compatible example code to be suitable for `schema_example()`.
-#[cfg(feature = "zod")]
 fn transform_example_code(code: &str) -> String {
     let mut result = code.to_owned();
 

@@ -1345,13 +1345,19 @@ console.log(printed.join("\n"));
 const EXAMPLES: &str = "{\"plain\":[],\"exampled\":[{\"value\":1},{\"value\":2}],\"brand\":[],\
                         \"exampledBrand\":[\"a\",\"b\"],\"generic\":[],\"exampledGeneric\":[{\"id\":\
                         \"x\"},{\"id\":\"y\"}],\"exampledDefault\":[{\"id\":\"x\"},{\"id\":\"y\"}],\
-                        \"slot\":[],\"alias\":[],\"keys\":[\"examples\"]}";
+                        \"slot\":[],\"alias\":[],\"exampledSlot\":[\"a\",\"b\"],\"exampledAlias\":[\"a\",\"b\"],\
+                        \"writtenAlias\":[7],\"unwrittenAlias\":[],\"genericAlias\":[{\"id\":\"x\"},{\"id\":\"y\"}],\
+                        \"genericAliasDefault\":[{\"id\":\"x\"},{\"id\":\"y\"}],\"keys\":[\"examples\"]}";
 
 /// Loads the compiled bundle and reads the examples each schema's `.meta` holds.
 const EXAMPLES_DRIVER: &str = r#"import { z } from "zod";
 import {
   DeclaredExampled$Schema,
   DeclaredExampledLabel$Schema,
+  DeclaredExampledLabelRefType$Schema,
+  DeclaredExampledLabelSlot$Schema,
+  DeclaredExampledPairAliasType$SchemaDefault,
+  DeclaredExampledPairAliasType$SchemaFactory,
   DeclaredExampledPair$SchemaDefault,
   DeclaredExampledPair$SchemaFactory,
   DeclaredLabel$Schema,
@@ -1359,6 +1365,8 @@ import {
   DeclaredLabelSlot$Schema,
   DeclaredNode$SchemaFactory,
   DeclaredPlain$Schema,
+  DeclaredUnwrittenCountType$Schema,
+  DeclaredWrittenCountType$Schema,
 } from "./lib/index.js";
 
 console.log(
@@ -1372,6 +1380,12 @@ console.log(
     exampledDefault: DeclaredExampledPair$SchemaDefault.meta()?.examples,
     slot: DeclaredLabelSlot$Schema.meta()?.examples,
     alias: DeclaredLabelRefType$Schema.meta()?.examples,
+    exampledSlot: DeclaredExampledLabelSlot$Schema.meta()?.examples,
+    exampledAlias: DeclaredExampledLabelRefType$Schema.meta()?.examples,
+    writtenAlias: DeclaredWrittenCountType$Schema.meta()?.examples,
+    unwrittenAlias: DeclaredUnwrittenCountType$Schema.meta()?.examples,
+    genericAlias: DeclaredExampledPairAliasType$SchemaFactory(z.number()).meta()?.examples,
+    genericAliasDefault: DeclaredExampledPairAliasType$SchemaDefault.meta()?.examples,
     keys: Object.keys(DeclaredExampled$Schema.meta() ?? {}),
   }),
 );
@@ -2105,6 +2119,10 @@ pub struct DeclaredExampledPair<IdType> {
     pub id: IdType,
 }
 
+/// An alias of the generic struct that writes two, which shows them.
+#[model_schema(default_types(IdType = String))]
+pub type DeclaredExampledPairAlias<IdType> = DeclaredExampledPair<IdType>;
+
 /// A brand with a length of its own, and a member that writes a pattern beside it.
 #[model_schema(minLength = 3)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2128,6 +2146,27 @@ pub struct DeclaredLabelSlot(pub DeclaredLabel);
 /// An alias of a brand, which publishes it too.
 #[model_schema()]
 pub type DeclaredLabelRef = DeclaredLabel;
+
+/// A one-slot tuple struct over a brand that writes examples, which shows them.
+#[model_schema()]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeclaredExampledLabelSlot(pub DeclaredExampledLabel);
+
+/// An alias of a brand that writes examples, which shows them.
+#[model_schema()]
+pub type DeclaredExampledLabelRef = DeclaredExampledLabel;
+
+/// An alias that writes a block of its own.
+/// ```rust example
+/// let count: DeclaredWrittenCount = 7;
+/// println!("count: {:?}", count);
+/// ```
+#[model_schema()]
+pub type DeclaredWrittenCount = u32;
+
+/// An alias of a primitive that writes no block.
+#[model_schema()]
+pub type DeclaredUnwrittenCount = u32;
 
 /// One of a cycle of two, declared above the type its list holds.
 #[model_schema(default_types(IdType = String))]
@@ -2552,10 +2591,20 @@ fn bundle() -> String {
         DeclaredExampledLabel::zod_schema(),
         DeclaredExampledPair::<String>::ts_definition(),
         DeclaredExampledPair::<String>::zod_schema(),
+        declared_exampled_pair_alias_schema::Schema::ts_definition(),
+        declared_exampled_pair_alias_schema::Schema::zod_schema(),
         DeclaredLabelSlot::ts_definition(),
         DeclaredLabelSlot::zod_schema(),
         declared_label_ref_schema::Schema::ts_definition(),
         declared_label_ref_schema::Schema::zod_schema(),
+        DeclaredExampledLabelSlot::ts_definition(),
+        DeclaredExampledLabelSlot::zod_schema(),
+        declared_exampled_label_ref_schema::Schema::ts_definition(),
+        declared_exampled_label_ref_schema::Schema::zod_schema(),
+        declared_written_count_schema::Schema::ts_definition(),
+        declared_written_count_schema::Schema::zod_schema(),
+        declared_unwritten_count_schema::Schema::ts_definition(),
+        declared_unwritten_count_schema::Schema::zod_schema(),
     ]
     .into_iter()
     .chain(dated())
@@ -4048,10 +4097,50 @@ fn type_check_a_member_bound_beside_a_brand_reports_under_zod_what_validate_repo
     );
 }
 
+#[cfg(feature = "jsonschema")]
+#[test]
+fn an_alias_and_a_one_slot_struct_over_a_type_that_writes_examples_carry_them_in_json_schema() {
+    let brand_examples = serde_json::json!(["a", "b"]);
+    assert_eq!(
+        declared_exampled_label_ref_schema::Schema::json_schema()["examples"],
+        brand_examples
+    );
+    assert_eq!(
+        DeclaredExampledLabelSlot::json_schema()["examples"],
+        brand_examples
+    );
+    assert_eq!(
+        declared_exampled_label_slot_schema::Schema::json_schema()["examples"],
+        brand_examples
+    );
+    assert_eq!(
+        declared_exampled_pair_alias_schema::Schema::json_schema()["examples"],
+        serde_json::json!([{"id": "x"}, {"id": "y"}])
+    );
+}
+
+#[cfg(feature = "jsonschema")]
+#[test]
+fn an_alias_of_a_type_that_writes_none_carries_no_examples_in_json_schema() {
+    for document in [
+        declared_label_ref_schema::Schema::json_schema(),
+        DeclaredLabelSlot::json_schema(),
+        declared_unwritten_count_schema::Schema::json_schema(),
+    ] {
+        assert!(document.get("examples").is_none(), "{document}");
+    }
+}
+
 #[test]
 fn type_check_every_schema_holds_its_examples_once_loaded() {
     let aliased: DeclaredLabelRef = DeclaredLabel("a".to_owned());
     assert_eq!(aliased.0, "a");
+    let exampled: DeclaredExampledLabelRef = DeclaredExampledLabel("a".to_owned());
+    assert_eq!(exampled.0, "a");
+    let unwritten: DeclaredUnwrittenCount = 3;
+    assert_eq!(unwritten, 3);
+    let generic: DeclaredExampledPairAlias<String> = DeclaredExampledPair { id: "x".to_owned() };
+    assert_eq!(generic.id, "x");
 
     let Some((printed, failed)) = loaded("examples", EXAMPLES_DRIVER) else {
         return;
