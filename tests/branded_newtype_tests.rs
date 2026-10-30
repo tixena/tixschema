@@ -3,6 +3,10 @@
 extern crate alloc;
 
 #[cfg(test)]
+#[path = "branded_newtype_tests/brand_over_brand.rs"]
+mod brand_over_brand;
+
+#[cfg(test)]
 #[path = "branded_newtype_tests/field_bound.rs"]
 mod field_bound;
 

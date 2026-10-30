@@ -18,6 +18,13 @@ use regex_syntax::hir;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use syn::ext::IdentExt as _;
+#[cfg(any(
+    feature = "serde",
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema"
+))]
+use syn::punctuated::Punctuated;
 use syn::{Attribute, Expr, Field, GenericParam, Generics, Lit, LitStr, Meta, Type, Variant};
 
 #[cfg(feature = "serde")]
@@ -754,11 +761,62 @@ pub enum Declared {
     Alias(String),
     /// A struct or an enum serde writes under keys of its own, and how many lifetime parameters it
     /// declares.
-    Model(usize),
+    Model(
+        #[cfg(all(
+            feature = "serde",
+            any(feature = "typescript", feature = "zod", feature = "jsonschema")
+        ))]
+        usize,
+    ),
     /// A struct or an enum serde writes as one value: a struct written as the value of one slot,
     /// a unit struct, an enum no variant of which holds a value and no attribute tags. Holds how
     /// many lifetime parameters it declares.
-    OneValue(usize),
+    OneValue(
+        #[cfg(all(
+            feature = "serde",
+            any(feature = "typescript", feature = "zod", feature = "jsonschema")
+        ))]
+        usize,
+    ),
+}
+
+#[cfg(feature = "serde")]
+impl Declared {
+    /// A model serde writes under keys of its own, declaring `lifetimes` lifetime parameters.
+    #[cfg(all(
+        feature = "serde",
+        any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    ))]
+    pub const fn model(lifetimes: usize) -> Self {
+        Self::Model(lifetimes)
+    }
+
+    /// A model serde writes under keys of its own; only a schema surface reads the lifetimes.
+    #[cfg(not(all(
+        feature = "serde",
+        any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    )))]
+    pub const fn model(_lifetimes: usize) -> Self {
+        Self::Model()
+    }
+
+    /// A type serde writes as one value, declaring `lifetimes` lifetime parameters.
+    #[cfg(all(
+        feature = "serde",
+        any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    ))]
+    pub const fn one_value(lifetimes: usize) -> Self {
+        Self::OneValue(lifetimes)
+    }
+
+    /// A type serde writes as one value; only a schema surface reads the lifetimes.
+    #[cfg(not(all(
+        feature = "serde",
+        any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    )))]
+    pub const fn one_value(_lifetimes: usize) -> Self {
+        Self::OneValue()
+    }
 }
 
 #[cfg(feature = "serde")]
@@ -2545,6 +2603,104 @@ pub fn ts_quoted(text: &str) -> String {
 /// runs on. The one writer of a text the TypeScript surfaces place in a comment, a doc and a name.
 pub fn ts_commented(text: &str) -> String {
     text.replace("*/", "*\\/")
+}
+
+/// `predicate` with the bounds `generics` do not ask yet of the parameter it bounds, or `None`
+/// where they ask every one. A bound asked twice of one parameter is one clippy reports in the
+/// consumer's crate.
+#[cfg(any(
+    feature = "serde",
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema"
+))]
+pub fn asking_more(
+    generics: &syn::Generics,
+    predicate: &syn::WherePredicate,
+) -> Option<syn::WherePredicate> {
+    let syn::WherePredicate::Type(of_type) = predicate else {
+        return Some(predicate.clone());
+    };
+    let syn::Type::Path(named) = &of_type.bounded_ty else {
+        return Some(predicate.clone());
+    };
+    let Some(parameter) = named.path.get_ident() else {
+        return Some(predicate.clone());
+    };
+    let asked = asked_of(generics, parameter);
+    let more: Punctuated<syn::TypeParamBound, syn::Token![+]> = of_type
+        .bounds
+        .iter()
+        .filter(|bound| !asks_one_of(bound, &asked))
+        .cloned()
+        .collect();
+    if more.is_empty() {
+        return None;
+    }
+    let mut asking = of_type.clone();
+    asking.bounds = more;
+    Some(syn::WherePredicate::Type(asking))
+}
+
+/// The trait a bound asks, by its own name and arguments, whatever path it is written with.
+#[cfg(any(
+    feature = "serde",
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema"
+))]
+pub fn asked_trait(bound: &syn::TypeParamBound) -> Option<String> {
+    let syn::TypeParamBound::Trait(of_trait) = bound else {
+        return None;
+    };
+    of_trait
+        .path
+        .segments
+        .last()
+        .map(|named| quote::ToTokens::to_token_stream(named).to_string())
+}
+
+/// The traits `generics` ask of the parameter `named`, on its name and in its `where` predicates.
+#[cfg(any(
+    feature = "serde",
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema"
+))]
+pub fn asked_of(generics: &syn::Generics, named: &proc_macro2::Ident) -> Vec<String> {
+    let on_its_name = generics
+        .type_params()
+        .filter(|parameter| parameter.ident == *named)
+        .flat_map(|parameter| &parameter.bounds);
+    let in_where = generics
+        .where_clause
+        .iter()
+        .flat_map(|clause| &clause.predicates)
+        .filter_map(|predicate| {
+            if let syn::WherePredicate::Type(bounding) = predicate
+                && matches!(&bounding.bounded_ty, syn::Type::Path(path) if path.path.is_ident(named))
+            {
+                Some(&bounding.bounds)
+            } else {
+                None
+            }
+        })
+        .flatten();
+    on_its_name
+        .chain(in_where)
+        .filter_map(asked_trait)
+        .collect()
+}
+
+/// Whether `bound` asks a trait `asked` lists.
+#[cfg(any(
+    feature = "serde",
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema"
+))]
+pub fn asks_one_of(bound: &syn::TypeParamBound, asked: &[String]) -> bool {
+    asked_trait(bound).is_some_and(|of_trait| asked.contains(&of_trait))
 }
 
 #[cfg(test)]

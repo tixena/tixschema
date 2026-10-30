@@ -7438,21 +7438,72 @@ fn a_map_a_tuple_and_a_slot_that_hold_no_declared_type_add_nothing_to_validate()
     );
 }
 
-/// A set is described as a declared type is, so a field written as one was walked to whatever it
-/// holds before a map and a tuple were read, and still is.
+/// A set, a deque and a heap are walked only where they hold a declared type, as a `Vec` is.
 #[cfg(feature = "serde")]
 #[test]
-fn a_field_written_as_a_set_is_walked_as_it_was() {
+fn a_field_written_as_a_set_of_values_no_declared_type_describes_adds_no_token() {
+    for held in ["String", "u32", "T"] {
+        for list in ["HashSet", "BTreeSet", "VecDeque", "BinaryHeap", "IndexSet"] {
+            let written: syn::Type = syn::parse_str(&format!("{list}<{held}>")).unwrap();
+            let mut named: syn::ItemStruct = syn::parse_quote! {
+                struct Terminal<T> {
+                    dock_names: #written,
+                }
+            };
+            assert_eq!(walked_bodies(&mut named), "", "named, for {list}<{held}>");
+
+            let mut flattened: syn::ItemStruct = syn::parse_quote! {
+                struct Terminal<T> {
+                    #[serde(flatten)]
+                    dock_names: #written,
+                }
+            };
+            assert_eq!(
+                walked_bodies(&mut flattened),
+                "",
+                "flattened, for {list}<{held}>"
+            );
+
+            let mut slots: syn::ItemStruct = syn::parse_quote! {
+                struct Docket<T>(#written);
+            };
+            let generics = slots.generics.clone();
+            let walked = super::collect_tuple_slots(
+                &mut slots.fields,
+                None,
+                "docket_schema",
+                "Docket",
+                &generics,
+                false,
+                false,
+            );
+            assert_eq!(
+                walked
+                    .validate_bodies
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<String>(),
+                "",
+                "slot, for {list}<{held}>"
+            );
+        }
+    }
+}
+
+/// A set of declared types keeps its walk, each item named by its index.
+#[cfg(feature = "serde")]
+#[test]
+fn a_field_written_as_a_set_of_declared_types_is_walked_item_by_item() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
         struct Terminal {
-            dock_names: HashSet<String>,
+            parcels: BTreeSet<Parcel>,
         }
     };
     let body = walked_bodies(&mut item);
     for written in [
         "for (index_1 , value_1) in value_0 . into_iter () . enumerate ()",
         "value_1 . validate ()",
-        r#"nested_under (& format ! ("dockNames.{index_1}") , violation)"#,
+        r#"nested_under (& format ! ("parcels.{index_1}") , violation)"#,
     ] {
         assert!(body.contains(written), "{written} is not in {body}");
     }
@@ -8319,6 +8370,113 @@ fn a_bound_of_the_wrong_kind_is_named_without_the_keys_beside_it() {
         "got: {}",
         on_a_string[0]
     );
+}
+
+/// The refusals of a bound outside the range of the field's integer type, apart from the ones
+/// another target earns the same field.
+fn bound_range_refusals(item: &syn::ItemStruct) -> Vec<String> {
+    field_prop_guard_messages(item)
+        .into_iter()
+        .filter(|text| text.contains("is outside what"))
+        .collect()
+}
+
+#[test]
+fn a_bound_outside_the_range_of_the_integer_type_is_refused_naming_the_field_and_the_range() {
+    for (field_type, key, written, shown, range) in [
+        ("u32", "minimum", "-1", "-1", "0 to 4294967295"),
+        ("u8", "maximum", "300", "300", "0 to 255"),
+        ("u8", "minimum", "-1", "-1", "0 to 255"),
+        ("u16", "maximum", "65536", "65536", "0 to 65535"),
+        ("i8", "minimum", "-200", "-200", "-128 to 127"),
+        ("i8", "maximum", "128", "128", "-128 to 127"),
+        ("i16", "minimum", "-32769", "-32769", "-32768 to 32767"),
+        (
+            "i32",
+            "maximum",
+            "2147483648",
+            "2147483648",
+            "-2147483648 to 2147483647",
+        ),
+        ("u64", "minimum", "-1", "-1", "0 to 18446744073709551615"),
+        (
+            "usize",
+            "maximum",
+            "1e30",
+            "1000000000000000019884624838656",
+            "0 to 18446744073709551615",
+        ),
+        (
+            "isize",
+            "minimum",
+            "-1e30",
+            "-1000000000000000019884624838656",
+            "-9223372036854775808 to 9223372036854775807",
+        ),
+        ("Option<i8>", "minimum", "-200", "-200", "-128 to 127"),
+        ("Box<u8>", "maximum", "256", "256", "0 to 255"),
+    ] {
+        let numeric = field_type
+            .trim_start_matches("Option<")
+            .trim_start_matches("Box<")
+            .trim_end_matches('>');
+        let item: syn::ItemStruct = syn::parse_str(&format!(
+            "struct Counted {{ #[model_schema_prop({key} = {written})] count: {field_type} }}"
+        ))
+        .unwrap();
+        let refusals = bound_range_refusals(&item);
+        assert_eq!(
+            refusals,
+            vec![format!(
+                "model_schema: field `count`: `{key} = {shown}` is outside what `{numeric}` \
+                 holds ({range}). Write a bound inside that range, or take it off."
+            )],
+            "for {key} = {written} on {field_type}"
+        );
+    }
+}
+
+#[test]
+fn a_bound_the_integer_type_holds_is_not_refused() {
+    for (field_type, constraint) in [
+        ("u32", "minimum = 0"),
+        ("u8", "minimum = 0, maximum = 255"),
+        ("i8", "minimum = -128, maximum = 127"),
+        ("u64", "maximum = 9007199254740992"),
+        ("i64", "minimum = -9223372036854775808"),
+        ("u32", "minimum = -0.5"),
+        ("u8", "maximum = 300.5"),
+        ("f64", "minimum = -1.5"),
+        ("f32", "maximum = 1e30"),
+    ] {
+        let item: syn::ItemStruct = syn::parse_str(&format!(
+            "struct Counted {{ #[model_schema_prop({constraint})] count: {field_type} }}"
+        ))
+        .unwrap();
+        assert_eq!(
+            bound_range_refusals(&item),
+            Vec::<String>::new(),
+            "for {constraint} on {field_type}"
+        );
+    }
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_bound_outside_the_range_is_refused_on_a_variant_field_and_on_a_slot() {
+    for source in [
+        "#[derive(serde::Serialize, serde::Deserialize)] pub enum Counted { Named { #[model_schema_prop(minimum = -1)] count: u32 } }",
+        "#[derive(serde::Serialize, serde::Deserialize)] pub enum Counted { Slot(#[model_schema_prop(minimum = -1)] u32, String) }",
+        "#[derive(serde::Serialize, serde::Deserialize)] pub struct Counted(#[model_schema_prop(minimum = -1)] pub u32, pub String);",
+    ] {
+        let refusals = refusal_texts(&expansion_over(source));
+        assert_eq!(refusals.len(), 1, "for {source}, got: {refusals:?}");
+        assert!(
+            refusals[0].contains("`minimum = -1` is outside what `u32` holds (0 to 4294967295)"),
+            "for {source}, got: {}",
+            refusals[0]
+        );
+    }
 }
 
 #[test]
@@ -12133,6 +12291,40 @@ fn the_reach_of_an_enums_check_is_the_constraint_walks() {
     }
 }
 
+/// A model declared above under a name the standard library also uses is a named type to the
+/// walks, and a name nothing declared stays the standard type.
+#[cfg(feature = "serde")]
+#[test]
+fn a_model_named_like_a_text_type_is_a_named_type_to_the_walks() {
+    for name in ["Path", "PathBuf", "String", "str"] {
+        let spelling: syn::Type = syn::parse_str(name).unwrap();
+        assert!(
+            super::written_as_text(&spelling),
+            "before {name} is declared"
+        );
+        let expanded = expansion_over(&format!(
+            "#[derive(serde::Serialize, serde::Deserialize)] pub struct {name} {{ pub count: i32 }}"
+        ));
+        assert_eq!(compile_error_count(&expanded), 0, "for {name}");
+        assert!(
+            !super::written_as_text(&spelling),
+            "after {name} is declared"
+        );
+        let optional: syn::Type = syn::parse_str(&format!("Option<{name}>")).unwrap();
+        assert!(
+            !super::written_as_text(&optional),
+            "under Option, for {name}"
+        );
+        assert!(
+            constrained_shape(&spelling)
+                .is_some_and(|shape| matches!(shape.leaf, ConstraintLeaf::Named(_))),
+            "for {name}"
+        );
+    }
+    let standard: syn::Type = syn::parse_str("std::path::PathBuf").unwrap();
+    assert!(!super::written_as_text(&standard));
+}
+
 /// What `member_prop_meta` holds a member written as `source` to under the enum's `enum_check`.
 fn held_member(enum_check: &str, source: &str) -> ModelSchemaPropMeta {
     let args = super::parse_model_schema_args(syn::parse_str(enum_check).unwrap());
@@ -12597,12 +12789,12 @@ fn an_item_is_recorded_as_one_value_where_serde_writes_it_as_one() {
         let name = super::item_schema_ident(&item).unwrap().to_string();
         let _expanded = expansion_under("", source);
         assert_eq!(
-            matches!(declared(&name), Some(Declared::OneValue(_))),
+            matches!(declared(&name), Some(Declared::OneValue(..))),
             one_value,
             "for {source}"
         );
         assert_eq!(
-            matches!(declared(&name), Some(Declared::Model(_))),
+            matches!(declared(&name), Some(Declared::Model(..))),
             !one_value,
             "for {source}"
         );
@@ -16034,6 +16226,44 @@ fn generic_display_impl_bounds_every_type_parameter() {
     assert_eq!(
         tokens.to_string(),
         "impl < IdType > :: std :: fmt :: Display for DocumentId < IdType > where IdType : :: std :: fmt :: Display { fn fmt (& self , f : & mut :: std :: fmt :: Formatter < '_ >) -> :: std :: fmt :: Result { :: std :: fmt :: Display :: fmt (& self . 0 , f) } }"
+    );
+}
+
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn display_impl_states_the_display_bound_of_a_parameter_once() {
+    let header_of = |source: &str| {
+        let item: syn::ItemStruct = syn::parse_str(source).unwrap();
+        let field = item.fields.iter().next().unwrap();
+        let tokens = super::build_branded_display_impl(
+            &item.generics,
+            &item.ident,
+            field,
+            &super::brand_member(0, field),
+        );
+        let written: syn::ItemImpl = syn::parse2(tokens).unwrap();
+        let (impl_generics, _, where_clause) = written.generics.split_for_impl();
+        format!(
+            "{} {}",
+            quote::quote!(#impl_generics),
+            quote::quote!(#where_clause)
+        )
+    };
+    assert_eq!(
+        header_of("pub struct Tag<CodeType: Display>(pub CodeType);"),
+        "< CodeType : Display > "
+    );
+    assert_eq!(
+        header_of("pub struct Tag<CodeType>(pub CodeType) where CodeType: Display;"),
+        "< CodeType > where CodeType : Display"
+    );
+    assert_eq!(
+        header_of("pub struct Tag<CodeType>(pub CodeType);"),
+        "< CodeType > where CodeType : :: std :: fmt :: Display"
+    );
+    assert_eq!(
+        header_of("pub struct Tag<CodeType>(pub CodeType) where CodeType: Default + PartialEq;"),
+        "< CodeType > where CodeType : Default + PartialEq , CodeType : :: std :: fmt :: Display"
     );
 }
 
