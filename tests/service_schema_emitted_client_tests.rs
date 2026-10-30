@@ -1460,3 +1460,23 @@ mod run_swift_all_flattened;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin_all_flattened.rs"]
 mod run_kotlin_all_flattened;
+
+#[cfg(test)]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+#[path = "service_schema_emitted_client_tests/member_named_rows.rs"]
+mod member_named_rows;
+
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_member_named.rs"]
+mod run_dart_member_named;
+
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "service_schema_emitted_client_tests/run_swift_member_named.rs"]
+mod run_swift_member_named;
+
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_member_named.rs"]
+mod run_kotlin_member_named;

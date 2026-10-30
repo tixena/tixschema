@@ -408,8 +408,11 @@ resort; this is what a change has to keep.
   (`corrected_option`), `range`, `result`, `tuple` and `array`, the value a range, a `Result`, a
   tuple and a fixed array are read from (`range_decode`, `result_decode`, `tuple_decode`,
   `dart_decode_at`), and the converter of a type parameter (`from_json_argument`), in the
-  signature of both reads and where a value behind the parameter is read. A member of the type
-  still hides a function of its name, as it hides a check's, and the documents say so.
+  signature of both reads and where a value behind the parameter is read. A function of the
+  same name as a member of the type, a check or a `preprocess`, is called through a private
+  top-level forwarder declared ahead of the item (`called`, `DART_MEMBERS`, `DART_FORWARDERS`,
+  written by `dart_module_tokens`): `final _parcelCheckLabel = label;`. `record_members` holds
+  the names a member may be written as, and a function that names none is called by its own name.
 - **The payload a type's function takes is typed as its read types it**: a
   `Map<String, dynamic>` for a class and an enum under a tag key, a `String` for a plain enum,
   `dynamic` for a wrapper and any other enum. A payload of another kind is refused ahead of the
