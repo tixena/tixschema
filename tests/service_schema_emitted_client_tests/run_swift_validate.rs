@@ -12,16 +12,17 @@ use serde::Serialize;
 
 use super::runtime::judged;
 use super::swift_validate_models::{
-    Archive, Base, Berth, Cargo, Carried, Casket, ClosedDock, Code, Consignment, Crate, Depot,
-    Docket, Docking, Freight, Gauge, Grade, Haul, Inspection, LaterCode, LaterTitle, Ledger, Lift,
-    Manifest, Nameplate, Package, Parcel, Poster, Quay, Sealed, SealedCode, Slogans, SomeSlogans,
-    Strongbox, Tally, Title, Waybill, Yard, archive_swift, base_swift, berth_swift, cargo_swift,
-    carried_swift, casket_swift, closed_dock_swift, code_swift, consignment_swift, crate_swift,
-    depot_swift, docket_swift, docking_swift, freight_swift, gauge_swift, grade_swift, haul_swift,
-    inspection_swift, later_code_swift, later_title_swift, ledger_swift, lift_swift,
-    manifest_swift, mottos_swift, nameplate_swift, package_swift, parcel_swift, poster_swift,
-    quay_swift, sealed_code_swift, sealed_swift, slogans_swift, some_slogans_swift,
-    strongbox_swift, tally_swift, title_swift, waybill_swift, yard_swift,
+    Archive, Base, Berth, Candle, Cargo, Carried, Casket, ClosedDock, Code, Consignment, Crate,
+    Depot, Docket, Docking, Freight, Gauge, Grade, Haul, Inspection, LaterCode, LaterTitle, Ledger,
+    Lift, Manifest, Nameplate, Package, Parcel, Poster, Quay, Sconce, Sealed, SealedCode, Slogans,
+    SomeSlogans, Strongbox, Tally, Title, Waybill, Wick, Yard, archive_swift, base_swift,
+    berth_swift, candle_swift, cargo_swift, carried_swift, casket_swift, closed_dock_swift,
+    code_swift, consignment_swift, crate_swift, depot_swift, docket_swift, docking_swift,
+    freight_swift, gauge_swift, grade_swift, haul_swift, inspection_swift, later_code_swift,
+    later_title_swift, ledger_swift, lift_swift, manifest_swift, mottos_swift, nameplate_swift,
+    package_swift, parcel_swift, poster_swift, quay_swift, sconce_swift, sealed_code_swift,
+    sealed_swift, slogans_swift, some_slogans_swift, strongbox_swift, tally_swift, title_swift,
+    waybill_swift, wick_swift, yard_swift,
 };
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -176,6 +177,9 @@ pub fn definitions() -> Vec<String> {
         nameplate_swift::swift_definition(),
         code_swift::swift_definition(),
         sealed_code_swift::swift_definition(),
+        wick_swift::swift_definition(),
+        candle_swift::swift_definition(),
+        sconce_swift::swift_definition(),
         title_swift::swift_definition(),
         package_swift::swift_definition(),
         base_swift::swift_definition(),
@@ -408,6 +412,32 @@ Gauge, held: passes
 ",
         "each of the five keys, on a string, a list and a number, and under an `Option`, and a \
          pattern's `$` at the end of the text alone"
+    );
+    let Some(swift) = printed(&driver_of(&cases)) else {
+        return;
+    };
+    assert_eq!(swift, expected);
+}
+
+/// A brand over a brand is measured on the text of the string it holds, as Rust measures it.
+#[test]
+fn a_brand_over_a_brand_is_measured_on_its_text() {
+    let sconce = |text: &str| Sconce {
+        candle: Candle(Wick(text.to_owned())),
+    };
+    let (short, long) = (sconce("a"), sconce("abc"));
+    let cases = [
+        case("Sconce, short", "Sconce", &short, short.validate()),
+        case("Sconce, long", "Sconce", &long, long.validate()),
+    ];
+    let expected = rust_report(&cases);
+    assert_eq!(
+        expected,
+        "\
+Sconce, short: refused
+    'candle': too short: minimum length is 3, got 1
+Sconce, long: passes
+"
     );
     let Some(swift) = printed(&driver_of(&cases)) else {
         return;
