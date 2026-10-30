@@ -68,9 +68,9 @@ async function main() {
     fakeSocket((text) => probes.push(text)),
     { heartbeat: { intervalMs: 1, timeoutMs: 1000 } },
   );
-  await until(() => probes.length > 0);
+  const probeArrived = await until(() => probes.length > 0);
   probing.close();
-  console.log(JSON.stringify({ sent, ping: probes[0] }));
+  console.log(JSON.stringify({ sent, probeArrived, ping: probes[0] }));
   process.exit(0);
 }
 main().catch((error) => { console.error(error); process.exit(1); });
@@ -245,6 +245,10 @@ fn typescript_client_frames() -> Option<(Vec<String>, String)> {
 /// What [`WRITES_FRAMES_DRIVER`] printed, read back: the frames it sent, and the probe.
 #[cfg(slow_tests)]
 fn frames_of(written: &Value) -> (Vec<String>, String) {
+    assert_eq!(
+        written["probeArrived"], true,
+        "the heartbeat probe was written in time. got: {written}"
+    );
     let sent = written["sent"]
         .as_array()
         .unwrap()

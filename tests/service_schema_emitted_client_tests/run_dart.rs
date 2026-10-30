@@ -6,6 +6,7 @@
 
 #![cfg(feature = "dart")]
 
+use super::run_dart_validate::analyzed;
 use super::runtime::ran;
 use super::tests::swift_codec_fixture::{
     CodecUnitField, CodecUnitPayload, codec_reserved, codec_reserved_dart,
@@ -103,7 +104,7 @@ void main() async {
   print(jsonEncode(<String, dynamic>{
     'sent': recorder.sent,
     'ok': ok,
-    'items': ok ? (outcome as ConversationClientServiceWindowResultOk).value.items : null,
+    'items': ok ? outcome.value.items : null,
   }));
 }
 ";
@@ -223,7 +224,7 @@ void main() async {
   final recorder = _EchoRecorder();
   final client = EchoClientServiceHttpClient(recorder);
   final refused = await client.echoRange('doc-1', 'bytes=0-10\\nX-Injected: yes');
-  final fault = refused is EchoClientServiceEchoRangeResultFault ? (refused as EchoClientServiceEchoRangeResultFault).fault.kind.wireValue : null;
+  final fault = refused is EchoClientServiceEchoRangeResultFault ? refused.fault.kind.wireValue : null;
   print(jsonEncode(<String, dynamic>{'sendCalled': recorder.sendCalled, 'faultKind': fault}));
 }
 ";
@@ -801,5 +802,23 @@ fn a_streamed_reply_reads_its_content_type_back() {
             "partial": {"contentRange": "bytes 4-8/43", "contentType": STREAMED_CONTENT_TYPE},
         }),
         "both answers carry the content type the response named"
+    );
+}
+
+/// The analyzer passes the generated classes and the HTTP client beside each driver.
+#[test]
+fn the_dart_http_client_and_its_classes_have_no_issue() {
+    analyzed("http-client-analyze", &module());
+    analyzed("http-reserved-analyze", &reserved_module());
+    analyzed("http-unit-field-analyze", &unit_field_module());
+    analyzed("http-thumbnail-analyze", &thumbnail_module());
+    analyzed("http-stamp-analyze", &stamp_module());
+    analyzed("http-echo-analyze", &echo_module());
+    analyzed("http-shelf-analyze", &shelf_module());
+    analyzed("http-media-analyze", &media_module());
+    analyzed("http-content-analyze", &content_module(CONTENT_DRIVER));
+    analyzed(
+        "http-content-type-analyze",
+        &content_module(CONTENT_TYPE_DRIVER),
     );
 }

@@ -147,10 +147,9 @@ fun main() = runBlocking {
     val transportC = StampClientServiceWsTransport(socketC, StampClientServiceWsOptions(heartbeat = null))
     val faults = java.util.Collections.synchronizedList(mutableListOf<StampClientServiceFaultFields>())
     attachStampClientServiceWsDispatcher(transportC.frames, Handlers, onFault = { faults.add(it) })
-    delay(50)
     val requestFrameCount = FRAMES.count { Json.parseToJsonElement(it).jsonObject["id"] != null }
     for (frame in FRAMES) socketC.deliver(frame)
-    until { socketC.sent.size >= requestFrameCount && Handlers.marked.isNotEmpty() }
+    val everyReplyArrived = until { socketC.sent.size >= requestFrameCount && Handlers.marked.isNotEmpty() }
     val written = socketC.sent.toList()
 
     val report = buildJsonObject {
@@ -160,6 +159,7 @@ fun main() = runBlocking {
         put("written", JsonArray(written.map { JsonPrimitive(it) }))
         put("marked", JsonArray(Handlers.marked.map { JsonPrimitive(it) }))
         put("faultsCount", faults.size)
+        put("everyReplyArrived", everyReplyArrived)
     }
     println(report.toString())
 }
@@ -335,6 +335,11 @@ fn assert_reads(report: &Value) {
 /// The mini server answers every request frame the Rust client wrote the way the Rust dispatcher
 /// answers the same frame, and reads the one-way call's own header off it too.
 fn assert_mini_server(rust_frames: &[String], report: &Value) {
+    assert_eq!(
+        report["everyReplyArrived"], true,
+        "the mini server wrote a reply to every request frame and read the one-way call in time. \
+         got: {report}"
+    );
     let backend = StampBackEnd::default();
     let written_replies: Vec<Value> = report["written"]
         .as_array()

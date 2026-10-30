@@ -10,7 +10,7 @@ use core::fmt::Write as _;
 use super::dates_models::{
     SAME_AS_SERDE, landing_dart, nudge_dart, positions_dart, serde_back, stamped_dart,
 };
-use super::run_dart_validate::{dart, module};
+use super::run_dart_validate::{analyzed, dart, module};
 
 /// What prints a row: the value read and written back, or `refused`.
 const TOLD: &str = "
@@ -94,6 +94,7 @@ fn a_date_is_read_and_written_back_by_dart_in_the_text_chrono_writes() {
         );
     }
     let source = module(&[landing_dart::dart_definition()], &[TOLD], &main);
+    analyzed("dates-analyze", &source);
     let Some((ran, printed)) = dart("dates", &[], &source) else {
         return;
     };
@@ -126,6 +127,7 @@ fn a_date_in_every_position_is_read_and_written_back_by_dart_as_serde_writes_it(
         &[TOLD],
         &main,
     );
+    analyzed("dates-positions-analyze", &source);
     let Some((ran, printed)) = dart("dates-positions", &[], &source) else {
         return;
     };

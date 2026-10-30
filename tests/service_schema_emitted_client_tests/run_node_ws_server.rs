@@ -49,8 +49,7 @@ const impl = {
   async purgeConversation() {},
   async window(ctx, req) {
     if (req.conversationId === "slow-4") {
-      await until(() => ctx.signal.aborted, 2000);
-      lastHandlerSawAborted = ctx.signal.aborted;
+      lastHandlerSawAborted = await until(() => ctx.signal.aborted, 2000);
       handlerReturned();
       return { ok: true, value: { items: ["slow"] } };
     }
@@ -88,10 +87,10 @@ async function main() {
   const connectionsWhileOpen = server.connections().length;
   rawSocket.close();
   await onceEvent(rawSocket, "close");
-  await until(() => server.connections().length === 0);
+  const connectionsEmptiedAfterClose = await until(() => server.connections().length === 0);
   const connectionsAfterClose = server.connections().length;
   wss.close();
-  console.log(JSON.stringify({ window: windowResult, connectionsWhileOpen, connectionsAfterClose }));
+  console.log(JSON.stringify({ window: windowResult, connectionsWhileOpen, connectionsEmptiedAfterClose, connectionsAfterClose }));
   process.exit(0);
 }
 main().catch((error) => { console.error(error); process.exit(1); });
@@ -197,7 +196,7 @@ async function main() {
   await sleep(100);
   client.close();
   await onceEvent(client, "close");
-  await until(() => capturedConnection.signal.aborted);
+  const connectionAbortedInTime = await until(() => capturedConnection.signal.aborted);
   const connectionAborted = capturedConnection.signal.aborted;
   const sendCallsAtAbort = sendCalls;
   await handlerDone;
@@ -205,6 +204,7 @@ async function main() {
   const sendCallsAfterHandler = sendCalls;
   wss.close();
   console.log(JSON.stringify({
+    connectionAbortedInTime,
     connectionAborted,
     handlerSawAborted: lastHandlerSawAborted,
     sendCallsAfterAbort: sendCallsAfterHandler - sendCallsAtAbort,
@@ -228,16 +228,18 @@ async function main() {
   const a = new WebSocket(`ws://127.0.0.1:${port}`);
   const b = new WebSocket(`ws://127.0.0.1:${port}`);
   await Promise.all([onceEvent(a, "open"), onceEvent(b, "open")]);
-  await until(() => server.connections().length === 2);
+  const bothConnectionsCounted = await until(() => server.connections().length === 2);
   const connectionsBefore = server.connections().length;
   const aClosed = onceEvent(a, "close");
   const bClosed = onceEvent(b, "close");
   server.closeAll();
   await Promise.all([aClosed, bClosed]);
-  await until(() => server.connections().length === 0);
+  const connectionsEmptiedAfterCloseAll = await until(() => server.connections().length === 0);
   const connectionsAfter = server.connections().length;
   wss.close();
-  console.log(JSON.stringify({ connectionsBefore, connectionsAfter }));
+  console.log(JSON.stringify({
+    bothConnectionsCounted, connectionsBefore, connectionsEmptiedAfterCloseAll, connectionsAfter,
+  }));
   process.exit(0);
 }
 main().catch((error) => { console.error(error); process.exit(1); });
@@ -261,7 +263,7 @@ async function main() {
 
   const client = new WebSocket(`ws://127.0.0.1:${port}`);
   await onceEvent(client, "open");
-  await until(() => server.connections().length === 1);
+  const connectionCounted = await until(() => server.connections().length === 1);
 
   let threw = false;
   const clientClosed = onceEvent(client, "close");
@@ -271,10 +273,12 @@ async function main() {
     threw = true;
   }
   await clientClosed;
-  await until(() => server.connections().length === 0);
+  const connectionsEmptiedAfterError = await until(() => server.connections().length === 0);
   const connectionsAfter = server.connections().length;
   wss.close();
-  console.log(JSON.stringify({ threw, onSocketErrorCalls, connectionsAfter }));
+  console.log(JSON.stringify({
+    connectionCounted, threw, onSocketErrorCalls, connectionsEmptiedAfterError, connectionsAfter,
+  }));
   process.exit(0);
 }
 main().catch((error) => { console.error(error); process.exit(1); });
@@ -409,7 +413,7 @@ async function main() {
     kind: "request", id: "3", service: "UnknownService", operation: "noop", payload: {},
   }));
 
-  await until(() => received.length >= 3);
+  const threeFramesReceived = await until(() => received.length >= 3);
   await sleep(50);
   const frames = received.map((raw) => JSON.parse(raw));
   const pongCount = frames.filter((frame) => frame.kind === "pong").length;
@@ -418,7 +422,7 @@ async function main() {
   const clientClosed = onceEvent(client, "close");
   connection.close();
   await clientClosed;
-  await until(() => server.connections().length === 0);
+  const connectionsEmptiedAfterClose = await until(() => server.connections().length === 0);
   const connectionsAfterClose = server.connections().length;
 
   let shareAfterCloseThrew = false;
@@ -432,7 +436,8 @@ async function main() {
 
   wss.close();
   console.log(JSON.stringify({
-    frames, pongCount, thirdServiceAnswers, connectionsAfterClose, sharedDetached,
+    threeFramesReceived, frames, pongCount, thirdServiceAnswers, connectionsEmptiedAfterClose,
+    connectionsAfterClose, sharedDetached,
     shareAfterCloseThrew, shareAfterCloseMessage,
   }));
   process.exit(0);
@@ -581,6 +586,10 @@ fn the_emitted_client_is_served_and_the_connection_is_counted() {
         "got: {result:#?}"
     );
     assert_eq!(result["connectionsWhileOpen"], 1_i32, "got: {result:#?}");
+    assert_eq!(
+        result["connectionsEmptiedAfterClose"], true,
+        "got: {result:#?}"
+    );
     assert_eq!(result["connectionsAfterClose"], 0_i32, "got: {result:#?}");
 }
 
@@ -625,6 +634,7 @@ fn an_in_flight_call_observes_cancellation_and_writes_nothing_after_close() {
     let Some(result) = run_scenario("ws-server-cancel", SCENARIO_4_DRIVER) else {
         return;
     };
+    assert_eq!(result["connectionAbortedInTime"], true, "got: {result:#?}");
     assert_eq!(result["connectionAborted"], true, "got: {result:#?}");
     assert_eq!(result["handlerSawAborted"], true, "got: {result:#?}");
     assert_eq!(result["sendCallsAfterAbort"], 0_i32, "got: {result:#?}");
@@ -636,7 +646,12 @@ fn close_all_empties_the_connection_set() {
     let Some(result) = run_scenario("ws-server-closeall", SCENARIO_5_DRIVER) else {
         return;
     };
+    assert_eq!(result["bothConnectionsCounted"], true, "got: {result:#?}");
     assert_eq!(result["connectionsBefore"], 2_i32, "got: {result:#?}");
+    assert_eq!(
+        result["connectionsEmptiedAfterCloseAll"], true,
+        "got: {result:#?}"
+    );
     assert_eq!(result["connectionsAfter"], 0_i32, "got: {result:#?}");
 }
 
@@ -646,7 +661,12 @@ fn a_socket_error_is_reported_and_closes_the_connection() {
     let Some(result) = run_scenario("ws-server-error", SCENARIO_6_DRIVER) else {
         return;
     };
+    assert_eq!(result["connectionCounted"], true, "got: {result:#?}");
     assert_eq!(result["threw"], false, "got: {result:#?}");
+    assert_eq!(
+        result["connectionsEmptiedAfterError"], true,
+        "got: {result:#?}"
+    );
     assert_eq!(result["onSocketErrorCalls"], 1_i32, "got: {result:#?}");
     assert_eq!(result["connectionsAfter"], 0_i32, "got: {result:#?}");
 }
@@ -688,6 +708,11 @@ fn two_services_share_one_socket_through_the_connection() {
     let Some(result) = run_share_scenario() else {
         return;
     };
+    assert_eq!(result["threeFramesReceived"], true, "got: {result:#?}");
+    assert_eq!(
+        result["connectionsEmptiedAfterClose"], true,
+        "got: {result:#?}"
+    );
     let frames = result["frames"].as_array().unwrap();
     let inventory_reply = frames
         .iter()

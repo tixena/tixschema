@@ -8,7 +8,7 @@ use core::fmt::Write as _;
 use super::nullable_member_models::{
     ROWS, agrees, berth_dart, expected, hawser_dart, keel_dart, slipway_dart,
 };
-use super::run_dart_validate::{dart, module};
+use super::run_dart_validate::{analyzed, dart, module};
 
 /// What prints a row: the value read, written back, or that the read threw.
 const ROW: &str = "
@@ -42,6 +42,7 @@ fn an_absent_key_of_a_nullable_member_is_read_in_dart_as_serde_reads_it() {
         &[ROW],
         &format!("void main() {{\n{rows}}}\n"),
     );
+    analyzed("nullable-members-analyze", &source);
     let Some((ran, printed)) = dart("nullable-members", &[], &source) else {
         return;
     };

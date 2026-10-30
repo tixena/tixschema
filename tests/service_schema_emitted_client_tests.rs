@@ -643,6 +643,12 @@ mod run_swift_number_keys;
 #[path = "service_schema_emitted_client_tests/run_dart_text_keys.rs"]
 mod run_dart_text_keys;
 
+/// A map alias, a tuple alias and a tagged enum of newtype variants over structs, passed by the
+/// Dart analyzer and written back as serde writes them.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_no_needless_casts.rs"]
+mod run_dart_no_needless_casts;
+
 /// The models of the date runs of the emitted Dart, Kotlin and Swift types.
 #[cfg(all(test, feature = "chrono"))]
 #[path = "service_schema_emitted_client_tests/dates_models.rs"]
@@ -1275,6 +1281,18 @@ mod below_brand_models;
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 #[path = "service_schema_emitted_client_tests/run_below_brands.rs"]
 mod run_below_brands;
+
+/// Untagged enums over an alias of a string declared above and below them.
+#[cfg(test)]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+#[path = "service_schema_emitted_client_tests/alias_order_models.rs"]
+mod alias_order_models;
+
+/// That enum, read by each emitted client as serde reads it.
+#[cfg(test)]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+#[path = "service_schema_emitted_client_tests/run_alias_order.rs"]
+mod run_alias_order;
 
 /// Tuple variants with a slot serde neither writes nor reads.
 #[cfg(test)]
