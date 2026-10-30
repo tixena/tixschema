@@ -643,6 +643,12 @@ mod run_swift_number_keys;
 #[path = "service_schema_emitted_client_tests/run_dart_text_keys.rs"]
 mod run_dart_text_keys;
 
+/// A map alias, a tuple alias and a tagged enum of newtype variants over structs, passed by the
+/// Dart analyzer and written back as serde writes them.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_no_needless_casts.rs"]
+mod run_dart_no_needless_casts;
+
 /// The models of the date runs of the emitted Dart, Kotlin and Swift types.
 #[cfg(all(test, feature = "chrono"))]
 #[path = "service_schema_emitted_client_tests/dates_models.rs"]

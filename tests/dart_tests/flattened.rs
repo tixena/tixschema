@@ -204,8 +204,8 @@ fn a_flattened_externally_tagged_enum_is_read_from_its_variants_entry() {
     );
     assert_written(
         &battening_dart::dart_definition(),
-        "Map<String, dynamic> toJson() => { ...((hatching).toJson() as Map<String, dynamic>),'note': \
-         note, };",
+        "Map<String, dynamic> toJson() => { ...((Object? held) => held as Map<String, \
+         dynamic>)((hatching).toJson()),'note': note, };",
     );
 }
 

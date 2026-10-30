@@ -7,6 +7,7 @@
 
 #![cfg(feature = "dart")]
 
+use super::run_dart_validate::analyzed;
 use super::runtime::ran;
 use super::tests::{
     ConversationClientServiceSchema, ShelfClientServiceSchema, conversation_id_dart, shelf_dart,
@@ -343,13 +344,9 @@ fn a_request_still_waiting_when_the_transport_closes_answers_the_fault_member() 
 #[cfg(slow_tests)]
 #[test]
 fn a_burst_of_request_frames_is_answered_whole() {
-    let Some(wrote) = ran(
-        "dart",
-        RUNTIME_VAR,
-        "dart",
-        "burst_ws.dart",
-        &module(BURST_DRIVER),
-    ) else {
+    let source = module(BURST_DRIVER);
+    analyzed("ws-burst-analyze", &source);
+    let Some(wrote) = ran("dart", RUNTIME_VAR, "dart", "burst_ws.dart", &source) else {
         return;
     };
     let written: serde_json::Value = serde_json::from_str(wrote.trim()).unwrap();
@@ -405,4 +402,11 @@ fn a_primitive_message_and_primitive_list_and_enum_answers_cross_the_client_and_
             "faults": [],
         })
     );
+}
+
+/// The analyzer passes the client and the attachment beside each driver.
+#[test]
+fn the_dart_ws_client_and_attachment_have_no_issue() {
+    analyzed("ws-client-analyze", &module(DRIVER));
+    analyzed("ws-shelf-analyze", &shelf_module());
 }

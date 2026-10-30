@@ -7,6 +7,7 @@
 
 use core::fmt::Write as _;
 
+use super::run_dart_validate::analyzed;
 use super::run_dart_wire_forms::{dart_at_utc, dart_value};
 use super::text_position_rows::{
     Call, Position, TextPlacingClientServiceSchema, calls, held_to_the_table, spelled,
@@ -92,6 +93,7 @@ fn each_value_is_written_as_text_by_the_dart_client_in_the_form_the_dispatcher_r
         main,
     ]
     .join("\n\n");
+    analyzed("text-positions-analyze", &source);
     let Some((ran, printed)) = dart_at_utc("text-positions", &source) else {
         return;
     };

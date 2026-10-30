@@ -26,7 +26,7 @@ use super::dart_flattened_models::{
 };
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use super::dart_flattened_models::{LIMBER, Limber, limber_dart, scantling_dart};
-use super::run_dart_validate::{dart, module};
+use super::run_dart_validate::{analyzed, dart, module};
 use super::shared_key_models::{
     SHARED_KEYS, bitts_dart, bowline_dart, clinching_dart, earring_dart, gantline_dart,
     garnet_dart, gudgeon_dart, halliard_dart, parrel_dart, rubrail_dart, snotter_dart,
@@ -273,6 +273,7 @@ fn printed(named: &str, definitions: &[String], main: &str) -> Option<String> {
         &[AS_GIVEN, WITH_ITS_KEYS],
         &with_payloads(main),
     );
+    analyzed(&format!("{named}-analyze"), &source);
     let (ran, printed) = dart(named, &[], &source)?;
     assert!(ran, "{printed}");
     Some(printed)
@@ -683,6 +684,7 @@ fn an_optional_map_of_models_reads_in_dart_no_value_where_a_model_does_not_read(
         &[],
         &OPTIONAL_MAP_OF_MODELS.replace("LIMBER", &listed(&LIMBER)),
     );
+    analyzed("flattened-optional-map-of-models-analyze", &source);
     let Some((ran, printed)) = dart("flattened-optional-map-of-models", &[], &source) else {
         return;
     };
@@ -732,6 +734,7 @@ fn a_flattened_struct_reads_in_dart_a_key_taken_around_it_as_zod_reads_it() {
         &[],
         &main,
     );
+    analyzed("shared-keys-analyze", &source);
     let Some((ran, printed)) = dart("shared-keys", &[], &source) else {
         return;
     };
