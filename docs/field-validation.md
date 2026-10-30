@@ -484,16 +484,19 @@ the path an issue of the Zod schema holds, and the one the recovering decode lis
   (`HeldEnd::Positions`). `held_walk` writes the walk and `nested_leaf` the call. A walk that
   ends on no declared type is `None` and adds no token: a primitive, one of the item's own
   parameters and a set of either are none.
-- A slot of a tuple struct and of a tagged variant is walked as a named member is
-  (`slot_nested_validate_body`), read and reported through `member_place`, under the steps serde
-  writes on the way to it.
-- A named member, a flattened one and an untagged variant's slot fall back on
-  `reachable_nested_shape` (`member_held_shape`), the walk they had before a map and a tuple were
-  read. A set, a deque and a heap are described as a declared type is, so a field written
-  `HashSet<String>` is walked to its strings, and its type publishes a `validate()` that reports
-  nothing. `named_read_hook` is hung by `reachable_nested_shape` alone: on no map and no tuple,
-  on no member read through a reference (`named_below`, as `ends_on_a_borrow` says for a
-  member's own bound), and on no member the type's unjudged read reaches (`member_read_hook`).
+- A named member, a flattened one, an untagged variant's slot, a slot of a tuple struct and a
+  slot of a tagged variant are walked as one (`nested_validate_body`, over `member_held_shape`),
+  read and reported through `member_place`, under the steps serde writes on the way to it. A set,
+  a deque and a heap are read by what they hold (`held_shape`), as a `Vec` is: a set of a declared
+  type is walked item by item and named by each index, and a set of strings, of numbers or of one
+  of the item's own parameters is walked to nothing. A type whose only such member is that set
+  holds no rule and publishes no `validate()`, so a direct call of the method stops building with
+  rustc's own E0599 and a `validate` of the consumer's own builds. A holder's `value.validate()`
+  builds as before, through the fallback. `named_read_hook` is hung by `reachable_nested_shape`
+  alone: on a declared type held under `Option`, a list and the transparent wrappers, on no set of
+  values no declared type describes, no map and no tuple, on no member read through a reference
+  (`named_below`, as `ends_on_a_borrow` says for a member's own bound), and on no member the
+  type's unjudged read reaches (`member_read_hook`).
 - A map's key is the text serde writes for it. `written_key_items` declares `MapKey` in the walk's
   block: its `Display` hands the key's own `Serialize` the `Formatter`, serde's serializer for
   which (in serde from 1.0.108) writes a string, a number, a `bool`, a `char`, a unit variant's

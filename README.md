@@ -4240,7 +4240,7 @@ assert_eq!(
 assert!(Action::Upload { note: "abc".to_string() }.validate().is_ok());
 ```
 
-Parity with structs runs both ways: an enum no member of which carries a constraint publishes no `validate()`, exactly as a constraint-free struct publishes none.
+Parity with structs runs both ways: an enum no member of which carries a constraint publishes no `validate()`, exactly as a constraint-free struct publishes none. A set, a deque and a heap are walked only where they hold a declared type, so a struct whose only member is a `HashSet<String>` holds no rule and publishes none either: a direct call of its `validate()` stops building, and a `validate` of your own on it builds.
 
 #### A type that declares a parameter
 
