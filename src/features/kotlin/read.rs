@@ -290,13 +290,15 @@ fn in_a_position(field: &FieldDef) -> bool {
 /// what `validate()` answers of the value read, joined by `; `. Called, it answers the unjudged
 /// one, which a holder that cannot name it reads by. `composed` says the unjudged one is written
 /// by the emitter, which binds each type parameter to `Any`. The serializer of each parameter in
-/// `keyed` is kept and handed to `validate()`, which names a map's key by it.
+/// `keyed` is kept and handed to `validate()`, which names a map's key by it; where `variants`
+/// lists the subclasses that take them, only those are handed, as a sealed interface declares no
+/// overload.
 pub fn judged(
     export_name: &str,
     generic_params: &str,
     type_parameters: &[String],
     composed: bool,
-    keyed: &[String],
+    (keyed, variants): (&[String], &[String]),
 ) -> String {
     let own = format!("{export_name}{generic_params}");
     let (opens, property, unjudged) = if type_parameters.is_empty() {
@@ -325,12 +327,22 @@ pub fn judged(
         .map(|parameter| kotlin_serializer_param_name(parameter))
         .collect::<Vec<_>>()
         .join(", ");
+    let validated = if variants.is_empty() {
+        format!("read.validate({handing})")
+    } else {
+        let arms = variants
+            .iter()
+            .map(|variant| format!("is {variant} -> read.validate({handing})"))
+            .collect::<Vec<_>>()
+            .join("; ");
+        format!("when (read) {{ {arms}; else -> read.validate() }}")
+    };
     format!(
         "{opens} : KSerializer<{own}>, () -> KSerializer<{own}> {{ {property}override fun \
          invoke(): KSerializer<{own}> = {unjudged}; override val descriptor: SerialDescriptor = \
          {unjudged}.descriptor; override fun serialize(encoder: Encoder, value: {own}) = \
          {unjudged}.serialize(encoder, value); override fun deserialize(decoder: Decoder): {own} \
-         {{ val read = {unjudged}.deserialize(decoder); val violations = read.validate({handing}); if \
+         {{ val read = {unjudged}.deserialize(decoder); val violations = {validated}; if \
          (violations.isNotEmpty()) throw SerializationException(violations.joinToString(\"; \")); \
          return read }} }}"
     )

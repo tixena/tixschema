@@ -60,8 +60,17 @@ section is the consumer's view; this is what a change has to keep.
   text it writes. The plain `validate()` of a value built by hand passes none and finds the
   serializer of the key's class (`serializerOrNull(key::class.java)`); a class that declares a
   parameter of its own has none to find from the key alone, and its key is written as Kotlin
-  prints it. A type held inside another is judged through the holder's `validate()` and keeps that
-  lookup, as does a variant of an enum.
+  prints it. A variant of an enum is overloaded the same way: the enum's judged serializer keeps the
+  serializer of each parameter a map in any variant is keyed by (`variants_keyed`), each variant
+  that keys a map declares the overload itself, and the judged serializer hands the serializers to
+  those variants through a `when (read)`; the sealed interface declares no overload, as it is `out`
+  and `KSerializer` is invariant. A type held inside another is handed the serializers it asks for by its holder's `validate()`
+  (`Rules::serializers_for`, from the positions `note_hands` noted for the held type): the
+  holder's own serializer where the argument is one of the holder's parameters, the reified
+  `serializer<Tag<String>>()` where the argument is concrete, and `null`, which keeps the class
+  lookup, where the holder holds none (a value built by hand) or the argument composes one of its
+  parameters. A holder with a concrete argument has no value built by hand to keep the lookup: its
+  `validate()` always hands the reified serializer, so it names the key as Rust does.
 - **One wrapper is written per tuple shape per item.** `tuple_wrapper` queues a wrapper
   class the first time the item asks for a shape, and answers its name to every later ask of that
   shape (`KOTLIN_TUPLES`, cleared with the queue in `kotlin_module_tokens`). A shape is the

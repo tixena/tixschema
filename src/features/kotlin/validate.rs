@@ -13,8 +13,8 @@ use core::mem;
 use std::collections::HashMap;
 
 use super::{
-    kotlin_name, kotlin_quoted, kotlin_serializer_param_name, kotlin_template_text,
-    kotlin_typename, read, result_class,
+    kotlin_name, kotlin_quoted, kotlin_serializer_expr, kotlin_serializer_param_name,
+    kotlin_template_text, kotlin_typename, read, result_class,
 };
 use crate::bound_message::{Bound, kotlin_repeated, kotlin_violation};
 use crate::features::model_schema_prop::{FunctionName, LiteralValue, ModelSchemaPropMeta};
@@ -136,6 +136,9 @@ pub struct Rules<'item> {
     bounds: Vec<String>,
     /// Whether the members are those of a variant of an untagged enum, which its bounds choose.
     chooses: bool,
+    /// The serializers the overload takes where the base it overrides fixes them: every parameter
+    /// a map of any variant is keyed by.
+    declared: Vec<String>,
     /// Whether `validate()` takes the serializer of each key parameter, as a type read by a judged
     /// serializer does.
     handing: bool,
@@ -152,6 +155,9 @@ pub struct Rules<'item> {
 thread_local! {
     /// What each Rust ident this module wrote a type for publishes to a type written after it.
     static NOTED: RefCell<HashMap<String, Noted>> = RefCell::new(HashMap::new());
+    /// The position of each type parameter whose serializer the `validate()` overload of a type
+    /// takes, in the order it takes them.
+    static HANDS: RefCell<HashMap<String, Vec<usize>>> = RefCell::new(HashMap::new());
 }
 
 impl Helper {
@@ -313,6 +319,7 @@ impl<'item> Rules<'item> {
         Self {
             bounds: Vec::new(),
             chooses: true,
+            declared: Vec::new(),
             handing: false,
             helpers: BTreeSet::new(),
             keys: BTreeSet::new(),
@@ -391,6 +398,19 @@ impl<'item> Rules<'item> {
         )]
     }
 
+    /// `self` handing `validate()` the serializer of each parameter a map is keyed by, which the
+    /// overload takes as `declared` lists them.
+    pub fn handed(mut self, declared: &[String]) -> Self {
+        self.handing = true;
+        self.declared = declared.to_vec();
+        self
+    }
+
+    /// The type parameters whose serializers the overload of `validate()` takes.
+    pub fn handed_keys(&self) -> Vec<String> {
+        self.keys.iter().cloned().collect()
+    }
+
     /// [`Self::of`] for a type a judged serializer reads, which hands `validate()` the serializer
     /// of each parameter a map is keyed by.
     pub const fn handing(serializable: &'item [String]) -> Self {
@@ -442,7 +462,12 @@ impl<'item> Rules<'item> {
             }
             self.method_asked(name, asked)
                 .map_or_else(Vec::new, |method| {
-                    vec![self.collected(&format!("{read}.{method}()"), place)]
+                    let handed = if matches!(asked, Asked::Report) {
+                        self.serializers_for(name, arguments)
+                    } else {
+                        String::new()
+                    };
+                    vec![self.collected(&format!("{read}.{method}({handed})"), place)]
                 })
         } else if let FieldDefType::Map(key, value) = &def.field_type {
             let (entry, held) = (bound_name("key", depth), bound_name("held", depth));
@@ -511,7 +536,7 @@ impl<'item> Rules<'item> {
             generic_params,
             type_parameters,
             composed,
-            &keys,
+            (&keys, &[]),
         )
     }
 
@@ -523,7 +548,7 @@ impl<'item> Rules<'item> {
             if declared {
                 self.helpers.insert(Helper::Key);
             }
-            let handed = if self.handing {
+            let handed = if self.handing && declared {
                 self.keys.insert(parameter.clone());
                 kotlin_serializer_param_name(parameter)
             } else {
@@ -690,6 +715,7 @@ impl<'item> Rules<'item> {
         Self {
             bounds: Vec::new(),
             chooses: false,
+            declared: Vec::new(),
             handing: false,
             helpers: BTreeSet::new(),
             keys: BTreeSet::new(),
@@ -734,6 +760,35 @@ impl<'item> Rules<'item> {
         statements
     }
 
+    /// The serializers a held value of the type `name` filled with `arguments` is handed: for each
+    /// parameter it keys a map by, the serializer of its argument, which this type holds for a
+    /// parameter of its own and builds for a concrete type, and `null` for any other.
+    fn serializers_for(&mut self, name: &str, arguments: &[FieldDef]) -> String {
+        hands_of(name)
+            .iter()
+            .map(|position| {
+                let Some(argument) = arguments.get(*position) else {
+                    return "null".to_owned();
+                };
+                if let FieldDefType::TypeParam(parameter) = &argument.field_type {
+                    if self.handing && argument.array_depth == 0 {
+                        self.keys.insert(parameter.clone());
+                        return kotlin_serializer_param_name(parameter);
+                    }
+                    return "null".to_owned();
+                }
+                let mut reached = Vec::new();
+                argument.reach_type_parameters(&mut reached);
+                if reached.is_empty() && argument.array_depth == 0 {
+                    kotlin_serializer_expr(argument, &[])
+                } else {
+                    "null".to_owned()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
     /// The member a brand answers its text with, where it holds a string, or a declared type
     /// that answers its own: `None` for a brand over anything else.
     pub fn text_member(&mut self, held: &FieldDef) -> Option<String> {
@@ -767,10 +822,8 @@ impl<'item> Rules<'item> {
     pub fn written(&mut self, modifier: &str) -> String {
         let statements = mem::take(&mut self.statements);
         self.keys.retain(|key| {
-            let handed = format!(", {})", kotlin_serializer_param_name(key));
-            statements
-                .iter()
-                .any(|statement| statement.contains(&handed))
+            let name = kotlin_serializer_param_name(key);
+            statements.iter().any(|statement| hands(statement, &name))
         });
         let validate = if statements.is_empty() {
             format!("{modifier}fun validate(): List<String> = emptyList()")
@@ -781,17 +834,21 @@ impl<'item> Rules<'item> {
                 statements.join("; ")
             )
         } else {
-            let nulls = vec!["null"; self.keys.len()].join(", ");
-            let taken = self
-                .keys
+            let taken_by: Vec<&String> = if self.declared.is_empty() {
+                self.keys.iter().collect()
+            } else {
+                self.declared.iter().collect()
+            };
+            let nulls = vec!["null"; taken_by.len()].join(", ");
+            let taken = taken_by
                 .iter()
                 .map(|key| format!("{}: KSerializer<{key}>?", kotlin_serializer_param_name(key)))
                 .collect::<Vec<_>>()
                 .join(", ");
             format!(
-                "{modifier}fun validate(): List<String> = validate({nulls}); fun validate({taken}): \
-                 List<String> {{ val {VIOLATIONS} = mutableListOf<String>(); {}; return \
-                 {VIOLATIONS} }}",
+                "{modifier}fun validate(): List<String> = validate({nulls}); \
+                 fun validate({taken}): List<String> {{ val {VIOLATIONS} = \
+                 mutableListOf<String>(); {}; return {VIOLATIONS} }}",
                 statements.join("; ")
             )
         };
@@ -1056,6 +1113,38 @@ pub fn note_plain_enum(rust_ident: &str, unjudged: bool) {
             validates: true,
         },
     );
+}
+
+/// Notes the type parameters of `type_parameters` named in `keys` as those the `validate()`
+/// overload of the type written under `rust_ident` takes the serializers of.
+pub fn note_hands(rust_ident: &str, type_parameters: &[String], keys: &[String]) {
+    let positions: Vec<usize> = keys
+        .iter()
+        .filter_map(|key| type_parameters.iter().position(|named| named == key))
+        .collect();
+    HANDS.with(|noted| {
+        let mut held = noted.borrow_mut();
+        if positions.is_empty() {
+            held.remove(rust_ident);
+        } else {
+            held.insert(rust_ident.to_owned(), positions);
+        }
+    });
+}
+
+/// The positions of the type parameters whose serializers the type written under `rust_ident`
+/// takes, where it takes any.
+fn hands_of(rust_ident: &str) -> Vec<usize> {
+    HANDS.with(|seen| seen.borrow().get(rust_ident).cloned().unwrap_or_default())
+}
+
+/// Whether `statement` passes the serializer named `name` as an argument.
+fn hands(statement: &str, name: &str) -> bool {
+    statement.match_indices(name).any(|(at, _)| {
+        let before = statement[..at].chars().next_back();
+        let after = statement[at + name.len()..].chars().next();
+        matches!(before, Some('(' | ' ')) && matches!(after, Some(')' | ','))
+    })
 }
 
 fn note(rust_ident: &str, noted: Noted) {
