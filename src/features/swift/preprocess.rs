@@ -13,7 +13,7 @@ use core::iter;
 use std::collections::{HashMap, HashSet};
 
 use super::read::{Locals, Source, counted, unjudged};
-use super::{Shaped, lookup_swift_name, swift_member, swift_upper_camel};
+use super::{Shaped, lookup_swift_name, swift_upper_camel};
 use crate::bound_message::swift_literal_text;
 use crate::features::model_schema_prop::FunctionName;
 use crate::field_type::{FieldDef, FieldDefType};
@@ -594,7 +594,7 @@ pub(super) fn functions(def: &FieldDef) -> &[FunctionName] {
 /// written, under the name the attribute writes.
 pub(super) fn called(functions: &[FunctionName], payload: &str) -> String {
     functions.iter().fold(payload.to_owned(), |held, function| {
-        format!("{}({held})", swift_member(&function.name))
+        format!("{}({held})", super::forwarded::preprocess(function))
     })
 }
 

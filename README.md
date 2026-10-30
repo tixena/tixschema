@@ -4000,7 +4000,7 @@ error[E0277]: model_schema: field `latest`: `minLength` cannot apply to `Version
 14 |     pub latest: Version,
    |                 ^^^^^^^ this type holds no string for the bound to measure
    |
-   = note: a length or a pattern is measured on a `String`, on a path, or on a `#[serde(transparent)]` brand over one of them that `#[model_schema]` was written on: declare the field as one of those, or drop the bound
+   = note: a length or a pattern is measured on a `String`, on a path, or on a `#[serde(transparent)]` brand over one of them that `#[model_schema]` was written on, a brand over a brand needing the inner brand declared above it: declare the field as one of those, or drop the bound
 ```
 
 Two more placements are refused as the field is expanded: a length or a pattern on a type written with arguments (`UserId<String>`), which writes whatever its arguments make it, and `minimum` or `maximum` on a field typed with any type declared elsewhere, a range being spelled against a number this crate writes itself.
@@ -4177,6 +4177,8 @@ error: model_schema: field `tags`: `pattern` cannot apply to a `Vec<String>` fie
 
 The refusal names the keys of the wrong kind and no other: `minimum` written beside a refused `minLength` on a number is not named, and neither is a `minLength` written beside a refused `pattern` on a list.
 
+A `minimum` or `maximum` that is a whole number outside the range of the field's integer type is refused too, naming the field, the bound and the range: `#[model_schema_prop(minimum = -1)] pub count: u32` answers ``error: model_schema: field `count`: `minimum = -1` is outside what `u32` holds (0 to 4294967295). Write a bound inside that range, or take it off.`` It holds under `Option` and `Box`, on a variant's field and on a slot of a tuple.
+
 ### The `validate()` Method
 
 When any field carries a constraint, or the type or one of its fields names a [check](#checks-check), the macro generates a `validate(&self) -> Result<(), Vec<String>>` method. It is what checks a field's constraints. A serde read of the type calls it on the value it read and [refuses what it refuses](#a-read-refuses-what-validate-refuses), and you call it on an instance built or changed in Rust.
@@ -4238,7 +4240,7 @@ assert_eq!(
 assert!(Action::Upload { note: "abc".to_string() }.validate().is_ok());
 ```
 
-Parity with structs runs both ways: an enum no member of which carries a constraint publishes no `validate()`, exactly as a constraint-free struct publishes none.
+Parity with structs runs both ways: an enum no member of which carries a constraint publishes no `validate()`, exactly as a constraint-free struct publishes none. A set, a deque and a heap are walked only where they hold a declared type, so a struct whose only member is a `HashSet<String>` holds no rule and publishes none either: a direct call of its `validate()` stops building, and a `validate` of your own on it builds.
 
 #### A type that declares a parameter
 
@@ -4760,7 +4762,7 @@ Where each row is stated in full:
 | Swift | [`preprocess` in the Swift client](#preprocess-in-the-swift-client) | [`validate()` in the Swift client](#validate-in-the-swift-client) | [A Swift read refuses what `validate()` refuses](#a-swift-read-refuses-what-validate-refuses) |
 | Kotlin | [`preprocess` in the Kotlin client](#preprocess-in-the-kotlin-client) | [`validate()` in the Kotlin client](#validate-in-the-kotlin-client) | [The read in the Kotlin client](#the-read-in-the-kotlin-client) |
 
-**Each client has limits of its own**, and the section of the client states them: a bounded brand declared below an `#[serde(untagged)]` enum and a type declared below the type that reads it from its own decoder in Swift, and a model declared below its holder and a member that reaches a type parameter in Kotlin.
+**Each client has limits of its own**, and the section of the client states them: a type declared below the type that reads it from its own decoder in Swift, and a model declared below its holder and a member that reaches a type parameter in Kotlin.
 
 #### The six shared cases
 
@@ -5201,7 +5203,7 @@ List<String> withinParcel(Parcel value) => [
 
 - **A field's check takes the field's own value** and names no place: `validate()` writes each message under the field's key. Under an `Option` it is called where a value is held.
 - **A type's check takes the whole value** and leads each message with the place of what it refuses, in single quotes, as [the Rust function does](#the-messages). The check of an enum takes the enum, and each variant hands itself over. The check of a brand takes the wrapper.
-- **A member of the type hides a function of its name** inside the class: a check named `label` on a type with a field `label` does not compile. Name the check after the rule.
+- **A check may share a name with a member of its type.** A check named `label` on a type with a field `label` is called through a private forwarder declared ahead of the class (`final _parcelCheckLabel = label;`), which names your function where the class would read the member. A check that shares a name with no member is called by that name.
 
 With those two functions, the `validate()` of six values, each read with `fromJsonUnjudged` from the payload serde writes for it, answers what the Rust `validate()` answers of the same values:
 
@@ -5480,7 +5482,7 @@ private fun String.kotlinSchemaText(): String = this
 
 A member is found ahead of an extension, so a brand answers with its own text and an alias of a string with the string. The brand and the alias may be declared above the holder or below it. A field typed with a type that holds no string does not compile in Kotlin, at the holder: `error: candidate 'fun String.kotlinSchemaText(): String' is inapplicable because of a receiver type mismatch.` A brand over a brand answers through the brand it holds where that brand is declared above it.
 
-Rust writes no text for a brand over a brand, and refuses a string bound on a field typed with one. Kotlin measures it.
+A string bound on a field typed with a brand over a brand measures the text of the string at the bottom, in Rust and in Kotlin alike, where the inner brand is declared above the outer one; with the inner brand declared below it, the field is refused.
 
 #### A brand
 
@@ -5844,7 +5846,7 @@ error: cannot find 'withinParcel' in scope
 **What you declare.**
 
 - **A field named `validate`** is declared `validate_`, the method having the name, and keeps its key: `case validate_ = "validate"`.
-- **A type tixschema has not written** is one a holder cannot tell from a model declared below it, so it calls its `validate()` and reads it through its `init(swiftSchemaUnjudged:)`: a type of your own that a generated type holds declares `func validate() -> [String] { [] }` and `init(swiftSchemaUnjudged decoder: Decoder) throws { try self.init(from: decoder) }`. An alias of a type that has none (`type LaterTitle = String;`) is declared above the type that holds it. Declared below, the Swift compiler answers `value of type 'LaterTitle' (aka 'String') has no member 'validate'`.
+- **A type tixschema has not written** is one a holder cannot tell from a model declared below it, so it calls its `validate()` and reads it through its `init(swiftSchemaUnjudged:)`: a type of your own that a generated type holds declares `func validate() -> [String] { [] }`, `func swiftSchemaValidateBound() -> [String] { [] }` and `init(swiftSchemaUnjudged decoder: Decoder) throws { try self.init(from: decoder) }`. An alias of a type that has none (`type LaterTitle = String;`) is declared above the type that holds it. Declared below, the Swift compiler answers `value of type 'LaterTitle' (aka 'String') has no member 'validate'`.
 - **An alias of a string that a field bounds** is declared above that field's type. Declared below, it is a name the emitter reads as a brand, and the Swift compiler answers `value of type 'LaterTitle' (aka 'String') has no member 'swiftSchemaBoundLength'`, or `'swiftSchemaBoundText'` for a pattern. The same error answers a length or a pattern on a field typed with a struct or an enum, which holds no string to measure.
 
 #### A Swift read refuses what `validate()` refuses
@@ -5926,7 +5928,7 @@ if container.contains(.spareParcel), try !container.decodeNil(forKey: .spareParc
 | as the value a brand wraps | by itself, as it is read |
 
 - **An absent key and a `null` are read as they were.** A key a struct requires is still `keyNotFound` where it is absent, which is what the first statement above is for: `superDecoder(forKey:)` answers a decoder over `null` for an absent key. An optional member is still `nil` for an absent key and for a `null`. A key under `#[serde(default)]` is read as its default where it is absent ([A Key Read as Its Default](#a-key-read-as-its-default-serdedefault)).
-- **An `#[serde(untagged)]` enum takes the variant serde takes.** Its `init(swiftSchemaUnjudged:)` takes the first variant whose payload reads and whose own bounds hold: a bound written on a member, and the `pattern`, `minLength` and `maxLength` of a [brand](#branded-newtypes) the member holds, which the brand's wrapper answers for alone with `swiftSchemaValidateBound()`. A check and a model the variant holds choose nothing: the variant is taken, and `init(from:)` then refuses the value. A brand declared below the enum is not known to carry a bound where the enum is written, and chooses nothing either: declare it above the enum. A variant over an `Option` reads `null` as holding `nil`, as serde reads it as holding `None`, and writes it back as `null`: with `#[serde(untagged)] enum Fathom { Count(Option<u32>), Flag(bool) }`, `null` is read as `.count(nil)`. Where two variants read `null`, the first takes it, as serde's read does. A variant over an alias of an `Option` reads it the same way.
+- **An `#[serde(untagged)]` enum takes the variant serde takes.** Its `init(swiftSchemaUnjudged:)` takes the first variant whose payload reads and whose own bounds hold: a bound written on a member, and the `pattern`, `minLength` and `maxLength` of a [brand](#branded-newtypes) the member holds, which the brand's wrapper answers for alone with `swiftSchemaValidateBound()`. A check and a model the variant holds choose nothing: the variant is taken, and `init(from:)` then refuses the value. The enum asks every named type it holds, whatever order they are declared in, and every generated type answers: a type with no bound of its own answers `[]`. A variant over an `Option` reads `null` as holding `nil`, as serde reads it as holding `None`, and writes it back as `null`: with `#[serde(untagged)] enum Fathom { Count(Option<u32>), Flag(bool) }`, `null` is read as `.count(nil)`. Where two variants read `null`, the first takes it, as serde's read does. A variant over an alias of an `Option` reads it the same way.
 - **An externally tagged enum is read from an object of one key, or a unit variant from its name**, as serde reads it. With `enum Hatching { Bay { label: String }, Calm, Dock { label: String } }`, `{"Bay":{"label":"n"}}` reads `Bay` and `"Calm"` reads `Calm`. An object of several keys, `{"Bay":{"label":"n"},"Dock":{"label":"s"}}` or `{"Bay":{"label":"n"},"north":2}`, is refused with `DecodingError.dataCorrupted` and `more than one key for Hatching`, and `{}` with `empty object for Hatching`, as serde and the generated Zod schema refuse each.
 - **A fixed array `[T; N]` and a tuple are read from an array of their length alone**, as serde and the generated Zod schema read each. With `struct Clenching { pair: [u8; 2] }`, `{"pair":[1,2,3]}` is refused with `DecodingError.dataCorrupted` and `invalid length 3, expected 2`, and `{"pair":[1]}` with `invalid length 1, expected 2`, at the coding path of the array, `pair`, by `init(from:)` and by `init(swiftSchemaUnjudged:)`. A `[[u8; 2]; 3]` refuses an inner array of another length in the same words, at the path of that array, and the outer one at its own. A level written as `[T; N]` is read item by item wherever it is held: in a field, an optional, a map's value, a tuple's slot, a variant's payload, a tuple struct of one slot, a brand, a member a [`preprocess`](#preprocess-in-the-swift-client) corrects, an alias declared above its holder and a type argument. A fixed array that fills a type parameter is held in a wrapper, `{Holder}{Field}Argument{N}Fixed`, whose `value` is the array, as the type it fills reads it through `Decodable`. An alias declared below its holder, or in another crate, and one that declares a parameter, are read through `Decodable`, which takes an array of any length. With `struct Thawing(String, u32)`, `["b",1,2]` is refused with `invalid length 3, expected 2` and `["b"]` with `invalid length 1, expected 2`, and so is the array of a member's tuple, of a tuple a tuple holds and of a variant of several slots: the tuple is held to the length its decoder knows of the array, which `JSONDecoder` knows. An `#[serde(untagged)]` enum takes the variant serde takes: with `enum Grappling { Pair([u8; 2]), Spread(Vec<u8>) }`, `[1,2,3]` reads `Spread`.
 - **An enum under a tag and a content key reads a unit variant from an object with no content key**, as TypeScript and Zod read it: with `#[serde(tag = "kind", content = "held")] enum Becalming { Breeze(bool), Lull }`, `{"kind":"Lull"}` reads `Lull`, and `{"kind":"Lull","held":5}` is refused with `DecodingError.dataCorrupted` and `Becalming: Lull takes no value`, as serde refuses it. `{"kind":"Lull","held":null}` is refused with the same error, as TypeScript and Zod refuse it, where serde reads `Lull`. serde writes the variant as its tag alone, so every payload serde writes is read.
@@ -6405,7 +6407,7 @@ With those two functions, `Parcel.fromJson` and `Manifest.fromJson` answer for t
 - **A sealed enum calls its functions in its base**, once, ahead of the dispatch on the tag, and an `#[serde(untagged)]` one ahead of every attempt. A plain enum calls them on the text, in `fromJsonUnjudged`.
 - **The service clients read a reply through `fromJson`**, so a reply is corrected as any other payload is.
 - **A name with no function does not compile**, and the Dart compiler reports the call: `Error: Method not found: 'trimmed'.`
-- **A member of the type hides a function of its name** inside the class, as it hides a [check](#the-functions-you-write-in-dart): a `preprocess` named `label` on a type with a field `label` is reported as a name with no function. The names a read declares itself hide none: `json`, `payload`, `map`, `tag`, `read` and the converter it takes for a type parameter, `codeTypeFromJson`, are numbered where a function is called under one, `json2`.
+- **A function may share a name with a member of its type.** A `preprocess` named `label` on a type with a field `label` is called through a private forwarder declared ahead of the class, as a [check](#the-functions-you-write-in-dart) is. The names a read declares itself hide none: `json`, `payload`, `map`, `tag`, `read` and the converter it takes for a type parameter, `codeTypeFromJson`, are numbered where a function is called under one, `json2`.
 
 #### `preprocess` in the Swift client
 

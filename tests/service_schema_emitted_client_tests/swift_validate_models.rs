@@ -77,6 +77,26 @@ pub struct Code(pub String);
 #[serde(transparent)]
 pub struct SealedCode(pub Code);
 
+/// A brand over a string with no rule of its own.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct Wick(pub String);
+
+/// A brand over a brand over a string with no rule of its own.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct Candle(pub Wick);
+
+/// A member typed with the brand over a brand, under a length of its own.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Sconce {
+    #[model_schema_prop(minLength = 3)]
+    pub candle: Candle,
+}
+
 #[model_schema()]
 pub type Title = String;
 
