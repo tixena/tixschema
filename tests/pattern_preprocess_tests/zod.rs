@@ -3,8 +3,8 @@
 #![cfg(feature = "zod")]
 
 use super::models::{
-    Carrier, ClosedDock, Crate, Grade, Handover, Label, Manifest, Parcel, Reference, Routed,
-    Shipment, Stack, Transfer, Weighed, Wrapped,
+    Carrier, ClosedDock, Crate, Grade, Handover, Label, Manifest, Parcel, Pinned, Reference,
+    Routed, Shipment, Stack, Transfer, Weighed, Wrapped,
 };
 
 /// What `schema` binds first: the text after the `=` of its first binding, which is the raw
@@ -155,16 +155,21 @@ fn a_holder_reads_the_binding_that_calls_the_function() {
     assert!(!manifest.contains("z.preprocess("), "got: {manifest}");
 
     // A choice flattened into its holder is joined by the members its binding publishes, one
-    // branch each, never by text copied from the choice.
+    // branch each, never by text copied from the choice, and each member is handed the keys the
+    // holder's own members do not take.
     let routed = Routed::zod_schema();
     if cfg!(feature = "serde") {
         for member in ["Carrier$Members[0]", "Carrier$Members[1]"] {
             assert!(
-                routed.contains(&format!("Routed$OwnSchema.and(z.lazy(() => {member}))")),
+                routed.contains("Routed$OwnSchema.and(z.lazy(() => z.preprocess((held) => ")
+                    && routed.contains(&format!(".includes(key))) : held, {member})))")),
                 "got: {routed}"
             );
         }
-        assert!(!routed.contains("z.preprocess("), "got: {routed}");
+        assert!(
+            routed.contains("![\"dock\"].includes(key)"),
+            "got: {routed}"
+        );
         let carrier = Carrier::zod_schema();
         assert!(
             carrier.contains("export const Carrier$Members = [\n  z.preprocess(trimmedPlate, z."),
@@ -172,4 +177,22 @@ fn a_holder_reads_the_binding_that_calls_the_function() {
         );
     }
     assert!(!routed.contains("plate"), "got: {routed}");
+}
+
+/// Each flattened type that names a function is handed the payload without the keys its holder's
+/// own members take, and the holder's own members alone are left out of it.
+#[cfg(feature = "serde")]
+#[test]
+fn a_flattened_type_is_handed_the_payload_without_its_holders_keys() {
+    let pinned = Pinned::zod_schema();
+    assert!(
+        pinned.contains(
+            ".and(z.lazy(() => z.preprocess((held) => typeof held === \"object\" && held !== null \
+             && !Array.isArray(held) ? Object.fromEntries(Object.entries(held).filter(([key]) => \
+             ![\"dock\"].includes(key))) : held, Tagged$Schema)))"
+        ),
+        "got: {pinned}"
+    );
+    let manifest = Manifest::zod_schema();
+    assert!(!manifest.contains("Object.entries"), "got: {manifest}");
 }

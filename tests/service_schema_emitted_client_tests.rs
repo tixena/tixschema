@@ -507,6 +507,26 @@ mod run_kotlin_results;
 #[path = "set_tests/models.rs"]
 mod set_models;
 
+/// The models a set is written on, read and written back at one list level.
+#[cfg(all(test, any(feature = "dart", feature = "swift", feature = "kotlin")))]
+#[path = "set_level_tests/models.rs"]
+mod set_level_models;
+
+/// A set read and written by the emitted Dart types at one list level.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_set_levels.rs"]
+mod run_dart_set_levels;
+
+/// A set read and written by the emitted Swift types at one list level.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_set_levels.rs"]
+mod run_swift_set_levels;
+
+/// A set read and written by the emitted Kotlin types at one list level.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_set_levels.rs"]
+mod run_kotlin_set_levels;
+
 /// The models of the `Vec<u8>` held as bytes.
 #[cfg(all(test, feature = "dart"))]
 #[path = "bytes_tests/models.rs"]
@@ -1406,3 +1426,25 @@ use tests::{ShelfClientService, shelf_client_service_schema};
     any(feature = "dart", feature = "kotlin", feature = "swift")
 ))]
 use text_position_rows::{TextPlacingClientService, text_placing_client_service_schema};
+
+/// A struct whose every member is flattened, and an enum whose variant holds only a flattened
+/// member, under each tagging.
+#[cfg(test)]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+#[path = "service_schema_emitted_client_tests/all_flattened_models.rs"]
+mod all_flattened_models;
+
+/// Those models, read and written back by the emitted Dart types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_all_flattened.rs"]
+mod run_dart_all_flattened;
+
+/// Those models, read and written back by the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_all_flattened.rs"]
+mod run_swift_all_flattened;
+
+/// Those models, read and written back by the emitted Kotlin types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_all_flattened.rs"]
+mod run_kotlin_all_flattened;

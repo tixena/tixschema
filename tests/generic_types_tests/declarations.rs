@@ -145,6 +145,10 @@ mod object_ids;
 #[path = "flattened_zod_models.rs"]
 mod flattened_zod;
 
+/// Holders of flattened types whose functions list the keys they are handed.
+#[path = "flattened_function_models.rs"]
+mod flattened_function;
+
 #[cfg(feature = "chrono")]
 use alloc::collections::BTreeSet;
 use core::fmt::Write as _;
@@ -340,6 +344,20 @@ const rows = [
   [lib.Safe$SchemaDefault, { Single: empty }],
   [lib.Safe$SchemaFactory(z.number().int()), { Single: { owner: 7, records: [] } }],
   [lib.Safe$SchemaFactory(z.number().int()), { Named: { vault: { owner: 7, records: ["a"] } } }],
+  [lib.Open$SchemaDefault, { vault: kept }],
+  [lib.Open$SchemaDefault, { vault: empty }],
+  [lib.Open$SchemaDefault, kept],
+  [lib.Open$SchemaDefault, empty],
+  [lib.Open$SchemaFactory(z.number().int()), { vault: { owner: 7, records: ["a"] } }],
+  [lib.Open$SchemaFactory(z.number().int()), { owner: 7, records: [] }],
+  [lib.Hasp$Schema, { label: "l", vault: kept }],
+  [lib.Hasp$Schema, { label: "l", vault: empty }],
+  [lib.Hasp$Schema, { label: "l", ...kept }],
+  [lib.Hasp$Schema, { label: "l", ...empty }],
+  [lib.Latch$Schema, { label: "l", vault: { owner: 7, records: ["a"] } }],
+  [lib.Latch$Schema, { label: "l", vault: { owner: 7, records: [] } }],
+  [lib.Latch$Schema, { label: "l", owner: 7, records: ["a"] }],
+  [lib.Latch$Schema, { label: "l", owner: 7, records: [] }],
   [lib.Tagged$SchemaDefault, { kind: "Named", vault: kept }],
   [lib.Tagged$SchemaDefault, { kind: "Named", vault: empty }],
   [lib.Tagged$SchemaFactory(z.number().int()), { kind: "Named", vault: { owner: 7, records: [] } }],
@@ -367,7 +385,7 @@ console.log(JSON.stringify(rows.map(([schema, payload]) => said(schema, payload)
 "#;
 
 /// What the deferred driver prints.
-const DEFERRED: &str = r#"["taken","Named.vault.records: a vault holds a record | Named.vault.records: a vault holds a record","taken","Single.records: a vault holds a record | Single.records: a vault holds a record","Single.records: a vault holds a record | Single.records: a vault holds a record","taken","taken","vault.records: a vault holds a record | vault.records: a vault holds a record","vault.records: a vault holds a record | vault.records: a vault holds a record","taken","body.records: a vault holds a record | body.records: a vault holds a record","body.records: a vault holds a record | body.records: a vault holds a record","taken","0.records: a vault holds a record | 0.records: a vault holds a record","0.records: a vault holds a record | 0.records: a vault holds a record","taken","0.name: Invalid input: expected string, received number","taken","taken",": Invalid input","taken","0.name: Invalid input: expected string, received number"]"#;
+const DEFERRED: &str = r#"["taken","Named.vault.records: a vault holds a record | Named.vault.records: a vault holds a record","taken","Single.records: a vault holds a record | Single.records: a vault holds a record","Single.records: a vault holds a record | Single.records: a vault holds a record","taken","taken","vault.records: a vault holds a record | vault.records: a vault holds a record","taken","records: a vault holds a record | records: a vault holds a record","taken","records: a vault holds a record | records: a vault holds a record","taken","vault.records: a vault holds a record | vault.records: a vault holds a record","taken","records: a vault holds a record | records: a vault holds a record","taken","vault.records: a vault holds a record | vault.records: a vault holds a record","taken","records: a vault holds a record | records: a vault holds a record","taken","vault.records: a vault holds a record | vault.records: a vault holds a record","vault.records: a vault holds a record | vault.records: a vault holds a record","taken","body.records: a vault holds a record | body.records: a vault holds a record","body.records: a vault holds a record | body.records: a vault holds a record","taken","0.records: a vault holds a record | 0.records: a vault holds a record","0.records: a vault holds a record | 0.records: a vault holds a record","taken","0.name: Invalid input: expected string, received number","taken","taken",": Invalid input","taken","0.name: Invalid input: expected string, received number"]"#;
 
 /// Loads the aliases of a map in the order the declarations write them and parses a payload
 /// through each.
@@ -784,6 +802,13 @@ export function withItsKeys(payload: unknown): unknown {
   return { ...payload, keys: Object.keys(payload).sort() };
 }
 
+export function withItsSeen(payload: unknown): unknown {
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    return payload;
+  }
+  return { ...payload, seen: Object.keys(payload).sort() };
+}
+
 export const handed: Array<unknown> = [];
 
 export function orUnnamed(payload: unknown): unknown {
@@ -818,6 +843,8 @@ const schemas = {
   Either: lib.Either$Schema,
   Node: lib.Node$Schema,
   Routed: lib.Routed$Schema,
+  Pinned: lib.Pinned$Schema,
+  Twinned: lib.Twinned$Schema,
   ClosedDock: lib.ClosedDock$Schema,
   Stack: lib.Stack$Schema,
   Label: lib.Label$Schema,
@@ -1423,9 +1450,9 @@ const NODE_VAR: &str = "TIXSCHEMA_NODE";
 
 /// What the driver of the two differences prints. Zod calls a field's function with `undefined`
 /// for a key the payload does not hold, and with the `null` a payload holds; and it hands the
-/// function of a flattened type the holder's whole object.
+/// function of a flattened type the keys its holder does not take, as a Rust read does.
 const UNHELD: &str = "{\"absent\":\"refused\",\"handed\":[\"undefined\",null],\"held\":{\"label\":\
-                      \"unnamed\"},\"flattened\":{\"dock\":\"north\",\"keys\":[\"dock\",\"tag\"],\"tag\":\
+                      \"unnamed\"},\"flattened\":{\"dock\":\"north\",\"keys\":[\"tag\"],\"tag\":\
                       \"t\"}}";
 
 /// Loads the bundle of the `preprocess` models and parses an object without the key of a field
@@ -2873,6 +2900,12 @@ fn corrections() -> String {
         corrected::Manifest::zod_schema(),
         corrected::Node::ts_definition(),
         corrected::Node::zod_schema(),
+        flattened_function::Keyed::ts_definition(),
+        flattened_function::Keyed::zod_schema(),
+        flattened_function::Marked::ts_definition(),
+        flattened_function::Marked::zod_schema(),
+        flattened_function::Twinned::ts_definition(),
+        flattened_function::Twinned::zod_schema(),
         corrected::Reference::ts_definition(),
         corrected::Reference::zod_schema(),
         corrected::Routed::ts_definition(),
@@ -4079,6 +4112,12 @@ fn deferred_bundle() -> String {
         deferred::Vault::<String>::zod_schema(),
         deferred::Safe::<String>::ts_definition(),
         deferred::Safe::<String>::zod_schema(),
+        deferred::Open::<String>::ts_definition(),
+        deferred::Open::<String>::zod_schema(),
+        deferred::Hasp::ts_definition(),
+        deferred::Hasp::zod_schema(),
+        deferred::Latch::ts_definition(),
+        deferred::Latch::zod_schema(),
         deferred::Tagged::<String>::ts_definition(),
         deferred::Tagged::<String>::zod_schema(),
         deferred::Adjacent::<String>::ts_definition(),
@@ -4276,7 +4315,7 @@ fn type_check_an_alias_of_a_map_of_models_loads_and_reads_its_values() {
 /// `node` as serde and `validate()` do.
 #[test]
 fn type_check_a_check_on_a_holder_and_an_alias_ahead_of_its_type_load_and_answer() {
-    use deferred::{Adjacent, Locker, Maybe, Pair, Rows, Safe, Tagged, Vault};
+    use deferred::{Adjacent, Hasp, Latch, Locker, Maybe, Open, Pair, Rows, Safe, Tagged, Vault};
 
     let vault = |records: &[&str]| Vault {
         owner: "o".to_owned(),
@@ -4294,6 +4333,39 @@ fn type_check_a_check_on_a_holder_and_an_alias_ahead_of_its_type_load_and_answer
             answered(Safe::Named { vault: vault(&[]) }.validate()),
             answered(Safe::Single(vault(&["a"])).validate()),
             answered(Safe::Single(vault(&[])).validate()),
+            answered(
+                Open::Named {
+                    vault: vault(&["a"])
+                }
+                .validate()
+            ),
+            answered(Open::Named { vault: vault(&[]) }.validate()),
+            answered(Open::Single(vault(&["a"])).validate()),
+            answered(Open::Single(vault(&[])).validate()),
+            answered(
+                Hasp {
+                    open: Open::Named { vault: vault(&[]) },
+                    label: "l".to_owned()
+                }
+                .validate()
+            ),
+            answered(
+                Hasp {
+                    open: Open::Single(vault(&[])),
+                    label: "l".to_owned()
+                }
+                .validate()
+            ),
+            answered(
+                Latch {
+                    open: Open::Single(Vault {
+                        owner: 7,
+                        records: Vec::new()
+                    }),
+                    label: "l".to_owned()
+                }
+                .validate()
+            ),
             answered(Tagged::Named { vault: vault(&[]) }.validate()),
             answered(Adjacent::Single(vault(&[])).validate()),
             answered(Locker(vault(&["a"]), "x".to_owned()).validate()),
@@ -4304,6 +4376,13 @@ fn type_check_a_check_on_a_holder_and_an_alias_ahead_of_its_type_load_and_answer
             vec!["'Named.vault.records': a vault holds a record".to_owned(); 2],
             Vec::new(),
             vec!["'Single.records': a vault holds a record".to_owned(); 2],
+            Vec::new(),
+            vec!["'vault.records': a vault holds a record".to_owned(); 2],
+            Vec::new(),
+            vec!["'records': a vault holds a record".to_owned(); 2],
+            vec!["'vault.records': a vault holds a record".to_owned(); 2],
+            vec!["'records': a vault holds a record".to_owned(); 2],
+            vec!["'records': a vault holds a record".to_owned(); 2],
             vec!["'vault.records': a vault holds a record".to_owned(); 2],
             vec!["'body.records': a vault holds a record".to_owned(); 2],
             Vec::new(),
@@ -4321,6 +4400,11 @@ fn type_check_a_check_on_a_holder_and_an_alias_ahead_of_its_type_load_and_answer
     assert_eq!(reads(r#"[{"name":"a"}]"#), [true, false, false]);
     assert_eq!(reads(r#"[{"name":"a"},1]"#), [false, false, true]);
     assert_eq!(reads("null"), [false, true, false]);
+    let read_open = |json: &str| serde_json::from_str::<Open<String>>(json).is_ok();
+    assert!(read_open(r#"{"vault":{"owner":"o","records":["a"]}}"#));
+    assert!(read_open(r#"{"owner":"o","records":["a"]}"#));
+    assert!(!read_open(r#"{"vault":{"owner":"o","records":[]}}"#));
+    assert!(!read_open(r#"{"owner":"o","records":[]}"#));
     let Some((printed, failed)) = loaded_from("deferred", &deferred_bundle(), DEFERRED_DRIVER)
     else {
         return;
@@ -4401,6 +4485,12 @@ fn type_check_a_preprocess_answers_under_zod_what_a_rust_read_answers() {
         .map(|(_name, _schema, _payload, printed)| printed.as_str())
         .collect();
     assert_eq!(read, corrected::POSITIONS);
+    let flattened = flattened_function::flattened_positions();
+    let read_flattened: String = flattened
+        .iter()
+        .map(|(_name, _schema, _payload, printed)| printed.as_str())
+        .collect();
+    assert_eq!(read_flattened, flattened_function::FLATTENED_POSITIONS);
 
     let of_the_sample = corrected::SAMPLE_ROWS.iter().map(|&(row, payload)| {
         let schema = if row == "row 5" { "Manifest" } else { "Parcel" };
@@ -4408,6 +4498,7 @@ fn type_check_a_preprocess_answers_under_zod_what_a_rust_read_answers() {
     });
     let of_the_positions = positions
         .iter()
+        .chain(&flattened)
         .map(|&(name, schema, payload, _)| (name, schema, payload));
     let cases: Vec<(&str, &str, &str)> = of_the_sample.chain(of_the_positions).collect();
     let driver = CORRECTIONS_DRIVER.replace("CASES", &serde_json::to_string(&cases).unwrap());
@@ -4416,7 +4507,7 @@ fn type_check_a_preprocess_answers_under_zod_what_a_rust_read_answers() {
     };
     assert_eq!(
         printed,
-        format!("{sample}{read}").trim_end(),
+        format!("{sample}{read}{read_flattened}").trim_end(),
         "the schemas do not read what a Rust read reads:\n{failed}"
     );
 }
@@ -4545,9 +4636,9 @@ fn type_check_a_default_is_handed_to_the_function_of_its_member_under_zod() {
     );
 }
 
-/// The two places a function is handed something else under zod than in a Rust read. A serde
-/// read answers a key the payload does not hold itself, and calls no function for it; and it
-/// hands the function of a flattened type the keys its holder does not take.
+/// The place a function is handed something else under zod than in a Rust read. A serde read
+/// answers a key the payload does not hold itself, and calls no function for it. The function of
+/// a flattened type is handed the keys its holder does not take under both.
 #[test]
 fn type_check_a_function_is_handed_under_zod_what_a_rust_read_does_not_hand_it() {
     assert_eq!(
