@@ -584,8 +584,11 @@ has to keep.
   predicate per bounded type and each bound once (`merged`): the item's own bounds and the
   read's predicates (`ReadBounds::predicates`) whose parameters are all the hook's. The type the
   model is read as declares only the parameters the model names, under the item's own bounds on
-  them. A bound that ties such a parameter to another of the item's or to one of its lifetimes,
-  a read at `'static`, a const parameter, and a parameter named behind a path
+  them. A bound on the item itself (`Self: Default` of a container `#[serde(default)]`, a
+  `Self: ..` of a container `bound`) is left out of the hook and of the tie test, the hook
+  never building the item, unless the member's type writes the item (`Vec<Self>`). A bound that
+  ties such a parameter to another of the item's or to one of its lifetimes, a read at
+  `'static`, a const parameter, and a parameter named behind a path
   (`IdType::Out`, `<IdType as Trait>`) leave the member to its own `Deserialize`: the hook is
   not written, and `unjudged_hooks` hangs nothing on the member.
 - The hooks are functions local to `model_schema_read_unjudged`: `read_unjudged_{stem}`, each

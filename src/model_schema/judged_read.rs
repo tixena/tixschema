@@ -189,6 +189,8 @@ struct Predicate {
     bounded: TokenStream,
     /// The item's type parameters it names.
     names: Vec<String>,
+    /// Whether it bounds the item itself, `Self` or the item's name with its own parameters.
+    on_the_item: bool,
 }
 
 /// What a hook of the item being expanded is written with, beside its member: the item's name
@@ -200,6 +202,7 @@ pub struct HookScope {
     /// The item's const parameters, which no hook declares.
     consts: Vec<String>,
     declared: Vec<Predicate>,
+    item: String,
     named: TokenStream,
     /// The item's type parameters, in the order it declares them.
     parameters: Vec<Ident>,
@@ -395,6 +398,7 @@ impl Predicate {
         lifetimes: &[String],
     ) -> Self {
         let [binder, bounded, bound] = written.map(|tokens| naming_the_type(tokens, named));
+        let on_the_item = bounded.to_string() == named.to_string();
         let whole = quote! { #binder #bounded : #bound };
         let mut parameters_named = Vec::new();
         parameters_in(whole.clone(), parameters, &mut parameters_named);
@@ -408,6 +412,7 @@ impl Predicate {
             bound,
             bounded,
             names: parameters_named,
+            on_the_item,
         }
     }
 
@@ -452,10 +457,11 @@ impl HookScope {
     /// the item is read at `'static`: a model is then read by its own `Deserialize`.
     fn admits(&self, ty: &TokenStream) -> Option<Vec<String>> {
         let parameters = self.named_by(ty)?;
+        let writes_the_item = self.writes_the_item(ty);
         if !parameters.is_empty() && self.at_static {
             return None;
         }
-        let tied = self.every().any(|predicate| {
+        let tied = self.every(writes_the_item).any(|predicate| {
             predicate
                 .names
                 .iter()
@@ -465,8 +471,13 @@ impl HookScope {
         (!tied).then_some(parameters)
     }
 
-    fn every(&self) -> impl Iterator<Item = &Predicate> {
-        self.declared.iter().chain(&self.read)
+    /// Bounds on the item itself are the read's own to build it with: a hook that reads one
+    /// member asks them only where the member's type writes the item.
+    fn every(&self, writes_the_item: bool) -> impl Iterator<Item = &Predicate> {
+        self.declared
+            .iter()
+            .chain(&self.read)
+            .filter(move |predicate| writes_the_item || !predicate.on_the_item)
     }
 
     /// The item's own idents of the parameters `named`.
@@ -482,7 +493,12 @@ impl HookScope {
     /// The type a model is read as, written for the item: named after the names `taken`, which it
     /// joins, with the parameters of the item it names and the bounds they are declared and read
     /// under. `None` where it names a parameter serde's call of the hook cannot infer.
-    fn leaf_written(&self, leaf: &TokenStream, taken: &mut Vec<String>) -> Option<LeafWritten> {
+    fn leaf_written(
+        &self,
+        leaf: &TokenStream,
+        taken: &mut Vec<String>,
+        writes_the_item: bool,
+    ) -> Option<LeafWritten> {
         let written = naming_the_type(leaf.clone(), &self.named);
         let leaf_parameters = self.named_by(&written)?;
         let held_as = unclaimed_parameter(HELD, taken);
@@ -504,7 +520,7 @@ impl HookScope {
             leaf_generics,
             leaf_parameters: leaf_idents,
             leaf_predicates: merged(
-                self.every()
+                self.every(writes_the_item)
                     .filter(|predicate| predicate.within(&leaf_parameters)),
             ),
         })
@@ -586,11 +602,17 @@ impl HookScope {
                 .map(|constant| constant.ident.to_string())
                 .collect(),
             declared,
+            item: name.unraw().to_string(),
             named,
             parameters,
             parameters_written,
             read,
         }
+    }
+
+    /// Whether `ty`, with `Self` written out, writes the item.
+    fn writes_the_item(&self, ty: &TokenStream) -> bool {
+        written_names(ty.clone()).contains(&self.item)
     }
 
     /// `hook` as it is written for the item, or `None` where a bound of the item or of its read
@@ -604,6 +626,7 @@ impl HookScope {
             )
         });
         let parameters = self.admits(&ty)?;
+        let writes_the_item = self.writes_the_item(&ty);
         // The member's type is written beside the types the hook reads its models as.
         let mut taken = written_names(ty.clone());
         let mut leaves = Vec::new();
@@ -612,6 +635,7 @@ impl HookScope {
             let written = self.leaf_written(
                 &held.leaf.parse::<TokenStream>().unwrap_or_default(),
                 &mut taken,
+                writes_the_item,
             )?;
             let (held_as, leaf_generics) = (&written.held_as, &written.leaf_generics);
             renamed.push((held.held_as.clone(), quote! { #held_as #leaf_generics }));
@@ -629,7 +653,7 @@ impl HookScope {
             leaves,
             parameters: self.idents_of(&parameters),
             predicates: merged(
-                self.every()
+                self.every(writes_the_item)
                     .filter(|predicate| predicate.within(&parameters)),
             ),
             read_as,
@@ -2225,6 +2249,7 @@ pub fn listed_reader(ty: &syn::Type, scope: &HookScope) -> Option<TokenStream> {
         return None;
     }
     scope.admits(&written_ty)?;
+    let writes_the_item = scope.writes_the_item(&written_ty);
     let mut taken = written_names(written_ty);
     let held_as = unclaimed_parameter(HELD, &taken);
     let read = reached(ty, 0, &held_as)?;
@@ -2235,7 +2260,7 @@ pub fn listed_reader(ty: &syn::Type, scope: &HookScope) -> Option<TokenStream> {
     let mut renamed = Vec::new();
     let mut held = Vec::new();
     for (leaf, named) in &read.leaves {
-        let written = scope.leaf_written(&leaf.to_token_stream(), &mut taken)?;
+        let written = scope.leaf_written(&leaf.to_token_stream(), &mut taken, writes_the_item)?;
         let (leaf_type, as_written, generics) =
             (&written.leaf, &written.held_as, &written.leaf_generics);
         let held_leaf = quote! { <#leaf_type>::#unjudged(deserializer).map(#as_written) };
