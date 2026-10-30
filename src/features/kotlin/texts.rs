@@ -77,6 +77,7 @@ impl Primitive {
 
     /// The primitive a value typed `field` is at its innermost level. A `u64` and a `usize` are
     /// refused under `kotlin` before they are read.
+    #[cfg(feature = "chrono")]
     pub fn of(field: &FieldDef) -> Option<Self> {
         match &field.field_type {
             FieldDefType::Boolean => Some(Self::Bool),
@@ -100,6 +101,40 @@ impl Primitive {
                 Some(Self::Millis)
             }
             _ => None,
+        }
+    }
+
+    /// The primitive a value typed `field` is at its innermost level, with no timestamp form.
+    #[cfg(not(feature = "chrono"))]
+    pub const fn of(field: &FieldDef) -> Option<Self> {
+        match &field.field_type {
+            FieldDefType::Boolean => Some(Self::Bool),
+            FieldDefType::I8 => Some(Self::I8),
+            FieldDefType::I16 => Some(Self::I16),
+            FieldDefType::I32 => Some(Self::I32),
+            FieldDefType::I64 => Some(Self::I64),
+            FieldDefType::Isize => Some(Self::Isize),
+            FieldDefType::U8 => Some(Self::U8),
+            FieldDefType::U16 => Some(Self::U16),
+            FieldDefType::U32 => Some(Self::U32),
+            FieldDefType::F32 => Some(Self::F32),
+            FieldDefType::F64 => Some(Self::F64),
+            #[cfg(feature = "mongodb")]
+            FieldDefType::ObjectId => None,
+            FieldDefType::Char
+            | FieldDefType::SiblingType(_, _)
+            | FieldDefType::Map(_, _)
+            | FieldDefType::Tuple(_)
+            | FieldDefType::Range(_, _)
+            | FieldDefType::Result(_, _)
+            | FieldDefType::TypeParam(_)
+            | FieldDefType::Unknown
+            | FieldDefType::StringLiteral(_)
+            | FieldDefType::BooleanLiteral(_)
+            | FieldDefType::NumberLiteral(_)
+            | FieldDefType::String
+            | FieldDefType::U64
+            | FieldDefType::Usize => None,
         }
     }
 
@@ -332,7 +367,7 @@ fn is_epoch(primitive: Primitive) -> bool {
 }
 
 #[cfg(not(feature = "chrono"))]
-fn is_epoch(_: Primitive) -> bool {
+const fn is_epoch(_: Primitive) -> bool {
     false
 }
 
