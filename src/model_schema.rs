@@ -8024,11 +8024,14 @@ fn alias_string_check_refusal_output(
     let (check, written_at) = args.string_check?;
     let name = &item_type.ident;
     let target = written_spelling(&item_type.ty);
+    let parameters = written_spelling(&item_type.generics);
     let refusal = format!(
         "`{check}` cannot be written on a type alias: `{name}` is another name for `{target}`, \
-         so there is no type of its own for the check to belong to. Declare a branded newtype \
-         instead — `#[model_schema({check} = …)] #[serde(transparent)] pub struct \
-         {name}({target});` — or, on a field, write the check in `#[model_schema_prop(...)]`."
+         so there is no type of its own for the check to belong to. A branded newtype carries \
+         the check where its inner type's schema is a string and a schema surface is on — \
+         `#[model_schema({check} = …)] #[serde(transparent)] pub struct \
+         {name}{parameters}({target});` — and a check on one field is written in \
+         `#[model_schema_prop(...)]`."
     );
     let error = syn::Error::new(
         written_at,
