@@ -343,6 +343,10 @@ pub enum Freight {
     },
     #[serde(rename = "under-seal")]
     Sealed(#[model_schema_prop(minLength = 1)] String),
+    Split(
+        #[model_schema_prop(minLength = 1)] String,
+        #[model_schema_prop(minimum = 1)] u32,
+    ),
 }
 
 /// An enum under a tag and a content key.
@@ -356,6 +360,10 @@ pub enum Haul {
         haul_label: String,
     },
     Sealed(#[model_schema_prop(minLength = 1)] String),
+    Split(
+        #[model_schema_prop(minLength = 1)] String,
+        #[model_schema_prop(minimum = 1)] u32,
+    ),
     Stacked {
         #[model_schema_prop(check = ["withoutDuplicates"])]
         stacked_codes: Vec<String>,
@@ -438,6 +446,29 @@ pub struct Poster {
     pub slogans: Slogans,
     #[model_schema_prop(maxLength = 2)]
     pub some: SomeSlogans,
+}
+
+/// An alias of an `IndexSet`.
+#[cfg(feature = "indexmap")]
+#[model_schema()]
+pub type Queue = indexmap::IndexSet<String>;
+
+/// A brand over the alias of an `IndexSet`, with a length of its own.
+#[cfg(feature = "indexmap")]
+#[model_schema(no_display, minLength = 1)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct SomeQueue(pub Queue);
+
+/// Members typed with the alias of an `IndexSet` and with a brand over it, each under a length.
+#[cfg(feature = "indexmap")]
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Lineup {
+    #[model_schema_prop(minLength = 1, maxLength = 2)]
+    pub queue: Queue,
+    #[model_schema_prop(maxLength = 2)]
+    pub some: SomeQueue,
 }
 
 /// A type with a parameter, held by a member of another that reaches the same parameter.
@@ -1152,6 +1183,21 @@ fn wrapped_variant_rows() -> Vec<Row> {
             &Freight::Sealed(String::new()),
             &[&format!("'under-seal': {short}")],
         ),
+        pinned(
+            "Freight, the slots of several",
+            "Freight",
+            &Freight::Split(String::new(), 0),
+            &[
+                &format!("'split.0': {short}"),
+                "'split.1': too small: minimum is 1, got 0",
+            ],
+        ),
+        pinned(
+            "Freight, the slots of several, held",
+            "Freight",
+            &Freight::Split("a".to_owned(), 1),
+            &[],
+        ),
         pinned("Freight, no member", "Freight", &Freight::Held, &[]),
         pinned(
             "Haul, a model in the one slot",
@@ -1172,6 +1218,12 @@ fn wrapped_variant_rows() -> Vec<Row> {
             "Haul",
             &Haul::Sealed(String::new()),
             &[&format!("'held': {short}")],
+        ),
+        pinned(
+            "Haul, the slots of several",
+            "Haul",
+            &Haul::Split("a".to_owned(), 0),
+            &["'held.1': too small: minimum is 1, got 0"],
         ),
         pinned(
             "Haul, a member's check",
@@ -1493,4 +1545,64 @@ fn a_check_with_no_kotlin_function_does_not_compile() {
             .contains("```text\nerror: unresolved reference 'withinParcel'.\n```"),
         "the README no longer shows what the compiler says"
     );
+}
+
+/// The rows of the members typed with the alias of an `IndexSet` and with a brand over it.
+#[cfg(feature = "indexmap")]
+fn index_set_rows() -> Vec<Row> {
+    let items = |count: usize| -> indexmap::IndexSet<String> {
+        (0..count).map(|number| number.to_string()).collect()
+    };
+    let lineup = |queue: usize, some: usize| Lineup {
+        queue: items(queue),
+        some: SomeQueue(items(some)),
+    };
+    let (kept, empty, wide) = (lineup(1, 1), lineup(0, 0), lineup(3, 3));
+    vec![
+        row("Lineup", "Lineup", &kept, kept.validate()),
+        row("Lineup, no item", "Lineup", &empty, empty.validate()),
+        row("Lineup, too many items", "Lineup", &wide, wide.validate()),
+    ]
+}
+
+/// A length written on a member typed with the alias of an `IndexSet`, or on a brand over it,
+/// counts the items as Rust's `validate()` does, in the validation and in the read.
+#[cfg(feature = "indexmap")]
+#[test]
+fn a_length_on_an_alias_of_an_index_set_counts_the_items() {
+    let rows = index_set_rows();
+    let mut definitions = shape_definitions();
+    definitions.extend([
+        queue_kotlin::kotlin_definition(),
+        some_queue_kotlin::kotlin_definition(),
+        lineup_kotlin::kotlin_definition(),
+    ]);
+    assert_eq!(
+        report(&rows),
+        "\
+Lineup: passes
+Lineup, no item: refused
+    'queue': too short: minimum length is 1, got 0
+    'some': too short: minimum length is 1, got 0
+Lineup, too many items: refused
+    'queue': too long: maximum length is 2, got 3
+    'some': too long: maximum length is 2, got 3
+"
+    );
+    let Some(printed) = ran_kotlin(&module(
+        definitions.clone(),
+        &[TABLE_CHECKS, SHAPE_CHECKS],
+        &rows,
+    )) else {
+        return;
+    };
+    assert_eq!(printed, report(&rows));
+    let Some(read) = ran_kotlin(&read_module(
+        definitions,
+        &[TABLE_CHECKS, SHAPE_CHECKS],
+        &rows,
+    )) else {
+        return;
+    };
+    assert_eq!(read, read_report(&rows));
 }

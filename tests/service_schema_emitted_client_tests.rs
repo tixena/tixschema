@@ -412,6 +412,31 @@ mod run_swift_literals;
 #[path = "service_schema_emitted_client_tests/run_kotlin_literals.rs"]
 mod run_kotlin_literals;
 
+/// The models the emitted types are named from as Rust names them.
+#[cfg(all(test, any(feature = "dart", feature = "swift", feature = "kotlin")))]
+#[path = "service_schema_emitted_client_tests/named_by_rust_models.rs"]
+mod named_by_rust_models;
+
+/// The payloads each client reads the models named as Rust names them from.
+#[cfg(all(test, any(feature = "dart", feature = "swift", feature = "kotlin")))]
+#[path = "service_schema_emitted_client_tests/named_by_rust_rows.rs"]
+mod named_by_rust_rows;
+
+/// Names as Rust names them, read by the emitted Dart types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_named_by_rust.rs"]
+mod run_dart_named_by_rust;
+
+/// Names as Rust names them, read by the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_named_by_rust.rs"]
+mod run_swift_named_by_rust;
+
+/// Names as Rust names them, read by the emitted Kotlin types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_named_by_rust.rs"]
+mod run_kotlin_named_by_rust;
+
 /// The models the four std ranges are written on, and the payloads serde writes and refuses.
 #[cfg(all(test, any(feature = "dart", feature = "swift", feature = "kotlin")))]
 #[path = "std_range_tests/models.rs"]
@@ -466,6 +491,26 @@ mod run_kotlin_results;
 #[cfg(all(test, any(feature = "dart", feature = "swift", feature = "kotlin")))]
 #[path = "set_tests/models.rs"]
 mod set_models;
+
+/// The models a set is written on, read and written back at one list level.
+#[cfg(all(test, any(feature = "dart", feature = "swift", feature = "kotlin")))]
+#[path = "set_level_tests/models.rs"]
+mod set_level_models;
+
+/// A set read and written by the emitted Dart types at one list level.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_set_levels.rs"]
+mod run_dart_set_levels;
+
+/// A set read and written by the emitted Swift types at one list level.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_set_levels.rs"]
+mod run_swift_set_levels;
+
+/// A set read and written by the emitted Kotlin types at one list level.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_set_levels.rs"]
+mod run_kotlin_set_levels;
 
 /// The models of the `Vec<u8>` held as bytes.
 #[cfg(all(test, feature = "dart"))]
@@ -624,6 +669,14 @@ mod tuple_variants_models;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin_tuple_variants.rs"]
 mod run_kotlin_tuple_variants;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_wrong_kinds.rs"]
+mod run_kotlin_wrong_kinds;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_generic_bounds.rs"]
+mod run_kotlin_generic_bounds;
 
 /// A map flattened as the one member of its struct, optional or not and keyed by a plain enum, a
 /// flattened struct beside a member of its own, an optional member beside a flattened one with its

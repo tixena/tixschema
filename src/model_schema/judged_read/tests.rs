@@ -339,21 +339,21 @@ fn a_member_that_names_a_type_parameter_is_read_through_a_hook_generic_over_it()
         "default_types(IdType = String, Held = String)",
         "#[derive(Deserialize)] #[serde(bound(deserialize = \"IdType: \
          serde::de::DeserializeOwned, Held: serde::de::DeserializeOwned\"))] pub struct \
-         HookedLedger<IdType: Display + Eq + Hash, Held> where IdType: Display { pub by_id: \
+         HookedLedger<IdType: Display + Eq + Hash, Held> where IdType: Display + Serialize { pub by_id: \
          HashMap<IdType, HookedTag>, pub entries: Vec<HookedEntry<IdType>>, pub held: Vec<Held> }",
     );
     for written in [
         "fn read_unjudged_entries < 'de , IdType , D > (deserializer : D) -> :: core :: result :: \
          Result < Vec < HookedEntry < IdType > > , D :: Error > where D : serde :: Deserializer < \
-         'de > , IdType : Display + Eq + Hash + serde :: de :: DeserializeOwned , { struct \
-         Unjudged < IdType > (HookedEntry < IdType >) where IdType : Display + Eq + Hash ; impl < \
+         'de > , IdType : Display + Eq + Hash + Serialize + serde :: de :: DeserializeOwned , { struct \
+         Unjudged < IdType > (HookedEntry < IdType >) where IdType : Display + Eq + Hash + Serialize ; impl < \
          'de , IdType > serde :: Deserialize < 'de > for Unjudged < IdType > where IdType : \
-         Display + Eq + Hash + serde :: de :: DeserializeOwned {",
+         Display + Eq + Hash + Serialize + serde :: de :: DeserializeOwned {",
         "let held_0 = < Vec < Unjudged < IdType > > as serde :: Deserialize > :: deserialize \
          (deserializer) ? ;",
         "fn read_unjudged_by_id < 'de , IdType , D > (deserializer : D) -> :: core :: result :: \
          Result < HashMap < IdType , HookedTag > , D :: Error > where D : serde :: Deserializer < \
-         'de > , IdType : Display + Eq + Hash + serde :: de :: DeserializeOwned , { struct \
+         'de > , IdType : Display + Eq + Hash + Serialize + serde :: de :: DeserializeOwned , { struct \
          Unjudged (HookedTag) ; impl < 'de > serde :: Deserialize < 'de > for Unjudged {",
         "# [serde (deserialize_with = \"read_unjudged_entries\")] entries : Vec < HookedEntry < \
          IdType > >",

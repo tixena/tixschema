@@ -41,7 +41,9 @@ use crate::field_type::{
 };
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use crate::model_schema::judged_read::bounded_listed_read;
-use crate::model_schema::judged_read::{authored_read_bounds, listed_read, listed_reader};
+use crate::model_schema::judged_read::{
+    HookScope, authored_read_bounds, listed_read, listed_reader,
+};
 use crate::model_schema::preprocess;
 use crate::model_schema::{helper_name_stem, recovering_bound_check};
 use crate::rename_rule::resolve_rename_rule;
@@ -985,6 +987,9 @@ struct Written<'reach> {
     /// What serde's derive asks of the type's parameters to read it, beside `Deserialize`: the
     /// read every source lists from is written under the same.
     read_predicates: Vec<WherePredicate>,
+    /// What a model the item holds is read as in the walkers' methods, written under the item's
+    /// own parameters and bounds.
+    scope: HookScope,
 }
 
 /// What the generated code names of the type it is generated for, and the source it walks.
@@ -996,6 +1001,7 @@ struct Walker<'item> {
     module: &'item Ident,
     own_name: &'item str,
     parameters: &'item [String],
+    scope: &'item HookScope,
     source: Source,
 }
 
@@ -1074,7 +1080,7 @@ impl Walker<'_> {
                             &whole,
                             held,
                             &(!inner.reads_whole())
-                                .then(|| listed_reader(&whole, self.parameters))
+                                .then(|| listed_reader(&whole, self.scope))
                                 .flatten()
                                 .unwrap_or_else(|| own_reader(&whole)),
                             &path,
@@ -2397,7 +2403,9 @@ pub fn brand_recovering_decode(item_struct: &ItemStruct, mongodb: bool) -> Recov
 /// The recovering decode of a struct whose issues are listed from `read`.
 fn listed_from(item_struct: &ItemStruct, read: TokenStream, mongodb: bool) -> RecoveringDecode {
     let module_name = ident_schema_module_name(&item_struct.ident.to_string());
-    let authored = authored_read_bounds(&DeriveInput::from(item_struct.clone()));
+    let input = DeriveInput::from(item_struct.clone());
+    let authored = authored_read_bounds(&input);
+    let scope = HookScope::of(&input, &authored);
     let parameters = type_parameters_in_scope(&item_struct.generics);
     let mut reach = Reach::new(&module_name);
     let mut walked = item_struct.clone();
@@ -2424,6 +2432,7 @@ fn listed_from(item_struct: &ItemStruct, read: TokenStream, mongodb: bool) -> Re
             reach: &reach,
             read,
             read_predicates: authored.predicates,
+            scope,
             bound: WrittenBound::of(&item_struct.attrs, authored.written_by_container),
         },
         &paths,
@@ -2490,6 +2499,7 @@ where
                 module: &module,
                 own_name: &own_name,
                 parameters,
+                scope: &written.scope,
                 source,
             };
             let entry = source.entry_methods(&module, written, corrects_own);
@@ -5079,7 +5089,7 @@ fn walks_itself(ty: &Type, depth: usize) -> bool {
         return true;
     }
     match declared(&last.ident.unraw().to_string()) {
-        Some(Declared::Model | Declared::OneValue) => true,
+        Some(Declared::Model(_) | Declared::OneValue(_)) => true,
         Some(Declared::Alias(aliased_as)) if depth < 8 => syn::parse_str::<Type>(&aliased_as)
             .is_ok_and(|aliased| walks_itself(&aliased, depth.saturating_add(1))),
         Some(Declared::Alias(_)) | None => false,

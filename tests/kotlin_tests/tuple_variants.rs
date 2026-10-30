@@ -228,8 +228,8 @@ fn the_slots_under_a_content_key_are_written_and_read_by_the_wrapper_declared() 
     );
     assert!(
         racking.contains(&format!(
-            "\"Split\" -> RackingSplit(input.json.decodeFromJsonElement(serializer<{wrapper}>(), \
-             (data ?: throw SerializationException(\"missing field `held`\"))))"
+            "\"Split\" -> RackingSplit(kotlinSchemaDecoded(input.json, serializer<{wrapper}>(), \
+             (data ?: throw SerializationException(\"missing field `held`\")), \"held\"))"
         )),
         "got: {racking}"
     );
@@ -256,8 +256,8 @@ fn the_slots_under_the_variants_name_are_written_and_read_by_the_wrapper_declare
     );
     assert!(
         stacking.contains(&format!(
-            "\"Split\" -> StackingSplit(input.json.decodeFromJsonElement(serializer<{wrapper}>(), \
-             data))"
+            "\"Split\" -> StackingSplit(kotlinSchemaDecoded(input.json, serializer<{wrapper}>(), \
+             data, \"Split\"))"
         )),
         "got: {stacking}"
     );
@@ -356,8 +356,8 @@ fn a_tuple_beside_a_flattened_member_is_declared_and_read_by_one_wrapper() {
             "put(\"pair\", output.json.encodeToJsonElement(serializer<{wrapper}>(), value.pair))"
         ),
         format!(
-            "val pair = input.json.decodeFromJsonElement(serializer<{wrapper}>(), \
-             (obj[\"pair\"] ?: throw SerializationException(\"missing field `pair`\")))"
+            "val pair = kotlinSchemaDecoded(input.json, serializer<{wrapper}>(), \
+             (obj[\"pair\"] ?: throw SerializationException(\"missing field `pair`\")), \"pair\")"
         ),
     ] {
         assert!(bundling.contains(&held), "no `{held}` in: {bundling}");
@@ -373,7 +373,7 @@ fn a_tuple_in_a_slot_of_a_tuple_struct_is_declared_and_read_by_one_wrapper() {
     for held in [
         format!("data class Palleting(val slot0: {wrapper}, val slot1: UByte)"),
         format!("add(output.json.encodeToJsonElement(serializer<{wrapper}>(), value.slot0))"),
-        format!("input.json.decodeFromJsonElement(serializer<{wrapper}>(), array[0])"),
+        format!("kotlinSchemaDecoded(input.json, serializer<{wrapper}>(), array[0], \"0\")"),
     ] {
         assert!(palleting.contains(&held), "no `{held}` in: {palleting}");
     }
@@ -389,7 +389,7 @@ fn a_tuple_in_a_position_of_a_tuple_is_declared_and_read_by_one_wrapper() {
         format!("data class Crating(val pair: {outer})"),
         format!("data class {outer}(val slot0: {inner}, val slot1: UByte)"),
         format!("add(output.json.encodeToJsonElement(serializer<{inner}>(), value.slot0))"),
-        format!("input.json.decodeFromJsonElement(serializer<{inner}>(), array[0])"),
+        format!("kotlinSchemaDecoded(input.json, serializer<{inner}>(), array[0], \"0\")"),
     ] {
         assert!(crating.contains(&held), "no `{held}` in: {crating}");
     }
@@ -401,7 +401,7 @@ fn reads_the_model_unjudged(definition: &str, wrapper: &str) {
     for held in [
         format!("data class {wrapper}(val slot0: Stencil, val slot1: UByte)"),
         "add(output.json.encodeToJsonElement(StencilUnjudged, value.slot0))".to_owned(),
-        "input.json.decodeFromJsonElement(StencilUnjudged, array[0])".to_owned(),
+        "kotlinSchemaDecoded(input.json, StencilUnjudged, array[0], \"0\")".to_owned(),
     ] {
         assert!(definition.contains(&held), "no `{held}` in: {definition}");
     }
@@ -445,8 +445,8 @@ fn a_tuple_holding_a_model_beside_a_flattened_member_is_declared_and_read_by_one
             "put(\"pair\", output.json.encodeToJsonElement(serializer<{wrapper}>(), value.pair))"
         ),
         format!(
-            "val pair = input.json.decodeFromJsonElement(serializer<{wrapper}>(), \
-             (obj[\"pair\"] ?: throw SerializationException(\"missing field `pair`\")))"
+            "val pair = kotlinSchemaDecoded(input.json, serializer<{wrapper}>(), \
+             (obj[\"pair\"] ?: throw SerializationException(\"missing field `pair`\")), \"pair\")"
         ),
     ] {
         assert!(banding.contains(&held), "no `{held}` in: {banding}");
@@ -486,7 +486,7 @@ fn a_tuple_holding_a_model_in_a_slot_of_a_tuple_struct_is_declared_and_read_by_o
     for held in [
         format!("data class Slotting(val slot0: {wrapper}, val slot1: UByte)"),
         format!("add(output.json.encodeToJsonElement(serializer<{wrapper}>(), value.slot0))"),
-        format!("input.json.decodeFromJsonElement(serializer<{wrapper}>(), array[0])"),
+        format!("kotlinSchemaDecoded(input.json, serializer<{wrapper}>(), array[0], \"0\")"),
     ] {
         assert!(slotting.contains(&held), "no `{held}` in: {slotting}");
     }
@@ -548,12 +548,12 @@ fn tuples_holding_a_model_in_an_option_and_a_list_are_declared_and_read_by_one_w
         ),
         format!(
             "val maybe = obj[\"maybe\"]?.let {{ \
-             input.json.decodeFromJsonElement(serializer<{wrapper}>().nullable, it) }}"
+             kotlinSchemaDecoded(input.json, serializer<{wrapper}>().nullable, it, \"maybe\") }}"
         ),
         format!(
             "val pairs = \
-             input.json.decodeFromJsonElement(ListSerializer(serializer<{wrapper}>()), \
-             (obj[\"pairs\"] ?: throw SerializationException(\"missing field `pairs`\")))"
+             kotlinSchemaDecoded(input.json, ListSerializer(serializer<{wrapper}>()), \
+             (obj[\"pairs\"] ?: throw SerializationException(\"missing field `pairs`\")), \"pairs\")"
         ),
     ] {
         assert!(spooling.contains(&held), "no `{held}` in: {spooling}");
@@ -596,7 +596,7 @@ fn a_flattened_map_of_tuples_holding_a_model_is_declared_and_read_by_one_wrapper
     for held in [
         format!("data class Lashing(val dock: String, val extra: Map<String, {wrapper}>)"),
         format!("put(k, output.json.encodeToJsonElement(serializer<{wrapper}>(), v))"),
-        format!("input.json.decodeFromJsonElement(serializer<{wrapper}>(), v)"),
+        format!("kotlinSchemaDecoded(input.json, serializer<{wrapper}>(), v, k)"),
     ] {
         assert!(lashing.contains(&held), "no `{held}` in: {lashing}");
     }

@@ -994,6 +994,14 @@ impl FieldDef {
         Some((name, !arguments.is_empty()))
     }
 
+    /// Names `Self` as the enclosing type, then erases the item's own type parameters: what a
+    /// client emitter does to every member it builds.
+    #[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+    pub fn named_within(&mut self, type_name: &str, parameters: &[String]) {
+        self.resolve_self_references(type_name, parameters);
+        self.erase_type_parameters(parameters);
+    }
+
     /// Whether this field's rendering as a type argument reads any other item's own module-scope
     /// Zod binding — a factory call or a bare `$Schema` const — at any depth, wrapped or named
     /// directly. Deferral asks a wider question than the direct-sibling fold gate does:
@@ -2931,6 +2939,21 @@ fn container_wire_arity(name: &str) -> Option<usize> {
     } else {
         None
     }
+}
+
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+/// Whether the dispatch that describes a field's type has an arm for the standard type `name`: a
+/// scalar, a text, a path, or a wrapper or container the crate reads through.
+pub fn is_a_standard_type_name(name: &str) -> bool {
+    !matches!(
+        get_field_def_type_or_sibling(name),
+        FieldDefType::SiblingType(..)
+    ) || container_wire_arity(name).is_some()
+        || matches!(name, "Option" | "Vec")
+        || is_transparent_wrapper(name)
 }
 
 /// The one list of std wrappers the crate reads straight through to what they hold: everything

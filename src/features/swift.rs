@@ -32,7 +32,7 @@ use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, get_field_def, is_plain_enum,
     is_sequence_wrapper,
 };
-use crate::model_schema::variant_wire_kind;
+use crate::model_schema::{variant_field_rule, variant_wire_kind};
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
 use crate::utils::{
     MapKeyWire, compute_alias_export_name, compute_item_export_name, to_snake_case,
@@ -110,6 +110,13 @@ const SWIFT_RESERVED: [&str; 51] = [
 #[cfg(feature = "chrono")]
 pub const WHOLE_OPTIONS: &str = ".withInternetDateTime";
 
+/// Whether a member is a stored property of its struct or sits in a box.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Storage {
+    Boxed,
+    Direct,
+}
+
 /// One field this module has decided belongs on the wire, resolved to the Swift property it
 /// earns: its Rust name, its lower-camel Swift name, its wire name, whether the key always
 /// reaches the wire, whether it is a `#[serde(flatten)]` source, and the shape that drives its
@@ -122,6 +129,9 @@ struct SwiftField {
     default_at: Option<String>,
     field_def: FieldDef,
     flatten: bool,
+    /// How the member is stored: an `Option` of the type that holds it cannot be a stored
+    /// property of that type, so it is held behind a box.
+    held: Storage,
     /// What the types written for the field are named from.
     hint: String,
     /// Whether serde never writes the member: it is under `skip_serializing`.
@@ -156,6 +166,8 @@ pub struct SwiftTypeArgs<'args> {
     pub pattern: Option<&'args str>,
     /// The functions the type names on itself, in the order written: each takes the payload.
     pub preprocess: &'args [FunctionName],
+    /// The Rust name of the item, which a member written `Self` is named as.
+    pub type_name: &'args str,
 }
 
 /// What every tagging of an enum is written from.
@@ -1563,6 +1575,7 @@ fn range_shape(
                 field_def,
                 flatten: false,
                 hint: hint.clone(),
+                held: Storage::Direct,
                 never_written: false,
                 real_type: real_type.clone(),
                 required: true,
@@ -2475,6 +2488,7 @@ fn flattened_under_option(field: &SwiftField) -> SwiftField {
         field_def: validate::under_option(&field.field_def),
         flatten: true,
         hint: field.hint.clone(),
+        held: Storage::Direct,
         never_written: field.never_written,
         real_type: field
             .real_type
@@ -2947,7 +2961,7 @@ fn collect_swift_fields(
         }
         let wire_name = wire_field_name(&rust_name, rename_override(&field.attrs).as_deref(), rule);
         let mut field_def = member_def(args, &rust_name, field);
-        field_def.erase_type_parameters(type_parameters);
+        field_def.named_within(args.type_name, type_parameters);
         let flatten = field_is_flatten(&field.attrs);
         if flatten
             && field_def.array_depth == 0
@@ -2967,6 +2981,15 @@ fn collect_swift_fields(
         if flatten {
             aux.extend(flattened_wrapper_read(&field_def, &field_hint));
         }
+        let held = if !flatten
+            && field_def.array_depth == 0
+            && field_def.is_optional()
+            && matches!(&field_def.field_type, FieldDefType::SiblingType(name, _) if name == args.type_name)
+        {
+            Storage::Boxed
+        } else {
+            Storage::Direct
+        };
         collected.push(SwiftField {
             aliases: if flatten || omission.skips_deserializing {
                 Vec::new()
@@ -2977,6 +3000,7 @@ fn collect_swift_fields(
             field_def,
             flatten,
             hint: field_hint,
+            held,
             never_written: has_serde_skip_serializing(&field.attrs),
             real_type,
             required: !omission.omits_key,
@@ -3043,11 +3067,21 @@ fn struct_body_content(
     around: bool,
 ) -> String {
     let props = fields.iter().fold(String::new(), |mut acc, field| {
-        write!(
-            acc,
-            "public let {}: {}; ",
-            field.swift_name, field.real_type
-        )
+        if field.held == Storage::Boxed {
+            write!(
+                acc,
+                "@{} public private(set) var {}: {}; ",
+                indirection_name(owner),
+                field.swift_name,
+                field.real_type
+            )
+        } else {
+            write!(
+                acc,
+                "public let {}: {}; ",
+                field.swift_name, field.real_type
+            )
+        }
         .unwrap();
         acc
     });
@@ -3266,6 +3300,37 @@ fn field_rules(owner: &str, fields: &[SwiftField]) -> Vec<String> {
         .collect()
 }
 
+/// The property wrapper a struct names for its members that hold an `Option` of its own type.
+fn indirection_name(owner: &str) -> String {
+    format!("{owner}SwiftSchemaIndirect")
+}
+
+/// The property wrapper `name`, which keeps its value in a class so that a struct can hold an
+/// `Option` of itself, and reads and writes the `Option` as the plain one is: an absent key is
+/// `nil`, and `nil` is written as no key.
+fn indirection(name: &str) -> String {
+    format!(
+        "@propertyWrapper public struct {name}<Wrapped: Codable & Sendable>: Codable, Sendable {{ \
+         private final class Box: Sendable {{ let value: Wrapped?; \
+         init(_ value: Wrapped?) {{ self.value = value }} }}; \
+         private var box: Box; \
+         public init(wrappedValue: Wrapped?) {{ box = Box(wrappedValue) }}; \
+         public var wrappedValue: Wrapped? {{ get {{ box.value }} set {{ box = Box(newValue) }} }}; \
+         public init(from decoder: Decoder) throws {{ \
+         let container = try decoder.singleValueContainer(); \
+         box = Box(container.decodeNil() ? nil : try container.decode(Wrapped.self)) }}; \
+         public func encode(to encoder: Encoder) throws {{ \
+         var container = encoder.singleValueContainer(); \
+         if let value = box.value {{ try container.encode(value) }} else {{ try container.encodeNil() }} }} }}; \
+         extension KeyedDecodingContainer {{ \
+         func decode<Wrapped>(_ type: {name}<Wrapped>.Type, forKey key: Key) throws -> {name}<Wrapped> {{ \
+         {name}(wrappedValue: try decodeIfPresent(Wrapped.self, forKey: key)) }} }}; \
+         extension KeyedEncodingContainer {{ \
+         mutating func encode<Wrapped>(_ value: {name}<Wrapped>, forKey key: Key) throws {{ \
+         try encodeIfPresent(value.wrappedValue, forKey: key) }} }};"
+    )
+}
+
 /// The `public struct {export_name}{generics}: Codable, Sendable { ... }` a named-field struct or
 /// a struct-shaped variant payload earns, with the `DateTime` helpers appended when a field needs
 /// them. `rules` is what its `validate()` runs, `corrects` the functions it names on itself, and
@@ -3289,7 +3354,10 @@ fn struct_declaration(
         around,
     );
     let shapes: Vec<&SwiftFieldShape> = fields.iter().map(|field| &field.shape).collect();
-    let helpers = leaf_helpers_for(export_name, generic_params, &shapes, None);
+    let mut helpers = leaf_helpers_for(export_name, generic_params, &shapes, None);
+    if fields.iter().any(|field| field.held == Storage::Boxed) {
+        helpers.push_str(&indirection(&indirection_name(export_name)));
+    }
     format!(
         "public struct {export_name}{generic_params}: Codable, Sendable {{ {content} }}; {helpers}"
     )
@@ -3314,7 +3382,14 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
         );
         rules.extend(bounds.iter().cloned());
         rules.extend(validate::own_checks(args.check));
-        return value_wrapper_tokens(
+        let bare = if let FieldDefType::TypeParam(parameter) = &value_field.field_type
+            && !value_field.is_list()
+        {
+            type_parameters.iter().position(|named| named == parameter)
+        } else {
+            None
+        };
+        let tokens = value_wrapper_tokens(
             &item_struct.ident,
             &item_struct.generics,
             args,
@@ -3327,6 +3402,8 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
             &rules,
             hashes_as_key(&item_struct.attrs, &value_field),
         );
+        validate::note_bare(&rust_ident, bare);
+        return tokens;
     }
     if matches!(item_struct.fields, Fields::Unnamed(_)) {
         return tuple_struct_swift_tokens(item_struct, args);
@@ -3388,7 +3465,7 @@ fn brand_value_field(
     args: &SwiftTypeArgs<'_>,
 ) -> FieldDef {
     let mut field_def = member_def(args, "value", held);
-    field_def.erase_type_parameters(type_parameters);
+    field_def.named_within(args.type_name, type_parameters);
     field_def
 }
 
@@ -3665,7 +3742,7 @@ fn tuple_struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>)
     };
     let slot_def = |slot: &Field| {
         let mut field_def = member_def(args, "slot", slot);
-        field_def.erase_type_parameters(&type_parameters);
+        field_def.named_within(args.type_name, &type_parameters);
         field_def
     };
     let export_name = compute_item_export_name(&item_struct.ident.to_string(), args.name_override);
@@ -3802,7 +3879,7 @@ fn alias_swift_tokens(item_type: &ItemType, name_override: Option<&str>) -> Toke
 fn resolve_variant_payload(
     shape: &EnumShape<'_>,
     variant: &Variant,
-    field_rule: RenameRule,
+    rename_all_fields: Option<&str>,
     step: Option<&str>,
     aux: &mut Vec<String>,
 ) -> VariantPayload {
@@ -3819,7 +3896,7 @@ fn resolve_variant_payload(
             walked: None,
             written: false,
         },
-        VariantKind::Named => named_payload(shape, variant, field_rule, step, aux),
+        VariantKind::Named => named_payload(shape, variant, rename_all_fields, step, aux),
         VariantKind::TupleSingle => slot_payload(shape, variant, step, aux),
         VariantKind::TupleMultiple => slots_payload(shape, variant, step, aux),
     }
@@ -3831,7 +3908,7 @@ fn resolve_variant_payload(
 fn named_payload(
     shape: &EnumShape<'_>,
     variant: &Variant,
-    field_rule: RenameRule,
+    rename_all_fields: Option<&str>,
     step: Option<&str>,
     aux: &mut Vec<String>,
 ) -> VariantPayload {
@@ -3840,7 +3917,7 @@ fn named_payload(
     let variant_name = variant.ident.to_string();
     let fields = collect_swift_fields(
         &variant.fields,
-        field_rule,
+        variant_field_rule(variant, rename_all_fields),
         shape.type_parameters,
         &struct_name,
         shape.args,
@@ -3913,7 +3990,7 @@ fn slot_payload(
         || get_field_def("value", &syn::parse_quote!(()), ""),
         |field| member_def(shape.args, "value", field),
     );
-    field_def.erase_type_parameters(shape.type_parameters);
+    field_def.named_within(shape.args.type_name, shape.type_parameters);
     let hint = format!("{export_name}{}Value", variant.ident);
     let (held, slot) = slot_resolve(&field_def, &hint, aux);
     let checked = validate::Checked {
@@ -3974,7 +4051,7 @@ fn slots_payload(
     let export_name = shape.export_name;
     let tuple_field = written_slots(variant, |field| {
         let mut field_def = member_def(shape.args, "slot", field);
-        field_def.erase_type_parameters(shape.type_parameters);
+        field_def.named_within(shape.args.type_name, shape.type_parameters);
         field_def
     });
     let slots: &[FieldDef] = if let FieldDefType::Tuple(slots) = &tuple_field.field_type {
@@ -4100,7 +4177,6 @@ fn external_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
         type_parameters: _type_parameters,
     } = shape;
     let variant_rule = resolve_rename_rule(tag_attrs.rename_all.as_deref());
-    let field_rule = resolve_rename_rule(tag_attrs.rename_all_fields.as_deref());
     let mut cases = String::new();
     let mut unit_decode_arms = String::new();
     let mut object_decode_arms = String::new();
@@ -4110,8 +4186,13 @@ fn external_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
     let mut twins = Vec::new();
     for variant in &item_enum.variants {
         let (case_name, wire_tag) = variant_names(variant, variant_rule);
-        let payload =
-            resolve_variant_payload(shape, variant, field_rule, Some(wire_tag.as_str()), aux);
+        let payload = resolve_variant_payload(
+            shape,
+            variant,
+            tag_attrs.rename_all_fields.as_deref(),
+            Some(wire_tag.as_str()),
+            aux,
+        );
         ruled.push((case_name.clone(), payload.rules.clone()));
         cases.push_str(&variant_case(&case_name, payload.held.as_deref()));
         slots.extend(payload.converted.as_ref().map(|slot| slot.shape.clone()));
@@ -4237,7 +4318,6 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
     } = shape;
     let tag_key = tag_attrs.tag.as_deref().unwrap_or("type");
     let variant_rule = resolve_rename_rule(tag_attrs.rename_all.as_deref());
-    let field_rule = resolve_rename_rule(tag_attrs.rename_all_fields.as_deref());
     let mut cases = String::new();
     let mut decode_arms = String::new();
     let mut encode_arms = String::new();
@@ -4251,7 +4331,13 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
         let case_name = swift_member(&RenameRule::CamelCase.apply_to_variant(&rust_name));
         let wire_tag = rename_override(&variant.attrs)
             .unwrap_or_else(|| variant_rule.apply_to_variant(&rust_name));
-        let payload = resolve_variant_payload(shape, variant, field_rule, None, aux);
+        let payload = resolve_variant_payload(
+            shape,
+            variant,
+            tag_attrs.rename_all_fields.as_deref(),
+            None,
+            aux,
+        );
         ruled.push((case_name.clone(), payload.rules.clone()));
         cases.push_str(&variant_case(&case_name, payload.held.as_deref()));
         slots.extend(payload.converted.as_ref().map(|slot| slot.shape.clone()));
@@ -4343,7 +4429,6 @@ fn adjacent_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
     let tag_key = tag_attrs.tag.as_deref().unwrap_or("type");
     let content_key = tag_attrs.content.as_deref().unwrap_or("content");
     let variant_rule = resolve_rename_rule(tag_attrs.rename_all.as_deref());
-    let field_rule = resolve_rename_rule(tag_attrs.rename_all_fields.as_deref());
     let mut cases = String::new();
     let mut decode_arms = String::new();
     let mut encode_arms = String::new();
@@ -4355,7 +4440,13 @@ fn adjacent_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
         let case_name = swift_member(&RenameRule::CamelCase.apply_to_variant(&rust_name));
         let wire_tag = rename_override(&variant.attrs)
             .unwrap_or_else(|| variant_rule.apply_to_variant(&rust_name));
-        let payload = resolve_variant_payload(shape, variant, field_rule, Some(content_key), aux);
+        let payload = resolve_variant_payload(
+            shape,
+            variant,
+            tag_attrs.rename_all_fields.as_deref(),
+            Some(content_key),
+            aux,
+        );
         ruled.push((case_name.clone(), payload.rules.clone()));
         cases.push_str(&variant_case(&case_name, payload.held.as_deref()));
         slots.extend(payload.converted.as_ref().map(|slot| slot.shape.clone()));
@@ -4441,7 +4532,6 @@ fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> S
         tag_attrs,
         type_parameters: _type_parameters,
     } = shape;
-    let field_rule = resolve_rename_rule(tag_attrs.rename_all_fields.as_deref());
     let mut cases = String::new();
     let mut choosers = String::new();
     let mut decode_attempts = String::new();
@@ -4454,7 +4544,13 @@ fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> S
     for variant in &item_enum.variants {
         let rust_name = variant.ident.to_string();
         let case_name = swift_member(&RenameRule::CamelCase.apply_to_variant(&rust_name));
-        let payload = resolve_variant_payload(shape, variant, field_rule, None, aux);
+        let payload = resolve_variant_payload(
+            shape,
+            variant,
+            tag_attrs.rename_all_fields.as_deref(),
+            None,
+            aux,
+        );
         ruled.push((case_name.clone(), payload.rules.clone()));
         cases.push_str(&variant_case(&case_name, payload.held.as_deref()));
         slots.extend(payload.converted.as_ref().map(|slot| slot.shape.clone()));

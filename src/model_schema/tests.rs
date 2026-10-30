@@ -12597,12 +12597,12 @@ fn an_item_is_recorded_as_one_value_where_serde_writes_it_as_one() {
         let name = super::item_schema_ident(&item).unwrap().to_string();
         let _expanded = expansion_under("", source);
         assert_eq!(
-            matches!(declared(&name), Some(Declared::OneValue)),
+            matches!(declared(&name), Some(Declared::OneValue(_))),
             one_value,
             "for {source}"
         );
         assert_eq!(
-            matches!(declared(&name), Some(Declared::Model)),
+            matches!(declared(&name), Some(Declared::Model(_))),
             !one_value,
             "for {source}"
         );
@@ -21989,6 +21989,179 @@ fn a_constrained_generic_brand_defines_its_own_type_identity() {
     assert!(!concrete.contains("type_identity"), "got: {concrete}");
 }
 
+/// A parameter the brand's inner names is read at its declared default through the type
+/// identity, and a parameter beside a concrete inner changes nothing: the inner is judged at every
+/// filling by `validate_value` alone.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[test]
+fn only_a_brand_whose_inner_names_a_parameter_reads_at_the_declared_default() {
+    let over_parameter = expansion_with_args_over(
+        "minLength = 3, default_types(Held = PathBuf)",
+        "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct HeldPath<Held>(pub Held);",
+    )
+    .to_string();
+    assert!(
+        over_parameter.contains("fn type_identity"),
+        "got: {over_parameter}"
+    );
+    assert!(
+        over_parameter.contains("fn validate_at_declared_default"),
+        "got: {over_parameter}"
+    );
+    assert!(
+        !over_parameter.contains("held . to_string"),
+        "got: {over_parameter}"
+    );
+
+    for inner in ["PathBuf", "String"] {
+        let beside_marker = expansion_with_args_over(
+            "minLength = 3, no_display, default_types(Mark = String)",
+            &format!(
+                "#[derive(Serialize, Deserialize)] #[serde(transparent)] \
+                 pub struct Marked{inner}<Mark> {{ #[serde(skip)] pub mark: PhantomData<Mark>, \
+                 pub text: {inner} }}"
+            ),
+        )
+        .to_string();
+        assert!(
+            !beside_marker.contains("type_identity"),
+            "{inner}: {beside_marker}"
+        );
+        assert!(
+            !beside_marker.contains("validate_at_declared_default"),
+            "{inner}: {beside_marker}"
+        );
+        assert!(
+            beside_marker.contains("fn validate_value"),
+            "{inner}: {beside_marker}"
+        );
+    }
+}
+
+/// The default a parameter takes where `default_types` leaves its entry out is the standard
+/// `String`, written at its full path.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod"),
+    not(feature = "jsonschema")
+))]
+#[test]
+fn the_fallback_default_of_a_generic_brand_is_the_standard_string() {
+    let rendered = expansion_with_args_over(
+        "minLength = 2",
+        "#[derive(Serialize, Deserialize)]
+        #[serde(transparent)]
+        pub struct FallbackCode<T>(pub T);",
+    )
+    .to_string();
+    assert!(
+        rendered.contains("type_identity :: < :: std :: string :: String > ()"),
+        "got: {rendered}"
+    );
+    assert!(
+        !rendered.contains("type_identity :: < String > ()"),
+        "got: {rendered}"
+    );
+}
+
+/// Declares what the table of declared defaults reads, above the brands that name them.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn declare_the_names_a_default_may_be() {
+    for (args, source) in [
+        (
+            "no_display",
+            "#[derive(Serialize)] #[serde(transparent)] pub struct TableTag<'text>(pub &'text str);",
+        ),
+        ("", "pub type TableKept = TableTag<'static>;"),
+        ("", "pub type TableText = String;"),
+        (
+            "no_display",
+            "#[derive(Serialize)] #[serde(transparent)] pub struct TableLabel(pub String);",
+        ),
+    ] {
+        let declared = expansion_with_args_over(args, source).to_string();
+        assert!(!declared.contains("compile_error"), "{source}: {declared}");
+    }
+}
+
+/// A generic brand with a string check reads its value as the declared default only where the
+/// expansion can prove the default writes every lifetime it has.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[test]
+fn a_declared_default_is_read_only_where_every_lifetime_it_has_is_written() {
+    declare_the_names_a_default_may_be();
+    let brand = |default: &str, args: &str| {
+        expansion_with_args_over(
+            &format!("{args}default_types(Text = {default})"),
+            "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct TableRow<Text>(pub Text);",
+        )
+        .to_string()
+    };
+    for built in [
+        "String",
+        "&'static str",
+        "Cow<'_, str>",
+        "PathBuf",
+        "Box<str>",
+        "TableLabel",
+        "TableText",
+    ] {
+        let expanded = brand(built, "minLength = 2, ");
+        assert!(!expanded.contains("compile_error"), "{built}: {expanded}");
+    }
+    for (refused, said) in [
+        ("TableTag<'static>", None),
+        ("TableKept", Some("is an alias that hides a lifetime")),
+        ("PlainKept", Some("is a type this expansion has not read")),
+        (
+            "other_crate::Kept",
+            Some("is a type this expansion has not read"),
+        ),
+        ("TableTag", Some("write `TableTag<'_>`")),
+        (
+            "Vec<PlainKept>",
+            Some("is a type this expansion has not read"),
+        ),
+    ] {
+        let expanded = brand(refused, "minLength = 2, ");
+        match said {
+            None => assert!(!expanded.contains("compile_error"), "{refused}: {expanded}"),
+            Some(clause) => {
+                assert!(expanded.contains("compile_error"), "{refused}: {expanded}");
+                assert!(expanded.contains(clause), "{refused}: {expanded}");
+                assert!(
+                    expanded.contains("a string check on the generic brand `TableRow`"),
+                    "{refused}: {expanded}"
+                );
+            }
+        }
+    }
+}
+
+/// A generic brand with no string check is refused nothing, whatever its default.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[test]
+fn a_generic_brand_with_no_string_check_is_refused_no_default() {
+    let expanded = expansion_with_args_over(
+        "default_types(Text = UnreadKept)",
+        "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct UncheckedRow<Text>(pub Text);",
+    )
+    .to_string();
+    assert!(!expanded.contains("compile_error"), "got: {expanded}");
+}
+
 /// `validate()` is written once, in the `impl` that holds the type's delegates, under the
 /// generics the type declares: a type with a parameter gets no second `impl` at one filling.
 #[cfg(all(
@@ -22718,4 +22891,89 @@ fn a_transparent_tuple_struct_with_a_one_way_slot_expands_and_a_plain_one_is_ref
         plain[0].contains("slot 0 of tuple struct `Pair`"),
         "got: {plain:?}"
     );
+}
+
+#[cfg(feature = "serde")]
+fn map_key_refusal(parameter: &str, source: &str) -> Vec<String> {
+    refusal_texts(&super::exec_model_schema(
+        syn::parse_str(&format!("default_types({parameter} = String)")).unwrap(),
+        syn::parse_str(&format!("#[derive(Deserialize, Serialize)] {source}")).unwrap(),
+    ))
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_map_of_models_keyed_by_a_parameter_with_no_serialize_is_refused() {
+    assert_eq!(
+        map_key_refusal(
+            "K",
+            "pub struct Shelf<K: Ord> { pub by_key: BTreeMap<K, Parcel> }"
+        ),
+        [
+            "model_schema: field `by_key`: `validate()` names each entry of this map by its key, \
+             as serde writes it, and `K` declares no `Serialize` on `Shelf`. Write `K: Serialize` \
+             on the type."
+        ]
+    );
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_map_key_that_wraps_a_parameter_or_sits_in_an_enum_variant_is_refused() {
+    let wrapped = map_key_refusal(
+        "K",
+        "struct Shelf<K: Ord> { by_bay: BTreeMap<Bay<K>, Parcel> }",
+    );
+    let variant = map_key_refusal(
+        "K",
+        "enum Stock<K: Ord> { Keyed { by_key: BTreeMap<K, Parcel> } }",
+    );
+    let nested = map_key_refusal(
+        "K",
+        "struct Shelf<K: Ord> { rows: Vec<(u8, BTreeMap<K, Parcel>)>, lone: BTreeMap<K, Parcel> }",
+    );
+    assert_eq!(
+        [wrapped.len(), variant.len(), nested.len()],
+        [1, 1, 2],
+        "got: {wrapped:?} {variant:?} {nested:?}"
+    );
+    assert!(variant[0].contains("`Stock`"), "got: {variant:?}");
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_map_key_is_accepted_where_the_parameter_declares_serialize_or_the_walk_reads_no_key() {
+    let accepted = [
+        (
+            "Key",
+            "struct Rack<Key: Ord + Serialize> { by_key: BTreeMap<Key, Parcel> }",
+        ),
+        (
+            "Key",
+            "struct Rack<Key: Ord + serde::Serialize> { by_key: BTreeMap<Key, Parcel> }",
+        ),
+        (
+            "Key",
+            "struct Rack<Key> where Key: Ord + Serialize { by_key: BTreeMap<Key, Parcel> }",
+        ),
+        (
+            "K",
+            "struct Ledger<K: Ord> { counts_by_key: BTreeMap<K, u32> }",
+        ),
+        (
+            "K",
+            "struct Docks<K: Ord> { by_dock: BTreeMap<String, Parcel>, other: K }",
+        ),
+        (
+            "K",
+            "struct Skipped<K: Ord> { #[serde(skip)] by_key: BTreeMap<K, Parcel> }",
+        ),
+    ];
+    for (parameter, source) in accepted {
+        assert_eq!(
+            map_key_refusal(parameter, source),
+            Vec::<String>::new(),
+            "for {source}"
+        );
+    }
 }

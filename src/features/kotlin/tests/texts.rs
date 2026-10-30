@@ -64,8 +64,9 @@ fn where_the_emitter_writes_the_read_it_composes_the_serializer_of_the_form() {
     );
     assert!(
         marks.contains(
-            "return Marks(input.json.decodeFromJsonElement(KotlinText1, array[0]), \
-             input.json.decodeFromJsonElement(ListSerializer(KotlinText1.nullable), array[1]))"
+            "return Marks(kotlinSchemaDecoded(input.json, KotlinText1, array[0], \"0\"), \
+             kotlinSchemaDecoded(input.json, ListSerializer(KotlinText1.nullable), array[1], \
+             \"1\"))"
         ),
         "got: {marks}"
     );
@@ -85,7 +86,7 @@ fn where_the_emitter_writes_the_read_it_composes_the_serializer_of_the_form() {
     );
     assert!(
         signalled.contains(
-            "\"Flag\" -> SignalFlag(input.json.decodeFromJsonElement(KotlinText2, data))"
+            "\"Flag\" -> SignalFlag(kotlinSchemaDecoded(input.json, KotlinText2, data, \"Flag\"))"
         ),
         "got: {signalled}"
     );
@@ -131,8 +132,8 @@ fn an_alias_names_the_serializer_of_its_form_and_a_written_read_composes_it() {
     );
     assert!(
         initials_read.contains(
-            "return Initials(input.json.decodeFromJsonElement(KotlinText2, \
-             input.decodeJsonElement()))"
+            "return Initials(kotlinSchemaDecoded(input.json, KotlinText2, \
+             input.decodeJsonElement(), \"0\"))"
         ),
         "got: {initials_read}"
     );
@@ -183,9 +184,10 @@ fn a_type_argument_names_the_serializer_of_its_form_and_is_handed_to_a_model_wri
     let paired_read = plain(&paired);
     assert!(
         paired_read.contains(
-            "return Paired(input.json.decodeFromJsonElement(HeldUnjudged(KotlinText2), \
-             array[0]), input.json.decodeFromJsonElement(serializer<Later<String>>(), array[1]), \
-             input.json.decodeFromJsonElement(serializer<PairType<String>>(), array[2]))"
+            "return Paired(kotlinSchemaDecoded(input.json, HeldUnjudged(KotlinText2), \
+             array[0], \"0\"), kotlinSchemaDecoded(input.json, serializer<Later<String>>(), \
+             array[1], \"1\"), kotlinSchemaDecoded(input.json, serializer<PairType<String>>(), \
+             array[2], \"2\"))"
         ),
         "got: {paired_read}"
     );

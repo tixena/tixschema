@@ -116,11 +116,18 @@ use crate::utils::{
     shape_questions_for,
 };
 
+#[cfg(all(
+    feature = "serde",
+    feature = "indexmap",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+use crate::utils::record_indexed_set;
+
 #[cfg(feature = "serde")]
 use crate::utils::{
     Declared, NonObjectWire, SlotBesideTag, TrivialPattern, UnionParameter, WireLeaf, WrittenAs,
-    forget_field_validators, is_recorded_plain_enum, record_declared, record_field_validator,
-    record_flattened_parameters, record_non_object_wire, record_open_map,
+    declared, forget_field_validators, is_recorded_plain_enum, record_declared,
+    record_field_validator, record_flattened_parameters, record_non_object_wire, record_open_map,
     record_open_map_parameters, record_plain_enum, record_text_key_parameters,
     record_union_parameters, record_value_parameter, recorded_non_object_wire, trivial_pattern,
     union_parameters, value_parameter,
@@ -191,7 +198,9 @@ use crate::features::serde::defaults::{holds_a_placeholder, zod_substituted};
 use crate::field_type::{parse_serde_field_attributes, parse_serde_type_attributes};
 
 #[cfg(feature = "serde")]
-use crate::field_type::{is_interior_mutability_wrapper, is_refused_sequence_wrapper};
+use crate::field_type::{
+    is_a_standard_type_name, is_interior_mutability_wrapper, is_refused_sequence_wrapper,
+};
 use crate::field_type::{
     is_map_wrapper, is_ownership_wrapper, is_sequence_wrapper, is_transparent_wrapper,
     written_std_range, written_std_result,
@@ -281,6 +290,8 @@ use crate::utils::to_snake_case;
 #[cfg(feature = "serde")]
 use crate::utils::{forget_checks, names_a_check, record_member_checks, record_own_checks};
 
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+use crate::rename_rule::RenameRule;
 use crate::rename_rule::resolve_rename_rule;
 
 /// Every argument the `model_schema` parser reads, in the order the unknown-argument rejection
@@ -607,6 +618,21 @@ struct BrandedValidation {
     validator: proc_macro2::Ident,
 }
 
+/// A declared default a generic brand's string check reads its value as, and what keeps the
+/// expansion from proving it writes every lifetime it has.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+enum UnprovenDefault {
+    /// An alias whose target writes a lifetime, which the alias hides from the cast.
+    Hides,
+    /// A name that declares lifetimes the default leaves out.
+    LeavesOut(String),
+    /// A name no expansion has read, or a standard type the dispatch has no arm for.
+    Unseen,
+}
+
 /// The JSON schema shape a branded newtype's inner field describes.
 #[cfg(feature = "jsonschema")]
 enum BrandedJsonInner {
@@ -794,6 +820,8 @@ enum HeldEnd {
 #[cfg(feature = "serde")]
 struct HeldShape {
     end: HeldEnd,
+    /// The key type of each map in `wraps`, outermost first.
+    keys: Vec<syn::Type>,
     /// The wrappers the walk reads through to its end, outermost first.
     wraps: Vec<ConstraintWrap>,
 }
@@ -2131,6 +2159,11 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     {
         return output;
     }
+    // A map `validate()` names by its key, keyed by a parameter the item declares no `Serialize`
+    // for, could not be written into a message.
+    if let Some(output) = refused_item_output(&item, &unwritable_map_key_errors(&item)) {
+        return output;
+    }
     // A list-form serde rename whose two directions name two keys is refused here, at the one seam
     // a container, a variant and a member are all reachable from, and so is a transparent struct
     // whose two derives take two different fields as its value.
@@ -2258,6 +2291,21 @@ fn process_shape(item: Item, args: &ModelSchemaArgs) -> TokenStream {
     }
 }
 
+/// The Rust name of the item a client emitter writes, which a member written `Self` is named as.
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+fn item_rust_name(item: &Item) -> String {
+    let ident = if let Item::Struct(item_struct) = item {
+        &item_struct.ident
+    } else if let Item::Enum(item_enum) = item {
+        &item_enum.ident
+    } else if let Item::Type(item_type) = item {
+        &item_type.ident
+    } else {
+        return String::new();
+    };
+    ident.to_string()
+}
+
 /// The Dart tokens `item` earns, or nothing without the `dart` feature — always callable, so the
 /// tokens that follow the item's own expansion never need a `#[cfg]`-gated `let` of their own.
 /// The backend is handed what it reads of `args`: the name, the checks, the `preprocess`, the
@@ -2278,6 +2326,7 @@ fn dart_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
             name_override: args.name_override.as_deref(),
             pattern: args.pattern.as_deref(),
             preprocess: &args.preprocess,
+            type_name: &item_rust_name(item),
         },
     )
 }
@@ -2305,6 +2354,7 @@ fn swift_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
             name_override: args.name_override.as_deref(),
             pattern: args.pattern.as_deref(),
             preprocess: &args.preprocess,
+            type_name: &item_rust_name(item),
         },
     )
 }
@@ -2332,6 +2382,7 @@ fn kotlin_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
             name_override: args.name_override.as_deref(),
             pattern: args.pattern.as_deref(),
             preprocess: &args.preprocess,
+            type_name: &item_rust_name(item),
         },
     )
 }
@@ -2475,6 +2526,10 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
     register_alias_info(&rust_ident_str, &export_name, &module_name, kind);
     if names_a_list(&alias.ty) {
         record_counted(&rust_ident_str, Counted::Items);
+        #[cfg(all(feature = "serde", feature = "indexmap"))]
+        if names_an_indexed_set(&alias.ty) {
+            record_indexed_set(&rust_ident_str);
+        }
     }
     // An alias *is* its target, so a key written under its name renders in the target's wire form.
     record_key_wire(&rust_ident_str, alias_field_def.map_key_wire());
@@ -5212,6 +5267,144 @@ fn default_types_guard_errors(
         .collect()
 }
 
+/// The refusal each map `validate()` walks earns when its key names a type parameter the item
+/// declares no `Serialize` for: `validate()` is written under the item's own bounds and could not
+/// write the key into a message. Spanned on the key's type.
+#[cfg(feature = "serde")]
+fn unwritable_map_key_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
+    let Some(generics) = item_generics(item) else {
+        return Vec::new();
+    };
+    let parameters = type_parameters_in_scope(generics);
+    let unwritable: Vec<&String> = parameters
+        .iter()
+        .filter(|parameter| !declares_serialize(generics, parameter))
+        .collect();
+    if unwritable.is_empty() {
+        return Vec::new();
+    }
+    let own = item_schema_ident(item)
+        .map(ToString::to_string)
+        .unwrap_or_default();
+    let mut errors = Vec::new();
+    for (label, field) in walked_members(item) {
+        let mut def = get_field_def("_key", &field.ty, "");
+        def.erase_type_parameters(&parameters);
+        let Some(shape) = held_shape(&field.ty, &def) else {
+            continue;
+        };
+        for key in map_keys_of(&shape) {
+            let written = quote! { #key };
+            for parameter in unwritable
+                .iter()
+                .filter(|parameter| tokens_name_any(&written, &[(**parameter).clone()]))
+            {
+                errors.push(
+                    syn::Error::new_spanned(
+                        key,
+                        prefixed_guard_message(&format!(
+                            "{label}: `validate()` names each entry of this map by its key, as \
+                             serde writes it, and `{parameter}` declares no `Serialize` on \
+                             `{own}`. Write `{parameter}: Serialize` on the type."
+                        )),
+                    )
+                    .to_compile_error(),
+                );
+            }
+        }
+    }
+    errors
+}
+
+/// Without `serde` `validate()` is not written, and no key is named in a message.
+#[cfg(not(feature = "serde"))]
+const fn unwritable_map_key_errors(_item: &Item) -> Vec<proc_macro2::TokenStream> {
+    Vec::new()
+}
+
+/// Every key type of the maps a walk reads, at any depth.
+#[cfg(feature = "serde")]
+fn map_keys_of(shape: &HeldShape) -> Vec<&syn::Type> {
+    let mut keys: Vec<&syn::Type> = shape.keys.iter().collect();
+    match &shape.end {
+        HeldEnd::Arms(arms) => keys.extend(arms.iter().flat_map(|(_, held)| map_keys_of(held))),
+        HeldEnd::Declared => {}
+        HeldEnd::Positions(positions) => {
+            keys.extend(positions.iter().flat_map(|(_, held)| map_keys_of(held)));
+        }
+    }
+    keys
+}
+
+/// The members `validate()` walks, each beside the label a refusal names it by: those serde writes
+/// or reads.
+#[cfg(feature = "serde")]
+fn walked_members(item: &Item) -> Vec<(String, &Field)> {
+    let label = |field: &Field| {
+        field_label(
+            &field
+                .ident
+                .as_ref()
+                .map_or_else(String::new, ToString::to_string),
+        )
+    };
+    let carried = |field: &&Field| !parse_serde_key_omission(&field.attrs).absent_from_wire();
+    let mut members: Vec<(String, &Field)> = Vec::new();
+    if let Item::Struct(item_struct) = item {
+        members.extend(
+            item_struct
+                .fields
+                .iter()
+                .filter(carried)
+                .map(|field| (label(field), field)),
+        );
+    } else if let Item::Enum(item_enum) = item {
+        for variant in item_enum
+            .variants
+            .iter()
+            .filter(|variant| variant_on_the_wire(variant))
+        {
+            members.extend(
+                variant
+                    .fields
+                    .iter()
+                    .filter(carried)
+                    .map(|field| (label(field), field)),
+            );
+        }
+    } else {
+        // Nothing else holds a member.
+    }
+    members
+}
+
+/// Whether a bound whose last path segment is `Serialize` is written for `parameter`, in the
+/// generics or in a `where` clause.
+#[cfg(feature = "serde")]
+fn declares_serialize(generics: &syn::Generics, parameter: &str) -> bool {
+    generics.params.iter().any(|param| {
+        matches!(param, syn::GenericParam::Type(declared)
+            if declared.ident == parameter && names_serialize(declared.bounds.iter()))
+    }) || generics
+        .where_clause
+        .iter()
+        .flat_map(|clause| &clause.predicates)
+        .any(|predicate| {
+            matches!(predicate, syn::WherePredicate::Type(bounded)
+                if matches!(&bounded.bounded_ty, syn::Type::Path(named) if named.path.is_ident(parameter))
+                    && names_serialize(bounded.bounds.iter()))
+        })
+}
+
+/// Whether one of `bounds` is a trait whose last path segment is `Serialize`.
+#[cfg(feature = "serde")]
+fn names_serialize<'bound>(mut bounds: impl Iterator<Item = &'bound syn::TypeParamBound>) -> bool {
+    bounds.any(|bound| {
+        matches!(bound, syn::TypeParamBound::Trait(held)
+            if held.path.segments.last().is_some_and(|segment| segment.ident == "Serialize"))
+    })
+}
+
 /// The refusal every `default_types` entry that names no type parameter of the item earns, spanned
 /// on the entry as written.
 fn entries_naming_no_parameter(
@@ -6329,8 +6522,9 @@ fn declared_default_constraint_message(name: &Ident, parameter: &str, default_ty
 }
 
 /// `parameter`'s declared default as a `syn::Type`, for substituting a concrete Rust type rather
-/// than spelling one for a diagnostic. Falls back to `String` for an entry left out — the same
-/// fallback [`declared_default_type_name`] and [`declared_default_field`] use, so all three agree.
+/// than spelling one for a diagnostic. Falls back to the standard `String` for an entry left out,
+/// written at its full path, which is the type [`declared_default_type_name`] and
+/// [`declared_default_field`] name for the same gap.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -6342,7 +6536,10 @@ fn declared_default_syn_type(
     default_types
         .iter()
         .find(|(declared, _)| declared == parameter)
-        .map_or_else(|| syn::parse_quote!(String), |(_, ty)| ty.clone())
+        .map_or_else(
+            || syn::parse_quote!(::std::string::String),
+            |(_, ty)| ty.clone(),
+        )
 }
 
 /// The consult a constrained brand leaves unanswered, for the expansion that registers the name to
@@ -6407,7 +6604,15 @@ fn deferred_shape_refusals(registering: Option<&Ident>) -> Vec<proc_macro2::Toke
         .into_iter()
         .filter_map(|question| {
             let shape = answered_shape(info.value_shape, &question.argument_shapes)?;
-            let message = named_inner_constraint_message(&question.brand, &rust_ident, shape);
+            let mut message = named_inner_constraint_message(&question.brand, &rust_ident, shape);
+            if shape == "container" {
+                let _ = write!(
+                    message,
+                    " A length counts the items of `{rust_ident}` only when it is declared above \
+                     `{brand}`: move `{rust_ident}` above `{brand}`.",
+                    brand = question.brand
+                );
+            }
             Some(syn::Error::new_spanned(name, message).to_compile_error())
         })
         .collect()
@@ -6906,6 +7111,16 @@ fn branded_guard_errors(
     args: &ModelSchemaArgs,
 ) -> Vec<proc_macro2::TokenStream> {
     let inner_field = brand_field(item_struct).unwrap();
+    #[cfg(all(
+        feature = "serde",
+        any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    ))]
+    let unproven_defaults = branded_unproven_default_errors(item_struct, inner_field, args);
+    #[cfg(not(all(
+        feature = "serde",
+        any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    )))]
+    let unproven_defaults: Vec<proc_macro2::TokenStream> = Vec::new();
     branded_cfg_attr_guard_errors(item_struct, inner_field)
         .into_iter()
         .chain(branded_option_inner_error(&item_struct.ident, inner_field))
@@ -6921,6 +7136,190 @@ fn branded_guard_errors(
             inner_field,
         ))
         .chain(branded_map_key_error(&item_struct.ident, inner_field))
+        .chain(unproven_defaults)
+        .collect()
+}
+
+/// Why `ty` cannot be proven to write every lifetime it has, or `None` where it can: a standard
+/// type, or a name `#[model_schema]` was written on above that is written with every lifetime it
+/// declares, or an alias of a type that passes and writes no lifetime of its own.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn unproven_default(ty: &syn::Type, depth: usize) -> Option<UnprovenDefault> {
+    match ty {
+        syn::Type::Path(path) if path.qself.is_none() => {
+            let last = path.path.segments.last()?;
+            let name = last.ident.to_string().trim_start_matches("r#").to_owned();
+            let arguments = match &last.arguments {
+                syn::PathArguments::AngleBracketed(bracketed) => bracketed.args.iter().collect(),
+                syn::PathArguments::None | syn::PathArguments::Parenthesized(_) => Vec::new(),
+            };
+            let written = arguments
+                .iter()
+                .filter(|argument| matches!(argument, syn::GenericArgument::Lifetime(_)))
+                .count();
+            match declared(&name) {
+                Some(Declared::Model(lifetimes) | Declared::OneValue(lifetimes)) => {
+                    if written < lifetimes {
+                        return Some(UnprovenDefault::LeavesOut(name));
+                    }
+                }
+                Some(Declared::Alias(named)) => {
+                    let Ok(target) = syn::parse_str::<syn::Type>(&named) else {
+                        return Some(UnprovenDefault::Unseen);
+                    };
+                    if depth >= 8 {
+                        return Some(UnprovenDefault::Unseen);
+                    }
+                    if let Some(unproven) = unproven_default(&target, depth.saturating_add(1)) {
+                        return Some(unproven);
+                    }
+                    if tokens_write_a_lifetime(&quote! { #target }) {
+                        return Some(UnprovenDefault::Hides);
+                    }
+                }
+                None => {
+                    if !is_a_standard_type_name(&name) {
+                        return Some(UnprovenDefault::Unseen);
+                    }
+                }
+            }
+            arguments.iter().find_map(|argument| match argument {
+                syn::GenericArgument::Type(inner) => unproven_default(inner, depth),
+                syn::GenericArgument::Lifetime(_)
+                | syn::GenericArgument::Const(_)
+                | syn::GenericArgument::AssocType(_)
+                | syn::GenericArgument::AssocConst(_)
+                | syn::GenericArgument::Constraint(_)
+                | _ => None,
+            })
+        }
+        syn::Type::Reference(reference) => unproven_default(&reference.elem, depth),
+        syn::Type::Array(array) => unproven_default(&array.elem, depth),
+        syn::Type::Slice(slice) => unproven_default(&slice.elem, depth),
+        syn::Type::Paren(paren) => unproven_default(&paren.elem, depth),
+        syn::Type::Group(group) => unproven_default(&group.elem, depth),
+        syn::Type::Tuple(tuple) => tuple
+            .elems
+            .iter()
+            .find_map(|elem| unproven_default(elem, depth)),
+        syn::Type::Path(_)
+        | syn::Type::FnPtr(_)
+        | syn::Type::ImplTrait(_)
+        | syn::Type::Infer(_)
+        | syn::Type::Macro(_)
+        | syn::Type::Never(_)
+        | syn::Type::Ptr(_)
+        | syn::Type::TraitObject(_)
+        | syn::Type::Verbatim(_)
+        | _ => Some(UnprovenDefault::Unseen),
+    }
+}
+
+/// Whether `tokens` write a lifetime or a reference, which carries one.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn tokens_write_a_lifetime(tokens: &proc_macro2::TokenStream) -> bool {
+    tokens.clone().into_iter().any(|tree| match tree {
+        proc_macro2::TokenTree::Punct(mark) => matches!(mark.as_char(), '\'' | '&'),
+        proc_macro2::TokenTree::Group(group) => tokens_write_a_lifetime(&group.stream()),
+        proc_macro2::TokenTree::Ident(_) | proc_macro2::TokenTree::Literal(_) => false,
+    })
+}
+
+/// The refusal of each declared default a generic brand's string check reads its value as that
+/// the expansion cannot prove writes every lifetime it has, spanned on the `default_types` entry.
+/// Nothing for a brand whose inner names no parameter, or that carries no string check.
+///
+/// A plain alias hides the lifetime its `Display` is written for:
+///
+/// ```rust,compile_fail
+/// use core::fmt;
+/// use serde::Serialize;
+/// use tixschema::model_schema;
+///
+/// #[model_schema(no_display)]
+/// #[derive(Serialize)]
+/// #[serde(transparent)]
+/// pub struct Tag<'text>(pub &'text str);
+///
+/// impl fmt::Display for Tag<'static> {
+///     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+///         f.write_str(self.0)
+///     }
+/// }
+///
+/// pub type Kept = Tag<'static>;
+///
+/// #[model_schema(minLength = 2, default_types(Text = Kept))]
+/// #[derive(Serialize)]
+/// #[serde(transparent)]
+/// pub struct Stamp<Text>(pub Text);
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: model_schema: a string check on the generic brand `Stamp` reads the value as the declared
+///        default `Kept`, and `Kept` is a type this expansion has not read: declare it with
+///        `#[model_schema]` above the brand, or write the type it names
+///   --> tests/zz_probe.rs:18:52
+///    |
+/// 18 | #[model_schema(minLength = 2, default_types(Text = Kept))]
+///    |                                                    ^^^^
+/// ```
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn branded_unproven_default_errors(
+    item_struct: &syn::ItemStruct,
+    inner_field: &Field,
+    args: &ModelSchemaArgs,
+) -> Vec<proc_macro2::TokenStream> {
+    let generic_params = type_parameters_in_scope(&item_struct.generics);
+    if !args.has_string_constraints()
+        || held_as_a_list(&inner_field.ty)
+        || !names_a_parameter(&inner_field.ty, &generic_params)
+    {
+        return Vec::new();
+    }
+    let name = &item_struct.ident;
+    args.default_types
+        .iter()
+        .filter(|(parameter, _)| {
+            tokens_name_any(&quote! { #inner_field }, &[parameter.to_string()])
+        })
+        .filter_map(|(_, default)| {
+            let unproven = unproven_default(default, 0)?;
+            let shown = quote! { #default }
+                .to_string()
+                .replace(" < ", "<")
+                .replace(" >", ">");
+            let reason = match unproven {
+                UnprovenDefault::Unseen => format!(
+                    "`{shown}` is a type this expansion has not read: declare it with \
+                     `#[model_schema]` above the brand, or write the type it names"
+                ),
+                UnprovenDefault::LeavesOut(left_out) => format!(
+                    "`{left_out}` declares a lifetime the default leaves out: write \
+                     `{left_out}<'_>`"
+                ),
+                UnprovenDefault::Hides => format!(
+                    "`{shown}` is an alias that hides a lifetime from this expansion: write the \
+                     type it names"
+                ),
+            };
+            let message = format!(
+                "model_schema: a string check on the generic brand `{name}` reads the value as \
+                 the declared default `{shown}`, and {reason}"
+            );
+            Some(syn::Error::new_spanned(default, message).to_compile_error())
+        })
         .collect()
 }
 
@@ -8319,10 +8718,11 @@ fn record_declaration(item: &Item) {
             );
         }
     } else if let Some(ident) = item_schema_ident(item) {
+        let lifetimes = item_lifetime_count(item);
         let declares = if written_as_one_value(item) {
-            Declared::OneValue
+            Declared::OneValue(lifetimes)
         } else {
-            Declared::Model
+            Declared::Model(lifetimes)
         };
         record_declared(&ident.to_string(), declares);
     } else {
@@ -8333,6 +8733,19 @@ fn record_declaration(item: &Item) {
 /// Without `serde` nothing reads a value, so nothing reads what an item declares.
 #[cfg(all(feature = "zod", not(feature = "serde")))]
 const fn record_declaration(_item: &Item) {}
+
+/// How many lifetime parameters the struct or enum `item` declares.
+#[cfg(feature = "serde")]
+fn item_lifetime_count(item: &Item) -> usize {
+    let generics = if let Item::Struct(declared) = item {
+        &declared.generics
+    } else if let Item::Enum(declared) = item {
+        &declared.generics
+    } else {
+        return 0;
+    };
+    generics.lifetimes().count()
+}
 
 /// What `decode_with` adds to a struct, read off the struct as it is emitted. Empty without the
 /// flag.
@@ -9251,7 +9664,7 @@ fn build_branded_validation(
     held: &syn::Member,
 ) -> Option<BrandedValidation> {
     let inner_ty = &inner_field.ty;
-    let is_generic = !generic_params.is_empty();
+    let reads_at_the_default = names_a_parameter(inner_ty, generic_params);
     if held_as_a_list(inner_ty) {
         return branded_list_validation(args, inner_field, held);
     }
@@ -9260,7 +9673,8 @@ fn build_branded_validation(
         return Some(counted);
     }
     args.has_string_constraints().then(|| {
-        let measures_path = branded_inner_measures_path(inner_ty);
+        let default_ty = substitute_declared_defaults(inner_ty, generic_params, &args.default_types);
+        let measures_path = branded_inner_measures_path(&default_ty);
         let (checked_param, rendering) = checked_value_parts(measures_path);
         // `resolved_at` keeps the inner field's location while giving the token the macro's own
         // hygiene, so a consumer's lints judge it as generated.
@@ -9300,11 +9714,9 @@ fn build_branded_validation(
             }
         };
 
-        // A generic brand's checks are its declared default's, so its `validate()` hands the value
-        // over as it is and asks nothing of the parameter.
-        if is_generic {
-            let default_ty =
-                substitute_declared_defaults(inner_ty, generic_params, &args.default_types);
+        // A brand over a parameter judges its declared default's value, so its `validate()` hands
+        // the value over as it is and asks nothing of the parameter.
+        if reads_at_the_default {
             let type_identity = embedded_type_identity();
             let at_the_default = embedded_validate_at_declared_default(
                 &default_ty,
@@ -9336,6 +9748,15 @@ fn build_branded_validation(
             validator: proc_macro2::Ident::new("validate_value", proc_macro2::Span::call_site()),
         }
     })
+}
+
+/// Whether `ty` names one of the brand's type parameters, at any depth.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn names_a_parameter(ty: &syn::Type, generic_params: &[String]) -> bool {
+    !generic_params.is_empty() && tokens_name_any(&quote! { #ty }, generic_params)
 }
 
 /// Whether a brand's lengths alone are asked of a name an earlier expansion registered as one a
@@ -10621,7 +11042,11 @@ fn build_branded_display_tokens(
     // Only the serde build emits the validation functions that call `to_string()`.
     #[cfg(feature = "serde")]
     let validation_needs_display = args.has_string_constraints()
-        && !branded_inner_measures_path(&inner_field.ty)
+        && !branded_inner_measures_path(&substitute_declared_defaults(
+            &inner_field.ty,
+            &type_parameters_in_scope(generics),
+            &args.default_types,
+        ))
         && !held_as_a_list(&inner_field.ty)
         && !counts_a_named_inner(args, &inner_field.ty);
     #[cfg(not(feature = "serde"))]
@@ -10683,7 +11108,12 @@ fn type_mentions_generic_param(ty: &syn::Type, generics: &syn::Generics) -> bool
 }
 
 /// Reports whether `tokens` contains an identifier from `names` at any nesting depth.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "serde",
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema"
+))]
 fn tokens_name_any(tokens: &proc_macro2::TokenStream, names: &[String]) -> bool {
     tokens.clone().into_iter().any(|tree| match tree {
         proc_macro2::TokenTree::Ident(ident) => names.iter().any(|name| ident == name.as_str()),
@@ -12060,6 +12490,17 @@ fn variant_serde_names(
         parse_serde_type_attributes(attrs)
             .rename_all
             .or_else(|| rename_all_fields.map(ToOwned::to_owned)),
+    )
+}
+
+/// The rule that names the members of `variant`, as the Rust, TypeScript, Zod and JSON Schema
+/// surfaces read it: its own `rename_all`, else the enum's `rename_all_fields`.
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+pub fn variant_field_rule(variant: &syn::Variant, rename_all_fields: Option<&str>) -> RenameRule {
+    resolve_rename_rule(
+        variant_serde_names(&variant.attrs, rename_all_fields)
+            .1
+            .as_deref(),
     )
 }
 
@@ -18005,6 +18446,7 @@ fn named_leaf_length_rendering(named: &syn::Type, message: &str) -> proc_macro2:
         "model_schema_bound_length",
         named.span().resolved_at(proc_macro2::Span::call_site()),
     );
+    let index_set = indexed_set_length(named);
     quote! {
         #[diagnostic::on_unimplemented(
             message = #message,
@@ -18069,6 +18511,7 @@ fn named_leaf_length_rendering(named: &syn::Type, message: &str) -> proc_macro2:
                 self.len()
             }
         }
+        #index_set
         trait UnbrandedLength {
             fn model_schema_bound_length(&self) -> usize
             where
@@ -18086,6 +18529,44 @@ fn named_leaf_length_rendering(named: &syn::Type, message: &str) -> proc_macro2:
         let _: usize = UnbrandedLength::model_schema_bound_length("");
         let length: usize = named.#read();
     }
+}
+
+/// The length of an `IndexSet`, written only for a name registered as an alias of one: the
+/// consumer's own `indexmap` is named where they use it, and nowhere else.
+#[cfg(all(
+    feature = "serde",
+    feature = "indexmap",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn indexed_set_length(named: &syn::Type) -> proc_macro2::TokenStream {
+    let syn::Type::Path(path) = written_type(named) else {
+        return proc_macro2::TokenStream::new();
+    };
+    let is_indexed = path.path.segments.last().is_some_and(|segment| {
+        lookup_alias_info(&segment.ident.to_string()).is_some_and(|info| info.indexed_set)
+    });
+    if !is_indexed {
+        return proc_macro2::TokenStream::new();
+    }
+    quote! {
+        impl<Item, Hasher> BoundedLength for ::indexmap::IndexSet<Item, Hasher> {
+            fn bounded_length(&self) -> usize {
+                self.len()
+            }
+        }
+    }
+}
+
+/// A build with no `IndexSet` support names no `indexmap`.
+#[cfg(all(
+    feature = "serde",
+    not(all(
+        feature = "indexmap",
+        any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    ))
+))]
+fn indexed_set_length(_named: &syn::Type) -> proc_macro2::TokenStream {
+    proc_macro2::TokenStream::new()
 }
 
 /// Whether a named leaf is held to lengths alone, which the type it names answers with the count
@@ -18529,6 +19010,7 @@ fn nested_shape(ty: &syn::Type) -> Option<Vec<ConstraintWrap>> {
 #[cfg(feature = "serde")]
 fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
     let mut wraps = Vec::new();
+    let mut keys: Vec<syn::Type> = Vec::new();
     let mut current = ty;
     let mut held = def;
     loop {
@@ -18557,6 +19039,7 @@ fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
                 .collect();
             return (!positions.is_empty()).then_some(HeldShape {
                 end: HeldEnd::Positions(positions),
+                keys,
                 wraps,
             });
         } else if let syn::Type::Path(path) = current {
@@ -18584,6 +19067,7 @@ fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
                         .collect();
                     return (!arms.is_empty()).then_some(HeldShape {
                         end: HeldEnd::Arms(arms),
+                        keys,
                         wraps,
                     });
                 }
@@ -18592,6 +19076,7 @@ fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
                         return None;
                     };
                     wraps.push(ConstraintWrap::Map);
+                    keys.push(map_key_argument(args)?.clone());
                     current = map_value_argument(args)?;
                     held = of_values;
                     continue;
@@ -18599,6 +19084,7 @@ fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
                 let Some(wrap) = generic_wrap(&ident) else {
                     return (declared && !reads_through(&ident)).then_some(HeldShape {
                         end: HeldEnd::Declared,
+                        keys,
                         wraps,
                     });
                 };
@@ -18608,6 +19094,7 @@ fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
             } else if matches!(segment.arguments, syn::PathArguments::None) {
                 return declared.then_some(HeldShape {
                     end: HeldEnd::Declared,
+                    keys,
                     wraps,
                 });
             } else {
@@ -18632,19 +19119,28 @@ fn list_item_def<'def>(def: &'def FieldDef, wrapper: &str) -> &'def FieldDef {
     }
 }
 
+/// The type of a map's keys, its first type argument.
+#[cfg(feature = "serde")]
+fn map_key_argument(args: &syn::AngleBracketedGenericArguments) -> Option<&syn::Type> {
+    type_arguments(args).next()
+}
+
 /// The type of a map's values, its second type argument.
 #[cfg(feature = "serde")]
 fn map_value_argument(args: &syn::AngleBracketedGenericArguments) -> Option<&syn::Type> {
-    args.args
-        .iter()
-        .filter_map(|arg| {
-            if let syn::GenericArgument::Type(ty) = arg {
-                Some(ty)
-            } else {
-                None
-            }
-        })
-        .nth(1)
+    type_arguments(args).nth(1)
+}
+
+/// The type arguments of an angle-bracketed list, lifetimes and consts left out.
+#[cfg(feature = "serde")]
+fn type_arguments(args: &syn::AngleBracketedGenericArguments) -> impl Iterator<Item = &syn::Type> {
+    args.args.iter().filter_map(|arg| {
+        if let syn::GenericArgument::Type(ty) = arg {
+            Some(ty)
+        } else {
+            None
+        }
+    })
 }
 
 /// Whether a generic name stands for a std container the crate describes by what it holds, rather
@@ -18711,6 +19207,16 @@ fn names_a_list(ty: &syn::Type) -> bool {
         matches!(segment.arguments, syn::PathArguments::AngleBracketed(_))
             && is_sequence_wrapper(&segment.ident.to_string())
     })
+}
+
+/// Whether a type is written as `IndexSet`, which is a list under the `indexmap` feature unless
+/// the consumer declares a type of that name.
+#[cfg(all(feature = "serde", feature = "indexmap"))]
+fn names_an_indexed_set(ty: &syn::Type) -> bool {
+    matches!(
+        written_type(ty),
+        syn::Type::Path(named) if named.path.segments.last().is_some_and(|segment| segment.ident == "IndexSet")
+    )
 }
 
 /// Whether a brand's inner is written as a list itself, or as one behind `Box`, `Rc`, `Arc` or
@@ -20044,6 +20550,7 @@ fn member_held_shape(field: &Field, field_def: &FieldDef) -> Option<HeldShape> {
     held_shape(&field.ty, field_def).or_else(|| {
         reachable_nested_shape(field, field_def).map(|wraps| HeldShape {
             end: HeldEnd::Declared,
+            keys: Vec::new(),
             wraps,
         })
     })

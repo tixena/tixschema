@@ -15,6 +15,20 @@ use super::{
 use crate::features::text_forms::TextForm;
 use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
 
+/// The private functions a serializer holds ahead of its `deserialize` where it reads an element
+/// itself.
+pub const DECODED: &str = "private fun kotlinSchemaKinded(serializer: DeserializationStrategy<*>, \
+     element: JsonElement, at: String): JsonElement { var held = serializer.descriptor; \
+     while (held.isInline && held.elementsCount == 1) held = held.getElementDescriptor(0); \
+     val kind = held.kind; if ((kind is PrimitiveKind && element !is JsonPrimitive) || (kind == StructureKind.LIST && \
+     element !is JsonArray) || (kind == StructureKind.MAP && element !is JsonObject)) throw \
+     SerializationException(\"'\" + at + \"': \" + kind + \" cannot be read from \" + when (element) { \
+     is JsonArray -> \"an array\"; is JsonObject -> \"an object\"; else -> \"a primitive\" }); \
+     return element }; private fun <KotlinSchemaRead> kotlinSchemaDecoded(json: Json, serializer: \
+     DeserializationStrategy<KotlinSchemaRead>, element: JsonElement, at: String): \
+     KotlinSchemaRead = json.decodeFromJsonElement(serializer, kotlinSchemaKinded(serializer, \
+     element, at)); ";
+
 /// What a serializer the emitter writes binds each type parameter to: `KSerializer<T>.nullable`
 /// requires it, for an `Option<T>` member.
 const COMPOSED: &str = ": Any";
@@ -183,10 +197,17 @@ fn arguments(type_parameters: &[String]) -> String {
 /// The serializer a member that names a function is read through where the plugin reads it:
 /// `read_by`, the one the member is read with, behind `correction`, the Kotlin expression of
 /// `element` corrected.
-pub fn corrected_member(named: &str, ty: &str, read_by: &str, correction: &str) -> String {
+pub fn corrected_member(
+    named: &str,
+    ty: &str,
+    read_by: &str,
+    correction: &str,
+    key: &str,
+) -> String {
+    let kinded = kinded(read_by, correction, &kotlin_quoted(key));
     format!(
         "object {named} : JsonTransformingSerializer<{ty}>({read_by}) {{ {} }}",
-        transform(correction)
+        with_decoded(&transform(&kinded))
     )
 }
 
@@ -444,6 +465,34 @@ pub fn read_whole(field: &FieldDef, type_parameters: &[String]) -> (String, Stri
     (ty, read_by)
 }
 
+/// The read of `element` by `serializer` under `json`, which refuses an element of another kind
+/// than the serializer reads with a `SerializationException` naming `at`, a Kotlin expression of
+/// the member's key or position. Needs [`with_decoded`] or [`helpers_for`] on the serializer that holds it.
+pub fn decoded(json: &str, serializer: &str, element: &str, at: &str) -> String {
+    format!("kotlinSchemaDecoded({json}, {serializer}, {element}, {at})")
+}
+
+/// `element`, the Kotlin expression of a payload, refused as [`decoded`] refuses it when it is of
+/// another kind than `serializer` reads.
+pub fn kinded(serializer: &str, element: &str, at: &str) -> String {
+    format!("kotlinSchemaKinded({serializer}, {element}, {at})")
+}
+
+/// The private functions the reads in `declarations`, the members of a serializer, name.
+pub fn helpers_for(declarations: &str) -> &'static str {
+    if declarations.contains("kotlinSchemaDecoded(") || declarations.contains("kotlinSchemaKinded(")
+    {
+        DECODED
+    } else {
+        ""
+    }
+}
+
+/// `declarations`, the members of a serializer, behind the private functions its reads name.
+pub fn with_decoded(declarations: &str) -> String {
+    format!("{}{declarations}", helpers_for(declarations))
+}
+
 /// What a serializer that corrects its payload, or refuses a struct's own tag of another value,
 /// overrides: `correction` is the Kotlin expression of `element` corrected and checked.
 pub fn transform(correction: &str) -> String {
@@ -501,12 +550,19 @@ pub fn transforming_inline(
         "{export_name}.generatedSerializer({})",
         arguments(type_parameters)
     );
+    let decoded = decoded(
+        "input.json",
+        &read_by,
+        correction,
+        &kotlin_quoted(export_name),
+    );
     format!(
         "{OPTED_IN} class {export_name}Unjudged{}({}) : KSerializer<{own}> by {read_by} {{ \
-         override fun deserialize(decoder: Decoder): {own} {{ val input = decoder as JsonDecoder; \
-         return input.json.decodeFromJsonElement({read_by}, {correction}) }} }}",
+         {}override fun deserialize(decoder: Decoder): {own} {{ val input = decoder as JsonDecoder; \
+         return {decoded} }} }}",
         parameter_list(type_parameters, ""),
-        handed(type_parameters, "private val ")
+        handed(type_parameters, "private val "),
+        helpers_for(&decoded),
     )
 }
 

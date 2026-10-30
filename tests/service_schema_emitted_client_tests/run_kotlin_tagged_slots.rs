@@ -276,14 +276,14 @@ fn the_kotlin_text_reads_and_writes_the_slot_beside_the_tag() {
         "is DocketedWeighed -> buildJsonObject { put(\"kind\", \"Weighed\"); \
          output.json.encodeToJsonElement(TonnageUnjudged, value.value).jsonObject.forEach { (k, \
          v) -> put(k, v) } }",
-        "\"Weighed\" -> DocketedWeighed(input.json.decodeFromJsonElement(TonnageUnjudged, \
-         JsonObject(obj - \"kind\")))",
+        "\"Weighed\" -> DocketedWeighed(kotlinSchemaDecoded(input.json, TonnageUnjudged, \
+         JsonObject(obj - \"kind\"), \"Weighed\"))",
         "is DocketedExternal -> buildJsonObject { put(\"kind\", \"External\"); when (val written \
          = output.json.encodeToJsonElement(PalletedUnjudged, value.value)) { is JsonPrimitive -> \
          put(written.content, JsonNull); else -> written.jsonObject.forEach { (k, v) -> put(k, \
          v) } } }",
-        "\"Trimmed\" -> DocketedTrimmed(input.json.decodeFromJsonElement(TonnageUnjudged, \
-         lightened(JsonObject(obj - \"kind\"))))",
+        "\"Trimmed\" -> DocketedTrimmed(kotlinSchemaDecoded(input.json, TonnageUnjudged, \
+         lightened(JsonObject(obj - \"kind\")), \"Trimmed\"))",
     ] {
         assert!(docketed.contains(held), "no `{held}` in: {docketed}");
     }
@@ -296,8 +296,8 @@ fn the_kotlin_text_reads_and_writes_the_slot_beside_the_tag() {
         "is WaybilledHeld -> buildJsonObject { put(\"kind\", \"Held\"); \
          output.json.encodeToJsonElement(heldSerializer, value.value).jsonObject.forEach { (k, \
          v) -> put(k, v) } }",
-        "\"Held\" -> WaybilledHeld(input.json.decodeFromJsonElement(heldSerializer, \
-         JsonObject(obj - \"kind\")))",
+        "\"Held\" -> WaybilledHeld(kotlinSchemaDecoded(input.json, heldSerializer, \
+         JsonObject(obj - \"kind\"), \"Held\"))",
     ] {
         assert!(waybilled.contains(held), "no `{held}` in: {waybilled}");
     }
@@ -537,8 +537,8 @@ fn the_readme_shows_the_object_id_the_runs_read_and_refuse() {
 fn the_kotlin_text_reads_and_writes_an_object_id_beside_the_tag() {
     let stamping = stamping_kotlin::kotlin_definition();
     for held in [
-        "\"Held\" -> StampingHeld(input.json.decodeFromJsonElement(serializer<ObjectId>(), \
-         JsonObject(obj - \"kind\")))",
+        "\"Held\" -> StampingHeld(kotlinSchemaDecoded(input.json, serializer<ObjectId>(), \
+         JsonObject(obj - \"kind\"), \"Held\"))",
         "is StampingHeld -> buildJsonObject { put(\"kind\", \"Held\"); \
          output.json.encodeToJsonElement(serializer<ObjectId>(), value.value).jsonObject.forEach \
          { (k, v) -> put(k, v) } }",

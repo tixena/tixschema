@@ -34,8 +34,8 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
         "\"Calm\", \"Still\", \"Slack\" -> if (data is JsonNull) SurgingCalm else throw \
          SerializationException(\"Surging: \" + tag + \" takes no value\");"
             .to_owned(),
-        "\"Held\", \"Tied\" -> SurgingHeld(input.json.decodeFromJsonElement(serializer<String>(), \
-         data))"
+        "\"Held\", \"Tied\" -> SurgingHeld(kotlinSchemaDecoded(input.json, serializer<String>(), \
+         data, \"Held\"))"
             .to_owned(),
         "is SurgingBerth -> buildJsonObject { put(\"Berth\", \
          output.json.encodeToJsonElement(serializer<SurgingBerth>(), value)) }; is SurgingCalm -> \
@@ -155,8 +155,8 @@ fn a_struct_read_by_hand_reads_a_member_under_its_alias() {
     let held = format!(
         "val obj = input.decodeJsonElement().{NAME_AS_LABEL}.let {{ it as? JsonObject ?: throw \
          SerializationException(\"expected an object, found \" + it) }}; val label = \
-         input.json.decodeFromJsonElement(serializer<String>(), (obj[\"label\"] ?: throw \
-         SerializationException(\"missing field `label`\"))); \
+         kotlinSchemaDecoded(input.json, serializer<String>(), (obj[\"label\"] ?: throw \
+         SerializationException(\"missing field `label`\")), \"label\"); \
          val tallyKeys = setOf(\"keys\"); val tally = \
          lenient.decodeFromJsonElement(PennonUnjudged, withItsKeys(JsonObject(obj - \
          setOf(\"label\"))));"
