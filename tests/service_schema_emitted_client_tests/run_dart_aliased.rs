@@ -18,7 +18,7 @@ use super::dart_flattened_aliased_models::{
     DRIFTING, Drifting, RIDING, Riding, SWINGING, Swinging, drifting_dart, riding_dart,
     swinging_dart,
 };
-use super::run_dart_validate::{dart, module};
+use super::run_dart_validate::{analyzed, dart, module};
 
 /// What prints a row: the value read, written back, or that the read is refused.
 const TOLD: &str = "
@@ -127,6 +127,7 @@ fn a_name_serde_reads_beside_the_one_it_writes_is_read_in_dart() {
         &[FUNCTIONS[0], FUNCTIONS[1], TOLD],
         &main,
     );
+    analyzed("aliased-analyze", &source);
     let Some((ran, printed)) = dart("aliased", &[], &source) else {
         return;
     };
