@@ -3653,7 +3653,7 @@ fn plain_enum_kotlin_source(
     if !args.check.is_empty() {
         let (kept, unjudged) = if args.preprocess.is_empty() && !renamed.is_empty() {
             (
-                format!("@Serializable(with = {export_name}Serializer::class)"),
+                read::kept(export_name),
                 aliases::plain_enum_serializer(export_name, &variants),
             )
         } else {
@@ -3676,7 +3676,8 @@ fn plain_enum_kotlin_source(
         format!("@Serializable {body}")
     } else {
         format!(
-            "@Serializable(with = {export_name}Unjudged::class) {body} {}",
+            "{} {body} {}",
+            read::kept_plain(export_name),
             aliases::plain_enum_serializer(export_name, &variants)
         )
     }
