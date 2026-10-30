@@ -10,7 +10,7 @@ use std::env;
 use std::fs;
 use std::process::{Command, id};
 
-use super::run_dart_validate::module;
+use super::run_dart_validate::{analyzed, module};
 use super::runtime::ran;
 use super::wire_form_rows::{Held, constructed, handed, held, printed, sent_by_any};
 use super::wire_forms_models::{
@@ -187,6 +187,7 @@ fn each_value_is_sent_by_dart_in_the_form_every_target_reads() {
         conveyed_slotted_dart::dart_definition(),
     ];
     let source = module(&definitions, &[PRINTERS], &main);
+    analyzed("wire-forms-analyze", &source);
     let Some((ran, printed_by_dart)) = dart_at_utc("wire-forms", &source) else {
         return;
     };
