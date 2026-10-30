@@ -69,6 +69,19 @@ const DART_ENUM_NAMES_TAKEN: [&str; 11] = [
     "wireValue",
 ];
 
+/// The members an emitted class declares beside those of an enum, which a function of the same name
+/// is called through a forwarder for: the holder of a brand's value and the static helpers.
+const DART_CLASS_MEMBERS: [&str; 8] = [
+    "_boundLength",
+    "_boundText",
+    "_heldBound",
+    "_number",
+    "_repeats",
+    "_under",
+    "validateBound",
+    "value",
+];
+
 /// What a field of an emitted class cannot be named beside the reserved words: a type its codec is
 /// written with, or a member the class has. Only names that never compiled are listed: a field
 /// and a constructor share a name, so `fromJson` and `fromJsonUnjudged` are not.
@@ -519,6 +532,15 @@ thread_local! {
     /// names, and that of each of its members.
     static DART_CALLED: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
 
+    /// The name the item being emitted is written under, and every name a member of it may be
+    /// written as: a function of the same name is called through a forwarder.
+    static DART_MEMBERS: RefCell<(String, Vec<String>)> =
+        const { RefCell::new((String::new(), Vec::new())) };
+
+    /// The forwarders the item being emitted calls its functions through, each with the function
+    /// it forwards to, and the declarations written ahead of the item's own source.
+    static DART_FORWARDERS: RefCell<Vec<(String, String)>> = const { RefCell::new(Vec::new()) };
+
     /// The sealed class each shape of `Result` the item being emitted writes is declared as, by
     /// which of its arms holds `()`, and the declaration written after the item's own source. Every
     /// `Result` of one shape names one class.
@@ -536,6 +558,7 @@ thread_local! {
 /// type alias) earns nothing.
 pub fn dart_schema_dispatch(item: &Item, args: &DartTypeArgs<'_>) -> TokenStream {
     record_called(called_by(item, args));
+    record_members(item, args);
     record_flattenings(item);
     let tokens = if let Item::Struct(item_struct) = item {
         struct_dart_tokens(item_struct, args)
@@ -547,6 +570,8 @@ pub fn dart_schema_dispatch(item: &Item, args: &DartTypeArgs<'_>) -> TokenStream
         TokenStream::new()
     };
     record_called(Vec::new());
+    DART_MEMBERS.with(|held| *held.borrow_mut() = (String::new(), Vec::new()));
+    DART_FORWARDERS.with(|held| held.borrow_mut().clear());
     DART_FLATTENING.with(|current| current.borrow_mut().clear());
     DART_LOOKING.with(|current| current.borrow_mut().clear());
     tokens
@@ -781,6 +806,79 @@ fn called_by(item: &Item, args: &DartTypeArgs<'_>) -> Vec<String> {
         .collect()
 }
 
+/// Every name a member of the class `item` is emitted as may be written as: what the emitter
+/// declares on any class, and each of `item`'s fields and variants as written, lower-cased at the
+/// first letter, or moved off a name Dart will not take.
+fn record_members(item: &Item, args: &DartTypeArgs<'_>) {
+    let (idents, variants): (Vec<&Ident>, Vec<&Ident>) = if let Item::Struct(item_struct) = item {
+        (
+            item_struct
+                .fields
+                .iter()
+                .filter_map(|field| field.ident.as_ref())
+                .collect(),
+            Vec::new(),
+        )
+    } else if let Item::Enum(item_enum) = item {
+        (
+            item_enum
+                .variants
+                .iter()
+                .flat_map(|variant| variant.fields.iter())
+                .filter_map(|field| field.ident.as_ref())
+                .collect(),
+            item_enum
+                .variants
+                .iter()
+                .map(|variant| &variant.ident)
+                .collect(),
+        )
+    } else {
+        return;
+    };
+    let mut members: Vec<String> = DART_ENUM_NAMES_TAKEN
+        .iter()
+        .chain(&DART_FIELD_NAMES_TAKEN)
+        .chain(&DART_CLASS_MEMBERS)
+        .map(|&name| name.to_owned())
+        .collect();
+    for ident in idents.into_iter().chain(variants) {
+        let written = ident.unraw().to_string();
+        let lowered = dart_lower_camel(&written);
+        members.push(format!("{written}_"));
+        members.push(format!("{lowered}_"));
+        members.push(written);
+        members.push(lowered);
+    }
+    let named = compute_item_export_name(args.type_name, args.name_override);
+    DART_MEMBERS.with(|held| *held.borrow_mut() = (dart_lower_camel(&named), members));
+}
+
+/// The name the item being emitted calls `function` by, a `kind` of function (`Check` or
+/// `Preprocess`): the name the attribute writes, or, where a member of the item has that name,
+/// a private forwarder declared ahead of the item, which names the library's function.
+fn called(function: &FunctionName, kind: &str) -> String {
+    let written = &function.name;
+    DART_MEMBERS.with(|held| {
+        let (item, members) = &*held.borrow();
+        if !members.contains(written) {
+            return written.clone();
+        }
+        let forwarder = format!(
+            "_{item}{kind}{}{}",
+            written.get(..1).unwrap_or_default().to_uppercase(),
+            written.get(1..).unwrap_or_default()
+        );
+        DART_FORWARDERS.with(|recorded| {
+            let mut forwarders = recorded.borrow_mut();
+            if forwarders.iter().all(|(name, _)| *name != forwarder) {
+                forwarders.push((forwarder.clone(), written.clone()));
+            }
+        });
+        forwarder
+    })
+}
+
 /// Records `called`, the name of each function the reads of the item being emitted call.
 fn record_called(called: Vec<String>) {
     DART_CALLED.with(|held| *held.borrow_mut() = called);
@@ -849,10 +947,18 @@ fn dart_module_tokens(
         .into_iter()
         .map(|(_, _, declared)| declared)
         .collect();
+    let forwarders = DART_FORWARDERS.with(RefCell::take).into_iter().fold(
+        String::new(),
+        |mut declared, (forwarder, function)| {
+            writeln!(declared, "final {forwarder} = {function};").unwrap();
+            declared
+        },
+    );
+    let source = format!("{forwarders}{dart_source}");
     let full_source = if classes.is_empty() {
-        dart_source.to_owned()
+        source
     } else {
-        format!("{dart_source}\n\n{}", classes.join("\n\n"))
+        format!("{source}\n\n{}", classes.join("\n\n"))
     };
     let module_ident = dart_module_ident(rust_ident, span);
     let holder = defaults.holder();
@@ -2122,7 +2228,7 @@ fn result_encode(ok: &FieldDef, err: &FieldDef, expr: &str) -> String {
 /// written, under the name the attribute writes.
 fn corrected(functions: &[FunctionName], payload: &str) -> String {
     functions.iter().fold(payload.to_owned(), |held, function| {
-        format!("{}({held})", function.name)
+        format!("{}({held})", called(function, "Preprocess"))
     })
 }
 
@@ -3018,7 +3124,13 @@ fn check_elements(
     let calls: Vec<String> = meta
         .check
         .iter()
-        .map(|check| reported(&format!("{}({value})", check.name), place, helpers))
+        .map(|check| {
+            reported(
+                &format!("{}({value})", called(check, "Check")),
+                place,
+                helpers,
+            )
+        })
         .collect();
     match guard {
         Some(held) => guarded(&held, calls),
@@ -3220,7 +3332,7 @@ fn field_elements(
 fn own_check_elements(checks: &[FunctionName]) -> Vec<String> {
     checks
         .iter()
-        .map(|check| format!("...{}(this)", check.name))
+        .map(|check| format!("...{}(this)", called(check, "Check")))
         .collect()
 }
 

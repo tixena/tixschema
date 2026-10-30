@@ -1264,6 +1264,18 @@ mod run_dart_tagged_slots;
 #[path = "service_schema_emitted_client_tests/run_swift_tagged_slots.rs"]
 mod run_swift_tagged_slots;
 
+/// An untagged enum over a bounded brand declared below it.
+#[cfg(test)]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+#[path = "service_schema_emitted_client_tests/below_brand_models.rs"]
+mod below_brand_models;
+
+/// That enum, read by each emitted client as serde reads it.
+#[cfg(test)]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+#[path = "service_schema_emitted_client_tests/run_below_brands.rs"]
+mod run_below_brands;
+
 /// Tuple variants with a slot serde neither writes nor reads.
 #[cfg(test)]
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
@@ -1448,3 +1460,23 @@ mod run_swift_all_flattened;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin_all_flattened.rs"]
 mod run_kotlin_all_flattened;
+
+#[cfg(test)]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+#[path = "service_schema_emitted_client_tests/member_named_rows.rs"]
+mod member_named_rows;
+
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_member_named.rs"]
+mod run_dart_member_named;
+
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "service_schema_emitted_client_tests/run_swift_member_named.rs"]
+mod run_swift_member_named;
+
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_member_named.rs"]
+mod run_kotlin_member_named;

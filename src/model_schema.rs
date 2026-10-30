@@ -82,6 +82,8 @@ use crate::bound_message::rust_violation;
 #[cfg(feature = "zod")]
 use crate::bound_message::zod_error_arg;
 
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+use crate::utils::asking_more;
 #[cfg(any(feature = "typescript", feature = "zod"))]
 use crate::utils::escape_js_double_quoted;
 #[cfg(feature = "typescript")]
@@ -11041,10 +11043,11 @@ fn build_branded_display_impl(
         .ty
         .span()
         .resolved_at(proc_macro2::Span::call_site());
-    display_generics
-        .make_where_clause()
-        .predicates
-        .push(syn::parse_quote_spanned!(bound_span=> #inner_ty: ::std::fmt::Display));
+    let displayed: syn::WherePredicate =
+        syn::parse_quote_spanned!(bound_span=> #inner_ty: ::std::fmt::Display);
+    if let Some(more) = asking_more(generics, &displayed) {
+        display_generics.make_where_clause().predicates.push(more);
+    }
     let (display_impl_generics, _, display_where_clause) = display_generics.split_for_impl();
     // Spanned whole on the field's type, the member with it, which is where a non-`Display`
     // inner is reported.

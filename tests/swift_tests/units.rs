@@ -17,7 +17,7 @@ const UNIT_READ: &str = "public init(swiftSchemaUnjudged decoder: Decoder) throw
 /// The write of the struct a `()` is held as, and the `validate()` that ends it.
 const UNIT_WRITE: &str = "public func encode(to encoder: Encoder) throws { var container = \
      encoder.singleValueContainer(); try container.encodeNil() }; public func validate() -> \
-     [String] { [] } };";
+     [String] { [] }; public func swiftSchemaValidateBound() -> [String] { [] } };";
 
 /// The text of the struct `named` declares in `definition`, up to the end of its `validate()`.
 fn struct_text<'text>(definition: &'text str, named: &str) -> &'text str {
