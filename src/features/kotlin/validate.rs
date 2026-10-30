@@ -762,7 +762,8 @@ impl<'item> Rules<'item> {
 
     /// The serializers a held value of the type `name` filled with `arguments` is handed: for each
     /// parameter it keys a map by, the serializer of its argument, which this type holds for a
-    /// parameter of its own and builds for a concrete type, and `null` for any other.
+    /// parameter of its own, builds for a concrete type, and composes from its own serializers for an
+    /// argument built from its parameters, and `null` for any other.
     fn serializers_for(&mut self, name: &str, arguments: &[FieldDef]) -> String {
         hands_of(name)
             .iter()
@@ -779,8 +780,21 @@ impl<'item> Rules<'item> {
                 }
                 let mut reached = Vec::new();
                 argument.reach_type_parameters(&mut reached);
-                if reached.is_empty() && argument.array_depth == 0 {
+                if argument.array_depth != 0 {
+                    "null".to_owned()
+                } else if reached.is_empty() {
                     kotlin_serializer_expr(argument, &[])
+                } else if self.handing {
+                    let held = reached
+                        .iter()
+                        .map(|parameter| {
+                            format!("{} != null", kotlin_serializer_param_name(parameter))
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" && ");
+                    let built = kotlin_serializer_expr(argument, &reached);
+                    self.keys.extend(reached);
+                    format!("if ({held}) {built} else null")
                 } else {
                     "null".to_owned()
                 }
