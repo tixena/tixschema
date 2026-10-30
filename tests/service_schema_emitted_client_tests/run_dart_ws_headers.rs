@@ -452,16 +452,23 @@ void main() async {
       timeout: Duration(seconds: 1000),
     ),
   );
-  await until(() => probes.isNotEmpty);
+  final probeArrived = await until(() => probes.isNotEmpty);
   transport.close();
-  print(probes.first);
+  print(jsonEncode(<String, dynamic>{
+    'probeArrived': probeArrived,
+    'probe': probeArrived ? jsonDecode(probes.first as String) : null,
+  }));
 }
 ",
     ) else {
         return;
     };
     assert_eq!(
-        written,
+        written["probeArrived"], true,
+        "the heartbeat probe was written in time. got: {written}"
+    );
+    assert_eq!(
+        written["probe"],
         serde_json::from_str::<Value>(&ping_frame()).unwrap()
     );
 }
