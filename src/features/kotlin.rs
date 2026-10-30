@@ -19,7 +19,7 @@ mod validate;
 
 extern crate alloc;
 
-use alloc::collections::BTreeMap;
+use alloc::collections::{BTreeMap, BTreeSet};
 use core::cell::{Cell, RefCell};
 use core::fmt::Write as _;
 use core::iter::once;
@@ -232,6 +232,8 @@ struct DispatchedTaggedContext<'ctx> {
     defaults: &'ctx SerdeDefaults,
     export_name: &'ctx str,
     generic_params: &'ctx str,
+    /// The type parameters a map of any variant is keyed by.
+    keyed: &'ctx [String],
     nothing_generic_args: &'ctx str,
     rename_all_fields: Option<&'ctx str>,
     serializable: &'ctx [String],
@@ -2548,6 +2550,7 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
     named_member_rules(&mut rules, &fields, None);
     rules.own(args.check);
     let validated = rules.written("");
+    validate::note_hands(&rust_ident, &type_parameters, &rules.handed_keys());
     let kotlin_source = if written_by_hand {
         let unjudged = flatten_merging_serializer(
             &export_name,
@@ -2668,6 +2671,7 @@ fn value_class_tokens(
             format!("{written}{member}; ")
         });
     let validated = rules.written("");
+    validate::note_hands(&rust_ident, &type_parameters, &rules.handed_keys());
     let unjudged = if args.preprocess.is_empty() || type_parameters.is_empty() {
         kept_unjudged(
             &export_name,
@@ -2763,6 +2767,7 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
         &payload,
     );
     let validated = rules.written("");
+    validate::note_hands(&rust_ident, &type_parameters, &rules.handed_keys());
     let alias = ident_typealias(&rust_ident, &export_name, &generic_params);
     // kotlinc refuses a data class of no property: a struct of no slot is a plain class.
     let class = if slots.is_empty() {
@@ -2953,14 +2958,42 @@ fn enum_kotlin_tokens(declared: &ItemEnum, args: &KotlinArgs<'_>) -> TokenStream
 /// The body of a variant's own subclass: what [`variant_rules`] writes for it.
 fn variant_body(
     payload: &VariantPayload,
-    tagging: Tagging<'_>,
     wire_tag: &str,
-    serializable: &[String],
-    args: &KotlinArgs<'_>,
+    ctx: &DispatchedTaggedContext<'_>,
 ) -> String {
-    let mut rules = Rules::of(serializable);
-    variant_rules(&mut rules, payload, tagging, wire_tag, args);
+    let mut rules = Rules::of(ctx.serializable).handed(ctx.keyed);
+    variant_rules(&mut rules, payload, ctx.tagging, wire_tag, ctx.args);
     format!("{{ {} }}", rules.written("override "))
+}
+
+/// The type parameters a map in any variant of `item_enum` is keyed by, whose serializers the
+/// enum's judged serializer hands to `validate()`, and the variants that take them, each written
+/// as the type it is read as.
+fn variants_keyed(
+    item_enum: &ItemEnum,
+    tagging: Tagging<'_>,
+    rename_all_fields: Option<&str>,
+    (export_name, args, defaults): (&str, &KotlinArgs<'_>, &SerdeDefaults),
+) -> (Vec<String>, Vec<String>) {
+    let type_parameters = type_parameters_in_scope(&item_enum.generics);
+    let generic_params = kotlin_generic_params(&item_enum.generics);
+    let serializable = serialized_parameters(&item_enum.generics);
+    let mut keyed = BTreeSet::new();
+    let mut variants = Vec::new();
+    for variant in &item_enum.variants {
+        let payload = variant_payload(variant, rename_all_fields, &type_parameters, args, defaults);
+        let mut rules = Rules::of(&serializable).handed(&[]);
+        variant_rules(&mut rules, &payload, tagging, "", args);
+        rules.written("");
+        let taken = rules.handed_keys();
+        if !taken.is_empty() {
+            variants.push(format!("{export_name}{}{generic_params}", variant.ident));
+            keyed.extend(taken);
+        }
+    }
+    let ordered: Vec<String> = keyed.into_iter().collect();
+    validate::note_hands(&item_enum.ident.to_string(), &type_parameters, &ordered);
+    (ordered, variants)
 }
 
 /// What a variant adds to `rules`: the members of its payload, each under the steps serde writes
@@ -3239,10 +3272,7 @@ fn dispatched_tagged_variant(
         false,
         &payload,
     );
-    let mut subclass = format!(
-        "{declaration} {}",
-        variant_body(&payload, ctx.tagging, &wire_tag, ctx.serializable, ctx.args)
-    );
+    let mut subclass = format!("{declaration} {}", variant_body(&payload, &wire_tag, ctx));
     let tag_beside = beside_the_tag.then_some(ctx.tag_key);
     if let Some(serializer) = variant_serializer(&plugin, ctx.generic_params, &payload, tag_beside)
     {
@@ -3345,12 +3375,18 @@ fn dispatched_tagged_enum_kotlin_source(
         (None, None) => Tagging::External,
     };
     let serializable = serialized_parameters(&item_enum.generics);
-
+    let (keyed, taking) = variants_keyed(
+        item_enum,
+        tagging,
+        tag_attrs.rename_all_fields.as_deref(),
+        (export_name, args, defaults),
+    );
     let ctx = DispatchedTaggedContext {
         args,
         defaults,
         export_name,
         generic_params: &generic_params,
+        keyed: &keyed,
         nothing_generic_args: &nothing_generic_args,
         rename_all_fields: tag_attrs.rename_all_fields.as_deref(),
         serializable: &serializable,
@@ -3423,7 +3459,13 @@ fn dispatched_tagged_enum_kotlin_source(
     format!(
         "{base} {} {serializer_object} {}",
         subclasses.join(" "),
-        read::judged(export_name, &generic_params, &type_parameters, true, &[])
+        read::judged(
+            export_name,
+            &generic_params,
+            &type_parameters,
+            true,
+            (&keyed, &taking)
+        )
     )
 }
 
@@ -3442,6 +3484,12 @@ fn untagged_enum_kotlin_source(
     let generic_params = kotlin_generic_params(&item_enum.generics);
     let nothing_generic_args = kotlin_nothing_generic_args(&item_enum.generics);
     let serializable = serialized_parameters(&item_enum.generics);
+    let (keyed, taking) = variants_keyed(
+        item_enum,
+        Tagging::Unwrapped,
+        fields_rule,
+        (export_name, args, defaults),
+    );
 
     let mut subclasses = Vec::new();
     let mut serialize_arms = Vec::new();
@@ -3451,7 +3499,7 @@ fn untagged_enum_kotlin_source(
         let subclass_name = format!("{export_name}{variant_rust_name}");
         let payload = variant_payload(variant, fields_rule, &type_parameters, args, defaults);
         let bare_value = matches!(payload, VariantPayload::Value(_));
-        let mut rules = Rules::choosing(&serializable);
+        let mut rules = Rules::choosing(&serializable).handed(&keyed);
         variant_rules(&mut rules, &payload, Tagging::Unwrapped, "", args);
         // A check and what a held model reports choose no variant: the enum's own read judges.
         let held_to_its_bounds = if rules.bounded() {
@@ -3522,7 +3570,13 @@ fn untagged_enum_kotlin_source(
     format!(
         "{base} {} {serializer_object} {}",
         subclasses.join(" "),
-        read::judged(export_name, &generic_params, &type_parameters, true, &[])
+        read::judged(
+            export_name,
+            &generic_params,
+            &type_parameters,
+            true,
+            (&keyed, &taking)
+        )
     )
 }
 
@@ -3592,7 +3646,7 @@ fn plain_enum_kotlin_source(
         };
         format!(
             "{kept} {body} {unjudged} {}",
-            read::judged(export_name, "", &[], false, &[])
+            read::judged(export_name, "", &[], false, (&[], &[]))
         )
     } else if !args.preprocess.is_empty() {
         format!(

@@ -34,9 +34,9 @@ fun report(name: String, violations: List<String>) {
 
 /// What the read of a payload prints: `passes`, or `refused` and each message the read throws.
 const READ: &str = r#"
-fun read(name: String, payload: String) {
+inline fun <reified T> read(name: String, payload: String) {
     try {
-        Json.decodeFromString<Shelf<Tag<String>>>(payload)
+        Json.decodeFromString<T>(payload)
         println("$name: passes")
     } catch (thrown: SerializationException) {
         println("$name: refused")
@@ -129,6 +129,45 @@ pub struct Item {
 #[serde(bound(serialize = "", deserialize = "KeyType: Deserialize<'de>"))]
 pub struct Shelf<KeyType: Ord + Serialize> {
     pub by_slot: BTreeMap<KeyType, Item>,
+}
+
+/// An internally tagged enum whose variant holds a map keyed by one of its parameters.
+#[model_schema(default_types(KeyType = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(
+    tag = "kind",
+    bound(serialize = "", deserialize = "KeyType: Deserialize<'de>")
+)]
+pub enum Depot<KeyType: Ord + Serialize> {
+    Empty,
+    Stocked { by_slot: BTreeMap<KeyType, Item> },
+}
+
+/// An untagged enum whose variant holds a map keyed by one of its parameters.
+#[model_schema(default_types(KeyType = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(
+    untagged,
+    bound(serialize = "", deserialize = "KeyType: Deserialize<'de>")
+)]
+pub enum Pallet<KeyType: Ord + Serialize> {
+    Counted(u32),
+    Loaded { by_slot: BTreeMap<KeyType, Item> },
+}
+
+/// A holder whose field is a `Shelf` filled with a generic brand.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Aisle {
+    pub shelf: Shelf<Tag<String>>,
+}
+
+/// A generic holder whose field is a `Shelf` filled with its own parameter.
+#[model_schema(default_types(KeyType = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(bound(serialize = "", deserialize = "KeyType: Deserialize<'de>"))]
+pub struct Annex<KeyType: Ord + Serialize> {
+    pub shelf: Shelf<KeyType>,
 }
 
 /// One row: the Kotlin expression of a value and the messages Rust's `validate()` answers of the
@@ -321,7 +360,7 @@ fn kotlin_names_a_key_filled_with_a_generic_brand_as_rust_does_when_it_reads() {
         shelf_kotlin::kotlin_definition(),
         REPORT.to_owned(),
         READ.to_owned(),
-        "fun main() {\n    read(\"read\", \"\"\"{\"by_slot\":{\"t\":{\"label\":\"\"}}}\"\"\")\n    \
+        "fun main() {\n    read<Shelf<Tag<String>>>(\"read\", \"\"\"{\"by_slot\":{\"t\":{\"label\":\"\"}}}\"\"\")\n    \
          report(\"hand built\", Shelf<Tag<String>>(mapOf(Tag(\"t\") to Item(\"\"))).validate())\n}\n"
             .to_owned(),
     ];
@@ -339,6 +378,105 @@ fn kotlin_names_a_key_filled_with_a_generic_brand_as_rust_does_when_it_reads() {
         );
     }
     expected.push_str(&built);
+    assert_eq!(printed, expected);
+}
+
+/// A map keyed by a generic brand is named by the text its serializer writes when a judged
+/// serializer reads it from a variant of a tagged and of an untagged enum, and from a type held by
+/// another, and by the class's own print for a value built by hand.
+#[test]
+fn kotlin_names_a_key_filled_with_a_generic_brand_as_rust_does_in_a_variant_and_a_held_type() {
+    let stocked = || BTreeMap::from([(Tag("t".to_owned()), item(""))]);
+    let reads = [
+        (
+            "tagged variant",
+            "Depot<Tag<String>>",
+            r#"{"kind":"Stocked","by_slot":{"t":{"label":""}}}"#,
+            Depot::Stocked { by_slot: stocked() }.validate(),
+        ),
+        (
+            "untagged variant",
+            "Pallet<Tag<String>>",
+            r#"{"by_slot":{"t":{"label":""}}}"#,
+            Pallet::Loaded { by_slot: stocked() }.validate(),
+        ),
+        (
+            "held type",
+            "Aisle",
+            r#"{"shelf":{"by_slot":{"t":{"label":""}}}}"#,
+            Aisle {
+                shelf: Shelf { by_slot: stocked() },
+            }
+            .validate(),
+        ),
+        (
+            "generic holder",
+            "Annex<Tag<String>>",
+            r#"{"shelf":{"by_slot":{"t":{"label":""}}}}"#,
+            Annex {
+                shelf: Shelf { by_slot: stocked() },
+            }
+            .validate(),
+        ),
+    ];
+    let built = [
+        (
+            "hand built tagged variant",
+            "DepotStocked<Tag<String>>(mapOf(Tag(\"t\") to Item(\"\"))).validate()",
+            reads[0].3.clone(),
+        ),
+        (
+            "hand built untagged variant",
+            "PalletLoaded<Tag<String>>(mapOf(Tag(\"t\") to Item(\"\"))).validate()",
+            reads[1].3.clone(),
+        ),
+        (
+            "hand built generic holder",
+            "Annex<Tag<String>>(Shelf(mapOf(Tag(\"t\") to Item(\"\")))).validate()",
+            reads[3].3.clone(),
+        ),
+    ];
+    let mut main = String::from("fun main() {\n");
+    let mut expected = String::new();
+    for (name, kotlin_type, payload, rust) in &reads {
+        let _ = writeln!(
+            main,
+            "    read<{kotlin_type}>({}, \"\"\"{payload}\"\"\")",
+            kotlin_string(name)
+        );
+        let _ = writeln!(expected, "{name}: refused");
+        for message in rust.as_ref().err().into_iter().flatten() {
+            let _ = writeln!(expected, "    {message}");
+        }
+    }
+    for (name, kotlin, rust) in &built {
+        let _ = writeln!(main, "    report({}, {kotlin})", kotlin_string(name));
+        let _ = writeln!(expected, "{name}: refused");
+        for message in rust.as_ref().err().into_iter().flatten() {
+            let _ = writeln!(
+                expected,
+                "    {}",
+                message.replace("by_slot.t.", "by_slot.Tag(value=t).")
+            );
+        }
+    }
+    main.push_str("}\n");
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        tag_kotlin::kotlin_definition(),
+        item_kotlin::kotlin_definition(),
+        shelf_kotlin::kotlin_definition(),
+        depot_kotlin::kotlin_definition(),
+        pallet_kotlin::kotlin_definition(),
+        aisle_kotlin::kotlin_definition(),
+        annex_kotlin::kotlin_definition(),
+        REPORT.to_owned(),
+        READ.to_owned(),
+        main,
+    ];
+    let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
+        return;
+    };
     assert_eq!(printed, expected);
 }
 

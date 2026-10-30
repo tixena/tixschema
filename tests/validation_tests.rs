@@ -35,6 +35,10 @@ mod payload_paths;
 mod refusing_read;
 
 #[cfg(test)]
+#[path = "validation_tests/set_members.rs"]
+mod set_members;
+
+#[cfg(test)]
 #[path = "validation_tests/tests.rs"]
 mod tests;
 
