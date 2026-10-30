@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
-use super::read::{judged, judged_over, kept};
+use super::read::{DECODED, judged, judged_over, kept};
 
 /// The parcel of the documents' sample, under a name of this file's own.
 #[model_schema(preprocess = ["withoutFragile"])]
@@ -114,11 +114,12 @@ fn a_type_and_a_member_that_name_a_function_are_read_through_it() {
              minimum length is 1, got ${{label.codePointCount(0, label.length)}}\"); return \
              violations }} }} @OptIn(ExperimentalSerializationApi::class) object PacketUnjudged : \
              JsonTransformingSerializer<Packet>(Packet.generatedSerializer()) {} {} object \
-             PacketLabelPreprocess : JsonTransformingSerializer<String>(serializer<String>()) {}",
+             PacketLabelPreprocess : JsonTransformingSerializer<String>(serializer<String>()) {{ \
+             {DECODED}override fun transformDeserialize(element: JsonElement): JsonElement = \
+             kotlinSchemaKinded(serializer<String>(), trimmed(element), \"label\") }}",
             kept("Packet"),
             transform("withoutFragile(element)"),
-            judged("Packet"),
-            transform("trimmed(element)")
+            judged("Packet")
         )
     );
 }
