@@ -19,12 +19,12 @@ A crate that declares any `pattern` also names `regex`, because the generated ch
 
 ### Frontend Dependencies (Zod v4)
 
-**Important:** This crate requires Zod v4 for full functionality, especially JSON schema generation. Zod v3 is not supported.
+**Important:** This crate requires Zod 4.3.2 or later. Zod v3 is not supported. An earlier Zod 4 release refuses every payload of a variant that holds a struct under `#[serde(tag = "...")]`: the schema intersects the tag's strict object with the struct's, and before 4.3.2 each side refuses the other's keys.
 
 ```bash
-npm install zod@^4.0.0
+npm install zod@^4.3.2
 # or
-yarn add zod@^4.0.0
+yarn add zod@^4.3.2
 ```
 
 ## Quick Start
