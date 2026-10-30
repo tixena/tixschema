@@ -12,7 +12,10 @@ use core::cell::RefCell;
 use core::mem;
 use std::collections::HashMap;
 
-use super::{kotlin_name, kotlin_quoted, kotlin_template_text, kotlin_typename, result_class};
+use super::{
+    kotlin_name, kotlin_quoted, kotlin_serializer_param_name, kotlin_template_text,
+    kotlin_typename, read, result_class,
+};
 use crate::bound_message::{Bound, kotlin_repeated, kotlin_violation};
 use crate::features::model_schema_prop::{FunctionName, LiteralValue, ModelSchemaPropMeta};
 use crate::field_type::{
@@ -133,8 +136,13 @@ pub struct Rules<'item> {
     bounds: Vec<String>,
     /// Whether the members are those of a variant of an untagged enum, which its bounds choose.
     chooses: bool,
+    /// Whether `validate()` takes the serializer of each key parameter, as a type read by a judged
+    /// serializer does.
+    handing: bool,
     /// The functions the statements call, each written once into the type's body.
     helpers: BTreeSet<Helper>,
+    /// The type parameters a map is keyed by, whose serializers the overload of `validate()` takes.
+    keys: BTreeSet<String>,
     /// The type parameters the item declares `Serialize` for: a map's key typed with one is
     /// written into a place, as Rust writes it.
     serializable: &'item [String],
@@ -151,9 +159,10 @@ impl Helper {
         match self {
             Self::Fallback => "private fun Any?.validate(): List<String> = emptyList()",
             Self::Key => {
-                "private fun kotlinSchemaKey(key: Any?): String = \
-                 serializerOrNull(key!!::class.java)?.let { \
-                 Json.encodeToJsonElement(it, key).jsonPrimitive.content } ?: key.toString()"
+                "private fun <T> kotlinSchemaKey(key: T, serializer: KSerializer<T>?): String = \
+                 (serializer?.let { Json.encodeToJsonElement(it, key) } ?: \
+                 serializerOrNull(key!!::class.java)?.let { Json.encodeToJsonElement(it, key) \
+                 })?.jsonPrimitive?.content ?: key.toString()"
             }
             Self::Length => {
                 "private fun String.kotlinSchemaLength(): Int = codePointCount(0, length); \
@@ -304,7 +313,9 @@ impl<'item> Rules<'item> {
         Self {
             bounds: Vec::new(),
             chooses: true,
+            handing: false,
             helpers: BTreeSet::new(),
+            keys: BTreeSet::new(),
             serializable,
             statements: Vec::new(),
         }
@@ -378,6 +389,14 @@ impl<'item> Rules<'item> {
             read = member.read,
             held_type = kotlin_typename(held),
         )]
+    }
+
+    /// [`Self::of`] for a type a judged serializer reads, which hands `validate()` the serializer
+    /// of each parameter a map is keyed by.
+    pub const fn handing(serializable: &'item [String]) -> Self {
+        let mut rules = Self::of(serializable);
+        rules.handing = true;
+        rules
     }
 
     /// What the value `read` holds answers `asked`: each value of a declared type under it,
@@ -477,6 +496,25 @@ impl<'item> Rules<'item> {
         }
     }
 
+    /// The judged serializer of the type, which hands `validate()` the serializer of each
+    /// parameter a map is keyed by.
+    pub fn judged(
+        &self,
+        export_name: &str,
+        generic_params: &str,
+        type_parameters: &[String],
+        composed: bool,
+    ) -> String {
+        let keys: Vec<String> = self.keys.iter().cloned().collect();
+        read::judged(
+            export_name,
+            generic_params,
+            type_parameters,
+            composed,
+            &keys,
+        )
+    }
+
     /// The step the key of a map's entry adds to a place, as the text serde writes for the key,
     /// or `None` for a key typed with a parameter the item declares no `Serialize` for.
     fn key_step(&mut self, key: &FieldDef, entry: &str) -> Option<String> {
@@ -485,7 +523,13 @@ impl<'item> Rules<'item> {
             if declared {
                 self.helpers.insert(Helper::Key);
             }
-            declared.then(|| format!("${{kotlinSchemaKey({entry})}}"))
+            let handed = if self.handing {
+                self.keys.insert(parameter.clone());
+                kotlin_serializer_param_name(parameter)
+            } else {
+                "null".to_owned()
+            };
+            declared.then(|| format!("${{kotlinSchemaKey({entry}, {handed})}}"))
         } else if matches!(key.field_type, FieldDefType::SiblingType(_, _)) {
             Some(format!(
                 "${{Json.encodeToJsonElement(serializer<{}>(), {entry}).jsonPrimitive.content}}",
@@ -646,7 +690,9 @@ impl<'item> Rules<'item> {
         Self {
             bounds: Vec::new(),
             chooses: false,
+            handing: false,
             helpers: BTreeSet::new(),
+            keys: BTreeSet::new(),
             serializable,
             statements: Vec::new(),
         }
@@ -720,12 +766,32 @@ impl<'item> Rules<'item> {
     /// statements call.
     pub fn written(&mut self, modifier: &str) -> String {
         let statements = mem::take(&mut self.statements);
+        self.keys.retain(|key| {
+            let handed = format!(", {})", kotlin_serializer_param_name(key));
+            statements
+                .iter()
+                .any(|statement| statement.contains(&handed))
+        });
         let validate = if statements.is_empty() {
             format!("{modifier}fun validate(): List<String> = emptyList()")
-        } else {
+        } else if self.keys.is_empty() {
             format!(
                 "{modifier}fun validate(): List<String> {{ val {VIOLATIONS} = \
                  mutableListOf<String>(); {}; return {VIOLATIONS} }}",
+                statements.join("; ")
+            )
+        } else {
+            let nulls = vec!["null"; self.keys.len()].join(", ");
+            let taken = self
+                .keys
+                .iter()
+                .map(|key| format!("{}: KSerializer<{key}>?", kotlin_serializer_param_name(key)))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(
+                "{modifier}fun validate(): List<String> = validate({nulls}); fun validate({taken}): \
+                 List<String> {{ val {VIOLATIONS} = mutableListOf<String>(); {}; return \
+                 {VIOLATIONS} }}",
                 statements.join("; ")
             )
         };

@@ -58,17 +58,32 @@ pub const SELF_ROWS: [Row; 8] = [
     ),
 ];
 
-/// The rows of an `Option` over a `Box` of `Self`, which a Swift struct cannot hold.
-pub const TIP_ROWS: [Row; 2] = [
+/// The rows of an `Option` over a `Box` of `Self`.
+pub const TIP_ROWS: [Row; 5] = [
+    held(
+        "an optional box of itself, empty",
+        "Tip",
+        r#"{"label":"s","next":null}"#,
+    ),
     held(
         "an optional box of itself",
         "Tip",
         r#"{"label":"s","next":{"label":"n","next":null}}"#,
     ),
     held(
+        "an optional box of itself, three links",
+        "Tip",
+        r#"{"label":"a","next":{"label":"b","next":{"label":"c","next":{"label":"d","next":null}}}}"#,
+    ),
+    held(
         "an optional box of itself, broken",
         "Tip",
         r#"{"label":"s","next":{"label":"","next":null}}"#,
+    ),
+    held(
+        "an optional box of itself, broken in the third link",
+        "Tip",
+        r#"{"label":"a","next":{"label":"b","next":{"label":"","next":null}}}"#,
     ),
 ];
 

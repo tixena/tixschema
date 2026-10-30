@@ -94,6 +94,13 @@ fun withItsKeys(payload: JsonElement): JsonElement =
         payload
     }
 
+fun withItsSeen(payload: JsonElement): JsonElement =
+    if (payload is JsonObject) {
+        JsonObject(mapOf("seen" to JsonArray(payload.keys.sorted().map { JsonPrimitive(it) })) + payload)
+    } else {
+        payload
+    }
+
 fun withinLimit(value: Scaled): List<String> =
     if (value.grams > 1000u) listOf("'grams': ${value.grams} is over the limit of 1000") else emptyList()
 "#;
@@ -140,6 +147,7 @@ a field: read {\"packet\":{\"fragileItemCodes\":[],\"itemCodeList\":[\"x\"],\"la
 a list, a map and an Option: read {\"by_dock\":{\"north\":{\"fragileItemCodes\":[],\"itemCodeList\":[\"x\"],\"label\":\"A\"}},\"list\":[{\"fragileItemCodes\":[],\"itemCodeList\":[],\"label\":\"B\"}],\"spare\":{\"fragileItemCodes\":[],\"itemCodeList\":[],\"label\":\"C\"}}
 a flattened type: read {\"dock\":\"north\",\"fragileItemCodes\":[],\"itemCodeList\":[\"x\"],\"label\":\"A\"}
 the keys a flattened type is handed: read {\"dock\":\"north\",\"keys\":[\"tag\"],\"tag\":\"t\"}
+two flattened types that read their keys: read {\"dock\":\"north\",\"mark\":\"m\",\"seen\":[\"mark\",\"tag\"],\"keys\":[\"mark\",\"tag\"],\"tag\":\"t\"}
 a variant under a tag alone, handed the object without the tag: read {\"kind\":\"Held\",\"keys\":[\"tag\"],\"tag\":\"t\"}
 a variant beside its tag: read {\"kind\":\"Held\",\"detail\":{\"fragileItemCodes\":[],\"itemCodeList\":[\"x\"],\"label\":\"A\"}}
 a variant under its name: read {\"Held\":{\"fragileItemCodes\":[],\"itemCodeList\":[\"x\"],\"label\":\"A\"}}
@@ -306,7 +314,27 @@ pub struct Fastened {
     pub keyed: Itemized,
 }
 
-/// An internally tagged enum whose variant holds the type above.
+/// A type whose function writes, under `seen`, the keys of the object it was handed.
+#[model_schema(preprocess = ["withItsSeen"])]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Glimpsed {
+    pub mark: String,
+    pub seen: Vec<String>,
+}
+
+/// Two types flattened into their holder: each one's function is handed the keys the holder's own
+/// members do not take.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Coupled {
+    pub dock: String,
+    #[serde(flatten)]
+    pub glimpsed: Glimpsed,
+    #[serde(flatten)]
+    pub itemized: Itemized,
+}
+
+/// An internally tagged enum whose variant holds an `Itemized`.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "kind")]
@@ -795,6 +823,18 @@ fn unwrapped(payload: Value) -> Value {
     }
 }
 
+fn with_its_seen(mut payload: Value) -> Value {
+    if let Some(object) = payload.as_object_mut() {
+        let mut keys: Vec<String> = object.keys().cloned().collect();
+        keys.sort_unstable();
+        object.insert(
+            "seen".to_owned(),
+            Value::Array(keys.into_iter().map(Value::String).collect()),
+        );
+    }
+    payload
+}
+
 fn with_its_keys(mut payload: Value) -> Value {
     if let Some(object) = payload.as_object_mut() {
         let mut keys: Vec<String> = object.keys().cloned().collect();
@@ -925,6 +965,11 @@ fn held_rows() -> Vec<Reading> {
             "the keys a flattened type is handed",
             "Fastened",
             r#"{"dock":"north","tag":"t"}"#,
+        ),
+        row::<Coupled>(
+            "two flattened types that read their keys",
+            "Coupled",
+            r#"{"dock":"north","mark":"m","tag":"t"}"#,
         ),
         row::<Stowed>(
             "a variant under a tag alone, handed the object without the tag",
@@ -1134,6 +1179,8 @@ fn definitions() -> Vec<String> {
         encased_kotlin::kotlin_definition(),
         itemized_kotlin::kotlin_definition(),
         fastened_kotlin::kotlin_definition(),
+        glimpsed_kotlin::kotlin_definition(),
+        coupled_kotlin::kotlin_definition(),
         hauler_kotlin::kotlin_definition(),
         directed_kotlin::kotlin_definition(),
         entrusted_kotlin::kotlin_definition(),
