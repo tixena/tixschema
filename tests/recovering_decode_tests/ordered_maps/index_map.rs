@@ -11,7 +11,7 @@ use self::declared::{RankedEntries, RankedLabels, RankedScores};
 #[cfg(feature = "jsonschema")]
 use self::declared::{ranked_entries_schema, ranked_labels_schema, ranked_scores_schema};
 use super::super::lines;
-use ranking_schema::{Expected, Issue, Resolution, Stored as _};
+use ranking_schema::{DecodeWith as _, Expected, Issue, Resolution, Stored as _};
 
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]

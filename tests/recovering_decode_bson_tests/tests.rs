@@ -57,6 +57,7 @@ mod wide_integers;
 use core::error::Error;
 use core::fmt::Display;
 use core::str::FromStr;
+use record_schema::DecodeWith as _;
 use std::collections::HashMap;
 
 use bson::oid::ObjectId;

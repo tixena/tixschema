@@ -4,6 +4,7 @@
 //!
 //! A validator is published only where a schema surface is on, so a build with none lists nothing.
 
+use bounded_group_schema::DecodeWith as _;
 use bson::{Bson, Document, doc};
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;

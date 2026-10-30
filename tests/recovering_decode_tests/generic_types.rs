@@ -2,6 +2,7 @@
 //! with that parameter's own reader, so what fills it needs no flag, and nothing of that type is
 //! written back from a JSON value.
 
+use page_schema::DecodeWith as _;
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};

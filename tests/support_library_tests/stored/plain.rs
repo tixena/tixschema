@@ -1,6 +1,7 @@
 //! A type with no `#[model_schema]` at all, held by a stored type: the build that holds it is one
 //! with no schema surface, which describes no such field.
 
+use parcel_schema::DecodeWith;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 

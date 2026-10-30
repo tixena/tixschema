@@ -4,6 +4,7 @@
 mod filters;
 mod paths;
 
+use paths::invoice_lookup_schema::DecodeWith as _;
 use serde_json::json;
 
 #[test]

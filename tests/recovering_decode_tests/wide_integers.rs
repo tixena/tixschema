@@ -5,6 +5,7 @@
 use alloc::collections::BTreeMap;
 use core::cell::RefCell;
 use core::ops::Range;
+use wide_ledger_schema::DecodeWith as _;
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;

@@ -4,6 +4,7 @@
 //! as declared. Each case holds the walker's list to what plain serde says of the same document.
 
 use core::fmt::Debug;
+use filed_schema::DecodeWith as _;
 use std::collections::HashMap;
 
 use bson::oid::ObjectId;

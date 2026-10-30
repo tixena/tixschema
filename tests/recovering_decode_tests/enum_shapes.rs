@@ -2,6 +2,7 @@
 //! enum by its tag and the variant it names, and an untagged enum as the variant serde reads the
 //! value as. Each case holds the walker's list to what plain serde says of the same value.
 
+use drawing_schema::DecodeWith as _;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;

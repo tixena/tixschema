@@ -5,6 +5,7 @@
 
 use core::ops::Range;
 use std::collections::HashMap;
+use wide_row_schema::DecodeWith as _;
 
 use bson::{Bson, Document, doc};
 use serde::{Deserialize, Serialize};

@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tixschema::{model_schema, model_schema_prop};
+use parcel_schema::DecodeWith as _;
 
 tixschema::decode_with_foundation!();
 

@@ -1,6 +1,7 @@
 //! Flagged types that name types their author called `I` and `F`, which is what the methods the
 //! flag adds call their own type parameters. Each goes on naming its author's type.
 
+use i_schema::DecodeWith as _;
 use std::collections::HashMap;
 
 use serde::de::Error as _;

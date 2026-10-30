@@ -269,16 +269,41 @@ fn struct_recovering_decode(item: &syn::ItemStruct) -> RecoveringDecode {
     super::struct_recovering_decode(item, true)
 }
 
-/// The `impl` the flag adds to `source`, as text.
+/// The inherent `impl` the flag adds to `source`, as text.
 fn type_impl_of(source: &str) -> String {
+    let item: syn::ItemStruct = syn::parse_str(source).unwrap();
+    inherent_text(struct_recovering_decode(&item).type_impl)
+}
+
+/// Every `impl` the flag adds to `source`, as text.
+fn whole_impl_of(source: &str) -> String {
     let item: syn::ItemStruct = syn::parse_str(source).unwrap();
     struct_recovering_decode(&item).type_impl.to_string()
 }
 
-/// The `impl` the flag adds to the enum `source` declares, as text.
+/// The inherent `impl` the flag adds to the enum `source` declares, as text.
 fn enum_impl_of(source: &str) -> String {
     let item: syn::ItemEnum = syn::parse_str(source).unwrap();
-    enum_recovering_decode(&item).type_impl.to_string()
+    inherent_text(enum_recovering_decode(&item).type_impl)
+}
+
+/// `type_impl` as text, without the `impl`s of `DecodeWith`.
+fn inherent_text(type_impl: proc_macro2::TokenStream) -> String {
+    use quote::ToTokens as _;
+
+    let added: syn::File = syn::parse2(type_impl).unwrap();
+    added
+        .items
+        .iter()
+        .filter(|added_item| {
+            !matches!(added_item, syn::Item::Impl(block)
+            if block.trait_.as_ref().is_some_and(|(implemented, _for)| {
+                implemented.segments.last().is_some_and(|last| last.ident == "DecodeWith")
+            }))
+        })
+        .map(|added_item| added_item.to_token_stream().to_string())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// What the flag adds to the enum `source` declares for a JSON value, as text: everything ahead
@@ -286,7 +311,7 @@ fn enum_impl_of(source: &str) -> String {
 fn enum_json_of(source: &str) -> String {
     let emitted = enum_impl_of(source);
     emitted
-        .split_once("pub fn from_bson_with")
+        .split_once("fn decode_with_bson_report")
         .map_or(emitted.as_str(), |(json, _bson)| json)
         .to_owned()
 }
@@ -295,7 +320,7 @@ fn enum_json_of(source: &str) -> String {
 #[cfg(feature = "bson")]
 fn enum_bson_of(source: &str) -> String {
     let emitted = enum_impl_of(source);
-    let (_json, bson) = emitted.split_once("pub fn from_bson_with").unwrap();
+    let (_json, bson) = emitted.split_once("fn decode_with_bson_report").unwrap();
     bson.to_owned()
 }
 
@@ -323,7 +348,7 @@ fn fields_walk_of(source: &str) -> String {
 /// point.
 fn json_fields_walk_of(source: &str) -> String {
     let walk = fields_walk_of(source);
-    walk.split_once("pub fn from_bson_with")
+    walk.split_once("fn decode_with_bson_report")
         .map_or(walk.as_str(), |(json, _bson)| json)
         .to_owned()
 }
@@ -360,7 +385,25 @@ fn emission_of(source: &str) -> String {
 /// in the order written.
 fn added_impls(source: &str) -> Vec<(String, Vec<String>)> {
     let item: syn::ItemStruct = syn::parse_str(source).unwrap();
-    impls_in(struct_recovering_decode(&item).type_impl)
+    reads_under_their_types(impls_in(struct_recovering_decode(&item).type_impl))
+}
+
+/// `impls` with each `impl` of `DecodeWith` folded into the inherent `impl` before it, which it
+/// must match in everything but the trait: the reads are listed last among that one's members.
+fn reads_under_their_types(impls: Vec<(String, Vec<String>)>) -> Vec<(String, Vec<String>)> {
+    let mut folded: Vec<(String, Vec<String>)> = Vec::new();
+    for (header, members) in impls {
+        let Some((path, after)) = header.split_once("DecodeWith for ") else {
+            folded.push((header, members));
+            continue;
+        };
+        let (own_header, own) = folded.last_mut().unwrap();
+        let module_path = path.trim_end().strip_suffix("::").unwrap().trim_end();
+        let (generics, _module) = module_path.rsplit_once(' ').unwrap();
+        assert_eq!(*own_header, format!("{generics} {after}"));
+        own.extend(members);
+    }
+    folded
 }
 
 /// The type's own `impl` among `type_impl`: the first, ahead of what is written beside the type.
@@ -382,7 +425,7 @@ fn own_impl(type_impl: proc_macro2::TokenStream) -> syn::ItemImpl {
 /// The `impl`s the flag adds to the enum `source` declares, as [`added_impls`] lists a struct's.
 fn added_enum_impls(source: &str) -> Vec<(String, Vec<String>)> {
     let item: syn::ItemEnum = syn::parse_str(source).unwrap();
-    impls_in(enum_recovering_decode(&item).type_impl)
+    reads_under_their_types(impls_in(enum_recovering_decode(&item).type_impl))
 }
 
 /// Every `impl` among `type_impl`: its header as text, with the trait it implements, and its
@@ -560,17 +603,21 @@ fn operation_signatures() -> Vec<String> {
 /// The methods one source adds to every type, in the order written. Under `mongodb` the
 /// operations sit beside the BSON entry points.
 fn methods_of(stem: &str) -> Vec<String> {
-    let mut named = vec![format!("from_{stem}_with"), format!("from_{stem}_piped")];
+    let mut named = vec![format!("decode_with_{stem}_report")];
     if stem == "bson" && cfg!(feature = "mongodb") {
         named.extend(OPERATIONS.map(str::to_owned));
     }
     named.extend([
-        format!("decode_with_{stem}_report"),
         format!("decode_with_{stem}_issues"),
         format!("decode_with_{stem}_named"),
         format!("decode_with_{stem}_fields"),
     ]);
     named
+}
+
+/// The reads of `DecodeWith` for the source `stem`.
+fn reads_of(stem: &str) -> Vec<String> {
+    vec![format!("from_{stem}_with"), format!("from_{stem}_piped")]
 }
 
 /// Every token `tokens` is made of, in order, with each group opened and its delimiters left out.
@@ -766,8 +813,6 @@ fn every_added_method_but_the_entry_point_carries_the_flags_name() {
         .collect();
     assert_eq!(methods.len(), added.items.len() + checked.items.len());
     let mut named = vec![
-        "from_value_with",
-        "from_value_piped",
         "decode_with_value_report",
         "decode_with_value_issues",
         "decode_with_value_named",
@@ -775,12 +820,11 @@ fn every_added_method_but_the_entry_point_carries_the_flags_name() {
         LISTED_READ,
     ];
     if cfg!(feature = "bson") {
-        named.extend(["from_bson_with", "from_bson_piped"]);
+        named.push("decode_with_bson_report");
         if cfg!(feature = "mongodb") {
             named.extend(OPERATIONS);
         }
         named.extend([
-            "decode_with_bson_report",
             "decode_with_bson_issues",
             "decode_with_bson_named",
             "decode_with_bson_fields",
@@ -817,19 +861,19 @@ fn a_type_that_lists_decode_with_alone_is_read_from_bson_and_gets_no_mongodb_lay
     assert_eq!(
         members,
         [
-            "from_value_with",
-            "from_value_piped",
             "decode_with_value_report",
             "decode_with_value_issues",
             "decode_with_value_named",
             "decode_with_value_fields",
             LISTED_READ,
-            "from_bson_with",
-            "from_bson_piped",
             "decode_with_bson_report",
             "decode_with_bson_issues",
             "decode_with_bson_named",
             "decode_with_bson_fields",
+            "from_value_with",
+            "from_value_piped",
+            "from_bson_with",
+            "from_bson_piped",
             "decode_with_check_messages",
             "decode_with_value_check_issues",
             "decode_with_bson_check_issues",
@@ -839,7 +883,7 @@ fn a_type_that_lists_decode_with_alone_is_read_from_bson_and_gets_no_mongodb_lay
     seen_as_models(enum_item.to_token_stream());
     let enum_added = super::enums::enum_recovering_decode(&enum_item, false);
     let enum_impl = enum_added.type_impl.to_string();
-    for bson_read in ["pub fn from_bson_with", "pub fn from_bson_piped"] {
+    for bson_read in ["fn from_bson_with", "fn from_bson_piped"] {
         assert!(
             enum_impl.contains(bson_read),
             "missing `{bson_read}` in: {enum_impl}"
@@ -881,8 +925,6 @@ fn a_type_that_names_a_preprocess_adds_the_walk_of_a_corrected_value() {
     let added = own_impl(emitted.type_impl);
     let methods: Vec<String> = added.items.iter().filter_map(member_name).collect();
     let mut named = vec![
-        "from_value_with",
-        "from_value_piped",
         "decode_with_value_report",
         "decode_with_value_corrected_issues",
         "decode_with_value_corrected_named",
@@ -895,12 +937,11 @@ fn a_type_that_names_a_preprocess_adds_the_walk_of_a_corrected_value() {
         "decode_with_read_corrected",
     ];
     if cfg!(feature = "bson") {
-        named.extend(["from_bson_with", "from_bson_piped"]);
+        named.push("decode_with_bson_report");
         if cfg!(feature = "mongodb") {
             named.extend(OPERATIONS);
         }
         named.extend([
-            "decode_with_bson_report",
             "decode_with_bson_corrected_issues",
             "decode_with_bson_corrected_named",
             "decode_with_bson_corrected_fields",
@@ -920,10 +961,20 @@ fn a_type_that_names_a_preprocess_adds_the_walk_of_a_corrected_value() {
 #[test]
 fn the_bson_methods_carry_the_signatures_of_their_json_twins() {
     let item: syn::ItemStruct = syn::parse_str("pub struct Named { pub title: String }").unwrap();
-    let added = own_impl(struct_recovering_decode(&item).type_impl);
-    let signatures: Vec<String> = added
+    let type_impl = struct_recovering_decode(&item).type_impl;
+    let added = own_impl(type_impl.clone());
+    let every: syn::File = syn::parse2(type_impl).unwrap();
+    let signatures: Vec<String> = every
         .items
         .iter()
+        .filter_map(|added_item| {
+            if let syn::Item::Impl(block) = added_item {
+                Some(&block.items)
+            } else {
+                None
+            }
+        })
+        .flatten()
         .filter_map(|added_item| {
             if let syn::ImplItem::Fn(method) = added_item
                 && method.sig.ident.to_string().contains("bson")
@@ -938,13 +989,6 @@ fn the_bson_methods_carry_the_signatures_of_their_json_twins() {
     assert_eq!(
         signatures,
         [
-            "pub fn from_bson_with < F > (document : bson :: Document , decide : F ,) \
-             -> :: core :: result :: Result < Self , named_schema :: Unrecovered < bson :: Bson > > \
-             where F : :: core :: ops :: FnOnce (& mut bson :: Document , & [named_schema :: Issue < bson :: Bson >]) \
-             -> named_schema :: Verdict ,",
-            "pub fn from_bson_piped (document : bson :: Document , resolvers : & [named_schema :: \
-             Resolver < '_ , bson :: Document , bson :: Bson >] ,) -> :: core :: result :: Result < \
-             Self , named_schema :: Unrecovered < bson :: Bson > >",
             "fn decode_with_bson_report (whole : & bson :: Bson , refused : :: core :: option :: \
              Option < :: std :: string :: String >) -> :: std :: vec :: Vec < named_schema :: Issue < \
              bson :: Bson > >",
@@ -956,6 +1000,13 @@ fn the_bson_methods_carry_the_signatures_of_their_json_twins() {
              & [:: core :: result :: Result < :: std :: string :: String , usize >] , issue : \
              named_schema :: IssueFromParts < bson :: Bson , I > , out : & mut :: std :: vec :: \
              Vec < I > ,) -> :: std :: vec :: Vec < & 'a str >",
+            "fn from_bson_with < F > (document : bson :: Document , decide : F ,) \
+             -> :: core :: result :: Result < Self , named_schema :: Unrecovered < bson :: Bson > > \
+             where F : :: core :: ops :: FnOnce (& mut bson :: Document , & [named_schema :: Issue < bson :: Bson >]) \
+             -> named_schema :: Verdict ,",
+            "fn from_bson_piped (document : bson :: Document , resolvers : & [named_schema :: \
+             Resolver < '_ , bson :: Document , bson :: Bson >] ,) -> :: core :: result :: Result < \
+             Self , named_schema :: Unrecovered < bson :: Bson > >",
         ]
     );
     // The JSON report is told what serde said as the BSON one is.
@@ -1779,8 +1830,9 @@ fn a_read_is_built_over_the_read_of_one_stored_row() {
         assert!(
             row.starts_with(
                 "{ let id = row . get (\"_id\") . map_or_else (| | :: std :: string :: String :: \
-                 from (\"without an _id\") , :: std :: string :: ToString :: to_string) ; Self :: \
-                 from_bson_piped (row , resolvers) . map_err (| refused |"
+                 from (\"without an _id\") , :: std :: string :: ToString :: to_string) ; < Self as "
+            ) && row.contains(
+                "_schema :: DecodeWith > :: from_bson_piped (row , resolvers) . map_err (| refused |"
             ) && row.ends_with(
                 ":: OperationError :: Unreadable { row : id , issues : refused . issues }) }"
             ),
@@ -2624,6 +2676,10 @@ fn every_struct_shape_adds_the_same_methods() {
             named.extend(methods_of("bson"));
         }
         named.extend(paths_members());
+        named.extend(reads_of("value"));
+        if cfg!(feature = "bson") {
+            named.extend(reads_of("bson"));
+        }
         let header = format!("impl {}", source.split([' ', '(', ';']).nth(2).unwrap());
         let mut impls = vec![(header, named)];
         // The types of a tuple's slots are filled beside the type.
@@ -2853,6 +2909,10 @@ fn a_transparent_struct_with_a_named_field_gets_a_fields_walker_whatever_it_hold
             named.extend(methods_of("bson"));
         }
         named.extend(paths_members());
+        named.extend(reads_of("value"));
+        if cfg!(feature = "bson") {
+            named.extend(reads_of("bson"));
+        }
         let source = format!("#[serde(transparent)] pub struct Code {{ pub inner: {field} }}");
         assert_eq!(
             added_impls(&source),
@@ -3180,7 +3240,16 @@ fn a_generic_type_gets_one_impl_per_source_under_that_sources_bounds() {
          V : Sync + Send + serde :: de :: DeserializeOwned , Vec < W > : Clone , \
          Self : serde :: de :: DeserializeOwned"
             .to_owned(),
-        [methods_of("value"), vec![LISTED_READ.to_owned()]].concat(),
+        [
+            methods_of("value"),
+            vec![LISTED_READ.to_owned()],
+            if cfg!(feature = "bson") {
+                Vec::new()
+            } else {
+                reads_of("value")
+            },
+        ]
+        .concat(),
     )];
     if cfg!(feature = "bson") {
         headers.push((
@@ -3192,7 +3261,7 @@ fn a_generic_type_gets_one_impl_per_source_under_that_sources_bounds() {
              V : Sync + Send + serde :: de :: DeserializeOwned + serde :: Serialize , \
              Vec < W > : Clone , Self : serde :: de :: DeserializeOwned + serde :: Serialize"
                 .to_owned(),
-            methods_of("bson"),
+            [methods_of("bson"), reads_of("value"), reads_of("bson")].concat(),
         ));
     }
     if cfg!(feature = "mongodb") {
@@ -3219,9 +3288,9 @@ fn a_generic_type_gets_one_impl_per_source_under_that_sources_bounds() {
 #[test]
 fn a_methods_own_type_parameter_is_never_one_the_type_declares() {
     let clashing =
-        type_impl_of("pub struct Keyed<I, const F: usize, F2> { pub id: I, pub kept: F2 }");
+        whole_impl_of("pub struct Keyed<I, const F: usize, F2> { pub id: I, pub kept: F2 }");
     for written in [
-        "pub fn from_value_with < F3 > (mut value : serde_json :: Value , decide : F3 ,)",
+        "fn from_value_with < F3 > (mut value : serde_json :: Value , decide : F3 ,)",
         "where F3 : :: core :: ops :: FnOnce (& mut serde_json :: Value , & [keyed_schema :: Issue < serde_json :: Value >]) -> keyed_schema :: Verdict ,",
         "pub fn decode_with_value_issues < I2 > (found : & serde_json :: Value , path : & [:: core \
          :: result :: Result < :: std :: string :: String , usize >] , issue : keyed_schema :: \
@@ -3235,9 +3304,9 @@ fn a_methods_own_type_parameter_is_never_one_the_type_declares() {
             "missing `{written}` in: {clashing}"
         );
     }
-    let plain = type_impl_of("pub struct Page<T> { pub items: Vec<T> }");
+    let plain = whole_impl_of("pub struct Page<T> { pub items: Vec<T> }");
     for written in [
-        "pub fn from_value_with < F > (",
+        "fn from_value_with < F > (",
         "pub fn decode_with_value_issues < I > (",
         "pub fn decode_with_value_fields < 'a , I > (",
     ] {
@@ -3426,7 +3495,7 @@ fn a_parameters_value_and_the_type_itself_are_never_written_back_from_json() {
                   pub sender: Option<T>, pub total: u32 }";
     let emitted = type_impl_of(source);
     let (json, _bson) = emitted
-        .split_once("pub fn from_bson_with")
+        .split_once("fn decode_with_bson_report")
         .unwrap_or((emitted.as_str(), ""));
     for written in [
         "parcel_schema :: value_leaf (found , Self :: decode_with_read_unjudged , \
@@ -3473,7 +3542,7 @@ fn a_parameters_value_and_the_type_itself_are_never_written_back_from_json() {
 #[test]
 fn the_bson_walker_of_a_generic_type_writes_every_value_back() {
     let emitted = type_impl_of("pub struct Page<T> { pub items: Vec<T>, pub total: u32 }");
-    let (_json, bson) = emitted.split_once("pub fn from_bson_with").unwrap();
+    let (_json, bson) = emitted.split_once("fn decode_with_bson_report").unwrap();
     for written in [
         "page_schema :: bson_leaf (found , Self :: decode_with_read_unjudged , | read , to | serde :: Serialize :: serialize (read , to) . ok () ,",
         "page_schema :: bson_leaf (held , < Vec < T > as serde :: Deserialize > :: deserialize , | read , to | serde :: Serialize :: serialize (read , to) . ok () ,",
@@ -3517,7 +3586,7 @@ fn the_bson_walker_of_each_struct_shape_matches_the_librarys_own_types() {
         ),
     ] {
         let emitted = type_impl_of(source);
-        let (_json, bson) = emitted.split_once("pub fn from_bson_with").unwrap();
+        let (_json, bson) = emitted.split_once("fn decode_with_bson_report").unwrap();
         assert!(
             bson.contains(written),
             "for {source}, missing `{written}` in: {bson}"
@@ -3551,6 +3620,10 @@ fn every_enum_form_adds_the_same_methods_and_an_untagged_one_a_method_per_varian
             named.extend(of_source("bson"));
         }
         named.extend(paths_members());
+        named.extend(reads_of("value"));
+        if cfg!(feature = "bson") {
+            named.extend(reads_of("bson"));
+        }
         let (_attributes, declared) = source.split_once("pub enum ").unwrap();
         let name = declared.split(' ').next().unwrap();
         let mut impls = vec![(format!("impl {name}"), named)];
@@ -3851,14 +3924,23 @@ fn a_generic_enum_gets_its_methods_under_each_sources_bounds() {
         "impl < T : serde :: de :: DeserializeOwned > Answer < T > \
          where Self : serde :: de :: DeserializeOwned"
             .to_owned(),
-        [methods_of("value"), vec![LISTED_READ.to_owned()]].concat(),
+        [
+            methods_of("value"),
+            vec![LISTED_READ.to_owned()],
+            if cfg!(feature = "bson") {
+                Vec::new()
+            } else {
+                reads_of("value")
+            },
+        ]
+        .concat(),
     )];
     if cfg!(feature = "bson") {
         headers.push((
             "impl < T : serde :: de :: DeserializeOwned + serde :: Serialize > Answer < T > \
              where Self : serde :: de :: DeserializeOwned + serde :: Serialize"
                 .to_owned(),
-            methods_of("bson"),
+            [methods_of("bson"), reads_of("value"), reads_of("bson")].concat(),
         ));
     }
     if cfg!(feature = "mongodb") {
@@ -4121,6 +4203,10 @@ fn an_untagged_variant_serde_never_reads_is_matched_and_never_walked() {
         named.extend(of_source("bson"));
     }
     named.extend(paths_members());
+    named.extend(reads_of("value"));
+    if cfg!(feature = "bson") {
+        named.extend(reads_of("bson"));
+    }
     let mut impls = vec![("impl Reach".to_owned(), named)];
     if cfg!(feature = "mongodb") {
         impls.extend([
@@ -4463,7 +4549,7 @@ fn the_bson_answer_of_each_shape_matches_the_librarys_own_types() {
         ),
     ] {
         let emitted = type_impl_of(source);
-        let (_json, bson) = emitted.split_once("pub fn from_bson_with").unwrap();
+        let (_json, bson) = emitted.split_once("fn decode_with_bson_report").unwrap();
         assert!(
             bson.contains(answered),
             "for {source}, missing `{answered}` in: {bson}"

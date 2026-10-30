@@ -4,6 +4,8 @@
 pub mod billing;
 mod shelving;
 
+use shelving::manifest_schema::DecodeWith as _;
+
 extern crate bson2 as bson;
 
 tixschema::decode_with_foundation!();

@@ -7,7 +7,7 @@ use bson::{Bson, Document, doc};
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-use invoice_schema::{Expected, Issue, Resolution, Stored as _};
+use invoice_schema::{DecodeWith as _, Expected, Issue, Resolution, Stored as _};
 
 use crate::BSON_MAJOR;
 
@@ -21,7 +21,8 @@ pub struct Customer {
 }"#;
 
 /// The line the README brings the resolvers' types into scope with.
-const DECLARED_IMPORT: &str = "use invoice_schema::{Expected, Issue, Resolution, Stored as _};";
+const DECLARED_IMPORT: &str =
+    "use invoice_schema::{DecodeWith as _, Expected, Issue, Resolution, Stored as _};";
 
 /// The outer type the README declares, character for character.
 const DECLARED_INVOICE: &str = r#"#[model_schema(enable = ["decode_with", "mongodb"])]

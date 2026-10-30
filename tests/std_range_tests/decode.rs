@@ -2,6 +2,7 @@
 //! MongoDB paths, a `Field` of that value.
 
 use core::ops::Range;
+use voyage_schema::DecodeWith as _;
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;

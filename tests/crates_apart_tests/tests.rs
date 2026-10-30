@@ -3,8 +3,10 @@
 //! here.
 
 use core::fmt::Debug;
+use invoice_schema::DecodeWith as _;
 
 use bson::{Bson, doc};
+use invoice_lookup_schema::DecodeWith as _;
 use invoice_lookups::{InvoiceLookup, Parcel, invoice_lookup_schema};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};

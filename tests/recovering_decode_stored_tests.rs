@@ -13,7 +13,7 @@ mod tests {
     use serde_json::{Value, json};
     use tixschema::model_schema;
 
-    use invoice_schema::{Expected, Issue, Resolution, Resolver, Stored};
+    use invoice_schema::{DecodeWith as _, Expected, Issue, Resolution, Resolver, Stored};
 
     const FROM_JSON: &[Resolver<'static, Value, Value>] =
         &[&count_as_text::<Value>, &without_unknown_keys::<Value>];

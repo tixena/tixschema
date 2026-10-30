@@ -2,6 +2,7 @@
 //! MongoDB layer and the recovering reads, as serde's derive does for its own impls.
 
 use core::marker::PhantomData;
+use holder_schema::DecodeWith as _;
 
 use bson::doc;
 use serde::{Deserialize, Serialize};

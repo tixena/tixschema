@@ -21,6 +21,7 @@ use super::{
 };
 use crate::BSON_MAJOR;
 
+use invoice_schema::DecodeWith as _;
 use invoice_schema::Stored as _;
 use invoice_schema::{Expected, Filter, Issue, OperationError, Read, Resolution, Resolver};
 
@@ -70,7 +71,8 @@ async fn billed(
 ];
 
 /// The line the README brings the operations' types into scope with.
-const DECLARED_IMPORT: &str = "use invoice_schema::Stored as _;
+const DECLARED_IMPORT: &str = "use invoice_schema::DecodeWith as _;
+use invoice_schema::Stored as _;
 use invoice_schema::{Expected, Filter, Issue, OperationError, Read, Resolution, Resolver};";
 
 /// The functions the README calls the operations in, character for character.

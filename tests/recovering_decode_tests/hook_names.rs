@@ -3,6 +3,7 @@
 //! hook goes on naming its author's function.
 
 use core::fmt::Display;
+use named_schema::DecodeWith as _;
 
 use serde::de::Error as _;
 use serde::{Deserialize, Serialize};

@@ -1,6 +1,7 @@
 //! A `Result` field in the recovering decode, walked into the arm it holds, an issue inside the arm
 //! listed at its full path, and in the typed MongoDB paths, a `Field` of the whole value.
 
+use logbook_schema::DecodeWith as _;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;

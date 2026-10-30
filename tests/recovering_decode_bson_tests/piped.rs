@@ -8,7 +8,7 @@ use bson::{Bson, Document, doc};
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-use invoice_schema::{Expected, Issue, Path, Resolution, Segment, Stored as _};
+use invoice_schema::{DecodeWith as _, Expected, Issue, Path, Resolution, Segment, Stored as _};
 
 #[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]

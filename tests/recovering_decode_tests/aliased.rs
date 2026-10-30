@@ -7,6 +7,7 @@
 
 mod declared;
 
+use block_schema::DecodeWith as _;
 use core::any::TypeId;
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
 use core::time::Duration;

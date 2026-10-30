@@ -12563,7 +12563,7 @@ fn decode_with_walks_a_transparent_struct_with_a_named_field_as_the_value_of_its
         "#[serde(transparent)] pub struct DecodeHolder { pub inner: String }",
     );
     assert!(!expanded.contains("compile_error"), "got: {expanded}");
-    let (_, added) = expanded.split_once("pub fn from_value_with").unwrap();
+    let (_, added) = expanded.split_once("fn decode_with_value_report").unwrap();
     // A build with `dart`, `swift` or `kotlin` on writes that surface's module after the `impl`.
     let walker = added
         .split_once("pub mod ")
@@ -12602,8 +12602,8 @@ fn decode_with_is_generated_on_every_enum_form_serde_writes() {
             "for {source}, got: {expanded}"
         );
         for emitted in [
-            "pub fn from_value_with < F > (",
-            "pub fn from_value_piped (",
+            "fn from_value_with < F > (",
+            "fn from_value_piped (",
             "fn decode_with_value_report (",
             "pub fn decode_with_value_issues < I > (",
             "pub fn decode_with_value_named (",
@@ -12616,12 +12616,12 @@ fn decode_with_is_generated_on_every_enum_form_serde_writes() {
             );
         }
         assert_eq!(
-            expanded.contains("pub fn from_bson_with < F > ("),
+            expanded.contains("fn from_bson_with < F > ("),
             cfg!(feature = "bson"),
             "for {source}, got: {expanded}"
         );
         assert_eq!(
-            expanded.contains("pub fn from_bson_piped ("),
+            expanded.contains("fn from_bson_piped ("),
             cfg!(feature = "bson"),
             "for {source}, got: {expanded}"
         );
@@ -12691,8 +12691,8 @@ fn decode_with_is_generated_on_every_struct_shape_serde_writes() {
             "for {source}, got: {expanded}"
         );
         for emitted in [
-            "pub fn from_value_with < F > (",
-            "pub fn from_value_piped (",
+            "fn from_value_with < F > (",
+            "fn from_value_piped (",
             "fn decode_with_value_report (",
             "pub fn decode_with_value_issues < I > (",
             "pub fn decode_with_value_named (",
@@ -12705,12 +12705,12 @@ fn decode_with_is_generated_on_every_struct_shape_serde_writes() {
             );
         }
         assert_eq!(
-            expanded.contains("pub fn from_bson_with < F > ("),
+            expanded.contains("fn from_bson_with < F > ("),
             cfg!(feature = "bson"),
             "for {source}, got: {expanded}"
         );
         assert_eq!(
-            expanded.contains("pub fn from_bson_piped ("),
+            expanded.contains("fn from_bson_piped ("),
             cfg!(feature = "bson"),
             "for {source}, got: {expanded}"
         );
@@ -12785,7 +12785,7 @@ fn a_type_that_lists_no_mongodb_gets_no_typed_path_and_no_operation() {
                 "for {source}, found `{added}` in: {expanded}"
             );
         }
-        for bson_read in ["pub fn from_bson_with", "pub fn decode_with_bson_issues"] {
+        for bson_read in ["fn from_bson_with", "pub fn decode_with_bson_issues"] {
             assert_eq!(
                 expanded.contains(bson_read),
                 listed && cfg!(feature = "bson"),
@@ -12950,7 +12950,7 @@ fn decode_with_is_generated_on_a_type_with_a_flattened_field() {
             "for {source}, got: {expanded}"
         );
         for emitted in [
-            "pub fn from_value_with < F > (",
+            "fn from_value_with < F > (",
             "pub fn decode_with_value_issues < I > (",
             "pub fn decode_with_value_named (",
             "pub fn decode_with_value_fields < 'a , I > (",
@@ -13098,7 +13098,7 @@ fn decode_with_is_not_refused_on_a_field_that_borrows_nothing_from_the_value() {
         );
         #[cfg(feature = "serde")]
         assert!(
-            expanded.contains("pub fn from_value_with"),
+            expanded.contains("fn from_value_with"),
             "for {source}, got: {expanded}"
         );
     }
@@ -14472,8 +14472,8 @@ fn decode_with_generates_the_entry_point_the_walker_and_the_callback_types() {
     for emitted in [
         "pub mod decode_flagged_schema {",
         "pub use crate :: __tixschema_decode_with :: {",
-        "pub fn from_value_with < F > (",
-        "pub fn from_value_piped (",
+        "fn from_value_with < F > (",
+        "fn from_value_piped (",
         "fn decode_with_value_report (",
         "pub fn decode_with_value_issues < I > (",
         "pub fn decode_with_value_named (",

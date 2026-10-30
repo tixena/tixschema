@@ -3,6 +3,7 @@
 //! No bound is held in a build with no schema surface, so the one test of a bound is split.
 
 use core::cell::RefCell;
+use stored_parcel_schema::DecodeWith as _;
 
 use bson::oid::ObjectId;
 use bson::spec::BinarySubtype;

@@ -1,6 +1,7 @@
 //! With the `indexmap` feature off, `IndexMap` and `IndexSet` are names like any other: a type
 //! declared under one, above the type that holds it, is the type a field written with it holds.
 
+use indexed_schema::DecodeWith;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tixschema::model_schema;

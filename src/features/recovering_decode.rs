@@ -57,13 +57,13 @@ use crate::utils::{
     any(feature = "typescript", feature = "zod", feature = "jsonschema"),
     not(feature = "mongodb")
 ))]
-const ADDED_TYPE_COUNT: usize = 16;
+const ADDED_TYPE_COUNT: usize = 17;
 
 #[cfg(all(
     any(feature = "typescript", feature = "zod", feature = "jsonschema"),
     feature = "mongodb"
 ))]
-const ADDED_TYPE_COUNT: usize = 38;
+const ADDED_TYPE_COUNT: usize = 39;
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
@@ -78,6 +78,7 @@ const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
     #[cfg(feature = "mongodb")]
     "AsUpdate",
     "Asked",
+    "DecodeWith",
     #[cfg(feature = "mongodb")]
     "Element",
     "EntryOf",
@@ -141,6 +142,7 @@ const REEXPORT_REASON: &str = "tixschema re-exports the crate's support library 
 /// module re-exports by name.
 const DECODE_WITH_LIBRARY_NAMES: &[&str] = &[
     "Asked",
+    "DecodeWith",
     "Expected",
     "ExpectedToken",
     "Issue",
@@ -643,6 +645,13 @@ enum Source {
     Json,
 }
 
+/// What one source's entry points write: `reads`, the methods of the type's `DecodeWith` impl,
+/// and `helpers`, the inherent functions they run.
+struct Entry {
+    helpers: TokenStream,
+    reads: TokenStream,
+}
+
 impl Source {
     const GENERATED: &'static [Self] = &[
         Self::Json,
@@ -688,12 +697,7 @@ impl Source {
 
     /// The entry point and the report it runs. `written.names` holds every name the type's item
     /// writes, none of which a method's own type parameter takes.
-    fn entry_methods(
-        self,
-        module: &Ident,
-        written: &Written<'_>,
-        corrects_own: bool,
-    ) -> TokenStream {
+    fn entry_methods(self, module: &Ident, written: &Written<'_>, corrects_own: bool) -> Entry {
         match self {
             #[cfg(feature = "bson")]
             Self::Bson => bson_entry_methods(module, &written.names, corrects_own, written.mongodb),
@@ -2490,7 +2494,7 @@ where
     let own_functions = preprocess::named().own;
     let corrects_own = !own_functions.is_empty();
     let sources = Source::read_by();
-    let of_sources: Vec<TokenStream> = sources
+    let of_sources: Vec<(TokenStream, TokenStream)> = sources
         .iter()
         .enumerate()
         .map(|(at, &source)| {
@@ -2503,23 +2507,25 @@ where
                 scope: &written.scope,
                 source,
             };
-            let entry = source.entry_methods(&module, written, corrects_own);
+            let Entry { helpers, reads } = source.entry_methods(&module, written, corrects_own);
             let walk_methods = methods(&walker);
             let corrected = corrects_own.then(|| walker.corrected_entries(&own_functions));
             // Every source reads through it, and the first one's bounds are the fewest.
             let read = (at == 0).then_some(&written.read);
-            quote! {
-                #entry
+            let inherent = quote! {
+                #helpers
                 #walk_methods
                 #corrected
                 #read
-            }
+            };
+            (inherent, reads)
         })
         .collect();
     let mut type_impl = type_impls(
         name,
         generics,
         written,
+        &module,
         (sources, &of_sources),
         &paths.type_items,
     );
@@ -2707,7 +2713,9 @@ fn decode_with_library() -> TokenStream {
     let taken = taken_items();
     let bound = bound_items();
     let bson = bson_library_items();
+    let reads = trait_items();
     quote! {
+        #reads
         #path
         #callback
         #handoff
@@ -2715,6 +2723,60 @@ fn decode_with_library() -> TokenStream {
         #bound
         #bson
     }
+}
+
+/// `DecodeWith`, the trait every flagged type of the crate reads itself through.
+fn trait_items() -> TokenStream {
+    let bson = bson_trait_methods();
+    quote! {
+        /// What every flagged type of this crate reads itself through, so code generic over
+        /// several of them names one bound.
+        pub trait DecodeWith: ::core::marker::Sized {
+            /// Reads `value` as this type, handing every issue found in it to `decide`, once.
+            fn from_value_with<F>(
+                value: serde_json::Value,
+                decide: F,
+            ) -> ::core::result::Result<Self, Unrecovered<serde_json::Value>>
+            where
+                F: ::core::ops::FnOnce(&mut serde_json::Value, &[Issue<serde_json::Value>]) -> Verdict;
+
+            /// Reads `value` as this type, running `resolvers` in order over every issue found in
+            /// it, once, and reading it again when every issue was settled.
+            fn from_value_piped(
+                value: serde_json::Value,
+                resolvers: &[Resolver<'_, serde_json::Value, serde_json::Value>],
+            ) -> ::core::result::Result<Self, Unrecovered<serde_json::Value>>;
+
+            #bson
+        }
+    }
+}
+
+/// The BSON reads of `DecodeWith`.
+#[cfg(feature = "bson")]
+fn bson_trait_methods() -> TokenStream {
+    quote! {
+        /// Reads `document` as this type, handing every issue found in it to `decide`, once.
+        fn from_bson_with<F>(
+            document: bson::Document,
+            decide: F,
+        ) -> ::core::result::Result<Self, Unrecovered<bson::Bson>>
+        where
+            F: ::core::ops::FnOnce(&mut bson::Document, &[Issue<bson::Bson>]) -> Verdict;
+
+        /// Reads `document` as this type, running `resolvers` in order over every issue found in
+        /// it, once, and reading it again when every issue was settled.
+        fn from_bson_piped(
+            document: bson::Document,
+            resolvers: &[Resolver<'_, bson::Document, bson::Bson>],
+        ) -> ::core::result::Result<Self, Unrecovered<bson::Bson>>;
+    }
+}
+
+/// A build without `bson` has no BSON reads.
+#[cfg(not(feature = "bson"))]
+fn bson_trait_methods() -> TokenStream {
+    TokenStream::new()
 }
 
 /// What reads a BSON value: `bson_bound`, `bson_leaf` and its helpers, and `Stored` for a document.
@@ -3074,7 +3136,7 @@ fn bson_entry_methods(
     written: &[String],
     corrects_own: bool,
     mongodb: bool,
-) -> TokenStream {
+) -> Entry {
     let decider = unclaimed_parameter("F", written);
     let operations = mongodb.then(|| operation_methods(module, written));
     let (own_read, walked) = (
@@ -3131,9 +3193,8 @@ fn bson_entry_methods(
             _ => ::core::result::Result::Err(#module::Unrecovered { issues: again }),
         }
     };
-    quote! {
-        /// Reads `document` as this type, handing every issue found in it to `decide`, once.
-        pub fn from_bson_with<#decider>(
+    let reads = quote! {
+        fn from_bson_with<#decider>(
             document: bson::Document,
             decide: #decider,
         ) -> ::core::result::Result<Self, #module::Unrecovered<bson::Bson>>
@@ -3149,9 +3210,7 @@ fn bson_entry_methods(
             }
         }
 
-        /// Reads `document` as this type, running `resolvers` in order over every issue found in
-        /// it, once, and reading it again when every issue was settled.
-        pub fn from_bson_piped(
+        fn from_bson_piped(
             document: bson::Document,
             resolvers: &[#module::Resolver<'_, bson::Document, bson::Bson>],
         ) -> ::core::result::Result<Self, #module::Unrecovered<bson::Bson>> {
@@ -3162,9 +3221,8 @@ fn bson_entry_methods(
             }
             #second_read
         }
-
-        #operations
-
+    };
+    let helpers = quote! {
         fn decode_with_bson_report(whole: &bson::Bson, refused: ::core::option::Option<::std::string::String>) -> ::std::vec::Vec<#module::Issue<bson::Bson>> {
             let mut out = ::std::vec::Vec::new();
             Self::#walked(whole, &[], #module::issue_from_parts, &mut out);
@@ -3175,7 +3233,10 @@ fn bson_entry_methods(
             }
             out
         }
-    }
+
+        #operations
+    };
+    Entry { helpers, reads }
 }
 
 /// `bson_leaf`, the bracket rule it decides `Mistyped` by, `bson_digits_settled` and
@@ -3550,7 +3611,7 @@ fn own_walker(source: Source, corrects_own: bool) -> Ident {
 /// `from_value_with`, `from_value_piped` and the report they run. The report is told what serde
 /// said of the value, so each decode reads the value with serde once. Both entry points open
 /// with the same read and close with the same one.
-fn entry_methods(module: &Ident, decider: &Ident, corrects_own: bool) -> TokenStream {
+fn entry_methods(module: &Ident, decider: &Ident, corrects_own: bool) -> Entry {
     let (own_read, walked) = (
         own_read(corrects_own),
         own_walker(Source::Json, corrects_own),
@@ -3597,9 +3658,8 @@ fn entry_methods(module: &Ident, decider: &Ident, corrects_own: bool) -> TokenSt
             _ => ::core::result::Result::Err(#module::Unrecovered { issues: again }),
         }
     };
-    quote! {
-        /// Reads `value` as this type, handing every issue found in it to `decide`, once.
-        pub fn from_value_with<#decider>(
+    let reads = quote! {
+        fn from_value_with<#decider>(
             mut value: serde_json::Value,
             decide: #decider,
         ) -> ::core::result::Result<Self, #module::Unrecovered<serde_json::Value>>
@@ -3615,9 +3675,7 @@ fn entry_methods(module: &Ident, decider: &Ident, corrects_own: bool) -> TokenSt
             }
         }
 
-        /// Reads `value` as this type, running `resolvers` in order over every issue found in it,
-        /// once, and reading it again when every issue was settled.
-        pub fn from_value_piped(
+        fn from_value_piped(
             mut value: serde_json::Value,
             resolvers: &[#module::Resolver<'_, serde_json::Value, serde_json::Value>],
         ) -> ::core::result::Result<Self, #module::Unrecovered<serde_json::Value>> {
@@ -3628,7 +3686,8 @@ fn entry_methods(module: &Ident, decider: &Ident, corrects_own: bool) -> TokenSt
             }
             #second_read
         }
-
+    };
+    let helpers = quote! {
         fn decode_with_value_report(value: &serde_json::Value, refused: ::core::option::Option<::std::string::String>) -> ::std::vec::Vec<#module::Issue<serde_json::Value>> {
             let mut out = ::std::vec::Vec::new();
             Self::#walked(value, &[], #module::issue_from_parts, &mut out);
@@ -3639,7 +3698,8 @@ fn entry_methods(module: &Ident, decider: &Ident, corrects_own: bool) -> TokenSt
             }
             out
         }
-    }
+    };
+    Entry { helpers, reads }
 }
 
 /// Hands `object`, which is what serde hands a flattened field, to the fields walker of the model
@@ -4726,36 +4786,58 @@ fn type_arguments(arguments: &PathArguments) -> impl Iterator<Item = &Type> {
         })
 }
 
-/// The `impl`s holding `methods`, which lists what each of the type's `sources` adds, and
-/// `paths`, the type's typed paths. A type with a type parameter gets one `impl` per source, under
-/// the bounds that source reads and writes a value with, and one for its paths, under the bound a
-/// path writes a value with. Every other type gets one `impl` for them all.
+/// The `impl`s holding `methods`, which lists what each of the type's `sources` adds and the
+/// `DecodeWith` reads it adds, and `paths`, the type's typed paths. A type with a type parameter
+/// gets one inherent `impl` per source, under the bounds that source reads and writes a value
+/// with, one `impl` of `DecodeWith` under the last source's bounds, which the others' are among,
+/// and one for its paths, under the bound a path writes a value with. Every other type gets one
+/// of each for them all.
 fn type_impls(
     name: &Ident,
     generics: &Generics,
     written: &Written<'_>,
-    (sources, methods): (&[Source], &[TokenStream]),
+    module: &Ident,
+    (sources, methods): (&[Source], &[(TokenStream, TokenStream)]),
     paths: &TokenStream,
 ) -> TokenStream {
     if type_parameters_in_scope(generics).is_empty() {
         let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
+        let inherent = methods.iter().map(|(inherent, _)| inherent);
+        let reads = methods.iter().map(|(_, reads)| reads);
         return quote! {
             impl #impl_generics #name #type_generics #where_clause {
-                #(#methods)*
+                #(#inherent)*
                 #paths
+            }
+
+            impl #impl_generics #module::DecodeWith for #name #type_generics #where_clause {
+                #(#reads)*
             }
         };
     }
-    let impls = sources.iter().zip(methods).map(|(source, of_source)| {
-        let bounded = read_under(
+    let bounded_by_source = |source: &Source| {
+        read_under(
             &source.bounded(generics, &written.bound),
             &written.read_predicates,
             !written.bound.read_written,
-        );
+        )
+    };
+    let impls = sources.iter().zip(methods).map(|(source, (inherent, _))| {
+        let bounded = bounded_by_source(source);
         let (impl_generics, type_generics, where_clause) = bounded.split_for_impl();
         quote! {
             impl #impl_generics #name #type_generics #where_clause {
-                #of_source
+                #inherent
+            }
+        }
+    });
+    let reads = methods.iter().map(|(_, reads)| reads);
+    let of_reads = sources.last().map(|last| {
+        let bounded = bounded_by_source(last);
+        let (impl_generics, type_generics, where_clause) = bounded.split_for_impl();
+        quote! {
+            impl #impl_generics #module::DecodeWith for #name #type_generics #where_clause {
+                #(#reads)*
             }
         }
     });
@@ -4776,6 +4858,7 @@ fn type_impls(
     });
     quote! {
         #(#impls)*
+        #of_reads
         #of_paths
     }
 }

@@ -1,6 +1,7 @@
 //! The record the design was written for: an id, a date, and inner model types, read from the JSON
 //! values an older writer left behind.
 
+use record_schema::DecodeWith as _;
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};

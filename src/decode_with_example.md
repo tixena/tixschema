@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
-use invoice_schema::{Expected, Issue, Resolution, Resolver, Stored as _};
+use invoice_schema::{DecodeWith as _, Expected, Issue, Resolution, Resolver, Stored as _};
 
 tixschema::decode_with_foundation!();
 
