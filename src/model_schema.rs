@@ -325,6 +325,41 @@ const BSON_REFUSED_KEY_TYPES: [&str; 15] = [
     "u128", "usize",
 ];
 
+/// The integer types a bound is measured against: the lowest and the highest value each holds, and
+/// the range as the refusal spells it. `usize` and `isize` are held to 64 bits.
+const INTEGER_RANGES: [(&str, i128, i128, &str); 10] = [
+    ("u8", 0, 0xFF, "0 to 255"),
+    ("u16", 0, 0xFFFF, "0 to 65535"),
+    ("u32", 0, 0xFFFF_FFFF, "0 to 4294967295"),
+    ("u64", 0, 0xFFFF_FFFF_FFFF_FFFF, "0 to 18446744073709551615"),
+    (
+        "usize",
+        0,
+        0xFFFF_FFFF_FFFF_FFFF,
+        "0 to 18446744073709551615",
+    ),
+    ("i8", -0x80, 0x7F, "-128 to 127"),
+    ("i16", -0x8000, 0x7FFF, "-32768 to 32767"),
+    (
+        "i32",
+        -0x8000_0000,
+        0x7FFF_FFFF,
+        "-2147483648 to 2147483647",
+    ),
+    (
+        "i64",
+        -0x8000_0000_0000_0000,
+        0x7FFF_FFFF_FFFF_FFFF,
+        "-9223372036854775808 to 9223372036854775807",
+    ),
+    (
+        "isize",
+        -0x8000_0000_0000_0000,
+        0x7FFF_FFFF_FFFF_FFFF,
+        "-9223372036854775808 to 9223372036854775807",
+    ),
+];
+
 /// The text an integer map key is read from, as Zod's record reads it: digits under an optional
 /// sign, then a fraction of zeros at most, which Zod reads as that integer.
 #[cfg(feature = "jsonschema")]
@@ -11501,8 +11536,9 @@ fn brand_decode_with(
 }
 
 /// `model_schema_bound_text`: the text a bound written on a field of this brand's type is measured
-/// on. Published where the brand's inner is itself a string or a path, so a brand over anything
-/// else has none and such a bound is refused where it was written.
+/// on. Published where the brand's inner is itself a string or a path, or a brand declared above
+/// that publishes it, so a brand over anything else has none and such a bound is refused where it
+/// was written.
 ///
 /// This builds, and `validate()` holds `latest` to the bound:
 ///
@@ -11564,7 +11600,48 @@ fn brand_decode_with(
 ///    |                 ^^^^^^^ this type holds no string for the bound to measure
 ///    |
 /// help: the trait `BoundedText` is not implemented for `Version`
-///    = note: a length or a pattern is measured on a `String`, on a path, or on a `#[serde(transparent)]` brand over one of them that `#[model_schema]` was written on: declare the field as one of those, or drop the bound
+///    = note: a length or a pattern is measured on a `String`, on a path, or on a `#[serde(transparent)]` brand over one of them that `#[model_schema]` was written on, a brand over a brand needing the inner brand declared above it: declare the field as one of those, or drop the bound
+/// ```
+///
+/// A brand over a brand publishes the text only when the inner brand is declared above it, so the
+/// field below is refused:
+///
+/// ```rust,compile_fail
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema()]
+/// #[derive(Deserialize, Serialize)]
+/// #[serde(transparent)]
+/// pub struct Badge(pub Slug);
+///
+/// #[model_schema()]
+/// #[derive(Deserialize, Serialize)]
+/// #[serde(transparent)]
+/// pub struct Slug(pub String);
+///
+/// #[model_schema()]
+/// #[derive(Deserialize, Serialize)]
+/// pub struct Holder {
+///     #[model_schema_prop(minLength = 3)]
+///     pub badge: Badge,
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error[E0277]: model_schema: field `badge`: `minLength` cannot apply to `Badge`
+///   --> tests/zz_probe.rs:18:16
+///    |
+/// 14 | #[model_schema()]
+///    | ----------------- in this attribute macro expansion
+/// ...
+/// 18 |     pub badge: Badge,
+///    |                ^^^^^ this type holds no string or list for the bound to measure
+///    |
+/// help: the trait `BoundedLength` is not implemented for `Badge`
+///    = note: a length is measured on a `String`, on a path, on a list, or on a `#[serde(transparent)]` brand over one of them that `#[model_schema]` was written on, a brand over a brand needing the inner brand declared above it: declare the field as one of those, or drop the bound
 /// ```
 #[cfg(all(
     feature = "serde",
@@ -11608,8 +11685,10 @@ fn branded_bound_text_method(
         ),
         ConstraintLeaf::Named(named) if counted_by(named).is_some() => {
             let rendering = named_leaf_length_rendering(named, "a brand's bound");
+            let text = (counted_by(named) == Some(Counted::Characters))
+                .then(|| quote! { self.#held.model_schema_bound_text() });
             (
-                None,
+                text,
                 Some(quote! {
                     let named: &#named = &#(#through)* self.#held;
                     #rendering
@@ -18393,7 +18472,7 @@ fn named_leaf_rendering(
         #[diagnostic::on_unimplemented(
             message = #message,
             label = "this type holds no string for the bound to measure",
-            note = "a length or a pattern is measured on a `String`, on a path, or on a `#[serde(transparent)]` brand over one of them that `#[model_schema]` was written on: declare the field as one of those, or drop the bound"
+            note = "a length or a pattern is measured on a `String`, on a path, or on a `#[serde(transparent)]` brand over one of them that `#[model_schema]` was written on, a brand over a brand needing the inner brand declared above it: declare the field as one of those, or drop the bound"
         )]
         trait BoundedText {
             fn bounded_text(&self) -> ::std::borrow::Cow<'_, str>;
@@ -18451,7 +18530,7 @@ fn named_leaf_length_rendering(named: &syn::Type, message: &str) -> proc_macro2:
         #[diagnostic::on_unimplemented(
             message = #message,
             label = "this type holds no string or list for the bound to measure",
-            note = "a length is measured on a `String`, on a path, on a list, or on a `#[serde(transparent)]` brand over one of them that `#[model_schema]` was written on: declare the field as one of those, or drop the bound"
+            note = "a length is measured on a `String`, on a path, on a list, or on a `#[serde(transparent)]` brand over one of them that `#[model_schema]` was written on, a brand over a brand needing the inner brand declared above it: declare the field as one of those, or drop the bound"
         )]
         trait BoundedLength {
             fn bounded_length(&self) -> usize;
@@ -19303,12 +19382,61 @@ fn sole_type_argument(args: &syn::AngleBracketedGenericArguments) -> Option<&syn
     types.next().is_none().then_some(only)
 }
 
+/// Whether a `#[model_schema]` item of this name was declared above, which the schema surfaces
+/// read as a named type before they read the name as a standard one. Read off the registry every
+/// build that reads a value keeps, with or without a schema surface. A bound written on a field
+/// typed with such a model is refused as on any named type that holds no text:
+///
+/// ```rust,compile_fail
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema()]
+/// #[derive(Deserialize, Serialize)]
+/// pub struct Path {
+///     pub segments: i32,
+/// }
+///
+/// #[model_schema()]
+/// #[derive(Deserialize, Serialize)]
+/// pub struct Edit {
+///     #[model_schema_prop(minLength = 1)]
+///     pub to: Path,
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error[E0277]: model_schema: field `to`: `minLength` cannot apply to `Path`
+///   --> tests/zz_probe.rs:14:13
+///    |
+/// 10 | #[model_schema()]
+///    | ----------------- in this attribute macro expansion
+/// ...
+/// 14 |     pub to: Path,
+///    |             ^^^^ this type holds no string or list for the bound to measure
+///    |
+/// help: the trait `BoundedLength` is not implemented for `Path`
+/// ```
+#[cfg(feature = "serde")]
+fn declared_above(ident: &str) -> bool {
+    declared(ident).is_some()
+}
+
+/// Without `serde` nothing reads a value, so nothing records what an item declares.
+#[cfg(not(feature = "serde"))]
+const fn declared_above(_ident: &str) -> bool {
+    false
+}
+
 /// The leaf a bare type name stands for. `str` is `String`'s borrowed form and answers as one, as
 /// `Path` does for `PathBuf`; the numerics name themselves, since the validator's parameter is
 /// written from the name.
 #[cfg(feature = "serde")]
 fn leaf_for_ident(ident: &str) -> Option<ConstraintLeaf> {
     match ident {
+        "String" | "str" | "PathBuf" | "Path" if declared_above(ident) => None,
         "String" | "str" => Some(ConstraintLeaf::Str),
         "PathBuf" | "Path" => Some(ConstraintLeaf::Path),
         "u8" => Some(ConstraintLeaf::Number("u8")),
@@ -19957,6 +20085,76 @@ fn check_bound_kind(
     ))
 }
 
+/// Rejects a whole-number `minimum` or `maximum` the field's integer type cannot hold, which the
+/// generated comparison would otherwise carry into rustc as a literal out of range:
+///
+/// ```rust,compile_fail
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema()]
+/// #[derive(Clone, Debug, Deserialize, Serialize)]
+/// pub struct Counted {
+///     #[model_schema_prop(minimum = -1)]
+///     pub count: u32,
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: model_schema: field `count`: `minimum = -1` is outside what `u32` holds (0 to 4294967295). Write a bound inside that range, or take it off.
+///  --> tests/zz_probe.rs:8:5
+///   |
+/// 8 |     pub count: u32,
+///   |     ^^^^^^^^^^^^^^
+/// ```
+fn check_bound_in_range(
+    field: &Field,
+    field_def: &FieldDef,
+    prop_meta: &ModelSchemaPropMeta,
+    label: &str,
+) -> Result<(), syn::Error> {
+    let Some(&(type_name, lowest, highest, range)) = field_def
+        .field_type
+        .number_name()
+        .and_then(|name| INTEGER_RANGES.iter().find(|entry| entry.0 == name))
+    else {
+        return Ok(());
+    };
+    let mut refusals = [
+        ("minimum", prop_meta.minimum),
+        ("maximum", prop_meta.maximum),
+    ]
+    .into_iter()
+    .filter_map(|(key, written)| {
+        let number = written?;
+        if number.fract() != 0.0_f64 {
+            return None;
+        }
+        let shown = format_number_literal(number);
+        let held = shown
+            .parse::<i128>()
+            .is_ok_and(|whole| (lowest..=highest).contains(&whole));
+        (!held).then(|| {
+            syn::Error::new_spanned(
+                field,
+                format!(
+                    "model_schema: {label}: `{key} = {shown}` is outside what `{type_name}` \
+                         holds ({range}). Write a bound inside that range, or take it off."
+                ),
+            )
+        })
+    });
+    let Some(mut first) = refusals.next() else {
+        return Ok(());
+    };
+    for next in refusals {
+        first.combine(next);
+    }
+    Err(first)
+}
+
 /// Rejects a length, pattern or range written on a field no surface reads one beside.
 fn check_fixed_shape_constraints(
     field: &Field,
@@ -19969,6 +20167,7 @@ fn check_fixed_shape_constraints(
         return Ok(());
     }
     check_bound_kind(field, field_def, prop_meta, label)?;
+    check_bound_in_range(field, field_def, prop_meta, label)?;
     // What is left on a list counts its items, whatever they are.
     if field_def.is_list() {
         return Ok(());
@@ -20327,7 +20526,8 @@ fn written_as_text(ty: &syn::Type) -> bool {
         };
         let ident = segment.ident.to_string();
         if matches!(segment.arguments, syn::PathArguments::None) {
-            return matches!(ident.as_str(), "String" | "str" | "PathBuf" | "Path");
+            return matches!(ident.as_str(), "String" | "str" | "PathBuf" | "Path")
+                && !declared_above(&ident);
         }
         let syn::PathArguments::AngleBracketed(held) = &segment.arguments else {
             return false;

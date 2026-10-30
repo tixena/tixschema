@@ -4000,7 +4000,7 @@ error[E0277]: model_schema: field `latest`: `minLength` cannot apply to `Version
 14 |     pub latest: Version,
    |                 ^^^^^^^ this type holds no string for the bound to measure
    |
-   = note: a length or a pattern is measured on a `String`, on a path, or on a `#[serde(transparent)]` brand over one of them that `#[model_schema]` was written on: declare the field as one of those, or drop the bound
+   = note: a length or a pattern is measured on a `String`, on a path, or on a `#[serde(transparent)]` brand over one of them that `#[model_schema]` was written on, a brand over a brand needing the inner brand declared above it: declare the field as one of those, or drop the bound
 ```
 
 Two more placements are refused as the field is expanded: a length or a pattern on a type written with arguments (`UserId<String>`), which writes whatever its arguments make it, and `minimum` or `maximum` on a field typed with any type declared elsewhere, a range being spelled against a number this crate writes itself.
@@ -4176,6 +4176,8 @@ error: model_schema: field `tags`: `pattern` cannot apply to a `Vec<String>` fie
 ```
 
 The refusal names the keys of the wrong kind and no other: `minimum` written beside a refused `minLength` on a number is not named, and neither is a `minLength` written beside a refused `pattern` on a list.
+
+A `minimum` or `maximum` that is a whole number outside the range of the field's integer type is refused too, naming the field, the bound and the range: `#[model_schema_prop(minimum = -1)] pub count: u32` answers ``error: model_schema: field `count`: `minimum = -1` is outside what `u32` holds (0 to 4294967295). Write a bound inside that range, or take it off.`` It holds under `Option` and `Box`, on a variant's field and on a slot of a tuple.
 
 ### The `validate()` Method
 
@@ -5480,7 +5482,7 @@ private fun String.kotlinSchemaText(): String = this
 
 A member is found ahead of an extension, so a brand answers with its own text and an alias of a string with the string. The brand and the alias may be declared above the holder or below it. A field typed with a type that holds no string does not compile in Kotlin, at the holder: `error: candidate 'fun String.kotlinSchemaText(): String' is inapplicable because of a receiver type mismatch.` A brand over a brand answers through the brand it holds where that brand is declared above it.
 
-Rust writes no text for a brand over a brand, and refuses a string bound on a field typed with one. Kotlin measures it.
+A string bound on a field typed with a brand over a brand measures the text of the string at the bottom, in Rust and in Kotlin alike, where the inner brand is declared above the outer one; with the inner brand declared below it, the field is refused.
 
 #### A brand
 
