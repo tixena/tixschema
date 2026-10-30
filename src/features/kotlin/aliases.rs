@@ -106,18 +106,9 @@ pub fn plain_enum_serializer(
         })
         .collect::<Vec<_>>()
         .join("; ");
-    let elements = variants
-        .iter()
-        .map(|(_, wire, _)| {
-            let named = kotlin_quoted(wire);
-            format!("element({named}, buildSerialDescriptor({named}, StructureKind.OBJECT))")
-        })
-        .collect::<Vec<_>>()
-        .join("; ");
     format!(
-        "@OptIn(InternalSerializationApi::class) object {export_name}Unjudged : \
-         KSerializer<{export_name}> {{ override val descriptor: SerialDescriptor = \
-         buildSerialDescriptor(\"{export_name}\", SerialKind.ENUM) {{ {elements} }}; \
+        "object {export_name}Unjudged : KSerializer<{export_name}> {{ override val descriptor: \
+         SerialDescriptor = {export_name}.generatedSerializer().descriptor; \
          override fun serialize(encoder: Encoder, value: {export_name}) = \
          encoder.encodeString(when (value) {{ {written} }}); override fun deserialize(decoder: \
          Decoder): {export_name} = when (val name = decoder.decodeString()) {{ {read}; else -> \

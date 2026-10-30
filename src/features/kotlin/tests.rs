@@ -1274,3 +1274,44 @@ fn a_tuple_that_reaches_a_type_parameter_declares_it() {
         "a tuple that reaches no parameter keeps its object: {unparameterized}"
     );
 }
+
+/// A plain enum that reads a variant under an alias takes the plugin's descriptor, with and
+/// without a check, and names no internal serialization API.
+#[cfg(feature = "serde")]
+#[test]
+fn a_plain_enum_with_an_alias_names_no_internal_serialization_api() {
+    let swell: ItemEnum = syn::parse_quote! {
+        enum Swell {
+            #[serde(alias = "Low")]
+            Ebb,
+            Flood,
+        }
+    };
+    let check = [FunctionName {
+        name: "calm".to_owned(),
+        written_at: Span::call_site(),
+    }];
+    for args in [
+        KotlinArgs {
+            type_name: "Swell",
+            ..plain_args()
+        },
+        KotlinArgs {
+            check: &check,
+            type_name: "Swell",
+            ..plain_args()
+        },
+    ] {
+        let written = definition(enum_kotlin_tokens(&swell, &args));
+        for absent in ["InternalSerializationApi", "buildSerialDescriptor"] {
+            assert!(!written.contains(absent), "`{absent}` in: {written}");
+        }
+        for present in [
+            "@OptIn(ExperimentalSerializationApi::class)",
+            "@KeepGeneratedSerializer enum class Swell",
+            "override val descriptor: SerialDescriptor = Swell.generatedSerializer().descriptor;",
+        ] {
+            assert!(written.contains(present), "no `{present}` in: {written}");
+        }
+    }
+}
