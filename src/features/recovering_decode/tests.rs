@@ -129,6 +129,10 @@ const PATHS_BESIDE: [(&str, ImplsBeside); 4] = [
                 &["color"],
             ),
             (
+                "impl fill_schema :: ArmPaths for fill_schema :: mongo_arms :: Solid",
+                &["Paths", "paths"],
+            ),
+            (
                 "impl < Root > fill_schema :: MongoFields < Root >",
                 &[
                     "solid",
@@ -153,6 +157,14 @@ const PATHS_BESIDE: [(&str, ImplsBeside); 4] = [
             (
                 "impl < Root > stroke_schema :: mongo_members :: SpanSlots < Root > for ()",
                 &["Slot0", "Slot1"],
+            ),
+            (
+                "impl stroke_schema :: ArmPaths for stroke_schema :: mongo_arms :: Dashed",
+                &["Paths", "paths"],
+            ),
+            (
+                "impl stroke_schema :: ArmPaths for stroke_schema :: mongo_arms :: Span where () : stroke_schema :: mongo_members :: SpanSlots < stroke_schema :: mongo_arms :: Span >",
+                &["Paths", "paths"],
             ),
             (
                 "impl < Root > stroke_schema :: MongoFields < Root >",
@@ -1414,7 +1426,14 @@ fn each_query_type_has_the_operators_of_its_kind() {
         ("Filter", &["raw", "and", "or", "negated", "into_document"]),
         (
             "ArmFilter",
-            &["of", "and", "update", "tag_on_insert", "into_document"],
+            &[
+                "of",
+                "and",
+                "update",
+                "tag_on_insert",
+                "into_document",
+                "with",
+            ],
         ),
         ("Update", &["raw", "and", "into_document"]),
         ("ArmUpdate", &["and", "tag_on_insert", "into_document"]),
@@ -1493,7 +1512,7 @@ fn an_operator_that_writes_a_value_takes_it_by_value_and_answers_a_write_error()
     for (on, method) in query_methods(&added) {
         let signature = method.sig.to_token_stream().to_string();
         let answered = method.sig.output.to_token_stream().to_string();
-        let writes = ["value : V", "value : M", "values : I"]
+        let writes = ["value : V", "value : M", "values : I", "condition : B"]
             .iter()
             .any(|taken| signature.contains(taken));
         assert_eq!(
@@ -1557,7 +1576,7 @@ fn a_filter_and_an_update_each_carry_a_marker_of_their_own() {
     ] {
         assert!(packed.contains(taken), "missing `{taken}`");
     }
-    assert_eq!(packed.matches("AsRef<").count(), 15);
+    assert_eq!(packed.matches("AsRef<").count(), 16);
     let added: syn::File = syn::parse2(emitted).unwrap();
     let asked: Vec<(String, String)> = query_methods(&added)
         .into_iter()
@@ -1578,6 +1597,7 @@ fn a_filter_and_an_update_each_carry_a_marker_of_their_own() {
         ("Filter::or", "Root"),
         ("ArmFilter::and", "M"),
         ("ArmFilter::update", "fn (M) -> M"),
+        ("ArmFilter::with", "M"),
         ("Update::and", "fn (Root) -> Root"),
         ("ArmUpdate::and", "fn (M) -> M"),
         ("ModelList::elem_match", "N"),
@@ -6555,7 +6575,7 @@ fn an_arm_is_a_function_written_beside_the_type_that_answers_its_tag() {
          {shipping_schema::ArmFilter::of(\"type\",\"by-rail\",shipping_schema::MongoPath::ROOT)}",
         "#[must_use]pubconstfntype__collected(&self)->shipping_schema::ArmFilter<Root,()>\
          {shipping_schema::ArmFilter::of(\"type\",\"Collected\",shipping_schema::MongoPath::ROOT)}",
-        "#[must_use]pubconstfntype__locker(&self)->shipping_schema::ArmFilter<Root,()>\
+        "#[must_use]pubconstfntype__locker(&self)->shipping_schema::ArmFilter<Root,shipping_schema::mongo_arms::Locker>\
          {shipping_schema::ArmFilter::of(\"type\",\"Locker\",shipping_schema::MongoPath::ROOT)}",
     ] {
         assert!(
@@ -6569,7 +6589,8 @@ fn an_arm_is_a_function_written_beside_the_type_that_answers_its_tag() {
         "# [doc = \"Rows of the arm serde writes as `by-rail`: the tag is asked, and `and` takes \
          conditions on the `Wagon` it holds.\"]",
         "# [doc = \"Rows of the arm serde writes as `Collected`: the tag alone.\"]",
-        "# [doc = \"Rows of the arm serde writes as `Locker`: the tag alone.\"]",
+        "# [doc = \"Rows of the arm serde writes as `Locker`: the tag is asked, and `with` takes \
+         conditions on the fields written in the variant.\"]",
     ] {
         assert!(
             on_the_type.contains(&packed(told)),
@@ -6584,6 +6605,42 @@ fn an_arm_is_a_function_written_beside_the_type_that_answers_its_tag() {
     assert!(module.contains(&arms), "missing `{arms}` in: {module}");
     assert!(!module.contains("__"), "got: {module}");
     assert!(!module.contains("#[serde"), "got: {module}");
+}
+
+/// An arm whose fields are written in the variant is answered over a marker, which `ArmPaths`
+/// roots the variant's paths at, and whose place is the enum's own: the paths carry the content
+/// key.
+#[cfg(feature = "mongodb")]
+#[test]
+fn an_arm_whose_fields_are_written_in_the_variant_has_a_marker_that_roots_its_paths() {
+    let (module, on_the_type) = typed_enum_paths_of(
+        "#[serde(tag = \"docType\", content = \"body\")] pub enum Slip<T> { \
+         Signed { clerk: String, load: T }, Pair(String, u32), Blank }",
+        &[],
+    );
+    for written in [
+        "pubmodmongo_arms{",
+        "pubstructSigned<T>{of:::core::marker::PhantomData<fn()->(T,)>,}",
+        "pubstructPair<T>{of:::core::marker::PhantomData<fn()->(T,)>,}",
+    ] {
+        assert!(module.contains(written), "missing `{written}` in: {module}");
+    }
+    for written in [
+        "impl<T>slip_schema::ArmPathsforslip_schema::mongo_arms::Signed<T>{\
+         typePaths=slip_schema::mongo_members::Signed<slip_schema::mongo_arms::Signed<T>,T>;\
+         fnpaths()->Self::Paths{slip_schema::mongo_members::Signed{row:::core::marker::PhantomData}}}",
+        "impl<T>slip_schema::ArmPathsforslip_schema::mongo_arms::Pair<T>\
+         where():slip_schema::mongo_members::PairSlots<slip_schema::mongo_arms::Pair<T>>{",
+        "pubconstfndoc_type__signed(&self)->slip_schema::ArmFilter<Root,slip_schema::mongo_arms::Signed<T>>\
+         {slip_schema::ArmFilter::of(\"docType\",\"Signed\",slip_schema::MongoPath::ROOT)}",
+        "pubconstfndoc_type__blank(&self)->slip_schema::ArmFilter<Root,()>\
+         {slip_schema::ArmFilter::of(\"docType\",\"Blank\",slip_schema::MongoPath::at(\"body\"))}",
+    ] {
+        assert!(
+            on_the_type.contains(written),
+            "missing `{written}` in: {on_the_type}"
+        );
+    }
 }
 
 /// What an arm holds is written under the content key, which is the arm's place.
@@ -6633,10 +6690,10 @@ fn an_arm_holds_the_model_a_path_over_its_one_slot_reaches() {
         ("listed", "Inner"),
         ("mapped", "()"),
         ("maybe", "Inner"),
-        ("named", "()"),
+        ("named", "row_schema::mongo_arms::Named<T>"),
         ("nothing", "()"),
         ("of", "T"),
-        ("pair", "()"),
+        ("pair", "row_schema::mongo_arms::Pair<T>"),
         ("then", "Row<T>"),
         ("unwritten", "()"),
     ] {
@@ -6670,10 +6727,9 @@ fn an_enum_serde_writes_under_no_tag_key_has_no_arm() {
     }
 }
 
-/// A tag key whose snake case starts with a digit names no function.
 #[cfg(feature = "mongodb")]
 #[test]
-fn a_variant_serde_never_writes_and_a_name_that_is_no_identifier_have_no_arm() {
+fn a_variant_serde_never_writes_has_no_arm() {
     let (module, on_the_type) = typed_enum_paths_of(
         "#[serde(tag = \"kind\")] pub enum Gate { #[serde(skip)] Lost, Open, \
          #[serde(skip_serializing)] Shut(Inner) }",
@@ -6684,14 +6740,58 @@ fn a_variant_serde_never_writes_and_a_name_that_is_no_identifier_have_no_arm() {
     for absent in ["kind__lost", "kind__shut", "Lost", "Shut"] {
         assert!(!emitted.contains(absent), "found `{absent}` in: {emitted}");
     }
-    let (numbered, on_the_numbered) =
+}
+
+/// A tag key whose snake case starts with a digit names its arm functions after one `_`.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_tag_key_that_starts_with_a_digit_has_its_arm_functions_after_a_leading_underscore() {
+    let (module, on_the_type) =
         typed_enum_paths_of("#[serde(tag = \"2fa\")] pub enum Gate { Open, Shut }", &[]);
-    let unnamed = format!("{numbered}{on_the_numbered}");
-    for absent in ["__", "enumArm", "ArmFilter"] {
-        assert!(!unnamed.contains(absent), "found `{absent}` in: {unnamed}");
+    for written in [
+        "pubconstfn_2fa__open(&self)->gate_schema::ArmFilter<Root,()>",
+        "pubconstfn_2fa__shut(&self)->gate_schema::ArmFilter<Root,()>",
+        "pubfnis_open(",
+    ] {
+        assert!(
+            on_the_type.contains(written),
+            "missing `{written}` in: {on_the_type}"
+        );
     }
-    assert!(
-        on_the_numbered.contains("pubfnis_open("),
-        "got: {on_the_numbered}"
+    assert!(module.contains("pubenumArm{Open,Shut,}"), "got: {module}");
+    assert_eq!(
+        arms_of("#[serde(tag = \"2fa\")] pub enum Gate { Open, Shut }"),
+        Some((
+            "2fa".to_owned(),
+            vec![
+                [
+                    "_2fa__open".to_owned(),
+                    "Open".to_owned(),
+                    "Open".to_owned()
+                ],
+                [
+                    "_2fa__shut".to_owned(),
+                    "Shut".to_owned(),
+                    "Shut".to_owned()
+                ],
+            ]
+        ))
+    );
+}
+
+#[test]
+fn two_values_that_read_as_one_under_a_digit_led_tag_key_are_refused_by_the_name_emitted() {
+    assert_eq!(
+        arm_refusals_of(
+            "#[serde(tag = \"2fa\")] pub enum Gate { \
+             #[serde(rename = \"a-b\")] First, #[serde(rename = \"a_b\")] Second }"
+        ),
+        [(
+            "variants `First` and `Second` are written `a-b` and `a_b` under the tag `2fa`, and \
+             both read `a_b` in snake case, so `_2fa__a_b()` would answer for both. Rename one \
+             of the two values"
+                .to_owned(),
+            "Second".to_owned()
+        )]
     );
 }

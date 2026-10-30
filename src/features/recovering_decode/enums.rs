@@ -789,7 +789,7 @@ pub fn tag_arm_refusals(item: &ItemEnum) -> Vec<syn::Error> {
     let Some((tag, arms)) = tag_arms(item) else {
         return Vec::new();
     };
-    let under = snake_form(&tag);
+    let under = arm_stem(&tag);
     let named = |variant: &Variant| variant.ident.unraw().to_string();
     let in_a_name = arms
         .iter()
@@ -835,6 +835,17 @@ pub fn tag_arm_refusals(item: &ItemEnum) -> Vec<syn::Error> {
     in_a_name.chain(of_two_values).chain(with_an_ask).collect()
 }
 
+/// The tag key's part of an arm function's name: its snake case, after one `_` where that starts
+/// with a digit, which no Rust name does.
+fn arm_stem(tag: &str) -> String {
+    let snake = snake_form(tag);
+    if snake.starts_with(|first: char| first.is_ascii_digit()) {
+        format!("_{snake}")
+    } else {
+        snake
+    }
+}
+
 /// The tag key and the arms of an enum serde writes under one: an arm per variant serde writes,
 /// in the order written. `None` for any other enum.
 pub fn tag_arms(item: &ItemEnum) -> Option<(String, Vec<TagArm<'_>>)> {
@@ -846,7 +857,7 @@ pub fn tag_arms(item: &ItemEnum) -> Option<(String, Vec<TagArm<'_>>)> {
         Tagging::Internal { tag } => tag,
         Tagging::External | Tagging::Plain | Tagging::Untagged => return None,
     };
-    let under = snake_form(&tag);
+    let under = arm_stem(&tag);
     let arms = written_variants(item)
         .into_iter()
         .map(|written| TagArm {
