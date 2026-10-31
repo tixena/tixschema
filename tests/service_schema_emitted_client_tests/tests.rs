@@ -1283,6 +1283,70 @@ impl LookupClientService<()> for LookupBackEnd {
     }
 }
 
+/// Arguments named after the core types Dart reads inside a method: header arguments `int`,
+/// `double` and `bool`, and a path placeholder `int`. The Rust twin each client's request is read
+/// by: each answer names what the handler was handed.
+#[model_schema()]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct TallyReply {
+    pub total: String,
+}
+
+#[model_schema()]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case", tag = "errorCode")]
+pub enum TallyError {
+    Refused,
+}
+
+#[service_schema(transports = ["http_rest", "ws_rpc"])]
+pub trait TallyClientService<Ctx> {
+    #[service_schema_op(http(
+        method = "POST",
+        path = "/tallies",
+        header_in("x-int" = int),
+        header_in("x-double" = double),
+        header_in("x-bool" = bool),
+    ))]
+    async fn count(
+        &self,
+        ctx: &Ctx,
+        label: String,
+        int: i32,
+        double: f64,
+        bool: bool,
+    ) -> Result<TallyReply, TallyError>;
+
+    #[service_schema_op(http(method = "POST", path = "/tallies/{int}"))]
+    async fn find(&self, ctx: &Ctx, int: i32, label: String) -> Result<TallyReply, TallyError>;
+}
+
+/// The implementation of `TallyClientService` these tests dispatch to.
+pub struct TallyBackEnd;
+
+impl TallyClientService<()> for TallyBackEnd {
+    async fn count(
+        &self,
+        _ctx: &(),
+        label: String,
+        int: i32,
+        double: f64,
+        bool: bool,
+    ) -> Result<TallyReply, TallyError> {
+        ready(()).await;
+        Ok(TallyReply {
+            total: format!("{label}|{int}|{double}|{bool}"),
+        })
+    }
+
+    async fn find(&self, _ctx: &(), int: i32, label: String) -> Result<TallyReply, TallyError> {
+        ready(()).await;
+        Ok(TallyReply {
+            total: format!("{int}|{label}"),
+        })
+    }
+}
+
 /// A reply operation whose success is `()`.
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]

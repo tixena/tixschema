@@ -21,10 +21,13 @@ use core::fmt::Write as _;
 use syn::{Ident, Type};
 
 /// The locals and parameters an emitted method writes around an operation's own argument. Dart
-/// reads a name written after a local of that name as the local, without a word.
-const TAKEN_BY_A_METHOD: [&str; 34] = [
+/// reads a name written after a local of that name as the local, without a word. `bool`,
+/// `double`, `int` and `num` are there because an argument of that name hides the type the method
+/// writes.
+const TAKEN_BY_A_METHOD: [&str; 38] = [
     "answer",
     "answered",
+    "bool",
     "body",
     "contentRange",
     "contentType",
@@ -32,6 +35,7 @@ const TAKEN_BY_A_METHOD: [&str; 34] = [
     "declared",
     "declaredHead",
     "decoded",
+    "double",
     "e",
     "error",
     "fault",
@@ -40,6 +44,8 @@ const TAKEN_BY_A_METHOD: [&str; 34] = [
     "handlers",
     "headers",
     "headersIn",
+    "int",
+    "num",
     "onFault",
     "parts",
     "path",

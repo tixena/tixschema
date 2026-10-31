@@ -45,6 +45,12 @@ mod pulse_http_rest_transport;
 #[path = "service_schema_emitted_client_tests/lookup_http_rest_transport.rs"]
 mod lookup_http_rest_transport;
 
+/// The `http_rest` dispatcher for `TallyClientService`, the Rust twin the core-named arguments
+/// group's requests are read by.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/tally_http_rest_transport.rs"]
+mod tally_http_rest_transport;
+
 /// The `ws_rpc` dispatcher and client for `StampClientService`, the Rust twins the headers groups
 /// are measured against.
 #[cfg(test)]
@@ -1468,12 +1474,12 @@ use tests::{
     ArchiveClientService, ContentClientService, ConversationClientService, EchoClientService,
     GateClientService, LabelClientService, LookupClientService, MediaClientService,
     PulseClientService, SealClientService, SearchClientService, StampClientService,
-    ThumbnailClientService, UploadDocumentClientService, VaultClientService,
+    TallyClientService, ThumbnailClientService, UploadDocumentClientService, VaultClientService,
     archive_client_service_schema, content_client_service_schema,
     conversation_client_service_schema, echo_client_service_schema, gate_client_service_schema,
     label_client_service_schema, lookup_client_service_schema, media_client_service_schema,
     pulse_client_service_schema, seal_client_service_schema, search_client_service_schema,
-    stamp_client_service_schema, thumbnail_client_service_schema,
+    stamp_client_service_schema, tally_client_service_schema, thumbnail_client_service_schema,
     upload_document_client_service_schema, vault_client_service_schema,
 };
 #[cfg(all(test, feature = "dart"))]
@@ -1537,6 +1543,11 @@ mod member_named_rows;
 #[cfg(feature = "dart")]
 #[path = "service_schema_emitted_client_tests/run_dart_core_named.rs"]
 mod run_dart_core_named;
+
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_core_named_arguments.rs"]
+mod run_dart_core_named_arguments;
 
 #[cfg(test)]
 #[cfg(feature = "dart")]
