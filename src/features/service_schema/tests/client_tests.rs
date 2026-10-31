@@ -19,8 +19,8 @@ fn a_one_way_method_answers_nothing_and_a_replying_one_answers_its_result() {
     );
     assert!(
         written.contains(
-            "getAvailableBalance(req: AvailableBalanceRequest): \
-             Promise<UsageServiceGetAvailableBalanceResult>;"
+            "getOpenBalance(req: OpenBalanceRequest): \
+             Promise<BillingServiceGetOpenBalanceResult>;"
         ),
         "got: {written}"
     );
@@ -29,19 +29,14 @@ fn a_one_way_method_answers_nothing_and_a_replying_one_answers_its_result() {
 #[test]
 fn every_operation_is_spelled_the_way_a_typescript_caller_types_it() {
     let written = client_of(MIXED_SERVICE);
-    for called in [
-        "applyBundle",
-        "expireCredit",
-        "getAvailableBalance",
-        "sweep",
-    ] {
+    for called in ["applyBundle", "voidInvoice", "getOpenBalance", "sweep"] {
         assert!(
             written.contains(&format!("  {called}(req:")),
             "got: {written}"
         );
     }
     assert!(
-        !written.contains("get_available_balance"),
+        !written.contains("get_open_balance"),
         "emitting the Rust spelling into TypeScript is as wrong as the reverse. Got: {written}"
     );
 }
@@ -51,8 +46,8 @@ fn the_factory_binds_a_transport_and_answers_with_the_client() {
     let written = client_of(MIXED_SERVICE);
     assert!(
         written.contains(
-            "export function createUsageServiceClient(transport: UsageServiceTransport): \
-             UsageServiceClient {"
+            "export function createBillingServiceClient(transport: BillingServiceTransport): \
+             BillingServiceClient {"
         ),
         "got: {written}"
     );
@@ -63,8 +58,8 @@ fn the_operation_name_travels_beside_the_payload() {
     let written = client_of(MIXED_SERVICE);
     assert!(
         written.contains(
-            "const { answered } = await transport.request<UsageServiceGetAvailableBalanceResult>\
-             (\"get-available-balance\", validated.sent, []);"
+            "const { answered } = await transport.request<BillingServiceGetOpenBalanceResult>\
+             (\"get-open-balance\", validated.sent, []);"
         ),
         "the name is an argument of its own, never a key inside the message. Got: {written}"
     );
@@ -110,21 +105,21 @@ fn a_unit_success_normalizes_value_to_undefined_whatever_the_transport_answered(
 #[test]
 fn a_message_is_checked_and_sent_with_each_bigint_as_a_json_number() {
     const HEADER_REPLYING: &str = "
-        pub trait UsageService<Ctx> {
+        pub trait BillingService<Ctx> {
             #[service_schema_op(http(method = \"POST\", path = \"/sweep\", header_out(\"etag\")))]
             async fn sweep(&self, ctx: &Ctx) -> Result<(SweepReport, String), BalanceError>;
         }
     ";
     let written = client_of(MIXED_SERVICE);
     for expected in [
-        "function usageServiceSent(value: unknown): unknown {\n  \
+        "function billingServiceSent(value: unknown): unknown {\n  \
          if (typeof value === \"bigint\") {\n    \
          const raw: unknown = Reflect.get(JSON, \"rawJSON\");\n    \
          if (typeof raw === \"function\") return raw(value.toString());\n    \
          if (Number.isSafeInteger(Number(value))) return Number(value);\n    \
          throw new RangeError(",
-        "function usageServiceChecked<Parsed>(\n  schema: ZodType<Parsed>,\n  value: unknown,\n):",
-        "    return { success: true, data: parsed.data, sent: usageServiceSent(parsed.data) };",
+        "function billingServiceChecked<Parsed>(\n  schema: ZodType<Parsed>,\n  value: unknown,\n):",
+        "    return { success: true, data: parsed.data, sent: billingServiceSent(parsed.data) };",
     ] {
         assert!(
             written.contains(expected),
@@ -134,20 +129,20 @@ fn a_message_is_checked_and_sent_with_each_bigint_as_a_json_number() {
     let replying = client_of(HEADER_REPLYING);
     assert!(
         replying.contains(
-            "function usageServiceRead(text: string): unknown {\n  \
+            "function billingServiceRead(text: string): unknown {\n  \
              return JSON.parse(text, (_key, value: unknown, context?: { source?: string }) =>"
         ),
         "a reply header is read through a reader that rebuilds a `bigint`. Got: {replying}"
     );
     let method = written
-        .split("    async getAvailableBalance(req) {")
+        .split("    async getOpenBalance(req) {")
         .nth(1)
         .and_then(|rest| rest.split_once("\n    },"))
         .map(|(body, _)| body.to_owned());
     assert!(method.is_some(), "got: {written}");
     let body = method.unwrap();
     assert!(
-        body.contains("usageServiceChecked(AvailableBalanceRequest$Schema, req)")
+        body.contains("billingServiceChecked(OpenBalanceRequest$Schema, req)")
             && body.contains("validated.sent, []"),
         "the message is checked as the caller holds it and sent as it is written. Got: {body}"
     );
@@ -157,7 +152,7 @@ fn a_message_is_checked_and_sent_with_each_bigint_as_a_json_number() {
 fn the_transport_seam_carries_the_service_name() {
     let written = client_of(MIXED_SERVICE);
     assert!(
-        written.contains("export type UsageServiceTransport = {"),
+        written.contains("export type BillingServiceTransport = {"),
         "got: {written}"
     );
     assert!(
@@ -170,7 +165,7 @@ fn the_transport_seam_carries_the_service_name() {
 fn a_message_that_fails_its_schema_answers_a_fault_before_the_transport_is_named() {
     let written = client_of(MIXED_SERVICE);
     let method = written
-        .split("    async getAvailableBalance(req) {")
+        .split("    async getOpenBalance(req) {")
         .nth(1)
         .and_then(|rest| rest.split_once("\n    },"))
         .map(|(body, _)| body.to_owned());
@@ -185,7 +180,7 @@ fn a_message_that_fails_its_schema_answers_a_fault_before_the_transport_is_named
          Got: {body}"
     );
     assert!(
-        body.contains("usageServiceChecked(AvailableBalanceRequest$Schema, req)"),
+        body.contains("billingServiceChecked(OpenBalanceRequest$Schema, req)"),
         "got: {body}"
     );
 }
@@ -194,16 +189,16 @@ fn a_message_that_fails_its_schema_answers_a_fault_before_the_transport_is_named
 fn a_successful_reply_is_checked_against_the_declared_success() {
     let written = client_of(MIXED_SERVICE);
     let method = written
-        .split("    async getAvailableBalance(req) {")
+        .split("    async getOpenBalance(req) {")
         .nth(1)
         .and_then(|rest| rest.split_once("\n    },"))
         .map(|(body, _)| body.to_owned());
     assert!(method.is_some(), "got: {written}");
     let body = method.unwrap();
     assert!(
-        body.contains("const parsed = AvailableBalanceResponse$Schema.safeParse(answered.value);")
+        body.contains("const parsed = OpenBalanceResponse$Schema.safeParse(answered.value);")
             && body.contains("return { ok: true, value: parsed.data };"),
-        "a success the transport handed back is answered as an `AvailableBalanceResponse`, so it is \
+        "a success the transport handed back is answered as an `OpenBalanceResponse`, so it is \
          parsed as one first. Got: {body}"
     );
 }
@@ -212,7 +207,7 @@ fn a_successful_reply_is_checked_against_the_declared_success() {
 fn a_failed_reply_is_checked_against_the_declared_error() {
     let written = client_of(MIXED_SERVICE);
     let method = written
-        .split("    async getAvailableBalance(req) {")
+        .split("    async getOpenBalance(req) {")
         .nth(1)
         .and_then(|rest| rest.split_once("\n    },"))
         .map(|(body, _)| body.to_owned());
@@ -231,7 +226,7 @@ fn a_failed_reply_is_checked_against_the_declared_error() {
     );
     assert!(
         body.contains(
-            "fault: usageServiceReplyFault(\"get-available-balance\", declared.error.issues),"
+            "fault: billingServiceReplyFault(\"get-open-balance\", declared.error.issues),"
         ),
         "a failure that will not parse answers a fault, never a value typed as the declared \
          error. Got: {body}"
@@ -253,7 +248,7 @@ fn a_refused_one_way_message_is_thrown_because_there_is_no_arm_to_return_it_in()
     assert!(method.is_some(), "got: {written}");
     let body = method.unwrap();
     assert!(
-        body.contains("throw usageServiceRefused(usageServiceOutboundFault(\"apply-bundle\""),
+        body.contains("throw billingServiceRefused(billingServiceOutboundFault(\"apply-bundle\""),
         "got: {body}"
     );
     assert!(
@@ -266,13 +261,15 @@ fn a_refused_one_way_message_is_thrown_because_there_is_no_arm_to_return_it_in()
 fn the_shape_a_refused_one_way_message_is_thrown_as_is_published() {
     let written = client_of(MIXED_SERVICE);
     assert!(
-        written.contains("export type UsageServiceRefusal = Error & { fault: UsageServiceFault };"),
+        written.contains(
+            "export type BillingServiceRefusal = Error & { fault: BillingServiceFault };"
+        ),
         "what a method throws is part of its surface, not something to read out of its body. \
          Got: {written}"
     );
     assert!(
         written.contains(
-            "function usageServiceRefused(fault: UsageServiceFault): UsageServiceRefusal {"
+            "function billingServiceRefused(fault: BillingServiceFault): BillingServiceRefusal {"
         ),
         "got: {written}"
     );
@@ -294,14 +291,14 @@ fn a_one_way_method_says_in_its_own_documentation_what_it_throws() {
     assert!(documented.is_some(), "got: {declared}");
     let block = documented.unwrap();
     assert!(
-        block.contains("@throws {UsageServiceRefusal} when the message fails its own schema."),
+        block.contains("@throws {BillingServiceRefusal} when the message fails its own schema."),
         "`Promise<void>` has nowhere to say it, so the documentation is the only place left. \
          Got: {block}"
     );
     assert!(
         declared.contains(
-            "  /** Calls `get-available-balance` on `UsageService` and waits for the answer. */\n  \
-             getAvailableBalance(req:"
+            "  /** Calls `get-open-balance` on `BillingService` and waits for the answer. */\n  \
+             getOpenBalance(req:"
         ),
         "an operation with a failure arm answers its refusal into that arm and throws nothing, \
          so it says nothing about throwing. Got: {declared}"
@@ -311,18 +308,18 @@ fn a_one_way_method_says_in_its_own_documentation_what_it_throws() {
 #[test]
 fn a_service_with_no_one_way_operation_publishes_no_refusal() {
     const REPLYING_ONLY: &str = "
-        pub trait UsageService<Ctx> {
+        pub trait BillingService<Ctx> {
             async fn sweep(&self, ctx: &Ctx) -> Result<SweepReport, BalanceError>;
         }
     ";
     let written = client_of(REPLYING_ONLY);
     assert!(
-        !written.contains("UsageServiceRefusal"),
+        !written.contains("BillingServiceRefusal"),
         "nothing here can throw, so a type naming what would be thrown is a type nothing \
          produces. Got: {written}"
     );
     assert!(
-        written.contains("function usageServiceOutboundFault("),
+        written.contains("function billingServiceOutboundFault("),
         "the fault a replying operation answers with is still built the same way. Got: {written}"
     );
 }
@@ -330,7 +327,7 @@ fn a_service_with_no_one_way_operation_publishes_no_refusal() {
 #[test]
 fn a_service_with_no_replying_operation_publishes_no_reply_fault() {
     const ONE_WAY_ONLY: &str = "
-        pub trait UsageService<Ctx> {
+        pub trait BillingService<Ctx> {
             #[service_schema_op(one_way)]
             async fn apply_bundle(&self, ctx: &Ctx, req: ApplyBundleRequest);
         }
@@ -342,7 +339,7 @@ fn a_service_with_no_replying_operation_publishes_no_reply_fault() {
          Got: {written}"
     );
     assert!(
-        written.contains("function usageServiceOutboundFault("),
+        written.contains("function billingServiceOutboundFault("),
         "got: {written}"
     );
 }
@@ -351,7 +348,7 @@ fn a_service_with_no_replying_operation_publishes_no_reply_fault() {
 fn the_fault_a_client_builds_names_the_key_that_failed() {
     let written = client_of(MIXED_SERVICE);
     assert!(
-        written.contains("function usageServiceOutboundFault("),
+        written.contains("function billingServiceOutboundFault("),
         "got: {written}"
     );
     assert!(
@@ -367,7 +364,7 @@ fn the_fault_a_client_builds_names_the_key_that_failed() {
 /// The members of the client type, which is where a method's own documentation is written.
 fn members_of(written: &str) -> String {
     written
-        .split_once("export type UsageServiceClient = {")
+        .split_once("export type BillingServiceClient = {")
         .and_then(|(_, rest)| rest.split_once("\n};"))
         .map_or_else(String::new, |(declared, _)| declared.to_owned())
 }
@@ -376,22 +373,22 @@ fn members_of(written: &str) -> String {
 fn the_fault_the_client_builds_is_minted_from_the_fields_and_sealed() {
     let written = client_of(MIXED_SERVICE);
     assert_eq!(
-        written.matches("): UsageServiceFault {").count(),
+        written.matches("): BillingServiceFault {").count(),
         2,
         "the client builds a fault in two places: the message it refused, and the failed reply \
          that would not parse as the declared error. Got: {written}"
     );
     assert!(
-        written.contains("function usageServiceReplyFault("),
+        written.contains("function billingServiceReplyFault("),
         "got: {written}"
     );
     assert!(
-        written.find("const built: UsageServiceFaultFields = {")
-            < written.find("return built as UsageServiceFault;"),
+        written.find("const built: BillingServiceFaultFields = {")
+            < written.find("return built as BillingServiceFault;"),
         "the fields are built, then sealed. Got: {written}"
     );
     assert!(
-        !written.contains("usageServiceFaultSeal"),
+        !written.contains("billingServiceFaultSeal"),
         "the seal is declared beside the fault, not written into the client: a bundle declaring \
          it twice does not compile. Got: {written}"
     );
@@ -401,11 +398,13 @@ fn the_fault_the_client_builds_is_minted_from_the_fields_and_sealed() {
 fn the_refusal_a_one_way_method_throws_carries_a_sealed_fault() {
     let written = client_of(MIXED_SERVICE);
     assert!(
-        written.contains("export type UsageServiceRefusal = Error & { fault: UsageServiceFault };"),
+        written.contains(
+            "export type BillingServiceRefusal = Error & { fault: BillingServiceFault };"
+        ),
         "got: {written}"
     );
     assert!(
-        written.contains("throw usageServiceRefused(usageServiceOutboundFault("),
+        written.contains("throw billingServiceRefused(billingServiceOutboundFault("),
         "the thrower is handed a fault the client minted, never one written at the throw site. \
          Got: {written}"
     );

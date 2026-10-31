@@ -11,7 +11,7 @@ fn a_declared_error_crosses_with_every_field_it_carries() {
     let written = service_of(MIXED_SERVICE);
     assert!(
         written.contains(
-            "return { answered: usageServiceAnswered(await impl.getAvailableBalance(ctx, received.data)), \
+            "return { answered: billingServiceAnswered(await impl.getOpenBalance(ctx, received.data)), \
              headers: [] };"
         ),
         "the implementation's own outcome is what crosses, its declared error whole. \
@@ -27,7 +27,7 @@ fn a_declared_error_crosses_with_every_field_it_carries() {
 fn an_implementation_answers_an_outcome_that_has_no_fault_in_it() {
     let written = service_of(MIXED_SERVICE);
     let found = written
-        .split("export type UsageServiceGetAvailableBalanceOutcome =")
+        .split("export type BillingServiceGetOpenBalanceOutcome =")
         .nth(1)
         .and_then(|rest| rest.split_once("\n\n"))
         .map(|(body, _)| body.to_owned());
@@ -65,7 +65,7 @@ fn a_unit_success_outcome_has_no_value_member() {
 fn every_member_is_required_and_nothing_lets_a_partial_implementation_through() {
     let written = service_of(MIXED_SERVICE);
     let found = written
-        .split("export interface UsageServiceImpl<Ctx> {")
+        .split("export interface BillingServiceImpl<Ctx> {")
         .nth(1)
         .and_then(|rest| rest.split_once("\n}"))
         .map(|(body, _)| body.to_owned());
@@ -90,13 +90,13 @@ fn every_member_is_required_and_nothing_lets_a_partial_implementation_through() 
 fn the_context_comes_first_on_every_method_and_reaches_no_message() {
     let written = service_of(MIXED_SERVICE);
     assert!(
-        written.contains("export interface UsageServiceImpl<Ctx> {"),
+        written.contains("export interface BillingServiceImpl<Ctx> {"),
         "got: {written}"
     );
     assert!(
         written.contains(
-            "getAvailableBalance(ctx: Ctx, req: AvailableBalanceRequest): \
-             Promise<UsageServiceGetAvailableBalanceOutcome>;"
+            "getOpenBalance(ctx: Ctx, req: OpenBalanceRequest): \
+             Promise<BillingServiceGetOpenBalanceOutcome>;"
         ),
         "got: {written}"
     );
@@ -110,7 +110,7 @@ fn the_context_comes_first_on_every_method_and_reaches_no_message() {
 fn the_dispatcher_factory_answers_with_a_dispatch_function() {
     let written = service_of(MIXED_SERVICE);
     assert!(
-        written.contains("export function createUsageServiceDispatcher<Ctx>("),
+        written.contains("export function createBillingServiceDispatcher<Ctx>("),
         "got: {written}"
     );
     assert!(
@@ -121,7 +121,7 @@ fn the_dispatcher_factory_answers_with_a_dispatch_function() {
              payload: unknown,\n  \
              headers?: ReadonlyArray<readonly [string, string]>,\n  \
              parts?: ReadonlyArray<readonly [string, unknown]>,\n\
-             ) => Promise<UsageServiceDispatched | undefined> {"
+             ) => Promise<BillingServiceDispatched | undefined> {"
         ),
         "got: {written}"
     );
@@ -138,8 +138,8 @@ fn the_operation_is_matched_from_the_argument_beside_the_payload() {
     assert!(written.contains("switch (operation) {"), "got: {written}");
     for wire in [
         "\"apply-bundle\"",
-        "\"expire-credit\"",
-        "\"get-available-balance\"",
+        "\"void-invoice\"",
+        "\"get-open-balance\"",
         "\"sweep\"",
     ] {
         assert!(
@@ -162,7 +162,7 @@ fn a_one_way_arm_answers_nothing_at_all() {
 fn an_operation_nothing_answers_to_produces_a_framed_fault() {
     let written = service_of(MIXED_SERVICE);
     assert!(
-        written.contains("return usageServiceFramed(usageServiceUnknownOperation(operation));"),
+        written.contains("return billingServiceFramed(billingServiceUnknownOperation(operation));"),
         "got: {written}"
     );
     assert!(
@@ -183,15 +183,15 @@ fn an_operation_nothing_answers_to_produces_a_framed_fault() {
 fn the_payload_is_parsed_before_the_implementation_is_called() {
     let written = service_of(MIXED_SERVICE);
     let arm = written
-        .split("      case \"get-available-balance\": {")
+        .split("      case \"get-open-balance\": {")
         .nth(1)
         .and_then(|rest| rest.split_once("\n      }"))
         .map(|(body, _)| body.to_owned());
     assert!(arm.is_some(), "got: {written}");
     let body = arm.unwrap();
     assert!(
-        body.find("AvailableBalanceRequest$Schema.safeParse(payload)")
-            < body.find("impl.getAvailableBalance"),
+        body.find("OpenBalanceRequest$Schema.safeParse(payload)")
+            < body.find("impl.getOpenBalance"),
         "an implementation may assume its message is valid because an invalid one never \
          reaches it. Got: {body}"
     );
@@ -220,7 +220,7 @@ fn a_payload_that_parsed_and_then_failed_is_answered_under_one_kind() {
 fn every_fault_the_dispatcher_builds_is_minted_from_the_fields_and_sealed() {
     let written = service_of(MIXED_SERVICE);
     let answering: Vec<&str> = written
-        .match_indices("): UsageServiceFault {")
+        .match_indices("): BillingServiceFault {")
         .map(|(at, _)| &written[at..])
         .collect();
     assert_eq!(
@@ -231,18 +231,18 @@ fn every_fault_the_dispatcher_builds_is_minted_from_the_fields_and_sealed() {
     );
     for body in answering {
         assert!(
-            body.contains("const built: UsageServiceFaultFields = {"),
+            body.contains("const built: BillingServiceFaultFields = {"),
             "a fault is built as the fields the Rust declaration published. Got: {body}"
         );
         assert!(
-            body.find("const built: UsageServiceFaultFields = {")
-                < body.find("return built as UsageServiceFault;"),
+            body.find("const built: BillingServiceFaultFields = {")
+                < body.find("return built as BillingServiceFault;"),
             "the fields are built, then sealed. Got: {body}"
         );
     }
     assert_eq!(
         written
-            .matches("return built as UsageServiceFault;")
+            .matches("return built as BillingServiceFault;")
             .count(),
         2,
         "one assertion per constructor and nowhere else. Got: {written}"
@@ -266,7 +266,7 @@ fn the_seal_leaves_the_framing_a_caller_narrows_on_untouched() {
         );
     }
     assert!(
-        !written.contains("usageServiceFaultSeal"),
+        !written.contains("billingServiceFaultSeal"),
         "the seal is declared beside the fault, not written into the dispatcher: a bundle \
          declaring it twice does not compile. Got: {written}"
     );
@@ -430,7 +430,7 @@ fn an_operation_binding_no_header_answers_its_outcome_with_no_headers() {
     let written = service_of(MIXED_SERVICE);
     assert!(
         written.contains(
-            "return { answered: usageServiceAnswered(await impl.getAvailableBalance(ctx, received.data)), \
+            "return { answered: billingServiceAnswered(await impl.getOpenBalance(ctx, received.data)), \
              headers: [] };"
         ),
         "got: {written}"

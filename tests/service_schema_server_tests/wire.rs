@@ -16,10 +16,10 @@ mod tests {
     #[test]
     fn a_success_crosses_as_the_value_alone() {
         assert_eq!(
-            reply(&json!({ "ok": true, "value": { "creditId": "64de3d95ff45b119e5b53ad1" } })),
+            reply(&json!({ "ok": true, "value": { "invoiceId": "64de3d95ff45b119e5b53ad1" } })),
             (
                 "response",
-                json!({ "creditId": "64de3d95ff45b119e5b53ad1" })
+                json!({ "invoiceId": "64de3d95ff45b119e5b53ad1" })
             ),
         );
     }
@@ -28,12 +28,12 @@ mod tests {
     fn a_value_crosses_with_every_field_the_caller_reads() {
         let value = json!({
             "type": "response",
-            "organizationId": "acme",
-            "availableCredits": [{
-                "creditId": "64de3d95ff45b119e5b53ad1",
+            "customerId": "acme",
+            "openInvoices": [{
+                "invoiceId": "64de3d95ff45b119e5b53ad1",
                 "isPostPaid": false,
                 "priority": 0_i32,
-                "remainingCredits": 4_250_i32,
+                "remainingInvoices": 4_250_i32,
             }],
         });
         assert_eq!(
@@ -98,9 +98,9 @@ mod tests {
     fn a_fault_crosses_as_the_fault_alone() {
         let fault = json!({
             "detail": "expected number, received string",
-            "field": "creditCount",
+            "field": "invoiceCount",
             "kind": "failed-validation",
-            "operation": "usage-generation-request",
+            "operation": "billing-generation-request",
         });
         assert_eq!(faulted(&fault), ("fault", fault));
     }
@@ -110,7 +110,7 @@ mod tests {
         let (kind, _) = faulted(&json!({
             "detail": "the service answers to no operation by that name",
             "kind": "unknown-operation",
-            "operation": "expire-generation-credit",
+            "operation": "void-generation-invoice",
         }));
         assert_eq!(kind, "fault");
     }
@@ -179,7 +179,7 @@ mod tests {
         let framed = framed_fault(&json!({
             "detail": "invalid type: string, expected u32",
             "kind": "undeserializable-payload",
-            "operation": "add-generation-credit",
+            "operation": "add-generation-invoice",
         }));
         assert_eq!(
             outgoing_headers(&framed, Vec::new()),

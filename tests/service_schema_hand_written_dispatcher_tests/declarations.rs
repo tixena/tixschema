@@ -7,13 +7,13 @@ use tixschema::service_schema;
 /// type with constrained fields, and it beats the fallback the service's own module publishes.
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BalanceRequest {
-    pub organization_id: String,
+    pub customer_id: String,
 }
 
 /// The reply to a `BalanceRequest`.
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BalanceResponse {
-    pub credits: u32,
+    pub invoices: u32,
 }
 
 /// The error the probe service's operations declare.
@@ -42,9 +42,9 @@ pub trait ProbeService<Ctx> {
 
 impl BalanceRequest {
     pub fn validate(&self) -> Result<(), Vec<String>> {
-        if self.organization_id.is_empty() {
+        if self.customer_id.is_empty() {
             return Err(vec![
-                "'organization_id': too short: minimum length is 1, got 0".to_owned(),
+                "'customer_id': too short: minimum length is 1, got 0".to_owned(),
             ]);
         }
         Ok(())

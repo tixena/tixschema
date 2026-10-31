@@ -138,7 +138,7 @@ pub fn emit(service: &ServiceDef, asked: &[Transport]) -> TokenStream {
 /// }
 ///
 /// #[service_schema(transports = ["grpc"])]
-/// pub trait UsageService<Ctx> {
+/// pub trait BillingService<Ctx> {
 ///     async fn sweep(&self, ctx: &Ctx) -> Result<BalanceResponse, BalanceError>;
 /// }
 ///
@@ -177,7 +177,7 @@ pub fn emit(service: &ServiceDef, asked: &[Transport]) -> TokenStream {
 /// }
 ///
 /// #[service_schema(transports = "amqp_rpc")]
-/// pub trait UsageService<Ctx> {
+/// pub trait BillingService<Ctx> {
 ///     async fn sweep(&self, ctx: &Ctx) -> Result<BalanceResponse, BalanceError>;
 /// }
 ///
@@ -210,7 +210,7 @@ pub fn emit(service: &ServiceDef, asked: &[Transport]) -> TokenStream {
 /// }
 ///
 /// #[service_schema(transport = ["amqp_rpc"])]
-/// pub trait UsageService<Ctx> {
+/// pub trait BillingService<Ctx> {
 ///     async fn sweep(&self, ctx: &Ctx) -> Result<BalanceResponse, BalanceError>;
 /// }
 ///
@@ -245,7 +245,7 @@ pub fn emit(service: &ServiceDef, asked: &[Transport]) -> TokenStream {
 /// }
 ///
 /// #[service_schema(transports = ["amqp_rpc"])]
-/// pub trait UsageService<Ctx> {
+/// pub trait BillingService<Ctx> {
 ///     async fn sweep(&self, ctx: &Ctx) -> Result<BalanceResponse, BalanceError>;
 /// }
 ///
@@ -269,7 +269,7 @@ pub fn emit(service: &ServiceDef, asked: &[Transport]) -> TokenStream {
 /// }
 ///
 /// #[service_schema(non_exhaustive = true)]
-/// pub trait UsageService<Ctx> {
+/// pub trait BillingService<Ctx> {
 ///     async fn sweep(&self, ctx: &Ctx) -> Result<BalanceResponse, BalanceError>;
 /// }
 ///

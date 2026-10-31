@@ -4,10 +4,10 @@
 //! # What a call site sees
 //!
 //! ```typescript
-//! const usage = createUsageServiceClient(transport);
-//! const result = await usage.getBalance({ organizationId });
+//! const billing = createBillingServiceClient(transport);
+//! const result = await billing.getBalance({ customerId });
 //! if (result.ok) {
-//!   render(result.value.credits);
+//!   render(result.value.invoices);
 //! } else if ("isServiceFault" in result.error) {
 //!   reportUnexpected(result.error.fault);
 //! } else {

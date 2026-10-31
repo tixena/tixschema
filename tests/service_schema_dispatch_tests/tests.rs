@@ -24,7 +24,7 @@ pub mod a_message_annotated_with_a_constraint {
     #[derive(Deserialize, Serialize)]
     pub struct GateRequest {
         #[model_schema_prop(minLength = 3)]
-        pub organization_id: String,
+        pub customer_id: String,
     }
 
     #[model_schema()]
@@ -117,7 +117,7 @@ pub mod a_message_annotated_with_a_constraint {
     #[serde(rename_all = "camelCase")]
     pub struct ScopedBalanceRequest {
         pub account: ScopedAccount,
-        pub organization_id: String,
+        pub customer_id: String,
     }
 
     #[model_schema()]
@@ -125,7 +125,7 @@ pub mod a_message_annotated_with_a_constraint {
     #[serde(rename_all = "camelCase")]
     pub struct AdminBalanceRequest {
         pub account: AdminAccount,
-        pub organization_id: String,
+        pub customer_id: String,
     }
 
     /// A request that *is* an untagged enum, which is the second shape and the worse one: nothing
@@ -163,7 +163,7 @@ pub mod a_message_annotated_with_a_constraint {
     #[serde(rename_all = "camelCase")]
     pub struct CallRequest {
         pub caller: Caller,
-        pub organization_id: String,
+        pub customer_id: String,
     }
 
     /// The same carve-out in the position this change newly walks: a *newtype* member whose bound
@@ -259,7 +259,7 @@ pub mod a_message_annotated_with_a_constraint {
     impl GateService<()> for GateBackEnd {
         async fn admit(&self, _ctx: &(), req: GateRequest) -> Result<Admitted, GateError> {
             ready(()).await;
-            self.reached.lock().unwrap().push(req.organization_id);
+            self.reached.lock().unwrap().push(req.customer_id);
             Ok(Admitted { admitted: true })
         }
 
@@ -319,7 +319,7 @@ pub mod a_message_annotated_with_a_constraint {
             req: AdminBalanceRequest,
         ) -> Result<Admitted, GateError> {
             ready(()).await;
-            self.reached.lock().unwrap().push(req.organization_id);
+            self.reached.lock().unwrap().push(req.customer_id);
             Ok(Admitted { admitted: true })
         }
 
@@ -330,8 +330,8 @@ pub mod a_message_annotated_with_a_constraint {
         ) -> Result<Admitted, GateError> {
             ready(()).await;
             self.reached.lock().unwrap().push(match req {
-                BalanceRequest::Admin(admin) => admin.organization_id,
-                BalanceRequest::Scoped(scoped) => scoped.organization_id,
+                BalanceRequest::Admin(admin) => admin.customer_id,
+                BalanceRequest::Scoped(scoped) => scoped.customer_id,
             });
             Ok(Admitted { admitted: true })
         }
@@ -342,7 +342,7 @@ pub mod a_message_annotated_with_a_constraint {
             req: ScopedBalanceRequest,
         ) -> Result<Admitted, GateError> {
             ready(()).await;
-            self.reached.lock().unwrap().push(req.organization_id);
+            self.reached.lock().unwrap().push(req.customer_id);
             Ok(Admitted { admitted: true })
         }
     }
@@ -427,7 +427,7 @@ pub mod a_message_annotated_with_a_constraint {
             &(),
             &gate_amqp_transport::IncomingMessage::new(
                 "admit".to_owned(),
-                br#"{"organization_id":"ab"}"#.to_vec(),
+                br#"{"customer_id":"ab"}"#.to_vec(),
                 Vec::new(),
             ),
             &reply,
@@ -458,7 +458,7 @@ pub mod a_message_annotated_with_a_constraint {
         );
         assert_eq!(
             reported[0].field(),
-            Some("organization_id"),
+            Some("customer_id"),
             "the caller has to be told which field it got wrong. Got: {}",
             reported[0].detail()
         );
@@ -470,14 +470,14 @@ pub mod a_message_annotated_with_a_constraint {
         // the first place.
         for (payload, kind, field) in [
             (
-                br#"{"organization_id":42}"#.to_vec(),
+                br#"{"customer_id":42}"#.to_vec(),
                 gate_service_schema::ServiceFaultKind::FailedValidation,
                 None,
             ),
             (
                 b"{}".to_vec(),
                 gate_service_schema::ServiceFaultKind::FailedValidation,
-                Some("organization_id"),
+                Some("customer_id"),
             ),
             (
                 b"not a document at all".to_vec(),
@@ -688,7 +688,7 @@ pub mod a_message_annotated_with_a_constraint {
     fn a_bound_inside_an_untagged_variant_fails_validation_and_names_the_whole_path() {
         let (reached, reported) = dispatched(
             "read-scoped-balance",
-            br#"{"account":{"aud":"app-user","jti":""},"organizationId":"gate-org"}"#,
+            br#"{"account":{"aud":"app-user","jti":""},"customerId":"gate-org"}"#,
         );
         assert!(
             reached.is_empty(),
@@ -714,7 +714,7 @@ pub mod a_message_annotated_with_a_constraint {
 
     #[test]
     fn a_message_that_is_itself_untagged_answers_what_the_variant_it_holds_answers() {
-        let payload = br#"{"account":{"aud":"app-user","jti":""},"organizationId":"gate-org"}"#;
+        let payload = br#"{"account":{"aud":"app-user","jti":""},"customerId":"gate-org"}"#;
         let (reached, reported) = dispatched("read-balance", payload);
         assert!(
             reached.is_empty(),
@@ -740,7 +740,7 @@ pub mod a_message_annotated_with_a_constraint {
     fn a_request_whose_account_is_no_union_keeps_refusing_what_it_already_refused() {
         let (reached, reported) = dispatched(
             "read-admin-balance",
-            br#"{"account":{"sysAdminUsername":"ops","jti":""},"organizationId":"gate-org"}"#,
+            br#"{"account":{"sysAdminUsername":"ops","jti":""},"customerId":"gate-org"}"#,
         );
         assert!(reached.is_empty(), "got: {reached:?}");
         assert_eq!(reported[0].field(), Some("account.jti"));
@@ -756,7 +756,7 @@ pub mod a_message_annotated_with_a_constraint {
         assert_eq!(
             dispatched(
                 "place-call",
-                br#"{"caller":{"name":"ab","jti":"a"},"organizationId":"gate-org"}"#
+                br#"{"caller":{"name":"ab","jti":"a"},"customerId":"gate-org"}"#
             )
             .0,
             vec!["anonymous".to_owned()],
@@ -765,7 +765,7 @@ pub mod a_message_annotated_with_a_constraint {
         assert_eq!(
             dispatched(
                 "place-call",
-                br#"{"caller":{"name":"abc","jti":"a"},"organizationId":"gate-org"}"#
+                br#"{"caller":{"name":"abc","jti":"a"},"customerId":"gate-org"}"#
             )
             .0,
             vec!["named:abc".to_owned()],
@@ -776,7 +776,7 @@ pub mod a_message_annotated_with_a_constraint {
         // the hop is reported, under the path the payload spells, in both.
         for (name, chosen) in [("ab", "the second member"), ("abc", "the first")] {
             let payload =
-                format!(r#"{{"caller":{{"name":"{name}","jti":""}},"organizationId":"gate-org"}}"#);
+                format!(r#"{{"caller":{{"name":"{name}","jti":""}},"customerId":"gate-org"}}"#);
             let (reached, reported) = dispatched("place-call", payload.as_bytes());
             assert!(reached.is_empty(), "{chosen} executed. Got: {reached:?}");
             assert_eq!(
@@ -805,15 +805,15 @@ pub mod a_message_annotated_with_a_constraint {
         for (operation, payload) in [
             (
                 "read-scoped-balance",
-                r#"{"account":{"aud":"app-user","jti":"a"},"organizationId":"gate-org"}"#,
+                r#"{"account":{"aud":"app-user","jti":"a"},"customerId":"gate-org"}"#,
             ),
             (
                 "read-balance",
-                r#"{"account":{"aud":"app-user","jti":"a"},"organizationId":"gate-org"}"#,
+                r#"{"account":{"aud":"app-user","jti":"a"},"customerId":"gate-org"}"#,
             ),
             (
                 "read-admin-balance",
-                r#"{"account":{"sysAdminUsername":"ops","jti":"a"},"organizationId":"gate-org"}"#,
+                r#"{"account":{"sysAdminUsername":"ops","jti":"a"},"customerId":"gate-org"}"#,
             ),
         ] {
             let (reached, reported) = dispatched(operation, payload.as_bytes());
@@ -894,29 +894,29 @@ thread_local! {
 /// publishes for a constrained type, and exactly what the arm calls.
 #[derive(Deserialize, Serialize)]
 pub struct AdmitRequest {
-    pub organization_id: String,
+    pub customer_id: String,
 }
 
 #[model_schema()]
 #[derive(Deserialize, Serialize)]
 pub struct BalanceRequest {
-    pub organization_id: String,
+    pub customer_id: String,
 }
 
 #[model_schema()]
 #[derive(Deserialize, Serialize)]
 pub struct BalanceResponse {
-    pub credits: u32,
+    pub invoices: u32,
 }
 
 impl AdmitRequest {
     /// The same report shape a generated validator writes: the field first and in single quotes,
     /// which is where the fault reads the name it carries.
     pub fn validate(&self) -> Result<(), Vec<String>> {
-        if self.organization_id.len() < 3 {
+        if self.customer_id.len() < 3 {
             return Err(vec![format!(
-                "'organization_id': too short: minimum length is 3, got {}",
-                self.organization_id.len()
+                "'customer_id': too short: minimum length is 3, got {}",
+                self.customer_id.len()
             )]);
         }
         Ok(())
@@ -967,14 +967,6 @@ pub trait ProbeService<Ctx> {
     #[service_schema_op(one_way)]
     async fn discard(&self, ctx: &Ctx, req: BalanceRequest);
 
-    /// Several arguments after the context: the message is unpacked back into them.
-    async fn expire_credit(
-        &self,
-        ctx: &Ctx,
-        organization_id: String,
-        credit_id: String,
-    ) -> Result<BalanceResponse, ProbeError>;
-
     /// One argument, which already is the message.
     async fn get_balance(
         &self,
@@ -984,18 +976,26 @@ pub trait ProbeService<Ctx> {
 
     /// None at all, so the message declared for it is empty.
     async fn sweep(&self, ctx: &Ctx) -> Result<BalanceResponse, ProbeError>;
+
+    /// Several arguments after the context: the message is unpacked back into them.
+    async fn void_invoice(
+        &self,
+        ctx: &Ctx,
+        customer_id: String,
+        invoice_id: String,
+    ) -> Result<BalanceResponse, ProbeError>;
 }
 
 impl ProbeService<String> for ProbeBackEnd {
     async fn admit(&self, _ctx: &String, req: AdmitRequest) -> Result<BalanceResponse, ProbeError> {
         ready(()).await;
-        self.reach(format!("admit {}", req.organization_id));
-        Ok(BalanceResponse { credits: 3 })
+        self.reach(format!("admit {}", req.customer_id));
+        Ok(BalanceResponse { invoices: 3 })
     }
 
     async fn apply_bundle(&self, ctx: &String, req: BalanceRequest) {
         let _read = ready(ctx.len()).await;
-        self.reach(format!("apply_bundle {}", req.organization_id));
+        self.reach(format!("apply_bundle {}", req.customer_id));
     }
 
     async fn collapse(
@@ -1004,26 +1004,15 @@ impl ProbeService<String> for ProbeBackEnd {
         req: BalanceRequest,
     ) -> Result<BalanceResponse, ProbeError> {
         ready(()).await;
-        self.reach(format!("collapse {}", req.organization_id));
-        come_apart(req.organization_id == "formatted", &req.organization_id);
-        Ok(BalanceResponse { credits: 0 })
+        self.reach(format!("collapse {}", req.customer_id));
+        come_apart(req.customer_id == "formatted", &req.customer_id);
+        Ok(BalanceResponse { invoices: 0 })
     }
 
     async fn discard(&self, _ctx: &String, req: BalanceRequest) {
         ready(()).await;
-        self.reach(format!("discard {}", req.organization_id));
-        come_apart(false, &req.organization_id);
-    }
-
-    async fn expire_credit(
-        &self,
-        _ctx: &String,
-        organization_id: String,
-        credit_id: String,
-    ) -> Result<BalanceResponse, ProbeError> {
-        ready(()).await;
-        self.reach(format!("expire_credit {organization_id} {credit_id}"));
-        Ok(BalanceResponse { credits: 1 })
+        self.reach(format!("discard {}", req.customer_id));
+        come_apart(false, &req.customer_id);
     }
 
     async fn get_balance(
@@ -1032,18 +1021,29 @@ impl ProbeService<String> for ProbeBackEnd {
         req: BalanceRequest,
     ) -> Result<BalanceResponse, ProbeError> {
         ready(()).await;
-        self.reach(format!("get_balance {}", req.organization_id));
-        if req.organization_id == "unlucky" {
+        self.reach(format!("get_balance {}", req.customer_id));
+        if req.customer_id == "unlucky" {
             Err(ProbeError::DbError)
         } else {
-            Ok(BalanceResponse { credits: 7 })
+            Ok(BalanceResponse { invoices: 7 })
         }
     }
 
     async fn sweep(&self, _ctx: &String) -> Result<BalanceResponse, ProbeError> {
         ready(()).await;
         self.reach("sweep".to_owned());
-        Ok(BalanceResponse { credits: 0 })
+        Ok(BalanceResponse { invoices: 0 })
+    }
+
+    async fn void_invoice(
+        &self,
+        _ctx: &String,
+        customer_id: String,
+        invoice_id: String,
+    ) -> Result<BalanceResponse, ProbeError> {
+        ready(()).await;
+        self.reach(format!("void_invoice {customer_id} {invoice_id}"));
+        Ok(BalanceResponse { invoices: 1 })
     }
 }
 
@@ -1631,11 +1631,8 @@ impl http_rest_transport::FaultHandler for RecordingFaultHandler {
 
 /// Comes apart the way a handler does when something the compiler was expected to prevent gets
 /// through.
-fn come_apart(formatted: bool, organization_id: &str) {
-    assert!(
-        !formatted,
-        "the ledger for {organization_id} is not a ledger"
-    );
+fn come_apart(formatted: bool, customer_id: &str) {
+    assert!(!formatted, "the ledger for {customer_id} is not a ledger");
     assert!(formatted, "the ledger is not a ledger");
 }
 
@@ -1712,12 +1709,12 @@ where
 
 #[test]
 fn an_operation_that_names_its_own_message_is_called_with_it_and_answers_through_send() {
-    let (reached, settled) = dispatched("get-balance", r#"{"organization_id":"acme"}"#);
+    let (reached, settled) = dispatched("get-balance", r#"{"customer_id":"acme"}"#);
     assert_eq!(reached, vec!["get_balance acme".to_owned()]);
     assert_eq!(
         settled,
         vec![Settled::Sent(
-            r#"{"ok":true,"value":{"credits":7}}"#.to_owned()
+            r#"{"ok":true,"value":{"invoices":7}}"#.to_owned()
         )],
         "the answer rides in the envelope both languages read"
     );
@@ -1725,7 +1722,7 @@ fn an_operation_that_names_its_own_message_is_called_with_it_and_answers_through
 
 #[test]
 fn the_error_an_operation_declared_rides_in_the_failure_arm_rather_than_becoming_a_fault() {
-    let (reached, settled) = dispatched("get-balance", r#"{"organization_id":"unlucky"}"#);
+    let (reached, settled) = dispatched("get-balance", r#"{"customer_id":"unlucky"}"#);
     assert_eq!(reached, vec!["get_balance unlucky".to_owned()]);
     assert_eq!(
         settled,
@@ -1739,12 +1736,12 @@ fn the_error_an_operation_declared_rides_in_the_failure_arm_rather_than_becoming
 #[test]
 fn a_message_the_macro_declared_is_unpacked_back_into_the_arguments_it_was_declared_from() {
     let (reached, settled) = dispatched(
-        "expire-credit",
-        r#"{"organizationId":"acme","creditId":"cr-1"}"#,
+        "void-invoice",
+        r#"{"customerId":"acme","invoiceId":"cr-1"}"#,
     );
     assert_eq!(
         reached,
-        vec!["expire_credit acme cr-1".to_owned()],
+        vec!["void_invoice acme cr-1".to_owned()],
         "the packing is the macro's job and the implementation still takes its arguments"
     );
     assert_eq!(settled.len(), 1, "got: {settled:?}");
@@ -1759,7 +1756,7 @@ fn an_operation_that_takes_nothing_is_still_dispatched_from_a_payload() {
 
 #[test]
 fn a_one_way_operation_runs_and_answers_nothing_on_the_handle() {
-    let (reached, settled) = dispatched("apply-bundle", r#"{"organization_id":"acme"}"#);
+    let (reached, settled) = dispatched("apply-bundle", r#"{"customer_id":"acme"}"#);
     assert_eq!(reached, vec!["apply_bundle acme".to_owned()]);
     assert!(
         settled.is_empty(),
@@ -1770,7 +1767,7 @@ fn a_one_way_operation_runs_and_answers_nothing_on_the_handle() {
 
 #[test]
 fn a_payload_carrying_the_wrong_type_of_value_becomes_a_fault_and_reaches_no_implementation() {
-    let (reached, settled) = dispatched("get-balance", r#"{"organization_id":42}"#);
+    let (reached, settled) = dispatched("get-balance", r#"{"customer_id":42}"#);
     assert!(reached.is_empty(), "got: {reached:?}");
     assert_eq!(settled.len(), 1, "got: {settled:?}");
     let reported = only_fault(&settled).unwrap();
@@ -1799,7 +1796,7 @@ fn a_payload_carrying_the_wrong_type_of_value_becomes_a_fault_and_reaches_no_imp
 
 #[test]
 fn an_operation_name_nothing_answers_to_becomes_a_fault_through_the_same_handle() {
-    let (reached, settled) = dispatched("get-the-balance", r#"{"organization_id":"acme"}"#);
+    let (reached, settled) = dispatched("get-the-balance", r#"{"customer_id":"acme"}"#);
     assert!(reached.is_empty(), "got: {reached:?}");
     assert_eq!(settled.len(), 1, "got: {settled:?}");
     let reported = only_fault(&settled).unwrap();
@@ -1832,7 +1829,7 @@ fn the_operation_is_read_from_the_name_it_was_given_and_never_out_of_the_payload
 
 #[test]
 fn a_message_that_passes_its_own_validator_reaches_the_implementation() {
-    let (reached, settled) = dispatched("admit", r#"{"organization_id":"acme"}"#);
+    let (reached, settled) = dispatched("admit", r#"{"customer_id":"acme"}"#);
     assert_eq!(
         reached,
         vec!["admit acme".to_owned()],
@@ -1841,14 +1838,14 @@ fn a_message_that_passes_its_own_validator_reaches_the_implementation() {
     assert_eq!(
         settled,
         vec![Settled::Sent(
-            r#"{"ok":true,"value":{"credits":3}}"#.to_owned()
+            r#"{"ok":true,"value":{"invoices":3}}"#.to_owned()
         )]
     );
 }
 
 #[test]
 fn a_message_that_fails_its_own_validator_never_reaches_it_and_the_fault_names_the_field() {
-    let (reached, settled) = dispatched("admit", r#"{"organization_id":"ab"}"#);
+    let (reached, settled) = dispatched("admit", r#"{"customer_id":"ab"}"#);
     assert!(
         reached.is_empty(),
         "an implementation may assume its incoming message is valid, which only holds if an \
@@ -1862,7 +1859,7 @@ fn a_message_that_fails_its_own_validator_never_reaches_it_and_the_fault_names_t
     );
     assert_eq!(
         reported.field(),
-        Some("organization_id"),
+        Some("customer_id"),
         "the caller has to be told which field it got wrong"
     );
     assert_eq!(reported.operation(), "admit");
@@ -1875,7 +1872,7 @@ fn a_message_that_fails_its_own_validator_never_reaches_it_and_the_fault_names_t
 
 #[test]
 fn a_handler_that_panics_becomes_a_fault_rather_than_unwinding_out_of_dispatch() {
-    let (reached, settled) = dispatched("collapse", r#"{"organization_id":"acme"}"#);
+    let (reached, settled) = dispatched("collapse", r#"{"customer_id":"acme"}"#);
     assert_eq!(
         reached,
         vec!["collapse acme".to_owned()],
@@ -1909,7 +1906,7 @@ fn dispatch_returns_after_a_handler_panics_so_the_transport_can_still_settle_the
         &ctx,
         &amqp_transport::IncomingMessage::new(
             "collapse".to_owned(),
-            br#"{"organization_id":"acme"}"#.to_vec(),
+            br#"{"customer_id":"acme"}"#.to_vec(),
             Vec::new(),
         ),
         &reply,
@@ -1926,7 +1923,7 @@ fn dispatch_returns_after_a_handler_panics_so_the_transport_can_still_settle_the
 
 #[test]
 fn a_formatted_panic_message_reaches_the_fault_as_the_message_rather_than_as_its_shape() {
-    let (_reached, settled) = dispatched("collapse", r#"{"organization_id":"formatted"}"#);
+    let (_reached, settled) = dispatched("collapse", r#"{"customer_id":"formatted"}"#);
     let reported = only_fault(&settled).unwrap();
     assert_eq!(
         reported.kind(),
@@ -1942,7 +1939,7 @@ fn a_formatted_panic_message_reaches_the_fault_as_the_message_rather_than_as_its
 
 #[test]
 fn a_one_way_handler_that_panics_still_answers_nothing_and_still_lets_dispatch_return() {
-    let (reached, settled) = dispatched("discard", r#"{"organization_id":"acme"}"#);
+    let (reached, settled) = dispatched("discard", r#"{"customer_id":"acme"}"#);
     assert_eq!(
         reached,
         vec!["discard acme".to_owned()],
@@ -1960,7 +1957,7 @@ fn a_one_way_handler_that_panics_still_answers_nothing_and_still_lets_dispatch_r
 
 #[test]
 fn a_one_way_handler_that_panics_is_written_down_even_though_nobody_is_answered() {
-    let (settled, written) = recorded("discard", r#"{"organization_id":"acme"}"#);
+    let (settled, written) = recorded("discard", r#"{"customer_id":"acme"}"#);
     assert!(
         settled.is_empty(),
         "the operation declared no reply, which is exactly why the record is the only account \
@@ -1981,7 +1978,7 @@ fn a_one_way_handler_that_panics_is_written_down_even_though_nobody_is_answered(
 
 #[test]
 fn a_request_and_reply_panic_is_written_down_as_well_as_answered() {
-    let (settled, written) = recorded("collapse", r#"{"organization_id":"acme"}"#);
+    let (settled, written) = recorded("collapse", r#"{"customer_id":"acme"}"#);
     let reported = only_fault(&settled).unwrap();
     assert_eq!(
         reported.kind(),
@@ -2011,12 +2008,12 @@ fn nothing_but_a_panic_is_written_down() {
     // Every other path through an arm, including the two that fault: a fault is a defect the
     // caller is told about, and only a panic is one the caller may never hear of at all.
     for (operation, payload) in [
-        ("get-balance", r#"{"organization_id":"acme"}"#),
-        ("get-balance", r#"{"organization_id":"unlucky"}"#),
-        ("get-balance", r#"{"organization_id":42}"#),
+        ("get-balance", r#"{"customer_id":"acme"}"#),
+        ("get-balance", r#"{"customer_id":"unlucky"}"#),
+        ("get-balance", r#"{"customer_id":42}"#),
         ("get-the-balance", "{}"),
-        ("admit", r#"{"organization_id":"ab"}"#),
-        ("apply-bundle", r#"{"organization_id":"acme"}"#),
+        ("admit", r#"{"customer_id":"ab"}"#),
+        ("apply-bundle", r#"{"customer_id":"acme"}"#),
         ("sweep", "{}"),
     ] {
         let (_settled, written) = recorded(operation, payload);
@@ -2033,21 +2030,21 @@ fn every_arm_answers_exactly_the_number_of_times_its_outcome_allows() {
     // Every arm the service has, on every path through it. The last field is how many times the
     // handle may be reached.
     for (operation, payload, answers) in [
-        ("admit", r#"{"organization_id":"acme"}"#, 1),
-        ("admit", r#"{"organization_id":"ab"}"#, 1),
-        ("apply-bundle", r#"{"organization_id":"acme"}"#, 0),
-        ("apply-bundle", r#"{"organization_id":42}"#, 1),
-        ("collapse", r#"{"organization_id":"acme"}"#, 1),
-        ("discard", r#"{"organization_id":"acme"}"#, 0),
-        ("discard", r#"{"organization_id":42}"#, 1),
+        ("admit", r#"{"customer_id":"acme"}"#, 1),
+        ("admit", r#"{"customer_id":"ab"}"#, 1),
+        ("apply-bundle", r#"{"customer_id":"acme"}"#, 0),
+        ("apply-bundle", r#"{"customer_id":42}"#, 1),
+        ("collapse", r#"{"customer_id":"acme"}"#, 1),
+        ("discard", r#"{"customer_id":"acme"}"#, 0),
+        ("discard", r#"{"customer_id":42}"#, 1),
         (
-            "expire-credit",
-            r#"{"organizationId":"acme","creditId":"cr-1"}"#,
+            "void-invoice",
+            r#"{"customerId":"acme","invoiceId":"cr-1"}"#,
             1,
         ),
-        ("get-balance", r#"{"organization_id":"acme"}"#, 1),
-        ("get-balance", r#"{"organization_id":"unlucky"}"#, 1),
-        ("get-balance", r#"{"organization_id":42}"#, 1),
+        ("get-balance", r#"{"customer_id":"acme"}"#, 1),
+        ("get-balance", r#"{"customer_id":"unlucky"}"#, 1),
+        ("get-balance", r#"{"customer_id":42}"#, 1),
         ("get-the-balance", "{}", 1),
         ("sweep", "{}", 1),
         ("sweep", "not a document at all", 1),
@@ -2073,7 +2070,7 @@ fn every_arm_answers_exactly_the_number_of_times_its_outcome_allows() {
 
 #[test]
 fn a_one_way_message_refused_before_it_ran_is_the_one_thing_that_arm_answers() {
-    let (never_reached, refused) = dispatched("apply-bundle", r#"{"organization_id":42}"#);
+    let (never_reached, refused) = dispatched("apply-bundle", r#"{"customer_id":42}"#);
     assert!(never_reached.is_empty(), "got: {never_reached:?}");
     let reported = only_fault(&refused).unwrap();
     assert_eq!(
@@ -2087,7 +2084,7 @@ fn a_one_way_message_refused_before_it_ran_is_the_one_thing_that_arm_answers() {
 
 #[test]
 fn the_same_macro_invoked_in_a_second_module_dispatches_the_same_way() {
-    let payload = r#"{"organization_id":"acme"}"#;
+    let payload = r#"{"customer_id":"acme"}"#;
     let (reached, settled) = dispatched("get-balance", payload);
     let (reached_again, settled_again) = dispatched_twice_over("get-balance", payload);
     assert_eq!(reached, ["get_balance acme"], "got: {reached:?}");

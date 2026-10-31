@@ -91,7 +91,7 @@ pub struct ServiceDef {
     /// Every message the macro declares for this service, in declaration order: one per operation
     /// that named none.
     pub generated_messages: Vec<GeneratedMessage>,
-    /// The trait as declared: `UsageService`.
+    /// The trait as declared: `BillingService`.
     pub ident: Ident,
     pub operations: Vec<OperationDef>,
 }
@@ -128,12 +128,12 @@ pub enum HttpAlone {
 /// be written and to be registered, so neither reader re-reads the operation it came from.
 #[derive(Clone)]
 pub struct GeneratedMessage {
-    /// The operation it was declared for: `expire_credit`. Its rustdoc names it.
+    /// The operation it was declared for: `void_invoice`. Its rustdoc names it.
     pub declared_for: Ident,
     /// One field per argument, in declaration order, or none at all where the operation takes
     /// nothing after the context.
     pub fields: Vec<(Ident, Type)>,
-    /// The type declared: `ExpireCreditRequest`.
+    /// The type declared: `VoidInvoiceRequest`.
     pub ident: Ident,
 }
 
@@ -142,13 +142,13 @@ pub struct GeneratedMessage {
 pub struct OperationDef {
     /// What `http(...)` declared, or `None` for an operation that named no group.
     pub http: Option<HttpBinding>,
-    /// The trait method as declared: `get_available_balance`.
+    /// The trait method as declared: `get_open_balance`.
     pub ident: Ident,
     pub inputs: OperationInputs,
     pub outcome: OperationOutcome,
-    /// How a TypeScript caller spells it: `getAvailableBalance`.
+    /// How a TypeScript caller spells it: `getOpenBalance`.
     pub ts_name: String,
-    /// What the wire carries: `get-available-balance`, or the `message = "..."` override.
+    /// What the wire carries: `get-open-balance`, or the `message = "..."` override.
     pub wire_name: String,
 }
 
@@ -164,8 +164,8 @@ impl OperationDef {
         }
     }
 
-    /// What the message declared for this operation is called: `expire_credit` becomes
-    /// `ExpireCreditRequest`. Nothing for the operation whose one argument already is the
+    /// What the message declared for this operation is called: `void_invoice` becomes
+    /// `VoidInvoiceRequest`. Nothing for the operation whose one argument already is the
     /// message, since none is declared for it.
     pub fn generated_message_ident(&self) -> Option<Ident> {
         match self.inputs {

@@ -19,7 +19,7 @@ pub struct ProbeContext {
 
 /// The implementation of `ProbeService` these tests dispatch to.
 pub struct ProbeBackEnd {
-    pub granted_credits: u32,
+    pub billed_invoices: u32,
 }
 
 impl ProbeService<ProbeContext> for ProbeBackEnd {
@@ -28,9 +28,9 @@ impl ProbeService<ProbeContext> for ProbeBackEnd {
         ctx: &ProbeContext,
         req: BalanceRequest,
     ) -> Result<BalanceResponse, ProbeError> {
-        let seen = ready(ctx.logger_name.len() + req.organization_id.len()).await;
+        let seen = ready(ctx.logger_name.len() + req.customer_id.len()).await;
         Ok(BalanceResponse {
-            credits: self.granted_credits + u32::try_from(seen).unwrap_or(0),
+            invoices: self.billed_invoices + u32::try_from(seen).unwrap_or(0),
         })
     }
 
@@ -41,7 +41,7 @@ impl ProbeService<ProbeContext> for ProbeBackEnd {
     ) -> Result<BalanceResponse, ProbeError> {
         let seen = ready(ctx.logger_name.len()).await;
         Ok(BalanceResponse {
-            credits: req.since + u32::try_from(seen).unwrap_or(0),
+            invoices: req.since + u32::try_from(seen).unwrap_or(0),
         })
     }
 }
@@ -118,7 +118,7 @@ where
 
 fn settled(operation: &str, body: &str) -> Result<Vec<u8>, ServiceFault> {
     poll_once(dispatched(
-        &ProbeBackEnd { granted_credits: 5 },
+        &ProbeBackEnd { billed_invoices: 5 },
         &ProbeContext {
             logger_name: "probe".to_owned(),
         },
@@ -130,27 +130,27 @@ fn settled(operation: &str, body: &str) -> Result<Vec<u8>, ServiceFault> {
 
 #[test]
 fn a_good_message_reaches_the_implementation_and_answers_in_the_published_envelope() {
-    let answered = settled("get-balance", r#"{"organization_id":"acme"}"#).unwrap();
+    let answered = settled("get-balance", r#"{"customer_id":"acme"}"#).unwrap();
     assert_eq!(
         String::from_utf8(answered).unwrap(),
-        r#"{"ok":true,"value":{"credits":14}}"#,
+        r#"{"ok":true,"value":{"invoices":14}}"#,
         "the whole round trip is written against the contract half and nothing else"
     );
 }
 
 #[test]
 fn a_message_failing_its_own_check_never_reaches_the_implementation() {
-    let refused = settled("get-balance", r#"{"organization_id":""}"#).unwrap_err();
+    let refused = settled("get-balance", r#"{"customer_id":""}"#).unwrap_err();
     assert_eq!(refused.kind(), ServiceFaultKind::FailedValidation);
     assert_eq!(refused.operation(), "get-balance");
     assert_eq!(
         refused.field(),
-        Some("organization_id"),
+        Some("customer_id"),
         "the published reader names the field off the report the check wrote"
     );
     assert_eq!(
         refused.detail(),
-        "'organization_id': too short: minimum length is 1, got 0"
+        "'customer_id': too short: minimum length is 1, got 0"
     );
 }
 
@@ -159,7 +159,7 @@ fn a_message_that_declares_no_check_of_its_own_passes_the_published_fallback() {
     let answered = settled("sweep", r#"{"since":3}"#).unwrap();
     assert_eq!(
         String::from_utf8(answered).unwrap(),
-        r#"{"ok":true,"value":{"credits":8}}"#,
+        r#"{"ok":true,"value":{"invoices":8}}"#,
         "the fallback answers `Ok(())` for a message that declared nothing to check"
     );
 }

@@ -25,28 +25,28 @@ use syn::{Ident, ItemTrait, Type};
 
 /// A service with one of every input shape, one of every outcome, and an overridden wire name.
 const MIXED_SERVICE: &str = r#"
-    pub trait UsageService<Ctx> {
-        async fn get_available_balance(
+    pub trait BillingService<Ctx> {
+        async fn get_open_balance(
             &self,
             ctx: &Ctx,
-            req: AvailableBalanceRequest,
-        ) -> Result<AvailableBalanceResponse, UsageError>;
+            req: OpenBalanceRequest,
+        ) -> Result<OpenBalanceResponse, BillingError>;
 
-        async fn expire_credit(
+        async fn void_invoice(
             &self,
             ctx: &Ctx,
-            organization_id: OrganizationId,
-            credit_id: CreditId,
-        ) -> Result<ExpiredCredit, UsageError>;
+            customer_id: CustomerId,
+            invoice_id: InvoiceId,
+        ) -> Result<VoidedInvoice, BillingError>;
 
-        async fn sweep(&self, ctx: &Ctx) -> Result<SweepReport, UsageError>;
+        async fn sweep(&self, ctx: &Ctx) -> Result<SweepReport, BillingError>;
 
-        #[service_schema_op(message = "usage-generation-request")]
+        #[service_schema_op(message = "billing-generation-request")]
         async fn can_generate(
             &self,
             ctx: &Ctx,
             req: GenerationRequest,
-        ) -> Result<GenerationVerdict, UsageError>;
+        ) -> Result<GenerationVerdict, BillingError>;
 
         #[service_schema_op(one_way)]
         async fn apply_bundle(&self, ctx: &Ctx, req: ApplyBundleRequest);
@@ -54,15 +54,15 @@ const MIXED_SERVICE: &str = r#"
 "#;
 
 /// A single-operation service whose one operation takes two arguments after the context, so it
-/// generates one message — `ExpireCreditRequest` — beside the three types every service carries.
-const CREDIT_SERVICE: &str = "
-    pub trait UsageService<Ctx> {
-        async fn expire_credit(
+/// generates one message — `VoidInvoiceRequest` — beside the three types every service carries.
+const INVOICE_SERVICE: &str = "
+    pub trait BillingService<Ctx> {
+        async fn void_invoice(
             &self,
             ctx: &Ctx,
-            organization_id: OrganizationId,
-            credit_id: CreditId,
-        ) -> Result<ExpiredCredit, UsageError>;
+            customer_id: CustomerId,
+            invoice_id: InvoiceId,
+        ) -> Result<VoidedInvoice, BillingError>;
     }
 ";
 
@@ -575,7 +575,7 @@ fn spelled(declared_type: &Type) -> String {
 fn the_generated_module_reaches_the_author_s_declarations_through_super() {
     let emitted = expanded(MIXED_SERVICE);
     assert!(
-        emitted.contains("pub mod usage_service_schema { use super :: * ;"),
+        emitted.contains("pub mod billing_service_schema { use super :: * ;"),
         "the module opens on `use super::*;`, which is the whole of how it reaches what the author \
          declared beside the trait. Got: {emitted}"
     );
@@ -588,7 +588,8 @@ fn the_generated_module_reaches_the_author_s_declarations_through_super() {
     let readme = include_str!("../../README.md");
     assert!(
         readme.contains("**A service is declared at module scope, never inside a function body.**")
-            && readme.contains("error[E0405]: cannot find trait `UsageService` in module `super`"),
+            && readme
+                .contains("error[E0405]: cannot find trait `BillingService` in module `super`"),
         "the README no longer states where a service may be declared, or what a function-scoped \
          one earns"
     );
@@ -597,10 +598,10 @@ fn the_generated_module_reaches_the_author_s_declarations_through_super() {
 #[test]
 fn a_trait_with_no_type_parameter_names_the_context_requirement() {
     assert_eq!(
-        refusals("pub trait UsageService { }"),
+        refusals("pub trait BillingService { }"),
         vec![
-            "service_schema: trait `UsageService` declares no context type parameter\n       \
-             give it one, as in `trait UsageService<Ctx>`, and take it in every operation"
+            "service_schema: trait `BillingService` declares no context type parameter\n       \
+             give it one, as in `trait BillingService<Ctx>`, and take it in every operation"
         ],
         "a trait with nothing to hand an implementation has to say so"
     );
@@ -610,7 +611,7 @@ fn a_trait_with_no_type_parameter_names_the_context_requirement() {
 fn an_operation_marked_one_way_that_returns_a_value_is_refused() {
     assert_eq!(
         refusals(
-            "pub trait OrganizationService<Ctx> {
+            "pub trait CustomerService<Ctx> {
                 #[service_schema_op(one_way)]
                 async fn apply_bundle(&self, ctx: &Ctx, req: ApplyBundleRequest) -> Result<Ack, E>;
             }"
@@ -627,8 +628,8 @@ fn an_operation_marked_one_way_that_returns_a_value_is_refused() {
 fn an_operation_not_taking_self_is_refused() {
     assert_eq!(
         refusals(
-            "pub trait UsageService<Ctx> {
-                async fn sweep(ctx: &Ctx) -> Result<SweepReport, UsageError>;
+            "pub trait BillingService<Ctx> {
+                async fn sweep(ctx: &Ctx) -> Result<SweepReport, BillingError>;
             }"
         ),
         vec![
@@ -643,8 +644,8 @@ fn an_operation_not_taking_self_is_refused() {
 fn an_operation_not_taking_the_context_is_refused_naming_the_context_type() {
     assert_eq!(
         refusals(
-            "pub trait UsageService<Ctx> {
-                async fn sweep(&self, req: SweepRequest) -> Result<SweepReport, UsageError>;
+            "pub trait BillingService<Ctx> {
+                async fn sweep(&self, req: SweepRequest) -> Result<SweepReport, BillingError>;
             }"
         ),
         vec![
@@ -659,7 +660,7 @@ fn an_operation_not_taking_the_context_is_refused_naming_the_context_type() {
 fn an_operation_returning_something_other_than_a_result_is_refused() {
     assert_eq!(
         refusals(
-            "pub trait UsageService<Ctx> {
+            "pub trait BillingService<Ctx> {
                 async fn sweep(&self, ctx: &Ctx) -> SweepReport;
             }"
         ),
@@ -692,7 +693,7 @@ fn an_operation_taking_one_argument_after_the_context_is_already_a_message() {
     let balance = &read.operations[0];
     assert_eq!(
         spelled(named_input(balance).unwrap()),
-        "AvailableBalanceRequest",
+        "OpenBalanceRequest",
         "the one argument is the message, as declared"
     );
     assert!(
@@ -713,8 +714,8 @@ fn an_operation_taking_several_arguments_carries_them_in_declaration_order() {
     assert_eq!(
         carried,
         vec![
-            ("organization_id".to_owned(), "OrganizationId".to_owned()),
-            ("credit_id".to_owned(), "CreditId".to_owned()),
+            ("customer_id".to_owned(), "CustomerId".to_owned()),
+            ("invoice_id".to_owned(), "InvoiceId".to_owned()),
         ],
         "each argument's name becomes a field on the declared message, so the order is the wire's"
     );
@@ -727,7 +728,7 @@ fn an_operation_taking_several_arguments_carries_them_in_declaration_order() {
 #[test]
 fn an_unknown_directive_is_refused_naming_the_ones_that_exist() {
     let reported = refusals(
-        "pub trait UsageService<Ctx> {
+        "pub trait BillingService<Ctx> {
             #[service_schema_op(fire_and_forget)]
             async fn apply_bundle(&self, ctx: &Ctx, req: ApplyBundleRequest);
         }",
@@ -746,12 +747,12 @@ fn both_result_arms_are_carried_separately() {
     let (success, error) = reply_arms(&read.operations[0]).unwrap();
     assert_eq!(
         spelled(success),
-        "AvailableBalanceResponse",
+        "OpenBalanceResponse",
         "the success arm is declared, not inferred"
     );
     assert_eq!(
         spelled(error),
-        "UsageError",
+        "BillingError",
         "the error arm is declared, not inferred"
     );
 }
@@ -760,9 +761,9 @@ fn both_result_arms_are_carried_separately() {
 fn every_refusal_a_service_earns_is_reported_in_one_build() {
     assert_eq!(
         refusals(
-            "pub trait UsageService<Ctx> {
+            "pub trait BillingService<Ctx> {
                 async fn apply_bundle(&self, ctx: &Ctx, req: ApplyBundleRequest);
-                async fn sweep(&self, req: SweepRequest) -> Result<SweepReport, UsageError>;
+                async fn sweep(&self, req: SweepRequest) -> Result<SweepReport, BillingError>;
             }"
         )
         .len(),
@@ -776,7 +777,7 @@ fn the_context_type_parameter_is_read_off_the_trait() {
     let read = service(MIXED_SERVICE);
     assert_eq!(
         read.ident.to_string(),
-        "UsageService",
+        "BillingService",
         "the trait as declared"
     );
     assert_eq!(
@@ -792,12 +793,12 @@ fn the_emitted_trait_carries_the_context_and_desugars_every_async_operation() {
     let emitted = rendered(MIXED_SERVICE);
     assert!(!emitted.contains("async fn"), "got: {emitted}");
     assert!(
-        emitted.contains("trait UsageService < Ctx >"),
+        emitted.contains("trait BillingService < Ctx >"),
         "got: {emitted}"
     );
     assert!(
         emitted.contains(
-            "-> impl :: core :: future :: Future < Output = Result < AvailableBalanceResponse , UsageError > > + :: core :: marker :: Send"
+            "-> impl :: core :: future :: Future < Output = Result < OpenBalanceResponse , BillingError > > + :: core :: marker :: Send"
         ),
         "got: {emitted}"
     );
@@ -825,7 +826,7 @@ fn the_expansion_emits_the_trait_beside_the_refusal_so_the_refusal_is_what_gets_
     let expanded = exec_service_schema(
         TokenStream::new(),
         quote! {
-            pub trait UsageService<Ctx> {
+            pub trait BillingService<Ctx> {
                 async fn apply_bundle(&self, ctx: &Ctx, req: ApplyBundleRequest);
             }
         },
@@ -834,7 +835,7 @@ fn the_expansion_emits_the_trait_beside_the_refusal_so_the_refusal_is_what_gets_
     assert!(expanded.contains("compile_error"), "got: {expanded}");
     assert!(expanded.contains("has no return type"), "got: {expanded}");
     assert!(
-        expanded.contains("trait UsageService < Ctx >"),
+        expanded.contains("trait BillingService < Ctx >"),
         "got: {expanded}"
     );
 }
@@ -853,7 +854,7 @@ fn the_message_override_moves_the_wire_name_and_nothing_else() {
         "TypeScript still calls it by the camelCased name"
     );
     assert_eq!(
-        can_generate.wire_name, "usage-generation-request",
+        can_generate.wire_name, "billing-generation-request",
         "only the wire name moves"
     );
 }
@@ -862,7 +863,7 @@ fn the_message_override_moves_the_wire_name_and_nothing_else() {
 fn the_missing_return_type_refusal_names_both_choices() {
     assert_eq!(
         refusals(
-            "pub trait OrganizationService<Ctx> {
+            "pub trait CustomerService<Ctx> {
                 async fn apply_bundle(&self, ctx: &Ctx, req: ApplyBundleRequest);
             }"
         ),
@@ -900,26 +901,26 @@ fn the_three_spellings_of_an_operation_name_are_all_derived_from_one_declaration
     let balance = &read.operations[0];
     assert_eq!(
         balance.ident.to_string(),
-        "get_available_balance",
+        "get_open_balance",
         "the Rust spelling"
     );
-    assert_eq!(balance.ts_name, "getAvailableBalance", "the TypeScript one");
-    assert_eq!(balance.wire_name, "get-available-balance", "the wire one");
+    assert_eq!(balance.ts_name, "getOpenBalance", "the TypeScript one");
+    assert_eq!(balance.wire_name, "get-open-balance", "the wire one");
 }
 
 #[test]
 fn two_operations_carrying_one_wire_name_are_refused() {
     let reported = refusals(
-        "pub trait UsageService<Ctx> {
-            async fn sweep(&self, ctx: &Ctx) -> Result<SweepReport, UsageError>;
+        "pub trait BillingService<Ctx> {
+            async fn sweep(&self, ctx: &Ctx) -> Result<SweepReport, BillingError>;
             #[service_schema_op(message = \"sweep\")]
-            async fn can_generate(&self, ctx: &Ctx) -> Result<GenerationVerdict, UsageError>;
+            async fn can_generate(&self, ctx: &Ctx) -> Result<GenerationVerdict, BillingError>;
         }",
     );
     assert_eq!(reported.len(), 1, "got: {reported:?}");
     assert_eq!(
         reported[0],
-        "service_schema: trait `UsageService` carries the wire name `sweep` on two operations\n       \
+        "service_schema: trait `BillingService` carries the wire name `sweep` on two operations\n       \
          `sweep` and `can_generate` would be indistinguishable on the wire; move one with \
          `#[service_schema_op(message = \"...\")]`",
         "an override can collide with a name another operation derived"
@@ -929,9 +930,9 @@ fn two_operations_carrying_one_wire_name_are_refused() {
 #[test]
 fn two_operations_spelled_the_same_in_typescript_are_refused() {
     let reported = refusals(
-        "pub trait UsageService<Ctx> {
-            async fn get_balance(&self, ctx: &Ctx) -> Result<BalanceResponse, UsageError>;
-            async fn getBalance(&self, ctx: &Ctx) -> Result<BalanceResponse, UsageError>;
+        "pub trait BillingService<Ctx> {
+            async fn get_balance(&self, ctx: &Ctx) -> Result<BalanceResponse, BillingError>;
+            async fn getBalance(&self, ctx: &Ctx) -> Result<BalanceResponse, BillingError>;
         }",
     );
     assert_eq!(reported.len(), 1, "got: {reported:?}");
@@ -945,8 +946,8 @@ fn two_operations_spelled_the_same_in_typescript_are_refused() {
 #[test]
 fn an_operation_putting_the_context_on_the_wire_is_refused() {
     let reported = refusals(
-        "pub trait UsageService<Ctx> {
-            async fn sweep(&self, ctx: &Ctx, carried: Vec<Ctx>) -> Result<SweepReport, UsageError>;
+        "pub trait BillingService<Ctx> {
+            async fn sweep(&self, ctx: &Ctx, carried: Vec<Ctx>) -> Result<SweepReport, BillingError>;
         }",
     );
     assert_eq!(reported.len(), 1, "got: {reported:?}");
@@ -962,8 +963,8 @@ fn an_operation_putting_the_context_on_the_wire_is_refused() {
 #[test]
 fn a_result_arm_naming_the_context_is_refused_too() {
     let reported = refusals(
-        "pub trait UsageService<Ctx> {
-            async fn sweep(&self, ctx: &Ctx, req: SweepRequest) -> Result<Ctx, UsageError>;
+        "pub trait BillingService<Ctx> {
+            async fn sweep(&self, ctx: &Ctx, req: SweepRequest) -> Result<Ctx, BillingError>;
         }",
     );
     assert_eq!(reported.len(), 1, "got: {reported:?}");
@@ -1293,7 +1294,7 @@ fn the_readme_states_the_refusal_of_a_json_value_in_an_operation_as_the_build_an
 fn a_message_is_declared_for_every_operation_that_named_none_and_for_no_other() {
     assert_eq!(
         message_names(&service(MIXED_SERVICE)),
-        vec!["ExpireCreditRequest", "SweepRequest"],
+        vec!["VoidInvoiceRequest", "SweepRequest"],
         "the argument-list operation and the zero-argument one, and neither of the three that \
          named a message of their own"
     );
@@ -1305,7 +1306,7 @@ fn a_declared_message_records_the_arguments_in_declaration_order() {
     let declared_message = &read.generated_messages[0];
     assert_eq!(
         declared_message.declared_for.to_string(),
-        "expire_credit",
+        "void_invoice",
         "the message knows the operation it was declared for, which its documentation names"
     );
     let carried: Vec<(String, String)> = declared_message
@@ -1316,8 +1317,8 @@ fn a_declared_message_records_the_arguments_in_declaration_order() {
     assert_eq!(
         carried,
         vec![
-            ("organization_id".to_owned(), "OrganizationId".to_owned()),
-            ("credit_id".to_owned(), "CreditId".to_owned()),
+            ("customer_id".to_owned(), "CustomerId".to_owned()),
+            ("invoice_id".to_owned(), "InvoiceId".to_owned()),
         ],
         "the emitter writes the fields off this list rather than reading the operation again"
     );
@@ -1338,15 +1339,15 @@ fn a_message_declared_for_an_operation_taking_nothing_carries_no_fields() {
 fn a_declared_message_is_emitted_with_everything_a_hand_written_type_carries() {
     let emitted = expanded(MIXED_SERVICE);
     assert!(
-        emitted.contains("pub struct ExpireCreditRequest"),
+        emitted.contains("pub struct VoidInvoiceRequest"),
         "got: {emitted}"
     );
     assert!(
-        emitted.contains("pub organization_id : OrganizationId"),
+        emitted.contains("pub customer_id : CustomerId"),
         "got: {emitted}"
     );
     assert!(
-        emitted.contains("pub credit_id : CreditId"),
+        emitted.contains("pub invoice_id : InvoiceId"),
         "got: {emitted}"
     );
     assert!(
@@ -1377,7 +1378,7 @@ fn an_operation_taking_nothing_is_emitted_an_empty_message_rather_than_none() {
 fn nothing_is_emitted_for_the_operation_whose_argument_already_is_the_message() {
     let emitted = expanded(MIXED_SERVICE);
     assert!(
-        !emitted.contains("GetAvailableBalanceRequest"),
+        !emitted.contains("GetOpenBalanceRequest"),
         "the argument is the author's own type, reusable and versionable, and a second declaration \
          over it would take that away. Got: {emitted}"
     );
@@ -1404,9 +1405,9 @@ fn a_declared_message_says_in_its_own_documentation_what_its_field_names_cost() 
 #[test]
 fn a_declared_message_colliding_with_a_type_the_service_names_is_refused() {
     let reported = refusals(
-        "pub trait UsageService<Ctx> {
-            async fn sweep(&self, ctx: &Ctx) -> Result<SweepReport, UsageError>;
-            async fn replay(&self, ctx: &Ctx, req: SweepRequest) -> Result<SweepReport, UsageError>;
+        "pub trait BillingService<Ctx> {
+            async fn sweep(&self, ctx: &Ctx) -> Result<SweepReport, BillingError>;
+            async fn replay(&self, ctx: &Ctx, req: SweepRequest) -> Result<SweepReport, BillingError>;
         }",
     );
     assert_eq!(reported.len(), 1, "got: {reported:?}");
@@ -1425,13 +1426,13 @@ fn a_declared_message_colliding_with_a_type_the_service_names_is_refused() {
 fn a_declared_message_sharing_a_name_with_a_type_written_elsewhere_is_not_refused() {
     assert!(
         refusals(
-            "pub trait UsageService<Ctx> {
-                async fn sweep(&self, ctx: &Ctx) -> Result<SweepReport, UsageError>;
+            "pub trait BillingService<Ctx> {
+                async fn sweep(&self, ctx: &Ctx) -> Result<SweepReport, BillingError>;
                 async fn replay(
                     &self,
                     ctx: &Ctx,
                     req: crate::messages::SweepRequest,
-                ) -> Result<SweepReport, UsageError>;
+                ) -> Result<SweepReport, BillingError>;
             }"
         )
         .is_empty(),
@@ -1447,7 +1448,7 @@ fn dispatch_is_generic_over_the_implementing_type_and_answers_through_the_handle
         emitted.contains(
             "pub fn dispatch < S , Ctx , R > (svc : & S , ctx : & Ctx , message : & \
              IncomingMessage , reply : & R ,) -> impl :: core :: future :: Future < Output = () \
-             > + :: core :: marker :: Send where S : $ crate :: UsageService < Ctx > + :: core \
+             > + :: core :: marker :: Send where S : $ crate :: BillingService < Ctx > + :: core \
              :: marker :: Sync , Ctx : :: core :: marker :: Sync , R : Reply + :: core :: \
              marker :: Sync"
         ),
@@ -1464,7 +1465,7 @@ fn dispatch_is_generic_over_the_implementing_type_and_answers_through_the_handle
 fn the_dispatcher_is_emitted_inside_the_macro_and_nowhere_at_the_trait_s_own_scope() {
     let emitted = expanded_over_amqp_rpc(MIXED_SERVICE);
     let macro_at = emitted
-        .find("macro_rules ! usage_service_amqp_rpc_dispatcher")
+        .find("macro_rules ! billing_service_amqp_rpc_dispatcher")
         .unwrap();
     assert_eq!(
         emitted.matches("pub fn dispatch").count(),
@@ -1492,7 +1493,7 @@ fn a_transport_named_twice_contributes_one_macro() {
     .to_string();
     assert_eq!(
         emitted
-            .matches("macro_rules ! usage_service_amqp_rpc_dispatcher")
+            .matches("macro_rules ! billing_service_amqp_rpc_dispatcher")
             .count(),
         1,
         "got: {emitted}"
@@ -1508,7 +1509,7 @@ fn a_service_asking_for_no_transport_is_emitted_the_contract_and_nothing_else() 
         "IncomingMessage",
         "pub trait Reply",
         "pub trait Transport",
-        "pub struct UsageServiceClient",
+        "pub struct BillingServiceClient",
         "serde_json",
         "tracing",
         "pub struct Context",
@@ -1523,13 +1524,13 @@ fn a_service_asking_for_no_transport_is_emitted_the_contract_and_nothing_else() 
         );
     }
     for present in [
-        "pub trait UsageService < Ctx >",
-        "pub struct ExpireCreditRequest",
+        "pub trait BillingService < Ctx >",
+        "pub struct VoidInvoiceRequest",
         "pub struct SweepRequest",
-        "pub struct UsageServiceFaultFields",
-        "pub enum UsageServiceFaultKind",
-        "pub type ServiceFault = UsageServiceFaultFields",
-        "pub type ServiceFaultKind = UsageServiceFaultKind",
+        "pub struct BillingServiceFaultFields",
+        "pub enum BillingServiceFaultKind",
+        "pub type ServiceFault = BillingServiceFaultFields",
+        "pub type ServiceFaultKind = BillingServiceFaultKind",
         "pub fn failed_validation",
         "pub fn handler_panic",
         "pub fn transport_failure",
@@ -1546,10 +1547,10 @@ fn a_service_asking_for_no_transport_is_emitted_the_contract_and_nothing_else() 
         );
     }
     for described in [
-        "pub struct ExpireCreditRequest",
+        "pub struct VoidInvoiceRequest",
         "pub struct SweepRequest",
-        "pub struct UsageServiceFaultFields",
-        "pub enum UsageServiceFaultKind",
+        "pub struct BillingServiceFaultFields",
+        "pub enum BillingServiceFaultKind",
     ] {
         assert!(
             is_described(&emitted, described),
@@ -1570,7 +1571,7 @@ fn a_service_asking_for_no_transport_is_emitted_the_contract_and_nothing_else() 
     );
     #[cfg(all(feature = "typescript", feature = "zod"))]
     assert!(
-        emitted.contains("ExpireCreditRequest :: zod_schema"),
+        emitted.contains("VoidInvoiceRequest :: zod_schema"),
         "and a build with a schema to publish brings each message's along with its type. \
          Got: {emitted}"
     );
@@ -1581,7 +1582,7 @@ fn a_service_asking_for_only_ws_rpc_emits_its_dispatcher_and_its_client() {
     let expansion = expansion_over_ws_rpc(MIXED_SERVICE);
     let emitted = expansion.to_string();
     for present in [
-        "macro_rules ! usage_service_ws_rpc_dispatcher { () => {",
+        "macro_rules ! billing_service_ws_rpc_dispatcher { () => {",
         "pub fn dispatch",
         "pub struct IncomingMessage",
         "pub trait Reply",
@@ -1589,9 +1590,9 @@ fn a_service_asking_for_only_ws_rpc_emits_its_dispatcher_and_its_client() {
         "pub enum Frame",
         "pub struct FrameReply",
         "pub async fn answer",
-        "macro_rules ! usage_service_ws_rpc_client { () => {",
+        "macro_rules ! billing_service_ws_rpc_client { () => {",
         "pub trait Transport",
-        "pub struct UsageServiceClient",
+        "pub struct BillingServiceClient",
         "pub struct FrameWriter",
         "pub struct FrameSession",
         "pub fn request_frame",
@@ -1616,10 +1617,11 @@ fn a_service_asking_for_only_ws_rpc_emits_its_dispatcher_and_its_client() {
             "`{absent}` belongs to a server macro, and `ws_rpc` publishes none. Got: {emitted}"
         );
     }
-    let dispatcher_body = macro_body_over_ws_rpc(MIXED_SERVICE, "usage_service_ws_rpc_dispatcher");
+    let dispatcher_body =
+        macro_body_over_ws_rpc(MIXED_SERVICE, "billing_service_ws_rpc_dispatcher");
     for client_only in [
         "pub trait Transport",
-        "pub struct UsageServiceClient",
+        "pub struct BillingServiceClient",
         "FrameWriter",
         "FrameSession",
         "request_frame",
@@ -1631,7 +1633,7 @@ fn a_service_asking_for_only_ws_rpc_emits_its_dispatcher_and_its_client() {
              none of it. Got: {dispatcher_body}"
         );
     }
-    let client_body = macro_body_over_ws_rpc(MIXED_SERVICE, "usage_service_ws_rpc_client");
+    let client_body = macro_body_over_ws_rpc(MIXED_SERVICE, "billing_service_ws_rpc_client");
     for dispatcher_only in [
         "pub fn dispatch",
         "pub trait Reply",
@@ -1645,10 +1647,10 @@ fn a_service_asking_for_only_ws_rpc_emits_its_dispatcher_and_its_client() {
         );
     }
     assert!(
-        emitted.contains("pub trait UsageService < Ctx >"),
+        emitted.contains("pub trait BillingService < Ctx >"),
         "the contract is emitted whatever transport was asked for. Got: {emitted}"
     );
-    let held = module_body(expansion, "usage_service_schema").to_string();
+    let held = module_body(expansion, "billing_service_schema").to_string();
     assert!(
         held.contains("RootAnchor"),
         "a service that asked for `ws_rpc` still asked for a transport, so the module anchors at \
@@ -1658,7 +1660,7 @@ fn a_service_asking_for_only_ws_rpc_emits_its_dispatcher_and_its_client() {
 
 #[test]
 fn the_ws_rpc_dispatcher_body_carries_no_reply_variant_and_no_ping_frame() {
-    let body = macro_body_over_ws_rpc(MIXED_SERVICE, "usage_service_ws_rpc_dispatcher");
+    let body = macro_body_over_ws_rpc(MIXED_SERVICE, "billing_service_ws_rpc_dispatcher");
     assert!(
         !body.contains(
             "Reply { id : String , service : String , envelope : :: serde_json :: Map < String \
@@ -1680,7 +1682,7 @@ fn the_ws_rpc_dispatcher_body_carries_no_reply_variant_and_no_ping_frame() {
 
 #[test]
 fn the_ws_rpc_client_body_carries_no_request_or_notify_variant_and_no_incoming_message() {
-    let body = macro_body_over_ws_rpc(MIXED_SERVICE, "usage_service_ws_rpc_client");
+    let body = macro_body_over_ws_rpc(MIXED_SERVICE, "billing_service_ws_rpc_client");
     for absent in ["Request {", "Notify {", "IncomingMessage"] {
         assert!(
             !body.contains(absent),
@@ -1692,7 +1694,7 @@ fn the_ws_rpc_client_body_carries_no_request_or_notify_variant_and_no_incoming_m
 #[test]
 fn the_ws_rpc_client_macro_carries_the_frame_codec_and_both_transports_grouped_types_then_impls_then_functions()
  {
-    let body = macro_body_over_ws_rpc(MIXED_SERVICE, "usage_service_ws_rpc_client");
+    let body = macro_body_over_ws_rpc(MIXED_SERVICE, "billing_service_ws_rpc_client");
     let transport_trait_at = body.find("pub trait Transport").unwrap();
     let frame_type = body.find("pub enum Frame").unwrap();
     let frame_impl = body.find("impl Frame {").unwrap();
@@ -1725,7 +1727,7 @@ fn the_ws_rpc_client_macro_carries_the_frame_codec_and_both_transports_grouped_t
 
 #[test]
 fn frame_writer_and_frame_session_publish_the_constructors_the_design_specifies() {
-    let published = published_macro_over_ws_rpc(MIXED_SERVICE, "usage_service_ws_rpc_client");
+    let published = published_macro_over_ws_rpc(MIXED_SERVICE, "billing_service_ws_rpc_client");
     for signature in [
         "impl FrameWriter { # [doc",
         "pub fn new < F , Fut > (send : F) -> Self",
@@ -1744,7 +1746,7 @@ fn frame_writer_and_frame_session_publish_the_constructors_the_design_specifies(
 #[test]
 fn every_runtime_crate_the_ws_rpc_client_body_calls_is_written_with_a_leading_colon_pair_and_tracing_is_not_one()
  {
-    let body = macro_body_over_ws_rpc(MIXED_SERVICE, "usage_service_ws_rpc_client");
+    let body = macro_body_over_ws_rpc(MIXED_SERVICE, "billing_service_ws_rpc_client");
     for called in ["serde :: Serialize", "serde_json", "core", "std"] {
         assert!(
             every_mention_is_qualified(&body, called, ":: "),
@@ -1761,10 +1763,10 @@ fn every_runtime_crate_the_ws_rpc_client_body_calls_is_written_with_a_leading_co
 
 #[test]
 fn every_generated_name_the_ws_rpc_client_body_reaches_is_written_through_crate() {
-    let body = macro_body_over_ws_rpc(MIXED_SERVICE, "usage_service_ws_rpc_client");
-    for reached in ["ServiceFault", "CallError", "GetAvailableBalanceMessage"] {
+    let body = macro_body_over_ws_rpc(MIXED_SERVICE, "billing_service_ws_rpc_client");
+    for reached in ["ServiceFault", "CallError", "GetOpenBalanceMessage"] {
         assert!(
-            every_mention_is_qualified(&body, reached, "$ crate :: usage_service_schema :: "),
+            every_mention_is_qualified(&body, reached, "$ crate :: billing_service_schema :: "),
             "`{reached}` is reached unqualified somewhere in the client body, which resolves in \
              whichever crate invoked the macro. Got: {body}"
         );
@@ -1781,7 +1783,7 @@ fn the_ws_rpc_client_macros_placement_doc_names_ws_client() {
          {emitted}"
     );
     assert!(
-        emitted.contains("the_contract_crate::usage_service_ws_rpc_client!();"),
+        emitted.contains("the_contract_crate::billing_service_ws_rpc_client!();"),
         "the placement section shows the bare invocation. Got: {emitted}"
     );
 }
@@ -1790,10 +1792,10 @@ fn the_ws_rpc_client_macros_placement_doc_names_ws_client() {
 fn the_ws_rpc_dispatcher_macro_takes_no_arguments_and_opens_no_module_of_its_own() {
     let emitted = expanded_over_ws_rpc(MIXED_SERVICE);
     assert!(
-        emitted.contains("macro_rules ! usage_service_ws_rpc_dispatcher { () => {"),
+        emitted.contains("macro_rules ! billing_service_ws_rpc_dispatcher { () => {"),
         "the one rule matches an empty invocation. Got: {emitted}"
     );
-    let body = macro_body_over_ws_rpc(MIXED_SERVICE, "usage_service_ws_rpc_dispatcher");
+    let body = macro_body_over_ws_rpc(MIXED_SERVICE, "billing_service_ws_rpc_dispatcher");
     assert!(
         !body.contains(" mod "),
         "the items are bare, so the caller names the module they land in. Got: {body}"
@@ -1802,7 +1804,7 @@ fn the_ws_rpc_dispatcher_macro_takes_no_arguments_and_opens_no_module_of_its_own
 
 #[test]
 fn every_runtime_crate_the_ws_rpc_dispatcher_body_calls_is_written_with_a_leading_colon_pair() {
-    let body = macro_body_over_ws_rpc(MIXED_SERVICE, "usage_service_ws_rpc_dispatcher");
+    let body = macro_body_over_ws_rpc(MIXED_SERVICE, "billing_service_ws_rpc_dispatcher");
     for called in ["serde :: Serialize", "serde_json", "tracing", "core", "std"] {
         assert!(
             every_mention_is_qualified(&body, called, ":: "),
@@ -1814,9 +1816,9 @@ fn every_runtime_crate_the_ws_rpc_dispatcher_body_calls_is_written_with_a_leadin
 
 #[test]
 fn every_generated_name_the_ws_rpc_dispatcher_body_reaches_is_written_through_crate() {
-    let body = macro_body_over_ws_rpc(MIXED_SERVICE, "usage_service_ws_rpc_dispatcher");
+    let body = macro_body_over_ws_rpc(MIXED_SERVICE, "billing_service_ws_rpc_dispatcher");
     assert!(
-        every_mention_is_qualified(&body, "UsageService", "$ crate :: "),
+        every_mention_is_qualified(&body, "BillingService", "$ crate :: "),
         "the trait is reached unqualified somewhere in the macro body, which resolves in whichever \
          crate invoked the macro. Got: {body}"
     );
@@ -1826,10 +1828,10 @@ fn every_generated_name_the_ws_rpc_dispatcher_body_reaches_is_written_through_cr
         "named_field",
         "violated_field",
         "violation_detail",
-        "GetAvailableBalanceMessage",
+        "GetOpenBalanceMessage",
     ] {
         assert!(
-            every_mention_is_qualified(&body, reached, "$ crate :: usage_service_schema :: "),
+            every_mention_is_qualified(&body, reached, "$ crate :: billing_service_schema :: "),
             "`{reached}` is reached unqualified somewhere in the macro body, which resolves in \
              whichever crate invoked the macro. Got: {body}"
         );
@@ -1838,7 +1840,7 @@ fn every_generated_name_the_ws_rpc_dispatcher_body_reaches_is_written_through_cr
 
 #[test]
 fn the_ws_rpc_dispatcher_macro_is_grouped_types_then_impls_then_functions() {
-    let body = macro_body_over_ws_rpc(MIXED_SERVICE, "usage_service_ws_rpc_dispatcher");
+    let body = macro_body_over_ws_rpc(MIXED_SERVICE, "billing_service_ws_rpc_dispatcher");
     let incoming_message_type = body.find("pub struct IncomingMessage").unwrap();
     let incoming_message_impl = body.find("impl IncomingMessage").unwrap();
     let frame_type = body.find("pub enum Frame").unwrap();
@@ -1869,16 +1871,16 @@ fn the_ws_rpc_dispatcher_macros_placement_doc_names_ws_transport() {
         "the placement section shows the module this transport's own doc names. Got: {emitted}"
     );
     assert!(
-        emitted.contains("the_contract_crate::usage_service_ws_rpc_dispatcher!();"),
+        emitted.contains("the_contract_crate::billing_service_ws_rpc_dispatcher!();"),
         "the placement section shows the bare invocation. Got: {emitted}"
     );
 }
 
 #[test]
 fn service_const_publishes_the_traits_own_ident() {
-    let published = published_macro_over_ws_rpc(MIXED_SERVICE, "usage_service_ws_rpc_dispatcher");
+    let published = published_macro_over_ws_rpc(MIXED_SERVICE, "billing_service_ws_rpc_dispatcher");
     assert!(
-        published.contains("pub const SERVICE : & str = \"UsageService\" ;"),
+        published.contains("pub const SERVICE : & str = \"BillingService\" ;"),
         "Got: {published}"
     );
 }
@@ -1963,10 +1965,10 @@ fn error_header_out_is_error_is_refused_on_a_service_that_also_declares_amqp_rpc
 fn the_dispatcher_macro_takes_no_arguments_and_opens_no_module_of_its_own() {
     let emitted = expanded_over_amqp_rpc(MIXED_SERVICE);
     assert!(
-        emitted.contains("macro_rules ! usage_service_amqp_rpc_dispatcher { () => {"),
+        emitted.contains("macro_rules ! billing_service_amqp_rpc_dispatcher { () => {"),
         "the one rule matches an empty invocation. Got: {emitted}"
     );
-    let body = macro_body(MIXED_SERVICE, "usage_service_amqp_rpc_dispatcher");
+    let body = macro_body(MIXED_SERVICE, "billing_service_amqp_rpc_dispatcher");
     assert!(
         !body.contains(" mod "),
         "the items are bare, so the caller names the module they land in. Got: {body}"
@@ -1975,7 +1977,7 @@ fn the_dispatcher_macro_takes_no_arguments_and_opens_no_module_of_its_own() {
 
 #[test]
 fn every_runtime_crate_the_macro_body_calls_is_written_with_a_leading_colon_pair() {
-    let body = macro_body(MIXED_SERVICE, "usage_service_amqp_rpc_dispatcher");
+    let body = macro_body(MIXED_SERVICE, "billing_service_amqp_rpc_dispatcher");
     for called in ["serde :: Serialize", "serde_json", "tracing", "core", "std"] {
         assert!(
             every_mention_is_qualified(&body, called, ":: "),
@@ -1987,9 +1989,9 @@ fn every_runtime_crate_the_macro_body_calls_is_written_with_a_leading_colon_pair
 
 #[test]
 fn every_generated_name_the_macro_body_reaches_is_written_through_crate() {
-    let body = macro_body(MIXED_SERVICE, "usage_service_amqp_rpc_dispatcher");
+    let body = macro_body(MIXED_SERVICE, "billing_service_amqp_rpc_dispatcher");
     assert!(
-        every_mention_is_qualified(&body, "UsageService", "$ crate :: "),
+        every_mention_is_qualified(&body, "BillingService", "$ crate :: "),
         "the trait is reached unqualified somewhere in the macro body, which resolves in whichever \
          crate invoked the macro. Got: {body}"
     );
@@ -1999,16 +2001,16 @@ fn every_generated_name_the_macro_body_reaches_is_written_through_crate() {
         "named_field",
         "violated_field",
         "violation_detail",
-        "GetAvailableBalanceMessage",
-        "ExpireCreditMessage",
+        "GetOpenBalanceMessage",
+        "VoidInvoiceMessage",
         "SweepMessage",
         "CanGenerateMessage",
         "ApplyBundleMessage",
-        "validated_get_available_balance",
+        "validated_get_open_balance",
         "validated_apply_bundle",
     ] {
         assert!(
-            every_mention_is_qualified(&body, reached, "$ crate :: usage_service_schema :: "),
+            every_mention_is_qualified(&body, reached, "$ crate :: billing_service_schema :: "),
             "`{reached}` is reached unqualified somewhere in the macro body, which resolves in \
              whichever crate invoked the macro. Got: {body}"
         );
@@ -2019,19 +2021,19 @@ fn every_generated_name_the_macro_body_reaches_is_written_through_crate() {
 fn the_module_anchors_both_root_names_a_transport_macro_reaches() {
     let held = module_body(
         expansion_over_amqp_rpc(MIXED_SERVICE),
-        "usage_service_schema",
+        "billing_service_schema",
     )
     .to_string();
     assert!(
         held.contains(
-            "const _ : :: core :: marker :: PhantomData < crate :: usage_service_schema :: \
+            "const _ : :: core :: marker :: PhantomData < crate :: billing_service_schema :: \
              ServiceFault > = :: core :: marker :: PhantomData ;"
         ),
         "the module is not anchored at the crate root, so a service below the root publishes a \
          macro whose `$crate::{{service}}_schema` resolves nowhere. Got: {held}"
     );
     assert!(
-        held.contains("S : crate :: UsageService < Ctx >"),
+        held.contains("S : crate :: BillingService < Ctx >"),
         "the trait is not anchored at the crate root, so a service below the root publishes a \
          macro whose `$crate::{{Trait}}` resolves nowhere. Got: {held}"
     );
@@ -2044,13 +2046,13 @@ fn a_service_that_asked_for_no_transport_is_anchored_at_no_root() {
             TokenStream::new(),
             declared(MIXED_SERVICE).to_token_stream(),
         ),
-        "usage_service_schema",
+        "billing_service_schema",
     )
     .to_string();
     for anchored in [
-        "crate :: usage_service_schema",
+        "crate :: billing_service_schema",
         "RootAnchor",
-        "crate :: UsageService",
+        "crate :: BillingService",
     ] {
         assert!(
             !held.contains(anchored),
@@ -2064,8 +2066,8 @@ fn a_service_that_asked_for_no_transport_is_anchored_at_no_root() {
 fn the_trait_anchor_binds_what_the_dispatcher_s_where_clause_binds() {
     let expansion = expansion_over_amqp_rpc(MIXED_SERVICE);
     let dispatched =
-        macro_rules_stream(expansion.clone(), "usage_service_amqp_rpc_dispatcher").to_string();
-    let held = module_body(expansion, "usage_service_schema").to_string();
+        macro_rules_stream(expansion.clone(), "billing_service_amqp_rpc_dispatcher").to_string();
+    let held = module_body(expansion, "billing_service_schema").to_string();
     assert_eq!(
         bound_on_s(&held, "S : "),
         bound_on_s(&dispatched, "S : ").replace("$ crate", "crate"),
@@ -2078,9 +2080,9 @@ fn the_trait_anchor_binds_what_the_dispatcher_s_where_clause_binds() {
 fn both_root_anchors_are_spanned_on_the_trait_s_ident() {
     let held = module_body(
         expansion_over_amqp_rpc(MIXED_SERVICE),
-        "usage_service_schema",
+        "billing_service_schema",
     );
-    for anchored in ["usage_service_schema", "RootAnchor"] {
+    for anchored in ["billing_service_schema", "RootAnchor"] {
         let spans = spans_of_idents_named(held.clone(), anchored);
         assert!(
             !spans.is_empty(),
@@ -2089,7 +2091,7 @@ fn both_root_anchors_are_spanned_on_the_trait_s_ident() {
         for span in spans {
             assert_eq!(
                 span.source_text().as_deref(),
-                Some("UsageService"),
+                Some("BillingService"),
                 "`{anchored}` is spanned somewhere other than the trait's ident"
             );
         }
@@ -2100,10 +2102,10 @@ fn both_root_anchors_are_spanned_on_the_trait_s_ident() {
 fn every_arm_is_keyed_on_the_wire_name_and_never_on_anything_in_the_payload() {
     let emitted = expanded_over_amqp_rpc(MIXED_SERVICE);
     for carried in [
-        "\"get-available-balance\" =>",
-        "\"expire-credit\" =>",
+        "\"get-open-balance\" =>",
+        "\"void-invoice\" =>",
         "\"sweep\" =>",
-        "\"usage-generation-request\" =>",
+        "\"billing-generation-request\" =>",
         "\"apply-bundle\" =>",
     ] {
         assert!(emitted.contains(carried), "got: {emitted}");
@@ -2121,12 +2123,12 @@ fn an_arm_validates_before_it_calls_and_faults_on_both_ways_the_message_can_be_w
     // The message's own read would refuse a broken bound as a payload serde cannot read. The
     // arm reads it unjudged, so the validator is what answers for it, with its field.
     let deserialized = emitted
-        .find("$ crate :: usage_service_schema :: unjudged_get_available_balance (& mut payload)")
+        .find("$ crate :: billing_service_schema :: unjudged_get_open_balance (& mut payload)")
         .unwrap();
     let validated = emitted
-        .find("$ crate :: usage_service_schema :: validated_get_available_balance (& received)")
+        .find("$ crate :: billing_service_schema :: validated_get_open_balance (& received)")
         .unwrap();
-    let called = emitted.find("svc . get_available_balance").unwrap();
+    let called = emitted.find("svc . get_open_balance").unwrap();
     assert!(
         deserialized < validated && validated < called,
         "an implementation may assume its incoming message is valid, which only holds if the \
@@ -2139,9 +2141,9 @@ fn an_arm_validates_before_it_calls_and_faults_on_both_ways_the_message_can_be_w
         "got: {emitted}"
     );
     for written in [
-        "pub fn unjudged_get_available_balance < 'de , D > (deserializer : D) -> :: core :: \
-         result :: Result < GetAvailableBalanceMessage , D :: Error >",
-        "< GetAvailableBalanceMessage > :: model_schema_read_unjudged (deserializer)",
+        "pub fn unjudged_get_open_balance < 'de , D > (deserializer : D) -> :: core :: \
+         result :: Result < GetOpenBalanceMessage , D :: Error >",
+        "< GetOpenBalanceMessage > :: model_schema_read_unjudged (deserializer)",
         // What follows the message in the payload is refused, as `from_slice` refuses it.
         ". and_then (| read | payload . end () . map (| () | read))",
     ] {
@@ -2204,8 +2206,8 @@ fn every_constructor_the_fault_carries_is_published() {
 fn every_arm_calls_its_implementation_behind_the_panic_guard() {
     let emitted = expanded_over_amqp_rpc(MIXED_SERVICE);
     for method in [
-        "get_available_balance",
-        "expire_credit",
+        "get_open_balance",
+        "void_invoice",
         "sweep",
         "can_generate",
         "apply_bundle",
@@ -2228,9 +2230,9 @@ fn a_request_and_reply_arm_answers_a_caught_panic_with_a_fault_naming_its_own_wi
     let emitted = expanded_over_amqp_rpc(MIXED_SERVICE);
     assert!(
         emitted.contains(
-            "Err (panicked) => { record_panic (\"usage-generation-request\" , & panicked) ; \
-             reply . fault ($ crate :: usage_service_schema :: ServiceFault :: handler_panic \
-             (\"usage-generation-request\" , & panicked)) . await }"
+            "Err (panicked) => { record_panic (\"billing-generation-request\" , & panicked) ; \
+             reply . fault ($ crate :: billing_service_schema :: ServiceFault :: handler_panic \
+             (\"billing-generation-request\" , & panicked)) . await }"
         ),
         "the arm that answered to the name is the one that reports the defect, and it reports it \
          under the wire name rather than under the Rust ident. Got: {emitted}"
@@ -2250,10 +2252,10 @@ fn every_arm_writes_a_caught_panic_down_before_it_answers() {
          Got: {emitted}"
     );
     let recorded = emitted
-        .find("record_panic (\"usage-generation-request\" , & panicked)")
+        .find("record_panic (\"billing-generation-request\" , & panicked)")
         .unwrap();
     let answered = emitted
-        .find("ServiceFault :: handler_panic (\"usage-generation-request\" , & panicked)")
+        .find("ServiceFault :: handler_panic (\"billing-generation-request\" , & panicked)")
         .unwrap();
     assert!(
         recorded < answered,
@@ -2273,8 +2275,8 @@ fn the_dispatcher_macro_names_tracing_and_a_declared_type_does_not() {
     let described = exec_model_schema(
         TokenStream::new(),
         quote! {
-            pub struct AvailableBalanceRequest {
-                pub organization_id: String,
+            pub struct OpenBalanceRequest {
+                pub customer_id: String,
             }
         },
     )
@@ -2302,7 +2304,7 @@ fn a_refusal_and_a_violation_are_read_for_a_field_name_by_the_same_reader() {
     );
     assert!(
         emitted.contains(
-            "let named = $ crate :: usage_service_schema :: named_field (said) . or_else \
+            "let named = $ crate :: billing_service_schema :: named_field (said) . or_else \
              (|| serde_named_field (said))"
         ),
         "a serde refusal is read for a field by the reader a violation is read by — a hook hands \
@@ -2342,12 +2344,12 @@ fn a_one_way_arm_calls_the_implementation_and_then_touches_the_handle_with_nothi
 fn the_client_carries_one_method_per_operation_under_the_operation_s_own_wire_name() {
     let emitted = expanded_over_amqp_rpc(MIXED_SERVICE);
     assert!(
-        emitted.contains("pub struct UsageServiceClient < T : Transport >"),
+        emitted.contains("pub struct BillingServiceClient < T : Transport >"),
         "got: {emitted}"
     );
     for named in [
-        "pub fn get_available_balance (& self , req : AvailableBalanceRequest)",
-        "pub fn expire_credit (& self , organization_id : OrganizationId , credit_id : CreditId)",
+        "pub fn get_open_balance (& self , req : OpenBalanceRequest)",
+        "pub fn void_invoice (& self , customer_id : CustomerId , invoice_id : InvoiceId)",
         "pub fn sweep (& self)",
         "pub fn can_generate (& self , req : GenerationRequest)",
         "pub fn apply_bundle (& self , req : ApplyBundleRequest)",
@@ -2356,7 +2358,7 @@ fn the_client_carries_one_method_per_operation_under_the_operation_s_own_wire_na
     }
     assert!(
         emitted.contains(
-            "self . transport . request (\"usage-generation-request\" , sending , headers)"
+            "self . transport . request (\"billing-generation-request\" , sending , headers)"
         ),
         "the name the wire carries is the one the transport is handed, beside the payload. Got: \
          {emitted}"
@@ -2370,7 +2372,7 @@ fn the_client_carries_one_method_per_operation_under_the_operation_s_own_wire_na
 #[test]
 fn a_client_method_takes_the_message_and_no_context() {
     let emitted = expanded_over_amqp_rpc(MIXED_SERVICE);
-    let client = published_macro(MIXED_SERVICE, "usage_service_amqp_rpc_client");
+    let client = published_macro(MIXED_SERVICE, "billing_service_amqp_rpc_client");
     assert!(
         !client.contains("Ctx") && !client.contains("_ctx"),
         "the context is what an implementation needs and a caller has nothing to hand one to, so \
@@ -2379,8 +2381,8 @@ fn a_client_method_takes_the_message_and_no_context() {
     // Every parameter list in full, so an argument creeping back in on either side of the message
     // fails here rather than slipping past a `contains` on the message type alone.
     for taken in [
-        "pub fn get_available_balance (& self , req : AvailableBalanceRequest)",
-        "pub fn expire_credit (& self , organization_id : OrganizationId , credit_id : CreditId)",
+        "pub fn get_open_balance (& self , req : OpenBalanceRequest)",
+        "pub fn void_invoice (& self , customer_id : CustomerId , invoice_id : InvoiceId)",
         "pub fn sweep (& self)",
         "pub fn can_generate (& self , req : GenerationRequest)",
         "pub fn apply_bundle (& self , req : ApplyBundleRequest)",
@@ -2392,9 +2394,7 @@ fn a_client_method_takes_the_message_and_no_context() {
         );
     }
     assert!(
-        emitted.contains(
-            "fn get_available_balance (& self , ctx : & Ctx , req : AvailableBalanceRequest ,)"
-        ),
+        emitted.contains("fn get_open_balance (& self , ctx : & Ctx , req : OpenBalanceRequest ,)"),
         "the trait keeps its context: it is the half that has an implementation to hand one to. \
          Got: {emitted}"
     );
@@ -2404,7 +2404,7 @@ fn a_client_method_takes_the_message_and_no_context() {
 fn a_client_method_validates_before_it_reaches_the_transport() {
     let emitted = expanded_over_amqp_rpc(MIXED_SERVICE);
     let validated = emitted
-        .find("$ crate :: usage_service_schema :: validated_get_available_balance (& sending)")
+        .find("$ crate :: billing_service_schema :: validated_get_open_balance (& sending)")
         .unwrap();
     let sent = emitted.find("self . transport .").unwrap();
     assert!(
@@ -2414,8 +2414,8 @@ fn a_client_method_validates_before_it_reaches_the_transport() {
     );
     assert!(
         emitted.contains(
-            "return :: core :: result :: Result :: Err ($ crate :: usage_service_schema :: \
-             CallError :: Fault ($ crate :: usage_service_schema :: ServiceFault :: \
+            "return :: core :: result :: Result :: Err ($ crate :: billing_service_schema :: \
+             CallError :: Fault ($ crate :: billing_service_schema :: ServiceFault :: \
              failed_validation ("
         ),
         "the operation never ran, so it is not one of its declared errors. Got: {emitted}"
@@ -2424,7 +2424,7 @@ fn a_client_method_validates_before_it_reaches_the_transport() {
 
 #[test]
 fn the_transport_seam_gives_a_call_that_never_landed_somewhere_to_be_reported() {
-    let client = published_macro(MIXED_SERVICE, "usage_service_amqp_rpc_client");
+    let client = published_macro(MIXED_SERVICE, "billing_service_amqp_rpc_client");
     for answered in [
         "Output = :: core :: result :: Result < () , :: std :: string :: String >",
         "Output = :: core :: result :: Result < (:: std :: vec :: Vec < u8 > , :: std :: vec :: \
@@ -2453,8 +2453,8 @@ fn the_transport_seam_gives_a_call_that_never_landed_somewhere_to_be_reported() 
     );
     assert!(
         client.contains(
-            "$ crate :: usage_service_schema :: CallError :: Fault ($ crate :: \
-             usage_service_schema :: ServiceFault :: transport_failure"
+            "$ crate :: billing_service_schema :: CallError :: Fault ($ crate :: \
+             billing_service_schema :: ServiceFault :: transport_failure"
         ),
         "a replying operation carries it in the arm a caller already matches defects on, rather \
          than in a third one. Got: {client}"
@@ -2466,7 +2466,7 @@ fn a_transport_failure_is_a_kind_the_fault_publishes_and_the_mirror_reads_back()
     let emitted = expanded_over_amqp_rpc(MIXED_SERVICE);
     assert!(
         emitted.contains(
-            "FaultKindOnTheWire :: TransportFailure => { $ crate :: usage_service_schema :: \
+            "FaultKindOnTheWire :: TransportFailure => { $ crate :: billing_service_schema :: \
              ServiceFault :: transport_failure"
         ),
         "the mirror is what reads a fault back off the wire, so a kind it does not spell is a \
@@ -2487,7 +2487,8 @@ fn a_fault_is_read_back_through_a_private_mirror_rather_than_by_widening_the_fau
          {emitted}"
     );
     assert!(
-        emitted.contains("fn into_fault (self) -> $ crate :: usage_service_schema :: ServiceFault"),
+        emitted
+            .contains("fn into_fault (self) -> $ crate :: billing_service_schema :: ServiceFault"),
         "got: {emitted}"
     );
     for minted in [
@@ -2506,7 +2507,9 @@ fn a_fault_is_read_back_through_a_private_mirror_rather_than_by_widening_the_fau
     }
     // Declared under the name its TypeScript is published as, `ServiceFault` being the alias the
     // module's own generated code writes.
-    let fault = emitted.find("pub struct UsageServiceFaultFields").unwrap();
+    let fault = emitted
+        .find("pub struct BillingServiceFaultFields")
+        .unwrap();
     let derives = &emitted[fault.saturating_sub(200)..fault];
     assert!(
         !derives.contains("Deserialize"),
@@ -2514,7 +2517,7 @@ fn a_fault_is_read_back_through_a_private_mirror_rather_than_by_widening_the_fau
          {derives}"
     );
     assert!(
-        emitted.contains("pub type ServiceFault = UsageServiceFaultFields ;"),
+        emitted.contains("pub type ServiceFault = BillingServiceFaultFields ;"),
         "the module keeps the unstuttering spelling; only TypeScript needs the prefix. Got: \
          {emitted}"
     );
@@ -2524,13 +2527,13 @@ fn a_fault_is_read_back_through_a_private_mirror_rather_than_by_widening_the_fau
 fn the_fault_is_declared_under_the_name_its_fields_publish_as() {
     let emitted = expanded(MIXED_SERVICE);
     assert!(
-        emitted.contains("pub struct UsageServiceFaultFields"),
-        "the sealed TypeScript type takes `UsageServiceFault`, so the fields publish beside it. \
+        emitted.contains("pub struct BillingServiceFaultFields"),
+        "the sealed TypeScript type takes `BillingServiceFault`, so the fields publish beside it. \
          Got: {emitted}"
     );
     assert!(
-        !emitted.contains("pub struct UsageServiceFault {")
-            && !emitted.contains("pub struct UsageServiceFault ("),
+        !emitted.contains("pub struct BillingServiceFault {")
+            && !emitted.contains("pub struct BillingServiceFault ("),
         "two declarations under one flat name is what a bundle cannot compile. Got: {emitted}"
     );
 }
@@ -2543,8 +2546,8 @@ fn the_emitted_trait_names_the_operation_a_missing_implementation_is_refused_for
     for declared in [
         "fn apply_bundle",
         "fn can_generate",
-        "fn expire_credit",
-        "fn get_available_balance",
+        "fn void_invoice",
+        "fn get_open_balance",
         "fn sweep",
     ] {
         assert!(
@@ -2560,7 +2563,7 @@ fn the_readme_shows_both_one_way_refusals_the_way_the_macro_writes_them() {
     let readme = include_str!("../../README.md");
     for (source, shown) in [
         (
-            "pub trait OrganizationService<Ctx> {
+            "pub trait CustomerService<Ctx> {
                 async fn apply_bundle(&self, ctx: &Ctx, req: ApplyBundleRequest);
             }",
             "service_schema: operation `apply_bundle` has no return type\n       \
@@ -2568,7 +2571,7 @@ fn the_readme_shows_both_one_way_refusals_the_way_the_macro_writes_them() {
              or give it a `Result<Success, Error>` return",
         ),
         (
-            "pub trait OrganizationService<Ctx> {
+            "pub trait CustomerService<Ctx> {
                 #[service_schema_op(one_way)]
                 async fn apply_bundle(&self, ctx: &Ctx, req: ApplyBundleRequest) -> Result<Ack, E>;
             }",
@@ -2588,9 +2591,9 @@ fn the_readme_shows_both_one_way_refusals_the_way_the_macro_writes_them() {
 fn a_service_asking_for_a_transport_publishes_its_client_as_a_macro_and_not_as_a_type() {
     let emitted = expanded_over_amqp_rpc(MIXED_SERVICE);
     let at = emitted
-        .find("# [macro_export] macro_rules ! usage_service_amqp_rpc_client { () => {")
+        .find("# [macro_export] macro_rules ! billing_service_amqp_rpc_client { () => {")
         .unwrap();
-    for inside in ["pub trait Transport", "pub struct UsageServiceClient < T"] {
+    for inside in ["pub trait Transport", "pub struct BillingServiceClient < T"] {
         assert!(
             !emitted[..at].contains(inside),
             "the two halves of a service usually live in different crates, so `{inside}` is \
@@ -2608,7 +2611,7 @@ fn a_transport_named_twice_publishes_its_client_once() {
     .to_string();
     assert_eq!(
         emitted
-            .matches("macro_rules ! usage_service_amqp_rpc_client")
+            .matches("macro_rules ! billing_service_amqp_rpc_client")
             .count(),
         1,
         "`#[macro_export]` puts the name at the declaring crate's root, where one name can be \
@@ -2620,10 +2623,10 @@ fn a_transport_named_twice_publishes_its_client_once() {
 fn the_client_macro_takes_no_arguments_and_wraps_its_items_in_no_module() {
     let emitted = expanded_over_amqp_rpc(MIXED_SERVICE);
     assert!(
-        emitted.contains("macro_rules ! usage_service_amqp_rpc_client { () => {"),
+        emitted.contains("macro_rules ! billing_service_amqp_rpc_client { () => {"),
         "one rule, matching an empty invocation. Got: {emitted}"
     );
-    let body = macro_body(MIXED_SERVICE, "usage_service_amqp_rpc_client");
+    let body = macro_body(MIXED_SERVICE, "billing_service_amqp_rpc_client");
     assert!(
         !body.contains(" mod "),
         "the items are bare, so the module they land in is the invoking crate's to name. Got: \
@@ -2633,36 +2636,36 @@ fn the_client_macro_takes_no_arguments_and_wraps_its_items_in_no_module() {
 
 #[test]
 fn every_generated_name_the_client_writes_is_reached_through_the_declaring_crate() {
-    let code = macro_body(MIXED_SERVICE, "usage_service_amqp_rpc_client");
+    let code = macro_body(MIXED_SERVICE, "billing_service_amqp_rpc_client");
     assert_eq!(
-        code.matches("usage_service_schema").count(),
-        code.matches("$ crate :: usage_service_schema").count(),
+        code.matches("billing_service_schema").count(),
+        code.matches("$ crate :: billing_service_schema").count(),
         "the service's own module is the declaring crate's. Got: {code}"
     );
     for named in ["CallError", "ServiceFault"] {
         assert!(code.contains(named), "got: {code}");
         assert_eq!(
             code.matches(named).count(),
-            code.matches(&format!("usage_service_schema :: {named}"))
+            code.matches(&format!("billing_service_schema :: {named}"))
                 .count(),
             "`{named}` is declared inside the service's module and reached nowhere else. Got: \
              {code}"
         );
     }
-    for message in ["ExpireCreditMessage", "SweepMessage"] {
+    for message in ["VoidInvoiceMessage", "SweepMessage"] {
         assert!(
-            code.contains(&format!("$ crate :: usage_service_schema :: {message}")),
+            code.contains(&format!("$ crate :: billing_service_schema :: {message}")),
             "got: {code}"
         );
         assert_eq!(
             code.matches(message).count(),
-            code.matches(&format!("usage_service_schema :: {message}"))
+            code.matches(&format!("billing_service_schema :: {message}"))
                 .count(),
             "a message the macro declared is built through the alias its own module publishes, \
              the same path the dispatcher reads one through. Got: {code}"
         );
     }
-    for beside_the_trait in ["ExpireCreditRequest", "SweepRequest"] {
+    for beside_the_trait in ["VoidInvoiceRequest", "SweepRequest"] {
         assert!(
             !code.contains(beside_the_trait),
             "the ident a declared message sits under beside the trait is reached nowhere, the \
@@ -2671,16 +2674,16 @@ fn every_generated_name_the_client_writes_is_reached_through_the_declaring_crate
         );
     }
     assert!(
-        code.contains("req : AvailableBalanceRequest"),
+        code.contains("req : OpenBalanceRequest"),
         "a type the *author* wrote is spelled as they wrote it: no one prefix is true of both \
-         `AvailableBalanceRequest` and `String`, so the module the macro is invoked in supplies \
+         `OpenBalanceRequest` and `String`, so the module the macro is invoked in supplies \
          it, exactly as the generated module used to supply it. Got: {code}"
     );
 }
 
 #[test]
 fn every_runtime_crate_the_client_reaches_is_written_from_the_root_and_tracing_is_not_one() {
-    let code = macro_body(MIXED_SERVICE, "usage_service_amqp_rpc_client");
+    let code = macro_body(MIXED_SERVICE, "billing_service_amqp_rpc_client");
     for reached in [
         ":: core :: future :: Future",
         ":: serde :: Serialize",
@@ -2708,8 +2711,8 @@ fn every_runtime_crate_the_client_reaches_is_written_from_the_root_and_tracing_i
 fn both_halves_ask_one_operation_s_check_rather_than_a_copy_each() {
     let emitted = expanded_over_amqp_rpc(MIXED_SERVICE);
     for published in [
-        "pub fn validated_get_available_balance (received : & GetAvailableBalanceMessage)",
-        "pub fn validated_expire_credit (received : & ExpireCreditMessage)",
+        "pub fn validated_get_open_balance (received : & GetOpenBalanceMessage)",
+        "pub fn validated_void_invoice (received : & VoidInvoiceMessage)",
         "pub fn validated_sweep (received : & SweepMessage)",
         "pub fn validated_can_generate (received : & CanGenerateMessage)",
         "pub fn validated_apply_bundle (received : & ApplyBundleMessage)",
@@ -2717,12 +2720,12 @@ fn both_halves_ask_one_operation_s_check_rather_than_a_copy_each() {
         assert!(emitted.contains(published), "got: {emitted}");
     }
     for half in [
-        "usage_service_amqp_rpc_dispatcher",
-        "usage_service_amqp_rpc_client",
+        "billing_service_amqp_rpc_dispatcher",
+        "billing_service_amqp_rpc_client",
     ] {
         let body = published_macro(MIXED_SERVICE, half);
         assert!(
-            body.contains("$ crate :: usage_service_schema :: validated_get_available_balance ("),
+            body.contains("$ crate :: billing_service_schema :: validated_get_open_balance ("),
             "`{half}` asks the question rather than answering it, the answer depending on a type \
              it reaches only through the declaring crate. Got: {body}"
         );
@@ -2738,7 +2741,7 @@ fn both_halves_ask_one_operation_s_check_rather_than_a_copy_each() {
 fn the_incoming_message_publishes_a_constructor_and_two_readers_rather_than_its_fields() {
     // `MIXED_SERVICE` declares no `http(...)` group, so `IncomingMessage` carries no `headers`
     // field: the constructor takes `headers` and drops the argument.
-    let body = published_macro(MIXED_SERVICE, "usage_service_amqp_rpc_dispatcher");
+    let body = published_macro(MIXED_SERVICE, "billing_service_amqp_rpc_dispatcher");
     assert!(
         body.contains(
             "pub struct IncomingMessage { operation : :: std :: string :: String , \
@@ -2771,7 +2774,7 @@ fn the_incoming_message_publishes_a_constructor_and_two_readers_rather_than_its_
 
 #[test]
 fn the_dispatcher_reads_an_incoming_message_through_its_accessors() {
-    let body = published_macro(MIXED_SERVICE, "usage_service_amqp_rpc_dispatcher");
+    let body = published_macro(MIXED_SERVICE, "billing_service_amqp_rpc_dispatcher");
     assert!(
         body.contains("match message . operation ()"),
         "the operation is matched through the reader. Got: {body}"
@@ -2797,8 +2800,8 @@ fn the_dispatcher_reads_an_incoming_message_through_its_accessors() {
 fn every_published_function_answering_a_result_says_under_errors_what_the_failure_arm_holds() {
     let mut reached = 0_usize;
     for half in [
-        "usage_service_amqp_rpc_dispatcher",
-        "usage_service_amqp_rpc_client",
+        "billing_service_amqp_rpc_dispatcher",
+        "billing_service_amqp_rpc_client",
     ] {
         for (docs, head) in published_functions(macro_rules_items(MIXED_SERVICE, half)) {
             if !head.contains("- > : : core : : result : : Result <")
@@ -2833,7 +2836,7 @@ fn the_fault_mirror_and_the_answer_reader_are_emitted_only_where_an_operation_an
         "fn reported",
         "fn read_answer",
     ];
-    let answering = published_macro(MIXED_SERVICE, "usage_service_amqp_rpc_client");
+    let answering = published_macro(MIXED_SERVICE, "billing_service_amqp_rpc_client");
     for emitted in reading {
         assert!(
             answering.contains(emitted),
@@ -2919,8 +2922,8 @@ fn a_service_declaring_no_operation_is_emitted_no_item_nothing_reaches() {
 #[test]
 fn each_macro_body_emits_its_types_then_its_impls_then_its_functions() {
     for (source, half) in [
-        (MIXED_SERVICE, "usage_service_amqp_rpc_dispatcher"),
-        (MIXED_SERVICE, "usage_service_amqp_rpc_client"),
+        (MIXED_SERVICE, "billing_service_amqp_rpc_dispatcher"),
+        (MIXED_SERVICE, "billing_service_amqp_rpc_client"),
         (ONE_WAY_SERVICE, "note_service_amqp_rpc_dispatcher"),
         (ONE_WAY_SERVICE, "note_service_amqp_rpc_client"),
         (BARE_SERVICE, "bare_service_amqp_rpc_dispatcher"),
@@ -2956,8 +2959,8 @@ fn each_macro_body_emits_its_types_then_its_impls_then_its_functions() {
 #[test]
 fn neither_macro_body_carries_an_attribute_that_quiets_a_lint() {
     for (source, half) in [
-        (MIXED_SERVICE, "usage_service_amqp_rpc_dispatcher"),
-        (MIXED_SERVICE, "usage_service_amqp_rpc_client"),
+        (MIXED_SERVICE, "billing_service_amqp_rpc_dispatcher"),
+        (MIXED_SERVICE, "billing_service_amqp_rpc_client"),
         (ONE_WAY_SERVICE, "note_service_amqp_rpc_dispatcher"),
         (ONE_WAY_SERVICE, "note_service_amqp_rpc_client"),
         (BARE_SERVICE, "bare_service_amqp_rpc_dispatcher"),
@@ -2996,9 +2999,9 @@ fn neither_http_rest_macro_body_carries_an_attribute_that_quiets_a_lint() {
 fn both_macro_docs_prescribe_a_file_placement_and_quote_what_a_path_is_refused_with() {
     let emitted = expanded_over_amqp_rpc(MIXED_SERVICE);
     for placed in [
-        "// src/amqp_transport.rs\\nthe_contract_crate::usage_service_amqp_rpc_dispatcher!();",
-        "// src/amqp_client.rs\\nuse the_contract_crate::{AvailableBalanceRequest, \
-         AvailableBalanceResponse};\\n\\nthe_contract_crate::usage_service_amqp_rpc_client!();",
+        "// src/amqp_transport.rs\\nthe_contract_crate::billing_service_amqp_rpc_dispatcher!();",
+        "// src/amqp_client.rs\\nuse the_contract_crate::{OpenBalanceRequest, \
+         OpenBalanceResponse};\\n\\nthe_contract_crate::billing_service_amqp_rpc_client!();",
     ] {
         assert!(
             emitted.contains(placed),
@@ -3033,7 +3036,7 @@ fn the_transport_module_header_prescribes_the_same_placement_the_macros_do() {
     for prescribed in [
         "//! // src/amqp_transport.rs",
         "//! // src/amqp_client.rs",
-        "//! use declaring_crate::{AvailableBalanceRequest, AvailableBalanceResponse};",
+        "//! use declaring_crate::{OpenBalanceRequest, OpenBalanceResponse};",
         "//! error: macro-expanded `macro_export` macros from the current crate cannot be \
          referred to by absolute paths",
     ] {
@@ -3043,7 +3046,7 @@ fn the_transport_module_header_prescribes_the_same_placement_the_macros_do() {
         );
     }
     for shown in [
-        "//!     declaring_crate::usage_service",
+        "//!     declaring_crate::billing_service",
         "//!     use declaring_crate::*;",
     ] {
         assert!(
@@ -3927,12 +3930,12 @@ fn a_streamed_operations_expansion_names_no_runtime_crate() {
 
 #[test]
 fn the_non_exhaustive_flag_seals_exactly_the_four_generated_types() {
-    let emitted = expansion_over_amqp_rpc_non_exhaustive(CREDIT_SERVICE).to_string();
+    let emitted = expansion_over_amqp_rpc_non_exhaustive(INVOICE_SERVICE).to_string();
     for sealed in [
-        "# [non_exhaustive] pub enum UsageServiceFaultKind",
+        "# [non_exhaustive] pub enum BillingServiceFaultKind",
         "# [non_exhaustive] pub enum CallError",
-        "# [non_exhaustive] pub struct ExpireCreditRequest",
-        "# [non_exhaustive] pub struct UsageServiceSchema",
+        "# [non_exhaustive] pub struct VoidInvoiceRequest",
+        "# [non_exhaustive] pub struct BillingServiceSchema",
     ] {
         assert!(
             emitted.contains(sealed),
@@ -3948,7 +3951,7 @@ fn the_non_exhaustive_flag_seals_exactly_the_four_generated_types() {
 
 #[test]
 fn the_default_expansion_carries_no_non_exhaustive_anywhere() {
-    let emitted = expansion_over_amqp_rpc(CREDIT_SERVICE).to_string();
+    let emitted = expansion_over_amqp_rpc(INVOICE_SERVICE).to_string();
     assert!(!emitted.contains("non_exhaustive"), "got: {emitted}");
 }
 
@@ -3956,7 +3959,7 @@ fn the_default_expansion_carries_no_non_exhaustive_anywhere() {
 fn the_flag_alone_is_accepted_and_asks_for_no_transport() {
     let emitted = exec_service_schema(
         quote! { non_exhaustive },
-        declared(CREDIT_SERVICE).to_token_stream(),
+        declared(INVOICE_SERVICE).to_token_stream(),
     )
     .to_string();
     for absent in ["macro_rules", "pub trait Transport", "lapin"] {
@@ -3966,7 +3969,7 @@ fn the_flag_alone_is_accepted_and_asks_for_no_transport() {
         );
     }
     assert!(
-        emitted.contains("# [non_exhaustive] pub struct UsageServiceSchema"),
+        emitted.contains("# [non_exhaustive] pub struct BillingServiceSchema"),
         "got: {emitted}"
     );
 }
@@ -3975,12 +3978,12 @@ fn the_flag_alone_is_accepted_and_asks_for_no_transport() {
 fn argument_order_does_not_change_the_expansion() {
     let forward = exec_service_schema(
         quote! { non_exhaustive, transports = ["amqp_rpc"] },
-        declared(CREDIT_SERVICE).to_token_stream(),
+        declared(INVOICE_SERVICE).to_token_stream(),
     )
     .to_string();
     let reversed = exec_service_schema(
         quote! { transports = ["amqp_rpc"], non_exhaustive },
-        declared(CREDIT_SERVICE).to_token_stream(),
+        declared(INVOICE_SERVICE).to_token_stream(),
     )
     .to_string();
     assert_eq!(forward, reversed);

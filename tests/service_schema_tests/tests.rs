@@ -16,13 +16,13 @@ use tixschema::service_schema;
 /// The message of the balance operation.
 #[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct BalanceRequest {
-    pub organization_id: String,
+    pub customer_id: String,
 }
 
 /// The reply to a `BalanceRequest`.
 #[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct BalanceResponse {
-    pub credits: u32,
+    pub invoices: u32,
 }
 
 /// The error the probe service's operations declare.
@@ -38,9 +38,9 @@ pub struct ProbeContext {
     pub logger_name: String,
 }
 
-/// The implementation these tests call, answering the credits it was built with.
+/// The implementation these tests call, answering the invoices it was built with.
 pub struct ProbeBackEnd {
-    pub granted_credits: u32,
+    pub billed_invoices: u32,
 }
 
 #[service_schema(transports = ["amqp_rpc"])]
@@ -50,19 +50,11 @@ pub trait ProbeService<Ctx> {
     async fn apply_bundle(&self, ctx: &Ctx, req: BalanceRequest);
 
     /// A wire name the method name would never yield, and Rust is untouched by it.
-    #[service_schema_op(message = "usage-generation-request")]
+    #[service_schema_op(message = "billing-generation-request")]
     async fn can_generate(
         &self,
         ctx: &Ctx,
         req: BalanceRequest,
-    ) -> Result<BalanceResponse, ProbeError>;
-
-    /// Several arguments after the context.
-    async fn expire_credit(
-        &self,
-        ctx: &Ctx,
-        organization_id: String,
-        credit_id: String,
     ) -> Result<BalanceResponse, ProbeError>;
 
     /// One argument after the context: the argument already is the message.
@@ -74,11 +66,19 @@ pub trait ProbeService<Ctx> {
 
     /// None at all.
     async fn sweep(&self, ctx: &Ctx) -> Result<BalanceResponse, ProbeError>;
+
+    /// Several arguments after the context.
+    async fn void_invoice(
+        &self,
+        ctx: &Ctx,
+        customer_id: String,
+        invoice_id: String,
+    ) -> Result<BalanceResponse, ProbeError>;
 }
 
 impl ProbeService<ProbeContext> for ProbeBackEnd {
     async fn apply_bundle(&self, ctx: &ProbeContext, req: BalanceRequest) {
-        let _settled = ready(ctx.logger_name.len() + req.organization_id.len()).await;
+        let _settled = ready(ctx.logger_name.len() + req.customer_id.len()).await;
     }
 
     async fn can_generate(
@@ -89,33 +89,17 @@ impl ProbeService<ProbeContext> for ProbeBackEnd {
         self.get_balance(ctx, req).await
     }
 
-    async fn expire_credit(
-        &self,
-        ctx: &ProbeContext,
-        organization_id: String,
-        credit_id: String,
-    ) -> Result<BalanceResponse, ProbeError> {
-        let seen = ready(organization_id.len() + credit_id.len()).await;
-        if ctx.logger_name.is_empty() {
-            Err(ProbeError::InsufficientBalance)
-        } else {
-            Ok(BalanceResponse {
-                credits: u32::try_from(seen).unwrap_or(0),
-            })
-        }
-    }
-
     async fn get_balance(
         &self,
         ctx: &ProbeContext,
         req: BalanceRequest,
     ) -> Result<BalanceResponse, ProbeError> {
-        let seen = ready(req.organization_id.len()).await;
+        let seen = ready(req.customer_id.len()).await;
         if ctx.logger_name.is_empty() {
             Err(ProbeError::DbError)
         } else {
             Ok(BalanceResponse {
-                credits: self.granted_credits + u32::try_from(seen).unwrap_or(0),
+                invoices: self.billed_invoices + u32::try_from(seen).unwrap_or(0),
             })
         }
     }
@@ -123,8 +107,24 @@ impl ProbeService<ProbeContext> for ProbeBackEnd {
     async fn sweep(&self, ctx: &ProbeContext) -> Result<BalanceResponse, ProbeError> {
         let seen = ready(ctx.logger_name.len()).await;
         Ok(BalanceResponse {
-            credits: u32::try_from(seen).unwrap_or(0),
+            invoices: u32::try_from(seen).unwrap_or(0),
         })
+    }
+
+    async fn void_invoice(
+        &self,
+        ctx: &ProbeContext,
+        customer_id: String,
+        invoice_id: String,
+    ) -> Result<BalanceResponse, ProbeError> {
+        let seen = ready(customer_id.len() + invoice_id.len()).await;
+        if ctx.logger_name.is_empty() {
+            Err(ProbeError::InsufficientBalance)
+        } else {
+            Ok(BalanceResponse {
+                invoices: u32::try_from(seen).unwrap_or(0),
+            })
+        }
     }
 }
 
@@ -239,7 +239,7 @@ impl Capture {
 fn answered(operation: &str, payload: &str) -> String {
     let capture = Capture::new();
     poll_once(amqp_transport::dispatch(
-        &ProbeBackEnd { granted_credits: 5 },
+        &ProbeBackEnd { billed_invoices: 5 },
         &ProbeContext {
             logger_name: "probe".to_owned(),
         },
@@ -282,14 +282,14 @@ where
 
 #[test]
 fn a_one_way_operation_answers_with_nothing_at_all() {
-    let service = ProbeBackEnd { granted_credits: 5 };
+    let service = ProbeBackEnd { billed_invoices: 5 };
     let ctx = ProbeContext {
         logger_name: "probe".to_owned(),
     };
     let settled = poll_once(service.apply_bundle(
         &ctx,
         BalanceRequest {
-            organization_id: "acme".to_owned(),
+            customer_id: "acme".to_owned(),
         },
     ));
     assert_eq!(settled, Some(()), "a one-way operation produces no reply");
@@ -297,12 +297,12 @@ fn a_one_way_operation_answers_with_nothing_at_all() {
 
 #[test]
 fn an_operation_reads_the_context_rather_than_any_message_field() {
-    let service = ProbeBackEnd { granted_credits: 5 };
+    let service = ProbeBackEnd { billed_invoices: 5 };
     let silent = ProbeContext {
         logger_name: String::new(),
     };
     let answered =
-        poll_once(service.expire_credit(&silent, "acme".to_owned(), "cr-1".to_owned())).unwrap();
+        poll_once(service.void_invoice(&silent, "acme".to_owned(), "cr-1".to_owned())).unwrap();
     assert_eq!(
         answered,
         Err(ProbeError::InsufficientBalance),
@@ -312,21 +312,21 @@ fn an_operation_reads_the_context_rather_than_any_message_field() {
 
 #[test]
 fn an_operation_taking_nothing_but_the_context_is_still_callable() {
-    let service = ProbeBackEnd { granted_credits: 5 };
+    let service = ProbeBackEnd { billed_invoices: 5 };
     let ctx = ProbeContext {
         logger_name: "probe".to_owned(),
     };
     let answered = poll_once(service.sweep(&ctx)).unwrap();
     assert_eq!(
         answered,
-        Ok(BalanceResponse { credits: 5 }),
+        Ok(BalanceResponse { invoices: 5 }),
         "an operation with no arguments after the context still answers"
     );
 }
 
 #[test]
 fn every_operation_returns_a_future_rather_than_being_declared_async() {
-    let service = ProbeBackEnd { granted_credits: 5 };
+    let service = ProbeBackEnd { billed_invoices: 5 };
     let ctx = ProbeContext {
         logger_name: "probe".to_owned(),
     };
@@ -335,33 +335,33 @@ fn every_operation_returns_a_future_rather_than_being_declared_async() {
     let answering = service.get_balance(
         &ctx,
         BalanceRequest {
-            organization_id: "acme".to_owned(),
+            customer_id: "acme".to_owned(),
         },
     );
     let answered = poll_once(answering).unwrap();
     assert_eq!(
         answered,
-        Ok(BalanceResponse { credits: 9 }),
+        Ok(BalanceResponse { invoices: 9 }),
         "the emitted trait is implementable at a chosen context"
     );
 }
 
 #[test]
 fn a_wire_name_override_leaves_the_rust_method_name_alone() {
-    let service = ProbeBackEnd { granted_credits: 5 };
+    let service = ProbeBackEnd { billed_invoices: 5 };
     let ctx = ProbeContext {
         logger_name: "probe".to_owned(),
     };
     let answered = poll_once(service.can_generate(
         &ctx,
         BalanceRequest {
-            organization_id: "acme".to_owned(),
+            customer_id: "acme".to_owned(),
         },
     ))
     .unwrap();
     assert_eq!(
         answered,
-        Ok(BalanceResponse { credits: 9 }),
+        Ok(BalanceResponse { invoices: 9 }),
         "Rust calls it `can_generate` whatever the wire carries"
     );
 }
@@ -369,8 +369,8 @@ fn a_wire_name_override_leaves_the_rust_method_name_alone() {
 #[test]
 fn an_operation_answers_on_the_wire_to_the_kebab_case_of_the_name_it_was_declared_under() {
     assert_eq!(
-        answered("get-balance", r#"{"organization_id":"acme"}"#),
-        r#"{"ok":true,"value":{"credits":9}}"#,
+        answered("get-balance", r#"{"customer_id":"acme"}"#),
+        r#"{"ok":true,"value":{"invoices":9}}"#,
         "one declaration, and the wire name is derived from it with no attribute written"
     );
 }
@@ -378,12 +378,12 @@ fn an_operation_answers_on_the_wire_to_the_kebab_case_of_the_name_it_was_declare
 #[test]
 fn a_wire_name_override_moves_the_wire_name_and_leaves_no_derived_one_behind() {
     assert_eq!(
-        answered("usage-generation-request", r#"{"organization_id":"acme"}"#),
-        r#"{"ok":true,"value":{"credits":9}}"#,
+        answered("billing-generation-request", r#"{"customer_id":"acme"}"#),
+        r#"{"ok":true,"value":{"invoices":9}}"#,
         "the override is what an existing service already puts on the wire, so it has to be the \
          name the dispatcher answers to"
     );
-    let derived = answered("can-generate", r#"{"organization_id":"acme"}"#);
+    let derived = answered("can-generate", r#"{"customer_id":"acme"}"#);
     assert!(
         derived.contains(r#""kind":"unknown-operation""#),
         "the override moves the wire name rather than adding a second one. Got: {derived}"
@@ -400,7 +400,7 @@ fn the_same_declaration_spells_the_operation_in_typescript_the_way_typescript_wo
         "a TypeScript caller types the name a TypeScript developer would write. Got: {published}"
     );
     assert!(
-        published.contains(r#""usage-generation-request""#),
+        published.contains(r#""billing-generation-request""#),
         "and hands the transport the wire name, which is the only one of the three that moved. \
          Got: {published}"
     );
@@ -413,39 +413,39 @@ fn the_same_declaration_spells_the_operation_in_typescript_the_way_typescript_wo
 #[test]
 fn a_client_call_answers_the_declared_success_type_or_a_call_error_over_the_declared_error() {
     let client = amqp_client::ProbeServiceClient::new(Loopback {
-        service: ProbeBackEnd { granted_credits: 5 },
+        service: ProbeBackEnd { billed_invoices: 5 },
     });
     // Annotated, not inferred: the failure arm being `CallError<ProbeError>` is what makes room for
     // a fault the operation never declared.
     let answering: Result<BalanceResponse, probe_service_schema::CallError<ProbeError>> =
         poll_once(client.get_balance(BalanceRequest {
-            organization_id: "acme".to_owned(),
+            customer_id: "acme".to_owned(),
         }))
         .unwrap();
-    assert_eq!(answering, Ok(BalanceResponse { credits: 9 }));
+    assert_eq!(answering, Ok(BalanceResponse { invoices: 9 }));
 }
 
 #[test]
 fn every_operation_the_service_declares_is_reachable_through_the_client_it_publishes() {
     let client = amqp_client::ProbeServiceClient::new(Loopback {
-        service: ProbeBackEnd { granted_credits: 5 },
+        service: ProbeBackEnd { billed_invoices: 5 },
     });
     let request = || BalanceRequest {
-        organization_id: "acme".to_owned(),
+        customer_id: "acme".to_owned(),
     };
     assert_eq!(
         poll_once(client.can_generate(request())).unwrap(),
-        Ok(BalanceResponse { credits: 9 }),
+        Ok(BalanceResponse { invoices: 9 }),
         "a wire-name override moves the name the transport carries and nothing about the method"
     );
     assert_eq!(
-        poll_once(client.expire_credit("acme".to_owned(), "cr-1".to_owned())).unwrap(),
-        Ok(BalanceResponse { credits: 8 }),
+        poll_once(client.void_invoice("acme".to_owned(), "cr-1".to_owned())).unwrap(),
+        Ok(BalanceResponse { invoices: 8 }),
         "the arguments after the context are packed into the message the macro declared"
     );
     assert_eq!(
         poll_once(client.sweep()).unwrap(),
-        Ok(BalanceResponse { credits: 5 }),
+        Ok(BalanceResponse { invoices: 5 }),
         "an operation that takes nothing still sends the empty message declared for it"
     );
     assert!(
@@ -453,7 +453,7 @@ fn every_operation_the_service_declares_is_reachable_through_the_client_it_publi
         "a one-way send answers nothing beyond the send itself"
     );
     assert_eq!(
-        client.transport().service.granted_credits,
+        client.transport().service.billed_invoices,
         5,
         "the client keeps the transport it was bound to rather than consuming it"
     );

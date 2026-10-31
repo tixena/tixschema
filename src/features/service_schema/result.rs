@@ -29,8 +29,8 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
         .collect()
 }
 
-/// What one operation's result type is called: `get_balance` on `UsageService` answers a
-/// `UsageServiceGetBalanceResult`. `None` for a one-way operation, which answers nothing. Read by
+/// What one operation's result type is called: `get_balance` on `BillingService` answers a
+/// `BillingServiceGetBalanceResult`. `None` for a one-way operation, which answers nothing. Read by
 /// every language that names a sealed result type of its own — TypeScript's `result_type` above
 /// and, once `zod` is also on, the client and dispatcher seams; Dart's and Kotlin's.
 #[cfg(any(feature = "typescript", feature = "dart", feature = "kotlin"))]

@@ -49,10 +49,10 @@ fn a_bound_that_quotes_the_value_back_names_the_field_and_the_measure() {
     assert_eq!(
         rendered(
             Bound::MinLength(3),
-            Some("organization_id"),
+            Some("customer_id"),
             &quote! { value.len() }
         ),
-        r#"format ! ("'{}': {}, got {}" , "organization_id" , "too short: minimum length is 3" , value . len ())"#
+        r#"format ! ("'{}': {}, got {}" , "customer_id" , "too short: minimum length is 3" , value . len ())"#
     );
     assert_eq!(
         rendered(Bound::Maximum(120.0), Some("age"), &quote! { value }),

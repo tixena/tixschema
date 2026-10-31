@@ -7,7 +7,7 @@ fn a_declared_error_crosses_with_every_field_it_carries() {
     let written = ws_service_of(MIXED_SERVICE);
     assert!(
         written.contains(
-            "socket.send(JSON.stringify(usageServiceWsSent({ kind: \"reply\", id, service, \
+            "socket.send(JSON.stringify(billingServiceWsSent({ kind: \"reply\", id, service, \
              ...envelope, ...replied })));"
         ),
         "the dispatcher's envelope is spread into the reply frame, its declared error whole. \
@@ -24,11 +24,11 @@ fn the_signature_takes_a_socket_a_context_an_implementation_and_a_required_on_fa
     let written = ws_service_of(MIXED_SERVICE);
     assert!(
         written.contains(
-            "export function attachUsageServiceWsDispatcher<Ctx>(\n  \
-             socket: UsageServiceWsSocket,\n  \
+            "export function attachBillingServiceWsDispatcher<Ctx>(\n  \
+             socket: BillingServiceWsSocket,\n  \
              ctx: Ctx,\n  \
-             impl: UsageServiceImpl<Ctx>,\n  \
-             onFault: (fault: UsageServiceFault) => void,\n\
+             impl: BillingServiceImpl<Ctx>,\n  \
+             onFault: (fault: BillingServiceFault) => void,\n\
              ): () => void {"
         ),
         "the socket is the seam `ts_ws_client()` publishes and the implementation is the one \
@@ -41,7 +41,7 @@ fn the_signature_takes_a_socket_a_context_an_implementation_and_a_required_on_fa
 fn it_drives_the_generated_dispatcher_rather_than_a_switch_of_its_own() {
     let written = ws_service_of(MIXED_SERVICE);
     assert!(
-        written.contains("const dispatch = createUsageServiceDispatcher(impl);"),
+        written.contains("const dispatch = createBillingServiceDispatcher(impl);"),
         "routing an operation to its handler, and parsing its payload first, is the dispatcher's \
          job already — this attaches to it rather than repeating it. Got: {written}"
     );
@@ -81,9 +81,9 @@ fn the_listener_is_registered_when_the_attachment_returns() {
 fn a_frame_naming_another_service_and_non_json_text_are_both_dropped_before_the_kind_is_read() {
     let written = ws_service_of(MIXED_SERVICE);
     assert!(
-        written
-            .contains("try { frame = usageServiceWsRead(String(event.data)); } catch { return; }")
-            && written.contains("if (typeof frame !== \"object\" || frame === null) return;"),
+        written.contains(
+            "try { frame = billingServiceWsRead(String(event.data)); } catch { return; }"
+        ) && written.contains("if (typeof frame !== \"object\" || frame === null) return;"),
         "non-JSON text, and a JSON value that is not an object, are dropped before a service or a \
          kind is read. Got: {written}"
     );
@@ -130,7 +130,7 @@ fn a_request_is_answered_with_a_reply_frame_and_a_one_way_answer_is_synthesized(
     );
     assert!(
         written.contains(
-            "socket.send(JSON.stringify(usageServiceWsSent({ kind: \"reply\", id, service, \
+            "socket.send(JSON.stringify(billingServiceWsSent({ kind: \"reply\", id, service, \
              ...envelope, ...replied })));"
         ),
         "got: {written}"
@@ -144,7 +144,7 @@ fn the_frame_headers_reach_the_dispatcher_and_its_headers_reach_the_reply() {
         written.contains(
             "const { kind, id, service: named, operation, payload, headers } = frame as \
              Record<string, unknown>;"
-        ) && written.contains("const carried = usageServiceWsHeaderPairs(headers);")
+        ) && written.contains("const carried = billingServiceWsHeaderPairs(headers);")
             && written
                 .matches("dispatch(ctx, operation, payload, carried)")
                 .count()
@@ -153,7 +153,7 @@ fn the_frame_headers_reach_the_dispatcher_and_its_headers_reach_the_reply() {
     );
     assert!(
         written.contains(
-            "const replied = usageServiceWsHeaderTable(dispatched === undefined ? [] : \
+            "const replied = billingServiceWsHeaderTable(dispatched === undefined ? [] : \
              dispatched.headers);"
         ),
         "got: {written}"
@@ -170,7 +170,7 @@ fn the_attachment_takes_no_member_for_an_operation_only_http_rest_carries() {
     );
     let mixed = ws_service_of(MIXED_SERVICE);
     assert!(
-        mixed.contains("  impl: UsageServiceImpl<Ctx>,\n"),
+        mixed.contains("  impl: BillingServiceImpl<Ctx>,\n"),
         "got: {mixed}"
     );
 }

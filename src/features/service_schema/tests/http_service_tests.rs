@@ -245,7 +245,7 @@ fn a_declared_error_crosses_with_every_field_it_carries() {
     let written = http_service_of(MIXED_SERVICE);
     assert!(
         written.contains(
-            "return usageServiceHttpJson(errorStatus(envelope.error), [], envelope.error);"
+            "return billingServiceHttpJson(errorStatus(envelope.error), [], envelope.error);"
         ),
         "the declared error is the response body, whole. Got: {written}"
     );

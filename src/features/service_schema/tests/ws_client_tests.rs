@@ -8,10 +8,10 @@ use super::{
 fn a_successful_reply_is_checked_against_the_declared_success() {
     let body = ws_client_of(MIXED_SERVICE);
     assert!(
-        body.contains("\"get-available-balance\": AvailableBalanceResponse$Schema,")
-            && body.contains("const schema = usageServiceSuccessSchemas[operation];")
+        body.contains("\"get-open-balance\": OpenBalanceResponse$Schema,")
+            && body.contains("const schema = billingServiceSuccessSchemas[operation];")
             && body.contains("const parsed = schema.safeParse(envelope.value);"),
-        "a success the transport handed back is answered as an `AvailableBalanceResponse`, so it is \
+        "a success the transport handed back is answered as an `OpenBalanceResponse`, so it is \
          parsed as one first. Got: {body}"
     );
 }
@@ -19,7 +19,7 @@ fn a_successful_reply_is_checked_against_the_declared_success() {
 #[test]
 fn a_declared_error_crosses_with_every_field_it_carries() {
     let written = ws_client_of(MIXED_SERVICE);
-    let parsed = written.find("usageServiceErrorSchemas[operation]?.safeParse(error);");
+    let parsed = written.find("billingServiceErrorSchemas[operation]?.safeParse(error);");
     assert!(
         parsed.is_some() && written[parsed.unwrap()..].contains("return envelope;"),
         "a declared error that parses is handed on in the envelope it arrived in, whole. \
@@ -34,7 +34,7 @@ fn a_declared_error_crosses_with_every_field_it_carries() {
 #[test]
 fn the_seam_is_structural_and_names_no_platform_class() {
     let written = ws_client_of(MIXED_SERVICE);
-    let seam = seam_of(&written, "UsageServiceWsSocket");
+    let seam = seam_of(&written, "BillingServiceWsSocket");
     assert!(
         !seam.contains("WebSocket"),
         "a platform `WebSocket` satisfies the seam structurally; naming the class in the type \
@@ -45,7 +45,7 @@ fn the_seam_is_structural_and_names_no_platform_class() {
 #[test]
 fn the_seam_carries_the_four_members_a_platform_socket_already_has() {
     let written = ws_client_of(MIXED_SERVICE);
-    let seam = seam_of(&written, "UsageServiceWsSocket");
+    let seam = seam_of(&written, "BillingServiceWsSocket");
     assert!(
         seam.contains("send(text: string): void;") && seam.contains("close(): void;"),
         "got: {seam}"
@@ -65,7 +65,7 @@ fn the_seam_carries_the_four_members_a_platform_socket_already_has() {
 fn the_options_type_carries_an_optional_heartbeat_or_false() {
     let written = ws_client_of(MIXED_SERVICE);
     assert!(
-        written.contains("export type UsageServiceWsOptions = {")
+        written.contains("export type BillingServiceWsOptions = {")
             && written.contains("heartbeat?: { intervalMs: number; timeoutMs: number } | false;"),
         "got: {written}"
     );
@@ -74,7 +74,7 @@ fn the_options_type_carries_an_optional_heartbeat_or_false() {
 #[test]
 fn the_schema_tables_carry_one_entry_per_request_and_reply_operation() {
     let written = ws_client_of(MIXED_SERVICE);
-    for wire in ["get-available-balance", "expire-credit", "sweep"] {
+    for wire in ["get-open-balance", "void-invoice", "sweep"] {
         assert!(
             written.contains(&format!("\"{wire}\": ")),
             "a request-and-reply operation names an entry in both tables. Got: {written}"
@@ -89,14 +89,14 @@ fn the_schema_tables_carry_one_entry_per_request_and_reply_operation() {
 #[test]
 fn each_table_entry_names_the_operation_s_own_declared_schema() {
     let written = ws_client_of(MIXED_SERVICE);
-    let success = table_of(&written, "usageServiceSuccessSchemas");
+    let success = table_of(&written, "billingServiceSuccessSchemas");
     assert!(
-        success.contains("\"get-available-balance\": AvailableBalanceResponse$Schema,"),
+        success.contains("\"get-open-balance\": OpenBalanceResponse$Schema,"),
         "got: {success}"
     );
-    let error = table_of(&written, "usageServiceErrorSchemas");
+    let error = table_of(&written, "billingServiceErrorSchemas");
     assert!(
-        error.contains("\"expire-credit\": CreditWriteError$Schema,"),
+        error.contains("\"void-invoice\": InvoiceWriteError$Schema,"),
         "the success and the error table read from the operation's two declared arms \
          separately. Got: {error}"
     );
@@ -149,18 +149,18 @@ fn the_general_fault_builder_takes_a_kind_an_operation_a_detail_and_an_optional_
     let written = ws_client_of(MIXED_SERVICE);
     assert!(
         written.contains(
-            "function usageServiceFault(\n  \
-             kind: UsageServiceFaultKind,\n  \
+            "function billingServiceFault(\n  \
+             kind: BillingServiceFaultKind,\n  \
              operation: string,\n  \
              detail: string,\n  \
              field?: string,\n\
-             ): UsageServiceFault {"
+             ): BillingServiceFault {"
         ),
         "got: {written}"
     );
     assert!(
-        written.find("const built: UsageServiceFaultFields = {")
-            < written.find("return built as UsageServiceFault;"),
+        written.find("const built: BillingServiceFaultFields = {")
+            < written.find("return built as BillingServiceFault;"),
         "it mints through the same seal every other generated constructor does. Got: {written}"
     );
 }
@@ -169,7 +169,7 @@ fn the_general_fault_builder_takes_a_kind_an_operation_a_detail_and_an_optional_
 fn the_issues_fault_folds_a_failed_parse_into_a_failed_validation_fault_naming_the_first_key() {
     let written = ws_client_of(MIXED_SERVICE);
     assert!(
-        written.contains("function usageServiceIssuesFault(")
+        written.contains("function billingServiceIssuesFault(")
             && written.contains("kind: \"failed-validation\",")
             && written.contains("field: failedAt === \"\" ? undefined : failedAt,"),
         "got: {written}"
@@ -181,10 +181,10 @@ fn the_factory_binds_a_socket_and_options_and_returns_the_transport_extended_wit
     let written = ws_client_of(MIXED_SERVICE);
     assert!(
         written.contains(
-            "export function createUsageServiceWsTransport(\n  \
-             socket: UsageServiceWsSocket,\n  \
-             options: UsageServiceWsOptions = {},\n\
-             ): UsageServiceTransport & { close(): void } {"
+            "export function createBillingServiceWsTransport(\n  \
+             socket: BillingServiceWsSocket,\n  \
+             options: BillingServiceWsOptions = {},\n\
+             ): BillingServiceTransport & { close(): void } {"
         ),
         "the seam it extends is the one `ts_client()` already publishes, never a seam of its \
          own. Got: {written}"
@@ -223,9 +223,9 @@ fn the_heartbeat_defaults_to_thirty_and_ten_seconds_and_a_missed_pong_closes_the
 fn every_reply_is_checked_against_the_operation_s_own_table_before_a_caller_sees_it() {
     let written = ws_client_of(MIXED_SERVICE);
     assert!(
-        written.contains("const schema = usageServiceSuccessSchemas[operation];")
+        written.contains("const schema = billingServiceSuccessSchemas[operation];")
             && written.contains("schema.safeParse(envelope.value)")
-            && written.contains("usageServiceErrorSchemas[operation]?.safeParse(error)"),
+            && written.contains("billingServiceErrorSchemas[operation]?.safeParse(error)"),
         "got: {written}"
     );
 }
@@ -245,7 +245,7 @@ fn a_close_settles_every_pending_request_with_a_transport_failure_fault() {
     let written = ws_client_of(MIXED_SERVICE);
     assert_eq!(
         written
-            .matches("fault: usageServiceFault(\"transport-failure\", waiting.operation, detail)")
+            .matches("fault: billingServiceFault(\"transport-failure\", waiting.operation, detail)")
             .count(),
         1,
         "one reader serves both the socket's own close and the transport's own `close()`. \
@@ -292,17 +292,17 @@ fn headers_ride_the_frame_s_own_headers_object_both_ways() {
     let written = ws_client_of(MIXED_SERVICE);
     assert!(
         written.contains(
-            "JSON.stringify(usageServiceWsSent({ kind: \"notify\", service, operation, payload, \
-             ...usageServiceWsHeaderTable(headers) }))"
+            "JSON.stringify(billingServiceWsSent({ kind: \"notify\", service, operation, payload, \
+             ...billingServiceWsHeaderTable(headers) }))"
         ) && written.contains(
-            "JSON.stringify(usageServiceWsSent({ kind: \"request\", id, service, operation, \
-             payload, ...usageServiceWsHeaderTable(headers) }))"
+            "JSON.stringify(billingServiceWsSent({ kind: \"request\", id, service, operation, \
+             payload, ...billingServiceWsHeaderTable(headers) }))"
         ),
         "got: {written}"
     );
     assert!(
         written.contains("if (headers.length === 0) return {};")
-            && written.contains("table[name] = usageServiceWsRead(encoded);")
+            && written.contains("table[name] = billingServiceWsRead(encoded);")
             && written.contains("table[name] = encoded;"),
         "an empty list leaves the key off, and a text that is no JSON crosses as a string. \
          Got: {written}"
@@ -313,13 +313,13 @@ fn headers_ride_the_frame_s_own_headers_object_both_ways() {
              unknown>;"
         ) && written.contains(
             "waiting.settle(checked(waiting.operation, envelope), \
-             usageServiceWsHeaderPairs(headers));"
+             billingServiceWsHeaderPairs(headers));"
         ),
         "the reply's headers are taken out of the envelope and handed back beside it. \
          Got: {written}"
     );
     assert!(
-        written.contains("[name, JSON.stringify(usageServiceWsSent(value))] as const"),
+        written.contains("[name, JSON.stringify(billingServiceWsSent(value))] as const"),
         "got: {written}"
     );
 }

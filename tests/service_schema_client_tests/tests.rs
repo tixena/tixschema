@@ -34,7 +34,7 @@ pub mod a_bound_the_fields_own_type_declares {
     #[model_schema()]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Enrolled {
-        pub credits: u32,
+        pub invoices: u32,
     }
 
     #[model_schema()]
@@ -69,7 +69,7 @@ pub mod a_bound_the_fields_own_type_declares {
         async fn enrol(&self, _ctx: &(), req: EnrolRequest) -> Result<Enrolled, EnrolError> {
             ready(()).await;
             Ok(Enrolled {
-                credits: u32::try_from(req.slug.0.len()).unwrap(),
+                invoices: u32::try_from(req.slug.0.len()).unwrap(),
             })
         }
 
@@ -250,7 +250,7 @@ pub mod a_bound_the_fields_own_type_declares {
         .unwrap();
         assert_eq!(
             answered.unwrap(),
-            Enrolled { credits: 4 },
+            Enrolled { invoices: 4 },
             "the implementation answered from the slug it was handed, so the message crossed whole"
         );
     }
@@ -288,19 +288,19 @@ use tixschema::{model_schema, service_schema};
 /// single quotes, which is where the fault reads the name it carries.
 #[derive(Deserialize, Serialize)]
 pub struct AdmitRequest {
-    pub organization_id: String,
+    pub customer_id: String,
 }
 
 #[model_schema()]
 #[derive(Deserialize, Serialize)]
 pub struct BalanceRequest {
-    pub organization_id: String,
+    pub customer_id: String,
 }
 
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BalanceResponse {
-    pub credits: u32,
+    pub invoices: u32,
 }
 
 #[model_schema()]
@@ -319,14 +319,6 @@ pub trait ProbeService<Ctx> {
     #[service_schema_op(one_way)]
     async fn apply_bundle(&self, ctx: &Ctx, req: AdmitRequest);
 
-    /// Several arguments after the context: the caller still passes them separately.
-    async fn expire_credit(
-        &self,
-        ctx: &Ctx,
-        organization_id: String,
-        credit_id: String,
-    ) -> Result<BalanceResponse, ProbeError>;
-
     /// One argument, which already is the message.
     async fn get_balance(
         &self,
@@ -336,14 +328,22 @@ pub trait ProbeService<Ctx> {
 
     /// None at all, so the message declared for it is empty.
     async fn sweep(&self, ctx: &Ctx) -> Result<BalanceResponse, ProbeError>;
+
+    /// Several arguments after the context: the caller still passes them separately.
+    async fn void_invoice(
+        &self,
+        ctx: &Ctx,
+        customer_id: String,
+        invoice_id: String,
+    ) -> Result<BalanceResponse, ProbeError>;
 }
 
 impl AdmitRequest {
     pub fn validate(&self) -> Result<(), Vec<String>> {
-        if self.organization_id.len() < 3 {
+        if self.customer_id.len() < 3 {
             return Err(vec![format!(
-                "'organization_id': too short: minimum length is 3, got {}",
-                self.organization_id.len()
+                "'customer_id': too short: minimum length is 3, got {}",
+                self.customer_id.len()
             )]);
         }
         Ok(())
@@ -383,24 +383,13 @@ pub struct ProbeTransport {
 impl ProbeService<String> for ProbeBackEnd {
     async fn admit(&self, _ctx: &String, req: AdmitRequest) -> Result<BalanceResponse, ProbeError> {
         ready(()).await;
-        self.reach(format!("admit {}", req.organization_id));
-        Ok(BalanceResponse { credits: 3 })
+        self.reach(format!("admit {}", req.customer_id));
+        Ok(BalanceResponse { invoices: 3 })
     }
 
     async fn apply_bundle(&self, ctx: &String, req: AdmitRequest) {
         let _read = ready(ctx.len()).await;
-        self.reach(format!("apply_bundle {}", req.organization_id));
-    }
-
-    async fn expire_credit(
-        &self,
-        _ctx: &String,
-        organization_id: String,
-        credit_id: String,
-    ) -> Result<BalanceResponse, ProbeError> {
-        ready(()).await;
-        self.reach(format!("expire_credit {organization_id} {credit_id}"));
-        Ok(BalanceResponse { credits: 1 })
+        self.reach(format!("apply_bundle {}", req.customer_id));
     }
 
     async fn get_balance(
@@ -409,18 +398,29 @@ impl ProbeService<String> for ProbeBackEnd {
         req: BalanceRequest,
     ) -> Result<BalanceResponse, ProbeError> {
         ready(()).await;
-        self.reach(format!("get_balance {}", req.organization_id));
-        if req.organization_id == "unlucky" {
+        self.reach(format!("get_balance {}", req.customer_id));
+        if req.customer_id == "unlucky" {
             Err(ProbeError::DbError)
         } else {
-            Ok(BalanceResponse { credits: 7 })
+            Ok(BalanceResponse { invoices: 7 })
         }
     }
 
     async fn sweep(&self, _ctx: &String) -> Result<BalanceResponse, ProbeError> {
         ready(()).await;
         self.reach("sweep".to_owned());
-        Ok(BalanceResponse { credits: 0 })
+        Ok(BalanceResponse { invoices: 0 })
+    }
+
+    async fn void_invoice(
+        &self,
+        _ctx: &String,
+        customer_id: String,
+        invoice_id: String,
+    ) -> Result<BalanceResponse, ProbeError> {
+        ready(()).await;
+        self.reach(format!("void_invoice {customer_id} {invoice_id}"));
+        Ok(BalanceResponse { invoices: 1 })
     }
 }
 
@@ -715,13 +715,13 @@ fn reported_fault(
 
 #[test]
 fn an_answer_becomes_the_success_type_the_operation_declared() {
-    let transport = ProbeTransport::new(&[r#"{"ok":true,"value":{"credits":7}}"#]);
+    let transport = ProbeTransport::new(&[r#"{"ok":true,"value":{"invoices":7}}"#]);
     let client = amqp_client::ProbeServiceClient::new(transport);
     let answered = poll_once(client.get_balance(BalanceRequest {
-        organization_id: "acme".to_owned(),
+        customer_id: "acme".to_owned(),
     }))
     .unwrap();
-    assert_eq!(answered, Ok(BalanceResponse { credits: 7 }));
+    assert_eq!(answered, Ok(BalanceResponse { invoices: 7 }));
 }
 
 #[test]
@@ -729,7 +729,7 @@ fn the_error_the_operation_declared_comes_back_in_the_operation_arm() {
     let transport = ProbeTransport::new(&[r#"{"ok":false,"error":{"errorCode":"db-error"}}"#]);
     let client = amqp_client::ProbeServiceClient::new(transport);
     let answered = poll_once(client.get_balance(BalanceRequest {
-        organization_id: "unlucky".to_owned(),
+        customer_id: "unlucky".to_owned(),
     }))
     .unwrap();
     assert_eq!(
@@ -750,7 +750,7 @@ fn a_fault_the_remote_produced_comes_back_in_the_fault_arm() {
     )]);
     let client = amqp_client::ProbeServiceClient::new(transport);
     let answered = poll_once(client.get_balance(BalanceRequest {
-        organization_id: "acme".to_owned(),
+        customer_id: "acme".to_owned(),
     }))
     .unwrap();
     let reported = reported_fault(&answered).unwrap();
@@ -769,7 +769,7 @@ fn an_envelope_that_contradicts_itself_is_a_defect_rather_than_an_answer() {
     let transport = ProbeTransport::new(&[r#"{"ok":true}"#]);
     let client = amqp_client::ProbeServiceClient::new(transport);
     let answered = poll_once(client.get_balance(BalanceRequest {
-        organization_id: "acme".to_owned(),
+        customer_id: "acme".to_owned(),
     }))
     .unwrap();
     let reported = reported_fault(&answered).unwrap();
@@ -786,10 +786,10 @@ fn an_envelope_that_contradicts_itself_is_a_defect_rather_than_an_answer() {
 
 #[test]
 fn the_operation_name_travels_beside_the_payload_and_never_inside_it() {
-    let transport = ProbeTransport::new(&[r#"{"ok":true,"value":{"credits":7}}"#]);
+    let transport = ProbeTransport::new(&[r#"{"ok":true,"value":{"invoices":7}}"#]);
     let client = amqp_client::ProbeServiceClient::new(transport);
     poll_once(client.get_balance(BalanceRequest {
-        organization_id: "acme".to_owned(),
+        customer_id: "acme".to_owned(),
     }))
     .unwrap()
     .unwrap();
@@ -798,7 +798,7 @@ fn the_operation_name_travels_beside_the_payload_and_never_inside_it() {
         calls,
         vec![(
             "get-balance".to_owned(),
-            r#"{"organization_id":"acme"}"#.to_owned()
+            r#"{"customer_id":"acme"}"#.to_owned()
         )],
         "the payload reserves no key for routing, and the name is the transport's own argument"
     );
@@ -806,16 +806,16 @@ fn the_operation_name_travels_beside_the_payload_and_never_inside_it() {
 
 #[test]
 fn a_method_declared_from_several_arguments_still_takes_them_separately() {
-    let transport = ProbeTransport::new(&[r#"{"ok":true,"value":{"credits":1}}"#]);
+    let transport = ProbeTransport::new(&[r#"{"ok":true,"value":{"invoices":1}}"#]);
     let client = amqp_client::ProbeServiceClient::new(transport);
-    poll_once(client.expire_credit("acme".to_owned(), "cr-1".to_owned()))
+    poll_once(client.void_invoice("acme".to_owned(), "cr-1".to_owned()))
         .unwrap()
         .unwrap();
     assert_eq!(
         client.transport().calls(),
         vec![(
-            "expire-credit".to_owned(),
-            r#"{"organizationId":"acme","creditId":"cr-1"}"#.to_owned()
+            "void-invoice".to_owned(),
+            r#"{"customerId":"acme","invoiceId":"cr-1"}"#.to_owned()
         )],
         "the packing into the declared message is the macro's job"
     );
@@ -823,7 +823,7 @@ fn a_method_declared_from_several_arguments_still_takes_them_separately() {
 
 #[test]
 fn a_method_for_an_operation_that_takes_nothing_still_sends_a_payload() {
-    let transport = ProbeTransport::new(&[r#"{"ok":true,"value":{"credits":0}}"#]);
+    let transport = ProbeTransport::new(&[r#"{"ok":true,"value":{"invoices":0}}"#]);
     let client = amqp_client::ProbeServiceClient::new(transport);
     poll_once(client.sweep()).unwrap().unwrap();
     assert_eq!(
@@ -838,7 +838,7 @@ fn a_one_way_method_sends_and_answers_with_nothing_beyond_that() {
     let transport = ProbeTransport::new(&[""]);
     let client = amqp_client::ProbeServiceClient::new(transport);
     let answered = poll_once(client.apply_bundle(AdmitRequest {
-        organization_id: "acme".to_owned(),
+        customer_id: "acme".to_owned(),
     }))
     .unwrap();
     assert!(answered.is_ok(), "got: {answered:?}");
@@ -846,7 +846,7 @@ fn a_one_way_method_sends_and_answers_with_nothing_beyond_that() {
         client.transport().calls(),
         vec![(
             "apply-bundle".to_owned(),
-            r#"{"organization_id":"acme"}"#.to_owned()
+            r#"{"customer_id":"acme"}"#.to_owned()
         )],
         "there is no reply to carry an error, so there is nothing else to answer with"
     );
@@ -859,7 +859,7 @@ fn a_message_failing_its_own_validation_is_a_fault_and_the_transport_is_never_re
     let transport = ProbeTransport::new(&[]);
     let client = amqp_client::ProbeServiceClient::new(transport);
     let answered = poll_once(client.admit(AdmitRequest {
-        organization_id: "ab".to_owned(),
+        customer_id: "ab".to_owned(),
     }))
     .unwrap();
     let reported = reported_fault(&answered).unwrap();
@@ -870,7 +870,7 @@ fn a_message_failing_its_own_validation_is_a_fault_and_the_transport_is_never_re
     );
     assert_eq!(
         reported.field(),
-        Some("organization_id"),
+        Some("customer_id"),
         "a malformed request fails at the caller with the field named, rather than a round trip \
          later"
     );
@@ -887,7 +887,7 @@ fn a_one_way_message_failing_its_own_validation_is_a_fault_and_sends_nothing() {
     let transport = ProbeTransport::new(&[]);
     let client = amqp_client::ProbeServiceClient::new(transport);
     let answered = poll_once(client.apply_bundle(AdmitRequest {
-        organization_id: "ab".to_owned(),
+        customer_id: "ab".to_owned(),
     }))
     .unwrap();
     let reported = answered.unwrap_err();
@@ -895,7 +895,7 @@ fn a_one_way_message_failing_its_own_validation_is_a_fault_and_sends_nothing() {
         reported.kind(),
         probe_service_schema::ServiceFaultKind::FailedValidation
     );
-    assert_eq!(reported.field(), Some("organization_id"));
+    assert_eq!(reported.field(), Some("customer_id"));
     assert!(
         client.transport().calls().is_empty(),
         "a defect it can see for itself is not something to publish"
@@ -906,7 +906,7 @@ fn a_one_way_message_failing_its_own_validation_is_a_fault_and_sends_nothing() {
 fn a_call_the_transport_could_not_carry_comes_back_as_a_fault_rather_than_never_answering() {
     let client = amqp_client::ProbeServiceClient::new(DeadlineTransport::new());
     let answered = poll_once(client.get_balance(BalanceRequest {
-        organization_id: "acme".to_owned(),
+        customer_id: "acme".to_owned(),
     }))
     .unwrap();
     let reported = reported_fault(&answered).unwrap();
@@ -944,7 +944,7 @@ fn a_call_the_transport_could_not_carry_comes_back_as_a_fault_rather_than_never_
 fn a_one_way_send_the_transport_could_not_put_out_comes_back_as_a_fault() {
     let client = amqp_client::ProbeServiceClient::new(DeadlineTransport::new());
     let answered = poll_once(client.apply_bundle(AdmitRequest {
-        organization_id: "acme".to_owned(),
+        customer_id: "acme".to_owned(),
     }))
     .unwrap();
     let reported = answered.unwrap_err();
@@ -967,7 +967,7 @@ fn a_one_way_send_the_transport_could_not_put_out_comes_back_as_a_fault() {
 fn a_transport_failure_reads_the_same_way_to_a_caller_as_every_other_defect() {
     let client = amqp_client::ProbeServiceClient::new(DeadlineTransport::new());
     let answered = poll_once(client.get_balance(BalanceRequest {
-        organization_id: "acme".to_owned(),
+        customer_id: "acme".to_owned(),
     }))
     .unwrap();
     assert!(
@@ -985,7 +985,7 @@ fn a_transport_failure_reads_the_same_way_to_a_caller_as_every_other_defect() {
 fn a_transport_failure_is_reported_only_for_a_message_the_client_did_not_refuse_first() {
     let client = amqp_client::ProbeServiceClient::new(DeadlineTransport::new());
     let answered = poll_once(client.admit(AdmitRequest {
-        organization_id: "ab".to_owned(),
+        customer_id: "ab".to_owned(),
     }))
     .unwrap();
     assert_eq!(
@@ -1005,17 +1005,17 @@ fn a_transport_failure_is_reported_only_for_a_message_the_client_did_not_refuse_
 fn what_the_dispatcher_writes_is_what_the_client_reads() {
     let client = amqp_client::ProbeServiceClient::new(Loopback::new());
     let answered = poll_once(client.get_balance(BalanceRequest {
-        organization_id: "acme".to_owned(),
+        customer_id: "acme".to_owned(),
     }))
     .unwrap();
     assert_eq!(
         answered,
-        Ok(BalanceResponse { credits: 7 }),
+        Ok(BalanceResponse { invoices: 7 }),
         "one envelope, written by the dispatcher and read by the client"
     );
 
     let failed = poll_once(client.get_balance(BalanceRequest {
-        organization_id: "unlucky".to_owned(),
+        customer_id: "unlucky".to_owned(),
     }))
     .unwrap();
     assert_eq!(
@@ -1027,7 +1027,7 @@ fn what_the_dispatcher_writes_is_what_the_client_reads() {
     );
 
     poll_once(client.apply_bundle(AdmitRequest {
-        organization_id: "acme".to_owned(),
+        customer_id: "acme".to_owned(),
     }))
     .unwrap()
     .unwrap();
@@ -1045,29 +1045,29 @@ fn what_the_dispatcher_writes_is_what_the_client_reads() {
 #[test]
 fn a_second_placement_of_the_client_carries_the_whole_service_over_a_seam_of_its_own() {
     let transport = ProbeTransport::new(&[
-        r#"{"ok":true,"value":{"credits":7}}"#,
+        r#"{"ok":true,"value":{"invoices":7}}"#,
         "",
-        r#"{"ok":true,"value":{"credits":1}}"#,
-        r#"{"ok":true,"value":{"credits":0}}"#,
-        r#"{"ok":true,"value":{"credits":3}}"#,
+        r#"{"ok":true,"value":{"invoices":1}}"#,
+        r#"{"ok":true,"value":{"invoices":0}}"#,
+        r#"{"ok":true,"value":{"invoices":3}}"#,
     ]);
     let client = spare_amqp_client::ProbeServiceClient::new(transport);
     let balance = poll_once(client.get_balance(BalanceRequest {
-        organization_id: "acme".to_owned(),
+        customer_id: "acme".to_owned(),
     }))
     .unwrap();
-    assert_eq!(balance, Ok(BalanceResponse { credits: 7 }));
+    assert_eq!(balance, Ok(BalanceResponse { invoices: 7 }));
     poll_once(client.apply_bundle(AdmitRequest {
-        organization_id: "acme".to_owned(),
+        customer_id: "acme".to_owned(),
     }))
     .unwrap()
     .unwrap();
-    poll_once(client.expire_credit("acme".to_owned(), "cr-1".to_owned()))
+    poll_once(client.void_invoice("acme".to_owned(), "cr-1".to_owned()))
         .unwrap()
         .unwrap();
     poll_once(client.sweep()).unwrap().unwrap();
     poll_once(client.admit(AdmitRequest {
-        organization_id: "acme".to_owned(),
+        customer_id: "acme".to_owned(),
     }))
     .unwrap()
     .unwrap();
@@ -1081,7 +1081,7 @@ fn a_second_placement_of_the_client_carries_the_whole_service_over_a_seam_of_its
         vec![
             "get-balance".to_owned(),
             "apply-bundle".to_owned(),
-            "expire-credit".to_owned(),
+            "void-invoice".to_owned(),
             "sweep".to_owned(),
             "admit".to_owned(),
         ]

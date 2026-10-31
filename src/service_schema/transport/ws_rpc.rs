@@ -413,7 +413,7 @@ fn client_macro_docs(
     let placement = placement_doc(
         published,
         "ws_client",
-        "use the_contract_crate::{AvailableBalanceRequest, AvailableBalanceResponse};\n\n\
+        "use the_contract_crate::{OpenBalanceRequest, OpenBalanceResponse};\n\n\
          the_contract_crate::",
     );
     let macro_doc = format!(

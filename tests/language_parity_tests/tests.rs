@@ -9,7 +9,7 @@ mod declarations {
     #[model_schema(minLength = 3, pattern = "^[a-z][a-z0-9_-]+$")]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct OrganizationId(pub String);
+    pub struct CustomerId(pub String);
 
     /// A bound two hops down, one of them flattened, named by the path the payload spells rather
     /// than by the field it was declared on.
@@ -31,7 +31,7 @@ mod declarations {
     #[derive(Debug, Deserialize, Serialize)]
     pub struct Held {
         pub account: Account,
-        pub organization_id: OrganizationId,
+        pub customer_id: CustomerId,
     }
 
     /// A field carrying its own bounds, in the two pairings a single value can break at once.
@@ -39,7 +39,7 @@ mod declarations {
     #[derive(Debug, Deserialize, Serialize)]
     pub struct Direct {
         #[model_schema_prop(minLength = 3, pattern = "^[a-z][a-z0-9_-]+$")]
-        pub organization_id: String,
+        pub customer_id: String,
     }
 
     #[model_schema()]
@@ -54,14 +54,14 @@ mod declarations {
     #[derive(Debug, Deserialize, Serialize)]
     pub struct Floor {
         #[model_schema_prop(minimum = 10)]
-        pub credit_count: i64,
+        pub invoice_count: i64,
     }
 
     #[model_schema()]
     #[derive(Debug, Deserialize, Serialize)]
     pub struct Ceiling {
         #[model_schema_prop(maximum = 100)]
-        pub credit_count: i64,
+        pub invoice_count: i64,
     }
 
     /// A literal of each kind, whose sentences quote the value back.
@@ -91,12 +91,12 @@ mod declarations {
 #[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 #[macro_use]
 pub mod refusals {
-    use super::declarations::{Account, OrganizationId};
+    use super::declarations::{Account, CustomerId};
     use crate::amqp_transport;
     // The schema module each held type publishes is named beside the type, and the emitted code
     // reaches it unqualified — so a type declared elsewhere is held by bringing its module along.
     #[cfg(feature = "jsonschema")]
-    use super::declarations::{account_schema, organization_id_schema};
+    use super::declarations::{account_schema, customer_id_schema};
     use core::future::{Future, ready};
     use core::pin::pin;
     use core::task::{Context as PollContext, Poll, Waker};
@@ -112,7 +112,7 @@ pub mod refusals {
     #[serde(rename_all = "camelCase")]
     pub struct AdmitRequest {
         pub account: Account,
-        pub organization_id: OrganizationId,
+        pub customer_id: CustomerId,
     }
 
     #[model_schema()]
@@ -376,20 +376,20 @@ fn typescript_report(schema: &str, path: &str, rendered: &str) -> Vec<String> {
 #[test]
 fn a_value_breaking_two_of_a_fields_bounds_reads_the_same_in_both_languages() {
     let broken = declarations::Direct {
-        organization_id: "A!".to_owned(),
+        customer_id: "A!".to_owned(),
     };
     let rust = broken.validate().unwrap_err();
 
     assert_eq!(
         rust,
         vec![
-            "'organization_id': too short: minimum length is 3, got 2",
-            "'organization_id': does not match pattern '^[a-z][a-z0-9_-]+$'",
+            "'customer_id': too short: minimum length is 3, got 2",
+            "'customer_id': does not match pattern '^[a-z][a-z0-9_-]+$'",
         ],
     );
     assert_eq!(
         rust,
-        typescript_report(&declarations::Direct::zod_schema(), "organization_id", "A!"),
+        typescript_report(&declarations::Direct::zod_schema(), "customer_id", "A!"),
     );
 }
 
@@ -418,7 +418,7 @@ fn a_value_over_a_length_and_off_a_pattern_reads_the_same_in_both_languages() {
 #[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_brands_two_bounds_read_the_same_in_both_languages() {
-    let rust = declarations::OrganizationId("A!".to_owned())
+    let rust = declarations::CustomerId("A!".to_owned())
         .validate()
         .unwrap_err();
 
@@ -432,15 +432,11 @@ fn a_brands_two_bounds_read_the_same_in_both_languages() {
 
     let under_the_field: Vec<String> = rust
         .iter()
-        .map(|violation| format!("'organization_id': {violation}"))
+        .map(|violation| format!("'customer_id': {violation}"))
         .collect();
     assert_eq!(
         under_the_field,
-        typescript_report(
-            &declarations::OrganizationId::zod_schema(),
-            "organization_id",
-            "A!"
-        ),
+        typescript_report(&declarations::CustomerId::zod_schema(), "customer_id", "A!"),
     );
 }
 
@@ -453,16 +449,12 @@ fn a_brand_held_in_a_field_reads_the_same_in_both_languages() {
                 jti: "ok".to_owned(),
             },
         },
-        organization_id: declarations::OrganizationId("A!".to_owned()),
+        customer_id: declarations::CustomerId("A!".to_owned()),
     };
 
     assert_eq!(
         broken.validate().unwrap_err(),
-        typescript_report(
-            &declarations::OrganizationId::zod_schema(),
-            "organization_id",
-            "A!"
-        ),
+        typescript_report(&declarations::CustomerId::zod_schema(), "customer_id", "A!"),
     );
 }
 
@@ -474,7 +466,7 @@ fn a_bound_reached_through_a_flattened_hop_reads_the_same_in_both_languages() {
         account: declarations::Account {
             claims: declarations::Claims { jti: String::new() },
         },
-        organization_id: declarations::OrganizationId("acme".to_owned()),
+        customer_id: declarations::CustomerId("acme".to_owned()),
     };
     let rust = broken.validate().unwrap_err();
 
@@ -492,28 +484,28 @@ fn a_bound_reached_through_a_flattened_hop_reads_the_same_in_both_languages() {
 #[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_numeric_bound_reads_the_same_in_both_languages() {
-    let under_the_floor = declarations::Floor { credit_count: 2 }
+    let under_the_floor = declarations::Floor { invoice_count: 2 }
         .validate()
         .unwrap_err();
     assert_eq!(
         under_the_floor,
-        vec!["'credit_count': too small: minimum is 10, got 2"]
+        vec!["'invoice_count': too small: minimum is 10, got 2"]
     );
     assert_eq!(
         under_the_floor,
-        typescript_report(&declarations::Floor::zod_schema(), "credit_count", "2"),
+        typescript_report(&declarations::Floor::zod_schema(), "invoice_count", "2"),
     );
 
-    let over_the_ceiling = declarations::Ceiling { credit_count: 150 }
+    let over_the_ceiling = declarations::Ceiling { invoice_count: 150 }
         .validate()
         .unwrap_err();
     assert_eq!(
         over_the_ceiling,
-        vec!["'credit_count': too large: maximum is 100, got 150"]
+        vec!["'invoice_count': too large: maximum is 100, got 150"]
     );
     assert_eq!(
         over_the_ceiling,
-        typescript_report(&declarations::Ceiling::zod_schema(), "credit_count", "150"),
+        typescript_report(&declarations::Ceiling::zod_schema(), "invoice_count", "150"),
     );
 }
 
@@ -564,7 +556,7 @@ fn no_emitted_check_is_left_to_report_in_zods_own_words() {
         declarations::Direct::zod_schema(),
         declarations::Floor::zod_schema(),
         declarations::Major::zod_schema(),
-        declarations::OrganizationId::zod_schema(),
+        declarations::CustomerId::zod_schema(),
     ] {
         // The range of an `i64` is its type's, which no declaration writes.
         let declared = schema
@@ -592,13 +584,11 @@ fn no_emitted_check_is_left_to_report_in_zods_own_words() {
 #[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_refused_on_the_read_answers_the_same_fault_in_both_languages() {
-    let answered = refusals::refused(r#"{"account":{"jti":"a"},"organizationId":"A!"}"#);
+    let answered = refusals::refused(r#"{"account":{"jti":"a"},"customerId":"A!"}"#);
     let constructor = refusals::inbound_fault();
-    let held_under = refusals::zod_key_holding(
-        &refusals::AdmitRequest::zod_schema(),
-        "OrganizationId$Schema",
-    );
-    assert_eq!(held_under, "organizationId");
+    let held_under =
+        refusals::zod_key_holding(&refusals::AdmitRequest::zod_schema(), "CustomerId$Schema");
+    assert_eq!(held_under, "customerId");
 
     assert!(
         constructor
@@ -613,11 +603,7 @@ fn a_brand_refused_on_the_read_answers_the_same_fault_in_both_languages() {
 
     // What TypeScript answers, read off what it published: one line per issue, under the key the
     // Zod object wrote, joined the way the constructor joins them.
-    let reported = typescript_report(
-        &declarations::OrganizationId::zod_schema(),
-        &held_under,
-        "A!",
-    );
+    let reported = typescript_report(&declarations::CustomerId::zod_schema(), &held_under, "A!");
     assert_eq!(answered["kind"], refusals::ts_kind(&constructor));
     assert_eq!(answered["field"], held_under);
     assert_eq!(answered["detail"], reported.join("; "));
@@ -632,7 +618,7 @@ fn a_brand_refused_on_the_read_answers_the_same_fault_in_both_languages() {
 #[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 #[test]
 fn a_bound_below_a_flattened_hop_answers_the_same_fault_in_both_languages() {
-    let answered = refusals::refused(r#"{"account":{"jti":""},"organizationId":"acme"}"#);
+    let answered = refusals::refused(r#"{"account":{"jti":""},"customerId":"acme"}"#);
     let constructor = refusals::inbound_fault();
     let reported = typescript_report(&declarations::Claims::zod_schema(), "account.jti", "");
 

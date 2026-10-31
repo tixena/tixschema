@@ -73,19 +73,19 @@ use syn::ItemTrait;
 /// A service with one of every input shape and one of every outcome: a named message, an argument
 /// list, no arguments at all, and a one-way operation that answers nothing.
 const MIXED_SERVICE: &str = "
-    pub trait UsageService<Ctx> {
-        async fn get_available_balance(
+    pub trait BillingService<Ctx> {
+        async fn get_open_balance(
             &self,
             ctx: &Ctx,
-            req: AvailableBalanceRequest,
-        ) -> Result<AvailableBalanceResponse, BalanceError>;
+            req: OpenBalanceRequest,
+        ) -> Result<OpenBalanceResponse, BalanceError>;
 
-        async fn expire_credit(
+        async fn void_invoice(
             &self,
             ctx: &Ctx,
-            organization_id: OrganizationId,
-            credit_id: CreditId,
-        ) -> Result<ExpiredCredit, CreditWriteError>;
+            customer_id: CustomerId,
+            invoice_id: InvoiceId,
+        ) -> Result<VoidedInvoice, InvoiceWriteError>;
 
         async fn sweep(&self, ctx: &Ctx) -> Result<SweepReport, BalanceError>;
 
@@ -1370,7 +1370,7 @@ fn a_one_way_operation_gets_no_result_type() {
     assert!(
         !published
             .iter()
-            .any(|ts| ts.contains("UsageServiceApplyBundleResult")),
+            .any(|ts| ts.contains("BillingServiceApplyBundleResult")),
         "an operation that declared no reply has no arms to join. Got: {published:?}"
     );
 }
@@ -1379,7 +1379,7 @@ fn a_one_way_operation_gets_no_result_type() {
 #[test]
 fn every_declared_message_is_registered_with_the_service() {
     let rendered = registration(MIXED_SERVICE);
-    for declared in ["ExpireCreditRequest", "SweepRequest"] {
+    for declared in ["VoidInvoiceRequest", "SweepRequest"] {
         assert!(
             rendered.contains(&format!("{declared} :: ts_definition")),
             "a message the macro declared reaches the bundle through the service's own line. \
@@ -1387,7 +1387,7 @@ fn every_declared_message_is_registered_with_the_service() {
         );
     }
     assert!(
-        !rendered.contains("AvailableBalanceRequest :: ts_definition"),
+        !rendered.contains("OpenBalanceRequest :: ts_definition"),
         "the message the author declared is registered by the author, not here. Got: {rendered}"
     );
 }
@@ -1396,11 +1396,11 @@ fn every_declared_message_is_registered_with_the_service() {
 fn the_bundle_line_hangs_off_a_struct_named_for_the_service() {
     let rendered = registration(MIXED_SERVICE);
     assert!(
-        rendered.contains("pub struct UsageServiceSchema"),
+        rendered.contains("pub struct BillingServiceSchema"),
         "got: {rendered}"
     );
     assert!(
-        rendered.contains("impl UsageServiceSchema"),
+        rendered.contains("impl BillingServiceSchema"),
         "got: {rendered}"
     );
 }
@@ -1410,8 +1410,8 @@ fn the_bundle_line_hangs_off_a_struct_named_for_the_service() {
 fn the_fault_s_fields_are_asked_for_rather_than_written_here() {
     let rendered = registration(MIXED_SERVICE);
     for asked in [
-        "usage_service_schema :: UsageServiceFaultFields :: ts_definition",
-        "usage_service_schema :: UsageServiceFaultKind :: ts_definition",
+        "billing_service_schema :: BillingServiceFaultFields :: ts_definition",
+        "billing_service_schema :: BillingServiceFaultKind :: ts_definition",
     ] {
         assert!(
             rendered.contains(asked),
@@ -1427,7 +1427,9 @@ fn the_fault_s_fields_are_asked_for_rather_than_written_here() {
     // type and spells no member of its own. A field written here is a field that can drift.
     for member in ["detail:", "field:", "kind:", "operation:"] {
         assert!(
-            !rendered.contains(&format!("export type UsageServiceFault = {{\\n  {member}")),
+            !rendered.contains(&format!(
+                "export type BillingServiceFault = {{\\n  {member}"
+            )),
             "the seal adds a brand and nothing else; the members stay the Rust declaration's. \
              Got: {rendered}"
         );
@@ -1439,18 +1441,18 @@ fn the_fault_s_fields_are_asked_for_rather_than_written_here() {
 fn the_published_fault_is_the_asked_for_fields_under_a_brand_the_bundle_exports_nowhere() {
     let rendered = registration(MIXED_SERVICE);
     assert!(
-        rendered.contains("declare const usageServiceFaultSeal: unique symbol;"),
+        rendered.contains("declare const billingServiceFaultSeal: unique symbol;"),
         "a brand keyed on an exported name is a brand anyone can write. Got: {rendered}"
     );
     assert!(
-        !rendered.contains("export declare const usageServiceFaultSeal"),
+        !rendered.contains("export declare const billingServiceFaultSeal"),
         "an exported symbol is one an implementation can name, and a property it can write. \
          Got: {rendered}"
     );
     assert!(
         rendered.contains(
-            "export type UsageServiceFault = UsageServiceFaultFields & {\\n  readonly \
-             [usageServiceFaultSeal]: true;\\n};"
+            "export type BillingServiceFault = BillingServiceFaultFields & {\\n  readonly \
+             [billingServiceFaultSeal]: true;\\n};"
         ),
         "the fault a caller names is the fields the Rust declaration published, plus the brand. \
          Got: {rendered}"
@@ -1460,8 +1462,8 @@ fn the_published_fault_is_the_asked_for_fields_under_a_brand_the_bundle_exports_
     let readme = include_str!("../../../README.md");
     assert!(
         readme.contains("**And the fault type itself refuses to be written.**")
-            && readme.contains("declare const usageServiceFaultSeal: unique symbol;")
-            && readme.contains("`built as UsageServiceFault` compiles"),
+            && readme.contains("declare const billingServiceFaultSeal: unique symbol;")
+            && readme.contains("`built as BillingServiceFault` compiles"),
         "the README no longer says what the seal is, or that a type assertion still gets past it"
     );
 }
@@ -1472,17 +1474,17 @@ fn the_result_joins_the_two_declared_arms_and_adds_nothing_to_either() {
     let published = result::emit(&parsed(MIXED_SERVICE));
     let found = published
         .iter()
-        .find(|ts| ts.contains("export type UsageServiceGetAvailableBalanceResult ="));
+        .find(|ts| ts.contains("export type BillingServiceGetOpenBalanceResult ="));
     assert!(found.is_some(), "got: {published:?}");
     let balance = found.unwrap();
     assert!(
-        balance.contains("| { ok: true; value: AvailableBalanceResponse }"),
+        balance.contains("| { ok: true; value: OpenBalanceResponse }"),
         "got: {balance}"
     );
     assert!(
         balance.contains(
             "| { ok: false; error: BalanceError | { isServiceFault: true; fault: \
-             UsageServiceFault } };"
+             BillingServiceFault } };"
         ),
         "got: {balance}"
     );
@@ -1603,9 +1605,9 @@ fn the_outcome_answers_the_streamed_record_rather_than_the_undescribable_rust_ty
 fn the_result_takes_its_name_from_the_service_and_the_operation() {
     let published = result::emit(&parsed(MIXED_SERVICE));
     for named in [
-        "UsageServiceGetAvailableBalanceResult",
-        "UsageServiceExpireCreditResult",
-        "UsageServiceSweepResult",
+        "BillingServiceGetOpenBalanceResult",
+        "BillingServiceVoidInvoiceResult",
+        "BillingServiceSweepResult",
     ] {
         assert!(
             published
@@ -1630,11 +1632,11 @@ fn two_operations_naming_unrelated_errors_keep_them_apart() {
     let published = result::emit(&parsed(MIXED_SERVICE));
     let found = published
         .iter()
-        .find(|ts| ts.contains("export type UsageServiceExpireCreditResult ="));
+        .find(|ts| ts.contains("export type BillingServiceVoidInvoiceResult ="));
     assert!(found.is_some(), "got: {published:?}");
     let expire = found.unwrap();
     assert!(
-        expire.contains("error: CreditWriteError |"),
+        expire.contains("error: InvoiceWriteError |"),
         "an operation's failure arm carries the error that operation declared, not the service's. \
          Got: {expire}"
     );
@@ -1703,10 +1705,10 @@ fn a_build_that_publishes_no_schema_publishes_no_client_and_no_dispatcher() {
 fn a_build_that_publishes_no_client_says_on_the_registry_why_not() {
     let rendered = registration(MIXED_SERVICE);
     for said in [
-        "This build publishes no `UsageServiceSchema::ts_client()`, no \
-         `UsageServiceSchema::ts_http_client()`, no `UsageServiceSchema::ts_http_service()`, no \
-         `UsageServiceSchema::ts_service()`, no `UsageServiceSchema::ts_ws_client()`, no \
-         `UsageServiceSchema::ts_ws_service()`, and no `UsageServiceSchema::ts_ws_server()`.",
+        "This build publishes no `BillingServiceSchema::ts_client()`, no \
+         `BillingServiceSchema::ts_http_client()`, no `BillingServiceSchema::ts_http_service()`, no \
+         `BillingServiceSchema::ts_service()`, no `BillingServiceSchema::ts_ws_client()`, no \
+         `BillingServiceSchema::ts_ws_service()`, and no `BillingServiceSchema::ts_ws_server()`.",
         "The first six parse a message against the schema",
         "leaves the seven seam artifacts out",
         "only a build with tixschema's `zod` feature writes one",
@@ -1745,10 +1747,10 @@ fn a_build_that_publishes_a_schema_publishes_ts_http_service() {
 fn a_build_that_publishes_no_client_still_publishes_every_type_the_wire_carries() {
     let rendered = registration(MIXED_SERVICE);
     for asked in [
-        "ExpireCreditRequest :: ts_definition",
-        "usage_service_schema :: UsageServiceFaultFields :: ts_definition",
-        "declare const usageServiceFaultSeal: unique symbol;",
-        "export type UsageServiceGetAvailableBalanceResult =",
+        "VoidInvoiceRequest :: ts_definition",
+        "billing_service_schema :: BillingServiceFaultFields :: ts_definition",
+        "declare const billingServiceFaultSeal: unique symbol;",
+        "export type BillingServiceGetOpenBalanceResult =",
     ] {
         assert!(
             rendered.contains(asked),
@@ -1763,7 +1765,7 @@ fn a_build_that_publishes_no_client_still_publishes_every_type_the_wire_carries(
 fn a_declared_message_brings_its_schema_along_with_its_type() {
     let rendered = registration(MIXED_SERVICE);
     assert!(
-        rendered.contains("ExpireCreditRequest :: zod_schema"),
+        rendered.contains("VoidInvoiceRequest :: zod_schema"),
         "the schema has no registration line of its own either. Got: {rendered}"
     );
 }
@@ -1774,20 +1776,20 @@ fn dart_definition_publishes_messages_then_kind_then_fields_then_results() {
     let rendered = registration(MIXED_SERVICE);
     let messages = [
         rendered
-            .find("expire_credit_request_dart :: dart_definition")
+            .find("void_invoice_request_dart :: dart_definition")
             .unwrap(),
         rendered
             .find("sweep_request_dart :: dart_definition")
             .unwrap(),
     ];
     let kind = rendered
-        .find("usage_service_schema :: usage_service_fault_kind_dart :: dart_definition")
+        .find("billing_service_schema :: billing_service_fault_kind_dart :: dart_definition")
         .unwrap();
     let fields = rendered
-        .find("usage_service_schema :: usage_service_fault_fields_dart :: dart_definition")
+        .find("billing_service_schema :: billing_service_fault_fields_dart :: dart_definition")
         .unwrap();
     let results = rendered
-        .find("sealed class UsageServiceGetAvailableBalanceResult")
+        .find("sealed class BillingServiceGetOpenBalanceResult")
         .unwrap();
     assert!(
         messages.iter().all(|&message| message < kind),
@@ -1801,7 +1803,7 @@ fn dart_definition_publishes_messages_then_kind_then_fields_then_results() {
 #[test]
 fn dart_definition_asks_for_the_generated_messages_a_declared_message_is_registered_by_hand() {
     let rendered = registration(MIXED_SERVICE);
-    for declared in ["expire_credit_request_dart", "sweep_request_dart"] {
+    for declared in ["void_invoice_request_dart", "sweep_request_dart"] {
         assert!(
             rendered.contains(&format!("{declared} :: dart_definition")),
             "a message the macro declared reaches the bundle through the service's own line. \
@@ -1809,7 +1811,7 @@ fn dart_definition_asks_for_the_generated_messages_a_declared_message_is_registe
         );
     }
     assert!(
-        !rendered.contains("available_balance_request_dart"),
+        !rendered.contains("open_balance_request_dart"),
         "the message the author declared is registered by the author, not here. Got: {rendered}"
     );
 }
@@ -1846,8 +1848,8 @@ fn a_name_in_a_comment_keeps_to_its_line_and_leaves_the_comment_open() {
         "a name in a comment is spelled another way"
     );
     assert_eq!(
-        message::commented("get-available-balance"),
-        "get-available-balance",
+        message::commented("get-open-balance"),
+        "get-open-balance",
         "a name with nothing to spell apart is written as it was"
     );
 }
