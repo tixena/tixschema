@@ -41,6 +41,10 @@ enum Asked {
 /// private to the type that writes it: emitted types are joined into one file.
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 enum Helper {
+    /// What a held value answers when it is told the filling it is written at, where its type
+    /// carries no `kotlinSchemaAtFilling()`: a type declared below the holder. A brand answers
+    /// with a member of its own, which is found ahead of this.
+    AtFilling,
     /// What a held value answers where its type carries no `validate()`: a type of the
     /// consumer's own, and an alias of a string or of a list. A member is found ahead of it.
     Fallback,
@@ -117,6 +121,9 @@ struct Noted {
     /// Whether the type carries `kotlinSchemaBound()`, a brand with a bound of its own: `None`
     /// for an alias, which is whatever it names.
     bound: Option<bool>,
+    /// Whether the type carries `kotlinSchemaAtFilling()`, a brand whose declared default is a
+    /// list.
+    filling: Answers,
     /// Whether a value of the type answers its length: a brand that carries
     /// `kotlinSchemaLength()`, and an alias of a string, a list or such a brand.
     length: Answers,
@@ -139,6 +146,11 @@ pub struct Rules<'item> {
     /// The serializers the overload takes where the base it overrides fixes them: every parameter
     /// a map of any variant is keyed by.
     declared: Vec<String>,
+    /// The type a brand's declared default is written as in Kotlin, with the parameter it fills,
+    /// where the default is a list: the one filling its bounds are counted at.
+    filled: Option<(String, String)>,
+    /// The statements that count a list default, run where the filling is told to be it.
+    filling_statements: Vec<String>,
     /// Whether `validate()` takes the serializer of each key parameter, as a type read by a judged
     /// serializer does.
     handing: bool,
@@ -163,6 +175,10 @@ thread_local! {
 impl Helper {
     const fn written(self) -> &'static str {
         match self {
+            Self::AtFilling => {
+                "private fun Any?.kotlinSchemaAtFilling(filling: String): List<String> = \
+                 emptyList()"
+            }
             Self::Fallback => "private fun Any?.validate(): List<String> = emptyList()",
             Self::Key => {
                 "private fun <T> kotlinSchemaKey(key: T, serializer: KSerializer<T>?): String = \
@@ -320,6 +336,8 @@ impl<'item> Rules<'item> {
             bounds: Vec::new(),
             chooses: true,
             declared: Vec::new(),
+            filled: None,
+            filling_statements: Vec::new(),
             handing: false,
             helpers: BTreeSet::new(),
             keys: BTreeSet::new(),
@@ -341,6 +359,11 @@ impl<'item> Rules<'item> {
         )
     }
 
+    /// Whether the type carries `kotlinSchemaAtFilling()`.
+    pub const fn counts_at_filling(&self) -> bool {
+        self.filled.is_some()
+    }
+
     /// What a brand's bounds add at `declared`, the type declared for the parameter it holds
     /// bare.
     fn default_statements(&mut self, member: &Member<'_>, declared: &FieldDef) -> Vec<String> {
@@ -351,12 +374,14 @@ impl<'item> Rules<'item> {
             return Vec::new();
         }
         if declared.is_list() {
-            // The item type is erased at run time: a filling that is any other list is counted.
-            return vec![format!(
-                "if ({} is Collection<*>) {{ {} }}",
-                member.read,
-                count_statements(meta, &member.read, None).join("; ")
-            )];
+            let counted = count_statements(meta, FILLING, None);
+            if let FieldDefType::TypeParam(parameter) = &member.def.field_type
+                && !counted.is_empty()
+            {
+                self.filled = Some((parameter.clone(), kotlin_typename(declared)));
+                self.filling_statements = counted;
+            }
+            return Vec::new();
         }
         if let Some(held) = bare_argument(declared) {
             return self.filling_statements(member, declared, held, meta);
@@ -396,6 +421,24 @@ impl<'item> Rules<'item> {
             read = member.read,
             held_type = kotlin_typename(held),
         )]
+    }
+
+    /// The Kotlin type of the list a held value of the type `name` is filled with, where the
+    /// type counts a list default at the filling it is told: the argument at the position of the
+    /// parameter a brand holds bare, or the only one where the type is declared below.
+    fn filling_told(&mut self, name: &str, arguments: &[FieldDef]) -> Option<String> {
+        let argument = match NOTED.with(|seen| seen.borrow().get(name).copied()) {
+            Some(held) if held.filling == Answers::Yes => arguments.get(held.bare?),
+            Some(_) => None,
+            None => match arguments {
+                [only] => {
+                    self.helpers.insert(Helper::AtFilling);
+                    Some(only)
+                }
+                _ => None,
+            },
+        }?;
+        (argument.is_list() && !argument.is_optional()).then(|| kotlin_typename(argument))
     }
 
     /// `self` handing `validate()` the serializer of each parameter a map is keyed by, which the
@@ -460,15 +503,20 @@ impl<'item> Rules<'item> {
                 let listed = def.collection_element_field(element);
                 return self.held_statements(&listed, read, place, depth, asked);
             }
-            self.method_asked(name, asked)
-                .map_or_else(Vec::new, |method| {
-                    let handed = if matches!(asked, Asked::Report) {
-                        self.serializers_for(name, arguments)
-                    } else {
-                        String::new()
-                    };
-                    vec![self.collected(&format!("{read}.{method}({handed})"), place)]
-                })
+            let mut found = Vec::new();
+            if let Some(method) = self.method_asked(name, asked) {
+                let handed = if matches!(asked, Asked::Report) {
+                    self.serializers_for(name, arguments)
+                } else {
+                    String::new()
+                };
+                found.push(self.collected(&format!("{read}.{method}({handed})"), place));
+            }
+            if let Some(filling) = self.filling_told(name, arguments) {
+                let counted = format!("{read}.kotlinSchemaAtFilling({})", kotlin_quoted(&filling));
+                found.push(self.collected(&counted, place));
+            }
+            found
         } else if let FieldDefType::Map(key, value) = &def.field_type {
             let (entry, held) = (bound_name("key", depth), bound_name("held", depth));
             let written = self.key_step(key, &entry);
@@ -522,7 +570,8 @@ impl<'item> Rules<'item> {
     }
 
     /// The judged serializer of the type, which hands `validate()` the serializer of each
-    /// parameter a map is keyed by.
+    /// parameter a map is keyed by, and a brand counting a list default the serializer of the
+    /// parameter it fills.
     pub fn judged(
         &self,
         export_name: &str,
@@ -531,12 +580,15 @@ impl<'item> Rules<'item> {
         composed: bool,
     ) -> String {
         let keys: Vec<String> = self.keys.iter().cloned().collect();
-        read::judged(
+        read::judged_counting(
             export_name,
             generic_params,
             type_parameters,
             composed,
             (&keys, &[]),
+            self.filled
+                .as_ref()
+                .map(|(parameter, declared)| (parameter.as_str(), declared.as_str())),
         )
     }
 
@@ -716,6 +768,8 @@ impl<'item> Rules<'item> {
             bounds: Vec::new(),
             chooses: false,
             declared: Vec::new(),
+            filled: None,
+            filling_statements: Vec::new(),
             handing: false,
             helpers: BTreeSet::new(),
             keys: BTreeSet::new(),
@@ -867,6 +921,16 @@ impl<'item> Rules<'item> {
             )
         };
         let mut members = vec![validate];
+        let counted = mem::take(&mut self.filling_statements);
+        if let Some((_, declared)) = self.filled.as_ref().filter(|_| !counted.is_empty()) {
+            members.push(format!(
+                "fun kotlinSchemaAtFilling(filling: String): List<String> = if (filling == \
+                 {}) {{ val {FILLING} = value as Collection<*>; val {VIOLATIONS} = \
+                 mutableListOf<String>(); {}; {VIOLATIONS} }} else emptyList()",
+                kotlin_quoted(declared),
+                counted.join("; ")
+            ));
+        }
         let bounds = mem::take(&mut self.bounds);
         if !bounds.is_empty() {
             members.push(format!(
@@ -1069,6 +1133,7 @@ pub fn note_alias(rust_ident: &str, target: &FieldDef) {
         Noted {
             bare: None,
             bound: None,
+            filling: Answers::No,
             length,
             text,
             unjudged: false,
@@ -1078,18 +1143,21 @@ pub fn note_alias(rust_ident: &str, target: &FieldDef) {
 }
 
 /// Notes a brand, which carries `validate()`, `kotlinSchemaText()` where `text` says so,
-/// `kotlinSchemaLength()` where `length` does and `kotlinSchemaBound()` where `bound` does, and
-/// holds the type parameter at `bare` as its value.
+/// `kotlinSchemaLength()` where `length` does, `kotlinSchemaBound()` where `bound` does and
+/// `kotlinSchemaAtFilling()` where `filling` does, and holds the type parameter at `bare` as its
+/// value.
 pub fn note_brand(
     rust_ident: &str,
     (text, length, bound): (bool, bool, bool),
     bare: Option<usize>,
+    filling: bool,
 ) {
     note(
         rust_ident,
         Noted {
             bare,
             bound: Some(bound),
+            filling: Answers::of(filling),
             length: Answers::of(length),
             text,
             unjudged: true,
@@ -1105,6 +1173,7 @@ pub fn note_model(rust_ident: &str) {
         Noted {
             bare: None,
             bound: Some(false),
+            filling: Answers::No,
             length: Answers::No,
             text: false,
             unjudged: true,
@@ -1121,6 +1190,7 @@ pub fn note_plain_enum(rust_ident: &str, unjudged: bool) {
         Noted {
             bare: None,
             bound: Some(false),
+            filling: Answers::No,
             length: Answers::No,
             text: false,
             unjudged,
