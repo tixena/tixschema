@@ -68,7 +68,7 @@ stored_customers = { path = "tests/crates_apart/stored_customers" }
 invoice_lookups = { path = "tests/crates_apart/invoice_lookups" }
 # The crate whose frontmatter `Value` the `arky` entry converts to and from; the tests convert
 # models through it.
-arky = { git = "https://github.com/tixena/arky.git" }
+arky = "0.1.1"
 
 # Transitive dep floors — pinned to fix known vulnerabilities:
 # - bytes >=1.11.1: RUSTSEC-2026-0007 (integer overflow in BytesMut::reserve)
