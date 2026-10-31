@@ -54,6 +54,10 @@ fun <CodeType> withACode(value: Crate<CodeType>): List<String> =
 fun <IdType> withEntries(value: Casket<IdType>): List<String> =
     if (value.entries.isEmpty()) listOf("'entries': a casket holds at least one entry") else emptyList()
 
+class Chosen(private val value: Any) {
+    fun validate(): List<String> = listOf(value::class.simpleName!!)
+}
+
 fun rated(value: Grade): List<String> =
     if (value == Grade.Unrated) listOf("a parcel is rated") else emptyList()
 
@@ -123,7 +127,8 @@ struct Read {
 /// to for it.
 struct Row {
     expected: Vec<String>,
-    kotlin: String,
+    /// `None` for a value read alone, whose own `validate()` is not asked.
+    kotlin: Option<String>,
     name: &'static str,
     /// `None` for a value built in Kotlin.
     read: Option<Read>,
@@ -429,6 +434,14 @@ pub type Mottos = Vec<String>;
 #[serde(transparent)]
 pub struct SomeSlogans(pub Slogans);
 
+/// Members filled with a list of each item type at a brand declared below.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Hauler {
+    pub counted: Carried<Vec<i32>>,
+    pub named: Carried<Vec<String>>,
+}
+
 /// A generic brand whose declared default is a list.
 #[model_schema(no_display, minLength = 1, default_types(T = Vec<String>))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -446,6 +459,23 @@ pub struct Poster {
     pub slogans: Slogans,
     #[model_schema_prop(maxLength = 2)]
     pub some: SomeSlogans,
+}
+
+/// Members filled with a list of each item type at the brand above.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Loader {
+    pub counted: Carried<Vec<i32>>,
+    pub named: Carried<Vec<String>>,
+}
+
+/// An untagged enum whose variants hold the generic brand at a list of each item type.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum Cargo {
+    Named(Carried<Vec<String>>),
+    Numbered(Carried<Vec<i32>>),
 }
 
 /// An alias of an `IndexSet`.
@@ -646,9 +676,29 @@ where
     };
     Row {
         expected,
-        kotlin: format!("Json.decodeFromString({}, {payload})", unjudged(read_as)),
+        kotlin: Some(format!(
+            "Json.decodeFromString({}, {payload})",
+            unjudged(read_as)
+        )),
         name,
         read: Some(read),
+    }
+}
+
+/// A row of a value only read by the type's own serializer, held to what Rust's `validate()`
+/// answered of it.
+fn read_alone<T>(
+    name: &'static str,
+    read_as: &str,
+    value: &T,
+    answered: Result<(), Vec<String>>,
+) -> Row
+where
+    T: Serialize,
+{
+    Row {
+        kotlin: None,
+        ..row(name, read_as, value, answered)
     }
 }
 
@@ -673,7 +723,7 @@ where
 fn built(name: &'static str, kotlin: &str, expected: &[&str]) -> Row {
     Row {
         expected: texts(expected),
-        kotlin: kotlin.to_owned(),
+        kotlin: Some(kotlin.to_owned()),
         name,
         read: None,
     }
@@ -682,7 +732,7 @@ fn built(name: &'static str, kotlin: &str, expected: &[&str]) -> Row {
 /// What the driver prints for `rows` where each `validate()` answers what its row expects.
 fn report(rows: &[Row]) -> String {
     let mut text = String::new();
-    for held in rows {
+    for held in rows.iter().filter(|held| held.kotlin.is_some()) {
         if held.expected.is_empty() {
             let _ = writeln!(text, "{}: passes", held.name);
         } else {
@@ -697,12 +747,14 @@ fn report(rows: &[Row]) -> String {
 
 fn driver(rows: &[Row]) -> String {
     let mut main = String::from("fun main() {\n");
-    for held in rows {
+    for (held, kotlin) in rows
+        .iter()
+        .filter_map(|held| held.kotlin.as_ref().map(|kotlin| (held, kotlin)))
+    {
         let _ = writeln!(
             main,
-            "    report({}, {}.validate())",
-            kotlin_string(held.name),
-            held.kotlin
+            "    report({}, {kotlin}.validate())",
+            kotlin_string(held.name)
         );
     }
     main.push_str("}\n");
@@ -1028,8 +1080,46 @@ fn counted_name_rows() -> Vec<Row> {
     };
     let (poster_kept, poster_empty, poster_wide) =
         (poster(1, 1, 1, 1), poster(0, 0, 0, 0), poster(3, 1, 3, 1));
+    let hauler = |counted: usize, named: usize| Hauler {
+        counted: Carried(vec![1_i32; counted]),
+        named: Carried(texts(&vec!["w"; named])),
+    };
+    let loader = |counted: usize, named: usize| Loader {
+        counted: Carried(vec![1_i32; counted]),
+        named: Carried(texts(&vec!["w"; named])),
+    };
+    let (hauler_kept, hauler_empty) = (hauler(1, 1), hauler(0, 0));
+    let (loader_kept, loader_empty) = (loader(1, 1), loader(0, 0));
+    let (carried_numbers, carried_texts) =
+        (Carried(Vec::<i32>::new()), Carried(Vec::<String>::new()));
     vec![
         row("Poster", "Poster", &poster_kept, poster_kept.validate()),
+        row("Hauler", "Hauler", &hauler_kept, hauler_kept.validate()),
+        row(
+            "Hauler, no item",
+            "Hauler",
+            &hauler_empty,
+            hauler_empty.validate(),
+        ),
+        row("Loader", "Loader", &loader_kept, loader_kept.validate()),
+        row(
+            "Loader, no item",
+            "Loader",
+            &loader_empty,
+            loader_empty.validate(),
+        ),
+        read_alone(
+            "Carried<List<Int>>, no item",
+            "Carried<List<Int>>",
+            &carried_numbers,
+            carried_numbers.validate(),
+        ),
+        read_alone(
+            "Carried<List<String>>, no item",
+            "Carried<List<String>>",
+            &carried_texts,
+            carried_texts.validate(),
+        ),
         row(
             "Poster, no item",
             "Poster",
@@ -1061,6 +1151,29 @@ fn counted_name_rows() -> Vec<Row> {
             archived_by_number.validate(),
         ),
     ]
+}
+
+/// The variant an untagged enum is read as from payloads that Rust reads into the first variant
+/// and into the next, each row held to the variant serde reads.
+fn chosen_rows() -> Vec<Row> {
+    [
+        ("Cargo reads a text", "[\"a\"]"),
+        ("Cargo reads no item", "[]"),
+        ("Cargo reads a number", "[1]"),
+    ]
+    .into_iter()
+    .map(|(name, payload)| {
+        let chosen = match serde_json::from_str::<Cargo>(payload).unwrap() {
+            Cargo::Named(_) => "CargoNamed",
+            Cargo::Numbered(_) => "CargoNumbered",
+        };
+        let kotlin = format!(
+            "Chosen(Json.decodeFromString(serializer<Cargo>(), {}))",
+            kotlin_string(payload)
+        );
+        built(name, &kotlin, &[chosen])
+    })
+    .collect()
 }
 
 /// A unit struct, a plain enum, a type with a parameter, and the members whose names the method
@@ -1114,7 +1227,7 @@ fn struct_rows() -> Vec<Row> {
         // holds one that breaks its bound is built, and its read is another run's.
         Row {
             expected: probe.validate().err().unwrap_or_default(),
-            kotlin: "Probe(Later(\"\"), Crate<UInt>(emptyList(), \"\"), \"\", 0u)".to_owned(),
+            kotlin: Some("Probe(Later(\"\"), Crate<UInt>(emptyList(), \"\"), \"\", 0u)".to_owned()),
             name: "Probe",
             read: None,
         },
@@ -1292,6 +1405,7 @@ fn every_row() -> Vec<Row> {
     rows.extend(brand_rows());
     rows.extend(struct_rows());
     rows.extend(counted_name_rows());
+    rows.extend(chosen_rows());
     rows.extend(slot_rows());
     rows.extend(wrapped_variant_rows());
     rows.extend(bare_variant_rows());
@@ -1333,6 +1447,9 @@ fn shape_definitions() -> Vec<String> {
         some_slogans_kotlin::kotlin_definition(),
         carried_kotlin::kotlin_definition(),
         poster_kotlin::kotlin_definition(),
+        hauler_kotlin::kotlin_definition(),
+        loader_kotlin::kotlin_definition(),
+        cargo_kotlin::kotlin_definition(),
         casket_kotlin::kotlin_definition(),
         archive_kotlin::kotlin_definition(),
         probe_kotlin::kotlin_definition(),
@@ -1359,6 +1476,7 @@ fn every_shape_runs_its_bounds_and_its_checks() {
     rows.extend(brand_rows());
     rows.extend(struct_rows());
     rows.extend(counted_name_rows());
+    rows.extend(chosen_rows());
     rows.extend(slot_rows());
     rows.extend(wrapped_variant_rows());
     rows.extend(bare_variant_rows());
