@@ -840,10 +840,10 @@ fn collect_kotlin_fields(
             field_def = held;
         }
         // A flattened member has no key to leave out, and serde reads it whatever it writes.
-        if omission.omits_key && !field_def.is_optional() && !flatten {
+        let defaulted = default_at(&rust_name);
+        if omission.omits_key && defaulted.is_none() && !field_def.is_optional() && !flatten {
             field_def.nullable_levels.push(field_def.array_depth);
         }
-        let defaulted = default_at(&rust_name);
         collected.push(KotlinField {
             aliases: if flatten || omission.skips_deserializing {
                 Vec::new()

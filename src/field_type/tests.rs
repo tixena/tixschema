@@ -1,7 +1,7 @@
 //! Unit tests of `FieldDef`: how a written type is read, and what it renders as in TypeScript and
 //! Zod.
 
-use super::{FieldDef, FieldDefType};
+use super::{FieldDef, FieldDefType, MissingKey};
 
 use crate::utils::claim_published_name;
 
@@ -27,6 +27,7 @@ fn field(field_type: FieldDefType) -> FieldDef {
         name: "items".to_owned(),
         absent_from_wire: false,
         omits_value: false,
+        missing_key: MissingKey::Required,
         #[cfg(any(feature = "zod", feature = "jsonschema"))]
         serde_default: None,
         bytes: false,

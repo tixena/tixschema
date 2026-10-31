@@ -4,6 +4,7 @@
 
 #![cfg(feature = "swift")]
 
+use super::omitted_models::{OMITTED, OMITTED_WRITTEN, muster_swift, roster_swift, squad_swift};
 use super::run_swift_read::normalized;
 use super::runtime::judged;
 use super::serde_default_models::{
@@ -292,4 +293,43 @@ fn each_variant_payload_reads_in_swift_as_the_serde_read_reads_it() {
         run.stdout, run.stderr
     );
     assert_eq!(normalized(&run.stdout), normalized(VARIANT_REPORT));
+}
+
+/// A list under `default` with `skip_serializing_if` or `skip_serializing` reads as `[]` in Swift
+/// where the key is left out, held in a member that is no optional.
+#[test]
+fn an_omitted_key_with_a_default_reads_in_swift_as_its_default() {
+    let roster = roster_swift::swift_definition();
+    assert!(roster.contains("let roles: [String]"), "{roster}");
+    let rows: Vec<String> = OMITTED
+        .iter()
+        .map(|&(name, read_as, payload)| {
+            format!("row(\"{name}\", {read_as}.self, #\"{payload}\"#)")
+        })
+        .collect();
+    let source = [
+        "import Foundation".to_owned(),
+        roster_swift::swift_definition(),
+        muster_swift::swift_definition(),
+        squad_swift::swift_definition(),
+        HARNESS.to_owned(),
+        rows.join("\n"),
+    ]
+    .join("\n\n");
+    let Some(run) = judged(
+        "swift-serde-default-omitted",
+        RUNTIME_VAR,
+        "swift",
+        &["-warnings-as-errors"],
+        "main.swift",
+        &source,
+    ) else {
+        return;
+    };
+    assert!(
+        run.succeeded,
+        "`swift -warnings-as-errors main.swift` failed.\n--- stdout ---\n{}\n--- stderr ---\n{}\n--- source ---\n{source}",
+        run.stdout, run.stderr
+    );
+    assert_eq!(normalized(&run.stdout), normalized(OMITTED_WRITTEN));
 }

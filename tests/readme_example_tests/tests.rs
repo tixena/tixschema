@@ -10,7 +10,7 @@ use tixschema::model_schema;
 
 /// The predicate bullet: the key goes missing when the predicate fires, so the member is described
 /// under an optional key rather than left untouched.
-const PREDICATE_BULLET: &str = "- `#[serde(skip_serializing_if = \"...\")]` -- the key is left out of the payload when the predicate fires: `roles: z.array(z.string()).optional(),` in Zod and no `required` entry in the JSON Schema. On a field that is not an `Option` the TypeScript member takes the optional key too, `roles?: Array<string>;`, there being no second spelling for it; an `Option` field keeps `T | undefined` unless [`ts_optional`](#ts_optional) asks otherwise";
+const PREDICATE_BULLET: &str = "- `#[serde(skip_serializing_if = \"...\")]` -- the key is left out of the payload when the predicate fires, and serde reads the missing key as the member's `default`: Zod writes `roles: z.array(z.string()).prefault([]),`, the TypeScript member is `roles: Array<string>;`, and the JSON Schema states the `\"default\"` and leaves the key out of `required`. An `Option` field keeps `T | undefined` unless [`ts_optional`](#ts_optional) asks otherwise";
 
 /// The bare-`skip` bullet, whose claim is an absence on every surface.
 const SKIP_BULLET: &str = "- `#[serde(skip)]` -- the key is written into no payload and read out of none, so no surface describes the member at all: no TypeScript member, no Zod key, and neither a `properties` nor a `required` entry. No rule of what a surface describes is held to its type: a `u64` under `swift` or `kotlin`, a std type with no schema, a map keyed by a value serde writes as no string and a JSON value all build there. On a tuple-struct or tuple-variant slot it takes the slot out of the described tuple, which shortens the arity -- and a variant declaring one slot becomes a unit variant, which is what serde writes for it. On a variant, the variant is described on no surface and read and written by no client: see [A Variant Serde Neither Writes Nor Reads](#a-variant-serde-neither-writes-nor-reads)";
@@ -179,14 +179,14 @@ fn test_the_predicate_bullet_shows_the_optional_key_it_claims() {
     assert_readme_bullet_shows(
         PREDICATE_BULLET,
         &PredicateOmittedKey::ts_definition(),
-        &["roles?: Array<string>;"],
+        &["roles: Array<string>;"],
     );
 
     #[cfg(feature = "zod")]
     assert_readme_bullet_shows(
         PREDICATE_BULLET,
         &PredicateOmittedKey::zod_schema(),
-        &["roles: z.array(z.string()).optional(),"],
+        &["roles: z.array(z.string()).prefault([]),"],
     );
 }
 
@@ -209,7 +209,7 @@ fn test_the_skip_bullets_show_the_three_answers_they_separate() {
     assert_eq!(supplied.roles, vec!["x".to_owned()]);
     let write_half = WriteHalfDropped::ts_definition();
     assert!(
-        write_half.contains("roles?: Array<string>;"),
+        write_half.contains("roles: Array<string>;"),
         "Got: {write_half}"
     );
 

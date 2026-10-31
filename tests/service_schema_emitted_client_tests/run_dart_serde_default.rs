@@ -5,6 +5,7 @@
 
 use core::fmt::Write as _;
 
+use super::omitted_models::{OMITTED, OMITTED_WRITTEN, muster_dart, roster_dart, squad_dart};
 use super::run_dart_validate::{dart, module};
 use super::serde_default_models::{
     Bollard, CASES, Harbour, Marina, PREPROCESSED, PREPROCESSED_REPORT, REPORT, REQUIRED,
@@ -286,6 +287,57 @@ fn the_read_of_a_default_of_a_variant_has_no_issue() {
         "serde-default-variants-analyze",
         &["analyze"],
         &variant_source(),
+    ) else {
+        return;
+    };
+    assert!(clean, "{said}");
+    assert!(said.contains("No issues found!"), "{said}");
+}
+
+/// The emitted types of a list under `default` with its key omitted on writing, and a `main` that
+/// reads each payload of [`OMITTED`].
+fn omitted_source() -> String {
+    let rows = OMITTED
+        .iter()
+        .fold(String::new(), |mut written, &(name, read_as, payload)| {
+            let _ = writeln!(
+                written,
+                "  row('{name}', () => {read_as}.fromJson(jsonDecode(r'{payload}')).toJson());"
+            );
+            written
+        });
+    module(
+        &[
+            roster_dart::dart_definition(),
+            muster_dart::dart_definition(),
+            squad_dart::dart_definition(),
+        ],
+        &[ROW],
+        &format!("void main() {{\n{rows}}}\n"),
+    )
+}
+
+/// A list under `default` with `skip_serializing_if` or `skip_serializing` reads as `[]` in Dart
+/// where the key is left out, held in a member that is no `List<String>?`.
+#[test]
+fn an_omitted_key_with_a_default_reads_in_dart_as_its_default() {
+    let roster = roster_dart::dart_definition();
+    assert!(roster.contains("final List<String> roles;"), "{roster}");
+    assert!(roster.contains("required this.roles,"), "{roster}");
+    let Some((ran, printed)) = dart("serde-default-omitted", &[], &omitted_source()) else {
+        return;
+    };
+    assert!(ran, "{printed}");
+    assert_eq!(printed, OMITTED_WRITTEN);
+}
+
+/// The analyzer passes the emitted read of an omitted key with a default.
+#[test]
+fn the_read_of_an_omitted_key_with_a_default_has_no_issue() {
+    let Some((clean, said)) = dart(
+        "serde-default-omitted-analyze",
+        &["analyze"],
+        &omitted_source(),
     ) else {
         return;
     };

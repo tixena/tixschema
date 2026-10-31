@@ -30,8 +30,8 @@ use crate::features::serde::{
 };
 use crate::features::text_forms::TextForm;
 use crate::field_type::{
-    FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, get_field_def, is_plain_enum,
-    is_sequence_wrapper,
+    FieldDef, FieldDefType, MissingKey, RESULT_ARMS, RangeKind, VariantKind, get_field_def,
+    is_plain_enum, is_sequence_wrapper,
 };
 use crate::model_schema::{variant_field_rule, variant_wire_kind};
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
@@ -2989,7 +2989,9 @@ fn collect_swift_fields(
             field_def = held;
         }
         // A flattened member has no key to leave out, and serde reads it whatever it writes.
-        if omission.omits_key && !field_def.is_optional() && !flatten {
+        let defaulted = default_at(&rust_name);
+        let leaves_key_out = omission.omits_key && defaulted.is_none();
+        if leaves_key_out && !field_def.is_optional() && !flatten {
             field_def.nullable_levels.push(field_def.array_depth);
         }
         let swift_name = RenameRule::CamelCase.apply_to_field(&rust_name);
@@ -3013,14 +3015,14 @@ fn collect_swift_fields(
             } else {
                 aliases::written_on(&field.attrs)
             },
-            default_at: default_at(&rust_name),
+            default_at: defaulted,
             field_def,
             flatten,
             hint: field_hint,
             held,
             never_written: has_serde_skip_serializing(&field.attrs),
             real_type,
-            required: !omission.omits_key,
+            required: !leaves_key_out,
             shape,
             swift_name: swift_property(&swift_name),
             wire_name,
@@ -3793,6 +3795,7 @@ fn tuple_struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>)
         name: "value".to_owned(),
         nullable_levels: Vec::new(),
         omits_value: false,
+        missing_key: MissingKey::Required,
         #[cfg(any(feature = "zod", feature = "jsonschema"))]
         serde_default: None,
         bytes: false,

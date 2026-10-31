@@ -422,7 +422,8 @@ has to keep.
 - **What has no JSON** on a struct, which keeps its key required on every surface but Rust and
   builds: a struct that does not derive both `Serialize` and `Deserialize`, or names `from`,
   `try_from`, `into` or `remote`; a `transparent` struct; a member under `skip`,
-  `skip_serializing`, `skip_serializing_if` or `skip_deserializing`; a flattened member; an
+  `skip_deserializing`, or one under `skip_serializing` or `skip_serializing_if` that writes no
+  `default` in a struct with no `default` of its own; a flattened member; an
   `Option`, which keeps what it had; a type that names a parameter of the struct, a lifetime or
   `Self`; and the struct's own default on a struct that declares a parameter. A list, a set or a
   map under the bare `default` is read as its default whatever its type names, unless it names a

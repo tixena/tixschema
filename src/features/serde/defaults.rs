@@ -64,11 +64,11 @@ type Built = (TokenStream, TokenStream);
 /// The members of one struct, or of the variants of one enum, serde reads as their default where
 /// the payload leaves the key out, each with the JSON of its default. A member whose default has
 /// no JSON is not among them: one of a type that does not derive both `Serialize` and
-/// `Deserialize`, one whose key serde leaves out of what it writes, a flattened one, an `Option`,
-/// one whose type names a parameter of the type, a lifetime or `Self`, and one under the
-/// container's default where the struct has a parameter. A list, a set or a map under the bare
-/// `default` is among them whatever its type names: its default is the empty collection at every
-/// filling, `[]` or `{}`.
+/// `Deserialize`, one whose key serde leaves out of what it writes and reads no default for, a
+/// flattened one, an `Option`, one whose type names a parameter of the type, a lifetime or `Self`,
+/// and one under the container's default where the struct has a parameter. A list, a set or a map
+/// under the bare `default` is among them whatever its type names: its default is the empty
+/// collection at every filling, `[]` or `{}`.
 #[cfg(any(
     feature = "zod",
     feature = "jsonschema",
@@ -162,10 +162,10 @@ impl SerdeDefaults {
             };
             let omission = parse_serde_key_omission(&field.attrs);
             let name = member.unraw().to_string();
-            if omission.omits_key
+            if (omission.omits_key && whole.is_none() && written_default(&field.attrs).is_none())
                 || omission.skips_deserializing
                 || parse_serde_field_attributes(&field.attrs).flatten
-                || get_field_def(&name, &field.ty, "").is_optional()
+                || get_field_def(&name, &field.ty, "").stands_for_an_option()
             {
                 continue;
             }
