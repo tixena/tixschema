@@ -24,7 +24,7 @@ struct BothHalvesDropped {
 }
 
 /// Only the write half. The key is never written and a supplied one is still read, so the member
-/// stays — under an optional key, which is what the landed omission contract already gives it.
+/// stays — read as its default when the key is missing.
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct WriteHalfDropped {
@@ -251,7 +251,7 @@ fn typescript_answers_the_two_halves_the_way_it_answers_the_word() {
 fn typescript_leaves_the_half_dropped_members_as_they_stand() {
     let write_half = WriteHalfDropped::ts_definition();
     assert!(
-        write_half.contains("roles?: Array<string>;"),
+        write_half.contains("roles: Array<string>;"),
         "Got: {write_half}"
     );
 
@@ -288,7 +288,7 @@ fn zod_writes_no_variant_key_for_the_field_serde_never_carries() {
 fn zod_leaves_the_half_dropped_members_as_they_stand() {
     let write_half = WriteHalfDropped::zod_schema();
     assert!(
-        write_half.contains("roles: z.array(z.string()).optional(),"),
+        write_half.contains("roles: z.array(z.string()).prefault([]),"),
         "Got: {write_half}"
     );
 

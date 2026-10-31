@@ -13,6 +13,7 @@ use super::models::{
 use super::models::{Gangway, report};
 #[cfg(all(feature = "indexmap", any(feature = "zod", feature = "jsonschema")))]
 use super::models::{IndexedFleet, IndexedLogbook};
+use super::omitted::{Muster, OMITTED, OMITTED_REPORT, OMITTED_WRITTEN, Roster, Squad};
 #[cfg(feature = "kotlin")]
 use crate::kotlin_numbers::without_number_readers;
 
@@ -597,5 +598,115 @@ fn kotlin_reads_a_key_left_out_from_the_json_of_its_default() {
              Json.decodeFromString(serializer<String>(), \"\\\"north\\\"\"), val label: String)"
         ),
         "{written}"
+    );
+}
+
+/// serde reads a list under `default` with `skip_serializing_if` or `skip_serializing` as `[]`
+/// where the key is left out, and what each client prints is read back to the same value.
+#[test]
+fn serde_reads_an_omitted_key_with_a_default_as_its_default() {
+    let roles = |held: &[&str]| held.iter().map(|&role| role.to_owned()).collect::<Vec<_>>();
+    assert_eq!(
+        serde_json::from_str::<Roster>(r#"{"id":"1"}"#).unwrap(),
+        Roster {
+            id: "1".to_owned(),
+            roles: roles(&[])
+        }
+    );
+    assert_eq!(
+        serde_json::from_str::<Muster>(r#"{"id":"1"}"#).unwrap(),
+        Muster {
+            id: "1".to_owned(),
+            roles: roles(&[])
+        }
+    );
+    assert_eq!(
+        serde_json::from_str::<Squad>(r#"{"id":"1"}"#).unwrap(),
+        Squad {
+            id: "1".to_owned(),
+            roles: roles(&["guest"])
+        }
+    );
+    for report in [OMITTED_REPORT, OMITTED_WRITTEN] {
+        assert_eq!(OMITTED.len(), report.lines().count());
+        for (&(name, read_as, payload), printed) in OMITTED.iter().zip(report.lines()) {
+            let written = printed.strip_prefix(&format!("{name}: read ")).unwrap();
+            if read_as == "Roster" {
+                assert_eq!(
+                    serde_json::from_str::<Roster>(payload).unwrap(),
+                    serde_json::from_str::<Roster>(written).unwrap()
+                );
+            } else if read_as == "Squad" {
+                assert_eq!(
+                    serde_json::from_str::<Squad>(payload).unwrap(),
+                    serde_json::from_str::<Squad>(written).unwrap()
+                );
+            } else {
+                let rewritten = report == OMITTED_REPORT || !payload.contains("roles");
+                if rewritten {
+                    assert_eq!(
+                        serde_json::from_str::<Muster>(payload).unwrap(),
+                        serde_json::from_str::<Muster>(written).unwrap()
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// The Zod schema reads the omitted key as the default, and the parsed type holds the member.
+#[cfg(feature = "zod")]
+#[test]
+fn the_zod_schema_prefaults_an_omitted_key_with_a_default() {
+    let roster = Roster::zod_schema();
+    assert!(
+        roster.contains("  roles: z.array(z.string()).prefault([]),\n"),
+        "{roster}"
+    );
+    assert!(!roster.contains(".optional()"), "{roster}");
+    let muster = Muster::zod_schema();
+    assert!(
+        muster.contains("  roles: z.array(z.string()).prefault([]),\n"),
+        "{muster}"
+    );
+    let squad = Squad::zod_schema();
+    assert!(
+        squad.contains("  roles: z.array(z.string()).prefault([\"guest\"]),\n"),
+        "{squad}"
+    );
+}
+
+/// The TypeScript type holds the member.
+#[cfg(feature = "typescript")]
+#[test]
+fn the_typescript_type_holds_an_omitted_key_with_a_default() {
+    let written = Roster::ts_definition();
+    assert!(written.contains("  roles: Array<string>;"), "{written}");
+    assert!(!written.contains("roles?"), "{written}");
+}
+
+/// The JSON Schema leaves the key out of `required` and states the default.
+#[cfg(feature = "jsonschema")]
+#[test]
+fn the_json_schema_states_the_default_of_an_omitted_key() {
+    for schema in [Roster::json_schema(), Muster::json_schema()] {
+        assert_eq!(schema["required"], serde_json::json!(["id"]), "{schema}");
+        assert_eq!(
+            schema["properties"]["roles"]["default"],
+            serde_json::json!([]),
+            "{schema}"
+        );
+    }
+    let squad = Squad::json_schema();
+    assert_eq!(
+        squad["properties"]["roles"]["default"],
+        serde_json::json!(["guest"]),
+        "{squad}"
+    );
+    assert!(
+        !squad["required"]
+            .as_array()
+            .is_some_and(|required| required.iter().any(|key| key == "roles")),
+        "{squad}"
     );
 }

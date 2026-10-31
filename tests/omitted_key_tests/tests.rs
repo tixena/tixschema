@@ -112,11 +112,11 @@ fn typescript_writes_the_option_as_undefined_valued() {
 /// The key is optional; the value under it never is.
 #[test]
 #[cfg(feature = "typescript")]
-fn typescript_writes_the_predicate_omitted_key_as_optional() {
+fn typescript_holds_the_predicate_omitted_key_that_serde_reads_as_its_default() {
     let ts = PredicateOmittedKey::ts_definition();
 
-    assert!(ts.contains("roles?: Array<string>;"), "Got: {ts}");
-    assert!(!ts.contains("roles: Array<string>"), "Got: {ts}");
+    assert!(ts.contains("roles: Array<string>;"), "Got: {ts}");
+    assert!(!ts.contains("roles?:"), "Got: {ts}");
     assert!(ts.contains("id: string;"), "Got: {ts}");
 }
 
@@ -137,11 +137,11 @@ fn zod_keeps_the_undefined_union_that_already_admits_the_absent_key() {
 
 #[test]
 #[cfg(feature = "zod")]
-fn zod_marks_the_predicate_omitted_key_optional() {
+fn zod_reads_the_predicate_omitted_key_as_its_default() {
     let zod = PredicateOmittedKey::zod_schema();
 
     assert!(
-        zod.contains("roles: z.array(z.string()).optional(),"),
+        zod.contains("roles: z.array(z.string()).prefault([]),"),
         "Got: {zod}"
     );
     assert!(zod.contains("id: z.string(),"), "Got: {zod}");
@@ -177,23 +177,22 @@ fn the_json_schema_describes_the_predicate_omitted_key_without_requiring_it() {
         serde_json::json!(["id"]),
         "Got: {schema}"
     );
+    assert_eq!(
+        schema["properties"]["roles"]["default"],
+        serde_json::json!([]),
+        "Got: {schema}"
+    );
 }
 
 #[test]
 #[cfg(feature = "dart")]
-fn dart_reads_the_predicate_omitted_key_through_a_null_guard() {
+fn dart_reads_the_predicate_omitted_key_as_its_default() {
     let dart = predicate_omitted_key_dart::dart_definition();
 
-    assert!(dart.contains("final List<String>? roles;"), "Got: {dart}");
-    assert!(
-        dart.contains("this.roles,") && !dart.contains("required this.roles,"),
-        "Got: {dart}"
-    );
-    assert!(
-        dart.contains("] == null ? null : (json['"),
-        "casting the key serde left out is a `TypeError` on the payload without it. Got: {dart}"
-    );
-    assert!(dart.contains("if (roles != null)"), "Got: {dart}");
+    assert!(dart.contains("final List<String> roles;"), "Got: {dart}");
+    assert!(dart.contains("required this.roles,"), "Got: {dart}");
+    assert!(dart.contains("json.containsKey('roles')"), "Got: {dart}");
+    assert!(!dart.contains("if (roles != null)"), "Got: {dart}");
     assert!(dart.contains("required this.id,"), "Got: {dart}");
 }
 

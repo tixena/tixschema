@@ -8,6 +8,10 @@ extern crate alloc;
 mod models;
 
 #[cfg(test)]
+#[path = "serde_default_tests/omitted.rs"]
+mod omitted;
+
+#[cfg(test)]
 #[path = "serde_default_tests/readme.rs"]
 mod readme;
 

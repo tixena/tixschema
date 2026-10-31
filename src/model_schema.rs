@@ -58,8 +58,8 @@ use crate::field_type::{RESULT_ARMS, RangeKind};
 use crate::field_type::{zod_check_wrap, zod_check_wrap_handing, zod_preprocess_wrap};
 use crate::{
     field_type::{
-        BoundKind, FieldDef, FieldDefType, VariantKind, classify_variant, format_number_literal,
-        get_field_def, held_literal, is_plain_enum,
+        BoundKind, FieldDef, FieldDefType, MissingKey, VariantKind, classify_variant,
+        format_number_literal, get_field_def, held_literal, is_plain_enum,
     },
     utils::{get_field_docs, get_variant_docs, strip_examples_from_docs},
 };
@@ -15211,7 +15211,11 @@ fn untagged_member_field_def(
 ) -> (FieldDef, Vec<proc_macro2::TokenStream>) {
     let (mut field_def, written_def) =
         untagged_member_field_defs(field, final_field_name, ctx.type_parameters);
-    apply_serde_key_omission(&mut field_def, field);
+    apply_serde_key_omission(
+        &mut field_def,
+        field,
+        ctx.container_defaulted && ctx.type_parameters.is_empty(),
+    );
     if prop_meta.nullable {
         field_def = field_def.nullable_in_place();
     }
@@ -19989,8 +19993,20 @@ fn field_ident_string(field: &Field) -> String {
 /// Hands the field def the two serde facts the object surfaces spend: whether the field's value
 /// leaves the key out of the serialized object rather than writing it, and whether the key is out
 /// of both directions at once.
-fn apply_serde_key_omission(field_def: &mut FieldDef, field: &Field) {
+fn apply_serde_key_omission(
+    field_def: &mut FieldDef,
+    field: &Field,
+    container_reads_default: bool,
+) {
     let omission = parse_serde_key_omission(&field.attrs);
+    field_def.missing_key = if field.ident.is_some()
+        && !omission.skips_deserializing
+        && (omission.defaulted || container_reads_default)
+    {
+        MissingKey::Defaulted
+    } else {
+        MissingKey::Required
+    };
     field_def.omits_value = field.ident.is_some() && omission.omits_key;
     field_def.absent_from_wire = field.ident.is_some() && omission.absent_from_wire();
 }
@@ -20989,7 +21005,11 @@ fn process_field(
     // own parameters are erased here.
     field_def.erase_type_parameters(ctx.type_parameters);
 
-    apply_serde_key_omission(&mut field_def, field);
+    apply_serde_key_omission(
+        &mut field_def,
+        field,
+        ctx.container_defaulted && ctx.type_parameters.is_empty(),
+    );
     if model_schema_prop_meta.nullable {
         field_def = field_def.nullable_in_place();
     }

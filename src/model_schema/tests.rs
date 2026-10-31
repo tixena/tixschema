@@ -36,7 +36,7 @@ use super::{
 #[cfg(feature = "zod")]
 use super::{MergedOperand, SourceAbsence};
 #[cfg(feature = "jsonschema")]
-use crate::field_type::is_set_wrapper;
+use crate::field_type::{MissingKey, is_set_wrapper};
 #[cfg(feature = "serde")]
 use crate::foundation::{exec_decode_with_foundation, exec_mongodb_foundation};
 
@@ -432,7 +432,7 @@ const LIST_REACH: [(&str, usize, bool); 16] = [
 fn ts_optional_verdict(item: &syn::ItemStruct, flag_set: bool) -> Result<(), String> {
     let field = item.fields.iter().next().unwrap();
     let mut rendered = get_field_def("", &field.ty, "");
-    apply_serde_key_omission(&mut rendered, field);
+    apply_serde_key_omission(&mut rendered, field, false);
     validate_ts_optional_flag(field, &rendered, flag_set)
 }
 
@@ -7928,7 +7928,7 @@ fn field_prop_guard_errors_in_scope(item: &syn::ItemStruct, parameters: &[String
     let written = get_field_def(&name, &field.ty, "");
     let mut rendered = written.clone();
     rendered.erase_type_parameters(parameters);
-    apply_serde_key_omission(&mut rendered, field);
+    apply_serde_key_omission(&mut rendered, field, false);
     let meta = super::parse_model_schema_prop_attributes(&field.attrs);
     super::collect_field_guard_errors(field, &rendered, &written, &name, &meta, true, Vec::new())
         .iter()
@@ -17778,6 +17778,7 @@ fn wrapped_u32_value(wrapper: &str) -> super::FieldDef {
         name: "items".to_owned(),
         absent_from_wire: false,
         omits_value: false,
+        missing_key: MissingKey::Required,
         #[cfg(any(feature = "zod", feature = "jsonschema"))]
         serde_default: None,
         bytes: false,
