@@ -314,9 +314,34 @@ pub fn judged(
     generic_params: &str,
     type_parameters: &[String],
     composed: bool,
+    keyed_by: (&[String], &[String]),
+) -> String {
+    judged_counting(
+        export_name,
+        generic_params,
+        type_parameters,
+        composed,
+        keyed_by,
+        None,
+    )
+}
+
+/// [`judged`] for a brand that counts a list default, which hands `kotlinSchemaAtFilling()` the
+/// declared type `filled` names where the serializer of the parameter it names is that type's.
+pub fn judged_counting(
+    export_name: &str,
+    generic_params: &str,
+    type_parameters: &[String],
+    composed: bool,
     (keyed, variants): (&[String], &[String]),
+    filled: Option<(&str, &str)>,
 ) -> String {
     let own = format!("{export_name}{generic_params}");
+    let kept: Vec<String> = keyed
+        .iter()
+        .cloned()
+        .chain(filled.map(|(parameter, _)| parameter.to_owned()))
+        .collect();
     let (opens, property, unjudged) = if type_parameters.is_empty() {
         (
             format!("object {export_name}Serializer"),
@@ -329,7 +354,7 @@ pub fn judged(
             format!(
                 "class {export_name}Serializer{}({})",
                 parameter_list(type_parameters, bound),
-                kept_parameters(type_parameters, keyed)
+                kept_parameters(type_parameters, &kept)
             ),
             format!(
                 "private val kotlinSchemaUnjudged = {export_name}Unjudged({}); ",
@@ -343,8 +368,16 @@ pub fn judged(
         .map(|parameter| kotlin_serializer_param_name(parameter))
         .collect::<Vec<_>>()
         .join(", ");
+    let counted = filled.map_or_else(String::new, |(parameter, declared)| {
+        format!(
+            " + read.kotlinSchemaAtFilling(if ({}.descriptor == serializer<{declared}>().descriptor) \
+             {} else \"\")",
+            kotlin_serializer_param_name(parameter),
+            kotlin_quoted(declared),
+        )
+    });
     let validated = if variants.is_empty() {
-        format!("read.validate({handing})")
+        format!("read.validate({handing}){counted}")
     } else {
         let arms = variants
             .iter()

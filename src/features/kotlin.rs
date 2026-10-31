@@ -2681,6 +2681,7 @@ fn value_class_tokens(
         &rust_ident,
         (text.is_some(), length.is_some(), rules.bounded()),
         bare,
+        rules.counts_at_filling(),
     );
     let answered = [text, length]
         .into_iter()
