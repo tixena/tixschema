@@ -13,7 +13,9 @@ use super::models::{
 use super::models::{Gangway, report};
 #[cfg(all(feature = "indexmap", any(feature = "zod", feature = "jsonschema")))]
 use super::models::{IndexedFleet, IndexedLogbook};
-use super::omitted::{Muster, OMITTED, OMITTED_REPORT, OMITTED_WRITTEN, Roster, Squad};
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+use super::omitted::OMITTED_WRITTEN;
+use super::omitted::{Muster, OMITTED, OMITTED_REPORT, Roster, Squad};
 #[cfg(feature = "kotlin")]
 use crate::kotlin_numbers::without_number_readers;
 
@@ -627,7 +629,12 @@ fn serde_reads_an_omitted_key_with_a_default_as_its_default() {
             roles: roles(&["guest"])
         }
     );
-    for report in [OMITTED_REPORT, OMITTED_WRITTEN] {
+    let reports = [
+        OMITTED_REPORT,
+        #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+        OMITTED_WRITTEN,
+    ];
+    for report in reports {
         assert_eq!(OMITTED.len(), report.lines().count());
         for (&(name, read_as, payload), printed) in OMITTED.iter().zip(report.lines()) {
             let written = printed.strip_prefix(&format!("{name}: read ")).unwrap();

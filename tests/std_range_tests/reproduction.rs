@@ -57,8 +57,9 @@ fn a_range_of_usize_compiles_and_is_described_as_its_start_and_end() {
         Text::ts_definition()
     );
     assert!(
-        Text::zod_schema()
-            .contains("span: z.strictObject({ start: z.number().int(), end: z.number().int() }),"),
+        Text::zod_schema().contains(
+            "span: z.strictObject({ start: z.number().int().min(0), end: z.number().int().min(0) }),"
+        ),
         "{}",
         Text::zod_schema()
     );

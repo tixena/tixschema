@@ -47,7 +47,7 @@ mod lookup_http_rest_transport;
 
 /// The `http_rest` dispatcher for `TallyClientService`, the Rust twin the core-named arguments
 /// group's requests are read by.
-#[cfg(test)]
+#[cfg(all(test, feature = "dart"))]
 #[path = "service_schema_emitted_client_tests/tally_http_rest_transport.rs"]
 mod tally_http_rest_transport;
 
@@ -220,15 +220,7 @@ mod run_kotlin_preprocess;
 
 /// The models a key under `#[serde(default)]` is written on, and what a serde read prints for
 /// each payload of the table every surface is held to.
-#[cfg(all(
-    test,
-    any(
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin",
-        feature = "zod"
-    )
-))]
+#[cfg(all(test, any(feature = "dart", feature = "swift", feature = "kotlin")))]
 #[path = "serde_default_tests/models.rs"]
 mod serde_default_models;
 
@@ -1474,16 +1466,19 @@ use tests::{
     ArchiveClientService, ContentClientService, ConversationClientService, EchoClientService,
     GateClientService, LabelClientService, LookupClientService, MediaClientService,
     PulseClientService, SealClientService, SearchClientService, StampClientService,
-    TallyClientService, ThumbnailClientService, UploadDocumentClientService, VaultClientService,
+    ThumbnailClientService, UploadDocumentClientService, VaultClientService,
     archive_client_service_schema, content_client_service_schema,
     conversation_client_service_schema, echo_client_service_schema, gate_client_service_schema,
     label_client_service_schema, lookup_client_service_schema, media_client_service_schema,
     pulse_client_service_schema, seal_client_service_schema, search_client_service_schema,
-    stamp_client_service_schema, tally_client_service_schema, thumbnail_client_service_schema,
+    stamp_client_service_schema, thumbnail_client_service_schema,
     upload_document_client_service_schema, vault_client_service_schema,
 };
 #[cfg(all(test, feature = "dart"))]
-use tests::{ShelfClientService, shelf_client_service_schema};
+use tests::{
+    ShelfClientService, TallyClientService, shelf_client_service_schema,
+    tally_client_service_schema,
+};
 #[cfg(all(
     test,
     feature = "chrono",

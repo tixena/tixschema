@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
+#[cfg(feature = "bson")]
 use version_schema::DecodeWith as _;
 
 /// Read from BSON, and never stored.

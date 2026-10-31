@@ -1,7 +1,7 @@
 //! With the `indexmap` feature off, `IndexMap` and `IndexSet` are names like any other: a type
 //! declared under one, above the type that holds it, is the type a field written with it holds.
 
-use indexed_schema::DecodeWith;
+use indexed_schema::DecodeWith as _;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tixschema::model_schema;
@@ -67,7 +67,7 @@ fn typescript_names_the_types_declared_here() {
 fn zod_calls_the_factories_of_the_types_declared_here() {
     let zod = Indexed::zod_schema();
     for call in [
-        "IndexMap$SchemaFactory(z.string(), z.number().int())",
+        "IndexMap$SchemaFactory(z.string(), z.number().int().min(0).max(4294967295))",
         "IndexSet$SchemaFactory(z.string())",
     ] {
         assert!(zod.contains(call), "missing `{call}` in: {zod}");
