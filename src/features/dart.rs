@@ -42,16 +42,13 @@ use crate::features::serde::{parse_serde_field_attributes, parse_serde_type_attr
 const BOUND_TEXT_HELPER: &str = "static String _boundText(Object held) => held is String ? held : \
      _boundText((held as dynamic).value as Object);";
 
-/// The helper a type's `validate()` counts a named type with: the code points of a string, the
-/// items of a list, and a wrapper through the value it holds.
-const BOUND_LENGTH_HELPER: &str = "static int _boundLength(Object held) => held is String ? \
-     held.runes.length : held is Iterable ? held.length : \
-     _boundLength((held as dynamic).value as Object);";
-
 /// Appended to a UTC date's text: `toIso8601String` writes `.000Z` for a date of whole seconds,
 /// which chrono writes with no fraction.
 #[cfg(feature = "chrono")]
 const CHRONO_WHOLE_SECONDS: &str = ".replaceFirst('.000Z', 'Z')";
+
+/// The core types a class member can take the name of.
+const DART_CORE_TYPES: [&str; 4] = ["int", "double", "num", "bool"];
 
 /// What a member of an emitted enum cannot be named beside the reserved words: a member every
 /// Dart enum or object already has, and one the emitted enum declares itself.
@@ -109,17 +106,6 @@ const HELD_BOUND_HELPER: &str = "static List<String> _heldBound(Object held) { t
      (held as dynamic).validateBound() as List<String>; } on NoSuchMethodError { return const \
      []; } }";
 
-/// The helper a type's `validate()` quotes a `double` back with: a whole one without `.0`, as
-/// Rust and Zod write it.
-const NUMBER_HELPER: &str = "static String _number(double value) => value == \
-     value.truncateToDouble() ? value.toStringAsFixed(0) : value.toString();";
-
-/// The helper a type's `validate()` asks whether a set repeats an item with: two items are one
-/// where they write one JSON text.
-const REPEATS_HELPER: &str = "static bool _repeats(Iterable<Object?> items) { final seen = \
-     <String>{}; for (final item in items) { if (!seen.add(jsonEncode(item))) return true; } \
-     return false; }";
-
 /// The helper a type's `validate()` writes a place in front of a message with: into the place the
 /// message already names, or ahead of one that names none.
 const UNDER_HELPER: &str = "static String _under(String place, String violation) { if \
@@ -129,6 +115,13 @@ const UNDER_HELPER: &str = "static String _under(String place, String violation)
 
 /// What the base of a sealed enum declares, which each of its variants overrides.
 const VALIDATE_DECLARED: &str = "List<String> validate();";
+
+/// The class being written, the core types its members hide, and those it named.
+struct CoreScope {
+    class: String,
+    hidden: Vec<&'static str>,
+    used: Vec<&'static str>,
+}
 
 /// One field this module has decided belongs on the wire: its Dart member name (the Rust field's
 /// own spelling, `snake_case` included, rather than re-cased to Dart's own lower-camel
@@ -463,6 +456,9 @@ struct Unjudged {
 }
 
 thread_local! {
+    /// The class being written, with the core types its members hide and those it named.
+    static DART_CORE_SCOPE: RefCell<Option<CoreScope>> = const { RefCell::new(None) };
+
     /// The Dart class/enum name each Rust ident publishes — the one thing a reference to a sibling
     /// item needs, since the reference's own field carries the type arguments (real Dart generics
     /// need no factory to bind them, unlike Zod). Independent of the three-surface `ALIAS_INFO`
@@ -1465,6 +1461,65 @@ fn collect_dart_fields(
     collected
 }
 
+/// Opens the scope of the class `class`, whose members are named `members`: a core type a member
+/// takes the name of is written through a typedef beside the class.
+fn enter_core_scope<'name>(class: &str, named: impl IntoIterator<Item = &'name str>) {
+    let members: Vec<&str> = named.into_iter().collect();
+    let hidden = DART_CORE_TYPES
+        .into_iter()
+        .filter(|core| members.contains(core))
+        .collect();
+    DART_CORE_SCOPE.with(|scope| {
+        *scope.borrow_mut() = Some(CoreScope {
+            class: class.to_owned(),
+            hidden,
+            used: Vec::new(),
+        });
+    });
+}
+
+/// [`enter_core_scope`] over the members of the variant `payload` holds.
+fn enter_variant_core_scope(class: &str, payload: &VariantPayload) {
+    match payload {
+        VariantPayload::Named(fields) => {
+            enter_core_scope(class, fields.iter().map(|field| field.member.as_str()));
+        }
+        VariantPayload::Unit | VariantPayload::Value(_) => enter_core_scope(class, []),
+    }
+}
+
+/// Closes the scope, answering the typedef of each hidden core type the class named, to write
+/// ahead of it.
+fn leave_core_scope() -> String {
+    let taken = DART_CORE_SCOPE.with(|scope| scope.borrow_mut().take());
+    taken.map_or_else(String::new, |closed| {
+        DART_CORE_TYPES
+            .into_iter()
+            .filter(|core| closed.used.contains(core))
+            .fold(String::new(), |mut declared, core| {
+                write!(declared, "typedef _{}${core} = {core}; ", closed.class).unwrap();
+                declared
+            })
+    })
+}
+
+/// The core type `core` as the class being written names it: through its typedef where a member
+/// takes the name, and by its own name otherwise.
+fn dart_core(core: &'static str) -> String {
+    DART_CORE_SCOPE.with(|scope| {
+        let mut held = scope.borrow_mut();
+        match held.as_mut() {
+            Some(open) if open.hidden.contains(&core) => {
+                if !open.used.contains(&core) {
+                    open.used.push(core);
+                }
+                format!("_{}${core}", open.class)
+            }
+            _ => core.to_owned(),
+        }
+    })
+}
+
 // Dart type and JSON-codec rendering over `&FieldDef`, kept in this module so `field_type.rs`
 // carries no Dart-shaped knowledge.
 
@@ -1527,12 +1582,12 @@ fn dart_base(field: &FieldDef) -> String {
                 dart_typename(value)
             )
         }
-        FieldDefType::Boolean => "bool".to_owned(),
+        FieldDefType::Boolean => dart_core("bool"),
         FieldDefType::Char | FieldDefType::String | FieldDefType::StringLiteral(_) => {
             "String".to_owned()
         }
-        FieldDefType::BooleanLiteral(_) => "bool".to_owned(),
-        FieldDefType::NumberLiteral(_) => "double".to_owned(),
+        FieldDefType::BooleanLiteral(_) => dart_core("bool"),
+        FieldDefType::NumberLiteral(_) => dart_core("double"),
         FieldDefType::U8
         | FieldDefType::U16
         | FieldDefType::U32
@@ -1542,8 +1597,8 @@ fn dart_base(field: &FieldDef) -> String {
         | FieldDefType::I32
         | FieldDefType::I64
         | FieldDefType::Usize
-        | FieldDefType::Isize => "int".to_owned(),
-        FieldDefType::F32 | FieldDefType::F64 => "double".to_owned(),
+        | FieldDefType::Isize => dart_core("int"),
+        FieldDefType::F32 | FieldDefType::F64 => dart_core("double"),
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => "ObjectId".to_owned(),
         #[cfg(feature = "chrono")]
@@ -1553,7 +1608,7 @@ fn dart_base(field: &FieldDef) -> String {
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime => {
             if has_as_number(field) {
-                "int".to_owned()
+                dart_core("int")
             } else {
                 "DateTime".to_owned()
             }
@@ -1595,7 +1650,7 @@ fn dart_map_key_typename(key: &FieldDef) -> String {
         return "String".to_owned();
     }
     match key.map_key_wire() {
-        MapKeyWire::Boolean => "bool".to_owned(),
+        MapKeyWire::Boolean => dart_core("bool"),
         #[cfg(feature = "chrono")]
         MapKeyWire::Timestamp => "DateTime".to_owned(),
         MapKeyWire::Enumerated
@@ -1609,13 +1664,14 @@ fn dart_map_key_typename(key: &FieldDef) -> String {
 /// key is read only from the text serde reads, and only when finite.
 fn number_key_read(number: &FieldDefType, expr: &str) -> String {
     let read = if matches!(number, FieldDefType::F32 | FieldDefType::F64) {
+        let double = dart_core("double");
         format!(
-            "(switch (RegExp(r'{JSON_NUMBER}').hasMatch({expr}) ? double.parse({expr}) : \
-             double.nan) {{ final key when key.isFinite => key, _ => throw \
+            "(switch (RegExp(r'{JSON_NUMBER}').hasMatch({expr}) ? {double}.parse({expr}) : \
+             {double}.nan) {{ final key when key.isFinite => key, _ => throw \
              FormatException('invalid float key') }})"
         )
     } else {
-        format!("int.parse({expr})")
+        format!("{}.parse({expr})", dart_core("int"))
     };
     forms::number_held(number, &read).unwrap_or(read)
 }
@@ -1957,10 +2013,10 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
             &format!("({expr} as Map<String, dynamic>)"),
             read,
         ),
-        FieldDefType::Boolean => format!("{expr} as bool"),
+        FieldDefType::Boolean => format!("{expr} as {}", dart_core("bool")),
         FieldDefType::String | FieldDefType::StringLiteral(_) => format!("{expr} as String"),
-        FieldDefType::BooleanLiteral(_) => format!("{expr} as bool"),
-        FieldDefType::NumberLiteral(_) => format!("({expr} as num).toDouble()"),
+        FieldDefType::BooleanLiteral(_) => format!("{expr} as {}", dart_core("bool")),
+        FieldDefType::NumberLiteral(_) => format!("({expr} as {}).toDouble()", dart_core("num")),
         FieldDefType::U8
         | FieldDefType::U16
         | FieldDefType::U32
@@ -1971,11 +2027,11 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
         | FieldDefType::I64
         | FieldDefType::Usize
         | FieldDefType::Isize => {
-            let taken = format!("{expr} as int");
+            let taken = format!("{expr} as {}", dart_core("int"));
             forms::number_held(&field.field_type, &taken).unwrap_or(taken)
         }
         FieldDefType::F32 | FieldDefType::F64 => {
-            let taken = format!("({expr} as num).toDouble()");
+            let taken = format!("({expr} as {}).toDouble()", dart_core("num"));
             forms::number_held(&field.field_type, &taken).unwrap_or(taken)
         }
         #[cfg(feature = "mongodb")]
@@ -1991,7 +2047,7 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime => {
             if has_as_number(field) {
-                format!("{expr} as int")
+                format!("{expr} as {}", dart_core("int"))
             } else {
                 format!("DateTime.parse({expr} as String)")
             }
@@ -3342,6 +3398,36 @@ fn own_check_elements(checks: &[FunctionName]) -> Vec<String> {
         .collect()
 }
 
+/// The helper a type's `validate()` counts a named type with: the code points of a string, the
+/// items of a list, and a wrapper through the value it holds.
+fn bound_length_helper() -> String {
+    format!(
+        "static {} _boundLength(Object held) => held is String ? held.runes.length : held is \
+         Iterable ? held.length : _boundLength((held as dynamic).value as Object);",
+        dart_core("int")
+    )
+}
+
+/// The helper a type's `validate()` quotes a `double` back with: a whole one without `.0`, as
+/// Rust and Zod write it.
+fn number_helper() -> String {
+    format!(
+        "static String _number({} value) => value == value.truncateToDouble() ? \
+         value.toStringAsFixed(0) : value.toString();",
+        dart_core("double")
+    )
+}
+
+/// The helper a type's `validate()` asks whether a set repeats an item with: two items are one
+/// where they write one JSON text.
+fn repeats_helper() -> String {
+    format!(
+        "static {} _repeats(Iterable<Object?> items) {{ final seen = <String>{{}}; for (final \
+         item in items) {{ if (!seen.add(jsonEncode(item))) return true; }} return false; }}",
+        dart_core("bool")
+    )
+}
+
 /// A type's `validate()` over `rules`, the elements of the list it answers, and each helper they
 /// call, as the members of the type's class. A type with no rule answers an empty list.
 fn validate_members(rules: &[String], helpers: &Helpers, overrides: bool) -> String {
@@ -3353,15 +3439,18 @@ fn validate_members(rules: &[String], helpers: &Helpers, overrides: bool) -> Str
     };
     let mut written = format!("{annotation}List<String> validate() => {answered};");
     for (called, helper) in [
-        (helpers.calls(Helper::Under), UNDER_HELPER),
-        (helpers.calls(Helper::BoundLength), BOUND_LENGTH_HELPER),
-        (helpers.calls(Helper::BoundText), BOUND_TEXT_HELPER),
-        (helpers.calls(Helper::Number), NUMBER_HELPER),
-        (helpers.calls(Helper::Repeats), REPEATS_HELPER),
+        (helpers.calls(Helper::Under), UNDER_HELPER.to_owned()),
+        (helpers.calls(Helper::BoundLength), bound_length_helper()),
+        (
+            helpers.calls(Helper::BoundText),
+            BOUND_TEXT_HELPER.to_owned(),
+        ),
+        (helpers.calls(Helper::Number), number_helper()),
+        (helpers.calls(Helper::Repeats), repeats_helper()),
     ] {
         if called {
             written.push(' ');
-            written.push_str(helper);
+            written.push_str(&helper);
         }
     }
     written
@@ -3931,6 +4020,10 @@ fn struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -> Toke
         .iter()
         .map(|(key, named)| format!("{}: {},", quoted(key), quoted(named)))
         .collect();
+    enter_core_scope(
+        &export_name,
+        fields.iter().map(|field| field.member.as_str()),
+    );
     let mut helpers = Helpers::default();
     let mut rules = field_elements(&fields, &[], Asked::Rules, &mut helpers);
     rules.extend(own_check_elements(args.check));
@@ -3951,8 +4044,9 @@ fn struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -> Toke
         ),
         &validate_members(&rules, &helpers, false),
     );
+    let core_typedefs = leave_core_scope();
     let typedef = ident_typedef(&rust_ident, &export_name, &generic_params);
-    let dart_source = format!("{body}{typedef}");
+    let dart_source = format!("{core_typedefs}{body}{typedef}");
 
     dart_module_tokens(
         &rust_ident,
@@ -4445,6 +4539,7 @@ fn tagged_enum_dart_source(
         let names = read_as(wire_tag.clone(), read_aliases(&variant.attrs));
         let subclass_name = format!("{export_name}{variant_rust_name}");
         let payload = variant_payload(variant, fields_rule, &type_parameters, args, defaults);
+        enter_variant_core_scope(&subclass_name, &payload);
         let validate = variant_validate(
             &payload,
             &tagged_variant_steps(&wire_tag, &shape),
@@ -4464,7 +4559,7 @@ fn tagged_enum_dart_source(
             &shape,
             &corrects,
         );
-        subclasses.push(class_text);
+        subclasses.push(format!("{}{class_text}", leave_core_scope()));
         let arm = format!("case {}: return {from_json};", any_of(&names));
         if is_external && matches!(payload, VariantPayload::Unit) {
             is_string_dispatch_arms.push(arm);
@@ -4555,6 +4650,7 @@ fn untagged_enum_dart_source(
         let subclass_name = format!("{export_name}{variant_rust_name}");
         let payload = variant_payload(variant, fields_rule, &type_parameters, args, defaults);
         reads_unit |= matches!(&payload, VariantPayload::Value(held) if reads_a_unit(held));
+        enter_variant_core_scope(&subclass_name, &payload);
         let bounds = variant_bounds(&payload);
         // serde writes an untagged variant as its value, so no step leads to its members.
         let validate = format!(
@@ -4607,7 +4703,7 @@ fn untagged_enum_dart_source(
                 )
             }
         };
-        subclasses.push(class_text);
+        subclasses.push(format!("{}{class_text}", leave_core_scope()));
         attempts.push(if bounds.is_some() {
             format!(
                 "try {{ final {read} = {from_json}; if ({read}._bounds().isEmpty) return {read}; }} \

@@ -1507,6 +1507,11 @@ mod member_named_rows;
 
 #[cfg(test)]
 #[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_core_named.rs"]
+mod run_dart_core_named;
+
+#[cfg(test)]
+#[cfg(feature = "dart")]
 #[path = "service_schema_emitted_client_tests/run_dart_member_named.rs"]
 mod run_dart_member_named;
 
