@@ -26,8 +26,8 @@ log = "0.4.4"
 regex = "1.10"
 # The parser `regex::Regex::new` is built on: the `pattern` guard reads its AST. Capped below `0.9`
 # on purpose: the AST is matched exhaustively, so a new construct has to be classified.
-regex-syntax = "0.8.5"
-rustversion = "1.0.23"
+regex-syntax = "0.8"
+rustversion = "1"
 
 [dev-dependencies]
 mongodb = ">=3.7"
@@ -68,7 +68,7 @@ stored_customers = { path = "tests/crates_apart/stored_customers" }
 invoice_lookups = { path = "tests/crates_apart/invoice_lookups" }
 # The crate whose frontmatter `Value` the `arky` entry converts to and from; the tests convert
 # models through it.
-arky = "0.1.1"
+arky = "0.2"
 
 # Transitive dep floors — pinned to fix known vulnerabilities:
 # - bytes >=1.11.1: RUSTSEC-2026-0007 (integer overflow in BytesMut::reserve)
