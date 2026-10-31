@@ -8737,6 +8737,141 @@ fn a_length_on_a_list_is_left_alone_whatever_the_list_holds() {
     }
 }
 
+/// A bound no value meets, and a count that only repeats a fixed array's length, are refused.
+#[test]
+fn a_bound_no_value_meets_and_a_count_that_repeats_a_fixed_length_are_refused() {
+    for (constraint, field_type, refusal) in [
+        (
+            quote::quote! { minLength = 5, maxLength = 2 },
+            quote::quote! { String },
+            "`minLength = 5` is above `maxLength = 2`, so no value passes",
+        ),
+        (
+            quote::quote! { minimum = 5, maximum = 2 },
+            quote::quote! { u32 },
+            "`minimum = 5` is above `maximum = 2`, so no value passes",
+        ),
+        (
+            quote::quote! { maxLength = 1 },
+            quote::quote! { [String; 2] },
+            "`maxLength = 1` cannot hold a `[String; 2]`, which always has 2 items",
+        ),
+        (
+            quote::quote! { minLength = 3 },
+            quote::quote! { [String; 2] },
+            "`minLength = 3` cannot hold a `[String; 2]`, which always has 2 items",
+        ),
+        (
+            quote::quote! { minLength = 2 },
+            quote::quote! { [String; 2] },
+            "`minLength = 2` repeats the length of `[String; 2]`",
+        ),
+        (
+            quote::quote! { maxLength = 2 },
+            quote::quote! { [String; 2] },
+            "`maxLength = 2` repeats the length of `[String; 2]`",
+        ),
+    ] {
+        let errors = field_prop_guard_errors(&syn::parse_quote! {
+            struct Report {
+                #[model_schema_prop(#constraint)]
+                held: #field_type,
+            }
+        });
+        assert_eq!(
+            errors.len(),
+            1,
+            "for {constraint} on {field_type}: {errors:?}"
+        );
+        for needle in ["compile_error", "field `held`", refusal] {
+            assert!(
+                errors[0].contains(needle),
+                "{needle} missing for {constraint} on {field_type}: {}",
+                errors[0]
+            );
+        }
+    }
+}
+
+#[test]
+fn an_equal_pair_and_a_count_a_fixed_length_always_meets_are_not_refused() {
+    for (constraint, field_type) in [
+        (
+            quote::quote! { minLength = 3, maxLength = 3 },
+            quote::quote! { String },
+        ),
+        (
+            quote::quote! { minimum = 3, maximum = 3 },
+            quote::quote! { u32 },
+        ),
+        (
+            quote::quote! { minLength = 1 },
+            quote::quote! { [String; 2] },
+        ),
+        (
+            quote::quote! { maxLength = 3 },
+            quote::quote! { [String; 2] },
+        ),
+        (
+            quote::quote! { minLength = 1 },
+            quote::quote! { [String; N] },
+        ),
+    ] {
+        let errors = field_prop_guard_errors(&syn::parse_quote! {
+            struct Report {
+                #[model_schema_prop(#constraint)]
+                held: #field_type,
+            }
+        });
+        assert!(
+            errors.is_empty(),
+            "for {constraint} on {field_type}: {errors:?}"
+        );
+    }
+}
+
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn a_brand_whose_own_bounds_no_value_meets_is_refused() {
+    for (inner, least, most, refusal) in [
+        (
+            quote::quote! { String },
+            Some(5),
+            Some(2),
+            "`minLength = 5` is above `maxLength = 2`, so no value passes",
+        ),
+        (
+            quote::quote! { [String; 2] },
+            None,
+            Some(1),
+            "`maxLength = 1` cannot hold a `[String; 2]`, which always has 2 items",
+        ),
+        (
+            quote::quote! { [String; 2] },
+            Some(2),
+            None,
+            "`minLength = 2` repeats the length of `[String; 2]`",
+        ),
+    ] {
+        let args = super::ModelSchemaArgs {
+            max_length: most,
+            min_length: least,
+            ..super::ModelSchemaArgs::default()
+        };
+        let errors = branded_errors_with(
+            &syn::parse_quote! {
+                #[serde(transparent)]
+                struct SlotId(pub #inner);
+            },
+            &args,
+        );
+        assert_eq!(errors.len(), 1, "for {inner}: {errors:?}");
+        for needle in ["compile_error", "branded newtype `SlotId`", refusal] {
+            assert!(errors[0].contains(needle), "{needle}: {}", errors[0]);
+        }
+    }
+}
+
 /// A list has no text for a pattern and no number for a range, whatever it holds.
 #[test]
 fn a_pattern_or_a_range_on_a_list_is_refused() {
@@ -10635,7 +10770,7 @@ fn a_length_over_a_list_inner_passes_and_a_pattern_beside_it_is_refused() {
     for inner in [
         "Vec<String>",
         "Vec<Part>",
-        "[u8; 4]",
+        "[u8; 2]",
         "BTreeSet<String>",
         "BinaryHeap<u8>",
         "HashSet<String>",

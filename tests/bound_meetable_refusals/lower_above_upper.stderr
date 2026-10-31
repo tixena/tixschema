@@ -1,0 +1,5 @@
+error: model_schema: field `line`: `minLength = 5` is above `maxLength = 2`, so no value passes
+  --> tests/bound_meetable_refusals/lower_above_upper.rs:10:5
+   |
+10 |     pub line: String,
+   |     ^^^^^^^^^^^^^^^^
