@@ -4181,6 +4181,8 @@ The refusal names the keys of the wrong kind and no other: `minimum` written bes
 
 A `minimum` or `maximum` that is a whole number outside the range of the field's integer type is refused too, naming the field, the bound and the range: `#[model_schema_prop(minimum = -1)] pub count: u32` answers ``error: model_schema: field `count`: `minimum = -1` is outside what `u32` holds (0 to 4294967295). Write a bound inside that range, or take it off.`` It holds under `Option` and `Box`, on a variant's field and on a slot of a tuple.
 
+A bound no value meets is refused too, on a field and on a brand's own `minLength` and `maxLength`: a lower bound above its upper bound answers ``error: model_schema: field `name`: `minLength = 5` is above `maxLength = 2`, so no value passes``. On a fixed array `[T; N]`, a `maxLength` below `N` or a `minLength` above `N` is refused (``field `pair`: `maxLength = 1` cannot hold a `[String; 2]`, which always has 2 items``), and so is a count that only repeats the length (``field `pair`: `minLength = 2` repeats the length of `[String; 2]`, which always has 2 items. Take it off.``). An equal pair, a count the length always meets, and a length the expansion cannot read build as before.
+
 ### The `validate()` Method
 
 When any field carries a constraint, or the type or one of its fields names a [check](#checks-check), the macro generates a `validate(&self) -> Result<(), Vec<String>>` method. It is what checks a field's constraints. A serde read of the type calls it on the value it read and [refuses what it refuses](#a-read-refuses-what-validate-refuses), and you call it on an instance built or changed in Rust.

@@ -57,17 +57,9 @@ mod a_key_on_a_list {
         pub listed: Vec<String>,
         #[model_schema_prop(minLength = 2)]
         pub ordered: BTreeSet<String>,
-        #[model_schema_prop(minLength = 2)]
         pub pair: [String; 2],
         #[model_schema_prop(minLength = 2)]
         pub sliced: Box<[String]>,
-    }
-
-    #[model_schema()]
-    #[derive(Debug, Deserialize, Serialize)]
-    pub struct TooWide {
-        #[model_schema_prop(maxLength = 1)]
-        pub pair: [String; 2],
     }
 
     #[model_schema()]
@@ -257,11 +249,6 @@ mod a_key_on_a_list {
             sliced: Box::from(two()),
         };
         assert_eq!(held.validate(), Ok(()));
-
-        assert_eq!(
-            TooWide { pair: two() }.validate().unwrap_err(),
-            vec!["'pair': too long: maximum length is 1, got 2"]
-        );
     }
 
     #[test]
@@ -548,7 +535,7 @@ mod a_key_on_a_list {
                     every("heap", "z.number().int().min(0).max(4294967295)", ""),
                     every("listed", "z.string()", ""),
                     every_set("ordered"),
-                    every("pair", "z.string()", ".length(2)"),
+                    "  pair: z.array(z.string()).length(2),\n".to_owned(),
                     every("sliced", "z.string()", ""),
                 ],
             ),
@@ -643,11 +630,6 @@ mod a_key_on_a_list {
         assert_eq!(
             every["properties"]["pair"],
             json!({ "type": "array", "items": string(), "minItems": 2_u32, "maxItems": 2_u32 })
-        );
-        assert_eq!(
-            TooWide::json_schema()["properties"]["pair"],
-            json!({ "type": "array", "items": string(), "minItems": 2_u32, "maxItems": 1_u32 }),
-            "the declared length and the bound are both stated, and no array meets the two"
         );
 
         let wrapped = Wrapped::json_schema();

@@ -1,0 +1,5 @@
+error: model_schema: field `piers`: `minLength = 2` repeats the length of `[String; 2]`, which always has 2 items. Take it off.
+  --> tests/bound_meetable_refusals/repeats_fixed_length.rs:10:5
+   |
+10 |     pub piers: [String; 2],
+   |     ^^^^^^^^^^^^^^^^^^^^^^
