@@ -160,6 +160,16 @@ impl Built {
     }
 }
 
+/// An arm whose fields are written in the variant: the struct of paths its marker roots, and
+/// what builds it.
+struct Marked {
+    arguments: TokenStream,
+    built: TokenStream,
+    named: Ident,
+    slotted: Option<Ident>,
+    variant: String,
+}
+
 /// The paths of one type, as they are gathered: what is written beside the type, what
 /// `mongo_members` holds under the names each struct takes there, and what the type's `impl`
 /// gains beside the const that holds them.
@@ -175,16 +185,16 @@ struct Emitter<'item> {
 impl<'item> Emitter<'item> {
     /// The arms of an enum serde writes under `tag`: one function per arm of its struct of paths,
     /// for the `impl` beside the type, where the model an arm holds is named as its author wrote
-    /// it, and `Arm` for its schema module. An arm whose function would be no identifier has
-    /// neither.
-    fn arms(&self, tag: &str, arms: &[TagArm<'_>], put: &Put<'_>) -> (TokenStream, TokenStream) {
-        let own = &self.own;
-        let (kinds, root) = (own.kinds(0), &own.root);
-        let place = if let Put::Under(content) = put {
-            quote! { #kinds MongoPath::at(#content) }
-        } else {
-            quote! { #kinds MongoPath::ROOT }
-        };
+    /// it, and `Arm` for its schema module. An arm whose fields are written in the variant is
+    /// answered over a marker of `mongo_arms`, which `ArmPaths` roots the variant's paths at. An
+    /// arm whose function would be no identifier has none of these.
+    fn arms(
+        &mut self,
+        tag: &str,
+        arms: &[TagArm<'_>],
+        put: &Put<'_>,
+        marked: &[Marked],
+    ) -> (TokenStream, TokenStream) {
         let named: Vec<(Ident, &TagArm<'_>)> = arms
             .iter()
             .filter_map(|arm| Some((function_ident(&arm.function)?, arm)))
@@ -192,36 +202,80 @@ impl<'item> Emitter<'item> {
         if named.is_empty() {
             return (TokenStream::new(), TokenStream::new());
         }
-        let functions = named.iter().map(|(function, arm)| {
-            let value = &arm.value;
-            let held = arm_model(arm.variant).map(|ty| own.naming_itself(ty.to_token_stream()));
-            let asked = held.as_ref().map_or_else(
-                || "the tag alone".to_owned(),
-                |model| {
-                    format!(
-                        "the tag is asked, and `and` takes conditions on the `{}` it holds",
-                        written_spelling(model)
-                    )
-                },
-            );
-            let told = format!("Rows of the arm serde writes as `{value}`: {asked}.");
-            let model = held.unwrap_or_else(|| quote! { () });
-            quote! {
-                #[doc = #told]
-                #[must_use]
-                pub const fn #function(&self) -> #kinds ArmFilter<#root, #model> {
-                    #kinds ArmFilter::of(#tag, #value, #place)
+        let (kinds, root) = (self.own.kinds(0), self.own.root.clone());
+        let place = if let Put::Under(content) = put {
+            quote! { #kinds MongoPath::at(#content) }
+        } else {
+            quote! { #kinds MongoPath::ROOT }
+        };
+        let marker_of = |arm: &TagArm<'_>| {
+            let variant = arm.variant.ident.unraw().to_string();
+            marked.iter().find(|candidate| candidate.variant == variant)
+        };
+        let mut markers: Vec<TokenStream> = Vec::new();
+        let functions: Vec<TokenStream> = named
+            .iter()
+            .map(|(function, arm)| {
+                let value = &arm.value;
+                if let Some(fields) = marker_of(arm) {
+                    let rooting = Ident::new(&fields.variant, Span::call_site());
+                    let (declared, beside) = self.marker(&rooting, fields);
+                    let marker_type = self.marker_type(&rooting);
+                    markers.push(declared);
+                    self.beside.push(beside);
+                    let told = format!(
+                        "Rows of the arm serde writes as `{value}`: the tag is asked, and `with` takes conditions on the fields written in the variant."
+                    );
+                    let at_root = quote! { #kinds MongoPath::ROOT };
+                    return quote! {
+                        #[doc = #told]
+                        #[must_use]
+                        pub const fn #function(&self) -> #kinds ArmFilter<#root, #marker_type> {
+                            #kinds ArmFilter::of(#tag, #value, #at_root)
+                        }
+                    };
                 }
-            }
-        });
+                let own = &self.own;
+                let held =
+                    arm_model(arm.variant).map(|ty| own.naming_itself(ty.to_token_stream()));
+                let asked = held.as_ref().map_or_else(
+                    || "the tag alone".to_owned(),
+                    |model| {
+                        format!(
+                            "the tag is asked, and `and` takes conditions on the `{}` it holds",
+                            written_spelling(model)
+                        )
+                    },
+                );
+                let told = format!("Rows of the arm serde writes as `{value}`: {asked}.");
+                let model = held.unwrap_or_else(|| quote! { () });
+                quote! {
+                    #[doc = #told]
+                    #[must_use]
+                    pub const fn #function(&self) -> #kinds ArmFilter<#root, #model> {
+                        #kinds ArmFilter::of(#tag, #value, #place)
+                    }
+                }
+            })
+            .collect();
         let told = format!(
             "The arms of `{}`, one per variant serde writes.",
-            own.name.unraw()
+            self.own.name.unraw()
         );
         let each = named.iter().map(|(_function, arm)| {
             let mut name = arm.variant.ident.clone();
             name.set_span(Span::call_site());
             name
+        });
+        let declared = markers.iter();
+        let arms_module = (!markers.is_empty()).then(|| {
+            quote! {
+                /// The arms whose fields are written in the variant, each a marker
+                /// `ArmFilter::with` roots the variant's paths at.
+                pub mod mongo_arms {
+                    #(#declared)*
+                }
+            }
         });
         (
             quote! { #(#functions)* },
@@ -232,6 +286,8 @@ impl<'item> Emitter<'item> {
                 pub enum Arm {
                     #(#each,)*
                 }
+
+                #arms_module
             },
         )
     }
@@ -578,6 +634,62 @@ impl<'item> Emitter<'item> {
                 .collect()
         };
         self.own.keeping(inner.as_ref(), &marked)
+    }
+
+    /// The marker of an arm whose fields are written in the variant, as `mongo_arms` declares it,
+    /// and the `impl` of `ArmPaths` beside the type, where every name the paths hold resolves.
+    fn marker(&self, marker: &Ident, fields: &Marked) -> (TokenStream, TokenStream) {
+        let own = &self.own;
+        let mut bare = own.bare(None);
+        bare.params = bare.params.into_iter().skip(1).collect();
+        let phantoms = bare.type_params().map(|parameter| &parameter.ident);
+        let told = format!(
+            "The arm `{}`, whose fields `with` hands its closure.",
+            marker.unraw()
+        );
+        let shown = shown_as(marker, &bare);
+        let declared = quote! {
+            #[doc = #told]
+            #[non_exhaustive]
+            pub struct #marker #bare {
+                of: ::core::marker::PhantomData<fn() -> (#(#phantoms,)*)>,
+            }
+
+            #shown
+        };
+        let mut generics = own.declared(None);
+        generics.params = generics.params.into_iter().skip(1).collect();
+        let (kinds, marker_type) = (own.kinds(0), self.marker_type(marker));
+        let (arguments, built, named) = (&fields.arguments, &fields.built, &fields.named);
+        if let Some(slots) = &fields.slotted {
+            generics
+                .make_where_clause()
+                .predicates
+                .push(parse_quote!((): #kinds mongo_members::#slots<#marker_type #arguments>));
+        }
+        let (impl_generics, _, where_clause) = generics.split_for_impl();
+        let beside = quote! {
+            impl #impl_generics #kinds ArmPaths for #marker_type #where_clause {
+                type Paths = #kinds mongo_members::#named<#marker_type #arguments>;
+
+                fn paths() -> Self::Paths {
+                    #built
+                }
+            }
+        };
+        (declared, beside)
+    }
+
+    /// The marker `marker` of `mongo_arms`, as the type's own scope writes it.
+    fn marker_type(&self, marker: &Ident) -> TokenStream {
+        let kinds = self.own.kinds(0);
+        let each = self
+            .own
+            .parameters
+            .iter()
+            .map(|parameter| Ident::new(parameter, Span::call_site()));
+        let arguments = (!self.own.parameters.is_empty()).then(|| quote! { <#(#each),*> });
+        quote! { #kinds mongo_arms::#marker #arguments }
     }
 
     /// The path of one field or slot serde writes at `place`: through its own hook where it has
@@ -1541,6 +1653,7 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
     let fields_rule = parse_written_renames(&item.attrs).rename_all_fields;
     let mut holding: Vec<(String, Member)> = Vec::new();
     let mut asks: Vec<Ask> = Vec::new();
+    let mut marked: Vec<Marked> = Vec::new();
     for WrittenVariant {
         name,
         stem,
@@ -1557,6 +1670,9 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
             stem: &stem,
         };
         if let Some(member) = emitter.content(variant, &of) {
+            if let Some(fields) = marked_arm(variant, &member, &emitter.own) {
+                marked.push(fields);
+            }
             holding.push((stem.clone(), member));
         }
         asks.push(Ask {
@@ -1579,7 +1695,7 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
         taken.push(name);
     }
     let (arm_functions, arm_enum) = tag_arms(item)
-        .map(|(tag, arms)| emitter.arms(&tag, &arms, &put))
+        .map(|(tag, arms)| emitter.arms(&tag, &arms, &put, &marked))
         .unzip();
     let more =
         (asked.is_some() || arm_functions.is_some()).then(|| quote! { #asked #arm_functions });
@@ -2023,6 +2139,37 @@ fn continues_a_path(tokens: &[TokenTree]) -> bool {
 
 /// `name` as the name of a function, at the call site's span. `None` where it is no identifier,
 /// as under a tag key whose snake case starts with a digit.
+/// What roots the paths of `variant` at a marker, where its fields are written in the variant:
+/// named fields, or several slots, and `member` is the struct of their paths.
+fn marked_arm(variant: &Variant, member: &Member, own: &Own<'_>) -> Option<Marked> {
+    let written_in_the_variant = match &variant.fields {
+        Fields::Named(_) => true,
+        Fields::Unnamed(slots) => slots.unnamed.len() > 1,
+        Fields::Unit => false,
+    };
+    let (
+        Built::Held {
+            named,
+            slots: _slots,
+        },
+        Shown::Held {
+            arguments,
+            named: _named,
+            slotted,
+        },
+    ) = (&member.built, &member.shown)
+    else {
+        return None;
+    };
+    written_in_the_variant.then(|| Marked {
+        arguments: arguments.clone(),
+        built: member.built.written(own),
+        named: named.clone(),
+        slotted: slotted.clone(),
+        variant: variant.ident.unraw().to_string(),
+    })
+}
+
 fn function_ident(name: &str) -> Option<Ident> {
     syn::parse_str::<Ident>(name)
         .is_ok()

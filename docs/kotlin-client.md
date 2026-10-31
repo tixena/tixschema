@@ -97,6 +97,14 @@ section is the consumer's view; this is what a change has to keep.
   `run_kotlin_generic_bounds.rs`, which also runs both declarations in Dart and in Swift. Swift
   tells the filling by `value as? {Class}<{Held}>`, which keeps the arguments, and measures the
   value the class holds.
+- **A brand whose declared default is a list** counts its items in `kotlinSchemaAtFilling(filling)`,
+  which counts only when `filling` is the Kotlin type of the default (`Rules::filled`); its
+  `validate()` and `kotlinSchemaBound()` count none. A holder whose member is the brand written
+  with one list argument calls it with the type it writes (`filling_told`), through the
+  `Any?.kotlinSchemaAtFilling` fallback when the brand is declared below the holder, and the
+  brand's serializer calls it with the default where the serializer handed for the parameter has
+  the default's descriptor (`read::judged_counting`). `Carried(emptyList<String>()).validate()`
+  called directly answers no message; holders, reads and Rust count it.
 - **The tests.** `tests/kotlin_tests/validate.rs` pins the text in every build with `kotlin`, a
   build with no schema surface included: Rust holds no bound there and Kotlin holds every one.
   `tests/service_schema_emitted_client_tests/run_kotlin_validate.rs` compiles the emitted types

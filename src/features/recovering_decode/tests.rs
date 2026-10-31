@@ -6,8 +6,8 @@ use super::aliases::entry_of_items;
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use super::{ADDED_TYPE_NAMES, Source, read_whole_items, reading_the_authors_scope};
 use super::{
-    DECODE_WITH_LIBRARY_NAMES, RecoveringDecode, decode_with_foundation, decode_with_library,
-    written_names,
+    DECODE_WITH_IMPL_MACRO, DECODE_WITH_LIBRARY_NAMES, RecoveringDecode, decode_with_foundation,
+    decode_with_library, written_names,
 };
 #[cfg(feature = "mongodb")]
 use super::{MONGODB_LIBRARY_NAMES, mongodb_foundation, mongodb_library};
@@ -129,6 +129,10 @@ const PATHS_BESIDE: [(&str, ImplsBeside); 4] = [
                 &["color"],
             ),
             (
+                "impl fill_schema :: ArmPaths for fill_schema :: mongo_arms :: Solid",
+                &["Paths", "paths"],
+            ),
+            (
                 "impl < Root > fill_schema :: MongoFields < Root >",
                 &[
                     "solid",
@@ -153,6 +157,14 @@ const PATHS_BESIDE: [(&str, ImplsBeside); 4] = [
             (
                 "impl < Root > stroke_schema :: mongo_members :: SpanSlots < Root > for ()",
                 &["Slot0", "Slot1"],
+            ),
+            (
+                "impl stroke_schema :: ArmPaths for stroke_schema :: mongo_arms :: Dashed",
+                &["Paths", "paths"],
+            ),
+            (
+                "impl stroke_schema :: ArmPaths for stroke_schema :: mongo_arms :: Span where () : stroke_schema :: mongo_members :: SpanSlots < stroke_schema :: mongo_arms :: Span >",
+                &["Paths", "paths"],
             ),
             (
                 "impl < Root > stroke_schema :: MongoFields < Root >",
@@ -281,6 +293,33 @@ fn whole_impl_of(source: &str) -> String {
     struct_recovering_decode(&item).type_impl.to_string()
 }
 
+/// `type_impl` as a file, with the items inside each call of the macro that wraps a `DecodeWith`
+/// impl written in place of the call.
+fn unwrapped_file(type_impl: proc_macro2::TokenStream) -> syn::File {
+    let mut file: syn::File = syn::parse2(type_impl).unwrap();
+    file.items = file
+        .items
+        .into_iter()
+        .flat_map(|item| {
+            if let syn::Item::Macro(call) = &item
+                && call
+                    .mac
+                    .path
+                    .segments
+                    .last()
+                    .is_some_and(|last| last.ident == DECODE_WITH_IMPL_MACRO)
+            {
+                syn::parse2::<syn::File>(call.mac.tokens.clone())
+                    .unwrap()
+                    .items
+            } else {
+                vec![item]
+            }
+        })
+        .collect();
+    file
+}
+
 /// The inherent `impl` the flag adds to the enum `source` declares, as text.
 fn enum_impl_of(source: &str) -> String {
     let item: syn::ItemEnum = syn::parse_str(source).unwrap();
@@ -291,7 +330,7 @@ fn enum_impl_of(source: &str) -> String {
 fn inherent_text(type_impl: proc_macro2::TokenStream) -> String {
     use quote::ToTokens as _;
 
-    let added: syn::File = syn::parse2(type_impl).unwrap();
+    let added = unwrapped_file(type_impl);
     added
         .items
         .iter()
@@ -408,7 +447,7 @@ fn reads_under_their_types(impls: Vec<(String, Vec<String>)>) -> Vec<(String, Ve
 
 /// The type's own `impl` among `type_impl`: the first, ahead of what is written beside the type.
 fn own_impl(type_impl: proc_macro2::TokenStream) -> syn::ItemImpl {
-    let added: syn::File = syn::parse2(type_impl).unwrap();
+    let added = unwrapped_file(type_impl);
     added
         .items
         .into_iter()
@@ -431,7 +470,7 @@ fn added_enum_impls(source: &str) -> Vec<(String, Vec<String>)> {
 /// Every `impl` among `type_impl`: its header as text, with the trait it implements, and its
 /// members in the order written.
 fn impls_in(type_impl: proc_macro2::TokenStream) -> Vec<(String, Vec<String>)> {
-    let added: syn::File = syn::parse2(type_impl).unwrap();
+    let added = unwrapped_file(type_impl);
     let impls: Vec<(String, Vec<String>)> = added
         .items
         .iter()
@@ -476,7 +515,7 @@ fn member_name(member: &syn::ImplItem) -> Option<String> {
 
 /// The names the methods among `type_impl` give type parameters of their own, each once, sorted.
 fn own_type_parameters(type_impl: proc_macro2::TokenStream) -> Vec<String> {
-    let added: syn::File = syn::parse2(type_impl).unwrap();
+    let added = unwrapped_file(type_impl);
     let mut named: Vec<String> = added
         .items
         .iter()
@@ -636,7 +675,7 @@ fn leaf_tokens(tokens: proc_macro2::TokenStream, leaves: &mut Vec<String>) {
 fn body_of(type_impl: proc_macro2::TokenStream, named: &str) -> String {
     use quote::ToTokens as _;
 
-    let added: syn::File = syn::parse2(type_impl).unwrap();
+    let added = unwrapped_file(type_impl);
     let bodies: Vec<String> = added
         .items
         .iter()
@@ -963,7 +1002,7 @@ fn the_bson_methods_carry_the_signatures_of_their_json_twins() {
     let item: syn::ItemStruct = syn::parse_str("pub struct Named { pub title: String }").unwrap();
     let type_impl = struct_recovering_decode(&item).type_impl;
     let added = own_impl(type_impl.clone());
-    let every: syn::File = syn::parse2(type_impl).unwrap();
+    let every = unwrapped_file(type_impl);
     let signatures: Vec<String> = every
         .items
         .iter()
@@ -1387,7 +1426,14 @@ fn each_query_type_has_the_operators_of_its_kind() {
         ("Filter", &["raw", "and", "or", "negated", "into_document"]),
         (
             "ArmFilter",
-            &["of", "and", "update", "tag_on_insert", "into_document"],
+            &[
+                "of",
+                "and",
+                "update",
+                "tag_on_insert",
+                "into_document",
+                "with",
+            ],
         ),
         ("Update", &["raw", "and", "into_document"]),
         ("ArmUpdate", &["and", "tag_on_insert", "into_document"]),
@@ -1466,7 +1512,7 @@ fn an_operator_that_writes_a_value_takes_it_by_value_and_answers_a_write_error()
     for (on, method) in query_methods(&added) {
         let signature = method.sig.to_token_stream().to_string();
         let answered = method.sig.output.to_token_stream().to_string();
-        let writes = ["value : V", "value : M", "values : I"]
+        let writes = ["value : V", "value : M", "values : I", "condition : B"]
             .iter()
             .any(|taken| signature.contains(taken));
         assert_eq!(
@@ -1530,7 +1576,7 @@ fn a_filter_and_an_update_each_carry_a_marker_of_their_own() {
     ] {
         assert!(packed.contains(taken), "missing `{taken}`");
     }
-    assert_eq!(packed.matches("AsRef<").count(), 15);
+    assert_eq!(packed.matches("AsRef<").count(), 16);
     let added: syn::File = syn::parse2(emitted).unwrap();
     let asked: Vec<(String, String)> = query_methods(&added)
         .into_iter()
@@ -1551,6 +1597,7 @@ fn a_filter_and_an_update_each_carry_a_marker_of_their_own() {
         ("Filter::or", "Root"),
         ("ArmFilter::and", "M"),
         ("ArmFilter::update", "fn (M) -> M"),
+        ("ArmFilter::with", "M"),
         ("Update::and", "fn (Root) -> Root"),
         ("ArmUpdate::and", "fn (M) -> M"),
         ("ModelList::elem_match", "N"),
@@ -2470,7 +2517,7 @@ fn under_bson_the_decode_with_library_holds_what_reads_a_bson_value() {
 }
 
 /// The attributes on each item an initializer writes at the crate root, as text, by the item's
-/// position: a module, a trait or an `impl`, and any other item as itself.
+/// position: a module, a trait, an `impl`, a macro or a `use`, and any other item as itself.
 fn crate_root_attributes(written: &syn::File) -> Vec<String> {
     written
         .items
@@ -2481,6 +2528,10 @@ fn crate_root_attributes(written: &syn::File) -> Vec<String> {
             } else if let syn::Item::Trait(declared) = item {
                 Some(&declared.attrs)
             } else if let syn::Item::Impl(declared) = item {
+                Some(&declared.attrs)
+            } else if let syn::Item::Macro(declared) = item {
+                Some(&declared.attrs)
+            } else if let syn::Item::Use(declared) = item {
                 Some(&declared.attrs)
             } else {
                 None
@@ -2516,7 +2567,7 @@ fn each_initializer_writes_its_module_and_its_marker() {
     );
     assert_eq!(
         crate_root_attributes(&written),
-        ["# [doc (hidden)]", "", ""]
+        ["# [doc (hidden)]", "", "", "", ""]
     );
     #[cfg(feature = "mongodb")]
     {
@@ -6524,7 +6575,7 @@ fn an_arm_is_a_function_written_beside_the_type_that_answers_its_tag() {
          {shipping_schema::ArmFilter::of(\"type\",\"by-rail\",shipping_schema::MongoPath::ROOT)}",
         "#[must_use]pubconstfntype__collected(&self)->shipping_schema::ArmFilter<Root,()>\
          {shipping_schema::ArmFilter::of(\"type\",\"Collected\",shipping_schema::MongoPath::ROOT)}",
-        "#[must_use]pubconstfntype__locker(&self)->shipping_schema::ArmFilter<Root,()>\
+        "#[must_use]pubconstfntype__locker(&self)->shipping_schema::ArmFilter<Root,shipping_schema::mongo_arms::Locker>\
          {shipping_schema::ArmFilter::of(\"type\",\"Locker\",shipping_schema::MongoPath::ROOT)}",
     ] {
         assert!(
@@ -6538,7 +6589,8 @@ fn an_arm_is_a_function_written_beside_the_type_that_answers_its_tag() {
         "# [doc = \"Rows of the arm serde writes as `by-rail`: the tag is asked, and `and` takes \
          conditions on the `Wagon` it holds.\"]",
         "# [doc = \"Rows of the arm serde writes as `Collected`: the tag alone.\"]",
-        "# [doc = \"Rows of the arm serde writes as `Locker`: the tag alone.\"]",
+        "# [doc = \"Rows of the arm serde writes as `Locker`: the tag is asked, and `with` takes \
+         conditions on the fields written in the variant.\"]",
     ] {
         assert!(
             on_the_type.contains(&packed(told)),
@@ -6553,6 +6605,42 @@ fn an_arm_is_a_function_written_beside_the_type_that_answers_its_tag() {
     assert!(module.contains(&arms), "missing `{arms}` in: {module}");
     assert!(!module.contains("__"), "got: {module}");
     assert!(!module.contains("#[serde"), "got: {module}");
+}
+
+/// An arm whose fields are written in the variant is answered over a marker, which `ArmPaths`
+/// roots the variant's paths at, and whose place is the enum's own: the paths carry the content
+/// key.
+#[cfg(feature = "mongodb")]
+#[test]
+fn an_arm_whose_fields_are_written_in_the_variant_has_a_marker_that_roots_its_paths() {
+    let (module, on_the_type) = typed_enum_paths_of(
+        "#[serde(tag = \"docType\", content = \"body\")] pub enum Slip<T> { \
+         Signed { clerk: String, load: T }, Pair(String, u32), Blank }",
+        &[],
+    );
+    for written in [
+        "pubmodmongo_arms{",
+        "pubstructSigned<T>{of:::core::marker::PhantomData<fn()->(T,)>,}",
+        "pubstructPair<T>{of:::core::marker::PhantomData<fn()->(T,)>,}",
+    ] {
+        assert!(module.contains(written), "missing `{written}` in: {module}");
+    }
+    for written in [
+        "impl<T>slip_schema::ArmPathsforslip_schema::mongo_arms::Signed<T>{\
+         typePaths=slip_schema::mongo_members::Signed<slip_schema::mongo_arms::Signed<T>,T>;\
+         fnpaths()->Self::Paths{slip_schema::mongo_members::Signed{row:::core::marker::PhantomData}}}",
+        "impl<T>slip_schema::ArmPathsforslip_schema::mongo_arms::Pair<T>\
+         where():slip_schema::mongo_members::PairSlots<slip_schema::mongo_arms::Pair<T>>{",
+        "pubconstfndoc_type__signed(&self)->slip_schema::ArmFilter<Root,slip_schema::mongo_arms::Signed<T>>\
+         {slip_schema::ArmFilter::of(\"docType\",\"Signed\",slip_schema::MongoPath::ROOT)}",
+        "pubconstfndoc_type__blank(&self)->slip_schema::ArmFilter<Root,()>\
+         {slip_schema::ArmFilter::of(\"docType\",\"Blank\",slip_schema::MongoPath::at(\"body\"))}",
+    ] {
+        assert!(
+            on_the_type.contains(written),
+            "missing `{written}` in: {on_the_type}"
+        );
+    }
 }
 
 /// What an arm holds is written under the content key, which is the arm's place.
@@ -6602,10 +6690,10 @@ fn an_arm_holds_the_model_a_path_over_its_one_slot_reaches() {
         ("listed", "Inner"),
         ("mapped", "()"),
         ("maybe", "Inner"),
-        ("named", "()"),
+        ("named", "row_schema::mongo_arms::Named<T>"),
         ("nothing", "()"),
         ("of", "T"),
-        ("pair", "()"),
+        ("pair", "row_schema::mongo_arms::Pair<T>"),
         ("then", "Row<T>"),
         ("unwritten", "()"),
     ] {
@@ -6639,10 +6727,9 @@ fn an_enum_serde_writes_under_no_tag_key_has_no_arm() {
     }
 }
 
-/// A tag key whose snake case starts with a digit names no function.
 #[cfg(feature = "mongodb")]
 #[test]
-fn a_variant_serde_never_writes_and_a_name_that_is_no_identifier_have_no_arm() {
+fn a_variant_serde_never_writes_has_no_arm() {
     let (module, on_the_type) = typed_enum_paths_of(
         "#[serde(tag = \"kind\")] pub enum Gate { #[serde(skip)] Lost, Open, \
          #[serde(skip_serializing)] Shut(Inner) }",
@@ -6653,14 +6740,58 @@ fn a_variant_serde_never_writes_and_a_name_that_is_no_identifier_have_no_arm() {
     for absent in ["kind__lost", "kind__shut", "Lost", "Shut"] {
         assert!(!emitted.contains(absent), "found `{absent}` in: {emitted}");
     }
-    let (numbered, on_the_numbered) =
+}
+
+/// A tag key whose snake case starts with a digit names its arm functions after one `_`.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_tag_key_that_starts_with_a_digit_has_its_arm_functions_after_a_leading_underscore() {
+    let (module, on_the_type) =
         typed_enum_paths_of("#[serde(tag = \"2fa\")] pub enum Gate { Open, Shut }", &[]);
-    let unnamed = format!("{numbered}{on_the_numbered}");
-    for absent in ["__", "enumArm", "ArmFilter"] {
-        assert!(!unnamed.contains(absent), "found `{absent}` in: {unnamed}");
+    for written in [
+        "pubconstfn_2fa__open(&self)->gate_schema::ArmFilter<Root,()>",
+        "pubconstfn_2fa__shut(&self)->gate_schema::ArmFilter<Root,()>",
+        "pubfnis_open(",
+    ] {
+        assert!(
+            on_the_type.contains(written),
+            "missing `{written}` in: {on_the_type}"
+        );
     }
-    assert!(
-        on_the_numbered.contains("pubfnis_open("),
-        "got: {on_the_numbered}"
+    assert!(module.contains("pubenumArm{Open,Shut,}"), "got: {module}");
+    assert_eq!(
+        arms_of("#[serde(tag = \"2fa\")] pub enum Gate { Open, Shut }"),
+        Some((
+            "2fa".to_owned(),
+            vec![
+                [
+                    "_2fa__open".to_owned(),
+                    "Open".to_owned(),
+                    "Open".to_owned()
+                ],
+                [
+                    "_2fa__shut".to_owned(),
+                    "Shut".to_owned(),
+                    "Shut".to_owned()
+                ],
+            ]
+        ))
+    );
+}
+
+#[test]
+fn two_values_that_read_as_one_under_a_digit_led_tag_key_are_refused_by_the_name_emitted() {
+    assert_eq!(
+        arm_refusals_of(
+            "#[serde(tag = \"2fa\")] pub enum Gate { \
+             #[serde(rename = \"a-b\")] First, #[serde(rename = \"a_b\")] Second }"
+        ),
+        [(
+            "variants `First` and `Second` are written `a-b` and `a_b` under the tag `2fa`, and \
+             both read `a_b` in snake case, so `_2fa__a_b()` would answer for both. Rename one \
+             of the two values"
+                .to_owned(),
+            "Second".to_owned()
+        )]
     );
 }

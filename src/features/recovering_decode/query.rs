@@ -20,6 +20,7 @@ pub fn query_items() -> TokenStream {
     let path = path_items();
     let filter = filter_items();
     let arm_filter = arm_filter_items();
+    let arm_paths = arm_paths_items();
     let update = update_items();
     let arm_update = arm_update_items();
     let nests = nests_items();
@@ -35,6 +36,7 @@ pub fn query_items() -> TokenStream {
         #path
         #filter
         #arm_filter
+        #arm_paths
         #update
         #arm_update
         #nests
@@ -270,6 +272,103 @@ fn arm_filter_items() -> TokenStream {
         impl<Root, M: ?::core::marker::Sized> ::core::convert::AsRef<::core::marker::PhantomData<Root>> for ArmFilter<Root, M> {
             fn as_ref(&self) -> &::core::marker::PhantomData<Root> {
                 &::core::marker::PhantomData
+            }
+        }
+    }
+}
+
+/// `ArmPaths` and `ArmFilter::with`: the conditions on the fields an arm writes in its variant.
+///
+/// `with` hands its closure the variant's paths over the arm's own marker, so a condition of
+/// another arm, or of the enum's plain paths, is refused. Each run below was compiled standalone
+/// as an ordinary test file, and the first line under it is the error it earned, verbatim:
+///
+/// ```rust,compile_fail
+/// # extern crate bson2 as bson;
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
+/// #[derive(Debug, Deserialize, Serialize)]
+/// pub struct Wagon {
+///     pub number: String,
+/// }
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
+/// #[derive(Debug, Deserialize, Serialize)]
+/// #[serde(tag = "type")]
+/// pub enum Shipping {
+///     ByRail(Wagon),
+///     Locker { bay_number: String },
+/// }
+///
+/// fn main() {
+///     let _ = Shipping::MONGO_FIELDS
+///         .type__locker()
+///         .with(|_locker| Wagon::MONGO_FIELDS.number().eq("W-9".to_owned()));
+/// }
+/// ```
+///
+/// ```text
+/// error[E0277]: the trait bound `__tixschema_mongodb::Filter<Wagon>: AsRef<PhantomData<mongo_arms::Locker>>` is not satisfied
+/// ```
+///
+/// ```rust,compile_fail
+/// # extern crate bson2 as bson;
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
+/// #[derive(Debug, Deserialize, Serialize)]
+/// #[serde(tag = "type")]
+/// pub enum Shipping {
+///     Collected,
+///     Locker { bay_number: String },
+/// }
+///
+/// fn main() {
+///     let shipping = Shipping::MONGO_FIELDS;
+///     let _ = shipping
+///         .type__locker()
+///         .with(|_locker| shipping.locker().bay_number().eq("B-2".to_owned()));
+/// }
+/// ```
+///
+/// ```text
+/// error[E0277]: the trait bound `__tixschema_mongodb::Filter<Shipping>: AsRef<PhantomData<mongo_arms::Locker>>` is not satisfied
+/// ```
+fn arm_paths_items() -> TokenStream {
+    quote! {
+        /// The paths of an arm whose fields are written in the variant, over the arm's own marker:
+        /// what `ArmFilter::with` hands its closure.
+        pub trait ArmPaths {
+            /// The struct of the variant's paths, rooted at the marker.
+            type Paths;
+
+            /// The variant's paths.
+            fn paths() -> Self::Paths;
+        }
+
+        impl<Root, M> ArmFilter<Root, M>
+        where
+            M: ArmPaths,
+        {
+            /// `$and`: the arm's rows that the condition `condition` builds from the arm's own
+            /// paths matches too.
+            pub fn with<F, B>(mut self, condition: B) -> ::core::result::Result<Self, WriteError>
+            where
+                B: ::core::ops::FnOnce(M::Paths) -> ::core::result::Result<F, WriteError>,
+                F: ::core::convert::Into<bson::Document> + ::core::convert::AsRef<::core::marker::PhantomData<M>>,
+            {
+                let built = condition(M::paths())?;
+                self.conditions.push(nested_filter(self.place.key(), built.into()));
+                ::core::result::Result::Ok(self)
             }
         }
     }

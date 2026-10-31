@@ -7494,6 +7494,34 @@ fn branded_map_key_error(name: &Ident, inner_field: &Field) -> Option<proc_macro
     Some(syn::Error::new_spanned(&inner_field.ty, message).to_compile_error())
 }
 
+/// The refusals for a brand's own `minLength` and `maxLength` that no value meets, or that only
+/// repeat the fixed length of its inner array.
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
+fn branded_unmeetable_bound_errors(
+    name: &Ident,
+    inner_field: &Field,
+    args: &ModelSchemaArgs,
+) -> Vec<proc_macro2::TokenStream> {
+    let inner = get_field_def("_inner", &inner_field.ty, "");
+    unmeetable_bound_messages(
+        &format!("branded newtype `{name}`"),
+        (args.min_length, args.max_length),
+        (None, None),
+        fixed_outer_length(&inner, &inner_field.ty),
+    )
+    .into_iter()
+    .map(|message| syn::Error::new_spanned(inner_field, message).to_compile_error())
+    .collect()
+}
+
 /// The `compile_error!` tokens for every guard a branded newtype violates: a `cfg_attr`-wrapped
 /// serde attribute on the type or on its inner slot, an `Option` inner type, string constraints
 /// over an inner type that cannot carry them, a `pattern` that is not a regex, a std type the inner
@@ -7533,6 +7561,11 @@ fn branded_guard_errors(
             args,
         ))
         .chain(branded_pattern_error(&item_struct.ident, args))
+        .chain(branded_unmeetable_bound_errors(
+            &item_struct.ident,
+            inner_field,
+            args,
+        ))
         .chain(branded_undescribable_std_error(
             &item_struct.ident,
             inner_field,
@@ -20503,6 +20536,99 @@ fn check_bound_in_range(
     Err(first)
 }
 
+/// What a fixed array's outermost level always holds: the spelling of its type and its length.
+fn fixed_outer_length(field_def: &FieldDef, ty: &syn::Type) -> Option<(String, usize)> {
+    let outermost = field_def.array_depth.checked_sub(1)?;
+    let (_, length) = field_def
+        .array_lengths
+        .iter()
+        .find(|&&(at, _)| at == outermost)?;
+    Some((written_spelling(ty).replace(" ;", ";"), *length))
+}
+
+/// The refusals for bounds no value meets: a lower bound above its upper bound, and, on a fixed
+/// array, a count its length always breaks or one that only repeats it.
+fn unmeetable_bound_messages(
+    subject: &str,
+    count: (Option<usize>, Option<usize>),
+    range: (Option<f64>, Option<f64>),
+    fixed: Option<(String, usize)>,
+) -> Vec<String> {
+    let mut messages = Vec::new();
+    if let (Some(least), Some(most)) = count
+        && least > most
+    {
+        messages.push(format!(
+            "model_schema: {subject}: `minLength = {least}` is above `maxLength = {most}`, so no \
+             value passes"
+        ));
+    }
+    if let (Some(least), Some(most)) = range
+        && least > most
+    {
+        messages.push(format!(
+            "model_schema: {subject}: `minimum = {}` is above `maximum = {}`, so no value passes",
+            format_number_literal(least),
+            format_number_literal(most)
+        ));
+    }
+    if !messages.is_empty() {
+        return messages;
+    }
+    let Some((shown, length)) = fixed else {
+        return messages;
+    };
+    for (key, written, breaks) in [
+        ("minLength", count.0, count.0.is_some_and(|n| n > length)),
+        ("maxLength", count.1, count.1.is_some_and(|n| n < length)),
+    ] {
+        let Some(number) = written else { continue };
+        messages.push(if breaks {
+            format!(
+                "model_schema: {subject}: `{key} = {number}` cannot hold a `{shown}`, which always \
+                 has {length} items"
+            )
+        } else if number == length {
+            format!(
+                "model_schema: {subject}: `{key} = {number}` repeats the length of `{shown}`, \
+                 which always has {length} items. Take it off."
+            )
+        } else {
+            continue;
+        });
+    }
+    messages
+}
+
+/// Rejects bounds no value meets, and a count that only repeats a fixed array's length.
+fn check_bound_meetable(
+    field: &Field,
+    field_def: &FieldDef,
+    prop_meta: &ModelSchemaPropMeta,
+    label: &str,
+) -> Result<(), syn::Error> {
+    let count = (
+        prop_meta.min_length.or(prop_meta.min_items),
+        prop_meta.max_length.or(prop_meta.max_items),
+    );
+    let messages = unmeetable_bound_messages(
+        label,
+        count,
+        (prop_meta.minimum, prop_meta.maximum),
+        fixed_outer_length(field_def, &field.ty),
+    );
+    let mut errors = messages
+        .into_iter()
+        .map(|message| syn::Error::new_spanned(field, message));
+    let Some(mut first) = errors.next() else {
+        return Ok(());
+    };
+    for next in errors {
+        first.combine(next);
+    }
+    Err(first)
+}
+
 /// Rejects a length, pattern or range written on a field no surface reads one beside.
 fn check_fixed_shape_constraints(
     field: &Field,
@@ -20516,6 +20642,7 @@ fn check_fixed_shape_constraints(
     }
     check_bound_kind(field, field_def, prop_meta, label)?;
     check_bound_in_range(field, field_def, prop_meta, label)?;
+    check_bound_meetable(field, field_def, prop_meta, label)?;
     // What is left on a list counts its items, whatever they are.
     if field_def.is_list() {
         return Ok(());

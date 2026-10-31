@@ -51,11 +51,18 @@ mod tests {
                 "no E0428 names `{name}` among: {errors:?}"
             );
         }
+        assert!(
+            errors
+                .iter()
+                .any(|(code, text)| code == "E0252"
+                    && text.contains("`__tixschema_decode_with_impl`")),
+            "no E0252 names the macro among: {errors:?}"
+        );
         // E0119, the second marker's `impl`, is reported by some releases and not by others.
         assert!(
             errors
                 .iter()
-                .all(|(code, _)| code == "E0428" || code == "E0119"),
+                .all(|(code, _)| code == "E0428" || code == "E0252" || code == "E0119"),
             "an error a second initializer does not draw: {errors:?}"
         );
     }

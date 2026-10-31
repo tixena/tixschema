@@ -71,8 +71,12 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   `serde`, so each call stays in a crate whatever it builds with, and no consumer writes a line
   for the BSON pieces. Each writes beside its module a private marker trait implemented for `()`,
   `__TixschemaDecodeWithFoundation` and `__TixschemaMongodbFoundation`, whose one method the probes
-  look for. `each_initializer_writes_its_module_and_its_marker` and
-  `the_two_libraries_share_no_name` hold them.
+  look for. The first also writes the
+  macro `__tixschema_decode_with_impl`, re-exported with `pub(crate) use`, which each flagged
+  type's `impl` of `DecodeWith` is written inside: in a crate without the foundation the call is
+  the only unresolved name, so rustc still reaches the probe and reports its message.
+  `each_initializer_writes_its_module_and_its_marker` and `the_two_libraries_share_no_name` hold
+  them.
 - **Each `{type}_schema` module re-exports the libraries, name by name.** `library_reexport`
   writes `pub use crate::__tixschema_decode_with::{...};` from `DECODE_WITH_LIBRARY_NAMES`, whose
   five BSON pieces (`bson_bound`, `bson_digits_settled`, `bson_leaf`, `bson_remaining`,
@@ -329,9 +333,21 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
     calls too: `an_update_and_an_arm_update_merge_through_one_function` holds the loop to being
     written once.
   - `M` is what `nest` reaches below a path over the variant's one slot (`arm_model`, through
-    `taken` and `through_wrappers`), and `()` for any other variant and for a map. No registry
-    is asked, so a model declared above, one declared below and one of another crate are one
-    case.
+    `taken` and `through_wrappers`), and `()` for a variant that holds nothing, one slot serde
+    never writes and a map. No registry is asked, so a model declared above, one declared below
+    and one of another crate are one case.
+  - A variant whose fields are written in the variant, named fields or several slots (`marked_arm`
+    picks it from the struct of paths `Emitter::content` answered), gets a marker in the schema
+    module's `mongo_arms`, named after the variant and declared with the enum's own parameters.
+    `Emitter::marker` writes the marker and, beside the type, `impl ArmPaths for` it: `Paths` is
+    the variant's struct of paths in `mongo_members` rooted at the marker, and `paths()` builds it
+    as `MONGO_FIELDS` builds the same member. The arm function answers
+    `ArmFilter<Root, mongo_arms::Variant>` at `MongoPath::ROOT`, since that struct's keys already
+    carry the content key. `ArmFilter::with` (`query.rs`, `arm_paths_items`) hands the closure
+    `M::paths()` and writes the condition it answers, which must carry
+    `AsRef<PhantomData<M>>`, so a filter of another arm or of the enum's own paths is refused.
+    `ArmPaths` is in `MONGODB_LIBRARY_NAMES` and `ADDED_TYPE_NAMES`. The plain `and` of an
+    arm filter over any other enum filter keeps working.
   - `Arm`, in the enum's own module, has one unit arm per variant that has a function, under
     the variant's ident, with no serde attribute. Nothing emitted reads it.
   - `tag_arm_refusals` refuses what would let two functions of the struct take one name: `__`
@@ -340,8 +356,10 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
     lists `"decode_with"`, so the verdict is the same with the `mongodb` feature on and off and
     with the entry `"mongodb"` listed or not, and an enum without `"decode_with"` is refused
     nothing.
-  - A name that is no identifier, under a tag key whose snake case starts with a digit, is
-    written as no function and no arm (`function_ident`).
+  - A tag key whose snake case starts with a digit gives each arm function a leading `_`
+    (`arm_stem`, called by `tag_arms` and `tag_arm_refusals`), so the refusals name a function as
+    it is emitted: `_2fa__open()`. `function_ident` still drops a name that is no identifier for
+    any other reason, with its arm.
 - **A type that lists `"mongodb"` holds no map whose key the `bson` library refuses.** serde
   writes a key of a number or a `bool` as text into JSON only, and the `bson` library refuses to
   write one and reads a stored one back as text, which the key's type refuses. Measured under
