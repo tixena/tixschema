@@ -544,7 +544,7 @@ fn serde_feature_refusal(declared: &ItemTrait) -> TokenStream {
 /// }
 ///
 /// #[service_schema()]
-/// pub trait UsageService<Ctx> {
+/// pub trait BillingService<Ctx> {
 ///     async fn get_balance(
 ///         &self,
 ///         ctx: &Ctx,
@@ -554,9 +554,9 @@ fn serde_feature_refusal(declared: &ItemTrait) -> TokenStream {
 ///     async fn sweep(&self, ctx: &Ctx) -> Result<BalanceResponse, BalanceError>;
 /// }
 ///
-/// pub struct UsageBackEnd;
+/// pub struct BillingBackEnd;
 ///
-/// impl UsageService<()> for UsageBackEnd {
+/// impl BillingService<()> for BillingBackEnd {
 ///     async fn get_balance(
 ///         &self,
 ///         _ctx: &(),
@@ -591,7 +591,7 @@ fn serde_feature_refusal(declared: &ItemTrait) -> TokenStream {
 /// }
 ///
 /// #[service_schema()]
-/// pub trait UsageService<Ctx> {
+/// pub trait BillingService<Ctx> {
 ///     async fn get_balance(
 ///         &self,
 ///         ctx: &Ctx,
@@ -601,9 +601,9 @@ fn serde_feature_refusal(declared: &ItemTrait) -> TokenStream {
 ///     async fn sweep(&self, ctx: &Ctx) -> Result<BalanceResponse, BalanceError>;
 /// }
 ///
-/// pub struct UsageBackEnd;
+/// pub struct BillingBackEnd;
 ///
-/// impl UsageService<()> for UsageBackEnd {
+/// impl BillingService<()> for BillingBackEnd {
 ///     async fn get_balance(
 ///         &self,
 ///         _ctx: &(),
@@ -627,7 +627,7 @@ fn serde_feature_refusal(declared: &ItemTrait) -> TokenStream {
 ///    |     async fn sweep(&self, ctx: &Ctx) -> Result<BalanceResponse, BalanceError>;
 ///    |           -------------------------------------------------------------------- `sweep` from trait
 /// ...
-///    | impl UsageService<()> for UsageBackEnd {
+///    | impl BillingService<()> for BillingBackEnd {
 ///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `sweep` in implementation
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error

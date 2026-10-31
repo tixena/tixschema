@@ -135,19 +135,19 @@
 //! mod amqp_client;
 //! mod amqp_transport;
 //!
-//! use crate::contract::UsageService;
+//! use crate::contract::BillingService;
 //! ```
 //!
 //! ```text
 //! // src/amqp_transport.rs
-//! declaring_crate::usage_service_amqp_rpc_dispatcher!();
+//! declaring_crate::billing_service_amqp_rpc_dispatcher!();
 //! ```
 //!
 //! ```text
 //! // src/amqp_client.rs
-//! use declaring_crate::{AvailableBalanceRequest, AvailableBalanceResponse};
+//! use declaring_crate::{OpenBalanceRequest, OpenBalanceResponse};
 //!
-//! declaring_crate::usage_service_amqp_rpc_client!();
+//! declaring_crate::billing_service_amqp_rpc_client!();
 //! ```
 //!
 //! An inline `mod amqp_transport { … }` earns `clippy::inline_modules`; a `mod` written below a
@@ -163,7 +163,7 @@
 //! # The declaring crate invokes by bare name, never by path
 //!
 //! A crate that declares a service *and* places one of its halves reaches the macro by its bare
-//! name in textual scope — `usage_service_amqp_rpc_dispatcher!();` below the declaration, with
+//! name in textual scope — `billing_service_amqp_rpc_dispatcher!();` below the declaration, with
 //! `#[macro_use] mod contract;` carrying it out of a submodule. Both `crate::…!()` and
 //! `use crate::…;` are refused there, a proc macro having been what defined the macro:
 //!
@@ -590,7 +590,7 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
     let placement = placement_doc(
         &published,
         "amqp_client",
-        "use the_contract_crate::{AvailableBalanceRequest, AvailableBalanceResponse};\n\n\
+        "use the_contract_crate::{OpenBalanceRequest, OpenBalanceResponse};\n\n\
          the_contract_crate::",
     );
     let macro_doc = format!(
@@ -2054,7 +2054,7 @@ pub(super) fn placement_doc(macro_name: &Ident, module: &str, placed: &str) -> S
 pub(super) fn refusal_reader(module: &Ident) -> TokenStream {
     quote! {
         /// The field serde names in its own words. It writes one into exactly two sentences —
-        /// `missing field \u{60}creditCount\u{60}` and
+        /// `missing field \u{60}invoiceCount\u{60}` and
         /// `unknown field \u{60}extra\u{60}, expected …` — and into both between backticks. A
         /// refusal that names none, a type mismatch saying what it expected and not where, leaves
         /// the fault's field empty.

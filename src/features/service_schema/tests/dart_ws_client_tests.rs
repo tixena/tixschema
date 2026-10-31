@@ -25,11 +25,11 @@ fn a_successful_reply_is_checked_against_the_declared_success() {
     let written = dart_ws_client_of(MIXED_SERVICE);
     let body = body_from(
         &written,
-        "Future<UsageServiceGetAvailableBalanceResult> getAvailableBalance(",
+        "Future<BillingServiceGetOpenBalanceResult> getOpenBalance(",
     );
     assert!(
-        body.contains("AvailableBalanceResponse.fromJson("),
-        "a success the transport handed back is answered as an `AvailableBalanceResponse`, so it is \
+        body.contains("OpenBalanceResponse.fromJson("),
+        "a success the transport handed back is answered as an `OpenBalanceResponse`, so it is \
          decoded as one first. Got: {body}"
     );
 }
@@ -39,7 +39,7 @@ fn a_failed_reply_is_checked_against_the_declared_error() {
     let written = dart_ws_client_of(MIXED_SERVICE);
     let body = body_from(
         &written,
-        "Future<UsageServiceGetAvailableBalanceResult> getAvailableBalance(",
+        "Future<BillingServiceGetOpenBalanceResult> getOpenBalance(",
     );
     assert!(
         body.contains("BalanceError.fromJson("),

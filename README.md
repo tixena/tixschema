@@ -2582,13 +2582,13 @@ A bundle that names either one in such a build is refused where it names it, whi
 the choice of features can still be acted on:
 
 ```text
-error[E0599]: no associated function or constant named `ts_client` found for struct `UsageServiceSchema` in the current scope
+error[E0599]: no associated function or constant named `ts_client` found for struct `BillingServiceSchema` in the current scope
    |
 23 | #[service_schema()]
    | ------------------- associated function or constant `ts_client` not found for this struct
 ...
-34 |     let _ = UsageServiceSchema::ts_client();
-   |                                 ^^^^^^^^^ associated function or constant not found in `UsageServiceSchema`
+34 |     let _ = BillingServiceSchema::ts_client();
+   |                                 ^^^^^^^^^ associated function or constant not found in `BillingServiceSchema`
 ```
 
 **A service is declared at module scope, never inside a function body.** The module the macro
@@ -2604,7 +2604,7 @@ tokens as one written beside it. A function-scoped declaration earns the compile
 errors instead — one for the trait, and one for each type an operation named:
 
 ```text
-error[E0405]: cannot find trait `UsageService` in module `super`
+error[E0405]: cannot find trait `BillingService` in module `super`
 error[E0425]: cannot find type `BalanceRequest` in this scope
 error[E0425]: cannot find type `BalanceResponse` in this scope
 error[E0425]: cannot find type `BalanceError` in this scope
@@ -2623,15 +2623,15 @@ use tixschema::{model_schema, service_schema};
 
 #[model_schema()]
 #[derive(Deserialize, Serialize)]
-pub struct AvailableBalanceRequest {
-    pub organization_id: String,
+pub struct OpenBalanceRequest {
+    pub customer_id: String,
 }
 
 #[model_schema()]
 #[derive(Deserialize, Serialize)]
-pub struct AvailableBalanceResponse {
-    pub available_credits: u32,
+pub struct OpenBalanceResponse {
     pub is_post_paid: bool,
+    pub open_invoices: u32,
 }
 
 #[model_schema()]
@@ -2643,50 +2643,50 @@ pub enum BalanceError {
 }
 
 #[service_schema()]
-pub trait UsageService<Ctx> {
+pub trait BillingService<Ctx> {
     /// No reply, so no return type and no error arm.
     #[service_schema_op(one_way)]
-    async fn apply_bundle(&self, ctx: &Ctx, req: AvailableBalanceRequest);
+    async fn apply_bundle(&self, ctx: &Ctx, req: OpenBalanceRequest);
 
-    /// Carried on the wire as `usage-generation-request` rather than `can-generate`.
-    #[service_schema_op(message = "usage-generation-request")]
+    /// Carried on the wire as `billing-generation-request` rather than `can-generate`.
+    #[service_schema_op(message = "billing-generation-request")]
     async fn can_generate(
         &self,
         ctx: &Ctx,
-        req: AvailableBalanceRequest,
-    ) -> Result<AvailableBalanceResponse, BalanceError>;
-
-    /// Several arguments after the context: the macro declares the message.
-    async fn expire_credit(
-        &self,
-        ctx: &Ctx,
-        organization_id: String,
-        credit_id: String,
-    ) -> Result<AvailableBalanceResponse, BalanceError>;
+        req: OpenBalanceRequest,
+    ) -> Result<OpenBalanceResponse, BalanceError>;
 
     /// One argument after the context: that argument already is the message.
-    async fn get_available_balance(
+    async fn get_open_balance(
         &self,
         ctx: &Ctx,
-        req: AvailableBalanceRequest,
-    ) -> Result<AvailableBalanceResponse, BalanceError>;
+        req: OpenBalanceRequest,
+    ) -> Result<OpenBalanceResponse, BalanceError>;
 
     /// None at all, so the macro declares an empty message.
-    async fn sweep(&self, ctx: &Ctx) -> Result<AvailableBalanceResponse, BalanceError>;
+    async fn sweep(&self, ctx: &Ctx) -> Result<OpenBalanceResponse, BalanceError>;
+
+    /// Several arguments after the context: the macro declares the message.
+    async fn void_invoice(
+        &self,
+        ctx: &Ctx,
+        customer_id: String,
+        invoice_id: String,
+    ) -> Result<OpenBalanceResponse, BalanceError>;
 }
 ```
 
 The context is whatever an implementation needs and no caller may see -- a logger, a correlation id. The implementation chooses the type, and it reaches no message, no schema and no wire:
 
 ```rust
-pub struct UsageContext {
+pub struct BillingContext {
     pub logger_name: String,
 }
 
-pub struct UsageBackEnd;
+pub struct BillingBackEnd;
 
-impl UsageService<UsageContext> for UsageBackEnd {
-    async fn apply_bundle(&self, ctx: &UsageContext, req: AvailableBalanceRequest) {
+impl BillingService<BillingContext> for BillingBackEnd {
+    async fn apply_bundle(&self, ctx: &BillingContext, req: OpenBalanceRequest) {
         // ...
     }
 
@@ -2694,7 +2694,7 @@ impl UsageService<UsageContext> for UsageBackEnd {
 }
 ```
 
-The trait is emitted as declared, except that `async fn` is desugared to `-> impl Future<Output = ...> + Send`, the desugaring the compiler's own `async_fn_in_trait` warning recommends. A trait with `async fn` is not dyn compatible, so the generated dispatcher is generic over the implementing type rather than taking `&dyn UsageService`.
+The trait is emitted as declared, except that `async fn` is desugared to `-> impl Future<Output = ...> + Send`, the desugaring the compiler's own `async_fn_in_trait` warning recommends. A trait with `async fn` is not dyn compatible, so the generated dispatcher is generic over the implementing type rather than taking `&dyn BillingService`.
 
 #### Service Messages
 
@@ -2710,22 +2710,22 @@ Every operation receives exactly one message. How many arguments it takes after 
 
 **The multi-argument form costs something, and the cost is on the wire.** Each argument's name becomes a field name on the declared message, so renaming a parameter -- an invisible refactor in Rust -- moves a key on the wire, and no compiler will flag it. Reach for it where the input is one identifier and a named type would be ceremony; reach for a declared type everywhere else. Every generated message repeats this in its own rustdoc and in the JSDoc it publishes.
 
-`expire_credit` takes two arguments, so `ExpireCreditRequest` is declared from them, in declaration order and with camelCase keys:
+`void_invoice` takes two arguments, so `VoidInvoiceRequest` is declared from them, in declaration order and with camelCase keys:
 
 ```typescript
-export type ExpireCreditRequest = {
-  organizationId: string;
-  creditId: string;
+export type VoidInvoiceRequest = {
+  customerId: string;
+  invoiceId: string;
 };
 ```
 
 ```typescript
-const ExpireCreditRequest$RawSchema = z.strictObject({
-  organizationId: z.string(),
-  creditId: z.string(),
+const VoidInvoiceRequest$RawSchema = z.strictObject({
+  customerId: z.string(),
+  invoiceId: z.string(),
 });
 
-export const ExpireCreditRequest$Schema: ZodType<ExpireCreditRequest> = ExpireCreditRequest$RawSchema.meta({
+export const VoidInvoiceRequest$Schema: ZodType<VoidInvoiceRequest> = VoidInvoiceRequest$RawSchema.meta({
   examples: []
 });
 ```
@@ -2743,7 +2743,7 @@ export const SweepRequest$Schema: ZodType<SweepRequest> = SweepRequest$RawSchema
 });
 ```
 
-`get_available_balance` takes one argument, so nothing is declared for it at all -- `AvailableBalanceRequest` is the message, exactly as you wrote it.
+`get_open_balance` takes one argument, so nothing is declared for it at all -- `OpenBalanceRequest` is the message, exactly as you wrote it.
 
 #### Operation Names
 
@@ -2751,22 +2751,22 @@ An operation's name is written once, in Rust, and spelled per language by conven
 
 | where | spelling | derived as |
 | --- | --- | --- |
-| Rust | `get_available_balance` | the trait method as declared |
-| TypeScript | `getAvailableBalance` | camelCase, what a TypeScript caller expects to type |
-| the wire | `get-available-balance` | kebab-case of the method name |
+| Rust | `get_open_balance` | the trait method as declared |
+| TypeScript | `getOpenBalance` | camelCase, what a TypeScript caller expects to type |
+| the wire | `get-open-balance` | kebab-case of the method name |
 
 `#[service_schema_op(message = "...")]` moves the **wire name only**. Rust still calls the operation by its method name and TypeScript by the camelCased one:
 
 ```rust
-#[service_schema_op(message = "usage-generation-request")]
+#[service_schema_op(message = "billing-generation-request")]
 async fn can_generate(
     &self,
     ctx: &Ctx,
-    req: AvailableBalanceRequest,
-) -> Result<AvailableBalanceResponse, BalanceError>;
+    req: OpenBalanceRequest,
+) -> Result<OpenBalanceResponse, BalanceError>;
 ```
 
-It exists for one reason: services already ship wire names nobody would derive from the method. An operation a caller knows as `canGenerate` may dispatch today as `usage-generation-request`, the two sharing no substring, so without the override no such service could adopt this construct without changing bytes. A greenfield operation writes no attribute at all. The override replaces the derived name rather than adding a second one -- after it, nothing answers to `can-generate`.
+It exists for one reason: services already ship wire names nobody would derive from the method. An operation a caller knows as `canGenerate` may dispatch today as `billing-generation-request`, the two sharing no substring, so without the override no such service could adopt this construct without changing bytes. A greenfield operation writes no attribute at all. The override replaces the derived name rather than adding a second one -- after it, nothing answers to `can-generate`.
 
 The TypeScript client and dispatcher carry a wire name, a path, a part name and a header name exactly as declared, whatever they hold: each is written into the generated code as an escaped string literal, so `message = "le$vy'it\"q\\x"` with `path = "/le$vy'it\"q\\x/{label}"`, and a multipart operation's `part("fi$le'x\"q\\" = attachment)`, compile under `tsc --strict`, and the client sends the path `/le$vy'it"q\x/a` and the part `fi$le'x"q\`, which the Rust dispatcher reads.
 
@@ -2793,7 +2793,7 @@ An operation marked `#[service_schema_op(one_way)]` expects no reply, and theref
 
 ```rust
 #[service_schema_op(one_way)]
-async fn apply_bundle(&self, ctx: &Ctx, req: AvailableBalanceRequest);
+async fn apply_bundle(&self, ctx: &Ctx, req: OpenBalanceRequest);
 ```
 
 The flag and the return type must agree, and the macro checks both directions, so a forgotten `Result` cannot become a silent fire-and-forget. A missing return type with no flag is refused naming both choices:
@@ -2816,7 +2816,7 @@ There is no error arm on a one-way operation, because there is no reply to carry
 The one failure it can still report is its own. A message that fails its own validation never reaches the transport, and the fault naming the key has nowhere to go but out of band: in Rust it is `Err(ServiceFault)`, the failure arm the method already has, and in TypeScript `Promise<void>` has no failure arm at all, so it is **thrown**. What is thrown is published rather than left to be discovered from the body -- `<Service>Refusal`, an `Error` carrying the fault -- and the method's own `JSDoc` names it:
 
 ```typescript
-export type UsageServiceRefusal = Error & { fault: UsageServiceFault };
+export type BillingServiceRefusal = Error & { fault: BillingServiceFault };
 ```
 
 Silently dropping a refused message was the alternative and is worse: a fault is a defect meant to page a human, and a dropped one pages nobody.
@@ -2830,26 +2830,26 @@ Inbound, the dispatcher deserializes the payload into the operation's message an
 Outbound, the generated client validates the message it is about to send, so a malformed request fails at the caller with the field named rather than as a remote error a round trip later -- and the transport is never touched:
 
 ```typescript
-    async expireCredit(req) {
-      const validated = usageServiceChecked(ExpireCreditRequest$Schema, req);
+    async voidInvoice(req) {
+      const validated = billingServiceChecked(VoidInvoiceRequest$Schema, req);
       if (!validated.success) {
         return {
           ok: false,
           error: {
             isServiceFault: true,
-            fault: usageServiceOutboundFault("expire-credit", validated.error.issues),
+            fault: billingServiceOutboundFault("void-invoice", validated.error.issues),
           },
         };
       }
-      const { answered } = await transport.request<UsageServiceExpireCreditResult>("expire-credit", validated.sent, []);
+      const { answered } = await transport.request<BillingServiceVoidInvoiceResult>("void-invoice", validated.sent, []);
       if (answered.ok) {
-        const parsed = AvailableBalanceResponse$Schema.safeParse(answered.value);
+        const parsed = OpenBalanceResponse$Schema.safeParse(answered.value);
         if (!parsed.success) {
           return {
             ok: false,
             error: {
               isServiceFault: true,
-              fault: usageServiceReplyFault("expire-credit", parsed.error.issues),
+              fault: billingServiceReplyFault("void-invoice", parsed.error.issues),
             },
           };
         }
@@ -2865,7 +2865,7 @@ Outbound, the generated client validates the message it is about to send, so a m
           ok: false,
           error: {
             isServiceFault: true,
-            fault: usageServiceReplyFault("expire-credit", declared.error.issues),
+            fault: billingServiceReplyFault("void-invoice", declared.error.issues),
           },
         };
       }
@@ -2877,15 +2877,15 @@ A one-way method runs the same check and has nowhere to put the result of it, so
 
 ```typescript
     async applyBundle(req) {
-      const validated = usageServiceChecked(AvailableBalanceRequest$Schema, req);
+      const validated = billingServiceChecked(OpenBalanceRequest$Schema, req);
       if (!validated.success) {
-        throw usageServiceRefused(usageServiceOutboundFault("apply-bundle", validated.error.issues));
+        throw billingServiceRefused(billingServiceOutboundFault("apply-bundle", validated.error.issues));
       }
       await transport.notify("apply-bundle", validated.sent, []);
     },
 ```
 
-A replying method checks what comes back as well, in the tail of `expireCredit` above. A success is parsed against the operation's declared success and a failed reply against its declared error before the caller reads either: a fault the far side already sealed passes through, a reply that parses is returned as parsed, and one that does not -- a declared field missing, an undeclared key, another shape altogether -- answers a `failed-validation` fault naming the first offending key rather than a value typed as that error. A bundle therefore publishes the Zod schema of every declared error type beside its type.
+A replying method checks what comes back as well, in the tail of `voidInvoice` above. A success is parsed against the operation's declared success and a failed reply against its declared error before the caller reads either: a fault the far side already sealed passes through, a reply that parses is returned as parsed, and one that does not -- a declared field missing, an undeclared key, another shape altogether -- answers a `failed-validation` fault naming the first offending key rather than a value typed as that error. A bundle therefore publishes the Zod schema of every declared error type beside its type.
 
 #### Service Faults
 
@@ -2894,16 +2894,16 @@ A payload that will not deserialize, a message that fails validation, an operati
 A result therefore keeps two arms, with the fault riding inside the failure arm behind a literal a caller can narrow on:
 
 ```typescript
-export type UsageServiceGetAvailableBalanceResult =
-  | { ok: true; value: AvailableBalanceResponse }
-  | { ok: false; error: BalanceError | { isServiceFault: true; fault: UsageServiceFault } };
+export type BillingServiceGetOpenBalanceResult =
+  | { ok: true; value: OpenBalanceResponse }
+  | { ok: false; error: BalanceError | { isServiceFault: true; fault: BillingServiceFault } };
 ```
 
 A caller that only handles the declared errors still compiles; one that wants to distinguish narrows on `isServiceFault` and then on whatever the error type discriminates on, with no `default` arm to write:
 
 ```typescript
 if (result.ok) {
-  render(result.value.availableCredits);
+  render(result.value.openInvoices);
 } else if ("isServiceFault" in result.error) {
   reportUnexpected(result.error.fault);
 } else {
@@ -2919,31 +2919,31 @@ if (result.ok) {
 **No service implementation can answer with a fault.** In Rust an operation's signature admits only its own error type, so there is nowhere to put one. In TypeScript the interface an implementation satisfies is typed against an *outcome*, which has no fault member in it:
 
 ```typescript
-export type UsageServiceGetAvailableBalanceOutcome =
-  | { ok: true; value: AvailableBalanceResponse }
+export type BillingServiceGetOpenBalanceOutcome =
+  | { ok: true; value: OpenBalanceResponse }
   | { ok: false; error: BalanceError };
 ```
 
 **And the fault type itself refuses to be written.** An outcome with no fault member stops a fault being *returned*; it does not stop one being *built*, and a plain structural object type is writable by anyone who can name it. So the fault's fields publish under a name of their own and the name a caller reads is those fields under a brand keyed on a symbol the bundle declares and exports nowhere:
 
 ```typescript
-export type UsageServiceFaultFields = {
+export type BillingServiceFaultFields = {
   detail: string;
   field: string | undefined;
-  kind: UsageServiceFaultKind;
+  kind: BillingServiceFaultKind;
   operation: string;
 };
 
-declare const usageServiceFaultSeal: unique symbol;
+declare const billingServiceFaultSeal: unique symbol;
 
-export type UsageServiceFault = UsageServiceFaultFields & {
-  readonly [usageServiceFaultSeal]: true;
+export type BillingServiceFault = BillingServiceFaultFields & {
+  readonly [billingServiceFaultSeal]: true;
 };
 ```
 
 The fields still come from the Rust declaration, so nothing about the wire moved and nothing a caller reads changed -- narrow on `isServiceFault`, then read `kind`, `detail`, `field` and `operation`, or switch over `kind` exhaustively. The brand is a type and never a value: `declare const` emits nothing, and a fault carries no extra key.
 
-What stops compiling is writing one. An object literal under a `UsageServiceFault` annotation cannot carry the branded property, and neither can a structurally-equal value assigned into a `UsageServiceFault` position -- a module outside the bundle cannot name the symbol, and a module inside has no value to write. What it does **not** stop is a deliberate type assertion: `built as UsageServiceFault` compiles, as does anything laundered through `any` or `unknown`, and TypeScript has no construct that refuses those. The generated constructors mint through exactly that assertion, from the fields type, which is the one direction an assertion is unambiguously sound in. So the seal makes fabricating a fault a deliberate, greppable act rather than something an annotated literal does silently -- it is not the `E0451` Rust gives, because TypeScript has none to give.
+What stops compiling is writing one. An object literal under a `BillingServiceFault` annotation cannot carry the branded property, and neither can a structurally-equal value assigned into a `BillingServiceFault` position -- a module outside the bundle cannot name the symbol, and a module inside has no value to write. What it does **not** stop is a deliberate type assertion: `built as BillingServiceFault` compiles, as does anything laundered through `any` or `unknown`, and TypeScript has no construct that refuses those. The generated constructors mint through exactly that assertion, from the fields type, which is the one direction an assertion is unambiguously sound in. So the seal makes fabricating a fault a deliberate, greppable act rather than something an annotated literal does silently -- it is not the `E0451` Rust gives, because TypeScript has none to give.
 
 Exactly two generated places build one: the dispatcher, when an incoming message cannot be turned into a valid request or names an operation nothing recognises, and the client, when the message *it* is about to send fails its own validation or the transport reports that the call never landed. In Rust a client call answers `Result<Success, CallError<Error>>`, `CallError` being `Operation(E)` for the error the operation declared and `Fault(ServiceFault)` for a defect that reached the caller.
 
@@ -2951,17 +2951,17 @@ Which kind a refused payload is reported under is `serde_json`'s own classificat
 
 The TypeScript dispatcher raises only the second of the two, and that is the same line rather than a different one: it is handed a payload somebody already read out of the bytes, so by the time it runs the bytes *were* a document and the only thing left to be wrong is what the document said. Bytes that are no document at all fail before it, in whatever turns them into the value it takes. So one defect reaches a call site under one kind whichever language served it.
 
-The field is named wherever the refusal named one: a validator's report names it in single quotes, and serde names it in backticks for a missing or unknown key. A bound declared on a field's *type* rather than on the field -- a constrained brand -- is the validator's to report as every other is: the brand's own report names nothing, the brand being the value rather than a member of anything, and the message holding it writes the field's wire key into the report, so `'organizationId': too short: minimum length is 3, got 2` is what a caller reads, one quoted run holding the whole name, beside every other message of the request. A type mismatch is the one refusal left carrying no field: serde says what it expected and not where, and inventing a name for it would send a caller to the wrong key.
+The field is named wherever the refusal named one: a validator's report names it in single quotes, and serde names it in backticks for a missing or unknown key. A bound declared on a field's *type* rather than on the field -- a constrained brand -- is the validator's to report as every other is: the brand's own report names nothing, the brand being the value rather than a member of anything, and the message holding it writes the field's wire key into the report, so `'customerId': too short: minimum length is 3, got 2` is what a caller reads, one quoted run holding the whole name, beside every other message of the request. A type mismatch is the one refusal left carrying no field: serde says what it expected and not where, and inventing a name for it would send a caller to the wrong key.
 
 #### What a Service Generates
 
-On the Rust side, beside the trait, in a module named for the service (`usage_service_schema`):
+On the Rust side, beside the trait, in a module named for the service (`billing_service_schema`):
 
 - `ServiceFault` and `ServiceFaultKind` -- readable by anyone, constructible by nothing outside the module. `ServiceFault` is the alias; the struct is declared as `<Service>FaultFields`, which is the name its *fields* publish under in TypeScript, `<Service>Fault` there being the sealed type written over them.
 - `CallError<E>` -- `Operation(E)` or `Fault(ServiceFault)`.
 - `<Operation>Message`, `unjudged_<operation>` and `validated_<operation>` -- the name each operation's message is republished under, the read of that message alone, which a dispatcher reads a request with, and the validator that message runs. Which of the two answers a check gives depends on the message's concrete type, so both halves of a service ask this one function rather than answering for themselves, from wherever they were expanded.
 - `Answered<T, E>` -- the envelope a request-and-reply operation answers in, written by a dispatcher and read back by a client.
-- `ExpireCreditRequest` and `SweepRequest` -- the messages declared for the operations that named none, each an ordinary `#[model_schema()]` type.
+- `VoidInvoiceRequest` and `SweepRequest` -- the messages declared for the operations that named none, each an ordinary `#[model_schema()]` type.
 
 Beside the trait, the `macro_rules!` each transport the service asked for contributes -- three for `amqp_rpc`, two for `http_rest`, two for `ws_rpc`; see [Transports](#transports) -- and nothing else transport-shaped. A service that asks for no transport is emitted none of them.
 
@@ -2974,7 +2974,7 @@ Two macros rather than one, and a third for `amqp_rpc`, because the halves of a 
 ```rust,ignore
 // In the crate that declares the service: nothing below is built here.
 #[service_schema(transports = ["amqp_rpc"])]
-pub trait UsageService<Ctx> { /* ... */ }
+pub trait BillingService<Ctx> { /* ... */ }
 ```
 
 Each invocation goes in a module of its own **file**, and those `mod` declarations go above the crate's `use` items. A `macro_rules!` body is linted under the levels of the crate that *invokes* it, and this is the placement that measures clean: an inline `mod amqp_transport { ... }` earns `clippy::inline_modules`, a `mod` written below a `use` earns `clippy::arbitrary_source_item_ordering`, and reaching the author's own types through `use declaring_crate::*;` earns `clippy::wildcard_imports`.
@@ -2984,7 +2984,7 @@ Each invocation goes in a module of its own **file**, and those `mod` declaratio
 mod amqp_transport;
 
 // src/amqp_transport.rs
-declaring_crate::usage_service_amqp_rpc_dispatcher!();
+declaring_crate::billing_service_amqp_rpc_dispatcher!();
 ```
 
 ```text
@@ -2992,9 +2992,9 @@ declaring_crate::usage_service_amqp_rpc_dispatcher!();
 mod amqp_client;
 
 // src/amqp_client.rs
-use declaring_crate::{AvailableBalanceRequest, AvailableBalanceResponse};
+use declaring_crate::{OpenBalanceRequest, OpenBalanceResponse};
 
-declaring_crate::usage_service_amqp_rpc_client!();
+declaring_crate::billing_service_amqp_rpc_client!();
 ```
 
 ```text
@@ -3002,13 +3002,13 @@ declaring_crate::usage_service_amqp_rpc_client!();
 mod amqp;
 
 // src/amqp.rs
-declaring_crate::usage_service_amqp_rpc_server!();
+declaring_crate::billing_service_amqp_rpc_server!();
 ```
 
 Each macro takes no arguments and emits bare items rather than a module of its own, so the caller names the module and two transports in one crate cannot collide. The dispatcher emits `IncomingMessage` -- built with `IncomingMessage::new(operation, payload, headers)` by whichever crate owns the bus and read through `operation()`, `payload()` and, where the service claims at least one `header_in` binding, `headers()`; `headers` carries the request's own headers table, and a service claiming none is left with the earlier two-field shape and no accessor for a field nothing would read -- `Reply`, the handle a transport implements to answer one message, with `send(value, headers)` and `fault`, and `dispatch(svc, ctx, message, reply)`, generic over the implementing type. Beside them go the panic guard an arm calls its implementation behind and the reader that classifies a refused payload, both emitted only where the service declares an operation for them to serve. The client emits:
 
 - `Transport` -- the seam a client is bound to, with `notify(operation, payload, headers)` and `request(operation, payload, headers)`, `request` answering the encoded reply *and* the headers it carried back. Both answer a `Result`, whose failure arm carries in words what stopped a call from travelling; the client turns it into a fault of kind `transport-failure`.
-- `UsageServiceClient` -- one method per operation, over any `Transport`. Each takes that operation's arguments -- one more per `header_in` binding, in declaration order -- and no context: a context is what an implementation needs, and a caller has nothing to hand one to. Every method answers a `Result`, and every method's generated documentation says under an `# Errors` heading what its failure arm can hold.
+- `BillingServiceClient` -- one method per operation, over any `Transport`. Each takes that operation's arguments -- one more per `header_in` binding, in declaration order -- and no context: a context is what an implementation needs, and a caller has nothing to hand one to. Every method answers a `Result`, and every method's generated documentation says under an `# Errors` heading what its failure arm can hold.
 - The mirror that reads a fault back off the wire and the reader that turns one envelope into three outcomes, emitted only where the service declares an operation that answers. A service declaring only one-way operations is emitted neither, there being no reply for either to read.
 
 **`header_in`/`header_out`/`error_header_out` ride the headers channel, not the payload.** `#[service_schema_op(http(header_in("name" = parameter), header_out("name")))]` binds an ordinary argument beside the message to a named header on the way in, and names the tuple element after the response on the way out; `error_header_out("name")` names the tuple element after the *declared error* the same way, read and written only when the error is the reply. On `amqp_rpc` that channel is the message's own basic-properties headers table: the dispatcher decodes each `header_in` value (JSON-encoded) off the incoming headers before calling the implementation, naming the header rather than a payload field if a value will not decode; a `header_out`-bound success type and an `error_header_out`-bound error type are each a tuple, and the arm sends the value alone while writing every element after it into the reply's own headers. The client mirrors both directions, encoding each `header_in` argument and decoding `request`'s returned headers back into whichever declared tuple its outcome answers. An operation naming no `http(...)` group carries an empty headers list either way -- the channel exists on every operation, but nothing reads or writes it there.
@@ -3027,7 +3027,7 @@ A crate that invokes the server macro names all six of `lapin`, `tokio`, `future
 
 Paths inside a `macro_rules!` body resolve where the macro is *invoked*, so the two kinds are spelled apart. Everything tixschema generated is reached through `$crate::`, which resolves in the crate that declared the service; every runtime crate is reached through a leading `::` and resolves in the invoking crate, **which is therefore the one that names `serde`, `serde_json` and `tracing` in its own manifest**. That is the point of the shape: a crate that only declares services names serde alone. A crate that places only a client names `serde` and `serde_json` and not `tracing`, nothing in a client catching a panic; the `use` in the client module above is what resolves the message types the author declared, which the expansion spells exactly as they were written.
 
-A crate that declares a service *and* places one of its halves invokes that macro by name rather than by path -- `usage_service_amqp_rpc_dispatcher!()` -- after the declaration and inside it or a module below it, `#[macro_use]` carrying it out of a submodule. Rust refuses an absolute path to a `macro_export` macro that a macro produced, from within the crate that produced it -- `crate::usage_service_amqp_rpc_dispatcher!()` and `use crate::usage_service_amqp_rpc_dispatcher;` both earn a deny-by-default future-incompatibility:
+A crate that declares a service *and* places one of its halves invokes that macro by name rather than by path -- `billing_service_amqp_rpc_dispatcher!()` -- after the declaration and inside it or a module below it, `#[macro_use]` carrying it out of a submodule. Rust refuses an absolute path to a `macro_export` macro that a macro produced, from within the crate that produced it -- `crate::billing_service_amqp_rpc_dispatcher!()` and `use crate::billing_service_amqp_rpc_dispatcher;` both earn a deny-by-default future-incompatibility:
 
 ```text
 error: macro-expanded `macro_export` macros from the current crate cannot be referred to by absolute paths
@@ -3041,18 +3041,18 @@ Another crate reaches either macro by path as above.
 Both of those the declaring crate checks for itself. A service that asked for at least one transport resolves its generated module and its trait against the crate root at the declaration, so leaving either unreachable fails **that** crate's own `cargo build` rather than every crate that goes on to invoke a macro. The caret sits on the trait, with the attribute macro named as the origin:
 
 ```text
-error[E0433]: cannot find `usage_service_schema` in `crate`
-  --> src/services/usage.rs:15:11
+error[E0433]: cannot find `billing_service_schema` in `crate`
+  --> src/services/billing.rs:15:11
    |
 14 | #[service_schema(transports = ["amqp_rpc"])]
    | -------------------------------------------- in this attribute macro expansion
-15 | pub trait UsageService<Ctx> {
+15 | pub trait BillingService<Ctx> {
    |           ^^^^^^^^^^^^ unresolved import
 
-error[E0405]: cannot find trait `UsageService` in the crate root
+error[E0405]: cannot find trait `BillingService` in the crate root
 ```
 
-Each is earned on its own, so re-exporting one leaves the other standing rather than repeating both. Write them as **`pub use`**, not `use`: a private import at the root satisfies an invocation inside the declaring crate -- which is what this crate's own test harnesses rely on -- while a crate invoking the macro from outside earns ``error[E0603]: module `usage_service_schema` is private``. A service that asked for no transport publishes no macro, is checked against no root, and compiles below the crate root with nothing re-exported.
+Each is earned on its own, so re-exporting one leaves the other standing rather than repeating both. Write them as **`pub use`**, not `use`: a private import at the root satisfies an invocation inside the declaring crate -- which is what this crate's own test harnesses rely on -- while a crate invoking the macro from outside earns ``error[E0603]: module `billing_service_schema` is private``. A service that asked for no transport publishes no macro, is checked against no root, and compiles below the crate root with nothing re-exported.
 
 On the TypeScript side, three artifacts, reached through a unit struct named `<Service>Schema`:
 
@@ -3061,9 +3061,9 @@ pub fn get_entities() -> (String, Vec<String>) {
     (
         "service entities".to_string(),
         vec![
-            UsageServiceSchema::ts_definition(),
-            UsageServiceSchema::ts_client(),
-            UsageServiceSchema::ts_service(),
+            BillingServiceSchema::ts_definition(),
+            BillingServiceSchema::ts_client(),
+            BillingServiceSchema::ts_service(),
         ],
     )
 }
@@ -3074,61 +3074,61 @@ pub fn get_entities() -> (String, Vec<String>) {
 `ts_client()` answers with the transport seam, the client type and the factory that binds one:
 
 ```typescript
-export type UsageServiceClient = {
+export type BillingServiceClient = {
   /**
-   * Sends `apply-bundle` on `UsageService`, which expects no reply.
+   * Sends `apply-bundle` on `BillingService`, which expects no reply.
    *
-   * @throws {UsageServiceRefusal} when the message fails its own schema. The operation
+   * @throws {BillingServiceRefusal} when the message fails its own schema. The operation
    * answers `Promise<void>`, so there is no failure arm to put the fault in; the transport
    * is still never reached.
    */
-  applyBundle(req: AvailableBalanceRequest): Promise<void>;
-  /** Calls `usage-generation-request` on `UsageService` and waits for the answer. */
-  canGenerate(req: AvailableBalanceRequest): Promise<UsageServiceCanGenerateResult>;
-  /** Calls `expire-credit` on `UsageService` and waits for the answer. */
-  expireCredit(req: ExpireCreditRequest): Promise<UsageServiceExpireCreditResult>;
-  /** Calls `get-available-balance` on `UsageService` and waits for the answer. */
-  getAvailableBalance(req: AvailableBalanceRequest): Promise<UsageServiceGetAvailableBalanceResult>;
-  /** Calls `sweep` on `UsageService` and waits for the answer. */
-  sweep(req: SweepRequest): Promise<UsageServiceSweepResult>;
+  applyBundle(req: OpenBalanceRequest): Promise<void>;
+  /** Calls `billing-generation-request` on `BillingService` and waits for the answer. */
+  canGenerate(req: OpenBalanceRequest): Promise<BillingServiceCanGenerateResult>;
+  /** Calls `get-open-balance` on `BillingService` and waits for the answer. */
+  getOpenBalance(req: OpenBalanceRequest): Promise<BillingServiceGetOpenBalanceResult>;
+  /** Calls `sweep` on `BillingService` and waits for the answer. */
+  sweep(req: SweepRequest): Promise<BillingServiceSweepResult>;
+  /** Calls `void-invoice` on `BillingService` and waits for the answer. */
+  voidInvoice(req: VoidInvoiceRequest): Promise<BillingServiceVoidInvoiceResult>;
 };
 ```
 
 `ts_service()` answers with the interface an implementation satisfies in full, the outcome types it answers with, and the dispatcher factory:
 
 ```typescript
-export interface UsageServiceImpl<Ctx> {
-  /** Handles `apply-bundle` on `UsageService`, which expects no reply. */
-  applyBundle(ctx: Ctx, req: AvailableBalanceRequest): Promise<void>;
-  /** Handles `usage-generation-request` on `UsageService` and answers it. */
-  canGenerate(ctx: Ctx, req: AvailableBalanceRequest): Promise<UsageServiceCanGenerateOutcome>;
-  /** Handles `expire-credit` on `UsageService` and answers it. */
-  expireCredit(ctx: Ctx, req: ExpireCreditRequest): Promise<UsageServiceExpireCreditOutcome>;
-  /** Handles `get-available-balance` on `UsageService` and answers it. */
-  getAvailableBalance(ctx: Ctx, req: AvailableBalanceRequest): Promise<UsageServiceGetAvailableBalanceOutcome>;
-  /** Handles `sweep` on `UsageService` and answers it. */
-  sweep(ctx: Ctx, req: SweepRequest): Promise<UsageServiceSweepOutcome>;
+export interface BillingServiceImpl<Ctx> {
+  /** Handles `apply-bundle` on `BillingService`, which expects no reply. */
+  applyBundle(ctx: Ctx, req: OpenBalanceRequest): Promise<void>;
+  /** Handles `billing-generation-request` on `BillingService` and answers it. */
+  canGenerate(ctx: Ctx, req: OpenBalanceRequest): Promise<BillingServiceCanGenerateOutcome>;
+  /** Handles `get-open-balance` on `BillingService` and answers it. */
+  getOpenBalance(ctx: Ctx, req: OpenBalanceRequest): Promise<BillingServiceGetOpenBalanceOutcome>;
+  /** Handles `sweep` on `BillingService` and answers it. */
+  sweep(ctx: Ctx, req: SweepRequest): Promise<BillingServiceSweepOutcome>;
+  /** Handles `void-invoice` on `BillingService` and answers it. */
+  voidInvoice(ctx: Ctx, req: VoidInvoiceRequest): Promise<BillingServiceVoidInvoiceOutcome>;
 }
 ```
 
 ```typescript
-export function createUsageServiceDispatcher<Ctx>(
-  impl: UsageServiceImpl<Ctx>,
+export function createBillingServiceDispatcher<Ctx>(
+  impl: BillingServiceImpl<Ctx>,
 ): (
   ctx: Ctx,
   operation: string,
   payload: unknown,
   headers?: ReadonlyArray<readonly [string, string]>,
   parts?: ReadonlyArray<readonly [string, unknown]>,
-) => Promise<UsageServiceDispatched | undefined> {
+) => Promise<BillingServiceDispatched | undefined> {
 ```
 
-Every member is required, so an implementation missing one is refused where it reaches `createUsageServiceDispatcher`. Every emitted name carries the service -- `UsageServiceFault`, `UsageServiceGetAvailableBalanceResult`, `UsageServiceClient`, and the fault's own brand symbol `usageServiceFaultSeal` -- because TypeScript has no per-service scope and a bundle is one flat file. Rust needs no such prefix, the generated module being the scope TypeScript lacks.
+Every member is required, so an implementation missing one is refused where it reaches `createBillingServiceDispatcher`. Every emitted name carries the service -- `BillingServiceFault`, `BillingServiceGetOpenBalanceResult`, `BillingServiceClient`, and the fault's own brand symbol `billingServiceFaultSeal` -- because TypeScript has no per-service scope and a bundle is one flat file. Rust needs no such prefix, the generated module being the scope TypeScript lacks.
 
 **Headers cross the TypeScript seam both ways, each value JSON-encoded.** The client's transport seam carries them beside the payload, and `request` answers the reply's own headers beside the envelope:
 
 ```typescript
-export type UsageServiceTransport = {
+export type BillingServiceTransport = {
   notify(
     operation: string,
     payload: unknown,
@@ -3144,7 +3144,7 @@ export type UsageServiceTransport = {
 
 The header text is the JSON encoding the Rust `amqp_rpc` transport writes into the AMQP headers table, so an AMQP transport hands the pairs over as they are. A transport written against the earlier seam -- `request` answering the reply alone -- answers `{ answered, headers }` now, with an empty list where the reply carried none. A client method takes one argument per `header_in` binding after the message and sends each JSON-encoded, an optional one holding `undefined` as `null`, which is what the Rust client writes for a `None`. A `header_out` or `error_header_out` reply is rejoined into the tuple the operation declared: the body off the envelope, each header off the reply's headers, checked against the element's own schema. An absent optional header reads as `null`, the value its tuple slot holds; a required one that is absent, is not JSON, or does not match its schema answers a `failed-validation` fault naming the header.
 
-The dispatcher reads each `header_in` value off the same JSON text, checked against the argument's own schema, and refuses a missing required one or a malformed one through the same framed fault a bad payload gets. It answers `UsageServiceDispatched` -- `{ answered, headers }`, the envelope that goes on the wire and the headers written beside it -- or `undefined` for a one-way operation that ran. A header tuple is split there: the body answers as the envelope's `value` or `error`, and each header element is written under its name, one holding `null` written nowhere. A transport that drove the dispatcher before writes `dispatched.answered` where it wrote the whole answer, and `dispatched.headers` into its own headers channel.
+The dispatcher reads each `header_in` value off the same JSON text, checked against the argument's own schema, and refuses a missing required one or a malformed one through the same framed fault a bad payload gets. It answers `BillingServiceDispatched` -- `{ answered, headers }`, the envelope that goes on the wire and the headers written beside it -- or `undefined` for a one-way operation that ran. A header tuple is split there: the body answers as the envelope's `value` or `error`, and each header element is written under its name, one holding `null` written nowhere. A transport that drove the dispatcher before writes `dispatched.answered` where it wrote the whole answer, and `dispatched.headers` into its own headers channel.
 
 Every reader ignores `value` for a `Result<(), E>` operation, and for a `Result<T, E>` operation whose declared success `T` is a unit struct declared above the service. `ts_client()`'s result type reads `{ ok: true; value: undefined }`, and `ts_service()`'s outcome type reads `{ ok: true }` with no `value` member at all.
 
@@ -3649,9 +3649,9 @@ declare const socket: WebSocket;
 
 export async function read(): Promise<string> {
   const client = createProbeServiceClient(createProbeServiceWsTransport(socket));
-  const answered = await client.getBalance({ organization_id: "acme" });
+  const answered = await client.getBalance({ customer_id: "acme" });
   if (answered.ok) {
-    return `${answered.value.credits}`;
+    return `${answered.value.invoices}`;
   }
   return "failed";
 }
@@ -3664,7 +3664,7 @@ Headers ride the frame's own `headers` object both ways: the transport writes th
 ```typescript
 import {
   attachProbeServiceWsDispatcher,
-  type ProbeServiceExpireCreditOutcome,
+  type ProbeServiceVoidInvoiceOutcome,
   type ProbeServiceFaultKind,
   type ProbeServiceGetBalanceOutcome,
   type ProbeServiceSettleOutcome,
@@ -3677,18 +3677,18 @@ declare const socket: WebSocket;
 
 attachProbeServiceWsDispatcher<ProbeContext>(socket, { loggerName: "probe" }, {
   async applyBundle(ctx, req): Promise<void> {
-    void `${ctx.loggerName}:${req.organizationId}:${req.bundleId}`;
+    void `${ctx.loggerName}:${req.customerId}:${req.bundleId}`;
   },
-  async expireCredit(ctx, req): Promise<ProbeServiceExpireCreditOutcome> {
-    void `${ctx.loggerName}:${req.organizationId}:${req.creditId}`;
+  async voidInvoice(ctx, req): Promise<ProbeServiceVoidInvoiceOutcome> {
+    void `${ctx.loggerName}:${req.customerId}:${req.invoiceId}`;
     return { ok: false, error: { errorCode: "conflict" } };
   },
   async getBalance(ctx, req): Promise<ProbeServiceGetBalanceOutcome> {
-    void `${ctx.loggerName}:${req.organization_id}`;
-    return { ok: true, value: { credits: 1 } };
+    void `${ctx.loggerName}:${req.customer_id}`;
+    return { ok: true, value: { invoices: 1 } };
   },
   async settle(ctx, req): Promise<ProbeServiceSettleOutcome> {
-    void `${ctx.loggerName}:${req.organization_id}`;
+    void `${ctx.loggerName}:${req.customer_id}`;
     return { ok: true, value: { applied: true } };
   },
   async sweep(ctx, req): Promise<ProbeServiceSweepOutcome> {

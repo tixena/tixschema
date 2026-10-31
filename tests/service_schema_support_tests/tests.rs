@@ -3,7 +3,7 @@
 
 #![cfg(feature = "serde")]
 
-use crate::{amqp_transport, usage_amqp_transport};
+use crate::{amqp_transport, billing_amqp_transport};
 use core::future::{Future, ready};
 use core::pin::pin;
 use core::task::{Context as PollContext, Poll, Waker};
@@ -14,7 +14,7 @@ use tixschema::service_schema;
 /// The message of the purge operation.
 #[derive(Deserialize, Serialize)]
 pub struct PurgeRequest {
-    pub organization_id: String,
+    pub customer_id: String,
 }
 
 /// The error the sweep service declares.
@@ -50,14 +50,14 @@ pub trait SweepService<Ctx> {
 }
 
 #[service_schema(transports = ["amqp_rpc"])]
-pub trait UsageService<Ctx> {
+pub trait BillingService<Ctx> {
     async fn count(&self, ctx: &Ctx) -> Result<SweepReport, SweepError>;
 }
 
 impl SweepService<String> for ProbeBackEnd {
     async fn purge(&self, ctx: &String, req: PurgeRequest) {
         let _read = ready(ctx.len()).await;
-        self.purged.lock().unwrap().push(req.organization_id);
+        self.purged.lock().unwrap().push(req.customer_id);
     }
 
     async fn sweep(&self, ctx: &String) -> Result<SweepReport, SweepError> {
@@ -70,7 +70,7 @@ impl SweepService<String> for ProbeBackEnd {
     }
 }
 
-impl UsageService<String> for ProbeBackEnd {
+impl BillingService<String> for ProbeBackEnd {
     async fn count(&self, ctx: &String) -> Result<SweepReport, SweepError> {
         SweepService::sweep(self, ctx).await
     }
@@ -91,8 +91,8 @@ impl amqp_transport::Reply for ProbeTransport {
     }
 }
 
-impl usage_amqp_transport::Reply for ProbeTransport {
-    async fn fault(&self, fault: usage_service_schema::ServiceFault) {
+impl billing_amqp_transport::Reply for ProbeTransport {
+    async fn fault(&self, fault: billing_service_schema::ServiceFault) {
         self.record(fault.to_string());
     }
 
@@ -157,7 +157,7 @@ fn a_one_way_operation_runs_and_leaves_the_handle_it_was_given_untouched() {
         &ctx,
         &amqp_transport::IncomingMessage::new(
             "purge".to_owned(),
-            br#"{"organization_id":"acme"}"#.to_vec(),
+            br#"{"customer_id":"acme"}"#.to_vec(),
             Vec::new(),
         ),
         &transport,
@@ -198,7 +198,7 @@ fn one_transport_serves_two_services_through_two_reply_handles() {
     let transport = ProbeTransport::new();
     let ctx = "probe".to_owned();
     let counted = poll_once(service.count(&ctx)).unwrap().unwrap();
-    poll_once(usage_amqp_transport::Reply::send(
+    poll_once(billing_amqp_transport::Reply::send(
         &transport,
         counted,
         Vec::new(),
@@ -222,10 +222,14 @@ fn a_second_service_s_dispatcher_stands_beside_the_first_in_one_crate() {
     let service = ProbeBackEnd::new(12);
     let transport = ProbeTransport::new();
     let ctx = "probe".to_owned();
-    poll_once(usage_amqp_transport::dispatch(
+    poll_once(billing_amqp_transport::dispatch(
         &service,
         &ctx,
-        &usage_amqp_transport::IncomingMessage::new("count".to_owned(), b"{}".to_vec(), Vec::new()),
+        &billing_amqp_transport::IncomingMessage::new(
+            "count".to_owned(),
+            b"{}".to_vec(),
+            Vec::new(),
+        ),
         &transport,
     ))
     .unwrap();
@@ -269,10 +273,10 @@ fn a_call_error_carries_the_error_the_operation_declared() {
 fn every_kind_of_fault_is_built_through_its_own_constructor_from_outside_the_module() {
     use sweep_service_schema::{ServiceFault, ServiceFaultKind};
 
-    let refused = ServiceFault::failed_validation("sweep", Some("organization_id"), "is empty");
+    let refused = ServiceFault::failed_validation("sweep", Some("customer_id"), "is empty");
     assert_eq!(refused.kind(), ServiceFaultKind::FailedValidation);
     assert_eq!(refused.operation(), "sweep");
-    assert_eq!(refused.field(), Some("organization_id"));
+    assert_eq!(refused.field(), Some("customer_id"));
     assert_eq!(refused.detail(), "is empty");
 
     let unread = ServiceFault::undeserializable_payload("sweep", "expected value at line 1");

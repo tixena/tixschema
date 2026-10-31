@@ -30,13 +30,13 @@ const PATIENCE: Duration = Duration::from_secs(5);
 #[model_schema()]
 #[derive(Deserialize, Serialize)]
 pub struct PingRequest {
-    pub organization_id: String,
+    pub customer_id: String,
 }
 
 #[model_schema()]
 #[derive(Deserialize, Serialize)]
 pub struct PingResponse {
-    pub credits: u32,
+    pub invoices: u32,
 }
 
 #[model_schema()]
@@ -63,7 +63,7 @@ pub struct PingBackEnd;
 impl PingService<amqp_server::Context> for PingBackEnd {
     async fn note(&self, ctx: &amqp_server::Context, req: PingRequest) {
         let _entered = ctx.logger.enter();
-        let _read = ready(req.organization_id.len()).await;
+        let _read = ready(req.customer_id.len()).await;
     }
 
     async fn ping(
@@ -73,10 +73,10 @@ impl PingService<amqp_server::Context> for PingBackEnd {
     ) -> Result<PingResponse, PingError> {
         let _entered = ctx.logger.enter();
         ready(()).await;
-        if req.organization_id == "unlucky" {
+        if req.customer_id == "unlucky" {
             Err(PingError::DbError)
         } else {
-            Ok(PingResponse { credits: 7 })
+            Ok(PingResponse { invoices: 7 })
         }
     }
 }
@@ -161,11 +161,11 @@ fn dispatched(operation: &str, payload: &str) -> Vec<Settled> {
 
 #[test]
 fn the_server_macro_s_dispatch_answers_the_same_way_the_dispatcher_macro_s_does() {
-    let settled = dispatched("ping", r#"{"organization_id":"acme"}"#);
+    let settled = dispatched("ping", r#"{"customer_id":"acme"}"#);
     assert_eq!(
         settled,
         vec![Settled::Sent(
-            r#"{"ok":true,"value":{"credits":7}}"#.to_owned()
+            r#"{"ok":true,"value":{"invoices":7}}"#.to_owned()
         )],
         "got: {settled:?}"
     );
@@ -173,7 +173,7 @@ fn the_server_macro_s_dispatch_answers_the_same_way_the_dispatcher_macro_s_does(
 
 #[test]
 fn the_operation_s_own_error_rides_in_the_failure_arm_rather_than_becoming_a_fault() {
-    let settled = dispatched("ping", r#"{"organization_id":"unlucky"}"#);
+    let settled = dispatched("ping", r#"{"customer_id":"unlucky"}"#);
     assert_eq!(
         settled,
         vec![Settled::Sent(
@@ -185,13 +185,13 @@ fn the_operation_s_own_error_rides_in_the_failure_arm_rather_than_becoming_a_fau
 
 #[test]
 fn a_one_way_operation_settles_without_publishing_anything() {
-    let settled = dispatched("note", r#"{"organization_id":"acme"}"#);
+    let settled = dispatched("note", r#"{"customer_id":"acme"}"#);
     assert!(settled.is_empty(), "got: {settled:?}");
 }
 
 #[test]
 fn a_name_nothing_answers_to_becomes_a_fault_through_the_same_handle() {
-    let settled = dispatched("get-the-balance", r#"{"organization_id":"acme"}"#);
+    let settled = dispatched("get-the-balance", r#"{"customer_id":"acme"}"#);
     assert_eq!(settled.len(), 1, "got: {settled:?}");
     assert!(
         matches!(&settled[0], Settled::Fault(reported)

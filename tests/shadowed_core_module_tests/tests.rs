@@ -12,7 +12,7 @@ use tixschema::{model_schema, service_schema};
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BalanceAnswer {
-    pub credits: u32,
+    pub invoices: u32,
 }
 
 #[model_schema()]
@@ -26,15 +26,15 @@ pub enum BalanceFailure {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BalanceRequest {
+    pub customer_id: u32,
     #[model_schema_prop(minLength = 1)]
     pub note: String,
-    pub organization_id: u32,
     #[model_schema_prop(maxLength = 4)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
 }
 
-/// Answers a balance, and refuses organization zero.
+/// Answers a balance, and refuses customer zero.
 pub struct BalanceBackEnd;
 
 #[service_schema(transports = ["amqp_rpc", "http_rest", "ws_rpc"])]
@@ -54,20 +54,20 @@ impl BalanceService<()> for BalanceBackEnd {
         req: BalanceRequest,
     ) -> Result<BalanceAnswer, BalanceFailure> {
         ready(()).await;
-        if req.organization_id == 0 {
+        if req.customer_id == 0 {
             return Err(BalanceFailure::DbError);
         }
         Ok(BalanceAnswer {
-            credits: req.organization_id,
+            invoices: req.customer_id,
         })
     }
 }
 
 /// Nothing above suspends, so one poll answers it.
-fn balance_of(organization_id: u32) -> Poll<Result<BalanceAnswer, BalanceFailure>> {
+fn balance_of(customer_id: u32) -> Poll<Result<BalanceAnswer, BalanceFailure>> {
     let req = BalanceRequest {
         note: "x".to_owned(),
-        organization_id,
+        customer_id,
         tags: None,
     };
     let call = pin!(BalanceBackEnd.read_balance(&(), req));
@@ -77,8 +77,7 @@ fn balance_of(organization_id: u32) -> Poll<Result<BalanceAnswer, BalanceFailure
 #[test]
 fn a_type_declared_beside_them_reads() {
     let read: BalanceRequest =
-        serde_json::from_value(serde_json::json!({ "note": "x", "organizationId": 3_u32 }))
-            .unwrap();
+        serde_json::from_value(serde_json::json!({ "note": "x", "customerId": 3_u32 })).unwrap();
     assert_eq!(read.note, "x");
     assert_eq!(read.tags, None);
 }
@@ -88,14 +87,14 @@ fn a_type_declared_beside_them_reads() {
 fn a_type_declared_beside_them_validates() {
     let broken = BalanceRequest {
         note: String::new(),
-        organization_id: 3,
+        customer_id: 3,
         tags: None,
     };
     let reported = broken.validate().unwrap_err();
     assert_eq!(reported.len(), 1);
     assert_eq!(
         serde_json::from_value::<BalanceRequest>(
-            serde_json::json!({ "note": "", "organizationId": 3_u32 })
+            serde_json::json!({ "note": "", "customerId": 3_u32 })
         )
         .unwrap_err()
         .to_string(),
@@ -111,6 +110,9 @@ fn the_modules_in_scope_are_the_ones_declared_here() {
 
 #[test]
 fn the_service_declared_beside_them_answers() {
-    assert_eq!(balance_of(7), Poll::Ready(Ok(BalanceAnswer { credits: 7 })));
+    assert_eq!(
+        balance_of(7),
+        Poll::Ready(Ok(BalanceAnswer { invoices: 7 }))
+    );
     assert_eq!(balance_of(0), Poll::Ready(Err(BalanceFailure::DbError)));
 }

@@ -7553,7 +7553,7 @@ fn a_field_holding_a_declared_type_is_read_through_one_that_names_the_field() {
         #[derive(serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct Enrolment {
-            organization_id: Slug,
+            customer_id: Slug,
         }
     };
     let collected = super::collect_struct_fields(
@@ -7584,17 +7584,17 @@ fn a_field_holding_a_declared_type_is_read_through_one_that_names_the_field() {
 
     let read = super::judged_read::of_struct(&mut item, true).to_string();
     for written in [
-        "# [serde (deserialize_with = \"read_unjudged_organization_id\")] organization_id : Slug",
-        "fn read_unjudged_organization_id < 'de , D > (deserializer : D) -> :: core :: result :: \
+        "# [serde (deserialize_with = \"read_unjudged_customer_id\")] customer_id : Slug",
+        "fn read_unjudged_customer_id < 'de , D > (deserializer : D) -> :: core :: result :: \
          Result < Slug , D :: Error >",
         "< Slug > :: model_schema_read_unjudged (deserializer) . map (Unjudged)",
         // The key as the wire spells it: the name serde was reading for, and the one the schema
         // reports.
-        "nested_under (\"organizationId\" , violation)",
+        "nested_under (\"customerId\" , violation)",
     ] {
         assert!(read.contains(written), "missing `{written}`, got: {read}");
     }
-    assert!(!read.contains("\"organization_id\""), "got: {read}");
+    assert!(!read.contains("\"customer_id\""), "got: {read}");
 }
 
 #[cfg(feature = "serde")]
@@ -7643,7 +7643,7 @@ fn a_field_the_unjudged_read_does_not_reach_keeps_a_reader_in_the_schema_module(
         #[derive(serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct Enrolment {
-            organization_id: Arc<[Slug]>,
+            customer_id: Arc<[Slug]>,
         }
     };
     let collected = super::collect_struct_fields(
@@ -7665,7 +7665,7 @@ fn a_field_the_unjudged_read_does_not_reach_keeps_a_reader_in_the_schema_module(
     assert_eq!(
         rendered,
         quote::quote! {
-            #[serde(deserialize_with = "enrolment_schema::deserialize_named_organization_id")]
+            #[serde(deserialize_with = "enrolment_schema::deserialize_named_customer_id")]
         }
         .to_string(),
         "got: {rendered}"
@@ -7677,14 +7677,11 @@ fn a_field_the_unjudged_read_does_not_reach_keeps_a_reader_in_the_schema_module(
         .map(ToString::to_string)
         .collect::<String>();
     assert!(
-        published.contains("\"organizationId\""),
+        published.contains("\"customerId\""),
         "the name written is the key as the wire spells it, that being the name serde was reading \
          for and the one the schema reports. Got: {published}"
     );
-    assert!(
-        !published.contains("\"organization_id\""),
-        "got: {published}"
-    );
+    assert!(!published.contains("\"customer_id\""), "got: {published}");
     let read = super::judged_read::of_struct(&mut item, true).to_string();
     assert!(!read.contains("read_unjudged_"), "got: {read}");
 }

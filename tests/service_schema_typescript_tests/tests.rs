@@ -15,7 +15,7 @@ mod keyed;
 #[cfg(feature = "typescript")]
 mod the_bundle_one_registration_line_produces {
     use super::{
-        ApplyBundleReceipt, AuditServiceSchema, BalanceRequest, BalanceResponse, CreditWriteError,
+        ApplyBundleReceipt, AuditServiceSchema, BalanceRequest, BalanceResponse, InvoiceWriteError,
         ProbeError, ProbeServiceSchema,
     };
     use std::env::temp_dir;
@@ -40,7 +40,7 @@ mod the_bundle_one_registration_line_produces {
             BalanceResponse::ts_definition(),
             ApplyBundleReceipt::ts_definition(),
             ProbeError::ts_definition(),
-            CreditWriteError::ts_definition(),
+            InvoiceWriteError::ts_definition(),
         ];
         written.extend(author_schemas());
         written.push(ProbeServiceSchema::ts_definition());
@@ -91,7 +91,7 @@ mod the_bundle_one_registration_line_produces {
             BalanceResponse::zod_schema(),
             ApplyBundleReceipt::zod_schema(),
             ProbeError::zod_schema(),
-            CreditWriteError::zod_schema(),
+            InvoiceWriteError::zod_schema(),
         ]
     }
 
@@ -184,7 +184,7 @@ mod the_bundle_one_registration_line_produces {
             BalanceResponse::ts_definition(),
             ApplyBundleReceipt::ts_definition(),
             ProbeError::ts_definition(),
-            CreditWriteError::ts_definition(),
+            InvoiceWriteError::ts_definition(),
             ProbeServiceSchema::ts_definition(),
             ProbeServiceSchema::ts_client(),
             ProbeServiceSchema::ts_service(),
@@ -215,7 +215,7 @@ mod the_bundle_one_registration_line_produces {
     #[test]
     fn a_message_the_macro_declared_reaches_the_bundle_without_a_line_of_its_own() {
         let (_, written) = written_bundle("tixschema_service_bundle_declared_messages.ts");
-        for declared in ["ExpireCreditRequest", "SweepRequest", "ApplyBundleRequest"] {
+        for declared in ["VoidInvoiceRequest", "SweepRequest", "ApplyBundleRequest"] {
             assert!(
                 written.contains(&format!("export type {declared} =")),
                 "nobody wrote `{declared}`, so nobody could have written its registration. \
@@ -240,7 +240,7 @@ mod the_bundle_one_registration_line_produces {
                 "the envelope is added around the message, never into it. Got: {declared}"
             );
         }
-        assert!(declared.contains("credits: number;"), "got: {declared}");
+        assert!(declared.contains("invoices: number;"), "got: {declared}");
     }
 
     #[test]
@@ -350,7 +350,7 @@ mod the_bundle_one_registration_line_produces {
             BalanceResponse::ts_definition(),
             ApplyBundleReceipt::ts_definition(),
             ProbeError::ts_definition(),
-            CreditWriteError::ts_definition(),
+            InvoiceWriteError::ts_definition(),
             ProbeServiceSchema::ts_definition(),
         ];
         both.extend(probe_seam());
@@ -505,7 +505,7 @@ mod the_schema_that_rides_with_the_type {
     #[test]
     fn a_declared_message_publishes_its_schema_through_the_same_line() {
         let written = ProbeServiceSchema::ts_definition();
-        for declared in ["ExpireCreditRequest", "SweepRequest", "ApplyBundleRequest"] {
+        for declared in ["VoidInvoiceRequest", "SweepRequest", "ApplyBundleRequest"] {
             assert!(
                 written.contains(&format!("{declared}$Schema")),
                 "a client on the far side validates what it sends. Got: {written}"
@@ -655,7 +655,7 @@ mod the_envelope_typescript_declares_is_the_one_rust_writes {
 
     #[test]
     fn a_declared_failure_is_written_and_declared_as_ok_false_with_an_error() {
-        let encoded = dispatched("settle", br#"{"organization_id":"acme"}"#, "");
+        let encoded = dispatched("settle", br#"{"customer_id":"acme"}"#, "");
         assert_eq!(
             keys(&encoded),
             vec!["error".to_owned(), "ok".to_owned()],
@@ -673,7 +673,7 @@ mod the_envelope_typescript_declares_is_the_one_rust_writes {
 
     #[test]
     fn a_success_is_written_and_declared_as_ok_true_with_a_value() {
-        let encoded = dispatched("get-balance", br#"{"organization_id":"acme"}"#, "probe");
+        let encoded = dispatched("get-balance", br#"{"customer_id":"acme"}"#, "probe");
         assert_eq!(
             keys(&encoded),
             vec!["ok".to_owned(), "value".to_owned()],
@@ -774,7 +774,7 @@ mod the_envelope_typescript_declares_is_the_one_rust_writes {
             ),
             (
                 "get-balance",
-                br#"{"organization_id":42}"#.as_slice(),
+                br#"{"customer_id":42}"#.as_slice(),
                 "failed-validation",
             ),
             (
@@ -802,10 +802,7 @@ mod the_envelope_typescript_declares_is_the_one_rust_writes {
     #[cfg(feature = "zod")]
     #[test]
     fn a_one_way_operation_puts_nothing_on_the_wire_and_says_so_in_both_languages() {
-        let settled = settlements(
-            "apply-bundle",
-            br#"{"organizationId":"acme","bundleId":"b-1"}"#,
-        );
+        let settled = settlements("apply-bundle", br#"{"customerId":"acme","bundleId":"b-1"}"#);
         assert!(
             settled.is_empty(),
             "a one-way arm publishes nothing, so there is no envelope for a caller to read. \
@@ -898,7 +895,7 @@ mod the_envelope_typescript_declares_is_the_one_rust_writes {
             encoded: framed_fault(&fault),
         });
         let answered = poll_once(client.get_balance(BalanceRequest {
-            organization_id: "acme".to_owned(),
+            customer_id: "acme".to_owned(),
         }))
         .unwrap();
         let reported = faulted(answered);
@@ -922,14 +919,14 @@ mod the_envelope_typescript_declares_is_the_one_rust_writes {
             encoded: framed_fault(&fault),
         });
         let request = || BalanceRequest {
-            organization_id: "acme".to_owned(),
+            customer_id: "acme".to_owned(),
         };
         assert!(faulted(poll_once(client.get_balance(request())).unwrap()).is_some());
         assert!(faulted(poll_once(client.settle(request())).unwrap()).is_some());
         assert!(faulted(poll_once(client.sweep()).unwrap()).is_some());
         assert!(faulted(poll_once(client.probe_header("probe".to_owned())).unwrap()).is_some());
         assert!(
-            faulted(poll_once(client.expire_credit("acme".to_owned(), "cr-1".to_owned())).unwrap())
+            faulted(poll_once(client.void_invoice("acme".to_owned(), "cr-1".to_owned())).unwrap())
                 .is_some()
         );
         assert!(
@@ -1066,13 +1063,13 @@ pub struct ApplyBundleReceipt {
 #[model_schema()]
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct BalanceRequest {
-    pub organization_id: String,
+    pub customer_id: String,
 }
 
 #[model_schema()]
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct BalanceResponse {
-    pub credits: u32,
+    pub invoices: u32,
 }
 
 /// A second error type, so the published results are read for keeping each operation's declared
@@ -1080,7 +1077,7 @@ pub struct BalanceResponse {
 #[model_schema()]
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "errorCode", rename_all = "kebab-case")]
-pub enum CreditWriteError {
+pub enum InvoiceWriteError {
     Conflict,
     NotFound,
 }
@@ -1102,16 +1099,7 @@ pub struct ProbeContext {
 pub trait ProbeService<Ctx> {
     /// Answers nothing, and still receives a message a caller has to construct.
     #[service_schema_op(one_way)]
-    async fn apply_bundle(&self, ctx: &Ctx, organization_id: String, bundle_id: String);
-
-    /// Two arguments after the context: the message is declared from the argument list, and the
-    /// operation names an error unrelated to the others'.
-    async fn expire_credit(
-        &self,
-        ctx: &Ctx,
-        organization_id: String,
-        credit_id: String,
-    ) -> Result<BalanceResponse, CreditWriteError>;
+    async fn apply_bundle(&self, ctx: &Ctx, customer_id: String, bundle_id: String);
 
     /// One argument after the context: the argument already is the message.
     async fn get_balance(
@@ -1144,6 +1132,15 @@ pub trait ProbeService<Ctx> {
 
     /// None at all: an empty message is declared for it.
     async fn sweep(&self, ctx: &Ctx) -> Result<BalanceResponse, ProbeError>;
+
+    /// Two arguments after the context: the message is declared from the argument list, and the
+    /// operation names an error unrelated to the others'.
+    async fn void_invoice(
+        &self,
+        ctx: &Ctx,
+        customer_id: String,
+        invoice_id: String,
+    ) -> Result<BalanceResponse, InvoiceWriteError>;
 }
 
 /// The client, placed: the macro takes no arguments and emits bare items, so the module is this
@@ -1153,7 +1150,7 @@ pub trait ProbeService<Ctx> {
 #[cfg(all(feature = "typescript", feature = "zod"))]
 pub mod amqp_client {
     use super::{
-        ApplyBundleReceipt, BalanceRequest, BalanceResponse, CreditWriteError, ProbeError,
+        ApplyBundleReceipt, BalanceRequest, BalanceResponse, InvoiceWriteError, ProbeError,
     };
 
     probe_service_amqp_rpc_client!();
@@ -1175,9 +1172,9 @@ pub trait AuditService<Ctx> {
         &self,
         ctx: &Ctx,
         req: BalanceRequest,
-    ) -> Result<BalanceResponse, CreditWriteError>;
+    ) -> Result<BalanceResponse, InvoiceWriteError>;
 
-    async fn reconcile(&self, ctx: &Ctx) -> Result<BalanceResponse, CreditWriteError>;
+    async fn reconcile(&self, ctx: &Ctx) -> Result<BalanceResponse, InvoiceWriteError>;
 }
 
 /// The implementation of `AuditService` these tests dispatch to.
@@ -1188,45 +1185,29 @@ impl AuditService<ProbeContext> for AuditBackEnd {
         &self,
         ctx: &ProbeContext,
         req: BalanceRequest,
-    ) -> Result<BalanceResponse, CreditWriteError> {
-        let seen = ready(req.organization_id.len() + ctx.logger_name.len()).await;
+    ) -> Result<BalanceResponse, InvoiceWriteError> {
+        let seen = ready(req.customer_id.len() + ctx.logger_name.len()).await;
         Ok(BalanceResponse {
-            credits: u32::try_from(seen).unwrap_or(0),
+            invoices: u32::try_from(seen).unwrap_or(0),
         })
     }
 
-    async fn reconcile(&self, ctx: &ProbeContext) -> Result<BalanceResponse, CreditWriteError> {
+    async fn reconcile(&self, ctx: &ProbeContext) -> Result<BalanceResponse, InvoiceWriteError> {
         let seen = ready(ctx.logger_name.len()).await;
         Ok(BalanceResponse {
-            credits: u32::try_from(seen).unwrap_or(0),
+            invoices: u32::try_from(seen).unwrap_or(0),
         })
     }
 }
 
 /// The implementation of `ProbeService` these tests dispatch to.
 pub struct ProbeBackEnd {
-    pub granted_credits: u32,
+    pub billed_invoices: u32,
 }
 
 impl ProbeService<ProbeContext> for ProbeBackEnd {
-    async fn apply_bundle(&self, ctx: &ProbeContext, organization_id: String, bundle_id: String) {
-        let _settled = ready(ctx.logger_name.len() + organization_id.len() + bundle_id.len()).await;
-    }
-
-    async fn expire_credit(
-        &self,
-        ctx: &ProbeContext,
-        organization_id: String,
-        credit_id: String,
-    ) -> Result<BalanceResponse, CreditWriteError> {
-        let seen = ready(organization_id.len() + credit_id.len()).await;
-        if ctx.logger_name.is_empty() {
-            Err(CreditWriteError::Conflict)
-        } else {
-            Ok(BalanceResponse {
-                credits: u32::try_from(seen).unwrap_or(0),
-            })
-        }
+    async fn apply_bundle(&self, ctx: &ProbeContext, customer_id: String, bundle_id: String) {
+        let _settled = ready(ctx.logger_name.len() + customer_id.len() + bundle_id.len()).await;
     }
 
     async fn get_balance(
@@ -1234,9 +1215,9 @@ impl ProbeService<ProbeContext> for ProbeBackEnd {
         ctx: &ProbeContext,
         req: BalanceRequest,
     ) -> Result<BalanceResponse, ProbeError> {
-        let seen = ready(req.organization_id.len() + ctx.logger_name.len()).await;
+        let seen = ready(req.customer_id.len() + ctx.logger_name.len()).await;
         Ok(BalanceResponse {
-            credits: self.granted_credits + u32::try_from(seen).unwrap_or(0),
+            invoices: self.billed_invoices + u32::try_from(seen).unwrap_or(0),
         })
     }
 
@@ -1247,7 +1228,7 @@ impl ProbeService<ProbeContext> for ProbeBackEnd {
     ) -> Result<BalanceResponse, ProbeError> {
         let seen = ready(ctx.logger_name.len() + probe_tag.len()).await;
         Ok(BalanceResponse {
-            credits: u32::try_from(seen).unwrap_or(0),
+            invoices: u32::try_from(seen).unwrap_or(0),
         })
     }
 
@@ -1256,7 +1237,7 @@ impl ProbeService<ProbeContext> for ProbeBackEnd {
         ctx: &ProbeContext,
         req: BalanceRequest,
     ) -> Result<ApplyBundleReceipt, ProbeError> {
-        let seen = ready(req.organization_id.len()).await;
+        let seen = ready(req.customer_id.len()).await;
         if ctx.logger_name.is_empty() {
             Err(ProbeError::DbError)
         } else {
@@ -1267,8 +1248,24 @@ impl ProbeService<ProbeContext> for ProbeBackEnd {
     async fn sweep(&self, ctx: &ProbeContext) -> Result<BalanceResponse, ProbeError> {
         let _settled = ready(ctx.logger_name.len()).await;
         Ok(BalanceResponse {
-            credits: self.granted_credits,
+            invoices: self.billed_invoices,
         })
+    }
+
+    async fn void_invoice(
+        &self,
+        ctx: &ProbeContext,
+        customer_id: String,
+        invoice_id: String,
+    ) -> Result<BalanceResponse, InvoiceWriteError> {
+        let seen = ready(customer_id.len() + invoice_id.len()).await;
+        if ctx.logger_name.is_empty() {
+            Err(InvoiceWriteError::Conflict)
+        } else {
+            Ok(BalanceResponse {
+                invoices: u32::try_from(seen).unwrap_or(0),
+            })
+        }
     }
 }
 
@@ -1759,7 +1756,7 @@ fn the_second_service_answers_the_operation_its_generated_message_was_declared_f
     }))
     .unwrap();
     assert_eq!(
-        answered.map_or(u32::MAX, |balance| balance.credits),
+        answered.map_or(u32::MAX, |balance| balance.invoices),
         5,
         "the operation whose message the macro declared for the *second* service is one the \
          second service answers"
@@ -1880,7 +1877,7 @@ fn the_bytes_probe_service_is_still_implementable_and_callable() {
 
 #[test]
 fn the_service_is_still_implementable_and_callable_alongside_its_published_typescript() {
-    let service = ProbeBackEnd { granted_credits: 5 };
+    let service = ProbeBackEnd { billed_invoices: 5 };
     let ctx = ProbeContext {
         logger_name: "probe".to_owned(),
     };
@@ -1888,16 +1885,16 @@ fn the_service_is_still_implementable_and_callable_alongside_its_published_types
     let answered = poll_once(service.get_balance(
         &ctx,
         BalanceRequest {
-            organization_id: "acme".to_owned(),
+            customer_id: "acme".to_owned(),
         },
     ))
     .unwrap();
-    assert_eq!(answered.unwrap().credits, 14);
+    assert_eq!(answered.unwrap().invoices, 14);
 
     let probed = poll_once(service.probe_header(&ctx, "probe".to_owned())).unwrap();
-    assert_eq!(probed.unwrap().credits, 10);
+    assert_eq!(probed.unwrap().invoices, 10);
 
-    let refused = poll_once(service.expire_credit(
+    let refused = poll_once(service.void_invoice(
         &ProbeContext {
             logger_name: String::new(),
         },
@@ -1905,15 +1902,15 @@ fn the_service_is_still_implementable_and_callable_alongside_its_published_types
         "cr-1".to_owned(),
     ))
     .unwrap();
-    assert!(matches!(refused, Err(CreditWriteError::Conflict)));
+    assert!(matches!(refused, Err(InvoiceWriteError::Conflict)));
 
     let swept = poll_once(service.sweep(&ctx)).unwrap();
-    assert_eq!(swept.unwrap().credits, 5);
+    assert_eq!(swept.unwrap().invoices, 5);
 
     let settled = poll_once(service.settle(
         &ctx,
         BalanceRequest {
-            organization_id: "acme".to_owned(),
+            customer_id: "acme".to_owned(),
         },
     ))
     .unwrap();
@@ -1926,11 +1923,11 @@ fn the_service_is_still_implementable_and_callable_alongside_its_published_types
     let audited = poll_once(AuditBackEnd.get_balance(
         &ctx,
         BalanceRequest {
-            organization_id: "acme".to_owned(),
+            customer_id: "acme".to_owned(),
         },
     ))
     .unwrap();
-    assert_eq!(audited.unwrap().credits, 9);
+    assert_eq!(audited.unwrap().invoices, 9);
 }
 
 // Read only by the group that compares the wire against the published client and dispatcher, and
@@ -1940,7 +1937,7 @@ fn the_service_is_still_implementable_and_callable_alongside_its_published_types
 fn settlements(operation: &str, payload: &[u8]) -> Vec<Vec<u8>> {
     let capture = Capture::new();
     let settled = poll_once(amqp_transport::dispatch(
-        &ProbeBackEnd { granted_credits: 5 },
+        &ProbeBackEnd { billed_invoices: 5 },
         &ProbeContext {
             logger_name: "probe".to_owned(),
         },
@@ -1957,7 +1954,7 @@ fn settlements(operation: &str, payload: &[u8]) -> Vec<Vec<u8>> {
 fn dispatched(operation: &str, payload: &[u8], logger_name: &str) -> Vec<u8> {
     let capture = Capture::new();
     let settled = poll_once(amqp_transport::dispatch(
-        &ProbeBackEnd { granted_credits: 5 },
+        &ProbeBackEnd { billed_invoices: 5 },
         &ProbeContext {
             logger_name: logger_name.to_owned(),
         },

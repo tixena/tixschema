@@ -15,7 +15,7 @@ use tixschema::{model_schema, service_schema};
 #[model_schema()]
 #[derive(Deserialize, Serialize)]
 pub struct AnnotationRequest {
-    pub organization_id: String,
+    pub customer_id: String,
 }
 
 /// A service declaring no operation at all. Its dispatcher has one arm, and that arm answers a
@@ -64,7 +64,7 @@ impl BareService<()> for BareBackEnd {}
 impl NoteService<()> for NoteBackEnd {
     async fn annotate(&self, _ctx: &(), req: AnnotationRequest) {
         ready(()).await;
-        self.reached.lock().unwrap().push(req.organization_id);
+        self.reached.lock().unwrap().push(req.customer_id);
     }
 
     async fn note(&self, _ctx: &(), slug: String, detail: String) {
@@ -224,7 +224,7 @@ fn a_one_way_service_dispatches_into_its_implementation_and_settles_nothing() {
 fn a_one_way_client_reports_a_transport_that_could_not_put_the_message_out() {
     let client = note_amqp_client::NoteServiceClient::new(RefusingTransport);
     let answered = poll_once(client.annotate(AnnotationRequest {
-        organization_id: "acme".to_owned(),
+        customer_id: "acme".to_owned(),
     }))
     .unwrap();
     let fault = answered.unwrap_err();

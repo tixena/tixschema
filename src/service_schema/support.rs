@@ -49,7 +49,7 @@ use syn::Ident;
 /// }
 ///
 /// #[service_schema()]
-/// pub trait UsageService<Ctx> {
+/// pub trait BillingService<Ctx> {
 ///     async fn get_balance(
 ///         &self,
 ///         ctx: &Ctx,
@@ -78,7 +78,7 @@ use syn::Ident;
 /// }
 ///
 /// #[service_schema()]
-/// pub trait UsageService<Ctx> {
+/// pub trait BillingService<Ctx> {
 ///     async fn get_balance(
 ///         &self,
 ///         ctx: &Ctx,
@@ -94,10 +94,10 @@ use syn::Ident;
 /// them:
 ///
 /// ```text
-/// error[E0405]: cannot find trait `UsageService` in module `super`
+/// error[E0405]: cannot find trait `BillingService` in module `super`
 ///   --> tests/zz_probe.rs:16:15
 ///    |
-/// 16 |     pub trait UsageService<Ctx> {
+/// 16 |     pub trait BillingService<Ctx> {
 ///    |               ^^^^^^^^^^^^ not found in `super`
 ///
 /// error[E0425]: cannot find type `BalanceRequest` in this scope
@@ -444,7 +444,7 @@ fn http_binding_summary(binding: &HttpBinding) -> String {
 ///
 /// ```rust,compile_fail
 /// mod services {
-///     pub mod usage {
+///     pub mod billing {
 ///         use tixschema::service_schema;
 ///
 ///         #[derive(serde::Deserialize, serde::Serialize)]
@@ -459,7 +459,7 @@ fn http_binding_summary(binding: &HttpBinding) -> String {
 ///         }
 ///
 ///         #[service_schema(transports = ["amqp_rpc"])]
-///         pub trait UsageService<Ctx> {
+///         pub trait BillingService<Ctx> {
 ///             async fn get_balance(
 ///                 &self,
 ///                 ctx: &Ctx,
@@ -475,10 +475,10 @@ fn http_binding_summary(binding: &HttpBinding) -> String {
 /// The same source with one line added and nothing else changed compiles:
 ///
 /// ```rust
-/// pub use services::usage::{UsageService, usage_service_schema};
+/// pub use services::billing::{BillingService, billing_service_schema};
 ///
 /// mod services {
-///     pub mod usage {
+///     pub mod billing {
 ///         use tixschema::service_schema;
 ///
 ///         #[derive(serde::Deserialize, serde::Serialize)]
@@ -493,7 +493,7 @@ fn http_binding_summary(binding: &HttpBinding) -> String {
 ///         }
 ///
 ///         #[service_schema(transports = ["amqp_rpc"])]
-///         pub trait UsageService<Ctx> {
+///         pub trait BillingService<Ctx> {
 ///             async fn get_balance(
 ///                 &self,
 ///                 ctx: &Ctx,
@@ -509,37 +509,37 @@ fn http_binding_summary(binding: &HttpBinding) -> String {
 /// # What the declaring crate is told
 ///
 /// A `compile_fail` doctest asserts only that *some* error was raised, so the same arrangement was
-/// compiled standalone as a library crate — the service in `src/services/usage.rs`, the crate root
+/// compiled standalone as a library crate — the service in `src/services/billing.rs`, the crate root
 /// naming neither — and the diagnostics read off that run, verbatim. These two were all of them,
 /// one per anchor, so a crate that re-exports one of the pair is told about the other rather than
 /// about both again (both measured on their own):
 ///
 /// ```text
-/// error[E0433]: cannot find `usage_service_schema` in `crate`
-///   --> src/services/usage.rs:15:11
+/// error[E0433]: cannot find `billing_service_schema` in `crate`
+///   --> src/services/billing.rs:15:11
 ///    |
 /// 14 | #[service_schema(transports = ["amqp_rpc"])]
 ///    | -------------------------------------------- in this attribute macro expansion
-/// 15 | pub trait UsageService<Ctx> {
+/// 15 | pub trait BillingService<Ctx> {
 ///    |           ^^^^^^^^^^^^ unresolved import
 ///    |
 ///    = note: this error originates in the attribute macro `service_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
 /// help: a similar path exists
 ///    |
-/// 15 - pub trait UsageService<Ctx> {
-/// 15 + pub trait services::usage::usage_service_schema<Ctx> {
+/// 15 - pub trait BillingService<Ctx> {
+/// 15 + pub trait services::billing::billing_service_schema<Ctx> {
 ///    |
 ///
-/// error[E0405]: cannot find trait `UsageService` in the crate root
-///   --> src/services/usage.rs:15:11
+/// error[E0405]: cannot find trait `BillingService` in the crate root
+///   --> src/services/billing.rs:15:11
 ///    |
 /// 14 | #[service_schema(transports = ["amqp_rpc"])]
 ///    | -------------------------------------------- in this attribute macro expansion
-/// 15 | pub trait UsageService<Ctx> {
+/// 15 | pub trait BillingService<Ctx> {
 ///    |           ^^^^^^^^^^^^ not found in the crate root
 ///    |
 ///    = help: consider importing this trait:
-///            crate::services::usage::UsageService
+///            crate::services::billing::BillingService
 ///    = note: this error originates in the attribute macro `service_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
 /// error: could not compile `declaring` (lib) due to 2 previous errors
@@ -797,7 +797,7 @@ fn violation_readers() -> TokenStream {
     quote! {
         /// The field one line names, where it is written in the shape every validator
         /// `#[model_schema()]` generates: the field first and in single quotes —
-        /// `'organization_id': too short: …`. A line written any other way names none.
+        /// `'customer_id': too short: …`. A line written any other way names none.
         ///
         /// It is read off a deserializer's refusal as well as off a validator's report, because
         /// the two are one message wherever a bound is what refused. A dispatcher reads a
@@ -823,7 +823,7 @@ fn violation_readers() -> TokenStream {
     }
 }
 
-/// The module a service's generated types land in: `UsageService` becomes `usage_service_schema`.
+/// The module a service's generated types land in: `BillingService` becomes `billing_service_schema`.
 pub fn module_ident(service: &ServiceDef) -> Ident {
     format_ident!(
         "{}_schema",
@@ -831,8 +831,8 @@ pub fn module_ident(service: &ServiceDef) -> Ident {
     )
 }
 
-/// What the fault's *fields* publish as in TypeScript: `UsageService` becomes
-/// `UsageServiceFaultFields`.
+/// What the fault's *fields* publish as in TypeScript: `BillingService` becomes
+/// `BillingServiceFaultFields`.
 pub fn fault_fields_typescript_name(declared: &str) -> String {
     format!("{declared}FaultFields")
 }
@@ -868,15 +868,15 @@ fn fault_fields_ident(declared: &Ident) -> Ident {
 /// }
 ///
 /// #[service_schema()]
-/// pub trait UsageService<Ctx> {
-///     async fn get_available_balance(
+/// pub trait BillingService<Ctx> {
+///     async fn get_open_balance(
 ///         &self,
 ///         ctx: &Ctx,
 ///         req: BalanceRequest,
 ///     ) -> Result<BalanceResponse, BalanceError>;
 /// }
 ///
-/// use usage_service_schema::CallError;
+/// use billing_service_schema::CallError;
 ///
 /// fn acted_on(answered: Result<BalanceResponse, CallError<BalanceError>>) -> &'static str {
 ///     match answered {

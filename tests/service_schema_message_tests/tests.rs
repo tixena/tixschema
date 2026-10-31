@@ -6,29 +6,29 @@
 
 #[cfg(feature = "jsonschema")]
 mod the_generated_message_on_json_schema {
-    use super::{CREDIT_ID_KEY, ORGANIZATION_ID_KEY};
-    use super::{ExpireCreditRequest, SweepRequest};
+    use super::{CUSTOMER_ID_KEY, INVOICE_ID_KEY};
+    use super::{SweepRequest, VoidInvoiceRequest};
 
     #[test]
     fn the_declared_message_requires_every_argument() {
-        let document = ExpireCreditRequest::json_schema();
+        let document = VoidInvoiceRequest::json_schema();
         let rendered = document.to_string();
         assert_eq!(document["type"], "object", "got: {rendered}");
         assert_eq!(
-            document["properties"][ORGANIZATION_ID_KEY]["type"], "string",
+            document["properties"][CUSTOMER_ID_KEY]["type"], "string",
             "got: {rendered}"
         );
         assert_eq!(
-            document["properties"][CREDIT_ID_KEY]["type"], "string",
+            document["properties"][INVOICE_ID_KEY]["type"], "string",
             "got: {rendered}"
         );
         let required = document["required"].as_array().cloned().unwrap_or_default();
         assert!(
-            required.iter().any(|key| key == ORGANIZATION_ID_KEY),
+            required.iter().any(|key| key == CUSTOMER_ID_KEY),
             "got: {rendered}"
         );
         assert!(
-            required.iter().any(|key| key == CREDIT_ID_KEY),
+            required.iter().any(|key| key == INVOICE_ID_KEY),
             "got: {rendered}"
         );
     }
@@ -53,30 +53,30 @@ mod the_generated_message_on_json_schema {
 
 #[cfg(feature = "typescript")]
 mod the_generated_message_on_typescript {
-    use super::{BalanceRequest, ExpireCreditRequest, SweepRequest};
-    use super::{CREDIT_ID_KEY, ORGANIZATION_ID_KEY};
+    use super::{BalanceRequest, SweepRequest, VoidInvoiceRequest};
+    use super::{CUSTOMER_ID_KEY, INVOICE_ID_KEY};
 
     #[test]
     fn the_declared_message_publishes_a_type_naming_every_argument() {
-        let ts = ExpireCreditRequest::ts_definition();
+        let ts = VoidInvoiceRequest::ts_definition();
         assert!(!ts.is_empty(), "got: {ts}");
         assert!(
-            ts.contains("export type ExpireCreditRequest = {"),
+            ts.contains("export type VoidInvoiceRequest = {"),
             "got: {ts}"
         );
         assert!(
-            ts.contains(&format!("{ORGANIZATION_ID_KEY}: string;")),
+            ts.contains(&format!("{CUSTOMER_ID_KEY}: string;")),
             "got: {ts}"
         );
         assert!(
-            ts.contains(&format!("{CREDIT_ID_KEY}: string;")),
+            ts.contains(&format!("{INVOICE_ID_KEY}: string;")),
             "got: {ts}"
         );
     }
 
     #[test]
     fn the_declared_message_says_what_its_field_names_cost() {
-        let ts = ExpireCreditRequest::ts_definition();
+        let ts = VoidInvoiceRequest::ts_definition();
         assert!(
             ts.contains("field names are the operation's parameter names"),
             "the cost an author has to weigh reaches the published type too. Got: {ts}"
@@ -95,7 +95,7 @@ mod the_generated_message_on_typescript {
         let ts = BalanceRequest::ts_definition();
         assert!(ts.contains("export type BalanceRequest = {"), "got: {ts}");
         assert!(
-            ts.contains("organization_id: string;"),
+            ts.contains("customer_id: string;"),
             "the author annotated their own type and the macro added nothing to it. Got: {ts}"
         );
     }
@@ -103,20 +103,20 @@ mod the_generated_message_on_typescript {
 
 #[cfg(feature = "zod")]
 mod the_generated_message_on_zod {
-    use super::{CREDIT_ID_KEY, ORGANIZATION_ID_KEY};
-    use super::{ExpireCreditRequest, SweepRequest};
+    use super::{CUSTOMER_ID_KEY, INVOICE_ID_KEY};
+    use super::{SweepRequest, VoidInvoiceRequest};
 
     #[test]
     fn the_declared_message_publishes_a_schema_naming_every_argument() {
-        let zod = ExpireCreditRequest::zod_schema();
+        let zod = VoidInvoiceRequest::zod_schema();
         assert!(!zod.is_empty(), "got: {zod}");
-        assert!(zod.contains("ExpireCreditRequest$Schema"), "got: {zod}");
+        assert!(zod.contains("VoidInvoiceRequest$Schema"), "got: {zod}");
         assert!(
-            zod.contains(&format!("{ORGANIZATION_ID_KEY}: z.string()")),
+            zod.contains(&format!("{CUSTOMER_ID_KEY}: z.string()")),
             "got: {zod}"
         );
         assert!(
-            zod.contains(&format!("{CREDIT_ID_KEY}: z.string()")),
+            zod.contains(&format!("{INVOICE_ID_KEY}: z.string()")),
             "got: {zod}"
         );
     }
@@ -136,13 +136,12 @@ mod the_context_the_trait_declares {
 
     #[test]
     fn an_operation_reads_the_context_rather_than_any_message_field() {
-        let service = ProbeBackEnd { granted_credits: 5 };
+        let service = ProbeBackEnd { billed_invoices: 5 };
         let silent = ProbeContext {
             logger_name: String::new(),
         };
         let answered =
-            poll_once(service.expire_credit(&silent, "acme".to_owned(), "cr-1".to_owned()))
-                .unwrap();
+            poll_once(service.void_invoice(&silent, "acme".to_owned(), "cr-1".to_owned())).unwrap();
         assert!(
             matches!(answered, Err(ProbeError::InsufficientBalance)),
             "the operation answered off the context, which no message carries"
@@ -152,10 +151,10 @@ mod the_context_the_trait_declares {
     #[cfg(feature = "jsonschema")]
     #[test]
     fn the_context_reaches_no_json_schema_surface() {
-        use super::{BalanceResponse, ExpireCreditRequest, SweepRequest};
+        use super::{BalanceResponse, SweepRequest, VoidInvoiceRequest};
 
         for surface in [
-            ExpireCreditRequest::json_schema().to_string(),
+            VoidInvoiceRequest::json_schema().to_string(),
             SweepRequest::json_schema().to_string(),
             BalanceRequest::json_schema().to_string(),
             BalanceResponse::json_schema().to_string(),
@@ -169,10 +168,10 @@ mod the_context_the_trait_declares {
     #[cfg(feature = "typescript")]
     #[test]
     fn the_context_reaches_no_typescript_surface() {
-        use super::{BalanceResponse, ExpireCreditRequest, SweepRequest};
+        use super::{BalanceResponse, SweepRequest, VoidInvoiceRequest};
 
         for surface in [
-            ExpireCreditRequest::ts_definition(),
+            VoidInvoiceRequest::ts_definition(),
             SweepRequest::ts_definition(),
             BalanceRequest::ts_definition(),
             BalanceResponse::ts_definition(),
@@ -186,10 +185,10 @@ mod the_context_the_trait_declares {
     #[cfg(feature = "zod")]
     #[test]
     fn the_context_reaches_no_zod_surface() {
-        use super::{BalanceResponse, ExpireCreditRequest, SweepRequest};
+        use super::{BalanceResponse, SweepRequest, VoidInvoiceRequest};
 
         for surface in [
-            ExpireCreditRequest::zod_schema(),
+            VoidInvoiceRequest::zod_schema(),
             SweepRequest::zod_schema(),
             BalanceRequest::zod_schema(),
             BalanceResponse::zod_schema(),
@@ -202,7 +201,7 @@ mod the_context_the_trait_declares {
 
     #[test]
     fn the_emitted_trait_is_implementable_at_a_chosen_context_and_every_operation_receives_it() {
-        let service = ProbeBackEnd { granted_credits: 5 };
+        let service = ProbeBackEnd { billed_invoices: 5 };
         let ctx = ProbeContext {
             logger_name: "probe".to_owned(),
         };
@@ -210,18 +209,18 @@ mod the_context_the_trait_declares {
         let named = poll_once(service.get_balance(
             &ctx,
             BalanceRequest {
-                organization_id: "acme".to_owned(),
+                customer_id: "acme".to_owned(),
             },
         ))
         .unwrap();
-        assert_eq!(named.unwrap().credits, 9);
+        assert_eq!(named.unwrap().invoices, 9);
 
         let generated =
-            poll_once(service.expire_credit(&ctx, "acme".to_owned(), "cr-1".to_owned())).unwrap();
-        assert_eq!(generated.unwrap().credits, 8);
+            poll_once(service.void_invoice(&ctx, "acme".to_owned(), "cr-1".to_owned())).unwrap();
+        assert_eq!(generated.unwrap().invoices, 8);
 
         let empty = poll_once(service.sweep(&ctx)).unwrap();
-        assert_eq!(empty.unwrap().credits, 5);
+        assert_eq!(empty.unwrap().invoices, 5);
     }
 }
 
@@ -232,17 +231,17 @@ use tixschema::{model_schema, service_schema};
 
 /// The key an argument becomes on the wire.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-const CREDIT_ID_KEY: &str = if cfg!(feature = "serde") {
-    "creditId"
+const INVOICE_ID_KEY: &str = if cfg!(feature = "serde") {
+    "invoiceId"
 } else {
-    "credit_id"
+    "invoice_id"
 };
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-const ORGANIZATION_ID_KEY: &str = if cfg!(feature = "serde") {
-    "organizationId"
+const CUSTOMER_ID_KEY: &str = if cfg!(feature = "serde") {
+    "customerId"
 } else {
-    "organization_id"
+    "customer_id"
 };
 
 /// The message the author declared, carrying their own annotations and no `rename_all` of any
@@ -250,13 +249,13 @@ const ORGANIZATION_ID_KEY: &str = if cfg!(feature = "serde") {
 #[model_schema()]
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct BalanceRequest {
-    pub organization_id: String,
+    pub customer_id: String,
 }
 
 #[model_schema()]
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct BalanceResponse {
-    pub credits: u32,
+    pub invoices: u32,
 }
 
 /// What an implementation needs and no caller may see. Nothing here crosses the wire.
@@ -264,9 +263,9 @@ pub struct ProbeContext {
     pub logger_name: String,
 }
 
-/// The implementation these tests call, answering the credits it was built with.
+/// The implementation these tests call, answering the invoices it was built with.
 pub struct ProbeBackEnd {
-    pub granted_credits: u32,
+    pub billed_invoices: u32,
 }
 
 #[model_schema()]
@@ -279,14 +278,6 @@ pub enum ProbeError {
 
 #[service_schema()]
 pub trait ProbeService<Ctx> {
-    /// Two arguments after the context: the message is declared from the argument list.
-    async fn expire_credit(
-        &self,
-        ctx: &Ctx,
-        organization_id: String,
-        credit_id: String,
-    ) -> Result<BalanceResponse, ProbeError>;
-
     /// One argument after the context: the argument already is the message, so nothing is declared.
     async fn get_balance(
         &self,
@@ -296,36 +287,28 @@ pub trait ProbeService<Ctx> {
 
     /// None at all: an empty message is declared rather than no message.
     async fn sweep(&self, ctx: &Ctx) -> Result<BalanceResponse, ProbeError>;
+
+    /// Two arguments after the context: the message is declared from the argument list.
+    async fn void_invoice(
+        &self,
+        ctx: &Ctx,
+        customer_id: String,
+        invoice_id: String,
+    ) -> Result<BalanceResponse, ProbeError>;
 }
 
 impl ProbeService<ProbeContext> for ProbeBackEnd {
-    async fn expire_credit(
-        &self,
-        ctx: &ProbeContext,
-        organization_id: String,
-        credit_id: String,
-    ) -> Result<BalanceResponse, ProbeError> {
-        let seen = ready(organization_id.len() + credit_id.len()).await;
-        if ctx.logger_name.is_empty() {
-            Err(ProbeError::InsufficientBalance)
-        } else {
-            Ok(BalanceResponse {
-                credits: u32::try_from(seen).unwrap_or(0),
-            })
-        }
-    }
-
     async fn get_balance(
         &self,
         ctx: &ProbeContext,
         req: BalanceRequest,
     ) -> Result<BalanceResponse, ProbeError> {
-        let seen = ready(req.organization_id.len()).await;
+        let seen = ready(req.customer_id.len()).await;
         if ctx.logger_name.is_empty() {
             Err(ProbeError::DbError)
         } else {
             Ok(BalanceResponse {
-                credits: self.granted_credits + u32::try_from(seen).unwrap_or(0),
+                invoices: self.billed_invoices + u32::try_from(seen).unwrap_or(0),
             })
         }
     }
@@ -333,8 +316,24 @@ impl ProbeService<ProbeContext> for ProbeBackEnd {
     async fn sweep(&self, ctx: &ProbeContext) -> Result<BalanceResponse, ProbeError> {
         let _settled = ready(ctx.logger_name.len()).await;
         Ok(BalanceResponse {
-            credits: self.granted_credits,
+            invoices: self.billed_invoices,
         })
+    }
+
+    async fn void_invoice(
+        &self,
+        ctx: &ProbeContext,
+        customer_id: String,
+        invoice_id: String,
+    ) -> Result<BalanceResponse, ProbeError> {
+        let seen = ready(customer_id.len() + invoice_id.len()).await;
+        if ctx.logger_name.is_empty() {
+            Err(ProbeError::InsufficientBalance)
+        } else {
+            Ok(BalanceResponse {
+                invoices: u32::try_from(seen).unwrap_or(0),
+            })
+        }
     }
 }
 
@@ -354,13 +353,13 @@ where
 
 #[test]
 fn a_declared_message_writes_its_arguments_as_camel_case_keys() {
-    let written = serde_json::to_string(&ExpireCreditRequest {
-        organization_id: "acme".to_owned(),
-        credit_id: "cr-1".to_owned(),
+    let written = serde_json::to_string(&VoidInvoiceRequest {
+        customer_id: "acme".to_owned(),
+        invoice_id: "cr-1".to_owned(),
     })
     .unwrap();
     assert_eq!(
-        written, r#"{"organizationId":"acme","creditId":"cr-1"}"#,
+        written, r#"{"customerId":"acme","invoiceId":"cr-1"}"#,
         "an argument is snake_case in Rust and camelCase on the wire, as a hand-written field is"
     );
 }

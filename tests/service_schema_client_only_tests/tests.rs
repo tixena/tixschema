@@ -18,7 +18,7 @@ use tixschema::{model_schema, service_schema};
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CallAnswer {
-    pub credits: u32,
+    pub invoices: u32,
 }
 
 #[model_schema()]
@@ -31,7 +31,7 @@ pub enum CallFailure {
 #[model_schema()]
 #[derive(Deserialize, Serialize)]
 pub struct CallRequest {
-    pub organization_id: String,
+    pub customer_id: String,
 }
 
 #[model_schema()]
@@ -189,19 +189,19 @@ pub struct RecordingTransport {
 
 impl CallService<()> for CallBackEnd {
     async fn note(&self, _ctx: &(), req: CallRequest) {
-        let _read = ready(req.organization_id.len()).await;
+        let _read = ready(req.customer_id.len()).await;
     }
 
     async fn read_balance(&self, _ctx: &(), req: CallRequest) -> Result<CallAnswer, CallFailure> {
         ready(()).await;
         Ok(CallAnswer {
-            credits: u32::try_from(req.organization_id.len()).unwrap(),
+            invoices: u32::try_from(req.customer_id.len()).unwrap(),
         })
     }
 
     async fn sweep(&self, _ctx: &()) -> Result<CallAnswer, CallFailure> {
         ready(()).await;
-        Ok(CallAnswer { credits: 0 })
+        Ok(CallAnswer { invoices: 0 })
     }
 }
 
@@ -406,13 +406,13 @@ where
 
 #[test]
 fn a_call_placed_without_a_dispatcher_reads_the_answer_the_remote_wrote() {
-    let transport = ProbeTransport::new(&[r#"{"ok":true,"value":{"credits":7}}"#]);
+    let transport = ProbeTransport::new(&[r#"{"ok":true,"value":{"invoices":7}}"#]);
     let client = amqp_client::CallServiceClient::new(transport);
     let answered = poll_once(client.read_balance(CallRequest {
-        organization_id: "acme".to_owned(),
+        customer_id: "acme".to_owned(),
     }))
     .unwrap();
-    assert_eq!(answered, Ok(CallAnswer { credits: 7 }));
+    assert_eq!(answered, Ok(CallAnswer { invoices: 7 }));
     assert_eq!(client.transport().calls(), vec!["read-balance".to_owned()]);
 }
 
@@ -433,7 +433,7 @@ fn the_error_the_operation_declared_comes_back_in_the_operation_arm() {
 fn a_transport_that_could_not_carry_the_call_is_reported_as_a_transport_failure() {
     let client = amqp_client::CallServiceClient::new(RefusingTransport);
     let answered = poll_once(client.read_balance(CallRequest {
-        organization_id: "acme".to_owned(),
+        customer_id: "acme".to_owned(),
     }))
     .unwrap();
     let reported = match &answered {
@@ -453,7 +453,7 @@ fn a_transport_that_could_not_carry_the_call_is_reported_as_a_transport_failure(
 fn a_one_way_send_answers_the_transport_s_own_refusal_as_a_fault() {
     let client = amqp_client::CallServiceClient::new(RefusingTransport);
     let reported = poll_once(client.note(CallRequest {
-        organization_id: "acme".to_owned(),
+        customer_id: "acme".to_owned(),
     }))
     .unwrap()
     .unwrap_err();
@@ -469,19 +469,19 @@ fn the_contract_is_implementable_where_no_dispatcher_was_placed() {
     let answered = poll_once(CallBackEnd.read_balance(
         &(),
         CallRequest {
-            organization_id: "acme".to_owned(),
+            customer_id: "acme".to_owned(),
         },
     ))
     .unwrap();
-    assert_eq!(answered, Ok(CallAnswer { credits: 4 }));
+    assert_eq!(answered, Ok(CallAnswer { invoices: 4 }));
     assert_eq!(
         poll_once(CallBackEnd.sweep(&())).unwrap(),
-        Ok(CallAnswer { credits: 0 })
+        Ok(CallAnswer { invoices: 0 })
     );
     poll_once(CallBackEnd.note(
         &(),
         CallRequest {
-            organization_id: "acme".to_owned(),
+            customer_id: "acme".to_owned(),
         },
     ))
     .unwrap();

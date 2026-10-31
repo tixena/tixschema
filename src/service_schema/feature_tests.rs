@@ -12,14 +12,14 @@ use syn::ItemTrait;
 
 /// A service with one of every input shape, one of every outcome, and an overridden wire name.
 const MIXED_SERVICE: &str = "
-    pub trait UsageService<Ctx> {
-        async fn get_available_balance(
+    pub trait BillingService<Ctx> {
+        async fn get_open_balance(
             &self,
             ctx: &Ctx,
-            req: AvailableBalanceRequest,
-        ) -> Result<AvailableBalanceResponse, UsageError>;
+            req: OpenBalanceRequest,
+        ) -> Result<OpenBalanceResponse, BillingError>;
 
-        async fn sweep(&self, ctx: &Ctx) -> Result<SweepReport, UsageError>;
+        async fn sweep(&self, ctx: &Ctx) -> Result<SweepReport, BillingError>;
 
         #[service_schema_op(one_way)]
         async fn apply_bundle(&self, ctx: &Ctx, req: ApplyBundleRequest);
@@ -45,7 +45,7 @@ fn expanded(source: &str) -> String {
 ///               add `features = ["serde"]` to the tixschema dependency in Cargo.toml
 ///   --> tests/zz_probe.rs:15:11
 ///    |
-/// 15 | pub trait UsageService<Ctx> {
+/// 15 | pub trait BillingService<Ctx> {
 ///    |           ^^^^^^^^^^^^
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error

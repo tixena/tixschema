@@ -128,8 +128,8 @@ impl LiteralValue {
 /// The `Deserialize` `#[model_schema()]` writes for a type is the type's own read followed by its
 /// `validate()`, so serde's read refuses a payload whose value breaks a bound, in the message
 /// `validate()` answers, which names the value by its path in the payload:
-/// `serde_json::from_str::<Floor>(r#"{"credit_count":2}"#)` answers `'credit_count': too small:
-/// minimum is 10, got 2` for a `credit_count` under `minimum = 10`. A value built or changed in
+/// `serde_json::from_str::<Floor>(r#"{"invoice_count":2}"#)` answers `'invoice_count': too small:
+/// minimum is 10, got 2` for a `invoice_count` under `minimum = 10`. A value built or changed in
 /// code is judged by calling `validate()`.
 ///
 /// A field still generates both helpers into the schema module — `validate_{field}_value()`, which
@@ -149,7 +149,7 @@ impl LiteralValue {
 /// The same reach applies to a field whose type is an ordinary `#[model_schema()]` type: the
 /// enclosing `validate()` runs the one that type published and writes its report under the field,
 /// and the enclosing read, which runs that `validate()`, refuses a held value that breaks a bound:
-/// `'floor.credit_count': too small: minimum is 10, got 2` for the `Floor` above held under
+/// `'floor.invoice_count': too small: minimum is 10, got 2` for the `Floor` above held under
 /// `floor`.
 ///
 /// ## Type overrides

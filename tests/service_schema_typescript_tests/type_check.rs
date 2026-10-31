@@ -10,7 +10,7 @@ use super::the_bundle_one_registration_line_produces::{
     audit_seam, author_schemas, bundle, probe_seam,
 };
 use super::{
-    ApplyBundleReceipt, AuditServiceSchema, BalanceRequest, BalanceResponse, CreditWriteError,
+    ApplyBundleReceipt, AuditServiceSchema, BalanceRequest, BalanceResponse, InvoiceWriteError,
     ProbeError, ProbeServiceSchema,
 };
 #[cfg(feature = "zod")]
@@ -287,7 +287,7 @@ export const dispatch = createSpooledProbeServiceDispatcher<null>({
 #[cfg(feature = "zod")]
 const IMPLEMENTATION_HEAD: &str = r#"import {
   createProbeServiceDispatcher,
-  type ProbeServiceExpireCreditOutcome,
+  type ProbeServiceVoidInvoiceOutcome,
   type ProbeServiceGetBalanceOutcome,
   type ProbeServiceProbeHeaderOutcome,
   type ProbeServiceSettleOutcome,
@@ -308,14 +308,14 @@ const IMPLEMENTATION_MEMBERS: [(&str, &str); 6] = [
     (
         "applyBundle",
         "  async applyBundle(ctx, req): Promise<void> {
-    void `${ctx.loggerName}:${req.organizationId}:${req.bundleId}`;
+    void `${ctx.loggerName}:${req.customerId}:${req.bundleId}`;
   },
 ",
     ),
     (
-        "expireCredit",
-        r#"  async expireCredit(ctx, req): Promise<ProbeServiceExpireCreditOutcome> {
-    void `${ctx.loggerName}:${req.organizationId}:${req.creditId}`;
+        "voidInvoice",
+        r#"  async voidInvoice(ctx, req): Promise<ProbeServiceVoidInvoiceOutcome> {
+    void `${ctx.loggerName}:${req.customerId}:${req.invoiceId}`;
     return { ok: false, error: { errorCode: "conflict" } };
   },
 "#,
@@ -323,15 +323,15 @@ const IMPLEMENTATION_MEMBERS: [(&str, &str); 6] = [
     (
         "getBalance",
         "  async getBalance(ctx, req): Promise<ProbeServiceGetBalanceOutcome> {
-    void `${ctx.loggerName}:${req.organization_id}`;
-    return { ok: true, value: { credits: 1 } };
+    void `${ctx.loggerName}:${req.customer_id}`;
+    return { ok: true, value: { invoices: 1 } };
   },
 ",
     ),
     (
         "settle",
         "  async settle(ctx, req): Promise<ProbeServiceSettleOutcome> {
-    void `${ctx.loggerName}:${req.organization_id}`;
+    void `${ctx.loggerName}:${req.customer_id}`;
     return { ok: true, value: { applied: true } };
   },
 ",
@@ -349,7 +349,7 @@ const IMPLEMENTATION_MEMBERS: [(&str, &str); 6] = [
         "  async probeHeader(ctx, req, probeTag): Promise<ProbeServiceProbeHeaderOutcome> {
     void req;
     void `${ctx.loggerName}:${probeTag}`;
-    return { ok: true, value: { credits: probeTag.length } };
+    return { ok: true, value: { invoices: probeTag.length } };
   },
 ",
     ),
@@ -379,11 +379,11 @@ const transport: ProbeServiceTransport = {
 
 export async function read(): Promise<string> {
   const answered = await createProbeServiceClient(transport).getBalance({
-    organization_id: "acme",
+    customer_id: "acme",
   });
   if (answered.ok) {
-    const credits: number = answered.value.credits;
-    return `${credits}`;
+    const invoices: number = answered.value.invoices;
+    return `${invoices}`;
   }
   if ("isServiceFault" in answered.error) {
     const kind: ProbeServiceFaultKind = answered.error.fault.kind;
@@ -403,9 +403,9 @@ declare const socket: WebSocket;
 
 export async function read(): Promise<string> {
   const client = createProbeServiceClient(createProbeServiceWsTransport(socket));
-  const answered = await client.getBalance({ organization_id: "acme" });
+  const answered = await client.getBalance({ customer_id: "acme" });
   if (answered.ok) {
-    return `${answered.value.credits}`;
+    return `${answered.value.invoices}`;
   }
   return "failed";
 }
@@ -416,7 +416,7 @@ export async function read(): Promise<string> {
 #[cfg(feature = "zod")]
 const ATTACHMENT_HEAD: &str = r#"import {
   attachProbeServiceWsDispatcher,
-  type ProbeServiceExpireCreditOutcome,
+  type ProbeServiceVoidInvoiceOutcome,
   type ProbeServiceFaultKind,
   type ProbeServiceGetBalanceOutcome,
   type ProbeServiceProbeHeaderOutcome,
@@ -442,7 +442,7 @@ const ATTACHMENT_TAIL: &str = "}, (fault) => {
 #[cfg(feature = "zod")]
 const HTTP_IMPLEMENTATION_HEAD: &str = r#"import {
   createProbeServiceHttpDispatcher,
-  type ProbeServiceExpireCreditOutcome,
+  type ProbeServiceVoidInvoiceOutcome,
   type ProbeServiceGetBalanceOutcome,
   type ProbeServiceHttpRequest,
   type ProbeServiceProbeHeaderOutcome,
@@ -1065,7 +1065,7 @@ fn two_services_in_one_bundle_compile_together() {
         BalanceResponse::ts_definition(),
         ApplyBundleReceipt::ts_definition(),
         ProbeError::ts_definition(),
-        CreditWriteError::ts_definition(),
+        InvoiceWriteError::ts_definition(),
     ];
     both.extend(author_schemas());
     both.push(ProbeServiceSchema::ts_definition());
@@ -1105,7 +1105,7 @@ fn a_complete_implementation_is_accepted_at_the_factory_call() {
 /// under `--strict`:
 ///
 /// ```text
-/// implementation.ts(11,68): error TS2741: Property 'sweep' is missing in type '{ applyBundle(ctx: ProbeContext, req: ApplyBundleRequest): Promise<void>; expireCredit(ctx: ProbeContext, req: ExpireCreditRequest): Promise<...>; getBalance(ctx: ProbeContext, req: BalanceRequest): Promise<...>; settle(ctx: ProbeContext, req: BalanceRequest): Promise<...>; }' but required in type 'ProbeServiceImpl<ProbeContext>'.
+/// implementation.ts(11,68): error TS2741: Property 'sweep' is missing in type '{ applyBundle(ctx: ProbeContext, req: ApplyBundleRequest): Promise<void>; voidInvoice(ctx: ProbeContext, req: VoidInvoiceRequest): Promise<...>; getBalance(ctx: ProbeContext, req: BalanceRequest): Promise<...>; settle(ctx: ProbeContext, req: BalanceRequest): Promise<...>; }' but required in type 'ProbeServiceImpl<ProbeContext>'.
 /// ```
 ///
 /// The assertions read the member's name and the interface's out of that text rather than the

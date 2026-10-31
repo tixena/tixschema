@@ -16,10 +16,10 @@ fn a_successful_reply_is_checked_against_the_declared_success() {
     let body = http_client_of(MIXED_SERVICE);
     assert!(
         body.contains(
-            "const parsed = usageServiceHttpParsed(\"get-available-balance\", response.body, \
-             AvailableBalanceResponse$Schema);"
+            "const parsed = billingServiceHttpParsed(\"get-open-balance\", response.body, \
+             OpenBalanceResponse$Schema);"
         ) && body.contains("return { ok: true, value: parsed.value };"),
-        "a success the transport handed back is answered as an `AvailableBalanceResponse`, so it is \
+        "a success the transport handed back is answered as an `OpenBalanceResponse`, so it is \
          parsed as one first. Got: {body}"
     );
 }
@@ -29,7 +29,7 @@ fn a_declared_error_crosses_with_every_field_it_carries() {
     let written = http_client_of(MIXED_SERVICE);
     assert!(
         written.contains(
-            "const declared = usageServiceHttpParsed(\"get-available-balance\", response.body, \
+            "const declared = billingServiceHttpParsed(\"get-open-balance\", response.body, \
              BalanceError$Schema);"
         ) && written.contains("return { ok: false, error: declared.value };"),
         "the whole body is read as the declared error and answered as it was read. Got: {written}"

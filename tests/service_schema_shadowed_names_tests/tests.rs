@@ -9,7 +9,7 @@ use tixschema::{model_schema, service_schema};
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ShadowAnswer {
-    pub credits: u32,
+    pub invoices: u32,
 }
 
 #[model_schema()]
@@ -22,10 +22,10 @@ pub enum ShadowFailure {
 #[model_schema()]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ShadowRequest {
-    pub organization_id: u32,
+    pub customer_id: u32,
 }
 
-/// Answers a balance, and refuses organization zero.
+/// Answers a balance, and refuses customer zero.
 pub struct ShadowBackEnd;
 
 pub struct Box;
@@ -59,18 +59,18 @@ impl ShadowService<()> for ShadowBackEnd {
         req: ShadowRequest,
     ) -> Result<ShadowAnswer, ShadowFailure> {
         ready(()).await;
-        if req.organization_id == 0 {
+        if req.customer_id == 0 {
             return Result::Err(ShadowFailure::DbError);
         }
         Result::Ok(ShadowAnswer {
-            credits: req.organization_id,
+            invoices: req.customer_id,
         })
     }
 }
 
 /// Nothing above suspends, so one poll answers it.
-fn balance_of(organization_id: u32) -> Poll<Result<ShadowAnswer, ShadowFailure>> {
-    let call = pin!(ShadowBackEnd.read_balance(&(), ShadowRequest { organization_id }));
+fn balance_of(customer_id: u32) -> Poll<Result<ShadowAnswer, ShadowFailure>> {
+    let call = pin!(ShadowBackEnd.read_balance(&(), ShadowRequest { customer_id }));
     call.poll(&mut PollContext::from_waker(Waker::noop()))
 }
 
@@ -78,7 +78,7 @@ fn balance_of(organization_id: u32) -> Poll<Result<ShadowAnswer, ShadowFailure>>
 fn the_service_declared_beside_them_answers() {
     assert_eq!(
         balance_of(7),
-        Poll::Ready(Result::Ok(ShadowAnswer { credits: 7 }))
+        Poll::Ready(Result::Ok(ShadowAnswer { invoices: 7 }))
     );
     assert_eq!(
         balance_of(0),
