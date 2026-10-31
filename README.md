@@ -8071,7 +8071,8 @@ The model `M` an arm is over follows from what its variant holds:
 | The variant holds | `M` |
 |-------------------|-----|
 | One slot serde writes | The slot's type, read through `Option`, a list and the wrappers `nest` reads through: what `nest` reaches below a path over that slot. `ByCourier(Courier)` is over `Courier`, and an arm that holds a `Box<Courier>` is over `Courier` too. A map is `()` |
-| Fields written in the variant, several slots, nothing, or one slot serde never writes | `()` |
+| Fields written in the variant, or several slots | The arm's marker, `mongo_arms::Card` for `Card { last4: String }`: `with` hands its closure the variant's paths |
+| Nothing, or one slot serde never writes | `()` |
 
 The snake case of a tag key and of a value is its words in lower case, joined by one `_`. A word ends at a character that is no ASCII letter or digit, before a capital that follows a small letter or a digit, and before a capital a small letter follows where a capital comes before it: `docType` is `doc_type`, `HTTPServer` is `http_server`, `v2Beta` is `v2_beta`, and `@type` is `type`.
 
@@ -8081,13 +8082,18 @@ The snake case of a tag key and of a value is its words in lower case, joined by
 | `#[serde(tag = "type")]` | `Collected` | `type__collected()` |
 | `#[serde(tag = "docType", content = "body", rename_all = "kebab-case")]` | `PastDue(Notice)` | `doc_type__past_due()` |
 
-**An arm whose `M` is `()` answers its tag alone**: no model is there for its `and` to be over. A condition on fields written in the variant joins through the plain `and`, here with `payment` the paths of `Payment`:
+**An arm whose fields are written in the variant takes conditions on those fields alone, through `with`.** `with` hands its closure the paths of the variant, rooted at the arm's marker, and joins the condition the closure answers to the arm's tag in one `$and`. It answers a `Result`, as the operators do. Here `payment` is the paths of `Payment`, and the last row is the plain `and`, which still takes any condition over the enum:
 
 | Written | The document it builds |
 |---------|------------------------|
 | `payment.kind__cash()` | `{ "kind": { "$eq": "cash" } }` |
 | `paths.payment().nest(payment.kind__cash())` | `{ "payment.kind": { "$eq": "cash" } }` |
+| `payment.kind__card().with(\|card\| card.last4().eq("4242".to_owned()))?` | `{ "$and": [{ "kind": { "$eq": "card" } }, { "last4": { "$eq": "4242" } }] }` |
 | `payment.card().last4().eq("4242".to_owned())?.and(payment.kind__card())` | `{ "$and": [{ "last4": { "$eq": "4242" } }, { "kind": { "$eq": "card" } }] }` |
+
+Under `#[serde(tag = "docType", content = "body")]`, a variant with named fields writes each field under the content key (`body.clerk`), and one of several slots writes each slot there (`body.1`). `with` refuses a condition of another arm, and one of the enum's plain paths such as `payment.card().last4()`: ``error[E0277]: the trait bound `__tixschema_mongodb::Filter<Payment>: AsRef<PhantomData<mongo_arms::Card>>` is not satisfied``.
+
+**An arm whose `M` is `()` answers its tag alone**: no model and no field is there for a condition to be over.
 
 **`and` on an arm filter refuses a filter over another type.** With `Wagon` a flagged struct that declares a `number`, `BY_COURIER.and(Wagon::MONGO_FIELDS.number().eq("W-9".to_owned())?)` is ``error[E0277]: the trait bound `__tixschema_mongodb::Filter<Wagon>: AsRef<PhantomData<Courier>>` is not satisfied``.
 
@@ -8122,7 +8128,7 @@ The tag is written at the enum's own level under either tagging, and what the ar
 | `paper.doc_type__past_due().update(notice.code().set("N-8".to_owned())?).tag_on_insert()` | `{ "$set": { "body.code": "N-8" }, "$setOnInsert": { "docType": "past-due" } }` |
 | `transport_schema::Update::from(BY_COURIER.tag_on_insert())` | `{ "$setOnInsert": { "type": "by-courier" } }` |
 
-**An arm whose `M` is `()` writes its tag all the same.** No update is over `()`, so `update` has nothing to take there, and `tag_on_insert` is on the arm filter itself. What it answers joins a plain update of the fields written in the variant:
+**An arm whose fields are written in the variant, or whose `M` is `()`, writes its tag all the same.** No update is over `()` or over a marker, so `update` has nothing to take there, and `tag_on_insert` is on the arm filter itself. What it answers joins a plain update of the fields written in the variant:
 
 | Written | The document it builds |
 |---------|------------------------|
@@ -8226,7 +8232,7 @@ What a flagged type's own paths are follows from the shape serde writes the type
 - **A path is under the name serde writes.** `rename` on a field, `rename_all` on the type, `rename` and `rename_all` on a variant and `rename_all_fields` on an enum all count. A renaming written as a list counts by its `serialize` side, `rename(serialize = "ref", deserialize = "ref")` being the key `ref`. A list whose two sides name two keys is refused by every build that describes the type, a mobile client included; a build with no schema surface and no client takes it, and the path is the key that is written.
 - **A function of an enum is named after its variant, in snake case**: a variant `OverLand` is the function `over_land()` and the method `is_over_land()`. A variant serde never writes has neither.
 - **`is_<variant>()` keeps its name.** With variants `Card` and `IsCard`, `is_card()` asks for `Card` and `is_is_card()` for `IsCard`, and what `IsCard` holds is reached through `is_card2()`: the function of a variant that meets a taken name is numbered, as those of two variants with one snake-case name are.
-- **An arm function is named `<tag>__<value>()`**: the tag key and the value serde writes for the variant, each in snake case, with `__` between them. An enum serde writes under a tag key has one per variant serde writes, whatever the variant holds. An externally tagged, an untagged and a plain enum have none, since they store no tag key. Beside the functions, the schema module of the enum declares `Arm`, an enum with one unit arm per variant that has a function: `transport_schema::Arm::ByCourier`.
+- **An arm function is named `<tag>__<value>()`**: the tag key and the value serde writes for the variant, each in snake case, with `__` between them. An enum serde writes under a tag key has one per variant serde writes, whatever the variant holds. A tag key whose snake case starts with a digit gives its functions a leading `_`, since no Rust name starts with one: `#[serde(tag = "2fa")]` on `Gate { Open, Shut }` gives `Gate::MONGO_FIELDS._2fa__open()`, which writes `{ "2fa": { "$eq": "Open" } }`, and the refusals below name a function in that form, `_2fa__open()`. An externally tagged, an untagged and a plain enum have none, since they store no tag key. Beside the functions, the schema module of the enum declares `Arm`, an enum with one unit arm per variant that has a function: `transport_schema::Arm::ByCourier`.
 - **No two functions of an enum's paths take one name.** `__` is in the name of an arm function and of no other, and what would break that is refused where the `enable` list is read, whether the enum lists `"mongodb"` or not, with the `mongodb` feature on and off. A variant whose Rust name holds `__` is ``model_schema: type `Transport`: variant `By__Courier` holds `__` in its name. Under a tag and `decode_with`, `__` parts the tag from the value in the function of each arm, `type__<value>()`. Rename the variant``. Two values that read as one in snake case are ``model_schema: type `Transport`: variants `ByCourier` and `Couriered` are written `by-courier` and `by_courier` under the tag `type`, and both read `by_courier` in snake case, so `type__by_courier()` would answer for both. Rename one of the two values``. An arm function that meets an `is_<variant>()`, which takes a tag key that reads `is` and a variant whose name starts with `_`, is ``model_schema: type `Transport`: the arm function `is__parcel()` of variant `Parcel` and `is__parcel()`, which asks for variant `_Parcel`, would be one function. Rename the variant `_Parcel` ``. An enum that lists `"decode_with"` alone has no arm function and is refused all the same, and an enum with no `enable` list is refused none of the three.
 - **A generic type has its paths at each filling**: with `Wrapper<T>` declaring `inner: T` and `label: String`, `Wrapper::<u32>::MONGO_FIELDS.inner()` is a `Field<Wrapper<u32>, u32>`. The arms of a generic enum are at each filling too.
 

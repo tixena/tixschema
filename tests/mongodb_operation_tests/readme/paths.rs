@@ -202,9 +202,10 @@ fn carried_by(name: &str) -> Result<shipment_schema::Filter<Shipment>, WriteErro
 ];
 
 /// The rows of the README's table of the model an arm is over, each one whole.
-const SHOWN_ARM_MODELS: [&str; 2] = [
+const SHOWN_ARM_MODELS: [&str; 3] = [
     "| One slot serde writes | The slot's type, read through `Option`, a list and the wrappers `nest` reads through: what `nest` reaches below a path over that slot. `ByCourier(Courier)` is over `Courier`, and an arm that holds a `Box<Courier>` is over `Courier` too. A map is `()` |",
-    "| Fields written in the variant, several slots, nothing, or one slot serde never writes | `()` |",
+    "| Fields written in the variant, or several slots | The arm's marker, `mongo_arms::Card` for `Card { last4: String }`: `with` hands its closure the variant's paths |",
+    "| Nothing, or one slot serde never writes | `()` |",
 ];
 
 /// The bookings a courier carries, held in a `const`.
@@ -379,8 +380,8 @@ fn recouriered(courier: &str) -> Result<booking_schema::Update<Booking>, WriteEr
 }
 
 /// Whether the README holds the table row `code` and then `document`: the code cells with no
-/// regard for spacing, which `stringify!` writes its own way, and the document character for
-/// character.
+/// regard for spacing, which `stringify!` writes its own way, and for the `\|` a table cell
+/// escapes a pipe with, and the document character for character.
 fn row_is_documented(code: &[&str], document: Option<&str>) -> bool {
     let wanted: Vec<String> = code.iter().copied().map(squeezed).collect();
     readme().lines().filter_map(cells).any(|shown| {
@@ -392,7 +393,11 @@ fn row_is_documented(code: &[&str], document: Option<&str>) -> bool {
             None => (shown.as_slice(), None),
         };
         shown_document == document
-            && shown_code.iter().copied().map(squeezed).collect::<Vec<_>>() == wanted
+            && shown_code
+                .iter()
+                .map(|cell| squeezed(&cell.replace("\\|", "|")))
+                .collect::<Vec<_>>()
+                == wanted
     })
 }
 
@@ -438,6 +443,11 @@ fn written_by_an_arm() -> Result<Vec<(&'static str, String)>, WriteError> {
                 .last4()
                 .eq("4242".to_owned())?
                 .and(payment.kind__card())
+        ),
+        written!(
+            payment
+                .kind__card()
+                .with(|card| card.last4().eq("4242".to_owned()))?
         ),
     ])
 }
@@ -722,7 +732,10 @@ fn the_readme_names_the_function_and_the_model_of_each_arm() {
     held::<transport_schema::ArmFilter<Transport, ()>>(&Transport::MONGO_FIELDS.type__collected());
     held::<paper_schema::ArmFilter<Paper, Courier>>(&Paper::MONGO_FIELDS.doc_type__forwarded());
     held::<paper_schema::ArmFilter<Paper, Notice>>(&Paper::MONGO_FIELDS.doc_type__past_due());
-    held::<payment_schema::ArmFilter<Payment, ()>>(&Payment::MONGO_FIELDS.kind__card());
+    held::<payment_schema::ArmFilter<Payment, payment_schema::mongo_arms::Card>>(
+        &Payment::MONGO_FIELDS.kind__card(),
+    );
+    held::<payment_schema::ArmFilter<Payment, ()>>(&Payment::MONGO_FIELDS.kind__cash());
     assert_eq!(
         format!("{:?}", transport_schema::Arm::ByCourier),
         "ByCourier"
