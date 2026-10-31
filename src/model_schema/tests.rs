@@ -7443,7 +7443,14 @@ fn a_map_a_tuple_and_a_slot_that_hold_no_declared_type_add_nothing_to_validate()
 #[test]
 fn a_field_written_as_a_set_of_values_no_declared_type_describes_adds_no_token() {
     for held in ["String", "u32", "T"] {
-        for list in ["HashSet", "BTreeSet", "VecDeque", "BinaryHeap", "IndexSet"] {
+        for list in [
+            "HashSet",
+            "BTreeSet",
+            "VecDeque",
+            "BinaryHeap",
+            #[cfg(feature = "indexmap")]
+            "IndexSet",
+        ] {
             let written: syn::Type = syn::parse_str(&format!("{list}<{held}>")).unwrap();
             let mut named: syn::ItemStruct = syn::parse_quote! {
                 struct Terminal<T> {

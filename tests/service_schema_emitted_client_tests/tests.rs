@@ -1286,12 +1286,14 @@ impl LookupClientService<()> for LookupBackEnd {
 /// Arguments named after the core types Dart reads inside a method: header arguments `int`,
 /// `double` and `bool`, and a path placeholder `int`. The Rust twin each client's request is read
 /// by: each answer names what the handler was handed.
+#[cfg(feature = "dart")]
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct TallyReply {
     pub total: String,
 }
 
+#[cfg(feature = "dart")]
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case", tag = "errorCode")]
@@ -1299,6 +1301,7 @@ pub enum TallyError {
     Refused,
 }
 
+#[cfg(feature = "dart")]
 #[service_schema(transports = ["http_rest", "ws_rpc"])]
 pub trait TallyClientService<Ctx> {
     #[service_schema_op(http(
@@ -1322,8 +1325,10 @@ pub trait TallyClientService<Ctx> {
 }
 
 /// The implementation of `TallyClientService` these tests dispatch to.
+#[cfg(feature = "dart")]
 pub struct TallyBackEnd;
 
+#[cfg(feature = "dart")]
 impl TallyClientService<()> for TallyBackEnd {
     async fn count(
         &self,

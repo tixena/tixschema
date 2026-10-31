@@ -35,6 +35,7 @@ roles held, under the whole: read {\"id\":\"1\",\"roles\":[\"a\"]}
 
 /// What each emitted client prints for [`OMITTED`]: the value read, written back. A client writes
 /// the member it reads, and never the one serde never writes.
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 pub const OMITTED_WRITTEN: &str = "\
 roles left out: read {\"id\":\"1\",\"roles\":[]}
 roles held: read {\"id\":\"1\",\"roles\":[\"a\"]}

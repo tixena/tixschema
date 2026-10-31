@@ -8,6 +8,7 @@
 ))]
 mod plain;
 
+#[cfg(feature = "bson")]
 use invoice_lookup_schema::DecodeWith as _;
 use std::collections::HashMap;
 
