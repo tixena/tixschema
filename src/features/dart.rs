@@ -1437,15 +1437,17 @@ fn collect_dart_fields(
         field_def.named_within(args.type_name, type_parameters);
         let flatten = field_is_flatten(&field.attrs);
         // A flattened member has no key to leave out, and serde reads it whatever it writes.
-        if omission.omits_key && !flatten && !field_def.is_optional() {
+        let defaulted = default_at(&rust_name);
+        let leaves_key_out = omission.omits_key && defaulted.is_none();
+        if leaves_key_out && !flatten && !field_def.is_optional() {
             // Dart has no absent-key spelling: a `Map<String, dynamic>` answers a dropped key and
             // an explicit `null` alike, so an omitted key is the outer level's own nullability.
             field_def.nullable_levels.push(field_def.array_depth);
         }
         collected.push(DartField {
             aliases: read_aliases(&field.attrs),
-            default_at: default_at(&rust_name),
-            required: !omission.omits_key || !field_def.is_optional(),
+            default_at: defaulted,
+            required: !leaves_key_out || !field_def.is_optional(),
             flatten,
             read_as: if flatten && field_def.array_depth == 0 && !field_def.is_optional() {
                 field_def.written_in_place()

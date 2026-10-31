@@ -837,29 +837,23 @@ fn test_a_struct_shaped_variant_with_no_fields_writes_no_parameter_group_either(
 }
 
 #[test]
-fn test_a_dropped_key_on_a_field_that_is_not_an_option_is_nullable_in_dart() {
+fn test_a_dropped_key_read_as_its_default_is_not_nullable_in_dart() {
     let dart = stock_label_dart::dart_definition();
     assert!(
-        dart.contains("final List<String>? batch_codes;"),
-        "serde writes this key for a full `Vec` and leaves it out for an empty one, and a Dart \
-         `Map<String, dynamic>` answers a dropped key and an explicit `null` alike — so the \
-         absent payload is admissible only if the type carries the `?`. Got: {dart}"
+        dart.contains("final List<String> batch_codes;"),
+        "serde reads the key left out as the default, so the member is held. Got: {dart}"
     );
     assert!(
-        dart.contains("this.batch_codes,") && !dart.contains("required this.batch_codes,"),
-        "a nullable parameter defaults to `null`, which is what lets a caller build the value \
-         serde writes no key for. Got: {dart}"
+        dart.contains("required this.batch_codes,"),
+        "the member is always held, so the constructor requires it. Got: {dart}"
     );
     assert!(
-        dart.contains("batch_codes: (json['") && dart.contains("] == null ? null : (json['"),
-        "`fromJson` reads the key through a `null` guard rather than casting it: a `List` cast \
-         over the payload serde wrote without the key is a `TypeError` on every such answer. \
-         Got: {dart}"
+        dart.contains("json.containsKey('batchCodes')") && dart.contains("jsonDecode('[]')"),
+        "`fromJson` reads the default where the key is left out. Got: {dart}"
     );
     assert!(
-        dart.contains("if (batch_codes != null)"),
-        "`toJson` writes the key only when it has a value, which is the same pair of payloads \
-         serde writes and the other three surfaces admit. Got: {dart}"
+        !dart.contains("if (batch_codes != null)"),
+        "`toJson` writes the member every time. Got: {dart}"
     );
 }
 

@@ -345,6 +345,13 @@ impl RangeKind {
 #[cfg(feature = "serde")]
 pub type ExpectedMember = (&'static str, Vec<String>, usize);
 
+/// What serde does with a member whose key the payload leaves out.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MissingKey {
+    Defaulted,
+    Required,
+}
+
 /// Struct representing a field's definition for schema generation.
 #[derive(Clone, Debug)]
 pub struct FieldDef {
@@ -355,6 +362,8 @@ pub struct FieldDef {
     pub bytes: bool,
     pub docs: String,
     pub field_type: FieldDefType,
+    /// What serde does with this member's key when the payload leaves it out.
+    pub missing_key: MissingKey,
     pub model_schema_prop_meta: Option<ModelSchemaPropMeta>,
     pub name: String,
     pub nullable_levels: Vec<u8>,
@@ -911,6 +920,7 @@ impl FieldDef {
                 .is_some_and(|m| m.ts_optional)
         } else {
             self.omits_value
+                && (self.stands_for_an_option() || self.missing_key == MissingKey::Required)
         }
     }
 
@@ -930,6 +940,7 @@ impl FieldDef {
         held.model_schema_prop_meta
             .clone_from(&self.model_schema_prop_meta);
         held.omits_value = self.omits_value;
+        held.missing_key = self.missing_key;
         held.absent_from_wire = self.absent_from_wire;
         held
     }
@@ -1466,6 +1477,7 @@ impl FieldDef {
                         nullable_levels: Vec::new(),
                         absent_from_wire: false,
                         omits_value: false,
+                        missing_key: MissingKey::Required,
                         #[cfg(any(feature = "zod", feature = "jsonschema"))]
                         serde_default: None,
                         bytes: false,
@@ -3032,6 +3044,7 @@ fn get_field_def_from_type_path(
             nullable_levels: Vec::new(),
             absent_from_wire: false,
             omits_value: false,
+            missing_key: MissingKey::Required,
             #[cfg(any(feature = "zod", feature = "jsonschema"))]
             serde_default: None,
             bytes: false,
@@ -3052,6 +3065,7 @@ fn get_field_def_from_type_path(
             nullable_levels: Vec::new(),
             absent_from_wire: false,
             omits_value: false,
+            missing_key: MissingKey::Required,
             #[cfg(any(feature = "zod", feature = "jsonschema"))]
             serde_default: None,
             bytes: false,
@@ -3079,6 +3093,7 @@ fn get_field_def_from_type_path(
             nullable_levels: Vec::new(),
             absent_from_wire: false,
             omits_value: false,
+            missing_key: MissingKey::Required,
             #[cfg(any(feature = "zod", feature = "jsonschema"))]
             serde_default: None,
             bytes: false,
@@ -3148,6 +3163,7 @@ fn get_field_def_from_generic_type(
             nullable_levels: Vec::new(),
             absent_from_wire: false,
             omits_value: false,
+            missing_key: MissingKey::Required,
             #[cfg(any(feature = "zod", feature = "jsonschema"))]
             serde_default: None,
             bytes: false,
@@ -3194,6 +3210,7 @@ fn written_def(
         nullable_levels: Vec::new(),
         absent_from_wire: false,
         omits_value: false,
+        missing_key: MissingKey::Required,
         #[cfg(any(feature = "zod", feature = "jsonschema"))]
         serde_default: None,
         bytes: false,
@@ -3358,6 +3375,7 @@ pub fn get_field_def(name: &str, ty: &Type, field_docs: &str) -> FieldDef {
             nullable_levels: Vec::new(),
             absent_from_wire: false,
             omits_value: false,
+            missing_key: MissingKey::Required,
             #[cfg(any(feature = "zod", feature = "jsonschema"))]
             serde_default: None,
             bytes: false,
@@ -3376,6 +3394,7 @@ pub fn get_field_def(name: &str, ty: &Type, field_docs: &str) -> FieldDef {
             nullable_levels: Vec::new(),
             absent_from_wire: false,
             omits_value: false,
+            missing_key: MissingKey::Required,
             #[cfg(any(feature = "zod", feature = "jsonschema"))]
             serde_default: None,
             bytes: false,

@@ -28,7 +28,7 @@ use crate::features::model_schema_prop::FunctionName;
 #[cfg(feature = "serde")]
 use crate::field_type::is_plain_enum;
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
-use crate::field_type::{FieldDef, FieldDefType, get_field_def};
+use crate::field_type::{FieldDef, FieldDefType, MissingKey, get_field_def};
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 use crate::rename_rule::RenameRule;
 #[cfg(feature = "serde")]
@@ -319,6 +319,7 @@ where
         name: "value".to_owned(),
         nullable_levels: Vec::new(),
         omits_value: false,
+        missing_key: MissingKey::Required,
         #[cfg(any(feature = "zod", feature = "jsonschema"))]
         serde_default: None,
         bytes: false,

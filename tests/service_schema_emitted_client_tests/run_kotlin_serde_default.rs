@@ -6,6 +6,7 @@
 
 use core::fmt::Write as _;
 
+use super::omitted_models::{OMITTED, OMITTED_WRITTEN, muster_kotlin, roster_kotlin, squad_kotlin};
 use super::runtime::ran_kotlin;
 use super::serde_default_models::{
     Bollard, CASES, Harbour, Jetty, Marina, PREPROCESSED, PREPROCESSED_REPORT, REPORT, REQUIRED,
@@ -321,4 +322,36 @@ fn each_variant_payload_reads_in_kotlin_as_the_serde_read_reads_it() {
         return;
     };
     assert_eq!(printed, VARIANT_REPORT);
+}
+
+/// A list under `default` with `skip_serializing_if` or `skip_serializing` reads as `[]` in Kotlin
+/// where the key is left out, held in a property that is no `List<String>?`.
+#[test]
+fn an_omitted_key_with_a_default_reads_in_kotlin_as_its_default() {
+    let roster = roster_kotlin::kotlin_definition();
+    assert!(!roster.contains("List<String>?"), "{roster}");
+    let mut main = String::from("fun main() {\n");
+    for &(name, read_as, payload) in &OMITTED {
+        let _ = writeln!(
+            main,
+            "    told({}) {{ everyMember.encodeToString(serializer<{read_as}>(), \
+             Json.decodeFromString(serializer<{read_as}>(), {})) }}",
+            kotlin_string(name),
+            kotlin_string(payload)
+        );
+    }
+    main.push_str("}\n");
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        roster,
+        muster_kotlin::kotlin_definition(),
+        squad_kotlin::kotlin_definition(),
+        TOLD.to_owned(),
+        main,
+    ]
+    .join("\n\n");
+    let Some(printed) = ran_kotlin(&source) else {
+        return;
+    };
+    assert_eq!(printed, OMITTED_WRITTEN);
 }

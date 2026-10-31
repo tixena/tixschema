@@ -214,7 +214,15 @@ mod run_kotlin_preprocess;
 
 /// The models a key under `#[serde(default)]` is written on, and what a serde read prints for
 /// each payload of the table every surface is held to.
-#[cfg(all(test, any(feature = "dart", feature = "swift", feature = "kotlin")))]
+#[cfg(all(
+    test,
+    any(
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin",
+        feature = "zod"
+    )
+))]
 #[path = "serde_default_tests/models.rs"]
 mod serde_default_models;
 
@@ -242,6 +250,26 @@ mod run_dart_serde_default;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_swift_serde_default.rs"]
 mod run_swift_serde_default;
+
+/// The models of a list under `#[serde(default)]` that serde leaves out of what it writes, and
+/// what every client prints for each payload.
+#[cfg(all(
+    test,
+    any(
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin",
+        feature = "zod"
+    )
+))]
+#[path = "serde_default_tests/omitted.rs"]
+mod omitted_models;
+
+/// A list under `#[serde(default)]` that serde leaves out of what it writes, read by the Zod
+/// schema under node.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_serde_default.rs"]
+mod run_node_serde_default;
 
 /// A std sequence other than `Vec`, read and written by the emitted Swift types.
 #[cfg(test)]
