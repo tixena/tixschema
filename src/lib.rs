@@ -86,7 +86,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! tixschema = "0.2"
+//! tixschema = "0.3"
 //! serde = { version = "1", features = ["derive"] }
 //! serde_json = "1"
 //! ```
@@ -778,7 +778,7 @@ fn main() {
 //!
 //! ```toml
 //! # Web and mobile clients, and MongoDB.
-//! tixschema = { version = "0.2", features = ["web", "mobile", "mongo"] }
+//! tixschema = { version = "0.3", features = ["web", "mobile", "mongo"] }
 //! ```
 //!
 //! Some crates are listed whatever the features. A type that names a `preprocess` or has a
