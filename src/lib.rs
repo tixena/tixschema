@@ -59,7 +59,7 @@
 //! | Swift `Codable` types with `validate()` | `{type}_swift::swift_definition()` | `swift` |
 //! | Kotlin `kotlinx.serialization` classes with `validate()` | `{type}_kotlin::kotlin_definition()` | `kotlin` |
 //! | Serde renames, tags, flattening and defaults, read on every surface | the `#[serde(...)]` attributes already on the type | `serde` |
-//! | Field and type rules | `#[model_schema_prop(...)]` on a field and `#[model_schema(check = [...])]` on the type, giving `T::validate()` and a serde read that refuses what `validate()` refuses | `serde` with `typescript` or `zod`; a `check` in every build |
+//! | Field and type rules | `#[model_schema_prop(...)]` on a field and `#[model_schema(check = [...])]` on the type, giving `T::validate()` and a serde read that refuses what `validate()` refuses | any |
 //! | Recovering decode of old or untrusted values | `#[model_schema(enable = ["decode_with"])]` and `tixschema::decode_with_foundation!()`, giving `T::from_value_with` and `T::from_value_piped` through the crate's `DecodeWith` trait | `serde`; `bson` adds `T::from_bson_with` and `T::from_bson_piped` |
 //! | `MongoDB` typed paths, filters, updates and operations | `enable = ["decode_with", "mongodb"]` and `tixschema::mongodb_foundation!()`, giving `T::MONGO_FIELDS`, `T::find_one`, `T::find`, `T::count`, `value.insert_one`, `T::update_one`, `T::delete_one` and their siblings | `mongodb` |
 //! | `ObjectId` fields, chrono dates and times, `IndexMap` and `IndexSet` | a field of that type | `mongodb`, `chrono`, `indexmap` |
@@ -754,7 +754,7 @@ fn main() {
 //!
 //! | Feature | What it adds | What your crate lists |
 //! |---|---|---|
-//! | `serde` | Reads serde's attributes on every surface. With `typescript` or `zod` on, writes `validate()` and the read that refuses what it refuses. `#[service_schema]` and the recovering decode need it. | `serde` with its `derive` feature. |
+//! | `serde` | Reads serde's attributes on every surface, the names `validate()` reports included. `#[service_schema]` and the recovering decode need it. | `serde` with its `derive` feature. |
 //! | `typescript` | `T::ts_definition()`. | Nothing. |
 //! | `zod` | `T::zod_schema()`, and `T::schema_examples()` on a type whose doc comment holds a code block fenced as `rust example`. | `serde_json` where a type holds such blocks. The TypeScript project installs `zod` at version 4. |
 //! | `dart` | `{type}_dart::dart_definition()`, and the Dart service clients. | Nothing in Rust. The Dart file imports `dart:convert`, and `dart:typed_data` or `dart:async` where the code names them; the code uses Dart 3 sealed classes, records and patterns. |
@@ -893,12 +893,10 @@ use service_schema::exec_service_schema;
 /// Kotlin, each read from the serde attributes the type carries.
 ///
 /// The macro keeps the item's fields and adds, on the type, one function per surface the build's
-/// features turn on. In a build with `typescript` or `zod` on, it also adds a module beside the
-/// type, `{type}_schema` (the Rust name in snake case). In a build with neither, such as
-/// `default-features = false, features = ["mobile"]`, no `{type}_schema` module is written, except
-/// the part `enable = ["decode_with"]` adds; the `{type}_dart`, `{type}_swift` and
-/// `{type}_kotlin` modules are written under their own features. The [crate page](index.html) maps
-/// each feature to its surface and lists the crates the generated code names.
+/// features turn on. In every build it also adds a module beside the type, `{type}_schema` (the
+/// Rust name in snake case); the `{type}_dart`, `{type}_swift` and `{type}_kotlin` modules are
+/// written under their own features. The [crate page](index.html) maps each feature to its
+/// surface and lists the crates the generated code names.
 ///
 /// # Where it goes
 ///
@@ -931,7 +929,7 @@ use service_schema::exec_service_schema;
 ///   `enable = ["jsonschema"]` each type parameter needs an entry. An entry that names no
 ///   parameter, and the argument on a type with no type parameter, are refused in every build.
 /// - `pattern = "regex"`, `minLength = N`, `maxLength = N`: rules on text, written on the type.
-///   On a branded newtype they hold its value, and need `typescript` or `zod` on. On
+///   On a branded newtype they hold its value. On
 ///   an enum they hold each string field and the name of each variant that carries no data, and a
 ///   variant name that breaks them is refused at expansion. They are refused on any other struct
 ///   and on an alias.
@@ -980,8 +978,7 @@ use service_schema::exec_service_schema;
 /// - `T::validate(&self) -> Result<(), Vec<String>>`, where a field or the type carries a rule, or
 ///   a field holds a type that does. It runs every bound, literal and check, and leads each message
 ///   with the value's path in the payload: `'lines.1.quantity': too large: maximum is 99, got 120`.
-///   Bounds and literals are held under `serde` with `typescript` or `zod` on, and
-///   checks in every build.
+///   Bounds, literals and checks are held in every build.
 /// - The type's `Deserialize`, where `T` derives it and has `validate()` or names a `preprocess`:
 ///   serde's own read, then `validate()`. Every serde read then refuses a payload that breaks a
 ///   rule, with the messages joined by `; `. `T::model_schema_read_unjudged` is the read alone.
@@ -1751,9 +1748,9 @@ pub fn mongodb_foundation(input: TokenStream) -> TokenStream {
 ///
 /// # Where a rule is held
 ///
-/// A bound or a literal is held by Zod and JSON Schema, by Rust's `validate()` and the serde read
-/// that runs it (under `serde` with `typescript` or `zod` on), and by the
-/// `validate()` and the read of the Dart, Swift and Kotlin types, which write Rust's sentences.
+/// A bound or a literal is held by Rust's `validate()` and the serde read that runs it, in every
+/// build, by Zod and JSON Schema, and by the `validate()` and the read of the Dart, Swift and
+/// Kotlin types, which write Rust's sentences.
 /// Lengths agree on ASCII text only: Rust counts UTF-8 bytes, Zod UTF-16 code units, and Dart,
 /// Swift and Kotlin code points.
 ///

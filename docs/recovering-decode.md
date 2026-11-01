@@ -109,13 +109,11 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   `validate()` (section 7, "A read refuses what `validate()` refuses"), and a refusal there would
   hide the list. `listed_read` in `judged_read.rs` writes `decode_with_read_unjudged` on every
   flagged type, once, after the first source's methods, and the entry points, `read_whole`,
-  `lone_slot_bound` and the enum walkers read `Self` through it. Where a schema surface is on it
-  calls the type's `model_schema_read_unjudged` behind the `ReadUnjudged` fallback. With none on,
-  a holder that names no check publishes no `validate()` and its own read judges what it holds,
-  so the function is serde's derive on a copy of the item, each model below read through its own
-  `decode_with_read_unjudged`. A generic type's `impl` asks what that read asks beside
-  `Deserialize` of a parameter (`read_under`), at every lifetime, and the function repeats none
-  of it: a bound asked by the `impl` and by the function is one the compiler cannot choose
+  `lone_slot_bound` and the enum walkers read `Self` through it. It calls the type's
+  `model_schema_read_unjudged` behind the `ReadUnjudged` fallback, which answers serde's own read
+  for a type that publishes no `validate()`. A generic type's `impl` asks what that read asks
+  beside `Deserialize` of a parameter (`read_under`), at every lifetime, and the function repeats
+  none of it: a bound asked by the `impl` and by the function is one the compiler cannot choose
   between (E0283). A list held to a count of its own is read whole through `listed_reader`, with
   each model unjudged, as a type declared in the closure and generic over the parameters of the
   item that the model names (`HookScope`, the rules the holder's own hook is written by): the same
@@ -194,8 +192,7 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   `recovering_bound_check` builds the closure from the walk's own type at
   that position. A list is that position: the arm
   that walks its items hands them no validator, and holds the list read whole (`read_as_a_list`)
-  to its count, one `Invalid` at the list. The registry is cleared per item at `exec_model_schema`, and holds nothing in a
-  build with no schema surface, where no validator is published.
+  to its count, one `Invalid` at the list. The registry is cleared per item at `exec_model_schema`.
 - **A check is the read's to list, after serde.** `recovering_decode/checks.rs` emits
   `decode_with_check_messages(&self)` in an `impl` of its own beside the walkers, under the bounds
   the type's author wrote (`RecoveringDecode::check_messages`, `checks::type_impl`): the members'

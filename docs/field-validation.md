@@ -244,9 +244,11 @@ what a change has to keep.
   `MemberPlace::reported`, which `member_place` answers for a bound's member as well: the steps
   serde writes on the way to the member, joined by dots, and nothing where it writes none.
   `nested_under` writes the name.
-- **`validate()` in every build.** With `serde` and a schema surface it is the method the bounds
-  are in. Without `serde`, and with `serde` and no surface, `validate_method` and
-  `checks_validate_impl` publish it with the checks alone, and only for an item that names one.
+- **`validate()` in every build.** It holds every bound and every check, whatever the features,
+  and a type that derives `Deserialize` reads through `judged_read` in every build, so its read
+  refuses what `validate()` refuses. `serde` is the one switch: it adds the member hook
+  (`deserialize_with`), through which a member's bound chooses the variant of an untagged enum,
+  and without `serde` a member is reported under its Rust name.
 - **Every shape.** `process_struct`, `process_tuple_struct`, a unit struct, the three tagged enum
   processors and the untagged one (a member's check in its variant's arm, through
   `build_member_check_arms`, and the enum's own after the `match`), a plain enum, and a brand
@@ -271,7 +273,7 @@ what a change has to keep.
   `validate()`" below. The JSON Schema and the TypeScript type write what they wrote, and no
   expected output of a type without the key changes.
 - **The documents' example is a doctest.** `src/check_example.md` is included in
-  `model_schema_prop`'s rustdoc under `serde` and a schema surface, and
+  `model_schema_prop`'s rustdoc under `serde`, and
   `tests/check_tests/readme.rs` holds the README to it. `tests/check_tests/models.rs` is compiled
   by `tests/check_tests.rs` and by `tests/generic_types_tests/declarations.rs`, which parses each
   case under node and compares the two sides as one text. This crate's lints order a struct's
