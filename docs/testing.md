@@ -100,6 +100,25 @@ fn test_my_feature() {
 }
 ```
 
+### Validation in Every Build
+
+[tests/every_build_validation_tests.rs](../tests/every_build_validation_tests.rs) holds every build
+to the same validation. `models.rs` declares one constrained model of each shape: a named struct,
+a tuple struct, a brand, an alias of the brand held by a field, an enum of each tagging (external,
+internal, adjacent, untagged), a generic struct read at a filling other than its declared default,
+and, with `serde`, a type that lists `enable = ["decode_with"]` and a `#[service_schema()]` trait
+with no transport. `validate.rs` asserts each model's `validate()` in every build. `read.rs`
+asserts, with `serde`, the read that refuses a broken rule, `from_value_with` handing its callback
+the `Invalid` issue, and `{service}_schema::validated_{operation}` refusing a broken request. Each
+expected text is what a `web` build answers.
+
+`serde` is the binary's only feature gate, on `read.rs` and on the decode and service declarations,
+which need it. Without `serde` no `#[serde(...)]` attribute is read: `validate()` names a field as
+Rust spells it and every enum as externally tagged, so `validate.rs` holds those names in one
+`#[cfg(feature = "serde")]` / `#[cfg(not(feature = "serde"))]` pair of constants. A new shape, or a
+new place a rule is held, gets a model and a test here, under no other gate. `just check-mix` runs
+the binary with no feature and under `web`, `mobile`, `mongo` and `mobile,mongo`.
+
 ### Running Single Tests During Development
 
 ```bash
@@ -211,7 +230,7 @@ A change is held to the gate, [.github/workflows/ci.yml](../.github/workflows/ci
 
 1. `cargo clippy --all-targets --all-features -- -D warnings`
 2. `cargo test --all-features`
-3. `just check-mix` (`cargo hack check --each-feature`: one build with no feature, one with the default, and one with each feature by itself; not part of `just all`)
+3. `just check-mix`, not part of `just all`: `cargo hack check --each-feature` over this package and over `bson3/` (one build with no feature, one with the default, and one with each feature by itself), then `tests/every_build_validation_tests.rs` with no feature and under `web`, `mobile`, `mongo` and `mobile,mongo`
 4. Discord notification with build status
 
 The full run, [.github/workflows/full.yml](../.github/workflows/full.yml), is started every three days and by hand. No change waits for it:
@@ -225,7 +244,7 @@ The full run, [.github/workflows/full.yml](../.github/workflows/full.yml), is st
 7. `just audit` (`cargo audit` over a lock file generated for each package, this one and `bson3/`)
 8. Discord notification with build status
 
-The gate lints and tests one feature selection of one package, and `just check-mix` compiles the library under every feature by itself, so a declaration and its use that carry different features fail on the next push. What only the full run builds: the lints and the tests of a build with `serde` and no schema surface (the `mobile` and `mongo` sets) and of a build without `serde`, and `bson3/`, the package that tests against version 3 of the `bson` library. A break there is found at the next full run.
+The gate lints and tests one feature selection of one package. `just check-mix` compiles the library under every feature by itself, so a declaration and its use that carry different features fail on the next push, and runs the every-build validation tests in five builds, so a rule that one of them stops holding fails there too. What only the full run builds: the lints of a build with `serde` and neither `typescript` nor `zod` (the `mobile` and `mongo` sets) and of a build without `serde`, every other test in those builds, and the lints and tests of `bson3/`, the package that tests against version 3 of the `bson` library. A break there is found at the next full run.
 
 Both workflows install every toolchain the emitted-client groups need: Node with `zod`, `ws` and `typescript`, Dart, and the Kotlin jars; Swift, Kotlin and a JRE come with the runner image. Inside a plain `cargo test` those groups stand down and pass when their toolchain is missing, so only `just typecheck-ts` and `just test-emitted` prove anything: both refuse to stand down, and both are in the full run, `test-emitted` through `test-slow`.
 

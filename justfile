@@ -240,6 +240,11 @@ check-all:
 check-mix:
     cargo hack check --each-feature
     cargo hack check --manifest-path bson3/Cargo.toml --each-feature
+    cargo test --no-default-features --test every_build_validation_tests
+    cargo test --no-default-features --features web --test every_build_validation_tests
+    cargo test --no-default-features --features mobile --test every_build_validation_tests
+    cargo test --no-default-features --features mongo --test every_build_validation_tests
+    cargo test --no-default-features --features mobile,mongo --test every_build_validation_tests
 
 # Check the library on the minimum supported Rust version.
 check-msrv:
