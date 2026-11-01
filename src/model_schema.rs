@@ -3879,7 +3879,10 @@ fn refused_item_schema_module(
 
     let json_schema_methods = args.enable.jsonschema.then(|| {
         let in_flight_type = in_flight_type();
+        let named = ident.to_string();
         quote! {
+            pub const JSON_SCHEMA_NAME: &str = #named;
+
             pub fn json_schema() -> serde_json::Value {
                 panic!(#refusal)
             }
@@ -3887,6 +3890,7 @@ fn refused_item_schema_module(
             pub fn json_schema_within(
                 _in_flight: &mut #in_flight_type,
                 _hoisted_defs: &mut serde_json::Map<::std::string::String, serde_json::Value>,
+                _pointer_prefix: &str,
             ) -> serde_json::Value {
                 panic!(#refusal)
             }
@@ -16286,9 +16290,9 @@ fn sibling_json_schema_value(
     span: proc_macro2::Span,
 ) -> proc_macro2::TokenStream {
     let module_ident = sibling_schema_module_ident(name, span);
-    // Named where the run declares the two, not on the field's type: a type handed into a
-    // `macro_rules!` body carries its call site's hygiene, under which neither binding is found.
-    let run = quote! { in_flight, hoisted_defs };
+    // Named where the run declares them, not on the field's type: a type handed into a
+    // `macro_rules!` body carries its call site's hygiene, under which no binding is found.
+    let run = quote! { in_flight, hoisted_defs, pointer_prefix };
     if arguments.is_empty() {
         return quote_spanned! {span=> #module_ident::Schema::json_schema_within(#run) };
     }
@@ -16296,7 +16300,7 @@ fn sibling_json_schema_value(
         .iter()
         .map(|argument| argument_json_schema_value(name, argument));
     // Held in a local: an argument that is itself a reference describes through this same call and
-    // borrows the run's two values. Parenthesised for the positions inside a `json!` literal.
+    // borrows the run's values. Parenthesised for the positions inside a `json!` literal.
     quote_spanned! {span=>
         ({
             let arguments = [#(#documents),*];
@@ -16314,6 +16318,73 @@ fn argument_json_schema_value(name: &str, argument: &FieldDef) -> proc_macro2::T
         ));
         syn::Error::new(rejection.span(), message).to_compile_error()
     })
+}
+
+/// The JSON Schema a value of `ty` is described by, as an expression read where a run's
+/// `in_flight`, `hoisted_defs` and `pointer_prefix` are bound. `subject` names the value in the
+/// refusal of a type no document describes.
+#[cfg(feature = "serde")]
+pub fn type_json_schema_value(subject: &str, ty: &syn::Type) -> proc_macro2::TokenStream {
+    argument_json_schema_value(subject, &get_field_def(subject, ty, ""))
+}
+
+/// The schema module of each model type `ty` names without type arguments: the type itself, under
+/// an `Option`, a list or a reference, and each type handed to a generic type, a tuple, a map, a
+/// range or a `Result`.
+#[cfg(feature = "serde")]
+pub fn named_json_schema_modules(ty: &syn::Type) -> Vec<Ident> {
+    fn collect(fld: &FieldDef, found: &mut Vec<Ident>) {
+        match &fld.field_type {
+            FieldDefType::SiblingType(name, arguments) => {
+                if arguments.is_empty() {
+                    found.push(sibling_schema_module_ident(name, fld.type_span));
+                }
+                for argument in arguments {
+                    collect(argument, found);
+                }
+            }
+            FieldDefType::Tuple(elements) => {
+                for element in elements {
+                    collect(element, found);
+                }
+            }
+            FieldDefType::Map(first, second) | FieldDefType::Result(first, second) => {
+                collect(first, found);
+                collect(second, found);
+            }
+            FieldDefType::Range(_, bound) => collect(bound, found),
+            FieldDefType::Boolean
+            | FieldDefType::BooleanLiteral(_)
+            | FieldDefType::Char
+            | FieldDefType::F32
+            | FieldDefType::F64
+            | FieldDefType::I16
+            | FieldDefType::I32
+            | FieldDefType::I64
+            | FieldDefType::I8
+            | FieldDefType::Isize
+            | FieldDefType::NumberLiteral(_)
+            | FieldDefType::String
+            | FieldDefType::StringLiteral(_)
+            | FieldDefType::TypeParam(_)
+            | FieldDefType::U16
+            | FieldDefType::U32
+            | FieldDefType::U64
+            | FieldDefType::U8
+            | FieldDefType::Unknown
+            | FieldDefType::Usize => {}
+            #[cfg(feature = "chrono")]
+            FieldDefType::DateTime
+            | FieldDefType::NaiveDate
+            | FieldDefType::NaiveDateTime
+            | FieldDefType::NaiveTime => {}
+            #[cfg(feature = "mongodb")]
+            FieldDefType::ObjectId => {}
+        }
+    }
+    let mut found = Vec::new();
+    collect(&get_field_def("value", ty, ""), &mut found);
+    found
 }
 
 /// The local the enclosing item's document reaches one of its own type parameters through, as the

@@ -1,7 +1,7 @@
 //! The transports a service can ask for, and the one place a name is bound to one.
 
 mod amqp_rpc;
-mod http_rest;
+pub mod http_rest;
 mod ws_rpc;
 
 use super::parse::ServiceDef;

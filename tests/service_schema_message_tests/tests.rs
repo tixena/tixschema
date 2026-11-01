@@ -266,7 +266,7 @@ pub struct ProbeBackEnd {
     pub billed_invoices: u32,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "errorCode", rename_all = "kebab-case")]
 pub enum ProbeError {

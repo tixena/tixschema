@@ -1,6 +1,8 @@
 //! The HTTP/REST transport: two inert macros, `{service}_http_rest_dispatcher!` and
 //! `{service}_http_rest_client!`, and nothing compiled where the service is declared.
 
+pub mod openapi;
+
 use super::Transport;
 use super::amqp_rpc::{
     Generated, answers, call_arguments, call_message, outbound_refusal, panic_guard, placement_doc,

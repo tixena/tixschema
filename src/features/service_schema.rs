@@ -42,12 +42,14 @@ use crate::service_schema::parse::ServiceDef;
 use crate::service_schema::support::exhaustiveness;
 #[cfg(any(feature = "typescript", feature = "dart"))]
 use crate::service_schema::support::{fault_fields_typescript_name, module_ident};
+use crate::service_schema::transport::OpenApiArguments;
+use crate::service_schema::transport::http_rest::openapi::openapi_method;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
 pub fn emit(service: &ServiceDef, non_exhaustive: bool) -> TokenStream {
     let named = service.ident.to_string();
-    let registry = format_ident!("{named}Schema", span = service.ident.span());
+    let registry = registry_ident(service);
     let rustdoc = registry_rustdoc(&named);
     let ts_seam = ts_seam(service);
     let dart_seam = dart_seam(service);
@@ -461,6 +463,21 @@ fn ts_registry_rustdoc(service: &str) -> Vec<String> {
              `swift`, `kotlin`) if a mobile or server target is what this build wants instead."
         ),
     ]
+}
+
+/// `openapi()` on the service's registry, for a service that asked for `openapi`.
+pub fn openapi_seam(service: &ServiceDef, asked: &OpenApiArguments) -> TokenStream {
+    let registry = registry_ident(service);
+    let method = openapi_method(service, asked);
+    quote! {
+        impl #registry {
+            #method
+        }
+    }
+}
+
+fn registry_ident(service: &ServiceDef) -> syn::Ident {
+    format_ident!("{}Schema", service.ident, span = service.ident.span())
 }
 
 #[cfg(test)]

@@ -16690,7 +16690,7 @@ fn a_nested_enum_keyed_map_value_renders_its_inner_members() {
         ),
         (
             "HashMap<Slot, HashMap<String, Inner>>",
-            r#"serde_json :: json ! ({ "type" : "object" , "additionalProperties" : inner_schema :: Schema :: json_schema_within (in_flight , hoisted_defs) })"#,
+            r#"serde_json :: json ! ({ "type" : "object" , "additionalProperties" : inner_schema :: Schema :: json_schema_within (in_flight , hoisted_defs , pointer_prefix) })"#,
         ),
         (
             "HashMap<Slot, Vec<HashMap<String, String>>>",
@@ -16719,7 +16719,7 @@ fn a_generic_sibling_enum_keyed_map_value_emits_the_sibling_schema() {
     assert!(
         tokens.contains(
             "let arguments = [serde_json :: json ! ({ \"type\" : \"string\" })] ; wrapper_schema \
-             :: Schema :: json_schema_within_with (in_flight , hoisted_defs , & arguments)"
+             :: Schema :: json_schema_within_with (in_flight , hoisted_defs , pointer_prefix , & arguments)"
         ),
         "got: {tokens}"
     );
@@ -16814,14 +16814,14 @@ fn a_vec_sibling_enum_keyed_map_value_arrays_the_sibling_schema() {
     let arrayed = map_field_schema("HashMap<Slot, Vec<Inner>>").to_string();
     assert!(
         arrayed.contains(
-            r#"let value_schema = serde_json :: json ! ({ "type" : "array" , "items" : inner_schema :: Schema :: json_schema_within (in_flight , hoisted_defs) }) ;"#
+            r#"let value_schema = serde_json :: json ! ({ "type" : "array" , "items" : inner_schema :: Schema :: json_schema_within (in_flight , hoisted_defs , pointer_prefix) }) ;"#
         ),
         "got: {arrayed}"
     );
 
     let single = map_field_schema("HashMap<Slot, Inner>").to_string();
     assert!(
-        single.contains("let value_schema = inner_schema :: Schema :: json_schema_within (in_flight , hoisted_defs) ;"),
+        single.contains("let value_schema = inner_schema :: Schema :: json_schema_within (in_flight , hoisted_defs , pointer_prefix) ;"),
         "got: {single}"
     );
 }
@@ -17284,7 +17284,7 @@ fn a_nested_string_keyed_map_value_renders_its_inner_members() {
         ),
         (
             "HashMap<String, HashMap<String, Inner>>",
-            r#"{ "type" : "object" , "additionalProperties" : inner_schema :: Schema :: json_schema_within (in_flight , hoisted_defs) }"#,
+            r#"{ "type" : "object" , "additionalProperties" : inner_schema :: Schema :: json_schema_within (in_flight , hoisted_defs , pointer_prefix) }"#,
         ),
         (
             "HashMap<String, Option<HashMap<String, String>>>",
@@ -17316,7 +17316,7 @@ fn a_vec_of_maps_string_keyed_map_value_renders_its_inner_members() {
         ),
         (
             "HashMap<String, Vec<HashMap<String, Inner>>>",
-            r#"{ "type" : "array" , "items" : { "type" : "object" , "additionalProperties" : inner_schema :: Schema :: json_schema_within (in_flight , hoisted_defs) } }"#,
+            r#"{ "type" : "array" , "items" : { "type" : "object" , "additionalProperties" : inner_schema :: Schema :: json_schema_within (in_flight , hoisted_defs , pointer_prefix) } }"#,
         ),
     ] {
         let tokens = map_field_schema(map_type).to_string();
@@ -17634,19 +17634,19 @@ fn a_sibling_string_keyed_map_value_emits_the_sibling_schema() {
     for (map_type, expected) in [
         (
             "HashMap<String, Inner>",
-            "inner_schema :: Schema :: json_schema_within (in_flight , hoisted_defs)",
+            "inner_schema :: Schema :: json_schema_within (in_flight , hoisted_defs , pointer_prefix)",
         ),
         (
             "HashMap<String, Vec<Inner>>",
-            r#"serde_json :: json ! ({ "type" : "array" , "items" : inner_schema :: Schema :: json_schema_within (in_flight , hoisted_defs) })"#,
+            r#"serde_json :: json ! ({ "type" : "array" , "items" : inner_schema :: Schema :: json_schema_within (in_flight , hoisted_defs , pointer_prefix) })"#,
         ),
         (
             "HashMap<String, Option<Inner>>",
-            r#"serde_json :: json ! ({ "anyOf" : [inner_schema :: Schema :: json_schema_within (in_flight , hoisted_defs) , { "type" : "null" }] })"#,
+            r#"serde_json :: json ! ({ "anyOf" : [inner_schema :: Schema :: json_schema_within (in_flight , hoisted_defs , pointer_prefix) , { "type" : "null" }] })"#,
         ),
         (
             "HashMap<String, Option<Vec<Inner>>>",
-            r#"serde_json :: json ! ({ "anyOf" : [serde_json :: json ! ({ "type" : "array" , "items" : inner_schema :: Schema :: json_schema_within (in_flight , hoisted_defs) }) , { "type" : "null" }] })"#,
+            r#"serde_json :: json ! ({ "anyOf" : [serde_json :: json ! ({ "type" : "array" , "items" : inner_schema :: Schema :: json_schema_within (in_flight , hoisted_defs , pointer_prefix) }) , { "type" : "null" }] })"#,
         ),
     ] {
         let tokens = map_field_schema(map_type).to_string();
@@ -17667,7 +17667,7 @@ fn a_generic_sibling_string_keyed_map_value_emits_the_sibling_schema() {
     assert!(
         tokens.contains(
             "let arguments = [serde_json :: json ! ({ \"type\" : \"string\" })] ; wrapper_schema \
-             :: Schema :: json_schema_within_with (in_flight , hoisted_defs , & arguments)"
+             :: Schema :: json_schema_within_with (in_flight , hoisted_defs , pointer_prefix , & arguments)"
         ),
         "got: {tokens}"
     );
@@ -17756,7 +17756,7 @@ fn an_aliased_string_keyed_map_value_resolves_its_module_through_the_registry() 
         let tokens = map_field_schema(map_type).to_string();
         assert!(
             tokens.contains(
-                "inner_type_schema :: Schema :: json_schema_within (in_flight , hoisted_defs)"
+                "inner_type_schema :: Schema :: json_schema_within (in_flight , hoisted_defs , pointer_prefix)"
             ),
             "for {map_type}, got: {tokens}"
         );
@@ -17984,8 +17984,9 @@ fn a_named_type_resolves_to_the_same_module_in_field_and_brand_position() {
         ("Renamed", "renamed_type_schema"),
     ] {
         let inner_ty: syn::Type = syn::parse_str(name).unwrap();
-        let reference =
-            format!("{module} :: Schema :: json_schema_within (in_flight , hoisted_defs)");
+        let reference = format!(
+            "{module} :: Schema :: json_schema_within (in_flight , hoisted_defs , pointer_prefix)"
+        );
 
         let field =
             super::build_field_type_schema(&super::get_field_def("id", &inner_ty, ""), "id")
@@ -18051,7 +18052,7 @@ fn a_sibling_reference_points_at_the_type_the_field_names() {
 fn a_sibling_reference_emits_the_tokens_it_always_has() {
     assert_eq!(
         sole_field_json_schema("struct Outer { inner: Inner }").to_string(),
-        "properties . insert (\"inner\" . to_string () , inner_schema :: Schema :: json_schema_within (in_flight , hoisted_defs)) ;"
+        "properties . insert (\"inner\" . to_string () , inner_schema :: Schema :: json_schema_within (in_flight , hoisted_defs , pointer_prefix)) ;"
     );
 }
 

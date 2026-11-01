@@ -61,6 +61,10 @@ tokio-tungstenite = "0.30.0"
 # Holds each crate of `tests/foundation_refusals/` to the errors rustc prints for it. An exact
 # version, the lock file being untracked: a release at least two weeks old when it was added.
 trybuild = "=1.0.121"
+# Validates each document `tests/openapi_tests.rs` builds against the OpenAPI 3.1 schema vendored
+# beside it, without its default features, which fetch a schema over the network.
+# Pinned at 0.47.0: every later release turns on serde_json's `float_roundtrip` for every test here.
+jsonschema = { version = "=0.47.0", default-features = false }
 # Two crates apart from the test binaries, each writing its own support libraries: one declares a
 # stored type a test binary's type holds, and one, whose types are never stored, lists no
 # `mongodb`.

@@ -11,6 +11,8 @@ pub mod transport;
 
 #[cfg(feature = "serde")]
 use crate::features::service_schema::emit as emit_generated_clients;
+#[cfg(feature = "serde")]
+use crate::features::service_schema::openapi_seam;
 use proc_macro2::TokenStream;
 #[cfg(feature = "serde")]
 use quote::quote;
@@ -74,6 +76,10 @@ pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream
                     // Every language's generated clients are strings rather than callers of
                     // anything private, so they stay at the trait's scope.
                     let generated_clients = generated_clients(&service, wanted.non_exhaustive);
+                    let document = wanted
+                        .openapi
+                        .as_ref()
+                        .map(|arguments| openapi_seam(&service, arguments));
                     // A bare `Value` or `Map` on the wire is asked of the compiler: no proc macro
                     // can tell whether the name is `serde_json`'s.
                     let any_json_checks = parse::any_json_checks(&service);
@@ -84,6 +90,7 @@ pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream
                         #contract
                         #transports
                         #generated_clients
+                        #document
                     }
                 },
                 // Caught here, ahead of every transport's own macros, rather than left for

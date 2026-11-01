@@ -59,6 +59,7 @@ pub fn json_schema_methods(
     examples: Option<&proc_macro2::TokenStream>,
 ) -> proc_macro2::TokenStream {
     let in_flight_type = in_flight_type();
+    let defs_prefix = DEFS_PREFIX;
     if parameters.is_empty() {
         let described = guarded_description(
             def_name,
@@ -67,10 +68,12 @@ pub fn json_schema_methods(
             false,
         );
         let rooted = rooted_document(
-            &quote::quote! { Self::json_schema_within(&mut in_flight, &mut hoisted_defs) },
+            &quote::quote! { Self::json_schema_within(&mut in_flight, &mut hoisted_defs, #defs_prefix) },
             examples,
         );
         return quote::quote! {
+            pub const JSON_SCHEMA_NAME: &str = #def_name;
+
             pub fn json_schema() -> serde_json::Value {
                 #rooted
             }
@@ -78,6 +81,7 @@ pub fn json_schema_methods(
             pub fn json_schema_within(
                 in_flight: &mut #in_flight_type,
                 hoisted_defs: &mut serde_json::Map<::std::string::String, serde_json::Value>,
+                pointer_prefix: &str,
             ) -> serde_json::Value {
                 #described
             }
@@ -85,16 +89,20 @@ pub fn json_schema_methods(
     }
     let described = guarded_description(def_name, body, &bound_filling(parameters), true);
     let rooted = rooted_document(
-        &quote::quote! { Self::json_schema_within(&mut in_flight, &mut hoisted_defs) },
+        &quote::quote! { Self::json_schema_within(&mut in_flight, &mut hoisted_defs, #defs_prefix) },
         examples,
     );
     let rooted_at_arguments = rooted_document(
-        &quote::quote! { Self::json_schema_within_with(&mut in_flight, &mut hoisted_defs, args) },
+        &quote::quote! {
+            Self::json_schema_within_with(&mut in_flight, &mut hoisted_defs, #defs_prefix, args)
+        },
         examples,
     );
     let declared = declared_delegation(parameters);
     let bindings = argument_bindings(parameters);
     quote::quote! {
+        pub const JSON_SCHEMA_NAME: &str = #def_name;
+
         pub fn json_schema() -> serde_json::Value {
             #rooted
         }
@@ -106,6 +114,7 @@ pub fn json_schema_methods(
         pub fn json_schema_within(
             in_flight: &mut #in_flight_type,
             hoisted_defs: &mut serde_json::Map<::std::string::String, serde_json::Value>,
+            pointer_prefix: &str,
         ) -> serde_json::Value {
             #declared
         }
@@ -113,6 +122,7 @@ pub fn json_schema_methods(
         pub fn json_schema_within_with(
             in_flight: &mut #in_flight_type,
             hoisted_defs: &mut serde_json::Map<::std::string::String, serde_json::Value>,
+            pointer_prefix: &str,
             args: &[serde_json::Value],
         ) -> serde_json::Value {
             #bindings
@@ -149,7 +159,6 @@ fn guarded_description(
     discriminate_by_filling: bool,
 ) -> proc_macro2::TokenStream {
     let refusal = refilled_cycle_refusal(def_name);
-    let defs_prefix = DEFS_PREFIX;
     let key_binding = if discriminate_by_filling {
         quote::quote! {
             let key = {
@@ -194,7 +203,7 @@ fn guarded_description(
     quote::quote! {
         let filling: ::std::vec::Vec<serde_json::Value> = #filling;
         #key_binding
-        let pointer = format!("{}{key}", #defs_prefix);
+        let pointer = format!("{}{key}", pointer_prefix);
         if let ::core::option::Option::Some((_, in_flight_filling)) =
             in_flight.iter().find(|(named, _)| *named == #def_name)
         {
@@ -280,7 +289,7 @@ fn declared_delegation(parameters: &[SchemaParameter]) -> proc_macro2::TokenStre
     let declared = parameters.iter().map(|parameter| &parameter.default);
     quote::quote! {
         let arguments = [#(#declared),*];
-        Self::json_schema_within_with(in_flight, hoisted_defs, &arguments)
+        Self::json_schema_within_with(in_flight, hoisted_defs, pointer_prefix, &arguments)
     }
 }
 
@@ -344,7 +353,6 @@ fn closed_object_body(json_schema_fields: &[proc_macro2::TokenStream]) -> proc_m
 /// with: how two objects join, whether a schema is a deferred name, what type it commits its value
 /// to, and which branches it offers under which spelling.
 fn merge_readers() -> proc_macro2::TokenStream {
-    let defs_prefix = DEFS_PREFIX;
     quote::quote! {
         fn merge_object_schemas(
             a: &serde_json::Map<::std::string::String, serde_json::Value>,
@@ -376,10 +384,11 @@ fn merge_readers() -> proc_macro2::TokenStream {
             out
         }
 
-        // A merged schema that names itself is a reference into the definitions being hoisted: the
-        // frame that deferred the name fills the entry in before it returns.
+        // A merged schema that names itself is a reference into the definitions being hoisted, keyed
+        // by what follows the pointer's last `/` whichever prefix the run writes: the frame that
+        // deferred the name fills the entry in before it returns.
         fn deferred_name(schema: &serde_json::Value) -> ::core::option::Option<&str> {
-            schema.get("$ref")?.as_str()?.strip_prefix(#defs_prefix)
+            schema.get("$ref")?.as_str()?.rsplit_once('/').map(|(_, name)| name)
         }
 
         // What a description commits its value to on the wire, when it commits to anything.

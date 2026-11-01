@@ -1,0 +1,24 @@
+error[E0599]: no associated function or constant named `JSON_SCHEMA_NAME` found for struct `balance_schema::Schema` in the current scope
+  --> tests/foundation_refusals/openapi_type_not_listed.rs:22:50
+   |
+ 7 | #[model_schema()]
+   | ----------------- associated function or constant `JSON_SCHEMA_NAME` not found for this struct
+...
+22 |     async fn balance(&self, ctx: &Ctx) -> Result<Balance, LedgerError>;
+   |                                                  ^^^^^^^ associated function or constant not found in `balance_schema::Schema`
+
+error[E0599]: no associated function or constant named `json_schema_within` found for struct `balance_schema::Schema` in the current scope
+  --> tests/foundation_refusals/openapi_type_not_listed.rs:22:50
+   |
+ 7 | #[model_schema()]
+   | ----------------- associated function or constant `json_schema_within` not found for this struct
+...
+22 |     async fn balance(&self, ctx: &Ctx) -> Result<Balance, LedgerError>;
+   |                                                  ^^^^^^^ associated function or constant not found in `balance_schema::Schema`
+   |
+help: there is an associated function `zod_schema` with a similar name
+  --> tests/foundation_refusals/openapi_type_not_listed.rs:7:1
+   |
+ 7 | #[model_schema()]
+   | ^^^^^^^^^^^^^^^^^
+   = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
