@@ -45,6 +45,11 @@ const NON_EXHAUSTIVE_SHAPE_MESSAGE: &str = concat!(
     "       write `non_exhaustive`, and leave it out for the exhaustive generated types"
 );
 
+const OPENAPI_SHAPE_MESSAGE: &str = concat!(
+    "service_schema: `openapi` takes no value\n",
+    "       write `openapi`, or `openapi(title = \"...\", path = \"...\")`"
+);
+
 /// Everything `#[service_schema(...)]`'s own arguments say, read once by [`parse_arguments`].
 #[derive(Debug, Default, Eq, PartialEq)]
 pub struct ServiceArguments {
@@ -335,6 +340,9 @@ pub fn parse_arguments(args: TokenStream) -> Result<ServiceArguments, syn::Error
             return Ok(());
         }
         if meta.path.is_ident(OPENAPI_ARGUMENT) {
+            if meta.input.peek(syn::Token![=]) {
+                return Err(meta.error(OPENAPI_SHAPE_MESSAGE));
+            }
             let keyword = meta.path.require_ident()?.clone();
             let asked = read.openapi.get_or_insert(OpenApiArguments {
                 keyword,

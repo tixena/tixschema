@@ -174,6 +174,35 @@ fn non_exhaustive_written_with_a_value_is_spanned_on_the_flag() {
     );
 }
 
+#[test]
+fn openapi_written_with_a_value_says_it_takes_none() {
+    for args in [
+        r#"transports = ["http_rest"], openapi = true"#,
+        r#"transports = ["http_rest"], openapi = "/openapi.json""#,
+    ] {
+        assert_eq!(
+            refusal(args).to_string(),
+            "service_schema: `openapi` takes no value\n       \
+             write `openapi`, or `openapi(title = \"...\", path = \"...\")`",
+            "for {args}"
+        );
+    }
+}
+
+#[test]
+fn openapi_written_with_a_value_is_spanned_on_the_argument() {
+    for args in [
+        r#"transports = ["http_rest"], openapi = true"#,
+        r#"transports = ["http_rest"], openapi = "/openapi.json""#,
+    ] {
+        assert_eq!(
+            refusal(args).span().source_text().as_deref(),
+            Some("openapi"),
+            "for {args}"
+        );
+    }
+}
+
 /// What `openapi` reads into, with `path` and `title` as written.
 fn openapi_asked(path: Option<&str>, title: Option<&str>) -> OpenApiArguments {
     OpenApiArguments {

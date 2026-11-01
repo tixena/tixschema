@@ -4,8 +4,8 @@
 //! or a `bool` under `#[serde(flatten)]` and in an enum serde buffers, untagged or under a tag
 //! alone, an enum that declares no variant, under a tag or not, a member that holds an `i128`, a
 //! type that does not list `"jsonschema"` asked for its document or held by one that does, and a
-//! service whose `openapi` lacks `http_rest`, names a path that is no route or that an operation
-//! answers with `GET`, or writes a key it does not take.
+//! service whose `openapi` lacks `http_rest`, is written with a value, names a path that is no
+//! route or that an operation answers with `GET`, or writes a key it does not take.
 //! Each case in `foundation_refusals/` is a crate of its own, held to the `.stderr` file beside
 //! it; the initializer written twice, in `foundation_refusals/written_twice/`, is held to the code
 //! and the name of each error, which rustc reports differently from one release to the next.

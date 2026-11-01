@@ -11,3 +11,10 @@ error: service_schema: operation `index` already answers `GET /v1/openapi.json`,
    |
 23 | #[service_schema(transports = ["http_rest"], openapi(path = "/v1/openapi.json"))]
    |                                                             ^^^^^^^^^^^^^^^^^^
+
+error: service_schema: operation `get_document` already answers `GET /openapi.json`, so the OpenAPI document cannot be served there
+              write another `path` in `openapi(...)`
+  --> tests/foundation_refusals/openapi_path_answered_by_an_operation.rs:29:46
+   |
+29 | #[service_schema(transports = ["http_rest"], openapi)]
+   |                                              ^^^^^^^

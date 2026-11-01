@@ -539,7 +539,7 @@ fn openapi_path_refusal(
         .iter()
         .filter(|operation| {
             let shape = parse::HttpShape::of(operation);
-            shape.method == parse::HttpMethod::Get && shape.path_template() == served_at
+            shape.method == parse::HttpMethod::Get && shape.answers_path(&served_at)
         })
         .map(|operation| {
             syn::Error::new(

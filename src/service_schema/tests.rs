@@ -7,8 +7,8 @@
 #![cfg(feature = "serde")]
 
 use super::parse::{
-    BodyKind, HttpMethod, OperationDef, OperationInputs, OperationOutcome, PathSegment, ServiceDef,
-    parse_service,
+    BodyKind, HttpMethod, HttpShape, OperationDef, OperationInputs, OperationOutcome, PathSegment,
+    ServiceDef, parse_service,
 };
 use super::transport::{Transport, parse_arguments};
 use super::{
@@ -209,6 +209,19 @@ const GET_AT_OPENAPI_PATH_SERVICE: &str = r#"
     pub trait CatalogService<Ctx> {
         #[service_schema_op(http(method = "GET", path = "/openapi.json"))]
         async fn describe(&self, ctx: &Ctx) -> Result<CatalogDescription, CatalogError>;
+    }
+"#;
+
+/// A service whose one operation answers `GET` at a placeholder directly under the root, which
+/// covers every one-segment path, `/openapi.json` among them.
+const GET_AT_A_ROOT_PLACEHOLDER_SERVICE: &str = r#"
+    pub trait DocumentService<Ctx> {
+        #[service_schema_op(http(method = "GET", path = "/{document_id}"))]
+        async fn get_document(
+            &self,
+            ctx: &Ctx,
+            document_id: String,
+        ) -> Result<Document, DocumentError>;
     }
 "#;
 
@@ -4136,6 +4149,101 @@ fn the_default_openapi_path_an_operation_answers_with_get_is_refused_on_openapi(
          write another `path` in `openapi(...)`"
     );
     assert_eq!(refused.span().source_text().as_deref(), Some("openapi"));
+}
+
+/// `GET` at `template`, its placeholders drawn from the optional arguments `id` and `name`, either
+/// of which it may leave unbound.
+fn get_at(template: &str) -> HttpShape {
+    let source = format!(
+        r#"pub trait CatalogService<Ctx> {{
+            #[service_schema_op(http(method = "GET", path = "{template}"))]
+            async fn describe(
+                &self,
+                ctx: &Ctx,
+                id: Option<String>,
+                name: Option<String>,
+            ) -> Result<CatalogDescription, CatalogError>;
+        }}"#
+    );
+    HttpShape::of(&service(&source).operations[0])
+}
+
+#[test]
+fn a_template_answers_a_path_its_literals_and_placeholders_cover() {
+    for (template, path) in [
+        ("/{id}", "/openapi.json"),
+        ("/openapi.json", "/openapi.json"),
+        ("/v1/{name}", "/v1/openapi.json"),
+    ] {
+        assert!(
+            get_at(template).answers_path(path),
+            "`{template}` answers `{path}`"
+        );
+    }
+}
+
+#[test]
+fn a_template_does_not_answer_a_path_a_literal_or_an_empty_capture_refuses() {
+    for (template, path) in [
+        ("/documents/{id}", "/openapi.json"),
+        ("/{id}/raw", "/openapi.json"),
+        ("/{id}", "/"),
+    ] {
+        assert!(
+            !get_at(template).answers_path(path),
+            "`{template}` does not answer `{path}`"
+        );
+    }
+}
+
+#[test]
+fn a_get_placeholder_that_covers_the_default_openapi_path_is_refused_on_openapi() {
+    let refused = openapi_path_refused(
+        GET_AT_A_ROOT_PLACEHOLDER_SERVICE,
+        r#"transports = ["http_rest"], openapi"#,
+    )
+    .unwrap();
+    assert_eq!(
+        refused.to_string(),
+        "service_schema: operation `get_document` already answers `GET /openapi.json`, so the \
+         OpenAPI document cannot be served there\n       \
+         write another `path` in `openapi(...)`"
+    );
+    assert_eq!(refused.span().source_text().as_deref(), Some("openapi"));
+}
+
+#[test]
+fn a_get_placeholder_that_covers_a_written_openapi_path_is_refused_on_the_literal() {
+    let source = GET_AT_A_ROOT_PLACEHOLDER_SERVICE.replace("/{document_id}", "/v1/{document_id}");
+    let refused = openapi_path_refused(
+        &source,
+        r#"transports = ["http_rest"], openapi(path = "/v1/openapi.json")"#,
+    )
+    .unwrap();
+    assert_eq!(
+        refused.to_string(),
+        "service_schema: operation `get_document` already answers `GET /v1/openapi.json`, so the \
+         OpenAPI document cannot be served there\n       \
+         write another `path` in `openapi(...)`"
+    );
+    assert_eq!(
+        refused.span().source_text().as_deref(),
+        Some("\"/v1/openapi.json\"")
+    );
+}
+
+#[test]
+fn a_get_placeholder_under_another_literal_is_accepted() {
+    let source =
+        GET_AT_A_ROOT_PLACEHOLDER_SERVICE.replace("/{document_id}", "/documents/{document_id}");
+    assert!(openapi_path_refused(&source, r#"transports = ["http_rest"], openapi"#).is_none());
+}
+
+#[test]
+fn a_post_at_a_placeholder_that_covers_the_openapi_path_is_accepted() {
+    let source =
+        GET_AT_A_ROOT_PLACEHOLDER_SERVICE.replace(r#"method = "GET""#, r#"method = "POST""#);
+    assert!(openapi_path_refused(&source, r#"transports = ["http_rest"], openapi"#).is_none());
 }
 
 #[test]
