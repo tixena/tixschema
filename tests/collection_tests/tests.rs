@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::hash::DefaultHasher;
+#[cfg(feature = "serde")]
 use std::path::PathBuf;
 use tixschema::model_schema;
 
@@ -151,12 +152,14 @@ struct NestedEnumKeyedMapValues {
 
 /// A `#[serde(transparent)]` brand over a `String`: serde writes it as the bare string its inner
 /// is, which is exactly what a JSON object key is.
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(transparent)]
 struct CorrelationId(String);
 
 /// A brand over such a brand. The wire form is the same bare string at every link of the chain.
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(transparent)]
@@ -164,6 +167,7 @@ struct TraceId(CorrelationId);
 
 // A brand key is the open case wearing a name: serde writes the brand as the bare string its inner
 // is, so the map is an object keyed by arbitrary strings.
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct BrandKeyedMaps {
@@ -173,6 +177,7 @@ struct BrandKeyedMaps {
     samples: HashMap<CorrelationId, MetricSample>,
 }
 
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct StringKeyedBrandTwin {
@@ -184,23 +189,28 @@ struct StringKeyedBrandTwin {
 
 /// An alias of `String`. A type path resolves straight through it, so serde writes a key spelled
 /// this way as the bare string its target is — `{"abc": 1}`, the `String`-keyed map's own wire.
+#[cfg(feature = "serde")]
 #[model_schema()]
 type SlotKey = String;
 
 /// An alias of that alias, and an alias of a string-wire brand: every link of either chain ends at
 /// the same bare string.
+#[cfg(feature = "serde")]
 #[model_schema()]
 type SlotKeyRef = SlotKey;
 
+#[cfg(feature = "serde")]
 #[model_schema()]
 type CorrelationRef = CorrelationId;
 
 /// `PathBuf` writes the bare string a `String` writes, so an alias of one keys a map the same way.
+#[cfg(feature = "serde")]
 #[model_schema()]
 type PathKey = PathBuf;
 
 // An alias key is the open case under the alias's own exported name: the alias resolves to a
 // string, so the object is keyed by arbitrary strings — held below against the `String`-keyed twin.
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct AliasKeyedMaps {
@@ -212,6 +222,7 @@ struct AliasKeyedMaps {
     samples: HashMap<SlotKey, MetricSample>,
 }
 
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct StringKeyedAliasKeyTwin {
@@ -225,17 +236,20 @@ struct StringKeyedAliasKeyTwin {
 
 /// A brand over a stringifying scalar. serde writes the key its inner writes — `{"7": …}` — so the
 /// map serializes and reads back exactly as the bare-keyed one does, and describes as it does too.
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(transparent)]
 struct Tick(u32);
 
 /// A brand over that brand: the wire is the same stringified number at every link of the chain.
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(transparent)]
 struct TickRef(Tick);
 
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(transparent)]
@@ -244,11 +258,13 @@ struct Enabled(bool);
 /// A brand over a plain enum: serde writes the variant name — a bare string — so the brand keys a
 /// map like a string does, open, since the brand publishes no `enum_members()` to close the
 /// object with. `no_display` is the inner's business, not the key's.
+#[cfg(feature = "serde")]
 #[model_schema(no_display)]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(transparent)]
 struct SlotBrand(MetricSlot);
 
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ScalarBrandKeyedMaps {
@@ -259,6 +275,7 @@ struct ScalarBrandKeyedMaps {
     samples: HashMap<Tick, MetricSample>,
 }
 
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ScalarKeyedBrandTwin {
@@ -269,6 +286,7 @@ struct ScalarKeyedBrandTwin {
     samples: HashMap<u32, MetricSample>,
 }
 
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct EnumBrandKeyedMaps {
@@ -276,6 +294,7 @@ struct EnumBrandKeyedMaps {
     samples: HashMap<SlotBrand, MetricSample>,
 }
 
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct StringKeyedEnumBrandTwin {
@@ -285,18 +304,22 @@ struct StringKeyedEnumBrandTwin {
 
 /// A brand over the brand over a plain enum: every link publishes the enum's own schema with one
 /// more `.brand()` written onto it, so every link enumerates.
+#[cfg(feature = "serde")]
 #[model_schema(no_display)]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(transparent)]
 struct SlotBrandRef(SlotBrand);
 
 /// An alias of a plain enum, an alias of that alias, and an alias of the brand over the enum.
+#[cfg(feature = "serde")]
 #[model_schema()]
 type SlotAliasKey = MetricSlot;
 
+#[cfg(feature = "serde")]
 #[model_schema()]
 type SlotAliasKeyRef = SlotAliasKey;
 
+#[cfg(feature = "serde")]
 #[model_schema()]
 type SlotBrandAliasKey = SlotBrand;
 
@@ -304,6 +327,7 @@ type SlotBrandAliasKey = SlotBrand;
 /// positions a map is written in. A `HashMap` holds any subset of those members and serde writes
 /// the subset, so the Zod constructor has to admit one — while the name each key is written under
 /// keeps standing on TypeScript, an enum member name being a property key already.
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct EnumeratedKeyedMaps {
@@ -324,6 +348,7 @@ struct EnumeratedKeyedMaps {
 /// The key of `EnumeratedKeyedMaps::forward`, declared below the map that keys by it: the registry
 /// holds no entry for it while that map expands, so the key's wire form is the one an unregistered
 /// name is guessed at.
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum LaterSlot {
@@ -333,13 +358,13 @@ enum LaterSlot {
 
 /// A brand over a chrono value: serde renders the inner into the key — `{"2020-01-02": …}` — the
 /// way it does for the bare chrono key.
-#[cfg(feature = "chrono")]
+#[cfg(all(feature = "chrono", feature = "serde"))]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(transparent)]
 struct Day(NaiveDate);
 
-#[cfg(feature = "chrono")]
+#[cfg(all(feature = "chrono", feature = "serde"))]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ChronoBrandKeyedMaps {
@@ -355,22 +380,27 @@ struct ChronoKeyedBrandTwin {
 
 /// An alias of a stringifying scalar. A type path resolves straight through it, so serde writes a
 /// key spelled this way as the number its target is — `{"7": …}`, the bare-keyed map's own wire.
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 type TickKey = u32;
 
 /// An alias of that alias, and an alias of a stringifying brand: every link of either chain carries
 /// the same stringified number.
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 type TickKeyRef = TickKey;
 
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 type TickBrandKey = Tick;
 
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 type EnabledKey = bool;
 
 // An alias of a stringifying scalar keys the open object its bare target keys, under the alias's
 // own exported name.
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ScalarAliasKeyedMaps {
@@ -382,6 +412,7 @@ struct ScalarAliasKeyedMaps {
     samples: HashMap<TickKey, MetricSample>,
 }
 
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ScalarKeyedAliasTwin {
@@ -414,14 +445,17 @@ struct ChronoKeyedAliasTwin {
 }
 
 /// A brand over that brand: every link of the chain carries the same `"true"`/`"false"` wire.
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(transparent)]
 struct EnabledRef(Enabled);
 
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 type EnabledKeyRef = EnabledKey;
 
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 type EnabledBrandKey = Enabled;
 
@@ -429,6 +463,7 @@ type EnabledBrandKey = Enabled;
 /// each of these keys as `"true"` or `"false"`, and that is what the two nominal surfaces have to
 /// state: `boolean` is no TypeScript property key, and the brand and alias names over it publish
 /// only the value-shaped schema that rejects the string serde wrote.
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct BoolKeyedMaps {
@@ -446,13 +481,13 @@ struct BoolKeyedMaps {
 }
 
 /// A brand over a `DateTime<Tz>`.
-#[cfg(feature = "chrono")]
+#[cfg(all(feature = "chrono", feature = "serde"))]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(transparent)]
 struct Stamp(DateTime<Utc>);
 
-#[cfg(feature = "chrono")]
+#[cfg(all(feature = "chrono", feature = "serde"))]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(transparent)]
@@ -466,7 +501,7 @@ type StampKey = DateTime<Utc>;
 #[model_schema(enable = ["jsonschema"])]
 type StampKeyRef = StampKey;
 
-#[cfg(feature = "chrono")]
+#[cfg(all(feature = "chrono", feature = "serde"))]
 #[model_schema(enable = ["jsonschema"])]
 type StampBrandKey = Stamp;
 
@@ -488,7 +523,7 @@ struct PropertyKeyedMaps {
 /// The `DateTime<Tz>` counterpart of [`BoolKeyedMaps`]. serde writes the key as the RFC 3339 string
 /// it renders the value into; `Date` is no TypeScript property key, and the value-shaped
 /// `z.coerce.date()` rewrites every key it accepts into a locale-dependent rendering.
-#[cfg(feature = "chrono")]
+#[cfg(all(feature = "chrono", feature = "serde"))]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct DateTimeKeyedMaps {
@@ -1016,6 +1051,7 @@ fn assert_hashmap_array_type(
 
 /// The JSON Schema `type` a value carries on the wire, so an emitted schema can be held against
 /// what serde actually produces for it.
+#[cfg(feature = "serde")]
 const fn json_type_name(value: &serde_json::Value) -> &'static str {
     match *value {
         serde_json::Value::Null => "null",
@@ -1786,6 +1822,7 @@ fn test_string_keyed_sibling_value_maps_typescript_generation() {
     );
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_brand_keyed_maps_constructible() {
     let key = CorrelationId("abc".to_owned());
@@ -1852,6 +1889,7 @@ fn test_brand_keyed_maps_name_the_brand_as_the_key_type() {
     }
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_brand_keyed_maps_match_the_serialized_form() {
     let key = CorrelationId("abc".to_owned());
@@ -1889,6 +1927,7 @@ fn test_brand_keyed_maps_match_the_serialized_form() {
     assert_eq!(read_back, maps);
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_alias_keyed_maps_constructible() {
     let key: SlotKey = "abc".to_owned();
@@ -1962,6 +2001,7 @@ fn test_alias_keyed_maps_name_the_alias_as_the_key_type() {
     }
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_alias_keyed_maps_match_the_serialized_form() {
     let key: SlotKey = "abc".to_owned();
@@ -2003,6 +2043,7 @@ fn test_alias_keyed_maps_match_the_serialized_form() {
     assert_eq!(read_back, maps);
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_scalar_brand_keyed_maps_constructible() {
     let maps = ScalarBrandKeyedMaps {
@@ -2043,7 +2084,7 @@ fn test_scalar_brand_keyed_maps_constructible() {
     );
 }
 
-#[cfg(feature = "chrono")]
+#[cfg(all(feature = "chrono", feature = "serde"))]
 #[test]
 fn test_chrono_brand_keyed_maps_constructible() {
     let day = NaiveDate::from_ymd_opt(2020, 1, 2).unwrap();
@@ -2124,6 +2165,7 @@ fn test_scalar_brand_keyed_maps_name_the_brand_as_the_key_type() {
     }
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_scalar_brand_keyed_maps_match_the_serialized_form() {
     let maps = ScalarBrandKeyedMaps {
@@ -2185,6 +2227,7 @@ fn test_enum_brand_keyed_maps_name_the_brand_as_the_key_type() {
     );
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_enum_brand_keyed_maps_match_the_serialized_form() {
     let maps = EnumBrandKeyedMaps {
@@ -2233,6 +2276,7 @@ fn test_chrono_brand_keyed_maps_describe_as_their_bare_inner_twin() {
     feature = "typescript",
     feature = "zod"
 ))]
+#[cfg(feature = "serde")]
 fn test_chrono_brand_keyed_maps_name_the_brand_as_the_key_type() {
     let ts_definition = ChronoBrandKeyedMaps::ts_definition();
     assert!(
@@ -2246,6 +2290,7 @@ fn test_chrono_brand_keyed_maps_name_the_brand_as_the_key_type() {
     );
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_scalar_alias_keyed_maps_constructible() {
     let tick: TickKey = 7;
@@ -2324,6 +2369,7 @@ fn test_scalar_alias_keyed_maps_name_the_alias_as_the_key_type() {
     }
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_scalar_alias_keyed_maps_match_the_serialized_form() {
     let tick: TickKey = 7;
@@ -2423,6 +2469,7 @@ fn test_chrono_alias_keyed_maps_name_the_alias_as_the_key_type() {
 }
 
 /// The value every `bool`-keyed assertion below is read off, and the object serde writes for it.
+#[cfg(feature = "serde")]
 fn bool_keyed_maps() -> BoolKeyedMaps {
     BoolKeyedMaps {
         alias_of_brand: HashMap::from([(Enabled(true), 1)]),
@@ -2443,6 +2490,7 @@ fn bool_keyed_maps() -> BoolKeyedMaps {
     }
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_bool_keyed_maps_write_the_two_string_keys() {
     let maps = bool_keyed_maps();
@@ -2586,6 +2634,7 @@ fn test_bool_keyed_maps_describe_their_values_under_the_two_keys() {
 /// The value every enumerated-key assertion below is read off: one member of two in every map, and
 /// the other member in the maps whose value is a sibling, so no assertion can pass by holding the
 /// whole enumeration.
+#[cfg(feature = "serde")]
 fn enumerated_keyed_maps() -> EnumeratedKeyedMaps {
     EnumeratedKeyedMaps {
         alias_of_brand: HashMap::from([(SlotBrand(MetricSlot::Daily), 1)]),
@@ -2607,6 +2656,7 @@ fn enumerated_keyed_maps() -> EnumeratedKeyedMaps {
     }
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_enumerated_keyed_maps_write_only_the_members_they_hold() {
     let maps = enumerated_keyed_maps();
@@ -2753,7 +2803,7 @@ fn test_enumerated_keyed_maps_keep_the_document_that_admits_a_subset() {
 }
 
 /// The value every `DateTime<Tz>`-keyed assertion below is read off.
-#[cfg(feature = "chrono")]
+#[cfg(all(feature = "chrono", feature = "serde"))]
 fn date_time_keyed_maps() -> DateTimeKeyedMaps {
     let stamp = DateTime::<Utc>::from_timestamp(1_700_000_000, 0).unwrap();
     DateTimeKeyedMaps {
@@ -2776,7 +2826,7 @@ fn date_time_keyed_maps() -> DateTimeKeyedMaps {
 }
 
 #[test]
-#[cfg(feature = "chrono")]
+#[cfg(all(feature = "chrono", feature = "serde"))]
 fn test_date_time_keyed_maps_write_the_rfc_3339_key() {
     let maps = date_time_keyed_maps();
     let payload = serde_json::to_value(&maps).unwrap();

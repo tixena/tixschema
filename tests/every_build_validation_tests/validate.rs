@@ -1,17 +1,12 @@
 //! `validate()` of each shape, which every build writes whatever its features. Without `serde` no
-//! `#[serde(...)]` attribute is read, so a field is named as Rust spells it and every enum is
-//! externally tagged.
+//! `#[serde(...)]` attribute is read, so a field is named as Rust spells it, every enum is
+//! externally tagged and no struct is a brand.
 
 use crate::models::{
-    AdjacentContact, Contact, Pair, Profile, Roster, Signup, TaggedContact, UntaggedContact,
-    Username,
+    AdjacentContact, Contact, Pair, Roster, Signup, TaggedContact, UntaggedContact,
 };
-
-/// The key `validate()` names `Profile::display_login` by.
 #[cfg(feature = "serde")]
-const DISPLAY_LOGIN: &str = "displayLogin";
-#[cfg(not(feature = "serde"))]
-const DISPLAY_LOGIN: &str = "display_login";
+use crate::models::{Profile, Username};
 
 /// The path `validate()` names `address` by in `Contact`, `TaggedContact`, `AdjacentContact` and
 /// `UntaggedContact`.
@@ -47,6 +42,7 @@ fn a_tuple_struct_reports_each_broken_slot() {
     assert_eq!(Pair("a".to_owned(), 1).validate(), Ok(()));
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn a_brand_reports_its_broken_rule() {
     assert_eq!(
@@ -56,6 +52,7 @@ fn a_brand_reports_its_broken_rule() {
     assert_eq!(Username("abc".to_owned()).validate(), Ok(()));
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn a_field_typed_with_an_alias_of_a_brand_reports_the_brands_rule() {
     let broken = Profile {
@@ -63,9 +60,7 @@ fn a_field_typed_with_an_alias_of_a_brand_reports_the_brands_rule() {
     };
     assert_eq!(
         broken.validate().unwrap_err(),
-        [format!(
-            "'{DISPLAY_LOGIN}': too short: minimum length is 3, got 2"
-        )]
+        ["'displayLogin': too short: minimum length is 3, got 2"]
     );
     let kept = Profile {
         display_login: Username("abc".to_owned()),

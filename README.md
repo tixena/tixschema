@@ -183,7 +183,7 @@ The Dart, Swift and Kotlin clients declare, read and write the variant as those 
 
 A whole variant reads as a member does. One under `#[serde(skip)]`, or under `skip_serializing` and `skip_deserializing` together, is written into no payload and read out of none, so no surface describes it and no client reads or writes it; one under either half alone stays, described as every variant is. [A Variant Serde Neither Writes Nor Reads](#a-variant-serde-neither-writes-nor-reads) has the rest.
 
-Which key a field writes is read off the attribute in every build, `serde` feature or not — one declaration describes one wire under every toggle. What the feature buys is the renaming, the tagging and the guards.
+Which key a field writes is read off the attribute with the `serde` feature on, as the renaming, the tagging and the guards are. With it off, tixschema reads no `#[serde(...)]` attribute: a member or a variant under `skip`, `skip_serializing`, `skip_serializing_if`, `skip_deserializing` or `default` is described as if the attribute were not written.
 
 ```rust
 #[model_schema()]
@@ -2107,6 +2107,12 @@ The value's type is whatever the instantiation supplies, so nothing here holds i
 ### Branded Newtypes
 
 `#[serde(transparent)]` tuple structs with a single public field generate branded TypeScript types. The newtype is invisible in JSON serialization but carries a distinct type identity in TypeScript, preventing accidental mixing of different ID types.
+
+A brand exists with tixschema's `serde` feature, and its rules then hold whatever the other features. Without the feature no `#[serde(...)]` attribute is read, so a `#[serde(transparent)]` struct is a struct like any other, and a `pattern`, `minLength` or `maxLength` written on it is refused, naming the feature:
+
+```text
+error: model_schema: type `Username`: `minLength` is supported only on a branded newtype: a `#[serde(transparent)]` struct serde writes as the value of one field. A branded newtype is read with tixschema's `serde` feature, which this build has off. On a field, write it in `#[model_schema_prop(...)]`.
+```
 
 A `#[serde(transparent)]` struct with named fields is the same brand, over the one field serde reads it as -- the one that is not skipped for reading, carries no `default` and is not written `PhantomData`. serde writes `struct Slug { text: String }` as the string alone, exactly as it writes `struct Slug(String)`, so the two publish the same thing on every surface, and everything this section says of the slot holds for that field: the `Display` requirement and `no_display`, the checks written on the type, and no `#[model_schema_prop(...)]` on the field itself. A key on any other field of the struct, one serde neither reads nor writes (a skipped field, a `PhantomData` marker), is refused too.
 
@@ -5502,7 +5508,7 @@ Terminal with no spareParcel key, all good: read
 - **`validate()` is for a value built in code**, before it is sent, and for a value changed after it was read: [`fromJson` judges what it reads](#the-dart-read-refuses-what-validate-refuses). It calls no [`preprocess`](#a-preprocess-in-the-dart-client): a read does, ahead of it.
 - **A class of your own that a model holds** declares `List<String> validate()` and the constructor `fromJsonUnjudged` as the emitted ones do: a holder reads it and calls it with no knowledge of what the held type declares, whether that type is declared above the holder or below it. [`ObjectId`](#mongodb-objectid-support) is the one exception, read through its `fromJson` and asked nothing.
 - **A field named `validate`** is the member `validate_`, and keeps its key, as [a reserved word does](#a-member-named-after-a-word-the-client-language-reserves).
-- **Every build writes the same Dart.** The Dart `validate()` holds each bound and calls each check whatever the other features, a brand's own `minLength`, `maxLength` and `pattern` included.
+- **The Dart `validate()` holds each bound and calls each check whatever the other features**, and a brand's own `minLength`, `maxLength` and `pattern` in every build with `serde`, the feature a brand needs.
 
 ### `validate()` in the Kotlin client
 
@@ -6638,7 +6644,7 @@ public init(swiftSchemaUnjudged decoder: Decoder) throws {
 
 The bare `ts_optional` flag asks for the optional key (`field?: T` rather than `field: T | undefined`) on the author's word. It is the only thing that writes that spelling.
 
-**Two positions have no key for it to make optional, and writing it on either is a compile error, in every build.** A positional slot writes no key at all, so the flag names a spelling the tuple line has no room for. A member a serde attribute takes off the wire in *both* directions (`skip`, or `skip_serializing` and `skip_deserializing` together) is described on no surface, so there is no line for the flag to write its key on. An attribute that drops the key one way only (`skip_serializing_if`, `skip_serializing`) leaves the member standing and the flag decides its spelling as usual.
+**Two positions have no key for it to make optional, and writing it on either is a compile error.** A positional slot writes no key at all, in every build, so the flag names a spelling the tuple line has no room for. With the `serde` feature on, a member a serde attribute takes off the wire in *both* directions (`skip`, or `skip_serializing` and `skip_deserializing` together) is described on no surface, so there is no line for the flag to write its key on. An attribute that drops the key one way only (`skip_serializing_if`, `skip_serializing`) leaves the member standing and the flag decides its spelling as usual.
 
 With the `serde` feature on, an `Option<T>` field must carry a key-dropping attribute anyway: its declared shape is `T | undefined`, so its key has to be dropped for a `None`, not written as `null` the way serde writes it absent an attribute saying otherwise — the guard refuses the declaration and names the attribute to add (or, if the wire really does carry `null` here, points at [`nullable`](#nullable-object-keys-nullable) instead). The example below is a build with the feature **off**, where no attribute is read, no such guard runs, and TypeScript writes each member in camelCase:
 

@@ -39,7 +39,7 @@ use crate::features::serde::has_serde_read_hook;
 use crate::features::serde::parse_serde_key_omission;
 use crate::features::serde::read_bounds::{ReadBounds, read_bounds, written_lifetimes};
 use crate::features::serde::{
-    derives_deserialize, derives_serialize, has_serde_default, read_hook, serde_conversion,
+    derive_reads_a_default, derives_deserialize, derives_serialize, read_hook, serde_conversion,
 };
 use crate::field_type::is_ownership_wrapper;
 #[cfg(feature = "serde")]
@@ -1278,8 +1278,8 @@ pub(super) fn hook_member(field: &Field, shape: &super::HeldShape, place: &HookP
     // serde reads the absent key of an alias of an `Option` as `None`, where no hook is hung.
     let defaulted = place.written_under_a_key
         && !place.container_defaulted
-        && (needs_injected_default(&shape.wraps, has_serde_default(&field.attrs))
-            || (!has_serde_default(&field.attrs)
+        && (needs_injected_default(&shape.wraps, derive_reads_a_default(&field.attrs))
+            || (!derive_reads_a_default(&field.attrs)
                 && get_field_def("_held", &field.ty, "").stands_for_an_option()));
     MEMBER_HOOKS.with(|held| {
         held.borrow_mut().push(MemberHook {
@@ -1805,7 +1805,7 @@ fn hooked(
     corrects: &Corrects,
 ) -> Hooked {
     let mut hooked = unjudged_hooks(input, bounds, unjudged, reader, written, corrects);
-    let container_defaulted = has_serde_default(&input.attrs);
+    let container_defaulted = derive_reads_a_default(&input.attrs);
     for (variant, index, field) in members_of(input) {
         let functions = corrects.named.of_member(variant.as_deref(), index);
         let taken = hooked
@@ -1828,7 +1828,7 @@ fn hooked(
         // A hook the copy keeps brings the `default` it was hung with.
         let defaulted = !chained
             && !container_defaulted
-            && !has_serde_default(&field.attrs)
+            && !derive_reads_a_default(&field.attrs)
             && reads_a_missing_key(field);
         hooked.functions.extend(corrected_hook(
             field, &named, functions, reader, written, corrects,

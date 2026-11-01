@@ -7,16 +7,15 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 #[cfg(feature = "serde")]
-use super::read::{DECODED, judged};
-use super::read::{judged_over, kept, kept_inline, serializers};
+use super::read::{DECODED, judged, kept_inline};
+use super::read::{judged_over, kept, serializers};
 #[cfg(feature = "serde")]
 use super::tests::{
-    audit_kotlin, date_value_kotlin, dynamic_value_kotlin, external_tagged_kotlin,
-    simple_choice_kotlin, status_kotlin, window_error_kotlin,
+    audit_kotlin, correlation_id_kotlin, date_value_kotlin, dynamic_value_kotlin,
+    external_tagged_kotlin, simple_choice_kotlin, status_kotlin, window_error_kotlin,
 };
 use super::tests::{
-    correlation_id_kotlin, generic_pair_kotlin, holds_tuple_kotlin, ping_kotlin, widget_kotlin,
-    wrapper_kotlin,
+    generic_pair_kotlin, holds_tuple_kotlin, ping_kotlin, widget_kotlin, wrapper_kotlin,
 };
 
 /// What a type with no rule answers.
@@ -27,9 +26,11 @@ const NO_RULE: &str = "fun validate(): List<String> = emptyList()";
 const FALLBACK: &str = "private fun Any?.validate(): List<String> = emptyList()";
 
 /// What a string answers where a declared type is asked for its text.
+#[cfg(feature = "serde")]
 const TEXT: &str = "private fun String.kotlinSchemaText(): String = this";
 
 /// What a string and a collection answer where a declared type is asked for its length.
+#[cfg(feature = "serde")]
 const LENGTH: &str = "private fun String.kotlinSchemaLength(): Int = codePointCount(0, length); \
                       private fun Collection<*>.kotlinSchemaLength(): Int = size";
 
@@ -72,21 +73,25 @@ pub struct Later {
 }
 
 /// A brand over a string, which answers its text.
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct Slug(pub String);
 
 /// A brand over a brand: it answers through the brand it holds.
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct Badge(pub Slug);
 
+#[cfg(feature = "serde")]
 #[model_schema()]
 pub type Title = String;
 
 /// A bound on a brand declared below, on one declared above and on an alias of a string.
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Entry {
@@ -98,6 +103,7 @@ pub struct Entry {
     pub titled: Title,
 }
 
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
@@ -156,6 +162,7 @@ fn parcel() -> Parcel {
 
 /// The statement that holds the text the declared type `read` answers to `least` characters,
 /// under `place`.
+#[cfg(feature = "serde")]
 fn asked_statement(read: &str, place: &str, least: u32) -> String {
     let counted = format!("{read}.kotlinSchemaLength()");
     format!(
@@ -166,6 +173,7 @@ fn asked_statement(read: &str, place: &str, least: u32) -> String {
 
 /// What a member typed with a declared type adds after its own bound: the type's `validate()`,
 /// each message under the member's key.
+#[cfg(feature = "serde")]
 fn held_statement(read: &str) -> String {
     format!("violations.addAll({read}.validate().map {{ kotlinSchemaUnder(\"{read}\", it) }})")
 }
@@ -211,7 +219,9 @@ fn every_fixture_is_written_as_serde_writes_it() {
         serde_json::to_value([Haul::Held, Haul::Split("a".to_owned(), held)]).unwrap()[0],
         serde_json::json!({ "kind": "Held" })
     );
+    #[cfg(feature = "serde")]
     let titled: Title = "t".to_owned();
+    #[cfg(feature = "serde")]
     assert_eq!(
         serde_json::to_value((
             Badge(Slug("b".to_owned())),
@@ -251,6 +261,7 @@ fn rust_holds_each_fixture_to_every_rule_the_kotlin_validate_holds() {
         Manifest { parcel: parcel() }.validate().unwrap_err(),
         under("parcel")
     );
+    #[cfg(feature = "serde")]
     assert_eq!(
         Entry {
             late: LateSlug("l".to_owned()),
@@ -340,6 +351,7 @@ fn a_holder_of_a_type_declared_below_writes_what_a_type_with_no_validate_answers
 
 /// A brand over a string answers its text with a member, and a brand over a brand through the
 /// brand it holds.
+#[cfg(feature = "serde")]
 #[test]
 fn a_brand_answers_its_text() {
     assert_eq!(
@@ -366,6 +378,7 @@ fn a_brand_answers_its_text() {
 
 /// A holder asks a declared type for its text and answers for a string itself, so a brand
 /// declared above, one declared below and an alias of a string are each measured.
+#[cfg(feature = "serde")]
 #[test]
 fn a_bound_on_a_declared_type_measures_the_text_the_type_answers() {
     assert_eq!(
@@ -420,6 +433,7 @@ fn every_shape_carries_validate() {
                 serializers("Ping")
             ),
         ),
+        #[cfg(feature = "serde")]
         (
             super::tests::renumbered(&correlation_id_kotlin::kotlin_definition()),
             format!(

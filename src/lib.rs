@@ -929,10 +929,10 @@ use service_schema::exec_service_schema;
 ///   `enable = ["jsonschema"]` each type parameter needs an entry. An entry that names no
 ///   parameter, and the argument on a type with no type parameter, are refused in every build.
 /// - `pattern = "regex"`, `minLength = N`, `maxLength = N`: rules on text, written on the type.
-///   On a branded newtype they hold its value. On
-///   an enum they hold each string field and the name of each variant that carries no data, and a
-///   variant name that breaks them is refused at expansion. They are refused on any other struct
-///   and on an alias.
+///   On a branded newtype, which needs the `serde` feature, they hold its value whatever the other
+///   features. On an enum they hold each string field and the name of each variant that carries no
+///   data, and a variant name that breaks them is refused at expansion. They are refused on any
+///   other struct and on an alias.
 /// - `no_display`, or `no_display = true` or `no_display = false`: drops the `Display` impl a
 ///   branded newtype gets, for a brand whose inner type has no `Display`.
 /// - `check = ["withinBudget"]`: functions of yours that judge the whole value, each named once.
@@ -1237,10 +1237,11 @@ export const Event$Schema: ZodType<Event> = Event$RawSchema.meta({
 /// - **A generic type**: TypeScript keeps the parameters (`export type Page<T>`). Zod publishes a
 ///   memoized factory, `Page$SchemaFactory(itemSchema)`, and `Page$SchemaDefault` at the declared
 ///   filling. JSON Schema is built at `default_types`.
-/// - **A branded newtype**, a `#[serde(transparent)]` struct of one field: TypeScript
-///   `string & $brand<"UserId">` and Zod `.brand<"UserId">()`, so two ids over one inner type
-///   cannot be swapped. Its inner type implements `Display`, or the brand writes `no_display`; a
-///   brand over a parameter asks it of the declared default alone, and of a path default not at all.
+/// - **A branded newtype**, a `#[serde(transparent)]` struct of one field, with the `serde`
+///   feature: TypeScript `string & $brand<"UserId">` and Zod `.brand<"UserId">()`, so two ids over
+///   one inner type cannot be swapped. Without the feature no struct is a brand. Its inner type
+///   implements `Display`, or the brand writes `no_display`; a brand over a parameter asks it of
+///   the declared default alone, and of a path default not at all.
 ///
 /// ## Numbers, options, dates and maps
 ///
@@ -1445,7 +1446,8 @@ export const Document$Schema: ZodType<Document> = Document$RawSchema.meta({
 /// - **A type parameter with no `default_types` entry**, on a type that lists
 ///   `enable = ["jsonschema"]`: refused at the parameter.
 /// - **`pattern`, `minLength` or `maxLength` on a struct that is no brand**: refused; write them on
-///   the field with `#[model_schema_prop(...)]`.
+///   the field with `#[model_schema_prop(...)]`. Without the `serde` feature a
+///   `#[serde(transparent)]` struct is no brand, and the refusal names the feature.
 ///
 /// The README holds the full rules:
 /// [Published Names](https://github.com/tixena/tixschema/blob/master/README.md#published-names-name),
@@ -1734,7 +1736,7 @@ pub fn mongodb_foundation(input: TokenStream) -> TokenStream {
 ///   `field: T | undefined`. Zod and JSON Schema are unchanged, and under `serde` the field still
 ///   carries `skip_serializing_if` or `skip_serializing`. On a field serde takes off the wire in
 ///   both directions, with `skip` or with `skip_serializing` and `skip_deserializing` together,
-///   `ts_optional` is refused in every build: no key is written for it to make optional.
+///   `ts_optional` is refused under `serde`: no key is written for it to make optional.
 /// - `nullable`: on an `Option<T>` field, `T | null` with the key always written, on TypeScript,
 ///   Zod and JSON Schema. Under `serde` the field carries no key-dropping attribute, and
 ///   `ts_optional` beside it is refused.

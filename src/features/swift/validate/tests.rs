@@ -55,6 +55,7 @@ fn a_property_named_after_a_local_of_the_method_is_read_through_self() {
 
 /// A brand over a string answers its text with a member, and a brand over a brand through the
 /// brand it holds. A brand over a number has none.
+#[cfg(feature = "serde")]
 #[test]
 fn a_brand_over_a_string_carries_the_member_that_answers_its_text() {
     let code: Item = syn::parse_quote! {

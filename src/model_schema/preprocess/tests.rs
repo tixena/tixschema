@@ -331,6 +331,7 @@ fn a_preprocess_on_a_type_alias_is_refused() {
 
 /// A brand publishes its inner's own schema, so every key written on its slot is refused: a
 /// brand's `preprocess` is written on the type.
+#[cfg(feature = "serde")]
 #[test]
 fn a_preprocess_on_the_slot_of_a_brand_is_refused() {
     let (said, located) = the_refusal(

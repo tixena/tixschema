@@ -308,7 +308,13 @@ export const User$Schema = z.strictObject({
 
 ### 6. Serde Attribute Support
 
-The macro respects Serde attributes when the `serde` feature is enabled:
+The macro respects Serde attributes when the `serde` feature is enabled. Without it no
+`#[serde(...)]` attribute is read, on any surface: every walk of `src/features/serde.rs` the
+surfaces ask iterates `serde_attributes`, which yields none, so a member is named as Rust spells it,
+every key and every variant is on the wire, every enum is externally tagged and no struct is a
+brand. The read the macro writes beside serde's derive reads through `derived_serde_attributes`
+instead (`read_hook`, `serde_conversion`, `derived_key_omission`, `read_bounds`), as that derive
+reads every attribute whatever tixschema's features:
 
 ```rust
 #[model_schema()]
@@ -346,8 +352,11 @@ member taken off the wire in both directions is (`push_described_field`). A vari
 the two alone is described as every variant is. `README.md`'s "A Variant Serde Neither Writes Nor
 Reads" section is the consumer's view; this is what a change has to keep.
 
-- **One question, in every build.** `variant_on_the_wire` in `src/features/serde.rs` reads it, as
-  `parse_serde_key_omission` reads a member's.
+- **One question, read with the `serde` feature alone.** `variant_on_the_wire` in
+  `src/features/serde.rs` reads it through `parse_serde_key_omission`, which reads a member's.
+  Both are compiled in every build, and without the feature neither reads an attribute: a member
+  or a variant under `skip`, `skip_serializing`, `skip_serializing_if`, `skip_deserializing` or
+  `default` is described as if the attribute were not written.
 - **The processors walk such a variant and describe nothing of it.** Each still walks its members
   for `validate()` and takes their keys off, and leaves the variant out of what it describes:
   `collect_plain_enum_options`, which `enum_members()` is written from,
@@ -375,9 +384,9 @@ Reads" section is the consumer's view; this is what a change has to keep.
   skipped is described as the externally tagged union of its unit variants.
 - **The clients write from `variants_on_the_wire`**, the item without such a variant, which
   `enum_dart_tokens`, `enum_swift_tokens` and `enum_kotlin_tokens` hand every writer they call.
-- **An enum that declares variants and none on the wire is refused** at `exec_model_schema`, in
-  every build, by `no_variant_on_the_wire_errors`, and so is an enum that declares no variant,
-  under a tag or not, in words of its own (`tests/foundation_refusals/no_variant.rs` and
+- **An enum that declares variants and none on the wire is refused** at `exec_model_schema`, with
+  the `serde` feature, by `no_variant_on_the_wire_errors`, and an enum that declares no variant is
+  refused in every build, under a tag or not, in words of its own (`tests/foundation_refusals/no_variant.rs` and
   `no_variant_tagged.rs`).
 - **The tests.** `tests/skipped_variant_tests/models.rs` holds the models under every tagging and
   `ROWS`, what serde and Zod take of each payload; `tests/skipped_variant_tests/surfaces.rs` pins

@@ -1,7 +1,7 @@
 //! The wire is the arbiter. serde writes two payloads for a field carrying a
 //! `skip_serializing_if` — one with the key, one without — and each surface is held to admitting
 //! exactly those two, asserted first here so the surface expectations below are read off them.
-//! The attribute is on the declaration in every build, so every build owes the same answer.
+//! tixschema reads the attribute with the `serde` feature alone.
 
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
@@ -185,7 +185,7 @@ fn the_json_schema_describes_the_predicate_omitted_key_without_requiring_it() {
 }
 
 #[test]
-#[cfg(feature = "dart")]
+#[cfg(all(feature = "dart", feature = "serde"))]
 fn dart_reads_the_predicate_omitted_key_as_its_default() {
     let dart = predicate_omitted_key_dart::dart_definition();
 
@@ -198,7 +198,7 @@ fn dart_reads_the_predicate_omitted_key_as_its_default() {
 
 /// The `Option` carrying the same omission was already nullable, and is pinned here as undisturbed.
 #[test]
-#[cfg(feature = "dart")]
+#[cfg(all(feature = "dart", feature = "serde"))]
 fn dart_leaves_the_optional_field_carrying_the_same_omission_alone() {
     let dart = omitted_key_fields_dart::dart_definition();
 

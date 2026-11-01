@@ -1,7 +1,17 @@
-//! The omission walk is compiled in every build, so its tests are too — nothing here may reach
-//! anything the `serde` feature gates.
+//! The walks compiled in every build, tested in every build — nothing here may reach anything the
+//! `serde` feature gates. Each asserts its own build's answer: a walk the surfaces ask reads an
+//! attribute with the `serde` feature and none without it, and one the read beside serde's derive
+//! asks reads it in every build.
 
-use super::{SerdeKeyOmission, carries_untagged, has_serde_default, parse_serde_key_omission};
+use super::{
+    SerdeKeyOmission, brand_slot, carries_untagged, derive_reads_a_default, derived_key_omission,
+    derived_serde_attributes, has_serde_default, has_serde_skip_serializing, has_serde_transparent,
+    parse_serde_key_omission, read_hook, serde_attributes, serde_conversion, tag_written_alone,
+    variant_members_read, variant_on_the_wire, written_and_read_by_the_author,
+};
+
+/// Whether this build reads a `#[serde(...)]` attribute for the surfaces.
+const READ: bool = cfg!(feature = "serde");
 
 fn field_attrs(item: &syn::ItemStruct) -> &[syn::Attribute] {
     &item.fields.iter().next().unwrap().attrs
@@ -31,11 +41,11 @@ fn test_key_omission_set_by_serialization_skips() {
             note: Option<String>,
         }
     };
-    assert!(omission(&skip).omits_key);
-    assert!(omission(&skip).skips_deserializing);
-    assert!(omission(&skip_serializing).omits_key);
+    assert_eq!(omission(&skip).omits_key, READ);
+    assert_eq!(omission(&skip).skips_deserializing, READ);
+    assert_eq!(omission(&skip_serializing).omits_key, READ);
     assert!(!omission(&skip_serializing).skips_deserializing);
-    assert!(omission(&skip_serializing_if).omits_key);
+    assert_eq!(omission(&skip_serializing_if).omits_key, READ);
     assert!(!omission(&skip_serializing_if).skips_deserializing);
 }
 
@@ -68,8 +78,8 @@ fn test_has_serde_default_reads_either_spelling() {
             note: Option<String>,
         }
     };
-    assert!(has_serde_default(field_attrs(&bare)));
-    assert!(has_serde_default(field_attrs(&named)));
+    assert_eq!(has_serde_default(field_attrs(&bare)), READ);
+    assert_eq!(has_serde_default(field_attrs(&named)), READ);
     assert!(!has_serde_default(field_attrs(&neither)));
 }
 
@@ -82,7 +92,7 @@ fn test_key_omission_not_set_by_skip_deserializing() {
         }
     };
     assert!(!omission(&item).omits_key);
-    assert!(omission(&item).skips_deserializing);
+    assert_eq!(omission(&item).skips_deserializing, READ);
 }
 
 /// The walk reads every attribute in the list, wherever it sits.
@@ -94,12 +104,14 @@ fn test_omission_keys_after_an_unread_value_are_still_read() {
             note: Option<String>,
         }
     };
-    assert!(
+    assert_eq!(
         omission(&item).omits_key,
+        READ,
         "skip_serializing_if is the attribute read first"
     );
-    assert!(
+    assert_eq!(
         omission(&item).defaulted,
+        READ,
         "default is written after an unread value"
     );
 }
@@ -112,11 +124,62 @@ fn test_skip_after_a_list_form_rename_is_still_read() {
             foo: String,
         }
     };
-    assert!(
+    assert_eq!(
         omission(&item).omits_key,
+        READ,
         "skip is written after a list-form rename(...)"
     );
-    assert!(omission(&item).skips_deserializing);
+    assert_eq!(omission(&item).skips_deserializing, READ);
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn test_skip_takes_a_member_and_a_variant_off_the_wire_with_the_serde_feature() {
+    let item: syn::ItemStruct = syn::parse_quote! {
+        struct S {
+            #[serde(skip)]
+            note: Option<String>,
+        }
+    };
+    let skipped: syn::Variant = syn::parse_quote! {
+        #[serde(skip)]
+        Hidden
+    };
+
+    assert!(omission(&item).absent_from_wire());
+    assert!(!variant_on_the_wire(&skipped));
+    assert!(!variant_members_read(&skipped));
+}
+
+#[cfg(not(feature = "serde"))]
+#[test]
+fn test_no_omission_attribute_is_read_without_the_serde_feature() {
+    let item: syn::ItemStruct = syn::parse_quote! {
+        struct S {
+            #[serde(skip)]
+            #[serde(default, skip_serializing_if = "Option::is_none", skip_deserializing)]
+            note: Option<String>,
+        }
+    };
+    let skipped: [syn::Variant; 2] = [
+        syn::parse_quote! {
+            #[serde(skip)]
+            Hidden
+        },
+        syn::parse_quote! {
+            #[serde(skip_serializing, skip_deserializing)]
+            Hidden
+        },
+    ];
+
+    let read = omission(&item);
+    assert!(!read.omits_key);
+    assert!(!read.skips_deserializing);
+    assert!(!read.defaulted);
+    for variant in &skipped {
+        assert!(variant_on_the_wire(variant), "{}", quote::quote!(#variant));
+        assert!(variant_members_read(variant), "{}", quote::quote!(#variant));
+    }
 }
 
 /// serde reads `untagged` wherever the list writes it, after a key with a value included.
@@ -141,8 +204,9 @@ fn test_untagged_is_read_in_any_place_of_the_list() {
         },
     ];
     for item in &written {
-        assert!(
+        assert_eq!(
             carries_untagged(&item.attrs),
+            READ,
             "untagged is read in any place: {}",
             quote::quote!(#item)
         );
@@ -158,5 +222,112 @@ fn test_a_list_without_the_untagged_key_is_not_untagged() {
     assert!(
         !carries_untagged(&tagged.attrs),
         "a value that reads `untagged` is no key"
+    );
+}
+
+#[test]
+fn test_serde_attributes_yields_the_serde_attributes_with_the_feature_alone() {
+    let item: syn::ItemStruct = syn::parse_quote! {
+        #[derive(Debug)]
+        #[serde(transparent)]
+        #[doc = "A login."]
+        #[serde(crate = "serde")]
+        struct Username(String);
+    };
+    assert_eq!(
+        serde_attributes(&item.attrs).count(),
+        if READ { 2 } else { 0 }
+    );
+    assert_eq!(derived_serde_attributes(&item.attrs).count(), 2);
+}
+
+#[test]
+fn test_written_and_read_by_the_author_is_read_with_the_feature_alone() {
+    let item: syn::ItemStruct = syn::parse_quote! {
+        struct S {
+            #[serde(with = "as_hex")]
+            bytes: Vec<u8>,
+        }
+    };
+    assert_eq!(written_and_read_by_the_author(field_attrs(&item)), READ);
+}
+
+#[test]
+fn test_tag_written_alone_is_read_with_the_feature_alone() {
+    let item: syn::ItemEnum = syn::parse_quote! {
+        #[serde(tag = "kind")]
+        enum E { Named { label: String } }
+    };
+    assert_eq!(
+        tag_written_alone(&item.attrs),
+        READ.then(|| "kind".to_owned())
+    );
+}
+
+#[test]
+fn test_skip_serializing_is_read_with_the_feature_alone() {
+    let written: [syn::ItemStruct; 2] = [
+        syn::parse_quote! {
+            struct S {
+                #[serde(skip)]
+                draft: String,
+            }
+        },
+        syn::parse_quote! {
+            struct S {
+                #[serde(skip_serializing)]
+                draft: String,
+            }
+        },
+    ];
+    for item in &written {
+        assert_eq!(
+            has_serde_skip_serializing(field_attrs(item)),
+            READ,
+            "{}",
+            quote::quote!(#item)
+        );
+    }
+}
+
+/// Without the `serde` feature a `#[serde(transparent)]` struct is no brand.
+#[test]
+fn test_transparent_is_read_with_the_feature_alone() {
+    let item: syn::ItemStruct = syn::parse_quote! {
+        #[serde(transparent)]
+        struct Username(String);
+    };
+    assert_eq!(has_serde_transparent(&item.attrs), READ);
+    assert_eq!(brand_slot(&item).is_some(), READ);
+}
+
+/// The read the macro writes beside serde's derive reads what that derive reads, in every build.
+#[test]
+fn test_the_read_beside_serde_derive_reads_its_attributes_in_every_build() {
+    let hooked: syn::ItemStruct = syn::parse_quote! {
+        struct S {
+            #[serde(default, deserialize_with = "read_note")]
+            note: Option<String>,
+        }
+    };
+    let skipped: syn::ItemStruct = syn::parse_quote! {
+        struct S {
+            #[serde(skip_deserializing)]
+            note: String,
+        }
+    };
+    let converted: syn::ItemStruct = syn::parse_quote! {
+        #[serde(from = "RawNote")]
+        struct S { note: String }
+    };
+    assert_eq!(
+        read_hook(field_attrs(&hooked)).map(|(key, path)| (key, path.value())),
+        Some(("deserialize_with", "read_note".to_owned()))
+    );
+    assert!(derive_reads_a_default(field_attrs(&hooked)));
+    assert!(derived_key_omission(field_attrs(&skipped)).skips_deserializing);
+    assert_eq!(
+        serde_conversion(&converted.attrs).map(|(key, _)| key),
+        Some("from")
     );
 }

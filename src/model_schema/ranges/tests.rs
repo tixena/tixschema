@@ -320,9 +320,13 @@ fn a_range_written_by_its_bare_name_is_checked_wherever_it_is_written() {
             syn::parse_str(&format!("struct Holder {{ span: {field} }}")).unwrap();
         assert_eq!(identity_checks(&item).len(), checks, "for {field}");
     }
-    let skipped: syn::Item =
-        syn::parse_quote! { struct Holder { #[serde(skip)] span: Range<u32>, kept: u32 } };
-    assert!(identity_checks(&skipped).is_empty());
+    #[cfg(feature = "serde")]
+    assert!(
+        identity_checks(&syn::parse_quote! {
+            struct Holder { #[serde(skip)] span: Range<u32>, kept: u32 }
+        })
+        .is_empty()
+    );
     let variant: syn::Item = syn::parse_quote! { enum Choice { Spanned(Range<u32>), Bare } };
     assert_eq!(identity_checks(&variant).len(), 1);
     let alias: syn::Item = syn::parse_quote! { type Spans = Vec<RangeTo<u32>>; };

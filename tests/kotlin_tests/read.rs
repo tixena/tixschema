@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
+#[cfg(feature = "serde")]
 use super::fixed_arrays_models::{
     bitter_kotlin, bunt_kotlin, buntline_kotlin, cringling_kotlin, fishing_kotlin, reefband_kotlin,
     sheaving_kotlin, shroud_kotlin, shrouding_kotlin,
@@ -14,6 +15,7 @@ use super::fixed_arrays_models::{
 
 /// The private functions a serializer holds ahead of its `deserialize` where it reads an element
 /// itself.
+#[cfg(feature = "serde")]
 pub const DECODED: &str = "private fun kotlinSchemaKinded(serializer: DeserializationStrategy<*>, \
      element: JsonElement, at: String): JsonElement { var held = serializer.descriptor; \
      while (held.isInline && held.elementsCount == 1) held = held.getElementDescriptor(0); \
@@ -141,6 +143,7 @@ pub fn kept(named: &str) -> String {
 }
 
 /// The annotations of a brand's value class, which keeps the plugin's serializer.
+#[cfg(feature = "serde")]
 pub fn kept_inline(named: &str) -> String {
     format!(
         "@OptIn(ExperimentalSerializationApi::class) @JvmInline @Serializable(with = \
@@ -268,6 +271,7 @@ fn a_type_with_a_parameter_takes_one_serializer_per_parameter() {
     );
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn a_brand_is_read_by_the_plugins_serializer_and_judged_by_its_own() {
     assert_eq!(
@@ -308,6 +312,7 @@ fn an_enum_reads_what_a_variant_holds_unjudged_and_judges_the_variant() {
 }
 
 /// The class `kotlin` declares that reads a list of `length` items, and refuses one of any other.
+#[cfg(feature = "serde")]
 fn array_class(kotlin: &str, length: usize) -> String {
     let declared = |named: &str| {
         format!(
@@ -339,6 +344,7 @@ fn array_class(kotlin: &str, length: usize) -> String {
 /// the type an alias names and inside a map's value and a type argument, and composed where the
 /// emitter writes the read, beside a flattened member, in a tuple's position and in a variant's
 /// slot. A list of any length is read as it was.
+#[cfg(feature = "serde")]
 #[test]
 fn a_fixed_array_is_read_through_the_class_of_its_length() {
     let bunt = super::tests::renumbered(&bunt_kotlin::kotlin_definition());

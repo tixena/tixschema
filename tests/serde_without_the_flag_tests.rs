@@ -1,12 +1,23 @@
 //! Models that derive serde and carry `#[serde(...)]` attributes, built with the `serde` feature
 //! off.
 //!
-//! Without the feature TypeScript and Zod read no `#[serde(...)]` attribute: each member is its
-//! Rust name in camelCase, no key is optional because of `default` or `skip_serializing_if`, and an
-//! enum is written as it is with no attribute. `validate()` and the JSON Schema document name each
-//! member by its Rust name.
+//! Without the feature no surface reads a `#[serde(...)]` attribute: TypeScript and Zod write each
+//! member as its Rust name in camelCase, no key is optional or left unwritten because of
+//! `default`, `skip_serializing_if` or `skip_serializing`, no variant is left out because of
+//! `skip`, and an enum is written as it is with no attribute, `untagged` or `tag`. The Dart, Swift
+//! and Kotlin clients write every key they read. `validate()` and the JSON Schema document name
+//! each member by its Rust name.
 
-#![cfg(all(not(feature = "serde"), any(feature = "typescript", feature = "zod")))]
+#![cfg(all(
+    not(feature = "serde"),
+    any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
+))]
 
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
@@ -52,6 +63,81 @@ pub enum EventTwin {
     Opened { opened_at: u32 },
 }
 
+/// A visibility whose `Hidden` variant carries `skip`.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+pub enum Visibility {
+    Shown,
+    #[serde(skip)]
+    Hidden,
+}
+
+/// A status carrying `rename_all`.
+#[cfg(any(feature = "typescript", feature = "zod"))]
+#[model_schema()]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UserStatus {
+    Active,
+    Inactive,
+    Pending,
+    Suspended,
+}
+
+/// A note whose `draft` carries `skip_serializing`.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Note {
+    pub title: String,
+    #[serde(skip_serializing)]
+    pub draft: String,
+}
+
+/// [`Note`] with no `#[serde(...)]` attribute.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct NoteTwin {
+    pub title: String,
+    pub draft: String,
+}
+
+/// A choice carrying `untagged`.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum Choice {
+    Name(String),
+    Word(String),
+}
+
+/// [`Choice`] with no `#[serde(...)]` attribute.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+pub enum ChoiceTwin {
+    Name(String),
+    Word(String),
+}
+
+/// A value whose `Free` variant carries `untagged` and `skip`, which the `serde` feature would
+/// take off the wire.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+pub enum Loose {
+    Named {
+        label: String,
+    },
+    #[serde(untagged, skip)]
+    Free(String),
+}
+
+/// [`Loose`] with no `#[serde(...)]` attribute.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+pub enum LooseTwin {
+    Named { label: String },
+    Free(String),
+}
+
 fn known_name(value: &str) -> Result<(), Vec<String>> {
     if value == "nobody" {
         return Err(vec!["a name is known".to_owned()]);
@@ -92,6 +178,51 @@ fn typescript_reads_no_serde_attribute() {
     assert_eq!(
         exported(&Event::ts_definition()).replace("Event", "EventTwin"),
         exported(&EventTwin::ts_definition())
+    );
+    assert_eq!(
+        exported(&Note::ts_definition()).replace("Note", "NoteTwin"),
+        exported(&NoteTwin::ts_definition())
+    );
+    assert_eq!(
+        exported(&Choice::ts_definition()).replace("Choice", "ChoiceTwin"),
+        exported(&ChoiceTwin::ts_definition())
+    );
+    assert_eq!(
+        exported(&Loose::ts_definition()).replace("Loose", "LooseTwin"),
+        exported(&LooseTwin::ts_definition())
+    );
+}
+
+#[cfg(feature = "typescript")]
+#[test]
+fn typescript_writes_a_plain_enum_under_its_rust_names() {
+    let ts = UserStatus::ts_definition();
+
+    assert!(ts.contains("export type UserStatus"), "Got: {ts}");
+    for member in ["\"Active\"", "\"Inactive\"", "\"Pending\"", "\"Suspended\""] {
+        assert!(ts.contains(member), "{member} in: {ts}");
+    }
+}
+
+#[cfg(feature = "typescript")]
+#[test]
+fn typescript_writes_a_member_under_skip_serializing() {
+    let ts = Note::ts_definition();
+
+    assert!(
+        ts.lines().any(|line| line == "  draft: string;"),
+        "Got: {ts}"
+    );
+}
+
+#[cfg(feature = "typescript")]
+#[test]
+fn typescript_writes_a_skipped_variant() {
+    let ts = Visibility::ts_definition();
+
+    assert!(
+        ts.contains("export type Visibility =\n  | \"Shown\"\n  | \"Hidden\";"),
+        "Got: {ts}"
     );
 }
 
@@ -141,6 +272,50 @@ fn zod_reads_no_serde_attribute() {
         Event::zod_schema().replace("Event", "EventTwin"),
         EventTwin::zod_schema()
     );
+    assert_eq!(
+        Note::zod_schema().replace("Note", "NoteTwin"),
+        NoteTwin::zod_schema()
+    );
+    assert_eq!(
+        Choice::zod_schema().replace("Choice", "ChoiceTwin"),
+        ChoiceTwin::zod_schema()
+    );
+    assert_eq!(
+        Loose::zod_schema().replace("Loose", "LooseTwin"),
+        LooseTwin::zod_schema()
+    );
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn zod_writes_a_plain_enum_under_its_rust_names() {
+    let zod = UserStatus::zod_schema();
+
+    assert!(zod.contains("export const UserStatus$Schema"), "Got: {zod}");
+    assert!(
+        zod.contains("z.enum([\"Active\", \"Inactive\", \"Pending\", \"Suspended\"])"),
+        "Got: {zod}"
+    );
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn zod_writes_a_member_under_skip_serializing() {
+    let zod = Note::zod_schema();
+
+    assert!(zod.contains("  draft: z.string()"), "Got: {zod}");
+    assert!(!zod.contains(".optional()"), "Got: {zod}");
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn zod_writes_a_skipped_variant() {
+    let zod = Visibility::zod_schema();
+
+    assert!(
+        zod.contains("z.enum([\"Shown\", \"Hidden\"])"),
+        "Got: {zod}"
+    );
 }
 
 #[cfg(feature = "zod")]
@@ -173,6 +348,116 @@ fn the_json_schema_names_each_member_by_its_rust_name() {
     assert_eq!(
         event["oneOf"][1]["properties"]["value"]["properties"]["opened_at"]["type"], "integer",
         "Got: {event}"
+    );
+}
+
+#[test]
+fn the_json_schema_requires_every_member() {
+    let schema = Signup::json_schema();
+
+    assert_eq!(
+        schema["required"],
+        serde_json::json!(["login_count", "team_roles", "user_name"]),
+        "Got: {schema}"
+    );
+}
+
+#[test]
+fn the_json_schema_reads_no_serde_attribute() {
+    assert_eq!(
+        Signup::json_schema()
+            .to_string()
+            .replace("Signup", "SignupTwin"),
+        SignupTwin::json_schema().to_string()
+    );
+    assert_eq!(
+        Note::json_schema().to_string().replace("Note", "NoteTwin"),
+        NoteTwin::json_schema().to_string()
+    );
+    assert_eq!(
+        Choice::json_schema()
+            .to_string()
+            .replace("Choice", "ChoiceTwin"),
+        ChoiceTwin::json_schema().to_string()
+    );
+    assert_eq!(
+        Loose::json_schema()
+            .to_string()
+            .replace("Loose", "LooseTwin"),
+        LooseTwin::json_schema().to_string()
+    );
+}
+
+#[test]
+fn the_json_schema_requires_a_member_under_skip_serializing() {
+    let schema = Note::json_schema();
+
+    assert_eq!(
+        schema["required"],
+        serde_json::json!(["title", "draft"]),
+        "Got: {schema}"
+    );
+}
+
+#[cfg(feature = "dart")]
+#[test]
+fn dart_writes_every_key_it_reads() {
+    assert_eq!(
+        note_dart::dart_definition().replace("Note", "NoteTwin"),
+        note_twin_dart::dart_definition()
+    );
+    assert_eq!(
+        choice_dart::dart_definition().replace("Choice", "ChoiceTwin"),
+        choice_twin_dart::dart_definition()
+    );
+    assert_eq!(
+        loose_dart::dart_definition().replace("Loose", "LooseTwin"),
+        loose_twin_dart::dart_definition()
+    );
+}
+
+#[cfg(feature = "swift")]
+#[test]
+fn swift_writes_every_key_it_reads() {
+    assert_eq!(
+        note_swift::swift_definition().replace("Note", "NoteTwin"),
+        note_twin_swift::swift_definition()
+    );
+    assert_eq!(
+        choice_swift::swift_definition().replace("Choice", "ChoiceTwin"),
+        choice_twin_swift::swift_definition()
+    );
+    assert_eq!(
+        loose_swift::swift_definition().replace("Loose", "LooseTwin"),
+        loose_twin_swift::swift_definition()
+    );
+}
+
+#[cfg(feature = "kotlin")]
+#[test]
+fn kotlin_writes_every_key_it_reads() {
+    assert_eq!(
+        note_kotlin::kotlin_definition().replace("Note", "NoteTwin"),
+        note_twin_kotlin::kotlin_definition()
+    );
+    assert_eq!(
+        choice_kotlin::kotlin_definition().replace("Choice", "ChoiceTwin"),
+        choice_twin_kotlin::kotlin_definition()
+    );
+    assert_eq!(
+        loose_kotlin::kotlin_definition().replace("Loose", "LooseTwin"),
+        loose_twin_kotlin::kotlin_definition()
+    );
+}
+
+#[test]
+fn the_json_schema_writes_a_skipped_variant() {
+    let schema = Visibility::json_schema();
+
+    assert_eq!(
+        schema["enum"],
+        serde_json::json!(["Shown", "Hidden"]),
+        "Got: {schema}"
     );
 }
 

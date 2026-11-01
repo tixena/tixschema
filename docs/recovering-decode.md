@@ -374,7 +374,7 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
     The two seams leave a type of the crate's own declared above under a std name to
     `held_model_maps`, the model it is. A member or a variant under `skip`
     (`absent_from_wire`) is read past, and so is a member or a variant written and read by its
-    author's functions (`written_and_read_by_the_author`, in every build: `with`, or
+    author's functions (`written_and_read_by_the_author`, with the `serde` feature: `with`, or
     `serialize_with` with `deserialize_with`), for a map and a held model alike, so an enum whose
     only such map is in such a variant is not recorded as a holder. One under either of the two
     alone is not.

@@ -550,7 +550,7 @@ fn a_type_with_no_default_writes_the_kotlin_text_it_wrote() {
 /// The read of each client reads a key left out from the JSON of its default, through the read
 /// the member has: Dart casts what `jsonDecode` answers, Swift reads a payload of it, and Kotlin
 /// decodes it through the member's serializer as the default of the property.
-#[cfg(feature = "dart")]
+#[cfg(all(feature = "dart", feature = "serde"))]
 #[test]
 fn dart_reads_a_key_left_out_from_the_json_of_its_default() {
     let written = super::models::wharf_dart::dart_definition();
@@ -567,7 +567,7 @@ fn dart_reads_a_key_left_out_from_the_json_of_its_default() {
     );
 }
 
-#[cfg(feature = "swift")]
+#[cfg(all(feature = "swift", feature = "serde"))]
 #[test]
 fn swift_reads_a_key_left_out_from_the_json_of_its_default() {
     let written = super::models::wharf_swift::swift_definition();
@@ -584,7 +584,7 @@ fn swift_reads_a_key_left_out_from_the_json_of_its_default() {
     );
 }
 
-#[cfg(feature = "kotlin")]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
 #[test]
 fn kotlin_reads_a_key_left_out_from_the_json_of_its_default() {
     let written = super::models::wharf_kotlin::kotlin_definition();

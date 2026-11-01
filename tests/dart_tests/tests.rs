@@ -364,6 +364,7 @@ fn test_option_bare_is_nullable_and_optional_and_conditionally_omitted() {
     );
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_ts_optional_makes_the_constructor_param_optional() {
     let dart = stock_item_dart::dart_definition();
@@ -800,6 +801,7 @@ fn test_enum_keyed_map_decodes_and_encodes_through_the_enum_itself() {
     );
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_a_struct_with_no_fields_writes_no_parameter_group_at_all() {
     let dart = stock_audit_dart::dart_definition();
@@ -821,6 +823,7 @@ fn test_a_struct_with_no_fields_writes_no_parameter_group_at_all() {
     );
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_a_struct_shaped_variant_with_no_fields_writes_no_parameter_group_either() {
     let dart = dynamic_value_dart::dart_definition();
@@ -836,6 +839,7 @@ fn test_a_struct_shaped_variant_with_no_fields_writes_no_parameter_group_either(
     );
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_a_dropped_key_read_as_its_default_is_not_nullable_in_dart() {
     let dart = stock_label_dart::dart_definition();

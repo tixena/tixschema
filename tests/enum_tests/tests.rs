@@ -256,22 +256,6 @@ fn test_plain_enum_variant_reader() {
 }
 
 #[test]
-#[cfg(all(feature = "typescript", not(feature = "serde"), feature = "zod"))]
-fn test_plain_enum_ts_definition_not_serde_style() {
-    let ts_definition = UserStatus::ts_definition();
-
-    assert!(ts_definition.contains("export type UserStatus"));
-    assert!(ts_definition.contains("\"Active\""));
-    assert!(ts_definition.contains("\"Inactive\""));
-    assert!(ts_definition.contains("\"Pending\""));
-    assert!(ts_definition.contains("\"Suspended\""));
-
-    let zod_schema = UserStatus::zod_schema();
-    assert!(zod_schema.contains("export const UserStatus$Schema"));
-    assert!(zod_schema.contains("z.enum([\"Active\", \"Inactive\", \"Pending\", \"Suspended\"])"));
-}
-
-#[test]
 #[cfg(all(any(feature = "typescript", feature = "zod"), feature = "serde"))]
 fn test_plain_enum_members() {
     let members = UserStatus::enum_members();

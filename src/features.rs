@@ -3,8 +3,8 @@
 //! This module provides compile-time feature detection and utilities for handling
 //! different feature combinations in the macro expansion process.
 
-// Not gated on the `serde` feature: the attributes that decide whether a key reaches the wire are
-// written on the item under every toggle, and the surfaces describe that wire in every build.
+// Not gated on the `serde` feature: every build asks it what serde writes, and without the feature
+// `serde_attributes` yields no attribute.
 pub mod serde;
 
 #[cfg(feature = "serde")]

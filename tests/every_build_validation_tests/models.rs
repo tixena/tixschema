@@ -22,16 +22,19 @@ pub struct Pair(
 );
 
 /// A brand over a string.
+#[cfg(feature = "serde")]
 #[model_schema(minLength = 3)]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct Username(pub String);
 
 /// An alias of the brand.
+#[cfg(feature = "serde")]
 #[model_schema()]
 pub type Login = Username;
 
 /// Holds the brand through its alias, under a key serde renames.
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]

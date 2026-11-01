@@ -7,13 +7,15 @@
 //! service whose `openapi` lacks `http_rest`, is written with a value, names a path that is no
 //! route or that an operation answers with `GET`, writes a key it does not take, or whose
 //! operation names a type that does not list `"jsonschema"`, and, in a build with no feature, a
-//! type that lists `"jsonschema"` handing a const parameter to a written type.
+//! type that lists `"jsonschema"` handing a const parameter to a written type and a string check
+//! on a `#[serde(transparent)]` struct, which is no brand without the `serde` feature.
 //! Each case in `foundation_refusals/` is a crate of its own, held to the `.stderr` file beside
 //! it; the initializer written twice, in `foundation_refusals/written_twice/`, is held to the code
 //! and the name of each error, which rustc reports differently from one release to the next.
 
-// Every `.stderr` but the one in `foundation_refusals/const_argument_without_a_feature/`, whose
-// crate turns no feature on, was written with every feature on, the build the gate runs.
+// Every `.stderr` but the ones in `foundation_refusals/const_argument_without_a_feature/` and
+// `foundation_refusals/brand_without_serde/`, whose crates turn no feature on, was written with
+// every feature on, the build the gate runs.
 #![cfg(all(
     feature = "serde",
     feature = "zod",
@@ -73,17 +75,35 @@ mod tests {
 
     #[test]
     fn a_const_argument_is_refused_in_a_build_with_no_feature() {
-        let case = "const_argument_without_a_feature";
-        let rendered: String = errors_of(
-            case,
+        assert_rendered_with_no_feature(
+            "const_argument_without_a_feature",
             &format!(
                 "tixschema = {{ path = {:?}, default-features = false }}\nserde_json = \"1\"\n",
                 env!("CARGO_MANIFEST_DIR")
             ),
-        )
-        .iter()
-        .filter_map(|error| error["rendered"].as_str())
-        .collect();
+        );
+    }
+
+    #[test]
+    fn a_string_check_on_a_transparent_struct_is_refused_in_a_build_with_no_feature() {
+        assert_rendered_with_no_feature(
+            "brand_without_serde",
+            &format!(
+                "tixschema = {{ path = {:?}, default-features = false }}\n\
+                 serde = {{ version = \"1\", features = [\"derive\"] }}\n\
+                 serde_json = \"1\"\n",
+                env!("CARGO_MANIFEST_DIR")
+            ),
+        );
+    }
+
+    /// Asserts that the errors rustc reports for `case`, built as a crate whose manifest lists
+    /// `dependencies`, render as the `main.stderr` beside it.
+    fn assert_rendered_with_no_feature(case: &str, dependencies: &str) {
+        let rendered: String = errors_of(case, dependencies)
+            .iter()
+            .filter_map(|error| error["rendered"].as_str())
+            .collect();
         let expected = fs::read_to_string(
             Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join(format!("tests/foundation_refusals/{case}/main.stderr")),

@@ -18,6 +18,7 @@ use {
     super::{
         CONVERSION_KEYS, consume_unread_value, derives_deserialize, derives_serialize,
         parse_serde_field_attributes, parse_serde_field_hooks, parse_serde_key_omission,
+        serde_attributes,
     },
     crate::field_type::{get_field_def, is_map_wrapper, is_sequence_wrapper},
     proc_macro2::TokenTree,
@@ -293,10 +294,7 @@ impl EnumRead {
 #[cfg(feature = "serde")]
 fn conversions(attrs: &[Attribute]) -> Vec<&'static str> {
     let mut found = Vec::new();
-    for attr in attrs {
-        if !attr.path().is_ident("serde") {
-            continue;
-        }
+    for attr in serde_attributes(attrs) {
         attr.parse_nested_meta(|nested| {
             found.extend(
                 CONVERSION_KEYS
@@ -473,10 +471,7 @@ pub fn holds_a_placeholder(text: &str) -> bool {
 #[cfg(feature = "serde")]
 fn key_left_out_by(attrs: &[Attribute]) -> &'static str {
     let mut found = None;
-    for attr in attrs {
-        if !attr.path().is_ident("serde") {
-            continue;
-        }
+    for attr in serde_attributes(attrs) {
         attr.parse_nested_meta(|nested| {
             for key in ["skip_serializing_if", "skip_serializing"] {
                 if found.is_none() && nested.path.is_ident(key) {
@@ -655,10 +650,7 @@ pub fn zod_substituted(holder: &TokenStream, written: &proc_macro2::Ident) -> To
 #[cfg(feature = "serde")]
 fn written_default(attrs: &[Attribute]) -> Option<Written> {
     let mut found = None;
-    for attr in attrs {
-        if !attr.path().is_ident("serde") {
-            continue;
-        }
+    for attr in serde_attributes(attrs) {
         attr.parse_nested_meta(|nested| {
             if nested.path.is_ident("default") {
                 found = Some(if nested.input.peek(syn::Token![=]) {

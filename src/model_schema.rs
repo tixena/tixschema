@@ -7896,11 +7896,17 @@ fn string_check_refusal_output(
     refused_item_output(&Item::Struct(item_struct.clone()), &[error], args)
 }
 
-/// What a type-level string check is told on a declared type that is no brand.
+/// What a type-level string check is told on a declared type that is no brand. A build without
+/// `serde` has no brand, and the refusal names the feature.
 fn no_brand_string_check_refusal(check: &str) -> String {
+    let feature = if cfg!(feature = "serde") {
+        ""
+    } else {
+        " A branded newtype is read with tixschema's `serde` feature, which this build has off."
+    };
     format!(
         "`{check}` is supported only on a branded newtype: a `#[serde(transparent)]` struct \
-         serde writes as the value of one field. On a field, write it in \
+         serde writes as the value of one field.{feature} On a field, write it in \
          `#[model_schema_prop(...)]`."
     )
 }
@@ -11259,29 +11265,7 @@ fn brand_decode_with(
 /// that publishes it, so a brand over anything else has none and such a bound is refused where it
 /// was written.
 ///
-/// This builds, and `validate()` holds `latest` to the bound:
-///
-/// ```rust
-/// use serde::{Deserialize, Serialize};
-/// use tixschema::model_schema;
-///
-/// #[model_schema()]
-/// #[derive(Deserialize, Serialize)]
-/// #[serde(transparent)]
-/// pub struct Label(pub String);
-///
-/// #[model_schema()]
-/// #[derive(Deserialize, Serialize)]
-/// pub struct Record {
-///     #[model_schema_prop(minLength = 1)]
-///     pub latest: Label,
-/// }
-///
-/// fn main() {
-///     let empty = Record { latest: Label(String::new()) };
-///     assert!(empty.validate().is_err());
-/// }
-/// ```
+#[cfg_attr(feature = "serde", doc = include_str!("branded_bound_text_example.md"))]
 ///
 /// The run below types the field with a struct instead, and nothing else changed:
 ///

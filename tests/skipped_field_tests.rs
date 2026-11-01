@@ -1,8 +1,8 @@
 //! A field serde neither writes nor reads is not part of the wire, and no surface describes it.
 //!
-//! There is nothing to describe without a generation feature, so the module is gated on those. The
-//! attributes deciding it sit on the item whether or not the `serde` feature is on, so nothing here
-//! is gated on that one: one declaration describes one wire under every toggle.
+//! There is nothing to describe without a generation feature, so the module is gated on those. A
+//! test of what a surface describes is gated on the `serde` feature too: without it no
+//! `#[serde(...)]` attribute is read, and no field is left off the wire.
 
 extern crate alloc;
 

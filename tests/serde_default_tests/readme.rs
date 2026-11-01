@@ -60,7 +60,7 @@ fn the_json_schema_line_of_the_table_is_what_the_json_schema_writes() {
     );
 }
 
-#[cfg(feature = "dart")]
+#[cfg(all(feature = "dart", feature = "serde"))]
 #[test]
 fn the_dart_line_of_the_table_is_what_dart_writes() {
     let shown =
@@ -69,7 +69,7 @@ fn the_dart_line_of_the_table_is_what_dart_writes() {
     assert!(super::models::wharf_dart::dart_definition().contains(shown));
 }
 
-#[cfg(feature = "swift")]
+#[cfg(all(feature = "swift", feature = "serde"))]
 #[test]
 fn the_swift_line_of_the_table_is_what_swift_writes() {
     assert!(section().contains("`if container.contains(.dock) { ... } else { ... }`"));
@@ -79,7 +79,7 @@ fn the_swift_line_of_the_table_is_what_swift_writes() {
 }
 
 /// The section's empty collection of a parameter is what the Kotlin client writes for `Basin`.
-#[cfg(feature = "kotlin")]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
 #[test]
 fn the_kotlin_empty_collection_is_what_kotlin_writes() {
     assert!(section().contains("`emptyList()` or `emptyMap()`"));
@@ -89,7 +89,7 @@ fn the_kotlin_empty_collection_is_what_kotlin_writes() {
     );
 }
 
-#[cfg(feature = "kotlin")]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
 #[test]
 fn the_kotlin_line_of_the_table_is_what_kotlin_writes() {
     let shown = "val dock: String = Json.decodeFromString(serializer<String>(), \"\\\"\\\"\")";

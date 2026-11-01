@@ -3,7 +3,7 @@
 //! runs of each client are in the emitted-client groups, and the run of the Zod schemas under node
 //! in `generic_types_tests`.
 
-#[cfg(feature = "kotlin")]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
 use crate::kotlin_numbers::without_number_readers;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -312,7 +312,7 @@ fn a_struct_that_flattens_the_untagged_enum_reads_the_default_of_its_member() {
 /// The read of each client reads a member of a variant left out from the JSON of its default,
 /// through the read the member has, as it reads a member of a struct: the text each writes for
 /// `Berthing` and for the list of the parameter of `Manifest`.
-#[cfg(feature = "dart")]
+#[cfg(all(feature = "dart", feature = "serde"))]
 #[test]
 fn dart_reads_a_member_of_a_variant_left_out_from_the_json_of_its_default() {
     let written = super::models::berthing_dart::dart_definition();
@@ -334,7 +334,7 @@ fn dart_reads_a_member_of_a_variant_left_out_from_the_json_of_its_default() {
     );
 }
 
-#[cfg(feature = "swift")]
+#[cfg(all(feature = "swift", feature = "serde"))]
 #[test]
 fn swift_reads_a_member_of_a_variant_left_out_from_the_json_of_its_default() {
     let written = super::models::berthing_swift::swift_definition();
@@ -350,7 +350,7 @@ fn swift_reads_a_member_of_a_variant_left_out_from_the_json_of_its_default() {
     );
 }
 
-#[cfg(feature = "kotlin")]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
 #[test]
 fn kotlin_reads_a_member_of_a_variant_left_out_from_the_json_of_its_default() {
     let written = without_number_readers(&super::models::berthing_kotlin::kotlin_definition());
@@ -558,7 +558,7 @@ fn an_enum_with_no_default_writes_the_json_schema_it_wrote() {
     );
 }
 
-#[cfg(feature = "dart")]
+#[cfg(all(feature = "dart", feature = "serde"))]
 #[test]
 fn an_enum_with_no_default_writes_the_dart_text_it_wrote() {
     assert_eq!(
@@ -587,7 +587,7 @@ fn an_enum_with_no_default_writes_the_dart_text_it_wrote() {
     );
 }
 
-#[cfg(feature = "swift")]
+#[cfg(all(feature = "swift", feature = "serde"))]
 #[test]
 fn an_enum_with_no_default_writes_the_swift_text_it_wrote() {
     assert_eq!(
@@ -623,7 +623,7 @@ fn an_enum_with_no_default_writes_the_swift_text_it_wrote() {
     );
 }
 
-#[cfg(feature = "kotlin")]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
 #[test]
 fn an_enum_with_no_default_writes_the_kotlin_text_it_wrote() {
     assert_eq!(

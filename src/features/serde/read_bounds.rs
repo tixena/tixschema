@@ -14,7 +14,7 @@ use syn::{
     ReturnType, Token, Type, TypeParamBound, TypePath, WherePredicate, parse_quote,
 };
 
-use super::consume_unread_value;
+use super::{consume_unread_value, derived_serde_attributes};
 use crate::utils::written_type;
 
 /// What a `borrow` written on a field or on a newtype variant names.
@@ -83,10 +83,7 @@ impl ReadAttrs {
             reads_itself: false,
             skipped: false,
         };
-        for attr in attrs {
-            if !attr.path().is_ident("serde") {
-                continue;
-            }
+        for attr in derived_serde_attributes(attrs) {
             attr.parse_nested_meta(|nested| read.take(&nested))
                 .unwrap_or_else(|e| {
                     log::trace!("Failed to parse serde attribute for its bounds: {e}");

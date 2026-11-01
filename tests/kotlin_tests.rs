@@ -72,13 +72,13 @@ mod corrected_options_models;
 /// A member serde reads and never writes, in a struct of its own, beside a flattened member and in
 /// an enum's variant under each tagging that writes a variant's named members.
 #[cfg(test)]
-#[cfg(feature = "kotlin")]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
 #[path = "service_schema_emitted_client_tests/unwritten_models.rs"]
 mod unwritten_models;
 
 /// What the Kotlin emitter writes and reads of a member serde never writes.
 #[cfg(test)]
-#[cfg(feature = "kotlin")]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
 #[path = "kotlin_tests/unwritten.rs"]
 mod unwritten;
 
@@ -133,13 +133,13 @@ mod quoted;
 
 /// A member, and a variant, serde neither writes nor reads, typed with a width no client maps.
 #[cfg(test)]
-#[cfg(feature = "kotlin")]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
 #[path = "swift_tests/unwired_models.rs"]
 mod unwired_models;
 
 /// What the Kotlin emitter declares of a member, and a variant, serde neither writes nor reads.
 #[cfg(test)]
-#[cfg(feature = "kotlin")]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
 #[path = "kotlin_tests/unwired.rs"]
 mod unwired;
 
