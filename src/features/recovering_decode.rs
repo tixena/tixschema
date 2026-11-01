@@ -2898,20 +2898,6 @@ fn asked_items() -> TokenStream {
     }
 }
 
-/// What brings the author's scope into a `{type}_schema` module written here: a struct of paths
-/// names the types its author wrote as that author wrote them.
-#[cfg(all(feature = "mongodb", not(any(feature = "typescript", feature = "zod"))))]
-fn authors_scope() -> TokenStream {
-    quote! { use super::*; }
-}
-
-/// A build without `mongodb` writes no struct of paths, and its module names nothing of the
-/// author's.
-#[cfg(not(any(feature = "mongodb", feature = "typescript", feature = "zod")))]
-fn authors_scope() -> TokenStream {
-    TokenStream::new()
-}
-
 /// A loop's binding at `depth`: the plain name at the first level, and a numbered one under it,
 /// where an outer index or key is still read to build the path.
 fn binding(stem: &str, depth: usize) -> Ident {
@@ -4324,26 +4310,6 @@ fn read_as_a_list(ty: &Type) -> Type {
         parse_quote! { ::std::boxed::Box<#ty> }
     } else {
         ty.clone()
-    }
-}
-
-/// An enum's `items` as they are emitted: beside what a schema surface writes into
-/// `{type}_schema`.
-#[cfg(any(feature = "typescript", feature = "zod"))]
-pub fn placed_in_schema_module(_module: &Ident, items: &TokenStream) -> TokenStream {
-    items.clone()
-}
-
-/// An enum's `items` in a `{type}_schema` module written here, no schema surface writing one for
-/// an enum in this build.
-#[cfg(not(any(feature = "typescript", feature = "zod")))]
-pub fn placed_in_schema_module(module: &Ident, items: &TokenStream) -> TokenStream {
-    let scope = authors_scope();
-    quote! {
-        pub mod #module {
-            #scope
-            #items
-        }
     }
 }
 

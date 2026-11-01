@@ -20826,7 +20826,7 @@ fn flattening_a_union_with_a_tagged_enum_member_is_refused_naming_the_trail() {
 #[cfg(all(feature = "serde", feature = "zod"))]
 fn seed_external_registration(item: &syn::ItemEnum) {
     let rust_ident = item.ident.to_string();
-    let _: (String, syn::Ident) = super::enum_module_idents(
+    super::register_enum(
         &item.ident,
         &rust_ident,
         AliasKind::NoEnumMembers,

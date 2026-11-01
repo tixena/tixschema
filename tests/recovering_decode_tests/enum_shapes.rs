@@ -919,7 +919,6 @@ fn a_no_variant_inside_another_type_sits_at_the_enums_path() {
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_untagged_enums_constrained_member_is_read_through_its_hook() {
     let stored = json!({ "address": "ab" });
