@@ -9,8 +9,8 @@ use quote::{quote, quote_spanned};
 use syn::{Field, ItemType};
 
 use super::{
-    MemberPlace, guard_failure_output, nested_under_fn, prefixed_guard_message, sole_type_argument,
-    wrap_binding, written_spelling,
+    MemberPlace, ModelSchemaArgs, guard_failure_output, nested_under_fn, prefixed_guard_message,
+    sole_type_argument, wrap_binding, written_spelling,
 };
 use crate::features::model_schema_prop::{FunctionName, parse_model_schema_prop_attributes};
 use crate::field_type::is_ownership_wrapper;
@@ -273,8 +273,11 @@ pub fn member_calls(
 
 /// The refusal of a `check` written on a type alias: an alias is another name for its target, and
 /// has no `impl` of its own to call a function from.
-pub fn alias_refusal_output(item_type: &ItemType, checks: &[FunctionName]) -> Option<TokenStream> {
-    let first = checks.first()?;
+pub(super) fn alias_refusal_output(
+    item_type: &ItemType,
+    args: &ModelSchemaArgs,
+) -> Option<TokenStream> {
+    let first = args.check.first()?;
     let name = &item_type.ident;
     let target = written_spelling(&item_type.ty);
     let refusal = format!(
@@ -288,7 +291,7 @@ pub fn alias_refusal_output(item_type: &ItemType, checks: &[FunctionName]) -> Op
         prefixed_guard_message(&format!("type `{name}`: {refusal}")),
     )
     .to_compile_error();
-    guard_failure_output(item_type, Some(name), &[error])
+    guard_failure_output(item_type, Some(name), &[error], args)
 }
 
 #[cfg(test)]

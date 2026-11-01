@@ -4,18 +4,15 @@
 
 #[cfg(feature = "kotlin")]
 use crate::kotlin_numbers::without_number_readers;
-#[cfg(feature = "jsonschema")]
 use serde_json::Value;
 
-#[cfg(feature = "jsonschema")]
 use super::documents::admits;
 #[cfg(feature = "typescript")]
 use super::option_alias_models::haply_schema;
 #[cfg(any(feature = "typescript", feature = "zod"))]
 use super::option_alias_models::plummet_schema;
-#[cfg(feature = "jsonschema")]
 use super::option_alias_models::{Bottomed, Groundage, Grounding};
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 use super::option_alias_models::{
     Chanced, Deepsea, Handlead, Heaved, Leadsman, Lineman, Plumbline, Reckoned, Shoaled, Sinker,
 };
@@ -177,7 +174,6 @@ fn zod_writes_an_alias_of_an_option_outside_a_field_as_a_nullable_schema() {
 
 /// The JSON Schema of each type admits each payload serde writes, the `null` it writes for the
 /// alias among them.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn the_json_schema_admits_the_null_serde_writes_for_an_alias_of_an_option() {
     for (read_as, json) in LEADS {
@@ -206,7 +202,6 @@ fn the_json_schema_admits_the_null_serde_writes_for_an_alias_of_an_option() {
 
 /// The JSON Schema requires the key of a field of an alias of an `Option` under `nullable`, which
 /// serde always writes, and leaves out of `required` the key it leaves out for `None`.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn the_json_schema_requires_the_key_serde_always_writes_for_an_alias_of_an_option() {
     for (document, required) in [

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 /// A model with two bounds of its own.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Masthead {
     #[model_schema_prop(maxLength = 8)]
@@ -17,7 +17,7 @@ pub struct Masthead {
 }
 
 /// What a frontmatter that does not read holds, with a bound of its own.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Unparsed {
     #[model_schema_prop(minLength = 1)]
@@ -25,20 +25,20 @@ pub struct Unparsed {
 }
 
 /// A brand with a bound of its own.
-#[model_schema(minLength = 2)]
+#[model_schema(minLength = 2, enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct Ballot(pub String);
 
 /// A type that declares a parameter, which a `Result` fills.
-#[model_schema(default_types(Held = String))]
+#[model_schema(default_types(Held = String), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Mailbag<Held> {
     pub held: Held,
 }
 
 /// A `Result` of a number, and one whose `Ok` is `()`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Reply {
     pub outcome: Result<u32, String>,
@@ -46,7 +46,7 @@ pub struct Reply {
 }
 
 /// A frontmatter that reads as a model, or is held as what does not read.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Missive {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -55,7 +55,7 @@ pub struct Missive {
 
 /// A `Result` in each position that holds a value: a type argument, a map's value, a list, an
 /// `Option`, the arm of another `Result` and a tuple's position.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Postbox {
     pub filled: Mailbag<Result<u32, String>>,
@@ -68,17 +68,17 @@ pub struct Postbox {
 }
 
 /// A `Result` as a brand's inner value, which writes no text a `Display` could.
-#[model_schema(no_display)]
+#[model_schema(no_display, enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct Ruling(pub Result<u32, String>);
 
 /// A `Result` as the target of an alias.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 pub type Settlement = Result<u32, String>;
 
 /// A brand over a `Result` and an alias of one, held.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Errand {
     pub ruled: Ruling,
@@ -86,14 +86,14 @@ pub struct Errand {
 }
 
 /// A `Result` of the type's own parameter.
-#[model_schema(default_types(Held = u32))]
+#[model_schema(default_types(Held = u32), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Attempted<Held> {
     pub outcome: Result<Held, String>,
 }
 
 /// A `Result` in a variant's member and in a variant's slot, of the type's own parameter.
-#[model_schema(default_types(Held = u32))]
+#[model_schema(default_types(Held = u32), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Turn<Held> {
     Named { outcome: Result<Held, String> },
@@ -101,7 +101,7 @@ pub enum Turn<Held> {
 }
 
 /// Each shape of a `Result` an arm of which holds `()`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Summary {
     pub both: Result<(), ()>,
@@ -111,7 +111,7 @@ pub struct Summary {
 
 /// An untagged enum whose variants a `Result` tells apart: one of a bounded brand, which the bound
 /// of the brand chooses, and one of a number.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum Bureau {
@@ -120,14 +120,14 @@ pub enum Bureau {
 }
 
 /// A map of `Result`s of a bounded brand, flattened into [`Notebook`].
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Jacket {
     pub keyed: BTreeMap<String, Result<Ballot, u32>>,
 }
 
 /// A `Result` of a list of a model beside a flattened member.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Notebook {
     #[serde(flatten)]
@@ -136,7 +136,7 @@ pub struct Notebook {
 }
 
 /// `Result`s of a model and of a bounded brand in the variants of an internally tagged enum.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 pub enum Errata {

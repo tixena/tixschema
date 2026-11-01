@@ -1,12 +1,7 @@
 //! A set, `HashSet`, `BTreeSet` and `IndexSet`: an array whose items are distinct. The JSON
 //! Schema and Zod refuse an array that repeats an item, and Rust's read keeps one item of it.
 
-#![cfg(all(
-    feature = "serde",
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema"
-))]
+#![cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 
 extern crate alloc;
 

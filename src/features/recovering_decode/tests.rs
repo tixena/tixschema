@@ -1,9 +1,9 @@
 //! Unit tests of what `#[model_schema(enable = [...])]` emits, read off the expansion: the names it
 //! adds, the entry points, the walkers and the MongoDB operations.
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 use super::aliases::entry_of_items;
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 use super::{ADDED_TYPE_NAMES, Source, read_whole_items, reading_the_authors_scope};
 use super::{
     DECODE_WITH_IMPL_MACRO, DECODE_WITH_LIBRARY_NAMES, RecoveringDecode, decode_with_foundation,
@@ -580,39 +580,27 @@ fn paths_members() -> Vec<String> {
 }
 
 /// What the typed paths of the struct `source` declares add to its schema module.
-#[cfg(all(
-    feature = "mongodb",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "mongodb", any(feature = "typescript", feature = "zod")))]
 fn paths_module_items(source: &str) -> proc_macro2::TokenStream {
     let item: syn::ItemStruct = syn::parse_str(source).unwrap();
     super::fields::struct_paths(&item, &[]).module_items
 }
 
 /// A build without `mongodb` writes no typed path.
-#[cfg(all(
-    not(feature = "mongodb"),
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(not(feature = "mongodb"), any(feature = "typescript", feature = "zod")))]
 fn paths_module_items(_source: &str) -> proc_macro2::TokenStream {
     proc_macro2::TokenStream::new()
 }
 
 /// What the typed paths of the enum `source` declares add to its schema module.
-#[cfg(all(
-    feature = "mongodb",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "mongodb", any(feature = "typescript", feature = "zod")))]
 fn enum_paths_module_items(source: &str) -> proc_macro2::TokenStream {
     let item: syn::ItemEnum = syn::parse_str(source).unwrap();
     super::fields::enum_paths(&item, &[]).module_items
 }
 
 /// A build without `mongodb` writes no typed path.
-#[cfg(all(
-    not(feature = "mongodb"),
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(not(feature = "mongodb"), any(feature = "typescript", feature = "zod")))]
 fn enum_paths_module_items(_source: &str) -> proc_macro2::TokenStream {
     proc_macro2::TokenStream::new()
 }
@@ -2345,7 +2333,7 @@ fn a_generated_named_hook_is_read_past_and_an_authors_hook_is_read_through() {
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn only_a_bare_added_name_is_read_from_the_authors_scope() {
     let scoped = reading_the_authors_scope(quote::quote! {
@@ -2370,7 +2358,7 @@ fn only_a_bare_added_name_is_read_from_the_authors_scope() {
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn every_type_the_flag_adds_is_a_name_read_past() {
     // The module of a type that lists "mongodb" holds every type of both libraries through the
@@ -2400,7 +2388,7 @@ fn every_type_the_flag_adds_is_a_name_read_past() {
 }
 
 /// The types, the traits and the aliases `items` declare at their top.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn declared_types(items: proc_macro2::TokenStream) -> Vec<String> {
     let added: syn::File = syn::parse2(items).unwrap();
     added

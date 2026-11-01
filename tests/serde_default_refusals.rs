@@ -6,7 +6,6 @@
 #![cfg(all(
     feature = "serde",
     feature = "zod",
-    feature = "jsonschema",
     feature = "typescript",
     feature = "dart",
     feature = "swift",

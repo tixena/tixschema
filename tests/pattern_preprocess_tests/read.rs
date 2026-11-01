@@ -82,20 +82,14 @@ where
     }
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn the_sample_reads_as_the_documents_say() {
     assert_eq!(sample_report(), super::models::SAMPLE);
 }
 
 /// A build that publishes no validator for `label` reads row 2 with the label its function left.
-#[cfg(not(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-)))]
+#[cfg(not(all(feature = "serde", any(feature = "typescript", feature = "zod"))))]
 #[test]
 fn the_sample_reads_with_no_bound_held_where_none_is_published() {
     assert_eq!(

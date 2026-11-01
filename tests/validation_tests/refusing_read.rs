@@ -1,10 +1,7 @@
 //! A serde read of a type that publishes `validate()` answers an error for a payload whose value
 //! breaks a bound or a check, and the error holds what `validate()` answers of the value read.
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 mod a_read_refuses_what_validate_refuses {
     use alloc::borrow::Cow;
     use alloc::collections::{BTreeMap, BTreeSet, VecDeque};

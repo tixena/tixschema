@@ -7,9 +7,7 @@ use core::future::ready;
 use serde::{Deserialize, Serialize};
 use tixschema::{model_schema, service_schema};
 
-use super::swift_validate_models::{
-    Base, Package, Parcel, base_schema, package_schema, parcel_schema,
-};
+use super::swift_validate_models::{Base, Package, Parcel};
 
 /// A parcel held in a field, a list, a map and an optional.
 #[model_schema()]

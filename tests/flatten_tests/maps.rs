@@ -425,7 +425,7 @@ an optional struct, a label of a number: refused
 ";
 
 /// A map that is the only member of its object.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Thwart {
     #[serde(flatten)]
@@ -433,7 +433,7 @@ pub struct Thwart {
 }
 
 /// A map beside a member serde neither writes nor reads.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Gunwale {
     #[serde(skip)]
@@ -449,7 +449,7 @@ pub struct Gunwale {
 pub struct StrakeCode(pub String);
 
 /// A map keyed by a brand.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Strake {
     #[serde(flatten)]
@@ -457,7 +457,7 @@ pub struct Strake {
 }
 
 /// A map in a variant written under its name.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Coaming {
     Open {
@@ -467,7 +467,7 @@ pub enum Coaming {
 }
 
 /// A map in a variant under a tag and a content key.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "held")]
 pub enum Transom {
@@ -478,7 +478,7 @@ pub enum Transom {
 }
 
 /// A map in an untagged variant.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum Bilge {
@@ -490,7 +490,7 @@ pub enum Bilge {
 
 /// An optional map alone in its object. serde reads every object as it: the map where each entry
 /// reads as a count, and `None` where one does not.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Locker {
     #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
@@ -498,7 +498,7 @@ pub struct Locker {
 }
 
 /// The same map with no `default`, which serde reads as it reads [`Locker`].
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Scupper {
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
@@ -507,7 +507,7 @@ pub struct Scupper {
 
 /// An optional map keyed by a plain enum: a key no member of the enum names reads the map as
 /// `None` as well.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Windlass {
     #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
@@ -523,7 +523,7 @@ pub enum Hawse {
 }
 
 /// A map keyed by a `char`, which serde reads from the text of each key.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Ratlines {
     #[serde(flatten)]
@@ -531,7 +531,7 @@ pub struct Ratlines {
 }
 
 /// [`Ratlines`]'s map optional: serde reads it as `None` where a key is no `char`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Deadeye {
     #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
@@ -539,11 +539,11 @@ pub struct Deadeye {
 }
 
 /// A map under a name of its own.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 pub type SheaveTallies = BTreeMap<String, u8>;
 
 /// An optional map named through an alias.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Sheave {
     #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
@@ -551,11 +551,11 @@ pub struct Sheave {
 }
 
 /// An optional map under a name of its own.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 pub type SpareTallies = Option<BTreeMap<String, u8>>;
 
 /// A map made optional by the alias it is named through.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Lazarette {
     #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
@@ -563,13 +563,13 @@ pub struct Lazarette {
 }
 
 /// A brand over a map.
-#[model_schema(no_display)]
+#[model_schema(no_display, enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct PintleCounts(pub BTreeMap<String, u8>);
 
 /// An optional brand over a map.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Pintle {
     #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
@@ -577,13 +577,13 @@ pub struct Pintle {
 }
 
 /// A brand over its type parameter.
-#[model_schema(no_display, default_types(T = BTreeMap<String, u8>))]
+#[model_schema(no_display, default_types(T = BTreeMap<String, u8>), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct Oarlock<T>(pub T);
 
 /// An optional brand over its type parameter, filled at a map.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Thole {
     #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
@@ -591,14 +591,14 @@ pub struct Thole {
 }
 
 /// One way the untagged enum below is written.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Kedge {
     pub total: u8,
 }
 
 /// An untagged enum with a map among its variants.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum Fender {
@@ -607,7 +607,7 @@ pub enum Fender {
 }
 
 /// An optional untagged enum with a map among its variants.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Stanchion {
     #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
@@ -615,7 +615,7 @@ pub struct Stanchion {
 }
 
 /// An optional map in a variant written under its name.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Fairlead {
     Open {
@@ -625,7 +625,7 @@ pub enum Fairlead {
 }
 
 /// An optional map in a variant under a tag and a content key.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "held")]
 pub enum Davit {
@@ -636,7 +636,7 @@ pub enum Davit {
 }
 
 /// An optional map in an untagged variant.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum Capstan {
@@ -647,7 +647,7 @@ pub enum Capstan {
 }
 
 /// The struct the README flattens through an `Option`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Burgee {
     pub label: String,
@@ -655,7 +655,7 @@ pub struct Burgee {
 
 /// An optional struct alone in its object: serde reads it as `None` wherever its key does not
 /// read, and drops the key.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Hawser {
     #[serde(default, flatten, skip_serializing_if = "Option::is_none")]

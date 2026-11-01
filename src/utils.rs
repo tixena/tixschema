@@ -17,25 +17,16 @@ use regex_syntax::hir;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use syn::ext::IdentExt as _;
-#[cfg(any(
-    feature = "serde",
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema"
-))]
+#[cfg(any(feature = "serde", feature = "typescript", feature = "zod"))]
 use syn::punctuated::Punctuated;
 use syn::{Attribute, Expr, Field, GenericParam, Generics, Lit, LitStr, Meta, Type, Variant};
 
 #[cfg(feature = "serde")]
 use crate::features::model_schema_prop::FunctionName;
 
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(feature = "serde", feature = "jsonschema")
-))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 use syn::ItemEnum;
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 use syn::ItemStruct;
 
 /// The JavaScript engine generation the emitted Zod regex literals and JSON Schema `pattern`
@@ -98,7 +89,6 @@ enum Divergence {
 /// asks of a name: what does serde write for a key spelled this way. A plain unit enum answers with
 /// its members, the enumeration the JSON-schema map-key expansion calls `enum_members()` for; every
 /// other answer is about the key's own wire form, a JSON object key being a string.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AliasKind {
     /// A plain unit enum, or an alias chain ending in one.
@@ -118,7 +108,6 @@ pub enum AliasKind {
 
 /// What `minLength` and `maxLength` count on a value: the characters of a text, or the items of a
 /// list.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Counted {
     Characters,
@@ -266,7 +255,7 @@ pub struct FlattenVariant {
 
 /// What a `#[model_schema()]` item publishes as a value, as the constrained-brand guard reads
 /// shapes.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PublishedShape {
     /// The one shape written under this name, whatever fills it — `None` where that shape is one a
@@ -279,7 +268,7 @@ pub enum PublishedShape {
 
 /// A constrained brand's consult the registry had no record to answer with, kept until the named
 /// item registers and can answer it.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[derive(Clone)]
 pub struct ShapeQuestion {
     /// What each argument the reference wrote resolves to, in the order written; `None` where the
@@ -305,7 +294,6 @@ pub struct OptionTarget {
 pub struct AliasInfo {
     /// What a bound written on a field of this name counts, where it counts anything: a brand over
     /// a text or a list publishes the count, and an alias of a list.
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     pub counted: Option<Counted>,
     pub export_name: String,
     /// What an externally tagged enum's variants are spelled as where an object flattens the enum
@@ -317,7 +305,7 @@ pub struct AliasInfo {
     #[cfg(all(
         feature = "serde",
         feature = "indexmap",
-        any(feature = "typescript", feature = "zod", feature = "jsonschema")
+        any(feature = "typescript", feature = "zod")
     ))]
     pub indexed_set: bool,
     /// Whether the TypeScript type written under this name is, or holds in a slot, a map keyed by a
@@ -327,9 +315,7 @@ pub struct AliasInfo {
     /// The form a key written under this name renders in, which [`AliasKind::Stringified`] alone
     /// does not separate.
     pub key_wire: MapKeyWire,
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     pub kind: AliasKind,
-    #[cfg(feature = "jsonschema")]
     pub module_name: String,
     /// What an untagged enum's members are spelled as where an object flattens the enum, in the
     /// order the union writes them; empty for every other item.
@@ -337,7 +323,7 @@ pub struct AliasInfo {
     pub ts_union_members: Vec<String>,
     /// What the value surface written under this name is; `PublishedShape::Flat(None)` both where
     /// string checks land on it and where nothing was recorded.
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     pub value_shape: PublishedShape,
     /// What the value surface written under this name puts on the wire, one entry per leaf of it,
     /// and empty when nothing has been recorded at all.
@@ -759,59 +745,35 @@ pub enum Declared {
     Alias(String),
     /// A struct or an enum serde writes under keys of its own, and how many lifetime parameters it
     /// declares.
-    Model(
-        #[cfg(all(
-            feature = "serde",
-            any(feature = "typescript", feature = "zod", feature = "jsonschema")
-        ))]
-        usize,
-    ),
+    Model(#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))] usize),
     /// A struct or an enum serde writes as one value: a struct written as the value of one slot,
     /// a unit struct, an enum no variant of which holds a value and no attribute tags. Holds how
     /// many lifetime parameters it declares.
-    OneValue(
-        #[cfg(all(
-            feature = "serde",
-            any(feature = "typescript", feature = "zod", feature = "jsonschema")
-        ))]
-        usize,
-    ),
+    OneValue(#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))] usize),
 }
 
 #[cfg(feature = "serde")]
 impl Declared {
     /// A model serde writes under keys of its own, declaring `lifetimes` lifetime parameters.
-    #[cfg(all(
-        feature = "serde",
-        any(feature = "typescript", feature = "zod", feature = "jsonschema")
-    ))]
+    #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
     pub const fn model(lifetimes: usize) -> Self {
         Self::Model(lifetimes)
     }
 
     /// A model serde writes under keys of its own; only a schema surface reads the lifetimes.
-    #[cfg(not(all(
-        feature = "serde",
-        any(feature = "typescript", feature = "zod", feature = "jsonschema")
-    )))]
+    #[cfg(not(all(feature = "serde", any(feature = "typescript", feature = "zod"))))]
     pub const fn model(_lifetimes: usize) -> Self {
         Self::Model()
     }
 
     /// A type serde writes as one value, declaring `lifetimes` lifetime parameters.
-    #[cfg(all(
-        feature = "serde",
-        any(feature = "typescript", feature = "zod", feature = "jsonschema")
-    ))]
+    #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
     pub const fn one_value(lifetimes: usize) -> Self {
         Self::OneValue(lifetimes)
     }
 
     /// A type serde writes as one value; only a schema surface reads the lifetimes.
-    #[cfg(not(all(
-        feature = "serde",
-        any(feature = "typescript", feature = "zod", feature = "jsonschema")
-    )))]
+    #[cfg(not(all(feature = "serde", any(feature = "typescript", feature = "zod"))))]
     pub const fn one_value(_lifetimes: usize) -> Self {
         Self::OneValue()
     }
@@ -1328,7 +1290,7 @@ pub fn is_declared_ident(rust_ident: &str) -> bool {
     PUBLISHED_NAMES.with(|names| names.borrow().values().any(|holder| holder == rust_ident))
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 thread_local! {
     static SHAPE_QUESTIONS: RefCell<Vec<ShapeQuestion>> = const { RefCell::new(Vec::new()) };
 }
@@ -1336,7 +1298,7 @@ thread_local! {
 /// Keeps a constrained brand's unanswered consult for whichever expansion registers the name it
 /// asked about. Recorded once the brand has passed its own guards, so a brand that publishes
 /// nothing leaves no question behind for a later item to refuse it over.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 pub fn record_shape_question(question: ShapeQuestion) {
     SHAPE_QUESTIONS.with(|questions| questions.borrow_mut().push(question));
 }
@@ -1345,7 +1307,7 @@ pub fn record_shape_question(question: ShapeQuestion) {
 /// are left in place rather than taken: a name is registered by one expansion, and leaving them
 /// makes reading them an observation rather than a move — nothing downstream has to know whether
 /// something else read first.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 pub fn shape_questions_for(rust_ident: &str) -> Vec<ShapeQuestion> {
     SHAPE_QUESTIONS.with(|questions| {
         questions
@@ -1357,20 +1319,17 @@ pub fn shape_questions_for(rust_ident: &str) -> Vec<ShapeQuestion> {
     })
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 pub fn register_alias_info(
     rust_ident: &str,
     export_name: &str,
     module_name: &str,
     kind: AliasKind,
 ) {
-    #[cfg(not(feature = "jsonschema"))]
-    let _: &_ = &module_name;
     ALIAS_INFO.with(|map| {
         map.borrow_mut().insert(
             rust_ident.to_owned(),
             AliasInfo {
-                #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
                 counted: None,
                 export_name: export_name.to_owned(),
                 #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
@@ -1378,13 +1337,12 @@ pub fn register_alias_info(
                 #[cfg(all(
                     feature = "serde",
                     feature = "indexmap",
-                    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+                    any(feature = "typescript", feature = "zod")
                 ))]
                 indexed_set: false,
                 inexact_key: false,
                 key_wire: MapKeyWire::Named,
                 kind,
-                #[cfg(feature = "jsonschema")]
                 module_name: module_name.to_owned(),
                 #[cfg(all(feature = "serde", feature = "typescript"))]
                 ts_union_members: Vec::new(),
@@ -1406,7 +1364,7 @@ pub fn register_alias_info(
 
 /// Records what a bound written on a field of this name counts, on the entry that name has just
 /// registered.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 pub fn record_counted(rust_ident: &str, counted: Counted) {
     ALIAS_INFO.with(|map| {
         if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
@@ -1419,7 +1377,7 @@ pub fn record_counted(rust_ident: &str, counted: Counted) {
 #[cfg(all(
     feature = "serde",
     feature = "indexmap",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    any(feature = "typescript", feature = "zod")
 ))]
 pub fn record_indexed_set(rust_ident: &str) {
     ALIAS_INFO.with(|map| {
@@ -1431,7 +1389,7 @@ pub fn record_indexed_set(rust_ident: &str) {
 
 /// Records whether the TypeScript type written under a name carries [`INEXACT_KEY_NOTE`] on
 /// itself, on the entry that name has just registered.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 pub fn record_inexact_key(rust_ident: &str, inexact: bool) {
     ALIAS_INFO.with(|map| {
         if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
@@ -1442,7 +1400,7 @@ pub fn record_inexact_key(rust_ident: &str, inexact: bool) {
 
 /// Records the form a key written under a name renders in, on the entry that name has just
 /// registered.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 pub fn record_key_wire(rust_ident: &str, wire: MapKeyWire) {
     ALIAS_INFO.with(|map| {
         if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
@@ -1453,7 +1411,7 @@ pub fn record_key_wire(rust_ident: &str, wire: MapKeyWire) {
 
 /// Records what the value surface written under a name is, on the entry that name has just
 /// registered.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 pub fn record_value_shape(rust_ident: &str, shape: PublishedShape) {
     ALIAS_INFO.with(|map| {
         if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
@@ -1845,12 +1803,6 @@ pub fn written_type(ty: &Type) -> &Type {
 /// newtype alike — which is also the module a reference assumes for a name the registry does not
 /// hold. Named from the Rust ident rather than the published name: a reference standing above the
 /// declaration has only the ident, and an override is not recoverable from it.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    feature = "serde"
-))]
 pub fn ident_schema_module_name(rust_ident: &str) -> String {
     format!("{}_schema", to_snake_case(rust_ident))
 }
@@ -1971,7 +1923,6 @@ pub fn zod_factory_argument(parameter: &str) -> String {
 
 /// The local a JSON document binds one type parameter's argument document to — `_arg_id_type` for
 /// `IdType`.
-#[cfg(feature = "jsonschema")]
 pub fn json_argument_binding(parameter: &str) -> String {
     format!("_arg_{}", to_snake_case(parameter))
 }
@@ -1983,7 +1934,7 @@ pub fn compute_item_export_name(rust_ident: &str, override_name: Option<&str>) -
     override_name.map_or_else(|| rust_ident.to_owned(), ToOwned::to_owned)
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 /// Extracts and concatenates documentation comments from a `syn::ItemStruct`.
 pub fn get_struct_docs(item_struct: &ItemStruct) -> Option<Vec<String>> {
     collect_doc_lines(&item_struct.attrs)
@@ -1993,11 +1944,7 @@ pub fn get_struct_docs(item_struct: &ItemStruct) -> Option<Vec<String>> {
 /// shape's item description) — not for its ` ```rust example ` blocks, which
 /// [`extract_examples_tokens`] reads off the attributes directly so the tokens it builds keep their
 /// spans.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(feature = "serde", feature = "jsonschema")
-))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 pub fn get_enum_docs(item_enum: &ItemEnum) -> Option<Vec<String>> {
     collect_doc_lines(&item_enum.attrs)
 }
@@ -2596,12 +2543,7 @@ pub fn ts_commented(text: &str) -> String {
 /// `predicate` with the bounds `generics` do not ask yet of the parameter it bounds, or `None`
 /// where they ask every one. A bound asked twice of one parameter is one clippy reports in the
 /// consumer's crate.
-#[cfg(any(
-    feature = "serde",
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema"
-))]
+#[cfg(any(feature = "serde", feature = "typescript", feature = "zod"))]
 pub fn asking_more(
     generics: &syn::Generics,
     predicate: &syn::WherePredicate,
@@ -2631,12 +2573,7 @@ pub fn asking_more(
 }
 
 /// The trait a bound asks, by its own name and arguments, whatever path it is written with.
-#[cfg(any(
-    feature = "serde",
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema"
-))]
+#[cfg(any(feature = "serde", feature = "typescript", feature = "zod"))]
 pub fn asked_trait(bound: &syn::TypeParamBound) -> Option<String> {
     let syn::TypeParamBound::Trait(of_trait) = bound else {
         return None;
@@ -2649,12 +2586,7 @@ pub fn asked_trait(bound: &syn::TypeParamBound) -> Option<String> {
 }
 
 /// The traits `generics` ask of the parameter `named`, on its name and in its `where` predicates.
-#[cfg(any(
-    feature = "serde",
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema"
-))]
+#[cfg(any(feature = "serde", feature = "typescript", feature = "zod"))]
 pub fn asked_of(generics: &syn::Generics, named: &proc_macro2::Ident) -> Vec<String> {
     let on_its_name = generics
         .type_params()
@@ -2681,12 +2613,7 @@ pub fn asked_of(generics: &syn::Generics, named: &proc_macro2::Ident) -> Vec<Str
 }
 
 /// Whether `bound` asks a trait `asked` lists.
-#[cfg(any(
-    feature = "serde",
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema"
-))]
+#[cfg(any(feature = "serde", feature = "typescript", feature = "zod"))]
 pub fn asks_one_of(bound: &syn::TypeParamBound, asked: &[String]) -> bool {
     asked_trait(bound).is_some_and(|of_trait| asked.contains(&of_trait))
 }

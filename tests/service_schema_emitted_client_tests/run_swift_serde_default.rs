@@ -17,7 +17,7 @@ use super::serde_default_models::{
 };
 #[cfg(feature = "indexmap")]
 use super::serde_default_models::{indexed_fleet_swift, indexed_logbook_swift};
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 use super::serde_default_models::{report, variant_report};
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -66,7 +66,7 @@ fn each_payload_reads_in_swift_as_the_serde_read_reads_it() {
     for ((_, payload), read) in PREPROCESSED.iter().zip(preprocessed_values()) {
         assert_eq!(serde_json::from_str::<Bollard>(payload).unwrap(), read);
     }
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     assert_eq!(report(), REPORT, "what the serde read answers");
     let (every_default, _) = read_values();
     assert!(REPORT.contains(&format!(
@@ -256,7 +256,7 @@ fn each_payload_of_a_struct_that_declares_a_parameter_reads_in_swift_as_serde_re
 /// refused with its member named.
 #[test]
 fn each_variant_payload_reads_in_swift_as_the_serde_read_reads_it() {
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     assert_eq!(
         variant_report(),
         VARIANT_REPORT,

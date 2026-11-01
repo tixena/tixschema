@@ -324,10 +324,7 @@ fn the_reach_of_a_check_is_the_reach_of_a_bound() {
 
 /// A check is called by its name alone, so no import of the schema module is in scope of the
 /// call: each bound of a type that names a check brings the module in for itself.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_bound_imports_the_schema_module_for_itself_where_the_type_names_a_check() {
     let bounded = "pub struct Tagged { #[model_schema_prop(minLength = 1, check = \

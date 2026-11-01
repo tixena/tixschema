@@ -6,7 +6,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use tixschema::model_schema;
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct Address {
     city: String,
@@ -16,7 +16,7 @@ struct Address {
     zip_code: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct Company {
     department_names: Vec<String>,
@@ -27,7 +27,7 @@ struct Company {
     settings: CompanySettings,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 struct CompanySettings {
@@ -39,7 +39,7 @@ struct CompanySettings {
     retirement_plan: Option<RetirementPlan>,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "eventType", rename_all = "camelCase")]
 enum ComplexEvent {
@@ -67,7 +67,7 @@ enum ComplexEvent {
     },
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ContactInfo {
     email: String,
@@ -78,7 +78,7 @@ struct ContactInfo {
 }
 
 /// A user account in the system.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct DocumentedUser {
     /// The user's email address.
@@ -94,7 +94,7 @@ struct DocumentedUser {
     name: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct EdgeCases {
     booleans: Vec<bool>,
@@ -116,7 +116,7 @@ struct EdgeCases {
     tiny_number: u8,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct EmergencyContact {
     name: String,
@@ -124,7 +124,7 @@ struct EmergencyContact {
     relationship: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct Employee {
     contact: ContactInfo,
@@ -137,7 +137,7 @@ struct Employee {
     skills: Vec<String>,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct Project {
     assigned_employees: Vec<String>,
@@ -150,7 +150,7 @@ struct Project {
     status: ProjectStatus,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 enum ProjectStatus {
@@ -161,7 +161,7 @@ enum ProjectStatus {
     OnHold,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct PurchaseItem {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -171,7 +171,7 @@ struct PurchaseItem {
     unit_price: u32,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "type", rename_all = "camelCase")]
 enum RetirementPlan {
@@ -304,7 +304,6 @@ fn assert_zod_contains_fields(zod_schema: &str, assertions: &[(&str, &str)]) {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_complex_nested_json_schema() {
     let company_schema = Company::json_schema();
     let employee_schema = Employee::json_schema();
@@ -401,7 +400,6 @@ fn test_serialization_consistency() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_edge_cases_json_schema() {
     let schema = EdgeCases::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -502,12 +500,7 @@ fn test_edge_cases_ts_definition() {
 }
 
 #[test]
-#[cfg(all(
-    feature = "jsonschema",
-    feature = "typescript",
-    feature = "serde",
-    feature = "zod"
-))]
+#[cfg(all(feature = "typescript", feature = "serde", feature = "zod"))]
 fn test_complex_discriminated_union() {
     let schema = ComplexEvent::json_schema();
     let ts_definition = ComplexEvent::ts_definition();
@@ -546,7 +539,7 @@ fn test_complex_discriminated_union() {
 }
 
 #[test]
-#[cfg(all(feature = "jsonschema", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 fn test_documented_struct() {
     let schema = DocumentedUser::json_schema();
     let ts_definition = DocumentedUser::ts_definition();
@@ -571,7 +564,6 @@ fn test_documented_struct() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_json_schema_validation() {
     let schemas = vec![
         ("Company", Company::json_schema()),

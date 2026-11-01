@@ -288,10 +288,7 @@ fn an_enum_is_read_on_a_copy_that_keeps_what_serde_reads_of_each_variant() {
 
 /// A member of an untagged enum is held to the bound a brand carries as it is read, behind a
 /// trait that answers for a type with no such bound, and a struct's member is held to none.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_member_that_chooses_a_variant_is_held_to_the_bound_of_a_brand() {
     let chosen = expansion_under(
@@ -329,10 +326,7 @@ fn a_member_that_chooses_a_variant_is_held_to_the_bound_of_a_brand() {
 /// A member that names one of the item's type parameters is read through a hook generic over
 /// exactly the parameters it names, every bound in its `where` clause, each once, and the type the
 /// model is read as declares only the parameters the model names.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_member_that_names_a_type_parameter_is_read_through_a_hook_generic_over_it() {
     let read = expansion_under(
@@ -364,10 +358,7 @@ fn a_member_that_names_a_type_parameter_is_read_through_a_hook_generic_over_it()
 }
 
 /// `Self` is written as the item where a hook writes the member's type and the model it holds.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_member_written_with_self_is_read_through_a_hook_that_names_the_item() {
     let node = expansion_under(
@@ -409,10 +400,7 @@ fn a_member_written_with_self_is_read_through_a_hook_that_names_the_item() {
 
 /// A bound that ties the parameter a member names to another, or to a lifetime of the item, and
 /// a read at `'static`, leave the member to its own `Deserialize`.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_member_the_items_bounds_keep_from_a_hook_is_read_with_none() {
     for (args, source) in [
@@ -450,10 +438,7 @@ fn a_member_the_items_bounds_keep_from_a_hook_is_read_with_none() {
 /// The hook a bound of an untagged member is read through, and the `default` beside it, leave the
 /// read under the bounds serde's derive writes for the enum as it is written: `Deserialize<'de>`
 /// of the parameter the member names, and no `Default`.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_bound_hook_on_a_member_that_names_a_parameter_keeps_the_bounds_of_serdes_derive() {
     let read = expansion_under(
@@ -480,10 +465,7 @@ fn a_bound_hook_on_a_member_that_names_a_parameter_keeps_the_bounds_of_serdes_de
 /// A member of a variant serde never reads, under `skip` or `skip_deserializing`, is read by no
 /// hook under any tagging, and a bound of a member of an untagged one hangs no hook on it, where a
 /// member of a variant serde reads keeps each of its own.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_member_of_a_variant_serde_never_reads_is_read_by_no_hook() {
     for tagging in ["", "#[serde(tag = \"kind\")]", "#[serde(untagged)]"] {

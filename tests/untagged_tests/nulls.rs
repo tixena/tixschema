@@ -2,9 +2,7 @@
 //! variant over an `Option` holding `None` among them, and the JSON Schema admits each payload
 //! serde reads.
 
-#[cfg(feature = "jsonschema")]
 use super::documents::admits;
-#[cfg(feature = "jsonschema")]
 use super::null_models::{Drogued, Fathom, Kedged, Plumb};
 use super::null_models::{NULL_ROWS, serde_told};
 
@@ -24,7 +22,6 @@ fn serde_reads_null_as_the_first_variant_whose_payload_reads_it() {
 }
 
 /// The JSON Schema of each enum admits each payload serde reads, `null` among them.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn the_json_schema_admits_each_payload_serde_reads() {
     for row in NULL_ROWS.iter().filter(|row| row.taken.is_some()) {

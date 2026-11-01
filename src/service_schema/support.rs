@@ -125,7 +125,12 @@ use syn::Ident;
 /// placement and nothing else about the program. The import those four errors resolve against is
 /// what the unit test `the_generated_module_reaches_the_author_s_declarations_through_super` reads
 /// back off the expansion.
-pub fn emit(service: &ServiceDef, asked: &[Transport], non_exhaustive: bool) -> TokenStream {
+pub fn emit(
+    service: &ServiceDef,
+    asked: &[Transport],
+    non_exhaustive: bool,
+    openapi: bool,
+) -> TokenStream {
     let declared = &service.ident;
     let module = module_ident(service);
     let module_doc = format!(
@@ -133,7 +138,7 @@ pub fn emit(service: &ServiceDef, asked: &[Transport], non_exhaustive: bool) -> 
          Every type here belongs to this service alone: the crate that declares `{declared}` \
          owns them, and nothing is imported from tixschema at runtime."
     );
-    let fault = fault_declaration(declared, non_exhaustive);
+    let fault = fault_declaration(declared, non_exhaustive, openapi);
     let call_error = call_error_declaration(declared, non_exhaustive);
     let accessors = fault_accessors();
     let constructors = fault_constructors();
@@ -187,6 +192,16 @@ pub fn exhaustiveness(non_exhaustive: bool) -> TokenStream {
         quote! { #[non_exhaustive] }
     } else {
         TokenStream::new()
+    }
+}
+
+/// The `model_schema` attribute a generated type carries, listing `"jsonschema"` where the service
+/// asked for `openapi`, whose document reads each generated type's schema.
+pub fn model_schema_attribute(openapi: bool) -> TokenStream {
+    if openapi {
+        quote! { #[::tixschema::model_schema(enable = ["jsonschema"])] }
+    } else {
+        quote! { #[::tixschema::model_schema()] }
     }
 }
 
@@ -1079,9 +1094,10 @@ fn fault_constructors() -> TokenStream {
 /// `ServiceFault` and the kind it reports. Both derive `Serialize`, which is what the transport
 /// needs to put a fault on the wire, and neither derives `Deserialize`, so a fault never arrives
 /// simply by having been written there.
-fn fault_declaration(declared: &Ident, non_exhaustive: bool) -> TokenStream {
+fn fault_declaration(declared: &Ident, non_exhaustive: bool, openapi: bool) -> TokenStream {
     let fields = fault_fields_ident(declared);
     let sealed = exhaustiveness(non_exhaustive);
+    let model_schema = model_schema_attribute(openapi);
     let kind = format_ident!("{declared}FaultKind", span = declared.span());
     let fault_doc = format!(
         "A failure `{declared}` never declared: a payload that would not deserialize, a message \
@@ -1106,7 +1122,7 @@ fn fault_declaration(declared: &Ident, non_exhaustive: bool) -> TokenStream {
         format!("Which kind of defect a [`ServiceFault`] reports. The same type as [`{kind}`].");
     quote! {
         #[doc = #kind_doc]
-        #[::tixschema::model_schema()]
+        #model_schema
         #[derive(Clone, Copy, Debug, Eq, PartialEq, ::serde::Serialize)]
         #[serde(rename_all = "kebab-case")]
         #sealed
@@ -1127,7 +1143,7 @@ fn fault_declaration(declared: &Ident, non_exhaustive: bool) -> TokenStream {
         }
 
         #[doc = #fault_doc]
-        #[::tixschema::model_schema()]
+        #model_schema
         #[derive(Clone, Debug, Eq, PartialEq, ::serde::Serialize)]
         #[serde(rename_all = "camelCase")]
         pub struct #fields {

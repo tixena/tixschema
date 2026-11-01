@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 /// A `Vec<u8>` as a member, beside the member it travels with.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BytesImage {
@@ -80,7 +80,7 @@ pub struct BytesExample {
 }
 
 /// Each sequence that is not a `Vec<u8>`, which stays an array.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BytesLookalikes {
     pub boxed: Box<[u8]>,

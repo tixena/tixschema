@@ -1,26 +1,23 @@
 //! A brand over a list takes `minLength` and `maxLength` on the type, where they count its items.
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 mod a_length_on_a_brand_over_a_list {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct ListPart {
         pub value: String,
     }
 
-    #[model_schema(no_display, minLength = 1)]
+    #[model_schema(no_display, minLength = 1, enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
     pub struct NameConfig(pub Vec<ListPart>);
 
     /// The named form, over a slice behind a `Box`.
-    #[model_schema(no_display, minLength = 1, maxLength = 2)]
+    #[model_schema(no_display, minLength = 1, maxLength = 2, enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
     pub struct Shelf {
@@ -28,7 +25,7 @@ mod a_length_on_a_brand_over_a_list {
     }
 
     /// A brand that declares a type parameter and holds a list of it.
-    #[model_schema(no_display, maxLength = 2, default_types(T = String))]
+    #[model_schema(no_display, maxLength = 2, default_types(T = String), enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
     pub struct Batch<T>(pub Vec<T>);
@@ -164,7 +161,6 @@ mod a_length_on_a_brand_over_a_list {
         }
     }
 
-    #[cfg(feature = "jsonschema")]
     #[test]
     fn the_json_schema_writes_the_brands_count_on_its_array() {
         use serde_json::json;
@@ -199,20 +195,17 @@ mod a_length_on_a_brand_over_a_list {
 
 /// A length written where a list is named, not written: a brand over a list at a field, a brand
 /// over a brand over a list, and a generic brand whose declared default is a list.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 mod a_length_through_a_name {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
 
-    #[model_schema(no_display)]
+    #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
     pub struct Keywords(pub Vec<String>);
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Article {
         #[model_schema_prop(minLength = 1)]
@@ -221,12 +214,12 @@ mod a_length_through_a_name {
         pub keywords: Keywords,
     }
 
-    #[model_schema(no_display)]
+    #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
     pub struct LaterKeywords(pub Vec<String>);
 
-    #[model_schema(no_display, minLength = 1)]
+    #[model_schema(no_display, minLength = 1, enable = ["jsonschema"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
     pub struct SomeKeywords(pub Keywords);
@@ -238,7 +231,7 @@ mod a_length_through_a_name {
         pub some: SomeKeywords,
     }
 
-    #[model_schema(no_display, minLength = 1, default_types(T = Vec<String>))]
+    #[model_schema(no_display, minLength = 1, default_types(T = Vec<String>), enable = ["jsonschema"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
     pub struct Held<T>(pub T);
@@ -349,7 +342,6 @@ mod a_length_through_a_name {
         );
     }
 
-    #[cfg(feature = "jsonschema")]
     #[test]
     fn the_json_schema_writes_the_count_beside_the_name() {
         use serde_json::json;
@@ -376,22 +368,22 @@ mod a_length_through_a_name {
 #[cfg(all(
     feature = "serde",
     feature = "indexmap",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    any(feature = "typescript", feature = "zod")
 ))]
 mod a_length_through_an_alias_of_an_index_set {
     use indexmap::IndexSet;
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     pub type Queue = IndexSet<String>;
 
-    #[model_schema(no_display, minLength = 1)]
+    #[model_schema(no_display, minLength = 1, enable = ["jsonschema"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
     pub struct SomeQueue(pub Queue);
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Roster {
         #[model_schema_prop(minLength = 1, maxLength = 2)]
@@ -483,7 +475,6 @@ mod a_length_through_an_alias_of_an_index_set {
         );
     }
 
-    #[cfg(feature = "jsonschema")]
     #[test]
     fn the_json_schema_writes_the_count_beside_the_name() {
         let narrowing = &Roster::json_schema()["properties"]["queue"]["allOf"][1];

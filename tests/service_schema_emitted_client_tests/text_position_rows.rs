@@ -26,9 +26,7 @@ use serde_json::{Value, json};
 use tixschema::{model_schema, service_schema};
 
 use super::text_placing_http_rest_transport;
-use super::wire_forms_models::{
-    ConveyedSlot, Sends, WIRE_FORMS, WireFormRow, conveyed_slot_schema,
-};
+use super::wire_forms_models::{ConveyedSlot, Sends, WIRE_FORMS, WireFormRow};
 
 /// What each operation was handed, under the name of its argument, as the JSON serde writes.
 macro_rules! echoed {

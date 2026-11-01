@@ -137,7 +137,7 @@ pub struct Row {
 
 /// Under a tag alone: a variant of members and a newtype variant over text, neither written nor
 /// read.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind")]
 pub enum Berthage {
@@ -154,7 +154,7 @@ pub enum Berthage {
 
 /// No tag attribute: a variant of members, among them an `Option` serde would write as `null`, and
 /// a unit variant, neither written nor read.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum Wharfage {
     #[serde(skip)]
@@ -170,7 +170,7 @@ pub enum Wharfage {
 
 /// Under a tag and a content key: a variant of members, and one that declares one slot and takes
 /// it off the wire, neither written nor read.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", content = "body")]
 pub enum Pilotage {
@@ -186,7 +186,7 @@ pub enum Pilotage {
 }
 
 /// Untagged: a variant of members neither written nor read.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(untagged)]
 pub enum Lighterage {
@@ -200,7 +200,7 @@ pub enum Lighterage {
 }
 
 /// A plain enum: a unit variant neither written nor read.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum Keelage {
     #[serde(skip)]
@@ -210,7 +210,7 @@ pub enum Keelage {
 
 /// Unit variants beside a variant of one slot under both one-way skips, neither written nor read:
 /// serde writes the unit variants' names alone.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum Cartage {
     #[serde(skip_serializing, skip_deserializing)]
@@ -220,7 +220,7 @@ pub enum Cartage {
 }
 
 /// Under a tag alone: a variant serde reads and never writes.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind")]
 pub enum Tonnage {
@@ -234,7 +234,7 @@ pub enum Tonnage {
 }
 
 /// Under a tag alone: a variant serde writes and never reads.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind")]
 pub enum Dockage {

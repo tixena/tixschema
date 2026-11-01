@@ -10,7 +10,7 @@ use tixschema::model_schema;
 /// };
 /// println!("Item: {:?}", item);
 /// ```
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DocumentedStruct {
     pub label: String,
@@ -38,7 +38,7 @@ pub struct WrappedImportStruct {
 /// let item = DocumentedTuple("alpha".to_string(), 7);
 /// println!("Item: {:?}", item);
 /// ```
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DocumentedTuple(pub String, pub u32);
 
@@ -47,7 +47,7 @@ pub struct DocumentedTuple(pub String, pub u32);
 /// let item = DocumentedAdjacent::Unit;
 /// println!("Item: {:?}", item);
 /// ```
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "kind", content = "payload")]
 pub enum DocumentedAdjacent {
@@ -60,7 +60,7 @@ pub enum DocumentedAdjacent {
 /// let item = DocumentedExternal::Unit;
 /// println!("Item: {:?}", item);
 /// ```
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug)]
 pub enum DocumentedExternal {
     Named { side: u8 },
@@ -72,7 +72,7 @@ pub enum DocumentedExternal {
 /// let item = DocumentedInternal::Unit;
 /// println!("Item: {:?}", item);
 /// ```
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "kind")]
 pub enum DocumentedInternal {
@@ -85,7 +85,7 @@ pub enum DocumentedInternal {
 /// let item = DocumentedUntagged::Count(3);
 /// println!("Item: {:?}", item);
 /// ```
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(untagged)]
 pub enum DocumentedUntagged {
@@ -98,7 +98,7 @@ pub enum DocumentedUntagged {
 /// let item = DocumentedSlot::Primary;
 /// println!("Item: {:?}", item);
 /// ```
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum DocumentedSlot {
     Primary,
@@ -110,15 +110,15 @@ pub enum DocumentedSlot {
 /// let item: DocumentedAlias = 3;
 /// println!("Item: {:?}", item);
 /// ```
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 pub type DocumentedAlias = u32;
 
 /// An alias of a documented struct, which writes no block of its own.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 pub type DocumentedStructRef = DocumentedStruct;
 
 /// An alias of a primitive, which writes no block.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 pub type UndocumentedCount = u32;
 
 /// A struct whose documented member is a field.
@@ -237,7 +237,7 @@ pub enum ExampleOnlySlot {
 // A brand publishes a description and no `JSDoc` header of its own, so it is read on the Zod
 // surface alone and is gated on the feature that surface is.
 #[cfg(feature = "zod")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(transparent)]
 pub struct ExampleOnlyBrand(pub String);
@@ -507,7 +507,6 @@ fn an_example_importing_over_several_lines_builds_and_is_published() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_type_with_examples_writes_them_under_the_json_schema_examples_keyword() {
     assert_eq!(
@@ -520,7 +519,6 @@ fn a_type_with_examples_writes_them_under_the_json_schema_examples_keyword() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_type_with_no_example_writes_no_json_schema_examples_keyword() {
     assert!(
@@ -530,7 +528,6 @@ fn a_type_with_no_example_writes_no_json_schema_examples_keyword() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn the_schema_module_and_the_type_write_one_document_with_the_examples_in_it() {
     let documents = [
@@ -569,7 +566,7 @@ fn the_schema_module_and_the_type_write_one_document_with_the_examples_in_it() {
     }
 }
 
-#[cfg(all(feature = "zod", feature = "jsonschema"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_brand_writes_its_examples_in_the_document_of_its_schema_module_too() {
     assert_eq!(
@@ -582,7 +579,6 @@ fn a_brand_writes_its_examples_in_the_document_of_its_schema_module_too() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn an_alias_of_a_documented_type_with_no_block_carries_its_examples_in_json_schema() {
     assert_eq!(

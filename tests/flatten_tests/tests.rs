@@ -1,20 +1,19 @@
 //! Tests of `#[serde(flatten)]`: the intersection, the merged schema and the choices a flattened
 //! source multiplies into.
 
-#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
+#[cfg(feature = "mongodb")]
 use bson2::oid::ObjectId;
 use serde::{Deserialize, Serialize};
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
 use std::collections::HashMap;
 use tixschema::model_schema;
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct BasePart {
     owner: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 struct DataElementSampleValueEntry {
@@ -23,7 +22,7 @@ struct DataElementSampleValueEntry {
     variant: DataElementSampleValueVariant,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "dataType")]
 enum DataElementSampleValueVariant {
@@ -43,8 +42,7 @@ enum DataElementSampleValueVariant {
 
 /// Two bases that flatten each other: neither body exists when the other's merge asks for it, and
 /// no finite value inhabits either type.
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct CycleFirst {
     first_own: String,
@@ -52,8 +50,7 @@ struct CycleFirst {
     second: CycleSecond,
 }
 
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct CycleSecond {
     #[serde(flatten)]
@@ -63,8 +60,7 @@ struct CycleSecond {
 
 /// The same cycle with a union in the middle: the branch that closes it is the deferred name, and
 /// a reference carries none of the members it stands for.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct CycleUnionNode {
     #[serde(flatten)]
@@ -72,8 +68,7 @@ struct CycleUnionNode {
     own: String,
 }
 
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum CycleUnionEither {
@@ -100,7 +95,7 @@ enum CycleVariantHost {
     Wrapped(Box<CycleVariantContent>),
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ExtraPart {
     priority: i64,
@@ -108,8 +103,7 @@ struct ExtraPart {
 
 /// A base that names itself, written only where something asks what it describes as: what a
 /// flattened branch that is a reference rather than an object contributes to its container.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatHolder {
     #[serde(flatten)]
@@ -117,22 +111,21 @@ struct FlatHolder {
     extra: String,
 }
 
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatNode {
     children: Vec<Self>,
     val: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlattenOnly {
     #[serde(flatten)]
     variant: DataElementSampleValueVariant,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct MultiFlatten {
     #[serde(flatten)]
@@ -142,7 +135,7 @@ struct MultiFlatten {
     id: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct NoFlatten {
     id: String,
@@ -168,7 +161,7 @@ struct FlatOverEnum {
 /// A newtype over a `String` flattened into a struct: serde writes it as a string, not an object.
 /// Where the newtype is declared above, the struct is refused at expansion in every build with
 /// serde, so it is declared below, where no expansion of the struct sees it.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverBrand {
     own: String,
@@ -176,15 +169,14 @@ struct FlatOverBrand {
     slug: FlatSlug,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatSlug(String);
 
 /// The same newtype declared *below* the object that flattens it — the recording holds only what
 /// has already expanded, so the guard keeps the declaration-order fallback while the JSON-schema
 /// merge (reading the document at run time) refuses it regardless of order.
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverLaterBrand {
     own: String,
@@ -192,27 +184,26 @@ struct FlatOverLaterBrand {
     slug: LaterFlatSlug,
 }
 
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct LaterFlatSlug(String);
 
 /// An untagged enum every member of which serde writes as an object, and the struct that flattens
 /// it. serde writes whichever member matched into the object the struct is writing, so what the
 /// struct writes is one key set per member.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatFirst {
     a: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatSecond {
     b: bool,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum FlatEither {
@@ -220,7 +211,7 @@ enum FlatEither {
     Second(FlatSecond),
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverUntagged {
     #[serde(flatten)]
@@ -278,7 +269,7 @@ enum LaterEither {
 /// struct that flattens one declared above it is refused at expansion in every build with serde.
 /// This struct is declared above the union, where nothing records its members, and the JSON-schema
 /// merge answers instead.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverScalarUntagged {
     #[serde(flatten)]
@@ -289,7 +280,7 @@ struct FlatOverScalarUntagged {
 /// The same shape with one member serde writes as a string rather than an object. Standing on its
 /// own it is an ordinary union — an untagged enum may hold a scalar — and every surface describes
 /// it.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum FlatScalarEither {
@@ -300,8 +291,7 @@ enum FlatScalarEither {
 /// The same union declared *below* the object that flattens it — carrying no recorded members,
 /// the Zod merge falls back to naming it as a plain operand, while the JSON-schema merge
 /// (reading members at run time) refuses it regardless of order.
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverLaterScalarUntagged {
     #[serde(flatten)]
@@ -309,8 +299,7 @@ struct FlatOverLaterScalarUntagged {
     own: String,
 }
 
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum LaterScalarEither {
@@ -323,8 +312,7 @@ enum LaterScalarEither {
 /// expansion in every build with serde. This struct is declared above the union, where nothing
 /// records its members, and the JSON-schema merge answers for the same declaration at run time
 /// instead.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverNullableUntagged {
     #[serde(flatten)]
@@ -335,8 +323,7 @@ struct FlatOverNullableUntagged {
 /// The same shape with one member reached through an `Option`. Standing on its own it is an
 /// ordinary union — a member may be written as its value or as a bare `null`, and every surface
 /// describes the choice.
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum FlatNullableEither {
@@ -347,8 +334,7 @@ enum FlatNullableEither {
 /// The same union declared *below* the object that flattens it, which every table holds: the
 /// recording carries nothing for it, so the Zod merge names it as the one operand it is while the
 /// JSON-schema merge refuses it wherever it was declared.
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverLaterNullableUntagged {
     #[serde(flatten)]
@@ -356,8 +342,7 @@ struct FlatOverLaterNullableUntagged {
     own: String,
 }
 
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum LaterNullableEither {
@@ -368,19 +353,17 @@ enum LaterNullableEither {
 /// Three members that name another item rather than spelling a type out: a brand over a string, a
 /// brand over a `bool`, and a plain unit enum. What serde writes each as lives on the named item,
 /// so the merge asks the registry rather than the spelling.
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(transparent)]
 struct MemberSlug(String);
 
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(transparent)]
 struct MemberSwitch(bool);
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 enum MemberHue {
     Blue,
@@ -390,8 +373,7 @@ enum MemberHue {
 /// Each union of those members flattened by a struct declared above it: a struct declared below
 /// the union is refused at expansion in every build with serde, and the JSON-schema merge answers
 /// for this one at run time.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverMemberSlugUntagged {
     #[serde(flatten)]
@@ -399,8 +381,7 @@ struct FlatOverMemberSlugUntagged {
     own: String,
 }
 
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverMemberSwitchUntagged {
     #[serde(flatten)]
@@ -408,7 +389,7 @@ struct FlatOverMemberSwitchUntagged {
     own: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverMemberHueUntagged {
     #[serde(flatten)]
@@ -416,8 +397,7 @@ struct FlatOverMemberHueUntagged {
     own: String,
 }
 
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum MemberSlugEither {
@@ -425,8 +405,7 @@ enum MemberSlugEither {
     Slug(MemberSlug),
 }
 
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum MemberSwitchEither {
@@ -434,7 +413,7 @@ enum MemberSwitchEither {
     Switch(MemberSwitch),
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum MemberHueEither {
@@ -444,7 +423,7 @@ enum MemberHueEither {
 
 /// A struct of one slot over `()` flattened by a struct declared above it: serde writes no key for
 /// it and reads the object back, and the JSON-schema merge answers for it at run time.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverLaterNothing {
     #[serde(flatten)]
@@ -452,14 +431,14 @@ struct FlatOverLaterNothing {
     own: String,
 }
 
-#[model_schema(no_display)]
+#[model_schema(no_display, enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct LaterNothing(());
 
 /// An untagged enum with a member over `()`, flattened by a struct declared above it: serde writes
 /// that member as no key and does not read the object back, and the JSON-schema merge refuses it
 /// by the record the enum publishes.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverLaterUnitMember {
     #[serde(flatten)]
@@ -468,8 +447,7 @@ struct FlatOverLaterUnitMember {
 }
 
 /// The same enum through an alias declared below the holder, which forwards the enum's record.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverLaterUnitAlias {
     #[serde(flatten)]
@@ -479,8 +457,7 @@ struct FlatOverLaterUnitAlias {
 
 /// The same enum through a struct of one slot declared below the holder, which forwards the
 /// enum's record.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverLaterUnitSlot {
     #[serde(flatten)]
@@ -488,16 +465,14 @@ struct FlatOverLaterUnitSlot {
     id: String,
 }
 
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 type LaterUnitAlias = LaterUnitMember;
 
-#[cfg(feature = "jsonschema")]
-#[model_schema(no_display)]
+#[model_schema(no_display, enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct LaterUnitSlot(LaterUnitMember);
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum LaterUnitMember {
@@ -508,8 +483,7 @@ enum LaterUnitMember {
 /// A generic untagged enum filled at `()`, flattened by a struct declared above it: its member is
 /// its own type parameter, and the enum publishes no record at a filling, so the merge reads the
 /// `null` of that member as no key.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverLaterHeldUnit {
     #[serde(flatten)]
@@ -517,8 +491,7 @@ struct FlatOverLaterHeldUnit {
     id: String,
 }
 
-#[cfg(feature = "jsonschema")]
-#[model_schema(default_types(T = String))]
+#[model_schema(default_types(T = String), enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum LaterHeldMember<T> {
@@ -527,8 +500,7 @@ enum LaterHeldMember<T> {
 }
 
 /// A flattened `Option` of a struct declared below its holder: its `null` is the absence.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverLaterMaybeFields {
     #[serde(flatten, skip_serializing_if = "Option::is_none", default)]
@@ -537,8 +509,7 @@ struct FlatOverLaterMaybeFields {
 }
 
 /// The same `Option` through an alias declared below its holder.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverLaterMaybeAlias {
     #[serde(flatten)]
@@ -547,8 +518,7 @@ struct FlatOverLaterMaybeAlias {
 }
 
 /// The same `Option` through a struct of one slot declared below its holder.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverLaterMaybeSlot {
     #[serde(flatten)]
@@ -556,17 +526,14 @@ struct FlatOverLaterMaybeSlot {
     id: String,
 }
 
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 type LaterMaybeAlias = Option<LaterFieldsBelow>;
 
-#[cfg(feature = "jsonschema")]
-#[model_schema(no_display)]
+#[model_schema(no_display, enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct LaterMaybeSlot(Option<LaterFieldsBelow>);
 
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct LaterFieldsBelow {
     below: String,
@@ -574,7 +541,7 @@ struct LaterFieldsBelow {
 
 /// A plain enum flattened by a struct declared above it, which the struct's expansion does not
 /// see: the JSON-schema merge answers for it at run time.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverLaterHue {
     #[serde(flatten)]
@@ -582,7 +549,7 @@ struct FlatOverLaterHue {
     own: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 enum LaterHue {
     Calm,
@@ -592,8 +559,7 @@ enum LaterHue {
 /// And the same brand member in a union declared below the object, which keeps the fallback: a
 /// name the recording holds nothing for is named as the one operand it is, whatever the registry
 /// could have said about the members.
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverLaterMemberSlugUntagged {
     #[serde(flatten)]
@@ -601,8 +567,7 @@ struct FlatOverLaterMemberSlugUntagged {
     own: String,
 }
 
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum LaterMemberSlugEither {
@@ -613,26 +578,22 @@ enum LaterMemberSlugEither {
 /// Three members naming another item rather than spelling a type out, each a different wire
 /// shape: one is a JSON array, one is the object a map writes, one has a nullable published
 /// surface. serde flattens only the map and refuses the other two.
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct MemberBag(Vec<String>);
 
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct MemberBucket(HashMap<String, String>);
 
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct MemberMaybeSecond(Option<FlatSecond>);
 
 /// The array-shaped and nullable members' unions flattened by a struct declared above each: a
 /// struct declared below the union is refused at expansion in every build with serde, and the
 /// JSON-schema merge answers for these at run time.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverMemberBagUntagged {
     #[serde(flatten)]
@@ -640,8 +601,7 @@ struct FlatOverMemberBagUntagged {
     own: String,
 }
 
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverMemberMaybeUntagged {
     #[serde(flatten)]
@@ -649,8 +609,7 @@ struct FlatOverMemberMaybeUntagged {
     own: String,
 }
 
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum MemberBagEither {
@@ -658,8 +617,7 @@ enum MemberBagEither {
     Items(MemberBag),
 }
 
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum MemberBucketEither {
@@ -667,8 +625,7 @@ enum MemberBucketEither {
     Bucket(MemberBucket),
 }
 
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum MemberMaybeEither {
@@ -679,8 +636,7 @@ enum MemberMaybeEither {
 /// The map-shaped member is the one of the three that stays where it was: serde writes a map's keys
 /// straight into the object being written, which is what flattening is, so the multiplication keeps
 /// its branch and the merge keeps its document. Flattened alone: beside a member it is refused.
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverMemberBucketUntagged {
     #[serde(flatten)]
@@ -690,8 +646,7 @@ struct FlatOverMemberBucketUntagged {
 /// The array-shaped and nullable members in unions declared below the object that flattens them,
 /// which keeps the fallback: the recording holds nothing for either name, so the Zod merge writes
 /// the one operand it is while the JSON-schema merge refuses it wherever it was declared.
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverLaterMemberBagUntagged {
     #[serde(flatten)]
@@ -699,8 +654,7 @@ struct FlatOverLaterMemberBagUntagged {
     own: String,
 }
 
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum LaterMemberBagEither {
@@ -708,8 +662,7 @@ enum LaterMemberBagEither {
     Items(MemberBag),
 }
 
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverLaterMemberMaybeUntagged {
     #[serde(flatten)]
@@ -717,8 +670,7 @@ struct FlatOverLaterMemberMaybeUntagged {
     own: String,
 }
 
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum LaterMemberMaybeEither {
@@ -729,8 +681,8 @@ enum LaterMemberMaybeEither {
 /// A member naming a tagged enum: serde writes a data-carrying variant as a single-key object but
 /// a unit variant as a bare string — a leaf no object can be merged with, one level in from the
 /// member.
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
-#[model_schema()]
+#[cfg(any(feature = "zod", feature = "typescript"))]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 enum MemberExtBare {
     Bare,
@@ -740,8 +692,7 @@ enum MemberExtBare {
 /// The union of that member flattened by a struct declared above it: a struct declared below the
 /// union is refused at expansion in every build with serde, and the JSON-schema merge answers for
 /// this one at run time.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverMemberExtBareUntagged {
     #[serde(flatten)]
@@ -749,8 +700,7 @@ struct FlatOverMemberExtBareUntagged {
     own: String,
 }
 
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum MemberExtBareEither {
@@ -761,8 +711,7 @@ enum MemberExtBareEither {
 /// The same enum in a union declared below the object that flattens it, which keeps the fallback:
 /// the recording holds nothing for the union's name, so the Zod merge writes the one operand it is
 /// while the JSON-schema merge refuses it wherever it was declared.
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverLaterMemberExtBareUntagged {
     #[serde(flatten)]
@@ -770,8 +719,7 @@ struct FlatOverLaterMemberExtBareUntagged {
     own: String,
 }
 
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum LaterMemberExtBareEither {
@@ -782,8 +730,8 @@ enum LaterMemberExtBareEither {
 /// The same tagged enum flattened directly, with no union between: flattened, serde writes a unit
 /// variant as its name holding `null` rather than the bare string it is standing alone, and reads
 /// that back as the variant — so the merges owe it one branch per variant.
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
-#[model_schema()]
+#[cfg(any(feature = "zod", feature = "typescript"))]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ExtBareDirectHolder {
     #[serde(flatten)]
@@ -792,8 +740,8 @@ struct ExtBareDirectHolder {
 }
 
 /// A tagged enum that declares a parameter, of a unit variant and a variant that holds it.
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
-#[model_schema(default_types(Load = String))]
+#[cfg(any(feature = "zod", feature = "typescript"))]
+#[model_schema(default_types(Load = String), enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 enum MemberExtCarried<Load> {
     Bare,
@@ -802,8 +750,8 @@ enum MemberExtCarried<Load> {
 
 /// That enum written with an argument and flattened: each variant's entry is its own with the
 /// parameter filled by the argument.
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
-#[model_schema()]
+#[cfg(any(feature = "zod", feature = "typescript"))]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ExtCarriedHolder {
     #[serde(flatten)]
@@ -812,7 +760,7 @@ struct ExtCarriedHolder {
 }
 
 /// That enum flattened at its holder's own parameter, which the holder's factory binds.
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+#[cfg(any(feature = "zod", feature = "typescript"))]
 #[model_schema(default_types(Held = bool))]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ExtCarriedOwnHolder<Held> {
@@ -822,13 +770,13 @@ struct ExtCarriedOwnHolder<Held> {
 }
 
 /// An alias of that enum that declares a parameter of its own.
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
-#[model_schema(default_types(Stowed = String))]
+#[cfg(any(feature = "zod", feature = "typescript"))]
+#[model_schema(default_types(Stowed = String), enable = ["jsonschema"])]
 type MemberExtCarriedOf<Stowed> = MemberExtCarried<Stowed>;
 
 /// The alias written with an argument and flattened.
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
-#[model_schema()]
+#[cfg(any(feature = "zod", feature = "typescript"))]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ExtCarriedAliasHolder {
     #[serde(flatten)]
@@ -838,8 +786,8 @@ struct ExtCarriedAliasHolder {
 
 /// An untagged enum that declares a parameter: a member that is the parameter, and one of named
 /// fields.
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
-#[model_schema(default_types(Load = BasePart))]
+#[cfg(any(feature = "zod", feature = "typescript"))]
+#[model_schema(default_types(Load = BasePart), enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum MemberUntaggedCarried<Load> {
@@ -849,8 +797,8 @@ enum MemberUntaggedCarried<Load> {
 
 /// That enum written with an argument and flattened: each member is its own with the parameter
 /// filled by the argument.
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
-#[model_schema()]
+#[cfg(any(feature = "zod", feature = "typescript"))]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct UntaggedCarriedHolder {
     #[serde(flatten)]
@@ -859,7 +807,7 @@ struct UntaggedCarriedHolder {
 }
 
 /// That enum flattened at its holder's own parameter, which the holder's factory binds.
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+#[cfg(any(feature = "zod", feature = "typescript"))]
 #[model_schema(default_types(Held = BasePart))]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct UntaggedCarriedOwnHolder<Held> {
@@ -870,8 +818,8 @@ struct UntaggedCarriedOwnHolder<Held> {
 
 /// An untagged enum that declares a parameter, of two members of named fields, each closed to the
 /// other's key where it is flattened.
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
-#[model_schema(default_types(Load = String))]
+#[cfg(any(feature = "zod", feature = "typescript"))]
+#[model_schema(default_types(Load = String), enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum MemberUntaggedPicked<Load> {
@@ -880,7 +828,7 @@ enum MemberUntaggedPicked<Load> {
 }
 
 /// That enum written with an argument and flattened.
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+#[cfg(any(feature = "zod", feature = "typescript"))]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct UntaggedPickedHolder {
@@ -890,13 +838,13 @@ struct UntaggedPickedHolder {
 }
 
 /// An alias of that enum that declares a parameter of its own.
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
-#[model_schema(default_types(Stowed = String))]
+#[cfg(any(feature = "zod", feature = "typescript"))]
+#[model_schema(default_types(Stowed = String), enable = ["jsonschema"])]
 type MemberUntaggedPickedOf<Stowed> = MemberUntaggedPicked<Stowed>;
 
 /// The alias written with an argument and flattened.
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
-#[model_schema()]
+#[cfg(any(feature = "zod", feature = "typescript"))]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct UntaggedPickedAliasHolder {
     own: String,
@@ -905,8 +853,8 @@ struct UntaggedPickedAliasHolder {
 }
 
 /// A flattened `ObjectId`, whose `$oid` key serde writes beside the object's own.
-#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
-#[model_schema()]
+#[cfg(feature = "mongodb")]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlattenedOidHolder {
     id: u32,
@@ -916,8 +864,8 @@ struct FlattenedOidHolder {
 
 /// An `ObjectId` in the lone slot of a variant under a tag alone, whose `$oid` key serde writes
 /// beside the tag, as it writes a flattened one beside the object's own.
-#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
-#[model_schema()]
+#[cfg(feature = "mongodb")]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "kind")]
 enum TaggedOidHolder {
@@ -946,7 +894,7 @@ struct SerdeOnlyCode(String);
 
 /// A type parameter flattened beside a member, filled where every surface describes what serde
 /// writes: at a struct, and at an `Option` of one.
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+#[cfg(any(feature = "zod", feature = "typescript"))]
 #[model_schema(default_types(T = BasePart))]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ObjectFilledBag<T> {
@@ -956,7 +904,7 @@ struct ObjectFilledBag<T> {
 }
 
 /// [`ObjectFilledBag`] filled at a struct and at an `Option` of one, which build.
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+#[cfg(any(feature = "zod", feature = "typescript"))]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ObjectFilledBags {
@@ -966,16 +914,15 @@ struct ObjectFilledBags {
 
 /// And a tagged enum whose every variant carries data, which serde writes as the object its name
 /// tags in every case — admitted where it always was, on every surface.
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
-#[model_schema()]
+#[cfg(any(feature = "zod", feature = "typescript"))]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 enum MemberExtObjects {
     One(FlatFirst),
     Two(FlatSecond),
 }
 
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum MemberExtObjEither {
@@ -983,8 +930,7 @@ enum MemberExtObjEither {
     Ext(MemberExtObjects),
 }
 
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverMemberExtObjUntagged {
     #[serde(flatten)]
@@ -995,8 +941,8 @@ struct FlatOverMemberExtObjUntagged {
 /// That enum flattened directly, where Zod and TypeScript multiply for different reasons: a Zod
 /// intersection recognizes only the keys its operands name and a `z.union` names none, so joining
 /// admits nothing; TypeScript distributes over every branch instead.
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
-#[model_schema()]
+#[cfg(any(feature = "zod", feature = "typescript"))]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ExtObjDirectHolder {
     #[serde(flatten)]
@@ -1019,8 +965,8 @@ struct OptExtObjHolder {
 /// An untagged union written over the objects its members are, rather than over names — the only
 /// case where the declaration itself spells each member's keys, since serde matches a member by
 /// shape.
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
-#[model_schema()]
+#[cfg(any(feature = "zod", feature = "typescript"))]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum InlineUntagEither {
@@ -1028,8 +974,8 @@ enum InlineUntagEither {
     Right { right: bool },
 }
 
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
-#[model_schema()]
+#[cfg(any(feature = "zod", feature = "typescript"))]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct InlineUntagDirectHolder {
     #[serde(flatten)]
@@ -1038,11 +984,11 @@ struct InlineUntagDirectHolder {
 }
 
 /// The same union under an alias, which the object that flattens it joins by the union's members.
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+#[cfg(any(feature = "zod", feature = "typescript"))]
 #[model_schema()]
 type InlineUntagAlias = InlineUntagEither;
 
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+#[cfg(any(feature = "zod", feature = "typescript"))]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct InlineUntagAliasHolder {
@@ -1054,24 +1000,21 @@ struct InlineUntagAliasHolder {
 /// A union member that names itself, and the struct that flattens the union. The member describes
 /// as a reference into the definitions, and the body it points at is written by the time the merge
 /// asks for it.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatSelfNode {
     kids: Vec<Self>,
     leaf: String,
 }
 
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum FlatSelfEither {
     Node(FlatSelfNode),
 }
 
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverSelfUntagged {
     #[serde(flatten)]
@@ -1082,13 +1025,13 @@ struct FlatOverSelfUntagged {
 /// An untagged enum whose members overlap: one member's key set is a subset of the other's, and
 /// the difference is a key that member omits when it is absent. serde writes the first member that
 /// matches, so the payload it writes for the narrower member is one the wider member admits too.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct OverlapNarrow {
     a: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct OverlapWide {
     a: String,
@@ -1096,7 +1039,7 @@ struct OverlapWide {
     b: Option<String>,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum OverlapEither {
@@ -1104,7 +1047,7 @@ enum OverlapEither {
     Wide(OverlapWide),
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverOverlap {
     #[serde(flatten)]
@@ -1114,7 +1057,7 @@ struct FlatOverOverlap {
 
 /// One object that merges both spellings of a union: a discriminated enum, whose members are
 /// exclusive, and the overlapping untagged one, whose members are not.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "kind")]
 enum MixedTagged {
@@ -1122,7 +1065,7 @@ enum MixedTagged {
     Right { right: bool },
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverMixed {
     #[serde(flatten)]
@@ -1135,13 +1078,13 @@ struct FlatOverMixed {
 /// A union one member of which is itself a union, and the struct that flattens the outer one. serde
 /// writes whichever leaf member matched into the object the struct is writing, so the nesting
 /// contributes no key of its own and what the struct writes is one key set per leaf.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct NestPlain {
     plain: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "kind")]
 enum NestTagged {
@@ -1149,7 +1092,7 @@ enum NestTagged {
     Right { right: bool },
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum NestEither {
@@ -1157,7 +1100,7 @@ enum NestEither {
     Tagged(NestTagged),
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct NestHolder {
     #[serde(flatten)]
@@ -1167,27 +1110,27 @@ struct NestHolder {
 
 /// The same nesting with one member at every level: a choice of one is no choice, so no wrapper is
 /// written and the holder describes as the one key set it writes.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct NestOnly {
     a: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum NestOnlyInner {
     A(NestOnly),
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum NestOnlyOuter {
     Inner(NestOnlyInner),
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct NestOnlyHolder {
     #[serde(flatten)]
@@ -1198,8 +1141,7 @@ struct NestOnlyHolder {
 /// Two unions that name each other. The outer one is deferred by the frame that reads it and its
 /// body is written by the time the merge asks for it, so the cycle carries no missing body — it is
 /// visible only as a name the expansion reaches twice on one path.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct NestCycleHolder {
     #[serde(flatten)]
@@ -1207,16 +1149,14 @@ struct NestCycleHolder {
     own: String,
 }
 
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum NestCycleOuter {
     Inner(Box<NestCycleInner>),
 }
 
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum NestCycleInner {
@@ -1227,14 +1167,14 @@ enum NestCycleInner {
 /// when `Some`, and the object alone when `None` — the guard forces `skip_serializing_if`, so
 /// absence is the only `None` the crate admits. Two required members, so a payload carrying only
 /// one is a base serde never writes.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct OptBase {
     left: String,
     right: bool,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct OptHolder {
     #[serde(flatten, skip_serializing_if = "Option::is_none", default)]
@@ -1245,11 +1185,11 @@ struct OptHolder {
 /// The other spelling of the same absence: a nullable-surfaced registration flattened directly, no
 /// union between. serde reads and writes both forms exactly as the `Option`-typed field does, so
 /// the merge owes both spellings one answer.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct MaybeOptBase(Option<OptBase>);
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct NamedMaybeHolder {
     #[serde(flatten)]
@@ -1262,7 +1202,7 @@ struct NamedMaybeHolder {
 /// round-trips, the other satisfies no payload, so the guard refuses the declaration in every
 /// build with serde where the registration is declared above. It is declared below, where no
 /// expansion of the holder sees it.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct MaybeCountHolder {
     #[serde(flatten)]
@@ -1270,15 +1210,14 @@ struct MaybeCountHolder {
     own: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct MaybeCount(Option<i64>);
 
 /// The same registration declared *below* the object that flattens it — the recording holds only
 /// what has already expanded, so the guard keeps the declaration-order fallback while the
 /// JSON-schema merge (reading the document at run time) refuses it regardless of order.
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct LaterMaybeCountHolder {
     #[serde(flatten)]
@@ -1286,20 +1225,19 @@ struct LaterMaybeCountHolder {
     own: String,
 }
 
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct LaterMaybeCount(Option<i64>);
 
 /// And a name whose published surface is not nullable, which offers no absence and stays the one
 /// operand it always was.
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
-#[model_schema()]
+#[cfg(any(feature = "zod", feature = "typescript"))]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct PlainOptBase(OptBase);
 
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
-#[model_schema()]
+#[cfg(any(feature = "zod", feature = "typescript"))]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct NamedPlainHolder {
     own: String,
@@ -1309,7 +1247,7 @@ struct NamedPlainHolder {
 
 /// The same absence over a source that is itself a union: serde writes the matched member's keys or
 /// no keys at all, so the choice the `Option` adds sits outside the choice the enum already offered.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct OptUnionHolder {
     #[serde(flatten, skip_serializing_if = "Option::is_none", default)]
@@ -1319,19 +1257,19 @@ struct OptUnionHolder {
 
 /// The source an enum's own struct variants flatten, and one form of the enum per tagging: serde
 /// writes the source's members into the variant's own content object, wherever that object sits.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct VariantExtra {
     note: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct VariantRank {
     rank: i64,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 enum ExternalFlatVariant {
     Named {
@@ -1344,7 +1282,7 @@ enum ExternalFlatVariant {
     },
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "kind")]
 enum InternalFlatVariant {
@@ -1358,7 +1296,7 @@ enum InternalFlatVariant {
     },
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "kind", content = "data")]
 enum AdjacentFlatVariant {
@@ -1373,7 +1311,7 @@ enum AdjacentFlatVariant {
 }
 
 /// Two sources flattened into one variant: both sets of members join the same content object.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 enum TwiceFlatVariant {
     Named {
@@ -1387,7 +1325,7 @@ enum TwiceFlatVariant {
 
 /// The same source at an untagged enum's own member position: no discriminator stands over it, so
 /// serde writes the source's members beside the variant's own and nothing else.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum UntaggedFlatVariant {
@@ -1402,7 +1340,7 @@ enum UntaggedFlatVariant {
 }
 
 /// Two sources flattened into one untagged member.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum TwiceUntaggedFlatVariant {
@@ -1427,7 +1365,7 @@ struct UntaggedFlatVariantHolder {
 
 /// The members a variant's flattened choice is built from, one key apiece so a payload names which
 /// branch wrote it.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ChoiceLeft {
     left: String,
@@ -1439,7 +1377,7 @@ struct ChoiceMiddle {
     middle: bool,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ChoiceRight {
     right: i64,
@@ -1459,7 +1397,7 @@ struct ChoiceDown {
 
 /// A registered choice: serde writes one key set per member, so a variant flattening it writes one
 /// key set per member too.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum VariantChoice {
@@ -1488,7 +1426,7 @@ enum PairChoice {
 }
 
 /// One form of enum per tagging, each flattening the same two-member choice into a struct variant.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 enum ExternalChoiceVariant {
     Named {
@@ -1501,7 +1439,7 @@ enum ExternalChoiceVariant {
     },
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "kind")]
 enum InternalChoiceVariant {
@@ -1515,7 +1453,7 @@ enum InternalChoiceVariant {
     },
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "kind", content = "data")]
 enum AdjacentChoiceVariant {
@@ -1529,7 +1467,7 @@ enum AdjacentChoiceVariant {
     },
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum UntaggedChoiceVariant {
@@ -1607,7 +1545,6 @@ enum RecursiveChoiceVariant {
 }
 
 /// The branch of an untagged document that names `key`.
-#[cfg(feature = "jsonschema")]
 fn untagged_branch(document: &serde_json::Value, key: &str) -> serde_json::Value {
     document["anyOf"]
         .as_array()
@@ -1619,7 +1556,6 @@ fn untagged_branch(document: &serde_json::Value, key: &str) -> serde_json::Value
 }
 
 /// The content object of `variant` in `document`, whichever of the three taggings put it there.
-#[cfg(feature = "jsonschema")]
 fn variant_content(document: &serde_json::Value, variant: &str) -> serde_json::Value {
     let branches = document["oneOf"].as_array().unwrap();
     let member = branches
@@ -1642,7 +1578,6 @@ fn variant_content(document: &serde_json::Value, variant: &str) -> serde_json::V
 }
 
 /// The keys a content object names, and the keys it requires.
-#[cfg(feature = "jsonschema")]
 fn described_keys(content: &serde_json::Value) -> (Vec<String>, Vec<String>) {
     let named = content["properties"]
         .as_object()
@@ -1662,7 +1597,6 @@ fn described_keys(content: &serde_json::Value) -> (Vec<String>, Vec<String>) {
 /// Whether `payload` is accepted by a document every leaf of which is an object closed by
 /// `additionalProperties: false`: a leaf accepts when it names every key the payload carries and
 /// requires no key it does not.
-#[cfg(feature = "jsonschema")]
 fn closed_document_accepts(schema: &serde_json::Value, payload: &serde_json::Value) -> bool {
     if let Some(branches) = schema.get("oneOf") {
         return accepting_branches(branches, payload) == 1;
@@ -1680,7 +1614,6 @@ fn closed_document_accepts(schema: &serde_json::Value, payload: &serde_json::Val
 }
 
 /// How many of a union's branches accept `payload` — what the two spellings disagree about.
-#[cfg(feature = "jsonschema")]
 fn accepting_branches(branches: &serde_json::Value, payload: &serde_json::Value) -> usize {
     branches
         .as_array()
@@ -1880,7 +1813,6 @@ fn test_a_flatten_cycle_through_a_variants_content_defers_both_sides() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_flatten_json_schema_distributes_base_into_variants() {
     let schema = DataElementSampleValueEntry::json_schema();
     let one_of = schema["oneOf"].as_array().unwrap();
@@ -1902,7 +1834,6 @@ fn test_flatten_json_schema_distributes_base_into_variants() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_multi_flatten_json_schema_merges_plain_structs() {
     let schema = MultiFlatten::json_schema();
     assert!(schema.get("oneOf").is_none());
@@ -1917,7 +1848,6 @@ fn test_multi_flatten_json_schema_merges_plain_structs() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_flatten_only_json_schema_is_union() {
     let schema = FlattenOnly::json_schema();
     let one_of = schema["oneOf"].as_array().unwrap();
@@ -1931,7 +1861,6 @@ fn test_flatten_only_json_schema_is_union() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_no_flatten_json_schema_closes_additional_properties() {
     let schema = NoFlatten::json_schema();
     assert_eq!(
@@ -1942,7 +1871,6 @@ fn test_no_flatten_json_schema_closes_additional_properties() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_flatten_recursive_base_contributes_its_fields() {
     let schema = FlatHolder::json_schema();
     assert!(schema.get("oneOf").is_none());
@@ -1965,7 +1893,6 @@ fn test_flatten_recursive_base_contributes_its_fields() {
 
 /// The base's own self-reference is written from the container's root, so it has to resolve there.
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_flatten_recursive_base_self_reference_resolves_from_the_container() {
     let schema = FlatHolder::json_schema();
     let reference = schema["properties"]["children"]["items"]["$ref"]
@@ -1979,7 +1906,6 @@ fn test_flatten_recursive_base_self_reference_resolves_from_the_container() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "`CycleSecond`: `#[serde(flatten)]` of `CycleFirst` closes a flatten cycle"
 )]
@@ -1988,7 +1914,6 @@ fn test_flatten_cycle_is_rejected_rather_than_described() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "`CycleFirst`: `#[serde(flatten)]` of `CycleSecond` closes a flatten cycle"
 )]
@@ -1997,7 +1922,6 @@ fn test_flatten_cycle_is_rejected_from_either_end() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "`CycleUnionNode`: `#[serde(flatten)]` of `CycleUnionEither` closes a flatten cycle through a union member — its branch 1 is `CycleUnionNode`"
 )]
@@ -2007,7 +1931,6 @@ fn test_a_flatten_cycle_through_a_union_member_is_rejected() {
 
 /// The remedy is the one a cycle closed through the value itself names.
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "write the field as a named member so the cycle defers through a reference"
 )]
@@ -2017,7 +1940,6 @@ fn test_the_union_member_cycle_refusal_names_the_remedy() {
 
 /// Flattening a base that does not name itself writes the document it wrote before, byte for byte.
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_non_recursive_flatten_documents_are_byte_identical() {
     assert_eq!(
         serde_json::to_string(&DataElementSampleValueEntry::json_schema()).unwrap(),
@@ -2038,7 +1960,6 @@ fn test_non_recursive_flatten_documents_are_byte_identical() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_the_deferred_flatten_document_is_byte_identical() {
     assert_eq!(
         serde_json::to_string(&FlatHolder::json_schema()).unwrap(),
@@ -2068,7 +1989,6 @@ fn test_flatten_serialization_is_flat() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_flatten_recursive_base_serializes_flat() {
     let holder = FlatHolder {
         base: FlatNode {
@@ -2117,7 +2037,6 @@ fn test_flattening_a_string_newtype_is_unserializable() {
 }
 
 #[test]
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
 fn test_flattening_a_later_string_newtype_is_unserializable() {
     let refusal = serde_json::to_value(FlatOverLaterBrand {
         own: "o".to_owned(),
@@ -2132,7 +2051,6 @@ fn test_flattening_a_later_string_newtype_is_unserializable() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "`FlatOverBrand`: `#[serde(flatten)]` of `FlatSlug` is not written as an object"
 )]
@@ -2141,7 +2059,6 @@ fn test_flattening_a_string_newtype_is_refused_by_the_merge() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "`FlatOverLaterBrand`: `#[serde(flatten)]` of `LaterFlatSlug` is not written as an object"
 )]
@@ -2151,7 +2068,6 @@ fn test_flattening_a_later_string_newtype_is_refused_by_the_merge() {
 
 /// The remedy the refusal names is one the author can act on.
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(expected = "write the field as a named member so the value gets a key of its own")]
 fn test_the_flatten_merge_refusal_names_the_remedy() {
     assert!(FlatOverLaterBrand::json_schema().is_object());
@@ -2188,7 +2104,6 @@ fn test_flattening_an_untagged_enum_writes_the_matched_members_keys() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_flattening_an_untagged_enum_multiplies_the_base_over_its_members() {
     assert_eq!(
         serde_json::to_string(&FlatOverUntagged::json_schema()).unwrap(),
@@ -2197,7 +2112,6 @@ fn test_flattening_an_untagged_enum_multiplies_the_base_over_its_members() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_the_untagged_flatten_schema_accepts_every_payload_serde_writes() {
     let schema = FlatOverUntagged::json_schema();
     for payload in [
@@ -2239,7 +2153,6 @@ fn test_flattening_an_untagged_enum_over_a_string_member_is_unserializable() {
 }
 
 #[test]
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
 fn test_flattening_a_later_untagged_enum_over_a_string_member_is_unserializable() {
     let refusal = serde_json::to_value(FlatOverLaterScalarUntagged {
         own: "o".to_owned(),
@@ -2254,7 +2167,6 @@ fn test_flattening_a_later_untagged_enum_over_a_string_member_is_unserializable(
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "`FlatOverScalarUntagged`: `#[serde(flatten)]` of `FlatScalarEither` writes a union member that is not an object — its branch 2 describes a `string`"
 )]
@@ -2263,7 +2175,6 @@ fn test_a_string_member_of_a_flattened_untagged_enum_is_refused_by_the_merge() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "`FlatOverLaterScalarUntagged`: `#[serde(flatten)]` of `LaterScalarEither` writes a union member that is not an object — its branch 2 describes a `string`"
 )]
@@ -2272,7 +2183,6 @@ fn test_a_string_member_of_a_later_flattened_untagged_enum_is_refused_by_the_mer
 }
 
 #[test]
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
 fn test_an_optional_flattened_union_member_is_written_and_then_not_read_back() {
     let written = serde_json::to_value(FlatOverLaterNullableUntagged {
         own: "o".to_owned(),
@@ -2298,7 +2208,6 @@ fn test_an_optional_flattened_union_member_is_written_and_then_not_read_back() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "`FlatOverNullableUntagged`: `#[serde(flatten)]` of `FlatNullableEither` writes a union member that is not an object — its branch 2.2 describes a `null`"
 )]
@@ -2307,7 +2216,6 @@ fn test_an_optional_member_of_a_flattened_untagged_enum_is_refused_by_the_merge(
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "`FlatOverLaterNullableUntagged`: `#[serde(flatten)]` of `LaterNullableEither` writes a union member that is not an object — its branch 2.2 describes a `null`"
 )]
@@ -2316,7 +2224,6 @@ fn test_an_optional_member_of_a_later_flattened_untagged_enum_is_refused_by_the_
 }
 
 #[test]
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
 fn test_flattening_an_untagged_enum_over_a_named_string_member_is_unserializable() {
     let refusal = serde_json::to_value(FlatOverLaterMemberSlugUntagged {
         own: "o".to_owned(),
@@ -2331,7 +2238,6 @@ fn test_flattening_an_untagged_enum_over_a_named_string_member_is_unserializable
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "`FlatOverLaterMemberSlugUntagged`: `#[serde(flatten)]` of `LaterMemberSlugEither` writes a union member that is not an object — its branch 2 describes a `string`"
 )]
@@ -2340,7 +2246,6 @@ fn test_a_named_string_member_of_a_flattened_untagged_enum_is_refused_by_the_mer
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "`FlatOverMemberSlugUntagged`: `#[serde(flatten)]` of `MemberSlugEither` writes a union member that is not an object — its branch 2 describes a `string`"
 )]
@@ -2349,7 +2254,6 @@ fn test_a_named_string_member_of_an_untagged_enum_below_its_holder_is_refused_by
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "`FlatOverMemberSwitchUntagged`: `#[serde(flatten)]` of `MemberSwitchEither` writes a union member that is not an object — its branch 2 describes a `boolean`"
 )]
@@ -2358,7 +2262,6 @@ fn test_a_named_boolean_member_of_a_flattened_untagged_enum_is_refused_by_the_me
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "`FlatOverMemberHueUntagged`: `#[serde(flatten)]` of `MemberHueEither` writes a union member as a plain enum's variant name — its branch 2 describes a `string`, and serde writes that name as a key holding null, which a schema closed around the remaining fields rejects; write the field as a named member so the value gets a key of its own"
 )]
@@ -2367,7 +2270,6 @@ fn test_a_named_enumerated_member_of_a_flattened_untagged_enum_is_refused_by_the
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "`FlatOverLaterHue`: `#[serde(flatten)]` of `LaterHue` is written as a plain enum's variant name — its schema describes a `string`, and serde writes that name as a key holding null, which a schema closed around the remaining fields rejects; write the field as a named member so the value gets a key of its own"
 )]
@@ -2376,7 +2278,6 @@ fn test_a_plain_enum_flattened_below_its_holder_is_refused_by_the_merge() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "`FlatOverLaterNothing`: `#[serde(flatten)]` of `LaterNothing` is written as `()` — its schema describes a `null`: serde writes no key for it, and reads the object back, while the TypeScript type and the Zod schema intersect the object with `null`, which admits no value; write the field as a named member so the value gets a key of its own"
 )]
@@ -2399,7 +2300,6 @@ fn test_a_unit_flattened_below_its_holder_is_written_as_no_key() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "`FlatOverLaterUnitMember`: `#[serde(flatten)]` of `LaterUnitMember` writes a union member as `()` — its branch 2 describes a `null`, for which serde writes no key, and which it does not read back as that member; write the field as a named member so the value gets a key of its own"
 )]
@@ -2408,7 +2308,6 @@ fn test_a_unit_member_of_an_untagged_enum_flattened_below_its_holder_is_refused_
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "`FlatOverLaterUnitAlias`: `#[serde(flatten)]` of `LaterUnitAlias` writes a union member as `()` — its branch 2 describes a `null`, for which serde writes no key, and which it does not read back as that member; write the field as a named member so the value gets a key of its own"
 )]
@@ -2417,7 +2316,6 @@ fn test_a_unit_member_reached_through_an_alias_declared_below_is_refused_by_the_
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "`FlatOverLaterUnitSlot`: `#[serde(flatten)]` of `LaterUnitSlot` writes a union member as `()` — its branch 2 describes a `null`, for which serde writes no key, and which it does not read back as that member; write the field as a named member so the value gets a key of its own"
 )]
@@ -2445,7 +2343,6 @@ fn test_a_unit_member_of_an_untagged_enum_flattened_below_its_holder_does_not_re
 /// The `null` of a member over a type parameter filled at `()` is read as no key, which serde
 /// does not read back: the limit the scope sentence and the README state.
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_a_unit_filling_of_an_untagged_enum_flattened_below_its_holder_is_read_as_no_key() {
     let holder = FlatOverLaterHeldUnit {
         held: LaterHeldMember::Held(()),
@@ -2478,7 +2375,6 @@ fn test_a_unit_filling_of_an_untagged_enum_flattened_below_its_holder_is_read_as
 /// An `Option` of a type declared below its holder offers its absence as before, flattened
 /// directly, through an alias and through a struct of one slot.
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_an_option_flattened_below_its_holder_still_offers_its_absence() {
     let own = serde_json::json!({
         "type": "object",
@@ -2537,7 +2433,6 @@ fn test_a_flattened_plain_enum_member_is_written_as_a_key_no_schema_describes() 
         serde_json::from_value::<FlatOverMemberHueUntagged>(written).unwrap(),
         holder
     );
-    #[cfg(feature = "jsonschema")]
     assert_eq!(
         MemberHue::json_schema(),
         serde_json::json!({ "type": "string", "enum": ["Blue", "Red"] })
@@ -2546,14 +2441,12 @@ fn test_a_flattened_plain_enum_member_is_written_as_a_key_no_schema_describes() 
 
 /// The remedy that refusal names is the same one every flattened non-object gets.
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(expected = "write the field as a named member so the value gets a key of its own")]
 fn test_the_untagged_branch_refusal_names_the_remedy() {
     assert!(FlatOverLaterScalarUntagged::json_schema().is_object());
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_flattening_a_self_naming_union_member_writes_its_keys() {
     assert_eq!(
         serde_json::to_value(FlatOverSelfUntagged {
@@ -2569,7 +2462,6 @@ fn test_flattening_a_self_naming_union_member_writes_its_keys() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_a_deferred_union_member_merges_as_the_body_it_names() {
     assert_eq!(
         serde_json::to_string(&FlatOverSelfUntagged::json_schema()).unwrap(),
@@ -2578,7 +2470,6 @@ fn test_a_deferred_union_member_merges_as_the_body_it_names() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_the_deferred_union_member_schema_accepts_the_payload_serde_writes() {
     let schema = FlatOverSelfUntagged::json_schema();
     let payload = serde_json::json!({ "own": "o", "kids": [], "leaf": "l" });
@@ -2613,7 +2504,6 @@ fn test_flattening_an_overlapping_untagged_enum_writes_the_narrower_members_keys
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_the_overlapping_payload_is_admitted_by_two_branches() {
     let schema = FlatOverOverlap::json_schema();
     assert_eq!(
@@ -2627,7 +2517,6 @@ fn test_the_overlapping_payload_is_admitted_by_two_branches() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_an_overlapping_untagged_flatten_keeps_the_any_of_spelling() {
     assert_eq!(
         serde_json::to_string(&FlatOverOverlap::json_schema()).unwrap(),
@@ -2636,7 +2525,6 @@ fn test_an_overlapping_untagged_flatten_keeps_the_any_of_spelling() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_the_overlapping_untagged_flatten_schema_accepts_every_payload_serde_writes() {
     let schema = FlatOverOverlap::json_schema();
     for payload in [
@@ -2669,7 +2557,6 @@ fn test_flattening_both_spellings_of_a_union_writes_every_members_keys() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_a_mixed_merge_keeps_each_sources_wrapper() {
     let schema = FlatOverMixed::json_schema();
     let untagged = schema["anyOf"].as_array().unwrap();
@@ -2684,7 +2571,6 @@ fn test_a_mixed_merge_keeps_each_sources_wrapper() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_the_mixed_merge_schema_accepts_every_payload_serde_writes() {
     let schema = FlatOverMixed::json_schema();
     for payload in [
@@ -2733,7 +2619,6 @@ fn test_flattening_a_nested_union_writes_the_leaf_members_keys() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_the_nested_union_schema_accepts_every_payload_serde_writes() {
     let schema = NestHolder::json_schema();
     for payload in [
@@ -2749,7 +2634,6 @@ fn test_the_nested_union_schema_accepts_every_payload_serde_writes() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_a_nested_union_branch_expands_under_its_own_spelling() {
     assert_eq!(
         serde_json::to_string(&NestHolder::json_schema()).unwrap(),
@@ -2770,7 +2654,6 @@ fn test_flattening_a_single_member_nested_union_writes_the_leafs_keys() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_a_single_member_nested_union_collapses_to_the_leafs_object() {
     assert_eq!(
         serde_json::to_string(&NestOnlyHolder::json_schema()).unwrap(),
@@ -2783,7 +2666,6 @@ fn test_a_single_member_nested_union_collapses_to_the_leafs_object() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "`NestCycleHolder`: `#[serde(flatten)]` of `NestCycleOuter` closes a flatten cycle through nested unions — its branch 1.1 names `NestCycleOuter`, already expanding on the path `NestCycleOuter`"
 )]
@@ -2793,7 +2675,6 @@ fn test_a_cycle_through_nested_unions_names_the_path_it_closes() {
 
 /// The remedy is the one every flatten cycle names.
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "write the field as a named member so the cycle defers through a reference"
 )]
@@ -2853,7 +2734,6 @@ fn test_an_optional_flattened_union_writes_the_matched_members_keys_or_nothing()
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_the_optional_flatten_schema_accepts_every_payload_serde_writes() {
     let schema = OptHolder::json_schema();
     for payload in [
@@ -2868,7 +2748,6 @@ fn test_the_optional_flatten_schema_accepts_every_payload_serde_writes() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_the_optional_flatten_schema_rejects_a_partial_base() {
     let schema = OptHolder::json_schema();
     for payload in [
@@ -2883,7 +2762,6 @@ fn test_the_optional_flatten_schema_rejects_a_partial_base() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_the_optional_flatten_document_offers_the_base_and_its_absence() {
     assert_eq!(
         serde_json::to_string(&OptHolder::json_schema()).unwrap(),
@@ -2892,7 +2770,6 @@ fn test_the_optional_flatten_document_offers_the_base_and_its_absence() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_an_optional_flattened_union_offers_every_member_and_their_absence() {
     let schema = OptUnionHolder::json_schema();
     for payload in [
@@ -3014,7 +2891,6 @@ fn test_a_named_nullable_flattened_base_writes_its_members_or_nothing() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_the_named_nullable_flatten_document_is_the_optional_flattens_own() {
     assert_eq!(
         serde_json::to_string(&NamedMaybeHolder::json_schema()).unwrap(),
@@ -3027,7 +2903,6 @@ fn test_the_named_nullable_flatten_document_is_the_optional_flattens_own() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_the_named_nullable_flatten_document_admits_the_captured_payloads() {
     let schema = NamedMaybeHolder::json_schema();
     for payload in [
@@ -3107,7 +2982,6 @@ fn test_a_named_non_nullable_flatten_schema_is_byte_identical() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_a_named_non_nullable_flatten_document_is_byte_identical() {
     assert_eq!(
         serde_json::to_string(&NamedPlainHolder::json_schema()).unwrap(),
@@ -3138,7 +3012,6 @@ fn test_flattening_a_nullable_scalar_writes_the_absence_and_refuses_the_value() 
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "`MaybeCountHolder`: `#[serde(flatten)]` of `MaybeCount` writes a union member that is not an object — its branch 1 describes a `integer`"
 )]
@@ -3147,7 +3020,6 @@ fn test_flattening_a_nullable_scalar_is_refused_by_the_merge() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "`LaterMaybeCountHolder`: `#[serde(flatten)]` of `LaterMaybeCount` writes a union member that is not an object — its branch 1 describes a `integer`"
 )]
@@ -3403,7 +3275,6 @@ fn test_a_union_with_a_scalar_member_declared_below_is_still_named_as_one_operan
 }
 
 #[test]
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
 fn test_flattening_an_untagged_enum_over_a_named_array_member_is_unserializable() {
     let refusal = serde_json::to_value(FlatOverLaterMemberBagUntagged {
         own: "o".to_owned(),
@@ -3418,7 +3289,6 @@ fn test_flattening_an_untagged_enum_over_a_named_array_member_is_unserializable(
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "`FlatOverMemberBagUntagged`: `#[serde(flatten)]` of `MemberBagEither` writes a union member that is not an object — its branch 2 describes a `array`"
 )]
@@ -3427,7 +3297,6 @@ fn test_a_named_array_member_of_a_flattened_untagged_enum_is_refused_by_the_merg
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "`FlatOverLaterMemberBagUntagged`: `#[serde(flatten)]` of `LaterMemberBagEither` writes a union member that is not an object — its branch 2 describes a `array`"
 )]
@@ -3436,7 +3305,6 @@ fn test_a_named_array_member_of_a_later_flattened_untagged_enum_is_refused_by_th
 }
 
 #[test]
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
 fn test_a_named_nullable_flattened_union_member_is_written_and_then_not_read_back() {
     let written = serde_json::to_value(FlatOverLaterMemberMaybeUntagged {
         own: "o".to_owned(),
@@ -3462,7 +3330,6 @@ fn test_a_named_nullable_flattened_union_member_is_written_and_then_not_read_bac
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "`FlatOverMemberMaybeUntagged`: `#[serde(flatten)]` of `MemberMaybeEither` writes a union member that is not an object — its branch 2.2 describes a `null`"
 )]
@@ -3471,7 +3338,6 @@ fn test_a_named_nullable_member_of_a_flattened_untagged_enum_is_refused_by_the_m
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "`FlatOverLaterMemberMaybeUntagged`: `#[serde(flatten)]` of `LaterMemberMaybeEither` writes a union member that is not an object — its branch 2.2 describes a `null`"
 )]
@@ -3480,7 +3346,6 @@ fn test_a_named_nullable_member_of_a_later_flattened_untagged_enum_is_refused_by
 }
 
 #[test]
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
 fn test_a_named_map_member_of_a_flattened_untagged_enum_round_trips() {
     let written = serde_json::to_value(FlatOverMemberBucketUntagged {
         either: MemberBucketEither::Bucket(MemberBucket(HashMap::from([(
@@ -3506,7 +3371,6 @@ fn test_a_named_map_member_keeps_its_multiplication() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_a_named_map_member_keeps_its_merged_document() {
     assert!(FlatOverMemberBucketUntagged::json_schema().is_object());
 }
@@ -3538,7 +3402,6 @@ fn test_the_named_wire_unions_are_byte_identical_standing_alone() {
 }
 
 #[test]
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
 fn test_a_tagged_enum_member_writes_the_unit_variant_as_a_bare_name() {
     let forms = [
         (
@@ -3561,7 +3424,6 @@ fn test_a_tagged_enum_member_writes_the_unit_variant_as_a_bare_name() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "`FlatOverMemberExtBareUntagged`: `#[serde(flatten)]` of `MemberExtBareEither` writes a union member as the name of an externally tagged enum's unit variant — its branch 2.1 describes a `string`, and serde writes that name as a key holding null, which a schema closed around the remaining fields rejects"
 )]
@@ -3570,7 +3432,6 @@ fn test_a_tagged_enum_member_of_a_flattened_untagged_enum_is_refused_by_the_merg
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 #[should_panic(
     expected = "`FlatOverLaterMemberExtBareUntagged`: `#[serde(flatten)]` of `LaterMemberExtBareEither` writes a union member as the name of an externally tagged enum's unit variant — its branch 2.1 describes a `string`, and serde writes that name as a key holding null, which a schema closed around the remaining fields rejects"
 )]
@@ -3579,7 +3440,6 @@ fn test_a_tagged_enum_member_of_a_later_flattened_untagged_enum_is_refused_by_th
 }
 
 #[test]
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
 fn test_an_all_object_tagged_enum_member_round_trips() {
     let written = serde_json::to_value(FlatOverMemberExtObjUntagged {
         own: "o".to_owned(),
@@ -3606,7 +3466,6 @@ fn test_an_all_object_tagged_enum_member_keeps_its_multiplication() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_an_all_object_tagged_enum_member_keeps_its_merged_document() {
     assert!(FlatOverMemberExtObjUntagged::json_schema().is_object());
 }
@@ -3632,7 +3491,6 @@ fn test_the_tagged_enums_are_byte_identical_standing_alone() {
 }
 
 #[test]
-#[cfg(any(feature = "jsonschema", feature = "zod"))]
 fn test_a_directly_flattened_tagged_enum_round_trips_every_variant() {
     let forms = [
         (
@@ -3657,7 +3515,6 @@ fn test_a_directly_flattened_tagged_enum_round_trips_every_variant() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_the_direct_tagged_flatten_document_writes_one_branch_per_variant() {
     assert_eq!(
         serde_json::to_string(&ExtBareDirectHolder::json_schema()).unwrap(),
@@ -3666,7 +3523,6 @@ fn test_the_direct_tagged_flatten_document_writes_one_branch_per_variant() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_the_direct_tagged_flatten_document_admits_the_captured_payloads() {
     let schema = ExtBareDirectHolder::json_schema();
     for payload in [
@@ -3723,7 +3579,7 @@ fn test_the_direct_tagged_flatten_type_spells_the_key_set_serde_writes() {
 }
 
 #[test]
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+#[cfg(any(feature = "zod", feature = "typescript"))]
 fn test_a_directly_flattened_all_object_tagged_enum_round_trips_every_variant() {
     let forms = [
         (
@@ -3775,7 +3631,7 @@ fn test_an_all_object_tagged_direct_flatten_type_closes_each_variant_against_the
 }
 
 #[test]
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+#[cfg(any(feature = "zod", feature = "typescript"))]
 fn test_a_flattened_enum_written_with_an_argument_round_trips_every_variant() {
     for (ext, expected) in [
         (
@@ -3905,7 +3761,6 @@ fn test_a_generic_enum_flattened_with_an_argument_keeps_its_own_text() {
 /// The JSON Schema of each holder admits each variant's entry at the argument, and refuses the
 /// holder's own member alone, two entries and an entry of another type.
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_a_flattened_enum_written_with_an_argument_documents_each_entry_at_the_argument() {
     for (schema, carried, other) in [
         (
@@ -3942,7 +3797,7 @@ fn test_a_flattened_enum_written_with_an_argument_documents_each_entry_at_the_ar
 }
 
 #[test]
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+#[cfg(any(feature = "zod", feature = "typescript"))]
 fn test_a_flattened_untagged_enum_written_with_an_argument_round_trips_every_member() {
     let owner = BasePart {
         owner: "w".to_owned(),
@@ -4093,7 +3948,6 @@ fn test_a_generic_untagged_enum_flattened_with_an_argument_keeps_its_own_text() 
 /// The JSON Schema of each holder admits each member at the argument, and refuses the holder's own
 /// member alone and a member of another type.
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_a_flattened_untagged_enum_written_with_an_argument_documents_each_member_at_the_argument() {
     for (schema, admitted, refused) in [
         (
@@ -4131,7 +3985,7 @@ fn test_a_flattened_untagged_enum_written_with_an_argument_documents_each_member
 /// The JSON Schema of a flattened `ObjectId` admits the `$oid` key serde writes beside the
 /// object's own, and refuses the object without it and a key that is no `ObjectId`.
 #[test]
-#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
+#[cfg(feature = "mongodb")]
 fn test_a_flattened_object_id_document_admits_what_serde_writes() {
     let holder = FlattenedOidHolder {
         id: 1,
@@ -4163,7 +4017,7 @@ fn test_a_flattened_object_id_document_admits_what_serde_writes() {
 /// `$oid` key serde writes beside the tag, and refuses what serde refuses: the tag alone, a key
 /// that is no `ObjectId`, and a key the `ObjectId` does not read.
 #[test]
-#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
+#[cfg(feature = "mongodb")]
 fn test_an_object_id_beside_the_tag_document_admits_what_serde_writes() {
     let held = TaggedOidHolder::Held(ObjectId::parse_str("507f1f77bcf86cd799439011").unwrap());
     let written = serde_json::to_value(&held).unwrap();
@@ -4268,7 +4122,7 @@ fn test_serde_refuses_every_write_of_a_parameter_filled_at_a_value_written_as_no
 /// A type parameter flattened beside a member builds filled at a struct and at an `Option` of one,
 /// which serde writes as the struct's keys, or as no key for `None`, and reads back.
 #[test]
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+#[cfg(any(feature = "zod", feature = "typescript"))]
 fn test_a_parameter_flattened_at_an_object_or_an_option_of_one_round_trips() {
     let bags = ObjectFilledBags {
         held: ObjectFilledBag {
@@ -4289,7 +4143,6 @@ fn test_a_parameter_flattened_at_an_object_or_an_option_of_one_round_trips() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_an_all_object_tagged_direct_flatten_document_is_byte_identical() {
     assert_eq!(
         serde_json::to_string(&ExtObjDirectHolder::json_schema()).unwrap(),
@@ -4337,7 +4190,7 @@ fn test_the_tagged_enums_standing_alone_close_each_object_member_on_typescript()
 
 /// The untagged footing answers the same way, on the members whose keys the declaration spells.
 #[test]
-#[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
+#[cfg(any(feature = "zod", feature = "typescript"))]
 fn test_a_directly_flattened_inline_untagged_union_round_trips_every_member() {
     let forms = [
         (
@@ -4417,7 +4270,6 @@ fn test_the_inline_untagged_direct_flatten_schema_is_unchanged() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_the_inline_untagged_direct_flatten_document_is_unchanged() {
     assert_eq!(
         serde_json::to_string(&InlineUntagDirectHolder::json_schema()).unwrap(),
@@ -4563,7 +4415,6 @@ fn test_an_internally_tagged_flattened_variant_forces_a_plain_zod_union() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_a_flattened_variant_field_merges_into_the_variants_json_content() {
     for document in [
         ExternalFlatVariant::json_schema(),
@@ -4582,7 +4433,6 @@ fn test_a_flattened_variant_field_merges_into_the_variants_json_content() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_two_flattened_variant_fields_merge_into_one_json_content() {
     let content = variant_content(&TwiceFlatVariant::json_schema(), "Named");
     let (named, required) = described_keys(&content);
@@ -4593,7 +4443,6 @@ fn test_two_flattened_variant_fields_merge_into_one_json_content() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_the_flattened_variant_document_accepts_what_serde_writes() {
     let cases = [
         (
@@ -4739,7 +4588,6 @@ fn test_two_flattened_untagged_variant_fields_chain_their_zod_operands() {
 }
 
 /// The keys `payload` carries, sorted, beside the keys `branch` names and the keys it requires.
-#[cfg(feature = "jsonschema")]
 fn written_against_described(
     branch: &serde_json::Value,
     payload: &serde_json::Value,
@@ -4753,7 +4601,6 @@ fn written_against_described(
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_a_flattened_untagged_variant_field_merges_into_the_members_json_object() {
     let payload = serde_json::to_value(UntaggedFlatVariant::Named {
         extra: VariantExtra {
@@ -4770,7 +4617,6 @@ fn test_a_flattened_untagged_variant_field_merges_into_the_members_json_object()
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_two_flattened_untagged_variant_fields_merge_into_one_json_object() {
     let payload = serde_json::to_value(TwiceUntaggedFlatVariant::Named {
         extra: VariantExtra {
@@ -4787,7 +4633,6 @@ fn test_two_flattened_untagged_variant_fields_merge_into_one_json_object() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_the_flattened_untagged_variant_document_accepts_what_serde_writes() {
     let document = UntaggedFlatVariant::json_schema();
     for value in [
@@ -4809,7 +4654,6 @@ fn test_the_flattened_untagged_variant_document_accepts_what_serde_writes() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_the_flattened_untagged_variant_document_rejects_the_stale_nested_shape() {
     let document = UntaggedFlatVariant::json_schema();
     assert!(
@@ -5315,7 +5159,6 @@ fn test_a_multiplying_recursive_variant_round_trips_every_branch() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_the_multiplied_variant_document_accepts_what_serde_writes() {
     for (content, payload) in [
         (
@@ -5375,7 +5218,6 @@ fn test_the_multiplied_variant_document_accepts_what_serde_writes() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_the_multiplied_variant_document_rejects_what_no_branch_writes() {
     let content = variant_content(&ExternalChoiceVariant::json_schema(), "Named");
     for payload in [
@@ -5403,7 +5245,6 @@ fn test_the_multiplied_variant_document_rejects_what_no_branch_writes() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_the_multiplied_variant_document_writes_one_branch_per_key_set() {
     let content = variant_content(&ExternalChoiceVariant::json_schema(), "Named");
     let branches = content["anyOf"].as_array().unwrap();

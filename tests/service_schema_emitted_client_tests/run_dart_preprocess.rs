@@ -20,11 +20,10 @@ use tixschema::{model_schema, service_schema};
 
 use super::preprocess_models::{
     Grade, POSITIONS, Parcel, Pinned, SAMPLE, SAMPLE_ROWS, Tagged, carrier_dart, closed_dock_dart,
-    consigned_dart, crate_dart, crated_dart, delivery_dart, either_dart, grade_dart, grade_schema,
-    handover_dart, label_dart, manifest_dart, node_dart, parcel_dart, pinned_dart, positions,
-    reference_dart, routed_dart, sample_report, shelf_dart, shipment_dart, slot_dart, stack_dart,
-    tagged_dart, tagged_schema, transfer_dart, trimmed, unnamed_dart, weighed_dart, with_its_keys,
-    wrapped_dart,
+    consigned_dart, crate_dart, crated_dart, delivery_dart, either_dart, grade_dart, handover_dart,
+    label_dart, manifest_dart, node_dart, parcel_dart, pinned_dart, positions, reference_dart,
+    routed_dart, sample_report, shelf_dart, shipment_dart, slot_dart, stack_dart, tagged_dart,
+    transfer_dart, trimmed, unnamed_dart, weighed_dart, with_its_keys, wrapped_dart,
 };
 use super::run_dart_validate::{dart, from_until, module};
 use super::runtime::ran;

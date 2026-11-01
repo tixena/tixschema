@@ -8,8 +8,6 @@ use serde_json::{Value, json};
 use tixschema::model_schema;
 
 use self::declared::{RankedEntries, RankedLabels, RankedScores};
-#[cfg(feature = "jsonschema")]
-use self::declared::{ranked_entries_schema, ranked_labels_schema, ranked_scores_schema};
 use super::super::lines;
 use ranking_schema::{DecodeWith as _, Expected, Issue, Resolution, Stored as _};
 

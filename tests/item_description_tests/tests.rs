@@ -125,12 +125,8 @@ pub type PlainAlias = u32;
 // `jsonschema`, and the pinned definitions under `serde`.
 
 /// Who an invoice is billed to.
-#[cfg(all(
-    feature = "typescript",
-    feature = "zod",
-    any(feature = "jsonschema", feature = "serde")
-))]
-#[model_schema()]
+#[cfg(all(feature = "typescript", feature = "zod"))]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Customer {
@@ -140,12 +136,8 @@ pub struct Customer {
 }
 
 /// One billed item.
-#[cfg(all(
-    feature = "typescript",
-    feature = "zod",
-    any(feature = "jsonschema", feature = "serde")
-))]
-#[model_schema()]
+#[cfg(all(feature = "typescript", feature = "zod"))]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LineItem {
@@ -154,12 +146,8 @@ pub struct LineItem {
 }
 
 /// An invoice.
-#[cfg(all(
-    feature = "typescript",
-    feature = "zod",
-    any(feature = "jsonschema", feature = "serde")
-))]
-#[model_schema()]
+#[cfg(all(feature = "typescript", feature = "zod"))]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Invoice {
@@ -169,12 +157,8 @@ pub struct Invoice {
 }
 
 /// A page of entries.
-#[cfg(all(
-    feature = "typescript",
-    feature = "zod",
-    any(feature = "jsonschema", feature = "serde")
-))]
-#[model_schema(default_types(Entry = String))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
+#[model_schema(default_types(Entry = String), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InvoicePage<Entry> {
@@ -183,11 +167,7 @@ pub struct InvoicePage<Entry> {
 }
 
 /// Where an invoice stands.
-#[cfg(all(
-    feature = "typescript",
-    feature = "zod",
-    any(feature = "jsonschema", feature = "serde")
-))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 #[model_schema()]
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -197,11 +177,7 @@ pub enum InvoiceStatus {
 }
 
 /// What happened to an invoice.
-#[cfg(all(
-    feature = "typescript",
-    feature = "zod",
-    any(feature = "jsonschema", feature = "serde")
-))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -211,11 +187,7 @@ pub enum InvoiceEvent {
 }
 
 /// What an invoice is paid with.
-#[cfg(all(
-    feature = "typescript",
-    feature = "zod",
-    any(feature = "jsonschema", feature = "serde")
-))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(untagged)]
@@ -225,22 +197,14 @@ pub enum InvoicePayment {
 }
 
 /// The number an invoice is filed under.
-#[cfg(all(
-    feature = "typescript",
-    feature = "zod",
-    any(feature = "jsonschema", feature = "serde")
-))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct InvoiceNumber(pub String);
 
 /// How many lines an invoice holds.
-#[cfg(all(
-    feature = "typescript",
-    feature = "zod",
-    any(feature = "jsonschema", feature = "serde")
-))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 #[model_schema()]
 pub type LineCount = u32;
 
@@ -396,7 +360,7 @@ fn a_documented_item_keeps_its_docs_over_either_name() {
     );
 }
 
-#[cfg(all(feature = "typescript", feature = "jsonschema", feature = "zod"))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 #[test]
 fn ts_definition_writes_the_description_and_no_json_schema() {
     let count: LineCount = 2;
@@ -498,12 +462,7 @@ fn the_members_keep_the_jsdoc_they_had() {
     );
 }
 
-#[cfg(all(
-    feature = "jsonschema",
-    feature = "serde",
-    feature = "typescript",
-    feature = "zod"
-))]
+#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 #[test]
 fn the_json_schema_is_the_text_it_was() {
     assert_eq!(

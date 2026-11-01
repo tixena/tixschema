@@ -3,16 +3,7 @@
 
 /// The same brand declared with a skipped marker after its slot, before it, and alone. serde writes
 /// all three as the string alone, so every surface describes the three the same way.
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
-))]
+#[cfg(feature = "serde")]
 mod beside_the_lone_slot {
     use core::marker::PhantomData;
     use serde::{Deserialize, Serialize};
@@ -36,17 +27,17 @@ mod beside_the_lone_slot {
     ))]
     const BEFORE: [&str; 3] = ["MarkedBefore", "marked_before", "markedBefore"];
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
     pub struct MarkedAfter(pub String, #[serde(skip)] pub PhantomData<u8>);
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
     pub struct MarkedBefore(#[serde(skip)] pub PhantomData<u8>, pub String);
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct MarkedHolder {
         pub after: MarkedAfter,
@@ -154,7 +145,6 @@ mod beside_the_lone_slot {
         );
     }
 
-    #[cfg(feature = "jsonschema")]
     #[test]
     fn json_schema_describes_the_slot_and_a_type_that_holds_it() {
         let string = serde_json::json!({ "type": "string" });
@@ -213,7 +203,7 @@ mod beside_the_lone_slot {
         );
     }
 
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     #[test]
     fn each_is_displayed_as_the_slot_it_reads() {
         assert_eq!(MarkedAfter("x".to_owned(), PhantomData).to_string(), "x");
@@ -223,10 +213,7 @@ mod beside_the_lone_slot {
 
 /// A bound on such a brand, and on a field typed with it, measures the slot serde reads, after the
 /// marker it skips.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 mod bounded_after_the_marker {
     use core::marker::PhantomData;
     use serde::{Deserialize, Serialize};

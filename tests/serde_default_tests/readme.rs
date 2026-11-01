@@ -27,8 +27,8 @@ fn the_readme_shows_the_declaration_and_the_read_of_the_models() {
     for shown in [
         item("pub fn north_dock()"),
         item(
-            "#[model_schema()]\n#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]\n\
-             pub struct Wharf {",
+            "#[model_schema(enable = [\"jsonschema\"])]\n#[derive(Clone, Debug, Deserialize, \
+             PartialEq, Eq, Serialize)]\npub struct Wharf {",
         ),
     ] {
         assert!(section().contains(shown), "{shown}");
@@ -50,7 +50,6 @@ fn the_zod_line_of_the_table_is_what_zod_writes() {
     assert!(super::models::Wharf::zod_schema().contains(shown));
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn the_json_schema_line_of_the_table_is_what_the_json_schema_writes() {
     assert!(section().contains("`\"default\": \"\"`"));

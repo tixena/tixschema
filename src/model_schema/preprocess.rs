@@ -16,7 +16,7 @@ use syn::{Attribute, Field, Item, ItemType};
 use super::checks::located;
 #[cfg(feature = "serde")]
 use super::judged_read::unclaimed_parameter;
-use super::{guard_failure_output, prefixed_guard_message, written_spelling};
+use super::{ModelSchemaArgs, guard_failure_output, prefixed_guard_message, written_spelling};
 use crate::features::model_schema_prop::{FunctionName, parse_model_schema_prop_attributes};
 use crate::features::serde::read_bounds::borrows;
 use crate::features::serde::{derives_deserialize, parse_serde_key_omission, read_hook};
@@ -294,11 +294,11 @@ pub fn refusals(item: &Item, own: &[FunctionName]) -> Vec<syn::Error> {
 
 /// The refusal of a `preprocess` written on a type alias: an alias is another name for its
 /// target, and has no read of its own to call a function from.
-pub fn alias_refusal_output(
+pub(super) fn alias_refusal_output(
     item_type: &ItemType,
-    functions: &[FunctionName],
+    args: &ModelSchemaArgs,
 ) -> Option<TokenStream> {
-    let first = functions.first()?;
+    let first = args.preprocess.first()?;
     let name = &item_type.ident;
     let target = written_spelling(&item_type.ty);
     let refusal = format!(
@@ -312,7 +312,7 @@ pub fn alias_refusal_output(
         prefixed_guard_message(&format!("type `{name}`: {refusal}")),
     )
     .to_compile_error();
-    guard_failure_output(item_type, Some(name), &[error])
+    guard_failure_output(item_type, Some(name), &[error], args)
 }
 
 #[cfg(test)]

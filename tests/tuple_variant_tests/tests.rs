@@ -36,13 +36,13 @@ const CARRIED_REFUSED_BESIDE_THE_TAG: [&str; 3] = [
 
 /// A generated schema module reaches its siblings through the enclosing module, and a function body
 /// is not one, so a type another type references is declared here rather than inside a test.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Inner {
     pub field: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Outer {
     Paired(Inner, isize),
@@ -53,7 +53,7 @@ pub enum Outer {
 /// `None` at the outermost level reaches the wire as `null` rather than dropping the key. The
 /// three variants below cover the `Option` around the array, the `Option` among its items, and no
 /// `Option` at all.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", content = "value")]
 pub enum SlotContent {
@@ -65,7 +65,7 @@ pub enum SlotContent {
 /// Every position of a multi-element tuple variant is a slot for the same reason: serde writes each
 /// one, so a `None` among them reaches the wire as a `null` in place rather than shortening the
 /// tuple. The non-`Option` element beside it carries no null.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", content = "value")]
 pub enum SlotElements {
@@ -78,7 +78,7 @@ pub enum SlotElements {
 /// `clippy::empty_enum_variants_with_brackets` here, so it's covered instead by
 /// `adjacently_tagged_empty_named_variant_nests_an_empty_content_object` in
 /// `src/model_schema/tests.rs`, built through `parse_quote!`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "kind", content = "data")]
 pub enum AdjacentNamed {
@@ -93,7 +93,7 @@ pub enum AdjacentNamed {
 /// An externally tagged enum (no `#[serde(tag = ..., content = ...)]`): serde writes the variant
 /// name as the sole key of an object holding the content, or the bare name for a unit variant. The
 /// four variants below cover what that key can hold, plus the keyless case.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum External {
     Bare,
@@ -104,7 +104,7 @@ pub enum External {
 
 /// The same variants written with the tagging attributes, which keeps the adjacent form beside the
 /// external one so the two can be read against each other.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "type", content = "value")]
 pub enum Adjacent {
@@ -116,7 +116,7 @@ pub enum Adjacent {
 
 /// A variant's key is its wire name, and a rename can spell that as something no JavaScript
 /// identifier can hold.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum RenamedExternal {
@@ -128,7 +128,7 @@ pub enum RenamedExternal {
 
 /// The type an internally tagged newtype variant wraps. Its fields are what serde writes beside
 /// the tag, so they are the ones the surfaces owe.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct TagPayload {
     pub a: String,
@@ -138,7 +138,7 @@ pub struct TagPayload {
 /// An internally tagged enum (`#[serde(tag = ...)]`, no `content`) writes a variant's data as
 /// members of the object the tag is written in. The three variants cover what can be written
 /// there: nothing, a struct variant's own fields, or a newtype variant's inner members.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "type")]
 pub enum Internal {
@@ -181,33 +181,33 @@ pub enum InternalOverEnum {
 
 /// A bare tag over a newtype over a `String` declared below it, which the enum's expansion does not
 /// see: the declaration compiles and the divergence is left for the merge to catch.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "type")]
 pub enum InternalOverBrand {
     Branded(InternalSlug),
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct InternalSlug(pub String);
 
 /// An untagged enum every member of which serde writes as an object, wrapped by a bare tag. The
 /// content joins the tag the same way a `#[serde(flatten)]` base does, so what lands beside the tag
 /// is the members of whichever union member matched.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct InternalFirst {
     pub a: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct InternalSecond {
     pub b: bool,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum InternalEither {
@@ -215,7 +215,7 @@ pub enum InternalEither {
     Second(InternalSecond),
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "type")]
 pub enum InternalOverUntagged {
@@ -223,7 +223,7 @@ pub enum InternalOverUntagged {
 }
 
 /// An externally tagged enum of a unit variant and a variant that holds a struct.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum InternalTack {
     Bay(InternalFirst),
@@ -232,7 +232,7 @@ pub enum InternalTack {
 
 /// A bare tag over that enum: serde writes its variant beside the tag as it writes it flattened,
 /// an entry of the variant's name, over `null` for the unit variant.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "type")]
 pub enum InternalOverExternal {
@@ -241,7 +241,7 @@ pub enum InternalOverExternal {
 
 /// An externally tagged enum that declares a parameter, of a unit variant and a variant that holds
 /// it.
-#[model_schema(default_types(Load = String))]
+#[model_schema(default_types(Load = String), enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum InternalCarried<Load> {
     Bare,
@@ -250,7 +250,7 @@ pub enum InternalCarried<Load> {
 
 /// A bare tag over that enum written with an argument: serde writes its variant beside the tag as
 /// an entry, over `null` for the unit variant.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "type")]
 pub enum InternalOverCarried {
@@ -259,16 +259,14 @@ pub enum InternalOverCarried {
 
 /// The same wrapping over a union declared below it with one member serde writes as a string. Only
 /// the JSON-schema merge reads the pair, so both fixtures are declared where they are read.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "type")]
 pub enum InternalOverScalarUntagged {
     Wrapped(InternalScalarEither),
 }
 
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum InternalScalarEither {
@@ -279,14 +277,14 @@ pub enum InternalScalarEither {
 /// A bare tag over a struct of one slot over an `Option`, declared below it, which the enum's
 /// expansion does not see: serde refuses every write of the variant, and the merge refuses the
 /// declaration. A struct flattening the same type merges its `None` as no key.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "type")]
 pub enum InternalOverLaterMaybe {
     Held(InternalLaterMaybe),
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct FlatOverLaterMaybe {
     pub id: String,
@@ -294,32 +292,32 @@ pub struct FlatOverLaterMaybe {
     pub maybe: InternalLaterMaybe,
 }
 
-#[model_schema(no_display)]
+#[model_schema(no_display, enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct InternalLaterMaybe(Option<InternalFirst>);
 
 /// A bare tag over a struct of one slot over `()`, and over an untagged enum with a member over
 /// `()`, each declared below it: serde writes the tag alone for both, and reads it back for the
 /// first alone.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "type")]
 pub enum InternalOverLaterNothing {
     Held(InternalLaterNothing),
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "type")]
 pub enum InternalOverLaterUnitMember {
     Member(InternalLaterUnitEither),
 }
 
-#[model_schema(no_display)]
+#[model_schema(no_display, enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct InternalLaterNothing(());
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum InternalLaterUnitEither {
@@ -340,7 +338,7 @@ pub enum RecursiveExternal {
 /// The positions a dropped slot can sit in, beside the variant that drops none: a leading drop is
 /// the one the slots behind move up into, a trailing one only shortens the array, a middle one is
 /// where the renumbering shows, and a lone slot dropped leaves the variant a unit.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum ExternalDroppedSlots {
     Every(#[serde(skip)] String, #[serde(skip)] u32),
@@ -352,7 +350,7 @@ pub enum ExternalDroppedSlots {
 }
 
 /// The kept variant on its own, which is what the enum above must still render it as.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum ExternalKeptOnly {
     Kept(u8, bool),
@@ -362,7 +360,7 @@ pub enum ExternalKeptOnly {
 /// variant's own name. `Lone` is declared as the unit it would have been written as — under this
 /// tagging alone the collapse has no payload to describe and is refused; this is the remedy that
 /// refusal names.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "type", content = "value")]
 pub enum AdjacentDroppedSlots {
@@ -373,7 +371,7 @@ pub enum AdjacentDroppedSlots {
 }
 
 /// The kept variant on its own, for the same reading in the adjacent form.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "type", content = "value")]
 pub enum AdjacentKeptOnly {
@@ -396,7 +394,7 @@ pub enum AdjacentUnitWire {
 }
 
 /// A value serde writes as an object, which is the only content a bare tag can carry beside it.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
 pub struct DroppedSlotInner {
     pub a: u32,
@@ -404,7 +402,7 @@ pub struct DroppedSlotInner {
 
 /// The bare-tag form, where the only tuple variant serde accepts is the newtype one — and where a
 /// lone slot taken off the wire leaves nothing to sit beside the tag, whatever the slot held.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "type")]
 pub enum InternalDroppedSlot {
@@ -414,7 +412,6 @@ pub enum InternalDroppedSlot {
 
 /// The `oneOf` member an externally tagged variant renders as: the one whose sole required key is
 /// the variant's name.
-#[cfg(feature = "jsonschema")]
 fn external_member(schema: &serde_json::Value, variant: &str) -> serde_json::Value {
     let member = schema["oneOf"]
         .as_array()
@@ -431,7 +428,6 @@ fn external_member(schema: &serde_json::Value, variant: &str) -> serde_json::Val
 }
 
 /// The JSON type name a value carries, as a schema spells it.
-#[cfg(feature = "jsonschema")]
 const fn json_type_name(value: &serde_json::Value) -> &'static str {
     match *value {
         serde_json::Value::Array(_) => "array",
@@ -694,10 +690,9 @@ fn test_mixed_variants_zod() {
 }
 
 /// JSON Schema generation for tuple variants.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_tuple_json_schema() {
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub enum TupleSchema {
         Double(String, isize),
@@ -829,7 +824,6 @@ fn test_adjacent_named_variant_zod_nests_under_content_key() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_adjacent_named_variant_json_schema_nests_under_content_key() {
     let schema = AdjacentNamed::json_schema();
@@ -988,7 +982,6 @@ fn test_tuple_with_custom_type() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_tuple_variant_sibling_element_carries_the_sibling_schema() {
     let variant = external_member(&Outer::json_schema(), "Paired");
@@ -1155,10 +1148,9 @@ fn test_empty_tuple_variant() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_optional_tuple_variant_element_json_schema_null_flavor() {
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub enum Row {
         Link(Option<String>, Vec<isize>, String, Option<String>),
@@ -1276,7 +1268,6 @@ fn test_single_tuple_variant_option_content_zod_null_flavor() {
 }
 
 /// The JSON schema already said so, and keeps saying it unchanged.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_single_tuple_variant_option_content_json_schema_null_flavor() {
     let schema = SlotContent::json_schema();
@@ -1356,7 +1347,6 @@ fn test_multi_tuple_variant_option_element_zod_null_flavor() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_multi_tuple_variant_option_element_json_schema_null_flavor() {
     let schema = SlotElements::json_schema();
@@ -1382,16 +1372,15 @@ fn test_multi_tuple_variant_option_element_json_schema_null_flavor() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_multi_tuple_variant_json_schema_matches_tuple_field() {
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct ArityField {
         pub pair: (u32, u32),
     }
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub enum ArityVariant {
         Pair(u32, u32),
@@ -1417,10 +1406,9 @@ fn test_multi_tuple_variant_json_schema_matches_tuple_field() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_multi_tuple_variant_arity_bounds_reject_wrong_length_arrays() {
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Serialize, Deserialize, Debug, Clone)]
     #[serde(tag = "type", content = "value")]
     pub enum ArityProbe {
@@ -1562,7 +1550,6 @@ fn test_attribute_less_enum_zod_is_the_externally_tagged_union() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_attribute_less_enum_json_schema_is_the_externally_tagged_union() {
     let schema = External::json_schema();
@@ -1614,7 +1601,6 @@ fn test_attribute_less_enum_json_schema_is_the_externally_tagged_union() {
 }
 
 /// The round trip both schemas owe.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_attribute_less_enum_round_trips_against_its_schema() {
     let schema = External::json_schema();
@@ -1775,7 +1761,6 @@ fn test_renamed_variant_key_reader_inverts_the_rename_and_the_rename_all() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_renamed_variant_key_is_the_wire_name_in_json_schema() {
     let schema = RenamedExternal::json_schema();
@@ -1821,7 +1806,6 @@ fn test_explicitly_tagged_twin_keeps_the_adjacent_zod_form() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_explicitly_tagged_twin_keeps_the_adjacent_json_schema_form() {
     let schema = Adjacent::json_schema();
@@ -1956,7 +1940,6 @@ fn test_bare_tag_without_a_newtype_variant_still_discriminates() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_bare_tag_json_schema_holds_the_inner_fields_beside_the_tag() {
     let schema = Internal::json_schema();
@@ -1988,7 +1971,6 @@ fn test_bare_tag_json_schema_holds_the_inner_fields_beside_the_tag() {
 }
 
 /// The round trip the schema owes.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_bare_tag_round_trips_against_its_schema() {
     let schema = Internal::json_schema();
@@ -2121,7 +2103,6 @@ fn test_bare_tag_over_an_external_enum_zod_joins_each_variants_entry() {
 
 /// The JSON Schema admits each payload serde writes for a bare tag over an externally tagged enum,
 /// and refuses each one serde refuses.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_bare_tag_over_an_external_enum_json_schema_admits_what_serde_reads() {
     let schema = InternalOverExternal::json_schema();
@@ -2201,7 +2182,6 @@ fn test_bare_tag_over_an_enum_written_with_an_argument_zod_joins_each_entry() {
 
 /// The JSON Schema admits each payload serde writes for a bare tag over an enum written with an
 /// argument, and refuses each one serde refuses.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_bare_tag_over_an_enum_written_with_an_argument_json_schema_admits_what_serde_reads() {
     let schema = InternalOverCarried::json_schema();
@@ -2240,7 +2220,6 @@ fn test_bare_tag_over_a_string_newtype_is_unserializable() {
     assert!(refusal.contains("containing a string"), "Got: {refusal}");
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 #[should_panic(
     expected = "`InternalOverBrand`: the content of variant `Branded`, `InternalSlug` is not written as an object"
@@ -2250,14 +2229,12 @@ fn test_bare_tag_over_a_string_newtype_is_refused_by_the_merge() {
 }
 
 /// The remedy the refusal names is one the author can act on.
-#[cfg(feature = "jsonschema")]
 #[test]
 #[should_panic(expected = "name a `content` key so the content gets an object of its own")]
 fn test_the_merge_refusal_names_the_remedy() {
     assert!(InternalOverBrand::json_schema().is_object());
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_bare_tag_over_a_struct_documents_byte_identically() {
     assert_eq!(
@@ -2285,7 +2262,6 @@ fn test_bare_tag_over_an_untagged_enum_writes_the_matched_members_keys() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_bare_tag_over_an_untagged_enum_multiplies_over_its_members() {
     assert_eq!(
@@ -2294,7 +2270,6 @@ fn test_bare_tag_over_an_untagged_enum_multiplies_over_its_members() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_bare_tag_over_an_untagged_enum_requires_every_key_serde_writes() {
     let schema = InternalOverUntagged::json_schema();
@@ -2314,7 +2289,6 @@ fn test_bare_tag_over_an_untagged_enum_requires_every_key_serde_writes() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 #[should_panic(
     expected = "`InternalOverScalarUntagged`: the content of variant `Wrapped`, `InternalScalarEither` writes a union member that is not an object — its branch 2 describes a `string`"
@@ -2340,7 +2314,6 @@ fn test_bare_tag_over_a_later_optional_is_unserializable_for_some_and_none() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 #[should_panic(
     expected = "`InternalOverLaterMaybe`: the content of variant `Held`, `InternalLaterMaybe` writes a union member as `null` — its branch 2 describes a `null`, which cannot sit beside the tag: where that `null` is an optional's, serde refuses every write of it at run time — `cannot serialize tagged newtype variant InternalOverLaterMaybe::Held containing an optional` — and where it is `()`'s, serde writes the tag alone, which it does not read back as a union member; name a `content` key so the content gets an object of its own"
@@ -2364,7 +2337,6 @@ fn test_a_flattened_later_optional_merges_its_none_as_no_key() {
         serde_json::from_value::<FlatOverLaterMaybe>(serde_json::json!({ "id": "i" })).unwrap(),
         none
     );
-    #[cfg(feature = "jsonschema")]
     assert_eq!(
         FlatOverLaterMaybe::json_schema(),
         serde_json::json!({
@@ -2415,7 +2387,6 @@ fn test_bare_tag_over_a_later_unit_writes_the_tag_alone() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 #[should_panic(
     expected = "`InternalOverLaterUnitMember`: the content of variant `Member`, `InternalLaterUnitEither` writes a union member as `null` — its branch 1 describes a `null`, which cannot sit beside the tag: where that `null` is an optional's, serde refuses every write of it at run time — `cannot serialize tagged newtype variant InternalOverLaterUnitMember::Member containing an optional` — and where it is `()`'s, serde writes the tag alone, which it does not read back as a union member"
@@ -2424,7 +2395,6 @@ fn test_bare_tag_over_a_later_unit_member_is_refused_by_the_merge() {
     assert!(InternalOverLaterUnitMember::json_schema().is_object());
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 #[should_panic(
     expected = "`InternalOverLaterNothing`: the content of variant `Held`, `InternalLaterNothing` is written as `()` — its schema describes a `null`: beside the tag serde writes the variant as the tag alone, and reads it back, while the TypeScript type and the Zod schema of the variant intersect the tag's object with `null`, which admits no value; name a `content` key so the content gets an object of its own"
@@ -2588,7 +2558,6 @@ fn test_a_dropped_variant_slot_leaves_the_described_tuple_in_zod() {
     assert!(zod.contains("z.literal(\"Lone\")"), "Got: {zod}");
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_a_dropped_variant_slot_shrinks_the_described_arity_in_json_schema() {
     let schema = ExternalDroppedSlots::json_schema();
@@ -2616,7 +2585,6 @@ fn test_a_dropped_variant_slot_shrinks_the_described_arity_in_json_schema() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_a_variant_whose_lone_slot_is_dropped_describes_as_a_string_in_json_schema() {
     let schema = ExternalDroppedSlots::json_schema();
@@ -2629,7 +2597,6 @@ fn test_a_variant_whose_lone_slot_is_dropped_describes_as_a_string_in_json_schem
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_a_dropped_variant_slot_shrinks_the_content_key_in_json_schema() {
     let schema = AdjacentDroppedSlots::json_schema();
@@ -2667,7 +2634,6 @@ fn test_the_declared_unit_remedy_writes_the_payload_the_refused_collapse_wrote()
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_a_dropped_lone_slot_leaves_the_bare_tag_alone_in_json_schema() {
     let schema = InternalDroppedSlot::json_schema();
@@ -2735,7 +2701,6 @@ fn test_a_variant_carrying_no_dropped_slot_describes_unchanged_in_zod() {
 }
 
 /// The same reading on the JSON surface, where the whole member is comparable at once.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_a_variant_carrying_no_dropped_slot_describes_unchanged_in_json_schema() {
     assert_eq!(

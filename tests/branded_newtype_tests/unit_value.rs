@@ -6,13 +6,13 @@ use serde_json::json;
 use tixschema::model_schema;
 
 /// A brand over `()`.
-#[model_schema(no_display)]
+#[model_schema(no_display, enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct UnitBrand(());
 
 /// A member typed `()` beside one typed with the brand.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UnitHolder {
     pub branded: UnitBrand,
@@ -75,7 +75,6 @@ fn zod_describes_a_unit_as_null() {
     assert!(holder.contains("  unit: z.null(),\n"), "{holder}");
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn the_json_schema_describes_a_unit_as_null() {
     assert_eq!(UnitBrand::json_schema(), json!({ "type": "null" }));

@@ -117,7 +117,6 @@ mod without_the_serde_feature {
     }
 
     #[test]
-    #[cfg(feature = "jsonschema")]
     fn the_flag_leaves_the_json_schema_as_it_stands() {
         let schema = Profile::json_schema();
 

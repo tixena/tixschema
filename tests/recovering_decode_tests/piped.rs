@@ -30,7 +30,7 @@ struct Invoice {
 }
 
 /// What a read lists at `number` for the bare `42`, under the bound whose sentence is `reason`.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn bare_number(reason: &str) -> Issue<Value> {
     Issue::Invalid {
         path: Path(vec![Segment::Key("number".to_owned())]),
@@ -84,7 +84,7 @@ fn whole_number_as_text(raw: &mut Value, issue: &Issue<Value>) -> Resolution {
 }
 
 /// A number an older writer stored bare: written as the type writes it.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn number_without_prefix(raw: &mut Value, issue: &Issue<Value>) -> Resolution {
     let Issue::Invalid {
         path,
@@ -194,7 +194,7 @@ fn a_broken_bound_is_handed_to_the_resolvers() {
         Resolution::NotTouched
     };
     let read = Invoice::from_value_piped(stored, &[&noted]);
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     {
         let nameless = Issue::Invalid {
             path: Path(vec![
@@ -209,7 +209,7 @@ fn a_broken_bound_is_handed_to_the_resolvers() {
         assert_eq!(*handed.lock().unwrap(), refused.issues);
         assert_eq!(refused.issues, [nameless]);
     }
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    #[cfg(not(any(feature = "typescript", feature = "zod")))]
     {
         assert_eq!(read.unwrap().customer.name, "");
         assert!(handed.lock().unwrap().is_empty());
@@ -217,7 +217,7 @@ fn a_broken_bound_is_handed_to_the_resolvers() {
 }
 
 /// A value that breaks two bounds is handed to a resolver once, its reason both violations.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_resolver_is_handed_one_issue_for_a_value_that_breaks_two_bounds() {
     let stored = json!({
@@ -247,7 +247,7 @@ fn a_resolver_is_handed_one_issue_for_a_value_that_breaks_two_bounds() {
 
 /// A value that breaks two bounds is one issue, so a resolver that repairs it once settles the
 /// read.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_value_repaired_once_settles_the_read() {
     let stored = json!({

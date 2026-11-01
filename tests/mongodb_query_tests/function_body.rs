@@ -2,7 +2,6 @@
 //! none of the function's items: every path writes the key the same shape writes at module level.
 
 // The JSON Schema of a holder names the schema module of the type it holds.
-#[cfg(not(feature = "jsonschema"))]
 mod holders;
 
 use serde::{Deserialize, Serialize};

@@ -620,14 +620,14 @@ pub enum Told {
 }
 
 /// A struct of one member, flattened beside an `ObjectId`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Notation {
     pub note: String,
 }
 
 /// A struct of one member, which fills the type parameter [`Waxing`] flattens under an `Option`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Cartouche {
     pub wax: String,
@@ -635,7 +635,7 @@ pub struct Cartouche {
 
 /// A struct with a member serde never writes, which the Kotlin client reads by a serializer written
 /// by hand, and which fills the type parameter [`Waxing`] flattens under an `Option`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Impress {
     #[serde(default, skip_serializing)]
@@ -644,7 +644,7 @@ pub struct Impress {
 }
 
 /// An enum under a tag alone, which fills the type parameter [`Waxing`] flattens under an `Option`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 pub enum Waxwork {
@@ -653,24 +653,24 @@ pub enum Waxwork {
 }
 
 /// A struct that declares a parameter, filled at an `ObjectId`.
-#[model_schema(default_types(Held = String))]
+#[model_schema(default_types(Held = String), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Countersigned<Held> {
     pub held: Held,
 }
 
 /// A brand over an `ObjectId`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct Sigil(pub ObjectId);
 
 /// An alias of an `ObjectId`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 pub type Sigillum = ObjectId;
 
 /// An `ObjectId` under a key, in a list, as a type argument and under a brand.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Endorsed {
     pub carried: Countersigned<ObjectId>,
@@ -680,14 +680,14 @@ pub struct Endorsed {
 }
 
 /// An `ObjectId` as a map's value.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Endorsing {
     pub named: HashMap<String, ObjectId>,
 }
 
 /// An `ObjectId`, and a brand over one, in the lone slot of a variant under a tag alone.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 pub enum Cachet {
@@ -696,7 +696,7 @@ pub enum Cachet {
 }
 
 /// An `ObjectId` flattened beside a member of its holder's own.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Embossed {
     pub id: u32,
@@ -705,7 +705,7 @@ pub struct Embossed {
 }
 
 /// An `ObjectId` flattened ahead of a flattened struct.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Docketing {
     #[serde(flatten)]
@@ -715,7 +715,7 @@ pub struct Docketing {
 }
 
 /// An optional `ObjectId` flattened beside a member of its holder's own.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Stampage {
     pub id: u32,
@@ -724,7 +724,7 @@ pub struct Stampage {
 }
 
 /// A brand over an `ObjectId` flattened ahead of a flattened struct.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Sigiled {
     #[serde(flatten)]
@@ -734,7 +734,7 @@ pub struct Sigiled {
 }
 
 /// An alias of an `ObjectId` flattened ahead of a flattened struct.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Sigillary {
     #[serde(flatten)]
@@ -744,7 +744,7 @@ pub struct Sigillary {
 }
 
 /// A struct that flattens its type parameter ahead of a flattened struct.
-#[model_schema(default_types(Held = Sigil))]
+#[model_schema(default_types(Held = Sigil), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Enveloping<Held> {
     #[serde(flatten)]
@@ -755,7 +755,7 @@ pub struct Enveloping<Held> {
 
 /// A struct that flattens an `Option` of its type parameter ahead of a flattened struct, under no
 /// attribute that drops a key: serde writes nothing for its `None`.
-#[model_schema(default_types(Held = Sigil))]
+#[model_schema(default_types(Held = Sigil), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Waxing<Held> {
     #[serde(flatten)]
@@ -765,68 +765,68 @@ pub struct Waxing<Held> {
 }
 
 /// A struct that hands its type parameter on to [`Waxing`].
-#[model_schema(default_types(Held = Sigil))]
+#[model_schema(default_types(Held = Sigil), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Rewaxing<Held> {
     pub waxing: Waxing<Held>,
 }
 
 /// A struct that hands its type parameter on to [`Enveloping`].
-#[model_schema(default_types(Held = Sigil))]
+#[model_schema(default_types(Held = Sigil), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Relaying<Held> {
     pub envelope: Enveloping<Held>,
 }
 
 /// A struct of one slot over an `ObjectId`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Wafer(pub ObjectId);
 
 /// [`Enveloping`] filled at an `ObjectId`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Lettering {
     pub envelope: Enveloping<ObjectId>,
 }
 
 /// [`Waxing`] filled at an `ObjectId`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Folding {
     pub waxed: Waxing<ObjectId>,
 }
 
 /// [`Waxing`] filled at a struct written above it.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Cartouching {
     pub waxed: Waxing<Cartouche>,
 }
 
 /// [`Rewaxing`] filled at a struct written above [`Waxing`].
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Rewaxed {
     pub rewaxed: Rewaxing<Cartouche>,
 }
 
 /// [`Waxing`] filled at a struct that declares a parameter, written above it.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Countersealing {
     pub waxed: Waxing<Countersigned<String>>,
 }
 
 /// [`Waxing`] filled at an enum under a tag alone, written above it.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Waxworking {
     pub waxed: Waxing<Waxwork>,
 }
 
 /// [`Waxing`] filled at a struct with a member serde never writes, written above it.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Impressing {
     pub waxed: Waxing<Impress>,
@@ -834,14 +834,14 @@ pub struct Impressing {
 
 /// [`Waxing`] filled at a struct declared below both: Dart and Swift do not know its keys, and
 /// read a flattened `Option` of it as `None` wherever its read fails, as serde reads it.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Latewaxed {
     pub waxed: Waxing<LateCartouche>,
 }
 
 /// [`Relaying`] filled at an `ObjectId`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Relayed {
     pub relay: Relaying<ObjectId>,
@@ -849,7 +849,7 @@ pub struct Relayed {
 
 /// A struct that flattens its type parameter ahead of a flattened struct, and reads it under a key
 /// as well.
-#[model_schema(default_types(Held = Sigil))]
+#[model_schema(default_types(Held = Sigil), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Crossed<Held> {
     #[serde(flatten)]
@@ -860,14 +860,14 @@ pub struct Crossed<Held> {
 }
 
 /// [`Crossed`] filled at an `ObjectId`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Crossing {
     pub crossed: Crossed<ObjectId>,
 }
 
 /// [`Enveloping`] filled at an alias and a brand over an `ObjectId`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Bullae {
     pub aliased: Enveloping<Sigillum>,
@@ -875,14 +875,14 @@ pub struct Bullae {
 }
 
 /// [`Wafer`] under a key.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Wafered {
     pub wafer: Wafer,
 }
 
 /// [`Wafer`] flattened ahead of a flattened struct.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Wafering {
     #[serde(flatten)]
@@ -892,14 +892,14 @@ pub struct Wafering {
 }
 
 /// [`Enveloping`] filled at [`Wafer`].
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Enwafered {
     pub envelope: Enveloping<Wafer>,
 }
 
 /// [`Wafer`] in a list, as a map's value and as a type argument.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Wafers {
     pub carried: Countersigned<Wafer>,
@@ -908,14 +908,14 @@ pub struct Wafers {
 }
 
 /// [`Wafer`] in the one slot of a variant under no tag attribute.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Impressed {
     Pressed(Wafer),
 }
 
 /// A brand over an `ObjectId` declared below it, flattened ahead of a flattened struct.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Belated {
     #[serde(flatten)]
@@ -925,13 +925,13 @@ pub struct Belated {
 }
 
 /// A brand over an `ObjectId`, declared below [`Belated`].
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct LateSigil(pub ObjectId);
 
 /// A struct of one member, declared below [`Latewaxed`], which fills [`Waxing`] there.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct LateCartouche {
     pub wax: String,

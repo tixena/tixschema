@@ -5,28 +5,28 @@ use tixschema::model_schema;
 
 // Each shape names itself so the JSON document hoists it into `$defs`, that key being the one
 // place the JSON surface writes a type's own name.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SomethingData {
     pub children: Vec<Self>,
     pub label: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SomethingJson {
     pub children: Vec<Self>,
     pub label: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Data {
     pub children: Vec<Self>,
     pub label: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct NamesEverySpelling {
     pub bare: Data,
@@ -34,21 +34,21 @@ pub struct NamesEverySpelling {
     pub json_spelled: SomethingJson,
 }
 
-#[model_schema(name = "PublishedGauge")]
+#[model_schema(name = "PublishedGauge", enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GaugeUnderRustName {
     pub nested: Vec<Self>,
     pub reading: u32,
 }
 
-#[model_schema(name = "PublishedGrade")]
+#[model_schema(name = "PublishedGrade", enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug)]
 pub enum GradeUnderRustName {
     Group { members: Vec<Self> },
     High,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct NamesOverriddenItems {
     pub gauge: GaugeUnderRustName,
@@ -57,7 +57,7 @@ pub struct NamesOverriddenItems {
 
 // A member key reaches the same seam a type name does, and is spelled from what serde writes.
 #[cfg(feature = "serde")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct KeyEndingInTheSuffix {
     #[serde(rename = "payloadData")]
@@ -111,7 +111,6 @@ fn zod_consts_are_published_under_the_whole_ident() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn the_json_definition_is_keyed_by_the_whole_ident() {
     for (schema, key) in [
@@ -173,7 +172,6 @@ fn a_zod_reference_names_what_the_referenced_item_publishes() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_json_reference_points_at_the_definition_the_referenced_item_hoists() {
     let properties = &NamesEverySpelling::json_schema()["properties"];
@@ -230,7 +228,6 @@ fn an_overridden_struct_and_enum_publish_and_are_named_by_the_override_in_zod() 
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn an_overridden_struct_and_enum_key_their_json_definitions_by_the_override() {
     let properties = &NamesOverriddenItems::json_schema()["properties"];
@@ -266,7 +263,7 @@ fn a_zod_member_key_is_written_exactly_as_serde_writes_it() {
     assert!(zod.contains("payloadData: z.string(),"), "got: {zod}");
 }
 
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[cfg(feature = "serde")]
 #[test]
 fn a_json_member_key_is_written_exactly_as_serde_writes_it() {
     let schema = KeyEndingInTheSuffix::json_schema();
@@ -277,7 +274,6 @@ fn a_json_member_key_is_written_exactly_as_serde_writes_it() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn the_schema_module_is_named_from_the_whole_ident() {
     assert_eq!(

@@ -46,7 +46,7 @@ pub struct User {
 
 This generates:
 - `User::ts_definition()` -- Returns a TypeScript type definition and Zod schema as a string
-- `User::json_schema()` -- Returns a JSON schema (requires `jsonschema` feature)
+- `User::json_schema()` -- Returns a JSON schema (requires `enable = ["jsonschema"]`)
 
 Generated TypeScript:
 
@@ -212,7 +212,7 @@ pub fn north_dock() -> String {
     "north".to_owned()
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Wharf {
     #[serde(default)]
@@ -225,7 +225,7 @@ pub struct Wharf {
 }
 ```
 
-`Gangway` is a `#[model_schema()]` struct of the crate's own, whose `Default` is `{"label":"main","width":2}`. serde reads `{"label":"w"}` as `{"dock":"","gangway":{"label":"main","width":2},"gate":"north","label":"w"}`, and so does each surface:
+`Gangway` is a `#[model_schema(enable = ["jsonschema"])]` struct of the crate's own, whose `Default` is `{"label":"main","width":2}`. serde reads `{"label":"w"}` as `{"dock":"","gangway":{"label":"main","width":2},"gate":"north","label":"w"}`, and so does each surface:
 
 | Surface | What reads a key the payload leaves out |
 |---------|-----------------------------------------|
@@ -289,7 +289,7 @@ serde reads `{"kind":"Docked","pier":3}` as `{"kind":"Docked","dock":"","pier":3
 
 #### What does not build on a variant's member
 
-A named member of a variant under `#[serde(default)]` or `#[serde(default = "path")]` that the other surfaces cannot read as serde reads it is refused where the enum is declared, and the build stops. No key of a variant is kept required in silence. The refusal points at the member, and its message opens with the enum, the variant and the member, ``model_schema: type `Berthing`: variant `Docked`, field `dock`:``, followed by the reason. Every refused member of the enum is reported in one build. It is raised in every build that describes the type, a mobile client included: the `serde` feature with any of `typescript`, `zod`, `jsonschema`, `dart`, `swift` and `kotlin`.
+A named member of a variant under `#[serde(default)]` or `#[serde(default = "path")]` that the other surfaces cannot read as serde reads it is refused where the enum is declared, and the build stops. No key of a variant is kept required in silence. The refusal points at the member, and its message opens with the enum, the variant and the member, ``model_schema: type `Berthing`: variant `Docked`, field `dock`:``, followed by the reason. Every refused member of the enum is reported in one build. It is raised in every build that describes the type, a mobile client included: the `serde` feature with any of `typescript`, `zod`, `dart`, `swift` and `kotlin`.
 
 | The member | Why no surface but Rust can read the default | The message, after its opening |
 |------------|-----------------------------------------------|--------------------------------|
@@ -460,7 +460,7 @@ indexmap = { version = "2", features = ["serde"] }
 ```rust
 use indexmap::{IndexMap, IndexSet};
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Document {
     pub data: IndexMap<String, String>,
@@ -731,7 +731,7 @@ pub struct TreeNode {
 ```rust
 use core::ops::{Range, RangeFrom, RangeInclusive, RangeTo};
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Spanned {
     pub closed: RangeInclusive<u32>,
@@ -772,7 +772,7 @@ A range is read by its last name. A `#[model_schema()]` type of the crate's own 
 `Result<T, E>` describes as the object serde writes for it, the externally tagged form of an enum of two variants: `{"Ok": T}` or `{"Err": E}`. An arm of `()` is `null`, serde writing `Ok(())` as `{"Ok": null}`.
 
 ```rust
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Reply {
     pub outcome: Result<u32, String>,
@@ -1280,7 +1280,7 @@ The enum's check is the same check written in `#[model_schema_prop(...)]` on eac
 - **A member of an untagged enum** is checked by the read, which is what chooses the variant, and by `validate()`, the Zod schema and the JSON Schema.
 - **A member of a tagged enum** is checked by `validate()`, which the enum's own read runs on the value it read, and by the Zod schema, the JSON Schema and the [recovering decode](#recovering-decode-decode_with). See [Where a constraint is checked](#where-a-constraint-is-checked).
 
-`validate()` reports a field at [the path serde writes it at](#the-path-a-message-names), as it does for [a check written on the member](#a-slot-of-a-tuple-variant): below the variant's name or the content key where serde writes one, and under no name for an untagged newtype variant's slot. A validator is published only where a schema surface is on (`typescript`, `zod` or `jsonschema`), so in a build with none the enum's check holds a field to nothing, as the field's own does there.
+`validate()` reports a field at [the path serde writes it at](#the-path-a-message-names), as it does for [a check written on the member](#a-slot-of-a-tuple-variant): below the variant's name or the content key where serde writes one, and under no name for an untagged newtype variant's slot. A validator is published only where a schema surface is on (`typescript` or `zod`), so in a build with none the enum's check holds a field to nothing, as the field's own does there.
 
 A field that writes a check of its own under the enum's is held to both. `minLength` is the larger of the two and `maxLength` the smaller. Two patterns are both checked: the Zod schema writes two `.check(z.regex(...))`, the JSON Schema states both in an `allOf`, and `validate()` reports each one the value fails.
 
@@ -1855,7 +1855,7 @@ A struct, a tuple struct, an enum, an alias and a branded newtype can each name 
 
 **Zod publishes a factory rather than a schema -- and a default beside it.** A Zod schema is a runtime value and TypeScript generics do not exist at runtime, so there is no one value a generic type could publish: the caller has to say what fills each parameter before anything can validate. A generic type therefore exports `X$SchemaFactory`, a function taking one required schema argument per parameter, and a field written with a parameter composes the argument bound for it. It also exports `X$SchemaDefault`: the factory called at the type's own declared `default_types`, memoized like any other call, so a consumer who wants the ordinary filling never constructs the argument list by hand.
 
-**With the `jsonschema` feature on, every type parameter needs a declared default type.** JSON Schema has no type parameters, so its document has to be built from one concrete filling, and `default_types` is where that filling is named — see [Declaring the default type](#declaring-the-default-type) below.
+**A type that lists `enable = ["jsonschema"]` needs a declared default type for every type parameter.** JSON Schema has no type parameters, so its document has to be built from one concrete filling, and `default_types` is where that filling is named — see [Declaring the default type](#declaring-the-default-type) below.
 
 ```rust
 #[model_schema(default_types(IdType = String))]
@@ -2032,9 +2032,9 @@ The declaration is read in both directions, and each refusal points at what earn
 | Written | Verdict |
 |---------|---------|
 | An entry naming something the item does not declare | Refused in **every** feature configuration, spanned on the entry. A misspelled parameter fills nothing, and the parameter it was meant for would be left with no default at all. |
-| A type parameter with no entry | Refused only where `jsonschema` is on, spanned on the parameter. Nothing else reads the default, so the same item compiles untouched without that feature. |
+| A type parameter with no entry | Refused only on a type that lists `enable = ["jsonschema"]`, spanned on the parameter. Nothing else reads the default, so the same item compiles untouched without that entry. |
 | `default_types` on an item declaring no type parameter | Refused, there being nothing for a filling to fill. |
-| An entry filled at a type the macro cannot describe -- `i128`, `u128`, `f16`, `f128` | Refused where `zod` or `jsonschema` is on, spanned on the filling -- those are the two surfaces that read a declared filling. A name the type dispatch has no arm for is read as another `#[model_schema]` item, which is right for a sibling declared below and gibberish for a primitive: the JSON emission would name an `i128_schema` module nothing publishes, and the zod `$SchemaDefault` an `i128$Schema` binding no generated module exports. Only the reserved primitive names the dispatch answers for nowhere are refused, so a forward-referenced sibling keeps compiling -- and so does a filling at `char`, which describes as the one-character string serde writes for it. |
+| An entry filled at a type the macro cannot describe -- `i128`, `u128`, `f16`, `f128` | Refused where `zod` is on and on a type that lists `enable = ["jsonschema"]`, spanned on the filling -- those are the two surfaces that read a declared filling. A name the type dispatch has no arm for is read as another `#[model_schema]` item, which is right for a sibling declared below and gibberish for a primitive: the JSON emission would name an `i128_schema` module nothing publishes, and the zod `$SchemaDefault` an `i128$Schema` binding no generated module exports. Only the reserved primitive names the dispatch answers for nowhere are refused, so a forward-referenced sibling keeps compiling -- and so does a filling at `char`, which describes as the one-character string serde writes for it. |
 
 There is deliberately no fallback. Guessing a filling produces a document that silently rejects valid payloads, which is the failure the declaration exists to prevent.
 
@@ -2276,7 +2276,7 @@ NameConfig(Vec::new()).validate();
 
 That answer comes from the type's own expansion, so it is only available once that expansion has run: a brand written **above** the type it names, or over a type this crate never expands at all, is admitted with the emission it has always had. Declaration order is not a diagnostic — moving a declaration must not turn a compiling program into a rejected one — so keep a constrained brand below the type it constrains if you want the check.
 
-**One of the brand's own type parameters is different: it reads its declared default instead of being refused.** A bare parameter is not itself a type the checks could measure, but `#[model_schema]` already requires (for `jsonschema`) or defaults (elsewhere) a concrete filling for every parameter — see [Declaring the default type](#declaring-the-default-type) — and that filling is exactly as concrete as a named type's own schema. So the guard asks the same question of the declared default it asks of a named inner: a string-shaped default carries the checks, a non-string one is refused in its place. The checks land once, on `$SchemaDefault`'s argument for that parameter; the factory itself stays unconstrained, so a caller filling the parameter with something else — an `ObjectId` schema, say — is never held to bounds meant for the default:
+**One of the brand's own type parameters is different: it reads its declared default instead of being refused.** A bare parameter is not itself a type the checks could measure, but `#[model_schema]` already requires (on a type that lists `"jsonschema"`) or defaults (elsewhere) a concrete filling for every parameter — see [Declaring the default type](#declaring-the-default-type) — and that filling is exactly as concrete as a named type's own schema. So the guard asks the same question of the declared default it asks of a named inner: a string-shaped default carries the checks, a non-string one is refused in its place. The checks land once, on `$SchemaDefault`'s argument for that parameter; the factory itself stays unconstrained, so a caller filling the parameter with something else — an `ObjectId` schema, say — is never held to bounds meant for the default:
 
 ```rust
 // Accepted: `IdType`'s declared default is `String`, so the checks land there.
@@ -2346,7 +2346,7 @@ Plain<&str> { held: "a" }:                    Ok(())
 Plain<String> { held: "a" }:                  Err(["too short: minimum length is 2, got 1"])
 ```
 
-An entry `default_types` leaves out falls back to `String`, the same fallback a parameter with no declared filling gets everywhere else the declaration is read — so a constrained bare-parameter brand with no `default_types` at all still compiles. Only the `jsonschema` feature actually requires a declared entry for every parameter, through the unrelated requirement in the table above.
+An entry `default_types` leaves out falls back to `String`, the same fallback a parameter with no declared filling gets everywhere else the declaration is read — so a constrained bare-parameter brand with no `default_types` at all still compiles. Only a type that lists `enable = ["jsonschema"]` requires a declared default type for every parameter, through the unrelated requirement in the table above.
 
 **A name written over one of those parameters is rejected too**, whether or not the named type has expanded yet. `Tagged<T>` is not a type the declaration fixed — the instantiation fixes it — so the checks land on whatever the caller supplies: Zod appends them to a schema the call site decides the shape of, the one JSON document written for every instantiation still holds the `{}` a parameter describes as, and `validate()` measures the inner's `Display` rendering, which rejects `TaggedSlug(Tagged(7))` for having one decimal digit rather than for its value. This is the one place the registry's silence is not read as consent, and it is what keeps declaration order out of the diagnostic: the same two declarations written in the other order are rejected through the registry, so admitting this order would decide one program two ways.
 
@@ -5364,7 +5364,7 @@ Terminal with no spareParcel key, all good: read
 - **`validate()` is for a value built in code**, before it is sent, and for a value changed after it was read: [`fromJson` judges what it reads](#the-dart-read-refuses-what-validate-refuses). It calls no [`preprocess`](#a-preprocess-in-the-dart-client): a read does, ahead of it.
 - **A class of your own that a model holds** declares `List<String> validate()` and the constructor `fromJsonUnjudged` as the emitted ones do: a holder reads it and calls it with no knowledge of what the held type declares, whether that type is declared above the holder or below it. [`ObjectId`](#mongodb-objectid-support) is the one exception, read through its `fromJson` and asked nothing.
 - **A field named `validate`** is the member `validate_`, and keeps its key, as [a reserved word does](#a-member-named-after-a-word-the-client-language-reserves).
-- **Every build writes the same Dart.** The Dart `validate()` holds each bound and calls each check with a schema surface on and with none. One declaration differs: a brand's own `minLength`, `maxLength` or `pattern` is refused by a build with no `typescript`, `zod` or `jsonschema`, so no wrapper carries one there.
+- **Every build writes the same Dart.** The Dart `validate()` holds each bound and calls each check with a schema surface on and with none. One declaration differs: a brand's own `minLength`, `maxLength` or `pattern` is refused by a build with neither `typescript` nor `zod`, so no wrapper carries one there.
 
 ### `validate()` in the Kotlin client
 
@@ -6697,10 +6697,10 @@ Key points:
 - An example is written as `serde_json` holds it. An object's keys are in the order serde wrote them where the crate's `serde_json` has `preserve_order` on, which the `bson` library turns on, and sorted where it is off.
 - Examples respect Serde attributes (field renaming, etc.).
 - Being Rust source, an example block is dropped from the JSDoc comment above the generated `export type`, whatever the type is declared as. On a struct, an enum or a type alias it reaches the Zod `examples` list. A type alias has no `impl`, so its examples are `schema_examples()` and `schema_example()` of its schema module (`documented_alias_schema::Schema`). An alias that writes no block and names another published type publishes that type's examples, as does a one-slot tuple struct over one; any other alias without a block publishes `examples: []`. A `use` in a block is dropped whatever lines it spans.
-- The JSON Schema document of a type holds the same values under the standard `examples` keyword, whether it is read from the type (`Label::json_schema()`) or from its schema module (`label_schema::Schema::json_schema()`), and with the `jsonschema` feature on whether or not `zod` is. It is written for a struct, an enum, a brand, a one-slot tuple struct and an alias that writes a block. An alias, or a one-slot tuple struct, that writes no block and names another published type carries the `examples` of that type's own document, at its declared filling where it is generic. A type that has none writes no `examples` keyword. `schema_examples()` answers the values in a build with `zod` or `jsonschema` on; `schema_example()` and the Zod list need `zod`.
+- The JSON Schema document of a type holds the same values under the standard `examples` keyword, whether it is read from the type (`Label::json_schema()`) or from its schema module (`label_schema::Schema::json_schema()`), on a type that lists `enable = ["jsonschema"]`, whether or not `zod` is on. It is written for a struct, an enum, a brand, a one-slot tuple struct and an alias that writes a block. An alias, or a one-slot tuple struct, that writes no block and names another published type carries the `examples` of that type's own document, at its declared filling where it is generic. A type that has none writes no `examples` keyword. `schema_examples()` answers the values in a build with `zod` on, and on a type that lists `"jsonschema"`; `schema_example()` and the Zod list need `zod`.
 - A struct or an enum that declares `validate()` and writes examples, in any build of the crate, gets a `#[cfg(test)]` module beside it (`label_schema_examples` for `Label`) whose test builds each example and runs `validate()` on it, so `cargo test` fails on an example that breaks a rule of its type, naming the type, the example's number and the rule: ``example 2 of `Label` breaks its rules: 'text': too short: minimum length is 1, got 0``. It runs in a library and a binary crate alike.
 - A brand and a plain enum hold `examples` inside the `.meta()` that holds their `description`. A generic type holds it on the schema its factory memoizes, so `$SchemaDefault` and every other call of the factory carry it.
-- A generic struct or enum has each example built at one instantiation, with every type parameter filled at `String`. A lifetime elides there and needs no filling, but a **const parameter takes none** -- `String` names a type, a const is a value, and no value is the one every example would be written at. So a struct, an enum or a type alias that declares a const parameter and writes an example is refused, naming the const; drop the example or the const parameter. Nothing is owed where no example is written, or with neither the `zod` nor the `jsonschema` feature on, the two surfaces that read one.
+- A generic struct or enum has each example built at one instantiation, with every type parameter filled at `String`. A lifetime elides there and needs no filling, but a **const parameter takes none** -- `String` names a type, a const is a value, and no value is the one every example would be written at. So a struct, an enum or a type alias that declares a const parameter and writes an example is refused, naming the const; drop the example or the const parameter. Nothing is owed where no example is written, or on a type that does not list `"jsonschema"` in a build without `zod`, the two surfaces that read one.
 - The example code is executed at compile time and serialized to JSON.
 - Wrong types produce compile errors, ensuring examples stay in sync with your types.
 
@@ -6934,11 +6934,12 @@ The entry `"decode_with"` implements the trait. The types the callback and the r
 
 ### Opting in
 
-Write the `enable` list among the type's `#[model_schema(...)]` arguments. It takes three entries, `"decode_with"`, `"mongodb"` and `"arky"`:
+Write the `enable` list among the type's `#[model_schema(...)]` arguments. It takes four entries, `"decode_with"`, `"mongodb"`, `"arky"` and `"jsonschema"`:
 
 - `#[model_schema(enable = ["decode_with"])]` gives the type the recovering decode of a JSON value, and, in a build with tixschema's `bson` feature on, of a BSON document. A type that is read and never stored lists this, whether it is read from a request or from a BSON document.
 - `#[model_schema(enable = ["decode_with", "mongodb"])]` gives it, under tixschema's `mongodb` feature, the [MongoDB layer](#mongodb-operations-and-typed-filters) as well. A type that is stored lists both. In a build without the `mongodb` feature the entry adds nothing and is accepted, so the declaration builds whatever features tixschema is built with.
 - `#[model_schema(enable = ["arky"])]` gives it, under tixschema's `arky` feature, the [conversions to and from arky's frontmatter `Value`](#arky-frontmatter-conversions-arky). It needs no other entry, and is written beside them in any order.
+- `#[model_schema(enable = ["jsonschema"])]` gives it `json_schema()` and `json_schema_within()`, its JSON Schema document. JSON Schema is no feature: a type asks for its document, and only a crate that asks depends on `serde_json` for it. Every model type it holds lists the entry too, since its document calls each held type's `json_schema_within`; a held type without it stops the build at the holder with `E0599`. Every type parameter of a type that lists it declares a default type ([Declaring the default type](#declaring-the-default-type)). It needs no other entry.
 
 A type without the list gains nothing: its expansion is what it was, with no method and no type added. This section calls a type that lists `"decode_with"` a flagged type, and the entry the flag. The crate that declares a flagged type writes [the initializers](#the-support-libraries) once, at its root.
 
@@ -7040,7 +7041,7 @@ The list is read in every build. Each of these is refused, spanned on what is wr
 |---------|-------------|
 | `decode_with`, `decode_with = true` or `decode_with = false`, the flag as it was written before the list | ``tixschema: `decode_with` is now an entry of the `enable` list: write `#[model_schema(enable = ["decode_with"])]` `` |
 | `enable = ["mongodb"]` | ``tixschema: `"mongodb"` requires `"decode_with"`: write `enable = ["decode_with", "mongodb"]` `` |
-| `enable = ["decode_wth"]`, an entry the list does not read | ``tixschema: unknown entry `"decode_wth"`; the entries are `"arky"`, `"decode_with"` and `"mongodb"` `` |
+| `enable = ["decode_wth"]`, an entry the list does not read | ``tixschema: unknown entry `"decode_wth"`; the entries are `"arky"`, `"decode_with"`, `"jsonschema"` and `"mongodb"` `` |
 | `enable = ["decode_with", "decode_with"]` | ``tixschema: `"decode_with"` is written twice`` |
 | `enable = []` | ``tixschema: the list is empty; remove `enable` `` |
 | `enable = "decode_with"`, `enable = [decode_with]`, or any other form but a list of string literals | `` `model_schema` argument `enable` takes a list of string literals, written `enable = ["decode_with"]` or `enable = ["decode_with", "mongodb"]` `` |
@@ -7246,7 +7247,7 @@ The walker reads each type in the form serde writes it. A type held in another f
 - A key the type does not declare is `Unknown`. A key the type writes and never reads back, under `skip_deserializing`, is one it declares, under the name serde writes it under.
 - A field whose type is another flagged type is walked by that type's walker at the extended path, through a list, a map, an `Option` or a `Box`: `versions[1].number`, `byName.first.number`, `latest.draft`. An optional one is walked when its key is there and does not hold `null`.
 - A value that reads is written back the way its field writes it, through the field's `serialize_with` function or `with` module when it has one, and compared with what is held. A mismatch is `Mistyped`.
-- A `#[model_schema_prop]` bound on a field is no part of the read the recovering decode makes, the type's read alone, so serde reads a value that breaks it. The walker runs the field's validator on what serde read, and lists one `Invalid` at the value, with the bound's sentence as its `reason`: `humanName` holding `""` under `minLength = 1` lists `Invalid` at `humanName`, reason `too short: minimum length is 1, got 0`. A value that breaks two bounds lists one issue at its path, its reasons joined by `; `, a list that breaks its count is one issue at the list (`tags`, whatever its items are), and a field of a tagged enum's variant is listed the same way. So is a slot of a tagged tuple variant, at the slot's own path: `Pair[1]` for the second slot of an externally tagged `Pair`, and the key the variant's value sits under for a lone slot. And so is a slot of a tuple struct: `[1]` for the second slot of a `struct Pair(String, u32)` read as the value itself, `pair[1]` where a field `pair` holds it, and the path the struct sits at for the one slot of a single-slot struct. A callback or a resolver repairs the value at the issue's path. A validator is published only where a schema surface is on (`typescript`, `zod` or `jsonschema`), so a build with none lists nothing.
+- A `#[model_schema_prop]` bound on a field is no part of the read the recovering decode makes, the type's read alone, so serde reads a value that breaks it. The walker runs the field's validator on what serde read, and lists one `Invalid` at the value, with the bound's sentence as its `reason`: `humanName` holding `""` under `minLength = 1` lists `Invalid` at `humanName`, reason `too short: minimum length is 1, got 0`. A value that breaks two bounds lists one issue at its path, its reasons joined by `; `, a list that breaks its count is one issue at the list (`tags`, whatever its items are), and a field of a tagged enum's variant is listed the same way. So is a slot of a tagged tuple variant, at the slot's own path: `Pair[1]` for the second slot of an externally tagged `Pair`, and the key the variant's value sits under for a lone slot. And so is a slot of a tuple struct: `[1]` for the second slot of a `struct Pair(String, u32)` read as the value itself, `pair[1]` where a field `pair` holds it, and the path the struct sits at for the one slot of a single-slot struct. A callback or a resolver repairs the value at the issue's path. A validator is published only where a schema surface is on (`typescript` or `zod`), so a build with none lists nothing.
 - A [check](#checks-check) the type or one of its fields names takes the typed value, which the walker never holds, so the checks run once serde has read the value: after the first read where serde accepts it, and after the read that follows a `Fixed` verdict or the resolvers. Each message is an `Invalid` of its own, expected `Unknown`. With `Parcel` of [the example](#checks-check), `{ "label": "A", "itemCodeList": ["x"], "fragileItemCodes": ["x", "y"] }` lists `Invalid` at `fragileItemCodes[1]`, reason `y is outside of itemCodeList`, and the same parcel held by `Manifest` lists it at `parcel.fragileItemCodes[1]`. The path is what the message leads with, read against the raw value: a segment that is a number where the raw value holds a list is an index, and every other segment is a key. A message with no lead is at the value itself, and `found` is `null` where the path leads nowhere. A member's check is listed where serde writes the member under each tagging of an enum, and the checks of a flagged type held in a field, an `Option`, a list, a map or a `Box` are listed under the key, and the index or the map key, it is held at. A payload serde refuses runs no check, no value having been built: a callback that fixes it meets the checks on the second read, and a `Fixed` verdict that leaves a check broken fails the read with `Unrecovered`, as it does for a bound. A check is listed whether or not a schema surface is on, where a bound is listed only with one. Nothing is listed for a member serde never reads back, nor for what a field read through a hook of your own holds. A path is told apart by its dots, so a map key that holds one is read as two segments.
 
 Read as a struct holding `name: String` and `versions: Vec<Version>`, `{ "name": "Loan", "versions": [{ "number": 1 }, { "number": "2" }], "legacyField": true }` lists `Invalid` at `versions[1].number`, expected `I32`, and `Unknown` at `legacyField`.
@@ -8692,7 +8693,7 @@ The function fails with `billed_schema::OperationError`, the crate's one `Operat
 
 ### Limits
 
-- **A type that holds a type declared in the same function body does not build with the `jsonschema` feature on.** Its JSON Schema names the held type's schema module, which no module beside the holder reaches: ``error[E0433]: cannot find module or crate `inner_schema` in this scope``. Declare the held type at module level in such a build, as [Function-Local Types](#function-local-types) says.
+- **A type that lists `enable = ["jsonschema"]` and holds a type declared in the same function body does not build.** Its JSON Schema names the held type's schema module, which no module beside the holder reaches: ``error[E0433]: cannot find module or crate `inner_schema` in this scope``. Declare the held type at module level, as [Function-Local Types](#function-local-types) says.
 - **An operation is a function of the type itself, under its own name.** A type that lists `"mongodb"` and already has a function of its own called `find_one`, `find_one_with`, `find`, `find_with`, `count`, `insert_one`, `update_one`, `update_many`, `delete_one` or `delete_many` builds without the `mongodb` feature and stops building with it. For a type with a `count` of its own: ``error[E0592]: duplicate definitions with name `count` ``.
 - **A slot of a tuple struct under `skip_serializing_if` moves the positions after it.** The paths are written for a value that holds every slot. With `pair` a field typed with `Pair`, a tuple struct of an `Option<u32>` under `skip_serializing_if` and then a `String`, `Pair::MONGO_FIELDS.1` nested under `paths.pair()` writes the key `pair.1`, and a value whose first slot is `None` is stored as `{ "pair": ["x"] }`, its text at position `0`.
 
@@ -8713,7 +8714,6 @@ The crate uses optional features to control code generation and dependencies. Ea
 |---------|---------|-------------|
 | `serde` | Yes | Serde attribute parsing (`rename`, `rename_all`, `tag`, etc.) |
 | `zod` | Yes | Zod v4 schema generation alongside TypeScript types |
-| `jsonschema` | Yes | JSON Schema generation via `json_schema()` method |
 | `typescript` | Yes | TypeScript type generation via `ts_definition()` method |
 | `mongodb` | No | MongoDB support: the ObjectId type, with validation, and on types whose [`enable` list](#opting-in) holds `"mongodb"` the [typed field paths, filters, updates and operations](#mongodb-operations-and-typed-filters) over a collection of their rows; turns on `bson` |
 | `bson` | No | BSON support: `from_bson_with` and `from_bson_piped` on every type whose [`enable` list](#opting-in) holds `"decode_with"`; turns on `serde` |
@@ -8727,11 +8727,11 @@ The crate uses optional features to control code generation and dependencies. Ea
 Common configurations:
 
 ```toml
-# Default (serde + zod + jsonschema + typescript)
+# Default (serde + zod + typescript)
 tixschema = "0.3"
 
 # All features including optional ones
-tixschema = { version = "0.3", features = ["serde", "zod", "jsonschema", "typescript", "mongodb", "bson", "chrono", "indexmap", "dart", "swift", "kotlin", "arky"] }
+tixschema = { version = "0.3", features = ["serde", "zod", "typescript", "mongodb", "bson", "chrono", "indexmap", "dart", "swift", "kotlin", "arky"] }
 
 # Minimal (TypeScript only, no Zod or JSON Schema)
 tixschema = { version = "0.3", default-features = false, features = ["typescript"] }
@@ -9069,12 +9069,14 @@ error: model_schema: field `count`: `u64` has no Kotlin mapping; the Kotlin targ
 
 **Error:** `no function or associated item named 'json_schema' found`
 
-**Cause:** Calling `.json_schema()` without the `jsonschema` feature enabled.
+**Cause:** Calling `.json_schema()` on a type that does not list `"jsonschema"` in its `enable` list. JSON Schema is asked for per type, not by a feature.
 
 **Solution:**
-```toml
-tixschema = { version = "0.3", features = ["jsonschema"] }
+```rust
+#[model_schema(enable = ["jsonschema"])]
 ```
+
+Every model type the type holds lists the entry too: the type's document calls each held type's `json_schema_within`, and a held type without the entry stops the build at the holder with `E0599`.
 
 #### Zod Schema Missing
 
@@ -9278,11 +9280,11 @@ pub struct MyType {
 
 **Error:** `cannot find module or crate <type>_schema in this scope` (`E0433`), reported at the field's type.
 
-With the `jsonschema` feature on, a field naming a `#[model_schema]` type reaches that type's generated `{type}_schema` module by its bare name, so the module has to be in scope where the referencing type is declared. Import it beside the type:
+On a type that lists `enable = ["jsonschema"]`, a field naming a `#[model_schema]` type reaches that type's generated `{type}_schema` module by its bare name, so the module has to be in scope where the referencing type is declared. Import it beside the type:
 
 ```rust
 pub mod version {
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Serialize)]
     pub struct Version {
         pub number: i32,
@@ -9292,7 +9294,7 @@ pub mod version {
 pub mod record {
     use crate::version::{Version, version_schema};
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Serialize)]
     pub struct Record {
         pub versions: Vec<Version>,
@@ -9302,7 +9304,7 @@ pub mod record {
 
 rustc's help line suggests `cargo add version_schema`; there is no such crate. The module is generated next to `Version`, in the module that declares it.
 
-The import is the JSON Schema's alone. The typed MongoDB paths name no other type's module, so a type that lists `"mongodb"` and holds a model declared in another module builds with the model imported by itself in a build with `mongodb` and no `jsonschema`, whatever the other schema surfaces (`typescript`, `zod`) are.
+The import is the JSON Schema's alone. The typed MongoDB paths name no other type's module, so a type that lists `"mongodb"` and not `"jsonschema"`, and holds a model declared in another module, builds with the model imported by itself, whatever the schema surfaces (`typescript`, `zod`) are.
 
 #### A Renaming That Names Two Keys
 
@@ -9341,7 +9343,7 @@ A list that writes one direction alone, `rename(serialize = "written")`, leaves 
 error: model_schema: field `both_ways`: serde `rename` names `written` when serializing only, and leaves the other direction at the name it would otherwise use, so the payload serde writes is not one serde reads. A schema and an emitted client describe one key per member, so neither can be written for the pair. Write both directions at one value, or use the single-value spelling `rename = "..."`.
 ```
 
-The same refusal answers `rename_all` and `rename_all_fields`, and a list written on a variant or on the type. It is raised in every build that describes the type, a mobile client included: the `serde` feature with any of `typescript`, `zod`, `jsonschema`, `dart`, `swift` and `kotlin`. A build with none of the six takes the list: the [recovering decode](#recovering-decode-decode_with) looks a value up under the `deserialize` side, and a [MongoDB path](#mongodb-operations-and-typed-filters) is under the `serialize` side.
+The same refusal answers `rename_all` and `rename_all_fields`, and a list written on a variant or on the type. It is raised in every build that describes the type, a mobile client included: the `serde` feature with any of `typescript`, `zod`, `dart`, `swift` and `kotlin`. A build with none of the five takes the list: the [recovering decode](#recovering-decode-decode_with) looks a value up under the `deserialize` side, and a [MongoDB path](#mongodb-operations-and-typed-filters) is under the `serialize` side.
 
 ### Runtime Issues
 
@@ -9371,7 +9373,7 @@ Debug by printing generated output:
 ```rust
 println!("{}", MyType::ts_definition());
 
-#[cfg(feature = "jsonschema")]
+// `MyType` lists `enable = ["jsonschema"]`.
 println!("{}", serde_json::to_string_pretty(&MyType::json_schema()).unwrap());
 ```
 

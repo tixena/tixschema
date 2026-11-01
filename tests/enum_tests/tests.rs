@@ -1,35 +1,15 @@
 //! Tests of enums: plain enums and discriminated unions on every surface.
 
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
+#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
 use serde::{Deserialize, Serialize};
-#[cfg(all(test, feature = "jsonschema", feature = "serde"))]
+#[cfg(all(test, feature = "serde"))]
 use serde_json::Value;
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
+#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
 use tixschema::model_schema;
 
 // A tagged enum whose tag is written after a serde key this crate has no use for.
-#[cfg(all(
-    test,
-    feature = "serde",
-    any(feature = "typescript", feature = "jsonschema", feature = "zod")
-))]
-#[model_schema()]
+#[cfg(all(test, feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(expecting = "an action", tag = "kind", rename_all = "camelCase")]
 enum ActionTaggedAfterIgnoredKey {
@@ -39,12 +19,8 @@ enum ActionTaggedAfterIgnoredKey {
 
 // The same declaration with nothing for the walk to step over, so the two renderings can be held
 // against each other: an attribute the walk ignores may not change a byte of what is generated.
-#[cfg(all(
-    test,
-    feature = "serde",
-    any(feature = "typescript", feature = "jsonschema", feature = "zod")
-))]
-#[model_schema()]
+#[cfg(all(test, feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 enum ActionTaggedWithNothingIgnored {
@@ -131,11 +107,8 @@ pub enum MimeType {
     ApplicationPdf,
 }
 
-#[cfg(all(
-    test,
-    any(feature = "typescript", feature = "jsonschema", feature = "zod")
-))]
-#[model_schema()]
+#[cfg(all(test, any(feature = "typescript", feature = "zod")))]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "type", rename_all = "camelCase")]
 enum PaymentMethod {
@@ -154,7 +127,7 @@ enum PaymentMethod {
 }
 
 #[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
 enum UserStatus {
@@ -206,10 +179,7 @@ fn test_serde_mime_enums_constructible() {
     assert_eq!(mimes.len(), 2);
 }
 
-#[cfg(all(
-    test,
-    any(feature = "typescript", feature = "jsonschema", feature = "zod")
-))]
+#[cfg(all(test, any(feature = "typescript", feature = "zod")))]
 #[test]
 fn test_payment_method_constructible() {
     let payments = [
@@ -230,7 +200,7 @@ fn test_payment_method_constructible() {
 }
 
 #[test]
-#[cfg(all(feature = "jsonschema", feature = "serde"))]
+#[cfg(feature = "serde")]
 fn test_plain_enum_json_schema() {
     let schema = UserStatus::json_schema();
 
@@ -302,10 +272,7 @@ fn test_plain_enum_ts_definition_not_serde_style() {
 }
 
 #[test]
-#[cfg(all(
-    any(feature = "typescript", feature = "zod", feature = "jsonschema"),
-    feature = "serde"
-))]
+#[cfg(all(any(feature = "typescript", feature = "zod"), feature = "serde"))]
 fn test_plain_enum_members() {
     let members = UserStatus::enum_members();
     assert_eq!(members.len(), 4);
@@ -316,7 +283,6 @@ fn test_plain_enum_members() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_discriminated_union_json_schema() {
     let schema = PaymentMethod::json_schema();
 
@@ -335,7 +301,6 @@ fn test_discriminated_union_json_schema() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_payment_method_variants_json_schema() {
     let payment_method = PaymentMethod::PayPal {
         email: "test@test.com".to_owned(),
@@ -410,7 +375,7 @@ fn test_tag_written_after_an_ignored_key_reaches_the_zod_schema() {
 }
 
 #[test]
-#[cfg(all(feature = "jsonschema", feature = "serde"))]
+#[cfg(feature = "serde")]
 fn test_tag_written_after_an_ignored_key_reaches_the_json_schema() {
     let schema = ActionTaggedAfterIgnoredKey::json_schema();
     for variant in schema["oneOf"].as_array().unwrap() {

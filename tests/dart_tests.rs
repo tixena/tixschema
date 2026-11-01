@@ -30,7 +30,7 @@ mod held_numbers;
 #[cfg(all(
     feature = "dart",
     feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    any(feature = "typescript", feature = "zod")
 ))]
 #[path = "dart_tests/bounded_brands.rs"]
 mod bounded_brands;

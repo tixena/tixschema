@@ -4,7 +4,6 @@
 
 #![cfg(feature = "serde")]
 
-#[cfg(feature = "jsonschema")]
 mod the_generated_message_on_json_schema {
     use super::{CUSTOMER_ID_KEY, INVOICE_ID_KEY};
     use super::{SweepRequest, VoidInvoiceRequest};
@@ -148,7 +147,6 @@ mod the_context_the_trait_declares {
         );
     }
 
-    #[cfg(feature = "jsonschema")]
     #[test]
     fn the_context_reaches_no_json_schema_surface() {
         use super::{BalanceResponse, SweepRequest, VoidInvoiceRequest};
@@ -230,14 +228,14 @@ use core::task::{Context as PollContext, Poll, Waker};
 use tixschema::{model_schema, service_schema};
 
 /// The key an argument becomes on the wire.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 const INVOICE_ID_KEY: &str = if cfg!(feature = "serde") {
     "invoiceId"
 } else {
     "invoice_id"
 };
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 const CUSTOMER_ID_KEY: &str = if cfg!(feature = "serde") {
     "customerId"
 } else {
@@ -246,13 +244,13 @@ const CUSTOMER_ID_KEY: &str = if cfg!(feature = "serde") {
 
 /// The message the author declared, carrying their own annotations and no `rename_all` of any
 /// kind, so a key the macro moved would show up here as plainly as anywhere.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct BalanceRequest {
     pub customer_id: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct BalanceResponse {
     pub invoices: u32,
@@ -276,7 +274,7 @@ pub enum ProbeError {
     InsufficientBalance,
 }
 
-#[service_schema()]
+#[service_schema(transports = ["http_rest"], openapi)]
 pub trait ProbeService<Ctx> {
     /// One argument after the context: the argument already is the message, so nothing is declared.
     async fn get_balance(

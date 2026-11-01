@@ -13,7 +13,7 @@ use super::models::{
 };
 
 /// `()` outside an arm of a `Result`, beside one inside an arm.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Bare {
     pub armed: Result<(), u32>,

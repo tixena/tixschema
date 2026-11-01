@@ -75,7 +75,7 @@ impl NullRow {
 }
 
 /// A newtype variant over an `Option` of a number, beside one over a `bool`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum Fathom {
@@ -85,7 +85,7 @@ pub enum Fathom {
 
 /// Two variants over an `Option`, the first with a bound of its own, ahead of a text: both read
 /// `null`, and the first takes it.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum Kedged {
@@ -95,7 +95,7 @@ pub enum Kedged {
 }
 
 /// A model with a rule.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Drogue {
     #[model_schema_prop(minLength = 1)]
@@ -103,7 +103,7 @@ pub struct Drogue {
 }
 
 /// Variants over an `Option` of a model, of a list of models and of a list of texts.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum Drogued {
@@ -114,11 +114,11 @@ pub enum Drogued {
 }
 
 /// An alias of an `Option`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 pub type Sounded = Option<u32>;
 
 /// A newtype variant over an alias of an `Option`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum Plumb {

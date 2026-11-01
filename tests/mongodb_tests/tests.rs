@@ -6,7 +6,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use tixschema::model_schema;
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ComplexDocument {
     author_id: ObjectId,
@@ -19,7 +19,7 @@ struct ComplexDocument {
     title: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct Document {
     author_id: ObjectId,
@@ -38,7 +38,7 @@ struct Document {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ObjectId(String);
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct Post {
     author_id: ObjectId,
@@ -48,7 +48,7 @@ struct Post {
     title: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct User {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -57,7 +57,7 @@ struct User {
     name: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 struct UserWithHashMapObjectId {
@@ -66,7 +66,7 @@ struct UserWithHashMapObjectId {
     relationships: HashMap<String, ObjectId>,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 struct UserWithObjectIdArray {
@@ -75,7 +75,7 @@ struct UserWithObjectIdArray {
     name: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 struct UserWithObjectIdMap {
@@ -93,7 +93,7 @@ struct UserWithOptionalId {
     name: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 struct UserWithOtherHashMapObjectId {
@@ -274,7 +274,7 @@ fn test_complex_nested_object_id_structures() {
 }
 
 #[test]
-#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
+#[cfg(feature = "mongodb")]
 fn test_complex_object_id_json_schema() {
     let schema = ComplexDocument::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -302,7 +302,6 @@ fn test_complex_object_id_zod_schema() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_document_json() {
     let schema = Document::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -316,7 +315,7 @@ fn test_document_json() {
 }
 
 #[test]
-#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
+#[cfg(feature = "mongodb")]
 fn test_hashmap_object_id_json_schema() {
     let schema = UserWithObjectIdMap::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -355,7 +354,7 @@ fn test_hashmap_with_object_id_values() {
 }
 
 #[test]
-#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
+#[cfg(feature = "mongodb")]
 fn test_json_schema_optional_parent() {
     let schema = Post::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -388,7 +387,7 @@ fn test_object_id_arrays() {
 }
 
 #[test]
-#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
+#[cfg(feature = "mongodb")]
 fn test_object_id_arrays_json_schema() {
     let schema = UserWithObjectIdArray::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -423,7 +422,7 @@ fn test_object_id_compilation_smoke_test() {
 }
 
 #[test]
-#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
+#[cfg(feature = "mongodb")]
 fn test_object_id_json_schema() {
     let schema = User::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -471,7 +470,6 @@ fn test_optional_object_id_zod_schema() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_user_with_hashmap_object_id_json() {
     let schema = UserWithHashMapObjectId::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -485,7 +483,6 @@ fn test_user_with_hashmap_object_id_json() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_user_with_other_hashmap_object_id_json() {
     let schema = UserWithOtherHashMapObjectId::json_schema();
     let properties = schema["properties"].as_object().unwrap();

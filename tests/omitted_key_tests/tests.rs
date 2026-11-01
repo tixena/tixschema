@@ -8,7 +8,7 @@ use tixschema::model_schema;
 
 /// One omitted key beside the members that keep theirs: a plain required field and a sequence,
 /// neither of which serde ever drops.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct OmittedKeyFields {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -20,7 +20,7 @@ struct OmittedKeyFields {
 /// The same omission asked of a field that is not an `Option`. A predicate drops the key for a
 /// value that is perfectly present in Rust, so the type under the key is unchanged — only whether
 /// the key is written at all.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct PredicateOmittedKey {
     id: String,
@@ -149,7 +149,6 @@ fn zod_reads_the_predicate_omitted_key_as_its_default() {
 
 /// The JSON surface says it by leaving the field out of `required` while still describing it.
 #[test]
-#[cfg(feature = "jsonschema")]
 fn the_json_schema_describes_the_omitted_key_without_requiring_it() {
     let schema = OmittedKeyFields::json_schema();
 
@@ -163,7 +162,6 @@ fn the_json_schema_describes_the_omitted_key_without_requiring_it() {
 
 /// Same for the predicate-dropped key: described, not required.
 #[test]
-#[cfg(feature = "jsonschema")]
 fn the_json_schema_describes_the_predicate_omitted_key_without_requiring_it() {
     let schema = PredicateOmittedKey::json_schema();
 

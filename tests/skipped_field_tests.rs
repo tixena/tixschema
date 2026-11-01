@@ -7,6 +7,6 @@
 extern crate alloc;
 
 #[cfg(test)]
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[path = "skipped_field_tests/tests.rs"]
 mod tests;

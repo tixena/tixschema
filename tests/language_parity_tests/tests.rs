@@ -93,10 +93,6 @@ mod declarations {
 pub mod refusals {
     use super::declarations::{Account, CustomerId};
     use crate::amqp_transport;
-    // The schema module each held type publishes is named beside the type, and the emitted code
-    // reaches it unqualified — so a type declared elsewhere is held by bringing its module along.
-    #[cfg(feature = "jsonschema")]
-    use super::declarations::{account_schema, customer_id_schema};
     use core::future::{Future, ready};
     use core::pin::pin;
     use core::task::{Context as PollContext, Poll, Waker};

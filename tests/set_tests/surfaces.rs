@@ -31,7 +31,7 @@ const TICKET_TAGS: &str = "  tags: z.array(z.string()).check((ctx) => {
 ";
 
 /// Each sequence that is no set.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Queues {
     pub binary_heap: BinaryHeap<u32>,
@@ -43,7 +43,7 @@ pub struct Queues {
 
 /// The `indexmap` set.
 #[cfg(feature = "indexmap")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct IndexedTicket {
     pub tags: indexmap::IndexSet<String>,

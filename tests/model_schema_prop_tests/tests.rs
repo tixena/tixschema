@@ -1,36 +1,12 @@
 //! Tests of `#[model_schema_prop]`: literals, `as`, `ts_optional` and `nullable` on every surface.
 
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
+#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
 use serde::{Deserialize, Serialize};
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
+#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
 use tixschema::model_schema;
 
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
-#[model_schema()]
+#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
+#[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 struct AccountContext {
@@ -46,16 +22,8 @@ struct AccountContext {
     pub sub: String,
 }
 
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
-#[model_schema()]
+#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
+#[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 struct ArrayLiteral {
@@ -64,16 +32,8 @@ struct ArrayLiteral {
     pub literal_array: Vec<String>,
 }
 
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
-#[model_schema()]
+#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
+#[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 struct NonStringLiterals {
@@ -86,16 +46,8 @@ struct NonStringLiterals {
     pub priority: i32,
 }
 
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
-#[model_schema()]
+#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
+#[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 struct CombinedTest {
@@ -105,16 +57,8 @@ struct CombinedTest {
     pub normal_field: String,
 }
 
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
-#[model_schema()]
+#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct MinLengthTest {
     pub description: String,
@@ -131,15 +75,7 @@ struct MinLengthTest {
     pub username: String,
 }
 
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
+#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
 #[model_schema()]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
@@ -152,15 +88,7 @@ struct MultipleLiterals {
     pub version: String,
 }
 
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
+#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct OptionalLiteral {
@@ -170,31 +98,15 @@ struct OptionalLiteral {
     pub optional_type: Option<String>,
 }
 
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
-#[model_schema()]
+#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct Inner {
     pub value: String,
 }
 
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
-#[model_schema()]
+#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct TsOptionalStruct {
     #[model_schema_prop(ts_optional)]
@@ -208,10 +120,7 @@ struct TsOptionalStruct {
     pub h: Option<Inner>,
 }
 
-#[cfg(all(
-    test,
-    any(feature = "typescript", feature = "jsonschema", feature = "zod")
-))]
+#[cfg(all(test, any(feature = "typescript", feature = "zod")))]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "type")]
@@ -224,11 +133,8 @@ enum TsOptionalVariant {
 }
 
 /// The enum's own check holds `note` and leaves `word` alone: a literal takes no other rule.
-#[cfg(all(
-    test,
-    any(feature = "typescript", feature = "jsonschema", feature = "zod")
-))]
-#[model_schema(minLength = 2)]
+#[cfg(all(test, any(feature = "typescript", feature = "zod")))]
+#[model_schema(minLength = 2, enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "kind")]
 enum LabelledLiteral {
@@ -242,16 +148,8 @@ enum LabelledLiteral {
 /// `f` and `h` carry no key-dropping serde attribute: `nullable` requires the key always be
 /// written, so serde writes `null` for a `None` rather than omitting the key. `g` is the control,
 /// left in the default flavor with the key-dropping attribute the default guard requires.
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
-#[model_schema()]
+#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct NullableStruct {
     #[model_schema_prop(nullable)]
@@ -262,15 +160,7 @@ struct NullableStruct {
     pub h: Option<String>,
 }
 
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
+#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
 #[model_schema(default_types(IdType = String))]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct NullableGeneric<IdType> {
@@ -303,15 +193,7 @@ pub struct Tagged {
 
 /// The Rust side of the function a `preprocess` above names: a read of the type calls it, and it
 /// answers the payload as it is.
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
+#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
 const fn trim(payload: serde_json::Value) -> serde_json::Value {
     payload
 }
@@ -323,15 +205,7 @@ fn omitted_member(name: &str, ts_type: &str) -> String {
     format!("{name}: {ts_type} | undefined;")
 }
 
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
+#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
 #[test]
 fn test_model_schema_prop_structs_constructible() {
     let account = AccountContext {
@@ -405,10 +279,7 @@ fn test_model_schema_prop_structs_constructible() {
     assert!(nullable_generic.id.is_none());
 }
 
-#[cfg(all(
-    test,
-    any(feature = "typescript", feature = "jsonschema", feature = "zod")
-))]
+#[cfg(all(test, any(feature = "typescript", feature = "zod")))]
 #[test]
 fn test_ts_optional_variant_constructible() {
     let variant = TsOptionalVariant::FilterPart { filter: None };
@@ -418,10 +289,7 @@ fn test_ts_optional_variant_constructible() {
     ));
 }
 
-#[cfg(all(
-    test,
-    any(feature = "typescript", feature = "jsonschema", feature = "zod")
-))]
+#[cfg(all(test, any(feature = "typescript", feature = "zod")))]
 #[test]
 fn test_labelled_literal_constructible() {
     let LabelledLiteral::Fixed { word, note } = LabelledLiteral::Fixed {
@@ -470,7 +338,6 @@ fn test_string_literal_zod() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_string_literal_json_schema() {
     let schema = AccountContext::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -563,7 +430,6 @@ fn test_array_literal_zod() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_array_literal_json_schema() {
     let schema = ArrayLiteral::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -602,7 +468,6 @@ fn test_boolean_and_number_literal_zod() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_boolean_and_number_literal_json_schema() {
     let schema = NonStringLiterals::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -657,7 +522,6 @@ fn test_min_length_zod() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_min_length_json_schema() {
     let schema = MinLengthTest::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -710,7 +574,6 @@ fn test_combined_literal_minlength_zod() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_combined_literal_minlength_json_schema() {
     let schema = CombinedTest::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -727,10 +590,7 @@ fn test_combined_literal_minlength_json_schema() {
 }
 
 #[test]
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "jsonschema", feature = "zod")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn an_enums_check_leaves_a_literal_field_alone_in_validate_and_the_read() {
     let fixed = LabelledLiteral::Fixed {
         word: "x".to_owned(),
@@ -767,7 +627,6 @@ fn an_enums_check_leaves_a_literal_field_alone_in_zod() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn an_enums_check_leaves_a_literal_field_alone_in_the_json_schema() {
     let schema = LabelledLiteral::json_schema();
     let properties = &schema["oneOf"][0]["properties"];
@@ -821,7 +680,6 @@ fn test_ts_optional_struct_zod_unchanged() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_ts_optional_struct_json_schema_unchanged() {
     let schema = TsOptionalStruct::json_schema();
     let required_arr = schema["required"].as_array().unwrap();
@@ -900,7 +758,6 @@ fn test_nullable_struct_zod() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_nullable_struct_json_schema() {
     let schema = NullableStruct::json_schema();
     let required_arr = schema["required"].as_array().unwrap();

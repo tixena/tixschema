@@ -255,13 +255,13 @@ them is split off. It refuses in both directions:
 - an entry naming nothing the item declares — refused in **every** feature configuration, spanned
   on the entry, since a misspelled parameter fills nothing while the one it was meant for keeps no
   default;
-- a type parameter with no entry — refused only under `#[cfg(feature = "jsonschema")]`, spanned on
-  the parameter, because nothing else reads the default;
+- a type parameter with no entry — refused only on a type whose `enable` list holds `"jsonschema"`,
+  spanned on the parameter, because nothing else reads the default;
 - `default_types` on an item with no type parameter, and an empty `default_types()`, both being a
   declaration with nothing to declare;
-- an entry filled at a type the field-definition dispatch has no arm for — refused under
-  `#[cfg(any(feature = "zod", feature = "jsonschema"))]`, the two surfaces that read a declared
-  filling, spanned on the filling. That dispatch takes a name it does not recognise for another
+- an entry filled at a type the field-definition dispatch has no arm for — refused under the `zod`
+  feature and on a type that lists `"jsonschema"` (`zod_or_json_schema`), the two surfaces that read
+  a declared filling, spanned on the filling. That dispatch takes a name it does not recognise for another
   `#[model_schema]` item, which is right for a sibling declared below and gibberish for `i128`: the
   emission names an `i128_schema` module nothing publishes. Tokens cannot separate the two, so
   `is_undescribable_primitive` refuses only what provably cannot become a sibling — the primitive
@@ -289,8 +289,8 @@ asks of it the same question asked of a concrete argument — string-shaped, the
 the default; not string-shaped, the refusal names the default rather than the parameter, through
 `declared_default_constraint_message`. An entry the declaration left out falls back to `String`,
 the same fallback `schema_example_value_type` uses for the identical gap, so the guard alone
-requires nothing; only `jsonschema`'s own separate requirement (above) forces every parameter to
-declare one.
+requires nothing; only the `"jsonschema"` entry's own separate requirement (above) forces every
+parameter to declare one.
 
 The checks never reach the factory's own parameter — `branded_zod_inner` renders a bare-parameter
 inner with no check appended regardless of genericness, since a caller filling the parameter with

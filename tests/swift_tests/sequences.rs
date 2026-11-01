@@ -143,14 +143,14 @@ pub struct Queued(pub VecDeque<String>, pub u8);
 pub struct QueuedAsVec(pub Vec<String>, pub u8);
 
 /// A brand over a sequence, its items counted.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema(no_display, minLength = 1)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct Crew(pub HashSet<String>);
 
 /// [`Crew`] written with `Vec`.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema(no_display, minLength = 1)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
@@ -334,7 +334,7 @@ fn each_fixture_writes_the_json_its_twin_written_with_vec_writes() {
         read_back(&Queued(texts(&["a"]), 1)),
         read_back(&QueuedAsVec(texts(&["a"]), 1))
     );
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     assert_eq!(
         read_back(&Crew(texts(&["a"]))),
         read_back(&CrewAsVec(texts(&["a"])))
@@ -431,7 +431,7 @@ fn a_sequence_in_a_variant_a_slot_a_brand_and_an_alias_is_written_as_a_vec_is() 
         (&hauling_as_vec_swift::swift_definition(), "HaulingAsVec"),
         &["members", "slot0"],
     );
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     assert_set_twins(
         (&crew_swift::swift_definition(), "Crew"),
         (&crew_as_vec_swift::swift_definition(), "CrewAsVec"),

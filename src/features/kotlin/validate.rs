@@ -1239,10 +1239,7 @@ fn note(rust_ident: &str, noted: Noted) {
 
 /// Every pattern `meta` holds a text to: the member's own, then its enum's where both are written.
 fn patterns_of(meta: &ModelSchemaPropMeta) -> Vec<&str> {
-    #[cfg(any(feature = "serde", feature = "zod", feature = "jsonschema"))]
     let held = meta.pattern.iter().chain(&meta.enum_pattern);
-    #[cfg(not(any(feature = "serde", feature = "zod", feature = "jsonschema")))]
-    let held = meta.pattern.iter();
     held.map(String::as_str).collect()
 }
 

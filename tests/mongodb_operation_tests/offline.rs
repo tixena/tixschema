@@ -315,7 +315,7 @@ fn a_row_that_breaks_a_bound_is_unreadable_until_a_resolver_repairs_it() {
         .unwrap()
         .insert("name", "");
     let read = Invoice::mongo_read_row(nameless.clone(), &[]);
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     {
         use super::invoice_schema::{Expected, Issue, Path, Resolution, Segment, Stored as _};
 
@@ -366,7 +366,7 @@ fn a_row_that_breaks_a_bound_is_unreadable_until_a_resolver_repairs_it() {
         let repaired = Invoice::mongo_read_row(nameless, &[&unnamed]).unwrap();
         assert_eq!(repaired.customer.name, "unnamed");
     }
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    #[cfg(not(any(feature = "typescript", feature = "zod")))]
     assert_eq!(read.unwrap().customer.name, "");
 }
 

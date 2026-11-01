@@ -1,7 +1,7 @@
 //! The test binary of `readme_example_tests/`.
 
 #[cfg(test)]
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[cfg(feature = "serde")]
 #[path = "readme_example_tests/record.rs"]
 mod record;
 
@@ -10,6 +10,6 @@ mod record;
 mod tests;
 
 #[cfg(test)]
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[cfg(feature = "serde")]
 #[path = "readme_example_tests/version.rs"]
 mod version;

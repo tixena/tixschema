@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Version {
     pub number: i32,

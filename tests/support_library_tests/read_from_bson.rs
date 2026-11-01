@@ -17,10 +17,7 @@ pub struct Version {
 /// Stored, holding a type that is not.
 #[cfg(any(
     feature = "mongodb",
-    all(
-        feature = "bson",
-        any(feature = "typescript", feature = "zod", feature = "jsonschema")
-    )
+    all(feature = "bson", any(feature = "typescript", feature = "zod"))
 ))]
 #[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -50,10 +47,7 @@ fn a_type_that_lists_decode_with_alone_decodes_bson() {
 }
 
 /// A bound is listed where a schema surface publishes its validator.
-#[cfg(all(
-    feature = "bson",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "bson", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_stored_holder_lists_the_issue_of_a_held_type_that_lists_decode_with_alone() {
     let mut calls = 0_u32;

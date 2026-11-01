@@ -117,7 +117,7 @@ mod tests {
     }
 
     /// The read is the model's own, which runs `validate()` where a schema surface publishes it.
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     #[test]
     fn the_read_refuses_what_validate_refuses() {
         let mut empty = note();

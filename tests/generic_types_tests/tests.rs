@@ -868,7 +868,6 @@ mod zod {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 mod jsonschema {
     /// `#[serde(flatten)]` is read only where `serde` is, so the merge these pin is only written
     /// there.
@@ -1216,12 +1215,7 @@ mod jsonschema {
 }
 
 use alloc::borrow::Cow;
-#[cfg(any(
-    feature = "serde",
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema"
-))]
+#[cfg(any(feature = "serde", feature = "typescript", feature = "zod"))]
 use core::hash::Hash;
 use std::collections::{HashMap, HashSet};
 
@@ -1232,7 +1226,7 @@ use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-#[model_schema(default_types(IdType = String))]
+#[model_schema(default_types(IdType = String), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Wrapper<IdType> {
     pub children: Vec<IdType>,
@@ -1242,14 +1236,13 @@ pub struct Wrapper<IdType> {
 
 /// A `char` filling for a parameter's declared default — refused before `char` gained a
 /// `FieldDefType` arm of its own. The fixture compiling is part of the assertion.
-#[cfg(feature = "jsonschema")]
-#[model_schema(default_types(InitialType = char))]
+#[model_schema(default_types(InitialType = char), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Initialed<InitialType> {
     pub initial: InitialType,
 }
 
-#[model_schema(default_types(KeyType = String, ValueType = u32))]
+#[model_schema(default_types(KeyType = String, ValueType = u32), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Pair<KeyType, ValueType> {
     pub by_key: HashMap<String, ValueType>,
@@ -1284,7 +1277,7 @@ pub enum External<IdType> {
     Single(IdType),
 }
 
-#[model_schema(default_types(IdType = String))]
+#[model_schema(default_types(IdType = String), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Untagged<IdType> {
@@ -1313,13 +1306,8 @@ pub struct Positional<IdType>(pub IdType, pub String);
 /// A map keyed by one of the item's own parameters, beside the concrete-keyed members the two
 /// validating surfaces must keep answering for exactly as before. Consumed only by the surface
 /// modules and the serde wire tests, so it exists only where one of them compiles.
-#[cfg(any(
-    feature = "serde",
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema"
-))]
-#[model_schema(default_types(KeyType = String, ValueType = u32))]
+#[cfg(any(feature = "serde", feature = "typescript", feature = "zod"))]
+#[model_schema(default_types(KeyType = String, ValueType = u32), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyedByParameter<KeyType: Eq + Hash, ValueType> {
     pub both_parameters: HashMap<KeyType, ValueType>,
@@ -1337,10 +1325,7 @@ pub struct LifetimeStruct<'label> {
 
 /// A constrained field beside an unconstrained type parameter, combined with a lifetime: the
 /// generated `validate()` sits in the type's own `impl`, under both.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[model_schema(default_types(LabelType = String))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnnotatedConstrained<'label, LabelType> {
@@ -1409,7 +1394,7 @@ pub struct Quintet<AType, BType, CType, DType, EType> {
     pub echo: EType,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Envelope {
     pub trace: String,
@@ -1418,10 +1403,10 @@ pub struct Envelope {
 /// A generic alias, and a generic branded newtype: the two item shapes holding a single written
 /// target rather than a list of fields, and so the two whose parameters are classified at that
 /// target rather than one field at a time.
-#[model_schema(name = "Boxed", default_types(ValueType = String))]
+#[model_schema(name = "Boxed", default_types(ValueType = String), enable = ["jsonschema"])]
 pub type Boxed<ValueType> = Vec<ValueType>;
 
-#[model_schema(default_types(ValueType = String))]
+#[model_schema(default_types(ValueType = String), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Tagged<ValueType>(pub ValueType);
@@ -1429,19 +1414,19 @@ pub struct Tagged<ValueType>(pub ValueType);
 /// One parameter in a map's key position, one in its value position — what
 /// [`KeyedByParameter`] holds for a struct, held here for an alias. Consumed only by the surface
 /// modules, so it exists only where one of them compiles.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema(default_types(KeyType = String, ValueType = u32))]
 pub type KeyedAlias<KeyType, ValueType> = HashMap<KeyType, ValueType>;
 
 /// The same target with nothing parameterised, held beside the one above so the classification
 /// cannot move a non-generic alias.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema()]
 pub type ConcreteAlias = HashMap<String, u32>;
 
 /// A generic type that also flattens, which is the one shape where the parameters and the deferred
 /// read of another type's binding have to hold at once.
-#[model_schema(default_types(IdType = String))]
+#[model_schema(default_types(IdType = String), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Carried<IdType> {
     #[serde(flatten)]
@@ -1451,7 +1436,6 @@ pub struct Carried<IdType> {
 
 /// A parameter with no declared default type — only a build generating a JSON document refuses
 /// this, so it is declared only under the feature sets that admit it.
-#[cfg(not(feature = "jsonschema"))]
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Undefaulted<IdType> {
@@ -1461,7 +1445,7 @@ pub struct Undefaulted<IdType> {
 /// A filling holding a map serde can key. The zod surface reads a declared filling as deeply as the
 /// JSON one, refusing a key serde cannot write with no document in the build at all, so the filling
 /// that renders here is the one written at a key it can.
-#[cfg(all(not(feature = "jsonschema"), feature = "zod"))]
+#[cfg(feature = "zod")]
 #[model_schema(default_types(HeldType = HashMap<String, u32>))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StringKeyedHolder<HeldType> {
@@ -1471,7 +1455,7 @@ pub struct StringKeyedHolder<HeldType> {
 /// The item the reference-site fixtures below point at. A generic type publishes a factory rather
 /// than a schema, so a field naming it has nothing to name — it has to call that factory with what
 /// fills each parameter.
-#[model_schema(default_types(IdType = String, DateType = f64))]
+#[model_schema(default_types(IdType = String, DateType = f64), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EcmDocument<IdType, DateType> {
     pub created_at: DateType,
@@ -1479,13 +1463,13 @@ pub struct EcmDocument<IdType, DateType> {
 }
 
 /// The inner half of a reference whose own argument is generic.
-#[model_schema(default_types(ValueType = String))]
+#[model_schema(default_types(ValueType = String), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Inner<ValueType> {
     pub value: ValueType,
 }
 
-#[model_schema(default_types(ValueType = String))]
+#[model_schema(default_types(ValueType = String), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Outer<ValueType> {
     pub held: ValueType,
@@ -1493,7 +1477,7 @@ pub struct Outer<ValueType> {
 
 /// A referrer that declares no parameter of its own: every argument it supplies is a concrete
 /// type, and the plain sibling beside them still names the one schema that one publishes.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WireFolder {
     pub doc: EcmDocument<String, f64>,
@@ -1503,7 +1487,7 @@ pub struct WireFolder {
 /// A referrer that forwards its own parameter into a reference beside a concrete argument, holds a
 /// reference whose argument is itself generic, and names a set — the shape a sibling carrying one
 /// argument could be mistaken for.
-#[model_schema(default_types(IdType = String))]
+#[model_schema(default_types(IdType = String), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FolderTree<IdType> {
     pub labels: HashSet<String>,
@@ -1515,7 +1499,7 @@ pub struct FolderTree<IdType> {
 /// A second concrete filling of the three generic publishers, at arguments that are neither of the
 /// ones any of them declared for itself — the whole of the evidence that what a field embeds is the
 /// reference site's filling rather than the declaration's, in every build.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CountedFolder {
     pub boxed: Boxed<bool>,
@@ -1527,7 +1511,7 @@ pub struct CountedFolder {
 /// carries a string and a number. Each argument reaches the document through whatever already
 /// describes its type, so neither is reached by a rule of its own.
 #[cfg(all(feature = "chrono", feature = "mongodb"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredFolder {
     pub doc: EcmDocument<ObjectId, DateTime<Utc>>,
@@ -1556,8 +1540,7 @@ pub struct Referrer {
 /// A declared filling that names another item rather than a primitive — written by asking that
 /// item for its own document, reading the names in flight and definitions being hoisted. Read
 /// by the JSON surface alone, the only one that fills a parameter with a document.
-#[cfg(feature = "jsonschema")]
-#[model_schema(default_types(BodyType = Envelope))]
+#[model_schema(default_types(BodyType = Envelope), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Sealed<BodyType> {
     pub body: BodyType,
@@ -1565,8 +1548,7 @@ pub struct Sealed<BodyType> {
 }
 
 /// A self-referential item: what puts a name in `$defs` at all.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Branch {
     pub children: Vec<Self>,
@@ -1575,8 +1557,7 @@ pub struct Branch {
 
 /// The same name reached twice over, once as a declared filling and once as a plain field — the two
 /// arrivals a single hoisted definition has to answer for both of.
-#[cfg(feature = "jsonschema")]
-#[model_schema(default_types(BranchType = Branch))]
+#[model_schema(default_types(BranchType = Branch), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Grove<BranchType> {
     pub filled: BranchType,
@@ -1586,15 +1567,13 @@ pub struct Grove<BranchType> {
 /// A cycle that closes through a declared filling — reachable without arguments only because
 /// the parameter also carries a Rust-level default. A cycle through two declared fillings would
 /// be a cycle in the parameter defaults themselves, which rustc refuses before the attribute runs.
-#[cfg(feature = "jsonschema")]
-#[model_schema(default_types(HostType = Perch))]
+#[model_schema(default_types(HostType = Perch), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Roost<HostType = Perch> {
     pub host: HostType,
 }
 
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Perch {
     pub roosts: Vec<Roost>,
@@ -1710,8 +1689,7 @@ pub struct CycleFollower<ValueType> {
 /// A generic type that names itself, at the filling it was entered at — the cycle a document
 /// holding one definition per name describes as a definition and a reference into it. Read only
 /// where a JSON document is built.
-#[cfg(feature = "jsonschema")]
-#[model_schema(default_types(ValueType = String))]
+#[model_schema(default_types(ValueType = String), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Recurring<ValueType> {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1722,8 +1700,7 @@ pub struct Recurring<ValueType> {
 /// The same cycle, closed at a filling the outer frame was not written at: the position holds a
 /// `bool` where the document is being written at a `String`, and one definition cannot describe
 /// both.
-#[cfg(feature = "jsonschema")]
-#[model_schema(default_types(ValueType = String))]
+#[model_schema(default_types(ValueType = String), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Refilled<ValueType> {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1734,8 +1711,8 @@ pub struct Refilled<ValueType> {
 /// A struct whose flattened source is one of its own type parameters, gated on both `serde`
 /// (which reads `#[serde(flatten)]`) and `jsonschema` (which builds the document). The declared
 /// filling is a struct; the fillings below reach it from the reference sites.
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
-#[model_schema(default_types(HeldType = Inner<u32>))]
+#[cfg(feature = "serde")]
+#[model_schema(default_types(HeldType = Inner<u32>), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlatCarrier<HeldType> {
     #[serde(flatten)]
@@ -1745,8 +1722,8 @@ pub struct FlatCarrier<HeldType> {
 
 /// The same struct reached from a field that fills its parameter with an object, which is the
 /// other end a filling can arrive from.
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
-#[model_schema()]
+#[cfg(feature = "serde")]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlatReferrer {
     pub held: FlatCarrier<Inner<u32>>,
@@ -1754,24 +1731,24 @@ pub struct FlatReferrer {
 
 /// The same struct filled at a brand over text declared below the place that fills it: the
 /// expansion of that place does not see the brand, and the document refuses it.
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
-#[model_schema()]
+#[cfg(feature = "serde")]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlatTextReferrer {
     pub held: FlatCarrier<FlatLaterText>,
 }
 
 /// The brand over text [`FlatTextReferrer`] fills [`FlatCarrier`] with.
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
-#[model_schema()]
+#[cfg(feature = "serde")]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct FlatLaterText(pub String);
 
 /// The same seam with the object filling written in the declaration instead: the default names a
 /// sibling item, so the standalone document is the one place the merge and a declared filling meet.
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
-#[model_schema(default_types(HeldType = Envelope))]
+#[cfg(feature = "serde")]
+#[model_schema(default_types(HeldType = Envelope), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlatDefaulted<HeldType> {
     #[serde(flatten)]
@@ -1779,7 +1756,7 @@ pub struct FlatDefaulted<HeldType> {
     pub tag: String,
 }
 
-#[cfg(all(not(feature = "jsonschema"), feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_writably_keyed_map_filling_still_renders_its_default() {
     let zod = StringKeyedHolder::<HashMap<String, u32>>::zod_schema();
@@ -1789,7 +1766,6 @@ fn a_writably_keyed_map_filling_still_renders_its_default() {
     );
 }
 
-#[cfg(not(feature = "jsonschema"))]
 #[test]
 fn a_parameter_with_no_default_still_expands_where_no_json_document_is_built() {
     assert_eq!(Undefaulted { id: 1_u32 }.id, 1);
@@ -1826,7 +1802,7 @@ fn a_bounded_parameter_filled_at_a_type_its_bound_admits_still_expands() {
     assert_eq!(padded.wide, "y");
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_generic_alias_expands_to_rust_that_compiles() {
     let keyed: KeyedAlias<String, u32> = HashMap::from([("k".to_owned(), 1_u32)]);
@@ -2044,10 +2020,7 @@ fn every_instantiation_the_wire_accepts_writes_string_keys() {
     assert_eq!(read_back.parameter_keyed[&7], "seven");
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_lifetime_struct_still_holds_its_field_to_its_bound() {
     assert_eq!(
@@ -2074,10 +2047,7 @@ fn a_lifetime_struct_still_holds_its_field_to_its_bound() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_lifetime_beside_a_type_parameter_has_validate_at_every_filling() {
     let valid = AnnotatedConstrained {

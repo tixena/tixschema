@@ -6,7 +6,6 @@
 /// terminate overflows the stack, and a stack overflow aborts the process with nothing to catch.
 /// Running it in a child turns that abort into an exit status the parent asserts on, so a
 /// regression fails one test instead of killing the suite.
-#[cfg(feature = "jsonschema")]
 mod describes {
     use super::{
         ChainNode, CycleA, DynamicValueTest, Holder, Nest, Ping, Pong, RecursiveMapEnum, Registry,
@@ -331,7 +330,7 @@ use std::collections::HashMap;
 use tixschema::model_schema;
 
 /// Recursive struct holding at most one of itself.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ChainNode {
     pub label: String,
@@ -351,46 +350,40 @@ pub struct Address {
 // surfaces they also carry are read off the types above.
 
 /// One half of a pair that names the other half, written before that half exists.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Ping {
     pub pong: Vec<Pong>,
 }
 
 /// The other half, which names the first back.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Pong {
     pub ping: Vec<Ping>,
 }
 
 /// The head of a cycle three types long.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CycleA {
     pub b: CycleB,
 }
 
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CycleB {
     pub c: CycleC,
 }
 
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CycleC {
     pub a: Vec<CycleA>,
 }
 
 /// A type that names itself, held by types that are not recursive themselves.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Node {
     pub children: Vec<Self>,
@@ -398,16 +391,14 @@ pub struct Node {
 }
 
 /// Holds one recursive type in one field.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Holder {
     pub root: Node,
 }
 
 /// Names the same recursive type from a field, an array element, and a map value.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Registry {
     pub by_name: HashMap<String, Node>,
@@ -416,8 +407,7 @@ pub struct Registry {
 }
 
 /// Names itself and another recursive type, so one document holds both definitions.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Nest {
     pub inner: Node,
@@ -425,7 +415,7 @@ pub struct Nest {
 }
 
 /// Complex `DynamicValue`-like enum with multiple recursive variants.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", content = "value")]
 pub enum DynamicValueTest {
@@ -469,7 +459,7 @@ pub struct Section {
 }
 
 /// Recursive enum with `HashMap` of self.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", content = "value")]
 pub enum RecursiveMapEnum {
@@ -526,7 +516,7 @@ pub enum TreeEnumAdjacent {
 }
 
 /// Recursive struct with `Vec` of self.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TreeNode {
     pub children: Vec<Self>,

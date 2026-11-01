@@ -287,8 +287,8 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
     and in a bound of the type's own. `mongo_write_{field}` is in the type's own `impl` and
     keeps `Self` as written.
   - `tests/mongodb_query_tests/function_body.rs` declares each shape inside a test function, a
-    holder of a type declared there under `not(feature = "jsonschema")`, whose JSON Schema
-    names the held type's module.
+    holder of a type declared there that lists no `"jsonschema"`, whose JSON Schema would
+    name the held type's module.
 - **A type serde writes as one value is one path.** `written_as_one_value`, recorded as
   `Declared::OneValue`: its `MongoFields<Root, .., Whole>` holds the path at the empty key and
   dereferences to it, the path type being a parameter the type's own `impl` writes, so its module
@@ -434,8 +434,8 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
 - **A path is under the name serde writes.** `parse_written_renames` reads `rename`, `rename_all`
   and `rename_all_fields` for their `serialize` side in every build. A list whose two sides differ
   is refused by every build that describes the type, a mobile client included:
-  `rename_direction_guard_errors` runs under `serde` with any of `typescript`, `zod`,
-  `jsonschema`, `dart`, `swift` and `kotlin`, and a build with none of the six takes the list.
+  `rename_direction_guard_errors` runs under `serde` with any of `typescript`, `zod`, `dart`,
+  `swift` and `kotlin`, and a build with none of the five takes the list.
   `the_rename_guard_is_compiled_in_every_build_that_describes_a_type` reads those gates off the
   sources, no local build being of the clients alone.
 - **Two standard traits join filters and updates across modules.** A `Filter<Root>` is

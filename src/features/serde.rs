@@ -7,14 +7,6 @@
 
 pub mod read_bounds;
 
-#[cfg(any(
-    feature = "zod",
-    feature = "jsonschema",
-    feature = "dart",
-    feature = "swift",
-    feature = "kotlin",
-    all(feature = "serde", feature = "typescript")
-))]
 pub mod defaults;
 
 #[cfg(all(
@@ -320,11 +312,9 @@ where
         nullable_levels: Vec::new(),
         omits_value: false,
         missing_key: MissingKey::Required,
-        #[cfg(any(feature = "zod", feature = "jsonschema"))]
         serde_default: None,
         bytes: false,
         set_levels: Vec::new(),
-        #[cfg(feature = "jsonschema")]
         type_span: Span::call_site(),
     }
 }
@@ -1067,7 +1057,6 @@ pub fn parse_written_renames(attrs: &[Attribute]) -> DirectedRenames {
     any(
         feature = "typescript",
         feature = "zod",
-        feature = "jsonschema",
         feature = "dart",
         feature = "swift",
         feature = "kotlin"

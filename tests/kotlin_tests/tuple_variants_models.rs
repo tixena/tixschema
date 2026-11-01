@@ -39,7 +39,6 @@ pub enum Piling {
 
 /// A map of tuples in a variant's one slot, under a tag and a content key. A JSON Schema refuses
 /// a tuple as a map value.
-#[cfg(not(feature = "jsonschema"))]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "held")]
@@ -143,7 +142,6 @@ pub struct Spooling {
 
 /// A map of tuples holding a model in a variant's one slot, under a tag and a content key. A JSON
 /// Schema refuses a tuple as a map value.
-#[cfg(not(feature = "jsonschema"))]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "held")]
@@ -153,7 +151,6 @@ pub enum Binning {
 
 /// A map of tuples holding a model, in a position of a tuple. A JSON Schema refuses a tuple as a
 /// map value.
-#[cfg(not(feature = "jsonschema"))]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Coiling {
@@ -170,7 +167,6 @@ pub struct Lashing {
 
 /// A map of tuples holding a model, read through a function a `preprocess` names. A JSON Schema
 /// refuses a tuple as a map value.
-#[cfg(not(feature = "jsonschema"))]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Heaping {
@@ -179,7 +175,6 @@ pub struct Heaping {
 }
 
 /// The function [`Heaping`] names: the payload as it was handed.
-#[cfg(not(feature = "jsonschema"))]
-fn unchanged(payload: serde_json::Value) -> serde_json::Value {
+const fn unchanged(payload: serde_json::Value) -> serde_json::Value {
     payload
 }

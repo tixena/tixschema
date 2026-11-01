@@ -313,7 +313,7 @@ a key its function corrects: read {\"dock\":\"east\"}
 /// A member of a variant read as its default under a tag: `dock` as the `Default` of its type in
 /// one variant and as what a function answers in another, beside a member whose default breaks
 /// its bound.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind")]
 pub enum Berthing {
@@ -333,7 +333,7 @@ pub enum Berthing {
 }
 
 /// [`Berthing`] under no tag attribute.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum ExternalBerthing {
     Adrift,
@@ -352,7 +352,7 @@ pub enum ExternalBerthing {
 }
 
 /// [`Berthing`] under a tag and a content key.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", content = "data")]
 pub enum AdjacentBerthing {
@@ -372,7 +372,7 @@ pub enum AdjacentBerthing {
 }
 
 /// [`Berthing`] untagged, with no unit variant, which an untagged enum takes none of.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(untagged)]
 pub enum UntaggedBerthing {
@@ -413,7 +413,7 @@ pub enum Manifest<Moored> {
 }
 
 /// A gangway, a type of the consumer's own with a `Default` of its own.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Gangway {
     pub label: String,
@@ -422,7 +422,7 @@ pub struct Gangway {
 
 /// A key read as its type's default, one read as what a function answers, and one read as the
 /// default of a type of the consumer's own, beside a key the payload must hold.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Wharf {
     #[serde(default)]
@@ -435,7 +435,7 @@ pub struct Wharf {
 }
 
 /// Every key read as the member of the container's own default.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(default)]
 pub struct Jetty {
@@ -445,7 +445,7 @@ pub struct Jetty {
 }
 
 /// A default that breaks the bound of its member.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Pontoon {
     #[model_schema_prop(minLength = 1)]
@@ -464,7 +464,7 @@ pub struct Bollard {
 }
 
 /// A default with no JSON: the type writes no `Serialize`, so no surface is handed one.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct Marina {
     #[serde(default)]
@@ -474,7 +474,7 @@ pub struct Marina {
 
 /// A list of the struct's parameter, whose default is the empty list at every filling, beside a
 /// member whose type names no parameter.
-#[model_schema(default_types(Moored = String))]
+#[model_schema(default_types(Moored = String), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Basin<Moored> {
     #[serde(default)]
@@ -484,7 +484,7 @@ pub struct Basin<Moored> {
 }
 
 /// Defaults whose JSON depends on the filling, or that a function of the author's writes.
-#[model_schema(default_types(Moored = String))]
+#[model_schema(default_types(Moored = String), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Harbour<Moored> {
     #[serde(default = "two_berths")]
@@ -496,7 +496,7 @@ pub struct Harbour<Moored> {
 }
 
 /// A model a holder fills with its own type parameter.
-#[model_schema(default_types(IdType = String))]
+#[model_schema(default_types(IdType = String), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct Link<IdType> {
     pub id: IdType,
@@ -504,7 +504,7 @@ pub struct Link<IdType> {
 
 /// A list of a model filled with the struct's parameter, read as empty where the payload leaves
 /// its key out, beside a list of a type that names no parameter.
-#[model_schema(default_types(IdType = String))]
+#[model_schema(default_types(IdType = String), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Config<IdType> {
@@ -516,7 +516,7 @@ pub struct Config<IdType> {
 
 /// Every list and set of a model filled with the struct's parameter, each read as `[]` where the
 /// payload leaves its key out.
-#[model_schema(default_types(IdType = String))]
+#[model_schema(default_types(IdType = String), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Fleet<IdType: Hash + Ord> {
     #[serde(default)]
@@ -533,7 +533,7 @@ pub struct Fleet<IdType: Hash + Ord> {
 
 /// Every map of a model filled with the struct's parameter, each read as `{}` where the payload
 /// leaves its key out.
-#[model_schema(default_types(IdType = String))]
+#[model_schema(default_types(IdType = String), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Logbook<IdType> {
     #[serde(default)]
@@ -544,7 +544,7 @@ pub struct Logbook<IdType> {
 
 /// The `indexmap` set of a model filled with the struct's parameter.
 #[cfg(feature = "indexmap")]
-#[model_schema(default_types(IdType = String))]
+#[model_schema(default_types(IdType = String), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct IndexedFleet<IdType: Hash + Eq> {
     #[serde(default)]
@@ -553,7 +553,7 @@ pub struct IndexedFleet<IdType: Hash + Eq> {
 
 /// The `indexmap` map of a model filled with the struct's parameter.
 #[cfg(feature = "indexmap")]
-#[model_schema(default_types(IdType = String))]
+#[model_schema(default_types(IdType = String), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct IndexedLogbook<IdType> {
     #[serde(default)]
@@ -703,7 +703,7 @@ pub fn filled_report() -> String {
 }
 
 /// What a serde read prints for each payload of [`CASES`].
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 pub fn report() -> String {
     CASES
         .iter()
@@ -716,7 +716,7 @@ pub fn report() -> String {
 }
 
 /// What a serde read prints for each payload of [`VARIANT_CASES`].
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 pub fn variant_report() -> String {
     VARIANT_CASES
         .iter()

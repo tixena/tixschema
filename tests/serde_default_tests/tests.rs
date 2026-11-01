@@ -2,16 +2,15 @@
 //! each surface says of it. The runs of each client are in the emitted-client groups, and the run
 //! of the Zod schemas under node in `generic_types_tests`.
 
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
 use super::models::{Basin, Config, Fleet, Logbook};
 use super::models::{
     Bollard, CASES, FILLED, FILLED_REPORT, Harbour, Jetty, Marina, PREPROCESSED,
     PREPROCESSED_REPORT, Pontoon, REPORT, REQUIRED, REQUIRED_REPORT, Wharf, filled_expected,
     filled_report, preprocessed_values, read_values, unwritten_defaults,
 };
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 use super::models::{Gangway, report};
-#[cfg(all(feature = "indexmap", any(feature = "zod", feature = "jsonschema")))]
+#[cfg(feature = "indexmap")]
 use super::models::{IndexedFleet, IndexedLogbook};
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 use super::omitted::OMITTED_WRITTEN;
@@ -48,7 +47,7 @@ fn the_table_prints_a_row_for_each_payload() {
 
 /// Every row of the table, as serde reads it where a schema surface is on: a build with none
 /// holds the member of the last rows to no bound.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn serde_reads_each_payload_as_the_table_says() {
     assert_eq!(report(), REPORT);
@@ -119,7 +118,7 @@ fn serde_reads_each_payload_of_a_struct_that_declares_a_parameter_as_the_table_s
 
 /// `validate()` and the read that refuses judge a default as they judge a payload: the default
 /// that breaks the bound is refused with its member named.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_default_that_breaks_its_bound_is_refused_with_its_member_named() {
     let refused = serde_json::from_str::<Pontoon>(r#"{"label":"p"}"#).unwrap_err();
@@ -195,7 +194,6 @@ fn the_typescript_type_keeps_each_member_required() {
 
 /// The JSON Schema leaves the key out of `required` and states the default, the JSON serde
 /// writes for it.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn the_json_schema_states_each_default_and_requires_no_key_it_answers() {
     let wharf = Wharf::json_schema();
@@ -234,7 +232,6 @@ fn the_json_schema_states_each_default_and_requires_no_key_it_answers() {
 
 /// A default with no JSON keeps its key required on the two validating surfaces: `Marina` writes
 /// no `Serialize`, and each member of `Harbour` names its parameter outside a list read as empty.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn the_json_schema_requires_a_key_whose_default_has_no_json() {
     let marina = Marina::json_schema();
@@ -274,7 +271,6 @@ fn the_zod_schema_requires_a_key_whose_default_has_no_json() {
 
 /// A list of the struct's parameter is read as the empty list at every filling, and the member
 /// beside it that names no parameter as before.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn the_json_schema_states_the_empty_list_of_a_parameter() {
     let basin = Basin::<String>::json_schema();
@@ -305,7 +301,6 @@ fn the_zod_schema_parses_the_empty_list_of_a_parameter() {
 
 /// A list of a model filled with the parameter is read as `[]`, as the list beside it that names
 /// no parameter is.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn the_json_schema_states_the_empty_list_of_a_model_filled_with_a_parameter() {
     let config = Config::<String>::json_schema();
@@ -332,7 +327,6 @@ fn the_zod_schema_parses_the_empty_list_of_a_model_filled_with_a_parameter() {
 }
 
 /// Each list and set is read as `[]`, and each map as `{}`.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn the_json_schema_states_the_empty_collection_of_each_list_set_and_map() {
     let held = [
@@ -459,7 +453,7 @@ export const Gangway$Schema: ZodType<Gangway> = Gangway$RawSchema.meta({
     );
 }
 
-#[cfg(all(feature = "typescript", feature = "jsonschema"))]
+#[cfg(feature = "typescript")]
 #[test]
 fn a_type_with_no_default_writes_the_typescript_text_it_wrote() {
     let lines = [
@@ -483,7 +477,6 @@ fn a_type_with_no_default_writes_the_typescript_text_it_wrote() {
     assert_eq!(Gangway::ts_definition(), lines.join("\n"));
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_type_with_no_default_writes_the_json_schema_it_wrote() {
     assert_eq!(
@@ -693,7 +686,6 @@ fn the_typescript_type_holds_an_omitted_key_with_a_default() {
 }
 
 /// The JSON Schema leaves the key out of `required` and states the default.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn the_json_schema_states_the_default_of_an_omitted_key() {
     for schema in [Roster::json_schema(), Muster::json_schema()] {

@@ -8,7 +8,7 @@ mod a_field_type_handed_in_from_the_call_site {
 
     macro_rules! choosing {
         ($name:ident, $held:ident) => {
-            #[model_schema()]
+            #[model_schema(enable = ["jsonschema"])]
             #[derive(Debug, Deserialize, Serialize)]
             #[serde(tag = "kind")]
             pub enum $name {
@@ -20,7 +20,7 @@ mod a_field_type_handed_in_from_the_call_site {
 
     macro_rules! filling {
         ($name:ident, $held:ident) => {
-            #[model_schema()]
+            #[model_schema(enable = ["jsonschema"])]
             #[derive(Debug, Deserialize, Serialize)]
             pub struct $name {
                 pub held: Boxed<$held>,
@@ -30,7 +30,7 @@ mod a_field_type_handed_in_from_the_call_site {
 
     macro_rules! holding {
         ($name:ident, $held:ident) => {
-            #[model_schema()]
+            #[model_schema(enable = ["jsonschema"])]
             #[derive(Debug, Deserialize, Serialize)]
             pub struct $name {
                 pub held: $held,
@@ -41,7 +41,7 @@ mod a_field_type_handed_in_from_the_call_site {
 
     macro_rules! holding_a_type {
         ($name:ident, $held:ty) => {
-            #[model_schema()]
+            #[model_schema(enable = ["jsonschema"])]
             #[derive(Debug, Deserialize, Serialize)]
             pub struct $name {
                 pub held: $held,
@@ -52,7 +52,7 @@ mod a_field_type_handed_in_from_the_call_site {
 
     macro_rules! slotted {
         ($name:ident, $held:ident) => {
-            #[model_schema()]
+            #[model_schema(enable = ["jsonschema"])]
             #[derive(Debug, Deserialize, Serialize)]
             pub struct $name(pub $held, pub String);
         };
@@ -60,19 +60,19 @@ mod a_field_type_handed_in_from_the_call_site {
 
     /// Declared ahead of every type that holds one, hand-written or not, so that neither kind
     /// reaches it as a type declared later.
-    #[model_schema(default_types(T = String))]
+    #[model_schema(default_types(T = String), enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Serialize)]
     pub struct Boxed<T> {
         pub boxed: T,
     }
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Serialize)]
     pub struct Carried {
         pub number: i32,
     }
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Serialize)]
     #[serde(tag = "kind")]
     pub enum HandChosen {
@@ -80,20 +80,20 @@ mod a_field_type_handed_in_from_the_call_site {
         Listed { held: Vec<Carried> },
     }
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Serialize)]
     pub struct HandFilled {
         pub held: Boxed<Carried>,
     }
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Serialize)]
     pub struct HandHolder {
         pub held: Carried,
         pub id: String,
     }
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Serialize)]
     pub struct HandSlotted(pub Carried, pub String);
 
@@ -160,7 +160,6 @@ mod a_field_type_handed_in_from_the_call_site {
         );
     }
 
-    #[cfg(feature = "jsonschema")]
     #[test]
     fn each_shape_publishes_the_json_schema_of_the_hand_written_one() {
         assert_eq!(MacroHolder::json_schema(), HandHolder::json_schema());

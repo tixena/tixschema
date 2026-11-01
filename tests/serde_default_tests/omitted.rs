@@ -47,7 +47,7 @@ roles held, under the whole: read {\"id\":\"1\",\"roles\":[\"a\"]}
 
 /// A list read as `[]` where the payload leaves its key out, and left out of what serde writes
 /// where it is empty.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Roster {
     pub id: String,
@@ -56,7 +56,7 @@ pub struct Roster {
 }
 
 /// A list read as `[]` where the payload leaves its key out, and never written by serde.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Muster {
     pub id: String,
@@ -66,7 +66,7 @@ pub struct Muster {
 
 /// A list under `skip_serializing_if` with no `default` of its own, in a struct whose `default`
 /// builds `["guest"]`: serde reads a key left out as the whole's value of the member.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(default)]
 pub struct Squad {

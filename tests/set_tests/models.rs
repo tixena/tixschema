@@ -114,7 +114,7 @@ filled: refused
 
 /// A model a set holds: two are one item where their members are, whatever order a payload writes
 /// the members in.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct Point {
     pub x: u32,
@@ -122,21 +122,21 @@ pub struct Point {
 }
 
 /// A set with no rule.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Ticket {
     pub tags: HashSet<String>,
 }
 
 /// A model that holds a set.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Folder {
     pub ticket: Ticket,
 }
 
 /// Each set beside a list, each counted.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct EveryList {
     #[model_schema_prop(minLength = 2)]
@@ -148,7 +148,7 @@ pub struct EveryList {
 }
 
 /// A set in a list, as a map's value, of lists, under `Option`, and of a model.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Nesting {
     pub grid: Vec<HashSet<u32>>,
@@ -160,18 +160,18 @@ pub struct Nesting {
 }
 
 /// A brand over a set.
-#[model_schema(no_display)]
+#[model_schema(no_display, enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct Lanyard(pub HashSet<String>);
 
 /// A set in a slot of a tuple struct.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Pouch(pub BTreeSet<u32>, pub u8);
 
 /// A set as a variant's member and as its one slot.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "held")]
 pub enum Shelving {
@@ -180,7 +180,7 @@ pub enum Shelving {
 }
 
 /// An untagged enum whose variants a set's own key tells apart: a repeat chooses no variant.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum Sorting {
@@ -189,7 +189,7 @@ pub enum Sorting {
 }
 
 /// A model a holder fills with its own type parameter.
-#[model_schema(default_types(IdType = String))]
+#[model_schema(default_types(IdType = String), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct Coin<IdType> {
     pub id: IdType,
@@ -197,7 +197,7 @@ pub struct Coin<IdType> {
 
 /// A set of a model filled with the holder's own type parameter, which a client reads at a
 /// string.
-#[model_schema(default_types(IdType = String))]
+#[model_schema(default_types(IdType = String), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Wallet<IdType: Ord> {
     pub coins: BTreeSet<Coin<IdType>>,

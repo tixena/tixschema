@@ -3,21 +3,12 @@
 
 /// The same brand declared both ways. serde writes both as the string alone, so every surface
 /// describes both the same way.
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
-))]
+#[cfg(feature = "serde")]
 mod beside_the_tuple_form {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct NamedHolder {
         pub marked: NamedMarked,
@@ -25,7 +16,7 @@ mod beside_the_tuple_form {
     }
 
     /// Beside the field it is the value of, one serde neither writes nor reads.
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
     pub struct NamedMarked {
@@ -34,14 +25,14 @@ mod beside_the_tuple_form {
         pub text: String,
     }
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
     pub struct NamedSlug {
         pub text: String,
     }
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
     pub struct TupleSlug(pub String);
@@ -109,7 +100,6 @@ mod beside_the_tuple_form {
         );
     }
 
-    #[cfg(feature = "jsonschema")]
     #[test]
     fn json_schema_describes_the_value_and_a_type_that_holds_it() {
         assert_eq!(
@@ -162,7 +152,7 @@ mod beside_the_tuple_form {
         );
     }
 
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     #[test]
     fn it_is_displayed_as_the_value_it_holds() {
         let slug = NamedSlug {

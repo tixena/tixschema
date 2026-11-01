@@ -1,10 +1,7 @@
 //! `validate()` of a type that declares a parameter is there at every filling of it, and a type
 //! that holds one at any filling runs it.
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 mod validate_at_every_filling {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;

@@ -11,11 +11,9 @@ mod models;
 
 /// What a JSON Schema document admits.
 #[cfg(test)]
-#[cfg(feature = "jsonschema")]
 #[path = "std_range_tests/documents.rs"]
 mod documents;
 
 #[cfg(test)]
-#[cfg(feature = "jsonschema")]
 #[path = "wire_forms_tests/tests.rs"]
 mod tests;

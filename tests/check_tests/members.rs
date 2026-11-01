@@ -2,10 +2,7 @@
 //! member is reported under.
 
 /// A holder runs the `validate()` of what it holds, and with it that type's checks.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 mod held_by_another {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
@@ -116,10 +113,7 @@ mod named_after_a_validator {
         let empty = Tagged {
             label: String::new(),
         };
-        #[cfg(all(
-            feature = "serde",
-            any(feature = "typescript", feature = "zod", feature = "jsonschema")
-        ))]
+        #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
         assert_eq!(
             empty.validate().unwrap_err(),
             [
@@ -127,10 +121,7 @@ mod named_after_a_validator {
                 "'label': a label is not blank",
             ]
         );
-        #[cfg(not(all(
-            feature = "serde",
-            any(feature = "typescript", feature = "zod", feature = "jsonschema")
-        )))]
+        #[cfg(not(all(feature = "serde", any(feature = "typescript", feature = "zod"))))]
         assert_eq!(
             empty.validate().unwrap_err(),
             ["'label': a label is not blank"]

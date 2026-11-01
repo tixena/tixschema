@@ -17,11 +17,7 @@ mod amqp_transport;
 #[path = "service_schema_dispatch_tests/second_amqp_transport.rs"]
 mod second_amqp_transport;
 
-#[cfg(all(
-    test,
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(test, feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[path = "service_schema_dispatch_tests/gate_amqp_transport.rs"]
 mod gate_amqp_transport;
 
@@ -125,11 +121,7 @@ use scalar_path_bound_service::{ScalarPathBoundService, scalar_path_bound_servic
 use solo_path_bound_service::{SoloPathBoundService, solo_path_bound_service_schema};
 #[cfg(all(test, feature = "serde"))]
 use stream_service::{ContentService, content_service_schema};
-#[cfg(all(
-    test,
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(test, feature = "serde", any(feature = "typescript", feature = "zod")))]
 use tests::a_message_annotated_with_a_constraint::{GateService, gate_service_schema};
 #[cfg(all(test, feature = "serde"))]
 use tests::{DocumentService, ProbeService, document_service_schema, probe_service_schema};

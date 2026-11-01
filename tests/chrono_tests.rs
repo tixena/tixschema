@@ -5,7 +5,7 @@
 
 /// What a JSON Schema document admits.
 #[cfg(test)]
-#[cfg(all(feature = "chrono", feature = "jsonschema"))]
+#[cfg(feature = "chrono")]
 #[path = "std_range_tests/documents.rs"]
 mod documents;
 

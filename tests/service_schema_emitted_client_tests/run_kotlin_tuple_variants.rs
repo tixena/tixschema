@@ -8,7 +8,7 @@
 #![cfg(feature = "kotlin")]
 
 use core::fmt::Write as _;
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 use std::collections::HashMap;
 
 use serde::Serialize;
@@ -22,12 +22,11 @@ use super::tuple_variants_models::{
     racking_kotlin, ranking_kotlin, slotting_kotlin, spooling_kotlin, stacking_kotlin,
     stencil_kotlin, strapping_kotlin, wrapping_kotlin,
 };
-#[cfg(not(feature = "jsonschema"))]
 use super::tuple_variants_models::{
     Binning, Coiling, Heaping, Tallying, binning_kotlin, coiling_kotlin, heaping_kotlin,
     tallying_kotlin,
 };
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 use super::tuple_variants_models::{Labelling, Stencil};
 
 const KOTLIN_IMPORTS: &str = "import kotlinx.serialization.*\n\
@@ -150,7 +149,6 @@ const PAIR_REFUSED: &str = "'pair.0.code': too short: minimum length is 1, got 0
 
 /// What the holder's `validate()` answers of a map of pairs, in a variant's one slot, whose model
 /// breaks its bound under the key `north`.
-#[cfg(not(feature = "jsonschema"))]
 const COUNT_REFUSED: &str = "'held.north.0.code': too short: minimum length is 1, got 0";
 
 /// What a tuple struct's `validate()` answers of a pair in its first slot whose model breaks its
@@ -170,7 +168,6 @@ const LIST_REFUSED: &str = "'pairs.0.0.code': too short: minimum length is 1, go
 
 /// What the holder's `validate()` answers of a map of pairs, in the first position of a pair,
 /// whose model breaks its bound under the key `north`.
-#[cfg(not(feature = "jsonschema"))]
 const KEYED_PAIR_REFUSED: &str = "'pair.0.north.0.code': too short: minimum length is 1, got 0";
 
 /// What the holder's `validate()` answers of a map of pairs under a key of its own whose model
@@ -179,11 +176,9 @@ const OWN_KEY_REFUSED: &str = "'extra.north.0.code': too short: minimum length i
 
 /// What the holder's `validate()` answers of a map of pairs, read through a function a
 /// `preprocess` names, whose model breaks its bound under the key `north`.
-#[cfg(not(feature = "jsonschema"))]
 const PREPROCESSED_REFUSED: &str = "'counts.north.0.code': too short: minimum length is 1, got 0";
 
 /// The function a `preprocess` names on [`Heaping`], in Kotlin: the payload as it was handed.
-#[cfg(not(feature = "jsonschema"))]
 const UNCHANGED: &str = "fun unchanged(payload: JsonElement): JsonElement = payload";
 
 /// What prints a row: the value read, written back with every member, as serde writes it, or
@@ -252,7 +247,6 @@ fn refused_at_the_pair(_json: &str) -> String {
 }
 
 /// What a row refused with [`COUNT_REFUSED`] prints.
-#[cfg(not(feature = "jsonschema"))]
 fn refused_at_the_count(_json: &str) -> String {
     format!("refused: {COUNT_REFUSED}")
 }
@@ -273,7 +267,6 @@ fn refused_in_the_option_and_the_list(_json: &str) -> String {
 }
 
 /// What a row refused with [`KEYED_PAIR_REFUSED`] prints.
-#[cfg(not(feature = "jsonschema"))]
 fn refused_at_the_keyed_pair(_json: &str) -> String {
     format!("refused: {KEYED_PAIR_REFUSED}")
 }
@@ -284,7 +277,6 @@ fn refused_at_the_own_key(_json: &str) -> String {
 }
 
 /// What a row refused with [`PREPROCESSED_REFUSED`] prints.
-#[cfg(not(feature = "jsonschema"))]
 fn refused_at_the_preprocessed_count(_json: &str) -> String {
     format!("refused: {PREPROCESSED_REFUSED}")
 }
@@ -334,7 +326,6 @@ fn a_tuple_named_twice_by_one_writer_reads_and_writes_in_kotlin_as_serde_does() 
 
 /// A map of tuples in a variant's one slot, whose writer names the tuple's wrapper twice, read
 /// from the payload serde writes for it and written back as serde writes it back.
-#[cfg(not(feature = "jsonschema"))]
 #[test]
 fn a_map_of_tuples_in_a_variant_reads_and_writes_in_kotlin_as_serde_does() {
     let rows = [Row {
@@ -410,7 +401,6 @@ fn a_tuple_holding_a_model_is_refused_at_the_holders_path_in_kotlin() {
 
 /// A map of tuples holding a model in a variant's one slot, read and written back as serde does,
 /// and refused at the variant's path where the model breaks its bound.
-#[cfg(not(feature = "jsonschema"))]
 #[test]
 fn a_map_of_tuples_holding_a_model_in_a_variant_is_refused_at_the_variants_path_in_kotlin() {
     let rows = [
@@ -561,7 +551,6 @@ fn tuples_holding_a_model_in_an_option_and_a_list_are_refused_at_their_paths_in_
 
 /// A map of tuples holding a model in a position of a tuple, read and written back as serde does,
 /// and refused at the entry's path where the model breaks its bound.
-#[cfg(not(feature = "jsonschema"))]
 #[test]
 fn a_map_of_tuples_holding_a_model_in_a_tuple_is_refused_at_the_entrys_path_in_kotlin() {
     let rows = [
@@ -630,7 +619,6 @@ fn a_map_of_tuples_holding_a_model_under_its_own_key_is_refused_at_the_keys_path
 
 /// A map of tuples holding a model, read through a function a `preprocess` names, read and written
 /// back as serde does, and refused at the entry's path where the model breaks its bound.
-#[cfg(not(feature = "jsonschema"))]
 #[test]
 fn a_preprocessed_map_of_tuples_holding_a_model_is_refused_at_the_entrys_path_in_kotlin() {
     let rows = [
@@ -665,7 +653,7 @@ fn a_preprocessed_map_of_tuples_holding_a_model_is_refused_at_the_entrys_path_in
 
 /// The refusals the Kotlin rows above are held to are what the holder's `validate()` answers in
 /// Rust, the read of a payload that leaves the key out included.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn the_refusals_held_here_are_what_the_holders_validate_answers() {
     let broken = || (Stencil::default(), 2);
@@ -689,7 +677,6 @@ fn the_refusals_held_here_are_what_the_holders_validate_answers() {
             .to_string(),
         PAIR_REFUSED
     );
-    #[cfg(not(feature = "jsonschema"))]
     assert_eq!(
         Binning::Counts(HashMap::from([("north".to_owned(), broken())])).validate(),
         Err(vec![COUNT_REFUSED.to_owned()])
@@ -716,7 +703,6 @@ fn the_refusals_held_here_are_what_the_holders_validate_answers() {
         .validate(),
         Err(vec![OPTION_REFUSED.to_owned(), LIST_REFUSED.to_owned()])
     );
-    #[cfg(not(feature = "jsonschema"))]
     assert_eq!(
         Coiling {
             pair: (HashMap::from([("north".to_owned(), broken())]), 3)
@@ -732,7 +718,6 @@ fn the_refusals_held_here_are_what_the_holders_validate_answers() {
         .validate(),
         Err(vec![OWN_KEY_REFUSED.to_owned()])
     );
-    #[cfg(not(feature = "jsonschema"))]
     assert_eq!(
         Heaping {
             counts: HashMap::from([("north".to_owned(), broken())])

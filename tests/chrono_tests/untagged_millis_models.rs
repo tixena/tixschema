@@ -81,7 +81,7 @@ pub const MILLIS_ROWS: [(&str, &str, Option<&str>, Option<&str>); 13] = [
 ];
 
 /// A date under `as_number` in a newtype member.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum MillisOrFlag {
@@ -90,7 +90,7 @@ pub enum MillisOrFlag {
 }
 
 /// A date under `as_number` in a named member.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum MillisNamed {
@@ -102,7 +102,7 @@ pub enum MillisNamed {
 }
 
 /// A date under `as_number` in an `Option` of a newtype member.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum MillisMaybe {
@@ -112,7 +112,7 @@ pub enum MillisMaybe {
 
 /// A date under `as_number` in an `Option` of a named member that drops its key, and in a
 /// `nullable` one.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum MillisLater {

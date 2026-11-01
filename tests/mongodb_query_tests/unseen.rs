@@ -5,9 +5,6 @@
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-// The JSON schema of a type holding a `Label` names its module from here, beside the type.
-#[cfg(feature = "jsonschema")]
-use self::tag_schema as label_schema;
 use super::shown;
 
 /// An alias no `#[model_schema]` is written on.

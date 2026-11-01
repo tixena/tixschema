@@ -277,7 +277,7 @@ fn the_callback_is_handed_the_document_the_function_of_the_type_corrected() {
 
 /// A build with a schema surface holds the label to its bound, on what the label's function
 /// answered.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_label_its_function_emptied_is_refused_where_the_bound_is_held() {
     let row_2 = doc! { "label": "   ", "itemCodeList": ["x"], "fragileItemCodes": ["x"] };
@@ -296,7 +296,7 @@ fn a_label_its_function_emptied_is_refused_where_the_bound_is_held() {
 }
 
 /// A build with no schema surface holds no bound, and the label its function emptied is read.
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[cfg(not(any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_label_its_function_emptied_is_read_where_no_bound_is_held() {
     let row_2 = doc! { "label": "   ", "itemCodeList": ["x"], "fragileItemCodes": ["x"] };

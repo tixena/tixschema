@@ -8,9 +8,7 @@ use core::slice::from_ref;
 
 use syn::{Fields, GenericArgument, Ident, ItemEnum, PathArguments, Type, Variant};
 
-#[cfg(feature = "jsonschema")]
 use proc_macro2::Span;
-#[cfg(feature = "jsonschema")]
 use syn::spanned::Spanned as _;
 
 #[cfg(feature = "serde")]
@@ -370,11 +368,9 @@ pub struct FieldDef {
     pub omits_value: bool,
     /// Where the default serde reads for an absent key sits among its struct's, for a member
     /// whose default is written as JSON.
-    #[cfg(any(feature = "zod", feature = "jsonschema"))]
     pub serde_default: Option<usize>,
     /// The array levels written as a set, numbered as `array_lengths` numbers them.
     pub set_levels: Vec<u8>,
-    #[cfg(feature = "jsonschema")]
     pub type_span: Span,
 }
 
@@ -397,7 +393,6 @@ impl FieldDef {
     #[cfg(any(
         feature = "typescript",
         feature = "zod",
-        feature = "jsonschema",
         all(
             feature = "serde",
             any(feature = "dart", feature = "swift", feature = "kotlin")
@@ -694,13 +689,6 @@ impl FieldDef {
     /// The element count the array at `level` was written with, for a level written as a `[T; N]`
     /// whose `N` the expansion could read. `None` is every other level: serde writes as many items
     /// as it holds there, so nothing bounds it.
-    #[cfg(any(
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "dart",
-        feature = "kotlin",
-        feature = "swift"
-    ))]
     pub fn fixed_length_at(&self, level: u8) -> Option<usize> {
         self.array_lengths
             .iter()
@@ -801,15 +789,6 @@ impl FieldDef {
 
     /// Whether the field describes an array at all — the question every surface asked of the
     /// boolean this depth replaced. Asked only where a schema is generated.
-    #[cfg(any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "jsonschema",
-        all(
-            feature = "serde",
-            any(feature = "dart", feature = "swift", feature = "kotlin")
-        )
-    ))]
     pub const fn is_array(&self) -> bool {
         self.array_depth > 0
     }
@@ -849,13 +828,6 @@ impl FieldDef {
 
     /// Whether the array at level `level` was written as a set, levels numbered as
     /// `array_lengths` numbers them: level 0 is the array that holds what `field_type` names.
-    #[cfg(any(
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    ))]
     pub fn is_set_at(&self, level: u8) -> bool {
         self.set_levels.contains(&level)
     }
@@ -886,7 +858,7 @@ impl FieldDef {
 
     /// [`Self::written_in_place`] where this field's own array levels hold the alias: an item of a
     /// list is outside a field whatever holds the list.
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     fn items_written_in_place(&self) -> Option<Self> {
         if self.array_depth > 0 {
             self.written_in_place()
@@ -900,7 +872,6 @@ impl FieldDef {
     /// answer. A `nullable` `Option<T>` is the one case where both hold at once: the key is always
     /// written and `null` is its empty value. A key serde reads as a default it can write as JSON
     /// is not required either.
-    #[cfg(feature = "jsonschema")]
     pub fn key_is_required(&self) -> bool {
         if self.is_optional() {
             self.has_nullable()
@@ -1131,7 +1102,6 @@ impl FieldDef {
         };
         Self {
             docs: self.docs,
-            #[cfg(feature = "jsonschema")]
             type_span: self.type_span,
             ..held
         }
@@ -1200,7 +1170,6 @@ impl FieldDef {
     #[cfg(any(
         feature = "typescript",
         feature = "zod",
-        feature = "jsonschema",
         all(
             feature = "serde",
             any(feature = "dart", feature = "swift", feature = "kotlin")
@@ -1478,11 +1447,9 @@ impl FieldDef {
                         absent_from_wire: false,
                         omits_value: false,
                         missing_key: MissingKey::Required,
-                        #[cfg(any(feature = "zod", feature = "jsonschema"))]
                         serde_default: None,
                         bytes: false,
                         set_levels: Vec::new(),
-                        #[cfg(feature = "jsonschema")]
                         type_span: Span::call_site(),
                     }));
                 }
@@ -1538,7 +1505,7 @@ impl FieldDef {
     /// [`Self::writes_an_inexact_key`] of the field in a slot, which writes an alias of an
     /// `Option` in place as [`Self::typescript_slot_typename`] does.
     pub fn slot_writes_an_inexact_key(&self) -> bool {
-        #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+        #[cfg(any(feature = "typescript", feature = "zod"))]
         if let Some(in_place) = self.written_in_place() {
             return in_place.slot_writes_an_inexact_key();
         }
@@ -1580,7 +1547,7 @@ impl FieldDef {
     /// level's wrap lives in `typescript_typename` and `typescript_slot_typename`, which is where
     /// the position it sits in decides between `| undefined` and `| null`.
     fn typescript_base(&self) -> String {
-        #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+        #[cfg(any(feature = "typescript", feature = "zod"))]
         if let Some(in_place) = self.items_written_in_place() {
             return in_place.typescript_base();
         }
@@ -1699,7 +1666,7 @@ impl FieldDef {
     /// those positions can be omitted the way an object key can, so serde emits `null` for a
     /// `None` in each of them.
     pub fn typescript_slot_typename(&self) -> String {
-        #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+        #[cfg(any(feature = "typescript", feature = "zod"))]
         if let Some(in_place) = self.written_in_place() {
             return in_place.typescript_slot_typename();
         }
@@ -1836,7 +1803,7 @@ impl FieldDef {
     /// size exactly. A name holds one where the registry records the alias, the brand or the tuple
     /// struct it names as one; a struct or an enum holds it in a member of its own.
     pub fn writes_an_inexact_key(&self) -> bool {
-        #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+        #[cfg(any(feature = "typescript", feature = "zod"))]
         if let Some(in_place) = self.items_written_in_place() {
             return in_place.writes_an_inexact_key();
         }
@@ -2953,10 +2920,7 @@ fn container_wire_arity(name: &str) -> Option<usize> {
     }
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 /// Whether the dispatch that describes a field's type has an arm for the standard type `name`: a
 /// scalar, a text, a path, or a wrapper or container the crate reads through.
 pub fn is_a_standard_type_name(name: &str) -> bool {
@@ -3045,11 +3009,9 @@ fn get_field_def_from_type_path(
             absent_from_wire: false,
             omits_value: false,
             missing_key: MissingKey::Required,
-            #[cfg(any(feature = "zod", feature = "jsonschema"))]
             serde_default: None,
             bytes: false,
             set_levels: Vec::new(),
-            #[cfg(feature = "jsonschema")]
             type_span: type_path.span(),
         };
     };
@@ -3066,13 +3028,11 @@ fn get_field_def_from_type_path(
             absent_from_wire: false,
             omits_value: false,
             missing_key: MissingKey::Required,
-            #[cfg(any(feature = "zod", feature = "jsonschema"))]
             serde_default: None,
             bytes: false,
             set_levels: Vec::new(),
             // The name segment, not the whole path: it is what a generated module is named after,
             // so a reference the module cannot resolve is blamed on the name it was built from.
-            #[cfg(feature = "jsonschema")]
             type_span: segment.ident.span(),
         },
         PathArguments::AngleBracketed(args) => get_field_def_from_generic_type(
@@ -3094,11 +3054,9 @@ fn get_field_def_from_type_path(
             absent_from_wire: false,
             omits_value: false,
             missing_key: MissingKey::Required,
-            #[cfg(any(feature = "zod", feature = "jsonschema"))]
             serde_default: None,
             bytes: false,
             set_levels: Vec::new(),
-            #[cfg(feature = "jsonschema")]
             type_span: segment.ident.span(),
         },
     }
@@ -3164,11 +3122,9 @@ fn get_field_def_from_generic_type(
             absent_from_wire: false,
             omits_value: false,
             missing_key: MissingKey::Required,
-            #[cfg(any(feature = "zod", feature = "jsonschema"))]
             serde_default: None,
             bytes: false,
             set_levels: Vec::new(),
-            #[cfg(feature = "jsonschema")]
             type_span: type_ident.span(),
         }
     } else if arg_types.len() == 1 && is_datetime_generic_type(ident) {
@@ -3198,8 +3154,6 @@ fn written_def(
     field_docs: &str,
     type_ident: &Ident,
 ) -> FieldDef {
-    #[cfg(not(feature = "jsonschema"))]
-    let _: &Ident = type_ident;
     FieldDef {
         name: field_name,
         field_type,
@@ -3211,11 +3165,9 @@ fn written_def(
         absent_from_wire: false,
         omits_value: false,
         missing_key: MissingKey::Required,
-        #[cfg(any(feature = "zod", feature = "jsonschema"))]
         serde_default: None,
         bytes: false,
         set_levels: Vec::new(),
-        #[cfg(feature = "jsonschema")]
         type_span: type_ident.span(),
     }
 }
@@ -3376,11 +3328,9 @@ pub fn get_field_def(name: &str, ty: &Type, field_docs: &str) -> FieldDef {
             absent_from_wire: false,
             omits_value: false,
             missing_key: MissingKey::Required,
-            #[cfg(any(feature = "zod", feature = "jsonschema"))]
             serde_default: None,
             bytes: false,
             set_levels: Vec::new(),
-            #[cfg(feature = "jsonschema")]
             type_span: written.span(),
         }
     } else {
@@ -3395,11 +3345,9 @@ pub fn get_field_def(name: &str, ty: &Type, field_docs: &str) -> FieldDef {
             absent_from_wire: false,
             omits_value: false,
             missing_key: MissingKey::Required,
-            #[cfg(any(feature = "zod", feature = "jsonschema"))]
             serde_default: None,
             bytes: false,
             set_levels: Vec::new(),
-            #[cfg(feature = "jsonschema")]
             type_span: written.span(),
         }
     }
@@ -3456,7 +3404,6 @@ pub fn undescribable_primitive(name: &str) -> Option<&'static str> {
 
 /// Whether a name is one the language reserves for a primitive type that
 /// [`get_field_def_type_or_sibling`] has no arm for.
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
 pub fn is_undescribable_primitive(name: &str) -> bool {
     undescribable_primitive(name).is_some()
 }

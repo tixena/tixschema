@@ -8,17 +8,32 @@ use super::parse::ServiceDef;
 use crate::rename_rule::RenameRule;
 use proc_macro2::TokenStream;
 use quote::format_ident;
+use syn::meta::{ParseNestedMeta, parser};
 use syn::spanned::Spanned as _;
-use syn::{Expr, ExprLit, Ident, Lit, meta::parser, parse::Parser as _};
+use syn::token::Paren;
+use syn::{Expr, ExprLit, Ident, Lit, LitStr, parse::Parser as _};
 
 const TRANSPORTS_ARGUMENT: &str = "transports";
 const NON_EXHAUSTIVE_ARGUMENT: &str = "non_exhaustive";
+const OPENAPI_ARGUMENT: &str = "openapi";
+const OPENAPI_PATH_KEY: &str = "path";
+const OPENAPI_TITLE_KEY: &str = "title";
+const DEFAULT_OPENAPI_PATH: &str = "/openapi.json";
 
 const UNKNOWN_ARGUMENT_MESSAGE: &str = concat!(
     "service_schema: unknown `service_schema` argument\n",
     "       the arguments are `transports`, written `transports = [\"amqp_rpc\"]`,\n",
-    "       and `non_exhaustive`, written bare"
+    "       `non_exhaustive`, written bare, and `openapi`, written bare or ",
+    "`openapi(title = \"...\", path = \"...\")`"
 );
+
+const UNKNOWN_OPENAPI_KEY_MESSAGE: &str = concat!(
+    "service_schema: unknown `openapi` argument\n",
+    "       the arguments are `title` and `path`, each written `name = \"...\"`"
+);
+
+const OPENAPI_PATH_SHAPE_MESSAGE: &str =
+    "service_schema: `openapi(path = \"...\")` is a route, so it starts with `/`";
 
 const WRITTEN_SHAPE_MESSAGE: &str = concat!(
     "service_schema: `transports` takes a bracketed list of transport names\n",
@@ -35,8 +50,31 @@ const NON_EXHAUSTIVE_SHAPE_MESSAGE: &str = concat!(
 pub struct ServiceArguments {
     /// Whether the generated types carry `#[non_exhaustive]`.
     pub non_exhaustive: bool,
+    /// `Some` where the service asked for `openapi`.
+    pub openapi: Option<OpenApiArguments>,
     /// The transports asked for, in the order written. Nothing sorts or dedupes it.
     pub transports: Vec<Transport>,
+}
+
+/// What `openapi` or `openapi(...)` asked for.
+#[derive(Debug, Eq, PartialEq)]
+pub struct OpenApiArguments {
+    /// `openapi` as written, which a refusal of the argument as a whole is spanned on.
+    pub keyword: Ident,
+    /// The path the dispatchers answer the document at, kept as written so a refusal of it is
+    /// spanned on the literal.
+    pub path: Option<LitStr>,
+    /// `info.title`, and the service's name where none is written.
+    pub title: Option<String>,
+}
+
+impl OpenApiArguments {
+    /// The path the document is answered at: the `path` written, or `/openapi.json`.
+    pub fn served_at(&self) -> String {
+        self.path
+            .as_ref()
+            .map_or_else(|| DEFAULT_OPENAPI_PATH.to_owned(), LitStr::value)
+    }
 }
 
 /// One transport a service asks for by name.
@@ -220,7 +258,7 @@ pub fn emit(service: &ServiceDef, asked: &[Transport]) -> TokenStream {
 /// ```text
 /// error: service_schema: unknown `service_schema` argument
 ///               the arguments are `transports`, written `transports = ["amqp_rpc"]`,
-///               and `non_exhaustive`, written bare
+///               `non_exhaustive`, written bare, and `openapi`, written bare or `openapi(title = "...", path = "...")`
 ///   --> tests/zz_probe.rs:11:18
 ///    |
 /// 11 | #[service_schema(transport = ["amqp_rpc"])]
@@ -296,6 +334,18 @@ pub fn parse_arguments(args: TokenStream) -> Result<ServiceArguments, syn::Error
             read.non_exhaustive = true;
             return Ok(());
         }
+        if meta.path.is_ident(OPENAPI_ARGUMENT) {
+            let keyword = meta.path.require_ident()?.clone();
+            let asked = read.openapi.get_or_insert(OpenApiArguments {
+                keyword,
+                path: None,
+                title: None,
+            });
+            if meta.input.peek(Paren) {
+                meta.parse_nested_meta(|nested| openapi_key(&nested, asked))?;
+            }
+            return Ok(());
+        }
         if !meta.path.is_ident(TRANSPORTS_ARGUMENT) {
             return Err(meta.error(UNKNOWN_ARGUMENT_MESSAGE));
         }
@@ -310,6 +360,44 @@ pub fn parse_arguments(args: TokenStream) -> Result<ServiceArguments, syn::Error
     });
     reader.parse2(args)?;
     Ok(read)
+}
+
+/// One `title = "..."` or `path = "..."` inside `openapi(...)`, each read at most once.
+fn openapi_key(
+    nested: &ParseNestedMeta<'_>,
+    asked: &mut OpenApiArguments,
+) -> Result<(), syn::Error> {
+    if nested.path.is_ident(OPENAPI_TITLE_KEY) {
+        let written = nested.value()?.parse::<LitStr>()?;
+        if asked.title.replace(written.value()).is_some() {
+            return Err(syn::Error::new(
+                nested.path.span(),
+                repeated_openapi_key_message(OPENAPI_TITLE_KEY),
+            ));
+        }
+        return Ok(());
+    }
+    if !nested.path.is_ident(OPENAPI_PATH_KEY) {
+        return Err(nested.error(UNKNOWN_OPENAPI_KEY_MESSAGE));
+    }
+    let written = nested.value()?.parse::<LitStr>()?;
+    if !written.value().starts_with('/') {
+        return Err(syn::Error::new(written.span(), OPENAPI_PATH_SHAPE_MESSAGE));
+    }
+    if asked.path.replace(written).is_some() {
+        return Err(syn::Error::new(
+            nested.path.span(),
+            repeated_openapi_key_message(OPENAPI_PATH_KEY),
+        ));
+    }
+    Ok(())
+}
+
+fn repeated_openapi_key_message(key: &str) -> String {
+    format!(
+        "service_schema: `{key}` is written twice in `openapi(...)`\n       \
+         write it once"
+    )
 }
 
 /// One element of the written list, which is a string naming a transport this version has.

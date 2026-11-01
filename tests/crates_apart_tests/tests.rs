@@ -13,10 +13,6 @@ use serde_json::{Value, json};
 use stored_customers::Customer;
 use tixschema::model_schema;
 
-// The JSON schema of a type holding a `Customer` names its module from here, beside the type.
-#[cfg(feature = "jsonschema")]
-use stored_customers::customer_schema;
-
 /// The manifest of the crate whose types list `"decode_with"` alone.
 const LOOKUPS_MANIFEST: &str = include_str!("../crates_apart/invoice_lookups/Cargo.toml");
 

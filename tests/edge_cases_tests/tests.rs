@@ -3,38 +3,14 @@
 #[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
 use serde::{Deserialize, Serialize};
 
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
+#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
 use tixschema::model_schema;
 
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
+#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
 use std::collections::HashMap;
 
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
-#[model_schema()]
+#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
+#[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 struct Address {
@@ -43,16 +19,8 @@ struct Address {
     zip_code: String,
 }
 
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
-#[model_schema()]
+#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
+#[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 struct OriginalBugReproduction {
@@ -69,15 +37,15 @@ struct OriginalBugReproduction {
 // A named map value is rendered as the schema module its own `#[model_schema()]` expansion emits,
 // so an alias standing in a map value has to carry the attribute like any other referenced type.
 #[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 type OptionalNestedValue = Vec<Option<HashMap<String, Option<Vec<i64>>>>>;
 
 #[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 type QuadrupleNestedValue = Vec<HashMap<String, Vec<HashMap<String, i64>>>>;
 
 #[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ReallyComplexTest {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -86,34 +54,18 @@ struct ReallyComplexTest {
     quadruple_nested: HashMap<String, QuadrupleNestedValue>,
 }
 
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
-#[model_schema()]
+#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
+#[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 struct SimpleComplexTest {
     nested_map_of_arrays: HashMap<String, Vec<HashMap<String, isize>>>,
 }
 
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
+#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
 // A map value that is itself a map is described at every level: the outer members are inner maps,
 // and those maps' own members carry the value type's schema.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 struct NestedStringKeyedMaps {
@@ -124,16 +76,8 @@ struct NestedStringKeyedMaps {
     tallies_by_region: HashMap<String, HashMap<String, HashMap<String, isize>>>,
 }
 
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
-#[model_schema()]
+#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
+#[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 struct UserWithAddress {
@@ -143,15 +87,7 @@ struct UserWithAddress {
     name: String,
 }
 
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
+#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
 #[test]
 fn test_edge_case_structs_constructible() {
     let address = Address {
@@ -215,7 +151,6 @@ fn test_edge_case_aliases_and_complex_constructible() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_nested_struct_json_schema() {
     let user_schema = UserWithAddress::json_schema();
     let address_schema = Address::json_schema();
@@ -254,7 +189,6 @@ fn test_nested_struct_ts_definition() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_original_bug_reproduction_json_schema() {
     let schema = OriginalBugReproduction::json_schema();
 
@@ -329,7 +263,6 @@ fn test_original_bug_reproduction_typescript() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_complex_nested_maps_json_schema() {
     let schema = SimpleComplexTest::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -362,7 +295,7 @@ fn test_complex_nested_maps_typescript() {
 }
 
 #[test]
-#[cfg(all(feature = "jsonschema", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 fn test_quadruple_nested_maps_compilation() {
     let schema = ReallyComplexTest::json_schema();
     let ts_definition = ReallyComplexTest::ts_definition();
@@ -378,7 +311,7 @@ fn test_quadruple_nested_maps_compilation() {
 }
 
 #[test]
-#[cfg(all(feature = "jsonschema", feature = "typescript", feature = "serde"))]
+#[cfg(all(feature = "typescript", feature = "serde"))]
 fn test_quadruple_nested_maps_compilation_serde() {
     let schema = ReallyComplexTest::json_schema();
     let ts_definition = ReallyComplexTest::ts_definition();
@@ -394,7 +327,6 @@ fn test_quadruple_nested_maps_compilation_serde() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_nested_string_keyed_maps_json_schema() {
     let schema = NestedStringKeyedMaps::json_schema();
     let properties = schema["properties"].as_object().unwrap();

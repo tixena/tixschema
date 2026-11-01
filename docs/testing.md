@@ -128,10 +128,9 @@ fn test_generate_typescript() {
 
 ### 2. Validate JSON Schemas
 
-When using the `jsonschema` feature, test that generated schemas are valid:
+For a type that lists `enable = ["jsonschema"]`, test that generated schemas are valid:
 
 ```rust
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_json_schema_validity() {
     let schema = MyType::json_schema();

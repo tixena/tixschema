@@ -563,7 +563,7 @@ fn a_generic_enum_renders_its_example_at_a_filling_that_is_not_a_string() {
     );
 }
 
-#[cfg(all(feature = "zod", not(feature = "jsonschema")))]
+#[cfg(feature = "zod")]
 #[test]
 fn an_unfilled_parameter_keeps_the_string_instantiation() {
     /// A generic type declaring no filling.
@@ -583,7 +583,7 @@ fn an_unfilled_parameter_keeps_the_string_instantiation() {
     );
 }
 
-#[cfg(all(feature = "zod", not(feature = "jsonschema")))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_string_filling_and_no_filling_write_the_same_schema() {
     /// A generic type declaring its filling.
@@ -693,7 +693,7 @@ fn a_lifetime_item_renders_its_example_with_the_lifetime_elided() {
     );
 }
 
-#[cfg(not(any(feature = "zod", feature = "jsonschema")))]
+#[cfg(not(feature = "zod"))]
 #[test]
 fn a_const_declaring_item_keeps_its_example_where_no_example_is_read() {
     /// A const-bearing type carrying an example block.

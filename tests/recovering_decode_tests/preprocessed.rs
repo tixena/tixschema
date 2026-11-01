@@ -261,7 +261,7 @@ fn a_held_type_is_corrected_where_it_is_walked() {
 }
 
 /// The bound is held to the label the field's function answered.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn the_bound_of_a_field_is_checked_on_what_its_function_answered() {
     let (read, calls) =
@@ -278,7 +278,7 @@ fn the_bound_of_a_field_is_checked_on_what_its_function_answered() {
 }
 
 /// A build with no schema surface holds no bound, and the label its function emptied is read.
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[cfg(not(any(feature = "typescript", feature = "zod")))]
 #[test]
 fn the_label_a_function_emptied_is_read_where_no_bound_is_held() {
     let (read, calls) =

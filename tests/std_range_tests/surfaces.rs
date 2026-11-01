@@ -12,7 +12,7 @@ mod dated {
 
     use super::member_text;
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Timesheet {
         pub at: DateTime<Utc>,
@@ -66,7 +66,7 @@ mod identified {
 
     use super::member_text;
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Shelving {
         pub id: ObjectId,

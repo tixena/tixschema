@@ -3,10 +3,7 @@
 //! a model, a member of an untagged variant held to a bound, a date stored as a number, and a
 //! member whose type declares the bound.
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 use alloc::sync::Arc;
 
 #[cfg(all(feature = "serde", feature = "chrono"))]
@@ -26,20 +23,14 @@ pub struct Bay {
 }
 
 /// A brand held to a bound of its own.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[model_schema(minLength = 2)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct Bounded(pub String);
 
 /// A brand held to a bound of its own, whose function trims what the bound measures.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[model_schema(minLength = 2, preprocess = ["trimmed"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
@@ -97,10 +88,7 @@ pub struct Noted<CodeType> {
 }
 
 /// A member of an untagged variant held to a bound, a slot of one, and a list held to a count.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
@@ -119,10 +107,7 @@ pub enum Picked {
 
 /// A member whose own type declares the bound, held where its holder reads it as it judges
 /// itself.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Shelved {
@@ -214,10 +199,7 @@ fn a_member_that_holds_a_model_is_read_from_the_corrected_payload() {
 }
 
 /// The holder judges the parcel it read with nothing judged, and names it by its place.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_model_read_from_a_corrected_payload_is_judged_once_by_its_holder() {
     let refused =
@@ -273,10 +255,7 @@ fn a_key_the_payload_leaves_out_is_read_as_it_is_with_no_function() {
 
 /// The bound of each variant's member chooses the variant, on what the member's function
 /// answered: a code two letters long once trimmed, a list of one code once out of its envelope.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn the_bound_of_an_untagged_member_is_held_to_the_corrected_payload() {
     let picked = |payload: Value| serde_json::from_value::<Picked>(payload).unwrap();
@@ -311,10 +290,7 @@ fn the_bound_of_an_untagged_member_is_held_to_the_corrected_payload() {
 
 /// The brand's bound refuses the text its holder's function took out of the envelope, under the
 /// field that holds it.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_member_whose_type_declares_the_bound_is_read_from_the_corrected_payload() {
     assert_eq!(
@@ -333,10 +309,7 @@ fn a_member_whose_type_declares_the_bound_is_read_from_the_corrected_payload() {
 
 /// The bound of a brand measures what the brand's own function answered, and refuses it once,
 /// in the words `validate()` says of the same value built in code.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn the_bound_of_a_brand_measures_what_its_function_answered() {
     assert_eq!(

@@ -9,9 +9,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
-// The JSON schema of a type holding a `Version` names its module from here, beside the type.
-#[cfg(feature = "jsonschema")]
-use super::version_schema;
 use super::{Version, lines};
 
 #[model_schema(enable = ["decode_with"], default_types(T = String))]
@@ -459,7 +456,7 @@ fn an_untagged_member_bounded_over_the_parameter_reads_at_a_filling_with_no_defa
     assert_eq!(calls, 0);
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_untagged_member_bounded_over_the_parameter_lists_its_count() {
     let stored = json!({ "pile": [], "tag": 1_i32 });

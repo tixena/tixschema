@@ -1,0 +1,6 @@
+error: service_schema: unknown `openapi` argument
+              the arguments are `title` and `path`, each written `name = "..."`
+  --> tests/foundation_refusals/openapi_unknown_key.rs:21:54
+   |
+21 | #[service_schema(transports = ["http_rest"], openapi(version = "1"))]
+   |                                                      ^^^^^^^

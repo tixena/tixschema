@@ -9,19 +9,19 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 #[cfg(all(test, feature = "typescript"))]
-#[model_schema(name = "AuditId")]
+#[model_schema(name = "AuditId", enable = ["jsonschema"])]
 pub type AuditId = OrderId;
 
 /// Tuple type alias mirroring remargin's compact link row: two optional string
 /// slots (null-flavored inside a positional tuple), a `Vec<isize>`, and a
 /// required string.
 #[cfg(all(test, feature = "typescript"))]
-#[model_schema(name = "CompactLinkRow")]
+#[model_schema(name = "CompactLinkRow", enable = ["jsonschema"])]
 pub type CompactLinkRow = (Option<String>, Vec<isize>, String, Option<String>);
 
 /// Simple string-based type alias.
 #[cfg(all(test, feature = "typescript"))]
-#[model_schema(name = "DocumentId")]
+#[model_schema(name = "DocumentId", enable = ["jsonschema"])]
 pub type DocumentId = String;
 
 /// This is a documented type alias.
@@ -32,32 +32,32 @@ pub type DocumentedId = String;
 
 /// Boolean type alias.
 #[cfg(all(test, feature = "typescript"))]
-#[model_schema(name = "IsActive")]
+#[model_schema(name = "IsActive", enable = ["jsonschema"])]
 pub type IsActive = bool;
 
 /// Optional type alias.
 #[cfg(all(test, feature = "typescript"))]
-#[model_schema(name = "OptionalNote")]
+#[model_schema(name = "OptionalNote", enable = ["jsonschema"])]
 pub type OptionalNote = Option<String>;
 
 /// Type alias referencing another type alias (nested).
 #[cfg(all(test, feature = "typescript"))]
-#[model_schema(name = "OrderId")]
+#[model_schema(name = "OrderId", enable = ["jsonschema"])]
 pub type OrderId = String;
 
 /// Generic type alias with two type parameters.
 #[cfg(all(test, feature = "typescript"))]
-#[model_schema(name = "Pair", default_types(T = String, U = u32))]
+#[model_schema(name = "Pair", default_types(T = String, U = u32), enable = ["jsonschema"])]
 pub type Pair<T, U> = (T, U);
 
 /// Numeric type alias (i64).
 #[cfg(all(test, feature = "typescript"))]
-#[model_schema(name = "Revision")]
+#[model_schema(name = "Revision", enable = ["jsonschema"])]
 pub type Revision = i64;
 
 /// Floating-point type alias.
 #[cfg(all(test, feature = "typescript"))]
-#[model_schema(name = "Score")]
+#[model_schema(name = "Score", enable = ["jsonschema"])]
 pub type Score = f32;
 
 #[cfg(all(test, feature = "typescript"))]
@@ -66,12 +66,12 @@ pub type SomeType = String;
 
 /// Vec type alias.
 #[cfg(all(test, feature = "typescript"))]
-#[model_schema(name = "Tags")]
+#[model_schema(name = "Tags", enable = ["jsonschema"])]
 pub type Tags = Vec<String>;
 
 /// Generic type alias with single type parameter.
 #[cfg(all(test, feature = "typescript"))]
-#[model_schema(name = "Wrapper", default_types(T = String))]
+#[model_schema(name = "Wrapper", default_types(T = String), enable = ["jsonschema"])]
 pub type Wrapper<T> = Option<T>;
 
 #[cfg(all(test, feature = "typescript", feature = "serde"))]
@@ -100,7 +100,7 @@ struct CompactRowHolder {
 }
 
 #[cfg(all(test, feature = "typescript", feature = "serde"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct DocumentRecord {
     document_id: DocumentId,
@@ -421,7 +421,7 @@ fn test_struct_with_alias_zod_schema() {
 }
 
 #[test]
-#[cfg(all(feature = "jsonschema", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 fn test_scalar_alias_json_schema() {
     for (alias, schema, expected) in [
         (
@@ -450,7 +450,7 @@ fn test_scalar_alias_json_schema() {
 }
 
 #[test]
-#[cfg(all(feature = "jsonschema", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 fn test_optional_alias_json_schema() {
     assert_eq!(
         optional_note_schema::Schema::json_schema(),
@@ -459,7 +459,7 @@ fn test_optional_alias_json_schema() {
 }
 
 #[test]
-#[cfg(all(feature = "jsonschema", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 fn test_sequence_alias_json_schema() {
     assert_eq!(
         tags_schema::Schema::json_schema(),
@@ -469,7 +469,7 @@ fn test_sequence_alias_json_schema() {
 
 /// A tuple is the fixed-arity array serde writes it as, at the alias exactly as in field position.
 #[test]
-#[cfg(all(feature = "jsonschema", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 fn test_tuple_alias_json_schema() {
     assert_eq!(
         compact_link_row_schema::Schema::json_schema(),
@@ -489,7 +489,7 @@ fn test_tuple_alias_json_schema() {
 }
 
 #[test]
-#[cfg(all(feature = "jsonschema", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 fn test_nested_alias_json_schema() {
     assert_eq!(
         audit_id_schema::Schema::json_schema(),
@@ -502,7 +502,7 @@ fn test_nested_alias_json_schema() {
 }
 
 #[test]
-#[cfg(all(feature = "jsonschema", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 fn test_generic_alias_json_schema() {
     assert_eq!(
         pair_schema::Schema::json_schema(),
@@ -521,7 +521,7 @@ fn test_generic_alias_json_schema() {
 }
 
 #[test]
-#[cfg(all(feature = "jsonschema", feature = "typescript", feature = "serde"))]
+#[cfg(all(feature = "typescript", feature = "serde"))]
 fn test_struct_with_alias_json_schema() {
     let schema = DocumentRecord::json_schema();
 

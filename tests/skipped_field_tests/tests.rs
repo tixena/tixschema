@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 /// The field the surfaces owe nothing for, beside a member serde does write.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct SkippedField {
     id: String,
@@ -25,7 +25,7 @@ struct BothHalvesDropped {
 
 /// Only the write half. The key is never written and a supplied one is still read, so the member
 /// stays — read as its default when the key is missing.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct WriteHalfDropped {
     id: String,
@@ -35,7 +35,7 @@ struct WriteHalfDropped {
 
 /// Only the read half. The key is written in every payload and a supplied one is discarded, so the
 /// member stays under a required key.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ReadHalfDropped {
     id: String,
@@ -44,7 +44,7 @@ struct ReadHalfDropped {
 }
 
 /// The same question asked of a named variant member, whose defs are collected on their own path.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "kind")]
 enum SkippedVariantField {
@@ -56,7 +56,7 @@ enum SkippedVariantField {
 }
 
 /// And of an untagged one, collected on a third path again.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum SkippedUntaggedField {
@@ -301,7 +301,6 @@ fn zod_leaves_the_half_dropped_members_as_they_stand() {
 
 /// Neither described nor required: `properties` has no such entry to begin with.
 #[test]
-#[cfg(feature = "jsonschema")]
 fn the_json_schema_neither_describes_nor_requires_the_field_serde_never_carries() {
     let schema = SkippedField::json_schema();
 
@@ -314,7 +313,6 @@ fn the_json_schema_neither_describes_nor_requires_the_field_serde_never_carries(
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn the_json_schema_drops_the_variant_member_too() {
     let tagged = SkippedVariantField::json_schema();
     // With `serde`, `kind` is read as the internal tag and the member sits beside it.
@@ -346,7 +344,6 @@ fn the_json_schema_drops_the_variant_member_too() {
 
 /// The half-dropped members stay described, one out of `required` and one in it.
 #[test]
-#[cfg(feature = "jsonschema")]
 fn the_json_schema_leaves_the_half_dropped_members_as_they_stand() {
     let write_half = WriteHalfDropped::json_schema();
     assert_eq!(

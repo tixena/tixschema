@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 use super::lines;
 
 #[model_schema(enable = ["decode_with"])]
@@ -36,11 +36,11 @@ struct BoundedGroup {
 /// A label held to a rule of its own, which is where a rule for each item of a list is written.
 /// A brand's rule is read with its schema surface, so a build with none writes none.
 #[cfg_attr(
-    any(feature = "typescript", feature = "zod", feature = "jsonschema"),
+    any(feature = "typescript", feature = "zod"),
     model_schema(enable = ["decode_with"], minLength = 2)
 )]
 #[cfg_attr(
-    not(any(feature = "typescript", feature = "zod", feature = "jsonschema")),
+    not(any(feature = "typescript", feature = "zod")),
     model_schema(enable = ["decode_with"])
 )]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -53,7 +53,7 @@ struct BoundedLabel(String);
 struct BoundedPath(String);
 
 /// A literal of each kind, one under an `Option` and one on each item of a list.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct BoundedSeal {
@@ -174,7 +174,7 @@ enum BoundedDispatch {
 
 /// A struct whose first slot serde skips: the slots after it move up in the array. A build with
 /// no schema surface holds no bound, and does not build it.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct BoundedAfterASkip(
@@ -240,7 +240,7 @@ fn rejected(
     (read, calls)
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_broken_bound_is_listed_once_at_its_value() {
     let (read, calls) = rejected(broken());
@@ -280,7 +280,7 @@ fn the_reason_of_a_renamed_fields_bound_holds_no_name() {
             bounded_dispatch_schema::Verdict::Reject
         },
     );
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     {
         assert!(parcel.is_err(), "the callback rejected");
         assert_eq!(
@@ -301,7 +301,7 @@ fn the_reason_of_a_renamed_fields_bound_holds_no_name() {
             ]
         );
     }
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    #[cfg(not(any(feature = "typescript", feature = "zod")))]
     {
         assert_eq!(
             parcel,
@@ -321,7 +321,7 @@ fn the_reason_of_a_renamed_fields_bound_holds_no_name() {
 }
 
 /// A list that breaks its bound is one issue at the list, whatever its items are.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_list_that_breaks_its_bound_is_one_issue_at_the_list() {
     let stored = json!({ "level": 1_u32, "source": "Items", "tags": [], "title": "ok" });
@@ -336,7 +336,7 @@ fn a_list_that_breaks_its_bound_is_one_issue_at_the_list() {
 }
 
 /// A callback puts a list inside its bound at the issue's path, and the read answers it.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_callback_that_sets_a_list_at_its_path_recovers_the_read() {
     use bounded_group_schema::{Issue, Stored as _, Verdict};
@@ -379,7 +379,7 @@ fn a_broken_bound_in_a_tagged_variant_is_listed() {
     let label = BoundedShape::from_value_with(json!({ "kind": "Label", "text": "" }), |_, _| {
         bounded_shape_schema::Verdict::Reject
     });
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     {
         assert_eq!(
             lines(&circle.unwrap_err()),
@@ -393,7 +393,7 @@ fn a_broken_bound_in_a_tagged_variant_is_listed() {
             ]
         );
     }
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    #[cfg(not(any(feature = "typescript", feature = "zod")))]
     {
         assert_eq!(circle, Ok(BoundedShape::Circle { radius: 0 }));
         assert_eq!(
@@ -424,7 +424,7 @@ fn a_broken_bound_in_a_tagged_slot_is_listed_at_the_slot() {
         json!({ "data": ["a", 0_u32], "kind": "Pair" }),
         |_, _| AdjacentVerdict::Reject,
     );
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     {
         assert_eq!(
             lines(&code.unwrap_err()),
@@ -457,7 +457,7 @@ fn a_broken_bound_in_a_tagged_slot_is_listed_at_the_slot() {
             ]
         );
     }
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    #[cfg(not(any(feature = "typescript", feature = "zod")))]
     {
         assert_eq!(code, Ok(BoundedSlots::Code("abc".to_owned())));
         assert_eq!(pair, Ok(BoundedSlots::Pair("a".to_owned(), 0)));
@@ -479,7 +479,7 @@ fn a_list_in_a_variants_slot_is_listed_once_at_the_slot() {
     let held = BoundedSlots::from_value_with(json!({ "Many": ["only"] }), |_, _| Verdict::Reject);
     assert_eq!(held, Ok(BoundedSlots::Many(vec!["only".to_owned()])));
     let many = BoundedSlots::from_value_with(json!({ "Many": ["a", "b"] }), |_, _| Verdict::Reject);
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     assert_eq!(
         lines(&many.unwrap_err()),
         [
@@ -487,7 +487,7 @@ fn a_list_in_a_variants_slot_is_listed_once_at_the_slot() {
              too long: maximum length is 1, got 2"
         ]
     );
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    #[cfg(not(any(feature = "typescript", feature = "zod")))]
     assert_eq!(
         many,
         Ok(BoundedSlots::Many(vec!["a".to_owned(), "b".to_owned()]))
@@ -509,7 +509,7 @@ fn an_untagged_list_member_is_read_through_the_hook_that_counts_it() {
     let many = BoundedChooser::from_value_with(json!({ "choice": ["a", "b", "c"] }), |_, _| {
         Verdict::Reject
     });
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     assert_eq!(
         lines(&many.unwrap_err()),
         [
@@ -517,7 +517,7 @@ fn an_untagged_list_member_is_read_through_the_hook_that_counts_it() {
              tried Few, Text"
         ]
     );
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    #[cfg(not(any(feature = "typescript", feature = "zod")))]
     assert!(
         many.is_ok(),
         "no surface hangs the hook, so the list is read"
@@ -544,7 +544,7 @@ fn a_bound_written_on_the_enum_is_listed_at_each_string_it_reaches() {
     let label =
         BoundedByEnum::from_value_with(json!({ "Label": { "text": "" } }), |_, _| Verdict::Reject);
     let slot = BoundedByEnum::from_value_with(json!({ "Slot": "abcdef" }), |_, _| Verdict::Reject);
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     {
         assert_eq!(
             lines(&label.unwrap_err()),
@@ -561,7 +561,7 @@ fn a_bound_written_on_the_enum_is_listed_at_each_string_it_reaches() {
             ]
         );
     }
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    #[cfg(not(any(feature = "typescript", feature = "zod")))]
     {
         assert_eq!(
             label,
@@ -574,7 +574,7 @@ fn a_bound_written_on_the_enum_is_listed_at_each_string_it_reaches() {
 }
 
 /// A callback sets the slot at the issue's path, and the read answers the repaired value.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_callback_that_sets_a_slot_at_its_path_recovers_the_read() {
     use bounded_slots_schema::{Issue, Stored as _, Verdict};
@@ -612,7 +612,7 @@ fn a_broken_bound_in_a_tuple_structs_slot_is_listed_at_the_slot() {
         BoundedHolder::from_value_with(json!({ "lone": "a", "pair": ["a", 0_u32] }), |_, _| {
             HolderVerdict::Reject
         });
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     {
         assert_eq!(
             lines(&pair.unwrap_err()),
@@ -640,7 +640,7 @@ fn a_broken_bound_in_a_tuple_structs_slot_is_listed_at_the_slot() {
             ]
         );
     }
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    #[cfg(not(any(feature = "typescript", feature = "zod")))]
     {
         assert_eq!(pair, Ok(BoundedPair("a".to_owned(), 0)));
         assert_eq!(lone, Ok(BoundedLone("a".to_owned())));
@@ -662,7 +662,7 @@ fn the_one_slot_of_a_struct_is_held_to_its_bound_as_its_hook_reads_it() {
     let held = BoundedTrimmed::from_value_with(json!(" a "), |_, _| Verdict::Reject);
     assert_eq!(held, Ok(BoundedTrimmed("a".to_owned())));
     let blank = BoundedTrimmed::from_value_with(json!("  "), |_, _| Verdict::Reject);
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     assert_eq!(
         lines(&blank.unwrap_err()),
         [
@@ -670,12 +670,12 @@ fn the_one_slot_of_a_struct_is_held_to_its_bound_as_its_hook_reads_it() {
              minimum length is 1, got 0"
         ]
     );
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    #[cfg(not(any(feature = "typescript", feature = "zod")))]
     assert_eq!(blank, Ok(BoundedTrimmed(String::new())));
 }
 
 /// A callback sets each slot at its issue's path, and the read answers the repaired struct.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_callback_that_sets_a_tuple_structs_slots_at_their_paths_recovers_the_read() {
     use bounded_holder_schema::{Issue, Stored as _, Verdict};
@@ -713,7 +713,7 @@ fn a_callback_that_sets_a_tuple_structs_slots_at_their_paths_recovers_the_read()
 }
 
 /// The callback drops each value a bound refuses, and the read answers what is left.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_callback_that_removes_what_breaks_a_bound_recovers_the_read() {
     use bounded_group_schema::Stored as _;
@@ -751,7 +751,7 @@ fn a_callback_that_removes_what_breaks_a_bound_recovers_the_read() {
 
 /// A title that breaks two bounds is one issue at its path, its reason both violations joined by
 /// `; `, and one repair of the value settles the read.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_value_that_breaks_two_bounds_is_one_issue_at_its_path() {
     use bounded_group_schema::{Issue, Stored as _, Verdict};
@@ -786,7 +786,7 @@ fn a_value_that_breaks_two_bounds_is_one_issue_at_its_path() {
 
 /// A slot of a tuple variant that breaks two bounds is one issue, so a callback that removes the
 /// value at each issue's path takes that slot out of the array alone.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_slot_that_breaks_two_bounds_is_removed_alone() {
     use bounded_slots_schema::{Issue, Stored as _, Verdict};
@@ -836,12 +836,12 @@ fn a_value_inside_every_bound_never_reaches_the_callback() {
 #[test]
 fn plain_serde_refuses_what_breaks_a_bound() {
     let read = serde_json::from_value::<BoundedGroup>(broken());
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     assert_eq!(
         read.map_err(|refused| refused.to_string()),
         Err(broken_group().validate().unwrap_err().join("; "))
     );
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    #[cfg(not(any(feature = "typescript", feature = "zod")))]
     {
         let admitted = read.unwrap();
         assert_eq!(admitted, broken_group());
@@ -853,7 +853,7 @@ fn plain_serde_refuses_what_breaks_a_bound() {
 
 /// `validate()`, the Zod schema and the recovering decode give a slot after a skipped one the
 /// position it has in the array serde writes.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_slot_after_a_skipped_one_is_named_by_its_position_in_the_array() {
     let held = BoundedAfterASkip(
@@ -901,7 +901,7 @@ fn a_slot_after_a_skipped_one_is_named_by_its_position_in_the_array() {
 
 /// A broken literal is one issue at the value that breaks it, each item of a list at its index,
 /// and a callback that sets the literal there recovers the read.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_broken_literal_is_listed_once_at_its_value() {
     use bounded_seal_schema::{Issue, Stored as _, Verdict};

@@ -4,24 +4,24 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 /// A newtype struct: serde writes the slot's value alone, with nothing around it.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Plain(pub String);
 
 /// A wider tuple struct: serde writes a fixed-arity array.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Pair(pub String, pub u32);
 
 /// A slot cannot be omitted the way an object key can, so a `None` here reaches the wire as
 /// `null`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct MaybeName(pub Option<String>);
 
 /// A slot serde carries in neither direction: it is absent from the array serde writes and from
 /// every array serde reads, and the slot behind it moves up into its place.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct SkippedLeadSlot(#[serde(skip)] pub Option<String>, pub String);
 
@@ -39,17 +39,17 @@ pub struct BothHalvesDroppedSlot(
 pub struct SkippedTrailingSlot(pub String, #[serde(skip)] pub u32);
 
 /// A dropped slot between two carried ones, which is where renumbering is visible.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct SkippedMiddleSlot(pub String, #[serde(skip)] pub Option<String>, pub u32);
 
 /// Every slot dropped, which serde writes as the empty array rather than as nothing at all.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct EverySlotSkipped(#[serde(skip)] pub String, #[serde(skip)] pub u32);
 
 /// The lone slot of a newtype struct, which serde writes and reads whatever the attribute says.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct SkippedLoneSlot(#[serde(skip)] pub String);
 
@@ -147,7 +147,6 @@ fn test_a_newtype_struct_describes_the_bare_inner_type_in_zod() {
     assert!(!zod.contains("strictObject"), "Got: {zod}");
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_a_newtype_struct_describes_the_bare_inner_type_in_json_schema() {
     let wire = serde_json::to_value(Plain("hello".to_owned())).unwrap();
@@ -205,7 +204,6 @@ fn test_a_tuple_struct_zod_schema_is_annotated_with_its_typescript_type() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_a_wider_tuple_struct_describes_a_fixed_tuple_in_json_schema() {
     let wire = serde_json::to_value(Pair("hello".to_owned(), 1_u32)).unwrap();
@@ -247,7 +245,6 @@ fn test_an_optional_slot_describes_the_null_it_writes_in_zod() {
     assert!(binds(&zod, "z.nullable(z.string())"), "Got: {zod}");
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_an_optional_slot_describes_the_null_it_writes_in_json_schema() {
     let wire = serde_json::to_value(MaybeName(None)).unwrap();
@@ -390,7 +387,6 @@ fn test_zod_describes_the_arity_each_drop_leaves() {
 }
 
 /// The JSON surface carries the arity twice more, as its own bounds, and both move with the drop.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_a_dropped_slot_leaves_the_json_schema_prefix_and_its_bounds() {
     let wire = serde_json::to_value(SkippedLeadSlot(Some("s".to_owned()), "x".to_owned())).unwrap();
@@ -408,7 +404,6 @@ fn test_a_dropped_slot_leaves_the_json_schema_prefix_and_its_bounds() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_the_json_schema_describes_the_arity_each_drop_leaves() {
     assert_eq!(
@@ -465,7 +460,6 @@ fn test_zod_never_names_a_slot_by_its_absent_ident() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_json_schema_never_names_a_slot_by_its_absent_ident() {
     for json in [

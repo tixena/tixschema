@@ -408,10 +408,7 @@ fn every_section_the_section_names_is_a_heading_of_the_readme() {
 }
 
 /// The parcel of the section answers the 13 lines the parcel of the check models answers.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn the_parcel_of_the_section_answers_the_13_lines() {
     use core::fmt::Write as _;
@@ -454,10 +451,7 @@ fn the_parcel_of_the_section_answers_the_13_lines() {
 }
 
 /// The two reads the section shows are what a run answers.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn the_readme_shows_what_the_read_of_the_parcel_answers() {
     use super::models::Parcel;

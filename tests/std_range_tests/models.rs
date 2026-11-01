@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 /// A model with a bound of its own.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Milestone {
     #[model_schema_prop(minLength = 1)]
@@ -16,20 +16,20 @@ pub struct Milestone {
 }
 
 /// A brand with a bound of its own.
-#[model_schema(minLength = 2)]
+#[model_schema(minLength = 2, enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct Waymark(pub String);
 
 /// A type that declares a parameter, which a range fills.
-#[model_schema(default_types(Held = String))]
+#[model_schema(default_types(Held = String), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Itinerary<Held> {
     pub held: Held,
 }
 
 /// Each of the four ranges, of a number.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Spanned {
     pub closed: RangeInclusive<u32>,
@@ -40,7 +40,7 @@ pub struct Spanned {
 
 /// A range in each position that holds a value: a type argument, a map's value, a list, an
 /// `Option` and a tuple's position.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Positioned {
     pub filled: Itinerary<Range<u32>>,
@@ -53,21 +53,21 @@ pub struct Positioned {
 
 /// A second holder of a range in a type argument, whose client types are declared beside the
 /// first's.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Detour {
     pub filled: Itinerary<Range<u32>>,
 }
 
 /// A range of the type's own parameter.
-#[model_schema(default_types(Bound = u32))]
+#[model_schema(default_types(Bound = u32), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Stride<Bound> {
     pub span: Range<Bound>,
 }
 
 /// A range of a model and one of a brand, each with a bound of its own.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Signposted {
     pub marks: RangeInclusive<Milestone>,
@@ -75,7 +75,7 @@ pub struct Signposted {
 }
 
 /// The two ranges of one bound, of a brand.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Frontier {
     pub from: RangeFrom<Waymark>,
@@ -83,7 +83,7 @@ pub struct Frontier {
 }
 
 /// A range in a variant's slot and in a variant's member, of the type's own parameter.
-#[model_schema(default_types(Bound = u32))]
+#[model_schema(default_types(Bound = u32), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Course<Bound> {
     Named { span: Range<Bound> },
@@ -92,7 +92,7 @@ pub enum Course<Bound> {
 
 /// An untagged enum whose variants a range tells apart: one of a bounded brand, which the bound of
 /// each brand chooses, and one of a number.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum Compass {
@@ -101,14 +101,14 @@ pub enum Compass {
 }
 
 /// A map of ranges of a bounded brand, flattened into [`Excursion`].
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Atlas {
     pub keyed: BTreeMap<String, Range<Waymark>>,
 }
 
 /// Ranges of a model beside a flattened member.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Excursion {
     #[serde(flatten)]
@@ -119,7 +119,7 @@ pub struct Excursion {
 }
 
 /// Ranges of a model and of a bounded brand in the variants of an internally tagged enum.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 pub enum Waypost {
@@ -134,7 +134,7 @@ pub enum Waypost {
 
 /// A range of dates.
 #[cfg(feature = "chrono")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Rostered {
     pub shift: Range<chrono::DateTime<chrono::Utc>>,

@@ -244,27 +244,27 @@ const READS: [(&str, ReadAs); 5] = [
 ];
 
 /// An enum under its name with a map keyed by a number, which serde reads with no copy.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Baggywrinkle {
     Lines { depths: BTreeMap<u32, u8> },
 }
 
 /// A brand over a `char`, which serde reads from text of one character.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
 pub struct Futtock(pub char);
 
 /// A map keyed by a date under a key.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Gudgeon {
     pub days: BTreeMap<chrono::NaiveDate, u8>,
 }
 
 /// Maps under a key, keyed by a number, a `bool`, a `char` and a brand over a `char`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Marlinspike {
     pub counts: BTreeMap<u32, u8>,
@@ -288,7 +288,7 @@ pub struct Payload {
 
 /// An enum under a tag and a content key with a map keyed by a number, which serde reads where
 /// the tag comes first, as it writes it.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "body")]
 pub enum Scuttle {
@@ -296,7 +296,7 @@ pub enum Scuttle {
 }
 
 /// A map keyed by a brand over a `char`, flattened alone into its object.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Trunnel {
     #[serde(flatten)]

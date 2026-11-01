@@ -37,7 +37,7 @@ struct Van {
 }
 
 /// Holds a list of totes under its own type parameter, held to a count of its own.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema(enable = ["decode_with", "mongodb"], default_types(CodeType = String))]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(bound(deserialize = "CodeType: serde::de::DeserializeOwned"))]
@@ -47,7 +47,7 @@ struct Convoy<CodeType: Display> {
 }
 
 /// [`Convoy`] with a concrete filling.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct StringConvoy {
@@ -148,7 +148,7 @@ fn a_check_held_with_a_concrete_filling_is_listed_at_its_path_as_it_was() {
     assert_eq!(lines(read), [listed_at("load.fragileItemCodes[1]")]);
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_counted_list_held_under_the_holders_type_parameter_lists_the_issues_of_a_concrete_filling() {
     let sound = doc! { "itemCodeList": ["x"], "fragileItemCodes": ["x"] };

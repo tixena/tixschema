@@ -457,7 +457,7 @@ has to keep.
   `remote`. `serde_attribute_guard_errors` joins them to `rename_direction_guard_errors`, and
   `exec_model_schema` raises the two through one `refused_item_output`, every refusal of the item
   in one expansion, under the rename guard's gate: `serde` with any
-  of `typescript`, `zod`, `jsonschema`, `dart`, `swift` and `kotlin`. An `Option`, a member under
+  of `typescript`, `zod`, `dart`, `swift` and `kotlin`. An `Option`, a member under
   `skip` or `skip_deserializing`, and an enum that derives no `Deserialize` or reads itself
   through `from` or `try_from` are refused nothing: no surface reads them otherwise than serde
   does. A struct is refused none of the four: its key stays as "What has no JSON" says, and it
@@ -518,7 +518,7 @@ change has to keep.
 - **`src/features/text_forms.rs` is the one source of the forms**, under `dart`, `swift` or
   `kotlin`: `TextForm`, its `read`, `sent`, `unsecond` and `unzoned` patterns, the Zod 4.6.5
   patterns `DATE`, `TIME`, `TIME_SENT` and `OFFSET`, and `expected`, the words of a refusal.
-  `DATE` and `TIME_SENT` are compiled under `jsonschema` and `chrono` too: the JSON Schema holds a
+  `DATE` and `TIME_SENT` are compiled under `chrono` too: the JSON Schema holds a
   `NaiveTime` and a `NaiveDateTime` to them (section 4). Each
   client writes them in its own language: Dart inline (`src/features/dart/forms.rs`), Swift as
   private static functions of the type (`src/features/swift/forms.rs`), Kotlin as one serializer

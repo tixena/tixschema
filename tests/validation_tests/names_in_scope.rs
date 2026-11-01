@@ -3,10 +3,7 @@
 /// A module that imports a `Result` taking no type argument, beside each shape whose expansion
 /// writes a `Result` of its own: a read hook for a sibling type, `validate()`, a constrained
 /// brand's reader, and a unit struct's serde impls.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 mod a_one_parameter_result {
     use core::fmt::{Display, Formatter, Result};
     use serde::{Deserialize, Serialize};
@@ -81,10 +78,7 @@ mod a_one_parameter_result {
 
 /// A module that imports a second trait with a `fmt` method beside a brand, whose `Display`
 /// hands the formatting to the value it holds. A brand is displayed where a schema surface is on.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 mod a_second_trait_with_fmt {
     use core::fmt::Debug;
     #[cfg(feature = "mongodb")]
@@ -135,7 +129,7 @@ mod a_type_named_sized {
         use serde::{Deserialize, Serialize};
         use tixschema::model_schema;
 
-        #[model_schema()]
+        #[model_schema(enable = ["jsonschema"])]
         #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
         pub struct PlainHolder {
             pub inner: PlainInner,
@@ -145,7 +139,7 @@ mod a_type_named_sized {
             pub listed: Box<[i32]>,
         }
 
-        #[model_schema()]
+        #[model_schema(enable = ["jsonschema"])]
         #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
         pub struct PlainInner {
             pub number: i32,
@@ -155,7 +149,7 @@ mod a_type_named_sized {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder {
         pub inner: Inner,
@@ -165,7 +159,7 @@ mod a_type_named_sized {
         pub listed: Box<[i32]>,
     }
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Inner {
         pub number: i32,
@@ -213,7 +207,6 @@ mod a_type_named_sized {
         );
     }
 
-    #[cfg(feature = "jsonschema")]
     #[test]
     fn its_json_schema_is_what_it_is_without_the_name() {
         assert_eq!(

@@ -374,8 +374,7 @@ mod constrained_objectid_branded_tests {
     feature = "mongodb",
     feature = "serde",
     feature = "zod",
-    feature = "typescript",
-    feature = "jsonschema"
+    feature = "typescript"
 ))]
 mod objectid_branded_surface_tests {
     use super::*;
@@ -386,12 +385,12 @@ mod objectid_branded_surface_tests {
         r#"{ message: "Invalid ObjectId" })"#
     );
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct PlainObjectId(pub ObjectId);
 
-    #[model_schema(pattern = "^[0-9a-fA-F]{24}$")]
+    #[model_schema(pattern = "^[0-9a-fA-F]{24}$", enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct HexObjectId(pub ObjectId);
@@ -401,17 +400,17 @@ mod objectid_branded_surface_tests {
     /// `ObjectId` can be. `[a-z0-9]` (a class, since `.` is refused for cross-engine divergence)
     /// admits every lowercase letter, so the `zzz…` probe passes the brand's pattern and only the
     /// hex turns it away.
-    #[model_schema(pattern = "^[a-z0-9]{24}$")]
+    #[model_schema(pattern = "^[a-z0-9]{24}$", enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct WideObjectId(pub ObjectId);
 
-    #[model_schema(no_display)]
+    #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct ObjectIdList(pub Vec<ObjectId>);
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct HoldsObjectId {
         pub id: ObjectId,
@@ -559,21 +558,21 @@ mod objectid_branded_surface_tests {
     }
 }
 
-#[cfg(all(feature = "zod", feature = "typescript", feature = "jsonschema"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 mod branded_in_struct_all_features_tests {
     use super::*;
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct TaskId(pub String);
 
-    #[model_schema(default_types(T = String))]
+    #[model_schema(default_types(T = String), enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct TaskTypeId<T>(pub T);
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct Task {
         pub id: TaskId,
@@ -643,7 +642,7 @@ mod branded_in_struct_all_features_tests {
     }
 }
 
-#[cfg(all(feature = "zod", feature = "typescript", not(feature = "jsonschema")))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 mod branded_in_struct_no_jsonschema_tests {
     use super::*;
 
@@ -691,7 +690,7 @@ mod branded_in_struct_no_jsonschema_tests {
 
 /// A tuple in a map slot is unrenderable on the JSON surface alone, which is why the guard refusing
 /// it is gated with that surface — with `jsonschema` off the same brand still writes its record.
-#[cfg(all(not(feature = "jsonschema"), feature = "zod"))]
+#[cfg(feature = "zod")]
 mod branded_tuple_map_value_no_jsonschema_tests {
     use super::*;
     use std::collections::HashMap;
@@ -705,32 +704,31 @@ mod branded_tuple_map_value_no_jsonschema_tests {
     fn a_tuple_map_value_still_renders_without_the_json_surface() {
         let zod = SpanMap::zod_schema();
         assert!(
-            zod.contains("z.record(z.string(), z.tuple([z.number().int(), z.number().int()]))"),
+            zod.contains(
+                "z.record(z.string(), z.tuple([z.number().int().min(0).max(4294967295), \
+                 z.number().int().min(0).max(4294967295)]))"
+            ),
             "Got:\n{zod}"
         );
         assert!(zod.contains(&brand_marker("SpanMap")), "Got:\n{zod}");
     }
 }
 
-#[cfg(all(
-    feature = "jsonschema",
-    not(feature = "zod"),
-    not(feature = "typescript")
-))]
+#[cfg(all(not(feature = "zod"), not(feature = "typescript")))]
 mod branded_in_struct_jsonschema_only_tests {
     use super::*;
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct TaskIdJO(pub String);
 
-    #[model_schema(default_types(T = String))]
+    #[model_schema(default_types(T = String), enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct TaskTypeIdJO<T>(pub T);
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct TaskJO {
         pub id: TaskIdJO,
@@ -767,11 +765,7 @@ mod branded_in_struct_jsonschema_only_tests {
     }
 }
 
-#[cfg(all(
-    feature = "typescript",
-    not(feature = "zod"),
-    not(feature = "jsonschema")
-))]
+#[cfg(all(feature = "typescript", not(feature = "zod")))]
 mod branded_in_struct_typescript_only_tests {
     use super::*;
 
@@ -807,16 +801,15 @@ mod branded_in_struct_typescript_only_tests {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 mod branded_constrained_json_schema_tests {
     use super::*;
 
-    #[model_schema(minLength = 24, maxLength = 24, pattern = "^[a-f\\d]{24}$")]
+    #[model_schema(minLength = 24, maxLength = 24, pattern = "^[a-f\\d]{24}$", enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct ConstrainedId(pub String);
 
-    #[model_schema(minLength = 3, maxLength = 50)]
+    #[model_schema(minLength = 3, maxLength = 50, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct ShortId(pub String);
@@ -828,7 +821,8 @@ mod branded_constrained_json_schema_tests {
         minLength = 24,
         maxLength = 24,
         pattern = "^[a-f\\d]{24}$",
-        default_types(IdType = String)
+        default_types(IdType = String),
+        enable = ["jsonschema"]
     )]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
@@ -1154,7 +1148,7 @@ mod constrained_default_names_a_sibling_tests {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 mod branded_display_tests {
     use super::*;
     use core::fmt;
@@ -1217,7 +1211,7 @@ mod branded_display_tests {
 
 // A container inner type implements no Display, so `no_display` opts the brand out of the Display
 // impl and of the assertion that guards it.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 mod branded_no_display_tests {
     use super::*;
 
@@ -1226,7 +1220,7 @@ mod branded_no_display_tests {
     #[serde(transparent)]
     pub struct Tags(pub Vec<String>);
 
-    #[model_schema(no_display, default_types(T = String))]
+    #[model_schema(no_display, default_types(T = String), enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct TagList<T>(pub Vec<T>);
@@ -1258,64 +1252,59 @@ mod branded_no_display_tests {
 /// The four surfaces of a brand whose inner writes a container, pinned against what serde writes
 /// for it: `#[serde(transparent)]` puts the inner on the wire by itself, so an array inner writes
 /// an array, a map inner an object, and a tuple inner the fixed-arity array — never a string.
-#[cfg(all(
-    feature = "jsonschema",
-    feature = "serde",
-    feature = "typescript",
-    feature = "zod"
-))]
+#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 mod branded_composite_inner_tests {
     use super::*;
     use alloc::collections::BTreeSet;
     use std::collections::HashMap;
 
-    #[model_schema(no_display)]
+    #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct ByteQuad(pub [u8; 4]);
 
-    #[model_schema(no_display)]
+    #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct Grid(pub Vec<Vec<i32>>);
 
-    #[model_schema(no_display)]
+    #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct LabelList(pub Vec<String>);
 
-    #[model_schema(no_display)]
+    #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct LabelPair(pub (String, u32));
 
-    #[model_schema(no_display)]
+    #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct LabelSet(pub BTreeSet<String>);
 
-    #[model_schema(no_display)]
+    #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct SparseLabels(pub Vec<Option<String>>);
 
-    #[model_schema(no_display)]
+    #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct WeightMap(pub HashMap<String, u32>);
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct Label {
         pub key: String,
     }
 
-    #[model_schema(no_display)]
+    #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct LabelRow(pub Vec<Label>);
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct HoldsComposites {
         pub labels: Vec<String>,
@@ -1528,34 +1517,29 @@ mod branded_composite_inner_tests {
 }
 
 /// The four surfaces of a brand whose inner is written out of the brand's own type parameters.
-#[cfg(all(
-    feature = "jsonschema",
-    feature = "serde",
-    feature = "typescript",
-    feature = "zod"
-))]
+#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 mod branded_generic_inner_tests {
     use super::branded_no_display_tests::TagList;
     use super::*;
     use std::collections::HashMap;
 
-    #[model_schema(default_types(T = String))]
+    #[model_schema(default_types(T = String), enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct BareTag<T>(pub T);
 
-    #[model_schema(no_display, default_types(T = u32))]
+    #[model_schema(no_display, default_types(T = u32), enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct WeightIndex<T>(pub HashMap<String, T>);
 
-    #[model_schema(default_types(T = String))]
+    #[model_schema(default_types(T = String), enable = ["jsonschema"])]
     pub type BareSeq<T> = T;
 
-    #[model_schema(default_types(T = String))]
+    #[model_schema(default_types(T = String), enable = ["jsonschema"])]
     pub type TagSeq<T> = Vec<T>;
 
-    #[model_schema(default_types(T = u32))]
+    #[model_schema(default_types(T = u32), enable = ["jsonschema"])]
     pub type WeightSeq<T> = HashMap<String, T>;
 
     #[test]
@@ -1822,46 +1806,41 @@ mod branded_javascript_flavour_tests {
 
 /// The four surfaces of a brand whose inner names another type: `#[serde(transparent)]` puts the
 /// named type on the wire by itself, so an object inner writes that object — never a string.
-#[cfg(all(
-    feature = "jsonschema",
-    feature = "serde",
-    feature = "typescript",
-    feature = "zod"
-))]
+#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 mod branded_sibling_inner_tests {
     use super::*;
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct Part {
         pub a: String,
         pub b: u32,
     }
 
-    #[model_schema(no_display)]
+    #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct WrappedPart(pub Part);
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct HoldsPart {
         pub part: Part,
     }
 
     // Written before the type it names, which is what a reference has to survive.
-    #[model_schema(no_display)]
+    #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct WrappedTail(pub Tail);
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct Tail {
         pub z: String,
     }
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct Chain {
         pub name: String,
@@ -1869,37 +1848,37 @@ mod branded_sibling_inner_tests {
         pub next: Option<Box<ChainRef>>,
     }
 
-    #[model_schema(no_display)]
+    #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct ChainRef(pub Chain);
 
     // A string-shaped sibling: the one a constrained brand can be written over, the constrained
     // path asserting `Display` on the inner.
-    #[model_schema(maxLength = 10)]
+    #[model_schema(maxLength = 10, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct Slug(pub String);
 
-    #[model_schema(minLength = 3)]
+    #[model_schema(minLength = 3, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct ShortSlug(pub Slug);
 
     // A constrained brand written *before* the string-shaped sibling it names, so nothing is
     // recorded for that name when the brand asks what it publishes.
-    #[model_schema(minLength = 3)]
+    #[model_schema(minLength = 3, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct EarlySlug(pub LateSlug);
 
-    #[model_schema(maxLength = 10)]
+    #[model_schema(maxLength = 10, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct LateSlug(pub String);
 
     // The same forward declaration with the inner's argument fixed where it is written.
-    #[model_schema(minLength = 3)]
+    #[model_schema(minLength = 3, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct FixedTag(pub LateTag<String>);
@@ -1911,14 +1890,14 @@ mod branded_sibling_inner_tests {
     #[serde(transparent)]
     pub struct OpenTag<TagType>(pub LateTag<TagType>);
 
-    #[model_schema(default_types(TagType = String))]
+    #[model_schema(default_types(TagType = String), enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct LateTag<TagType>(pub TagType);
 
     // `FixedTag`'s mirror: the same two declarations, this one written where the registry has
     // already classified `LateTag`.
-    #[model_schema(minLength = 3)]
+    #[model_schema(minLength = 3, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct TrailingFixedTag(pub LateTag<String>);
@@ -2192,7 +2171,7 @@ mod branded_sibling_inner_tests {
 /// same string and is held to the same form, by its `"format"` or by the pattern of the text serde
 /// writes — reaching it through the TypeScript name every chrono type shares with `String` is what
 /// once dropped the keyword.
-#[cfg(all(feature = "chrono", feature = "jsonschema", feature = "serde"))]
+#[cfg(all(feature = "chrono", feature = "serde"))]
 mod branded_chrono_inner_tests {
     use super::*;
     use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
@@ -2200,37 +2179,37 @@ mod branded_chrono_inner_tests {
     /// The pattern a `NaiveTime` is held to: the text serde writes, its seconds written.
     const TIME_PATTERN: &str = r"^(?:(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\.[0-9]+)?)$";
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct Stamp(pub NaiveDate);
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct Clock(pub NaiveTime);
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct Moment(pub NaiveDateTime);
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct Instant(pub DateTime<Utc>);
 
-    #[model_schema(minLength = 10, maxLength = 10, pattern = r"^\d{4}-\d{2}-\d{2}$")]
+    #[model_schema(minLength = 10, maxLength = 10, pattern = r"^\d{4}-\d{2}-\d{2}$", enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct IsoStamp(pub NaiveDate);
 
-    #[model_schema(maxLength = 8, pattern = "^0")]
+    #[model_schema(maxLength = 8, pattern = "^0", enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct EarlyClock(pub NaiveTime);
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct HoldsChrono {
         pub clock: NaiveTime,
@@ -2512,15 +2491,12 @@ mod branded_chrono_zod_tests {
 
 // A brand's constrained value is its inner field itself, so a path inner is measured the way a path
 // field is: by the string serde writes for it.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 mod constrained_path_brand_tests {
     use super::*;
     use std::path::PathBuf;
 
-    #[model_schema(no_display, minLength = 3, pattern = "^/[a-z]+$")]
+    #[model_schema(no_display, minLength = 3, pattern = "^/[a-z]+$", enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct AssetPath(pub PathBuf);
@@ -2582,10 +2558,7 @@ mod constrained_path_brand_tests {
 
 // A transparent wrapper derefs to what it holds, so a path branded under one is the same path on
 // every surface. Compiling this module is the assertion.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 mod wrapped_path_brand_tests {
     use super::*;
     use alloc::borrow::Cow;
@@ -2595,22 +2568,22 @@ mod wrapped_path_brand_tests {
     use serde::de::DeserializeOwned;
     use std::path::{Path, PathBuf};
 
-    #[model_schema(no_display, minLength = 3, pattern = "^/[a-z]+$")]
+    #[model_schema(no_display, minLength = 3, pattern = "^/[a-z]+$", enable = ["jsonschema"])]
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct ArcedPath(pub Arc<Path>);
 
-    #[model_schema(no_display, minLength = 3, pattern = "^/[a-z]+$")]
+    #[model_schema(no_display, minLength = 3, pattern = "^/[a-z]+$", enable = ["jsonschema"])]
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct BoxedPath(pub Box<Path>);
 
-    #[model_schema(no_display, minLength = 3, pattern = "^/[a-z]+$")]
+    #[model_schema(no_display, minLength = 3, pattern = "^/[a-z]+$", enable = ["jsonschema"])]
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct CowedPath(pub Cow<'static, Path>);
 
-    #[model_schema(no_display, minLength = 3, pattern = "^/[a-z]+$")]
+    #[model_schema(no_display, minLength = 3, pattern = "^/[a-z]+$", enable = ["jsonschema"])]
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct RcedPath(pub Rc<Path>);
@@ -2720,7 +2693,6 @@ mod wrapped_path_brand_tests {
         }
     }
 
-    #[cfg(feature = "jsonschema")]
     #[test]
     fn test_a_wrapped_path_brand_renders_the_bare_brands_json_schema() {
         let bare = super::constrained_path_brand_tests::AssetPath::json_schema();
@@ -2737,10 +2709,7 @@ mod wrapped_path_brand_tests {
 
 // `no_display` drops the `Display` impl, not the `Display` requirement: a brand whose checks read
 // the inner's `to_string()` still needs it to render.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 mod constrained_no_display_tests {
     use super::*;
 
@@ -2856,39 +2825,39 @@ mod serde_tests {
 /// over a `u32` writes exactly what a field, a tuple struct and an alias of the same `u32` write.
 /// Pinned against each other because a keyword once taken from the rendered TypeScript name
 /// spelled `integer` three times and `number` once.
-#[cfg(all(feature = "jsonschema", feature = "serde"))]
+#[cfg(feature = "serde")]
 mod branded_scalar_keyword_tests {
     use super::*;
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct TickBrand(pub u32);
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct TickSlot(pub u32);
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     pub type TickAlias = u32;
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct HoldsTick {
         pub ticks: u32,
     }
 
-    #[model_schema(no_display)]
+    #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct RatioBrand(pub f64);
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct SwitchBrand(pub bool);
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct SlugBrand(pub String);
@@ -2934,21 +2903,21 @@ mod branded_scalar_keyword_tests {
 /// What the brand-slot refusal must leave where it is: the checks a brand does carry, which are
 /// written on the type; a brand carrying none; and a `#[serde(transparent)]` struct whose field is
 /// named, which is no brand and reads its field attribute on every surface.
-#[cfg(all(feature = "zod", feature = "typescript", feature = "jsonschema"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 mod untouched_by_the_slot_refusal_tests {
     use super::*;
 
-    #[model_schema(pattern = "^[a-z]+$", minLength = 2, maxLength = 8)]
+    #[model_schema(pattern = "^[a-z]+$", minLength = 2, maxLength = 8, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct TypeLevel(pub String);
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct BareBrand(pub String);
 
-    #[model_schema(pattern = "^[a-z]+$")]
+    #[model_schema(pattern = "^[a-z]+$", enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct NamedTransparent {
@@ -3032,19 +3001,9 @@ mod untouched_by_the_slot_refusal_tests {
     }
 }
 
-#[cfg(any(
-    feature = "serde",
-    feature = "zod",
-    feature = "typescript",
-    feature = "jsonschema"
-))]
+#[cfg(any(feature = "serde", feature = "zod", feature = "typescript"))]
 use serde::{Deserialize, Serialize};
-#[cfg(any(
-    feature = "serde",
-    feature = "zod",
-    feature = "typescript",
-    feature = "jsonschema"
-))]
+#[cfg(any(feature = "serde", feature = "zod", feature = "typescript"))]
 use tixschema::model_schema;
 
 /// The marker a brand carries, as this build spells it: the name is a *type* argument, which only

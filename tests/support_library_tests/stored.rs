@@ -2,10 +2,7 @@
 //! features tixschema is built with, and what a stored type may hold: a stored model in every
 //! position, a generic one, leaves, and a type with no walker of its own, read whole.
 
-#[cfg(all(
-    feature = "mongodb",
-    not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
-))]
+#[cfg(all(feature = "mongodb", not(any(feature = "typescript", feature = "zod"))))]
 mod plain;
 
 #[cfg(feature = "bson")]

@@ -49,13 +49,13 @@ struct CheckedCode(String);
 
 /// A brand held to a bound and to a check. A brand's bound is read with its schema surface, and
 /// the declaration is refused in a build with none.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema(enable = ["decode_with"], minLength = 3, check = ["sealInUpperCase"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct CheckedSeal(String);
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema(enable = ["decode_with"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct CheckedSealed {
@@ -210,7 +210,7 @@ fn with_a_route(value: &CheckedRoute) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn seal_in_upper_case(value: &CheckedSeal) -> Result<(), Vec<String>> {
     if value.0.chars().any(char::is_lowercase) {
         return Err(vec!["a seal is upper case".to_owned()]);
@@ -502,7 +502,7 @@ fn a_message_with_no_lead_is_at_the_root() {
 
 /// The type that holds a brand reads it with no judgement of its own, so one report lists what
 /// the brand's bound refuses and what its check refuses.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brands_bound_and_its_check_are_listed_in_one_read_of_the_type_that_holds_it() {
     let held =
@@ -669,7 +669,7 @@ fn a_members_check_is_listed_where_serde_writes_the_member_under_each_tagging() 
 
 /// A bound of a member and a check of it are listed at one path, the bound first: the walker
 /// lists the bound from the raw value, and the check runs on the value serde built.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_bound_and_a_check_of_one_value_are_two_issues() {
     let stored = json!({ "label": "", "itemCodeList": ["x", "x"], "fragileItemCodes": ["y"] });
@@ -727,7 +727,7 @@ fn a_model_held_in_a_slot_is_named_where_serde_writes_it() {
             ["'itemLabel': x is no label"],
         ]
     );
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     assert_eq!(
         [
             sealed.validate(),

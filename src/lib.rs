@@ -54,12 +54,12 @@
 //! |---|---|---|
 //! | TypeScript types | `T::ts_definition()` | `typescript` |
 //! | Zod v4 schemas | `T::zod_schema()` | `zod` |
-//! | JSON Schema documents | `T::json_schema()`, a `serde_json::Value` | `jsonschema` |
+//! | JSON Schema documents | `T::json_schema()`, a `serde_json::Value`, on a type that lists `enable = ["jsonschema"]` | any |
 //! | Dart classes with `fromJson`, `toJson` and `validate()` | `{type}_dart::dart_definition()` | `dart` |
 //! | Swift `Codable` types with `validate()` | `{type}_swift::swift_definition()` | `swift` |
 //! | Kotlin `kotlinx.serialization` classes with `validate()` | `{type}_kotlin::kotlin_definition()` | `kotlin` |
 //! | Serde renames, tags, flattening and defaults, read on every surface | the `#[serde(...)]` attributes already on the type | `serde` |
-//! | Field and type rules | `#[model_schema_prop(...)]` on a field and `#[model_schema(check = [...])]` on the type, giving `T::validate()` and a serde read that refuses what `validate()` refuses | `serde` with `typescript`, `zod` or `jsonschema`; a `check` in every build |
+//! | Field and type rules | `#[model_schema_prop(...)]` on a field and `#[model_schema(check = [...])]` on the type, giving `T::validate()` and a serde read that refuses what `validate()` refuses | `serde` with `typescript` or `zod`; a `check` in every build |
 //! | Recovering decode of old or untrusted values | `#[model_schema(enable = ["decode_with"])]` and `tixschema::decode_with_foundation!()`, giving `T::from_value_with` and `T::from_value_piped` through the crate's `DecodeWith` trait | `serde`; `bson` adds `T::from_bson_with` and `T::from_bson_piped` |
 //! | `MongoDB` typed paths, filters, updates and operations | `enable = ["decode_with", "mongodb"]` and `tixschema::mongodb_foundation!()`, giving `T::MONGO_FIELDS`, `T::find_one`, `T::find`, `T::count`, `value.insert_one`, `T::update_one`, `T::delete_one` and their siblings | `mongodb` |
 //! | `ObjectId` fields, chrono dates and times, `IndexMap` and `IndexSet` | a field of that type | `mongodb`, `chrono`, `indexmap` |
@@ -220,18 +220,13 @@ fn main() {
 //! reads it, and the documentation gets a JSON Schema:
 //!
 #![cfg_attr(
-    all(
-        feature = "serde",
-        feature = "typescript",
-        feature = "zod",
-        feature = "jsonschema"
-    ),
+    all(feature = "serde", feature = "typescript", feature = "zod"),
     doc = r##"
 ```rust
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum OrderEvent {
@@ -285,13 +280,13 @@ assert_eq!(document["oneOf"][0]["properties"]["type"]["const"], "orderPlaced");
 //! with a message that names the field. Each rule is written once, on its field:
 //!
 #![cfg_attr(
-    all(feature = "serde", feature = "zod", feature = "jsonschema"),
+    all(feature = "serde", feature = "zod"),
     doc = r##"
 ```rust
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Signup {
@@ -332,13 +327,13 @@ assert_eq!(Signup::json_schema()["properties"]["userName"]["minLength"], 3);
 //! read refuses a file that breaks a rule when the worker starts:
 //!
 #![cfg_attr(
-    all(feature = "serde", feature = "jsonschema"),
+    feature = "serde",
     doc = r##"
 ```rust
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkerConfig {
@@ -498,10 +493,7 @@ fn main() {
 //! also how a test drives it:
 //!
 #![cfg_attr(
-    all(
-        feature = "serde",
-        any(feature = "typescript", feature = "zod", feature = "jsonschema")
-    ),
+    all(feature = "serde", any(feature = "typescript", feature = "zod")),
     doc = r##"
 ```rust
 use serde::{Deserialize, Serialize};
@@ -755,18 +747,19 @@ fn main() {
 //!
 //! # Features
 //!
-//! The default is `web`. Three sets group the plain features: `web` is `serde`, `zod`,
-//! `jsonschema` and `typescript`; `mobile` is `serde`, `dart`, `swift` and `kotlin`; `mongo` is
+//! The default is `web`. Three sets group the plain features: `web` is `serde`, `zod` and
+//! `typescript`; `mobile` is `serde`, `dart`, `swift` and `kotlin`; `mongo` is
 //! `mongodb`, `chrono`, `indexmap` and `arky`. `mongodb` turns on `bson`, and `bson` and `arky`
 //! turn on `serde`. A feature says what tixschema can generate, and a type's `enable` list says
-//! what it generates for that type.
+//! what it generates for that type. JSON Schema is no feature: a type that lists
+//! `enable = ["jsonschema"]` gets `T::json_schema()`, and the crate that declares it lists
+//! `serde_json`.
 //!
 //! | Feature | What it adds | What your crate lists |
 //! |---|---|---|
-//! | `serde` | Reads serde's attributes on every surface. With `typescript`, `zod` or `jsonschema` on, writes `validate()` and the read that refuses what it refuses. `#[service_schema]` and the recovering decode need it. | `serde` with its `derive` feature. |
+//! | `serde` | Reads serde's attributes on every surface. With `typescript` or `zod` on, writes `validate()` and the read that refuses what it refuses. `#[service_schema]` and the recovering decode need it. | `serde` with its `derive` feature. |
 //! | `typescript` | `T::ts_definition()`. | Nothing. |
 //! | `zod` | `T::zod_schema()`, and `T::schema_examples()` on a type whose doc comment holds a code block fenced as `rust example`. | `serde_json` where a type holds such blocks. The TypeScript project installs `zod` at version 4. |
-//! | `jsonschema` | `T::json_schema()`. | `serde_json`. |
 //! | `dart` | `{type}_dart::dart_definition()`, and the Dart service clients. | Nothing in Rust. The Dart file imports `dart:convert`, and `dart:typed_data` or `dart:async` where the code names them; the code uses Dart 3 sealed classes, records and patterns. |
 //! | `swift` | `{type}_swift::swift_definition()`, and the Swift service clients. | Nothing in Rust. The Swift file imports `Foundation`. |
 //! | `kotlin` | `{type}_kotlin::kotlin_definition()`, and the Kotlin service clients. | Nothing in Rust. The Kotlin build applies the `kotlin("plugin.serialization")` plugin and depends on `kotlinx-serialization-json`. The Kotlin file imports `kotlinx.serialization.*` and its `builtins`, `descriptors`, `encoding` and `json` packages, and the build step writes its `package` line. `kotlin_ws_client()`, and the `kotlin_http_client()` of a service with a `body = "stream"` operation, also need `kotlinx-coroutines-core`. |
@@ -830,8 +823,8 @@ fn main() {
 //!   `preprocess`. serde's `remote`, `from`, `try_from` and `into` are refused on such a type, and
 //!   a method of your own named `validate` is a duplicate definition (`E0592`).
 //! - **A generic type publishes a Zod factory**, `Page$SchemaFactory(...)` and
-//!   `Page$SchemaDefault`, and no `Page$Schema`. Under `jsonschema` each type parameter needs a
-//!   `default_types` entry.
+//!   `Page$SchemaDefault`, and no `Page$Schema`. On a type that lists `enable = ["jsonschema"]`
+//!   each type parameter needs a `default_types` entry.
 //!
 //! # Reference
 //!
@@ -903,10 +896,10 @@ use service_schema::exec_service_schema;
 /// Kotlin, each read from the serde attributes the type carries.
 ///
 /// The macro keeps the item's fields and adds, on the type, one function per surface the build's
-/// features turn on. In a build with `typescript`, `zod` or `jsonschema` on, it also adds a module
-/// beside the type, `{type}_schema` (the Rust name in snake case). In a build with none of those
-/// three, such as `default-features = false, features = ["mobile"]`, no `{type}_schema` module is
-/// written, except the part `enable = ["decode_with"]` adds; the `{type}_dart`, `{type}_swift` and
+/// features turn on. In a build with `typescript` or `zod` on, it also adds a module beside the
+/// type, `{type}_schema` (the Rust name in snake case). In a build with neither, such as
+/// `default-features = false, features = ["mobile"]`, no `{type}_schema` module is written, except
+/// the part `enable = ["decode_with"]` adds; the `{type}_dart`, `{type}_swift` and
 /// `{type}_kotlin` modules are written under their own features. The [crate page](index.html) maps
 /// each feature to its surface and lists the crates the generated code names.
 ///
@@ -937,11 +930,11 @@ use service_schema::exec_service_schema;
 ///   `{type}_swift` and `{type}_kotlin` modules. The value spells an identifier. Two types that
 ///   publish one name are refused, and the refusal names both.
 /// - `default_types(T = String, ...)`: the type each type parameter is filled with where a surface
-///   needs one filling, which is `json_schema()` and Zod's `T$SchemaDefault`. Under `jsonschema`
-///   each type parameter needs an entry. An entry that names no parameter, and the argument on a
-///   type with no type parameter, are refused in every build.
+///   needs one filling, which is `json_schema()` and Zod's `T$SchemaDefault`. On a type that lists
+///   `enable = ["jsonschema"]` each type parameter needs an entry. An entry that names no
+///   parameter, and the argument on a type with no type parameter, are refused in every build.
 /// - `pattern = "regex"`, `minLength = N`, `maxLength = N`: rules on text, written on the type.
-///   On a branded newtype they hold its value, and need `typescript`, `zod` or `jsonschema` on. On
+///   On a branded newtype they hold its value, and need `typescript` or `zod` on. On
 ///   an enum they hold each string field and the name of each variant that carries no data, and a
 ///   variant name that breaks them is refused at expansion. They are refused on any other struct
 ///   and on an alias.
@@ -955,8 +948,9 @@ use service_schema::exec_service_schema;
 ///   it is read. Each Rust read calls `without_legacy_keys`, which takes and returns a
 ///   `serde_json::Value`, Zod wraps the schema in `z.preprocess`, and the Dart, Swift and Kotlin
 ///   reads call `withoutLegacyKeys`.
-/// - `enable = ["decode_with", "mongodb", "arky"]`: code this type opts into. Each entry is written
-///   once, and the list is never empty. An entry whose feature is off adds nothing.
+/// - `enable = ["decode_with", "mongodb", "arky", "jsonschema"]`: code this type opts into. Each
+///   entry is written once, and the list is never empty. An entry whose feature is off adds
+///   nothing.
 ///   - `"decode_with"`: the recovering decode, `T::from_value_with` and `T::from_value_piped`, and
 ///     under `bson` also `T::from_bson_with` and `T::from_bson_piped`, methods of the crate's
 ///     `DecodeWith` trait. The crate writes
@@ -967,6 +961,8 @@ use service_schema::exec_service_schema;
 ///     [`mongodb_foundation!()`](macro.mongodb_foundation.html) at its root.
 ///   - `"arky"`: under the `arky` feature, `TryFrom<&T>` for `arky::parser::ast::Value` and
 ///     `TryFrom<&arky::parser::ast::Value>` for `T`, both through serde. Refused on an alias.
+///   - `"jsonschema"`: `T::json_schema()` and `{type}_schema::Schema::json_schema_within`. Every
+///     model type `T` holds lists it too, or the build stops at `T` with `E0599`.
 ///
 /// The bare argument `decode_with` is refused with the `enable` form to write in its place.
 ///
@@ -979,22 +975,22 @@ use service_schema::exec_service_schema;
 /// - `T::zod_schema() -> String` (`zod`): `T$RawSchema` and `export const T$Schema`. A generic
 ///   type publishes the factory `T$SchemaFactory(...)` and `T$SchemaDefault` in place of
 ///   `T$Schema`.
-/// - `T::json_schema() -> serde_json::Value` (`jsonschema`): one self-contained document, whose
-///   objects are closed with `"additionalProperties": false` and list in `required` the keys serde
-///   always writes. A generic type's document is built at its `default_types`, and
-///   `{type}_schema::Schema::json_schema_with(&[...])` builds it at other fillings, one document
-///   per type parameter in declaration order.
+/// - `T::json_schema() -> serde_json::Value` (`enable = ["jsonschema"]`): one self-contained
+///   document, whose objects are closed with `"additionalProperties": false` and list in
+///   `required` the keys serde always writes. A generic type's document is built at its
+///   `default_types`, and `{type}_schema::Schema::json_schema_with(&[...])` builds it at other
+///   fillings, one document per type parameter in declaration order.
 /// - `T::validate(&self) -> Result<(), Vec<String>>`, where a field or the type carries a rule, or
 ///   a field holds a type that does. It runs every bound, literal and check, and leads each message
 ///   with the value's path in the payload: `'lines.1.quantity': too large: maximum is 99, got 120`.
-///   Bounds and literals are held under `serde` with `typescript`, `zod` or `jsonschema` on, and
+///   Bounds and literals are held under `serde` with `typescript` or `zod` on, and
 ///   checks in every build.
 /// - The type's `Deserialize`, where `T` derives it and has `validate()` or names a `preprocess`:
 ///   serde's own read, then `validate()`. Every serde read then refuses a payload that breaks a
 ///   rule, with the messages joined by `; `. `T::model_schema_read_unjudged` is the read alone.
-/// - `T::schema_examples()` and `T::schema_example()` (`zod`), on a type whose doc comment holds
-///   code blocks fenced as `rust example`: each block is compiled as a value of `T`, and the values
-///   are also written into Zod's `.meta({ examples })`.
+/// - `T::schema_examples()` (`zod`, or `enable = ["jsonschema"]`) and `T::schema_example()`
+///   (`zod`), on a type whose doc comment holds code blocks fenced as `rust example`: each block is
+///   compiled as a value of `T`, and the values are also written into Zod's `.meta({ examples })`.
 /// - `T::enum_members() -> Vec<String>`, on an enum whose variants carry no data, in every build:
 ///   the names serde writes.
 /// - `{type}_dart::dart_definition()`, `{type}_swift::swift_definition()` and
@@ -1277,12 +1273,7 @@ export const Event$Schema: ZodType<Event> = Event$RawSchema.meta({
 /// header of [Getting started](index.html#getting-started) does:
 ///
 #[cfg_attr(
-    all(
-        feature = "serde",
-        feature = "typescript",
-        feature = "zod",
-        feature = "jsonschema"
-    ),
+    all(feature = "serde", feature = "typescript", feature = "zod"),
     doc = r##"
 ```rust
 use serde::{Deserialize, Serialize};
@@ -1303,7 +1294,7 @@ pub struct InvoiceRecord {
     pub total_cents: u32,
 }
 
-#[model_schema(default_types(T = String))]
+#[model_schema(default_types(T = String), enable = ["jsonschema"])]
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Page<T> {
@@ -1457,8 +1448,8 @@ export const Document$Schema: ZodType<Document> = Document$RawSchema.meta({
 /// - **`E0277` at a brand's inner field, naming `Display`**: the inner type has no `Display`. Write
 ///   `no_display`; a brand over text that carries `pattern`, `minLength` or `maxLength` still needs
 ///   a `Display` inner.
-/// - **A type parameter with no `default_types` entry**, under `jsonschema`: refused at the
-///   parameter.
+/// - **A type parameter with no `default_types` entry**, on a type that lists
+///   `enable = ["jsonschema"]`: refused at the parameter.
 /// - **`pattern`, `minLength` or `maxLength` on a struct that is no brand**: refused; write them on
 ///   the field with `#[model_schema_prop(...)]`.
 ///
@@ -1764,7 +1755,7 @@ pub fn mongodb_foundation(input: TokenStream) -> TokenStream {
 /// # Where a rule is held
 ///
 /// A bound or a literal is held by Zod and JSON Schema, by Rust's `validate()` and the serde read
-/// that runs it (under `serde` with `typescript`, `zod` or `jsonschema` on), and by the
+/// that runs it (under `serde` with `typescript` or `zod` on), and by the
 /// `validate()` and the read of the Dart, Swift and Kotlin types, which write Rust's sentences.
 /// Lengths agree on ASCII text only: Rust counts UTF-8 bytes, Zod UTF-16 code units, and Dart,
 /// Swift and Kotlin code points.
@@ -1781,10 +1772,7 @@ pub fn mongodb_foundation(input: TokenStream) -> TokenStream {
 /// `validate()` judges a value built in code:
 ///
 #[cfg_attr(
-    all(
-        feature = "serde",
-        any(feature = "typescript", feature = "zod", feature = "jsonschema")
-    ),
+    all(feature = "serde", any(feature = "typescript", feature = "zod")),
     doc = r#"
 ```rust
 use serde::{Deserialize, Serialize};
@@ -1814,18 +1802,13 @@ assert_eq!(messages.len(), 2);
 /// The rules on every surface, and the read that refuses a payload:
 ///
 #[cfg_attr(
-    all(
-        feature = "serde",
-        feature = "typescript",
-        feature = "zod",
-        feature = "jsonschema"
-    ),
+    all(feature = "serde", feature = "typescript", feature = "zod"),
     doc = r##"
 ```rust
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OrderLine {
@@ -1921,10 +1904,7 @@ assert!(refused.contains(r#"'currency': not the literal "EUR", got USD"#));
 /// `Issue::Invalid` at the path the message names.
 ///
 #[cfg_attr(
-    all(
-        feature = "serde",
-        any(feature = "typescript", feature = "zod", feature = "jsonschema")
-    ),
+    all(feature = "serde", any(feature = "typescript", feature = "zod")),
     doc = include_str!("check_example.md")
 )]
 ///
@@ -1971,10 +1951,7 @@ assert!(refused.contains(r#"'currency': not the literal "EUR", got USD"#));
 /// needs the `bson` crate:
 ///
 #[cfg_attr(
-    all(
-        feature = "serde",
-        any(feature = "typescript", feature = "zod", feature = "jsonschema")
-    ),
+    all(feature = "serde", any(feature = "typescript", feature = "zod")),
     doc = include_str!("preprocess_example.md")
 )]
 ///
@@ -2245,10 +2222,7 @@ pub fn model_schema_prop(_args: TokenStream, input: TokenStream) -> TokenStream 
 /// `FrameSession` is the transport the client macro writes for one real socket.
 ///
 #[cfg_attr(
-    all(
-        feature = "serde",
-        any(feature = "typescript", feature = "zod", feature = "jsonschema")
-    ),
+    all(feature = "serde", any(feature = "typescript", feature = "zod")),
     doc = r#"
 ```rust
 use serde::{Deserialize, Serialize};
@@ -2597,10 +2571,7 @@ pub fn service_schema(args: TokenStream, input: TokenStream) -> TokenStream {
 /// response. Nothing here opens a socket.
 ///
 #[cfg_attr(
-    all(
-        feature = "serde",
-        any(feature = "typescript", feature = "zod", feature = "jsonschema")
-    ),
+    all(feature = "serde", any(feature = "typescript", feature = "zod")),
     doc = include_str!("service_schema_op_example.md")
 )]
 ///

@@ -5,28 +5,28 @@ use tixschema::model_schema;
 
 // One enum per tagging, each carrying only the container-level `rename_all_fields`, so what the
 // surfaces name for the members can come from nowhere else.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all_fields = "camelCase")]
 enum ExternalFieldCasing {
     Made { another_one: u32, my_field: u32 },
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all_fields = "camelCase")]
 enum InternalFieldCasing {
     Made { another_one: u32, my_field: u32 },
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "payload", rename_all_fields = "camelCase")]
 enum AdjacentFieldCasing {
     Made { another_one: u32, my_field: u32 },
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged, rename_all_fields = "camelCase")]
 enum UntaggedFieldCasing {
@@ -35,7 +35,7 @@ enum UntaggedFieldCasing {
 
 // The three steps of serde's precedence on one enum: `Marked` overrides the container with its own
 // rule, `Renamed` overrides both with the member's own key, and `Plain` takes the container's.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all_fields = "camelCase")]
 enum PrecedenceFieldCasing {
@@ -60,7 +60,7 @@ enum IndependentCasing {
     MadeVariant { my_field: u32 },
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 enum VariantNameCasingOnly {
@@ -84,7 +84,7 @@ enum PlainVariantCasing {
 
 /// The keys serde wrote in the object at `pointer` of the document for `value`, sorted so a key
 /// set can be compared against one read off a schema.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn wire_keys<T>(value: &T, pointer: &str) -> Vec<String>
 where
     T: Serialize,
@@ -93,7 +93,7 @@ where
     sorted_keys(payload.pointer(pointer).unwrap())
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn sorted_keys(object: &serde_json::Value) -> Vec<String> {
     let mut keys: Vec<String> = object.as_object().unwrap().keys().cloned().collect();
     keys.sort();
@@ -117,7 +117,6 @@ fn assert_renders_wire_keys(rendered: &str, keys: &[String]) {
 /// Whether a closed document (`additionalProperties: false`) accepts `payload`: every key on the
 /// wire is named, and every required key is on the wire. A `oneOf` needs exactly one accepting
 /// branch, an `anyOf` at least one.
-#[cfg(feature = "jsonschema")]
 fn closed_document_accepts(schema: &serde_json::Value, payload: &serde_json::Value) -> bool {
     if let Some(branches) = schema.get("oneOf") {
         return accepting_branches(branches, payload) == 1;
@@ -134,7 +133,6 @@ fn closed_document_accepts(schema: &serde_json::Value, payload: &serde_json::Val
             .all(|key| written.contains_key(key.as_str().unwrap()))
 }
 
-#[cfg(feature = "jsonschema")]
 fn accepting_branches(branches: &serde_json::Value, payload: &serde_json::Value) -> usize {
     branches
         .as_array()
@@ -144,7 +142,6 @@ fn accepting_branches(branches: &serde_json::Value, payload: &serde_json::Value)
         .count()
 }
 
-#[cfg(feature = "jsonschema")]
 fn assert_accepts<T>(schema: &serde_json::Value, value: &T)
 where
     T: Serialize,
@@ -402,7 +399,6 @@ fn variant_name_casing_zod_leaves_members_at_their_idents() {
     assert!(zod.contains("my_field: z.number().int()"), "Got:\n{zod}");
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn externally_tagged_json_schema_names_the_keys_serde_wrote() {
     let schema = ExternalFieldCasing::json_schema();
@@ -427,7 +423,6 @@ fn externally_tagged_json_schema_names_the_keys_serde_wrote() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn internally_tagged_json_schema_names_the_keys_serde_wrote() {
     let schema = InternalFieldCasing::json_schema();
@@ -439,7 +434,6 @@ fn internally_tagged_json_schema_names_the_keys_serde_wrote() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn adjacently_tagged_json_schema_names_the_keys_serde_wrote() {
     let schema = AdjacentFieldCasing::json_schema();
@@ -451,7 +445,6 @@ fn adjacently_tagged_json_schema_names_the_keys_serde_wrote() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn untagged_json_schema_names_the_keys_serde_wrote() {
     let schema = UntaggedFieldCasing::json_schema();
@@ -463,7 +456,6 @@ fn untagged_json_schema_names_the_keys_serde_wrote() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn precedence_json_schema_matches_serde() {
     let schema = PrecedenceFieldCasing::json_schema();
@@ -480,7 +472,6 @@ fn precedence_json_schema_matches_serde() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn variant_name_casing_json_schema_leaves_members_at_their_idents() {
     let schema = VariantNameCasingOnly::json_schema();

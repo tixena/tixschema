@@ -11,12 +11,12 @@ use tixschema::model_schema;
 
 #[cfg(feature = "zod")]
 use super::models::Quay;
+#[cfg(any(feature = "typescript", feature = "zod"))]
+use super::models::variant_report;
 use super::models::{
     AdjacentBerthing, Berthing, ExternalBerthing, UntaggedBerthing, VARIANT_CASES, VARIANT_REPORT,
     north_dock,
 };
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-use super::models::{untagged_berthing_schema, variant_report};
 
 /// The untagged enum under another name.
 #[cfg(feature = "zod")]
@@ -102,7 +102,7 @@ pub struct Slipway {
 }
 
 /// An enum none of whose members is read as a default.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind")]
 pub enum Tide {
@@ -238,7 +238,7 @@ fn the_variant_table_prints_a_row_for_each_payload() {
 
 /// Every row of the table, as serde reads it where a schema surface is on: a build with none
 /// holds `line` to no bound.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn serde_reads_each_variant_payload_as_the_table_says() {
     assert_eq!(variant_report(), VARIANT_REPORT);
@@ -401,7 +401,6 @@ fn the_zod_schema_parses_the_default_of_each_member_of_a_variant() {
 
 /// The JSON Schema of each tagging leaves each key read as a default out of `required` and states
 /// the default.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn the_json_schema_states_the_default_of_each_member_of_a_variant() {
     let docked = |object: &serde_json::Value| {
@@ -488,7 +487,7 @@ fn the_zod_schema_of_a_member_no_refusal_reaches_is_as_before() {
 
 /// An enum with no `#[serde(default)]` writes on every surface the text it wrote before a member
 /// of a variant was read as its default: `Tide`, pinned whole.
-#[cfg(all(feature = "typescript", feature = "jsonschema"))]
+#[cfg(feature = "typescript")]
 #[test]
 fn an_enum_with_no_default_writes_the_typescript_text_it_wrote() {
     let lines = [
@@ -546,7 +545,6 @@ export const Tide$Schema: ZodType<Tide> = Tide$RawSchema.meta({
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn an_enum_with_no_default_writes_the_json_schema_it_wrote() {
     assert_eq!(

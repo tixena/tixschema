@@ -7,7 +7,6 @@
 #![cfg(all(
     feature = "serde",
     feature = "zod",
-    feature = "jsonschema",
     feature = "typescript",
     feature = "dart",
     feature = "swift",
@@ -27,7 +26,7 @@ mod tests {
     use serde_json::Value;
 
     /// The features the case is built with: the ones this file is compiled under.
-    const FEATURES: &str = r#""serde", "zod", "jsonschema", "typescript", "dart", "swift", "kotlin", "mongodb", "chrono", "indexmap""#;
+    const FEATURES: &str = r#""serde", "zod", "typescript", "dart", "swift", "kotlin", "mongodb", "chrono", "indexmap""#;
 
     /// One error rustc reports for the case: its code, and the source text its first span holds.
     struct Reported {

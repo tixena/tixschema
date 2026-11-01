@@ -6,13 +6,13 @@ extern crate alloc;
 // newtype is only emitted when a generation feature (typescript/zod/jsonschema) is enabled.
 #[cfg(test)]
 #[cfg(feature = "serde")]
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[path = "untagged_tests/tests.rs"]
 mod tests;
 
 /// What a JSON Schema document admits.
 #[cfg(test)]
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[cfg(feature = "serde")]
 #[path = "std_range_tests/documents.rs"]
 mod documents;
 
@@ -32,14 +32,14 @@ mod nulls;
 /// A bound on a member whose type names the enum's own type parameter, held as the member is read.
 #[cfg(test)]
 #[cfg(feature = "serde")]
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[path = "untagged_tests/parameter_bounds.rs"]
 mod parameter_bounds;
 
 /// A rule of a model a member holds, which chooses no variant, and the README's statement of it.
 #[cfg(test)]
 #[cfg(feature = "serde")]
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[path = "untagged_tests/held_rules.rs"]
 mod held_rules;
 

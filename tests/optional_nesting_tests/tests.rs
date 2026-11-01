@@ -28,7 +28,7 @@ const REPEAT_CHECK: &str = ".check((ctx) => {
 
 /// The `Option` inside the wrapper. Serde always writes the array, so the key is always present and
 /// the `None` reaches the wire as a `null` among the items.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ElementNullFields {
     set_items: BTreeSet<Option<u32>>,
@@ -38,7 +38,7 @@ struct ElementNullFields {
 /// The `Option` around the wrapper. In field position a `None` writes either an absent key or a bare
 /// `null` under it, and the generated contract now admits both — dropping the key still satisfies the
 /// guard, so this shape keeps the omission.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct SlotNullFields {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -49,7 +49,7 @@ struct SlotNullFields {
 
 /// The same four nestings in the two slots that cannot be dropped, plus the one holding both
 /// `Option`s at once — the levels are independent, and neither swallows the other.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct NullNestingSlots {
     map_both: HashMap<String, Option<Vec<Option<u32>>>>,
@@ -139,30 +139,25 @@ fn test_each_slot_writes_the_null_its_own_option_puts_there() {
     assert_eq!(payload["tuple_both"][1], serde_json::json!([null]));
 }
 
-#[cfg(feature = "jsonschema")]
 fn integer_or_null() -> serde_json::Value {
     serde_json::json!({ "anyOf": [{ "type": "integer" }, { "type": "null" }] })
 }
 
-#[cfg(feature = "jsonschema")]
 fn array_of(items: &serde_json::Value) -> serde_json::Value {
     serde_json::json!({ "type": "array", "items": items })
 }
 
-#[cfg(feature = "jsonschema")]
 fn or_null(base: &serde_json::Value) -> serde_json::Value {
     serde_json::json!({ "anyOf": [base, { "type": "null" }] })
 }
 
 /// The array of a set, whose items are distinct.
-#[cfg(feature = "jsonschema")]
 fn set_of(items: &serde_json::Value) -> serde_json::Value {
     serde_json::json!({ "type": "array", "items": items, "uniqueItems": true })
 }
 
 /// `schema` with the `uniqueItems` of each set taken out: what a set describes beside what its
 /// `Vec` twin describes.
-#[cfg(feature = "jsonschema")]
 fn without_unique_items(schema: &serde_json::Value) -> serde_json::Value {
     match schema {
         serde_json::Value::Object(members) => serde_json::Value::Object(
@@ -183,7 +178,6 @@ fn without_unique_items(schema: &serde_json::Value) -> serde_json::Value {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_an_element_null_field_describes_as_an_array_of_nullable_items() {
     let schema = ElementNullFields::json_schema();
     assert_eq!(
@@ -206,7 +200,6 @@ fn test_an_element_null_field_describes_as_an_array_of_nullable_items() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_a_slot_null_field_describes_as_the_array_it_writes_when_present() {
     let schema = SlotNullFields::json_schema();
     let integer = serde_json::json!({ "type": "integer" });
@@ -230,7 +223,6 @@ fn test_a_slot_null_field_describes_as_the_array_it_writes_when_present() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_each_slot_describes_the_null_its_own_option_writes() {
     let properties = NullNestingSlots::json_schema()["properties"].clone();
     let integer = serde_json::json!({ "type": "integer" });
@@ -382,7 +374,6 @@ fn test_the_zod_surface_puts_the_nullable_at_the_level_it_was_written() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_a_set_nesting_describes_as_the_vec_nesting_it_writes() {
     let properties = NullNestingSlots::json_schema()["properties"].clone();
     for (set_field, vec_field) in [

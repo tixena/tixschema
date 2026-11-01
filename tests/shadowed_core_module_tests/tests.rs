@@ -82,7 +82,7 @@ fn a_type_declared_beside_them_reads() {
     assert_eq!(read.tags, None);
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_type_declared_beside_them_validates() {
     let broken = BalanceRequest {

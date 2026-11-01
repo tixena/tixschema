@@ -1,8 +1,9 @@
 //! The messages an operation did not name: `<Operation>Request` for the argument-list and
-//! zero-argument shapes, emitted like any other type with its TypeScript, Zod and JSON Schema.
+//! zero-argument shapes, emitted like any other type with its TypeScript and Zod, and with its JSON
+//! Schema where the service asks for `openapi`.
 
 use super::parse::{GeneratedMessage, ServiceDef};
-use super::support::exhaustiveness;
+use super::support::{exhaustiveness, model_schema_attribute};
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::Type;
@@ -88,11 +89,11 @@ use syn::Type;
 /// It is a build failure either way, which is what a bundle needs: nothing that reaches TypeScript
 /// can carry the same generated message twice. Whether the macro should say so in one sentence
 /// instead is a separate question and not one this emitter answers today.
-pub fn emit(service: &ServiceDef, non_exhaustive: bool) -> TokenStream {
+pub fn emit(service: &ServiceDef, non_exhaustive: bool, openapi: bool) -> TokenStream {
     let declared = service
         .generated_messages
         .iter()
-        .map(|generated| message(generated, non_exhaustive));
+        .map(|generated| message(generated, non_exhaustive, openapi));
     quote! {
         #(#declared)*
     }
@@ -132,9 +133,10 @@ fn cost_note(operation: &str, empty: bool) -> Vec<String> {
     }
 }
 
-fn message(declared: &GeneratedMessage, non_exhaustive: bool) -> TokenStream {
+fn message(declared: &GeneratedMessage, non_exhaustive: bool, openapi: bool) -> TokenStream {
     let named = &declared.ident;
     let sealed = exhaustiveness(non_exhaustive);
+    let model_schema = model_schema_attribute(openapi);
     let members = declared.fields.iter().map(|(field, carried)| {
         if is_option_type(carried) {
             // `#[model_schema()]` requires an `Option<T>` field to say what an absent value does on
@@ -153,7 +155,7 @@ fn message(declared: &GeneratedMessage, non_exhaustive: bool) -> TokenStream {
     );
     quote! {
         #(#[doc = #rustdoc])*
-        #[::tixschema::model_schema()]
+        #model_schema
         #[derive(::serde::Serialize, ::serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
         #sealed

@@ -5,7 +5,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use tixschema::model_schema;
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct Address {
     city: String,
@@ -15,7 +15,7 @@ struct Address {
 /// `u64`/`usize` are the whole point of this sweep, so the item is gated out entirely when the
 /// Swift or Kotlin target refuses those widths, rather than swapped to a signed width.
 #[cfg(not(any(feature = "swift", feature = "kotlin")))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct AllNumericTypes {
     f32: f32,
@@ -32,7 +32,7 @@ struct AllNumericTypes {
     usize: usize,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct ArrayFields {
     numbers: Vec<i32>,
@@ -41,7 +41,7 @@ struct ArrayFields {
     tags: Vec<String>,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct BasicStruct {
     active: bool,
@@ -50,7 +50,7 @@ struct BasicStruct {
     score: f64,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct ComplexCollections {
     map_of_arrays: HashMap<String, Vec<String>>,
@@ -59,25 +59,25 @@ struct ComplexCollections {
 }
 
 #[cfg(feature = "serde")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct CustomFieldRename {
     #[serde(rename = "customName")]
     field_name: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct EmptyStruct;
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct MapFields {
     counts: HashMap<String, i32>,
     metadata: HashMap<String, String>,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct OptionalFields {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -89,7 +89,7 @@ struct OptionalFields {
     required: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct Person {
     address: Address,
@@ -98,7 +98,7 @@ struct Person {
 }
 
 #[cfg(feature = "serde")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 struct RenamedFields {
@@ -106,7 +106,7 @@ struct RenamedFields {
     user_name: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 enum Status {
     Active,
@@ -341,7 +341,7 @@ fn test_complex_nested_collections() {
 fn test_objectid_generates_proper_schema() {
     use mongodb::bson::oid::ObjectId;
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Serialize, Deserialize, Debug, Clone)]
     struct Document {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -393,7 +393,7 @@ fn test_empty_struct_generates_valid_schema() {
 
 #[test]
 fn test_schema_has_required_structure() {
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Serialize, Deserialize, Debug, Clone)]
     struct Test {
         field: String,
@@ -407,4 +407,25 @@ fn test_schema_has_required_structure() {
     assert!(schema.get("properties").is_some());
     assert!(schema.get("required").is_some());
     assert!(schema.get("additionalProperties").is_some());
+}
+
+/// A type that lists `"jsonschema"` answers its document, with its field's rule in it.
+#[test]
+fn a_type_that_lists_the_entry_answers_its_document() {
+    #[model_schema(enable = ["jsonschema"])]
+    #[derive(Debug, Deserialize, Serialize)]
+    pub struct Signup {
+        #[model_schema_prop(minLength = 3)]
+        pub username: String,
+    }
+
+    assert_eq!(
+        Signup::json_schema(),
+        serde_json::json!({
+            "additionalProperties": false,
+            "properties": { "username": { "minLength": 3_u32, "type": "string" } },
+            "required": ["username"],
+            "type": "object"
+        })
+    );
 }

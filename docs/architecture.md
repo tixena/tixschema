@@ -16,7 +16,7 @@ How the macros turn a declaration into each surface, the data structures they sh
    - `exec_model_schema()` routes to `process_struct()`, `process_enum()`, `process_type_alias()`, or `process_branded_newtype()`
    - Parses Serde attributes when `serde` feature enabled
    - Extracts example code from doc comments (every ` ```rust example` fence)
-   - Generates methods: `ts_definition()`, optionally `json_schema()`, optionally `schema_examples()` with `schema_example()`, and optionally `validate()`
+   - Generates methods: `ts_definition()`, `json_schema()` for a type that lists `enable = ["jsonschema"]`, optionally `schema_examples()` with `schema_example()`, and optionally `validate()`
    - `process_branded_newtype()`: handles `#[serde(transparent)]` structs serde writes as the value of one field -- a single-slot tuple struct, or a struct with named fields -- generating Zod brand schemas or `unique symbol` branded TypeScript types
 
 3. **Type Analysis** ([field_type.rs](../src/field_type.rs))
@@ -28,7 +28,7 @@ How the macros turn a declaration into each surface, the data structures they sh
 4. **Feature Modules** ([features/](../src/features/))
    - `serde.rs`: Parses Serde attributes (`rename`, `rename_all`, `tag`, etc.), and says what serde writes on the way to a member (`member_steps`, `variant_steps`, over `Tagging`)
    - `zod.rs`: Generates Zod v4 schema strings (`z.string()`, `z.union()`, etc.), embeds examples in `.meta()`
-   - `jsonschema.rs`: Generates JSON schema objects
+   - `jsonschema.rs`: Generates the JSON Schema document of a type that lists `enable = ["jsonschema"]`. The code compiles in every build; `ModelSchemaArgs::enable.jsonschema` decides whether a type's expansion writes it
    - `object_id.rs`: MongoDB ObjectId type detection and schema generation
    - `recovering_decode.rs`: Generates what `#[model_schema(enable = ["decode_with"])]` adds to a type: an `impl` of the crate's `DecodeWith` trait holding `from_value_with` and `from_value_piped`, `from_bson_with` and `from_bson_piped` under `bson`, and the walker of each. It also writes the two support libraries the initializers put at a crate root, `__tixschema_decode_with` (the callback's and the resolvers' types, what one walker hands another, and under `bson` the BSON pieces) and `__tixschema_mongodb` (under `mongodb`, the query types and what the operations answer), and the re-export of both, name by name, in each `{type}_schema`. `recovering_decode/enums.rs` holds the walkers of an enum, and the names its typed paths read a variant by (`written_variants`, `tag_arms`). Under `mongodb` three more files emit, for a type that lists `"mongodb"`: `recovering_decode/query.rs` the query types into the MongoDB library (`Filter`, `ArmFilter`, `Update`, `ArmUpdate`, the path kinds, `nest`), `recovering_decode/fields.rs` the type's own typed paths into its module and onto the type (`MongoFields`, `MONGO_FIELDS`, one function per field, and one per arm of an enum under a tag), and `recovering_decode/operations.rs` the operations onto the type (`find_one`, `find`, `count`, `insert_one`, the updates and the deletes) and `Read` and `OperationError` into the library
    - `model_schema_prop.rs`: Parses field-level customization attributes (`pattern`, `minLength`, `maxLength`, `minimum`, `maximum`, `literal`, `as`, `preprocess`, `check`)
@@ -164,10 +164,11 @@ The crate uses optional features for minimal dependencies:
 
 - `serde`: Enables Serde attribute parsing and field renaming
 - `zod`: Enables Zod schema generation (v4 syntax)
-- `jsonschema`: Enables `json_schema()` method generation
 - `mongodb`: Enables MongoDB ObjectId type support; turns on `bson`. On a type that lists `"mongodb"` in `enable = ["decode_with", "mongodb"]` it also generates the typed field paths (`MONGO_FIELDS`, one function per field, `nest` below a nested type, and `<tag>__<value>()` for each arm of an enum under a tag), the filters and updates they build, and the operations over a `mongodb::Collection<bson::Document>` of the type's rows. A consuming crate that declares such a type lists the `mongodb` driver, built for the major version of `bson` it lists, and writes `tixschema::mongodb_foundation!();` at its root beside `tixschema::decode_with_foundation!();`
 - `bson`: BSON support, turned on by `mongodb`; turns on `serde`. Generates `from_bson_with` and `from_bson_piped`, methods of `DecodeWith`, on every type that lists `"decode_with"`, whether it lists `"mongodb"` or not, and the BSON pieces of the `decode_with` library. A crate that declares a flagged type names `bson`, and lists it, in every build with this feature on; it needs no `mongodb` unless a type lists `"mongodb"`
 - `typescript`: Enables TypeScript type generation
+
+JSON Schema is no feature: `json_schema()` and `json_schema_within()` are written for a type whose `enable` list holds `"jsonschema"` (`Enabled::jsonschema`), and every model type such a type holds lists the entry too, its document calling each held type's `json_schema_within`. A crate that lists the entry on no type needs no `serde_json` for it.
 - `chrono`: Enables chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`)
 - `indexmap`: Enables indexmap type support: `IndexMap` as a map, `IndexSet` as a list. It adds no dependency: the generated code names the types of the crate that declares them. With the feature off a type written `IndexMap<_, _>` or `IndexSet<_>` is refused at `exec_model_schema` with the feature named (`indexmap_feature_errors`), unless the crate declared a type of its own under the name above
 - `dart`: Enables Dart type generation with a JSON codec whose read calls each `preprocess` and refuses what `validate()` refuses, a `validate()` on every type, and the Dart HTTP client
@@ -175,9 +176,9 @@ The crate uses optional features for minimal dependencies:
 - `arky`: turns on `serde`. On a type that lists `"arky"` in its `enable` list it writes `TryFrom<&T> for arky::parser::ast::Value`, through `arky::value::to_value`, and `TryFrom<&arky::parser::ast::Value> for T`, through `arky::value::from_value`, both with `arky::value::ValueError`; a type with parameters bounds each impl on the type itself (`where T<..>: Serialize`, `where T<..>: DeserializeOwned`). `src/features/arky.rs` writes them, and `exec_model_schema` appends them after every shape. The entry is read in every build and adds nothing without the feature; `arky_guard_errors` refuses it on a type alias in every build. The recovering decode reads arky's `Value` through `from_value_with`, after `Into<serde_json::Value>`: the entry adds no source of its own. A consuming crate lists `arky`; tixschema's tests take it as a dev-dependency (`tests/arky_tests.rs`)
 - `kotlin`: Enables Kotlin type generation with `kotlinx.serialization` annotations, a `validate()` on every type that runs the bounds and calls the checks, and a serializer of each type that throws what `validate()` answers of the value it read. A consuming Kotlin build declares two dependencies: the runtime library `org.jetbrains.kotlinx:kotlinx-serialization-json` and the Kotlin Gradle plugin `kotlin("plugin.serialization")`
 
-**Feature sets**: `web` (the default: `serde`, `zod`, `jsonschema`, `typescript`), `mobile` (`serde`, `dart`, `swift`, `kotlin`) and `mongo` (`mongodb`, `chrono`, `indexmap`, `arky`). CI tests the powerset of the sets (`just test-sets`); `just test` runs the powerset of the plain features locally
+**Feature sets**: `web` (the default: `serde`, `zod`, `typescript`), `mobile` (`serde`, `dart`, `swift`, `kotlin`) and `mongo` (`mongodb`, `chrono`, `indexmap`, `arky`). CI tests the powerset of the sets (`just test-sets`); `just test` runs the powerset of the plain features locally
 
-**Default configuration**: `serde`, `zod`, `jsonschema`, `typescript` (the `mongodb`, `bson`, `chrono`, `indexmap`, `dart`, `swift` and `kotlin` features are opt-in)
+**Default configuration**: `serde`, `zod`, `typescript` (the `mongodb`, `bson`, `chrono`, `indexmap`, `dart`, `swift` and `kotlin` features are opt-in)
 
 ## TypeScript Generation Pattern
 
@@ -355,8 +356,7 @@ tixschema/
 let ts = MyType::ts_definition();
 println!("Generated:\n{}", ts);
 
-// Print JSON schema
-#[cfg(feature = "jsonschema")]
+// Print JSON schema, for a type that lists `enable = ["jsonschema"]`
 println!("{}", serde_json::to_string_pretty(&MyType::json_schema())?);
 
 // Check which features are enabled

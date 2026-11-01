@@ -883,7 +883,7 @@ fn a_declared_item_publishes_under_its_whole_ident() {
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn ident_schema_module_name_is_derived_from_the_ident_alone() {
     assert_eq!(ident_schema_module_name("LaterAlias"), "later_alias_schema");
@@ -905,7 +905,7 @@ fn ident_schema_module_name_is_derived_from_the_ident_alone() {
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_unrenamed_item_publishes_the_same_module_under_either_derivation() {
     for ident in ["LaterItem", "LaterItemData", "HTTPHeader", "A"] {

@@ -51,6 +51,8 @@ pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream
                 multipart_envelope_refusal(&service, &wanted.transports),
                 stream_envelope_refusal(&service, &wanted.transports),
                 reserved_header_out_refusal(&service, &wanted.transports),
+                openapi_transport_refusal(&wanted),
+                openapi_path_refusal(&service, wanted.openapi.as_ref()),
             ]
             .into_iter()
             .flatten()
@@ -60,11 +62,12 @@ pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream
             });
             combined_refusal.map_or_else(
                 || {
-                    let messages = messages::emit(&service, wanted.non_exhaustive);
+                    let openapi = wanted.openapi.is_some();
+                    let messages = messages::emit(&service, wanted.non_exhaustive, openapi);
                     // The module is handed the asked-for list as well: it anchors, at the
                     // declaration, the root names a transport's macro reaches through `$crate`.
                     let support =
-                        support::emit(&service, &wanted.transports, wanted.non_exhaustive);
+                        support::emit(&service, &wanted.transports, wanted.non_exhaustive, openapi);
                     // Both halves a transport contributes are `macro_rules!` bodies, so they stay
                     // at the trait's scope; `#[macro_export]` hoists each name to the crate root.
                     let transports = transport::emit(&service, &wanted.transports);
@@ -500,6 +503,59 @@ fn reserved_header_out_message(operation: &Ident) -> String {
          that name is reserved - amqp_rpc's own reply handle already writes it on every failed \
          reply; bind the value under another name"
     )
+}
+
+/// Refuses `openapi` on a service whose `transports` lacks `http_rest`, the one transport whose
+/// methods, paths, statuses and headers the document describes.
+#[cfg(feature = "serde")]
+fn openapi_transport_refusal(wanted: &transport::ServiceArguments) -> Option<syn::Error> {
+    let asked = wanted.openapi.as_ref()?;
+    if wanted.transports.contains(&transport::Transport::HttpRest) {
+        return None;
+    }
+    Some(syn::Error::new(
+        asked.keyword.span(),
+        "service_schema: `openapi` describes the `http_rest` transport, and this service does not \
+         ask for it\n       \
+         add \"http_rest\" to `transports`, or remove `openapi`",
+    ))
+}
+
+/// Refuses the path `openapi` answers its document at where an operation already answers `GET`
+/// there, spanned on the `path` literal, or on `openapi` where none is written.
+#[cfg(feature = "serde")]
+fn openapi_path_refusal(
+    service: &parse::ServiceDef,
+    openapi: Option<&transport::OpenApiArguments>,
+) -> Option<syn::Error> {
+    let asked = openapi?;
+    let served_at = asked.served_at();
+    let span = asked
+        .path
+        .as_ref()
+        .map_or_else(|| asked.keyword.span(), syn::LitStr::span);
+    service
+        .operations
+        .iter()
+        .filter(|operation| {
+            let shape = parse::HttpShape::of(operation);
+            shape.method == parse::HttpMethod::Get && shape.path_template() == served_at
+        })
+        .map(|operation| {
+            syn::Error::new(
+                span,
+                format!(
+                    "service_schema: operation `{}` already answers `GET {served_at}`, so the \
+                     OpenAPI document cannot be served there\n       \
+                     write another `path` in `openapi(...)`",
+                    operation.ident
+                ),
+            )
+        })
+        .reduce(|mut collected, refusal| {
+            collected.combine(refusal);
+            collected
+        })
 }
 
 /// What a build without the `serde` feature is told, and why it is told rather than worked around.

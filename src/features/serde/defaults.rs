@@ -69,13 +69,6 @@ type Built = (TokenStream, TokenStream);
 /// and one under the container's default where the struct has a parameter. A list, a set or a map
 /// under the bare `default` is among them whatever its type names: its default is the empty
 /// collection at every filling, `[]` or `{}`.
-#[cfg(any(
-    feature = "zod",
-    feature = "jsonschema",
-    feature = "dart",
-    feature = "swift",
-    feature = "kotlin"
-))]
 pub struct SerdeDefaults {
     container: Option<TokenStream>,
     /// Each member read as its default: the variant it is a member of, `None` for a struct's, the
@@ -84,13 +77,6 @@ pub struct SerdeDefaults {
     members: Vec<(Option<String>, String, TokenStream, TokenStream)>,
 }
 
-#[cfg(any(
-    feature = "zod",
-    feature = "jsonschema",
-    feature = "dart",
-    feature = "swift",
-    feature = "kotlin"
-))]
 impl SerdeDefaults {
     /// The placeholder a client writes for the default of `field` of `variant`, `None` for a
     /// struct's.
@@ -348,7 +334,6 @@ fn declared(generics: &Generics) -> Vec<String> {
     any(
         feature = "typescript",
         feature = "zod",
-        feature = "jsonschema",
         feature = "dart",
         feature = "swift",
         feature = "kotlin"
@@ -537,13 +522,6 @@ fn named_reason(named: &str, generics: &Generics) -> String {
 
 /// The text a surface writes where the default of the member `index` goes, replaced by its JSON
 /// when the text is built. Two control characters keep it from meeting anything an author writes.
-#[cfg(any(
-    feature = "zod",
-    feature = "jsonschema",
-    feature = "dart",
-    feature = "swift",
-    feature = "kotlin"
-))]
 pub fn placeholder(index: usize) -> String {
     format!("\u{1}serde-default-{index}\u{1}")
 }
@@ -700,14 +678,5 @@ fn written_default(attrs: &[Attribute]) -> Option<Written> {
 }
 
 #[cfg(test)]
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "zod",
-        feature = "jsonschema",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
-))]
+#[cfg(feature = "serde")]
 mod tests;

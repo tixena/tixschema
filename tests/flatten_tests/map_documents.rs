@@ -82,7 +82,7 @@ pub enum Cleat {
 }
 
 /// A map keyed by a plain enum.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Bitt {
     #[serde(flatten)]
@@ -90,11 +90,11 @@ pub struct Bitt {
 }
 
 /// A map under a name of its own.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 pub type HoldTallies = BTreeMap<String, u8>;
 
 /// A map flattened through an alias.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Ballasted {
     #[serde(flatten)]
@@ -103,7 +103,7 @@ pub struct Ballasted {
 
 /// A map keyed by a date, which serde reads from the text of each key.
 #[cfg(feature = "chrono")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Tidemarks {
     #[serde(flatten)]
@@ -112,14 +112,14 @@ pub struct Tidemarks {
 
 /// A brand over a date, which keys [`Tidedays`].
 #[cfg(feature = "chrono")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
 pub struct Tideday(pub chrono::NaiveDate);
 
 /// A map keyed by a brand over a date, which serde reads from the text of each key.
 #[cfg(feature = "chrono")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Tidedays {
     #[serde(flatten)]

@@ -2,12 +2,7 @@
 //! it, keeps its own description on every surface: a field written with the name is that type. A
 //! binary of its own: the name is read off a registry the whole crate shares.
 
-#![cfg(all(
-    feature = "serde",
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema"
-))]
+#![cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 
 #[cfg(test)]
 mod tests {
@@ -18,7 +13,7 @@ mod tests {
     use tixschema::model_schema;
 
     /// The crate's own type named `Result`.
-    #[model_schema(default_types(Held = u32, Refused = String))]
+    #[model_schema(default_types(Held = u32, Refused = String), enable = ["jsonschema"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Result<Held, Refused> {
         pub held: Held,
@@ -26,7 +21,7 @@ mod tests {
     }
 
     /// A field written with the crate's own `Result`.
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Shelved {
         pub outcome: Result<u32, String>,

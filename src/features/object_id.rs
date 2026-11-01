@@ -5,7 +5,6 @@
 
 /// The 24-character hex an `ObjectId`'s `$oid` holds, written once: the JSON Schema `pattern` and
 /// the Zod literal both read it from here.
-#[cfg(any(test, feature = "zod", feature = "jsonschema"))]
 pub const OBJECT_ID_HEX_PATTERN: &str = "^[a-f0-9]{24}$";
 
 /// Detects if a type name represents a `MongoDB` `ObjectId`.

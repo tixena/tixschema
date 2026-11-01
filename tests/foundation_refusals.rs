@@ -2,8 +2,10 @@
 //! list it cannot read, an initializer written twice or handed an argument, a type that lists
 //! `"mongodb"` with a map keyed by a number, its own or a held model's, a map keyed by a number
 //! or a `bool` under `#[serde(flatten)]` and in an enum serde buffers, untagged or under a tag
-//! alone, an enum that declares no variant, under a tag or not, and a member that holds an
-//! `i128`.
+//! alone, an enum that declares no variant, under a tag or not, a member that holds an `i128`, a
+//! type that does not list `"jsonschema"` asked for its document or held by one that does, and a
+//! service whose `openapi` lacks `http_rest`, names a path that is no route or that an operation
+//! answers with `GET`, or writes a key it does not take.
 //! Each case in `foundation_refusals/` is a crate of its own, held to the `.stderr` file beside
 //! it; the initializer written twice, in `foundation_refusals/written_twice/`, is held to the code
 //! and the name of each error, which rustc reports differently from one release to the next.
@@ -12,7 +14,6 @@
 #![cfg(all(
     feature = "serde",
     feature = "zod",
-    feature = "jsonschema",
     feature = "typescript",
     feature = "dart",
     feature = "swift",
@@ -33,7 +34,7 @@ mod tests {
     use trybuild::TestCases;
 
     /// The features the cases are built with: the ones this file is compiled under.
-    const FEATURES: &str = r#""serde", "zod", "jsonschema", "typescript", "dart", "swift", "kotlin", "mongodb", "chrono", "indexmap""#;
+    const FEATURES: &str = r#""serde", "zod", "typescript", "dart", "swift", "kotlin", "mongodb", "chrono", "indexmap""#;
 
     #[test]
     fn each_case_fails_with_the_errors_written_beside_it() {

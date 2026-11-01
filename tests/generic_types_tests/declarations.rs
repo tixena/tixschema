@@ -21,7 +21,6 @@ mod defaulted;
 mod ranged;
 
 /// What a JSON Schema document admits.
-#[cfg(feature = "jsonschema")]
 #[path = "../std_range_tests/documents.rs"]
 mod documents;
 
@@ -157,7 +156,6 @@ use core::fmt::Write as _;
 use chrono::{DateTime, Utc};
 #[cfg(feature = "mongodb")]
 use mongodb::bson::oid::ObjectId;
-#[cfg(feature = "jsonschema")]
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -2022,7 +2020,7 @@ pub struct DeclaredBounded {
     pub sort: Option<DeclaredPath>,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct DeclaredLabel(pub String);
@@ -2059,13 +2057,13 @@ pub struct DeclaredStamped {
 }
 
 /// `()` as a brand's value, which serde writes as `null`.
-#[model_schema(no_display)]
+#[model_schema(no_display, enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct DeclaredNothing(());
 
 /// `()` in each place a value is held: a member, a list's item, a tuple's position and a brand.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeclaredUnits {
     pub listed: Vec<()>,
@@ -2101,7 +2099,7 @@ pub struct DeclaredExampled {
 /// ```rust example
 /// DeclaredExampledLabel("b".to_owned())
 /// ```
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct DeclaredExampledLabel(pub String);
@@ -2113,14 +2111,14 @@ pub struct DeclaredExampledLabel(pub String);
 /// ```rust example
 /// DeclaredExampledPair { id: "y".to_owned() }
 /// ```
-#[model_schema(default_types(IdType = String))]
+#[model_schema(default_types(IdType = String), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeclaredExampledPair<IdType> {
     pub id: IdType,
 }
 
 /// An alias of the generic struct that writes two, which shows them.
-#[model_schema(default_types(IdType = String))]
+#[model_schema(default_types(IdType = String), enable = ["jsonschema"])]
 pub type DeclaredExampledPairAlias<IdType> = DeclaredExampledPair<IdType>;
 
 /// A brand with a length of its own, and a member that writes a pattern beside it.
@@ -2139,21 +2137,21 @@ pub struct DeclaredSlugged {
 }
 
 /// A one-slot tuple struct over a brand, which publishes the brand's own binding.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeclaredLabelSlot(pub DeclaredLabel);
 
 /// An alias of a brand, which publishes it too.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 pub type DeclaredLabelRef = DeclaredLabel;
 
 /// A one-slot tuple struct over a brand that writes examples, which shows them.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeclaredExampledLabelSlot(pub DeclaredExampledLabel);
 
 /// An alias of a brand that writes examples, which shows them.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 pub type DeclaredExampledLabelRef = DeclaredExampledLabel;
 
 /// An alias that writes a block of its own.
@@ -2165,7 +2163,7 @@ pub type DeclaredExampledLabelRef = DeclaredExampledLabel;
 pub type DeclaredWrittenCount = u32;
 
 /// An alias of a primitive that writes no block.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 pub type DeclaredUnwrittenCount = u32;
 
 /// One of a cycle of two, declared above the type its list holds.
@@ -2256,12 +2254,10 @@ pub struct CodedCrate<CodeType> {
 
 /// Each model a payload of the ranges is read as: its name, whether serde reads a JSON as it, and
 /// its JSON Schema.
-#[cfg(feature = "jsonschema")]
 type RangedModel = (&'static str, fn(&str) -> bool, fn() -> serde_json::Value);
 
 /// The models the payloads of a `Result` are read as: the name, whether the type judges a model it
 /// holds, what serde's read prints, and the JSON Schema.
-#[cfg(feature = "jsonschema")]
 type ResultedModel = (
     &'static str,
     bool,
@@ -2812,7 +2808,7 @@ fn object_ids_bundle() -> String {
 }
 
 /// The JSON Schema of the type a row of [`object_ids::rows`] is read as.
-#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
+#[cfg(feature = "mongodb")]
 fn object_id_document(read_as: &str) -> serde_json::Value {
     match read_as {
         "Endorsed" => object_ids::Endorsed::json_schema(),
@@ -3032,7 +3028,6 @@ fn defaults() -> String {
 }
 
 /// `value` written with the keys of each object in order, as the driver of the ranges writes it.
-#[cfg(feature = "jsonschema")]
 fn sorted_keys(value: &serde_json::Value) -> String {
     match value {
         serde_json::Value::Object(object) => {
@@ -3720,7 +3715,6 @@ fn wire_form_schema(held_by: &str) -> String {
 /// What serde's read of `json` as a `T` prints, as the driver of the `Result`s prints the same
 /// payload: the value, with the keys of each object in order, or the refusal, with each message
 /// of `validate()` where the type judges a model it holds.
-#[cfg(feature = "jsonschema")]
 fn result_read<T>(name: &str, json: &str, judged: bool) -> (bool, String)
 where
     T: DeserializeOwned,
@@ -3747,7 +3741,6 @@ where
 }
 
 /// Whether serde reads `json` as a `T`.
-#[cfg(feature = "jsonschema")]
 fn serde_reads<T>(json: &str) -> bool
 where
     T: DeserializeOwned,
@@ -3756,7 +3749,6 @@ where
 }
 
 /// The models the payloads of the ranges are read as.
-#[cfg(feature = "jsonschema")]
 fn ranged_models() -> Vec<RangedModel> {
     vec![
         (
@@ -3819,7 +3811,6 @@ fn ranged_models() -> Vec<RangedModel> {
 }
 
 /// The models the payloads of a `Result` are read as.
-#[cfg(feature = "jsonschema")]
 fn resulted_models() -> Vec<ResultedModel> {
     vec![
         (
@@ -4097,7 +4088,6 @@ fn type_check_a_member_bound_beside_a_brand_reports_under_zod_what_validate_repo
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn an_alias_and_a_one_slot_struct_over_a_type_that_writes_examples_carry_them_in_json_schema() {
     let brand_examples = serde_json::json!(["a", "b"]);
@@ -4119,7 +4109,6 @@ fn an_alias_and_a_one_slot_struct_over_a_type_that_writes_examples_carry_them_in
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn an_alias_of_a_type_that_writes_none_carries_no_examples_in_json_schema() {
     for document in [
@@ -4815,7 +4804,6 @@ fn type_check_the_check_of_a_generic_type_that_holds_its_parameter_compiles() {
 /// Every payload serde writes of a range is parsed by the Zod schema of its type under `node` and
 /// admitted by the type's JSON Schema, and every payload serde refuses is refused by both: a key
 /// no range writes, a bound left out, a bound of another type, and a bound that breaks its own.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn type_check_a_range_parses_under_zod_what_serde_writes() {
     let mut payloads = ranged::read_payloads();
@@ -4864,7 +4852,6 @@ fn type_check_a_range_parses_under_zod_what_serde_writes() {
 /// and admitted by the type's JSON Schema, and every payload serde refuses is refused by both: an
 /// object of both keys, of neither and of another key, a value under an arm of `()`, an arm of
 /// another type, and a model in an arm that breaks its bounds, each issue under its path.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn type_check_a_result_parses_under_zod_what_serde_writes() {
     let mut payloads = resulted::read_payloads();
@@ -4902,7 +4889,6 @@ fn type_check_a_result_parses_under_zod_what_serde_writes() {
 }
 
 /// The JSON Schema of the model of [`UNITS`] named `read_as`.
-#[cfg(feature = "jsonschema")]
 fn unit_document(read_as: &str) -> serde_json::Value {
     if read_as == "DeclaredNothing" {
         DeclaredNothing::json_schema()
@@ -4922,7 +4908,6 @@ fn type_check_a_unit_parses_under_zod_what_serde_reads() {
         } else {
             serde_json::from_str::<DeclaredUnits>(payload).is_ok()
         };
-        #[cfg(feature = "jsonschema")]
         assert_eq!(
             documents::admits(
                 &unit_document(read_as),
@@ -4973,7 +4958,7 @@ fn type_check_a_unit_parses_under_zod_what_serde_reads() {
 fn type_check_a_map_of_units_parses_under_zod_what_serde_reads() {
     use alloc::collections::BTreeMap;
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct ProbeUnitsKeyed {
         pub keyed: BTreeMap<String, ()>,
@@ -5013,7 +4998,6 @@ fn type_check_a_map_of_units_parses_under_zod_what_serde_reads() {
         zod.contains("keyed: z.record(z.string(), z.null()),"),
         "the Zod text:\n{zod}"
     );
-    #[cfg(feature = "jsonschema")]
     {
         let document = ProbeUnitsKeyed::json_schema();
         assert_eq!(
@@ -6012,7 +5996,7 @@ fn type_check_an_object_id_beside_the_tag_is_taken_as_serde_writes_it() {
 /// map's value, as a type argument, under a brand and beside a tag. Flattened, it is joined as a
 /// flattened struct is, so the holder's own keys and those of a struct flattened beside it read,
 /// and a key none of them reads is refused, where serde reads past it.
-#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
+#[cfg(feature = "mongodb")]
 #[test]
 fn type_check_an_object_id_with_a_key_beside_its_oid_is_refused_where_serde_refuses_it() {
     let read: Vec<bool> = object_ids::rows()

@@ -8,21 +8,21 @@ use tixschema::model_schema;
 use super::documents::admits;
 
 /// A frontmatter that reads.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Read {
     pub title: String,
 }
 
 /// A frontmatter that does not read, held as it was written.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Broken {
     pub raw: String,
 }
 
 /// A document of an optional frontmatter.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Doc {
     #[serde(default, skip_serializing_if = "Option::is_none")]

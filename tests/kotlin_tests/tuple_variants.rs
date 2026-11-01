@@ -6,14 +6,13 @@
 
 use std::collections::HashMap;
 
-#[cfg(all(feature = "serde", not(feature = "jsonschema")))]
+#[cfg(feature = "serde")]
 use super::tuple_variants_models::binning_kotlin;
 use super::tuple_variants_models::{
     Banding, Bundling, Crating, Grading, Labelling, Lashing, Palleting, Piling, Racking, Ranking,
     Slotting, Spooling, Stacking, Stencil, Strapping, Wrapping, crating_kotlin, grading_kotlin,
     palleting_kotlin, ranking_kotlin, slotting_kotlin, stacking_kotlin,
 };
-#[cfg(not(feature = "jsonschema"))]
 use super::tuple_variants_models::{
     Binning, Coiling, Heaping, Tallying, coiling_kotlin, heaping_kotlin, tallying_kotlin,
 };
@@ -38,7 +37,6 @@ fn every_fixture_is_written_as_serde_writes_it() {
         serde_json::to_string(&Piling::Split((vec![1, 2], 3))).unwrap(),
         "[[1,2],3]"
     );
-    #[cfg(not(feature = "jsonschema"))]
     assert_eq!(
         serde_json::to_string(&Tallying::Counts(HashMap::from([(
             "north".to_owned(),
@@ -91,7 +89,6 @@ fn every_fixture_is_written_as_serde_writes_it() {
         .unwrap(),
         r#"{"label":"north","pair":[{"code":"north"},2]}"#
     );
-    #[cfg(not(feature = "jsonschema"))]
     assert_eq!(
         serde_json::to_string(&Binning::Counts(HashMap::from([(
             "north".to_owned(),
@@ -129,7 +126,6 @@ fn every_fixture_holding_a_tuple_further_in_is_written_as_serde_writes_it() {
         .unwrap(),
         r#"{"label":"north","maybe":[{"code":"north"},3],"pairs":[[{"code":"north"},2]]}"#
     );
-    #[cfg(not(feature = "jsonschema"))]
     assert_eq!(
         serde_json::to_string(&Coiling {
             pair: (HashMap::from([("north".to_owned(), (north(), 2))]), 3)
@@ -145,7 +141,6 @@ fn every_fixture_holding_a_tuple_further_in_is_written_as_serde_writes_it() {
         .unwrap(),
         r#"{"dock":"south","extra":{"north":[{"code":"north"},2]}}"#
     );
-    #[cfg(not(feature = "jsonschema"))]
     assert_eq!(
         serde_json::to_string(&Heaping {
             counts: HashMap::from([("north".to_owned(), (north(), 2))])
@@ -284,7 +279,6 @@ fn an_untagged_slot_holding_the_slots_declares_one_wrapper() {
 
 /// A map of tuples in a variant's one slot: the subclass declares it, and the enum's serializer
 /// writes and reads it, by one wrapper.
-#[cfg(not(feature = "jsonschema"))]
 #[test]
 fn a_map_of_tuples_in_a_variant_is_declared_and_read_by_one_wrapper() {
     let tallying = super::tests::renumbered(&tallying_kotlin::kotlin_definition());
@@ -453,7 +447,7 @@ fn a_tuple_holding_a_model_beside_a_flattened_member_is_declared_and_read_by_one
 
 /// A map of tuples holding a model in a variant's one slot: the subclass declares it, and the
 /// enum's serializer writes and reads it, by the one wrapper that reads the model unjudged.
-#[cfg(all(feature = "serde", not(feature = "jsonschema")))]
+#[cfg(feature = "serde")]
 #[test]
 fn a_map_of_tuples_holding_a_model_in_a_variant_is_declared_and_read_by_one_wrapper() {
     let binning = super::tests::renumbered(&binning_kotlin::kotlin_definition());
@@ -560,7 +554,6 @@ fn tuples_holding_a_model_in_an_option_and_a_list_are_declared_and_read_by_one_w
 
 /// A map of tuples holding a model in a position of a tuple: the outer wrapper declares the map,
 /// and writes and reads it, by the one wrapper that reads the model unjudged.
-#[cfg(not(feature = "jsonschema"))]
 #[test]
 fn a_map_of_tuples_holding_a_model_in_a_tuple_is_declared_and_read_by_one_wrapper() {
     let coiling = super::tests::renumbered(&coiling_kotlin::kotlin_definition());
@@ -597,7 +590,6 @@ fn a_map_of_tuples_holding_a_model_under_its_own_key_is_declared_by_one_wrapper(
 /// A map of tuples holding a model, read through a function a `preprocess` names: the property is
 /// declared, and the serializer that corrects it reads it, by the one wrapper that reads the
 /// model unjudged.
-#[cfg(not(feature = "jsonschema"))]
 #[test]
 fn a_preprocessed_map_of_tuples_holding_a_model_is_declared_and_read_by_one_wrapper() {
     let heaping = super::tests::renumbered(&heaping_kotlin::kotlin_definition());

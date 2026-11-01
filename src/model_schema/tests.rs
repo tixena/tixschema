@@ -20,7 +20,7 @@ use super::{
     parse_serde_field_attributes, parse_serde_type_attributes, render_untagged_variant,
 };
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 use super::{
     AliasKind, PublishedShape, alias_map_key_guard_error, alias_undescribable_std_error,
     branded_guard_errors, check_map_key, deferred_shape_question, deferred_shape_refusals,
@@ -35,7 +35,6 @@ use super::{
 
 #[cfg(feature = "zod")]
 use super::{MergedOperand, SourceAbsence};
-#[cfg(feature = "jsonschema")]
 use crate::field_type::{MissingKey, is_set_wrapper};
 #[cfg(feature = "serde")]
 use crate::foundation::{exec_decode_with_foundation, exec_mongodb_foundation};
@@ -49,10 +48,9 @@ use super::tuple_struct_ts_body;
 #[cfg(feature = "zod")]
 use super::tuple_struct_zod_body;
 
-#[cfg(feature = "jsonschema")]
 use super::tuple_struct_json_body;
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 use super::{check_slot_wire_is_readable, tuple_struct_shape};
 
 #[cfg(feature = "swift")]
@@ -124,7 +122,7 @@ const PROBE_PATTERNS: [&str; 10] = [
 
 /// Patterns the `regex` crate parses that no JavaScript regex literal carries, one per family the
 /// guard sorts them into, beside the words the refusal names each by.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 const UNPORTABLE_PROBE_PATTERNS: [(&str, &str); 6] = [
     ("(?i)abc", "inline flag directive"),
     (r"^\p{L}+$", "Unicode class"),
@@ -147,7 +145,6 @@ const SLOT_OMISSION_SPELLINGS: [(&str, bool); 6] = [
 ];
 
 /// The covered wrappers, under the names a dispatch reads them by.
-#[cfg(any(feature = "jsonschema", feature = "serde"))]
 const SEQUENCE_WRAPPERS: [&str; 5] = ["BTreeSet", "BinaryHeap", "HashSet", "Vec", "VecDeque"];
 
 /// The module name a generated hook is written against, standing in for the one the enum's own
@@ -171,13 +168,11 @@ const UNREAD_BRAND_FIELD_PROP_REFUSAL: &str = "`#[model_schema_prop]` is unread 
      onto it, so no key written here reaches any surface. Drop the attribute.";
 
 /// What a map keyed by a tuple is refused with, after the place it is written in.
-#[cfg(feature = "jsonschema")]
 const TUPLE_KEY_REFUSAL: &str = "a map key must be a value serde writes as a string, which is what \
                                  a JSON object key is \u{2014} serde writes `(_, _)` as a JSON \
                                  array";
 
 /// The keys of a map keyed by an integer, as the description of the map names them.
-#[cfg(feature = "jsonschema")]
 const INTEGER_KEY_NAMES: &str =
     r#"serde_json :: json ! ({ "type" : "string" , "pattern" : "^-?[0-9]+(\\.0+)?$" }))"#;
 
@@ -1183,10 +1178,7 @@ fn untagged_supported_variant_shapes_are_left_alone() {
     assert!(errors.is_empty(), "got: {errors:?}");
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn untagged_member_reaching_a_map_key_with_no_members_is_refused() {
     register_alias_info(
@@ -1320,10 +1312,7 @@ fn a_tuple_structs_slot_takes_a_check() {
     assert!(!expanded.contains("compile_error"), "got: {expanded}");
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_tuple_structs_slot_is_named_by_its_position_and_read_off_self() {
     let expanded = expansion_over(
@@ -1464,10 +1453,7 @@ fn untagged_member_prop_guards_apply() {
     }
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn untagged_member_with_an_enumerable_map_key_is_left_alone() {
     register_alias_info("Bucket", "Bucket", "bucket_schema", AliasKind::EnumMembers);
@@ -1485,10 +1471,7 @@ fn untagged_member_with_an_enumerable_map_key_is_left_alone() {
 }
 
 /// The refusal every map-key spelling no surface can write earns, read off the untagged walk.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn untagged_member_reaching_an_unwritable_map_key_is_refused() {
     for (member_type, needle) in [
@@ -1533,7 +1516,7 @@ fn untagged_member_reaching_an_unwritable_map_key_is_refused() {
 }
 
 /// The JSON-schema values the untagged walk renders its members as.
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[cfg(feature = "serde")]
 fn untagged_member_values(mut item: syn::ItemEnum) -> Vec<String> {
     collect_untagged_members(
         &mut item,
@@ -1546,7 +1529,7 @@ fn untagged_member_values(mut item: syn::ItemEnum) -> Vec<String> {
     .collect()
 }
 
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[cfg(feature = "serde")]
 #[test]
 fn untagged_member_holding_a_map_renders_the_field_position_map() {
     register_alias_info("Bucket", "Bucket", "bucket_schema", AliasKind::EnumMembers);
@@ -1570,7 +1553,7 @@ fn untagged_member_holding_a_map_renders_the_field_position_map() {
     }
 }
 
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[cfg(feature = "serde")]
 #[test]
 fn untagged_member_holding_a_tuple_renders_the_arity_bounds() {
     let values = untagged_member_values(syn::parse_quote! {
@@ -1590,7 +1573,7 @@ fn untagged_member_holding_a_tuple_renders_the_arity_bounds() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[cfg(feature = "serde")]
 #[test]
 fn untagged_member_holding_a_map_of_tuples_describes_each_value_as_its_array() {
     let values = untagged_member_values(syn::parse_quote! {
@@ -1606,7 +1589,7 @@ fn untagged_member_holding_a_map_of_tuples_describes_each_value_as_its_array() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[cfg(feature = "serde")]
 #[test]
 fn untagged_member_holding_an_unwritable_map_key_emits_only_the_compile_error() {
     let values = untagged_member_values(syn::parse_quote! {
@@ -1632,7 +1615,7 @@ fn untagged_member_holding_an_unwritable_map_key_emits_only_the_compile_error() 
     );
 }
 
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[cfg(feature = "serde")]
 #[test]
 fn an_external_variant_holding_an_unrenderable_content_is_refused() {
     let rendered = super::external_content_rejection_value(
@@ -1660,7 +1643,6 @@ fn an_external_variant_holding_an_unrenderable_content_is_refused() {
 
 /// The field defs one variant of `source` declares, parsed from text so each carries the span of
 /// the tokens it was written with.
-#[cfg(feature = "jsonschema")]
 fn variant_field_defs(source: &str, variant_name: &str) -> Vec<super::FieldDef> {
     let item: syn::ItemEnum = syn::parse_str(source).unwrap();
     item.variants
@@ -1675,7 +1657,7 @@ fn variant_field_defs(source: &str, variant_name: &str) -> Vec<super::FieldDef> 
 }
 
 /// The content sink's caret, at both contents an externally tagged variant can carry.
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[cfg(feature = "serde")]
 #[test]
 fn a_refused_external_content_points_at_the_written_content() {
     const SOURCE: &str = "enum Tagged { \
@@ -1699,7 +1681,6 @@ fn a_refused_external_content_points_at_the_written_content() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_refused_adjacent_content_points_at_the_written_content() {
     const SOURCE: &str = "enum Tagged { \
@@ -1736,7 +1717,7 @@ fn a_refused_adjacent_content_points_at_the_written_content() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[cfg(feature = "serde")]
 #[test]
 fn a_refused_untagged_member_points_at_the_written_value() {
     for (member_type, context) in [
@@ -2284,7 +2265,6 @@ fn cfg_attr_wrapped_serde_on_a_variant_is_rejected() {
     any(
         feature = "typescript",
         feature = "zod",
-        feature = "jsonschema",
         feature = "dart",
         feature = "swift",
         feature = "kotlin"
@@ -2302,7 +2282,6 @@ fn rename_direction_errors(item: &syn::Item) -> Vec<String> {
     any(
         feature = "typescript",
         feature = "zod",
-        feature = "jsonschema",
         feature = "dart",
         feature = "swift",
         feature = "kotlin"
@@ -2328,7 +2307,6 @@ fn a_container_renaming_naming_two_keys_is_rejected() {
     any(
         feature = "typescript",
         feature = "zod",
-        feature = "jsonschema",
         feature = "dart",
         feature = "swift",
         feature = "kotlin"
@@ -2353,7 +2331,6 @@ fn a_field_renaming_naming_two_keys_is_rejected() {
     any(
         feature = "typescript",
         feature = "zod",
-        feature = "jsonschema",
         feature = "dart",
         feature = "swift",
         feature = "kotlin"
@@ -2386,7 +2363,6 @@ fn a_variant_and_its_member_are_both_reached() {
     any(
         feature = "typescript",
         feature = "zod",
-        feature = "jsonschema",
         feature = "dart",
         feature = "swift",
         feature = "kotlin"
@@ -2410,7 +2386,6 @@ fn renamings_naming_one_key_are_left_alone() {
     any(
         feature = "typescript",
         feature = "zod",
-        feature = "jsonschema",
         feature = "dart",
         feature = "swift",
         feature = "kotlin"
@@ -2445,7 +2420,6 @@ fn each_casing_rule_of_an_enum_naming_two_keys_is_rejected() {
     any(
         feature = "typescript",
         feature = "zod",
-        feature = "jsonschema",
         feature = "dart",
         feature = "swift",
         feature = "kotlin"
@@ -2494,7 +2468,6 @@ fn a_rename_refusal_says_that_neither_a_schema_nor_a_client_can_be_written() {
     any(
         feature = "typescript",
         feature = "zod",
-        feature = "jsonschema",
         feature = "dart",
         feature = "swift",
         feature = "kotlin"
@@ -2512,7 +2485,6 @@ fn rename_refusal_spans(source: &str) -> Vec<String> {
     any(
         feature = "typescript",
         feature = "zod",
-        feature = "jsonschema",
         feature = "dart",
         feature = "swift",
         feature = "kotlin"
@@ -2587,7 +2559,6 @@ fn the_rename_guard_is_compiled_in_every_build_that_describes_a_type() {
             any(
                 feature = "typescript",
                 feature = "zod",
-                feature = "jsonschema",
                 feature = "dart",
                 feature = "swift",
                 feature = "kotlin"
@@ -3431,7 +3402,6 @@ fn a_tagged_newtype_variant_over_a_type_serde_writes_as_an_optional_is_refused_i
         usize::from(cfg!(any(
             feature = "typescript",
             feature = "zod",
-            feature = "jsonschema",
             feature = "dart",
             feature = "swift",
             feature = "kotlin"
@@ -5121,7 +5091,7 @@ fn the_record_every_build_with_serde_writes_proves_what_the_zod_surface_proves()
 #[cfg(all(
     feature = "serde",
     feature = "dart",
-    not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
+    not(any(feature = "typescript", feature = "zod"))
 ))]
 #[test]
 fn a_rename_naming_two_keys_is_refused_where_only_a_client_is_emitted() {
@@ -5317,7 +5287,6 @@ fn the_map_key_guard_is_compiled_in_every_build_that_describes_a_type() {
         any(
             feature = "typescript",
             feature = "zod",
-            feature = "jsonschema",
             all(
                 feature = "serde",
                 any(feature = "dart", feature = "swift", feature = "kotlin")
@@ -5326,6 +5295,12 @@ fn the_map_key_guard_is_compiled_in_every_build_that_describes_a_type() {
     };
     let compiled = quote::quote!(cfg(#describing)).to_string();
     let expansion = include_str!("../model_schema.rs");
+    assert_eq!(
+        gates_above(expansion, "check_map_key"),
+        [compiled.as_str()],
+        "for `check_map_key`"
+    );
+    // The JSON Schema document reads these too, and it compiles in every build.
     for named in [
         "WRITTEN_AS_ARRAY",
         "WRITTEN_AS_NULL",
@@ -5341,11 +5316,10 @@ fn the_map_key_guard_is_compiled_in_every_build_that_describes_a_type() {
         "optional_map_key_message",
         "unwritable_map_key_message",
         "map_key_rejection_message",
-        "check_map_key",
     ] {
         assert_eq!(
             gates_above(expansion, named),
-            [compiled.as_str()],
+            Vec::<String>::new(),
             "for `{named}`"
         );
     }
@@ -5358,7 +5332,6 @@ fn the_brand_slot_alias_and_const_guards_are_compiled_in_every_build_that_descri
         any(
             feature = "typescript",
             feature = "zod",
-            feature = "jsonschema",
             all(
                 feature = "serde",
                 any(feature = "dart", feature = "swift", feature = "kotlin")
@@ -5375,13 +5348,11 @@ fn the_brand_slot_alias_and_const_guards_are_compiled_in_every_build_that_descri
         "branded_inner_value_surface",
         "branded_undescribable_std_error",
         "branded_map_key_error",
-        "held_as_a_list",
         "declared_default_field",
         "declared_default_type_name",
         "declared_default_constraint_message",
         "named_inner_constraint_message",
         "non_string_inner_shape",
-        "surface_field_def",
         "check_slot_wire_is_readable",
         "slot_attributes_reach_the_wire",
         "alias_map_key_guard_error",
@@ -5401,6 +5372,14 @@ fn the_brand_slot_alias_and_const_guards_are_compiled_in_every_build_that_descri
         [compiled, quote::quote!(cfg(not(#describing))).to_string()],
         "for `const_parameter_argument_errors`"
     );
+    // The JSON Schema document reads these too, and it compiles in every build.
+    for named in ["held_as_a_list", "surface_field_def"] {
+        assert_eq!(
+            gates_above(expansion, named),
+            Vec::<String>::new(),
+            "for `{named}`"
+        );
+    }
 }
 
 #[cfg(feature = "serde")]
@@ -6292,7 +6271,7 @@ fn the_readme_states_the_refusal_of_an_undescribable_primitive_as_the_build_answ
 
 /// Runs the field walk the way [`super::process_field`] does and renders the map-key guard failure
 /// the field's written type earns, or the empty string when it earns none.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn field_map_key_error(field_type: &proc_macro2::TokenStream) -> String {
     let item: syn::ItemStruct = syn::parse_quote! {
         struct Report {
@@ -6388,7 +6367,7 @@ fn the_swift_width_guard_reads_past_what_serde_neither_writes_nor_reads() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_map_key_proved_to_lack_enum_members_is_refused_wherever_it_is_written() {
     register_alias_info("Doc", "Doc", "doc_schema", AliasKind::NoEnumMembers);
@@ -6413,10 +6392,7 @@ fn a_map_key_proved_to_lack_enum_members_is_refused_wherever_it_is_written() {
     }
 }
 
-#[cfg(all(
-    feature = "indexmap",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "indexmap", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn an_index_map_keyed_by_a_struct_is_refused_in_the_sentence_a_hash_map_gets() {
     register_alias_info("Doc", "Doc", "doc_schema", AliasKind::NoEnumMembers);
@@ -6439,7 +6415,7 @@ fn an_index_map_keyed_by_a_struct_is_refused_in_the_sentence_a_hash_map_gets() {
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_sequence_wrapped_map_key_is_refused_wherever_it_is_written() {
     register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
@@ -6478,7 +6454,7 @@ fn a_sequence_wrapped_map_key_is_refused_wherever_it_is_written() {
 /// A key whose own type writes a JSON array or a JSON object earns the same refusal a
 /// sequence-wrapped one does: serde raises `key must be a string` and refuses the whole map, so
 /// there is no object for any surface to describe. The key is named by the shape it was written as.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn assert_unwritable_map_key(field_type: &proc_macro2::TokenStream, key_name: &str) {
     let error = field_map_key_error(field_type);
     assert!(error.contains("compile_error"), "for {field_type}: {error}");
@@ -6495,7 +6471,7 @@ fn assert_unwritable_map_key(field_type: &proc_macro2::TokenStream, key_name: &s
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_map_key_serde_refuses_to_write_is_refused_wherever_it_is_written() {
     register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
@@ -6536,10 +6512,7 @@ fn a_map_key_serde_refuses_to_write_is_refused_wherever_it_is_written() {
     }
 }
 
-#[cfg(all(
-    feature = "mongodb",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "mongodb", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn an_object_id_map_key_is_refused_wherever_it_is_written() {
     register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
@@ -6555,7 +6528,7 @@ fn an_object_id_map_key_is_refused_wherever_it_is_written() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_optional_map_key_is_refused_wherever_it_is_written() {
     register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
@@ -6597,7 +6570,7 @@ fn an_optional_map_key_is_refused_wherever_it_is_written() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_key_wrapped_twice_is_named_by_its_outermost_wrapper() {
     register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
@@ -6607,7 +6580,7 @@ fn a_key_wrapped_twice_is_named_by_its_outermost_wrapper() {
     assert!(optional.contains("Option<(_, _)>"), "got: {optional}");
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_string_wire_brand_keys_a_map_the_way_a_string_does() {
     register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
@@ -6639,7 +6612,7 @@ fn a_string_wire_brand_keys_a_map_the_way_a_string_does() {
     assert!(refused.contains("Tick"), "got: {refused}");
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_map_key_that_may_have_enum_members_is_left_alone() {
     register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
@@ -6662,10 +6635,7 @@ fn a_map_key_that_may_have_enum_members_is_left_alone() {
     }
 }
 
-#[cfg(all(
-    feature = "chrono",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "chrono", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_chrono_map_key_is_left_alone() {
     for field_type in [
@@ -6679,7 +6649,7 @@ fn a_chrono_map_key_is_left_alone() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_alias_targeting_a_map_key_with_no_members_is_refused() {
     register_alias_info("Doc", "Doc", "doc_schema", AliasKind::NoEnumMembers);
@@ -6701,7 +6671,7 @@ fn an_alias_targeting_a_map_key_with_no_members_is_refused() {
 
 /// The rendered `compile_error!` an alias target reaching a std type serde has no wire form for
 /// earns, or the empty string when it earns none.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn alias_undescribable_std_error_text(source: &str) -> String {
     let alias: syn::ItemType = syn::parse_str(source).unwrap();
     let field_def = get_field_def("Probe", &alias.ty, "");
@@ -6710,7 +6680,7 @@ fn alias_undescribable_std_error_text(source: &str) -> String {
         .to_string()
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_alias_targeting_an_undescribable_std_type_is_refused() {
     for (target, subject, named, wire) in [
@@ -6759,7 +6729,7 @@ fn an_alias_targeting_an_undescribable_std_type_is_refused() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_alias_targeting_a_describable_type_is_left_alone() {
     for target in [
@@ -6773,7 +6743,7 @@ fn an_alias_targeting_a_describable_type_is_left_alone() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_alias_violating_both_type_level_guards_earns_both_refusals() {
     register_alias_info(
@@ -6796,7 +6766,7 @@ fn an_alias_violating_both_type_level_guards_earns_both_refusals() {
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_data_suffixed_alias_is_named_by_its_written_ident() {
     register_alias_info("Tally", "Tally", "tally_schema", AliasKind::NoEnumMembers);
@@ -6828,11 +6798,12 @@ fn a_data_suffixed_alias_is_named_by_its_written_ident() {
 }
 
 /// A refused item still publishes the schema module every reference to it addresses.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_refused_item_publishes_the_module_a_reference_to_it_resolves_to() {
     let ident = syn::Ident::new("CountsByDoc", proc_macro2::Span::call_site());
-    let module = super::refused_item_schema_module(&ident).to_string();
+    let module =
+        super::refused_item_schema_module(&ident, &super::ModelSchemaArgs::default()).to_string();
     assert!(
         module.contains(&format!(
             "pub mod {}",
@@ -6844,12 +6815,11 @@ fn a_refused_item_publishes_the_module_a_reference_to_it_resolves_to() {
     assert!(!module.contains("compile_error"), "got: {module}");
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_refused_items_module_answers_the_call_a_reference_emits() {
     let span = proc_macro2::Span::call_site();
     let ident = syn::Ident::new("CountsByRefusedDoc", span);
-    let module = super::refused_item_schema_module(&ident).to_string();
+    let module = super::refused_item_schema_module(&ident, &json_schema_args()).to_string();
     let addressed = super::sibling_schema_module_ident("CountsByRefusedDoc", span).to_string();
     assert!(
         module.contains(&format!("pub mod {addressed}")),
@@ -7025,10 +6995,7 @@ fn a_renamed_field_is_refused_by_its_rust_name_and_reported_under_its_key() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_refused_map_key_leaves_no_hook_naming_the_dropped_module() {
     register_alias_info("Doc", "Doc", "doc_schema", AliasKind::NoEnumMembers);
@@ -7311,10 +7278,7 @@ fn a_tuple_written_as_a_fields_type_is_walked_position_by_position() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_slot_of_a_tuple_struct_is_walked_and_reported_under_its_position() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
@@ -7376,10 +7340,7 @@ fn a_slot_of_a_tagged_variant_is_walked_and_reported_under_the_variants_name() {
 
 /// A map, a tuple and a slot that hold no declared type are not walked, a type parameter and a
 /// set of strings among what they hold.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_map_a_tuple_and_a_slot_that_hold_no_declared_type_add_nothing_to_validate() {
     let mut fields: syn::ItemStruct = syn::parse_quote! {
@@ -7471,7 +7432,7 @@ fn a_field_written_as_a_set_of_values_no_declared_type_describes_adds_no_token()
                 "flattened, for {list}<{held}>"
             );
 
-            #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+            #[cfg(any(feature = "typescript", feature = "zod"))]
             {
                 let mut slots: syn::ItemStruct = syn::parse_quote! {
                     struct Docket<T>(#written);
@@ -7997,7 +7958,7 @@ fn a_field_pattern_the_regex_crate_rejects_names_the_field_and_quotes_the_parse_
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_field_pattern_javascript_cannot_carry_names_the_field_and_the_construct() {
     for (pattern, construct) in UNPORTABLE_PROBE_PATTERNS {
@@ -8837,7 +8798,7 @@ fn an_equal_pair_and_a_count_a_fixed_length_always_meets_are_not_refused() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_whose_own_bounds_no_value_meets_is_refused() {
     for (inner, least, most, refusal) in [
@@ -9896,7 +9857,15 @@ fn a_type_that_writes_no_block_gets_no_example_method() {
 fn a_type_that_writes_no_block_names_no_serde_json_for_its_empty_list() {
     let module: syn::Ident = syn::parse_quote!(report_schema);
     let zod_delegates: Vec<String> = [
-        super::build_struct_delegate_items(&module, "Report", "Report", &[], None, false),
+        super::build_struct_delegate_items(
+            &module,
+            "Report",
+            "Report",
+            &[],
+            None,
+            false,
+            &super::ModelSchemaArgs::default(),
+        ),
         super::build_struct_delegate_items(
             &module,
             "Report",
@@ -9904,8 +9873,9 @@ fn a_type_that_writes_no_block_names_no_serde_json_for_its_empty_list() {
             &["IdType".to_owned()],
             None,
             false,
+            &super::ModelSchemaArgs::default(),
         ),
-        super::build_branded_delegate_items(&module, false),
+        super::build_branded_delegate_items(&module, false, &super::ModelSchemaArgs::default()),
     ]
     .into_iter()
     .flatten()
@@ -9930,8 +9900,16 @@ fn a_type_that_writes_a_block_reads_its_list_off_schema_examples() {
     let module: syn::Ident = syn::parse_quote!(report_schema);
     let methods = quote::quote! { pub fn schema_examples() {} };
     let zod_delegates: Vec<String> = [
-        super::build_struct_delegate_items(&module, "Report", "Report", &[], Some(&methods), false),
-        super::build_branded_delegate_items(&module, true),
+        super::build_struct_delegate_items(
+            &module,
+            "Report",
+            "Report",
+            &[],
+            Some(&methods),
+            false,
+            &super::ModelSchemaArgs::default(),
+        ),
+        super::build_branded_delegate_items(&module, true, &super::ModelSchemaArgs::default()),
     ]
     .into_iter()
     .flatten()
@@ -10067,7 +10045,6 @@ fn a_parameter_with_no_declared_default_falls_back_to_string() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn branded_json_schema_method_carries_no_cfg_attribute() {
     let args = super::ModelSchemaArgs::default();
@@ -10078,7 +10055,6 @@ fn branded_json_schema_method_carries_no_cfg_attribute() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_brand_over_an_unrenderable_slot_is_refused() {
     let inner = get_field_def(
@@ -10099,7 +10075,6 @@ fn a_brand_over_an_unrenderable_slot_is_refused() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_refused_brand_inner_points_at_the_written_inner() {
     let item: syn::ItemStruct =
@@ -10117,7 +10092,6 @@ fn a_refused_brand_inner_points_at_the_written_inner() {
 /// Every shape [`super::branded_json_inner`] resolves to, so the dispatch is covered whole. The
 /// `Slot` and `Chrono` shapes build their bodies through [`super::branded_slot_json_schema`] and
 /// [`super::branded_chrono_schema`], which is where a stray `cfg` attribute would land unseen.
-#[cfg(feature = "jsonschema")]
 fn branded_json_inners() -> Vec<super::BrandedJsonInner> {
     let composite: syn::Type = syn::parse_quote!(Vec<String>);
     vec![
@@ -10229,7 +10203,7 @@ fn discriminated_enum_ts_definition_carries_no_cfg_attribute() {
     assert_no_cfg_attribute(&tokens, "generate_discriminated_enum_ts_definition_method");
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn alias_json_schema_method_carries_no_cfg_attribute() {
     let alias: syn::ItemType = syn::parse_quote!(
@@ -10240,12 +10214,11 @@ fn alias_json_schema_method_carries_no_cfg_attribute() {
         &alias,
         "AliasType",
         &field_def,
-        &super::ModelSchemaArgs::default(),
+        &json_schema_args(),
     );
     assert_no_cfg_attribute(&tokens, "generate_alias_json_schema_method");
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn an_alias_of_an_unrenderable_target_emits_only_the_compile_error() {
     for alias_source in [
@@ -10259,7 +10232,7 @@ fn an_alias_of_an_unrenderable_target_emits_only_the_compile_error() {
             &alias,
             "RowsType",
             &field_def,
-            &super::ModelSchemaArgs::default(),
+            &json_schema_args(),
         )
         .to_string();
         assert!(
@@ -10289,7 +10262,6 @@ fn an_alias_of_an_unrenderable_target_emits_only_the_compile_error() {
 }
 
 /// The caret has to land on the tokens the author edits.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn an_alias_rejection_points_at_the_written_target() {
     let alias: syn::ItemType = syn::parse_str("pub type Rows = HashMap<(u32, u32), u32>;").unwrap();
@@ -10298,7 +10270,7 @@ fn an_alias_rejection_points_at_the_written_target() {
         &alias,
         "RowsType",
         &field_def,
-        &super::ModelSchemaArgs::default(),
+        &json_schema_args(),
     );
     let located = located_source_texts(&tokens);
     assert!(
@@ -10321,7 +10293,6 @@ fn a_reworded_refusal_keeps_both_ends_of_what_it_is_spanned_on() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_data_suffixed_alias_rejection_names_its_written_ident() {
     let alias: syn::ItemType = syn::parse_quote! {
@@ -10332,14 +10303,13 @@ fn a_data_suffixed_alias_rejection_names_its_written_ident() {
         &alias,
         "RowsType",
         &field_def,
-        &super::ModelSchemaArgs::default(),
+        &json_schema_args(),
     )
     .to_string();
     assert!(tokens.contains("type alias `RowsData`"), "got: {tokens}");
     assert!(!tokens.contains("type alias `RowsType`"), "got: {tokens}");
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn an_alias_type_parameter_is_erased_at_every_depth() {
     for alias_source in [
@@ -10406,7 +10376,7 @@ fn no_json_schema_emission_carries_a_warning_key() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn alias_zod_method_carries_no_cfg_attribute() {
     let alias: syn::ItemType = syn::parse_quote!(
@@ -10418,7 +10388,7 @@ fn alias_zod_method_carries_no_cfg_attribute() {
     assert_no_cfg_attribute(&tokens, "generate_alias_zod_method");
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn alias_ts_definition_method_carries_no_cfg_attribute() {
     let alias: syn::ItemType = syn::parse_quote!(
@@ -10432,13 +10402,13 @@ fn alias_ts_definition_method_carries_no_cfg_attribute() {
 }
 
 /// Collects a branded newtype's guard failures as rendered `compile_error!` token strings.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn branded_errors(item: &syn::ItemStruct) -> Vec<String> {
     branded_errors_with(item, &super::ModelSchemaArgs::default())
 }
 
 /// [`branded_errors`] for a brand carrying `model_schema` arguments.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn branded_errors_with(item: &syn::ItemStruct, args: &super::ModelSchemaArgs) -> Vec<String> {
     branded_guard_errors(item, args)
         .iter()
@@ -10446,7 +10416,7 @@ fn branded_errors_with(item: &syn::ItemStruct, args: &super::ModelSchemaArgs) ->
         .collect()
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_over_an_undescribable_std_inner_is_refused() {
     for (inner, named, wire) in [
@@ -10479,7 +10449,7 @@ fn a_brand_over_an_undescribable_std_inner_is_refused() {
 }
 
 /// A brand over an inner every surface describes earns nothing.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_over_a_describable_inner_is_left_alone() {
     for inner in [
@@ -10496,14 +10466,19 @@ fn a_brand_over_a_describable_inner_is_left_alone() {
 }
 
 /// The `model_schema` arguments of a brand carrying a lone `pattern`.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn pattern_args() -> super::ModelSchemaArgs {
     super::parse_model_schema_args(quote::quote! { pattern = "^[a-z]+$" })
 }
 
+/// The arguments of a type that lists `"jsonschema"` and nothing else.
+fn json_schema_args() -> super::ModelSchemaArgs {
+    super::parse_model_schema_args(quote::quote! { enable = ["jsonschema"] })
+}
+
 /// A brand's guard failures for the given `pattern`, over a `String` inner that clears every other
 /// guard.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn brand_pattern_errors(pattern: &str) -> Vec<String> {
     branded_errors_with(
         &syn::parse_quote! {
@@ -10514,7 +10489,7 @@ fn brand_pattern_errors(pattern: &str) -> Vec<String> {
     )
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn the_brand_pattern_guard_follows_the_regex_crate() {
     for pattern in PROBE_PATTERNS {
@@ -10528,7 +10503,7 @@ fn the_brand_pattern_guard_follows_the_regex_crate() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_pattern_the_regex_crate_rejects_names_the_type_and_quotes_the_parse_error() {
     let errors = brand_pattern_errors(r"^ab\");
@@ -10548,7 +10523,7 @@ fn a_brand_pattern_the_regex_crate_rejects_names_the_type_and_quotes_the_parse_e
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_pattern_javascript_cannot_carry_names_the_type_and_the_construct() {
     for (pattern, construct) in UNPORTABLE_PROBE_PATTERNS {
@@ -10564,14 +10539,14 @@ fn a_brand_pattern_javascript_cannot_carry_names_the_type_and_the_construct() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_pattern_naming_a_group_the_rust_way_clears_the_guard() {
     let errors = brand_pattern_errors("^(?P<word>[a-z]+)$");
     assert!(errors.is_empty(), "got: {errors:?}");
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_pattern_admitting_every_value_names_the_type_and_says_so() {
     for pattern in ["", "^", "$", "|", "a*", "^a*"] {
@@ -10592,7 +10567,7 @@ fn a_brand_pattern_admitting_every_value_names_the_type_and_says_so() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_pattern_that_is_one_assertion_and_nothing_else_names_the_type_and_says_so() {
     for pattern in [r"\b", r"\B"] {
@@ -10613,7 +10588,7 @@ fn a_brand_pattern_that_is_one_assertion_and_nothing_else_names_the_type_and_say
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_pattern_that_still_constrains_clears_the_guard() {
     for pattern in ["^$", "^a*$", r"\b\w+"] {
@@ -10622,7 +10597,7 @@ fn a_brand_pattern_that_still_constrains_clears_the_guard() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_over_a_map_with_an_unwritable_key_is_refused() {
     register_alias_info("Doc", "Doc", "doc_schema", AliasKind::NoEnumMembers);
@@ -10661,7 +10636,7 @@ fn a_brand_over_a_map_with_an_unwritable_key_is_refused() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_over_a_writable_map_key_clears_the_guard() {
     register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
@@ -10680,7 +10655,6 @@ fn a_brand_over_a_writable_map_key_clears_the_guard() {
 }
 
 /// A tuple as a map's value is described as its fixed array, as in every other position.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_brand_over_a_map_with_a_tuple_value_builds() {
     for inner in [
@@ -10696,7 +10670,6 @@ fn a_brand_over_a_map_with_a_tuple_value_builds() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_brand_over_a_renderable_slot_clears_the_guard() {
     for inner in [
@@ -10714,7 +10687,7 @@ fn a_brand_over_a_renderable_slot_clears_the_guard() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn each_string_constraint_alone_rejects_a_numeric_inner() {
     for args in [
@@ -10736,7 +10709,7 @@ fn each_string_constraint_alone_rejects_a_numeric_inner() {
 }
 
 /// The shapes whose surfaces read the string constraints as something other than a string check.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn string_constraints_over_a_non_string_inner_are_rejected() {
     for (inner, shape) in [
@@ -10771,7 +10744,7 @@ fn string_constraints_over_a_non_string_inner_are_rejected() {
 }
 
 /// A brand over a list takes the two lengths, which count its items, whatever the list holds.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_length_over_a_list_inner_passes_and_a_pattern_beside_it_is_refused() {
     for inner in [
@@ -10817,7 +10790,7 @@ fn a_length_over_a_list_inner_passes_and_a_pattern_beside_it_is_refused() {
 }
 
 /// A list no transparent wrapper holds is refused the lengths, as it was.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_length_over_a_list_behind_a_cell_or_a_borrow_is_refused() {
     for inner in [
@@ -10839,7 +10812,7 @@ fn a_length_over_a_list_behind_a_cell_or_a_borrow_is_refused() {
 }
 
 /// The inners that carry the constraints faithfully.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn string_constraints_over_a_string_shaped_inner_pass() {
     for inner in [
@@ -10864,14 +10837,14 @@ fn string_constraints_over_a_string_shaped_inner_pass() {
 
 /// Registers a name carrying the value surface a `#[model_schema()]` item's own expansion would
 /// have recorded for it, standing in for that expansion.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn seed_value_shape(rust_ident: &str, shape: Option<&'static str>) {
     seed_published_shape(rust_ident, PublishedShape::Flat(shape));
 }
 
 /// The same, for a name whose own target is one of its parameters and which therefore records a
 /// position rather than a word.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn seed_published_shape(rust_ident: &str, shape: PublishedShape) {
     register_alias_info(
         rust_ident,
@@ -10883,7 +10856,7 @@ fn seed_published_shape(rust_ident: &str, shape: PublishedShape) {
 }
 
 /// A brand's guard failures for a `pattern` over the named inner, spelled as a bare name.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn brand_over_named_inner_errors(inner: &str) -> Vec<String> {
     let ty: syn::Type = syn::parse_str(inner).unwrap();
     branded_errors_with(
@@ -10895,7 +10868,7 @@ fn brand_over_named_inner_errors(inner: &str) -> Vec<String> {
     )
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn string_constraints_over_a_named_inner_the_registry_answers_for_are_rejected() {
     for (inner, shape) in [
@@ -10918,7 +10891,7 @@ fn string_constraints_over_a_named_inner_the_registry_answers_for_are_rejected()
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn string_constraints_over_a_named_inner_the_registry_calls_a_string_pass() {
     seed_value_shape("StringSibling", None);
@@ -10926,7 +10899,7 @@ fn string_constraints_over_a_named_inner_the_registry_calls_a_string_pass() {
     assert!(errors.is_empty(), "got: {errors:?}");
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn string_constraints_over_a_name_the_registry_cannot_answer_for_pass() {
     let bare = brand_over_named_inner_errors("SiblingRegisteredNowhere");
@@ -10948,7 +10921,7 @@ fn string_constraints_over_a_name_the_registry_cannot_answer_for_pass() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn string_constraints_over_a_name_written_over_the_brands_own_parameter_are_rejected() {
     for inner in [
@@ -10982,7 +10955,7 @@ fn string_constraints_over_a_name_written_over_the_brands_own_parameter_are_reje
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn string_constraints_over_a_registered_name_carrying_the_brands_parameter_are_rejected() {
     seed_value_shape("RegisteredStringGeneric", None);
@@ -11001,7 +10974,7 @@ fn string_constraints_over_a_registered_name_carrying_the_brands_parameter_are_r
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_records_the_value_surface_its_inner_publishes() {
     seed_value_shape("RecordedOpaqueSibling", Some("opaque"));
@@ -11030,7 +11003,7 @@ fn a_brand_records_the_value_surface_its_inner_publishes() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_over_its_own_parameter_records_the_position_it_publishes() {
     for (inner, expected) in [
@@ -11059,7 +11032,7 @@ fn a_brand_over_its_own_parameter_records_the_position_it_publishes() {
 
 /// The surface a brand's own registration records, built the way `register_branded_newtype` builds
 /// it.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn brand_surface(item: &syn::ItemStruct) -> super::Surface {
     super::Surface::written(
         &super::branded_inner_value_surface(&item.generics, item.fields.iter().next().unwrap()),
@@ -11067,7 +11040,7 @@ fn brand_surface(item: &syn::ItemStruct) -> super::Surface {
     )
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn string_constraints_over_a_parameter_publisher_read_the_argument_written_for_it() {
     seed_published_shape("PublishesItsParameter", PublishedShape::Parameter(0));
@@ -11091,7 +11064,7 @@ fn string_constraints_over_a_parameter_publisher_read_the_argument_written_for_i
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_recorded_position_is_read_off_the_arguments_the_reference_writes() {
     seed_published_shape("PublishesItsSecond", PublishedShape::Parameter(1));
@@ -11105,7 +11078,7 @@ fn a_recorded_position_is_read_off_the_arguments_the_reference_writes() {
 
 /// The question a constrained brand leaves where the registry has no record, spelled as the brand's
 /// own expansion would leave it.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn ask_about(brand: &syn::ItemStruct) -> bool {
     deferred_shape_question(brand, &pattern_args()).is_some_and(|question| {
         record_shape_question(question);
@@ -11115,7 +11088,7 @@ fn ask_about(brand: &syn::ItemStruct) -> bool {
 
 /// A brand written over the given inner, under a name that is the same in both declaration orders
 /// so the two refusals can be read against each other.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn brand_over(inner: &str) -> syn::ItemStruct {
     let ty: syn::Type = syn::parse_str(inner).unwrap();
     syn::parse_quote! {
@@ -11126,7 +11099,7 @@ fn brand_over(inner: &str) -> syn::ItemStruct {
 
 /// What the expansion registering a name emits for the questions asked about it, as rendered
 /// `compile_error!` token strings.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn deferred_refusals_for(rust_ident: &str) -> Vec<String> {
     let name = syn::Ident::new(rust_ident, proc_macro2::Span::call_site());
     deferred_shape_refusals(Some(&name))
@@ -11135,7 +11108,7 @@ fn deferred_refusals_for(rust_ident: &str) -> Vec<String> {
         .collect()
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_question_left_where_the_registry_was_silent_is_answered_by_the_later_registration() {
     let brand = brand_over("AnsweredLater<u32>");
@@ -11158,7 +11131,7 @@ fn a_question_left_where_the_registry_was_silent_is_answered_by_the_later_regist
     assert!(errors[0].contains("numeric"), "got: {}", errors[0]);
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn both_orders_of_the_same_pair_refuse_in_one_wording() {
     assert!(ask_about(&brand_over("WordingBelow<u32>")));
@@ -11176,7 +11149,7 @@ fn both_orders_of_the_same_pair_refuse_in_one_wording() {
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_question_a_string_argument_answers_settles_silently() {
     assert!(ask_about(&brand_over("SettlesSilently<String>")));
@@ -11185,7 +11158,7 @@ fn a_question_a_string_argument_answers_settles_silently() {
     assert!(errors.is_empty(), "got: {errors:?}");
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_question_no_registration_reaches_stays_unanswered() {
     assert!(ask_about(&brand_over("NeverRegisters<u32>")));
@@ -11193,7 +11166,7 @@ fn a_question_no_registration_reaches_stays_unanswered() {
     assert!(errors.is_empty(), "got: {errors:?}");
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_the_registry_answers_leaves_no_question() {
     seed_published_shape("AlreadyAnswering", PublishedShape::Parameter(0));
@@ -11205,7 +11178,7 @@ fn a_brand_the_registry_answers_leaves_no_question() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_with_nothing_to_append_asks_nothing() {
     assert!(
@@ -11223,7 +11196,7 @@ fn a_brand_with_nothing_to_append_asks_nothing() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_deferred_answer_reads_the_record_the_consult_would_have_read() {
     assert!(ask_about(&brand_over("FlatlyNumeric")));
@@ -11244,7 +11217,7 @@ fn a_deferred_answer_reads_the_record_the_consult_would_have_read() {
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_tuple_struct_records_the_value_surface_its_slots_publish() {
     for (decl, expected) in [
@@ -11285,7 +11258,7 @@ fn a_tuple_struct_records_the_value_surface_its_slots_publish() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn string_constraints_over_the_brands_own_type_parameter_consult_the_declared_default() {
     for inner in ["T", "U"] {
@@ -11301,7 +11274,7 @@ fn string_constraints_over_the_brands_own_type_parameter_consult_the_declared_de
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn string_constraints_over_the_brands_own_type_parameter_with_a_string_default_pass() {
     let errors = branded_errors_with(
@@ -11317,10 +11290,7 @@ fn string_constraints_over_the_brands_own_type_parameter_with_a_string_default_p
 }
 
 /// A bare, a wrapped, and an unrelated parameter each substitute as expected.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn declared_defaults_are_substituted_through_the_inners_shape() {
     let parameters = ["IdType".to_owned()];
@@ -11345,7 +11315,7 @@ fn declared_defaults_are_substituted_through_the_inners_shape() {
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn string_constraints_over_the_brands_own_type_parameter_with_a_non_string_default_are_rejected() {
     let errors = branded_errors_with(
@@ -11373,7 +11343,7 @@ fn string_constraints_over_the_brands_own_type_parameter_with_a_non_string_defau
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_unconstrained_brand_over_a_non_string_inner_passes() {
     for inner in [
@@ -11393,7 +11363,7 @@ fn an_unconstrained_brand_over_a_non_string_inner_passes() {
 }
 
 /// The message has to name the surfaces that disagree, or it reads as an arbitrary restriction.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn the_constraint_guard_message_names_the_constraints_and_the_surfaces() {
     let errors = branded_errors_with(
@@ -11412,10 +11382,7 @@ fn the_constraint_guard_message_names_the_constraints_and_the_surfaces() {
     }
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn cfg_attr_wrapped_serde_on_a_branded_type_is_rejected() {
     let errors = branded_errors(&syn::parse_quote! {
@@ -11429,10 +11396,7 @@ fn cfg_attr_wrapped_serde_on_a_branded_type_is_rejected() {
     assert!(errors[0].contains("cfg_attr"), "got: {}", errors[0]);
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn cfg_attr_wrapped_serde_on_a_branded_inner_slot_is_rejected() {
     let errors = branded_errors(&syn::parse_quote! {
@@ -11445,7 +11409,7 @@ fn cfg_attr_wrapped_serde_on_a_branded_inner_slot_is_rejected() {
     assert!(errors[0].contains("#[serde(...)]"), "got: {}", errors[0]);
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn branded_newtype_over_option_is_rejected() {
     let errors = branded_errors(&syn::parse_quote! {
@@ -11458,7 +11422,7 @@ fn branded_newtype_over_option_is_rejected() {
     assert!(errors[0].contains("null"), "got: {}", errors[0]);
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn generic_branded_newtype_over_option_is_rejected() {
     let errors = branded_errors(&syn::parse_quote! {
@@ -11469,7 +11433,7 @@ fn generic_branded_newtype_over_option_is_rejected() {
     assert!(errors[0].contains("Option"), "got: {}", errors[0]);
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn compliant_branded_newtype_passes_every_guard() {
     let errors = branded_errors(&syn::parse_quote! {
@@ -11717,8 +11681,8 @@ fn enable_turns_on_the_entries_it_lists() {
         let args = super::parse_model_schema_args(syn::parse_str(written).unwrap());
         assert!(args.arg_rejection.is_none(), "for {written}");
         assert_eq!(args.enable.arky, arky, "for {written}");
-        assert_eq!(args.enable.decode_with, decode_with, "for {written}");
-        assert_eq!(args.enable.mongodb, mongodb, "for {written}");
+        assert_eq!(args.enable.decode_with(), decode_with, "for {written}");
+        assert_eq!(args.enable.mongodb(), mongodb, "for {written}");
     }
 }
 
@@ -11803,13 +11767,14 @@ fn enable_refuses_an_unknown_entry() {
         ("enable = [\"decode_wth\"]", "\"decode_wth\""),
         ("enable = [\"decode_with\", \"bson\"]", "\"bson\""),
         ("enable = [\"decode_with\", \"Mongodb\"]", "\"Mongodb\""),
+        ("enable = [\"jsonschemas\"]", "\"jsonschemas\""),
     ] {
         assert_eq!(
             enable_refusal(written),
             (
                 format!(
                     "tixschema: unknown entry `{entry}`; the entries are `\"arky\"`, \
-                     `\"decode_with\"` and `\"mongodb\"`"
+                     `\"decode_with\"`, `\"jsonschema\"` and `\"mongodb\"`"
                 ),
                 entry.to_owned(),
             ),
@@ -11827,6 +11792,7 @@ fn enable_refuses_an_entry_written_twice() {
             "enable = [\"decode_with\", \"mongodb\", \"mongodb\"]",
             "mongodb",
         ),
+        ("enable = [\"jsonschema\", \"jsonschema\"]", "jsonschema"),
     ] {
         let rejection = super::parse_model_schema_args(syn::parse_str(written).unwrap())
             .arg_rejection
@@ -12044,7 +12010,6 @@ fn an_item_refused_for_a_name_another_publishes_is_re_emitted_without_its_member
     any(
         feature = "typescript",
         feature = "zod",
-        feature = "jsonschema",
         feature = "dart",
         feature = "swift",
         feature = "kotlin"
@@ -12074,7 +12039,6 @@ fn an_item_refused_for_an_example_beside_a_const_is_re_emitted_without_its_membe
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "jsonschema"))]
 #[test]
 fn an_item_refused_for_a_const_argument_is_re_emitted_without_its_members_keys() {
     assert_refused_without_member_keys(
@@ -12127,7 +12091,7 @@ fn a_shape_refused_before_its_members_are_walked_is_re_emitted_without_their_key
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_refused_by_its_guards_is_re_emitted_without_its_members_keys() {
     assert_refused_without_member_keys(
@@ -12283,7 +12247,6 @@ fn each_name_serde_writes_or_reads_for_a_unit_variant_is_measured() {
     not(any(
         feature = "typescript",
         feature = "zod",
-        feature = "jsonschema",
         feature = "dart",
         feature = "swift",
         feature = "kotlin"
@@ -12680,7 +12643,7 @@ fn an_alias_with_no_string_check_is_not_refused() {
     assert!(!expanded.contains("compile_error"), "got: {expanded}");
 }
 
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[cfg(not(any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_string_check_on_a_brand_is_refused_where_no_schema_surface_is_on() {
     let expanded = expansion_under(
@@ -12797,10 +12760,7 @@ fn decode_with_is_generated_on_every_enum_form_serde_writes() {
     }
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn decode_with_reads_an_untagged_enums_constrained_member_through_its_hook() {
     let expanded = expansion_under(
@@ -13000,10 +12960,7 @@ fn a_type_declared_above_is_held_by_how_serde_writes_it() {
     }
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn decode_with_reads_a_constrained_brand_with_the_brands_own_reader() {
     let expanded = expansion_under(
@@ -13075,7 +13032,7 @@ fn decode_with_bounds_its_own_impls_and_nothing_else_of_a_generic_type() {
     );
     let unflagged = expansion_under("default_types(T = String)", source);
     assert!(!unflagged.contains("DeserializeOwned"), "got: {unflagged}");
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     assert!(
         expanded.contains("impl < T > DecodeEnvelope < T > {"),
         "got: {expanded}"
@@ -14839,10 +14796,7 @@ fn a_flagged_type_names_the_type_it_reaches_and_never_its_module() {
     assert!(!walker.contains("decode_inner_schema"), "got: {walker}");
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn what_a_schema_module_already_held_reads_the_authors_scope_past_the_added_names() {
     // A model in a shared slice and in a boxed one is one the type's unjudged read does not reach,
@@ -15139,11 +15093,10 @@ fn a_default_types_refusal_is_spanned_on_what_earned_it() {
     assert_eq!(entry.len(), 1, "got: {}", entry.len());
     assert_eq!(entry[0].span().source_text().as_deref(), Some("WrongName"));
 
-    #[cfg(feature = "jsonschema")]
     {
         let parameter = default_types_refusals(
             "pub struct EcmDocument<IdType, DateType> { pub id: IdType, pub at: DateType }",
-            "default_types(IdType = String)",
+            "default_types(IdType = String), enable = [\"jsonschema\"]",
         );
         assert_eq!(parameter.len(), 1, "got: {}", parameter.len());
         assert_eq!(
@@ -15153,13 +15106,12 @@ fn a_default_types_refusal_is_spanned_on_what_earned_it() {
     }
 }
 
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_filling_no_document_can_be_built_from_is_refused_at_the_entry() {
     for written in ["i128", "u128", "f16", "f128"] {
         let messages = default_types_messages(
             "pub struct Probe<ValueType> { pub held: ValueType }",
-            &format!("default_types(ValueType = {written})"),
+            &format!("default_types(ValueType = {written}), enable = [\"jsonschema\"]"),
         );
         assert_eq!(messages.len(), 1, "for {written}: {messages:?}");
         for needle in [
@@ -15168,7 +15120,7 @@ fn a_filling_no_document_can_be_built_from_is_refused_at_the_entry() {
             "ValueType",
             &format!("{}_schema", written.to_lowercase()),
             &format!("{written}$Schema"),
-            "the `zod` and `jsonschema` features",
+            "under the `zod` feature, and on a type that lists",
             "type `Probe`",
         ] {
             assert!(
@@ -15180,7 +15132,6 @@ fn a_filling_no_document_can_be_built_from_is_refused_at_the_entry() {
     }
 }
 
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_filling_reaching_an_undescribable_std_type_is_refused_at_the_entry() {
     for (written, named, wire) in [
@@ -15212,7 +15163,6 @@ fn a_filling_reaching_an_undescribable_std_type_is_refused_at_the_entry() {
 }
 
 /// The refusal points at the filling as written, the token the author can change.
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
 #[test]
 fn an_undescribable_std_filling_refusal_is_spanned_on_the_filling() {
     let refusals = default_types_refusals(
@@ -15226,7 +15176,6 @@ fn an_undescribable_std_filling_refusal_is_spanned_on_the_filling() {
     );
 }
 
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_filling_reaching_an_unwritable_map_key_is_refused_at_the_entry() {
     for (written, reason) in [
@@ -15268,7 +15217,6 @@ fn a_filling_reaching_an_unwritable_map_key_is_refused_at_the_entry() {
     }
 }
 
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
 #[test]
 fn an_unwritable_map_key_filling_refusal_is_spanned_on_the_filling() {
     for written in [
@@ -15299,7 +15247,6 @@ fn an_unwritable_map_key_filling_refusal_is_spanned_on_the_filling() {
     );
 }
 
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_filling_with_a_writable_map_key_clears_the_guard() {
     register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
@@ -15317,7 +15264,6 @@ fn a_filling_with_a_writable_map_key_clears_the_guard() {
     }
 }
 
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
 #[test]
 fn an_undescribable_filling_refusal_is_spanned_on_the_filling() {
     let refusals = default_types_refusals(
@@ -15329,7 +15275,6 @@ fn an_undescribable_filling_refusal_is_spanned_on_the_filling() {
 }
 
 /// Only what is provably not a sibling is refused.
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_renderable_or_sibling_named_filling_is_left_alone() {
     for written in [
@@ -15356,7 +15301,7 @@ fn a_renderable_or_sibling_named_filling_is_left_alone() {
     }
 }
 
-#[cfg(not(any(feature = "zod", feature = "jsonschema")))]
+#[cfg(not(feature = "zod"))]
 #[test]
 fn an_undescribable_filling_is_accepted_where_no_surface_reads_it() {
     for written in [
@@ -15378,12 +15323,11 @@ fn an_undescribable_filling_is_accepted_where_no_surface_reads_it() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_parameter_with_no_default_is_refused_where_the_json_document_is_built() {
     let messages = default_types_messages(
         "pub struct EcmDocument<IdType, DateType> { pub id: IdType, pub at: DateType }",
-        "",
+        "enable = [\"jsonschema\"]",
     );
     assert_eq!(messages.len(), 2, "got: {messages:?}");
     let joined = messages.join("\n");
@@ -15391,7 +15335,7 @@ fn a_parameter_with_no_default_is_refused_where_the_json_document_is_built() {
         "IdType",
         "DateType",
         "silently rejects valid payloads",
-        "`jsonschema` feature",
+        "`enable = [\\\"jsonschema\\\"]`",
         "default_types(IdType = String, DateType = String)",
         "type `EcmDocument`",
     ] {
@@ -15399,7 +15343,6 @@ fn a_parameter_with_no_default_is_refused_where_the_json_document_is_built() {
     }
 }
 
-#[cfg(not(feature = "jsonschema"))]
 #[test]
 fn a_parameter_with_no_default_is_accepted_where_no_json_document_is_built() {
     for args in ["", "default_types(IdType = String)"] {
@@ -15768,7 +15711,10 @@ fn every_expanded_shape_whose_bounds_rust_enforces_checks_its_fillings_alike() {
 /// read back as the source it points at.
 #[cfg(feature = "zod")]
 fn const_example_refusals(source: &str) -> Vec<proc_macro2::TokenStream> {
-    super::const_parameter_example_errors(&syn::parse_str(source).unwrap())
+    super::const_parameter_example_errors(
+        &syn::parse_str(source).unwrap(),
+        &super::ModelSchemaArgs::default(),
+    )
 }
 
 /// The refusals `source` earns, rendered.
@@ -15874,13 +15820,11 @@ fn a_const_declaring_alias_with_no_example_is_left_alone() {
 /// The `compile_error!` tokens `source` earns for handing one of its own consts to a written type.
 /// Parsed from text so the tokens carry file locations and each refusal's span can be read back as
 /// the source it points at.
-#[cfg(any(feature = "typescript", feature = "jsonschema"))]
 fn const_argument_refusals(source: &str) -> Vec<proc_macro2::TokenStream> {
     super::const_parameter_argument_errors(&syn::parse_str(source).unwrap())
 }
 
 /// The refusals `source` earns, rendered.
-#[cfg(any(feature = "typescript", feature = "jsonschema"))]
 fn const_argument_messages(source: &str) -> Vec<String> {
     const_argument_refusals(source)
         .iter()
@@ -15888,7 +15832,6 @@ fn const_argument_messages(source: &str) -> Vec<String> {
         .collect()
 }
 
-#[cfg(any(feature = "typescript", feature = "jsonschema"))]
 #[test]
 fn a_const_handed_to_a_written_type_as_an_argument_is_refused() {
     for (source, label) in [
@@ -15917,7 +15860,6 @@ fn a_const_handed_to_a_written_type_as_an_argument_is_refused() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "jsonschema"))]
 #[test]
 fn a_const_argument_refusal_is_spanned_on_the_argument() {
     let refusals =
@@ -15926,7 +15868,6 @@ fn a_const_argument_refusal_is_spanned_on_the_argument() {
     assert_eq!(refusals[0].span().source_text().as_deref(), Some("WIDTH"));
 }
 
-#[cfg(any(feature = "typescript", feature = "jsonschema"))]
 #[test]
 fn a_const_argument_is_found_under_every_wrapper_it_can_be_written_beneath() {
     for source in [
@@ -15941,7 +15882,6 @@ fn a_const_argument_is_found_under_every_wrapper_it_can_be_written_beneath() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "jsonschema"))]
 #[test]
 fn a_const_that_reaches_no_argument_list_earns_no_refusal() {
     for source in [
@@ -16291,7 +16231,7 @@ fn an_item_refused_for_an_indexmap_name_is_emitted_with_the_refusal_alone() {
 
 /// Builds the `Display` assertion for the sole field of `source`, parsed from text so its spans
 /// carry file locations and `source_text()` can report what they point at.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn display_assertion(source: &str) -> proc_macro2::TokenStream {
     let item: syn::ItemStruct = syn::parse_str(source).unwrap();
     let field = item.fields.iter().next().unwrap();
@@ -16318,7 +16258,6 @@ fn located_source_texts(tokens: &proc_macro2::TokenStream) -> Vec<String> {
 /// Asserts that every located token in `tokens` points at `expected` and that at least one does —
 /// what a diagnostic spanned on one written value looks like, and what one falling back to the
 /// attribute does not.
-#[cfg(feature = "jsonschema")]
 fn assert_points_only_at(tokens: &proc_macro2::TokenStream, expected: &str, context: &str) {
     let located = located_source_texts(tokens);
     assert!(!located.is_empty(), "for {context}, nothing located");
@@ -16328,7 +16267,7 @@ fn assert_points_only_at(tokens: &proc_macro2::TokenStream, expected: &str, cont
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn the_span_probe_sees_an_unlocated_token_stream() {
     let tokens = quote::quote! { const _: () = {}; };
@@ -16336,7 +16275,7 @@ fn the_span_probe_sees_an_unlocated_token_stream() {
     assert_eq!(located_source_texts(&tokens), Vec::<String>::new());
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn display_assertion_names_the_trait_and_points_at_the_inner_field() {
     let tokens = display_assertion("pub struct Tags(pub Vec<String>);");
@@ -16349,7 +16288,7 @@ fn display_assertion_names_the_trait_and_points_at_the_inner_field() {
     assert_eq!(tokens.span().source_text().as_deref(), Some("Vec<String>"));
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn display_assertion_is_skipped_when_the_inner_names_a_generic_param() {
     for source in [
@@ -16363,7 +16302,7 @@ fn display_assertion_is_skipped_when_the_inner_names_a_generic_param() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn display_impl_delegates_from_the_inner_field_span() {
     let item: syn::ItemStruct = syn::parse_str("pub struct UserId(pub String);").unwrap();
@@ -16389,7 +16328,7 @@ fn display_impl_delegates_from_the_inner_field_span() {
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn generic_display_impl_bounds_every_type_parameter() {
     let item: syn::ItemStruct =
@@ -16407,7 +16346,7 @@ fn generic_display_impl_bounds_every_type_parameter() {
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn display_impl_states_the_display_bound_of_a_parameter_once() {
     let header_of = |source: &str| {
@@ -16446,7 +16385,7 @@ fn display_impl_states_the_display_bound_of_a_parameter_once() {
 }
 
 /// Builds the whole `Display` block — assertion plus impl — for the sole field of `source`.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn display_tokens(source: &str, args: &proc_macro2::TokenStream) -> String {
     let item: syn::ItemStruct = syn::parse_str(source).unwrap();
     let field = item.fields.iter().next().unwrap();
@@ -16460,10 +16399,7 @@ fn display_tokens(source: &str, args: &proc_macro2::TokenStream) -> String {
     .to_string()
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn constraints_keep_the_display_assertion_when_the_brand_opts_out_of_the_impl() {
     let tokens = display_tokens(
@@ -16480,7 +16416,7 @@ fn constraints_keep_the_display_assertion_when_the_brand_opts_out_of_the_impl() 
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn the_display_block_carries_only_the_impl_once_the_impl_is_emitted() {
     let impl_only = display_tokens("pub struct UserId(pub String);", &quote::quote! {});
@@ -16511,10 +16447,7 @@ fn the_display_block_carries_only_the_impl_once_the_impl_is_emitted() {
 /// How many tokens of each `to_string()` call site a constrained brand expands to point back at
 /// the inner field. Built from parsed source, so a token that carries the inner type's span has a
 /// location to report and a macro-synthesized one does not.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn constrained_brand_inner_spanned_tokens(source: &str, inner: &str) -> (usize, usize) {
     let item: syn::ItemStruct = syn::parse_str(source).unwrap();
     let args = super::parse_model_schema_args(quote::quote! { pattern = "^[a-z]+$" });
@@ -16533,10 +16466,7 @@ fn constrained_brand_inner_spanned_tokens(source: &str, inner: &str) -> (usize, 
     (count(&bound.alone), count(&validate_method))
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn constrained_to_string_calls_carry_the_inner_fields_location() {
     let (bound_alone, validate_method) =
@@ -16554,19 +16484,13 @@ fn constrained_to_string_calls_carry_the_inner_fields_location() {
 /// A constrained brand's emitted text for an inner spelled `inner`, as the three streams it is made
 /// of: the validator, the method that answers for the bound alone, and the `validate()` method,
 /// each of which calls into the first.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn constrained_brand_emission(inner: &str, module: &str) -> (String, String, String) {
     brand_emission_under(inner, module, quote::quote! { pattern = "^[a-z]+$" })
 }
 
 /// [`constrained_brand_emission`] under the checks `written` on the brand.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn brand_emission_under(
     inner: &str,
     module: &str,
@@ -16592,10 +16516,7 @@ fn brand_emission_under(
 
 /// A brand over a list is counted by the validator a list field gets, under the brand's own name
 /// and reporting under no field.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_brand_over_a_list_counts_its_items_where_a_string_brand_measures_its_text() {
     let lengths = || quote::quote! { minLength = 1, maxLength = 3 };
@@ -16634,10 +16555,7 @@ fn a_brand_over_a_list_counts_its_items_where_a_string_brand_measures_its_text()
 }
 
 /// The constrained path's generated text is what it has always been.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn the_constrained_path_renders_the_same_to_string_calls_it_always_has() {
     for spelling in ["String", "Option<PathBuf>", "Slug"] {
@@ -16663,10 +16581,7 @@ fn the_constrained_path_renders_the_same_to_string_calls_it_always_has() {
     }
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_path_brand_is_checked_through_its_lossy_rendering() {
     for spelling in [
@@ -16702,7 +16617,6 @@ fn a_path_brand_is_checked_through_its_lossy_rendering() {
 /// The JSON schema statements a map-typed field expands to, parsed from the map type's source and
 /// dispatched through the field entry point, so a wrapper spelling reaches the map arm the way a
 /// declared field reaches it.
-#[cfg(feature = "jsonschema")]
 fn map_field_schema(map_type: &str) -> proc_macro2::TokenStream {
     let ty: syn::Type = syn::parse_str(map_type).unwrap();
     super::build_field_type_schema(&super::get_field_def("m", &ty, ""), "m")
@@ -16710,7 +16624,6 @@ fn map_field_schema(map_type: &str) -> proc_macro2::TokenStream {
 
 /// The value a field's `properties` insertion carries, lifted out of the statement so a wrapped
 /// spelling can be held against the map it holds.
-#[cfg(feature = "jsonschema")]
 fn inserted_field_value(field_type: &str) -> String {
     const PREFIX: &str = r#"properties . insert ("m" . to_string () , "#;
     const SUFFIX: &str = ") ;";
@@ -16722,7 +16635,6 @@ fn inserted_field_value(field_type: &str) -> String {
     tokens[PREFIX.len()..tokens.len() - SUFFIX.len()].to_owned()
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn an_unsupported_enum_keyed_map_value_emits_only_the_compile_error() {
     for map_type in [
@@ -16752,7 +16664,6 @@ fn an_unsupported_enum_keyed_map_value_emits_only_the_compile_error() {
 
 /// The enum-key branch's rendering for a map value built by hand, for the value types no source type
 /// produces.
-#[cfg(feature = "jsonschema")]
 fn enum_key_map_value_binding(field_type: FieldDefType) -> String {
     let ty: syn::Type = syn::parse_str("String").unwrap();
     let mut value = super::get_field_def("m", &ty, "");
@@ -16762,7 +16673,6 @@ fn enum_key_map_value_binding(field_type: FieldDefType) -> String {
         .to_string()
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_nested_enum_keyed_map_value_renders_its_inner_members() {
     for (map_type, expected) in [
@@ -16803,7 +16713,6 @@ fn a_nested_enum_keyed_map_value_renders_its_inner_members() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_generic_sibling_enum_keyed_map_value_emits_the_sibling_schema() {
     let tokens = map_field_schema("HashMap<Slot, Wrapper<String>>").to_string();
@@ -16816,7 +16725,6 @@ fn a_generic_sibling_enum_keyed_map_value_emits_the_sibling_schema() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn an_opaque_enum_keyed_map_value_stays_permissive() {
     let tokens = enum_key_map_value_binding(FieldDefType::Unknown);
@@ -16827,7 +16735,6 @@ fn an_opaque_enum_keyed_map_value_stays_permissive() {
 }
 
 /// A string literal keeps the `const` it carries on the `String`-key path.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_string_literal_enum_keyed_map_value_keeps_its_const() {
     let tokens = enum_key_map_value_binding(FieldDefType::StringLiteral("Tixena".to_owned()));
@@ -16842,7 +16749,7 @@ fn a_string_literal_enum_keyed_map_value_keeps_its_const() {
 /// What the text of the chrono type `value_type` names is held to, as the tokens of a JSON literal
 /// write it: the `format` of a date and of a date and time with its zone, and the `pattern` of the
 /// text serde writes for a time and a date and time with no zone.
-#[cfg(all(feature = "chrono", feature = "jsonschema"))]
+#[cfg(feature = "chrono")]
 fn chrono_text_held(value_type: &str) -> String {
     match value_type {
         "NaiveDate" => r#""format" : "date""#.to_owned(),
@@ -16863,7 +16770,7 @@ fn chrono_text_held(value_type: &str) -> String {
 }
 
 /// A chrono value keeps the form it carries in field position, as it does under a `String` key.
-#[cfg(all(feature = "chrono", feature = "jsonschema"))]
+#[cfg(feature = "chrono")]
 #[test]
 fn a_chrono_enum_keyed_map_value_keeps_its_form() {
     for value_type in ["NaiveDate", "NaiveTime", "NaiveDateTime", "DateTime<Utc>"] {
@@ -16879,7 +16786,7 @@ fn a_chrono_enum_keyed_map_value_keeps_its_form() {
     }
 }
 
-#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
+#[cfg(feature = "mongodb")]
 #[test]
 fn an_object_id_enum_keyed_map_value_binds_the_one_oid_object() {
     let tokens = enum_key_map_value_binding(FieldDefType::ObjectId);
@@ -16891,7 +16798,6 @@ fn an_object_id_enum_keyed_map_value_binds_the_one_oid_object() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_scalar_enum_keyed_map_value_expands_to_the_per_member_loop() {
     let tokens = map_field_schema("HashMap<Slot, String>").to_string();
@@ -16903,7 +16809,6 @@ fn a_scalar_enum_keyed_map_value_expands_to_the_per_member_loop() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_vec_sibling_enum_keyed_map_value_arrays_the_sibling_schema() {
     let arrayed = map_field_schema("HashMap<Slot, Vec<Inner>>").to_string();
@@ -16921,7 +16826,6 @@ fn a_vec_sibling_enum_keyed_map_value_arrays_the_sibling_schema() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn an_optional_map_value_is_nullable_on_both_key_paths() {
     let enum_keyed = map_field_schema("HashMap<Slot, Option<String>>").to_string();
@@ -16941,7 +16845,6 @@ fn an_optional_map_value_is_nullable_on_both_key_paths() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_required_map_value_carries_no_nullable_wrap() {
     for map_type in [
@@ -16955,7 +16858,7 @@ fn a_required_map_value_carries_no_nullable_wrap() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_alias_registers_the_kind_of_what_it_targets() {
     register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
@@ -16991,7 +16894,7 @@ fn an_alias_registers_the_kind_of_what_it_targets() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_alias_and_a_brand_answer_alike_for_the_same_target() {
     register_alias_info("Doc", "Doc", "doc_schema", AliasKind::NoEnumMembers);
@@ -17021,10 +16924,7 @@ fn an_alias_and_a_brand_answer_alike_for_the_same_target() {
     }
 }
 
-#[cfg(all(
-    feature = "chrono",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "chrono", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn an_alias_of_a_chrono_target_is_stringified() {
     for target in ["NaiveDate", "NaiveTime", "NaiveDateTime", "DateTime<Utc>"] {
@@ -17034,10 +16934,7 @@ fn an_alias_of_a_chrono_target_is_stringified() {
     }
 }
 
-#[cfg(all(
-    feature = "mongodb",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "mongodb", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn an_alias_of_an_object_id_stays_refused() {
     let ty: syn::Type = syn::parse_str("ObjectId").unwrap();
@@ -17045,7 +16942,7 @@ fn an_alias_of_an_object_id_stays_refused() {
     assert_eq!(kind, AliasKind::NoEnumMembers);
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_alias_chain_carries_the_stringified_kind_to_its_end() {
     register_alias_info("Tick", "Tick", "tick_schema", AliasKind::Stringified);
@@ -17066,7 +16963,7 @@ fn an_alias_chain_carries_the_stringified_kind_to_its_end() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_alias_of_a_refused_target_is_refused_under_its_own_name() {
     register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
@@ -17094,7 +16991,7 @@ fn an_alias_of_a_refused_target_is_refused_under_its_own_name() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_alias_chain_carries_the_string_wire_kind_to_its_end() {
     register_alias_info(
@@ -17117,14 +17014,14 @@ fn an_alias_chain_carries_the_string_wire_kind_to_its_end() {
 }
 
 /// [`super::branded_alias_kind`] read off the one field a brand is written with.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn brand_kind(inner: &str) -> AliasKind {
     let inner_ty: syn::Type = syn::parse_str(inner).unwrap();
     let item: syn::ItemStruct = syn::parse_quote! { struct Brand(#inner_ty); };
     super::branded_alias_kind(item.fields.iter().next().unwrap())
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_registers_what_serde_writes_for_its_inner() {
     register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
@@ -17155,10 +17052,7 @@ fn a_brand_registers_what_serde_writes_for_its_inner() {
     }
 }
 
-#[cfg(all(
-    feature = "chrono",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "chrono", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_brand_over_a_chrono_inner_is_stringified() {
     for inner in ["NaiveDate", "NaiveTime", "NaiveDateTime", "DateTime<Utc>"] {
@@ -17170,16 +17064,13 @@ fn a_brand_over_a_chrono_inner_is_stringified() {
     }
 }
 
-#[cfg(all(
-    feature = "mongodb",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "mongodb", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_brand_over_an_object_id_stays_refused() {
     assert_eq!(brand_kind("ObjectId"), AliasKind::NoEnumMembers);
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_stringified_key_is_left_alone_wherever_it_is_written() {
     register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
@@ -17206,7 +17097,7 @@ fn a_stringified_key_is_left_alone_wherever_it_is_written() {
     assert!(refused.contains("Tags"), "got: {refused}");
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_alias_chain_carries_the_enum_kind_to_its_end() {
     register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
@@ -17219,7 +17110,6 @@ fn an_alias_chain_carries_the_enum_kind_to_its_end() {
     assert_eq!(second, AliasKind::EnumMembers);
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_map_key_known_to_lack_enum_members_names_the_requirement() {
     register_alias_info(
@@ -17244,7 +17134,6 @@ fn a_map_key_known_to_lack_enum_members_names_the_requirement() {
     assert!(tokens.contains("KeyAlias"), "got: {tokens}");
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_map_key_that_may_have_enum_members_expands_exactly_as_before() {
     let unregistered = map_field_schema("HashMap<Slot, String>").to_string();
@@ -17259,7 +17148,6 @@ fn a_map_key_that_may_have_enum_members_expands_exactly_as_before() {
 
 /// The `String`-key branch's output for a map value built by hand, for the value types no source
 /// type produces: the `literal` override rewrites a *field's* type, never a map value's.
-#[cfg(feature = "jsonschema")]
 fn string_key_map_value_schema(field_type: FieldDefType) -> String {
     let ty: syn::Type = syn::parse_str("String").unwrap();
     let mut value = super::get_field_def("m", &ty, "");
@@ -17269,7 +17157,7 @@ fn string_key_map_value_schema(field_type: FieldDefType) -> String {
         .to_string()
 }
 
-#[cfg(all(feature = "chrono", feature = "jsonschema"))]
+#[cfg(feature = "chrono")]
 #[test]
 fn a_chrono_string_keyed_map_value_keeps_its_form() {
     for value_type in ["NaiveDate", "NaiveTime", "NaiveDateTime", "DateTime<Utc>"] {
@@ -17285,7 +17173,6 @@ fn a_chrono_string_keyed_map_value_keeps_its_form() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_string_literal_string_keyed_map_value_keeps_its_const() {
     let tokens = string_key_map_value_schema(FieldDefType::StringLiteral("Tixena".to_owned()));
@@ -17295,7 +17182,6 @@ fn a_string_literal_string_keyed_map_value_keeps_its_const() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn an_opaque_string_keyed_map_value_stays_permissive() {
     let tokens = string_key_map_value_schema(FieldDefType::Unknown);
@@ -17306,7 +17192,6 @@ fn an_opaque_string_keyed_map_value_stays_permissive() {
 }
 
 /// A tuple as a map's value, under every key path, is the fixed array its own field position is.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_map_of_tuples_describes_each_value_as_its_array() {
     for map_type in [
@@ -17328,14 +17213,12 @@ fn a_map_of_tuples_describes_each_value_as_its_array() {
 }
 
 /// The caret has to land on the tokens the author edits.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_refused_map_value_points_at_the_written_value() {
     let tokens = sole_field_json_schema("pub struct Rows { pub m: HashMap<(u32, u32), u32> }");
     assert_points_only_at(&tokens, "(u32, u32)", "a map value");
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_refused_tuple_element_map_value_points_at_the_written_value() {
     let tokens =
@@ -17343,7 +17226,6 @@ fn a_refused_tuple_element_map_value_points_at_the_written_value() {
     assert_points_only_at(&tokens, "(u32, u32)", "a tuple element map value");
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_scalar_string_keyed_map_value_expands_exactly_as_before() {
     for (map_type, expected) in [
@@ -17368,7 +17250,6 @@ fn a_scalar_string_keyed_map_value_expands_exactly_as_before() {
 /// The `String`-key branch's output for a nested map value built by hand: a `String`-keyed inner
 /// map holding `inner_type`, bare or behind a `Vec`, for the inner value types no source type
 /// produces.
-#[cfg(feature = "jsonschema")]
 fn nested_string_key_map_value_schema(inner_type: FieldDefType, array_depth: u8) -> String {
     let ty: syn::Type = syn::parse_str("String").unwrap();
     let inner_key = super::get_field_def("m", &ty, "");
@@ -17382,7 +17263,6 @@ fn nested_string_key_map_value_schema(inner_type: FieldDefType, array_depth: u8)
         .to_string()
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_nested_string_keyed_map_value_renders_its_inner_members() {
     for (map_type, expected) in [
@@ -17423,7 +17303,6 @@ fn a_nested_string_keyed_map_value_renders_its_inner_members() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_vec_of_maps_string_keyed_map_value_renders_its_inner_members() {
     for (map_type, expected) in [
@@ -17452,7 +17331,7 @@ fn a_vec_of_maps_string_keyed_map_value_renders_its_inner_members() {
     }
 }
 
-#[cfg(all(feature = "chrono", feature = "jsonschema"))]
+#[cfg(feature = "chrono")]
 #[test]
 fn a_nested_chrono_map_value_keeps_its_form() {
     for (map_type, expected) in [
@@ -17484,7 +17363,6 @@ fn a_nested_chrono_map_value_keeps_its_form() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_nested_string_literal_map_value_keeps_its_const() {
     let inner_member = r#"{ "type" : "object" , "additionalProperties" : { "type" : "string" , "const" : "Tixena" } }"#;
@@ -17506,7 +17384,7 @@ fn a_nested_string_literal_map_value_keeps_its_const() {
 }
 
 /// A nested `ObjectId` member carries the `$oid` object the outer member carries.
-#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
+#[cfg(feature = "mongodb")]
 #[test]
 fn a_nested_object_id_map_value_keeps_its_oid_object() {
     let inner_member = r#"{ "type" : "object" , "additionalProperties" : { "type" : "object" , "properties" : { "$oid" : (serde_json :: json ! ({ "type" : "string" , "pattern" : "^[a-f0-9]{24}$" })) } , "required" : ["$oid"] , "additionalProperties" : false } }"#;
@@ -17527,14 +17405,12 @@ fn a_nested_object_id_map_value_keeps_its_oid_object() {
 
 /// The rendering an enum-keyed map carries in every position, spelled out for a key of the given
 /// name and a member of the given tokens.
-#[cfg(feature = "jsonschema")]
 fn enum_key_map_rendering(key_type_name: &str, member: &str) -> String {
     format!(
         r#"serde_json :: json ! ({{ "type" : "object" , "properties" : ({{ let value_schema = {member} ; let mut map_properties = serde_json :: Map :: new () ; for enum_key in {key_type_name} :: enum_members () {{ map_properties . insert (enum_key . to_string () , value_schema . clone ()) ; }} map_properties }}) , "additionalProperties" : false }})"#
     )
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_nested_map_under_an_enumerating_key_expands_its_members() {
     let tokens = map_field_schema("HashMap<String, HashMap<Slot, String>>").to_string();
@@ -17549,7 +17425,6 @@ fn a_nested_map_under_an_enumerating_key_expands_its_members() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_nested_map_under_two_enumerating_keys_expands_both_member_sets() {
     let tokens = map_field_schema("HashMap<Slot, HashMap<Bucket, u64>>").to_string();
@@ -17565,7 +17440,6 @@ fn a_nested_map_under_two_enumerating_keys_expands_both_member_sets() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_wrapped_nested_enum_keyed_map_keeps_its_members_inside_the_slot_wrap() {
     let inner = enum_key_map_rendering("Slot", r#"serde_json :: json ! ({ "type" : "string" })"#);
@@ -17587,7 +17461,6 @@ fn a_wrapped_nested_enum_keyed_map_keeps_its_members_inside_the_slot_wrap() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn an_enum_keyed_map_tuple_element_expands_its_members() {
     let expected =
@@ -17608,7 +17481,6 @@ fn an_enum_keyed_map_tuple_element_expands_its_members() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_nested_map_key_known_to_lack_enum_members_names_the_requirement() {
     register_alias_info(
@@ -17644,7 +17516,6 @@ fn a_nested_map_key_known_to_lack_enum_members_names_the_requirement() {
 }
 
 /// The guard reaches a tuple slot too, that being another position the map is dispatched through.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_tuple_element_map_key_known_to_lack_enum_members_names_the_requirement() {
     register_alias_info(
@@ -17665,7 +17536,6 @@ fn a_tuple_element_map_key_known_to_lack_enum_members_names_the_requirement() {
     assert!(tokens.contains("field `t`"), "got: {tokens}");
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn an_enum_keyed_map_renders_the_same_in_every_position() {
     let expected =
@@ -17687,7 +17557,6 @@ fn an_enum_keyed_map_renders_the_same_in_every_position() {
 
 /// A map under a key read from its text describes its values, nested in another map's value too,
 /// and names its keys by that text.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_nested_map_under_a_key_read_from_its_text_describes_its_values() {
     for (map_type, names) in [
@@ -17708,7 +17577,6 @@ fn a_nested_map_under_a_key_read_from_its_text_describes_its_values() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn an_unsupported_nested_map_value_emits_only_the_compile_error() {
     for map_type in [
@@ -17733,7 +17601,6 @@ fn an_unsupported_nested_map_value_emits_only_the_compile_error() {
 }
 
 /// The value half of a map type, parsed from the map type's source.
-#[cfg(feature = "jsonschema")]
 fn map_value_def(map_type: &str) -> super::FieldDef {
     let ty: syn::Type = syn::parse_str(map_type).unwrap();
     let field = super::get_field_def("m", &ty, "");
@@ -17745,7 +17612,6 @@ fn map_value_def(map_type: &str) -> super::FieldDef {
     value.unwrap()
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_vec_sibling_map_value_parses_as_the_sibling_at_the_depth_it_is_written() {
     for (map_type, array_depth) in [
@@ -17763,7 +17629,6 @@ fn a_vec_sibling_map_value_parses_as_the_sibling_at_the_depth_it_is_written() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_sibling_string_keyed_map_value_emits_the_sibling_schema() {
     for (map_type, expected) in [
@@ -17796,7 +17661,6 @@ fn a_sibling_string_keyed_map_value_emits_the_sibling_schema() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_generic_sibling_string_keyed_map_value_emits_the_sibling_schema() {
     let tokens = map_field_schema("HashMap<String, Wrapper<String>>").to_string();
@@ -17809,7 +17673,6 @@ fn a_generic_sibling_string_keyed_map_value_emits_the_sibling_schema() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_reference_site_argument_the_dispatch_cannot_render_is_refused() {
     let argument = get_field_def(
@@ -17830,7 +17693,6 @@ fn a_reference_site_argument_the_dispatch_cannot_render_is_refused() {
 
 /// The arguments a reference site writes, read off the sole field of `source` so each one carries
 /// the span of the tokens it was written with.
-#[cfg(feature = "jsonschema")]
 fn sole_field_arguments(source: &str) -> Vec<super::FieldDef> {
     let item: syn::ItemStruct = syn::parse_str(source).unwrap();
     let field = item.fields.iter().next().unwrap();
@@ -17841,7 +17703,6 @@ fn sole_field_arguments(source: &str) -> Vec<super::FieldDef> {
     arguments
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_refused_reference_site_argument_points_at_the_written_argument() {
     let arguments =
@@ -17853,7 +17714,6 @@ fn a_refused_reference_site_argument_points_at_the_written_argument() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_refused_declared_filling_points_at_the_written_filling() {
     let parameter: syn::Ident = syn::parse_str("IdType").unwrap();
@@ -17884,7 +17744,6 @@ fn a_map_never_parses_as_a_sibling_named_after_its_container() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn an_aliased_string_keyed_map_value_resolves_its_module_through_the_registry() {
     register_alias_info(
@@ -17907,7 +17766,6 @@ fn an_aliased_string_keyed_map_value_resolves_its_module_through_the_registry() 
 /// A value spelled as a wrapper around `u32`, built rather than parsed: the parser collapses a
 /// `Vec` onto its element before any wrapper name is read, so the `Vec` spelling of a wrapper name
 /// can only be put in front of a dispatch this way.
-#[cfg(feature = "jsonschema")]
 fn wrapped_u32_value(wrapper: &str) -> super::FieldDef {
     let element = super::get_field_def("", &syn::parse_quote!(u32), "");
     super::FieldDef {
@@ -17921,7 +17779,6 @@ fn wrapped_u32_value(wrapper: &str) -> super::FieldDef {
         absent_from_wire: false,
         omits_value: false,
         missing_key: MissingKey::Required,
-        #[cfg(any(feature = "zod", feature = "jsonschema"))]
         serde_default: None,
         bytes: false,
         set_levels: Vec::new(),
@@ -17931,7 +17788,6 @@ fn wrapped_u32_value(wrapper: &str) -> super::FieldDef {
 
 /// The `Vec<u32>` value every wrapper spelling of the same thing is held against, its one level
 /// written as a set where `wrapper` is one.
-#[cfg(feature = "jsonschema")]
 fn parsed_u32_vec_value_as(wrapper: &str) -> super::FieldDef {
     let mut parsed = super::get_field_def("items", &syn::parse_quote!(Vec<u32>), "");
     if is_set_wrapper(wrapper) {
@@ -17940,7 +17796,6 @@ fn parsed_u32_vec_value_as(wrapper: &str) -> super::FieldDef {
     parsed
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn every_sequence_wrapper_describes_as_the_vec_of_its_element() {
     for wrapper in SEQUENCE_WRAPPERS {
@@ -17954,7 +17809,6 @@ fn every_sequence_wrapper_describes_as_the_vec_of_its_element() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn every_sequence_wrapper_describes_as_the_vec_of_its_element_in_a_slot() {
     for wrapper in SEQUENCE_WRAPPERS {
@@ -17977,7 +17831,6 @@ fn every_sequence_wrapper_describes_as_the_vec_of_its_element_in_a_slot() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_set_writes_unique_items_at_its_own_level_alone() {
     let distinct = r#""uniqueItems" : true"#;
@@ -17992,7 +17845,7 @@ fn a_set_writes_unique_items_at_its_own_level_alone() {
     }
 }
 
-#[cfg(all(feature = "jsonschema", feature = "serde"))]
+#[cfg(feature = "serde")]
 #[test]
 fn every_sequence_wrapper_describes_as_the_vec_of_its_element_in_an_untagged_member() {
     for wrapper in SEQUENCE_WRAPPERS {
@@ -18006,7 +17859,7 @@ fn every_sequence_wrapper_describes_as_the_vec_of_its_element_in_an_untagged_mem
 
 /// One value per arm of the untagged-member dispatch, labelled as it was written. Built at no array
 /// level, so each holds exactly the tokens its arm emits before the array wrap sees them.
-#[cfg(all(feature = "jsonschema", feature = "serde"))]
+#[cfg(feature = "serde")]
 fn untagged_member_dispatch_values() -> Vec<(&'static str, super::FieldDef)> {
     let parsed: [(&'static str, syn::Type); 5] = [
         ("MetricTag", syn::parse_quote!(MetricTag)),
@@ -18055,7 +17908,7 @@ fn untagged_member_dispatch_values() -> Vec<(&'static str, super::FieldDef)> {
 }
 
 /// Every arm of the untagged-member dispatch hands the array wrap a value the wrap can carry.
-#[cfg(all(feature = "jsonschema", feature = "serde"))]
+#[cfg(feature = "serde")]
 #[test]
 fn every_untagged_member_value_is_one_the_array_wrap_can_carry() {
     for (label, value) in untagged_member_dispatch_values() {
@@ -18069,7 +17922,7 @@ fn every_untagged_member_value_is_one_the_array_wrap_can_carry() {
     }
 }
 
-#[cfg(all(feature = "jsonschema", feature = "serde"))]
+#[cfg(feature = "serde")]
 #[test]
 fn the_array_wrap_carries_each_untagged_member_arms_own_tokens() {
     for (label, value) in untagged_member_dispatch_values() {
@@ -18084,7 +17937,6 @@ fn the_array_wrap_carries_each_untagged_member_arms_own_tokens() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_sibling_slot_carries_the_schema_module_reference() {
     let spellings: [syn::Type; 4] = [
@@ -18108,7 +17960,6 @@ fn a_sibling_slot_carries_the_schema_module_reference() {
 
 /// The `json_schema()` body a brand over `inner_ty` carries, read off the same dispatch the
 /// branded expansion runs.
-#[cfg(feature = "jsonschema")]
 fn brand_json_schema_over(inner_ty: &syn::Type) -> String {
     super::build_branded_json_schema_method(
         &super::ModelSchemaArgs::default(),
@@ -18120,7 +17971,6 @@ fn brand_json_schema_over(inner_ty: &syn::Type) -> String {
     .to_string()
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_named_type_resolves_to_the_same_module_in_field_and_brand_position() {
     register_alias_info(
@@ -18149,7 +17999,6 @@ fn a_named_type_resolves_to_the_same_module_in_field_and_brand_position() {
 
 /// The JSON-schema insertion for the sole field of `source`, parsed from text so its spans carry
 /// file locations and `source_text()` can report what they point at.
-#[cfg(feature = "jsonschema")]
 fn sole_field_json_schema(source: &str) -> proc_macro2::TokenStream {
     let item: syn::ItemStruct = syn::parse_str(source).unwrap();
     let field = item.fields.iter().next().unwrap();
@@ -18160,7 +18009,6 @@ fn sole_field_json_schema(source: &str) -> proc_macro2::TokenStream {
 
 /// The source text each occurrence of the ident `name` points at, `None` for an occurrence carrying
 /// no location.
-#[cfg(feature = "jsonschema")]
 fn ident_source_texts(tokens: &proc_macro2::TokenStream, name: &str) -> Vec<Option<String>> {
     let mut found = Vec::new();
     for tree in tokens.clone() {
@@ -18179,7 +18027,6 @@ fn ident_source_texts(tokens: &proc_macro2::TokenStream, name: &str) -> Vec<Opti
     found
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_sibling_reference_points_at_the_type_the_field_names() {
     for source in [
@@ -18200,7 +18047,6 @@ fn a_sibling_reference_points_at_the_type_the_field_names() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_sibling_reference_emits_the_tokens_it_always_has() {
     assert_eq!(
@@ -18209,7 +18055,6 @@ fn a_sibling_reference_emits_the_tokens_it_always_has() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn an_enum_keyed_map_points_its_members_call_at_the_key_the_field_names() {
     for source in [
@@ -18230,13 +18075,11 @@ fn an_enum_keyed_map_points_its_members_call_at_the_key_the_field_names() {
 }
 
 /// The tuple-field insertion for a field type built by hand.
-#[cfg(feature = "jsonschema")]
 fn tuple_field_schema(field_type: &str) -> String {
     let ty: syn::Type = syn::parse_str(field_type).unwrap();
     super::build_field_type_schema(&super::get_field_def("t", &ty, ""), "t").to_string()
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_tuple_element_holding_an_unrenderable_map_emits_only_the_compile_error() {
     for field_type in [
@@ -18260,7 +18103,6 @@ fn a_tuple_element_holding_an_unrenderable_map_emits_only_the_compile_error() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_sequence_wrapped_map_field_describes_as_the_array_of_the_map_it_holds() {
     for (map_type, wrapped_type) in [
@@ -18293,7 +18135,6 @@ fn a_sequence_wrapped_map_field_describes_as_the_array_of_the_map_it_holds() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn an_optional_sequence_wrapped_map_field_widens_the_array_with_null() {
     let array = format!(
@@ -18306,7 +18147,6 @@ fn an_optional_sequence_wrapped_map_field_widens_the_array_with_null() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_sequence_of_optional_maps_admits_the_null_among_its_items() {
     let item = inserted_field_value("HashMap<String, u64>");
@@ -18319,7 +18159,6 @@ fn a_sequence_of_optional_maps_admits_the_null_among_its_items() {
 }
 
 /// The description of a map of `u64` values keyed by an integer.
-#[cfg(feature = "jsonschema")]
 fn integer_keyed() -> String {
     format!(
         r#"serde_json :: json ! ({{ "type" : "object" , "additionalProperties" : {{ "type" : "integer" }} , "propertyNames" : ({INTEGER_KEY_NAMES} }})"#
@@ -18327,7 +18166,6 @@ fn integer_keyed() -> String {
 }
 
 /// A map named without a sequence wrapper describes its values on every key path.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn an_unwrapped_map_field_describes_its_values_on_every_key_path() {
     let string_keyed = r#"serde_json :: json ! ({ "type" : "object" , "additionalProperties" : { "type" : "integer" } })"#;
@@ -18340,7 +18178,6 @@ fn an_unwrapped_map_field_describes_its_values_on_every_key_path() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn an_optional_unwrapped_map_field_widens_the_object_with_null() {
     for (map_type, base) in [
@@ -18365,7 +18202,7 @@ fn an_optional_unwrapped_map_field_widens_the_object_with_null() {
     );
 }
 
-#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
+#[cfg(feature = "mongodb")]
 #[test]
 fn an_object_id_tuple_element_spells_the_one_oid_object() {
     let parsed = super::get_field_def("id", &syn::parse_quote!(ObjectId), "");
@@ -18377,7 +18214,6 @@ fn an_object_id_tuple_element_spells_the_one_oid_object() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn an_optional_sequence_wrapper_member_stays_nullable() {
     let mut optional_set = wrapped_u32_value("HashSet");
@@ -18441,7 +18277,6 @@ fn discriminated_union_members_follow_declaration_order() {
             "Zod member {position} is not `{declared}`: {}",
             zod_members[position]
         );
-        #[cfg(feature = "jsonschema")]
         assert!(
             json_members[position].contains(&format!("\"const\" : \"{declared}\"")),
             "JSON-schema member {position} is not `{declared}`: {}",
@@ -18489,9 +18324,7 @@ fn adjacently_tagged_empty_named_variant_nests_an_empty_content_object() {
     #[cfg(feature = "zod")]
     assert!(zod.contains("data: z.strictObject({\n}),"), "Got: {zod}");
 
-    #[cfg(feature = "jsonschema")]
     let json = rendered.2[0].to_string();
-    #[cfg(feature = "jsonschema")]
     assert!(json.contains("\"data\""), "Got: {json}");
 }
 
@@ -19522,10 +19355,7 @@ fn a_list_is_the_value_the_walk_ends_on() {
 }
 
 /// `held_as_a_list` is the constraint walk held to a list behind transparent wrappers alone.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn the_list_a_brand_holds_is_the_constraint_walks() {
     let no_list = [
@@ -19556,7 +19386,7 @@ fn the_list_a_brand_holds_is_the_constraint_walks() {
 /// The slots a tuple struct is read from, at the three arities the dispatch answers for. The empty
 /// one has no declaration in this crate — `struct Nothing();` is refused by the lint table — so it
 /// is read here, where the slots are built rather than parsed off an item.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn tuple_slots(spellings: &[&str]) -> Vec<super::FieldDef> {
     spellings
         .iter()
@@ -19565,7 +19395,7 @@ fn tuple_slots(spellings: &[&str]) -> Vec<super::FieldDef> {
 }
 
 /// The shape a struct declaring exactly the given slots publishes, none of them off the wire.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn whole_tuple(spellings: &[&str]) -> super::TupleStructShape {
     tuple_struct_shape(spellings.len(), tuple_slots(spellings))
 }
@@ -19605,7 +19435,6 @@ fn a_tuple_struct_describes_as_its_arity_in_zod() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_tuple_struct_describes_as_its_arity_in_json_schema() {
     let empty = tuple_struct_json_body("Nothing", &whole_tuple(&[])).to_string();
@@ -19621,7 +19450,6 @@ fn a_tuple_struct_describes_as_its_arity_in_json_schema() {
     assert!(pair.contains("maxItems"), "Got: {pair}");
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_tuple_struct_slot_the_dispatch_cannot_render_is_refused() {
     for shape in [
@@ -19641,7 +19469,6 @@ fn a_tuple_struct_slot_the_dispatch_cannot_render_is_refused() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_refused_tuple_struct_slot_points_at_that_slot_alone() {
     let item: syn::ItemStruct =
@@ -19672,7 +19499,6 @@ fn a_slot_dropped_off_the_wire_leaves_the_tuple_an_array() {
 }
 
 /// The same reading on the JSON surface, where the arity is written twice as its own bounds.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_slot_dropped_off_the_wire_shrinks_the_described_arity() {
     let shrunk = tuple_struct_json_body("Pair", &tuple_struct_shape(2, tuple_slots(&["u32"])));
@@ -19683,7 +19509,7 @@ fn a_slot_dropped_off_the_wire_shrinks_the_described_arity() {
 }
 
 /// A two-slot struct whose second slot is written at the given spelling.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn slot_pair(spelling: &str) -> syn::ItemStruct {
     syn::parse_str(&format!(
         "struct Pair(String, #[serde({spelling})] Option<String>);"
@@ -19693,7 +19519,7 @@ fn slot_pair(spelling: &str) -> syn::ItemStruct {
 
 /// Runs the slot refusal over that struct's second slot, with the declared arity supplied rather
 /// than counted, so the lone-slot exemption can be read off the same declaration.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn slot_guard_result(item: &syn::ItemStruct, declared_slots: usize) -> Result<(), syn::Error> {
     let field = item.fields.iter().nth(1).unwrap();
     check_slot_wire_is_readable(
@@ -19706,14 +19532,14 @@ fn slot_guard_result(item: &syn::ItemStruct, declared_slots: usize) -> Result<()
 }
 
 /// The refusal message for the slot at that spelling, and `None` where it is left alone.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn slot_refusal(spelling: &str, declared_slots: usize) -> Option<String> {
     slot_guard_result(&slot_pair(spelling), declared_slots)
         .err()
         .map(|err| err.to_string())
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_slot_dropped_from_one_direction_only_is_refused() {
     for (spelling, refused) in SLOT_OMISSION_SPELLINGS {
@@ -19726,7 +19552,7 @@ fn a_slot_dropped_from_one_direction_only_is_refused() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_lone_slot_is_refused_for_no_spelling() {
     for (spelling, _) in SLOT_OMISSION_SPELLINGS {
@@ -20698,7 +20524,6 @@ fn seed_brand_registration(item: &syn::ItemStruct) {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn every_spelling_of_one_value_publishes_one_json_type_keyword() {
     for (inner, keyword) in [
@@ -21037,7 +20862,6 @@ fn a_word_boundary_pattern_keeps_its_regex() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_flattened_type_parameter_is_merged_at_the_document_its_filling_binds() {
     let ty: syn::Type = syn::parse_str("HeldType").unwrap();
@@ -21398,10 +21222,7 @@ fn expansion_over(source: &str) -> proc_macro2::TokenStream {
 }
 
 /// [`expansion_over`], carrying the `#[model_schema(...)]` arguments a bare source cannot write.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn expansion_with_args_over(args: &str, source: &str) -> proc_macro2::TokenStream {
     super::exec_model_schema(
         syn::parse_str(args).unwrap(),
@@ -21410,10 +21231,7 @@ fn expansion_with_args_over(args: &str, source: &str) -> proc_macro2::TokenStrea
 }
 
 /// A brand over a string or a path publishes the text a field's bound is measured on.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_brand_publishes_its_text_only_over_a_string_or_a_path() {
     for (args, source, text) in [
@@ -21564,12 +21382,16 @@ fn an_empty_tuple_variant_is_refused_on_the_variant() {
 /// A map whose value is `()` builds and describes its values as `null`: serde writes
 /// `{"keyed":{"a":null}}` and refuses `[]` as a value, and Zod under node reads the first and
 /// refuses the second.
-#[cfg(all(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_map_of_units_describes_its_values_as_null() {
-    let expanded = expansion_over(
-        "#[derive(Serialize, Deserialize)] pub struct ProbeUnitsKeyed { pub keyed: \
-         std::collections::BTreeMap<String, ()> }",
+    let expanded = super::exec_model_schema(
+        quote::quote! { enable = ["jsonschema"] },
+        syn::parse_str(
+            "#[derive(Serialize, Deserialize)] pub struct ProbeUnitsKeyed { pub keyed: \
+             std::collections::BTreeMap<String, ()> }",
+        )
+        .unwrap(),
     );
     let written = expanded.to_string();
     assert!(!written.contains("compile_error"), "got: {written}");
@@ -21659,10 +21481,7 @@ fn an_all_unit_untagged_enum_earns_the_unit_variant_refusal_on_every_variant() {
     }
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_refused_all_unit_untagged_enum_publishes_no_string_union() {
     let tokens = expansion_over(&all_unit_source(
@@ -22342,10 +22161,7 @@ fn an_enum_is_recorded_untagged_wherever_its_list_writes_the_key() {
 }
 
 /// A brand over `Box<IdType>` expands without panicking, checked against `Box<String>`.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_constrained_brand_over_a_wrapped_parameter_expands_against_the_wrapped_default() {
     let tokens = expansion_with_args_over(
@@ -22365,10 +22181,7 @@ fn a_constrained_brand_over_a_wrapped_parameter_expands_against_the_wrapped_defa
 }
 
 /// A constrained generic brand's hook carries its own type identity and names no outside crate.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_constrained_generic_brand_defines_its_own_type_identity() {
     let generic = expansion_with_args_over(
@@ -22402,10 +22215,7 @@ fn a_constrained_generic_brand_defines_its_own_type_identity() {
 /// A parameter the brand's inner names is read at its declared default through the type
 /// identity, and a parameter beside a concrete inner changes nothing: the inner is judged at every
 /// filling by `validate_value` alone.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn only_a_brand_whose_inner_names_a_parameter_reads_at_the_declared_default() {
     let over_parameter = expansion_with_args_over(
@@ -22453,11 +22263,7 @@ fn only_a_brand_whose_inner_names_a_parameter_reads_at_the_declared_default() {
 
 /// The default a parameter takes where `default_types` leaves its entry out is the standard
 /// `String`, written at its full path.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod"),
-    not(feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn the_fallback_default_of_a_generic_brand_is_the_standard_string() {
     let rendered = expansion_with_args_over(
@@ -22478,10 +22284,7 @@ fn the_fallback_default_of_a_generic_brand_is_the_standard_string() {
 }
 
 /// Declares what the table of declared defaults reads, above the brands that name them.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn declare_the_names_a_default_may_be() {
     for (args, source) in [
         (
@@ -22502,10 +22305,7 @@ fn declare_the_names_a_default_may_be() {
 
 /// A generic brand with a string check reads its value as the declared default only where the
 /// expansion can prove the default writes every lifetime it has.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_declared_default_is_read_only_where_every_lifetime_it_has_is_written() {
     declare_the_names_a_default_may_be();
@@ -22558,10 +22358,7 @@ fn a_declared_default_is_read_only_where_every_lifetime_it_has_is_written() {
 }
 
 /// A generic brand with no string check is refused nothing, whatever its default.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_generic_brand_with_no_string_check_is_refused_no_default() {
     let expanded = expansion_with_args_over(
@@ -22574,10 +22371,7 @@ fn a_generic_brand_with_no_string_check_is_refused_no_default() {
 
 /// `validate()` is written once, in the `impl` that holds the type's delegates, under the
 /// generics the type declares: a type with a parameter gets no second `impl` at one filling.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn validate_is_written_once_in_the_types_own_impl() {
     for (args, source, own_impl) in [
@@ -22668,10 +22462,7 @@ fn validate_is_written_once_in_the_types_own_impl() {
 /// A generic brand's `validate()` hands the value to the function that reads it as its declared
 /// default, under no bound the brand's author did not write, and no function answers a reference
 /// to that default. The read asks of the parameter what serde's derive asks, and no `Display`.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_generic_brands_checks_are_run_by_the_function_that_asks_which_filling_it_is() {
     let generic = expansion_with_args_over(
@@ -22738,10 +22529,7 @@ fn a_generic_brands_checks_are_run_by_the_function_that_asks_which_filling_it_is
 /// A declared default that writes a lifetime is compared and read at the lifetime of the borrow,
 /// so a value is never read at a lifetime longer than its own. Nothing else asks which filling
 /// the brand holds.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_default_that_writes_a_lifetime_is_read_at_the_borrows_own() {
     let rendered = expansion_with_args_over(
@@ -22766,10 +22554,7 @@ fn a_default_that_writes_a_lifetime_is_read_at_the_borrows_own() {
 }
 
 /// Every lifetime a type writes is replaced, and one a `for<...>` or a signature binds is not.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_type_is_written_at_one_lifetime() {
     for (written, at_one) in [
@@ -22872,7 +22657,7 @@ fn a_parenthesis_inside_a_quoted_text_does_not_end_a_map() {
 
 /// A brand that carries no bound and names no function keeps the read serde's derive writes it:
 /// its item is emitted as it was written, and nothing beside it is a read of the macro's.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_with_no_rule_gains_no_read_of_the_macros() {
     for (args, source, emitted) in [
@@ -22928,18 +22713,19 @@ fn a_brand_with_no_rule_gains_no_read_of_the_macros() {
 /// An untagged enum with a member over `()` publishes the record the JSON Schema merge reads on
 /// its schema module's `Schema`, under the one name the merge asks for, and an alias, a brand and
 /// a struct of one slot over a name, written bare, forward that name's; nothing else carries it.
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[cfg(feature = "serde")]
 #[test]
 fn the_record_of_a_member_over_unit_is_published_under_its_one_name() {
     assert_eq!(super::UNIT_MEMBER_RECORD, "WRITES_A_UNIT_MEMBER");
     let published = |source: &str| {
-        expansion_over(&format!("#[derive(Serialize, Deserialize)] {source}"))
-            .to_string()
-            .contains("pub const WRITES_A_UNIT_MEMBER : bool =")
+        expansion_under(
+            "enable = [\"jsonschema\"]",
+            &format!("#[derive(Serialize, Deserialize)] {source}"),
+        )
+        .contains("pub const WRITES_A_UNIT_MEMBER : bool =")
     };
     let declared = |source: &str| {
-        expansion_over(source)
-            .to_string()
+        expansion_under("enable = [\"jsonschema\"]", source)
             .contains("pub const WRITES_A_UNIT_MEMBER : bool =")
     };
     assert!(
@@ -23392,18 +23178,24 @@ fn a_map_key_is_accepted_where_the_parameter_declares_serialize_or_the_walk_read
 #[test]
 fn a_type_that_republishes_a_binding_and_writes_no_block_states_no_examples_of_its_own() {
     let module: syn::Ident = syn::parse_quote!(report_schema);
-    let delegates: Vec<String> =
-        super::build_struct_delegate_items(&module, "Report", "Report", &[], None, true)
-            .iter()
-            .map(ToString::to_string)
-            .filter(|item| item.contains("fn zod_schema"))
-            .collect();
+    let delegates: Vec<String> = super::build_struct_delegate_items(
+        &module,
+        "Report",
+        "Report",
+        &[],
+        None,
+        true,
+        &super::ModelSchemaArgs::default(),
+    )
+    .iter()
+    .map(ToString::to_string)
+    .filter(|item| item.contains("fn zod_schema"))
+    .collect();
 
     assert_eq!(delegates.len(), 1, "{delegates:?}");
     assert!(!delegates[0].contains("examples"), "Got: {}", delegates[0]);
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn the_delegate_forwards_the_schema_module_document_unchanged() {
     let module: syn::Ident = syn::parse_quote!(report_schema);
@@ -23412,7 +23204,6 @@ fn the_delegate_forwards_the_schema_module_document_unchanged() {
     assert!(!delegate.contains("examples"), "Got: {delegate}");
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_type_that_writes_examples_gets_the_keyword_in_its_schema_modules_document() {
     let attrs: Vec<syn::Attribute> = vec![

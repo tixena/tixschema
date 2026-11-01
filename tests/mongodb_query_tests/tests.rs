@@ -11,7 +11,6 @@ mod nested;
 #[cfg(not(any(
     feature = "typescript",
     feature = "zod",
-    feature = "jsonschema",
     feature = "dart",
     feature = "swift",
     feature = "kotlin"
@@ -36,11 +35,6 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use self::shapes::{Audit, Delivery, Payment, Rebate, Reference, Wrapper};
-// The JSON schema of `Invoice` names the module of each model it holds, from beside the type.
-#[cfg(feature = "jsonschema")]
-use self::shapes::{
-    audit_schema, delivery_schema, payment_schema, rebate_schema, reference_schema, wrapper_schema,
-};
 
 /// Third level of the nested chain: `Invoice` -> `Customer` -> `Address`.
 #[model_schema(enable = ["decode_with", "mongodb"])]

@@ -1,6 +1,5 @@
-//! JSON Schema generation feature module.
-//!
-//! This module handles JSON schema generation when the "jsonschema" feature is enabled.
+//! JSON Schema generation: `json_schema()` and `json_schema_within()` for a type that lists
+//! `enable = ["jsonschema"]`.
 
 const DEFS_PREFIX: &str = "#/$defs/";
 
