@@ -2312,7 +2312,7 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     }
     // A const handed to a written type as an argument stands where a type belongs, and no surface
     // can spell it: refused here, ahead of every shape.
-    if let Some(output) = refused(&const_parameter_argument_errors(&item)) {
+    if let Some(output) = refused(&const_parameter_argument_errors(&item, &parsed_args)) {
         return output;
     }
     // A name a feature that is off reads is no type this build describes, so it is refused here,
@@ -6024,16 +6024,23 @@ fn const_parameter_example_message(consts: &[&syn::Ident]) -> String {
 }
 
 /// The `compile_error!` tokens an item earns for handing one of its own const parameters to a
-/// generic type it writes, or none where no type written on it does that.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
-fn const_parameter_argument_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
+/// generic type it writes, or none where no type written on it does that. Judged wherever the item
+/// is described: in a build with a describing feature, and wherever it lists `"jsonschema"`.
+fn const_parameter_argument_errors(
+    item: &Item,
+    args: &ModelSchemaArgs,
+) -> Vec<proc_macro2::TokenStream> {
+    let described = cfg!(any(
+        feature = "typescript",
+        feature = "zod",
+        all(
+            feature = "serde",
+            any(feature = "dart", feature = "swift", feature = "kotlin")
+        )
+    )) || args.enable.jsonschema;
+    if !described {
+        return Vec::new();
+    }
     let Some(generics) = item_generics(item) else {
         return Vec::new();
     };
@@ -6086,14 +6093,6 @@ fn item_written_types(item: &Item) -> Vec<&syn::Type> {
 
 /// Every place one of `consts` is handed to a written type as an argument, collected as the ident
 /// it was written at so the refusal points there.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn collect_const_arguments(written: &syn::Type, consts: &[String], found: &mut Vec<syn::Ident>) {
     match written {
         syn::Type::Path(type_path) => {
@@ -6155,14 +6154,6 @@ fn collect_const_arguments(written: &syn::Type, consts: &[String], found: &mut V
 }
 
 /// The ident a type is written as when it is written as a bare name and nothing else, or `None`.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn bare_ident(written: &syn::Type) -> Option<syn::Ident> {
     let syn::Type::Path(type_path) = written else {
         return None;
@@ -6175,14 +6166,6 @@ fn bare_ident(written: &syn::Type) -> Option<syn::Ident> {
 
 /// Why a const handed to a written type as an argument is refused: where the const does render,
 /// where this one stands instead, what each surface would emit, and the way out.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn const_parameter_argument_message(name: &str) -> String {
     format!(
         "`#[model_schema]` cannot render the const parameter `{name}` as a type argument. An \
@@ -6196,19 +6179,6 @@ fn const_parameter_argument_message(name: &str) -> String {
          fill the argument with a type.",
         name.to_lowercase()
     )
-}
-
-/// Nothing, in a build that describes no type.
-#[cfg(not(any(
-    feature = "typescript",
-    feature = "zod",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-)))]
-const fn const_parameter_argument_errors(_item: &Item) -> Vec<proc_macro2::TokenStream> {
-    Vec::new()
 }
 
 /// The `compile_error!` tokens an item earns for each type it writes under a name a feature that is

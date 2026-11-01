@@ -1,0 +1,5 @@
+error: model_schema: type `Probe`: `#[model_schema]` cannot render the const parameter `WIDTH` as a type argument. An argument list is read as a list of types — that is what every surface writes one from — so `WIDTH` standing in one is taken for a type, and no surface can spell it: the JSON document would call into a `width_schema` module nothing publishes, the TypeScript declaration would write `WIDTH` where nothing binds it, a const being dropped from the declaration it was written on, and no Dart, Swift or Kotlin type declares it. This is refused in every build that describes a type. A const does render as an array length — `[T; WIDTH]`, which describes as an unbounded array — so hold the value that way, or fill the argument with a type.
+  --> src/main.rs:13:20
+   |
+13 |     pub held: Leaf<WIDTH>,
+   |                    ^^^^^

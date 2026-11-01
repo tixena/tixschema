@@ -5317,41 +5317,21 @@ fn the_map_key_guard_is_compiled_in_every_build_that_describes_a_type() {
 /// No local build is of the clients alone, so the gates are read off the sources.
 #[test]
 fn the_brand_slot_alias_and_const_guards_are_compiled_in_every_build_that_describes_a_type() {
-    let describing = quote::quote! {
-        any(
-            feature = "typescript",
-            feature = "zod",
-            all(
-                feature = "serde",
-                any(feature = "dart", feature = "swift", feature = "kotlin")
-            )
-        )
-    };
-    let compiled = quote::quote!(cfg(#describing)).to_string();
     let expansion = include_str!("../model_schema.rs");
-    // A map key is refused in every build.
-    assert_eq!(
-        gates_above(expansion, "alias_map_key_guard_error"),
-        Vec::<String>::new(),
-        "for `alias_map_key_guard_error`"
-    );
+    // A map key is refused in every build, and a const argument wherever the item is described.
     for named in [
+        "alias_map_key_guard_error",
+        "const_parameter_argument_errors",
         "collect_const_arguments",
         "bare_ident",
         "const_parameter_argument_message",
     ] {
         assert_eq!(
             gates_above(expansion, named),
-            [compiled.as_str()],
+            Vec::<String>::new(),
             "for `{named}`"
         );
     }
-    let gates = gates_above(expansion, "const_parameter_argument_errors");
-    assert_eq!(
-        gates,
-        [compiled, quote::quote!(cfg(not(#describing))).to_string()],
-        "for `const_parameter_argument_errors`"
-    );
     // A brand is expanded in every build, and so is the JSON Schema document, which reads these.
     for named in [
         "branded_guard_errors",
@@ -12008,18 +11988,10 @@ fn an_item_refused_for_an_example_beside_a_const_is_re_emitted_without_its_membe
     );
 }
 
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 #[test]
 fn an_item_refused_for_a_const_argument_is_re_emitted_without_its_members_keys() {
     assert_refused_without_member_keys(
-        "",
+        "enable = [\"jsonschema\"]",
         "pub struct Label<const SLOTS: usize> { #[model_schema_prop(maxLength = 9)] pub text: \
          String, pub slots: Slots<SLOTS> }",
         "type `Label`: `#[model_schema]` cannot render the const parameter `SLOTS` as a type \
@@ -15790,11 +15762,11 @@ fn a_const_declaring_alias_with_no_example_is_left_alone() {
     assert!(messages.is_empty(), "got: {messages:?}");
 }
 
-/// The `compile_error!` tokens `source` earns for handing one of its own consts to a written type.
-/// Parsed from text so the tokens carry file locations and each refusal's span can be read back as
-/// the source it points at.
+/// The `compile_error!` tokens `source`, listing `"jsonschema"`, earns for handing one of its own
+/// consts to a written type. Parsed from text so the tokens carry file locations and each refusal's
+/// span can be read back as the source it points at.
 fn const_argument_refusals(source: &str) -> Vec<proc_macro2::TokenStream> {
-    super::const_parameter_argument_errors(&syn::parse_str(source).unwrap())
+    super::const_parameter_argument_errors(&syn::parse_str(source).unwrap(), &json_schema_args())
 }
 
 /// The refusals `source` earns, rendered.
@@ -15805,14 +15777,6 @@ fn const_argument_messages(source: &str) -> Vec<String> {
         .collect()
 }
 
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 #[test]
 fn a_const_handed_to_a_written_type_as_an_argument_is_refused() {
     for (source, label) in [
@@ -15841,14 +15805,6 @@ fn a_const_handed_to_a_written_type_as_an_argument_is_refused() {
     }
 }
 
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 #[test]
 fn a_const_argument_refusal_is_spanned_on_the_argument() {
     let refusals =
@@ -15857,14 +15813,6 @@ fn a_const_argument_refusal_is_spanned_on_the_argument() {
     assert_eq!(refusals[0].span().source_text().as_deref(), Some("WIDTH"));
 }
 
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 #[test]
 fn a_const_argument_is_found_under_every_wrapper_it_can_be_written_beneath() {
     for source in [
@@ -15877,6 +15825,23 @@ fn a_const_argument_is_found_under_every_wrapper_it_can_be_written_beneath() {
         let messages = const_argument_messages(source);
         assert_eq!(messages.len(), 1, "for {source}: {messages:?}");
     }
+}
+
+#[test]
+fn a_const_argument_on_a_type_without_the_entry_is_refused_only_where_a_feature_describes_it() {
+    let refusals = super::const_parameter_argument_errors(
+        &syn::parse_str("pub struct Probe<const WIDTH: usize> { pub held: Leaf<WIDTH> }").unwrap(),
+        &super::ModelSchemaArgs::default(),
+    );
+    let described = cfg!(any(
+        feature = "typescript",
+        feature = "zod",
+        all(
+            feature = "serde",
+            any(feature = "dart", feature = "swift", feature = "kotlin")
+        )
+    ));
+    assert_eq!(refusals.len(), usize::from(described), "got: {refusals:?}");
 }
 
 #[test]
