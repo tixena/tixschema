@@ -510,7 +510,10 @@ the path an issue of the Zod schema holds, and the one the recovering decode lis
   consumer writes `K: Serialize` on the type and `#[serde(bound(serialize = ""))]` beside it: the
   derive otherwise writes `K: Serialize` a second time, and clippy's `trait_duplication_in_bounds`
   refuses that. A map of values that are no declared type is not walked and is refused nothing.
-  Nothing here names `serde_json`.
+  Nothing here names `serde_json`. Without `serde`, `written_key_impls` writes no `Display` of
+  `MapKey`'s, and `written_key` answers the key's own `Display` text, so a `String` key reads the
+  same in both builds. A key with no `Display` is answered by `UnwrittenKey`, and no key is
+  refused at expansion.
 - `nested_under` composes: a name is written into a report one run of steps at a time, innermost
   first, which is what lets a key be left out.
 

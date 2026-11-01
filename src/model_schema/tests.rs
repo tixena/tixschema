@@ -7266,6 +7266,43 @@ fn a_map_of_declared_types_is_walked_entry_by_entry_under_the_key_serde_writes()
     }
 }
 
+/// The text a map's entry is named by: what serde writes for the key, and without `serde` the
+/// key's `Display` text. A key with neither answers no text.
+#[test]
+fn a_map_key_is_named_through_serde_or_through_its_display() {
+    let written = super::written_key_items().to_string();
+    #[cfg(feature = "serde")]
+    let (named, unread) = (
+        [
+            "impl < K : ? :: core :: marker :: Sized + serde :: Serialize > :: core :: fmt :: \
+             Display for MapKey < '_ , K >",
+            "impl < K : ? :: core :: marker :: Sized + serde :: Serialize > WrittenKey for \
+             MapKey < '_ , K >",
+        ],
+        ":: core :: fmt :: Display > WrittenKey",
+    );
+    #[cfg(not(feature = "serde"))]
+    let (named, unread) = (
+        [
+            "impl < K : ? :: core :: marker :: Sized + :: core :: fmt :: Display > WrittenKey \
+             for MapKey < '_ , K >",
+            ":: core :: option :: Option :: Some (:: std :: string :: ToString :: to_string \
+             (self . 0))",
+        ],
+        "serde",
+    );
+    for held in named {
+        assert!(written.contains(held), "{held} is not in {written}");
+    }
+    assert!(!written.contains(unread), "{unread} is in {written}");
+    assert!(
+        written.contains(
+            "impl < K : ? :: core :: marker :: Sized > UnwrittenKey for & MapKey < '_ , K > { }"
+        ),
+        "{written}"
+    );
+}
+
 #[cfg(feature = "serde")]
 #[test]
 fn a_tuple_written_as_a_fields_type_is_walked_position_by_position() {
