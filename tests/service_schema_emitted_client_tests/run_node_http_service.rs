@@ -639,6 +639,29 @@ async function main() {
 main().catch((error) => { console.error(error); process.exit(1); });
 "#;
 
+/// `GET` at the document's path and at the one route, each body handed back as the text the
+/// dispatcher answered.
+const SCALE_DRIVER: &str = r#"
+const dispatch = createScaleClientServiceHttpDispatcher({
+  async getReading() {
+    return { ok: false, error: { errorCode: "not-found" } };
+  },
+});
+
+async function answered(path) {
+  const reply = await dispatch({}, { method: "GET", path, query: "", headers: [], body: new Uint8Array() });
+  return { status: reply.status, text: new TextDecoder().decode(reply.body) };
+}
+
+async function main() {
+  console.log(JSON.stringify({
+    document: await answered("/openapi.json"),
+    reading: await answered("/readings/r-1"),
+  }));
+}
+main().catch((error) => { console.error(error); process.exit(1); });
+"#;
+
 /// One answer in plain terms, normalized for comparison: headers sorted, so an incidental
 /// ordering difference between the two dispatchers is not mistaken for a disagreement.
 #[derive(Debug, PartialEq, Eq)]
@@ -740,6 +763,51 @@ pub trait CatalogClientService<Ctx> {
         error_status(NotFound = 404)
     ))]
     async fn get_entry(&self, ctx: &Ctx, entry_id: String) -> Result<CatalogEntry, CatalogError>;
+}
+
+/// What `get_reading` answers: a document whose bounds JavaScript reads differently from the
+/// text Rust writes for them.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ScaleReading {
+    #[model_schema_prop(maximum = 9007199254740993)]
+    pub size: i64,
+    #[model_schema_prop(minimum = 1.0)]
+    pub weight: f64,
+}
+
+/// The error `get_reading` declares.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case", tag = "errorCode")]
+pub enum ScaleError {
+    NotFound,
+}
+
+/// A service that asks for `openapi`, whose document holds a float with no fraction and an
+/// integer past 2^53.
+#[service_schema(transports = ["http_rest"], openapi)]
+pub trait ScaleClientService<Ctx> {
+    #[service_schema_op(http(
+        method = "GET",
+        path = "/readings/{reading_id}",
+        error_status(NotFound = 404)
+    ))]
+    async fn get_reading(&self, ctx: &Ctx, reading_id: String) -> Result<ScaleReading, ScaleError>;
+}
+
+/// The Rust implementation the driver's TypeScript one answers as.
+struct ScaleBackEnd;
+
+impl ScaleClientService<()> for ScaleBackEnd {
+    async fn get_reading(
+        &self,
+        _ctx: &(),
+        _reading_id: String,
+    ) -> Result<ScaleReading, ScaleError> {
+        ready(()).await;
+        Err(ScaleError::NotFound)
+    }
 }
 
 /// The Rust implementation the driver's TypeScript one answers as.
@@ -2108,6 +2176,43 @@ fn the_typescript_server_answers_get_at_the_document_path_with_the_document() {
     assert_eq!(
         entry["body"],
         serde_json::to_value(answered.unwrap()).unwrap(),
+        "got: {results:#}"
+    );
+}
+
+fn scale_emitted() -> String {
+    [
+        "import { z } from \"zod\";".to_owned(),
+        ScaleReading::ts_definition(),
+        ScaleReading::zod_schema(),
+        ScaleError::ts_definition(),
+        ScaleError::zod_schema(),
+        ScaleClientServiceSchema::ts_definition(),
+        ScaleClientServiceSchema::ts_service(),
+        ScaleClientServiceSchema::ts_http_service(),
+    ]
+    .join("\n\n")
+}
+
+#[test]
+fn the_typescript_server_answers_the_text_rust_writes_for_a_float_and_an_integer_past_2_53() {
+    let module = format!("{}\n\n{SCALE_DRIVER}", scale_emitted());
+    let Some(results) = run_or_stand_down("http-service-openapi-text", "scale.mts", &module) else {
+        return;
+    };
+    assert_eq!(results["document"]["status"], 200_u16, "got: {results:#}");
+    let text = results["document"]["text"].as_str().unwrap();
+    let document = ScaleClientServiceSchema::openapi();
+    assert_eq!(text, document.to_string());
+    let read: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(read, document);
+    assert_eq!(results["reading"]["status"], 404_u16, "got: {results:#}");
+    let answered = poll_once(ScaleBackEnd.get_reading(&(), "r-1".to_owned())).unwrap();
+    let refused: serde_json::Value =
+        serde_json::from_str(results["reading"]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        refused,
+        serde_json::to_value(answered.unwrap_err()).unwrap(),
         "got: {results:#}"
     );
 }

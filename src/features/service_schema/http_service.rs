@@ -19,8 +19,8 @@ use crate::utils::{is_recorded_untagged_enum, ts_quoted};
 use core::fmt::Write as _;
 use syn::Type;
 
-/// The text `ts_http_service()` replaces with the service's `OpenAPI` document. No other
-/// generated text holds it.
+/// The text `ts_http_service()` replaces with the service's `OpenAPI` document, quoted as a string
+/// literal. No other generated text holds it.
 pub const OPENAPI_MARKER: &str = "/*__TIXSCHEMA_OPENAPI__*/";
 
 /// The three facts every dispatcher-building function below reads off the service, bundled so
@@ -35,8 +35,8 @@ struct DispatcherContext<'ctx> {
 }
 
 /// What `ts_http_service()` writes, each item a text of its own. Where `openapi_path` is given,
-/// the dispatcher answers `GET` there with a constant whose value is [`OPENAPI_MARKER`], which
-/// `ts_http_service()` replaces with the document at run time.
+/// the dispatcher answers `GET` there with the text of a constant whose value is
+/// [`OPENAPI_MARKER`], which `ts_http_service()` replaces with the document's text at run time.
 pub fn emit(service: &ServiceDef, openapi_path: Option<&str>) -> Vec<String> {
     let named = service.ident.to_string();
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
@@ -607,7 +607,7 @@ fn dispatcher_fn(
         format!(
             "    if (method === \"GET\" && path === {}) {{\n      \
              return {{ status: 200, headers: [[\"content-type\", \"application/json\"]], body: \
-             new TextEncoder().encode(JSON.stringify({prefix}OpenApiDocument)) }};\n    \
+             new TextEncoder().encode({prefix}OpenApiDocument) }};\n    \
              }}\n",
             ts_quoted(served_at)
         )

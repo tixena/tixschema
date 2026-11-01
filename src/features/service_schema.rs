@@ -196,9 +196,10 @@ fn kotlin_seam(_service: &ServiceDef) -> TokenStream {
 /// against the Zod schema `#[model_schema()]` publishes for the message, so a build without the Zod
 /// surface publishes neither.
 ///
-/// For a service that asks for `openapi`, `ts_http_service()` writes `openapi()` over
-/// [`http_service::OPENAPI_MARKER`] at run time: the document is built from each type's schema in
-/// the consuming crate.
+/// For a service that asks for `openapi`, `ts_http_service()` writes the text of `openapi()`, as a
+/// JavaScript string literal, over [`http_service::OPENAPI_MARKER`] at run time: the document is
+/// built from each type's schema in the consuming crate, and the dispatcher answers that text as
+/// it is, so a float written `1.0` or an integer past 2^53 keeps the spelling Rust gave it.
 #[cfg(all(feature = "typescript", feature = "zod"))]
 fn seam(service: &ServiceDef, openapi: Option<&OpenApiArguments>) -> TokenStream {
     let client = client::emit(service).join("\n\n");
@@ -207,7 +208,12 @@ fn seam(service: &ServiceDef, openapi: Option<&OpenApiArguments>) -> TokenStream
     let http_service = http_service::emit(service, served_at.as_deref()).join("\n\n");
     let http_service_text = if openapi.is_some() {
         let marker = http_service::OPENAPI_MARKER;
-        quote! { #http_service.replace(#marker, &Self::openapi().to_string()) }
+        quote! {
+            #http_service.replace(
+                #marker,
+                &serde_json::Value::String(Self::openapi().to_string()).to_string(),
+            )
+        }
     } else {
         quote! { #http_service.to_owned() }
     };

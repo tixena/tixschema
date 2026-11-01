@@ -1437,7 +1437,10 @@ use run_dart_preprocess::{
 #[cfg(all(test, feature = "dart"))]
 use run_dart_read::{ParcelClientService, parcel_client_service_schema};
 #[cfg(test)]
-use run_node_http_service::{CatalogClientService, catalog_client_service_schema};
+use run_node_http_service::{
+    CatalogClientService, ScaleClientService, catalog_client_service_schema,
+    scale_client_service_schema,
+};
 #[cfg(test)]
 use run_node_number_brands::{
     WharfClientService, WharfFilingClientService, wharf_client_service_schema,

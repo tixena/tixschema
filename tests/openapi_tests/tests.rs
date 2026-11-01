@@ -1385,14 +1385,22 @@ fn each_placement_builds_a_response_that_reads_back() {
 
 #[cfg(all(feature = "typescript", feature = "zod"))]
 #[test]
-fn the_typescript_server_holds_the_document_where_its_marker_was() {
+fn the_typescript_server_holds_the_document_text_as_a_string_literal_and_answers_it_as_it_is() {
     let written = DocumentServiceSchema::ts_http_service();
     assert!(!written.contains("__TIXSCHEMA_OPENAPI__"), "{written}");
     let constant = format!(
         "const documentServiceOpenApiDocument = {};",
-        DocumentServiceSchema::openapi()
+        Value::String(DocumentServiceSchema::openapi().to_string())
     );
     assert!(written.contains(&constant), "{written}");
+    assert!(
+        written.contains("body: new TextEncoder().encode(documentServiceOpenApiDocument) }"),
+        "{written}"
+    );
+    assert!(
+        !written.contains("JSON.stringify(documentServiceOpenApiDocument"),
+        "{written}"
+    );
     assert!(
         !PlainServiceSchema::ts_http_service().contains("OpenApiDocument"),
         "a service without openapi holds no document"

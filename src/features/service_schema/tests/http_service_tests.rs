@@ -679,7 +679,7 @@ fn the_document_arm_answers_get_at_its_path_ahead_of_every_route() {
         .find(
             "    if (method === \"GET\" && path === \"/v1/openapi.json\") {\n      \
              return { status: 200, headers: [[\"content-type\", \"application/json\"]], body: \
-             new TextEncoder().encode(JSON.stringify(documentClientServiceOpenApiDocument)) };\n    \
+             new TextEncoder().encode(documentClientServiceOpenApiDocument) };\n    \
              }\n",
         )
         .unwrap();
