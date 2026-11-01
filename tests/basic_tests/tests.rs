@@ -124,7 +124,11 @@ fn test_basic_struct_ts_definition() {
     assert!(ts_definition.contains("name: string;"));
     assert!(ts_definition.contains("age: number;"));
     assert!(ts_definition.contains("height: number;"));
-    assert!(ts_definition.contains("is_active: boolean;"));
+    #[cfg(feature = "serde")]
+    let is_active = "is_active: boolean;";
+    #[cfg(not(feature = "serde"))]
+    let is_active = "isActive: boolean;";
+    assert!(ts_definition.contains(is_active));
 
     assert!(!ts_definition.contains("export const BasicUser$Schema"));
     assert!(!ts_definition.contains("z.strictObject"));
@@ -144,13 +148,18 @@ fn test_basic_struct_zod_schema() {
     assert!(zod_schema.contains("name: z.string()"));
     assert!(zod_schema.contains("age: z.number().int()"));
     assert!(zod_schema.contains("height: z.number()"));
-    assert!(zod_schema.contains("is_active: z.boolean()"));
+    #[cfg(feature = "serde")]
+    let is_active = "is_active: z.boolean()";
+    #[cfg(not(feature = "serde"))]
+    let is_active = "isActive: z.boolean()";
+    assert!(zod_schema.contains(is_active));
 
     assert!(!zod_schema.contains("export type BasicUser"));
     assert!(!zod_schema.contains("id: string;"));
     assert!(!zod_schema.contains("age: number;"));
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_optional_fields_json_schema() {
     let schema = UserWithOptionals::json_schema();
@@ -173,13 +182,13 @@ fn test_optional_fields_json_schema() {
 
 /// The member an `Option` field written with a `skip_serializing_if` renders as. The attribute
 /// decides the wire, not the spelling, and none of these fields carries `ts_optional`.
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 fn omitted_member(name: &str, ts_type: &str) -> String {
     format!("{name}: {ts_type} | undefined;")
 }
 
 #[test]
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 fn test_optional_fields_ts_definition() {
     let ts_definition = UserWithOptionals::ts_definition();
 
@@ -194,7 +203,7 @@ fn test_optional_fields_ts_definition() {
 }
 
 #[test]
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 fn test_optional_fields_zod_schema() {
     let zod_schema = UserWithOptionals::zod_schema();
 

@@ -20908,6 +20908,49 @@ fn a_member_key_carrying_a_quote_or_a_backslash_is_escaped() {
     assert_eq!(super::ts_member_key("a\\b"), "\"a\\\\b\"");
 }
 
+/// Without `serde` a struct's member is written in camelCase in TypeScript and Zod.
+#[cfg(all(not(feature = "serde"), feature = "typescript"))]
+#[test]
+fn without_serde_a_struct_member_is_written_in_camel_case() {
+    let written = super::exec_model_schema(
+        proc_macro2::TokenStream::new(),
+        syn::parse_quote! {
+            pub struct Signup {
+                #[model_schema_prop(minLength = 3)]
+                pub user_name: String,
+            }
+        },
+    )
+    .to_string();
+
+    assert!(written.contains("userName: string;"), "got: {written}");
+    assert!(!written.contains("user_name: string;"), "got: {written}");
+    #[cfg(feature = "zod")]
+    assert!(written.contains("userName: z.string()"), "got: {written}");
+}
+
+/// Without `serde` a named member of an enum's variant is written in camelCase in TypeScript and
+/// Zod.
+#[cfg(all(not(feature = "serde"), feature = "typescript"))]
+#[test]
+fn without_serde_a_variant_member_is_written_in_camel_case() {
+    let written = super::exec_model_schema(
+        proc_macro2::TokenStream::new(),
+        syn::parse_quote! {
+            pub enum Event {
+                Opened { opened_at: u32 },
+                Closed,
+            }
+        },
+    )
+    .to_string();
+
+    assert!(written.contains("openedAt: number;"), "got: {written}");
+    assert!(!written.contains("opened_at: number;"), "got: {written}");
+    #[cfg(feature = "zod")]
+    assert!(written.contains("openedAt: z.number()"), "got: {written}");
+}
+
 #[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn an_untagged_sibling_exclusion_writes_a_non_identifier_key_as_a_string() {

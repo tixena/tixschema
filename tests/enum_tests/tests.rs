@@ -282,6 +282,7 @@ fn test_plain_enum_members() {
     assert!(members.contains(&"suspended".to_owned()));
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_discriminated_union_json_schema() {
     let schema = PaymentMethod::json_schema();

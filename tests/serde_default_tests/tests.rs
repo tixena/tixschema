@@ -2,14 +2,17 @@
 //! each surface says of it. The runs of each client are in the emitted-client groups, and the run
 //! of the Zod schemas under node in `generic_types_tests`.
 
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+use super::models::Gangway;
+#[cfg(any(feature = "typescript", feature = "zod"))]
+use super::models::report;
+#[cfg(feature = "serde")]
 use super::models::{Basin, Config, Fleet, Logbook};
 use super::models::{
     Bollard, CASES, FILLED, FILLED_REPORT, Harbour, Jetty, Marina, PREPROCESSED,
     PREPROCESSED_REPORT, Pontoon, REPORT, REQUIRED, REQUIRED_REPORT, Wharf, filled_expected,
     filled_report, preprocessed_values, read_values, unwritten_defaults,
 };
-#[cfg(any(feature = "typescript", feature = "zod"))]
-use super::models::{Gangway, report};
 #[cfg(feature = "indexmap")]
 use super::models::{IndexedFleet, IndexedLogbook};
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
@@ -138,7 +141,7 @@ fn a_default_that_breaks_its_bound_is_refused_with_its_member_named() {
 
 /// The Zod schema parses a default as it parses a payload: `.prefault` hands the parse the JSON
 /// of the default where the key is left out, so the checks of the member judge it.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn the_zod_schema_parses_the_default_of_each_member() {
     assert_eq!(
@@ -177,7 +180,7 @@ export const Jetty$Schema: ZodType<Jetty> = Jetty$RawSchema.meta({
 }
 
 /// The type a parse answers keeps every member: the key leaves the input alone.
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn the_typescript_type_keeps_each_member_required() {
     let written = Wharf::ts_definition();
@@ -194,6 +197,7 @@ fn the_typescript_type_keeps_each_member_required() {
 
 /// The JSON Schema leaves the key out of `required` and states the default, the JSON serde
 /// writes for it.
+#[cfg(feature = "serde")]
 #[test]
 fn the_json_schema_states_each_default_and_requires_no_key_it_answers() {
     let wharf = Wharf::json_schema();
@@ -232,6 +236,7 @@ fn the_json_schema_states_each_default_and_requires_no_key_it_answers() {
 
 /// A default with no JSON keeps its key required on the two validating surfaces: `Marina` writes
 /// no `Serialize`, and each member of `Harbour` names its parameter outside a list read as empty.
+#[cfg(feature = "serde")]
 #[test]
 fn the_json_schema_requires_a_key_whose_default_has_no_json() {
     let marina = Marina::json_schema();
@@ -253,7 +258,7 @@ fn the_json_schema_requires_a_key_whose_default_has_no_json() {
     }
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn the_zod_schema_requires_a_key_whose_default_has_no_json() {
     let marina = Marina::zod_schema();
@@ -271,6 +276,7 @@ fn the_zod_schema_requires_a_key_whose_default_has_no_json() {
 
 /// A list of the struct's parameter is read as the empty list at every filling, and the member
 /// beside it that names no parameter as before.
+#[cfg(feature = "serde")]
 #[test]
 fn the_json_schema_states_the_empty_list_of_a_parameter() {
     let basin = Basin::<String>::json_schema();
@@ -285,7 +291,7 @@ fn the_json_schema_states_the_empty_list_of_a_parameter() {
     );
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn the_zod_schema_parses_the_empty_list_of_a_parameter() {
     let basin = Basin::<String>::zod_schema();
@@ -301,6 +307,7 @@ fn the_zod_schema_parses_the_empty_list_of_a_parameter() {
 
 /// A list of a model filled with the parameter is read as `[]`, as the list beside it that names
 /// no parameter is.
+#[cfg(feature = "serde")]
 #[test]
 fn the_json_schema_states_the_empty_list_of_a_model_filled_with_a_parameter() {
     let config = Config::<String>::json_schema();
@@ -314,7 +321,7 @@ fn the_json_schema_states_the_empty_list_of_a_model_filled_with_a_parameter() {
     }
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn the_zod_schema_parses_the_empty_list_of_a_model_filled_with_a_parameter() {
     let config = Config::<String>::zod_schema();
@@ -327,6 +334,7 @@ fn the_zod_schema_parses_the_empty_list_of_a_model_filled_with_a_parameter() {
 }
 
 /// Each list and set is read as `[]`, and each map as `{}`.
+#[cfg(feature = "serde")]
 #[test]
 fn the_json_schema_states_the_empty_collection_of_each_list_set_and_map() {
     let held = [
@@ -380,7 +388,7 @@ fn the_json_schema_states_the_empty_collection_of_each_list_set_and_map() {
     }
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn the_zod_schema_parses_the_empty_collection_of_each_list_set_and_map() {
     // A set's array refuses a repeat, with a check that ends on the line the default follows.
@@ -437,7 +445,7 @@ fn the_zod_schema_parses_the_empty_collection_of_each_list_set_and_map() {
 
 /// A type with no `#[serde(default)]` writes on every surface the text it wrote before a default
 /// was read: `Gangway`, pinned whole.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_type_with_no_default_writes_the_zod_text_it_wrote() {
     assert_eq!(
@@ -453,7 +461,7 @@ export const Gangway$Schema: ZodType<Gangway> = Gangway$RawSchema.meta({
     );
 }
 
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn a_type_with_no_default_writes_the_typescript_text_it_wrote() {
     let lines = [
@@ -477,6 +485,7 @@ fn a_type_with_no_default_writes_the_typescript_text_it_wrote() {
     assert_eq!(Gangway::ts_definition(), lines.join("\n"));
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn a_type_with_no_default_writes_the_json_schema_it_wrote() {
     assert_eq!(
@@ -655,7 +664,7 @@ fn serde_reads_an_omitted_key_with_a_default_as_its_default() {
 }
 
 /// The Zod schema reads the omitted key as the default, and the parsed type holds the member.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn the_zod_schema_prefaults_an_omitted_key_with_a_default() {
     let roster = Roster::zod_schema();
@@ -677,7 +686,7 @@ fn the_zod_schema_prefaults_an_omitted_key_with_a_default() {
 }
 
 /// The TypeScript type holds the member.
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn the_typescript_type_holds_an_omitted_key_with_a_default() {
     let written = Roster::ts_definition();
@@ -686,6 +695,7 @@ fn the_typescript_type_holds_an_omitted_key_with_a_default() {
 }
 
 /// The JSON Schema leaves the key out of `required` and states the default.
+#[cfg(feature = "serde")]
 #[test]
 fn the_json_schema_states_the_default_of_an_omitted_key() {
     for schema in [Roster::json_schema(), Muster::json_schema()] {

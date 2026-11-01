@@ -50,7 +50,7 @@ fn test_typescript_feature_types_constructible() {
 }
 
 #[test]
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 fn test_typescript_enabled_struct_ts_definition() {
     let ts_definition = TypeScriptTestUser::ts_definition();
 
@@ -65,7 +65,7 @@ fn test_typescript_enabled_struct_ts_definition() {
 }
 
 #[test]
-#[cfg(all(feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 fn test_typescript_enabled_struct_zod_schema() {
     let zod_schema = TypeScriptTestUser::zod_schema();
 
@@ -118,7 +118,7 @@ fn test_typescript_enabled_discriminated_enum_ts_definition() {
 }
 
 #[test]
-#[cfg(all(feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 fn test_typescript_enabled_discriminated_enum_zod_schema() {
     let zod_schema = TypeScriptTestPayment::zod_schema();
 
@@ -137,7 +137,7 @@ fn test_typescript_disabled_struct_ts_definition_not_available() {
 }
 
 #[test]
-#[cfg(all(not(feature = "typescript"), feature = "zod"))]
+#[cfg(all(feature = "serde", not(feature = "typescript"), feature = "zod"))]
 fn test_typescript_disabled_struct_zod_schema_javascript_style() {
     let zod_schema = TypeScriptTestUser::zod_schema();
 
@@ -216,7 +216,7 @@ fn test_typescript_disabled_plain_enum_zod_schema_javascript_not_serde_style() {
 }
 
 #[test]
-#[cfg(all(not(feature = "typescript"), feature = "zod"))]
+#[cfg(all(feature = "serde", not(feature = "typescript"), feature = "zod"))]
 fn test_typescript_disabled_discriminated_enum_zod_schema_javascript_style() {
     let zod_schema = TypeScriptTestPayment::zod_schema();
 
@@ -228,7 +228,7 @@ fn test_typescript_disabled_discriminated_enum_zod_schema_javascript_style() {
 }
 
 #[test]
-#[cfg(all(feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 fn test_typescript_and_zod_both_enabled() {
     let ts_definition = TypeScriptTestUser::ts_definition();
     let zod_schema = TypeScriptTestUser::zod_schema();
@@ -243,7 +243,7 @@ fn test_typescript_and_zod_both_enabled() {
 }
 
 #[test]
-#[cfg(all(not(feature = "typescript"), feature = "zod"))]
+#[cfg(all(feature = "serde", not(feature = "typescript"), feature = "zod"))]
 fn test_typescript_disabled_zod_enabled() {
     let zod_schema = TypeScriptTestUser::zod_schema();
 
@@ -252,7 +252,7 @@ fn test_typescript_disabled_zod_enabled() {
 }
 
 #[test]
-#[cfg(all(feature = "typescript", not(feature = "zod")))]
+#[cfg(all(feature = "serde", feature = "typescript", not(feature = "zod")))]
 fn test_typescript_enabled_zod_disabled() {
     let ts_definition = TypeScriptTestUser::ts_definition();
 

@@ -13,7 +13,7 @@ pub type Score = u32;
 #[model_schema(default_types(Held = String))]
 pub type Several<Held> = Vec<Held>;
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn test_simple_enum_example() {
     /// Data type enumeration
@@ -49,7 +49,7 @@ fn test_simple_enum_example() {
     }
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn test_simple_struct_example() {
     /// User profile
@@ -80,7 +80,7 @@ fn test_simple_struct_example() {
     assert!(zod.contains("25"));
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn test_complex_struct_with_logic() {
     /// Complex user with setup logic
@@ -115,7 +115,7 @@ fn test_complex_struct_with_logic() {
     );
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn test_nested_types_example() {
     use std::collections::HashMap;
@@ -153,7 +153,7 @@ fn test_nested_types_example() {
     );
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn test_discriminated_enum_example() {
     /// Event types
@@ -181,7 +181,7 @@ fn test_discriminated_enum_example() {
     assert!(zod.contains("examples: [{"), "Got: {zod}");
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn every_example_block_reaches_the_schema() {
     /// Type with multiple examples
@@ -217,7 +217,7 @@ fn every_example_block_reaches_the_schema() {
     );
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_type_with_no_block_publishes_an_empty_list() {
     /// Type without example
@@ -232,6 +232,7 @@ fn a_type_with_no_block_publishes_an_empty_list() {
     assert!(!zod.contains("example:"), "Got: {zod}");
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_no_example_no_method() {
     /// Type without example
@@ -254,7 +255,7 @@ fn test_no_example_no_method() {
     }
 }
 
-#[cfg(all(feature = "zod", feature = "typescript"))]
+#[cfg(all(feature = "serde", feature = "zod", feature = "typescript"))]
 #[test]
 fn test_typescript_zod_format() {
     /// Test type
@@ -277,7 +278,7 @@ fn test_typescript_zod_format() {
     );
 }
 
-#[cfg(all(feature = "zod", not(feature = "typescript")))]
+#[cfg(all(feature = "serde", feature = "zod", not(feature = "typescript")))]
 #[test]
 fn test_javascript_zod_format() {
     /// Test type
@@ -299,7 +300,7 @@ fn test_javascript_zod_format() {
     );
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn test_serde_attributes_in_example() {
     /// User with serde attributes
@@ -359,6 +360,7 @@ fn test_objectid_example() {
     assert!(zod.contains("examples: [{"), "Got: {zod}");
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_example_fence_must_be_exact() {
     /// Type with regular code fence (not example)
@@ -382,7 +384,7 @@ fn test_example_fence_must_be_exact() {
     }
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn test_empty_example_block() {
     /// Type with empty example (should fail compilation if uncommented)
@@ -397,7 +399,7 @@ fn test_empty_example_block() {
     assert!(zod.contains("value"));
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn test_regex_transform_println() {
     /// Data type with println pattern (for doctest compatibility)
@@ -421,7 +423,7 @@ fn test_regex_transform_println() {
     assert!(zod.contains("\"Integer\""));
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn test_regex_transform_let_underscore() {
     /// Status with let underscore pattern (for doctest compatibility)
@@ -443,7 +445,7 @@ fn test_regex_transform_let_underscore() {
     assert!(zod.contains("\"Active\""));
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn test_description_strips_examples() {
     /// This is a description
@@ -463,7 +465,7 @@ fn test_description_strips_examples() {
     // Note: Structs don't embed descriptions in .meta() currently (only enums do)
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn test_description_escapes_quotes() {
     /// Description with "quoted" text
@@ -583,7 +585,7 @@ fn an_unfilled_parameter_keeps_the_string_instantiation() {
     );
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_string_filling_and_no_filling_write_the_same_schema() {
     /// A generic type declaring its filling.
@@ -614,7 +616,7 @@ fn a_string_filling_and_no_filling_write_the_same_schema() {
     );
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_factory_carries_its_example_on_the_schema_it_memoizes() {
     /// A generic type carrying an example block.
@@ -643,7 +645,7 @@ fn a_factory_carries_its_example_on_the_schema_it_memoizes() {
     );
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_plain_const_still_carries_its_example_on_the_exported_binding() {
     /// A type carrying an example block.
@@ -714,12 +716,12 @@ fn a_const_declaring_item_keeps_its_example_where_no_example_is_read() {
 }
 
 /// What a schema that declares no parameter ends in, holding `examples` on the binding it exports.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 fn ends_in_examples(zod: &str, examples: &str) -> bool {
     zod.ends_with(&format!(".meta({{\n  examples: {examples}\n}});"))
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn one_block_publishes_one_item_and_no_example_key() {
     /// Type with one example
@@ -746,7 +748,7 @@ fn one_block_publishes_one_item_and_no_example_key() {
     assert!(!zod.contains("example:"), "Got: {zod}");
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn an_empty_block_is_skipped_between_two_filled_ones() {
     /// Type with an empty block
@@ -778,7 +780,7 @@ fn an_empty_block_is_skipped_between_two_filled_ones() {
     );
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_block_that_is_never_closed_is_published() {
     /// A reading.
@@ -798,7 +800,7 @@ fn a_block_that_is_never_closed_is_published() {
     assert!(ends_in_examples(&zod, "[{\"value\":7}]"), "Got: {zod}");
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn an_unclosed_block_is_published_after_a_closed_one() {
     /// Two blocks, the second one never closed
@@ -827,7 +829,7 @@ fn an_unclosed_block_is_published_after_a_closed_one() {
     );
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn an_opening_fence_with_nothing_after_it_publishes_no_example() {
     /// An opening fence and no block
@@ -842,7 +844,7 @@ fn an_opening_fence_with_nothing_after_it_publishes_no_example() {
     assert!(ends_in_examples(&zod, "[]"), "Got: {zod}");
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn each_block_is_built_in_a_scope_of_its_own() {
     /// Two blocks binding the same name
@@ -1014,7 +1016,7 @@ fn every_tagging_of_an_enum_with_no_block_publishes_an_empty_list() {
     }
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_plain_enum_holds_its_examples_inside_its_own_meta() {
     /// A level
@@ -1060,7 +1062,7 @@ fn a_plain_enum_holds_its_examples_inside_its_own_meta() {
     assert!(!grade.contains("example:"), "Got: {grade}");
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_generic_struct_holds_its_examples_on_the_schema_it_memoizes() {
     /// A generic type carrying two example blocks.
@@ -1197,7 +1199,7 @@ fn an_alias_publishes_an_empty_list() {
     assert_eq!(several.matches(".meta(").count(), 1, "Got: {several}");
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_tuple_struct_and_a_unit_struct_publish_an_empty_list() {
     #[model_schema()]
@@ -1222,7 +1224,7 @@ fn a_tuple_struct_and_a_unit_struct_publish_an_empty_list() {
     }
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_tuple_struct_carries_its_examples() {
     /// A point

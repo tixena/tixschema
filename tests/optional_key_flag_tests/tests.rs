@@ -58,7 +58,7 @@ mod without_the_serde_feature {
     /// feature the `Option`-null guard refuses both of these fields. Fields are declared
     /// alphabetically (this crate's lint requirement); the README orders them for reading, so
     /// each member is held as a whole line.
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq)]
     struct Profile {
         name: String,
@@ -72,7 +72,7 @@ mod without_the_serde_feature {
         let ts = Profile::ts_definition();
 
         assert!(member(&ts, "nickname?: string;"), "Got: {ts}");
-        assert!(member(&ts, "nick_handle: string | undefined;"), "Got: {ts}");
+        assert!(member(&ts, "nickHandle: string | undefined;"), "Got: {ts}");
         assert!(member(&ts, "name: string;"), "Got: {ts}");
     }
 
@@ -88,7 +88,7 @@ mod without_the_serde_feature {
             ),
             "the README no longer declares the no-serde shape verbatim"
         );
-        for line in ["  nickname?: string;", "  nick_handle: string | undefined;"] {
+        for line in ["  nickname?: string;", "  nickHandle: string | undefined;"] {
             assert!(
                 readme.lines().any(|written| written == line),
                 "the README no longer shows this member verbatim: {line}"
@@ -110,7 +110,7 @@ mod without_the_serde_feature {
         );
         assert!(
             zod.contains(
-                "nick_handle: z.union([z.null().transform(() => undefined), z.string(), z.undefined()]).prefault(undefined),"
+                "nickHandle: z.union([z.null().transform(() => undefined), z.string(), z.undefined()]).prefault(undefined),"
             ),
             "Got: {zod}"
         );

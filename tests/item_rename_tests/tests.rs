@@ -110,7 +110,7 @@ fn every_renamed_shape_expands_in_this_feature_combination() {
     assert!(value.tree.children.is_empty());
 }
 
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn every_renamed_shape_is_written_under_the_override() {
     for (ts, declared) in [
@@ -139,7 +139,7 @@ fn every_renamed_shape_is_written_under_the_override() {
     }
 }
 
-#[cfg(all(feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 #[test]
 fn a_renamed_brand_is_tagged_by_the_override() {
     let ts = BrandUnderRustName::ts_definition();
@@ -148,7 +148,7 @@ fn a_renamed_brand_is_tagged_by_the_override() {
     assert!(zod.contains(".brand<\"RenamedBrand\">()"), "got: {zod}");
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn every_renamed_shape_publishes_its_zod_schema_under_the_override() {
     for (zod, declared) in [
@@ -177,7 +177,7 @@ fn every_renamed_shape_publishes_its_zod_schema_under_the_override() {
     }
 }
 
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn a_reference_to_a_renamed_item_resolves_the_override() {
     let ts = ReferencesRenamedItems::ts_definition();
@@ -193,7 +193,7 @@ fn a_reference_to_a_renamed_item_resolves_the_override() {
     }
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_zod_reference_to_a_renamed_item_resolves_the_override() {
     let zod = ReferencesRenamedItems::zod_schema();
@@ -209,7 +209,7 @@ fn a_zod_reference_to_a_renamed_item_resolves_the_override() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_reference_to_a_renamed_item_never_carries_its_rust_name() {
     #[cfg(feature = "typescript")]
@@ -228,6 +228,7 @@ fn a_reference_to_a_renamed_item_never_carries_its_rust_name() {
     }
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn a_renamed_item_names_its_json_definition_by_the_override() {
     let schema = TreeUnderRustName::json_schema();
@@ -251,6 +252,7 @@ fn a_renamed_item_names_its_json_definition_by_the_override() {
     );
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn the_module_a_json_reference_resolves_to_is_the_one_named_for_the_rust_ident() {
     let referencing = ReferencesRenamedItems::json_schema();
@@ -286,6 +288,7 @@ fn renamed_items_declared_under_their_reference_expand_in_this_feature_combinati
     assert_eq!(earlier.grades, vec![LaterRenamedGrade::Low]);
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn an_item_reference_describes_the_same_on_either_side_of_the_item() {
     assert_eq!(
@@ -294,6 +297,7 @@ fn an_item_reference_describes_the_same_on_either_side_of_the_item() {
     );
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn a_forward_item_reference_carries_what_the_item_publishes() {
     let schema = NamesRenamedItemsDeclaredLater::json_schema();
@@ -310,7 +314,7 @@ fn a_forward_item_reference_carries_what_the_item_publishes() {
     );
 }
 
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn a_forward_referenced_renamed_item_exports_under_the_override() {
     for (ts, declared) in [
@@ -327,7 +331,7 @@ fn a_forward_referenced_renamed_item_exports_under_the_override() {
     }
 }
 
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn every_name_a_forward_item_reference_writes_is_defined_by_the_emission() {
     let forward = NamesRenamedItemsDeclaredLater::ts_definition();
@@ -353,7 +357,7 @@ fn every_name_a_forward_item_reference_writes_is_defined_by_the_emission() {
     }
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn every_schema_a_forward_item_reference_names_is_defined_by_the_emission() {
     let forward = NamesRenamedItemsDeclaredLater::zod_schema();
@@ -385,7 +389,7 @@ fn every_schema_a_forward_item_reference_names_is_defined_by_the_emission() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn an_item_exported_under_its_ident_publishes_no_reexport() {
     #[cfg(feature = "typescript")]
@@ -404,7 +408,7 @@ fn an_item_exported_under_its_ident_publishes_no_reexport() {
     }
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_forward_referenced_renamed_item_publishes_its_zod_schema_under_the_override() {
     for (zod, declared) in [

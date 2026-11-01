@@ -3,5 +3,6 @@
 //! enums, numeric types, serde rename attributes, and `ObjectId` support.
 
 #[cfg(test)]
+#[cfg(feature = "serde")]
 #[path = "jsonschema_tests/tests.rs"]
 mod tests;

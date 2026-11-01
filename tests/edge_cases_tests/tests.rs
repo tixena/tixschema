@@ -175,17 +175,30 @@ fn test_nested_struct_ts_definition() {
     let user_definition = UserWithAddress::ts_definition();
     let address_definition = Address::ts_definition();
 
+    #[cfg(feature = "serde")]
+    let (backup_addresses, zip_code, backup_addresses_schema) = (
+        "backup_addresses: Array<Address>;",
+        "zip_code: string;",
+        "backup_addresses: z.array(Address$Schema)",
+    );
+    #[cfg(not(feature = "serde"))]
+    let (backup_addresses, zip_code, backup_addresses_schema) = (
+        "backupAddresses: Array<Address>;",
+        "zipCode: string;",
+        "backupAddresses: z.array(Address$Schema)",
+    );
+
     assert!(user_definition.contains("address: Address;"));
-    assert!(user_definition.contains("backup_addresses: Array<Address>;"));
+    assert!(user_definition.contains(backup_addresses));
 
     assert!(address_definition.contains("export type Address = {"));
     assert!(address_definition.contains("street: string;"));
     assert!(address_definition.contains("city: string;"));
-    assert!(address_definition.contains("zip_code: string;"));
+    assert!(address_definition.contains(zip_code));
 
     let user_zod_schema = UserWithAddress::zod_schema();
     assert!(user_zod_schema.contains("address: Address$Schema"));
-    assert!(user_zod_schema.contains("backup_addresses: z.array(Address$Schema)"));
+    assert!(user_zod_schema.contains(backup_addresses_schema));
 }
 
 #[test]
@@ -245,21 +258,49 @@ fn test_original_bug_reproduction_json_schema() {
 #[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_original_bug_reproduction_typescript() {
     let ts_definition = OriginalBugReproduction::ts_definition();
-
-    assert!(ts_definition.contains("problematic_map: Partial<Record<string, Array<bigint>>>;"));
-    assert!(ts_definition.contains("string_to_vec_i64: Partial<Record<string, Array<bigint>>>;"));
-    assert!(ts_definition.contains("string_to_vec_f64: Partial<Record<string, Array<number>>>;"));
-    assert!(ts_definition.contains("string_to_vec_bool: Partial<Record<string, Array<boolean>>>;"));
-    assert!(
-        ts_definition.contains("string_to_vec_string: Partial<Record<string, Array<string>>>;")
-    );
+    #[cfg(feature = "serde")]
+    let members = [
+        "problematic_map: Partial<Record<string, Array<bigint>>>;",
+        "string_to_vec_i64: Partial<Record<string, Array<bigint>>>;",
+        "string_to_vec_f64: Partial<Record<string, Array<number>>>;",
+        "string_to_vec_bool: Partial<Record<string, Array<boolean>>>;",
+        "string_to_vec_string: Partial<Record<string, Array<string>>>;",
+    ];
+    #[cfg(not(feature = "serde"))]
+    let members = [
+        "problematicMap: Partial<Record<string, Array<bigint>>>;",
+        "stringToVecI64: Partial<Record<string, Array<bigint>>>;",
+        "stringToVecF64: Partial<Record<string, Array<number>>>;",
+        "stringToVecBool: Partial<Record<string, Array<boolean>>>;",
+        "stringToVecString: Partial<Record<string, Array<string>>>;",
+    ];
+    for member in members {
+        assert!(
+            ts_definition.contains(member),
+            "missing {member}, got: {ts_definition}"
+        );
+    }
 
     let zod_schema = OriginalBugReproduction::zod_schema();
-    assert!(zod_schema.contains("problematic_map: z.record(z.string(), z.array(z.codec("));
-    assert!(zod_schema.contains("string_to_vec_i64: z.record(z.string(), z.array(z.codec("));
-    assert!(zod_schema.contains("string_to_vec_f64: z.record(z.string(), z.array(z.number()))"));
-    assert!(zod_schema.contains("string_to_vec_bool: z.record(z.string(), z.array(z.boolean()))"));
-    assert!(zod_schema.contains("string_to_vec_string: z.record(z.string(), z.array(z.string()))"));
+    #[cfg(feature = "serde")]
+    let keys = [
+        "problematic_map: z.record(z.string(), z.array(z.codec(",
+        "string_to_vec_i64: z.record(z.string(), z.array(z.codec(",
+        "string_to_vec_f64: z.record(z.string(), z.array(z.number()))",
+        "string_to_vec_bool: z.record(z.string(), z.array(z.boolean()))",
+        "string_to_vec_string: z.record(z.string(), z.array(z.string()))",
+    ];
+    #[cfg(not(feature = "serde"))]
+    let keys = [
+        "problematicMap: z.record(z.string(), z.array(z.codec(",
+        "stringToVecI64: z.record(z.string(), z.array(z.codec(",
+        "stringToVecF64: z.record(z.string(), z.array(z.number()))",
+        "stringToVecBool: z.record(z.string(), z.array(z.boolean()))",
+        "stringToVecString: z.record(z.string(), z.array(z.string()))",
+    ];
+    for key in keys {
+        assert!(zod_schema.contains(key), "missing {key}, got: {zod_schema}");
+    }
 }
 
 #[test]
@@ -285,17 +326,25 @@ fn test_complex_nested_maps_json_schema() {
 #[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_complex_nested_maps_typescript() {
     let ts_definition = SimpleComplexTest::ts_definition();
+    #[cfg(feature = "serde")]
+    let (member, key) = (
+        "nested_map_of_arrays: Partial<Record<string, Array<Partial<Record<string, number>>>>>;",
+        "nested_map_of_arrays: z.record(z.string(), z.array(z.record(z.string(), z.number().int()))),",
+    );
+    #[cfg(not(feature = "serde"))]
+    let (member, key) = (
+        "nestedMapOfArrays: Partial<Record<string, Array<Partial<Record<string, number>>>>>;",
+        "nestedMapOfArrays: z.record(z.string(), z.array(z.record(z.string(), z.number().int()))),",
+    );
 
-    assert!(ts_definition.contains(
-        "nested_map_of_arrays: Partial<Record<string, Array<Partial<Record<string, number>>>>>;"
-    ));
+    assert!(ts_definition.contains(member));
 
     let zod_schema = SimpleComplexTest::zod_schema();
-    assert!(zod_schema.contains("nested_map_of_arrays: z.record(z.string(), z.array(z.record(z.string(), z.number().int()))),"));
+    assert!(zod_schema.contains(key));
 }
 
 #[test]
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 fn test_quadruple_nested_maps_compilation() {
     let schema = ReallyComplexTest::json_schema();
     let ts_definition = ReallyComplexTest::ts_definition();
@@ -389,13 +438,23 @@ fn test_nested_string_keyed_maps_json_schema() {
 #[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_nested_string_keyed_maps_typescript_and_zod() {
     let ts_definition = NestedStringKeyedMaps::ts_definition();
-    for expected in [
+    #[cfg(feature = "serde")]
+    let members = [
         "counts_by_group: Partial<Record<string, Partial<Record<string, number>>>>;",
         "labels_by_group: Partial<Record<string, Partial<Record<string, string>>>>;",
         "rows_by_group: Partial<Record<string, Array<Partial<Record<string, string>>>>>;",
         "scores_by_group: Partial<Record<string, Partial<Record<string, number | null>>>>;",
         "tallies_by_region: Partial<Record<string, Partial<Record<string, Partial<Record<string, number>>>>>>;",
-    ] {
+    ];
+    #[cfg(not(feature = "serde"))]
+    let members = [
+        "countsByGroup: Partial<Record<string, Partial<Record<string, number>>>>;",
+        "labelsByGroup: Partial<Record<string, Partial<Record<string, string>>>>;",
+        "rowsByGroup: Partial<Record<string, Array<Partial<Record<string, string>>>>>;",
+        "scoresByGroup: Partial<Record<string, Partial<Record<string, number | null>>>>;",
+        "talliesByRegion: Partial<Record<string, Partial<Record<string, Partial<Record<string, number>>>>>>;",
+    ];
+    for expected in members {
         assert!(
             ts_definition.contains(expected),
             "missing {expected}, got: {ts_definition}"
@@ -403,13 +462,23 @@ fn test_nested_string_keyed_maps_typescript_and_zod() {
     }
 
     let zod_schema = NestedStringKeyedMaps::zod_schema();
-    for expected in [
+    #[cfg(feature = "serde")]
+    let keys = [
         "counts_by_group: z.record(z.string(), z.record(z.string(), z.number().int())),",
         "labels_by_group: z.record(z.string(), z.record(z.string(), z.string())),",
         "rows_by_group: z.record(z.string(), z.array(z.record(z.string(), z.string()))),",
         "scores_by_group: z.record(z.string(), z.record(z.string(), z.nullable(z.number()))),",
         "tallies_by_region: z.record(z.string(), z.record(z.string(), z.record(z.string(), z.number().int()))),",
-    ] {
+    ];
+    #[cfg(not(feature = "serde"))]
+    let keys = [
+        "countsByGroup: z.record(z.string(), z.record(z.string(), z.number().int())),",
+        "labelsByGroup: z.record(z.string(), z.record(z.string(), z.string())),",
+        "rowsByGroup: z.record(z.string(), z.array(z.record(z.string(), z.string()))),",
+        "scoresByGroup: z.record(z.string(), z.record(z.string(), z.nullable(z.number()))),",
+        "talliesByRegion: z.record(z.string(), z.record(z.string(), z.record(z.string(), z.number().int()))),",
+    ];
+    for expected in keys {
         assert!(
             zod_schema.contains(expected),
             "missing {expected}, got: {zod_schema}"

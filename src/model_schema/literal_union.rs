@@ -9,7 +9,7 @@
 use core::cell::RefCell;
 use std::collections::HashMap;
 
-use super::ts_member_key;
+use super::{ts_member_key, ts_member_name};
 use crate::field_type::{FieldDef, FieldDefType, format_number_literal};
 use crate::utils::ts_quoted;
 
@@ -268,7 +268,10 @@ fn options(candidates: &[Candidate], joined_by: &Plan) -> String {
 
 /// `option`, an object, with `key` among its members read as an `undefined` that may be absent.
 fn with_absent_key(option: &str, key: &str) -> String {
-    let absent = format!("{}: z.undefined().optional()", ts_member_key(key));
+    let absent = format!(
+        "{}: z.undefined().optional()",
+        ts_member_key(&ts_member_name(key))
+    );
     option.strip_prefix("z.strictObject({ ").map_or_else(
         || format!("{option}.safeExtend({{ {absent} }})"),
         |rest| format!("z.strictObject({{ {absent}, {rest}"),

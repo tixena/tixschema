@@ -274,7 +274,7 @@ fn test_advanced_types_constructible() {
     ));
 }
 
-#[cfg(all(feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 fn assert_ts_contains_fields(ts_definition: &str, assertions: &[(&str, &str)]) {
     for (field, expected_type) in assertions {
         let expected = format!("{field}: {expected_type};");
@@ -284,7 +284,7 @@ fn assert_ts_contains_fields(ts_definition: &str, assertions: &[(&str, &str)]) {
 
 /// Holds each member to `T | undefined`; none of these fields carries the `ts_optional` that would
 /// ask for the other spelling.
-#[cfg(all(feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 fn assert_ts_contains_omitted_fields(ts_definition: &str, assertions: &[(&str, &str)]) {
     for (field, expected_type) in assertions {
         let expected = format!("{field}: {expected_type} | undefined;");
@@ -295,7 +295,7 @@ fn assert_ts_contains_omitted_fields(ts_definition: &str, assertions: &[(&str, &
     }
 }
 
-#[cfg(all(feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 fn assert_zod_contains_fields(zod_schema: &str, assertions: &[(&str, &str)]) {
     for (field, expected_pattern) in assertions {
         let expected = format!("{field}: {expected_pattern}");
@@ -303,6 +303,7 @@ fn assert_zod_contains_fields(zod_schema: &str, assertions: &[(&str, &str)]) {
     }
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_complex_nested_json_schema() {
     let company_schema = Company::json_schema();
@@ -399,6 +400,7 @@ fn test_serialization_consistency() {
     assert_eq!(json_value["budget"], 50000_i64);
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_edge_cases_json_schema() {
     let schema = EdgeCases::json_schema();
@@ -432,7 +434,7 @@ fn test_edge_cases_json_schema() {
 }
 
 #[test]
-#[cfg(all(feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 fn test_edge_cases_ts_definition() {
     let ts_definition = EdgeCases::ts_definition();
 
@@ -539,7 +541,7 @@ fn test_complex_discriminated_union() {
 }
 
 #[test]
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 fn test_documented_struct() {
     let schema = DocumentedUser::json_schema();
     let ts_definition = DocumentedUser::ts_definition();
@@ -563,6 +565,7 @@ fn test_documented_struct() {
     );
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_json_schema_validation() {
     let schemas = vec![

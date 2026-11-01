@@ -1,5 +1,6 @@
 //! Tests that a documented item's Rust example stays out of the emitted TypeScript.
 
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
@@ -10,6 +11,7 @@ use tixschema::model_schema;
 /// };
 /// println!("Item: {:?}", item);
 /// ```
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DocumentedStruct {
@@ -27,6 +29,7 @@ pub struct DocumentedStruct {
 /// };
 /// println!("Item: {:?}", item);
 /// ```
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct WrappedImportStruct {
@@ -38,6 +41,7 @@ pub struct WrappedImportStruct {
 /// let item = DocumentedTuple("alpha".to_string(), 7);
 /// println!("Item: {:?}", item);
 /// ```
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DocumentedTuple(pub String, pub u32);
@@ -47,6 +51,7 @@ pub struct DocumentedTuple(pub String, pub u32);
 /// let item = DocumentedAdjacent::Unit;
 /// println!("Item: {:?}", item);
 /// ```
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "kind", content = "payload")]
@@ -60,6 +65,7 @@ pub enum DocumentedAdjacent {
 /// let item = DocumentedExternal::Unit;
 /// println!("Item: {:?}", item);
 /// ```
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug)]
 pub enum DocumentedExternal {
@@ -72,6 +78,7 @@ pub enum DocumentedExternal {
 /// let item = DocumentedInternal::Unit;
 /// println!("Item: {:?}", item);
 /// ```
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "kind")]
@@ -85,6 +92,7 @@ pub enum DocumentedInternal {
 /// let item = DocumentedUntagged::Count(3);
 /// println!("Item: {:?}", item);
 /// ```
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(untagged)]
@@ -98,6 +106,7 @@ pub enum DocumentedUntagged {
 /// let item = DocumentedSlot::Primary;
 /// println!("Item: {:?}", item);
 /// ```
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum DocumentedSlot {
@@ -110,10 +119,12 @@ pub enum DocumentedSlot {
 /// let item: DocumentedAlias = 3;
 /// println!("Item: {:?}", item);
 /// ```
+#[cfg(any(feature = "serde", feature = "zod"))]
 #[model_schema(enable = ["jsonschema"])]
 pub type DocumentedAlias = u32;
 
 /// An alias of a documented struct, which writes no block of its own.
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 pub type DocumentedStructRef = DocumentedStruct;
 
@@ -122,6 +133,7 @@ pub type DocumentedStructRef = DocumentedStruct;
 pub type UndocumentedCount = u32;
 
 /// A struct whose documented member is a field.
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DocumentedFieldHolder {
@@ -136,6 +148,7 @@ pub struct DocumentedFieldHolder {
 }
 
 /// An internally tagged enum whose documented member is a variant.
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "kind")]
@@ -152,6 +165,7 @@ pub enum DocumentedInternalVariant {
 }
 
 /// An externally tagged enum whose documented member is a variant.
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug)]
 pub enum DocumentedExternalVariant {
@@ -168,6 +182,7 @@ pub enum DocumentedExternalVariant {
 
 /// A plain enum whose documented member is a variant, commented inside the union rather than over
 /// a property — the one member body not written as ` * ` lines.
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum DocumentedSlotVariant {
@@ -186,6 +201,7 @@ pub enum DocumentedSlotVariant {
 /// };
 /// println!("Item: {:?}", item);
 /// ```
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ExampleOnlyStruct {
@@ -198,6 +214,7 @@ pub struct ExampleOnlyStruct {
 
 // An internally tagged enum whose one documented member says nothing but an example. Commented with
 // `//`, so the item itself is held against its twin as the undocumented one it is.
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "kind")]
@@ -216,6 +233,7 @@ pub enum ExampleOnlyVariantHolder {
 /// let item: ExampleOnlyAlias = 3;
 /// println!("Item: {:?}", item);
 /// ```
+#[cfg(feature = "serde")]
 #[model_schema()]
 pub type ExampleOnlyAlias = u32;
 
@@ -223,6 +241,7 @@ pub type ExampleOnlyAlias = u32;
 /// let item = ExampleOnlySlot::Primary;
 /// println!("Item: {:?}", item);
 /// ```
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum ExampleOnlySlot {
@@ -236,19 +255,21 @@ pub enum ExampleOnlySlot {
 /// ```
 // A brand publishes a description and no `JSDoc` header of its own, so it is read on the Zod
 // surface alone and is gated on the feature that surface is.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(transparent)]
 pub struct ExampleOnlyBrand(pub String);
 
 // The undocumented twins of the shapes above.
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct UndocumentedStruct {
     pub label: String,
 }
 
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "kind")]
@@ -257,6 +278,7 @@ pub enum UndocumentedVariantHolder {
     Unit,
 }
 
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum UndocumentedSlot {
@@ -264,17 +286,19 @@ pub enum UndocumentedSlot {
     Secondary,
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(transparent)]
 pub struct UndocumentedBrand(pub String);
 
+#[cfg(feature = "serde")]
 #[model_schema()]
 pub type UndocumentedAlias = u32;
 
 /// Every documented shape above, paired with the description its `JSDoc` is left with once the
 /// example is dropped. The plain enum rides along as the shape that already dropped it.
+#[cfg(feature = "serde")]
 fn documented_shapes() -> Vec<(String, &'static str)> {
     vec![
         (DocumentedStruct::ts_definition(), "A documented struct."),
@@ -308,6 +332,7 @@ fn documented_shapes() -> Vec<(String, &'static str)> {
 
 /// Every shape whose example is written on a member rather than on the type, paired with the
 /// description that member's `JSDoc` is left with once the example is dropped.
+#[cfg(feature = "serde")]
 fn documented_members() -> Vec<(String, &'static str)> {
     vec![
         (
@@ -326,6 +351,7 @@ fn documented_members() -> Vec<(String, &'static str)> {
     ]
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn a_documented_item_never_carries_its_rust_example_into_the_emitted_typescript() {
     // The alias publishes `ts_definition` from its own module rather than from the alias, so naming
@@ -341,6 +367,7 @@ fn a_documented_item_never_carries_its_rust_example_into_the_emitted_typescript(
     }
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn a_documented_member_never_carries_its_rust_example_into_the_emitted_typescript() {
     for (ts, description) in documented_members() {
@@ -372,7 +399,7 @@ fn a_documented_alias_publishes_its_rust_example_as_one_example() {
 }
 
 /// An alias that names a published type and writes no block states no examples of its own.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn an_alias_with_no_block_publishes_the_examples_of_the_type_it_names() {
     let held: DocumentedStructRef = DocumentedStruct {
@@ -399,6 +426,7 @@ fn an_alias_of_a_primitive_with_no_block_publishes_no_examples() {
 
 /// Every shape documented with nothing but an example, paired with the undocumented twin it is
 /// held against: the `TypeScript` one writes is the other's with the fixture's own name in it.
+#[cfg(feature = "serde")]
 fn example_only_twins() -> Vec<(String, String, &'static str, &'static str)> {
     vec![
         (
@@ -428,6 +456,7 @@ fn example_only_twins() -> Vec<(String, String, &'static str, &'static str)> {
     ]
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn an_example_only_shape_writes_what_its_undocumented_twin_writes() {
     // The aliases publish `ts_definition` from their own modules rather than from the alias, so
@@ -441,6 +470,7 @@ fn an_example_only_shape_writes_what_its_undocumented_twin_writes() {
     }
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn an_example_only_item_and_member_name_themselves() {
     let ts = ExampleOnlyStruct::ts_definition();
@@ -466,7 +496,7 @@ fn an_example_only_item_and_member_name_themselves() {
     );
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn an_example_only_shape_describes_itself_as_its_undocumented_twin_does() {
     for (zod, exported) in [
@@ -482,6 +512,7 @@ fn an_example_only_shape_describes_itself_as_its_undocumented_twin_does() {
     }
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn every_documented_shape_opens_its_jsdoc_identically() {
     for (ts, description) in documented_shapes() {
@@ -493,7 +524,7 @@ fn every_documented_shape_opens_its_jsdoc_identically() {
     }
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn an_example_importing_over_several_lines_builds_and_is_published() {
     assert_eq!(
@@ -507,6 +538,7 @@ fn an_example_importing_over_several_lines_builds_and_is_published() {
     );
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn a_type_with_examples_writes_them_under_the_json_schema_examples_keyword() {
     assert_eq!(
@@ -528,6 +560,7 @@ fn a_type_with_no_example_writes_no_json_schema_examples_keyword() {
     );
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn the_schema_module_and_the_type_write_one_document_with_the_examples_in_it() {
     let documents = [
@@ -566,7 +599,7 @@ fn the_schema_module_and_the_type_write_one_document_with_the_examples_in_it() {
     }
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_brand_writes_its_examples_in_the_document_of_its_schema_module_too() {
     assert_eq!(
@@ -579,6 +612,7 @@ fn a_brand_writes_its_examples_in_the_document_of_its_schema_module_too() {
     );
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn an_alias_of_a_documented_type_with_no_block_carries_its_examples_in_json_schema() {
     assert_eq!(

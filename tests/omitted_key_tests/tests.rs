@@ -99,7 +99,7 @@ fn the_predicate_omitted_key_is_absent_from_the_payload_serde_writes() {
 
 /// `age` carries no `ts_optional`, so the attribute that drops its key leaves the spelling alone.
 #[test]
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 fn typescript_writes_the_option_as_undefined_valued() {
     let ts = OmittedKeyFields::ts_definition();
 
@@ -111,7 +111,7 @@ fn typescript_writes_the_option_as_undefined_valued() {
 
 /// The key is optional; the value under it never is.
 #[test]
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 fn typescript_holds_the_predicate_omitted_key_that_serde_reads_as_its_default() {
     let ts = PredicateOmittedKey::ts_definition();
 
@@ -121,7 +121,7 @@ fn typescript_holds_the_predicate_omitted_key_that_serde_reads_as_its_default() 
 }
 
 #[test]
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 fn zod_keeps_the_undefined_union_that_already_admits_the_absent_key() {
     let zod = OmittedKeyFields::zod_schema();
 
@@ -136,7 +136,7 @@ fn zod_keeps_the_undefined_union_that_already_admits_the_absent_key() {
 }
 
 #[test]
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 fn zod_reads_the_predicate_omitted_key_as_its_default() {
     let zod = PredicateOmittedKey::zod_schema();
 
@@ -148,6 +148,7 @@ fn zod_reads_the_predicate_omitted_key_as_its_default() {
 }
 
 /// The JSON surface says it by leaving the field out of `required` while still describing it.
+#[cfg(feature = "serde")]
 #[test]
 fn the_json_schema_describes_the_omitted_key_without_requiring_it() {
     let schema = OmittedKeyFields::json_schema();
@@ -161,6 +162,7 @@ fn the_json_schema_describes_the_omitted_key_without_requiring_it() {
 }
 
 /// Same for the predicate-dropped key: described, not required.
+#[cfg(feature = "serde")]
 #[test]
 fn the_json_schema_describes_the_predicate_omitted_key_without_requiring_it() {
     let schema = PredicateOmittedKey::json_schema();

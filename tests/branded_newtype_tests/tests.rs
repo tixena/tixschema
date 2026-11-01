@@ -5,12 +5,14 @@
 mod zod_ts_tests {
     use super::*;
 
+    #[cfg(feature = "serde")]
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct CorrelationId(pub String);
 
     /// A unique document identifier.
+    #[cfg(feature = "serde")]
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
@@ -29,16 +31,19 @@ mod zod_ts_tests {
     #[serde(transparent)]
     pub struct DocumentId<IdType>(pub IdType);
 
+    #[cfg(feature = "serde")]
     #[model_schema(default_types(IdType = String))]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct RoleId<IdType>(pub IdType);
 
+    #[cfg(feature = "serde")]
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct SequenceNum(pub i64);
 
+    #[cfg(feature = "serde")]
     #[test]
     fn test_branded_newtype_ts_definition() {
         let ts = RoleId::<String>::ts_definition();
@@ -49,6 +54,7 @@ mod zod_ts_tests {
     }
 
     /// The brand lands on the caller's supplied schema, not a value that admits anything.
+    #[cfg(feature = "serde")]
     #[test]
     fn test_branded_newtype_zod_schema() {
         let zod = RoleId::<String>::zod_schema();
@@ -62,6 +68,7 @@ mod zod_ts_tests {
         assert!(!zod.contains("$ZodBranded"), "Got: {zod}");
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn an_unconstrained_generic_brands_default_is_annotated_by_value() {
         let zod = RoleId::<String>::zod_schema();
@@ -78,6 +85,7 @@ mod zod_ts_tests {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn test_branded_newtype_preserves_generic_param_name() {
         let ts = RoleId::<String>::ts_definition();
@@ -87,6 +95,7 @@ mod zod_ts_tests {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn test_branded_newtype_non_generic() {
         let ts = CorrelationId::ts_definition();
@@ -96,6 +105,7 @@ mod zod_ts_tests {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn test_branded_newtype_non_generic_zod() {
         let zod = CorrelationId::zod_schema();
@@ -103,6 +113,7 @@ mod zod_ts_tests {
         assert!(zod.contains("typeof CorrelationId$RawSchema"), "Got: {zod}");
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn test_branded_newtype_non_generic_zod_schema_content() {
         let zod = CorrelationId::zod_schema();
@@ -116,6 +127,7 @@ mod zod_ts_tests {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn test_branded_newtype_integer_inner() {
         let ts = SequenceNum::ts_definition();
@@ -135,6 +147,7 @@ mod zod_ts_tests {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn test_branded_newtype_zod_has_description() {
         let zod = DocId::zod_schema();
@@ -152,6 +165,7 @@ mod zod_ts_tests {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn test_branded_newtype_generic_with_example() {
         let zod = DocumentId::<String>::zod_schema();
@@ -558,7 +572,7 @@ mod objectid_branded_surface_tests {
     }
 }
 
-#[cfg(all(feature = "zod", feature = "typescript"))]
+#[cfg(all(feature = "serde", feature = "zod", feature = "typescript"))]
 mod branded_in_struct_all_features_tests {
     use super::*;
 
@@ -642,7 +656,7 @@ mod branded_in_struct_all_features_tests {
     }
 }
 
-#[cfg(all(feature = "zod", feature = "typescript"))]
+#[cfg(all(feature = "serde", feature = "zod", feature = "typescript"))]
 mod branded_in_struct_no_jsonschema_tests {
     use super::*;
 
@@ -690,7 +704,7 @@ mod branded_in_struct_no_jsonschema_tests {
 
 /// A tuple in a map slot is unrenderable on the JSON surface alone, which is why the guard refusing
 /// it is gated with that surface — with `jsonschema` off the same brand still writes its record.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 mod branded_tuple_map_value_no_jsonschema_tests {
     use super::*;
     use std::collections::HashMap;
@@ -714,7 +728,7 @@ mod branded_tuple_map_value_no_jsonschema_tests {
     }
 }
 
-#[cfg(all(not(feature = "zod"), not(feature = "typescript")))]
+#[cfg(all(feature = "serde", not(feature = "zod"), not(feature = "typescript")))]
 mod branded_in_struct_jsonschema_only_tests {
     use super::*;
 
@@ -765,7 +779,7 @@ mod branded_in_struct_jsonschema_only_tests {
     }
 }
 
-#[cfg(all(feature = "typescript", not(feature = "zod")))]
+#[cfg(all(feature = "serde", feature = "typescript", not(feature = "zod")))]
 mod branded_in_struct_typescript_only_tests {
     use super::*;
 
@@ -801,6 +815,7 @@ mod branded_in_struct_typescript_only_tests {
     }
 }
 
+#[cfg(feature = "serde")]
 mod branded_constrained_json_schema_tests {
     use super::*;
 
@@ -1234,14 +1249,14 @@ mod branded_no_display_tests {
         assert_eq!(list.0, vec![1_u8, 2_u8]);
     }
 
-    #[cfg(feature = "typescript")]
+    #[cfg(all(feature = "serde", feature = "typescript"))]
     #[test]
     fn test_no_display_brand_still_generates_typescript() {
         let ts = Tags::ts_definition();
         assert!(ts.contains("export type Tags"), "Got: {ts}");
     }
 
-    #[cfg(feature = "zod")]
+    #[cfg(all(feature = "serde", feature = "zod"))]
     #[test]
     fn test_no_display_brand_still_generates_zod() {
         let zod = Tags::zod_schema();
@@ -1772,7 +1787,7 @@ mod branded_example_arity_tests {
 
 /// A build emitting no TypeScript writes a brand as a bare `.brand()` call — the name is a type
 /// argument and the annotation is a type, neither of which a JavaScript parser reads.
-#[cfg(all(feature = "zod", not(feature = "typescript")))]
+#[cfg(all(feature = "serde", feature = "zod", not(feature = "typescript")))]
 mod branded_javascript_flavour_tests {
     use super::*;
 
@@ -2731,7 +2746,7 @@ mod constrained_no_display_tests {
     }
 }
 
-#[cfg(all(feature = "typescript", not(feature = "zod")))]
+#[cfg(all(feature = "serde", feature = "typescript", not(feature = "zod")))]
 mod no_zod_tests {
     use super::*;
 
@@ -2907,11 +2922,13 @@ mod branded_scalar_keyword_tests {
 mod untouched_by_the_slot_refusal_tests {
     use super::*;
 
+    #[cfg(feature = "serde")]
     #[model_schema(pattern = "^[a-z]+$", minLength = 2, maxLength = 8, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct TypeLevel(pub String);
 
+    #[cfg(feature = "serde")]
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
@@ -2924,6 +2941,7 @@ mod untouched_by_the_slot_refusal_tests {
         pub inner: String,
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn the_checks_a_brand_carries_still_land_on_its_inner() {
         let zod = TypeLevel::zod_schema();
@@ -2950,6 +2968,7 @@ mod untouched_by_the_slot_refusal_tests {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn an_unconstrained_brand_describes_its_bare_inner() {
         let zod = BareBrand::zod_schema();
@@ -3008,7 +3027,7 @@ use tixschema::model_schema;
 
 /// The marker a brand carries, as this build spells it: the name is a *type* argument, which only
 /// a build emitting TypeScript writes at all.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 fn brand_marker(item_name: &str) -> String {
     #[cfg(feature = "typescript")]
     {

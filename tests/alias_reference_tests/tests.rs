@@ -139,6 +139,7 @@ fn struct_keying_a_map_by_an_alias_of_an_enum_expands_in_this_feature_combinatio
     );
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn alias_module_backs_the_reference_emitted_by_the_referencing_struct() {
     let schema = UsesAliasByValue::json_schema();
@@ -150,6 +151,7 @@ fn alias_module_backs_the_reference_emitted_by_the_referencing_struct() {
     );
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn alias_module_backs_the_map_value_reference() {
     let schema = UsesAliasAsMapValue::json_schema();
@@ -164,6 +166,7 @@ fn alias_module_backs_the_map_value_reference() {
     }
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn alias_keyed_map_enumerates_the_members_of_the_aliased_enum() {
     let schema = UsesAliasAsMapKey::json_schema();
@@ -217,6 +220,7 @@ fn an_aliased_sequence_publishes_the_array_of_its_element() {
     );
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn an_aliased_map_publishes_the_object_its_key_and_value_describe() {
     let member = referenced_document_id_schema::Schema::json_schema();
@@ -253,14 +257,14 @@ fn no_alias_publishes_a_schema_that_validates_nothing() {
     }
 }
 
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn alias_reference_uses_the_registered_export_name() {
     let ts = UsesAliasByValue::ts_definition();
     assert!(ts.contains("ReferencedDocumentIdType"), "got: {ts}");
 }
 
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn alias_map_value_uses_the_registered_export_name() {
     let ts = UsesAliasAsMapValue::ts_definition();
@@ -270,7 +274,7 @@ fn alias_map_value_uses_the_registered_export_name() {
     );
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn alias_map_value_zod_schema_name_matches_the_registered_export() {
     let zod = UsesAliasAsMapValue::zod_schema();
@@ -280,7 +284,7 @@ fn alias_map_value_zod_schema_name_matches_the_registered_export() {
     );
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn alias_zod_schema_name_matches_the_reference_emitted_by_the_struct() {
     let alias_zod = referenced_document_id_schema::Schema::zod_schema();
@@ -312,6 +316,7 @@ fn aliases_declared_under_their_reference_expand_in_this_feature_combination() {
     assert_eq!(earlier.counts, vec![10_i64]);
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn an_alias_reference_describes_the_same_on_either_side_of_the_alias() {
     assert_eq!(
@@ -320,6 +325,7 @@ fn an_alias_reference_describes_the_same_on_either_side_of_the_alias() {
     );
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn a_forward_alias_reference_carries_what_the_alias_publishes() {
     let schema = NamesAliasesDeclaredLater::json_schema();
@@ -347,7 +353,7 @@ fn a_renamed_alias_exports_under_the_override_from_the_module_named_for_its_iden
     assert!(ts.contains("RenamedLaterDeclaredCount"), "got: {ts}");
 }
 
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn every_name_a_forward_alias_reference_writes_is_defined_by_the_emission() {
     let forward = NamesAliasesDeclaredLater::ts_definition();
@@ -376,7 +382,7 @@ fn every_name_a_forward_alias_reference_writes_is_defined_by_the_emission() {
     }
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn every_schema_a_forward_alias_reference_names_is_defined_by_the_emission() {
     let forward = NamesAliasesDeclaredLater::zod_schema();
@@ -408,7 +414,7 @@ fn every_schema_a_forward_alias_reference_names_is_defined_by_the_emission() {
     }
 }
 
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn a_backward_alias_reference_still_writes_the_export_name() {
     let ts = NamesAliasesDeclaredEarlier::ts_definition();

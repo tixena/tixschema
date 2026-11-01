@@ -83,7 +83,7 @@ fn test_a_borrowed_path_field_round_trips_through_the_owned_wire_form() {
 
 /// The field declarations of a generated `TypeScript` definition, without the `JSDoc` around them
 /// — the struct's own doc comment is the one thing the twins are not meant to share.
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 fn ts_field_declarations(definition: &str) -> Vec<String> {
     definition
         .lines()
@@ -92,7 +92,7 @@ fn ts_field_declarations(definition: &str) -> Vec<String> {
         .collect()
 }
 
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn test_path_fields_render_as_strings_in_typescript() {
     let declarations = ts_field_declarations(&PathFields::ts_definition());
@@ -108,7 +108,7 @@ fn test_path_fields_render_as_strings_in_typescript() {
     }
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn test_path_fields_render_as_strings_in_zod() {
     let schema = PathFields::zod_schema();
@@ -124,6 +124,7 @@ fn test_path_fields_render_as_strings_in_zod() {
     }
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_path_fields_render_as_strings_in_json_schema() {
     let schema = PathFields::json_schema();

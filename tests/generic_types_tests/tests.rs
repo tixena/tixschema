@@ -4,12 +4,14 @@
 
 #[cfg(feature = "typescript")]
 mod typescript {
+    #[cfg(feature = "serde")]
     use super::{
         Adjacent, External, FolderTree, Holder, Internal, KeyedByParameter, LifetimeStruct, Pair,
-        PlainConst, Positional, Untagged, WireFolder, Wrapper, concrete_alias_schema,
-        keyed_alias_schema,
+        PlainConst, Positional, Untagged, WireFolder, Wrapper,
     };
+    use super::{concrete_alias_schema, keyed_alias_schema};
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_parameter_keyed_map_states_the_string_keys_serde_writes_on_the_type_surface() {
         let ts = KeyedByParameter::<String, u32>::ts_definition();
@@ -69,6 +71,7 @@ mod typescript {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_struct_declaration_binds_its_parameters() {
         let ts = Wrapper::<String>::ts_definition();
@@ -79,6 +82,7 @@ mod typescript {
         assert!(!ts.contains("IdType$Schema"), "Got: {ts}");
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_parameter_is_reached_through_the_shape_it_was_written_under() {
         let ts = Pair::<String, u32>::ts_definition();
@@ -95,6 +99,7 @@ mod typescript {
         assert!(ts.contains("  tuple: [KeyType, ValueType];"), "Got: {ts}");
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_tuple_struct_declaration_binds_its_parameters() {
         let ts = Positional::<String>::ts_definition();
@@ -104,6 +109,7 @@ mod typescript {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn every_enum_flavour_declaration_binds_its_parameters() {
         for (flavour, ts) in [
@@ -122,6 +128,7 @@ mod typescript {
     }
 
     /// Never a factory taking a schema argument.
+    #[cfg(feature = "serde")]
     #[test]
     fn every_enum_flavour_publishes_the_same_one_argument_reader() {
         for (flavour, ts) in [
@@ -171,6 +178,7 @@ mod typescript {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_const_parameter_reaches_no_declaration() {
         let ts = PlainConst::<4>::ts_definition();
@@ -179,6 +187,7 @@ mod typescript {
     }
 
     /// A lifetime names no type either, for the same reason and with the same outcome.
+    #[cfg(feature = "serde")]
     #[test]
     fn a_lifetime_reaches_no_declaration() {
         let ts = LifetimeStruct::ts_definition();
@@ -186,6 +195,7 @@ mod typescript {
         assert!(ts.contains("  label: string;"), "Got: {ts}");
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_reference_carrying_arguments_is_still_written_as_a_type_name() {
         let concrete = WireFolder::ts_definition();
@@ -210,6 +220,7 @@ mod typescript {
         assert!(!forwarded.contains("$SchemaFactory"), "Got: {forwarded}");
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn the_reexport_lands_after_the_parameterised_declaration() {
         let ts = Holder::<String>::ts_definition();
@@ -226,16 +237,19 @@ mod typescript {
 mod zod {
     #[cfg(all(feature = "chrono", feature = "mongodb"))]
     use super::MixedArguments;
+    use super::keyed_alias_schema;
+    #[cfg(feature = "serde")]
     use super::{
         Adjacent, BatchedDefault, Carried, CycleFollower, CycleLeader, EchoedDefault, EcmDocument,
         Envelope, External, FolderTree, Holder, Internal, KeyedByParameter, LifetimeStruct,
         ListedDefault, OverriddenDefault, Pair, PlainConst, Positional, Quintet, Referrer,
-        SlottedDefault, Summarised, Tagged, Untagged, WireFolder, Wrapper, keyed_alias_schema,
+        SlottedDefault, Summarised, Tagged, Untagged, WireFolder, Wrapper,
     };
     #[cfg(all(feature = "typescript", feature = "serde"))]
     use super::{ConstrainedEchoedDefault, ConstrainedId, DeepEchoedDefault};
 
     /// Two generic items whose declared defaults name each other.
+    #[cfg(feature = "serde")]
     #[test]
     fn a_cycle_between_two_defaults_is_deferred_on_both_sides() {
         let leader = CycleLeader::<u32>::zod_schema();
@@ -257,6 +271,7 @@ mod zod {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_parameter_keyed_map_states_the_string_keys_serde_writes() {
         let zod = KeyedByParameter::<String, u32>::zod_schema();
@@ -302,6 +317,7 @@ mod zod {
         assert!(!zod.contains("z.record(keyType"), "Got: {zod}");
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_concrete_key_beside_a_parameter_one_renders_as_it_always_did() {
         let zod = KeyedByParameter::<String, u32>::zod_schema();
@@ -318,11 +334,13 @@ mod zod {
     /// Whether `name` publishes a plain exported `const`. Checked this way because
     /// `{name}$SchemaFactory` contains `{name}$Schema` as a substring, so prefix matching alone
     /// cannot tell them apart.
+    #[cfg(feature = "serde")]
     fn publishes_a_schema_const(zod: &str, name: &str) -> bool {
         zod.contains(&format!("export const {name}$Schema:"))
             || zod.contains(&format!("export const {name}$Schema ="))
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_generic_type_publishes_a_factory_where_a_plain_type_publishes_a_schema() {
         let generic = Wrapper::<String>::zod_schema();
@@ -340,6 +358,7 @@ mod zod {
         assert!(!plain.contains("$SchemaFactory"), "Got: {plain}");
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_parameter_composes_into_the_value_as_the_argument_bound_for_it() {
         let zod = Wrapper::<String>::zod_schema();
@@ -348,6 +367,7 @@ mod zod {
         assert!(zod.contains("name: z.string(),"), "Got: {zod}");
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_parameter_is_the_argument_at_every_depth_it_is_written_at() {
         let zod = Pair::<String, u32>::zod_schema();
@@ -362,6 +382,7 @@ mod zod {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_generic_tuple_struct_publishes_a_factory_too() {
         let zod = Positional::<String>::zod_schema();
@@ -372,6 +393,7 @@ mod zod {
         assert!(zod.contains("z.tuple([idType, z.string()])"), "Got: {zod}");
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn every_enum_flavour_publishes_a_factory() {
         for (flavour, zod) in [
@@ -389,6 +411,7 @@ mod zod {
         }
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn an_item_binding_no_type_parameter_still_publishes_a_schema() {
         for (name, zod) in [
@@ -401,6 +424,7 @@ mod zod {
         }
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn the_ident_reexport_names_the_factory() {
         let zod = Holder::<String>::zod_schema();
@@ -411,6 +435,7 @@ mod zod {
         assert!(!publishes_a_schema_const(&zod, "Holder"), "Got: {zod}");
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn the_default_is_reexported_alongside_the_factory() {
         let zod = Holder::<String>::zod_schema();
@@ -420,6 +445,7 @@ mod zod {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_generic_type_publishes_a_default_through_its_own_factory() {
         let zod = Wrapper::<String>::zod_schema();
@@ -433,7 +459,7 @@ mod zod {
         );
     }
 
-    #[cfg(feature = "typescript")]
+    #[cfg(all(feature = "serde", feature = "typescript"))]
     #[test]
     fn the_default_is_annotated_with_the_instantiation_it_validates() {
         let zod = Wrapper::<String>::zod_schema();
@@ -446,6 +472,7 @@ mod zod {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_two_parameter_default_fills_each_argument_in_declaration_order() {
         let zod = EcmDocument::<String, f64>::zod_schema();
@@ -459,6 +486,7 @@ mod zod {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_default_naming_a_siblings_own_default_folds_onto_its_binding() {
         let zod = EchoedDefault::<String>::zod_schema();
@@ -468,6 +496,7 @@ mod zod {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_default_naming_a_sibling_at_another_filling_still_calls_its_factory() {
         let zod = OverriddenDefault::<String>::zod_schema();
@@ -480,6 +509,7 @@ mod zod {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_default_wrapping_a_sibling_in_vec_defers_the_whole_expression() {
         let zod = BatchedDefault::<Vec<Tagged<String>>>::zod_schema();
@@ -492,6 +522,7 @@ mod zod {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_default_wrapping_a_sibling_in_option_defers_the_whole_expression() {
         let zod = SlottedDefault::<Option<Tagged<String>>>::zod_schema();
@@ -504,6 +535,7 @@ mod zod {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_default_wrapping_only_a_primitive_in_vec_stays_eager() {
         let zod = ListedDefault::<Vec<String>>::zod_schema();
@@ -589,6 +621,7 @@ mod zod {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_factory_returns_what_it_stored_rather_than_building_again() {
         let zod = Wrapper::<String>::zod_schema();
@@ -603,6 +636,7 @@ mod zod {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn every_argument_keys_a_level_of_its_own() {
         let zod = Quintet::<u32, u32, u32, u32, u32>::zod_schema();
@@ -620,7 +654,7 @@ mod zod {
         }
     }
 
-    #[cfg(feature = "typescript")]
+    #[cfg(all(feature = "serde", feature = "typescript"))]
     #[test]
     fn the_factory_return_type_is_read_back_off_the_builder() {
         let zod = Wrapper::<String>::zod_schema();
@@ -647,7 +681,7 @@ mod zod {
     }
 
     /// Each parameter is a parameter of the function for real.
-    #[cfg(feature = "typescript")]
+    #[cfg(all(feature = "serde", feature = "typescript"))]
     #[test]
     fn every_parameter_is_a_type_parameter_rather_than_a_bare_annotation() {
         let zod = Pair::<String, u32>::zod_schema();
@@ -665,7 +699,7 @@ mod zod {
         assert_eq!(zod.matches("valueType: ZodType,").count(), 1, "Got: {zod}");
     }
 
-    #[cfg(feature = "typescript")]
+    #[cfg(all(feature = "serde", feature = "typescript"))]
     #[test]
     fn one_parameter_writes_one_overload_over_one_weak_map() {
         let zod = Wrapper::<String>::zod_schema();
@@ -687,7 +721,7 @@ mod zod {
         assert!(!zod.contains("interface "), "Got: {zod}");
     }
 
-    #[cfg(feature = "typescript")]
+    #[cfg(all(feature = "serde", feature = "typescript"))]
     #[test]
     fn each_parameter_keys_a_weak_map_level_of_its_own() {
         let zod = Quintet::<u32, u32, u32, u32, u32>::zod_schema();
@@ -703,6 +737,7 @@ mod zod {
         assert!(!zod.contains("interface "), "Got: {zod}");
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_generic_type_publishes_no_assertion_and_no_opaque_value() {
         for zod in [
@@ -719,7 +754,7 @@ mod zod {
         }
     }
 
-    #[cfg(not(feature = "typescript"))]
+    #[cfg(all(feature = "serde", not(feature = "typescript")))]
     #[test]
     fn a_javascript_build_writes_the_factory_untyped() {
         let zod = Wrapper::<String>::zod_schema();
@@ -739,7 +774,7 @@ mod zod {
         assert!(!zod.contains("ZodType"), "Got: {zod}");
     }
 
-    #[cfg(not(feature = "typescript"))]
+    #[cfg(all(feature = "serde", not(feature = "typescript")))]
     #[test]
     fn a_javascript_build_writes_the_alias_and_the_brand_untyped() {
         let alias = super::boxed_schema::Schema::zod_schema();
@@ -756,6 +791,7 @@ mod zod {
         assert!(!brand.contains("ZodType"), "Got: {brand}");
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn every_generic_publisher_binds_its_parameter_as_a_factory_argument() {
         let alias = super::boxed_schema::Schema::zod_schema();
@@ -775,6 +811,7 @@ mod zod {
         assert!(!brand.contains("z.unknown()"), "Got: {brand}");
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_reference_carrying_arguments_calls_the_factory() {
         let zod = WireFolder::zod_schema();
@@ -785,6 +822,7 @@ mod zod {
         assert!(zod.contains("plain: Envelope$Schema,"), "Got: {zod}");
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_forwarded_parameter_is_an_argument_like_any_other() {
         let zod = FolderTree::<String>::zod_schema();
@@ -794,6 +832,7 @@ mod zod {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn an_argument_that_is_itself_generic_nests() {
         let zod = FolderTree::<String>::zod_schema();
@@ -803,6 +842,7 @@ mod zod {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_set_is_still_read_as_the_collection_it_is() {
         let zod = FolderTree::<String>::zod_schema();
@@ -831,6 +871,7 @@ mod zod {
         }
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_reference_to_an_alias_or_a_brand_calls_the_factory_it_publishes() {
         let zod = Referrer::zod_schema();
@@ -844,6 +885,7 @@ mod zod {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_forwarded_parameter_reaches_an_alias_and_a_brand_alike() {
         let zod = Summarised::<String>::zod_schema();
@@ -857,6 +899,7 @@ mod zod {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_generic_type_carries_its_whole_cache_itself() {
         let zod = Wrapper::<String>::zod_schema();
@@ -930,11 +973,13 @@ mod jsonschema {
 
     #[cfg(all(feature = "chrono", feature = "mongodb"))]
     use super::StoredFolder;
+    #[cfg(feature = "serde")]
     use super::{
         Branch, CountedFolder, EcmDocument, Envelope, Grove, KeyedByParameter, Pair, Perch, Roost,
         Sealed, Tagged, WireFolder, Wrapper, ecm_document_schema,
     };
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_parameter_keyed_map_still_describes_its_values() {
         let schema = KeyedByParameter::<String, u32>::json_schema();
@@ -956,6 +1001,7 @@ mod jsonschema {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_stringified_concrete_key_describes_its_values_under_its_text() {
         let schema = KeyedByParameter::<String, u32>::json_schema();
@@ -969,6 +1015,7 @@ mod jsonschema {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_parameter_describes_as_the_type_declared_for_it() {
         let schema = Wrapper::<String>::json_schema();
@@ -981,6 +1028,7 @@ mod jsonschema {
         assert_eq!(properties["name"], serde_json::json!({ "type": "string" }));
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_char_default_describes_the_one_character_string() {
         use super::Initialed;
@@ -992,6 +1040,7 @@ mod jsonschema {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn the_shape_around_a_parameter_is_still_described() {
         let schema = Pair::<String, u32>::json_schema();
@@ -1025,6 +1074,7 @@ mod jsonschema {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_standalone_document_is_written_at_the_declared_filling() {
         let properties = EcmDocument::<String, f64>::json_schema()["properties"].clone();
@@ -1038,6 +1088,7 @@ mod jsonschema {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_reference_embeds_the_document_its_own_arguments_name() {
         let wire = WireFolder::json_schema()["properties"]["doc"]["properties"].clone();
@@ -1055,6 +1106,7 @@ mod jsonschema {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_generic_alias_and_brand_are_written_at_the_filling_that_reached_them() {
         assert_eq!(
@@ -1077,6 +1129,7 @@ mod jsonschema {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn the_arguments_fill_the_parameters_in_declaration_order() {
         let properties = ecm_document_schema::Schema::json_schema_with(&[
@@ -1113,6 +1166,7 @@ mod jsonschema {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_forwarded_parameter_carries_the_filling_it_was_handed() {
         let properties = super::FolderTree::<String>::json_schema()["properties"].clone();
@@ -1130,6 +1184,7 @@ mod jsonschema {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_filling_naming_another_item_embeds_the_document_that_item_publishes() {
         let schema = Sealed::<Envelope>::json_schema();
@@ -1141,6 +1196,7 @@ mod jsonschema {
     }
 
     /// A name is one name however it was reached.
+    #[cfg(feature = "serde")]
     #[test]
     fn a_name_reached_as_a_filling_and_as_a_field_is_defined_once() {
         let schema = Grove::<Branch>::json_schema();
@@ -1156,6 +1212,7 @@ mod jsonschema {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_cycle_closing_through_a_declared_filling_defers_the_same_way() {
         let schema = Roost::<Perch>::json_schema();
@@ -1173,6 +1230,7 @@ mod jsonschema {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn a_cycle_that_keeps_its_filling_defers_through_the_one_definition() {
         let document = super::Recurring::<String>::json_schema();
@@ -1192,6 +1250,7 @@ mod jsonschema {
         }
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     #[should_panic(
         expected = "`Refilled`: a reference closes a cycle at a filling the document is \
@@ -1202,6 +1261,7 @@ mod jsonschema {
         let _: serde_json::Value = super::Refilled::<String>::json_schema();
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     #[should_panic(
         expected = "a document holds one definition per name, so a cycle cannot change \
@@ -1215,7 +1275,7 @@ mod jsonschema {
 }
 
 use alloc::borrow::Cow;
-#[cfg(any(feature = "serde", feature = "typescript", feature = "zod"))]
+#[cfg(feature = "serde")]
 use core::hash::Hash;
 use std::collections::{HashMap, HashSet};
 
@@ -1236,6 +1296,7 @@ pub struct Wrapper<IdType> {
 
 /// A `char` filling for a parameter's declared default — refused before `char` gained a
 /// `FieldDefType` arm of its own. The fixture compiling is part of the assertion.
+#[cfg(feature = "serde")]
 #[model_schema(default_types(InitialType = char), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Initialed<InitialType> {
@@ -1306,7 +1367,7 @@ pub struct Positional<IdType>(pub IdType, pub String);
 /// A map keyed by one of the item's own parameters, beside the concrete-keyed members the two
 /// validating surfaces must keep answering for exactly as before. Consumed only by the surface
 /// modules and the serde wire tests, so it exists only where one of them compiles.
-#[cfg(any(feature = "serde", feature = "typescript", feature = "zod"))]
+#[cfg(feature = "serde")]
 #[model_schema(default_types(KeyType = String, ValueType = u32), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyedByParameter<KeyType: Eq + Hash, ValueType> {
@@ -1445,7 +1506,7 @@ pub struct Undefaulted<IdType> {
 /// A filling holding a map serde can key. The zod surface reads a declared filling as deeply as the
 /// JSON one, refusing a key serde cannot write with no document in the build at all, so the filling
 /// that renders here is the one written at a key it can.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[model_schema(default_types(HeldType = HashMap<String, u32>))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StringKeyedHolder<HeldType> {
@@ -1540,6 +1601,7 @@ pub struct Referrer {
 /// A declared filling that names another item rather than a primitive — written by asking that
 /// item for its own document, reading the names in flight and definitions being hoisted. Read
 /// by the JSON surface alone, the only one that fills a parameter with a document.
+#[cfg(feature = "serde")]
 #[model_schema(default_types(BodyType = Envelope), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Sealed<BodyType> {
@@ -1548,6 +1610,7 @@ pub struct Sealed<BodyType> {
 }
 
 /// A self-referential item: what puts a name in `$defs` at all.
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Branch {
@@ -1557,6 +1620,7 @@ pub struct Branch {
 
 /// The same name reached twice over, once as a declared filling and once as a plain field — the two
 /// arrivals a single hoisted definition has to answer for both of.
+#[cfg(feature = "serde")]
 #[model_schema(default_types(BranchType = Branch), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Grove<BranchType> {
@@ -1567,12 +1631,14 @@ pub struct Grove<BranchType> {
 /// A cycle that closes through a declared filling — reachable without arguments only because
 /// the parameter also carries a Rust-level default. A cycle through two declared fillings would
 /// be a cycle in the parameter defaults themselves, which rustc refuses before the attribute runs.
+#[cfg(feature = "serde")]
 #[model_schema(default_types(HostType = Perch), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Roost<HostType = Perch> {
     pub host: HostType,
 }
 
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Perch {
@@ -1583,7 +1649,7 @@ pub struct Perch {
 /// The same two, named from a field that forwards the referrer's own parameter into each. Read by
 /// the Zod surface alone, where an argument is a value that has to be passed on, so it exists only
 /// where that surface compiles.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[model_schema(default_types(ValueType = String))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Summarised<ValueType> {
@@ -1594,7 +1660,7 @@ pub struct Summarised<ValueType> {
 /// A `default_types` entry naming another generic item at exactly its own default — the fold
 /// that lets the argument read `Tagged$SchemaDefault` rather than reconstruct
 /// `Tagged$SchemaFactory(z.string())`, a call the memo would not share with it.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[model_schema(default_types(HolderType = Tagged<String>))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EchoedDefault<HolderType> {
@@ -1604,7 +1670,7 @@ pub struct EchoedDefault<HolderType> {
 /// The same shape at a filling that names `Tagged` at an argument other than its own declared
 /// default — the whole of the evidence that the fold is conditioned on the arguments matching
 /// rather than firing for any reference to a generic sibling.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[model_schema(default_types(HolderType = Tagged<u32>))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OverriddenDefault<HolderType> {
@@ -1614,7 +1680,7 @@ pub struct OverriddenDefault<HolderType> {
 /// A declared default wrapping a sibling reference in a `Vec` — the direct-sibling fold gate
 /// requires `array_depth == 0`, so this falls through to the ordinary rendering, naming
 /// `Tagged$SchemaFactory` from inside `z.array(...)` rather than at the argument's top level.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[model_schema(default_types(Items = Vec<Tagged<String>>))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BatchedDefault<Items> {
@@ -1622,7 +1688,7 @@ pub struct BatchedDefault<Items> {
 }
 
 /// The same hazard one level deeper through `Option` rather than `Vec`.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[model_schema(default_types(Slot = Option<Tagged<String>>))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SlottedDefault<Slot> {
@@ -1632,7 +1698,7 @@ pub struct SlottedDefault<Slot> {
 /// A `Vec`-wrapped default with nothing but a primitive inside — nothing here names a sibling
 /// `const` at any depth, so the wrapped expression stays eager exactly as a bare primitive
 /// default does.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[model_schema(default_types(Items = Vec<String>))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ListedDefault<Items> {
@@ -1672,14 +1738,14 @@ pub struct DeepEchoedDefault<HolderType> {
     pub held: HolderType,
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[model_schema(default_types(ValueType = CycleFollower<u32>))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CycleLeader<ValueType> {
     pub value: ValueType,
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[model_schema(default_types(ValueType = CycleLeader<u32>))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CycleFollower<ValueType> {
@@ -1689,6 +1755,7 @@ pub struct CycleFollower<ValueType> {
 /// A generic type that names itself, at the filling it was entered at — the cycle a document
 /// holding one definition per name describes as a definition and a reference into it. Read only
 /// where a JSON document is built.
+#[cfg(feature = "serde")]
 #[model_schema(default_types(ValueType = String), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Recurring<ValueType> {
@@ -1700,6 +1767,7 @@ pub struct Recurring<ValueType> {
 /// The same cycle, closed at a filling the outer frame was not written at: the position holds a
 /// `bool` where the document is being written at a `String`, and one definition cannot describe
 /// both.
+#[cfg(feature = "serde")]
 #[model_schema(default_types(ValueType = String), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Refilled<ValueType> {
@@ -1756,7 +1824,7 @@ pub struct FlatDefaulted<HeldType> {
     pub tag: String,
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_writably_keyed_map_filling_still_renders_its_default() {
     let zod = StringKeyedHolder::<HashMap<String, u32>>::zod_schema();

@@ -456,7 +456,7 @@ mod a_length_through_an_alias_of_an_index_set {
         );
     }
 
-    #[cfg(feature = "zod")]
+    #[cfg(all(feature = "serde", feature = "zod"))]
     #[test]
     fn the_zod_schema_counts_the_items() {
         let said = "Array.isArray(issue.input) ? issue.input.length : String(issue.input).length";
@@ -475,6 +475,7 @@ mod a_length_through_an_alias_of_an_index_set {
         );
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn the_json_schema_writes_the_count_beside_the_name() {
         let narrowing = &Roster::json_schema()["properties"]["queue"]["allOf"][1];

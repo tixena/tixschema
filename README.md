@@ -6631,7 +6631,7 @@ The bare `ts_optional` flag asks for the optional key (`field?: T` rather than `
 
 **Two positions have no key for it to make optional, and writing it on either is a compile error, in every build.** A positional slot writes no key at all, so the flag names a spelling the tuple line has no room for. A member a serde attribute takes off the wire in *both* directions (`skip`, or `skip_serializing` and `skip_deserializing` together) is described on no surface, so there is no line for the flag to write its key on. An attribute that drops the key one way only (`skip_serializing_if`, `skip_serializing`) leaves the member standing and the flag decides its spelling as usual.
 
-With the `serde` feature on, an `Option<T>` field must carry a key-dropping attribute anyway: its declared shape is `T | undefined`, so its key has to be dropped for a `None`, not written as `null` the way serde writes it absent an attribute saying otherwise — the guard refuses the declaration and names the attribute to add (or, if the wire really does carry `null` here, points at [`nullable`](#nullable-object-keys-nullable) instead). The example below is a build with the feature **off**, where no attribute is read and no such guard runs:
+With the `serde` feature on, an `Option<T>` field must carry a key-dropping attribute anyway: its declared shape is `T | undefined`, so its key has to be dropped for a `None`, not written as `null` the way serde writes it absent an attribute saying otherwise — the guard refuses the declaration and names the attribute to add (or, if the wire really does carry `null` here, points at [`nullable`](#nullable-object-keys-nullable) instead). The example below is a build with the feature **off**, where no attribute is read, no such guard runs, and TypeScript writes each member in camelCase:
 
 ```rust
 #[model_schema()]
@@ -6649,7 +6649,7 @@ Generated TypeScript:
 export type Profile = {
   name: string;
   nickname?: string;
-  nick_handle: string | undefined;
+  nickHandle: string | undefined;
 };
 ```
 

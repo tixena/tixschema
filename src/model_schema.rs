@@ -11945,6 +11945,16 @@ fn ts_member_key(key: &str) -> String {
     ts_quoted(key)
 }
 
+/// The name a member is written under in TypeScript and Zod: serde's name with `serde` on, and
+/// the Rust name in camelCase without it.
+fn ts_member_name(name: &str) -> String {
+    #[cfg(feature = "serde")]
+    let written = name.to_owned();
+    #[cfg(not(feature = "serde"))]
+    let written = crate::rename_rule::RenameRule::CamelCase.apply_to_field(name);
+    written
+}
+
 /// The one-line description a set of lines is published as, escaped for the `description: "…"` it
 /// is spliced into. The escape is a no-op on the exported-name fallback: a `name` override must
 /// spell an identifier, which cannot contain a quote.
@@ -14212,7 +14222,7 @@ fn render_untagged_named(
         .map(|fld| {
             format!(
                 "{}{}: {}",
-                ts_member_key(&fld.name),
+                ts_member_key(&ts_member_name(&fld.name)),
                 fld.optional_key_marker(),
                 fld.typescript_typename()
             )
@@ -14229,7 +14239,7 @@ fn render_untagged_named(
         let mut body = String::from("z.strictObject({ ");
         for fld in field_defs {
             let zod_field_type = fld.zod_type();
-            let key = ts_member_key(&fld.name);
+            let key = ts_member_key(&ts_member_name(&fld.name));
             if fld.contains_type_reference(self_type_name) {
                 let _ = write!(body, "get {key}() {{ return {zod_field_type}; }}, ");
             } else {
@@ -14285,7 +14295,7 @@ fn close_untagged_flatten_member(member: &str, excluded: &[String]) -> String {
         if !closed.ends_with('{') {
             closed.push(';');
         }
-        let _ = write!(closed, " {}?: never", ts_member_key(key));
+        let _ = write!(closed, " {}?: never", ts_member_key(&ts_member_name(key)));
     }
     closed.push_str(" }");
     closed
@@ -15493,7 +15503,7 @@ fn write_named_variant_fields(
     let variant_schema_code = &mut parts.schema_code;
     let json_schema_variant_fields = &mut parts.json_fields;
     for fld in field_defs {
-        let key = ts_member_key(&fld.name);
+        let key = ts_member_key(&ts_member_name(&fld.name));
 
         let _ = writeln!(
             variant_type_code,
@@ -17245,7 +17255,7 @@ fn write_field_type_and_schema(
     fld: &FieldDef,
     self_type_name: Option<&str>,
 ) -> String {
-    let key = ts_member_key(&fld.name);
+    let key = ts_member_key(&ts_member_name(&fld.name));
 
     let _ = writeln!(
         type_code,

@@ -395,6 +395,11 @@ as it was. `type_check_a_name_that_holds_a_quote_is_read_under_zod_as_serde_writ
 `tests/generic_types_tests/declarations.rs` compiles the models of
 `tests/dart_tests/quoted_models.rs` under `tsc --strict` and parses every payload serde writes.
 
+Without the `serde` feature no attribute is read, and these two surfaces alone write a member of a
+struct or of a variant in camelCase: `ts_member_name` turns `user_name` into `userName` before
+`ts_member_key` spells it. Rust, `validate()`'s messages, Dart, Swift, Kotlin and JSON Schema keep
+the Rust name.
+
 A text the TypeScript surfaces write into a comment goes through `ts_commented` in `src/utils.rs`,
 which spells `*/` as `*\/`, so the comment runs on: each line `item_jsdoc_body` writes (an item's
 doc, a member's, a variant's, an alias's, and the name serde writes for a member or a variant with

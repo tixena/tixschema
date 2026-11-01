@@ -440,7 +440,7 @@ mod json_schema {
 /// The README's recursive-generic example, held to the two things a pasted example has to be: the
 /// README still declares it exactly as declared here, and the emission shown beside it is what the
 /// generator answers with. Drift on either side fails here rather than in someone's editor.
-#[cfg(all(feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 mod readme {
     use super::Node;
 

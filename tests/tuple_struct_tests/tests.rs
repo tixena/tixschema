@@ -55,29 +55,29 @@ pub struct SkippedLoneSlot(#[serde(skip)] pub String);
 
 /// The slot of a tuple struct that is *not* a brand, which reads every key written on it. These
 /// four pin what the brand-slot refusal must leave where it is.
-#[cfg(all(feature = "zod", feature = "typescript"))]
+#[cfg(all(feature = "serde", feature = "zod", feature = "typescript"))]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct PreprocessedSlot(#[model_schema_prop(preprocess = ["trim"])] pub String);
 
-#[cfg(all(feature = "zod", feature = "typescript"))]
+#[cfg(all(feature = "serde", feature = "zod", feature = "typescript"))]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct LiteralSlot(#[model_schema_prop(literal = "fixed")] pub String);
 
-#[cfg(all(feature = "zod", feature = "typescript"))]
+#[cfg(all(feature = "serde", feature = "zod", feature = "typescript"))]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct NullableSlot(#[model_schema_prop(nullable)] pub Option<String>);
 
-#[cfg(all(feature = "zod", feature = "typescript"))]
+#[cfg(all(feature = "serde", feature = "zod", feature = "typescript"))]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct SubstitutedSlot(#[model_schema_prop(as = String)] pub String);
 
 /// The Rust side of the function the `preprocess` of a slot above names: a read of the type calls
 /// it, and it answers the payload as it is.
-#[cfg(all(feature = "zod", feature = "typescript"))]
+#[cfg(all(feature = "serde", feature = "zod", feature = "typescript"))]
 const fn trim(payload: serde_json::Value) -> serde_json::Value {
     payload
 }
@@ -85,7 +85,7 @@ const fn trim(payload: serde_json::Value) -> serde_json::Value {
 /// The wire criterion the newtype surfaces are read against.
 /// Whether `zod` binds `expression` whole: to the raw `const` beside TypeScript, and to the
 /// exported one, which holds the examples, without it.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 fn binds(zod: &str, expression: &str) -> bool {
     #[cfg(feature = "typescript")]
     let statement = format!("= {expression};");
@@ -123,7 +123,7 @@ fn test_serde_writes_a_none_slot_as_null() {
     );
 }
 
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn test_a_newtype_struct_describes_the_bare_inner_type_in_typescript() {
     let wire = serde_json::to_value(Plain("hello".to_owned())).unwrap();
@@ -134,7 +134,7 @@ fn test_a_newtype_struct_describes_the_bare_inner_type_in_typescript() {
     assert!(!ts.contains(": string;"), "Got: {ts}");
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn test_a_newtype_struct_describes_the_bare_inner_type_in_zod() {
     let wire = serde_json::to_value(Plain("hello".to_owned())).unwrap();
@@ -147,6 +147,7 @@ fn test_a_newtype_struct_describes_the_bare_inner_type_in_zod() {
     assert!(!zod.contains("strictObject"), "Got: {zod}");
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_a_newtype_struct_describes_the_bare_inner_type_in_json_schema() {
     let wire = serde_json::to_value(Plain("hello".to_owned())).unwrap();
@@ -158,7 +159,7 @@ fn test_a_newtype_struct_describes_the_bare_inner_type_in_json_schema() {
     );
 }
 
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn test_a_wider_tuple_struct_describes_a_fixed_tuple_in_typescript() {
     let wire = serde_json::to_value(Pair("hello".to_owned(), 1_u32)).unwrap();
@@ -172,7 +173,7 @@ fn test_a_wider_tuple_struct_describes_a_fixed_tuple_in_typescript() {
     assert!(!ts.contains(": string;"), "Got: {ts}");
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn test_a_wider_tuple_struct_describes_a_fixed_tuple_in_zod() {
     let wire = serde_json::to_value(Pair("hello".to_owned(), 1_u32)).unwrap();
@@ -192,7 +193,7 @@ fn test_a_wider_tuple_struct_describes_a_fixed_tuple_in_zod() {
 }
 
 /// The `ZodType<...> = ...$RawSchema` framing only appears when typescript is also enabled.
-#[cfg(all(feature = "zod", feature = "typescript"))]
+#[cfg(all(feature = "serde", feature = "zod", feature = "typescript"))]
 #[test]
 fn test_a_tuple_struct_zod_schema_is_annotated_with_its_typescript_type() {
     let zod = Pair::zod_schema();
@@ -204,6 +205,7 @@ fn test_a_tuple_struct_zod_schema_is_annotated_with_its_typescript_type() {
     );
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_a_wider_tuple_struct_describes_a_fixed_tuple_in_json_schema() {
     let wire = serde_json::to_value(Pair("hello".to_owned(), 1_u32)).unwrap();
@@ -221,7 +223,7 @@ fn test_a_wider_tuple_struct_describes_a_fixed_tuple_in_json_schema() {
     );
 }
 
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn test_an_optional_slot_describes_the_null_it_writes_in_typescript() {
     let wire = serde_json::to_value(MaybeName(None)).unwrap();
@@ -234,7 +236,7 @@ fn test_an_optional_slot_describes_the_null_it_writes_in_typescript() {
     );
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn test_an_optional_slot_describes_the_null_it_writes_in_zod() {
     let wire = serde_json::to_value(MaybeName(None)).unwrap();
@@ -245,6 +247,7 @@ fn test_an_optional_slot_describes_the_null_it_writes_in_zod() {
     assert!(binds(&zod, "z.nullable(z.string())"), "Got: {zod}");
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_an_optional_slot_describes_the_null_it_writes_in_json_schema() {
     let wire = serde_json::to_value(MaybeName(None)).unwrap();
@@ -318,7 +321,7 @@ fn test_serde_writes_a_lone_slot_whatever_the_skip_says() {
     );
 }
 
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn test_a_dropped_slot_is_no_element_of_the_typescript_tuple() {
     let wire = serde_json::to_value(SkippedLeadSlot(Some("s".to_owned()), "x".to_owned())).unwrap();
@@ -333,7 +336,7 @@ fn test_a_dropped_slot_is_no_element_of_the_typescript_tuple() {
 }
 
 /// The halves written apart are one wire, so they are one emission.
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn test_typescript_answers_the_two_slot_halves_the_way_it_answers_the_word() {
     let ts = BothHalvesDroppedSlot::ts_definition();
@@ -344,7 +347,7 @@ fn test_typescript_answers_the_two_slot_halves_the_way_it_answers_the_word() {
 }
 
 /// Every remaining position, each read against the array serde writes for it.
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn test_typescript_describes_the_arity_each_drop_leaves() {
     for (ts, expected) in [
@@ -358,7 +361,7 @@ fn test_typescript_describes_the_arity_each_drop_leaves() {
 }
 
 /// The Zod tuple is the one the payload serde writes satisfies.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn test_a_dropped_slot_is_no_element_of_the_zod_tuple() {
     let wire = serde_json::to_value(SkippedLeadSlot(Some("s".to_owned()), "x".to_owned())).unwrap();
@@ -370,7 +373,7 @@ fn test_a_dropped_slot_is_no_element_of_the_zod_tuple() {
 }
 
 /// [`test_typescript_describes_the_arity_each_drop_leaves`] for the Zod surface.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn test_zod_describes_the_arity_each_drop_leaves() {
     for (zod, expected) in [
@@ -387,6 +390,7 @@ fn test_zod_describes_the_arity_each_drop_leaves() {
 }
 
 /// The JSON surface carries the arity twice more, as its own bounds, and both move with the drop.
+#[cfg(feature = "serde")]
 #[test]
 fn test_a_dropped_slot_leaves_the_json_schema_prefix_and_its_bounds() {
     let wire = serde_json::to_value(SkippedLeadSlot(Some("s".to_owned()), "x".to_owned())).unwrap();
@@ -404,6 +408,7 @@ fn test_a_dropped_slot_leaves_the_json_schema_prefix_and_its_bounds() {
     );
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_the_json_schema_describes_the_arity_each_drop_leaves() {
     assert_eq!(
@@ -433,7 +438,7 @@ fn test_the_json_schema_describes_the_arity_each_drop_leaves() {
 }
 
 /// The empty ident of an unnamed slot must not reach any surface as a key.
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn test_typescript_never_names_a_slot_by_its_absent_ident() {
     for ts in [
@@ -447,7 +452,7 @@ fn test_typescript_never_names_a_slot_by_its_absent_ident() {
 }
 
 /// [`test_typescript_never_names_a_slot_by_its_absent_ident`] for the Zod surface.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn test_zod_never_names_a_slot_by_its_absent_ident() {
     for zod in [
@@ -460,6 +465,7 @@ fn test_zod_never_names_a_slot_by_its_absent_ident() {
     }
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_json_schema_never_names_a_slot_by_its_absent_ident() {
     for json in [
@@ -471,7 +477,7 @@ fn test_json_schema_never_names_a_slot_by_its_absent_ident() {
     }
 }
 
-#[cfg(all(feature = "zod", feature = "typescript"))]
+#[cfg(all(feature = "serde", feature = "zod", feature = "typescript"))]
 #[test]
 fn test_every_key_written_on_a_plain_slot_reaches_zod() {
     for (zod, binding) in [
@@ -498,7 +504,7 @@ fn test_every_key_written_on_a_plain_slot_reaches_zod() {
 }
 
 /// [`test_every_key_written_on_a_plain_slot_reaches_zod`] for the TypeScript surface.
-#[cfg(all(feature = "zod", feature = "typescript"))]
+#[cfg(all(feature = "serde", feature = "zod", feature = "typescript"))]
 #[test]
 fn test_every_key_written_on_a_plain_slot_reaches_typescript() {
     for (ts, declaration) in [
