@@ -71,19 +71,21 @@ use syn::Type;
 ///
 /// `compile_fail` says only that *something* was refused and this toolchain checks no error code a
 /// doctest names, so the pair above was compiled standalone and read. The refusal is a pile rather
-/// than one sentence — eleven errors, the first two naming the message and the module beside it,
+/// than one sentence — thirteen errors, the first five naming the message and its four modules,
 /// the rest following from them — and none of them names the operation or the two services:
 ///
 /// ```text
 /// error[E0428]: the name `sweep_request_schema` is defined multiple times
+/// error[E0428]: the name `sweep_request_dart` is defined multiple times
+/// error[E0428]: the name `sweep_request_swift` is defined multiple times
+/// error[E0428]: the name `sweep_request_kotlin` is defined multiple times
 /// error[E0428]: the name `SweepRequest` is defined multiple times
 /// error[E0119]: conflicting implementations of trait `Deserialize<'_>` for type `SweepRequest`
 /// error[E0119]: conflicting implementations of trait `Serialize` for type `SweepRequest`
-/// error[E0592]: duplicate definitions with name `json_schema`
 /// error[E0592]: duplicate definitions with name `ts_definition`
 /// error[E0592]: duplicate definitions with name `zod_schema`
 /// error[E0034]: multiple applicable items in scope        (×4)
-/// error: could not compile `tixschema` (test "zz_probe") due to 11 previous errors
+/// error: could not compile `emit-record` (test "zz_probe") due to 13 previous errors
 /// ```
 ///
 /// It is a build failure either way, which is what a bundle needs: nothing that reaches TypeScript
