@@ -2506,7 +2506,7 @@ mod branded_chrono_zod_tests {
 
 // A brand's constrained value is its inner field itself, so a path inner is measured the way a path
 // field is: by the string serde writes for it.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 mod constrained_path_brand_tests {
     use super::*;
     use std::path::PathBuf;
@@ -2573,7 +2573,7 @@ mod constrained_path_brand_tests {
 
 // A transparent wrapper derefs to what it holds, so a path branded under one is the same path on
 // every surface. Compiling this module is the assertion.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 mod wrapped_path_brand_tests {
     use super::*;
     use alloc::borrow::Cow;
@@ -2724,7 +2724,7 @@ mod wrapped_path_brand_tests {
 
 // `no_display` drops the `Display` impl, not the `Display` requirement: a brand whose checks read
 // the inner's `to_string()` still needs it to render.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 mod constrained_no_display_tests {
     use super::*;
 
@@ -3020,9 +3020,7 @@ mod untouched_by_the_slot_refusal_tests {
     }
 }
 
-#[cfg(any(feature = "serde", feature = "zod", feature = "typescript"))]
 use serde::{Deserialize, Serialize};
-#[cfg(any(feature = "serde", feature = "zod", feature = "typescript"))]
 use tixschema::model_schema;
 
 /// The marker a brand carries, as this build spells it: the name is a *type* argument, which only

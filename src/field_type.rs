@@ -390,14 +390,6 @@ impl PartialEq for FieldDef {
 impl FieldDef {
     /// The enclosing item's own type parameter this field reaches *below* its own position — the
     /// `T` a `Later<T>` hands to the type it names, and the same `T` inside a tuple or a map.
-    #[cfg(any(
-        feature = "typescript",
-        feature = "zod",
-        all(
-            feature = "serde",
-            any(feature = "dart", feature = "swift", feature = "kotlin")
-        )
-    ))]
     pub fn argument_parameter_name(&self) -> Option<&str> {
         match &self.field_type {
             FieldDefType::SiblingType(_, arguments) => arguments
@@ -1167,14 +1159,6 @@ impl FieldDef {
 
     /// The parameter this field is or reaches, which is what a nested position is asked for: below
     /// the top level the two questions have one answer.
-    #[cfg(any(
-        feature = "typescript",
-        feature = "zod",
-        all(
-            feature = "serde",
-            any(feature = "dart", feature = "swift", feature = "kotlin")
-        )
-    ))]
     fn parameter_or_argument_name(&self) -> Option<&str> {
         self.parameter_shape_name()
             .or_else(|| self.argument_parameter_name())
@@ -2920,7 +2904,7 @@ fn container_wire_arity(name: &str) -> Option<usize> {
     }
 }
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 /// Whether the dispatch that describes a field's type has an arm for the standard type `name`: a
 /// scalar, a text, a path, or a wrapper or container the crate reads through.
 pub fn is_a_standard_type_name(name: &str) -> bool {

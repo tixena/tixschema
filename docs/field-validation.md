@@ -66,9 +66,10 @@ section is the consumer's view; this is what a change has to keep.
   pattern written, `named_leaf_length_rendering` declares `BoundedLength` (a string, a path, a
   slice, an array, `Vec`, `VecDeque`, `BinaryHeap`, `BTreeSet`, `HashSet`) and `UnbrandedLength`
   beside it, and a brand's inherent `model_schema_bound_length` (`branded_bound_text_method`) is
-  found ahead of them. `AliasInfo::counted` records what a brand or an alias counts, so a brand
-  over a brand forwards (`counted_by`) and the guard (`branded_constraint_inner_error`) lets
-  two lengths through to a name that counts items. A pattern keeps asking for the text.
+  found ahead of them. `record_counted` records what a brand or an alias counts, in every build,
+  so a brand over a brand forwards (`counted_by`) and the guard
+  (`branded_constraint_inner_error`) lets two lengths through to a name that counts items. A
+  pattern keeps asking for the text.
   Zod writes `.check(z.minLength(..))` with `zod_named_error_arg`, whose sentence counts an array
   by its items; the JSON Schema writes `minLength` beside `minItems` (`named_field_json_schema_value`);
   a generic brand whose default is a list counts it at that filling alone, in the Zod default

@@ -1,7 +1,7 @@
 //! Unit tests of the `#[model_schema]` expansion: its guards, and the code each shape expands to.
 
 use super::{
-    EnumCasing, FieldDefType, ModelSchemaPropMeta, apply_serde_key_omission,
+    EnumCasing, FieldDefType, ModelSchemaPropMeta, apply_serde_key_omission, branded_guard_errors,
     check_nullable_ts_optional_conflict, check_undescribable_std_field,
     collect_discriminated_variants, field_label, get_field_def, render_discriminated_variants,
     validate_as_number_flag, validate_nullable_flag, validate_ts_optional_flag,
@@ -23,8 +23,8 @@ use super::{
 #[cfg(any(feature = "typescript", feature = "zod"))]
 use super::{
     AliasKind, PublishedShape, alias_map_key_guard_error, alias_undescribable_std_error,
-    branded_guard_errors, check_map_key, deferred_shape_question, deferred_shape_refusals,
-    ident_schema_module_name, record_shape_question, record_value_shape, register_alias_info,
+    check_map_key, deferred_shape_question, deferred_shape_refusals, ident_schema_module_name,
+    record_shape_question, record_value_shape, register_alias_info,
 };
 
 #[cfg(all(feature = "serde", feature = "zod"))]
@@ -5341,18 +5341,6 @@ fn the_brand_slot_alias_and_const_guards_are_compiled_in_every_build_that_descri
     let compiled = quote::quote!(cfg(#describing)).to_string();
     let expansion = include_str!("../model_schema.rs");
     for named in [
-        "branded_guard_errors",
-        "branded_option_inner_error",
-        "branded_constraint_inner_error",
-        "branded_pattern_error",
-        "branded_inner_value_surface",
-        "branded_undescribable_std_error",
-        "branded_map_key_error",
-        "declared_default_field",
-        "declared_default_type_name",
-        "declared_default_constraint_message",
-        "named_inner_constraint_message",
-        "non_string_inner_shape",
         "check_slot_wire_is_readable",
         "slot_attributes_reach_the_wire",
         "alias_map_key_guard_error",
@@ -5372,8 +5360,23 @@ fn the_brand_slot_alias_and_const_guards_are_compiled_in_every_build_that_descri
         [compiled, quote::quote!(cfg(not(#describing))).to_string()],
         "for `const_parameter_argument_errors`"
     );
-    // The JSON Schema document reads these too, and it compiles in every build.
-    for named in ["held_as_a_list", "surface_field_def"] {
+    // A brand is expanded in every build, and so is the JSON Schema document, which reads these.
+    for named in [
+        "branded_guard_errors",
+        "branded_option_inner_error",
+        "branded_constraint_inner_error",
+        "branded_pattern_error",
+        "branded_inner_value_surface",
+        "branded_undescribable_std_error",
+        "branded_map_key_error",
+        "declared_default_field",
+        "declared_default_type_name",
+        "declared_default_constraint_message",
+        "named_inner_constraint_message",
+        "non_string_inner_shape",
+        "held_as_a_list",
+        "surface_field_def",
+    ] {
         assert_eq!(
             gates_above(expansion, named),
             Vec::<String>::new(),
@@ -10402,13 +10405,11 @@ fn alias_ts_definition_method_carries_no_cfg_attribute() {
 }
 
 /// Collects a branded newtype's guard failures as rendered `compile_error!` token strings.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn branded_errors(item: &syn::ItemStruct) -> Vec<String> {
     branded_errors_with(item, &super::ModelSchemaArgs::default())
 }
 
 /// [`branded_errors`] for a brand carrying `model_schema` arguments.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn branded_errors_with(item: &syn::ItemStruct, args: &super::ModelSchemaArgs) -> Vec<String> {
     branded_guard_errors(item, args)
         .iter()
@@ -12643,19 +12644,15 @@ fn an_alias_with_no_string_check_is_not_refused() {
     assert!(!expanded.contains("compile_error"), "got: {expanded}");
 }
 
-#[cfg(not(any(feature = "typescript", feature = "zod")))]
 #[test]
-fn a_string_check_on_a_brand_is_refused_where_no_schema_surface_is_on() {
+fn a_string_check_on_a_brand_is_held_by_its_validator_in_every_build() {
     let expanded = expansion_under(
         "minLength = 3",
         "#[serde(transparent)] pub struct Code(pub String);",
     );
-    assert!(expanded.contains("compile_error"), "got: {expanded}");
+    assert!(!expanded.contains("compile_error"), "got: {expanded}");
     assert!(
-        expanded.contains(
-            "type `Code`: `minLength` on a brand is enforced by the reader generated with its \
-             schema surface, and this build generates none"
-        ),
+        expanded.contains("pub fn validate_value"),
         "got: {expanded}"
     );
 }

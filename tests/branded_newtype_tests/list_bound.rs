@@ -1,6 +1,6 @@
 //! A brand over a list takes `minLength` and `maxLength` on the type, where they count its items.
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 mod a_length_on_a_brand_over_a_list {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
@@ -195,7 +195,7 @@ mod a_length_on_a_brand_over_a_list {
 
 /// A length written where a list is named, not written: a brand over a list at a field, a brand
 /// over a brand over a list, and a generic brand whose declared default is a list.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 mod a_length_through_a_name {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;

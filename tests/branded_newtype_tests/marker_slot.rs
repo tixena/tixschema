@@ -213,7 +213,7 @@ mod beside_the_lone_slot {
 
 /// A bound on such a brand, and on a field typed with it, measures the slot serde reads, after the
 /// marker it skips.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 mod bounded_after_the_marker {
     use core::marker::PhantomData;
     use serde::{Deserialize, Serialize};

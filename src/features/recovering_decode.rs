@@ -37,10 +37,8 @@ use crate::field_type::{
     FieldDefType, RESULT_ARMS, get_field_def, is_map_wrapper, is_refused_sequence_wrapper,
     is_sequence_wrapper, is_transparent_wrapper, written_std_result,
 };
-#[cfg(any(feature = "typescript", feature = "zod"))]
-use crate::model_schema::judged_read::bounded_listed_read;
 use crate::model_schema::judged_read::{
-    HookScope, authored_read_bounds, listed_read, listed_reader,
+    HookScope, authored_read_bounds, bounded_listed_read, listed_read, listed_reader,
 };
 use crate::model_schema::preprocess;
 use crate::model_schema::{helper_name_stem, recovering_bound_check};
@@ -2391,7 +2389,6 @@ pub fn struct_recovering_decode(item_struct: &ItemStruct, mongodb: bool) -> Reco
 
 /// [`struct_recovering_decode`] of a brand that carries a bound: the read its issues are listed
 /// from refuses a value that breaks the bound.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 pub fn brand_recovering_decode(item_struct: &ItemStruct, mongodb: bool) -> RecoveringDecode {
     listed_from(
         item_struct,

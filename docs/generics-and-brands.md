@@ -336,5 +336,4 @@ Any other default is refused at expansion, spanned on the `default_types` entry
 (`branded_unproven_default_errors`): a plain alias, a type of another crate, a type declared
 below the brand, a path that leaves out a lifetime its declaration has (`Tag` for `Tag<'text>`,
 which the message says to write `Tag<'_>`), and an alias that hides a lifetime. A generic brand
-with no string check is refused nothing, and so is a build with no schema surface, where the
-function is not emitted.
+with no string check is refused nothing.

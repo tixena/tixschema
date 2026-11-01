@@ -16,7 +16,6 @@ use regex_syntax::hir;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use syn::ext::IdentExt as _;
-#[cfg(any(feature = "serde", feature = "typescript", feature = "zod"))]
 use syn::punctuated::Punctuated;
 use syn::{Attribute, Expr, Field, GenericParam, Generics, Lit, LitStr, Meta, Type, Variant};
 
@@ -288,9 +287,6 @@ pub struct OptionTarget {
 /// reads to reference it.
 #[derive(Clone)]
 pub struct AliasInfo {
-    /// What a bound written on a field of this name counts, where it counts anything: a brand over
-    /// a text or a list publishes the count, and an alias of a list.
-    pub counted: Option<Counted>,
     pub export_name: String,
     /// What an externally tagged enum's variants are spelled as where an object flattens the enum
     /// itself, one per variant in the order the union writes them, and empty for every other item.
@@ -727,6 +723,10 @@ thread_local! {
 
 thread_local! {
     static ALIAS_INFO: RefCell<HashMap<String, AliasInfo>> = RefCell::new(HashMap::new());
+    /// What a bound written on a field of each name counts, where it counts anything: a brand over
+    /// a text or a list, and an alias of a list. Kept out of [`ALIAS_INFO`], which is only written
+    /// where a surface is on.
+    static COUNTED: RefCell<HashMap<String, Counted>> = RefCell::new(HashMap::new());
     /// The Rust ident holding each published name — see [`claim_published_name`]. Kept out of
     /// [`ALIAS_INFO`], which is keyed the other way round and only written where a surface is on.
     static PUBLISHED_NAMES: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
@@ -1325,11 +1325,11 @@ pub fn register_alias_info(
     module_name: &str,
     kind: AliasKind,
 ) {
+    record_counted(rust_ident, None);
     ALIAS_INFO.with(|map| {
         map.borrow_mut().insert(
             rust_ident.to_owned(),
             AliasInfo {
-                counted: None,
                 export_name: export_name.to_owned(),
                 #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
                 flatten_variants: Vec::new(),
@@ -1361,15 +1361,22 @@ pub fn register_alias_info(
     });
 }
 
-/// Records what a bound written on a field of this name counts, on the entry that name has just
-/// registered.
-#[cfg(any(feature = "typescript", feature = "zod"))]
-pub fn record_counted(rust_ident: &str, counted: Counted) {
-    ALIAS_INFO.with(|map| {
-        if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
-            info.counted = Some(counted);
+/// Records what a bound written on a field of `rust_ident` counts, and forgets the name where it
+/// counts nothing: a later declaration under the same name may count nothing.
+pub fn record_counted(rust_ident: &str, counted: Option<Counted>) {
+    COUNTED.with(|recorded| {
+        let mut held = recorded.borrow_mut();
+        if let Some(counts) = counted {
+            held.insert(rust_ident.to_owned(), counts);
+        } else {
+            held.remove(rust_ident);
         }
     });
+}
+
+/// What a bound written on a field of `rust_ident` counts, where an expansion above recorded it.
+pub fn counted(rust_ident: &str) -> Option<Counted> {
+    COUNTED.with(|recorded| recorded.borrow().get(rust_ident).copied())
 }
 
 /// Records that a name is an alias of an `IndexSet`, on the entry that name has just registered.
@@ -2537,7 +2544,6 @@ pub fn ts_commented(text: &str) -> String {
 /// `predicate` with the bounds `generics` do not ask yet of the parameter it bounds, or `None`
 /// where they ask every one. A bound asked twice of one parameter is one clippy reports in the
 /// consumer's crate.
-#[cfg(any(feature = "serde", feature = "typescript", feature = "zod"))]
 pub fn asking_more(
     generics: &syn::Generics,
     predicate: &syn::WherePredicate,
@@ -2567,7 +2573,6 @@ pub fn asking_more(
 }
 
 /// The trait a bound asks, by its own name and arguments, whatever path it is written with.
-#[cfg(any(feature = "serde", feature = "typescript", feature = "zod"))]
 pub fn asked_trait(bound: &syn::TypeParamBound) -> Option<String> {
     let syn::TypeParamBound::Trait(of_trait) = bound else {
         return None;
@@ -2580,7 +2585,6 @@ pub fn asked_trait(bound: &syn::TypeParamBound) -> Option<String> {
 }
 
 /// The traits `generics` ask of the parameter `named`, on its name and in its `where` predicates.
-#[cfg(any(feature = "serde", feature = "typescript", feature = "zod"))]
 pub fn asked_of(generics: &syn::Generics, named: &proc_macro2::Ident) -> Vec<String> {
     let on_its_name = generics
         .type_params()
@@ -2607,7 +2611,6 @@ pub fn asked_of(generics: &syn::Generics, named: &proc_macro2::Ident) -> Vec<Str
 }
 
 /// Whether `bound` asks a trait `asked` lists.
-#[cfg(any(feature = "serde", feature = "typescript", feature = "zod"))]
 pub fn asks_one_of(bound: &syn::TypeParamBound, asked: &[String]) -> bool {
     asked_trait(bound).is_some_and(|of_trait| asked.contains(&of_trait))
 }

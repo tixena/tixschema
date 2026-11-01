@@ -66,7 +66,6 @@ const HELD: &str = "Unjudged";
 /// What a brand's own bound answers of a value, the checks the brand names apart. A member of an
 /// untagged enum that holds the brand is held to it as it is read, so the bound chooses the
 /// variant, and so is the value a recovering read lists the brand from.
-#[cfg(feature = "serde")]
 pub const BOUND_ALONE: &str = "model_schema_validate_bound";
 
 /// The name of the trait that answers [`BOUND_ALONE`] for a type that carries no such bound.
@@ -2119,7 +2118,7 @@ pub fn listed_read(input: &DeriveInput) -> TokenStream {
 /// [`listed_read`] of a brand that carries a bound, which no walk lists: the brand's unjudged
 /// read, refused where [`BOUND_ALONE`] answers a violation of the value read. The checks the
 /// brand names are listed beside it, from the value this read answers.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 pub fn bounded_listed_read(input: &DeriveInput) -> TokenStream {
     delegated_listed_read(input, true)
 }

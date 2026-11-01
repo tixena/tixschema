@@ -1,7 +1,7 @@
 //! A brand is read as a model is: its own read, followed by its `validate()`. A type that holds
 //! one reads it with no judgement of its own, and names it at its full path.
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 mod a_brand_is_read_as_a_model_is {
     use alloc::collections::BTreeMap;
     use core::fmt::{Debug, Display};

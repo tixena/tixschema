@@ -65,7 +65,6 @@ use crate::bound_message::rust_violation;
 #[cfg(feature = "zod")]
 use crate::bound_message::zod_error_arg;
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 use crate::utils::asking_more;
 #[cfg(any(feature = "typescript", feature = "zod"))]
 use crate::utils::escape_js_double_quoted;
@@ -95,10 +94,10 @@ use crate::features::object_id::get_object_id_zod_schema_with;
 #[cfg(feature = "mongodb")]
 use crate::features::object_id::OBJECT_ID_HEX_PATTERN;
 
-use crate::utils::{AliasKind, Counted, lookup_alias_info};
+use crate::utils::{AliasKind, Counted, counted, lookup_alias_info, record_counted};
 #[cfg(any(feature = "typescript", feature = "zod"))]
 use crate::utils::{
-    MapKeyWire, PublishedShape, ShapeQuestion, record_counted, record_inexact_key, record_key_wire,
+    MapKeyWire, PublishedShape, ShapeQuestion, record_inexact_key, record_key_wire,
     record_shape_question, record_value_shape, shape_questions_for,
 };
 
@@ -122,7 +121,6 @@ use crate::utils::{
 };
 use crate::utils::{TrivialPattern, record_field_validator, trivial_pattern};
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 use crate::features::serde::brand_slot;
 #[cfg(all(feature = "serde", feature = "chrono"))]
 use crate::features::serde::parse_serde_field_hooks;
@@ -152,12 +150,11 @@ use crate::features::serde::{
 
 #[cfg(feature = "zod")]
 use crate::features::js_literal;
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
-use crate::features::recovering_decode::brand_recovering_decode;
 #[cfg(feature = "serde")]
 use crate::features::recovering_decode::reading_the_authors_scope;
 #[cfg(feature = "serde")]
 use crate::features::recovering_decode::{
+    brand_recovering_decode,
     enums::{enum_recovering_decode, tag_arm_refusals},
     struct_recovering_decode, written_as_one_value,
 };
@@ -182,7 +179,7 @@ use crate::features::serde::defaults::{holds_a_placeholder, zod_substituted};
 #[cfg(feature = "serde")]
 use crate::field_type::{parse_serde_field_attributes, parse_serde_type_attributes};
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 use crate::field_type::is_a_standard_type_name;
 
 use crate::field_type::is_interior_mutability_wrapper;
@@ -571,7 +568,6 @@ struct SchemaDocs {
 }
 
 /// Borrowed pieces needed to assemble the final token stream for a branded newtype.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 struct BrandedNewtypeOutput<'parts> {
     /// `model_schema_validate_bound`, where the brand carries a bound.
     bound_alone: &'parts proc_macro2::TokenStream,
@@ -592,7 +588,6 @@ struct BrandedNewtypeOutput<'parts> {
 
 /// What a brand's own bound adds to it: the functions of its schema module, and what holds a
 /// value of the brand to the bound. Nothing for a brand that carries none.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[derive(Default)]
 struct BrandBound {
     /// `model_schema_validate_bound`, the method that answers for the bound alone.
@@ -604,7 +599,6 @@ struct BrandBound {
 
 /// A constrained brand's generated validation: the schema-module functions, and the expression
 /// through which `validate()` reaches the inner value it hands `validator`.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 struct BrandedValidation {
     checked_inner: proc_macro2::TokenStream,
     /// The validator, and beside it what a brand that declares a parameter asks its filling with.
@@ -616,7 +610,7 @@ struct BrandedValidation {
 
 /// A declared default a generic brand's string check reads its value as, and what keeps the
 /// expansion from proving it writes every lifetime it has.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 enum UnprovenDefault {
     /// An alias whose target writes a lifetime, which the alias hides from the cast.
     Hides,
@@ -814,7 +808,6 @@ struct HeldShape {
     wraps: Vec<ConstraintWrap>,
 }
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 impl BrandBound {
     fn of(validation: Option<&BrandedValidation>, module_ident: &Ident) -> Self {
         validation.map_or_else(Self::default, |held_to| {
@@ -1804,14 +1797,6 @@ impl MapMemberItem {
     }
 }
 
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 impl ModelSchemaArgs {
     const fn has_string_constraints(&self) -> bool {
         self.pattern.is_some() || self.min_length.is_some() || self.max_length.is_some()
@@ -2665,7 +2650,7 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
     let kind = alias_target_kind(&alias_field_def);
     register_alias_info(&rust_ident_str, &export_name, &module_name, kind);
     if names_a_list(&alias.ty) {
-        record_counted(&rust_ident_str, Counted::Items);
+        record_counted(&rust_ident_str, Some(Counted::Items));
         #[cfg(all(feature = "serde", feature = "indexmap"))]
         if names_an_indexed_set(&alias.ty) {
             record_indexed_set(&rust_ident_str);
@@ -6582,14 +6567,6 @@ fn enum_cfg_attr_guard_errors(
 
 /// The `compile_error!` tokens for a branded newtype whose inner type is `Option`, or `None` for
 /// every other inner type.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn branded_option_inner_error(
     name: &Ident,
     inner_field: &Field,
@@ -6614,14 +6591,6 @@ fn branded_option_inner_error(
 /// The `compile_error!` tokens for a branded newtype that applies `pattern`, `minLength`, or
 /// `maxLength` to an inner type whose schema is not a string, or `None` when the inner can carry
 /// them. A list carries the two lengths, which count its items, and no `pattern`.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn branded_constraint_inner_error(
     generics: &syn::Generics,
     name: &Ident,
@@ -6704,14 +6673,6 @@ fn branded_constraint_inner_error(
 /// The Rust spelling of `parameter`'s declared default, for the refusal that names it — the same
 /// `String` fallback [`declared_default_field`] resolves a `FieldDef` from. Practically
 /// unreachable here, but total anyway rather than leaving a lookup miss unspelled.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn declared_default_type_name(
     parameter: &str,
     default_types: &[(syn::Ident, syn::Type)],
@@ -6725,14 +6686,6 @@ fn declared_default_type_name(
 /// Why a constrained brand's bare-parameter inner is refused when its *declared default* — not the
 /// parameter — turns out not to be string-shaped: the default is what `$SchemaDefault` composes
 /// the checks onto, so a default the checks cannot measure is refused in its place.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn declared_default_constraint_message(name: &Ident, parameter: &str, default_ty: &str) -> String {
     format!(
         "model_schema: branded newtype `{name}` applies string constraints (pattern, minLength, \
@@ -6748,7 +6701,6 @@ fn declared_default_constraint_message(name: &Ident, parameter: &str, default_ty
 /// than spelling one for a diagnostic. Falls back to the standard `String` for an entry left out,
 /// written at its full path, which is the type [`declared_default_type_name`] and
 /// [`declared_default_field`] name for the same gap.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn declared_default_syn_type(
     parameter: &str,
     default_types: &[(syn::Ident, syn::Type)],
@@ -6969,14 +6921,6 @@ const fn swift_width_refusals(_item: &Item) -> Vec<proc_macro2::TokenStream> {
 
 /// How a constrained brand over a name the registry proves publishes no string is refused, in the
 /// one wording both orders of the two declarations reach it by.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn named_inner_constraint_message(brand: &str, inner: &str, shape: &str) -> String {
     format!(
         "model_schema: branded newtype `{brand}` applies string constraints (pattern, minLength, \
@@ -6991,14 +6935,6 @@ fn named_inner_constraint_message(brand: &str, inner: &str, shape: &str) -> Stri
 
 /// Names the shape an inner type resolves to that has no string for the constraints to measure, or
 /// `None` when it writes exactly one and so can carry them.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn non_string_inner_shape(inner: &FieldDef) -> Option<&'static str> {
     if inner.is_array() || sequence_wrapper_element(inner).is_some() {
         return Some("container");
@@ -7051,11 +6987,7 @@ fn instantiated_value_shape(rust_ident: &str, arguments: &[FieldDef]) -> Option<
 }
 
 /// A build with no schema surface records no alias, so no name has a shape to answer with.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin"),
-    not(any(feature = "typescript", feature = "zod"))
-))]
+#[cfg(not(any(feature = "typescript", feature = "zod")))]
 const fn instantiated_value_shape(
     _rust_ident: &str,
     _arguments: &[FieldDef],
@@ -7156,17 +7088,7 @@ fn published_parameter_position(target: &FieldDef, parameters: &[String]) -> Opt
 
 /// The `compile_error!` tokens for every `cfg_attr`-wrapped serde attribute a branded newtype
 /// carries: on the type and on its inner slot, which is positional and so has no name to print.
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        all(
-            feature = "serde",
-            any(feature = "dart", feature = "swift", feature = "kotlin")
-        )
-    )
-))]
+#[cfg(feature = "serde")]
 fn branded_cfg_attr_guard_errors(
     item_struct: &syn::ItemStruct,
     inner_field: &Field,
@@ -7186,17 +7108,7 @@ fn branded_cfg_attr_guard_errors(
         .collect()
 }
 
-#[cfg(all(
-    not(feature = "serde"),
-    any(
-        feature = "typescript",
-        feature = "zod",
-        all(
-            feature = "serde",
-            any(feature = "dart", feature = "swift", feature = "kotlin")
-        )
-    )
-))]
+#[cfg(not(feature = "serde"))]
 const fn branded_cfg_attr_guard_errors(
     _item_struct: &syn::ItemStruct,
     _inner_field: &Field,
@@ -7208,14 +7120,6 @@ const fn branded_cfg_attr_guard_errors(
 /// when it carries none or it clears them. An enum answers for its own in
 /// [`enum_string_check_refusal_output`]; every other shape is refused the argument before a surface
 /// is built.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn branded_pattern_error(name: &Ident, args: &ModelSchemaArgs) -> Option<proc_macro2::TokenStream> {
     args.pattern_rejection
         .as_ref()
@@ -7225,14 +7129,6 @@ fn branded_pattern_error(name: &Ident, args: &ModelSchemaArgs) -> Option<proc_ma
 /// The inner type as the two validating surfaces receive it, with the brand's own type parameters
 /// already classified as parameters. The guard and the registration both read the inner through
 /// this one call, so what a brand is refused for and what it records cannot come apart.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn branded_inner_value_surface(generics: &syn::Generics, inner_field: &Field) -> FieldDef {
     surface_field_def(generics, &get_field_def("_inner", &inner_field.ty, ""))
 }
@@ -7262,14 +7158,6 @@ fn branded_key_wire(inner_field: &Field) -> MapKeyWire {
 
 /// The `compile_error!` tokens for a branded newtype whose inner reaches a std type serde has no
 /// wire form for, or `None` when it reaches none. Spanned on the inner as written.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn branded_undescribable_std_error(
     name: &Ident,
     inner_field: &Field,
@@ -7285,14 +7173,6 @@ fn branded_undescribable_std_error(
 
 /// The `compile_error!` tokens for a branded newtype whose inner reaches a map key no surface can
 /// write, or `None` when it reaches none.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn branded_map_key_error(name: &Ident, inner_field: &Field) -> Option<proc_macro2::TokenStream> {
     let inner = get_field_def("", &inner_field.ty, "");
     let rejection = map_key_rejection(&inner)?;
@@ -7305,14 +7185,6 @@ fn branded_map_key_error(name: &Ident, inner_field: &Field) -> Option<proc_macro
 
 /// The refusals for a brand's own `minLength` and `maxLength` that no value meets, or that only
 /// repeat the fixed length of its inner array.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn branded_unmeetable_bound_errors(
     name: &Ident,
     inner_field: &Field,
@@ -7335,22 +7207,14 @@ fn branded_unmeetable_bound_errors(
 /// over an inner type that cannot carry them, a `pattern` that is not a regex, a std type the inner
 /// reaches that serde has no wire form for, and a map key the inner reaches that no surface can
 /// write.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn branded_guard_errors(
     item_struct: &syn::ItemStruct,
     args: &ModelSchemaArgs,
 ) -> Vec<proc_macro2::TokenStream> {
     let inner_field = brand_field(item_struct).unwrap();
-    #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+    #[cfg(feature = "serde")]
     let unproven_defaults = branded_unproven_default_errors(item_struct, inner_field, args);
-    #[cfg(not(all(feature = "serde", any(feature = "typescript", feature = "zod"))))]
+    #[cfg(not(feature = "serde"))]
     let unproven_defaults: Vec<proc_macro2::TokenStream> = Vec::new();
     branded_cfg_attr_guard_errors(item_struct, inner_field)
         .into_iter()
@@ -7379,7 +7243,7 @@ fn branded_guard_errors(
 /// Why `ty` cannot be proven to write every lifetime it has, or `None` where it can: a standard
 /// type, or a name `#[model_schema]` was written on above that is written with every lifetime it
 /// declares, or an alias of a type that passes and writes no lifetime of its own.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 fn unproven_default(ty: &syn::Type, depth: usize) -> Option<UnprovenDefault> {
     match ty {
         syn::Type::Path(path) if path.qself.is_none() => {
@@ -7452,7 +7316,7 @@ fn unproven_default(ty: &syn::Type, depth: usize) -> Option<UnprovenDefault> {
 }
 
 /// Whether `tokens` write a lifetime or a reference, which carries one.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 fn tokens_write_a_lifetime(tokens: &proc_macro2::TokenStream) -> bool {
     tokens.clone().into_iter().any(|tree| match tree {
         proc_macro2::TokenTree::Punct(mark) => matches!(mark.as_char(), '\'' | '&'),
@@ -7502,7 +7366,7 @@ fn tokens_write_a_lifetime(tokens: &proc_macro2::TokenStream) -> bool {
 /// 18 | #[model_schema(minLength = 2, default_types(Text = Kept))]
 ///    |                                                    ^^^^
 /// ```
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 fn branded_unproven_default_errors(
     item_struct: &syn::ItemStruct,
     inner_field: &Field,
@@ -7993,29 +7857,17 @@ fn collect_struct_fields(
     )
 }
 
-/// The refusal of a type-level string check written where nothing enforces it: on a struct that
-/// is no brand, and on a brand in a build with no schema surface, where no reader is generated
-/// for it.
+/// The refusal of a type-level string check written on a struct that is no brand, where nothing
+/// enforces it.
 fn string_check_refusal_output(
     item_struct: &syn::ItemStruct,
     args: &ModelSchemaArgs,
 ) -> Option<TokenStream> {
     let (check, written_at) = args.string_check?;
-    let brand = is_branded_newtype(item_struct);
-    // With a schema surface on, a brand's check is hung on its reader.
-    #[cfg(any(feature = "typescript", feature = "zod"))]
-    if brand {
+    if is_branded_newtype(item_struct) {
         return None;
     }
-    let refusal = if brand {
-        format!(
-            "`{check}` on a brand is enforced by the reader generated with its schema surface, \
-             and this build generates none. Turn on `typescript` or `zod`, or remove the \
-             check."
-        )
-    } else {
-        no_brand_string_check_refusal(check)
-    };
+    let refusal = no_brand_string_check_refusal(check);
     let error = syn::Error::new(
         written_at,
         prefixed_guard_message(&format!("type `{}`: {refusal}", item_struct.ident)),
@@ -8425,7 +8277,6 @@ fn wire_scalar_candidate(item: &Item) -> Option<(&syn::Ident, &syn::Type)> {
 
 /// How a brand's field is reached on a value of the brand: by its name, or as the slot at
 /// `position` among the struct's slots.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn brand_member(position: usize, field: &Field) -> syn::Member {
     field.ident.clone().map_or_else(
         || syn::Member::Unnamed(syn::Index::from(position)),
@@ -8631,42 +8482,9 @@ const fn tuple_slot_refusals(_item_struct: &syn::ItemStruct) -> Vec<proc_macro2:
     Vec::new()
 }
 
-/// The expansion of a brand, or `None` for a struct that is no brand. Where no schema surface
-/// registers a brand, only the guards it earns for a client are read.
-#[cfg(any(feature = "typescript", feature = "zod"))]
+/// The expansion of a brand, or `None` for a struct that is no brand.
 fn branded_output(item_struct: &syn::ItemStruct, args: &ModelSchemaArgs) -> Option<TokenStream> {
     is_branded_newtype(item_struct).then(|| process_branded_newtype(item_struct.clone(), args))
-}
-
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin"),
-    not(any(feature = "typescript", feature = "zod"))
-))]
-fn branded_output(item_struct: &syn::ItemStruct, args: &ModelSchemaArgs) -> Option<TokenStream> {
-    if !is_branded_newtype(item_struct) {
-        return None;
-    }
-    refused_item_output(
-        &Item::Struct(item_struct.clone()),
-        &branded_guard_errors(item_struct, args),
-        args,
-    )
-}
-
-#[cfg(not(any(
-    feature = "typescript",
-    feature = "zod",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-)))]
-const fn branded_output(
-    _item_struct: &syn::ItemStruct,
-    _args: &ModelSchemaArgs,
-) -> Option<TokenStream> {
-    None
 }
 
 fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> TokenStream {
@@ -9766,7 +9584,6 @@ fn process_tuple_struct(
 /// Builds the `validate_value` function for a constrained branded newtype, or `None` when it has
 /// no string constraints. A path inner is measured by the string serde writes for it; every other
 /// inner is reached through `ToString`.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn build_branded_validation(
     args: &ModelSchemaArgs,
     generic_params: &[String],
@@ -9861,14 +9678,12 @@ fn build_branded_validation(
 }
 
 /// Whether `ty` names one of the brand's type parameters, at any depth.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn names_a_parameter(ty: &syn::Type, generic_params: &[String]) -> bool {
     !generic_params.is_empty() && tokens_name_any(&quote! { #ty }, generic_params)
 }
 
 /// Whether a brand's lengths alone are asked of a name an earlier expansion registered as one a
 /// bound counts, which answers for itself and is never rendered through `Display`.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn counts_a_named_inner(args: &ModelSchemaArgs, inner_ty: &syn::Type) -> bool {
     args.pattern.is_none()
         && (args.min_length.is_some() || args.max_length.is_some())
@@ -9885,7 +9700,6 @@ fn counts_a_named_inner(args: &ModelSchemaArgs, inner_ty: &syn::Type) -> bool {
 /// of a list, or the characters of a text, as the name answers for itself. The inner is a name an
 /// earlier expansion registered as one a bound counts, or a parameter whose declared default is a
 /// list, which the lengths count at that filling alone.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn branded_named_length_validation(
     args: &ModelSchemaArgs,
     generic_params: &[String],
@@ -9974,7 +9788,6 @@ fn branded_named_length_validation(
 
 /// [`build_branded_validation`] for a brand over a list, whose two lengths count its items: the
 /// validator a list field gets, under the brand's own name.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn branded_list_validation(
     args: &ModelSchemaArgs,
     inner_field: &Field,
@@ -9995,7 +9808,6 @@ fn branded_list_validation(
 
 // Adapted from `typeid::of` in the typeid crate by David Tolnay (https://github.com/dtolnay/typeid),
 // used under the MIT license; see THIRD-PARTY-NOTICES.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn embedded_type_identity() -> proc_macro2::TokenStream {
     quote! {
         fn type_identity<T: ?::core::marker::Sized>() -> ::core::any::TypeId {
@@ -10071,7 +9883,6 @@ fn embedded_type_identity() -> proc_macro2::TokenStream {
 ///    | |_______________________________`held` escapes the function body here
 ///    |                                 argument requires that `'held` must outlive `'static`
 /// ```
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn embedded_validate_at_declared_default(
     default_ty: &syn::Type,
     checked: &proc_macro2::TokenStream,
@@ -10096,7 +9907,6 @@ fn embedded_validate_at_declared_default(
 /// `ty` with every lifetime it writes replaced by `lifetime`: a named one, `'static`, `'_`, and the
 /// one a reference leaves out. A lifetime a `for<...>` binds stays as written, and so does one a
 /// function's signature leaves out, which that signature binds.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn at_one_lifetime(ty: &syn::Type, lifetime: &syn::Lifetime) -> syn::Type {
     let mut written = ty.clone();
     type_at_one_lifetime(&mut written, lifetime, &[], false);
@@ -10105,7 +9915,6 @@ fn at_one_lifetime(ty: &syn::Type, lifetime: &syn::Lifetime) -> syn::Type {
 
 /// [`at_one_lifetime`] over `ty` in place. `bound` holds what the binders around it declare, and
 /// `signature` says whether it stands in a function's signature.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn type_at_one_lifetime(
     ty: &mut syn::Type,
     lifetime: &syn::Lifetime,
@@ -10173,7 +9982,6 @@ fn type_at_one_lifetime(
 }
 
 /// [`at_one_lifetime`] over the arguments of each segment of `path`.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn path_at_one_lifetime(
     path: &mut syn::Path,
     lifetime: &syn::Lifetime,
@@ -10194,7 +10002,6 @@ fn path_at_one_lifetime(
 }
 
 /// [`at_one_lifetime`] over each of `arguments`.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn arguments_at_one_lifetime(
     arguments: &mut syn::AngleBracketedGenericArguments,
     lifetime: &syn::Lifetime,
@@ -10227,7 +10034,6 @@ fn arguments_at_one_lifetime(
 }
 
 /// [`at_one_lifetime`] over each of `bounds`, a trait's own `for<...>` binding what it declares.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn bounds_at_one_lifetime(
     bounds: &mut Punctuated<syn::TypeParamBound, Token![+]>,
     lifetime: &syn::Lifetime,
@@ -10249,7 +10055,6 @@ fn bounds_at_one_lifetime(
 }
 
 /// [`at_one_lifetime`] over what a function takes and answers.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn signature_at_one_lifetime(
     inputs: &mut Punctuated<syn::NamedArg, Token![,]>,
     output: &mut syn::ReturnType,
@@ -10265,7 +10070,6 @@ fn signature_at_one_lifetime(
 }
 
 /// Writes `lifetime` over `written`, unless a `for<...>` binds it or a signature left it out.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn lifetime_at_one(
     written: &mut syn::Lifetime,
     lifetime: &syn::Lifetime,
@@ -10280,7 +10084,6 @@ fn lifetime_at_one(
 }
 
 /// `bound` with the lifetimes `declared` binds.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn bound_with(bound: &[syn::Ident], declared: Option<&syn::BoundLifetimes>) -> Vec<syn::Ident> {
     let mut all = bound.to_vec();
     all.extend(
@@ -10298,7 +10101,6 @@ fn bound_with(bound: &[syn::Ident], declared: Option<&syn::BoundLifetimes>) -> V
 /// Every one of `parameters` found in `ty`, replaced by its `default_types` filling via
 /// [`declared_default_syn_type`]. Recurses through path arguments, references, arrays, slices,
 /// tuples, parens and groups; any other shape comes back unchanged.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn substitute_declared_defaults(
     ty: &syn::Type,
     parameters: &[String],
@@ -10371,7 +10173,6 @@ fn substitute_declared_defaults(
 
 /// Whether a brand's constrained checks reach its inner value as a path rather than through
 /// `Display`.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn branded_inner_measures_path(inner_ty: &syn::Type) -> bool {
     constrained_shape(inner_ty).is_some_and(|shape| {
         matches!(shape.leaf, ConstraintLeaf::Path)
@@ -10385,7 +10186,6 @@ fn branded_inner_measures_path(inner_ty: &syn::Type) -> bool {
 /// How a constrained brand hands `receiver` to `validate_value`: a path goes borrowed since the
 /// validator renders it itself; every other inner goes through `Display`'s `to_string()`, spanned
 /// so a non-`Display` inner's `E0599` lands beside the field rather than on the attribute.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn branded_checked_value(
     measures_path: bool,
     to_string_span: proc_macro2::Span,
@@ -11027,7 +10827,6 @@ fn build_branded_delegate_items(
 /// The `where` clause bounds the inner field's own type, not just the brand's generic params, so
 /// a non-generic brand over a non-`Display` inner raises one `E0277` at the field instead of an
 /// unbounded `E0599` inside the generated impl.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn build_branded_display_impl(
     generics: &syn::Generics,
     name: &Ident,
@@ -11067,7 +10866,6 @@ fn build_branded_display_impl(
 
 /// Builds a branded newtype's `Display` impl together with the static assertion guarding it.
 /// `no_display` drops the impl; it drops the assertion only when nothing else needs `Display`.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn build_branded_display_tokens(
     generics: &syn::Generics,
     name: &Ident,
@@ -11075,8 +10873,6 @@ fn build_branded_display_tokens(
     held: &syn::Member,
     args: &ModelSchemaArgs,
 ) -> proc_macro2::TokenStream {
-    // Only the serde build emits the validation functions that call `to_string()`.
-    #[cfg(feature = "serde")]
     let validation_needs_display = args.has_string_constraints()
         && !branded_inner_measures_path(&substitute_declared_defaults(
             &inner_field.ty,
@@ -11085,8 +10881,6 @@ fn build_branded_display_tokens(
         ))
         && !held_as_a_list(&inner_field.ty)
         && !counts_a_named_inner(args, &inner_field.ty);
-    #[cfg(not(feature = "serde"))]
-    let validation_needs_display = false;
 
     if args.no_display && !validation_needs_display {
         return quote! {};
@@ -11103,7 +10897,6 @@ fn build_branded_display_tokens(
 /// Builds a static assertion that the branded newtype's inner type implements `Display`, spanned
 /// on the inner field so a violation surfaces as an `E0277` naming the trait at the field instead
 /// of one raised deep inside the generated impl.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn build_branded_display_assertion(
     inner_field: &Field,
     generics: &syn::Generics,
@@ -11127,7 +10920,6 @@ fn build_branded_display_assertion(
 }
 
 /// Reports whether `ty` names any of `generics`' parameters (type, lifetime, or const).
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn type_mentions_generic_param(ty: &syn::Type, generics: &syn::Generics) -> bool {
     let param_names: Vec<String> = generics
         .params
@@ -11144,7 +10936,6 @@ fn type_mentions_generic_param(ty: &syn::Type, generics: &syn::Generics) -> bool
 }
 
 /// Reports whether `tokens` contains an identifier from `names` at any nesting depth.
-#[cfg(any(feature = "serde", feature = "typescript", feature = "zod"))]
 fn tokens_name_any(tokens: &proc_macro2::TokenStream, names: &[String]) -> bool {
     tokens.clone().into_iter().any(|tree| match tree {
         proc_macro2::TokenTree::Ident(ident) => names.iter().any(|name| ident == name.as_str()),
@@ -11173,7 +10964,6 @@ fn build_branded_schema_example(
 
 /// What a brand's own string checks add to its `validate()`: the validator of its schema module,
 /// run on the value the brand holds.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn branded_bound_call(
     validation: &BrandedValidation,
     module_ident: &Ident,
@@ -11188,7 +10978,6 @@ fn branded_bound_call(
 
 /// The `validate()` a brand earns: `bound`, what its own string checks run, then the checks it
 /// names. Nothing for a brand that carries neither.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn with_branded_checks(
     bound: Option<&proc_macro2::TokenStream>,
     named: &[FunctionName],
@@ -11206,7 +10995,6 @@ fn with_branded_checks(
 
 /// A brand's `validate()`: its own string checks, then the checks it names, each on the brand
 /// itself. A brand is the value and no member of anything, so no message here names a path.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn branded_validate_method(
     bound: Option<&proc_macro2::TokenStream>,
     own: &[proc_macro2::TokenStream],
@@ -11222,9 +11010,9 @@ fn branded_validate_method(
 }
 
 /// Assembles the final macro output for a branded newtype: the (possibly attribute-injected)
-/// struct, its `Display` impl, the schema module, and the type's `impl`, which holds its
-/// delegates and its `validate()` when it has one.
-#[cfg(any(feature = "typescript", feature = "zod"))]
+/// struct, its `Display` impl, the schema module, which holds `Schema` where a surface or the
+/// `"jsonschema"` entry gives it a method, and the type's `impl`, which holds its delegates and
+/// its `validate()` when it has one.
 fn assemble_branded_output(parts: &BrandedNewtypeOutput) -> TokenStream {
     let item_struct = parts.item_struct;
     let (impl_generics, type_generics, where_clause) = item_struct.generics.split_for_impl();
@@ -11244,14 +11032,10 @@ fn assemble_branded_output(parts: &BrandedNewtypeOutput) -> TokenStream {
     let bound_alone = parts.bound_alone;
     let bound_text_method = parts.bound_text_method;
 
+    let schema = schema_struct(schema_impl_items);
     let module_items = schema_module_items(
         quote! {
-            #[non_exhaustive]
-            pub struct Schema;
-
-            impl Schema {
-                #(#schema_impl_items)*
-            }
+            #schema
 
             #validation_tokens
         },
@@ -11291,7 +11075,6 @@ fn assemble_branded_output(parts: &BrandedNewtypeOutput) -> TokenStream {
 /// The output a branded newtype its guards refused is replaced by, or `None` when it earns none.
 /// Read before the type is registered: a rejected brand emits no schema, so nothing else should be
 /// able to resolve a reference to one.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn branded_guard_failure_output(
     item_struct: &syn::ItemStruct,
     args: &ModelSchemaArgs,
@@ -11358,7 +11141,6 @@ fn register_brand_with_questions(
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> TokenStream {
     if let Some(output) = branded_guard_failure_output(&item_struct, args) {
         return output;
@@ -11370,6 +11152,7 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
     let module_name = ident_schema_module_name(&rust_ident);
     let module_ident = Ident::new(&module_name, name.span());
 
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     register_brand_with_questions(&item_struct, args, &rust_ident, &item_name, &module_name);
 
     #[cfg(feature = "zod")]
@@ -11383,9 +11166,6 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
     let (position, inner_field) = brand_slot(&item_struct).unwrap();
     let held = brand_member(position, inner_field);
     let inner_ty = &inner_field.ty;
-
-    #[cfg(not(any(feature = "typescript", feature = "zod")))]
-    let _: &_ = &inner_ty;
 
     let value_inner = branded_value_inner(&item_struct.generics, inner_ty, args);
 
@@ -11403,13 +11183,10 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
         &plain_description,
     );
 
-    #[cfg(feature = "serde")]
     let bound = BrandBound::of(
         build_branded_validation(args, &generic_params, inner_field, &held).as_ref(),
         &module_ident,
     );
-    #[cfg(not(feature = "serde"))]
-    let bound = BrandBound::default();
 
     let mut schema_impl_items: Vec<proc_macro2::TokenStream> = Vec::new();
     if args.enable.jsonschema {
@@ -11444,9 +11221,7 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
 
     // The brand as it is emitted keeps no serde attribute where it derives `Deserialize` alone.
     let (bound_text_method, counted_as) = branded_bound_text_method(&item_struct);
-    if let Some(counted) = counted_as {
-        record_counted(&rust_ident, counted);
-    }
+    record_counted(&rust_ident, counted_as);
 
     let (decode_with, read_struct) = branded_read(
         item_struct,
@@ -11477,7 +11252,6 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
 /// names a `preprocess`, each function called on the payload, then the brand's own read, then its
 /// `validate()`. A brand with neither keeps the read serde's derive writes it. `bounded` says
 /// whether the brand carries a bound of its own.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn branded_read(
     mut brand: syn::ItemStruct,
     args: &ModelSchemaArgs,
@@ -11492,7 +11266,7 @@ fn branded_read(
 
 /// [`struct_decode_with`] for a brand. Where the brand is `bounded`, the read its issues are
 /// listed from holds the value to the brand's own bound, which no walk lists.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 fn brand_decode_with(
     brand: &syn::ItemStruct,
     args: &ModelSchemaArgs,
@@ -11510,7 +11284,7 @@ fn brand_decode_with(
 }
 
 /// Nothing, where no `serde` feature reads the attributes a walker is written from.
-#[cfg(all(not(feature = "serde"), any(feature = "typescript", feature = "zod")))]
+#[cfg(not(feature = "serde"))]
 fn brand_decode_with(
     _brand: &syn::ItemStruct,
     _args: &ModelSchemaArgs,
@@ -11627,7 +11401,6 @@ fn brand_decode_with(
 /// help: the trait `BoundedLength` is not implemented for `Badge`
 ///    = note: a length is measured on a `String`, on a path, on a list, or on a `#[serde(transparent)]` brand over one of them that `#[model_schema]` was written on, a brand over a brand needing the inner brand declared above it: declare the field as one of those, or drop the bound
 /// ```
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn branded_bound_text_method(
     item_struct: &syn::ItemStruct,
 ) -> (proc_macro2::TokenStream, Option<Counted>) {
@@ -11703,9 +11476,8 @@ fn branded_bound_text_method(
     )
 }
 
-/// What a bound counts on `ty`, written as a name that an earlier expansion registered as one it
-/// counts the content of: a brand over a text or a list, and an alias of a list. A build with no
-/// schema surface registers no name, so none counts there.
+/// What a bound counts on `ty`, written as a name that an earlier expansion recorded as one it
+/// counts the content of: a brand over a text or a list, and an alias of a list.
 fn counted_by(ty: &syn::Type) -> Option<Counted> {
     let syn::Type::Path(path) = written_type(ty) else {
         return None;
@@ -11714,15 +11486,7 @@ fn counted_by(ty: &syn::Type) -> Option<Counted> {
     if path.qself.is_some() || !matches!(segment.arguments, syn::PathArguments::None) {
         return None;
     }
-    lookup_alias_info(&segment.ident.to_string())?.counted
-}
-
-/// Without `serde` no validator is generated, so nothing measures a brand's text.
-#[cfg(all(not(feature = "serde"), any(feature = "typescript", feature = "zod")))]
-fn branded_bound_text_method(
-    _item_struct: &syn::ItemStruct,
-) -> (proc_macro2::TokenStream, Option<Counted>) {
-    (quote! {}, None)
+    counted(&segment.ident.to_string())
 }
 
 /// Processes an enum item and generates TypeScript and Zod schema definitions for it.
@@ -22005,14 +21769,6 @@ fn zod_factory_memoized_binding(item_name: &str, parameters: &[String]) -> Strin
 /// absent one — `String`, [`schema_example_value_type`]'s own fallback for the identical gap. Only
 /// the `"jsonschema"` entry requires a declared default; the constrained-brand guard reads this
 /// regardless.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn declared_default_field(parameter: &str, default_types: &[(syn::Ident, syn::Type)]) -> FieldDef {
     default_types
         .iter()
