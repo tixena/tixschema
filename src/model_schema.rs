@@ -95,27 +95,21 @@ use crate::features::object_id::get_object_id_zod_schema_with;
 use crate::features::object_id::OBJECT_ID_HEX_PATTERN;
 
 use crate::utils::{
-    AliasKind, Counted, MapKeyWire, counted, lookup_alias_info, record_counted, record_inexact_key,
-    record_key_wire,
-};
-#[cfg(any(feature = "typescript", feature = "zod"))]
-use crate::utils::{
-    PublishedShape, ShapeQuestion, record_shape_question, record_value_shape, shape_questions_for,
+    AliasKind, Counted, Declared, MapKeyWire, PublishedShape, ShapeQuestion, counted, declared,
+    lookup_alias_info, record_counted, record_declared, record_inexact_key, record_key_wire,
+    record_shape_question, record_value_shape, shape_questions_for,
 };
 
 #[cfg(feature = "indexmap")]
 use crate::utils::record_indexed_set;
 
 #[cfg(feature = "serde")]
-use crate::utils::declared;
-
-#[cfg(feature = "serde")]
 use crate::utils::{
-    Declared, NonObjectWire, SlotBesideTag, UnionParameter, WireLeaf, WrittenAs,
-    forget_field_validators, is_recorded_plain_enum, record_declared, record_flattened_parameters,
-    record_non_object_wire, record_open_map, record_open_map_parameters, record_plain_enum,
-    record_text_key_parameters, record_union_parameters, record_value_parameter,
-    recorded_non_object_wire, union_parameters, value_parameter,
+    NonObjectWire, SlotBesideTag, UnionParameter, WireLeaf, WrittenAs, forget_field_validators,
+    is_recorded_plain_enum, record_flattened_parameters, record_non_object_wire, record_open_map,
+    record_open_map_parameters, record_plain_enum, record_text_key_parameters,
+    record_union_parameters, record_value_parameter, recorded_non_object_wire, union_parameters,
+    value_parameter,
 };
 use crate::utils::{TrivialPattern, record_field_validator, trivial_pattern};
 
@@ -175,7 +169,6 @@ use crate::features::serde::defaults::{holds_a_placeholder, zod_substituted};
 #[cfg(feature = "serde")]
 use crate::field_type::{parse_serde_field_attributes, parse_serde_type_attributes};
 
-#[cfg(feature = "serde")]
 use crate::field_type::is_a_standard_type_name;
 
 use crate::field_type::is_interior_mutability_wrapper;
@@ -603,7 +596,6 @@ struct BrandedValidation {
 
 /// A declared default a generic brand's string check reads its value as, and what keeps the
 /// expansion from proving it writes every lifetime it has.
-#[cfg(feature = "serde")]
 enum UnprovenDefault {
     /// An alias whose target writes a lifetime, which the alias hides from the cast.
     Hides,
@@ -1169,7 +1161,6 @@ impl SourceAbsence {
 
 /// Both answers the registry holds about what a `#[model_schema()]` item publishes, built together
 /// from one reading of the declaration so the two cannot come apart.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 struct Surface {
     shape: PublishedShape,
     #[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
@@ -1822,7 +1813,6 @@ impl KeyAsked {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 impl Surface {
     /// The fixed-arity JSON array a tuple struct of every arity but one writes, which takes no
     /// string check and which no object can be merged with.
@@ -2519,15 +2509,35 @@ fn alias_target_kind(alias_field_def: &FieldDef) -> AliasKind {
 
 /// The `compile_error!` tokens an alias whose target reaches a map key with no `enum_members()`
 /// earns, or `None` when it reaches none. Spanned on the target, which is where the key was
-/// written.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
+/// written. A struct declared above is such a key:
+///
+/// ```rust,compile_fail
+/// use std::collections::HashMap;
+///
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema()]
+/// #[derive(Deserialize, Serialize, PartialEq, Eq, Hash)]
+/// pub struct Spot {
+///     pub segments: i32,
+/// }
+///
+/// #[model_schema()]
+/// pub type Visits = HashMap<Spot, u32>;
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: model_schema: type alias `Visits`: a map key must be a plain `#[model_schema()]` enum,
+///        whose members become the object's keys — `Spot` resolves to a type with no
+///        `enum_members()`
+///   --> tests/zz_probe.rs:13:19
+///    |
+/// 13 | pub type Visits = HashMap<Spot, u32>;
+///    |                   ^^^^^^^^^^^^^^^^^^
+/// ```
 fn alias_map_key_guard_error(
     alias: &ItemType,
     alias_field_def: &FieldDef,
@@ -2643,7 +2653,6 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
     record_key_wire(&rust_ident_str, alias_field_def.map_key_wire());
     record_inexact_key(&rust_ident_str, alias_field_def.writes_an_inexact_key());
     // An alias's schema *is* its target's, so it publishes whatever the target publishes.
-    #[cfg(any(feature = "typescript", feature = "zod"))]
     Surface::written(&alias_field_def, &type_parameters_in_scope(&alias.generics))
         .record(&rust_ident_str);
     // An alias *is* the type it names, so a merge that flattens it multiplies over exactly the
@@ -2673,24 +2682,7 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
 
     // Registered above whatever the outcome, so a type naming a refused alias still resolves to the
     // export name the author wrote and the alias's own diagnostic stays the one they act on.
-    #[cfg(any(
-        feature = "typescript",
-        feature = "zod",
-        all(
-            feature = "serde",
-            any(feature = "dart", feature = "swift", feature = "kotlin")
-        )
-    ))]
     let map_key_error = alias_map_key_guard_error(&alias, &alias_field_def);
-    #[cfg(not(any(
-        feature = "typescript",
-        feature = "zod",
-        all(
-            feature = "serde",
-            any(feature = "dart", feature = "swift", feature = "kotlin")
-        )
-    )))]
-    let map_key_error = None;
     let alias_guard_errors: Vec<proc_macro2::TokenStream> =
         alias_undescribable_std_error(&alias, &alias_field_def)
             .into_iter()
@@ -4557,7 +4549,6 @@ where
 
 /// What an item leaves for the expansions after it, ahead of the shape it is dispatched to: which
 /// Zod binding it publishes, and what it declares.
-#[cfg(any(feature = "serde", feature = "zod"))]
 fn record_item(item: &Item) {
     record_own_zod_binding(item);
     record_declaration(item);
@@ -5064,10 +5055,6 @@ fn flattening_levels(
     }
 }
 
-/// Nothing, in a build that neither publishes a Zod binding nor reads a value.
-#[cfg(not(any(feature = "serde", feature = "zod")))]
-const fn record_item(_item: &Item) {}
-
 /// Records the checks an item names for the parts of its expansion written apart from the type's
 /// own `validate()`: each bound of it, and its recovering decode.
 fn record_item_checks(item: &Item, args: &ModelSchemaArgs) {
@@ -5111,8 +5098,8 @@ fn record_own_zod_binding(item: &Item) {
     );
 }
 
-/// Nothing, in a build that reads a value and publishes no Zod binding.
-#[cfg(all(feature = "serde", not(feature = "zod")))]
+/// Nothing, in a build that publishes no Zod binding.
+#[cfg(not(feature = "zod"))]
 const fn record_own_zod_binding(_item: &Item) {}
 
 /// Records whether the Zod binding `item` publishes calls a `preprocess`: the type names one, or
@@ -6705,7 +6692,6 @@ fn declared_default_syn_type(
 
 /// The consult a constrained brand leaves unanswered, for the expansion that registers the name to
 /// answer, or `None` for every brand the registry could answer at its own expansion.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn deferred_shape_question(
     item_struct: &syn::ItemStruct,
     args: &ModelSchemaArgs,
@@ -6733,7 +6719,6 @@ fn deferred_shape_question(
 /// What a name a brand asked about publishes, once the registration answering it has landed —
 /// `None` where that is a shape a string check lands on, and where the reference wrote no argument
 /// at the position the registration published.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn answered_shape(
     published: PublishedShape,
     argument_shapes: &[Option<&'static str>],
@@ -6745,8 +6730,41 @@ fn answered_shape(
 }
 
 /// The `compile_error!` tokens an item owes the constrained brands that asked about its name before
-/// it existed, spanned on the item's own name — the only tokens this expansion holds.
-#[cfg(any(feature = "typescript", feature = "zod"))]
+/// it existed, spanned on the item's own name — the only tokens this expansion holds. A struct
+/// declared below a brand that measures it is refused, ahead of the `Display` errors the brand's
+/// own expansion draws:
+///
+/// ```rust,compile_fail
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema(minLength = 1)]
+/// #[derive(Deserialize, Serialize)]
+/// #[serde(transparent)]
+/// pub struct Route(pub Spot);
+///
+/// #[model_schema()]
+/// #[derive(Deserialize, Serialize)]
+/// pub struct Spot {
+///     pub segments: i32,
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: model_schema: branded newtype `Route` applies string constraints (pattern, minLength,
+///        maxLength) to `Spot`, which this crate writes as the object value the checks are then
+///        appended to — and that binding carries no string for them to measure: Zod either reads
+///        `.min`/`.max` as a bound on something else or has no such check on it at all, JSON
+///        Schema ignores `minLength`/`maxLength`/`pattern` outside `"type": "string"`, and
+///        `validate()` measures the inner's `Display` rendering — three surfaces, three answers.
+///        Brand a string-typed inner, or drop the constraints.
+///   --> tests/zz_probe.rs:11:12
+///    |
+/// 11 | pub struct Spot {
+///    |            ^^^^
+/// ```
 fn deferred_shape_refusals(registering: Option<&Ident>) -> Vec<proc_macro2::TokenStream> {
     let Some(name) = registering else {
         return Vec::new();
@@ -6777,14 +6795,6 @@ fn deferred_shape_refusals(registering: Option<&Ident>) -> Vec<proc_macro2::Toke
             Some(syn::Error::new_spanned(name, message).to_compile_error())
         })
         .collect()
-}
-
-/// The same, where no surface reads a published shape and so no brand ever asked.
-#[cfg(not(any(feature = "typescript", feature = "zod")))]
-const fn deferred_shape_refusals(
-    _registering: Option<&syn::Ident>,
-) -> Vec<proc_macro2::TokenStream> {
-    Vec::new()
 }
 
 /// Every named field, tuple slot and (for an alias) target type an item declares that serde writes
@@ -6967,21 +6977,11 @@ fn non_string_inner_shape(inner: &FieldDef) -> Option<&'static str> {
 /// What a registered name filled with `arguments` publishes as a value, and `None` for a name the
 /// registry has no answer for — one declared below the type reading it, or one this crate never
 /// expands at all.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn instantiated_value_shape(rust_ident: &str, arguments: &[FieldDef]) -> Option<&'static str> {
     match lookup_alias_info(rust_ident)?.value_shape {
         PublishedShape::Flat(shape) => shape,
         PublishedShape::Parameter(position) => non_string_inner_shape(arguments.get(position)?),
     }
-}
-
-/// A build with no schema surface records no shape, so no name has one to answer with.
-#[cfg(not(any(feature = "typescript", feature = "zod")))]
-const fn instantiated_value_shape(
-    _rust_ident: &str,
-    _arguments: &[FieldDef],
-) -> Option<&'static str> {
-    None
 }
 
 /// The JSON type keyword a recorded name's wire describes as, when the leaves `leaves_of` reads
@@ -7051,7 +7051,6 @@ const fn scalar_json_type_keyword(field_type: &FieldDefType) -> Option<&'static 
 /// What the value surface a `#[model_schema()]` item publishes under a name is, as the
 /// constrained-brand guard reads shapes — the answer [`crate::utils::record_value_shape`] stores
 /// for every name a brand can then reach through.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn published_value_shape(written: &FieldDef, parameters: &[String]) -> PublishedShape {
     let mut target = written.clone();
     target.erase_type_parameters(parameters);
@@ -7066,7 +7065,6 @@ fn published_value_shape(written: &FieldDef, parameters: &[String]) -> Published
 
 /// The position of the item's own parameter a written target *is*, and `None` for every target that
 /// fixes a shape of its own around one.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn published_parameter_position(target: &FieldDef, parameters: &[String]) -> Option<usize> {
     if target.is_array() || sequence_wrapper_element(target).is_some() {
         return None;
@@ -7109,6 +7107,31 @@ const fn branded_cfg_attr_guard_errors(
 /// when it carries none or it clears them. An enum answers for its own in
 /// [`enum_string_check_refusal_output`]; every other shape is refused the argument before a surface
 /// is built.
+///
+/// ```rust,compile_fail
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema(pattern = "(")]
+/// #[derive(Deserialize, Serialize)]
+/// #[serde(transparent)]
+/// pub struct Label(pub String);
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: model_schema: type `Label`: `pattern` is not a regex the `regex` crate can parse. The
+///        generated validator builds it with `regex::Regex::new(...).unwrap()`, so accepting it
+///        here would turn the first validated value into a panic. regex parse error:
+///            (
+///            ^
+///        error: unclosed group
+///  --> tests/zz_probe.rs:4:26
+///   |
+/// 4 | #[model_schema(pattern = "(")]
+///   |                          ^^^
+/// ```
 fn branded_pattern_error(name: &Ident, args: &ModelSchemaArgs) -> Option<proc_macro2::TokenStream> {
     args.pattern_rejection
         .as_ref()
@@ -7123,7 +7146,6 @@ fn branded_inner_value_surface(generics: &syn::Generics, inner_field: &Field) ->
 }
 
 /// What the registry records for a brand.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn branded_alias_kind(inner_field: &Field) -> AliasKind {
     let inner = get_field_def("", &inner_field.ty, "");
     match map_key_path(&inner) {
@@ -7140,7 +7162,6 @@ fn branded_alias_kind(inner_field: &Field) -> AliasKind {
 
 /// The form a key written under a brand's name renders in, read off the one field it is written
 /// with — the same inner [`branded_alias_kind`] reads.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn branded_key_wire(inner_field: &Field) -> MapKeyWire {
     get_field_def("", &inner_field.ty, "").map_key_wire()
 }
@@ -7174,6 +7195,27 @@ fn branded_map_key_error(name: &Ident, inner_field: &Field) -> Option<proc_macro
 
 /// The refusals for a brand's own `minLength` and `maxLength` that no value meets, or that only
 /// repeat the fixed length of its inner array.
+///
+/// ```rust,compile_fail
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema(minLength = 5, maxLength = 2)]
+/// #[derive(Deserialize, Serialize)]
+/// #[serde(transparent)]
+/// pub struct Label(pub String);
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: model_schema: branded newtype `Label`: `minLength = 5` is above `maxLength = 2`, so no
+///        value passes
+///  --> tests/zz_probe.rs:7:18
+///   |
+/// 7 | pub struct Label(pub String);
+///   |                  ^^^^^^^^^^
+/// ```
 fn branded_unmeetable_bound_errors(
     name: &Ident,
     inner_field: &Field,
@@ -7195,16 +7237,44 @@ fn branded_unmeetable_bound_errors(
 /// serde attribute on the type or on its inner slot, an `Option` inner type, string constraints
 /// over an inner type that cannot carry them, a `pattern` that is not a regex, a std type the inner
 /// reaches that serde has no wire form for, and a map key the inner reaches that no surface can
-/// write.
+/// write. A struct declared above holds no string for the constraints:
+///
+/// ```rust,compile_fail
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema()]
+/// #[derive(Deserialize, Serialize)]
+/// pub struct Spot {
+///     pub segments: i32,
+/// }
+///
+/// #[model_schema(minLength = 1)]
+/// #[derive(Deserialize, Serialize)]
+/// #[serde(transparent)]
+/// pub struct Route(pub Spot);
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: model_schema: branded newtype `Route` applies string constraints (pattern, minLength,
+///        maxLength) to `Spot`, which this crate writes as the object value the checks are then
+///        appended to — and that binding carries no string for them to measure: Zod either reads
+///        `.min`/`.max` as a bound on something else or has no such check on it at all, JSON
+///        Schema ignores `minLength`/`maxLength`/`pattern` outside `"type": "string"`, and
+///        `validate()` measures the inner's `Display` rendering — three surfaces, three answers.
+///        Brand a string-typed inner, or drop the constraints.
+///   --> tests/zz_probe.rs:13:18
+///    |
+/// 13 | pub struct Route(pub Spot);
+///    |                  ^^^^^^^^
+/// ```
 fn branded_guard_errors(
     item_struct: &syn::ItemStruct,
     args: &ModelSchemaArgs,
 ) -> Vec<proc_macro2::TokenStream> {
     let inner_field = brand_field(item_struct).unwrap();
-    #[cfg(feature = "serde")]
-    let unproven_defaults = branded_unproven_default_errors(item_struct, inner_field, args);
-    #[cfg(not(feature = "serde"))]
-    let unproven_defaults: Vec<proc_macro2::TokenStream> = Vec::new();
     branded_cfg_attr_guard_errors(item_struct, inner_field)
         .into_iter()
         .chain(branded_option_inner_error(&item_struct.ident, inner_field))
@@ -7225,14 +7295,17 @@ fn branded_guard_errors(
             inner_field,
         ))
         .chain(branded_map_key_error(&item_struct.ident, inner_field))
-        .chain(unproven_defaults)
+        .chain(branded_unproven_default_errors(
+            item_struct,
+            inner_field,
+            args,
+        ))
         .collect()
 }
 
 /// Why `ty` cannot be proven to write every lifetime it has, or `None` where it can: a standard
 /// type, or a name `#[model_schema]` was written on above that is written with every lifetime it
 /// declares, or an alias of a type that passes and writes no lifetime of its own.
-#[cfg(feature = "serde")]
 fn unproven_default(ty: &syn::Type, depth: usize) -> Option<UnprovenDefault> {
     match ty {
         syn::Type::Path(path) if path.qself.is_none() => {
@@ -7247,11 +7320,6 @@ fn unproven_default(ty: &syn::Type, depth: usize) -> Option<UnprovenDefault> {
                 .filter(|argument| matches!(argument, syn::GenericArgument::Lifetime(_)))
                 .count();
             match declared(&name) {
-                Some(Declared::Model(lifetimes) | Declared::OneValue(lifetimes)) => {
-                    if written < lifetimes {
-                        return Some(UnprovenDefault::LeavesOut(name));
-                    }
-                }
                 Some(Declared::Alias(named)) => {
                     let Ok(target) = syn::parse_str::<syn::Type>(&named) else {
                         return Some(UnprovenDefault::Unseen);
@@ -7264,6 +7332,11 @@ fn unproven_default(ty: &syn::Type, depth: usize) -> Option<UnprovenDefault> {
                     }
                     if tokens_write_a_lifetime(&quote! { #target }) {
                         return Some(UnprovenDefault::Hides);
+                    }
+                }
+                Some(model) => {
+                    if written < model.lifetimes() {
+                        return Some(UnprovenDefault::LeavesOut(name));
                     }
                 }
                 None => {
@@ -7305,7 +7378,6 @@ fn unproven_default(ty: &syn::Type, depth: usize) -> Option<UnprovenDefault> {
 }
 
 /// Whether `tokens` write a lifetime or a reference, which carries one.
-#[cfg(feature = "serde")]
 fn tokens_write_a_lifetime(tokens: &proc_macro2::TokenStream) -> bool {
     tokens.clone().into_iter().any(|tree| match tree {
         proc_macro2::TokenTree::Punct(mark) => matches!(mark.as_char(), '\'' | '&'),
@@ -7355,7 +7427,6 @@ fn tokens_write_a_lifetime(tokens: &proc_macro2::TokenStream) -> bool {
 /// 18 | #[model_schema(minLength = 2, default_types(Text = Kept))]
 ///    |                                                    ^^^^
 /// ```
-#[cfg(feature = "serde")]
 fn branded_unproven_default_errors(
     item_struct: &syn::ItemStruct,
     inner_field: &Field,
@@ -7580,7 +7651,6 @@ fn flatten_edge_guard_error(
 
 /// `def`, the type of a member written with `attrs`, holding the `as_number` written among them,
 /// which is what says serde writes a `DateTime<Tz>` as the integer of its epoch milliseconds.
-#[cfg(any(feature = "serde", feature = "typescript", feature = "zod"))]
 fn with_as_number(mut def: FieldDef, attrs: &[syn::Attribute]) -> FieldDef {
     if parse_model_schema_prop_attributes(attrs).as_number {
         def.model_schema_prop_meta
@@ -8287,7 +8357,6 @@ fn struct_module_idents(name: &syn::Ident, name_override: Option<&str>) -> (Stri
 
 /// Registers a struct in the alias registry under the names [`struct_module_idents`] computed, so
 /// other types can resolve references to it, with the surface it publishes.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn register_struct(name: &syn::Ident, item_name: &str, module_name: &str, surface: Surface) {
     register_alias_info(
         &name.to_string(),
@@ -8458,7 +8527,6 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
 
     let (item_name, module_name, module_ident) =
         struct_module_idents(&name, args.name_override.as_deref());
-    #[cfg(any(feature = "typescript", feature = "zod"))]
     register_struct(&name, &item_name, &module_name, Surface::object());
 
     let module_name_opt = Some(module_name.as_str());
@@ -8600,11 +8668,12 @@ fn struct_output_with_unit_impls(
 /// field typed with a model type differently from one typed with an alias, and whose typed paths
 /// reach below a model serde writes under keys and stop at one it writes as one value. An alias
 /// that takes a parameter is left out: what it names depends on what fills it.
-#[cfg(feature = "serde")]
 fn record_declaration(item: &Item) {
     // An item's walker reads the validators and the checks of its own fields, recorded as they
     // are expanded.
+    #[cfg(feature = "serde")]
     forget_field_validators();
+    #[cfg(feature = "serde")]
     forget_checks();
     if let Item::Type(alias) = item {
         if alias.generics.params.is_empty() {
@@ -8615,23 +8684,21 @@ fn record_declaration(item: &Item) {
         }
     } else if let Some(ident) = item_schema_ident(item) {
         let lifetimes = item_lifetime_count(item);
+        #[cfg(feature = "serde")]
         let declares = if written_as_one_value(item) {
             Declared::one_value(lifetimes)
         } else {
             Declared::model(lifetimes)
         };
+        #[cfg(not(feature = "serde"))]
+        let declares = Declared::model(lifetimes);
         record_declared(&ident.to_string(), declares);
     } else {
         // `#[model_schema]` is written on nothing else.
     }
 }
 
-/// Without `serde` nothing reads a value, so nothing reads what an item declares.
-#[cfg(all(feature = "zod", not(feature = "serde")))]
-const fn record_declaration(_item: &Item) {}
-
 /// How many lifetime parameters the struct or enum `item` declares.
-#[cfg(feature = "serde")]
 fn item_lifetime_count(item: &Item) -> usize {
     let generics = if let Item::Struct(declared) = item {
         &declared.generics
@@ -9373,7 +9440,6 @@ fn build_tuple_struct_zod_schema_method(
 /// What a tuple struct publishes: serde writes one slot as that slot's value alone, so the schema
 /// *is* the slot's schema and carries exactly what it carries; every other arity is the fixed array
 /// `z.tuple` writes, which takes no string check and which no object can be merged with.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn tuple_struct_surface(fields: &syn::Fields, parameters: &[String]) -> Surface {
     let mut slots = fields.iter();
     match (slots.next(), slots.next()) {
@@ -9444,7 +9510,6 @@ fn process_tuple_struct(
     let name = item_struct.ident.clone();
     let (item_name, module_name, module_ident) =
         struct_module_idents(&name, args.name_override.as_deref());
-    #[cfg(any(feature = "typescript", feature = "zod"))]
     register_struct(
         &name,
         &item_name,
@@ -11026,7 +11091,6 @@ fn branded_guard_failure_output(
 /// Processes a branded newtype — a `#[serde(transparent)]` struct serde writes as the value of one
 /// field — into the parts [`assemble_branded_output`] joins: the struct itself, the `Display` impl
 /// it earns, its schema module, and the delegate impl forwarding to that module.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn register_branded_newtype(
     item_struct: &syn::ItemStruct,
     rust_ident: &str,
@@ -11064,7 +11128,6 @@ fn register_branded_newtype(
 
 /// Registers the brand, then records the consult question its own registration could not answer —
 /// in that order, so a brand naming itself cannot answer its own.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn register_brand_with_questions(
     item_struct: &syn::ItemStruct,
     args: &ModelSchemaArgs,
@@ -11089,7 +11152,6 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
     let module_name = ident_schema_module_name(&rust_ident);
     let module_ident = Ident::new(&module_name, name.span());
 
-    #[cfg(any(feature = "typescript", feature = "zod"))]
     register_brand_with_questions(&item_struct, args, &rust_ident, &item_name, &module_name);
 
     #[cfg(feature = "zod")]
@@ -11969,7 +12031,6 @@ fn process_plain_enum(
     let (_, module_ident) = enum_module_idents(name);
     // A plain enum is written as a `z.enum` of its variant names, which takes no string check.
     register_enum(name, item_name, AliasKind::EnumMembers);
-    #[cfg(any(feature = "typescript", feature = "zod"))]
     Surface::enumerated().record(&name.to_string());
     #[cfg(feature = "zod")]
     let rust_ident = name.to_string();
@@ -12493,7 +12554,6 @@ fn process_discriminated_enum(
     let (module_name, module_ident) = enum_module_idents(name);
     // Every other enum shape is written as a union of what its variants render as.
     register_enum(name, item_name, AliasKind::NoEnumMembers);
-    #[cfg(any(feature = "typescript", feature = "zod"))]
     Surface::union().record(&name.to_string());
 
     #[cfg(feature = "typescript")]
@@ -13056,7 +13116,6 @@ fn process_externally_tagged_enum(
     let (module_name, module_ident) = enum_module_idents(name);
     // Every other enum shape is written as a union of what its variants render as.
     register_enum(name, item_name, AliasKind::NoEnumMembers);
-    #[cfg(any(feature = "typescript", feature = "zod"))]
     Surface::externally_tagged(&item_enum.variants).record(&name.to_string());
 
     #[cfg(feature = "typescript")]
@@ -13687,7 +13746,6 @@ fn process_internally_tagged_enum(
     let (module_name, module_ident) = enum_module_idents(name);
     // Every other enum shape is written as a union of what its variants render as.
     register_enum(name, item_name, AliasKind::NoEnumMembers);
-    #[cfg(any(feature = "typescript", feature = "zod"))]
     Surface::union().record(&name.to_string());
 
     #[cfg(feature = "typescript")]
@@ -14911,7 +14969,6 @@ fn process_untagged_enum(
     let (module_name, module_ident) = enum_module_idents(name);
     // Every other enum shape is written as a union of what its variants render as.
     register_enum(name, item_name, AliasKind::NoEnumMembers);
-    #[cfg(any(feature = "typescript", feature = "zod"))]
     Surface::union().record(&name.to_string());
 
     let enum_module_name_opt = Some(module_name.as_str());
@@ -16217,15 +16274,37 @@ fn map_key_rejection_message(subject: &str, rejection: &MapKeyRejection) -> Stri
     }
 }
 
-/// Rejects a field reaching a map key no surface can write.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
+/// Rejects a field reaching a map key no surface can write. A struct declared above is such a key:
+///
+/// ```rust,compile_fail
+/// use std::collections::HashMap;
+///
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema()]
+/// #[derive(Deserialize, Serialize, PartialEq, Eq, Hash)]
+/// pub struct Spot {
+///     pub segments: i32,
+/// }
+///
+/// #[model_schema()]
+/// #[derive(Deserialize, Serialize)]
+/// pub struct Tally {
+///     pub visits: HashMap<Spot, u32>,
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: model_schema: field `visits`: a map key must be a plain `#[model_schema()]` enum, whose
+///        members become the object's keys — `Spot` resolves to a type with no `enum_members()`
+///   --> tests/zz_probe.rs:15:5
+///    |
+/// 15 |     pub visits: HashMap<Spot, u32>,
+///    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/// ```
 fn check_map_key(field: &Field, field_def: &FieldDef, label: &str) -> Result<(), syn::Error> {
     let Some(rejection) = map_key_rejection(field_def) else {
         return Ok(());
@@ -17768,7 +17847,40 @@ fn string_leaf_parts(
 /// Reads the text of a named leaf, or its length where no pattern is written. A brand's own
 /// expansion publishes `model_schema_bound_text` and `model_schema_bound_length`, and an inherent
 /// method is found ahead of a trait's; the traits declared here answer for an alias of a string,
-/// a path or a list, and refuse every other type in the words written on them.
+/// a path or a list, and refuse every other type in the words written on them:
+///
+/// ```rust,compile_fail
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema()]
+/// #[derive(Deserialize, Serialize)]
+/// pub struct Spot {
+///     pub segments: i32,
+/// }
+///
+/// #[model_schema()]
+/// #[derive(Deserialize, Serialize)]
+/// pub struct Visit {
+///     #[model_schema_prop(pattern = "^[a-z]+$")]
+///     pub at: Spot,
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error[E0277]: model_schema: field `at`: `pattern` cannot apply to `Spot`
+///   --> tests/zz_probe.rs:14:13
+///    |
+/// 10 | #[model_schema()]
+///    | ----------------- in this attribute macro expansion
+/// ...
+/// 14 |     pub at: Spot,
+///    |             ^^^^ this type holds no string for the bound to measure
+///    |
+/// help: the trait `BoundedText` is not implemented for `Spot`
+/// ```
 fn named_leaf_rendering(
     named: &syn::Type,
     field_name: &str,
@@ -18656,8 +18768,8 @@ fn sole_type_argument(args: &syn::AngleBracketedGenericArguments) -> Option<&syn
 
 /// Whether a `#[model_schema]` item of this name was declared above, which the schema surfaces
 /// read as a named type before they read the name as a standard one. Read off the registry every
-/// build that reads a value keeps, with or without a schema surface. A bound written on a field
-/// typed with such a model is refused as on any named type that holds no text:
+/// build keeps. A bound written on a field typed with such a model is refused as on any named type
+/// that holds no text:
 ///
 /// ```rust,compile_fail
 /// use serde::{Deserialize, Serialize};
@@ -18691,15 +18803,8 @@ fn sole_type_argument(args: &syn::AngleBracketedGenericArguments) -> Option<&syn
 ///    |
 /// help: the trait `BoundedLength` is not implemented for `Path`
 /// ```
-#[cfg(feature = "serde")]
 fn declared_above(ident: &str) -> bool {
     declared(ident).is_some()
-}
-
-/// Without `serde` nothing reads a value, so nothing records what an item declares.
-#[cfg(not(feature = "serde"))]
-const fn declared_above(_ident: &str) -> bool {
-    false
 }
 
 /// The leaf a bare type name stands for. `str` is `String`'s borrowed form and answers as one, as
@@ -19104,26 +19209,9 @@ fn collect_field_guard_errors(
     let label = field_label(raw_field_ident);
     let carried = on_the_wire && !parse_serde_key_omission(&field.attrs).absent_from_wire();
 
-    #[cfg(any(
-        feature = "typescript",
-        feature = "zod",
-        all(
-            feature = "serde",
-            any(feature = "dart", feature = "swift", feature = "kotlin")
-        )
-    ))]
     let map_key_error = check_map_key(field, field_def, &label)
         .err()
         .map(|err| err.to_compile_error());
-    #[cfg(not(any(
-        feature = "typescript",
-        feature = "zod",
-        all(
-            feature = "serde",
-            any(feature = "dart", feature = "swift", feature = "kotlin")
-        )
-    )))]
-    let map_key_error: Option<proc_macro2::TokenStream> = None;
 
     #[cfg(feature = "kotlin")]
     let kotlin_width_error = check_kotlin_width_field(field, field_def, &label)

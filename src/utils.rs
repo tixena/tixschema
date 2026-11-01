@@ -250,7 +250,6 @@ pub struct FlattenVariant {
 
 /// What a `#[model_schema()]` item publishes as a value, as the constrained-brand guard reads
 /// shapes.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PublishedShape {
     /// The one shape written under this name, whatever fills it — `None` where that shape is one a
@@ -263,7 +262,6 @@ pub enum PublishedShape {
 
 /// A constrained brand's consult the registry had no record to answer with, kept until the named
 /// item registers and can answer it.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[derive(Clone)]
 pub struct ShapeQuestion {
     /// What each argument the reference wrote resolves to, in the order written; `None` where the
@@ -311,7 +309,6 @@ pub struct AliasInfo {
     pub ts_union_members: Vec<String>,
     /// What the value surface written under this name is; `PublishedShape::Flat(None)` both where
     /// string checks land on it and where nothing was recorded.
-    #[cfg(any(feature = "typescript", feature = "zod"))]
     pub value_shape: PublishedShape,
     /// What the value surface written under this name puts on the wire, one entry per leaf of it,
     /// and empty when nothing has been recorded at all.
@@ -667,30 +664,23 @@ thread_local! {
 }
 
 thread_local! {
-    /// The names whose items serde writes as a bare wire scalar rather than an object. Kept out
-    /// of [`ALIAS_INFO`], which is written only where a generation surface is on: a transport
-    /// reads this in every build.
+    /// The names whose items serde writes as a bare wire scalar rather than an object.
     static WIRE_SCALARS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
     /// What each recorded wire scalar is read from the text of: a path, a query, a header or a
     /// text part hands it as text, and a number is parsed before serde reads it.
     static WIRE_SCALAR_KINDS: RefCell<HashMap<String, WireScalarKind>> = RefCell::new(HashMap::new());
-    /// The names of enums declared `#[serde(untagged)]`. Kept out of [`ALIAS_INFO`] for the same
-    /// reason as [`WIRE_SCALARS`]: a service macro reads this in every build.
+    /// The names of enums declared `#[serde(untagged)]`.
     static UNTAGGED_ENUMS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
     /// The names of brands and aliases serde writes as a number or a `bool`, which the `bson`
-    /// library refuses as a document key. Kept out of [`ALIAS_INFO`] for the same reason as
-    /// [`WIRE_SCALARS`]: a type that lists `"mongodb"` is refused a map keyed by one in every
-    /// build.
+    /// library refuses as a document key.
     static BSON_REFUSED_KEYS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
     /// The names of items whose own type parameters reach a map key, each to where they reach it:
     /// a brand or an alias whose value reaches one of its type parameters, and a struct, an enum
-    /// or an alias that keys a map by its type parameters. Kept out of [`ALIAS_INFO`] for the
-    /// same reason as [`BSON_REFUSED_KEYS`].
+    /// or an alias that keys a map by its type parameters.
     static FORWARDED_KEY_PARAMETERS: RefCell<HashMap<String, ForwardedKey>> =
         RefCell::new(HashMap::new());
     /// The names of structs, enums and aliases that hold a map whose key the `bson` library
-    /// refuses, each to a description of the first such map. Kept out of [`ALIAS_INFO`] for the
-    /// same reason as [`BSON_REFUSED_KEYS`].
+    /// refuses, each to a description of the first such map.
     static BSON_REFUSED_HOLDERS: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
 }
 
@@ -711,58 +701,66 @@ thread_local! {
 }
 
 thread_local! {
-    /// What each alias of an `Option` declared so far names. Kept out of [`ALIAS_INFO`], which is
-    /// written only where a generation surface is on: the guards of a field and the Kotlin client
-    /// read it in every build.
+    /// What each alias of an `Option` declared so far names.
     static OPTION_ALIASES: RefCell<HashMap<String, OptionTarget>> = RefCell::new(HashMap::new());
 }
 
 thread_local! {
     static ALIAS_INFO: RefCell<HashMap<String, AliasInfo>> = RefCell::new(HashMap::new());
     /// What a bound written on a field of each name counts, where it counts anything: a brand over
-    /// a text or a list, and an alias of a list. Kept out of [`ALIAS_INFO`], which is only written
-    /// where a surface is on.
+    /// a text or a list, and an alias of a list.
     static COUNTED: RefCell<HashMap<String, Counted>> = RefCell::new(HashMap::new());
-    /// The Rust ident holding each published name — see [`claim_published_name`]. Kept out of
-    /// [`ALIAS_INFO`], which is keyed the other way round and only written where a surface is on.
+    /// The Rust ident holding each published name — see [`claim_published_name`].
     static PUBLISHED_NAMES: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
 }
 
 /// What a name `#[model_schema]` was written on stands for, as an expansion that follows it reads
 /// it.
-#[cfg(feature = "serde")]
 #[derive(Clone)]
 pub enum Declared {
     /// A type alias that takes no parameter: the type it names, as it was written.
     Alias(String),
     /// A struct or an enum serde writes under keys of its own, and how many lifetime parameters it
-    /// declares.
+    /// declares. Without `serde`, whose attributes tell the two apart, every struct and enum.
     Model(usize),
     /// A struct or an enum serde writes as one value: a struct written as the value of one slot,
     /// a unit struct, an enum no variant of which holds a value and no attribute tags. Holds how
     /// many lifetime parameters it declares.
+    #[cfg(feature = "serde")]
     OneValue(usize),
 }
 
-#[cfg(feature = "serde")]
 impl Declared {
+    /// How many lifetime parameters the name declares: none for an alias, which is recorded only
+    /// where it declares no parameter.
+    pub const fn lifetimes(&self) -> usize {
+        match *self {
+            Self::Model(lifetimes) => lifetimes,
+            #[cfg(feature = "serde")]
+            Self::OneValue(lifetimes) => lifetimes,
+            Self::Alias(_) => 0,
+        }
+    }
+
     /// A model serde writes under keys of its own, declaring `lifetimes` lifetime parameters.
     pub const fn model(lifetimes: usize) -> Self {
         Self::Model(lifetimes)
     }
 
     /// A type serde writes as one value, declaring `lifetimes` lifetime parameters.
+    #[cfg(feature = "serde")]
     pub const fn one_value(lifetimes: usize) -> Self {
         Self::OneValue(lifetimes)
     }
 }
 
+thread_local! {
+    /// What each name `#[model_schema]` has been written on so far declares.
+    static DECLARED: RefCell<HashMap<String, Declared>> = RefCell::new(HashMap::new());
+}
+
 #[cfg(feature = "serde")]
 thread_local! {
-    /// What each name `#[model_schema]` has been written on so far declares. Kept in every
-    /// build that reads a value, with or without a schema surface, so a recovering decode
-    /// answers the same in all of them.
-    static DECLARED: RefCell<HashMap<String, Declared>> = RefCell::new(HashMap::new());
     /// The names `#[model_schema]` has been written on so far whose value serde writes, flattened,
     /// as the entries of a map. Kept in every build that reads `#[serde(flatten)]`.
     static OPEN_MAPS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
@@ -1073,7 +1071,6 @@ pub fn forget_field_validators() {
 }
 
 /// What `rust_ident` declares, where `#[model_schema]` has been written on it above.
-#[cfg(feature = "serde")]
 pub fn declared(rust_ident: &str) -> Option<Declared> {
     DECLARED.with(|names| names.borrow().get(rust_ident).cloned())
 }
@@ -1098,7 +1095,6 @@ pub fn option_alias(rust_ident: &str) -> Option<OptionTarget> {
 }
 
 /// Records what `rust_ident` declares for the expansions that follow.
-#[cfg(feature = "serde")]
 pub fn record_declared(rust_ident: &str, declares: Declared) {
     DECLARED.with(|names| {
         names.borrow_mut().insert(rust_ident.to_owned(), declares);
@@ -1280,12 +1276,11 @@ pub fn claim_published_name(published: &str, rust_ident: &str) -> Option<String>
 }
 
 /// Whether `#[model_schema]` was written above on an item named `rust_ident`. Read off the names
-/// claimed, the one registry every build writes.
+/// claimed.
 pub fn is_declared_ident(rust_ident: &str) -> bool {
     PUBLISHED_NAMES.with(|names| names.borrow().values().any(|holder| holder == rust_ident))
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 thread_local! {
     static SHAPE_QUESTIONS: RefCell<Vec<ShapeQuestion>> = const { RefCell::new(Vec::new()) };
 }
@@ -1293,7 +1288,6 @@ thread_local! {
 /// Keeps a constrained brand's unanswered consult for whichever expansion registers the name it
 /// asked about. Recorded once the brand has passed its own guards, so a brand that publishes
 /// nothing leaves no question behind for a later item to refuse it over.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 pub fn record_shape_question(question: ShapeQuestion) {
     SHAPE_QUESTIONS.with(|questions| questions.borrow_mut().push(question));
 }
@@ -1302,7 +1296,6 @@ pub fn record_shape_question(question: ShapeQuestion) {
 /// are left in place rather than taken: a name is registered by one expansion, and leaving them
 /// makes reading them an observation rather than a move — nothing downstream has to know whether
 /// something else read first.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 pub fn shape_questions_for(rust_ident: &str) -> Vec<ShapeQuestion> {
     SHAPE_QUESTIONS.with(|questions| {
         questions
@@ -1336,7 +1329,6 @@ pub fn register_alias_info(
                 module_name: module_name.to_owned(),
                 #[cfg(all(feature = "serde", feature = "typescript"))]
                 ts_union_members: Vec::new(),
-                #[cfg(any(feature = "typescript", feature = "zod"))]
                 value_shape: PublishedShape::Flat(None),
                 #[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
                 wire: Vec::new(),
@@ -1403,7 +1395,6 @@ pub fn record_key_wire(rust_ident: &str, wire: MapKeyWire) {
 
 /// Records what the value surface written under a name is, on the entry that name has just
 /// registered.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 pub fn record_value_shape(rust_ident: &str, shape: PublishedShape) {
     ALIAS_INFO.with(|map| {
         if let Some(info) = map.borrow_mut().get_mut(rust_ident) {

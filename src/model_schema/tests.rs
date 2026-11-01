@@ -5284,21 +5284,11 @@ fn a_const_handed_to_a_written_type_is_refused_in_every_build_that_describes_a_t
 /// No local build is of the clients alone, so the gates are read off the sources.
 #[test]
 fn the_map_key_guard_is_compiled_in_every_build_that_describes_a_type() {
-    let describing = quote::quote! {
-        any(
-            feature = "typescript",
-            feature = "zod",
-            all(
-                feature = "serde",
-                any(feature = "dart", feature = "swift", feature = "kotlin")
-            )
-        )
-    };
-    let compiled = quote::quote!(cfg(#describing)).to_string();
     let expansion = include_str!("../model_schema.rs");
+    // A map key is refused in every build.
     assert_eq!(
         gates_above(expansion, "check_map_key"),
-        [compiled.as_str()],
+        Vec::<String>::new(),
         "for `check_map_key`"
     );
     // The JSON Schema document reads these too, and it compiles in every build.
@@ -5341,8 +5331,13 @@ fn the_brand_slot_alias_and_const_guards_are_compiled_in_every_build_that_descri
     };
     let compiled = quote::quote!(cfg(#describing)).to_string();
     let expansion = include_str!("../model_schema.rs");
+    // A map key is refused in every build.
+    assert_eq!(
+        gates_above(expansion, "alias_map_key_guard_error"),
+        Vec::<String>::new(),
+        "for `alias_map_key_guard_error`"
+    );
     for named in [
-        "alias_map_key_guard_error",
         "collect_const_arguments",
         "bare_ident",
         "const_parameter_argument_message",

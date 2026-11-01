@@ -2904,7 +2904,6 @@ fn container_wire_arity(name: &str) -> Option<usize> {
     }
 }
 
-#[cfg(feature = "serde")]
 /// Whether the dispatch that describes a field's type has an arm for the standard type `name`: a
 /// scalar, a text, a path, or a wrapper or container the crate reads through.
 pub fn is_a_standard_type_name(name: &str) -> bool {
