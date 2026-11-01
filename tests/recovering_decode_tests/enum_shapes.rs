@@ -106,7 +106,7 @@ struct Drawing {
     stroke: Stroke,
 }
 
-/// Untagged, with a member whose own check takes its variant out. Only a schema surface hangs it.
+/// Untagged, with a member whose own check takes its variant out.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]

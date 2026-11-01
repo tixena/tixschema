@@ -309,65 +309,60 @@ fn a_stored_row_reads_as_the_operations_read_it() {
 /// serde reads a name that breaks its bound.
 #[test]
 fn a_row_that_breaks_a_bound_is_unreadable_until_a_resolver_repairs_it() {
+    use super::invoice_schema::{Expected, Issue, Path, Resolution, Segment, Stored as _};
+
     let mut nameless = readable();
     nameless
         .get_document_mut("customer")
         .unwrap()
         .insert("name", "");
     let read = Invoice::mongo_read_row(nameless.clone(), &[]);
-    #[cfg(any(feature = "typescript", feature = "zod"))]
-    {
-        use super::invoice_schema::{Expected, Issue, Path, Resolution, Segment, Stored as _};
+    let refused = read.unwrap_err();
+    assert!(
+        matches!(
+            &refused,
+            OperationError::Unreadable { row, issues }
+                if *row == format!("ObjectId(\"{SEEDED_ID}\")")
+                    && *issues == [Issue::Invalid {
+                        path: Path(vec![
+                            Segment::Key("customer".to_owned()),
+                            Segment::Key("name".to_owned()),
+                        ]),
+                        expected: Expected::String,
+                        found: Bson::String(String::new()),
+                        reason: "too short: minimum length is 1, got 0".to_owned(),
+                    }]
+        ),
+        "got: {refused:?}"
+    );
+    assert_eq!(
+        refused.to_string(),
+        format!(
+            "the row ObjectId(\"{SEEDED_ID}\") does not read as expected: customer.name: \
+             invalid: expected String, found String(\"\"): too short: minimum length is 1, \
+             got 0"
+        )
+    );
 
-        let refused = read.unwrap_err();
-        assert!(
-            matches!(
-                &refused,
-                OperationError::Unreadable { row, issues }
-                    if *row == format!("ObjectId(\"{SEEDED_ID}\")")
-                        && *issues == [Issue::Invalid {
-                            path: Path(vec![
-                                Segment::Key("customer".to_owned()),
-                                Segment::Key("name".to_owned()),
-                            ]),
-                            expected: Expected::String,
-                            found: Bson::String(String::new()),
-                            reason: "too short: minimum length is 1, got 0".to_owned(),
-                        }]
-            ),
-            "got: {refused:?}"
-        );
-        assert_eq!(
-            refused.to_string(),
-            format!(
-                "the row ObjectId(\"{SEEDED_ID}\") does not read as expected: customer.name: \
-                 invalid: expected String, found String(\"\"): too short: minimum length is 1, \
-                 got 0"
-            )
-        );
-
-        let unnamed = |raw: &mut Document, issue: &Issue<Bson>| {
-            let Issue::Invalid {
-                path,
-                expected: Expected::String,
-                found: Bson::String(held),
-                reason: _reason,
-            } = issue
-            else {
-                return Resolution::NotTouched;
-            };
-            let named = held.is_empty() && raw.set_at(path, Bson::String("unnamed".to_owned()));
-            if named {
-                Resolution::Settled
-            } else {
-                Resolution::NotTouched
-            }
+    let unnamed = |raw: &mut Document, issue: &Issue<Bson>| {
+        let Issue::Invalid {
+            path,
+            expected: Expected::String,
+            found: Bson::String(held),
+            reason: _reason,
+        } = issue
+        else {
+            return Resolution::NotTouched;
         };
-        let repaired = Invoice::mongo_read_row(nameless, &[&unnamed]).unwrap();
-        assert_eq!(repaired.customer.name, "unnamed");
-    }
-    #[cfg(not(any(feature = "typescript", feature = "zod")))]
-    assert_eq!(read.unwrap().customer.name, "");
+        let named = held.is_empty() && raw.set_at(path, Bson::String("unnamed".to_owned()));
+        if named {
+            Resolution::Settled
+        } else {
+            Resolution::NotTouched
+        }
+    };
+    let repaired = Invoice::mongo_read_row(nameless, &[&unnamed]).unwrap();
+    assert_eq!(repaired.customer.name, "unnamed");
 }
 
 #[test]
@@ -581,8 +576,7 @@ fn the_id_of_a_refused_row_is_told_as_bson_displays_it() {
 }
 
 /// Every read of a row calls the functions its type and its members name: the type's gives the
-/// row the total it holds none of, and the number's trims it. No bound is declared, so a build
-/// with no schema surface answers the same.
+/// row the total it holds none of, and the number's trims it.
 #[test]
 fn a_stored_row_is_read_through_the_functions_its_type_names() {
     let id = ObjectId::parse_str("0123456789abcdef01234567").unwrap();

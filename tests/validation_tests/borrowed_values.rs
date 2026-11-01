@@ -3,7 +3,7 @@
 //! owned model is.
 
 /// One declaration with its values borrowed and one with them owned, under the same bounds.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 mod a_bound_behind_any_reference {
     use std::sync::LazyLock;
 
@@ -172,7 +172,7 @@ mod a_bound_behind_any_reference {
 }
 
 /// A model held behind each reference, and the same model held owned.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 mod a_model_behind_any_reference {
     use std::sync::LazyLock;
 

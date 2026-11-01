@@ -613,34 +613,23 @@ fn a_constraint_on_a_struct_field_is_the_walkers_to_check() {
     let stored = json!({ "code": "AB", "count": "5", "name": "ab", "port": "80" });
     // Serde's own read refuses the value where the type publishes `validate()`.
     let plain = serde_json::from_value::<Hooked>(stored.clone());
-    #[cfg(any(feature = "typescript", feature = "zod"))]
     assert_eq!(
         plain.unwrap_err().to_string(),
         "'name': too short: minimum length is 3, got 2"
     );
-    #[cfg(not(any(feature = "typescript", feature = "zod")))]
-    assert_eq!(plain.unwrap().name, "ab");
     let mut calls = 0_u32;
     let read = Hooked::from_value_with(stored, |_raw, _found| {
         calls += 1;
         hooked_schema::Verdict::Reject
     });
-    #[cfg(any(feature = "typescript", feature = "zod"))]
-    {
-        assert_eq!(
-            lines(&read.unwrap_err()),
-            [
-                "name: invalid: expected String, found String(\"ab\"): too short: minimum length \
-                 is 3, got 2"
-            ]
-        );
-        assert_eq!(calls, 1);
-    }
-    #[cfg(not(any(feature = "typescript", feature = "zod")))]
-    {
-        assert_eq!(read.unwrap().name, "ab");
-        assert_eq!(calls, 0);
-    }
+    assert_eq!(
+        lines(&read.unwrap_err()),
+        [
+            "name: invalid: expected String, found String(\"ab\"): too short: minimum length \
+             is 3, got 2"
+        ]
+    );
+    assert_eq!(calls, 1);
 }
 
 #[cfg(feature = "chrono")]

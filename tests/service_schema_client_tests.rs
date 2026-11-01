@@ -23,17 +23,17 @@ mod amqp_client;
 #[path = "service_schema_client_tests/spare_amqp_client.rs"]
 mod spare_amqp_client;
 
-#[cfg(all(test, feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(all(test, feature = "serde"))]
 #[path = "service_schema_client_tests/enrol_amqp_transport.rs"]
 mod enrol_amqp_transport;
 
-#[cfg(all(test, feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(all(test, feature = "serde"))]
 #[path = "service_schema_client_tests/enrol_amqp_client.rs"]
 mod enrol_amqp_client;
 
 // Both halves reach what the service declared through `$crate`, which is this binary's root: a
 // service written in a submodule is named here for either expansion to resolve.
-#[cfg(all(test, feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(all(test, feature = "serde"))]
 use tests::a_bound_the_fields_own_type_declares::{EnrolService, enrol_service_schema};
 #[cfg(all(test, feature = "serde"))]
 use tests::{ProbeService, probe_service_schema};

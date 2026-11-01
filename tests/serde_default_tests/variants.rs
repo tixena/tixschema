@@ -11,7 +11,7 @@ use tixschema::model_schema;
 
 #[cfg(all(feature = "serde", feature = "zod"))]
 use super::models::Quay;
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 use super::models::variant_report;
 use super::models::{
     AdjacentBerthing, Berthing, ExternalBerthing, UntaggedBerthing, VARIANT_CASES, VARIANT_REPORT,
@@ -236,9 +236,8 @@ fn the_variant_table_prints_a_row_for_each_payload() {
     }
 }
 
-/// Every row of the table, as serde reads it where a schema surface is on: a build with none
-/// holds `line` to no bound.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+/// Every row of the table, as serde reads it.
+#[cfg(feature = "serde")]
 #[test]
 fn serde_reads_each_variant_payload_as_the_table_says() {
     assert_eq!(variant_report(), VARIANT_REPORT);

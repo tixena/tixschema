@@ -14,7 +14,6 @@ use mongodb::bson::oid::ObjectId;
 const STRING_ARRAY_MEMBERS: [&str; 3] = ["rows", "slugs", "tags"];
 
 /// The members of `WrappedUnion`, in the order the union declares them.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 const WRAPPED_MEMBERS: [&str; 3] = ["ids", "ordered", "queued"];
 
 // ISO-8601 date string. Branded newtype carries the regex pattern, written with `\d` and reaching

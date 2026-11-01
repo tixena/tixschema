@@ -261,7 +261,6 @@ fn a_held_type_is_corrected_where_it_is_walked() {
 }
 
 /// The bound is held to the label the field's function answered.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn the_bound_of_a_field_is_checked_on_what_its_function_answered() {
     let (read, calls) =
@@ -277,14 +276,16 @@ fn the_bound_of_a_field_is_checked_on_what_its_function_answered() {
     assert_eq!(calls, 1);
 }
 
-/// A build with no schema surface holds no bound, and the label its function emptied is read.
-#[cfg(not(any(feature = "typescript", feature = "zod")))]
+/// serde's own read holds the label its function emptied to the bound, as the walk does.
 #[test]
-fn the_label_a_function_emptied_is_read_where_no_bound_is_held() {
-    let (read, calls) =
-        rejected(json!({ "label": "   ", "itemCodeList": ["x"], "fragileItemCodes": ["x"] }));
-    assert_eq!(read, Ok(parcel("", &["x"])));
-    assert_eq!(calls, 0);
+fn plain_serde_refuses_the_label_a_function_emptied() {
+    let read = serde_json::from_value::<StoredParcel>(
+        json!({ "label": "   ", "itemCodeList": ["x"], "fragileItemCodes": ["x"] }),
+    );
+    assert_eq!(
+        read.map_err(|refused| refused.to_string()),
+        Err("'label': too short: minimum length is 1, got 0".to_owned())
+    );
 }
 
 #[test]

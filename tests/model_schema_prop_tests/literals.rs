@@ -1,7 +1,7 @@
 //! A `literal` is a rule: `validate()` refuses every other value, and so does the read that runs
 //! it, in each place a member is.
 
-#![cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#![cfg(feature = "serde")]
 
 use alloc::borrow::Cow;
 use core::fmt::Write as _;

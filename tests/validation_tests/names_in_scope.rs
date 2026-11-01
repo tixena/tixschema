@@ -3,7 +3,7 @@
 /// A module that imports a `Result` taking no type argument, beside each shape whose expansion
 /// writes a `Result` of its own: a read hook for a sibling type, `validate()`, a constrained
 /// brand's reader, and a unit struct's serde impls.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 mod a_one_parameter_result {
     use core::fmt::{Display, Formatter, Result};
     use serde::{Deserialize, Serialize};
@@ -77,8 +77,8 @@ mod a_one_parameter_result {
 }
 
 /// A module that imports a second trait with a `fmt` method beside a brand, whose `Display`
-/// hands the formatting to the value it holds. A brand is displayed where a schema surface is on.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+/// hands the formatting to the value it holds.
+#[cfg(feature = "serde")]
 mod a_second_trait_with_fmt {
     use core::fmt::Debug;
     #[cfg(feature = "mongodb")]
@@ -122,7 +122,7 @@ mod a_second_trait_with_fmt {
 
 /// A module that declares a type named `Sized` beside a struct holding another model type, whose
 /// expansion bounds a type parameter `?Sized`.
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "serde")]
 mod a_type_named_sized {
     /// The same two types in a module that declares no `Sized`, to read the surfaces against.
     mod unshadowed {
@@ -172,6 +172,7 @@ mod a_type_named_sized {
     }
 
     /// `text` with the unshadowed pair's names put back to the shadowed pair's.
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     fn renamed(text: &str) -> String {
         text.replace("PlainHolder", "Holder")
             .replace("PlainInner", "Inner")
@@ -179,10 +180,12 @@ mod a_type_named_sized {
 
     #[test]
     fn a_struct_holding_a_model_type_describes_as_it_does_without_the_name() {
+        #[cfg(feature = "typescript")]
         assert_eq!(
             Holder::ts_definition(),
             renamed(&unshadowed::PlainHolder::ts_definition())
         );
+        #[cfg(feature = "typescript")]
         assert!(Sized::ts_definition().contains("text: string"));
 
         let refused = serde_json::from_value::<Holder>(
@@ -196,6 +199,13 @@ mod a_type_named_sized {
         )
         .unwrap();
         holder.validate().unwrap();
+        assert_eq!(
+            serde_json::to_value(Sized {
+                text: "t".to_owned()
+            })
+            .unwrap(),
+            serde_json::json!({ "text": "t" })
+        );
     }
 
     #[cfg(feature = "zod")]
@@ -217,7 +227,7 @@ mod a_type_named_sized {
 }
 
 /// A module that declares a model type named `Err` beside a struct whose expansion returns a `Result`.
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "serde")]
 mod a_type_named_err {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
@@ -261,13 +271,14 @@ mod a_type_named_err {
         }))
         .unwrap();
         read.validate().unwrap();
+        #[cfg(feature = "typescript")]
         assert!(BesideErrHolder::ts_definition().contains("  inner: BesideErrInner;"));
         assert_eq!(serde_json::to_value(Err).unwrap(), serde_json::json!({}));
     }
 }
 
 /// A module that declares a model type named `None` beside a struct whose expansion matches on an `Option`.
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "serde")]
 mod a_type_named_none {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
@@ -311,13 +322,14 @@ mod a_type_named_none {
         }))
         .unwrap();
         read.validate().unwrap();
+        #[cfg(feature = "typescript")]
         assert!(BesideNoneHolder::ts_definition().contains("  inner: BesideNoneInner;"));
         assert_eq!(serde_json::to_value(None).unwrap(), serde_json::json!({}));
     }
 }
 
 /// A module that declares a model type named `Ok` beside a struct whose expansion returns a `Result`.
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "serde")]
 mod a_type_named_ok {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
@@ -361,13 +373,14 @@ mod a_type_named_ok {
         }))
         .unwrap();
         read.validate().unwrap();
+        #[cfg(feature = "typescript")]
         assert!(BesideOkHolder::ts_definition().contains("  inner: BesideOkInner;"));
         assert_eq!(serde_json::to_value(Ok).unwrap(), serde_json::json!({}));
     }
 }
 
 /// A module that declares a model type named `Some` beside a struct whose expansion matches on an `Option`.
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "serde")]
 mod a_type_named_some {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
@@ -411,6 +424,7 @@ mod a_type_named_some {
         }))
         .unwrap();
         read.validate().unwrap();
+        #[cfg(feature = "typescript")]
         assert!(BesideSomeHolder::ts_definition().contains("  inner: BesideSomeInner;"));
         assert_eq!(serde_json::to_value(Some).unwrap(), serde_json::json!({}));
     }

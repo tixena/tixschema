@@ -35,8 +35,6 @@ use crate::features::model_schema_prop::FunctionName;
 use crate::features::serde::NAMED_READ_HOOK_PREFIX;
 #[cfg(feature = "serde")]
 use crate::features::serde::has_serde_read_hook;
-#[cfg(all(feature = "serde", not(any(feature = "typescript", feature = "zod"))))]
-use crate::features::serde::has_serde_transparent;
 #[cfg(feature = "serde")]
 use crate::features::serde::parse_serde_key_omission;
 use crate::features::serde::read_bounds::{ReadBounds, read_bounds, written_lifetimes};
@@ -2106,11 +2104,10 @@ pub fn of_enum(item: &mut ItemEnum, publishes_validate: bool) -> TokenStream {
     }
 }
 
-/// `decode_with_read_unjudged`, the read the recovering decode of `input` lists from, where a
-/// schema surface is on: the type's own unjudged read where it publishes `validate()`, and
-/// serde's where it publishes none. Every holder of a model publishes `validate()` there, so that
-/// read holds nothing judged.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+/// `decode_with_read_unjudged`, the read the recovering decode of `input` lists from: the type's
+/// own unjudged read where it publishes `validate()`, and serde's where it publishes none. Every
+/// holder of a model publishes `validate()`, so that read holds nothing judged.
+#[cfg(feature = "serde")]
 pub fn listed_read(input: &DeriveInput) -> TokenStream {
     delegated_listed_read(input, false)
 }
@@ -2121,37 +2118,6 @@ pub fn listed_read(input: &DeriveInput) -> TokenStream {
 #[cfg(feature = "serde")]
 pub fn bounded_listed_read(input: &DeriveInput) -> TokenStream {
     delegated_listed_read(input, true)
-}
-
-/// `decode_with_read_unjudged`, the read the recovering decode of `input` lists from, in a build
-/// with no schema surface. A holder that names no check publishes no `validate()` there, and its
-/// own read judges the models it holds: so the item's members are read here, on a copy of the
-/// item, with every model below read through its own `decode_with_read_unjudged`.
-#[cfg(all(feature = "serde", not(any(feature = "typescript", feature = "zod"))))]
-pub fn listed_read(input: &DeriveInput) -> TokenStream {
-    let own_members = deserialize_derive(&input.attrs)
-        .filter(|_| serde_conversion(&input.attrs).is_none() && !is_a_brand(input));
-    let Some(derive) = own_members else {
-        return delegated_listed_read(input, false);
-    };
-    let unjudged = Ident::new(LISTED_READ, Span::call_site());
-    unjudged_read(
-        input,
-        &derive,
-        &unjudged,
-        " The read alone, with every model below read unjudged, for the recovering read to list \
-         from.",
-        // The recovering read's own `impl` asks what serde's derive asks to read the type.
-        true,
-    )
-    .0
-}
-
-/// Whether serde writes the item as the value of one of its fields, which a read of its own
-/// holds to its bound.
-#[cfg(all(feature = "serde", not(any(feature = "typescript", feature = "zod"))))]
-fn is_a_brand(input: &DeriveInput) -> bool {
-    has_serde_transparent(&input.attrs)
 }
 
 /// `decode_with_read_unjudged` of a type whose own unjudged read is the one to list from, refused
@@ -2211,14 +2177,10 @@ fn delegated_listed_read(input: &DeriveInput, bounded: bool) -> TokenStream {
 }
 
 /// The name of the read the recovering decode lists from: a type's unjudged read, which reads
-/// what it holds unjudged wherever a schema surface is on.
+/// what it holds unjudged.
 #[cfg(feature = "serde")]
 fn listed() -> Ident {
-    #[cfg(any(feature = "typescript", feature = "zod"))]
-    let named = UNJUDGED_READ;
-    #[cfg(not(any(feature = "typescript", feature = "zod")))]
-    let named = LISTED_READ;
-    Ident::new(named, Span::call_site())
+    Ident::new(UNJUDGED_READ, Span::call_site())
 }
 
 /// A function that reads a `ty` with every model it holds read unjudged, for the recovering

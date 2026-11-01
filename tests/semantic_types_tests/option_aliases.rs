@@ -12,7 +12,6 @@ use super::option_alias_models::haply_schema;
 #[cfg(any(feature = "typescript", feature = "zod"))]
 use super::option_alias_models::plummet_schema;
 use super::option_alias_models::{Bottomed, Groundage, Grounding};
-#[cfg(any(feature = "typescript", feature = "zod"))]
 use super::option_alias_models::{
     Chanced, Deepsea, Handlead, Heaved, Leadsman, Lineman, Plumbline, Reckoned, Shoaled, Sinker,
 };

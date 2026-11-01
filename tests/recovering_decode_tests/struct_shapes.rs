@@ -111,9 +111,7 @@ struct Duet(String, u32);
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Wrapper(String);
 
-/// A brand whose own reader refuses text shorter than three characters. Only a schema surface
-/// hangs that check, and the declaration is refused in a build with none.
-#[cfg(any(feature = "typescript", feature = "zod"))]
+/// A brand whose own reader refuses text shorter than three characters.
 #[model_schema(enable = ["decode_with"], minLength = 3)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
@@ -738,7 +736,6 @@ fn a_struct_flattening_a_type_serde_cannot_flatten_lists_nothing_for_it_beside_s
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_constrained_brand_is_refused_with_its_own_message() {
     let read = Code::from_value_with(json!("ab"), |_raw, _found| code_schema::Verdict::Reject);

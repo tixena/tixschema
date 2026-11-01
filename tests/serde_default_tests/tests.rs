@@ -2,12 +2,8 @@
 //! each surface says of it. The runs of each client are in the emitted-client groups, and the run
 //! of the Zod schemas under node in `generic_types_tests`.
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
-use super::models::Gangway;
-#[cfg(any(feature = "typescript", feature = "zod"))]
-use super::models::report;
 #[cfg(feature = "serde")]
-use super::models::{Basin, Config, Fleet, Logbook};
+use super::models::{Basin, Config, Fleet, Gangway, Logbook, report};
 use super::models::{
     Bollard, CASES, FILLED, FILLED_REPORT, Harbour, Jetty, Marina, PREPROCESSED,
     PREPROCESSED_REPORT, Pontoon, REPORT, REQUIRED, REQUIRED_REPORT, Wharf, filled_expected,
@@ -48,9 +44,8 @@ fn the_table_prints_a_row_for_each_payload() {
     }
 }
 
-/// Every row of the table, as serde reads it where a schema surface is on: a build with none
-/// holds the member of the last rows to no bound.
-#[cfg(any(feature = "typescript", feature = "zod"))]
+/// Every row of the table, as serde reads it.
+#[cfg(feature = "serde")]
 #[test]
 fn serde_reads_each_payload_as_the_table_says() {
     assert_eq!(report(), REPORT);
@@ -121,7 +116,7 @@ fn serde_reads_each_payload_of_a_struct_that_declares_a_parameter_as_the_table_s
 
 /// `validate()` and the read that refuses judge a default as they judge a payload: the default
 /// that breaks the bound is refused with its member named.
-#[cfg(any(feature = "typescript", feature = "zod"))]
+#[cfg(feature = "serde")]
 #[test]
 fn a_default_that_breaks_its_bound_is_refused_with_its_member_named() {
     let refused = serde_json::from_str::<Pontoon>(r#"{"label":"p"}"#).unwrap_err();

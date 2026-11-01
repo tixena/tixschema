@@ -6,7 +6,6 @@
 #![cfg(feature = "serde")]
 
 /// A message annotated with `#[model_schema_prop]`, and where a violation of it is caught.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[macro_use]
 pub mod a_message_annotated_with_a_constraint {
     use super::poll_once;

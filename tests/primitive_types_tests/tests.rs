@@ -6,7 +6,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 #[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
 use std::collections::HashMap;
-#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "serde",
+    not(any(feature = "swift", feature = "kotlin"))
+))]
 use tixschema::model_schema;
 
 /// The Zod schema of a `u64`: a bigint, or an integer number read as one, held to its range.
@@ -50,11 +55,7 @@ struct LargeNumbers {
     optional_large_unsigned: Option<u64>,
 }
 
-#[cfg(all(
-    test,
-    any(feature = "typescript", feature = "zod"),
-    not(any(feature = "swift", feature = "kotlin"))
-))]
+#[cfg(not(any(feature = "swift", feature = "kotlin")))]
 #[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]

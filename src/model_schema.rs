@@ -182,7 +182,6 @@ use crate::features::model_schema_prop::{
     parse_model_schema_prop_attributes,
 };
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 use crate::features::jsonschema::in_flight_type;
 use crate::features::jsonschema::{
     MergeDiagnostic, MergedSource, SchemaParameter, UNIT_MEMBER_RECORD,
@@ -248,7 +247,12 @@ use crate::utils::record_unit_struct;
 use crate::utils::{forget_checks, record_own_checks};
 use crate::utils::{names_a_check, record_member_checks, record_names_a_check};
 
-#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+#[cfg(any(
+    feature = "dart",
+    feature = "kotlin",
+    feature = "swift",
+    not(feature = "serde")
+))]
 use crate::rename_rule::RenameRule;
 use crate::rename_rule::resolve_rename_rule;
 
@@ -2845,7 +2849,7 @@ fn item_schema_example_method(
 /// /// ```rust example
 /// /// "not a sample"
 /// /// ```
-/// #[model_schema()]
+/// #[model_schema(enable = ["jsonschema"])]
 /// #[derive(Deserialize, Serialize)]
 /// pub struct Sample {
 ///     pub value: u32,
@@ -2863,8 +2867,8 @@ fn item_schema_example_method(
 ///  9 | /// "not a sample"
 ///    | ^^^^^^^^^^^^^^^^^^ expected `Sample`, found `&str`
 /// 10 | /// ```
-/// 11 | #[model_schema()]
-///    | ----------------- in this attribute macro expansion
+/// 11 | #[model_schema(enable = ["jsonschema"])]
+///    | ---------------------------------------- in this attribute macro expansion
 /// ```
 fn schema_examples_methods(
     example_tokens: &[proc_macro2::TokenStream],
@@ -3796,7 +3800,6 @@ fn render_struct_field_bodies(
 
 /// The schema module a refused item publishes in place of the one it has no description for, with
 /// the `json_schema` pair where it lists `"jsonschema"`.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn refused_item_schema_module(
     ident: &syn::Ident,
     args: &ModelSchemaArgs,
@@ -3854,17 +3857,6 @@ fn refused_item_schema_module(
             }
         }
     }
-}
-
-/// Nothing, in a build with no schema surface: no reference to a module is ever emitted there, so
-/// a refused item leaves none dangling.
-#[cfg(not(any(feature = "typescript", feature = "zod")))]
-fn refused_item_schema_module(
-    ident: &syn::Ident,
-    args: &ModelSchemaArgs,
-) -> proc_macro2::TokenStream {
-    let _: &_ = &(ident, args);
-    quote! {}
 }
 
 /// Emits the original item followed by the `compile_error!` tokens of every violated field guard,
@@ -11714,7 +11706,7 @@ fn ts_member_name(name: &str) -> String {
     #[cfg(feature = "serde")]
     let written = name.to_owned();
     #[cfg(not(feature = "serde"))]
-    let written = crate::rename_rule::RenameRule::CamelCase.apply_to_field(name);
+    let written = RenameRule::CamelCase.apply_to_field(name);
     written
 }
 

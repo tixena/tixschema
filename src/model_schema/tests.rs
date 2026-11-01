@@ -22,7 +22,6 @@ use super::{
 
 use super::{AliasKind, register_alias_info};
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 use super::{
     PublishedShape, alias_map_key_guard_error, alias_undescribable_std_error, check_map_key,
     deferred_shape_question, deferred_shape_refusals, ident_schema_module_name,
@@ -123,7 +122,6 @@ const PROBE_PATTERNS: [&str; 10] = [
 
 /// Patterns the `regex` crate parses that no JavaScript regex literal carries, one per family the
 /// guard sorts them into, beside the words the refusal names each by.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 const UNPORTABLE_PROBE_PATTERNS: [(&str, &str); 6] = [
     ("(?i)abc", "inline flag directive"),
     (r"^\p{L}+$", "Unicode class"),
@@ -1179,7 +1177,7 @@ fn untagged_supported_variant_shapes_are_left_alone() {
     assert!(errors.is_empty(), "got: {errors:?}");
 }
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn untagged_member_reaching_a_map_key_with_no_members_is_refused() {
     register_alias_info(
@@ -1313,7 +1311,7 @@ fn a_tuple_structs_slot_takes_a_check() {
     assert!(!expanded.contains("compile_error"), "got: {expanded}");
 }
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn a_tuple_structs_slot_is_named_by_its_position_and_read_off_self() {
     let expanded = expansion_over(
@@ -1454,7 +1452,7 @@ fn untagged_member_prop_guards_apply() {
     }
 }
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn untagged_member_with_an_enumerable_map_key_is_left_alone() {
     register_alias_info("Bucket", "Bucket", "bucket_schema", AliasKind::EnumMembers);
@@ -1472,7 +1470,7 @@ fn untagged_member_with_an_enumerable_map_key_is_left_alone() {
 }
 
 /// The refusal every map-key spelling no surface can write earns, read off the untagged walk.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn untagged_member_reaching_an_unwritable_map_key_is_refused() {
     for (member_type, needle) in [
@@ -6279,7 +6277,6 @@ fn the_readme_states_the_refusal_of_an_undescribable_primitive_as_the_build_answ
 
 /// Runs the field walk the way [`super::process_field`] does and renders the map-key guard failure
 /// the field's written type earns, or the empty string when it earns none.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn field_map_key_error(field_type: &proc_macro2::TokenStream) -> String {
     let item: syn::ItemStruct = syn::parse_quote! {
         struct Report {
@@ -6375,7 +6372,6 @@ fn the_swift_width_guard_reads_past_what_serde_neither_writes_nor_reads() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_map_key_proved_to_lack_enum_members_is_refused_wherever_it_is_written() {
     register_alias_info("Doc", "Doc", "doc_schema", AliasKind::NoEnumMembers);
@@ -6400,7 +6396,7 @@ fn a_map_key_proved_to_lack_enum_members_is_refused_wherever_it_is_written() {
     }
 }
 
-#[cfg(all(feature = "indexmap", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "indexmap")]
 #[test]
 fn an_index_map_keyed_by_a_struct_is_refused_in_the_sentence_a_hash_map_gets() {
     register_alias_info("Doc", "Doc", "doc_schema", AliasKind::NoEnumMembers);
@@ -6423,7 +6419,6 @@ fn an_index_map_keyed_by_a_struct_is_refused_in_the_sentence_a_hash_map_gets() {
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_sequence_wrapped_map_key_is_refused_wherever_it_is_written() {
     register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
@@ -6462,7 +6457,6 @@ fn a_sequence_wrapped_map_key_is_refused_wherever_it_is_written() {
 /// A key whose own type writes a JSON array or a JSON object earns the same refusal a
 /// sequence-wrapped one does: serde raises `key must be a string` and refuses the whole map, so
 /// there is no object for any surface to describe. The key is named by the shape it was written as.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn assert_unwritable_map_key(field_type: &proc_macro2::TokenStream, key_name: &str) {
     let error = field_map_key_error(field_type);
     assert!(error.contains("compile_error"), "for {field_type}: {error}");
@@ -6479,7 +6473,6 @@ fn assert_unwritable_map_key(field_type: &proc_macro2::TokenStream, key_name: &s
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_map_key_serde_refuses_to_write_is_refused_wherever_it_is_written() {
     register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
@@ -6520,7 +6513,7 @@ fn a_map_key_serde_refuses_to_write_is_refused_wherever_it_is_written() {
     }
 }
 
-#[cfg(all(feature = "mongodb", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "mongodb")]
 #[test]
 fn an_object_id_map_key_is_refused_wherever_it_is_written() {
     register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
@@ -6536,7 +6529,6 @@ fn an_object_id_map_key_is_refused_wherever_it_is_written() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_optional_map_key_is_refused_wherever_it_is_written() {
     register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
@@ -6578,7 +6570,6 @@ fn an_optional_map_key_is_refused_wherever_it_is_written() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_key_wrapped_twice_is_named_by_its_outermost_wrapper() {
     register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
@@ -6588,7 +6579,6 @@ fn a_key_wrapped_twice_is_named_by_its_outermost_wrapper() {
     assert!(optional.contains("Option<(_, _)>"), "got: {optional}");
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_string_wire_brand_keys_a_map_the_way_a_string_does() {
     register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
@@ -6620,7 +6610,6 @@ fn a_string_wire_brand_keys_a_map_the_way_a_string_does() {
     assert!(refused.contains("Tick"), "got: {refused}");
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_map_key_that_may_have_enum_members_is_left_alone() {
     register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
@@ -6643,7 +6632,7 @@ fn a_map_key_that_may_have_enum_members_is_left_alone() {
     }
 }
 
-#[cfg(all(feature = "chrono", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "chrono")]
 #[test]
 fn a_chrono_map_key_is_left_alone() {
     for field_type in [
@@ -6657,7 +6646,6 @@ fn a_chrono_map_key_is_left_alone() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_alias_targeting_a_map_key_with_no_members_is_refused() {
     register_alias_info("Doc", "Doc", "doc_schema", AliasKind::NoEnumMembers);
@@ -6679,7 +6667,6 @@ fn an_alias_targeting_a_map_key_with_no_members_is_refused() {
 
 /// The rendered `compile_error!` an alias target reaching a std type serde has no wire form for
 /// earns, or the empty string when it earns none.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn alias_undescribable_std_error_text(source: &str) -> String {
     let alias: syn::ItemType = syn::parse_str(source).unwrap();
     let field_def = get_field_def("Probe", &alias.ty, "");
@@ -6688,7 +6675,6 @@ fn alias_undescribable_std_error_text(source: &str) -> String {
         .to_string()
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_alias_targeting_an_undescribable_std_type_is_refused() {
     for (target, subject, named, wire) in [
@@ -6737,7 +6723,6 @@ fn an_alias_targeting_an_undescribable_std_type_is_refused() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_alias_targeting_a_describable_type_is_left_alone() {
     for target in [
@@ -6751,7 +6736,6 @@ fn an_alias_targeting_a_describable_type_is_left_alone() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_alias_violating_both_type_level_guards_earns_both_refusals() {
     register_alias_info(
@@ -6774,7 +6758,6 @@ fn an_alias_violating_both_type_level_guards_earns_both_refusals() {
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_data_suffixed_alias_is_named_by_its_written_ident() {
     register_alias_info("Tally", "Tally", "tally_schema", AliasKind::NoEnumMembers);
@@ -6806,7 +6789,6 @@ fn a_data_suffixed_alias_is_named_by_its_written_ident() {
 }
 
 /// A refused item still publishes the schema module every reference to it addresses.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_refused_item_publishes_the_module_a_reference_to_it_resolves_to() {
     let ident = syn::Ident::new("CountsByDoc", proc_macro2::Span::call_site());
@@ -7003,7 +6985,7 @@ fn a_renamed_field_is_refused_by_its_rust_name_and_reported_under_its_key() {
     );
 }
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn a_refused_map_key_leaves_no_hook_naming_the_dropped_module() {
     register_alias_info("Doc", "Doc", "doc_schema", AliasKind::NoEnumMembers);
@@ -8000,7 +7982,6 @@ fn a_field_pattern_the_regex_crate_rejects_names_the_field_and_quotes_the_parse_
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_field_pattern_javascript_cannot_carry_names_the_field_and_the_construct() {
     for (pattern, construct) in UNPORTABLE_PROBE_PATTERNS {
@@ -8840,7 +8821,6 @@ fn an_equal_pair_and_a_count_a_fixed_length_always_meets_are_not_refused() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_whose_own_bounds_no_value_meets_is_refused() {
     for (inner, least, most, refusal) in [
@@ -10245,7 +10225,6 @@ fn discriminated_enum_ts_definition_carries_no_cfg_attribute() {
     assert_no_cfg_attribute(&tokens, "generate_discriminated_enum_ts_definition_method");
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn alias_json_schema_method_carries_no_cfg_attribute() {
     let alias: syn::ItemType = syn::parse_quote!(
@@ -10456,7 +10435,6 @@ fn branded_errors_with(item: &syn::ItemStruct, args: &super::ModelSchemaArgs) ->
         .collect()
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_over_an_undescribable_std_inner_is_refused() {
     for (inner, named, wire) in [
@@ -10489,7 +10467,6 @@ fn a_brand_over_an_undescribable_std_inner_is_refused() {
 }
 
 /// A brand over an inner every surface describes earns nothing.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_over_a_describable_inner_is_left_alone() {
     for inner in [
@@ -10506,7 +10483,6 @@ fn a_brand_over_a_describable_inner_is_left_alone() {
 }
 
 /// The `model_schema` arguments of a brand carrying a lone `pattern`.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn pattern_args() -> super::ModelSchemaArgs {
     super::parse_model_schema_args(quote::quote! { pattern = "^[a-z]+$" })
 }
@@ -10518,7 +10494,6 @@ fn json_schema_args() -> super::ModelSchemaArgs {
 
 /// A brand's guard failures for the given `pattern`, over a `String` inner that clears every other
 /// guard.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn brand_pattern_errors(pattern: &str) -> Vec<String> {
     branded_errors_with(
         &syn::parse_quote! {
@@ -10529,7 +10504,6 @@ fn brand_pattern_errors(pattern: &str) -> Vec<String> {
     )
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn the_brand_pattern_guard_follows_the_regex_crate() {
     for pattern in PROBE_PATTERNS {
@@ -10543,7 +10517,6 @@ fn the_brand_pattern_guard_follows_the_regex_crate() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_pattern_the_regex_crate_rejects_names_the_type_and_quotes_the_parse_error() {
     let errors = brand_pattern_errors(r"^ab\");
@@ -10563,7 +10536,6 @@ fn a_brand_pattern_the_regex_crate_rejects_names_the_type_and_quotes_the_parse_e
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_pattern_javascript_cannot_carry_names_the_type_and_the_construct() {
     for (pattern, construct) in UNPORTABLE_PROBE_PATTERNS {
@@ -10579,14 +10551,12 @@ fn a_brand_pattern_javascript_cannot_carry_names_the_type_and_the_construct() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_pattern_naming_a_group_the_rust_way_clears_the_guard() {
     let errors = brand_pattern_errors("^(?P<word>[a-z]+)$");
     assert!(errors.is_empty(), "got: {errors:?}");
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_pattern_admitting_every_value_names_the_type_and_says_so() {
     for pattern in ["", "^", "$", "|", "a*", "^a*"] {
@@ -10607,7 +10577,6 @@ fn a_brand_pattern_admitting_every_value_names_the_type_and_says_so() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_pattern_that_is_one_assertion_and_nothing_else_names_the_type_and_says_so() {
     for pattern in [r"\b", r"\B"] {
@@ -10628,7 +10597,6 @@ fn a_brand_pattern_that_is_one_assertion_and_nothing_else_names_the_type_and_say
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_pattern_that_still_constrains_clears_the_guard() {
     for pattern in ["^$", "^a*$", r"\b\w+"] {
@@ -10637,7 +10605,6 @@ fn a_brand_pattern_that_still_constrains_clears_the_guard() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_over_a_map_with_an_unwritable_key_is_refused() {
     register_alias_info("Doc", "Doc", "doc_schema", AliasKind::NoEnumMembers);
@@ -10676,7 +10643,6 @@ fn a_brand_over_a_map_with_an_unwritable_key_is_refused() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_over_a_writable_map_key_clears_the_guard() {
     register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
@@ -10727,7 +10693,6 @@ fn a_brand_over_a_renderable_slot_clears_the_guard() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn each_string_constraint_alone_rejects_a_numeric_inner() {
     for args in [
@@ -10749,7 +10714,6 @@ fn each_string_constraint_alone_rejects_a_numeric_inner() {
 }
 
 /// The shapes whose surfaces read the string constraints as something other than a string check.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn string_constraints_over_a_non_string_inner_are_rejected() {
     for (inner, shape) in [
@@ -10784,7 +10748,6 @@ fn string_constraints_over_a_non_string_inner_are_rejected() {
 }
 
 /// A brand over a list takes the two lengths, which count its items, whatever the list holds.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_length_over_a_list_inner_passes_and_a_pattern_beside_it_is_refused() {
     for inner in [
@@ -10830,7 +10793,6 @@ fn a_length_over_a_list_inner_passes_and_a_pattern_beside_it_is_refused() {
 }
 
 /// A list no transparent wrapper holds is refused the lengths, as it was.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_length_over_a_list_behind_a_cell_or_a_borrow_is_refused() {
     for inner in [
@@ -10852,7 +10814,6 @@ fn a_length_over_a_list_behind_a_cell_or_a_borrow_is_refused() {
 }
 
 /// The inners that carry the constraints faithfully.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn string_constraints_over_a_string_shaped_inner_pass() {
     for inner in [
@@ -10877,14 +10838,12 @@ fn string_constraints_over_a_string_shaped_inner_pass() {
 
 /// Registers a name carrying the value surface a `#[model_schema()]` item's own expansion would
 /// have recorded for it, standing in for that expansion.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn seed_value_shape(rust_ident: &str, shape: Option<&'static str>) {
     seed_published_shape(rust_ident, PublishedShape::Flat(shape));
 }
 
 /// The same, for a name whose own target is one of its parameters and which therefore records a
 /// position rather than a word.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn seed_published_shape(rust_ident: &str, shape: PublishedShape) {
     register_alias_info(
         rust_ident,
@@ -10896,7 +10855,6 @@ fn seed_published_shape(rust_ident: &str, shape: PublishedShape) {
 }
 
 /// A brand's guard failures for a `pattern` over the named inner, spelled as a bare name.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn brand_over_named_inner_errors(inner: &str) -> Vec<String> {
     let ty: syn::Type = syn::parse_str(inner).unwrap();
     branded_errors_with(
@@ -10908,7 +10866,6 @@ fn brand_over_named_inner_errors(inner: &str) -> Vec<String> {
     )
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn string_constraints_over_a_named_inner_the_registry_answers_for_are_rejected() {
     for (inner, shape) in [
@@ -10931,7 +10888,6 @@ fn string_constraints_over_a_named_inner_the_registry_answers_for_are_rejected()
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn string_constraints_over_a_named_inner_the_registry_calls_a_string_pass() {
     seed_value_shape("StringSibling", None);
@@ -10939,7 +10895,6 @@ fn string_constraints_over_a_named_inner_the_registry_calls_a_string_pass() {
     assert!(errors.is_empty(), "got: {errors:?}");
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn string_constraints_over_a_name_the_registry_cannot_answer_for_pass() {
     let bare = brand_over_named_inner_errors("SiblingRegisteredNowhere");
@@ -10961,7 +10916,6 @@ fn string_constraints_over_a_name_the_registry_cannot_answer_for_pass() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn string_constraints_over_a_name_written_over_the_brands_own_parameter_are_rejected() {
     for inner in [
@@ -10995,7 +10949,6 @@ fn string_constraints_over_a_name_written_over_the_brands_own_parameter_are_reje
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn string_constraints_over_a_registered_name_carrying_the_brands_parameter_are_rejected() {
     seed_value_shape("RegisteredStringGeneric", None);
@@ -11014,7 +10967,6 @@ fn string_constraints_over_a_registered_name_carrying_the_brands_parameter_are_r
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_records_the_value_surface_its_inner_publishes() {
     seed_value_shape("RecordedOpaqueSibling", Some("opaque"));
@@ -11043,7 +10995,6 @@ fn a_brand_records_the_value_surface_its_inner_publishes() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_over_its_own_parameter_records_the_position_it_publishes() {
     for (inner, expected) in [
@@ -11072,7 +11023,6 @@ fn a_brand_over_its_own_parameter_records_the_position_it_publishes() {
 
 /// The surface a brand's own registration records, built the way `register_branded_newtype` builds
 /// it.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn brand_surface(item: &syn::ItemStruct) -> super::Surface {
     super::Surface::written(
         &super::branded_inner_value_surface(&item.generics, item.fields.iter().next().unwrap()),
@@ -11080,7 +11030,6 @@ fn brand_surface(item: &syn::ItemStruct) -> super::Surface {
     )
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn string_constraints_over_a_parameter_publisher_read_the_argument_written_for_it() {
     seed_published_shape("PublishesItsParameter", PublishedShape::Parameter(0));
@@ -11104,7 +11053,6 @@ fn string_constraints_over_a_parameter_publisher_read_the_argument_written_for_i
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_recorded_position_is_read_off_the_arguments_the_reference_writes() {
     seed_published_shape("PublishesItsSecond", PublishedShape::Parameter(1));
@@ -11118,7 +11066,6 @@ fn a_recorded_position_is_read_off_the_arguments_the_reference_writes() {
 
 /// The question a constrained brand leaves where the registry has no record, spelled as the brand's
 /// own expansion would leave it.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn ask_about(brand: &syn::ItemStruct) -> bool {
     deferred_shape_question(brand, &pattern_args()).is_some_and(|question| {
         record_shape_question(question);
@@ -11128,7 +11075,6 @@ fn ask_about(brand: &syn::ItemStruct) -> bool {
 
 /// A brand written over the given inner, under a name that is the same in both declaration orders
 /// so the two refusals can be read against each other.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn brand_over(inner: &str) -> syn::ItemStruct {
     let ty: syn::Type = syn::parse_str(inner).unwrap();
     syn::parse_quote! {
@@ -11139,7 +11085,6 @@ fn brand_over(inner: &str) -> syn::ItemStruct {
 
 /// What the expansion registering a name emits for the questions asked about it, as rendered
 /// `compile_error!` token strings.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn deferred_refusals_for(rust_ident: &str) -> Vec<String> {
     let name = syn::Ident::new(rust_ident, proc_macro2::Span::call_site());
     deferred_shape_refusals(Some(&name))
@@ -11148,7 +11093,6 @@ fn deferred_refusals_for(rust_ident: &str) -> Vec<String> {
         .collect()
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_question_left_where_the_registry_was_silent_is_answered_by_the_later_registration() {
     let brand = brand_over("AnsweredLater<u32>");
@@ -11171,7 +11115,6 @@ fn a_question_left_where_the_registry_was_silent_is_answered_by_the_later_regist
     assert!(errors[0].contains("numeric"), "got: {}", errors[0]);
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn both_orders_of_the_same_pair_refuse_in_one_wording() {
     assert!(ask_about(&brand_over("WordingBelow<u32>")));
@@ -11189,7 +11132,6 @@ fn both_orders_of_the_same_pair_refuse_in_one_wording() {
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_question_a_string_argument_answers_settles_silently() {
     assert!(ask_about(&brand_over("SettlesSilently<String>")));
@@ -11198,7 +11140,6 @@ fn a_question_a_string_argument_answers_settles_silently() {
     assert!(errors.is_empty(), "got: {errors:?}");
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_question_no_registration_reaches_stays_unanswered() {
     assert!(ask_about(&brand_over("NeverRegisters<u32>")));
@@ -11206,7 +11147,6 @@ fn a_question_no_registration_reaches_stays_unanswered() {
     assert!(errors.is_empty(), "got: {errors:?}");
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_the_registry_answers_leaves_no_question() {
     seed_published_shape("AlreadyAnswering", PublishedShape::Parameter(0));
@@ -11218,7 +11158,6 @@ fn a_brand_the_registry_answers_leaves_no_question() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_with_nothing_to_append_asks_nothing() {
     assert!(
@@ -11236,7 +11175,6 @@ fn a_brand_with_nothing_to_append_asks_nothing() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_deferred_answer_reads_the_record_the_consult_would_have_read() {
     assert!(ask_about(&brand_over("FlatlyNumeric")));
@@ -11257,7 +11195,6 @@ fn a_deferred_answer_reads_the_record_the_consult_would_have_read() {
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_tuple_struct_records_the_value_surface_its_slots_publish() {
     for (decl, expected) in [
@@ -11298,7 +11235,6 @@ fn a_tuple_struct_records_the_value_surface_its_slots_publish() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn string_constraints_over_the_brands_own_type_parameter_consult_the_declared_default() {
     for inner in ["T", "U"] {
@@ -11314,7 +11250,6 @@ fn string_constraints_over_the_brands_own_type_parameter_consult_the_declared_de
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn string_constraints_over_the_brands_own_type_parameter_with_a_string_default_pass() {
     let errors = branded_errors_with(
@@ -11330,7 +11265,7 @@ fn string_constraints_over_the_brands_own_type_parameter_with_a_string_default_p
 }
 
 /// A bare, a wrapped, and an unrelated parameter each substitute as expected.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn declared_defaults_are_substituted_through_the_inners_shape() {
     let parameters = ["IdType".to_owned()];
@@ -11355,7 +11290,6 @@ fn declared_defaults_are_substituted_through_the_inners_shape() {
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn string_constraints_over_the_brands_own_type_parameter_with_a_non_string_default_are_rejected() {
     let errors = branded_errors_with(
@@ -11383,7 +11317,6 @@ fn string_constraints_over_the_brands_own_type_parameter_with_a_non_string_defau
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_unconstrained_brand_over_a_non_string_inner_passes() {
     for inner in [
@@ -11403,7 +11336,6 @@ fn an_unconstrained_brand_over_a_non_string_inner_passes() {
 }
 
 /// The message has to name the surfaces that disagree, or it reads as an arbitrary restriction.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn the_constraint_guard_message_names_the_constraints_and_the_surfaces() {
     let errors = branded_errors_with(
@@ -11422,7 +11354,7 @@ fn the_constraint_guard_message_names_the_constraints_and_the_surfaces() {
     }
 }
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn cfg_attr_wrapped_serde_on_a_branded_type_is_rejected() {
     let errors = branded_errors(&syn::parse_quote! {
@@ -11436,7 +11368,7 @@ fn cfg_attr_wrapped_serde_on_a_branded_type_is_rejected() {
     assert!(errors[0].contains("cfg_attr"), "got: {}", errors[0]);
 }
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn cfg_attr_wrapped_serde_on_a_branded_inner_slot_is_rejected() {
     let errors = branded_errors(&syn::parse_quote! {
@@ -11449,7 +11381,6 @@ fn cfg_attr_wrapped_serde_on_a_branded_inner_slot_is_rejected() {
     assert!(errors[0].contains("#[serde(...)]"), "got: {}", errors[0]);
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn branded_newtype_over_option_is_rejected() {
     let errors = branded_errors(&syn::parse_quote! {
@@ -11462,7 +11393,6 @@ fn branded_newtype_over_option_is_rejected() {
     assert!(errors[0].contains("null"), "got: {}", errors[0]);
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn generic_branded_newtype_over_option_is_rejected() {
     let errors = branded_errors(&syn::parse_quote! {
@@ -11473,7 +11403,6 @@ fn generic_branded_newtype_over_option_is_rejected() {
     assert!(errors[0].contains("Option"), "got: {}", errors[0]);
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn compliant_branded_newtype_passes_every_guard() {
     let errors = branded_errors(&syn::parse_quote! {
@@ -12079,6 +12008,14 @@ fn an_item_refused_for_an_example_beside_a_const_is_re_emitted_without_its_membe
     );
 }
 
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 #[test]
 fn an_item_refused_for_a_const_argument_is_re_emitted_without_its_members_keys() {
     assert_refused_without_member_keys(
@@ -12131,7 +12068,6 @@ fn a_shape_refused_before_its_members_are_walked_is_re_emitted_without_their_key
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_refused_by_its_guards_is_re_emitted_without_its_members_keys() {
     assert_refused_without_member_keys(
@@ -12796,7 +12732,7 @@ fn decode_with_is_generated_on_every_enum_form_serde_writes() {
     }
 }
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn decode_with_reads_an_untagged_enums_constrained_member_through_its_hook() {
     let expanded = expansion_under(
@@ -12996,7 +12932,7 @@ fn a_type_declared_above_is_held_by_how_serde_writes_it() {
     }
 }
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn decode_with_reads_a_constrained_brand_with_the_brands_own_reader() {
     let expanded = expansion_under(
@@ -13068,7 +13004,6 @@ fn decode_with_bounds_its_own_impls_and_nothing_else_of_a_generic_type() {
     );
     let unflagged = expansion_under("default_types(T = String)", source);
     assert!(!unflagged.contains("DeserializeOwned"), "got: {unflagged}");
-    #[cfg(any(feature = "typescript", feature = "zod"))]
     assert!(
         expanded.contains("impl < T > DecodeEnvelope < T > {"),
         "got: {expanded}"
@@ -14832,7 +14767,7 @@ fn a_flagged_type_names_the_type_it_reaches_and_never_its_module() {
     assert!(!walker.contains("decode_inner_schema"), "got: {walker}");
 }
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn what_a_schema_module_already_held_reads_the_authors_scope_past_the_added_names() {
     // A model in a shared slice and in a boxed one is one the type's unjudged read does not reach,
@@ -15179,7 +15114,7 @@ fn a_filling_reaching_an_undescribable_std_type_is_refused_at_the_entry() {
     ] {
         let messages = default_types_messages(
             "pub struct Probe<ValueType> { pub held: ValueType }",
-            &format!("default_types(ValueType = {written})"),
+            &format!("default_types(ValueType = {written}), enable = [\"jsonschema\"]"),
         );
         assert_eq!(messages.len(), 1, "for {written}: {messages:?}");
         for needle in [
@@ -15203,7 +15138,7 @@ fn a_filling_reaching_an_undescribable_std_type_is_refused_at_the_entry() {
 fn an_undescribable_std_filling_refusal_is_spanned_on_the_filling() {
     let refusals = default_types_refusals(
         "pub struct Probe<IdType, HeldType> { pub id: IdType, pub held: HeldType }",
-        "default_types(IdType = String, HeldType = OsString)",
+        "default_types(IdType = String, HeldType = OsString), enable = [\"jsonschema\"]",
     );
     assert_eq!(refusals.len(), 1, "got: {refusals:?}");
     assert_eq!(
@@ -15234,7 +15169,7 @@ fn a_filling_reaching_an_unwritable_map_key_is_refused_at_the_entry() {
     ] {
         let messages = default_types_messages(
             "pub struct Probe<ValueType> { pub held: ValueType }",
-            &format!("default_types(ValueType = {written})"),
+            &format!("default_types(ValueType = {written}), enable = [\"jsonschema\"]"),
         );
         assert_eq!(messages.len(), 1, "for {written}: {messages:?}");
         for needle in [
@@ -15263,7 +15198,9 @@ fn an_unwritable_map_key_filling_refusal_is_spanned_on_the_filling() {
     ] {
         let refusals = default_types_refusals(
             "pub struct Probe<IdType, HeldType> { pub id: IdType, pub held: HeldType }",
-            &format!("default_types(IdType = String, HeldType = {written})"),
+            &format!(
+                "default_types(IdType = String, HeldType = {written}), enable = [\"jsonschema\"]"
+            ),
         );
         assert_eq!(refusals.len(), 1, "for {written}: {refusals:?}");
         assert_eq!(
@@ -15275,7 +15212,7 @@ fn an_unwritable_map_key_filling_refusal_is_spanned_on_the_filling() {
 
     let undescribable = default_types_refusals(
         "pub struct Probe<IdType, HeldType> { pub id: IdType, pub held: HeldType }",
-        "default_types(IdType = String, HeldType = HashMap<String, OsString>)",
+        "default_types(IdType = String, HeldType = HashMap<String, OsString>), enable = [\"jsonschema\"]",
     );
     assert_eq!(
         undescribable[0].span().source_text().as_deref(),
@@ -15304,7 +15241,7 @@ fn a_filling_with_a_writable_map_key_clears_the_guard() {
 fn an_undescribable_filling_refusal_is_spanned_on_the_filling() {
     let refusals = default_types_refusals(
         "pub struct Probe<WideType, NarrowType> { pub wide: WideType, pub narrow: NarrowType }",
-        "default_types(WideType = String, NarrowType = i128)",
+        "default_types(WideType = String, NarrowType = i128), enable = [\"jsonschema\"]",
     );
     assert_eq!(refusals.len(), 1, "got: {refusals:?}");
     assert_eq!(refusals[0].span().source_text().as_deref(), Some("i128"));
@@ -15868,6 +15805,14 @@ fn const_argument_messages(source: &str) -> Vec<String> {
         .collect()
 }
 
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 #[test]
 fn a_const_handed_to_a_written_type_as_an_argument_is_refused() {
     for (source, label) in [
@@ -15896,6 +15841,14 @@ fn a_const_handed_to_a_written_type_as_an_argument_is_refused() {
     }
 }
 
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 #[test]
 fn a_const_argument_refusal_is_spanned_on_the_argument() {
     let refusals =
@@ -15904,6 +15857,14 @@ fn a_const_argument_refusal_is_spanned_on_the_argument() {
     assert_eq!(refusals[0].span().source_text().as_deref(), Some("WIDTH"));
 }
 
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    )
+))]
 #[test]
 fn a_const_argument_is_found_under_every_wrapper_it_can_be_written_beneath() {
     for source in [
@@ -16267,7 +16228,6 @@ fn an_item_refused_for_an_indexmap_name_is_emitted_with_the_refusal_alone() {
 
 /// Builds the `Display` assertion for the sole field of `source`, parsed from text so its spans
 /// carry file locations and `source_text()` can report what they point at.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn display_assertion(source: &str) -> proc_macro2::TokenStream {
     let item: syn::ItemStruct = syn::parse_str(source).unwrap();
     let field = item.fields.iter().next().unwrap();
@@ -16303,7 +16263,6 @@ fn assert_points_only_at(tokens: &proc_macro2::TokenStream, expected: &str, cont
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn the_span_probe_sees_an_unlocated_token_stream() {
     let tokens = quote::quote! { const _: () = {}; };
@@ -16311,7 +16270,6 @@ fn the_span_probe_sees_an_unlocated_token_stream() {
     assert_eq!(located_source_texts(&tokens), Vec::<String>::new());
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn display_assertion_names_the_trait_and_points_at_the_inner_field() {
     let tokens = display_assertion("pub struct Tags(pub Vec<String>);");
@@ -16324,7 +16282,6 @@ fn display_assertion_names_the_trait_and_points_at_the_inner_field() {
     assert_eq!(tokens.span().source_text().as_deref(), Some("Vec<String>"));
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn display_assertion_is_skipped_when_the_inner_names_a_generic_param() {
     for source in [
@@ -16338,7 +16295,6 @@ fn display_assertion_is_skipped_when_the_inner_names_a_generic_param() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn display_impl_delegates_from_the_inner_field_span() {
     let item: syn::ItemStruct = syn::parse_str("pub struct UserId(pub String);").unwrap();
@@ -16364,7 +16320,6 @@ fn display_impl_delegates_from_the_inner_field_span() {
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn generic_display_impl_bounds_every_type_parameter() {
     let item: syn::ItemStruct =
@@ -16382,7 +16337,6 @@ fn generic_display_impl_bounds_every_type_parameter() {
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn display_impl_states_the_display_bound_of_a_parameter_once() {
     let header_of = |source: &str| {
@@ -16421,7 +16375,6 @@ fn display_impl_states_the_display_bound_of_a_parameter_once() {
 }
 
 /// Builds the whole `Display` block — assertion plus impl — for the sole field of `source`.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn display_tokens(source: &str, args: &proc_macro2::TokenStream) -> String {
     let item: syn::ItemStruct = syn::parse_str(source).unwrap();
     let field = item.fields.iter().next().unwrap();
@@ -16435,7 +16388,7 @@ fn display_tokens(source: &str, args: &proc_macro2::TokenStream) -> String {
     .to_string()
 }
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn constraints_keep_the_display_assertion_when_the_brand_opts_out_of_the_impl() {
     let tokens = display_tokens(
@@ -16452,7 +16405,6 @@ fn constraints_keep_the_display_assertion_when_the_brand_opts_out_of_the_impl() 
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn the_display_block_carries_only_the_impl_once_the_impl_is_emitted() {
     let impl_only = display_tokens("pub struct UserId(pub String);", &quote::quote! {});
@@ -16483,7 +16435,7 @@ fn the_display_block_carries_only_the_impl_once_the_impl_is_emitted() {
 /// How many tokens of each `to_string()` call site a constrained brand expands to point back at
 /// the inner field. Built from parsed source, so a token that carries the inner type's span has a
 /// location to report and a macro-synthesized one does not.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 fn constrained_brand_inner_spanned_tokens(source: &str, inner: &str) -> (usize, usize) {
     let item: syn::ItemStruct = syn::parse_str(source).unwrap();
     let args = super::parse_model_schema_args(quote::quote! { pattern = "^[a-z]+$" });
@@ -16502,7 +16454,7 @@ fn constrained_brand_inner_spanned_tokens(source: &str, inner: &str) -> (usize, 
     (count(&bound.alone), count(&validate_method))
 }
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn constrained_to_string_calls_carry_the_inner_fields_location() {
     let (bound_alone, validate_method) =
@@ -16520,13 +16472,13 @@ fn constrained_to_string_calls_carry_the_inner_fields_location() {
 /// A constrained brand's emitted text for an inner spelled `inner`, as the three streams it is made
 /// of: the validator, the method that answers for the bound alone, and the `validate()` method,
 /// each of which calls into the first.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 fn constrained_brand_emission(inner: &str, module: &str) -> (String, String, String) {
     brand_emission_under(inner, module, quote::quote! { pattern = "^[a-z]+$" })
 }
 
 /// [`constrained_brand_emission`] under the checks `written` on the brand.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 fn brand_emission_under(
     inner: &str,
     module: &str,
@@ -16552,7 +16504,7 @@ fn brand_emission_under(
 
 /// A brand over a list is counted by the validator a list field gets, under the brand's own name
 /// and reporting under no field.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn a_brand_over_a_list_counts_its_items_where_a_string_brand_measures_its_text() {
     let lengths = || quote::quote! { minLength = 1, maxLength = 3 };
@@ -16591,7 +16543,7 @@ fn a_brand_over_a_list_counts_its_items_where_a_string_brand_measures_its_text()
 }
 
 /// The constrained path's generated text is what it has always been.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn the_constrained_path_renders_the_same_to_string_calls_it_always_has() {
     for spelling in ["String", "Option<PathBuf>", "Slug"] {
@@ -16617,7 +16569,7 @@ fn the_constrained_path_renders_the_same_to_string_calls_it_always_has() {
     }
 }
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn a_path_brand_is_checked_through_its_lossy_rendering() {
     for spelling in [
@@ -16894,7 +16846,6 @@ fn a_required_map_value_carries_no_nullable_wrap() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_alias_registers_the_kind_of_what_it_targets() {
     register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
@@ -16930,7 +16881,6 @@ fn an_alias_registers_the_kind_of_what_it_targets() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_alias_and_a_brand_answer_alike_for_the_same_target() {
     register_alias_info("Doc", "Doc", "doc_schema", AliasKind::NoEnumMembers);
@@ -16960,7 +16910,7 @@ fn an_alias_and_a_brand_answer_alike_for_the_same_target() {
     }
 }
 
-#[cfg(all(feature = "chrono", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "chrono")]
 #[test]
 fn an_alias_of_a_chrono_target_is_stringified() {
     for target in ["NaiveDate", "NaiveTime", "NaiveDateTime", "DateTime<Utc>"] {
@@ -16970,7 +16920,7 @@ fn an_alias_of_a_chrono_target_is_stringified() {
     }
 }
 
-#[cfg(all(feature = "mongodb", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "mongodb")]
 #[test]
 fn an_alias_of_an_object_id_stays_refused() {
     let ty: syn::Type = syn::parse_str("ObjectId").unwrap();
@@ -16978,7 +16928,6 @@ fn an_alias_of_an_object_id_stays_refused() {
     assert_eq!(kind, AliasKind::NoEnumMembers);
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_alias_chain_carries_the_stringified_kind_to_its_end() {
     register_alias_info("Tick", "Tick", "tick_schema", AliasKind::Stringified);
@@ -16999,7 +16948,6 @@ fn an_alias_chain_carries_the_stringified_kind_to_its_end() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_alias_of_a_refused_target_is_refused_under_its_own_name() {
     register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
@@ -17027,7 +16975,6 @@ fn an_alias_of_a_refused_target_is_refused_under_its_own_name() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_alias_chain_carries_the_string_wire_kind_to_its_end() {
     register_alias_info(
@@ -17050,14 +16997,12 @@ fn an_alias_chain_carries_the_string_wire_kind_to_its_end() {
 }
 
 /// [`super::branded_alias_kind`] read off the one field a brand is written with.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn brand_kind(inner: &str) -> AliasKind {
     let inner_ty: syn::Type = syn::parse_str(inner).unwrap();
     let item: syn::ItemStruct = syn::parse_quote! { struct Brand(#inner_ty); };
     super::branded_alias_kind(item.fields.iter().next().unwrap())
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_registers_what_serde_writes_for_its_inner() {
     register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
@@ -17088,7 +17033,7 @@ fn a_brand_registers_what_serde_writes_for_its_inner() {
     }
 }
 
-#[cfg(all(feature = "chrono", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "chrono")]
 #[test]
 fn a_brand_over_a_chrono_inner_is_stringified() {
     for inner in ["NaiveDate", "NaiveTime", "NaiveDateTime", "DateTime<Utc>"] {
@@ -17100,13 +17045,12 @@ fn a_brand_over_a_chrono_inner_is_stringified() {
     }
 }
 
-#[cfg(all(feature = "mongodb", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "mongodb")]
 #[test]
 fn a_brand_over_an_object_id_stays_refused() {
     assert_eq!(brand_kind("ObjectId"), AliasKind::NoEnumMembers);
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_stringified_key_is_left_alone_wherever_it_is_written() {
     register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
@@ -17133,7 +17077,6 @@ fn a_stringified_key_is_left_alone_wherever_it_is_written() {
     assert!(refused.contains("Tags"), "got: {refused}");
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_alias_chain_carries_the_enum_kind_to_its_end() {
     register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
@@ -19392,7 +19335,7 @@ fn a_list_is_the_value_the_walk_ends_on() {
 }
 
 /// `held_as_a_list` is the constraint walk held to a list behind transparent wrappers alone.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn the_list_a_brand_holds_is_the_constraint_walks() {
     let no_list = [
@@ -21293,7 +21236,7 @@ fn expansion_over(source: &str) -> proc_macro2::TokenStream {
 }
 
 /// [`expansion_over`], carrying the `#[model_schema(...)]` arguments a bare source cannot write.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 fn expansion_with_args_over(args: &str, source: &str) -> proc_macro2::TokenStream {
     super::exec_model_schema(
         syn::parse_str(args).unwrap(),
@@ -21302,7 +21245,7 @@ fn expansion_with_args_over(args: &str, source: &str) -> proc_macro2::TokenStrea
 }
 
 /// A brand over a string or a path publishes the text a field's bound is measured on.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn a_brand_publishes_its_text_only_over_a_string_or_a_path() {
     for (args, source, text) in [
@@ -22232,7 +22175,7 @@ fn an_enum_is_recorded_untagged_wherever_its_list_writes_the_key() {
 }
 
 /// A brand over `Box<IdType>` expands without panicking, checked against `Box<String>`.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn a_constrained_brand_over_a_wrapped_parameter_expands_against_the_wrapped_default() {
     let tokens = expansion_with_args_over(
@@ -22252,7 +22195,7 @@ fn a_constrained_brand_over_a_wrapped_parameter_expands_against_the_wrapped_defa
 }
 
 /// A constrained generic brand's hook carries its own type identity and names no outside crate.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn a_constrained_generic_brand_defines_its_own_type_identity() {
     let generic = expansion_with_args_over(
@@ -22286,7 +22229,7 @@ fn a_constrained_generic_brand_defines_its_own_type_identity() {
 /// A parameter the brand's inner names is read at its declared default through the type
 /// identity, and a parameter beside a concrete inner changes nothing: the inner is judged at every
 /// filling by `validate_value` alone.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn only_a_brand_whose_inner_names_a_parameter_reads_at_the_declared_default() {
     let over_parameter = expansion_with_args_over(
@@ -22334,7 +22277,7 @@ fn only_a_brand_whose_inner_names_a_parameter_reads_at_the_declared_default() {
 
 /// The default a parameter takes where `default_types` leaves its entry out is the standard
 /// `String`, written at its full path.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn the_fallback_default_of_a_generic_brand_is_the_standard_string() {
     let rendered = expansion_with_args_over(
@@ -22355,7 +22298,7 @@ fn the_fallback_default_of_a_generic_brand_is_the_standard_string() {
 }
 
 /// Declares what the table of declared defaults reads, above the brands that name them.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 fn declare_the_names_a_default_may_be() {
     for (args, source) in [
         (
@@ -22376,7 +22319,7 @@ fn declare_the_names_a_default_may_be() {
 
 /// A generic brand with a string check reads its value as the declared default only where the
 /// expansion can prove the default writes every lifetime it has.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn a_declared_default_is_read_only_where_every_lifetime_it_has_is_written() {
     declare_the_names_a_default_may_be();
@@ -22429,7 +22372,7 @@ fn a_declared_default_is_read_only_where_every_lifetime_it_has_is_written() {
 }
 
 /// A generic brand with no string check is refused nothing, whatever its default.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn a_generic_brand_with_no_string_check_is_refused_no_default() {
     let expanded = expansion_with_args_over(
@@ -22442,7 +22385,7 @@ fn a_generic_brand_with_no_string_check_is_refused_no_default() {
 
 /// `validate()` is written once, in the `impl` that holds the type's delegates, under the
 /// generics the type declares: a type with a parameter gets no second `impl` at one filling.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn validate_is_written_once_in_the_types_own_impl() {
     for (args, source, own_impl) in [
@@ -22533,7 +22476,7 @@ fn validate_is_written_once_in_the_types_own_impl() {
 /// A generic brand's `validate()` hands the value to the function that reads it as its declared
 /// default, under no bound the brand's author did not write, and no function answers a reference
 /// to that default. The read asks of the parameter what serde's derive asks, and no `Display`.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn a_generic_brands_checks_are_run_by_the_function_that_asks_which_filling_it_is() {
     let generic = expansion_with_args_over(
@@ -22600,7 +22543,7 @@ fn a_generic_brands_checks_are_run_by_the_function_that_asks_which_filling_it_is
 /// A declared default that writes a lifetime is compared and read at the lifetime of the borrow,
 /// so a value is never read at a lifetime longer than its own. Nothing else asks which filling
 /// the brand holds.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn a_default_that_writes_a_lifetime_is_read_at_the_borrows_own() {
     let rendered = expansion_with_args_over(
@@ -22625,7 +22568,7 @@ fn a_default_that_writes_a_lifetime_is_read_at_the_borrows_own() {
 }
 
 /// Every lifetime a type writes is replaced, and one a `for<...>` or a signature binds is not.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn a_type_is_written_at_one_lifetime() {
     for (written, at_one) in [
@@ -22728,7 +22671,6 @@ fn a_parenthesis_inside_a_quoted_text_does_not_end_a_map() {
 
 /// A brand that carries no bound and names no function keeps the read serde's derive writes it:
 /// its item is emitted as it was written, and nothing beside it is a read of the macro's.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_with_no_rule_gains_no_read_of_the_macros() {
     for (args, source, emitted) in [

@@ -1,6 +1,5 @@
 //! A type that names a `preprocess` reads a BSON document as it reads a JSON text: each function
 //! is handed its payload as a `serde_json::Value`, which the document crosses to through serde.
-//! No bound is held in a build with no schema surface, so the one test of a bound is split.
 
 use core::cell::RefCell;
 use stored_parcel_schema::DecodeWith as _;
@@ -155,8 +154,7 @@ fn parcel(label: &str, fragile: &[&str]) -> StoredParcel {
 }
 
 /// An id and a date are read to the values a type that names no function reads them to, by this
-/// major's own read of a document and through `bson::Deserializer`. It answers the same in a
-/// build with no schema surface: no bound is declared here.
+/// major's own read of a document and through `bson::Deserializer`.
 #[test]
 fn a_row_is_read_to_the_values_a_type_that_names_no_function_reads() {
     let plain = read_document::<PlainRow>(row()).unwrap();
@@ -182,8 +180,7 @@ fn a_row_is_read_to_the_values_a_type_that_names_no_function_reads() {
 }
 
 /// The function of a type is handed the document as the JSON value serde reads from it: an id
-/// and a date as the objects extended JSON writes them, and every number as a JSON number. It
-/// answers the same in a build with no schema surface.
+/// and a date as the objects extended JSON writes them, and every number as a JSON number.
 #[test]
 fn a_function_is_handed_the_document_as_a_json_value() {
     HANDED.with(|handed| handed.borrow_mut().clear());
@@ -225,8 +222,7 @@ fn every_read(stored: &Document) -> ([Option<StoredParcel>; 4], u32) {
 }
 
 /// Rows 1 and 4 of the sample, by each read of a document: a label is read without the spaces
-/// at its ends, and a document that holds no `fragileItemCodes` with an empty list. It answers
-/// the same in a build with no schema surface: neither row breaks the bound.
+/// at its ends, and a document that holds no `fragileItemCodes` with an empty list.
 #[test]
 fn a_document_is_read_through_each_function_by_every_read() {
     let row_1 = doc! { "label": "  A  ", "itemCodeList": ["x"], "fragileItemCodes": ["x"] };
@@ -243,7 +239,7 @@ fn a_document_is_read_through_each_function_by_every_read() {
 
 /// The callback is handed the document the function of the type corrected, with each number in
 /// the type the crossing gives it: the list the function added is there, and the number stored
-/// as an `Int32` is an `Int64`. It answers the same in a build with no schema surface.
+/// as an `Int32` is an `Int64`.
 #[test]
 fn the_callback_is_handed_the_document_the_function_of_the_type_corrected() {
     let mut handed: Option<Document> = None;
@@ -275,9 +271,7 @@ fn the_callback_is_handed_the_document_the_function_of_the_type_corrected() {
     assert_eq!(read.ok(), Some(parcel("A", &[])));
 }
 
-/// A build with a schema surface holds the label to its bound, on what the label's function
-/// answered.
-#[cfg(any(feature = "typescript", feature = "zod"))]
+/// The label is held to its bound on what the label's function answered.
 #[test]
 fn a_label_its_function_emptied_is_refused_where_the_bound_is_held() {
     let row_2 = doc! { "label": "   ", "itemCodeList": ["x"], "fragileItemCodes": ["x"] };
@@ -295,25 +289,30 @@ fn a_label_its_function_emptied_is_refused_where_the_bound_is_held() {
     );
 }
 
-/// A build with no schema surface holds no bound, and the label its function emptied is read.
-#[cfg(not(any(feature = "typescript", feature = "zod")))]
+/// The callback is handed the label its function emptied, once, as the bound's issue.
 #[test]
-fn a_label_its_function_emptied_is_read_where_no_bound_is_held() {
+fn a_label_its_function_emptied_is_handed_to_the_callback() {
     let row_2 = doc! { "label": "   ", "itemCodeList": ["x"], "fragileItemCodes": ["x"] };
+    let mut calls = 0_u32;
+    let read = StoredParcel::from_bson_with(row_2, |_, _| {
+        calls += 1;
+        stored_parcel_schema::Verdict::Reject
+    });
     assert_eq!(
-        read_document::<StoredParcel>(row_2.clone()),
-        Ok(parcel("", &["x"]))
+        read.map_err(|refused| refused.to_string()),
+        Err(
+            "label: invalid: expected String, found String(\"   \"): too short: minimum length \
+             is 1, got 0"
+                .to_owned()
+        )
     );
-    assert_eq!(
-        StoredParcel::from_bson_piped(row_2, &[]).ok(),
-        Some(parcel("", &["x"]))
-    );
+    assert_eq!(calls, 1);
 }
 
 /// What a `serde_json::Value` cannot hold: a binary and a `Decimal128` are a byte array to
 /// serde, which no JSON value is, and a number that is none reaches the function as `null`. Every
 /// read of a type that names a function for itself refuses them, and a type that names none
-/// reads the number. It answers the same in a build with no schema surface.
+/// reads the number.
 #[test]
 fn a_document_that_holds_what_no_json_value_can_is_refused() {
     let no_json_value = "invalid type: byte array, expected any valid JSON value";
@@ -354,8 +353,7 @@ fn a_document_that_holds_what_no_json_value_can_is_refused() {
 }
 
 /// The document the callback is handed has crossed back from the JSON value: an id and a date
-/// are the BSON values they were, and a number stored as an `Int32` is an `Int64`. It answers
-/// the same in a build with no schema surface: no bound is declared here.
+/// are the BSON values they were, and a number stored as an `Int32` is an `Int64`.
 #[test]
 fn an_id_and_a_date_cross_back_to_the_values_they_were() {
     let mut stored = row();

@@ -107,8 +107,7 @@ pub const FREEBOARD: [&str; 3] = [
 pub const BILGING: [&str; 3] = [r#"{"North":2}"#, r#"{"West":2}"#, r#"{"North":"x"}"#];
 
 /// What [`Limber`] is read from: a model that keeps its rule, one that breaks it, and one that does
-/// not read. A build with no schema surface holds no rule in Rust, and declares neither.
-#[cfg(any(feature = "typescript", feature = "zod"))]
+/// not read.
 pub const LIMBER: [&str; 3] = [
     r#"{"north":{"mark":"x"}}"#,
     r#"{"north":{"mark":""}}"#,
@@ -432,7 +431,6 @@ pub struct Bilging {
 }
 
 /// The model [`Limber`]'s map holds, whose `validate()` holds its mark to a length.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Scantling {
@@ -442,7 +440,6 @@ pub struct Scantling {
 
 /// An optional map of [`Scantling`]s: serde reads it as `None` where a model does not read, and
 /// reads a model that breaks its rule with no judgement, the holder's read refusing it.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Limber {
@@ -719,7 +716,6 @@ fn serde_reads_an_optional_flattened_map_as_none_wherever_an_entry_does_not_read
 
 /// An optional map of models is `None` where a model does not read, and a model that breaks its
 /// rule is read with no judgement and refused with its holder, under the place serde names.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn serde_reads_an_optional_flattened_map_of_models_as_none_where_a_model_does_not_read() {
     let limber = LIMBER.map(|payload| {

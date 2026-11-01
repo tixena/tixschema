@@ -3,7 +3,7 @@
 //! payload serde writes for it and what `validate()` answers of it.
 
 /// The places serde writes a member at, where a bound is held and a holder runs what it holds.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[path = "places.rs"]
 pub mod places;
 
@@ -80,7 +80,7 @@ Archive<u32>: passes
 /// The 13 lines of the shared table, in a build that holds `label` to its bound and runs a held
 /// type's `validate()`. A member's lines are in the order the parcel declares its members, which
 /// is the order of its names.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 pub const TABLE: &str = "\
 case 1: passes
 case 2: refused
@@ -438,7 +438,7 @@ pub fn parcel_cases() -> Vec<Case> {
 }
 
 /// Case 6 of the shared table, where a holder runs what it holds.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 pub fn manifest_case() -> Case {
     let held = manifest();
     case("case 6", &held, held.validate())

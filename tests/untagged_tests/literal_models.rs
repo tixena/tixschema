@@ -170,6 +170,7 @@ pub struct CalculationHolder {
 }
 
 /// Two variants hold the literal in an `Option`: an absent key matches both.
+#[cfg(feature = "zod")]
 #[model_schema()]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -189,6 +190,7 @@ pub enum BothOptional {
 }
 
 /// A variant holds the shared key under no literal.
+#[cfg(feature = "zod")]
 #[model_schema()]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -201,6 +203,7 @@ pub enum UnmarkedKey {
 }
 
 /// The model the newtype variant holds is declared below the enum.
+#[cfg(feature = "zod")]
 #[model_schema()]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -213,6 +216,7 @@ pub enum ModelBelow {
     },
 }
 
+#[cfg(feature = "zod")]
 #[model_schema()]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -223,6 +227,7 @@ pub struct FormulaBelow {
 }
 
 /// Two variants hold the same literal.
+#[cfg(feature = "zod")]
 #[model_schema()]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -340,6 +345,7 @@ pub struct AliasedPanel {
 }
 
 /// An enum that declares a type parameter.
+#[cfg(feature = "zod")]
 #[model_schema(default_types(ValueType = String))]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]

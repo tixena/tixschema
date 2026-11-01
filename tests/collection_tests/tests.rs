@@ -4,7 +4,7 @@
 use alloc::collections::{BTreeMap, BTreeSet, BinaryHeap, VecDeque};
 #[cfg(feature = "chrono")]
 use chrono::NaiveDate;
-#[cfg(all(feature = "chrono", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "chrono")]
 use chrono::{DateTime, NaiveDateTime, NaiveTime, Utc};
 use core::hash::BuildHasher;
 use core::iter::once;
@@ -285,22 +285,18 @@ struct StringKeyedEnumBrandTwin {
 
 /// A brand over the brand over a plain enum: every link publishes the enum's own schema with one
 /// more `.brand()` written onto it, so every link enumerates.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema(no_display)]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(transparent)]
 struct SlotBrandRef(SlotBrand);
 
 /// An alias of a plain enum, an alias of that alias, and an alias of the brand over the enum.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema()]
 type SlotAliasKey = MetricSlot;
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema()]
 type SlotAliasKeyRef = SlotAliasKey;
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema()]
 type SlotBrandAliasKey = SlotBrand;
 
@@ -308,7 +304,6 @@ type SlotBrandAliasKey = SlotBrand;
 /// positions a map is written in. A `HashMap` holds any subset of those members and serde writes
 /// the subset, so the Zod constructor has to admit one — while the name each key is written under
 /// keeps standing on TypeScript, an enum member name being a property key already.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct EnumeratedKeyedMaps {
@@ -329,7 +324,6 @@ struct EnumeratedKeyedMaps {
 /// The key of `EnumeratedKeyedMaps::forward`, declared below the map that keys by it: the registry
 /// holds no entry for it while that map expands, so the key's wire form is the one an unregistered
 /// name is guessed at.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum LaterSlot {
@@ -420,17 +414,14 @@ struct ChronoKeyedAliasTwin {
 }
 
 /// A brand over that brand: every link of the chain carries the same `"true"`/`"false"` wire.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(transparent)]
 struct EnabledRef(Enabled);
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema(enable = ["jsonschema"])]
 type EnabledKeyRef = EnabledKey;
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema(enable = ["jsonschema"])]
 type EnabledBrandKey = Enabled;
 
@@ -438,7 +429,6 @@ type EnabledBrandKey = Enabled;
 /// each of these keys as `"true"` or `"false"`, and that is what the two nominal surfaces have to
 /// state: `boolean` is no TypeScript property key, and the brand and alias names over it publish
 /// only the value-shaped schema that rejects the string serde wrote.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct BoolKeyedMaps {
@@ -456,33 +446,33 @@ struct BoolKeyedMaps {
 }
 
 /// A brand over a `DateTime<Tz>`.
-#[cfg(all(feature = "chrono", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "chrono")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(transparent)]
 struct Stamp(DateTime<Utc>);
 
-#[cfg(all(feature = "chrono", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "chrono")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(transparent)]
 struct StampRef(Stamp);
 
-#[cfg(all(feature = "chrono", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "chrono")]
 #[model_schema(enable = ["jsonschema"])]
 type StampKey = DateTime<Utc>;
 
-#[cfg(all(feature = "chrono", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "chrono")]
 #[model_schema(enable = ["jsonschema"])]
 type StampKeyRef = StampKey;
 
-#[cfg(all(feature = "chrono", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "chrono")]
 #[model_schema(enable = ["jsonschema"])]
 type StampBrandKey = Stamp;
 
 /// Every key kind whose value form already spells a TypeScript property key, in one place: each
 /// keeps that form, and the name a brand or alias adds over one keeps standing.
-#[cfg(all(feature = "chrono", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "chrono")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct PropertyKeyedMaps {
@@ -498,7 +488,7 @@ struct PropertyKeyedMaps {
 /// The `DateTime<Tz>` counterpart of [`BoolKeyedMaps`]. serde writes the key as the RFC 3339 string
 /// it renders the value into; `Date` is no TypeScript property key, and the value-shaped
 /// `z.coerce.date()` rewrites every key it accepts into a locale-dependent rendering.
-#[cfg(all(feature = "chrono", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "chrono")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct DateTimeKeyedMaps {
@@ -738,7 +728,6 @@ struct SiblingSlotValues {
 
 /// An alias whose target is a nested sequence: the alias publishes what a field written as the
 /// target publishes, so the levels have to survive the alias too.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema(enable = ["jsonschema"])]
 type MetricGrid = Vec<Vec<u32>>;
 
@@ -2434,7 +2423,6 @@ fn test_chrono_alias_keyed_maps_name_the_alias_as_the_key_type() {
 }
 
 /// The value every `bool`-keyed assertion below is read off, and the object serde writes for it.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn bool_keyed_maps() -> BoolKeyedMaps {
     BoolKeyedMaps {
         alias_of_brand: HashMap::from([(Enabled(true), 1)]),
@@ -2456,7 +2444,6 @@ fn bool_keyed_maps() -> BoolKeyedMaps {
 }
 
 #[test]
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn test_bool_keyed_maps_write_the_two_string_keys() {
     let maps = bool_keyed_maps();
     let payload = serde_json::to_value(&maps).unwrap();
@@ -2599,7 +2586,6 @@ fn test_bool_keyed_maps_describe_their_values_under_the_two_keys() {
 /// The value every enumerated-key assertion below is read off: one member of two in every map, and
 /// the other member in the maps whose value is a sibling, so no assertion can pass by holding the
 /// whole enumeration.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn enumerated_keyed_maps() -> EnumeratedKeyedMaps {
     EnumeratedKeyedMaps {
         alias_of_brand: HashMap::from([(SlotBrand(MetricSlot::Daily), 1)]),
@@ -2622,7 +2608,6 @@ fn enumerated_keyed_maps() -> EnumeratedKeyedMaps {
 }
 
 #[test]
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn test_enumerated_keyed_maps_write_only_the_members_they_hold() {
     let maps = enumerated_keyed_maps();
     let payload = serde_json::to_value(&maps).unwrap();
@@ -2768,7 +2753,7 @@ fn test_enumerated_keyed_maps_keep_the_document_that_admits_a_subset() {
 }
 
 /// The value every `DateTime<Tz>`-keyed assertion below is read off.
-#[cfg(all(feature = "chrono", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "chrono")]
 fn date_time_keyed_maps() -> DateTimeKeyedMaps {
     let stamp = DateTime::<Utc>::from_timestamp(1_700_000_000, 0).unwrap();
     DateTimeKeyedMaps {
@@ -2791,7 +2776,7 @@ fn date_time_keyed_maps() -> DateTimeKeyedMaps {
 }
 
 #[test]
-#[cfg(all(feature = "chrono", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "chrono")]
 fn test_date_time_keyed_maps_write_the_rfc_3339_key() {
     let maps = date_time_keyed_maps();
     let payload = serde_json::to_value(&maps).unwrap();
@@ -4105,7 +4090,6 @@ fn test_nested_sequences_validate_at_the_depth_they_are_written() {
 }
 
 #[test]
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn test_an_alias_of_a_nested_sequence_publishes_its_depth() {
     let grid: MetricGrid = vec![vec![7_u32]];
     assert!(

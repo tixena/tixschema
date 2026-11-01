@@ -1,7 +1,7 @@
 //! `validate()` runs the `validate()` of a model held as the value of a map, in a slot and in a
 //! tuple, and names it by the steps serde writes on the way to it.
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 mod a_model_held_in_a_map_a_slot_or_a_tuple {
     use alloc::collections::BTreeMap;
     use alloc::sync::Arc;

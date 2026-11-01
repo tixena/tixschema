@@ -46,8 +46,8 @@ fn a_type_that_lists_decode_with_alone_decodes_bson() {
     assert_eq!(piped.unwrap().number, 8);
 }
 
-/// A bound is listed where a schema surface publishes its validator.
-#[cfg(all(feature = "bson", any(feature = "typescript", feature = "zod")))]
+/// A held type's bound is listed by its holder's read.
+#[cfg(feature = "bson")]
 #[test]
 fn a_stored_holder_lists_the_issue_of_a_held_type_that_lists_decode_with_alone() {
     let mut calls = 0_u32;

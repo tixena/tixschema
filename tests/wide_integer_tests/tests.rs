@@ -194,7 +194,6 @@ fn an_untagged_member_is_read_from_its_number_and_chosen_by_its_bound() {
         Ok(WideUntagged::Small(4)),
         "within the bound"
     );
-    #[cfg(any(feature = "typescript", feature = "zod"))]
     assert_eq!(
         read::<WideUntagged>("40"),
         Err("data did not match any variant of untagged enum WideUntagged".to_owned()),
@@ -228,7 +227,6 @@ fn a_bound_holds_the_integer_and_a_default_is_read_where_the_key_is_left_out() {
         }),
         "within the bound, the default read"
     );
-    #[cfg(any(feature = "typescript", feature = "zod"))]
     assert_eq!(
         read::<WideBounded>(r#"{"level":6,"start":1}"#),
         Err("'level': too large: maximum is 5, got 6".to_owned()),
@@ -278,7 +276,6 @@ fn an_i64_through_an_alias_a_range_a_result_and_a_literal_travels_as_a_number() 
         Ok(reached()),
         "the numbers serde reads"
     );
-    #[cfg(any(feature = "typescript", feature = "zod"))]
     assert_eq!(
         read::<WideReached>(&REACHED.replace(r#""fixed":214"#, r#""fixed":215"#)),
         Err("'fixed': not the literal 214, got 215".to_owned()),
@@ -434,7 +431,6 @@ fn an_integer_literal_no_f64_holds_is_held_exactly() {
     let json = r#"{"exact":9007199254740993}"#;
     assert_eq!(written(&exact), json, "the number serde writes");
     assert_eq!(read::<WideExact>(json), Ok(exact), "the literal read");
-    #[cfg(any(feature = "typescript", feature = "zod"))]
     assert_eq!(
         read::<WideExact>(r#"{"exact":9007199254740992}"#),
         Err("'exact': not the literal 9007199254740993, got 9007199254740992".to_owned()),

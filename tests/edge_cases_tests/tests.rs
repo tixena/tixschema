@@ -3,13 +3,10 @@
 #[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
 use serde::{Deserialize, Serialize};
 
-#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
 use tixschema::model_schema;
 
-#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
 use std::collections::HashMap;
 
-#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
 #[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
@@ -19,7 +16,6 @@ struct Address {
     zip_code: String,
 }
 
-#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
 #[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
@@ -54,7 +50,6 @@ struct ReallyComplexTest {
     quadruple_nested: HashMap<String, QuadrupleNestedValue>,
 }
 
-#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
 #[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
@@ -62,7 +57,6 @@ struct SimpleComplexTest {
     nested_map_of_arrays: HashMap<String, Vec<HashMap<String, isize>>>,
 }
 
-#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
 // A map value that is itself a map is described at every level: the outer members are inner maps,
 // and those maps' own members carry the value type's schema.
 #[model_schema(enable = ["jsonschema"])]
@@ -76,7 +70,6 @@ struct NestedStringKeyedMaps {
     tallies_by_region: HashMap<String, HashMap<String, HashMap<String, isize>>>,
 }
 
-#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
 #[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]

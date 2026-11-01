@@ -228,14 +228,12 @@ use core::task::{Context as PollContext, Poll, Waker};
 use tixschema::{model_schema, service_schema};
 
 /// The key an argument becomes on the wire.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 const INVOICE_ID_KEY: &str = if cfg!(feature = "serde") {
     "invoiceId"
 } else {
     "invoice_id"
 };
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 const CUSTOMER_ID_KEY: &str = if cfg!(feature = "serde") {
     "customerId"
 } else {

@@ -2,12 +2,15 @@
 //! [`WRITTEN_AS`] with `z.discriminatedUnion` exactly where the variants are told apart by a
 //! `literal` on one key.
 
+#[cfg(feature = "zod")]
 use super::literal_models::{
     AliasedPanel, BothOptional, Calculation, Kind, ModelBelow, OmitsAsModel, OmitsBesideOption,
-    OmitsFirst, OmitsLast, OmitsTwice, ROWS, SameLiteral, UnmarkedKey, Valued, serde_reads,
+    OmitsFirst, OmitsLast, OmitsTwice, SameLiteral, UnmarkedKey, Valued,
 };
+use super::literal_models::{ROWS, serde_reads};
 
 /// Each enum the rule is held to, and the Zod text it is written as.
+#[cfg(feature = "zod")]
 pub const WRITTEN_AS: [(&str, Union); 11] = [
     ("Calculation", Union::Discriminated),
     ("BothOptional", Union::Plain),
@@ -23,6 +26,7 @@ pub const WRITTEN_AS: [(&str, Union); 11] = [
 ];
 
 /// How an enum's variants are joined in Zod.
+#[cfg(feature = "zod")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Union {
     Discriminated,
@@ -30,6 +34,7 @@ pub enum Union {
 }
 
 /// The Zod text of the type `name`, or the words that say there is none.
+#[cfg(feature = "zod")]
 fn zod_of(name: &str) -> String {
     match name {
         "BothOptional" => BothOptional::zod_schema(),
@@ -61,6 +66,7 @@ fn serde_reads_each_row_as_the_table_says() {
     }
 }
 
+#[cfg(feature = "zod")]
 #[test]
 fn zod_joins_the_variants_by_their_literal_exactly_where_the_rule_holds() {
     for (name, union) in WRITTEN_AS {
@@ -76,6 +82,7 @@ fn zod_joins_the_variants_by_their_literal_exactly_where_the_rule_holds() {
 
 /// An object that flattens the enum joins its discriminated union as the one operand it is, in
 /// place of one chain per variant.
+#[cfg(feature = "zod")]
 #[test]
 fn a_flattened_discriminated_union_is_one_operand() {
     let written = Kind::zod_schema();
@@ -86,6 +93,7 @@ fn a_flattened_discriminated_union_is_one_operand() {
 }
 
 /// An object that flattens an alias of the enum joins it as one operand too.
+#[cfg(feature = "zod")]
 #[test]
 fn a_flattened_alias_of_a_discriminated_union_is_one_operand() {
     let written = AliasedPanel::zod_schema();

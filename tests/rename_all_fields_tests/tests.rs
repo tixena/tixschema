@@ -84,7 +84,6 @@ enum PlainVariantCasing {
 
 /// The keys serde wrote in the object at `pointer` of the document for `value`, sorted so a key
 /// set can be compared against one read off a schema.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn wire_keys<T>(value: &T, pointer: &str) -> Vec<String>
 where
     T: Serialize,
@@ -93,7 +92,6 @@ where
     sorted_keys(payload.pointer(pointer).unwrap())
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn sorted_keys(object: &serde_json::Value) -> Vec<String> {
     let mut keys: Vec<String> = object.as_object().unwrap().keys().cloned().collect();
     keys.sort();

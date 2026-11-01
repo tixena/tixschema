@@ -8,7 +8,6 @@
 #![cfg(feature = "kotlin")]
 
 use core::fmt::Write as _;
-#[cfg(any(feature = "typescript", feature = "zod"))]
 use std::collections::HashMap;
 
 use serde::Serialize;
@@ -26,7 +25,6 @@ use super::tuple_variants_models::{
     Binning, Coiling, Heaping, Tallying, binning_kotlin, coiling_kotlin, heaping_kotlin,
     tallying_kotlin,
 };
-#[cfg(any(feature = "typescript", feature = "zod"))]
 use super::tuple_variants_models::{Labelling, Stencil};
 
 const KOTLIN_IMPORTS: &str = "import kotlinx.serialization.*\n\
@@ -653,7 +651,6 @@ fn a_preprocessed_map_of_tuples_holding_a_model_is_refused_at_the_entrys_path_in
 
 /// The refusals the Kotlin rows above are held to are what the holder's `validate()` answers in
 /// Rust, the read of a payload that leaves the key out included.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn the_refusals_held_here_are_what_the_holders_validate_answers() {
     let broken = || (Stencil::default(), 2);

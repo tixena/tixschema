@@ -1,10 +1,7 @@
 //! Tests of the `pattern` and `preprocess` keys of `#[model_schema_prop]`.
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 use serde::{Deserialize, Serialize};
-#[cfg(any(feature = "typescript", feature = "zod"))]
 use serde_json::Value;
-#[cfg(any(feature = "typescript", feature = "zod"))]
 use tixschema::model_schema;
 
 // The Rust side of each function a `preprocess` below names: a read of the type calls it, so it
@@ -25,7 +22,6 @@ const fn c(payload: Value) -> Value {
     payload
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 const fn epoch_to_date(payload: Value) -> Value {
     payload
 }
@@ -117,7 +113,7 @@ fn test_pattern_enum_variant_field() {
     );
 }
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_pattern_rust_validation_valid() {
     #[model_schema()]
@@ -135,7 +131,7 @@ fn test_pattern_rust_validation_valid() {
     );
 }
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_pattern_rust_validation_invalid_is_refused_as_it_is_read() {
     #[model_schema()]
@@ -416,7 +412,7 @@ fn test_pattern_enum_variant_with_min_length() {
     );
 }
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_pattern_enum_variant_serde_validation() {
     #[model_schema()]
@@ -546,7 +542,7 @@ fn test_a_slash_pattern_reaches_json_schema_unescaped() {
     );
 }
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_the_escaped_zod_pattern_matches_the_value_set_the_validator_enforces() {
     #[model_schema()]
@@ -703,7 +699,7 @@ fn test_a_raw_newline_pattern_reaches_json_schema_unescaped() {
     );
 }
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_the_escaped_newline_literal_matches_the_value_set_the_validator_enforces() {
     #[model_schema()]
@@ -764,7 +760,7 @@ fn test_a_rust_named_group_reaches_the_json_schema_as_ecma_262_spells_it() {
     );
 }
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_the_rewritten_named_group_matches_the_value_set_the_validator_enforces() {
     #[model_schema()]

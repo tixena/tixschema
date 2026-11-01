@@ -3,11 +3,6 @@
 #![cfg(feature = "serde")]
 
 /// A service whose message carries no bound of its own, only one its field's *type* declares.
-///
-/// Its own service rather than an operation on the file's: a constrained brand needs a surface
-/// feature to be declared at all, so everything reading one is gated together — the same gate the
-/// dispatcher's constraint module carries, and for the same reason.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[macro_use]
 pub mod a_bound_the_fields_own_type_declares {
     use super::{ProbeTransport, poll_once};

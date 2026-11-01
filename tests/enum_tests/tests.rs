@@ -1,14 +1,14 @@
 //! Tests of enums: plain enums and discriminated unions on every surface.
 
-#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 #[cfg(all(test, feature = "serde"))]
 use serde_json::Value;
-#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
+#[cfg(feature = "serde")]
 use tixschema::model_schema;
 
 // A tagged enum whose tag is written after a serde key this crate has no use for.
-#[cfg(all(test, feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(expecting = "an action", tag = "kind", rename_all = "camelCase")]
@@ -19,7 +19,7 @@ enum ActionTaggedAfterIgnoredKey {
 
 // The same declaration with nothing for the walk to step over, so the two renderings can be held
 // against each other: an attribute the walk ignores may not change a byte of what is generated.
-#[cfg(all(test, feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -28,7 +28,7 @@ enum ActionTaggedWithNothingIgnored {
     Upload { value: String },
 }
 
-#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "source")]
@@ -39,7 +39,7 @@ enum ActionWithLiteralEnum {
     Upload { value: String },
 }
 
-#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
+#[cfg(feature = "serde")]
 /**
  * Calculated Expression Operator
  *
@@ -75,7 +75,7 @@ pub enum CalculatedExpressionOperator {
     Subtract,
 }
 
-#[cfg(all(test, feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
 pub enum DistributionValidMimeType {
@@ -87,7 +87,7 @@ pub enum DistributionValidMimeType {
     ApplicationPdf,
 }
 
-#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -95,7 +95,7 @@ enum DocumentLiteralValue {
     Document,
 }
 
-#[cfg(all(test, feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MimeType {
@@ -107,7 +107,7 @@ pub enum MimeType {
     ApplicationPdf,
 }
 
-#[cfg(all(test, any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -126,7 +126,7 @@ enum PaymentMethod {
     },
 }
 
-#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
+#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -137,7 +137,7 @@ enum UserStatus {
     Suspended,
 }
 
-#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_ts_zod_serde_enums_constructible() {
     let actions = [
@@ -167,7 +167,7 @@ fn test_ts_zod_serde_enums_constructible() {
     assert_eq!(statuses.len(), 4);
 }
 
-#[cfg(all(test, feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_serde_mime_enums_constructible() {
     let distributions = [
@@ -179,7 +179,7 @@ fn test_serde_mime_enums_constructible() {
     assert_eq!(mimes.len(), 2);
 }
 
-#[cfg(all(test, any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_payment_method_constructible() {
     let payments = [
@@ -301,6 +301,7 @@ fn test_discriminated_union_json_schema() {
     }
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_payment_method_variants_json_schema() {
     let payment_method = PaymentMethod::PayPal {

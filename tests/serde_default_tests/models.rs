@@ -156,8 +156,7 @@ pub const CASES: [(&str, &str, &str); 10] = [
     ),
 ];
 
-/// What every surface prints for [`CASES`], as the serde read prints it where a schema surface is
-/// on: a build with none holds the member of row 5 to no bound in Rust.
+/// What every surface prints for [`CASES`], as the serde read prints it.
 pub const REPORT: &str = "\
 row 1: no dock: read {\"dock\":\"\",\"gangway\":{\"label\":\"side\",\"width\":1},\"gate\":\"south\",\"label\":\"w\"}
 row 2: no gate: read {\"dock\":\"d1\",\"gangway\":{\"label\":\"side\",\"width\":1},\"gate\":\"north\",\"label\":\"w\"}
@@ -391,7 +390,7 @@ pub enum UntaggedBerthing {
 }
 
 /// A struct that holds the untagged enum under a key of its own.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Quay {
@@ -703,7 +702,7 @@ pub fn filled_report() -> String {
 }
 
 /// What a serde read prints for each payload of [`CASES`].
-#[cfg(any(feature = "typescript", feature = "zod"))]
+#[cfg(feature = "serde")]
 pub fn report() -> String {
     CASES
         .iter()
@@ -716,7 +715,7 @@ pub fn report() -> String {
 }
 
 /// What a serde read prints for each payload of [`VARIANT_CASES`].
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 pub fn variant_report() -> String {
     VARIANT_CASES
         .iter()

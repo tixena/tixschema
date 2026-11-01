@@ -204,7 +204,7 @@ mod zod_ts_tests {
     }
 }
 
-#[cfg(all(feature = "zod", feature = "typescript", feature = "serde"))]
+#[cfg(feature = "serde")]
 mod constrained_branded_tests {
     use super::*;
 
@@ -225,6 +225,7 @@ mod constrained_branded_tests {
     #[serde(transparent)]
     pub struct MountPath(pub String);
 
+    #[cfg(feature = "zod")]
     #[test]
     fn test_constrained_branded_zod_has_constraints() {
         let zod = SlugId::zod_schema();
@@ -301,7 +302,9 @@ mod constrained_branded_tests {
 
     #[test]
     fn test_anchored_single_character_prefix_branded() {
+        #[cfg(feature = "zod")]
         let zod = MountPath::zod_schema();
+        #[cfg(feature = "zod")]
         assert!(
             zod.contains(r#".check(z.regex(/^\//, { error: "does not match pattern '^/'" }))"#),
             "Should contain pattern. Got:\n{zod}"
@@ -328,12 +331,16 @@ mod constrained_branded_tests {
 
     #[test]
     fn test_pattern_only_branded() {
+        #[cfg(feature = "zod")]
         let zod = ObjectIdStr::zod_schema();
+        #[cfg(feature = "zod")]
         assert!(
             zod.contains(".check(z.regex(/^[0-9a-fA-F]{24}$/, { error: \"does not match pattern '^[0-9a-fA-F]{24}$'\" }))"),
             "Should contain pattern. Got:\n{zod}"
         );
+        #[cfg(feature = "zod")]
         assert!(!zod.contains(".min("), "Should not have min. Got:\n{zod}");
+        #[cfg(feature = "zod")]
         assert!(!zod.contains(".max("), "Should not have max. Got:\n{zod}");
 
         let valid = ObjectIdStr("507f1f77bcf86cd799439011".to_owned());
@@ -344,7 +351,7 @@ mod constrained_branded_tests {
     }
 }
 
-#[cfg(all(feature = "mongodb", feature = "serde", feature = "zod"))]
+#[cfg(all(feature = "mongodb", feature = "serde"))]
 mod constrained_objectid_branded_tests {
     use super::*;
     use mongodb::bson::oid::ObjectId;
@@ -888,7 +895,7 @@ mod branded_constrained_json_schema_tests {
 /// A generic branded newtype whose inner is a bare type parameter, carrying string constraints.
 /// The constraints land on the parameter's declared default: `$SchemaDefault` enforces the
 /// 24-hex bounds, `$SchemaFactory` stays unconstrained for every other filling.
-#[cfg(all(feature = "zod", feature = "typescript", feature = "serde"))]
+#[cfg(feature = "serde")]
 mod constrained_generic_branded_tests {
     use super::*;
     use core::fmt;
@@ -905,6 +912,7 @@ mod constrained_generic_branded_tests {
 
     /// A declared default naming `StrictDocumentId` at exactly its own declared default — the
     /// shape the fold exists for.
+    #[cfg(feature = "zod")]
     #[model_schema(default_types(HolderType = StrictDocumentId<String>))]
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct StrictDocumentIdHolder<HolderType> {
@@ -955,6 +963,7 @@ mod constrained_generic_branded_tests {
     #[serde(transparent)]
     pub struct LabelId<WrapType>(pub WrapType);
 
+    #[cfg(feature = "zod")]
     #[test]
     fn the_factorys_own_parameter_carries_no_check() {
         let zod = StrictDocumentId::<String>::zod_schema();
@@ -969,6 +978,7 @@ mod constrained_generic_branded_tests {
         assert!(builder.contains("idType.meta({"), "Got:\n{builder}");
     }
 
+    #[cfg(feature = "zod")]
     #[test]
     fn the_default_composes_the_factory_with_the_constrained_argument() {
         let zod = StrictDocumentId::<String>::zod_schema();
@@ -991,6 +1001,7 @@ mod constrained_generic_branded_tests {
         assert!(too_short.is_err(), "Should reject a too-short id via serde");
     }
 
+    #[cfg(feature = "zod")]
     #[test]
     fn a_default_naming_the_constrained_brands_own_default_folds_onto_its_binding() {
         let zod = StrictDocumentIdHolder::<String>::zod_schema();
@@ -1003,6 +1014,7 @@ mod constrained_generic_branded_tests {
         );
     }
 
+    #[cfg(feature = "zod")]
     #[test]
     fn a_constrained_brands_default_naming_another_constrained_brands_default_composes_the_checks_inside_the_thunk()
      {
@@ -1097,7 +1109,7 @@ mod constrained_generic_branded_tests {
 /// A constrained generic brand whose declared default names an ordinary (non-generic) sibling —
 /// held apart from `constrained_generic_branded_tests` above (generic siblings) so each module
 /// pins one of the two spellings `default_zod_rendering` can defer to.
-#[cfg(all(feature = "zod", feature = "typescript", feature = "serde"))]
+#[cfg(feature = "serde")]
 mod constrained_default_names_a_sibling_tests {
     use super::*;
 
@@ -1117,6 +1129,7 @@ mod constrained_default_names_a_sibling_tests {
     #[serde(transparent)]
     pub struct OuterBrand<T>(pub T);
 
+    #[cfg(feature = "zod")]
     #[test]
     fn a_constrained_brands_default_naming_a_non_generic_sibling_composes_the_check_inside_the_thunk()
      {
@@ -1137,6 +1150,7 @@ mod constrained_default_names_a_sibling_tests {
         );
     }
 
+    #[cfg(feature = "zod")]
     #[test]
     fn the_factorys_own_parameter_carries_no_check() {
         let zod = OuterBrand::<String>::zod_schema();
@@ -1163,7 +1177,7 @@ mod constrained_default_names_a_sibling_tests {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
+#[cfg(feature = "serde")]
 mod branded_display_tests {
     use super::*;
     use core::fmt;
@@ -1226,7 +1240,7 @@ mod branded_display_tests {
 
 // A container inner type implements no Display, so `no_display` opts the brand out of the Display
 // impl and of the assertion that guards it.
-#[cfg(any(feature = "typescript", feature = "zod"))]
+#[cfg(feature = "serde")]
 mod branded_no_display_tests {
     use super::*;
 
@@ -1821,7 +1835,7 @@ mod branded_javascript_flavour_tests {
 
 /// The four surfaces of a brand whose inner names another type: `#[serde(transparent)]` puts the
 /// named type on the wire by itself, so an object inner writes that object — never a string.
-#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
+#[cfg(feature = "serde")]
 mod branded_sibling_inner_tests {
     use super::*;
 
@@ -1844,11 +1858,13 @@ mod branded_sibling_inner_tests {
     }
 
     // Written before the type it names, which is what a reference has to survive.
+    #[cfg(feature = "zod")]
     #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct WrappedTail(pub Tail);
 
+    #[cfg(feature = "zod")]
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct Tail {
@@ -1870,11 +1886,13 @@ mod branded_sibling_inner_tests {
 
     // A string-shaped sibling: the one a constrained brand can be written over, the constrained
     // path asserting `Display` on the inner.
+    #[cfg(feature = "zod")]
     #[model_schema(maxLength = 10, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct Slug(pub String);
 
+    #[cfg(feature = "zod")]
     #[model_schema(minLength = 3, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
@@ -1882,11 +1900,13 @@ mod branded_sibling_inner_tests {
 
     // A constrained brand written *before* the string-shaped sibling it names, so nothing is
     // recorded for that name when the brand asks what it publishes.
+    #[cfg(feature = "zod")]
     #[model_schema(minLength = 3, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct EarlySlug(pub LateSlug);
 
+    #[cfg(feature = "zod")]
     #[model_schema(maxLength = 10, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
@@ -1900,6 +1920,7 @@ mod branded_sibling_inner_tests {
 
     // The same inner reached through a parameter instead, unconstrained — which is what a generic
     // brand publishes a factory for.
+    #[cfg(feature = "zod")]
     #[model_schema(default_types(TagType = String))]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
@@ -1919,21 +1940,25 @@ mod branded_sibling_inner_tests {
 
     // A brand over a concrete instantiation of a generic sibling, at each scalar filling the
     // constrained-brand guard's own vocabulary names.
+    #[cfg(feature = "zod")]
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct PlainNumTag(pub LateTag<u32>);
 
+    #[cfg(feature = "zod")]
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct PlainBoolTag(pub LateTag<bool>);
 
+    #[cfg(feature = "zod")]
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct PlainStrTag(pub LateTag<String>);
 
+    #[cfg(feature = "zod")]
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
@@ -1941,12 +1966,14 @@ mod branded_sibling_inner_tests {
 
     // A plain generic struct of named fields, so a brand stands over an object-shaped sibling
     // instantiation.
+    #[cfg(feature = "zod")]
     #[model_schema(default_types(T = String))]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct Wrapper<T> {
         pub field: T,
     }
 
+    #[cfg(feature = "zod")]
     #[model_schema(no_display)]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
@@ -1954,6 +1981,7 @@ mod branded_sibling_inner_tests {
 
     // A generic, tag-discriminated enum, so a brand stands over a union-shaped sibling
     // instantiation.
+    #[cfg(feature = "zod")]
     #[model_schema(default_types(T = String))]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(tag = "kind")]
@@ -1962,6 +1990,7 @@ mod branded_sibling_inner_tests {
         Second,
     }
 
+    #[cfg(feature = "zod")]
     #[model_schema(no_display)]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
@@ -1983,6 +2012,7 @@ mod branded_sibling_inner_tests {
         );
     }
 
+    #[cfg(all(feature = "typescript", feature = "zod"))]
     #[test]
     fn a_sibling_brand_describes_the_named_type_on_every_surface() {
         assert_eq!(
@@ -2009,6 +2039,7 @@ mod branded_sibling_inner_tests {
         );
     }
 
+    #[cfg(feature = "zod")]
     #[test]
     fn a_forward_declared_sibling_brand_carries_the_named_types_schema() {
         assert_eq!(WrappedTail::json_schema(), Tail::json_schema());
@@ -2042,6 +2073,7 @@ mod branded_sibling_inner_tests {
         );
     }
 
+    #[cfg(feature = "zod")]
     #[test]
     fn a_constrained_sibling_brand_layers_its_constraints_over_the_named_schema() {
         assert_eq!(
@@ -2061,6 +2093,7 @@ mod branded_sibling_inner_tests {
         );
     }
 
+    #[cfg(feature = "zod")]
     #[test]
     fn a_constrained_brand_over_a_forward_declared_sibling_keeps_its_emission() {
         assert_eq!(
@@ -2086,7 +2119,9 @@ mod branded_sibling_inner_tests {
                 "allOf": [{ "type": "string" }, { "minLength": 3_u32 }]
             })
         );
+        #[cfg(feature = "zod")]
         let zod = FixedTag::zod_schema();
+        #[cfg(feature = "zod")]
         assert!(
             zod.contains(
                 r#"const FixedTag$RawSchema = LateTag$SchemaFactory(z.string()).min(3, { error: (issue) => `too short: minimum length is 3, got ${String(issue.input).length}` }).brand<"FixedTag">()"#
@@ -2103,13 +2138,16 @@ mod branded_sibling_inner_tests {
     #[test]
     fn a_constrained_brand_over_a_fixed_instantiation_reads_the_same_in_either_order() {
         assert_eq!(TrailingFixedTag::json_schema(), FixedTag::json_schema());
+        #[cfg(feature = "zod")]
         let zod = TrailingFixedTag::zod_schema();
+        #[cfg(feature = "zod")]
         assert!(
             zod.contains(
                 r#"const TrailingFixedTag$RawSchema = LateTag$SchemaFactory(z.string()).min(3, { error: (issue) => `too short: minimum length is 3, got ${String(issue.input).length}` }).brand<"TrailingFixedTag">()"#
             ),
             "Got:\n{zod}"
         );
+        #[cfg(feature = "typescript")]
         assert_eq!(
             TrailingFixedTag::ts_definition(),
             r#"export type TrailingFixedTag = LateTag<string> & $brand<"TrailingFixedTag">;"#
@@ -2125,6 +2163,7 @@ mod branded_sibling_inner_tests {
         );
     }
 
+    #[cfg(all(feature = "typescript", feature = "zod"))]
     #[test]
     fn an_unconstrained_generic_brand_over_a_parameterised_inner_is_unchanged() {
         assert_eq!(
@@ -2146,6 +2185,7 @@ mod branded_sibling_inner_tests {
         );
     }
 
+    #[cfg(feature = "zod")]
     #[test]
     fn every_sibling_inner_brand_reads_its_annotation_off_its_own_raw_schema() {
         for (name, zod) in [
@@ -2164,6 +2204,7 @@ mod branded_sibling_inner_tests {
         }
     }
 
+    #[cfg(feature = "zod")]
     #[test]
     fn a_generic_brands_default_over_a_generic_sibling_is_annotated_by_value() {
         let zod = OpenTag::<String>::zod_schema();
@@ -3020,7 +3061,9 @@ mod untouched_by_the_slot_refusal_tests {
     }
 }
 
+#[cfg(any(feature = "serde", feature = "zod"))]
 use serde::{Deserialize, Serialize};
+#[cfg(any(feature = "serde", feature = "zod"))]
 use tixschema::model_schema;
 
 /// The marker a brand carries, as this build spells it: the name is a *type* argument, which only

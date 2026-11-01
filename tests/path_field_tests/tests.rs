@@ -8,13 +8,13 @@ use std::path::{Path, PathBuf};
 use tixschema::model_schema;
 
 /// A path whose own length a brand holds, which is where a rule for each path of a list goes.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[model_schema(no_display, minLength = 3)]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(transparent)]
 struct BoundedPath(PathBuf);
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ListedPaths {
@@ -147,7 +147,7 @@ fn test_path_fields_render_as_strings_in_json_schema() {
     );
 }
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_a_constrained_path_that_breaks_its_bound_is_refused_as_it_is_read() {
     #[model_schema()]
@@ -189,7 +189,7 @@ fn test_a_constrained_path_that_breaks_its_bound_is_refused_as_it_is_read() {
     );
 }
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_every_constrained_path_spelling_is_held_to_its_bound() {
     #[model_schema()]
@@ -261,7 +261,7 @@ fn test_every_constrained_path_spelling_is_held_to_its_bound() {
     );
 }
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_each_path_of_a_list_is_held_by_the_brand_it_is_typed_with() {
     let held = ListedPaths {
@@ -303,7 +303,7 @@ fn test_the_zod_bound_on_a_path_is_the_bound_validate_enforces() {
     );
 }
 
-#[cfg(all(unix, feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(all(unix, feature = "serde"))]
 #[test]
 fn test_a_path_that_is_not_utf8_is_measured_by_its_lossy_rendering() {
     use std::ffi::OsStr;

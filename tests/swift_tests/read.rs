@@ -19,7 +19,6 @@ use crate::validate::{
     Parcel, freight_swift, inspection_swift, manifest_swift, parcel_swift, pier_swift,
     reading_swift, sealed_swift,
 };
-#[cfg(any(feature = "typescript", feature = "zod"))]
 use crate::validate::{Slug, marker_swift, routing_swift, sealed_slug_swift, slug_swift};
 
 /// What opens the read of a type alone.
@@ -137,7 +136,6 @@ pub enum Hauled {
 
 /// An untagged enum: a bound on a slot, a brand with a bound, a bound on a named member, a list
 /// of models and a model.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged, rename_all_fields = "camelCase")]
@@ -290,15 +288,12 @@ fn every_emitted_type_has_both_reads() {
         freight_swift::swift_definition(),
         inspection_swift::swift_definition(),
         internal_tagged_swift::swift_definition(),
-        #[cfg(any(feature = "typescript", feature = "zod"))]
         marker_swift::swift_definition(),
         pier_swift::swift_definition(),
         reading_swift::swift_definition(),
         reserved_member_swift::swift_definition(),
         reserved_members_swift::swift_definition(),
-        #[cfg(any(feature = "typescript", feature = "zod"))]
         routing_swift::swift_definition(),
-        #[cfg(any(feature = "typescript", feature = "zod"))]
         sealed_slug_swift::swift_definition(),
         sealed_swift::swift_definition(),
         status_swift::swift_definition(),
@@ -314,7 +309,6 @@ fn every_emitted_type_has_both_reads() {
         hauled_swift::swift_definition(),
         idle_swift::swift_definition(),
         lifted_swift::swift_definition(),
-        #[cfg(any(feature = "typescript", feature = "zod"))]
         sorted_swift::swift_definition(),
     ] {
         let declared = swift.matches("public struct ").count()
@@ -554,7 +548,6 @@ fn a_value_behind_a_type_parameter_is_read_as_it_was() {
 
 /// A brand reads the value it wraps as it did, then judges it. One with a bound answers for the
 /// bound alone, which is what chooses a variant of an untagged enum.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_has_both_reads_and_answers_for_its_bound_alone() {
     let swift = slug_swift::swift_definition();
@@ -725,7 +718,6 @@ fn an_enum_with_no_tag_attribute_reads_an_object_of_one_key() {
 
 /// An untagged enum takes the first variant whose payload reads and whose own bounds hold: a
 /// member's, and that of a brand it holds. A check and a model a variant holds choose nothing.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_untagged_enum_takes_the_first_variant_whose_bounds_hold() {
     let swift = sorted_swift::swift_definition();
@@ -939,7 +931,6 @@ fn every_read_enum_is_built_and_written_by_serde() {
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn the_untagged_enum_that_holds_a_bounded_brand_is_built_and_written_by_serde() {
     let parcel = Parcel {

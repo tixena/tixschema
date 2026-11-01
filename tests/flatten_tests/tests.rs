@@ -681,7 +681,6 @@ enum LaterMemberMaybeEither {
 /// A member naming a tagged enum: serde writes a data-carrying variant as a single-key object but
 /// a unit variant as a bare string — a leaf no object can be merged with, one level in from the
 /// member.
-#[cfg(any(feature = "zod", feature = "typescript"))]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 enum MemberExtBare {
@@ -730,7 +729,6 @@ enum LaterMemberExtBareEither {
 /// The same tagged enum flattened directly, with no union between: flattened, serde writes a unit
 /// variant as its name holding `null` rather than the bare string it is standing alone, and reads
 /// that back as the variant — so the merges owe it one branch per variant.
-#[cfg(any(feature = "zod", feature = "typescript"))]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ExtBareDirectHolder {
@@ -740,7 +738,6 @@ struct ExtBareDirectHolder {
 }
 
 /// A tagged enum that declares a parameter, of a unit variant and a variant that holds it.
-#[cfg(any(feature = "zod", feature = "typescript"))]
 #[model_schema(default_types(Load = String), enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 enum MemberExtCarried<Load> {
@@ -750,7 +747,6 @@ enum MemberExtCarried<Load> {
 
 /// That enum written with an argument and flattened: each variant's entry is its own with the
 /// parameter filled by the argument.
-#[cfg(any(feature = "zod", feature = "typescript"))]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ExtCarriedHolder {
@@ -770,12 +766,10 @@ struct ExtCarriedOwnHolder<Held> {
 }
 
 /// An alias of that enum that declares a parameter of its own.
-#[cfg(any(feature = "zod", feature = "typescript"))]
 #[model_schema(default_types(Stowed = String), enable = ["jsonschema"])]
 type MemberExtCarriedOf<Stowed> = MemberExtCarried<Stowed>;
 
 /// The alias written with an argument and flattened.
-#[cfg(any(feature = "zod", feature = "typescript"))]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ExtCarriedAliasHolder {
@@ -786,7 +780,6 @@ struct ExtCarriedAliasHolder {
 
 /// An untagged enum that declares a parameter: a member that is the parameter, and one of named
 /// fields.
-#[cfg(any(feature = "zod", feature = "typescript"))]
 #[model_schema(default_types(Load = BasePart), enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
@@ -797,7 +790,6 @@ enum MemberUntaggedCarried<Load> {
 
 /// That enum written with an argument and flattened: each member is its own with the parameter
 /// filled by the argument.
-#[cfg(any(feature = "zod", feature = "typescript"))]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct UntaggedCarriedHolder {
@@ -818,7 +810,6 @@ struct UntaggedCarriedOwnHolder<Held> {
 
 /// An untagged enum that declares a parameter, of two members of named fields, each closed to the
 /// other's key where it is flattened.
-#[cfg(any(feature = "zod", feature = "typescript"))]
 #[model_schema(default_types(Load = String), enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
@@ -828,7 +819,6 @@ enum MemberUntaggedPicked<Load> {
 }
 
 /// That enum written with an argument and flattened.
-#[cfg(any(feature = "zod", feature = "typescript"))]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct UntaggedPickedHolder {
@@ -838,12 +828,10 @@ struct UntaggedPickedHolder {
 }
 
 /// An alias of that enum that declares a parameter of its own.
-#[cfg(any(feature = "zod", feature = "typescript"))]
 #[model_schema(default_types(Stowed = String), enable = ["jsonschema"])]
 type MemberUntaggedPickedOf<Stowed> = MemberUntaggedPicked<Stowed>;
 
 /// The alias written with an argument and flattened.
-#[cfg(any(feature = "zod", feature = "typescript"))]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct UntaggedPickedAliasHolder {
@@ -894,7 +882,6 @@ struct SerdeOnlyCode(String);
 
 /// A type parameter flattened beside a member, filled where every surface describes what serde
 /// writes: at a struct, and at an `Option` of one.
-#[cfg(any(feature = "zod", feature = "typescript"))]
 #[model_schema(default_types(T = BasePart))]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ObjectFilledBag<T> {
@@ -904,7 +891,6 @@ struct ObjectFilledBag<T> {
 }
 
 /// [`ObjectFilledBag`] filled at a struct and at an `Option` of one, which build.
-#[cfg(any(feature = "zod", feature = "typescript"))]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ObjectFilledBags {
@@ -914,7 +900,6 @@ struct ObjectFilledBags {
 
 /// And a tagged enum whose every variant carries data, which serde writes as the object its name
 /// tags in every case — admitted where it always was, on every surface.
-#[cfg(any(feature = "zod", feature = "typescript"))]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 enum MemberExtObjects {
@@ -941,7 +926,6 @@ struct FlatOverMemberExtObjUntagged {
 /// That enum flattened directly, where Zod and TypeScript multiply for different reasons: a Zod
 /// intersection recognizes only the keys its operands name and a `z.union` names none, so joining
 /// admits nothing; TypeScript distributes over every branch instead.
-#[cfg(any(feature = "zod", feature = "typescript"))]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ExtObjDirectHolder {
@@ -965,7 +949,6 @@ struct OptExtObjHolder {
 /// An untagged union written over the objects its members are, rather than over names — the only
 /// case where the declaration itself spells each member's keys, since serde matches a member by
 /// shape.
-#[cfg(any(feature = "zod", feature = "typescript"))]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
@@ -974,7 +957,6 @@ enum InlineUntagEither {
     Right { right: bool },
 }
 
-#[cfg(any(feature = "zod", feature = "typescript"))]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct InlineUntagDirectHolder {
@@ -1231,12 +1213,10 @@ struct LaterMaybeCount(Option<i64>);
 
 /// And a name whose published surface is not nullable, which offers no absence and stays the one
 /// operand it always was.
-#[cfg(any(feature = "zod", feature = "typescript"))]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct PlainOptBase(OptBase);
 
-#[cfg(any(feature = "zod", feature = "typescript"))]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct NamedPlainHolder {
@@ -3579,7 +3559,6 @@ fn test_the_direct_tagged_flatten_type_spells_the_key_set_serde_writes() {
 }
 
 #[test]
-#[cfg(any(feature = "zod", feature = "typescript"))]
 fn test_a_directly_flattened_all_object_tagged_enum_round_trips_every_variant() {
     let forms = [
         (
@@ -3631,7 +3610,6 @@ fn test_an_all_object_tagged_direct_flatten_type_closes_each_variant_against_the
 }
 
 #[test]
-#[cfg(any(feature = "zod", feature = "typescript"))]
 fn test_a_flattened_enum_written_with_an_argument_round_trips_every_variant() {
     for (ext, expected) in [
         (
@@ -3797,7 +3775,6 @@ fn test_a_flattened_enum_written_with_an_argument_documents_each_entry_at_the_ar
 }
 
 #[test]
-#[cfg(any(feature = "zod", feature = "typescript"))]
 fn test_a_flattened_untagged_enum_written_with_an_argument_round_trips_every_member() {
     let owner = BasePart {
         owner: "w".to_owned(),
@@ -4122,7 +4099,6 @@ fn test_serde_refuses_every_write_of_a_parameter_filled_at_a_value_written_as_no
 /// A type parameter flattened beside a member builds filled at a struct and at an `Option` of one,
 /// which serde writes as the struct's keys, or as no key for `None`, and reads back.
 #[test]
-#[cfg(any(feature = "zod", feature = "typescript"))]
 fn test_a_parameter_flattened_at_an_object_or_an_option_of_one_round_trips() {
     let bags = ObjectFilledBags {
         held: ObjectFilledBag {
@@ -4190,7 +4166,6 @@ fn test_the_tagged_enums_standing_alone_close_each_object_member_on_typescript()
 
 /// The untagged footing answers the same way, on the members whose keys the declaration spells.
 #[test]
-#[cfg(any(feature = "zod", feature = "typescript"))]
 fn test_a_directly_flattened_inline_untagged_union_round_trips_every_member() {
     let forms = [
         (

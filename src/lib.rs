@@ -158,10 +158,9 @@ fn models_ts() -> String {
     bundle
 }
 
-/// `cargo test write_models` writes the file the web project imports.
-#[test]
-fn write_models() {
-    std::fs::write("web/src/api/models.ts", models_ts()).unwrap();
+/// Writes the file the web project imports, called from a test or a small binary of the crate.
+fn write_models(path: &std::path::Path) -> std::io::Result<()> {
+    std::fs::write(path, models_ts())
 }
 
 fn main() {
@@ -345,11 +344,9 @@ pub struct WorkerConfig {
     pub worker_count: u32,
 }
 
-/// `cargo test write_config_schema` writes the schema the config file names.
-#[test]
-fn write_config_schema() {
-    let schema = serde_json::to_string_pretty(&WorkerConfig::json_schema()).unwrap();
-    std::fs::write("config.schema.json", schema).unwrap();
+/// Writes the schema the config file names, called from a test or a build step of the worker.
+fn write_config_schema(path: &std::path::Path) -> std::io::Result<()> {
+    std::fs::write(path, serde_json::to_string_pretty(&WorkerConfig::json_schema())?)
 }
 
 fn main() {
@@ -493,7 +490,7 @@ fn main() {
 //! also how a test drives it:
 //!
 #![cfg_attr(
-    all(feature = "serde", any(feature = "typescript", feature = "zod")),
+    feature = "serde",
     doc = r##"
 ```rust
 use serde::{Deserialize, Serialize};
@@ -1771,9 +1768,7 @@ pub fn mongodb_foundation(input: TokenStream) -> TokenStream {
 ///
 /// `validate()` judges a value built in code:
 ///
-#[cfg_attr(
-    all(feature = "serde", any(feature = "typescript", feature = "zod")),
-    doc = r#"
+#[doc = r#"
 ```rust
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
@@ -1796,8 +1791,7 @@ for message in &messages {
 // "'username': too short: minimum length is 3, got 2"
 assert_eq!(messages.len(), 2);
 ```
-"#
-)]
+"#]
 ///
 /// The rules on every surface, and the read that refuses a payload:
 ///
@@ -1904,7 +1898,7 @@ assert!(refused.contains(r#"'currency': not the literal "EUR", got USD"#));
 /// `Issue::Invalid` at the path the message names.
 ///
 #[cfg_attr(
-    all(feature = "serde", any(feature = "typescript", feature = "zod")),
+    feature = "serde",
     doc = include_str!("check_example.md")
 )]
 ///
@@ -1951,7 +1945,7 @@ assert!(refused.contains(r#"'currency': not the literal "EUR", got USD"#));
 /// needs the `bson` crate:
 ///
 #[cfg_attr(
-    all(feature = "serde", any(feature = "typescript", feature = "zod")),
+    feature = "serde",
     doc = include_str!("preprocess_example.md")
 )]
 ///
@@ -2222,7 +2216,7 @@ pub fn model_schema_prop(_args: TokenStream, input: TokenStream) -> TokenStream 
 /// `FrameSession` is the transport the client macro writes for one real socket.
 ///
 #[cfg_attr(
-    all(feature = "serde", any(feature = "typescript", feature = "zod")),
+    feature = "serde",
     doc = r#"
 ```rust
 use serde::{Deserialize, Serialize};
@@ -2571,7 +2565,7 @@ pub fn service_schema(args: TokenStream, input: TokenStream) -> TokenStream {
 /// response. Nothing here opens a socket.
 ///
 #[cfg_attr(
-    all(feature = "serde", any(feature = "typescript", feature = "zod")),
+    feature = "serde",
     doc = include_str!("service_schema_op_example.md")
 )]
 ///

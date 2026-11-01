@@ -233,6 +233,44 @@ mod typescript {
     }
 }
 
+/// The declared default of a generic brand holds its bounds, in `validate()` and in the read, and
+/// any other filling holds none of them.
+#[cfg(feature = "serde")]
+mod declared_default_bounds {
+    use super::ConstrainedId;
+
+    #[test]
+    fn a_constrained_ids_declared_default_enforces_the_bounds_through_serde() {
+        let valid: ConstrainedId<String> =
+            serde_json::from_str("\"64de3d95ff45b119e5b53a7e\"").unwrap();
+        valid.validate().unwrap();
+
+        let too_short: Result<ConstrainedId<String>, _> = serde_json::from_str("\"abc\"");
+        assert!(too_short.is_err(), "Should reject a too-short id via serde");
+    }
+
+    #[test]
+    fn the_declared_defaults_validate_method_runs_the_same_checks_the_default_schema_enforces() {
+        let valid = ConstrainedId("64de3d95ff45b119e5b53a7e".to_owned());
+        valid.validate().unwrap();
+
+        let short = ConstrainedId("short".to_owned());
+        let errors = short.validate().unwrap_err();
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.contains("too short") && e.contains("minimum length is 24")),
+            "Got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn another_instantiation_has_the_generated_validate_and_none_of_the_defaults_bounds() {
+        assert_eq!(ConstrainedId(1_u32).validate(), Ok(()));
+        assert_eq!(ConstrainedId(0_u32).validate(), Ok(()));
+    }
+}
+
 #[cfg(feature = "zod")]
 mod zod {
     #[cfg(all(feature = "chrono", feature = "mongodb"))]
@@ -246,7 +284,7 @@ mod zod {
         SlottedDefault, Summarised, Tagged, Untagged, WireFolder, Wrapper,
     };
     #[cfg(all(feature = "typescript", feature = "serde"))]
-    use super::{ConstrainedEchoedDefault, ConstrainedId, DeepEchoedDefault};
+    use super::{ConstrainedEchoedDefault, DeepEchoedDefault};
 
     /// Two generic items whose declared defaults name each other.
     #[cfg(feature = "serde")]
@@ -544,40 +582,6 @@ mod zod {
             "Got: {zod}"
         );
         assert!(!zod.contains("z.lazy"), "Got: {zod}");
-    }
-
-    #[cfg(all(feature = "typescript", feature = "serde"))]
-    #[test]
-    fn a_constrained_ids_declared_default_enforces_the_bounds_through_serde() {
-        let valid: ConstrainedId<String> =
-            serde_json::from_str("\"64de3d95ff45b119e5b53a7e\"").unwrap();
-        valid.validate().unwrap();
-
-        let too_short: Result<ConstrainedId<String>, _> = serde_json::from_str("\"abc\"");
-        assert!(too_short.is_err(), "Should reject a too-short id via serde");
-    }
-
-    #[cfg(all(feature = "typescript", feature = "serde"))]
-    #[test]
-    fn the_declared_defaults_validate_method_runs_the_same_checks_the_default_schema_enforces() {
-        let valid = ConstrainedId("64de3d95ff45b119e5b53a7e".to_owned());
-        valid.validate().unwrap();
-
-        let short = ConstrainedId("short".to_owned());
-        let errors = short.validate().unwrap_err();
-        assert!(
-            errors
-                .iter()
-                .any(|e| e.contains("too short") && e.contains("minimum length is 24")),
-            "Got: {errors:?}"
-        );
-    }
-
-    #[cfg(all(feature = "typescript", feature = "serde"))]
-    #[test]
-    fn another_instantiation_has_the_generated_validate_and_none_of_the_defaults_bounds() {
-        assert_eq!(ConstrainedId(1_u32).validate(), Ok(()));
-        assert_eq!(ConstrainedId(0_u32).validate(), Ok(()));
     }
 
     #[cfg(all(feature = "typescript", feature = "serde"))]
@@ -1705,7 +1709,7 @@ pub struct ListedDefault<Items> {
 /// A generic branded newtype whose inner is a bare type parameter, carrying string constraints
 /// — held here rather than reused from `branded_newtype_tests` because each integration test
 /// file compiles as its own crate.
-#[cfg(all(feature = "zod", feature = "typescript", feature = "serde"))]
+#[cfg(feature = "serde")]
 #[model_schema(
     minLength = 24,
     maxLength = 24,

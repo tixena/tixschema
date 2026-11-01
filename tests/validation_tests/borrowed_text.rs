@@ -1,7 +1,7 @@
 //! A length or a pattern on a borrowed `str` is held by `validate()` as one on a `String` is.
 
 /// One declaration with its string owned and one with it borrowed, under the same bound.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 mod a_bound_on_a_borrowed_str {
     use serde::{Deserialize, Deserializer, Serialize};
     use tixschema::model_schema;
@@ -277,7 +277,7 @@ mod a_bound_on_a_borrowed_str {
 
 /// An owned member of an untagged enum with a bound and a reader of its author's own: that reader
 /// reads it, and the read holds it to the bound once the value is read, as a borrowed one is.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 mod a_bound_beside_a_reader_of_the_authors_own {
     mod trimmed_text {
         use serde::{Deserializer, Serializer};

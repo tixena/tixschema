@@ -203,7 +203,6 @@ mod beside_the_lone_slot {
         );
     }
 
-    #[cfg(any(feature = "typescript", feature = "zod"))]
     #[test]
     fn each_is_displayed_as_the_slot_it_reads() {
         assert_eq!(MarkedAfter("x".to_owned(), PhantomData).to_string(), "x");

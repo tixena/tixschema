@@ -5,7 +5,6 @@
 use core::cell::Cell;
 use core::fmt::Debug;
 use std::collections::HashMap;
-#[cfg(any(feature = "typescript", feature = "zod"))]
 use std::path::PathBuf;
 
 use bson::{Bson, doc};
@@ -43,29 +42,14 @@ struct DockedManifest {
 #[serde(transparent)]
 struct DockCode(String);
 
-/// A brand held to a bound as well. A brand's bound is read with its schema surface, so a build
-/// with none writes none.
-#[cfg_attr(
-    any(feature = "typescript", feature = "zod"),
-    model_schema(minLength = 2, check = ["labelledInUpperCase"])
-)]
-#[cfg_attr(
-    not(any(feature = "typescript", feature = "zod")),
-    model_schema(check = ["labelledInUpperCase"])
-)]
+/// A brand held to a bound as well.
+#[model_schema(minLength = 2, check = ["labelledInUpperCase"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct DockLabel(String);
 
 /// A brand over a list, which publishes no `Display`: its length counts the items.
-#[cfg_attr(
-    any(feature = "typescript", feature = "zod"),
-    model_schema(no_display, minLength = 2, check = ["dockedOnce"])
-)]
-#[cfg_attr(
-    not(any(feature = "typescript", feature = "zod")),
-    model_schema(no_display, check = ["dockedOnce"])
-)]
+#[model_schema(no_display, minLength = 2, check = ["dockedOnce"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct DockCodes(Vec<String>);
@@ -77,14 +61,12 @@ struct DockCodes(Vec<String>);
 struct DockCount(i32);
 
 /// A brand over a path, measured by the text serde writes for it.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema(no_display, minLength = 3)]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct DockDir(PathBuf);
 
 /// A brand written with a named field.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema(maxLength = 3)]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
@@ -93,14 +75,12 @@ struct DockSlug {
 }
 
 /// A brand with a parameter, whose bound is its declared default's.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema(minLength = 2, default_types(CodeType = String))]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct DockTag<CodeType>(CodeType);
 
 /// Holds a label in each place a holder reads a model unjudged.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -225,7 +205,6 @@ fn docked_once(value: &DockCodes) -> Result<(), Vec<String>> {
 }
 
 /// A shelf that holds `held` in every place it holds a label, after a sound one in its list.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn shelf_of(held: &DockLabel) -> DockedShelf {
     DockedShelf {
         boxed_label: Box::new(held.clone()),
@@ -304,17 +283,10 @@ where
 #[test]
 fn a_document_that_breaks_a_bound_and_a_check_is_refused_with_what_validate_answers() {
     let refused = broken().validate().unwrap_err().join("; ");
-    #[cfg(any(feature = "typescript", feature = "zod"))]
     assert_eq!(
         refused,
         "'itemLabel': too short: minimum length is 1, got 0; \
          'fragileItemCodes.1': y is outside of itemCodeList"
-    );
-    // A build with no schema surface holds no bound, and the check alone answers.
-    #[cfg(not(any(feature = "typescript", feature = "zod")))]
-    assert_eq!(
-        refused,
-        "'fragileItemCodes.1': y is outside of itemCodeList"
     );
     assert_eq!(
         read_document::<DockedParcel>(doc! { "itemLabel": "", "fragileItemCodes": ["x", "y"] }),
@@ -327,7 +299,6 @@ fn a_document_that_breaks_a_bound_and_a_check_is_refused_with_what_validate_answ
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_document_is_refused_with_every_message_of_every_model_it_holds_at_its_full_path() {
     let held = manifest_of(&broken());
@@ -351,15 +322,16 @@ fn a_document_is_refused_with_every_message_of_every_model_it_holds_at_its_full_
     );
 }
 
-/// A holder that names no check publishes no `validate()` in a build with no schema surface, and
-/// the first broken parcel it holds refuses the read, with its own message.
-#[cfg(not(any(feature = "typescript", feature = "zod")))]
+/// The holder's own `Deserialize`, reading the document as a BSON value, refuses it with every
+/// message of every model it holds.
 #[test]
-fn a_document_is_refused_by_the_first_broken_model_where_its_holder_publishes_no_validate() {
-    let refused = read_document::<DockedManifest>(written(&manifest_of(&broken()))).unwrap_err();
-    assert!(
-        refused.contains("'fragileItemCodes.1': y is outside of itemCodeList"),
-        "got: {refused}"
+fn a_document_is_refused_by_the_holders_deserialize_with_every_message_it_holds() {
+    let held = manifest_of(&broken());
+    let refused = held.validate().unwrap_err().join("; ");
+    assert_eq!(
+        DockedManifest::deserialize(bson::Deserializer::new(Bson::Document(written(&held))))
+            .map_err(|error| error.to_string()),
+        Err(told_by_this_major(&refused))
     );
 }
 
@@ -388,14 +360,10 @@ fn a_brand_that_names_a_check_alone_is_refused_as_it_is_read() {
 #[test]
 fn a_brand_is_refused_with_every_message_validate_answers_of_the_value_read() {
     let refused = DockLabel("a".to_owned()).validate().unwrap_err().join("; ");
-    #[cfg(any(feature = "typescript", feature = "zod"))]
     assert_eq!(
         refused,
         "too short: minimum length is 2, got 1; a dock label is upper case"
     );
-    // A build with no schema surface holds no bound, and the check alone answers.
-    #[cfg(not(any(feature = "typescript", feature = "zod")))]
-    assert_eq!(refused, "a dock label is upper case");
     for text in ["a", "A", "ab", "AB"] {
         let held = DockLabel(text.to_owned());
         read_as_validated(&held, held.validate());
@@ -426,7 +394,6 @@ fn a_brand_over_a_number_is_refused_as_its_check_answers() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_over_a_path_and_one_with_a_named_field_are_refused_as_their_bounds_answer() {
     let short = DockDir(PathBuf::from("/a"));
@@ -451,7 +418,6 @@ fn a_brand_over_a_path_and_one_with_a_named_field_are_refused_as_their_bounds_an
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_generic_brand_is_refused_at_its_declared_default_and_read_at_any_other_filling() {
     let short = DockTag("a".to_owned());
@@ -468,7 +434,6 @@ fn a_generic_brand_is_refused_at_its_declared_default_and_read_at_any_other_fill
     read_as_validated(&counted, counted.validate());
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_document_names_every_broken_brand_it_holds_at_its_full_path() {
     let held = shelf_of(&DockLabel("a".to_owned()));
@@ -515,7 +480,6 @@ fn a_document_judges_a_model_held_under_self_once() {
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_document_names_every_broken_model_held_under_the_holders_type_parameter_at_its_full_path() {
     assert_eq!(

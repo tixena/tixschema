@@ -1,6 +1,7 @@
-//! `validate()` on every Kotlin type the emitter writes: the text of each shape, which is the
-//! same in a build with a schema surface and in one with none. A test whose fixture writes a
-//! serde attribute the emitter reads is compiled with the `serde` feature alone.
+//! `validate()` on every Kotlin type the emitter writes: the text of each shape, and the messages
+//! Rust's own `validate()` answers of the same values, which hold every rule in every build. A
+//! test whose fixture writes a serde attribute the emitter reads is compiled with the `serde`
+//! feature alone.
 
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
@@ -222,6 +223,64 @@ fn every_fixture_is_written_as_serde_writes_it() {
         ))
         .unwrap(),
         serde_json::json!(["b", { "late": "l", "slug": "s", "titled": "t" }])
+    );
+}
+
+/// Rust's `validate()` reports each message the Kotlin `validate()` written for the fixture adds, in
+/// the order it adds them: a member's check, then its bound, then the type's check, a held model's
+/// under the member and a slot's under the variant and its position.
+#[test]
+fn rust_holds_each_fixture_to_every_rule_the_kotlin_validate_holds() {
+    #[cfg(feature = "serde")]
+    let (codes, held_slots) = ("itemCodeList", "held");
+    #[cfg(not(feature = "serde"))]
+    let (codes, held_slots) = ("item_code_list", "Split");
+    let parcel_messages = [
+        format!("'{codes}': duplicate item code x"),
+        "'label': too short: minimum length is 1, got 0".to_owned(),
+        "'fragileItemCodes.0': y is outside of itemCodeList".to_owned(),
+    ];
+    let under = |place: &str| -> Vec<String> {
+        parcel_messages
+            .iter()
+            .map(|message| format!("'{place}.{}", &message[1..]))
+            .collect()
+    };
+    assert_eq!(parcel().validate().unwrap_err(), parcel_messages);
+    assert_eq!(
+        Manifest { parcel: parcel() }.validate().unwrap_err(),
+        under("parcel")
+    );
+    assert_eq!(
+        Entry {
+            late: LateSlug("l".to_owned()),
+            slug: Slug("s".to_owned()),
+            titled: "t".to_owned(),
+        }
+        .validate()
+        .unwrap_err(),
+        [
+            "'late': too short: minimum length is 3, got 1",
+            "'slug': too short: minimum length is 3, got 1",
+            "'titled': too short: minimum length is 2, got 1",
+        ]
+    );
+    let split = |place: &str| -> Vec<String> {
+        let mut messages = vec![format!(
+            "'{place}.0': too short: minimum length is 1, got 0"
+        )];
+        messages.extend(under(&format!("{place}.1")));
+        messages
+    };
+    assert_eq!(
+        Freight::Split(String::new(), parcel())
+            .validate()
+            .unwrap_err(),
+        split("Split")
+    );
+    assert_eq!(
+        Haul::Split(String::new(), parcel()).validate().unwrap_err(),
+        split(held_slots)
     );
 }
 

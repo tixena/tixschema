@@ -1,7 +1,7 @@
 //! A set, a deque and a heap are walked only where they hold a declared type: a type whose only
 //! member is a set of strings holds no rule and publishes no `validate()`.
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 mod a_set_of_values_no_declared_type_describes {
     use alloc::collections::BTreeSet;
     use serde::{Deserialize, Serialize};
