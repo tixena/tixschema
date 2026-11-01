@@ -1,6 +1,5 @@
-//! What the Dart backend writes for `validate()`: the text of each shape. No test here calls a
-//! Rust `validate()`, so every one holds in a build with a schema surface and in one with none.
-//! A brand's own string check is in `bounded_brands`: a build with no schema surface refuses it.
+//! What the Dart backend writes for `validate()`: the text of each shape. A brand's own string
+//! check is in `bounded_brands`.
 
 use std::collections::HashMap;
 

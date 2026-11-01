@@ -12567,7 +12567,10 @@ fn the_brand_an_alias_refusal_suggests_carries_the_aliass_type_parameters() {
     );
     assert!(one.contains("pub struct Named<T>(Vec<T>);"), "got: {one}");
     assert!(
-        one.contains("where its inner type's schema is a string and a schema surface is on"),
+        one.contains(
+            "A branded newtype carries the check where its inner type's schema is a string \
+             \u{2014} `#[model_schema(maxLength = \u{2026})]"
+        ),
         "got: {one}"
     );
     assert!(!one.contains("Declare a branded newtype"), "got: {one}");

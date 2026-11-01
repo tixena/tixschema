@@ -27,11 +27,7 @@ mod tests;
 mod held_numbers;
 
 #[cfg(test)]
-#[cfg(all(
-    feature = "dart",
-    feature = "serde",
-    any(feature = "typescript", feature = "zod")
-))]
+#[cfg(all(feature = "dart", feature = "serde"))]
 #[path = "dart_tests/bounded_brands.rs"]
 mod bounded_brands;
 

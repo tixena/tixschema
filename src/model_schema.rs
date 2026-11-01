@@ -8078,7 +8078,7 @@ fn alias_string_check_refusal_output(
     let refusal = format!(
         "`{check}` cannot be written on a type alias: `{name}` is another name for `{target}`, \
          so there is no type of its own for the check to belong to. A branded newtype carries \
-         the check where its inner type's schema is a string and a schema surface is on — \
+         the check where its inner type's schema is a string — \
          `#[model_schema({check} = …)] #[serde(transparent)] pub struct \
          {name}{parameters}({target});` — and a check on one field is written in \
          `#[model_schema_prop(...)]`."
