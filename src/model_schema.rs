@@ -94,18 +94,16 @@ use crate::features::object_id::get_object_id_zod_schema_with;
 #[cfg(feature = "mongodb")]
 use crate::features::object_id::OBJECT_ID_HEX_PATTERN;
 
-use crate::utils::{AliasKind, Counted, counted, lookup_alias_info, record_counted};
+use crate::utils::{
+    AliasKind, Counted, MapKeyWire, counted, lookup_alias_info, record_counted, record_inexact_key,
+    record_key_wire,
+};
 #[cfg(any(feature = "typescript", feature = "zod"))]
 use crate::utils::{
-    MapKeyWire, PublishedShape, ShapeQuestion, record_inexact_key, record_key_wire,
-    record_shape_question, record_value_shape, shape_questions_for,
+    PublishedShape, ShapeQuestion, record_shape_question, record_value_shape, shape_questions_for,
 };
 
-#[cfg(all(
-    feature = "serde",
-    feature = "indexmap",
-    any(feature = "typescript", feature = "zod")
-))]
+#[cfg(feature = "indexmap")]
 use crate::utils::record_indexed_set;
 
 #[cfg(feature = "serde")]
@@ -244,7 +242,6 @@ use crate::utils::{FlattenVariant, record_flatten_variants, record_wire_leaves};
 #[cfg(all(feature = "serde", feature = "typescript"))]
 use crate::utils::record_ts_union_members;
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 use crate::utils::register_alias_info;
 use crate::utils::{
     bson_refused_holder, forwarded_key_maps, forwarded_key_parameter, is_recorded_bson_refused_key,
@@ -2516,7 +2513,6 @@ fn kotlin_suffix_tokens(_item: &Item, _args: &ModelSchemaArgs) -> TokenStream {
 }
 
 /// Classifies what an alias resolves to, for the registry.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn alias_target_kind(alias_field_def: &FieldDef) -> AliasKind {
     match map_key_path(alias_field_def) {
         MapKeyPath::Open => AliasKind::StringWire,
@@ -2551,7 +2547,6 @@ fn alias_map_key_guard_error(
 
 /// The `compile_error!` tokens an alias whose target reaches a std type serde has no wire form for
 /// earns, or `None` when it reaches none. Spanned on the target, which is where it was written.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn alias_undescribable_std_error(
     alias: &ItemType,
     alias_field_def: &FieldDef,
@@ -2625,10 +2620,8 @@ fn record_option_alias_item(item: &Item) {
     record_option_alias(&rust_ident, target);
 }
 
-/// The alias schema module is referenced by both schema features through the export name, and by
-/// a document `"jsonschema"` asks for through `#module_ident::Schema::json_schema()` — so the
-/// module and its `register_alias_info` call are gated on the union, not `typescript` alone.
-#[cfg(any(feature = "typescript", feature = "zod"))]
+/// Writes the alias, registers it, and writes its schema module, in every build. The module holds
+/// `Schema` where the build's surfaces or the alias's `enable` list give it a method.
 fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStream {
     let mut alias = item_type;
     alias
@@ -2648,7 +2641,7 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
     register_alias_info(&rust_ident_str, &export_name, &module_name, kind);
     if names_a_list(&alias.ty) {
         record_counted(&rust_ident_str, Some(Counted::Items));
-        #[cfg(all(feature = "serde", feature = "indexmap"))]
+        #[cfg(feature = "indexmap")]
         if names_an_indexed_set(&alias.ty) {
             record_indexed_set(&rust_ident_str);
         }
@@ -2657,6 +2650,7 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
     record_key_wire(&rust_ident_str, alias_field_def.map_key_wire());
     record_inexact_key(&rust_ident_str, alias_field_def.writes_an_inexact_key());
     // An alias's schema *is* its target's, so it publishes whatever the target publishes.
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     Surface::written(&alias_field_def, &type_parameters_in_scope(&alias.generics))
         .record(&rust_ident_str);
     // An alias *is* the type it names, so a merge that flattens it multiplies over exactly the
@@ -2686,10 +2680,28 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
 
     // Registered above whatever the outcome, so a type naming a refused alias still resolves to the
     // export name the author wrote and the alias's own diagnostic stays the one they act on.
+    #[cfg(any(
+        feature = "typescript",
+        feature = "zod",
+        all(
+            feature = "serde",
+            any(feature = "dart", feature = "swift", feature = "kotlin")
+        )
+    ))]
+    let map_key_error = alias_map_key_guard_error(&alias, &alias_field_def);
+    #[cfg(not(any(
+        feature = "typescript",
+        feature = "zod",
+        all(
+            feature = "serde",
+            any(feature = "dart", feature = "swift", feature = "kotlin")
+        )
+    )))]
+    let map_key_error = None;
     let alias_guard_errors: Vec<proc_macro2::TokenStream> =
         alias_undescribable_std_error(&alias, &alias_field_def)
             .into_iter()
-            .chain(alias_map_key_guard_error(&alias, &alias_field_def))
+            .chain(map_key_error)
             .collect();
     if let Some(output) =
         guard_failure_output(&alias, Some(&alias.ident), &alias_guard_errors, args)
@@ -2697,29 +2709,12 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
         return output;
     }
 
-    let ts_method = generate_alias_ts_definition_method(&alias, &export_name, &alias_field_def);
-    let json_schema_method =
-        generate_alias_json_schema_method(&alias, &export_name, &alias_field_def, args);
-    let unit_member = if args.enable.jsonschema {
-        unit_member_record_item(&Item::Type(alias.clone()))
-    } else {
-        proc_macro2::TokenStream::new()
-    };
-    let zod_method = generate_alias_zod_method(
+    let schema = schema_struct(&alias_schema_items(
         &alias,
         &export_name,
-        &rust_ident_str,
         &alias_field_def,
-        &args.default_types,
-    );
-
-    let example_methods = item_schema_example_method(
-        &extract_examples_tokens(&alias.attrs),
-        &alias.ident,
-        &alias.generics,
         args,
-    )
-    .unwrap_or_default();
+    ));
 
     quote! {
         #alias
@@ -2727,43 +2722,50 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
         pub mod #module_ident {
             use super::*;
 
-            #[non_exhaustive]
-            pub struct Schema;
-
-            impl Schema {
-                #ts_method
-                #json_schema_method
-                #unit_member
-                #zod_method
-                #example_methods
-            }
+            #schema
         }
     }
 }
 
-#[cfg(not(any(feature = "typescript", feature = "zod")))]
-fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStream {
-    let mut alias = item_type;
-    alias
-        .attrs
-        .retain(|attr| !attr.path().is_ident("model_schema"));
-    #[cfg(not(all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )))]
-    let _: &ModelSchemaArgs = args;
-    #[cfg(all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    ))]
-    if let Some(error) = alias_map_key_guard_error(
-        &alias,
-        &get_field_def(&alias.ident.to_string(), &alias.ty, ""),
-    ) && let Some(output) = guard_failure_output(&alias, Some(&alias.ident), &[error], args)
-    {
-        return output;
+/// The methods an alias's `Schema` holds: those the build's surfaces write, and those its
+/// `enable` list asks for.
+fn alias_schema_items(
+    alias: &ItemType,
+    export_name: &str,
+    alias_field_def: &FieldDef,
+    args: &ModelSchemaArgs,
+) -> Vec<proc_macro2::TokenStream> {
+    let mut items = Vec::new();
+    #[cfg(feature = "typescript")]
+    items.push(generate_alias_ts_definition_method(
+        alias,
+        export_name,
+        alias_field_def,
+    ));
+    items.push(generate_alias_json_schema_method(
+        alias,
+        export_name,
+        alias_field_def,
+        args,
+    ));
+    if args.enable.jsonschema {
+        items.push(unit_member_record_item(&Item::Type(alias.clone())));
     }
-    quote! { #alias }
+    #[cfg(feature = "zod")]
+    items.push(generate_alias_zod_method(
+        alias,
+        export_name,
+        &alias.ident.to_string(),
+        alias_field_def,
+        &args.default_types,
+    ));
+    items.extend(item_schema_example_method(
+        &extract_examples_tokens(&alias.attrs),
+        &alias.ident,
+        &alias.generics,
+        args,
+    ));
+    items
 }
 
 /// Builds the `JSDoc` comment body (lines prefixed with ` * `) for an item, field, or enum
@@ -6980,7 +6982,7 @@ fn instantiated_value_shape(rust_ident: &str, arguments: &[FieldDef]) -> Option<
     }
 }
 
-/// A build with no schema surface records no alias, so no name has a shape to answer with.
+/// A build with no schema surface records no shape, so no name has one to answer with.
 #[cfg(not(any(feature = "typescript", feature = "zod")))]
 const fn instantiated_value_shape(
     _rust_ident: &str,
@@ -8312,11 +8314,10 @@ fn enum_module_idents(name: &syn::Ident) -> (String, Ident) {
 }
 
 /// Registers an enum in the alias registry under its schema module, so other types can resolve
-/// references to it, with the surface it publishes. `kind` differs per enum shape: only a plain
-/// unit enum gets an `enum_members()` (and is written as `z.enum`); every other shape is a union
-/// of its variants' members.
-#[cfg(any(feature = "typescript", feature = "zod"))]
-fn register_enum(name: &syn::Ident, item_name: &str, kind: AliasKind, surface: Surface) {
+/// references to it. `kind` differs per enum shape: only a plain unit enum gets an
+/// `enum_members()` (and is written as `z.enum`); every other shape is a union of its variants'
+/// members.
+fn register_enum(name: &syn::Ident, item_name: &str, kind: AliasKind) {
     let (module_name, _) = enum_module_idents(name);
     register_alias_info(&name.to_string(), item_name, &module_name, kind);
     // The `z.enum` a plain enum publishes is the one enumeration a key can be written under
@@ -8324,7 +8325,6 @@ fn register_enum(name: &syn::Ident, item_name: &str, kind: AliasKind, surface: S
     if kind == AliasKind::EnumMembers {
         record_key_wire(&name.to_string(), MapKeyWire::Enumerated);
     }
-    surface.record(&name.to_string());
 }
 
 /// The output a struct carrying a `cfg_attr`-wrapped serde attribute on the type is refused with,
@@ -11976,13 +11976,9 @@ fn process_plain_enum(
 ) -> TokenStream {
     let (_, module_ident) = enum_module_idents(name);
     // A plain enum is written as a `z.enum` of its variant names, which takes no string check.
+    register_enum(name, item_name, AliasKind::EnumMembers);
     #[cfg(any(feature = "typescript", feature = "zod"))]
-    register_enum(
-        name,
-        item_name,
-        AliasKind::EnumMembers,
-        Surface::enumerated(),
-    );
+    Surface::enumerated().record(&name.to_string());
     #[cfg(feature = "zod")]
     let rust_ident = name.to_string();
 
@@ -12504,8 +12500,9 @@ fn process_discriminated_enum(
 ) -> TokenStream {
     let (module_name, module_ident) = enum_module_idents(name);
     // Every other enum shape is written as a union of what its variants render as.
+    register_enum(name, item_name, AliasKind::NoEnumMembers);
     #[cfg(any(feature = "typescript", feature = "zod"))]
-    register_enum(name, item_name, AliasKind::NoEnumMembers, Surface::union());
+    Surface::union().record(&name.to_string());
 
     #[cfg(feature = "typescript")]
     let docs_vec = get_enum_docs(&item_enum);
@@ -13066,13 +13063,9 @@ fn process_externally_tagged_enum(
 ) -> TokenStream {
     let (module_name, module_ident) = enum_module_idents(name);
     // Every other enum shape is written as a union of what its variants render as.
+    register_enum(name, item_name, AliasKind::NoEnumMembers);
     #[cfg(any(feature = "typescript", feature = "zod"))]
-    register_enum(
-        name,
-        item_name,
-        AliasKind::NoEnumMembers,
-        Surface::externally_tagged(&item_enum.variants),
-    );
+    Surface::externally_tagged(&item_enum.variants).record(&name.to_string());
 
     #[cfg(feature = "typescript")]
     let docs_vec = get_enum_docs(&item_enum);
@@ -13701,8 +13694,9 @@ fn process_internally_tagged_enum(
 ) -> TokenStream {
     let (module_name, module_ident) = enum_module_idents(name);
     // Every other enum shape is written as a union of what its variants render as.
+    register_enum(name, item_name, AliasKind::NoEnumMembers);
     #[cfg(any(feature = "typescript", feature = "zod"))]
-    register_enum(name, item_name, AliasKind::NoEnumMembers, Surface::union());
+    Surface::union().record(&name.to_string());
 
     #[cfg(feature = "typescript")]
     let docs_vec = get_enum_docs(&item_enum);
@@ -14924,8 +14918,9 @@ fn process_untagged_enum(
 ) -> TokenStream {
     let (module_name, module_ident) = enum_module_idents(name);
     // Every other enum shape is written as a union of what its variants render as.
+    register_enum(name, item_name, AliasKind::NoEnumMembers);
     #[cfg(any(feature = "typescript", feature = "zod"))]
-    register_enum(name, item_name, AliasKind::NoEnumMembers, Surface::union());
+    Surface::union().record(&name.to_string());
 
     let enum_module_name_opt = Some(module_name.as_str());
 
@@ -15997,8 +15992,7 @@ fn sequence_wrapper_field(fld: &FieldDef) -> Option<FieldDef> {
     sequence_wrapper_element(fld).map(|element| fld.collection_element_field(element))
 }
 
-/// The path a key named by a type path takes, by what the registry holds of the name. A build
-/// with no schema surface records no alias kind, so a named key is left to the dispatch there.
+/// The path a key named by a type path takes, by what the registry holds of the name.
 fn registered_key_path(key_type_name: &str) -> MapKeyPath<'_> {
     match registered_key_kind(key_type_name) {
         Some(AliasKind::StringWire) => MapKeyPath::Open,
@@ -16125,8 +16119,7 @@ fn map_key_element_name(key: &FieldDef) -> String {
 }
 
 /// Whether the registry rules the named type out as a source of `enum_members()`. `false` covers
-/// both the plain enums that have them and the names this expansion never saw registered, which
-/// is every name in a build with no schema surface.
+/// both the plain enums that have them and the names this expansion never saw registered.
 fn proves_no_enum_members(key_type_name: &str) -> bool {
     lookup_alias_info(key_type_name).is_some_and(|key_alias| {
         matches!(
@@ -17947,11 +17940,7 @@ fn named_leaf_length_rendering(named: &syn::Type, message: &str) -> proc_macro2:
 
 /// The length of an `IndexSet`, written only for a name registered as an alias of one: the
 /// consumer's own `indexmap` is named where they use it, and nowhere else.
-#[cfg(all(
-    feature = "serde",
-    feature = "indexmap",
-    any(feature = "typescript", feature = "zod")
-))]
+#[cfg(feature = "indexmap")]
 fn indexed_set_length(named: &syn::Type) -> proc_macro2::TokenStream {
     let syn::Type::Path(path) = written_type(named) else {
         return proc_macro2::TokenStream::new();
@@ -17972,11 +17961,7 @@ fn indexed_set_length(named: &syn::Type) -> proc_macro2::TokenStream {
 }
 
 /// A build with no `IndexSet` support names no `indexmap`.
-#[cfg(not(all(
-    feature = "serde",
-    feature = "indexmap",
-    any(feature = "typescript", feature = "zod")
-)))]
+#[cfg(not(feature = "indexmap"))]
 fn indexed_set_length(_named: &syn::Type) -> proc_macro2::TokenStream {
     proc_macro2::TokenStream::new()
 }
@@ -18584,7 +18569,7 @@ fn names_a_list(ty: &syn::Type) -> bool {
 
 /// Whether a type is written as `IndexSet`, which is a list under the `indexmap` feature unless
 /// the consumer declares a type of that name.
-#[cfg(all(feature = "serde", feature = "indexmap"))]
+#[cfg(feature = "indexmap")]
 fn names_an_indexed_set(ty: &syn::Type) -> bool {
     matches!(
         written_type(ty),
@@ -22583,32 +22568,23 @@ fn generate_enum_zod_schema_method_after(
     }
 }
 
-/// Builds the alias module's `ts_definition()`, or nothing when `typescript` is off. The doc
-/// block and the generic parameter list are only meaningful to TypeScript, so they are gathered
-/// inside the gate rather than by the caller.
-#[cfg(any(feature = "typescript", feature = "zod"))]
+/// Builds the alias module's `ts_definition()`, with the doc block and the generic parameter list
+/// only TypeScript reads.
+#[cfg(feature = "typescript")]
 fn generate_alias_ts_definition_method(
     alias: &ItemType,
     export_name: &str,
     field_def: &FieldDef,
 ) -> proc_macro2::TokenStream {
-    #[cfg(feature = "typescript")]
-    {
-        let docs_formatted = alias_jsdoc_body(get_item_docs(&alias.attrs).as_deref(), export_name);
+    let docs_formatted = alias_jsdoc_body(get_item_docs(&alias.attrs).as_deref(), export_name);
 
-        generate_ts_alias_method(
-            &docs_formatted,
-            export_name,
-            &alias.ident.to_string(),
-            &ts_generic_params(&alias.generics),
-            &surface_field_def(&alias.generics, field_def),
-        )
-    }
-    #[cfg(not(feature = "typescript"))]
-    {
-        let _: &_ = &(alias, export_name, field_def);
-        quote! {}
-    }
+    generate_ts_alias_method(
+        &docs_formatted,
+        export_name,
+        &alias.ident.to_string(),
+        &ts_generic_params(&alias.generics),
+        &surface_field_def(&alias.generics, field_def),
+    )
 }
 
 #[cfg(feature = "typescript")]
@@ -22678,8 +22654,8 @@ fn generate_alias_json_schema_method(
     )
 }
 
-/// Builds the alias module's `zod_schema()`, or nothing when `zod` is off.
-#[cfg(any(feature = "typescript", feature = "zod"))]
+/// Builds the alias module's `zod_schema()`.
+#[cfg(feature = "zod")]
 fn generate_alias_zod_method(
     alias: &ItemType,
     export_name: &str,
@@ -22687,55 +22663,45 @@ fn generate_alias_zod_method(
     field_def: &FieldDef,
     default_types: &[(syn::Ident, syn::Type)],
 ) -> proc_macro2::TokenStream {
-    #[cfg(feature = "zod")]
-    {
-        // The alias's rendered Zod is its `FieldDef` expression: `z.tuple([...])` for a tuple,
-        // `z.string()` for a scalar, `Name$Schema` for a sibling.
-        let surface = surface_field_def(&alias.generics, field_def);
-        let schema_code = surface.zod_type_deferring_a_later_type();
-        let parameters = type_parameters_in_scope(&alias.generics);
-        let reexport = zod_binding_reexport(rust_ident, export_name, &parameters);
-        let republished = republishes_sibling_binding(&surface);
-        let shows_sibling = shows_sibling_examples(&surface);
-        let body = zod_published_binding(
-            export_name,
-            rust_ident,
-            &parameters,
-            // A check and a `preprocess` on an alias are refused: it has no `impl` to call a
-            // function from, and no read of its own.
-            &PublishedBinding {
-                checks: &[],
-                default_types,
-                preprocess: &[],
-                republished,
-            },
-            "",
-            &schema_code,
-            &reexport,
-        );
-        let has_example = !extract_examples_tokens(&alias.attrs).is_empty();
-        if !has_example && shows_sibling {
-            quote! {
-                pub fn zod_schema() -> ::std::string::String {
-                    #body.to_owned()
-                }
+    // The alias's rendered Zod is its `FieldDef` expression: `z.tuple([...])` for a tuple,
+    // `z.string()` for a scalar, `Name$Schema` for a sibling.
+    let surface = surface_field_def(&alias.generics, field_def);
+    let schema_code = surface.zod_type_deferring_a_later_type();
+    let parameters = type_parameters_in_scope(&alias.generics);
+    let reexport = zod_binding_reexport(rust_ident, export_name, &parameters);
+    let republished = republishes_sibling_binding(&surface);
+    let shows_sibling = shows_sibling_examples(&surface);
+    let body = zod_published_binding(
+        export_name,
+        rust_ident,
+        &parameters,
+        // A check and a `preprocess` on an alias are refused: it has no `impl` to call a
+        // function from, and no read of its own.
+        &PublishedBinding {
+            checks: &[],
+            default_types,
+            preprocess: &[],
+            republished,
+        },
+        "",
+        &schema_code,
+        &reexport,
+    );
+    let has_example = !extract_examples_tokens(&alias.attrs).is_empty();
+    if !has_example && shows_sibling {
+        quote! {
+            pub fn zod_schema() -> ::std::string::String {
+                #body.to_owned()
             }
-        } else {
-            zod_schema_with_examples(
-                &quote! { #body.to_owned() },
-                export_name,
-                &parameters,
-                &reexport,
-                &zod_examples_json(has_example),
-            )
         }
-    }
-    #[cfg(not(feature = "zod"))]
-    {
-        // Without the `zod` feature, `FieldDef::zod_type` does not exist; nothing in
-        // this build has zod enabled, so the schema method would be cfg'd out anyway.
-        let _: &_ = &(alias, export_name, rust_ident, field_def, default_types);
-        quote! {}
+    } else {
+        zod_schema_with_examples(
+            &quote! { #body.to_owned() },
+            export_name,
+            &parameters,
+            &reexport,
+            &zod_examples_json(has_example),
+        )
     }
 }
 

@@ -1386,7 +1386,6 @@ pub struct LifetimeStruct<'label> {
 
 /// A constrained field beside an unconstrained type parameter, combined with a lifetime: the
 /// generated `validate()` sits in the type's own `impl`, under both.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[model_schema(default_types(LabelType = String))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnnotatedConstrained<'label, LabelType> {
@@ -1475,13 +1474,11 @@ pub struct Tagged<ValueType>(pub ValueType);
 /// One parameter in a map's key position, one in its value position — what
 /// [`KeyedByParameter`] holds for a struct, held here for an alias. Consumed only by the surface
 /// modules, so it exists only where one of them compiles.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema(default_types(KeyType = String, ValueType = u32))]
 pub type KeyedAlias<KeyType, ValueType> = HashMap<KeyType, ValueType>;
 
 /// The same target with nothing parameterised, held beside the one above so the classification
 /// cannot move a non-generic alias.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema()]
 pub type ConcreteAlias = HashMap<String, u32>;
 
@@ -1870,7 +1867,6 @@ fn a_bounded_parameter_filled_at_a_type_its_bound_admits_still_expands() {
     assert_eq!(padded.wide, "y");
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_generic_alias_expands_to_rust_that_compiles() {
     let keyed: KeyedAlias<String, u32> = HashMap::from([("k".to_owned(), 1_u32)]);
@@ -2088,7 +2084,7 @@ fn every_instantiation_the_wire_accepts_writes_string_keys() {
     assert_eq!(read_back.parameter_keyed[&7], "seven");
 }
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn a_lifetime_struct_still_holds_its_field_to_its_bound() {
     assert_eq!(
@@ -2115,7 +2111,6 @@ fn a_lifetime_struct_still_holds_its_field_to_its_bound() {
     );
 }
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_lifetime_beside_a_type_parameter_has_validate_at_every_filling() {
     let valid = AnnotatedConstrained {

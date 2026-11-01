@@ -294,11 +294,7 @@ pub struct AliasInfo {
     pub flatten_variants: Vec<FlattenVariant>,
     /// Whether this name is an alias of an `IndexSet`, which a bound counts through the consumer's
     /// own `indexmap`.
-    #[cfg(all(
-        feature = "serde",
-        feature = "indexmap",
-        any(feature = "typescript", feature = "zod")
-    ))]
+    #[cfg(feature = "indexmap")]
     pub indexed_set: bool,
     /// Whether the TypeScript type written under this name is, or holds in a slot, a map keyed by a
     /// `u64` or an `i64`: an alias, a brand or a tuple struct, which carries [`INEXACT_KEY_NOTE`]
@@ -1318,7 +1314,6 @@ pub fn shape_questions_for(rust_ident: &str) -> Vec<ShapeQuestion> {
     })
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 pub fn register_alias_info(
     rust_ident: &str,
     export_name: &str,
@@ -1333,11 +1328,7 @@ pub fn register_alias_info(
                 export_name: export_name.to_owned(),
                 #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
                 flatten_variants: Vec::new(),
-                #[cfg(all(
-                    feature = "serde",
-                    feature = "indexmap",
-                    any(feature = "typescript", feature = "zod")
-                ))]
+                #[cfg(feature = "indexmap")]
                 indexed_set: false,
                 inexact_key: false,
                 key_wire: MapKeyWire::Named,
@@ -1345,6 +1336,7 @@ pub fn register_alias_info(
                 module_name: module_name.to_owned(),
                 #[cfg(all(feature = "serde", feature = "typescript"))]
                 ts_union_members: Vec::new(),
+                #[cfg(any(feature = "typescript", feature = "zod"))]
                 value_shape: PublishedShape::Flat(None),
                 #[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
                 wire: Vec::new(),
@@ -1380,11 +1372,7 @@ pub fn counted(rust_ident: &str) -> Option<Counted> {
 }
 
 /// Records that a name is an alias of an `IndexSet`, on the entry that name has just registered.
-#[cfg(all(
-    feature = "serde",
-    feature = "indexmap",
-    any(feature = "typescript", feature = "zod")
-))]
+#[cfg(feature = "indexmap")]
 pub fn record_indexed_set(rust_ident: &str) {
     ALIAS_INFO.with(|map| {
         if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
@@ -1395,7 +1383,6 @@ pub fn record_indexed_set(rust_ident: &str) {
 
 /// Records whether the TypeScript type written under a name carries [`INEXACT_KEY_NOTE`] on
 /// itself, on the entry that name has just registered.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 pub fn record_inexact_key(rust_ident: &str, inexact: bool) {
     ALIAS_INFO.with(|map| {
         if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
@@ -1406,7 +1393,6 @@ pub fn record_inexact_key(rust_ident: &str, inexact: bool) {
 
 /// Records the form a key written under a name renders in, on the entry that name has just
 /// registered.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 pub fn record_key_wire(rust_ident: &str, wire: MapKeyWire) {
     ALIAS_INFO.with(|map| {
         if let Some(info) = map.borrow_mut().get_mut(rust_ident) {

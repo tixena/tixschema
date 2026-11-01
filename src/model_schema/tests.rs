@@ -20,11 +20,13 @@ use super::{
     parse_serde_field_attributes, parse_serde_type_attributes, render_untagged_variant,
 };
 
+use super::{AliasKind, register_alias_info};
+
 #[cfg(any(feature = "typescript", feature = "zod"))]
 use super::{
-    AliasKind, PublishedShape, alias_map_key_guard_error, alias_undescribable_std_error,
-    check_map_key, deferred_shape_question, deferred_shape_refusals, ident_schema_module_name,
-    record_shape_question, record_value_shape, register_alias_info,
+    PublishedShape, alias_map_key_guard_error, alias_undescribable_std_error, check_map_key,
+    deferred_shape_question, deferred_shape_refusals, ident_schema_module_name,
+    record_shape_question, record_value_shape,
 };
 
 #[cfg(all(feature = "serde", feature = "zod"))]
@@ -10384,7 +10386,7 @@ fn no_json_schema_emission_carries_a_warning_key() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn alias_zod_method_carries_no_cfg_attribute() {
     let alias: syn::ItemType = syn::parse_quote!(
@@ -10396,7 +10398,7 @@ fn alias_zod_method_carries_no_cfg_attribute() {
     assert_no_cfg_attribute(&tokens, "generate_alias_zod_method");
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
+#[cfg(feature = "typescript")]
 #[test]
 fn alias_ts_definition_method_carries_no_cfg_attribute() {
     let alias: syn::ItemType = syn::parse_quote!(
@@ -20821,12 +20823,8 @@ fn flattening_a_union_with_a_tagged_enum_member_is_refused_naming_the_trail() {
 #[cfg(all(feature = "serde", feature = "zod"))]
 fn seed_external_registration(item: &syn::ItemEnum) {
     let rust_ident = item.ident.to_string();
-    super::register_enum(
-        &item.ident,
-        &rust_ident,
-        AliasKind::NoEnumMembers,
-        super::Surface::externally_tagged(&item.variants),
-    );
+    super::register_enum(&item.ident, &rust_ident, AliasKind::NoEnumMembers);
+    super::Surface::externally_tagged(&item.variants).record(&rust_ident);
 }
 
 #[cfg(feature = "serde")]

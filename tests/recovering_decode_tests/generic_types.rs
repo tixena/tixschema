@@ -456,7 +456,6 @@ fn an_untagged_member_bounded_over_the_parameter_reads_at_a_filling_with_no_defa
     assert_eq!(calls, 0);
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_untagged_member_bounded_over_the_parameter_lists_its_count() {
     let stored = json!({ "pile": [], "tag": 1_i32 });
