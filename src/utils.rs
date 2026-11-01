@@ -21,7 +21,7 @@ use syn::ext::IdentExt as _;
 use syn::punctuated::Punctuated;
 use syn::{Attribute, Expr, Field, GenericParam, Generics, Lit, LitStr, Meta, Type, Variant};
 
-#[cfg(feature = "serde")]
+#[cfg(any(feature = "serde", feature = "zod"))]
 use crate::features::model_schema_prop::FunctionName;
 
 #[cfg(any(feature = "typescript", feature = "zod"))]
@@ -745,37 +745,23 @@ pub enum Declared {
     Alias(String),
     /// A struct or an enum serde writes under keys of its own, and how many lifetime parameters it
     /// declares.
-    Model(#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))] usize),
+    Model(usize),
     /// A struct or an enum serde writes as one value: a struct written as the value of one slot,
     /// a unit struct, an enum no variant of which holds a value and no attribute tags. Holds how
     /// many lifetime parameters it declares.
-    OneValue(#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))] usize),
+    OneValue(usize),
 }
 
 #[cfg(feature = "serde")]
 impl Declared {
     /// A model serde writes under keys of its own, declaring `lifetimes` lifetime parameters.
-    #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
     pub const fn model(lifetimes: usize) -> Self {
         Self::Model(lifetimes)
     }
 
-    /// A model serde writes under keys of its own; only a schema surface reads the lifetimes.
-    #[cfg(not(all(feature = "serde", any(feature = "typescript", feature = "zod"))))]
-    pub const fn model(_lifetimes: usize) -> Self {
-        Self::Model()
-    }
-
     /// A type serde writes as one value, declaring `lifetimes` lifetime parameters.
-    #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
     pub const fn one_value(lifetimes: usize) -> Self {
         Self::OneValue(lifetimes)
-    }
-
-    /// A type serde writes as one value; only a schema surface reads the lifetimes.
-    #[cfg(not(all(feature = "serde", any(feature = "typescript", feature = "zod"))))]
-    pub const fn one_value(_lifetimes: usize) -> Self {
-        Self::OneValue()
     }
 }
 

@@ -235,6 +235,11 @@ check-all:
     cargo hack check --manifest-path bson3/Cargo.toml --feature-powerset
     @echo "✅ All feature combinations check passed!"
 
+# A check of about five minutes, run by the CI on every push: every feature builds by itself,
+# then the every-build validation tests in a few combinations. Not part of `all`.
+check-mix:
+    cargo hack check --each-feature
+
 # Check the library on the minimum supported Rust version.
 check-msrv:
     cargo +1.91 check --all-features

@@ -18,7 +18,10 @@ use core::iter;
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use core::ops::Range;
 use core::ptr;
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(any(
+    all(feature = "zod", feature = "typescript"),
+    all(feature = "serde", any(feature = "typescript", feature = "zod"))
+))]
 use core::slice;
 
 use proc_macro2::TokenStream;
@@ -238,7 +241,7 @@ use crate::utils::{
     record_zod_discriminated, record_zod_union_members, record_zod_union_publication,
 };
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 use crate::utils::ZodUnionMember;
 
 #[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
@@ -6153,17 +6156,6 @@ fn const_parameter_argument_errors(item: &Item) -> Vec<proc_macro2::TokenStream>
 
 /// Every type an item writes out: a struct's field types, an enum's variant field types, an alias's
 /// target. The types whose spelling reaches a surface, which is where an argument is written.
-#[cfg(any(
-    any(
-        feature = "typescript",
-        feature = "zod",
-        all(
-            feature = "serde",
-            any(feature = "dart", feature = "swift", feature = "kotlin")
-        )
-    ),
-    not(feature = "indexmap")
-))]
 fn item_written_types(item: &Item) -> Vec<&syn::Type> {
     if let Item::Struct(item_struct) = item {
         item_struct.fields.iter().map(|field| &field.ty).collect()
@@ -11521,7 +11513,6 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
     #[cfg(feature = "zod")]
     let plain_description = item_description(docs_vec.as_deref(), &item_name);
 
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "serde"))]
     let generic_params = type_parameters_in_scope(&item_struct.generics);
 
     let (position, inner_field) = brand_slot(&item_struct).unwrap();
