@@ -1,6 +1,6 @@
 //! A slot of a tuple struct takes the five constraints, checked where a named field of a struct is.
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 mod a_check_on_a_slot {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;

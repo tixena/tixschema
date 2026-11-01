@@ -158,8 +158,6 @@ use crate::features::recovering_decode::{
     enums::{enum_recovering_decode, tag_arm_refusals},
     struct_recovering_decode, written_as_one_value,
 };
-// The type is named where a positional slot's own omission is read: the tuple-struct walk, which
-// only a describing build performs, and the variant walk, which every build performs.
 use crate::features::serde::SerdeKeyOmission;
 use crate::features::serde::defaults::SerdeDefaults;
 #[cfg(all(
@@ -1304,7 +1302,6 @@ enum TupleStructShape {
 }
 
 /// What walking a tuple struct's slots yields.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 struct TupleSlots {
     /// The functions written ahead of a generic tuple struct's builder that run the checks of its
     /// slots.
@@ -3782,10 +3779,7 @@ fn checked_in_slots(
 }
 
 /// Without a TypeScript type to state what a check is handed, no function is written ahead.
-#[cfg(all(
-    any(feature = "typescript", feature = "zod"),
-    not(all(feature = "zod", feature = "typescript"))
-))]
+#[cfg(not(all(feature = "zod", feature = "typescript")))]
 const fn checked_in_slots(_: &mut TupleStructShape, _: &str, _: &[String]) -> String {
     String::new()
 }
@@ -8416,8 +8410,7 @@ fn struct_members(
     // derived from, which this reads as well.
     let serde_defaults = SerdeDefaults::of(item_struct);
     let serde_default = |field: &str| serde_defaults.index(None, field);
-    let slot_refusals = tuple_slot_refusals(item_struct);
-    let mut from_fields = collect_struct_fields(
+    let from_fields = collect_struct_fields(
         &mut item_struct.fields,
         rename_all,
         module_name_opt,
@@ -8430,7 +8423,6 @@ fn struct_members(
             serde_default: &serde_default,
         },
     );
-    from_fields.4.splice(0..0, slot_refusals);
     #[cfg(feature = "serde")]
     {
         with_struct_tag(item_struct, from_fields)
@@ -8439,47 +8431,6 @@ fn struct_members(
     {
         from_fields
     }
-}
-
-/// The slot refusals of a tuple struct that no brand stands for, which the schema surfaces
-/// refuse in the same cases.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin"),
-    not(any(feature = "typescript", feature = "zod"))
-))]
-fn tuple_slot_refusals(item_struct: &syn::ItemStruct) -> Vec<proc_macro2::TokenStream> {
-    if !matches!(item_struct.fields, syn::Fields::Unnamed(_)) || is_branded_newtype(item_struct) {
-        return Vec::new();
-    }
-    let declared_slots = item_struct.fields.len();
-    let type_name = item_struct.ident.to_string();
-    item_struct
-        .fields
-        .iter()
-        .enumerate()
-        .filter_map(|(index, field)| {
-            check_slot_wire_is_readable(
-                field,
-                index,
-                declared_slots,
-                &type_name,
-                parse_serde_key_omission(&field.attrs),
-            )
-            .err()
-        })
-        .map(|rejection| rejection.to_compile_error())
-        .collect()
-}
-
-/// Where a schema surface runs the slot refusal itself, there is nothing to add.
-#[cfg(not(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin"),
-    not(any(feature = "typescript", feature = "zod"))
-)))]
-const fn tuple_slot_refusals(_item_struct: &syn::ItemStruct) -> Vec<proc_macro2::TokenStream> {
-    Vec::new()
 }
 
 /// The expansion of a brand, or `None` for a struct that is no brand.
@@ -8509,7 +8460,6 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
 
     // A tuple struct's slots have no keys, so the named-field emitters below would render every
     // one of them under the empty ident it carries.
-    #[cfg(any(feature = "typescript", feature = "zod"))]
     if is_tuple_struct(&item_struct) {
         return process_tuple_struct(item_struct, rename_all.as_deref(), args);
     }
@@ -8948,35 +8898,18 @@ fn unit_struct_read(name: &syn::Ident, publishes_validate: bool) -> proc_macro2:
 
 /// Returns whether a struct's slots are positional. A branded newtype is one too, and is
 /// dispatched ahead of this question.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 const fn is_tuple_struct(item_struct: &syn::ItemStruct) -> bool {
     matches!(item_struct.fields, syn::Fields::Unnamed(_))
 }
 
 /// Whether the slot at `index` of a tuple struct declaring `declared_slots` slots carries serde
 /// attributes the wire answers for.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 const fn slot_attributes_reach_the_wire(declared_slots: usize) -> bool {
     declared_slots > 1
 }
 
 /// Rejects a tuple-struct slot whose serde attributes drop it out of one of serde's two directions
 /// and not the other.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn check_slot_wire_is_readable(
     field: &Field,
     index: usize,
@@ -9003,7 +8936,6 @@ fn check_slot_wire_is_readable(
 
 /// Walks a tuple struct's slots, and records whether they write a map keyed by a `u64` or an
 /// `i64`.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn collect_tuple_slots(
     fields: &mut syn::Fields,
     rename_all: Option<&str>,
@@ -9058,6 +8990,7 @@ fn collect_tuple_slots(
         apply_deferred_field_attrs(fields.iter_mut(), deferred_attrs);
     }
     let mut shape = tuple_struct_shape(declared_slots, slots);
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     record_inexact_key(type_name, tuple_struct_writes_an_inexact_key(&shape));
     let checked_ahead = checked_in_slots(&mut shape, type_name, &type_parameters);
     #[cfg(not(feature = "zod"))]
@@ -9075,7 +9008,6 @@ fn collect_tuple_slots(
 /// The shape a tuple struct's declared arity and described slots amount to. Keyed on the
 /// *declared* arity, not the described count: a struct declaring two slots with one off the wire
 /// still writes a one-element array, not the bare value.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn tuple_struct_shape(declared_slots: usize, mut slots: Vec<FieldDef>) -> TupleStructShape {
     if declared_slots == 1 && slots.len() == 1 {
         return TupleStructShape::BareValue(Box::new(slots.remove(0)));
@@ -9348,17 +9280,14 @@ fn maps_of_itself_through_the_self_view(
 }
 
 /// The `json_schema()` pair of a tuple struct's schema module and the record a holder that
-/// flattens it reads, or nothing where the struct does not list `"jsonschema"`.
+/// flattens it reads.
 fn tuple_struct_json_schema_items(
     item_struct: &syn::ItemStruct,
     item_name: &str,
     shape: &TupleStructShape,
     args: &ModelSchemaArgs,
-) -> Vec<proc_macro2::TokenStream> {
-    if !args.enable.jsonschema {
-        return Vec::new();
-    }
-    vec![
+) -> [proc_macro2::TokenStream; 2] {
+    [
         json_schema_methods(
             item_name,
             &tuple_struct_json_body(item_name, shape),
@@ -9464,8 +9393,57 @@ fn tuple_struct_surface(fields: &syn::Fields, parameters: &[String]) -> Surface 
     }
 }
 
+/// The schema methods a tuple struct's module publishes: the JSON-schema pair where the struct lists
+/// `"jsonschema"`, the TypeScript definition and the Zod schema, each where its feature is on.
+fn tuple_struct_schema_impl_items(
+    item_struct: &syn::ItemStruct,
+    item_name: &str,
+    slots: &TupleSlots,
+    args: &ModelSchemaArgs,
+) -> Vec<proc_macro2::TokenStream> {
+    let mut items = Vec::new();
+    if args.enable.jsonschema {
+        items.extend(tuple_struct_json_schema_items(
+            item_struct,
+            item_name,
+            &slots.shape,
+            args,
+        ));
+    }
+    #[cfg(feature = "typescript")]
+    items.push(build_tuple_struct_ts_definition_method(
+        &build_jsdoc_body(get_struct_docs(item_struct).as_deref(), item_name),
+        item_name,
+        &item_struct.ident.to_string(),
+        &ts_generic_params(&item_struct.generics),
+        &slots.shape,
+    ));
+    #[cfg(feature = "zod")]
+    items.push(build_tuple_struct_zod_schema_method(
+        &slots.checked_ahead,
+        item_name,
+        &item_struct.ident.to_string(),
+        &type_parameters_in_scope(&item_struct.generics),
+        &PublishedBinding {
+            checks: &args.check,
+            default_types: &args.default_types,
+            preprocess: &args.preprocess,
+            republished: tuple_struct_republishes_slot(&slots.shape),
+        },
+        &tuple_struct_zod_body(
+            &slots.shape,
+            &SlotOwner {
+                item_name,
+                #[cfg(feature = "typescript")]
+                parameters: &type_parameters_in_scope(&item_struct.generics),
+                rust_ident: &item_struct.ident.to_string(),
+            },
+        ),
+    ));
+    items
+}
+
 /// Processes a tuple struct that is not a branded newtype.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn process_tuple_struct(
     mut item_struct: syn::ItemStruct,
     rename_all: Option<&str>,
@@ -9474,6 +9452,7 @@ fn process_tuple_struct(
     let name = item_struct.ident.clone();
     let (item_name, module_name, module_ident) =
         struct_module_idents(&name, args.name_override.as_deref());
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     register_struct(
         &name,
         &item_name,
@@ -9512,41 +9491,7 @@ fn process_tuple_struct(
         record_newtype_flatten_variants(&name.to_string(), slot, &item_struct.generics);
     }
 
-    #[cfg(feature = "typescript")]
-    let docs_vec = get_struct_docs(&item_struct);
-
-    let mut schema_impl_items =
-        tuple_struct_json_schema_items(&item_struct, &item_name, &slots.shape, args);
-    #[cfg(feature = "typescript")]
-    schema_impl_items.push(build_tuple_struct_ts_definition_method(
-        &build_jsdoc_body(docs_vec.as_deref(), &item_name),
-        &item_name,
-        &name.to_string(),
-        &ts_generic_params(&item_struct.generics),
-        &slots.shape,
-    ));
-    #[cfg(feature = "zod")]
-    schema_impl_items.push(build_tuple_struct_zod_schema_method(
-        &slots.checked_ahead,
-        &item_name,
-        &name.to_string(),
-        &type_parameters_in_scope(&item_struct.generics),
-        &PublishedBinding {
-            checks: &args.check,
-            default_types: &args.default_types,
-            preprocess: &args.preprocess,
-            republished: tuple_struct_republishes_slot(&slots.shape),
-        },
-        &tuple_struct_zod_body(
-            &slots.shape,
-            &SlotOwner {
-                item_name: &item_name,
-                #[cfg(feature = "typescript")]
-                parameters: &type_parameters_in_scope(&item_struct.generics),
-                rust_ident: &name.to_string(),
-            },
-        ),
-    ));
+    let schema_impl_items = tuple_struct_schema_impl_items(&item_struct, &item_name, &slots, args);
 
     let delegate_impl_items = struct_delegate_items(
         &module_ident,

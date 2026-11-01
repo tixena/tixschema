@@ -50,7 +50,6 @@ use super::tuple_struct_zod_body;
 
 use super::tuple_struct_json_body;
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 use super::{check_slot_wire_is_readable, tuple_struct_shape};
 
 #[cfg(feature = "swift")]
@@ -5341,8 +5340,6 @@ fn the_brand_slot_alias_and_const_guards_are_compiled_in_every_build_that_descri
     let compiled = quote::quote!(cfg(#describing)).to_string();
     let expansion = include_str!("../model_schema.rs");
     for named in [
-        "check_slot_wire_is_readable",
-        "slot_attributes_reach_the_wire",
         "alias_map_key_guard_error",
         "collect_const_arguments",
         "bare_ident",
@@ -5376,6 +5373,17 @@ fn the_brand_slot_alias_and_const_guards_are_compiled_in_every_build_that_descri
         "non_string_inner_shape",
         "held_as_a_list",
         "surface_field_def",
+    ] {
+        assert_eq!(
+            gates_above(expansion, named),
+            Vec::<String>::new(),
+            "for `{named}`"
+        );
+    }
+    // Every build walks a tuple struct's slots.
+    for named in [
+        "check_slot_wire_is_readable",
+        "slot_attributes_reach_the_wire",
     ] {
         assert_eq!(
             gates_above(expansion, named),
@@ -7281,7 +7289,7 @@ fn a_tuple_written_as_a_fields_type_is_walked_position_by_position() {
     );
 }
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn a_slot_of_a_tuple_struct_is_walked_and_reported_under_its_position() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
@@ -7343,7 +7351,7 @@ fn a_slot_of_a_tagged_variant_is_walked_and_reported_under_the_variants_name() {
 
 /// A map, a tuple and a slot that hold no declared type are not walked, a type parameter and a
 /// set of strings among what they hold.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn a_map_a_tuple_and_a_slot_that_hold_no_declared_type_add_nothing_to_validate() {
     let mut fields: syn::ItemStruct = syn::parse_quote! {
@@ -7435,31 +7443,28 @@ fn a_field_written_as_a_set_of_values_no_declared_type_describes_adds_no_token()
                 "flattened, for {list}<{held}>"
             );
 
-            #[cfg(any(feature = "typescript", feature = "zod"))]
-            {
-                let mut slots: syn::ItemStruct = syn::parse_quote! {
-                    struct Docket<T>(#written);
-                };
-                let generics = slots.generics.clone();
-                let walked = super::collect_tuple_slots(
-                    &mut slots.fields,
-                    None,
-                    "docket_schema",
-                    "Docket",
-                    &generics,
-                    false,
-                    false,
-                );
-                assert_eq!(
-                    walked
-                        .validate_bodies
-                        .iter()
-                        .map(ToString::to_string)
-                        .collect::<String>(),
-                    "",
-                    "slot, for {list}<{held}>"
-                );
-            }
+            let mut slots: syn::ItemStruct = syn::parse_quote! {
+                struct Docket<T>(#written);
+            };
+            let generics = slots.generics.clone();
+            let walked = super::collect_tuple_slots(
+                &mut slots.fields,
+                None,
+                "docket_schema",
+                "Docket",
+                &generics,
+                false,
+                false,
+            );
+            assert_eq!(
+                walked
+                    .validate_bodies
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<String>(),
+                "",
+                "slot, for {list}<{held}>"
+            );
         }
     }
 }
@@ -19384,7 +19389,6 @@ fn the_list_a_brand_holds_is_the_constraint_walks() {
 /// The slots a tuple struct is read from, at the three arities the dispatch answers for. The empty
 /// one has no declaration in this crate — `struct Nothing();` is refused by the lint table — so it
 /// is read here, where the slots are built rather than parsed off an item.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn tuple_slots(spellings: &[&str]) -> Vec<super::FieldDef> {
     spellings
         .iter()
@@ -19393,7 +19397,6 @@ fn tuple_slots(spellings: &[&str]) -> Vec<super::FieldDef> {
 }
 
 /// The shape a struct declaring exactly the given slots publishes, none of them off the wire.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn whole_tuple(spellings: &[&str]) -> super::TupleStructShape {
     tuple_struct_shape(spellings.len(), tuple_slots(spellings))
 }
@@ -19507,7 +19510,6 @@ fn a_slot_dropped_off_the_wire_shrinks_the_described_arity() {
 }
 
 /// A two-slot struct whose second slot is written at the given spelling.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn slot_pair(spelling: &str) -> syn::ItemStruct {
     syn::parse_str(&format!(
         "struct Pair(String, #[serde({spelling})] Option<String>);"
@@ -19517,7 +19519,6 @@ fn slot_pair(spelling: &str) -> syn::ItemStruct {
 
 /// Runs the slot refusal over that struct's second slot, with the declared arity supplied rather
 /// than counted, so the lone-slot exemption can be read off the same declaration.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn slot_guard_result(item: &syn::ItemStruct, declared_slots: usize) -> Result<(), syn::Error> {
     let field = item.fields.iter().nth(1).unwrap();
     check_slot_wire_is_readable(
@@ -19530,14 +19531,12 @@ fn slot_guard_result(item: &syn::ItemStruct, declared_slots: usize) -> Result<()
 }
 
 /// The refusal message for the slot at that spelling, and `None` where it is left alone.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn slot_refusal(spelling: &str, declared_slots: usize) -> Option<String> {
     slot_guard_result(&slot_pair(spelling), declared_slots)
         .err()
         .map(|err| err.to_string())
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_slot_dropped_from_one_direction_only_is_refused() {
     for (spelling, refused) in SLOT_OMISSION_SPELLINGS {
@@ -19550,7 +19549,6 @@ fn a_slot_dropped_from_one_direction_only_is_refused() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_lone_slot_is_refused_for_no_spelling() {
     for (spelling, _) in SLOT_OMISSION_SPELLINGS {
