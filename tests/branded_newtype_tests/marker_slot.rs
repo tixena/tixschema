@@ -87,6 +87,14 @@ mod beside_the_lone_slot {
             serde_json::json!("def")
         );
         assert_eq!(
+            serde_json::to_value(SlotAlone("abc".to_owned())).unwrap(),
+            serde_json::to_value(&after).unwrap()
+        );
+        assert_eq!(
+            serde_json::from_value::<SlotAlone>(serde_json::json!("def")).unwrap(),
+            SlotAlone("def".to_owned())
+        );
+        assert_eq!(
             serde_json::from_value::<MarkedAfter>(serde_json::json!("abc")).unwrap(),
             after
         );

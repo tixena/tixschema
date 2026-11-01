@@ -7471,28 +7471,31 @@ fn a_field_written_as_a_set_of_values_no_declared_type_describes_adds_no_token()
                 "flattened, for {list}<{held}>"
             );
 
-            let mut slots: syn::ItemStruct = syn::parse_quote! {
-                struct Docket<T>(#written);
-            };
-            let generics = slots.generics.clone();
-            let walked = super::collect_tuple_slots(
-                &mut slots.fields,
-                None,
-                "docket_schema",
-                "Docket",
-                &generics,
-                false,
-                false,
-            );
-            assert_eq!(
-                walked
-                    .validate_bodies
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect::<String>(),
-                "",
-                "slot, for {list}<{held}>"
-            );
+            #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+            {
+                let mut slots: syn::ItemStruct = syn::parse_quote! {
+                    struct Docket<T>(#written);
+                };
+                let generics = slots.generics.clone();
+                let walked = super::collect_tuple_slots(
+                    &mut slots.fields,
+                    None,
+                    "docket_schema",
+                    "Docket",
+                    &generics,
+                    false,
+                    false,
+                );
+                assert_eq!(
+                    walked
+                        .validate_bodies
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<String>(),
+                    "",
+                    "slot, for {list}<{held}>"
+                );
+            }
         }
     }
 }

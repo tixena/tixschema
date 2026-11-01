@@ -61,7 +61,7 @@ mod by_the_derive {
     }
 
     #[model_schema()]
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Deserialize, Eq, PartialEq)]
     #[serde(transparent)]
     pub struct TextAlone(pub String);
 
@@ -119,11 +119,19 @@ mod by_the_derive {
             serde_json::to_value(&written).unwrap()
         );
         assert_eq!(
+            serde_json::to_value(CountAlone(7)).unwrap(),
+            serde_json::to_value(&written).unwrap()
+        );
+        assert_eq!(
             serde_json::from_value::<Received>(serde_json::json!("abc")).unwrap(),
             Received {
                 count: 0,
                 text: "abc".to_owned(),
             }
+        );
+        assert_eq!(
+            serde_json::from_value::<TextAlone>(serde_json::json!("abc")).unwrap(),
+            TextAlone("abc".to_owned())
         );
     }
 

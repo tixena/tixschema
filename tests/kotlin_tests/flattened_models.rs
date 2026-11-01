@@ -30,7 +30,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tixschema::model_schema;
 
-use super::tuple_variants_models::{Labelling, labelling_schema};
+use super::tuple_variants_models::Labelling;
+#[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
+use super::tuple_variants_models::labelling_schema;
 
 /// What every holder of a member flattened after or beside another below is read from, but those
 /// named apart.

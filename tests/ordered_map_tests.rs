@@ -6,6 +6,6 @@
 mod tests;
 
 #[cfg(test)]
-#[cfg(feature = "kotlin")]
+#[cfg(all(feature = "indexmap", feature = "kotlin"))]
 #[path = "support/kotlin_numbers.rs"]
 mod kotlin_numbers;
