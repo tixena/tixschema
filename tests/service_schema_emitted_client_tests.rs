@@ -95,7 +95,8 @@ mod run_node_bytes;
 mod run_node_bigint_literals;
 
 /// The emitted `http_rest` server: the seven design requests, the reader forms, the query-read
-/// message, and the three body kinds compared against the Rust twins above.
+/// message, the three body kinds compared against the Rust twins above, and the `OpenAPI`
+/// document.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_node_http_service.rs"]
 mod run_node_http_service;
@@ -1435,6 +1436,8 @@ use run_dart_preprocess::{
 };
 #[cfg(all(test, feature = "dart"))]
 use run_dart_read::{ParcelClientService, parcel_client_service_schema};
+#[cfg(test)]
+use run_node_http_service::{CatalogClientService, catalog_client_service_schema};
 #[cfg(test)]
 use run_node_number_brands::{
     WharfClientService, WharfFilingClientService, wharf_client_service_schema,

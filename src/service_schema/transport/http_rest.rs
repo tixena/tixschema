@@ -3,11 +3,12 @@
 
 pub mod openapi;
 
-use super::Transport;
 use super::amqp_rpc::{
     Generated, answers, call_arguments, call_message, outbound_refusal, panic_guard, placement_doc,
     refusal_reader,
 };
+use super::{OpenApiArguments, Transport};
+use crate::features::service_schema::registry_ident;
 use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HeaderIn, HttpShape, MultipartPart, OperationDef,
     OperationInputs, OperationOutcome, PathSegment, ScalarKind, ServiceDef, argument_local,
@@ -32,8 +33,12 @@ struct AnswerArm<'answer> {
     wire: &'answer str,
 }
 
-pub fn emit(service: &ServiceDef, transport: Transport) -> TokenStream {
-    let dispatcher = dispatcher_macro(service, transport);
+pub fn emit(
+    service: &ServiceDef,
+    transport: Transport,
+    openapi: Option<&OpenApiArguments>,
+) -> TokenStream {
+    let dispatcher = dispatcher_macro(service, transport, openapi);
     let client = client_macro(service, transport);
     quote! {
         #dispatcher
@@ -184,7 +189,11 @@ fn route_table(service: &ServiceDef) -> TokenStream {
     }
 }
 
-fn dispatcher_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
+fn dispatcher_macro(
+    service: &ServiceDef,
+    transport: Transport,
+    openapi: Option<&OpenApiArguments>,
+) -> TokenStream {
     let contract = &service.ident;
     let macro_name = super::dispatcher_macro_ident(service, transport);
     let placement = placement_doc(&macro_name, "http_transport", "the_contract_crate::");
@@ -208,7 +217,7 @@ fn dispatcher_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
          {placement}",
         transport.name()
     );
-    let items = dispatcher_items(service);
+    let items = dispatcher_items(service, openapi);
     quote! {
         #[doc = #macro_doc]
         #[macro_export]
@@ -220,7 +229,7 @@ fn dispatcher_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
     }
 }
 
-fn dispatcher_items(service: &ServiceDef) -> TokenStream {
+fn dispatcher_items(service: &ServiceDef, openapi: Option<&OpenApiArguments>) -> TokenStream {
     let module = module_ident(service);
     // Whether `OutgoingResponse` carries a plain `Vec<u8>` body or the `OutgoingBody` enum a
     // streamed body needs: `dispatch` has one return type, so the choice is the whole service's.
@@ -260,7 +269,7 @@ fn dispatcher_items(service: &ServiceDef) -> TokenStream {
     } else {
         TokenStream::new()
     };
-    let dispatch = dispatch_fn(service, has_stream, has_multipart, &module);
+    let dispatch = dispatch_fn(service, has_stream, has_multipart, &module, openapi);
     // Every type, trait and impl ahead of every function: a strict consumer's lints would otherwise
     // see a function declared ahead of a type.
     quote! {
@@ -690,9 +699,11 @@ fn dispatch_fn(
     has_stream: bool,
     has_multipart: bool,
     module: &Ident,
+    openapi: Option<&OpenApiArguments>,
 ) -> TokenStream {
     let contract = &service.ident;
     let builders = response_builders(has_stream, service_writes_a_response_header(service));
+    let document_arm = openapi.map(|asked| document_arm(service, has_stream, asked));
     let arms = service
         .operations
         .iter()
@@ -714,12 +725,19 @@ fn dispatch_fn(
     } else {
         TokenStream::new()
     };
+    let document_doc = openapi.map_or_else(String::new, |asked| {
+        format!(
+            " `GET {}` answers `200` with the service's OpenAPI document as JSON, ahead of every \
+             route.",
+            asked.served_at()
+        )
+    });
     let dispatch_doc = format!(
         "Matches `request` against every route `{contract}` declares and answers it: a declared \
          status with the success or error type as bare JSON, or a fault the installed \
          `FaultHandler` decides the answer for - by default the fixed behavior this dispatcher \
          always answered: 400 for a payload that fails to decode or to validate, 404 for a \
-         request no route answers to, 500 for a handler that panicked.\n\n\
+         request no route answers to, 500 for a handler that panicked.{document_doc}\n\n\
          Generic over the implementing type rather than taking `&dyn {contract}`: a trait whose \
          methods are `async` is not dyn compatible."
     );
@@ -744,11 +762,32 @@ fn dispatch_fn(
             async move {
                 let method = request.method();
                 let path = request.path();
+                #document_arm
                 #(#arms)*
                 handler.on_fault(&$crate::#module::ServiceFault::unknown_operation(&format!(
                     "{method} {path}"
                 )))
             }
+        }
+    }
+}
+
+/// Answers `GET` at the path `openapi` names with `<Service>Schema::openapi()` as compact JSON.
+fn document_arm(service: &ServiceDef, has_stream: bool, asked: &OpenApiArguments) -> TokenStream {
+    let registry = registry_ident(service);
+    let served_at = asked.served_at();
+    let body = body_field(has_stream, &quote! { document.into_bytes() });
+    quote! {
+        if method == "GET" && path == #served_at {
+            let document = $crate::#registry::openapi().to_string();
+            return OutgoingResponse {
+                status: 200,
+                headers: ::std::vec![(
+                    ::std::string::String::from("content-type"),
+                    ::std::string::String::from("application/json"),
+                )],
+                #body,
+            };
         }
     }
 }

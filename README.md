@@ -3036,7 +3036,7 @@ error: macro-expanded `macro_export` macros from the current crate cannot be ref
 
 Another crate reaches either macro by path as above.
 
-`#[macro_export]` places each macro at the declaring crate's root whatever module it was written in, so each name has to be unique across that crate, and `$crate` reads from that same root. A service declared at the crate root needs nothing further; one declared in a submodule re-exports at the crate root its generated module and its trait, which is all either half reaches by name -- every message a dispatcher deserializes, and every message a client builds, is reached as `$crate::{service}_schema::<Operation>Message`. A message the *author* named is spelled as they wrote it where a client method takes it, and resolves in the module the macro was invoked in.
+`#[macro_export]` places each macro at the declaring crate's root whatever module it was written in, so each name has to be unique across that crate, and `$crate` reads from that same root. A service declared at the crate root needs nothing further; one declared in a submodule re-exports at the crate root its generated module and its trait, which is all either half reaches by name, beside the `<Service>Schema` the `http_rest` dispatcher of a service that asks for `openapi` reads its document from (see [OpenAPI](#openapi)) -- every message a dispatcher deserializes, and every message a client builds, is reached as `$crate::{service}_schema::<Operation>Message`. A message the *author* named is spelled as they wrote it where a client method takes it, and resolves in the module the macro was invoked in.
 
 Both of those the declaring crate checks for itself. A service that asked for at least one transport resolves its generated module and its trait against the crate root at the declaration, so leaving either unreachable fails **that** crate's own `cargo build` rather than every crate that goes on to invoke a macro. The caret sits on the trait, with the attribute macro named as the origin:
 
@@ -3507,6 +3507,135 @@ if (outcome is ConversationClientServiceWindowResult.Declared) {
 A one-way method still throws the fault-only `{Service}Refusal`.
 
 All four non-Rust backends cover `body = "json"`, `body = "bytes"`, `body = "stream"` and `body = "multipart"` in full, each over the transports that carry it. A `bytes` reply answers the bytes beside their content type: the `http_rest` clients read the bytes off the response's binary body, the TypeScript one as the `Uint8Array` its result declares, and the TypeScript transport-agnostic and `ws_rpc` clients parse the pair of the bytes and their content type the TypeScript dispatcher answers. An operation only `http_rest` carries, a `body = "stream"` one and one with a `part(...)` file part, has a method on the `http_rest` clients alone: the `ws_rpc` clients of every language and the TypeScript transport-agnostic one hold no method for it, and the `ws_rpc` dispatchers and `create{Service}Dispatcher` no handler, since no server of those transports can answer it, as the refusals below state. Each client, the Dart and Kotlin handlers and `{Service}Impl` name the operations left out in their doc comments. `create{Service}Dispatcher` takes the implementation without those members, `Omit<{Service}Impl<Ctx>, "getContent">`, and `create{Service}HttpDispatcher` answers them itself. A streamed operation's TypeScript client answers `{ contentRange: string | undefined; contentType: string; body: ReadableStream<Uint8Array> }` -- `contentRange` left `undefined` at the operation's own `ok_status`, read back off the response ahead of naming the body and set to the range text at `206`, `contentType` read back as a `bytes` reply's is -- off the seam's own `bodyStream` field; its Dart client answers the same fields as a `({String? contentRange, String contentType, Stream<List<int>> body})` record off `bodyStream` there too; its Swift client answers them as `(contentRange: String?, contentType: String, body: AsyncThrowingStream<Data, Error>)` off `bodyStream` there too; its Kotlin client answers them wrapped in an aux `{Result}Streamed(contentRange, contentType, body: Flow<ByteArray>)` type off `bodyStream` there too. A declared `header_out` composes onto either answer exactly as it does for `json` and `bytes`. A multipart operation's TypeScript client builds `parts` from the message's own fields and the declared `part` bindings; its Dart client builds the same list, the file handles crossing as `dynamic` through the same path an unknown type already renders by; its Swift client builds the same list, the file handles crossing as `any Sendable`; its Kotlin client builds the same list, the file handles crossing as `Any?`.
+
+##### OpenAPI
+
+`#[service_schema(transports = ["http_rest"], openapi)]` asks for the service's OpenAPI 3.1 document. `openapi(title = "...", path = "...")` writes either key, or both: `title` is the document's `info.title`, the service's name where none is written, and `path` is the route the dispatchers answer the document at, `/openapi.json` where none is written.
+
+```rust,ignore
+use serde::{Deserialize, Serialize};
+use tixschema::{model_schema, service_schema};
+
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Serialize, Deserialize)]
+pub struct Document {
+    pub id: String,
+    pub title: String,
+}
+
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", tag = "errorCode")]
+pub enum DocumentError {
+    NotFound,
+}
+
+#[service_schema(transports = ["http_rest"], openapi(title = "Documents API"))]
+pub trait DocumentService<Ctx> {
+    #[service_schema_op(http(
+        method = "GET",
+        path = "/documents/{document_id}",
+        error_status(NotFound = 404)
+    ))]
+    async fn get_document(&self, ctx: &Ctx, document_id: String)
+    -> Result<Document, DocumentError>;
+}
+```
+
+`DocumentServiceSchema::openapi()` answers the document as a `serde_json::Value`, built at run time in the crate that declares the service. It holds every operation's path and method; its path, query and header parameters; its request body; and each status it answers at, with the body and the headers of each: the success at `ok_status`, `206` beside it for a `body = "stream"` operation, each declared error's status, and the `400`, `404` and `500` faults. Every type the operations name is written once under `components.schemas` and referenced as `#/components/schemas/<Name>`, under the name it is published under. `info.version` is the declaring crate's version. An excerpt of the document above:
+
+```json
+{
+  "openapi": "3.1.0",
+  "info": { "title": "Documents API", "version": "0.1.0" },
+  "paths": {
+    "/documents/{document_id}": {
+      "get": {
+        "operationId": "get-document",
+        "parameters": [
+          { "in": "path", "name": "document_id", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Document" } } },
+            "description": "The operation's answer."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/DocumentError" },
+                    { "$ref": "#/components/schemas/DocumentServiceFaultFields" }
+                  ]
+                }
+              }
+            },
+            "description": "A declared error: `NotFound`. A fault: no route answers the request."
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+Every model type an operation names lists `"jsonschema"` in its `enable` list, because the document reads each type's JSON Schema; the messages and the fault fields the service macro declares itself list it on their own. A type that does not list it stops the build where the operation names it:
+
+```text
+error[E0599]: no associated function or constant named `JSON_SCHEMA_NAME` found for struct `balance_schema::Schema` in the current scope
+```
+
+Both `http_rest` dispatchers, the Rust `dispatch` and the TypeScript `create{Service}HttpDispatcher`, answer `GET` at the document's path with `200`, `content-type: application/json` and the document as the body, ahead of every route. Any other method at that path answers as it would without `openapi`, and so does every request to a service that does not ask for it. `ts_http_service()` writes the document `openapi()` builds into the text it answers, at run time, and the TypeScript dispatcher answers `JSON.stringify` of it.
+
+The Rust dispatcher reads the document from `$crate::<Service>Schema`, so a service that asks for `openapi` and is declared in a submodule re-exports its `<Service>Schema` at the crate root, beside its generated module and its trait. The declaring crate does not check this one at the declaration; the dispatcher macro's invocation fails without it:
+
+```text
+error[E0433]: cannot find `DocumentServiceSchema` in `$crate`
+```
+
+`openapi` is refused, and the build stops, in six cases.
+
+A service that does not ask for `http_rest`:
+
+```text
+error: service_schema: `openapi` describes the `http_rest` transport, and this service does not ask for it
+              add "http_rest" to `transports`, or remove `openapi`
+```
+
+A `path` that does not start with `/`:
+
+```text
+error: service_schema: `openapi(path = "...")` is a route, so it starts with `/`
+```
+
+A path an operation of the service answers with `GET`, written or the default. A route with a placeholder answers every path it matches, so `GET /{document_id}` answers `/openapi.json`:
+
+```text
+error: service_schema: operation `get_document` already answers `GET /openapi.json`, so the OpenAPI document cannot be served there
+              write another `path` in `openapi(...)`
+```
+
+A key other than `title` and `path`:
+
+```text
+error: service_schema: unknown `openapi` argument
+              the arguments are `title` and `path`, each written `name = "..."`
+```
+
+A key written twice:
+
+```text
+error: service_schema: `path` is written twice in `openapi(...)`
+              write it once
+```
+
+`openapi` written with a value, as `openapi = true`:
+
+```text
+error: service_schema: `openapi` takes no value
+              write `openapi`, or `openapi(title = "...", path = "...")`
+```
 
 #### The `ws_rpc` Transport
 
@@ -8889,14 +9018,7 @@ const user: User = {
 };
 ```
 
-You can also generate JSON schemas from the Zod schemas for API documentation or OpenAPI specs:
-
-```typescript
-import { generateSchema } from '@zod-schema/json-schema';
-import { User$Schema } from './types/generated';
-
-const jsonSchema = generateSchema(User$Schema);
-```
+An `http_rest` service answers its own OpenAPI 3.1 document: see [OpenAPI](#openapi).
 
 ## Serde Attribute Support
 

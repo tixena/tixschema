@@ -2,6 +2,10 @@
 
 #![cfg(feature = "serde")]
 
+use crate::{
+    content_http_rest_transport, folder_http_rest_transport, plain_http_rest_transport,
+    search_http_rest_transport,
+};
 use core::future::{Future, ready};
 use core::pin::pin;
 use core::task::{Context, Poll, Waker};
@@ -9,6 +13,58 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::io::Cursor;
 use tixschema::{model_schema, service_schema};
+
+/// Reads back each item a placement writes that no request reaches: every accessor of
+/// `IncomingRequest`, and the route table, held to `$routes`.
+macro_rules! assert_request_and_routes_read_back {
+    ($transport:ident, $routes:expr) => {{
+        let request = $transport::IncomingRequest::new(
+            "GET".to_owned(),
+            "/unused".to_owned(),
+            "unused=1".to_owned(),
+            vec![("x-trace".to_owned(), "abc".to_owned())],
+            b"ignored".to_vec(),
+        );
+        assert_eq!(request.body(), b"ignored");
+        assert_eq!(request.query(), "unused=1");
+        assert_eq!(request.header("X-Trace"), Some("abc"));
+        assert_eq!(
+            request.headers().to_vec(),
+            vec![("x-trace".to_owned(), "abc".to_owned())]
+        );
+        let routes: Vec<(&str, &str, &str, u16, Vec<u16>)> = $transport::ROUTES
+            .iter()
+            .map(|route| {
+                (
+                    route.method(),
+                    route.path(),
+                    route.operation(),
+                    route.ok_status(),
+                    route.error_statuses().to_vec(),
+                )
+            })
+            .collect();
+        let expected: Vec<(&str, &str, &str, u16, Vec<u16>)> = $routes;
+        assert_eq!(routes, expected);
+    }};
+}
+
+/// Builds an `OutgoingResponse` of a placement whose body is bytes, and reads it back.
+macro_rules! assert_built_response_reads_back {
+    ($transport:ident) => {{
+        let built = $transport::OutgoingResponse::new(
+            204,
+            vec![("x-trace".to_owned(), "abc".to_owned())],
+            b"built".to_vec(),
+        );
+        assert_eq!(built.status(), 204);
+        assert_eq!(
+            built.headers().to_vec(),
+            vec![("x-trace".to_owned(), "abc".to_owned())]
+        );
+        assert_eq!(built.body(), b"built");
+    }};
+}
 
 /// The `OpenAPI` 3.1 schema its initiative publishes at
 /// `https://spec.openapis.org/oas/3.1/schema/2022-10-07`.
@@ -107,8 +163,9 @@ pub enum SearchError {
     FolderMissing,
 }
 
-/// A path placeholder and the optional fields a `GET` reads off the query string.
-#[service_schema(transports = ["http_rest"], openapi)]
+/// A path placeholder and the optional fields a `GET` reads off the query string, with the
+/// document answered at a path of its own.
+#[service_schema(transports = ["http_rest"], openapi(path = "/v1/openapi.json"))]
 pub trait SearchService<Ctx> {
     #[service_schema_op(http(
         method = "GET",
@@ -187,9 +244,22 @@ pub enum ContentError {
     NotFound,
 }
 
-/// `body = "bytes"` and `body = "stream"`.
+/// `body = "bytes"`, and `body = "stream"` with and without a `header_out`.
 #[service_schema(transports = ["http_rest"], openapi)]
 pub trait ContentService<Ctx> {
+    #[service_schema_op(http(
+        method = "GET",
+        path = "/documents/{document_id}/export",
+        body = "stream",
+        header_out("etag"),
+        error_status(NotFound = 404),
+    ))]
+    async fn export_document(
+        &self,
+        ctx: &Ctx,
+        document_id: String,
+    ) -> Result<(content_service_schema::StreamedAnswer, String), ContentError>;
+
     #[service_schema_op(http(
         method = "GET",
         path = "/documents/{document_id}/content",
@@ -404,6 +474,15 @@ impl VersionService<()> for Archive {
 }
 
 impl ContentService<()> for Archive {
+    async fn export_document(
+        &self,
+        _ctx: &(),
+        _document_id: String,
+    ) -> Result<(content_service_schema::StreamedAnswer, String), ContentError> {
+        ready(()).await;
+        Err(ContentError::NotFound)
+    }
+
     async fn get_content(
         &self,
         _ctx: &(),
@@ -1028,5 +1107,294 @@ fn what_an_implementation_answers_beside_headers_and_parts_is_what_the_document_
         &documents,
         json_schema_of(&documents["paths"]["/documents/{document_id}"]["get"]["responses"]["404"]),
         &plain.unwrap_err(),
+    );
+}
+
+/// Each operation of `document` that lists a `206`, as its method and path.
+fn partial_answers(document: &Value) -> Vec<String> {
+    let mut found = Vec::new();
+    for (path, methods) in document["paths"].as_object().unwrap() {
+        for (method, operation) in methods.as_object().unwrap() {
+            if operation["responses"].get("206").is_some() {
+                found.push(format!("{method} {path}"));
+            }
+        }
+    }
+    found.sort_unstable();
+    found
+}
+
+#[test]
+fn a_stream_answers_206_with_its_content_and_a_required_content_range() {
+    let document = ContentServiceSchema::openapi();
+    let responses = &document["paths"]["/documents/{document_id}/content"]["get"]["responses"];
+    assert_eq!(statuses(responses), ["200", "206", "400", "404", "500"]);
+    let partial = &responses["206"];
+    assert_eq!(
+        partial["description"],
+        "A partial body: the range the implementation answered."
+    );
+    assert_eq!(partial["content"], responses["200"]["content"]);
+    assert_eq!(
+        partial["content"],
+        json!({ "application/octet-stream": {} })
+    );
+    assert_eq!(
+        partial["headers"],
+        json!({ "content-range": { "required": true, "schema": { "type": "string" } } })
+    );
+    assert_valid(&document);
+}
+
+#[test]
+fn a_streams_206_carries_its_header_out_beside_the_content_range() {
+    let document = ContentServiceSchema::openapi();
+    let responses = &document["paths"]["/documents/{document_id}/export"]["get"]["responses"];
+    let text = json!({ "required": true, "schema": { "type": "string" } });
+    assert_eq!(responses["200"]["headers"], json!({ "etag": text }));
+    assert_eq!(
+        responses["206"]["headers"],
+        json!({ "content-range": text, "etag": text })
+    );
+}
+
+#[test]
+fn only_a_stream_answers_206() {
+    assert_eq!(
+        partial_answers(&ContentServiceSchema::openapi()),
+        [
+            "get /documents/{document_id}/content",
+            "get /documents/{document_id}/export",
+        ]
+    );
+    for document in [
+        DocumentServiceSchema::openapi(),
+        SearchServiceSchema::openapi(),
+        VersionServiceSchema::openapi(),
+        UploadServiceSchema::openapi(),
+        FolderServiceSchema::openapi(),
+    ] {
+        assert_eq!(
+            partial_answers(&document),
+            Vec::<String>::new(),
+            "{document:#}"
+        );
+    }
+}
+
+fn folder_dispatched(method: &str, path: &str) -> folder_http_rest_transport::OutgoingResponse {
+    let request = folder_http_rest_transport::IncomingRequest::new(
+        method.to_owned(),
+        path.to_owned(),
+        String::new(),
+        Vec::new(),
+        Vec::new(),
+    );
+    answered(folder_http_rest_transport::dispatch(
+        &Archive,
+        &(),
+        &request,
+        &folder_http_rest_transport::DefaultFaultHandler,
+    ))
+}
+
+fn search_dispatched(path: &str) -> search_http_rest_transport::OutgoingResponse {
+    let request = search_http_rest_transport::IncomingRequest::new(
+        "GET".to_owned(),
+        path.to_owned(),
+        String::new(),
+        Vec::new(),
+        Vec::new(),
+    );
+    answered(search_http_rest_transport::dispatch(
+        &Archive,
+        &(),
+        &request,
+        &search_http_rest_transport::DefaultFaultHandler,
+    ))
+}
+
+/// Holds `body` to the fault a request no route answers to earns, naming `operation`.
+fn assert_unknown_route(status: u16, body: &[u8], operation: &str) {
+    assert_eq!(status, 404);
+    let fault: Value = serde_json::from_slice(body).unwrap();
+    assert_eq!(fault["kind"], "unknown-operation", "{fault:#}");
+    assert_eq!(fault["operation"], operation, "{fault:#}");
+}
+
+fn json_content_type() -> Vec<(String, String)> {
+    vec![("content-type".to_owned(), "application/json".to_owned())]
+}
+
+#[test]
+fn the_rust_dispatcher_answers_get_at_the_default_path_with_the_document() {
+    let response = folder_dispatched("GET", "/openapi.json");
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.headers().to_vec(), json_content_type());
+    let document: Value = serde_json::from_slice(response.body()).unwrap();
+    assert_eq!(document["openapi"], "3.1.0");
+    assert_eq!(document, FolderServiceSchema::openapi());
+    let taken = folder_dispatched("GET", "/folders/Board");
+    assert_eq!(taken.status(), 409);
+}
+
+#[test]
+fn the_rust_dispatcher_answers_the_document_at_the_path_written_and_nowhere_else() {
+    let response = search_dispatched("/v1/openapi.json");
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.headers().to_vec(), json_content_type());
+    let document: Value = serde_json::from_slice(response.body()).unwrap();
+    assert_eq!(document, SearchServiceSchema::openapi());
+    let default = search_dispatched("/openapi.json");
+    assert_unknown_route(default.status(), default.body(), "GET /openapi.json");
+}
+
+#[test]
+fn another_method_at_the_document_path_answers_the_unknown_route_fault() {
+    let response = folder_dispatched("POST", "/openapi.json");
+    assert_unknown_route(response.status(), response.body(), "POST /openapi.json");
+}
+
+#[test]
+fn a_service_without_openapi_answers_the_unknown_route_fault_at_the_default_path() {
+    let request = plain_http_rest_transport::IncomingRequest::new(
+        "GET".to_owned(),
+        "/openapi.json".to_owned(),
+        String::new(),
+        Vec::new(),
+        Vec::new(),
+    );
+    let response = answered(plain_http_rest_transport::dispatch(
+        &Archive,
+        &(),
+        &request,
+        &plain_http_rest_transport::DefaultFaultHandler,
+    ));
+    assert_unknown_route(response.status(), response.body(), "GET /openapi.json");
+}
+
+#[test]
+fn a_dispatcher_whose_responses_stream_answers_the_document_as_bytes() {
+    let request = content_http_rest_transport::IncomingRequest::new(
+        "GET".to_owned(),
+        "/openapi.json".to_owned(),
+        String::new(),
+        Vec::new(),
+        Vec::new(),
+    );
+    let response = answered(content_http_rest_transport::dispatch(
+        &Archive,
+        &(),
+        &request,
+        &content_http_rest_transport::DefaultFaultHandler,
+    ));
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.headers().to_vec(), json_content_type());
+    let document: Value = serde_json::from_slice(&drained(response.into_body())).unwrap();
+    assert_eq!(document, ContentServiceSchema::openapi());
+}
+
+/// Every byte `body` holds, pulled from its source where it streams.
+fn drained(body: content_http_rest_transport::OutgoingBody) -> Vec<u8> {
+    match body {
+        content_http_rest_transport::OutgoingBody::Bytes(bytes) => bytes,
+        content_http_rest_transport::OutgoingBody::Stream(mut source) => {
+            let mut pulled = Vec::new();
+            let mut chunk = [0_u8; 64];
+            loop {
+                let read = source.pull(&mut chunk).unwrap();
+                if read == 0 {
+                    return pulled;
+                }
+                pulled.extend_from_slice(&chunk[..read]);
+            }
+        }
+    }
+}
+
+#[test]
+fn each_placement_reads_back_its_requests_and_its_route_table() {
+    assert_request_and_routes_read_back!(
+        folder_http_rest_transport,
+        vec![
+            ("POST", "/folders", "create-folder", 200, vec![409]),
+            ("GET", "/folders/{name}", "get-folder", 200, vec![409]),
+        ]
+    );
+    assert_request_and_routes_read_back!(
+        search_http_rest_transport,
+        vec![(
+            "GET",
+            "/folders/{folder_id}/documents",
+            "search-documents",
+            200,
+            vec![404],
+        )]
+    );
+    assert_request_and_routes_read_back!(
+        plain_http_rest_transport,
+        vec![(
+            "GET",
+            "/documents/{document_id}",
+            "get-document",
+            200,
+            vec![404],
+        )]
+    );
+    assert_request_and_routes_read_back!(
+        content_http_rest_transport,
+        vec![
+            (
+                "GET",
+                "/documents/{document_id}/export",
+                "export-document",
+                200,
+                vec![404],
+            ),
+            (
+                "GET",
+                "/documents/{document_id}/content",
+                "get-content",
+                200,
+                vec![404],
+            ),
+            (
+                "GET",
+                "/documents/{document_id}/thumbnail",
+                "get-thumbnail",
+                200,
+                vec![404],
+            ),
+        ]
+    );
+}
+
+#[test]
+fn each_placement_builds_a_response_that_reads_back() {
+    assert_built_response_reads_back!(folder_http_rest_transport);
+    assert_built_response_reads_back!(search_http_rest_transport);
+    assert_built_response_reads_back!(plain_http_rest_transport);
+    let streamed = content_http_rest_transport::OutgoingResponse::new(
+        206,
+        Vec::new(),
+        content_http_rest_transport::OutgoingBody::Stream(Box::new(Cursor::new(b"built".to_vec()))),
+    );
+    assert_eq!(streamed.status(), 206);
+    assert_eq!(drained(streamed.into_body()), b"built");
+}
+
+#[cfg(all(feature = "typescript", feature = "zod"))]
+#[test]
+fn the_typescript_server_holds_the_document_where_its_marker_was() {
+    let written = DocumentServiceSchema::ts_http_service();
+    assert!(!written.contains("__TIXSCHEMA_OPENAPI__"), "{written}");
+    let constant = format!(
+        "const documentServiceOpenApiDocument = {};",
+        DocumentServiceSchema::openapi()
+    );
+    assert!(written.contains(&constant), "{written}");
+    assert!(
+        !PlainServiceSchema::ts_http_service().contains("OpenApiDocument"),
+        "a service without openapi holds no document"
     );
 }

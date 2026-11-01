@@ -72,10 +72,12 @@ pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream
                         support::emit(&service, &wanted.transports, wanted.non_exhaustive, openapi);
                     // Both halves a transport contributes are `macro_rules!` bodies, so they stay
                     // at the trait's scope; `#[macro_export]` hoists each name to the crate root.
-                    let transports = transport::emit(&service, &wanted.transports);
+                    let transports =
+                        transport::emit(&service, &wanted.transports, wanted.openapi.as_ref());
                     // Every language's generated clients are strings rather than callers of
                     // anything private, so they stay at the trait's scope.
-                    let generated_clients = generated_clients(&service, wanted.non_exhaustive);
+                    let generated_clients =
+                        generated_clients(&service, wanted.non_exhaustive, wanted.openapi.as_ref());
                     let document = wanted
                         .openapi
                         .as_ref()
@@ -726,8 +728,12 @@ fn emitted_trait(declared: &ItemTrait) -> ItemTrait {
 /// `typescript`, `dart`, `swift` and `kotlin` each gate their own accessors independently inside
 /// [`emit_generated_clients`], so this wrapper needs only `serde`.
 #[cfg(feature = "serde")]
-fn generated_clients(service: &parse::ServiceDef, non_exhaustive: bool) -> TokenStream {
-    emit_generated_clients(service, non_exhaustive)
+fn generated_clients(
+    service: &parse::ServiceDef,
+    non_exhaustive: bool,
+    openapi: Option<&transport::OpenApiArguments>,
+) -> TokenStream {
+    emit_generated_clients(service, non_exhaustive, openapi)
 }
 
 #[cfg(test)]

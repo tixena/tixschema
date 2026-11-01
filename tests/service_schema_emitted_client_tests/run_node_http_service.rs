@@ -1,7 +1,8 @@
 //! The emitted `http_rest` server run under Node: the design's seven requests, the reader
 //! forms, a macro-generated message read off the query and the body, a bound `header_in`
-//! echoed back and compared with the Rust twin, and the three body kinds compared against the
-//! Rust `{service}_http_rest_dispatcher!()` twin for the same request.
+//! echoed back and compared with the Rust twin, the three body kinds compared against the
+//! Rust `{service}_http_rest_dispatcher!()` twin for the same request, and the `OpenAPI` document
+//! a service that asks for `openapi` answers.
 
 use super::content_http_rest_transport;
 use super::echo_http_rest_transport;
@@ -21,10 +22,12 @@ use super::tests::{
 };
 use super::thumbnail_http_rest_transport;
 use super::upload_document_http_rest_transport;
-use core::future::Future;
+use core::future::{Future, ready};
 use core::pin::pin;
 use core::task::{Context as PollContext, Poll, Waker};
+use serde::{Deserialize, Serialize};
 use std::io;
+use tixschema::{model_schema, service_schema};
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
 const RUNTIME_VAR: &str = "TIXSCHEMA_NODE";
@@ -605,6 +608,37 @@ const answered = await client.echoRange("doc-1", "a \"etag\" b");
 console.log(JSON.stringify({ answered, sentHeaders }));
 "#;
 
+/// `GET` and `POST` at the document's path and `GET` at the one route, straight against the
+/// exported dispatcher.
+const CATALOG_DRIVER: &str = r#"
+const dispatch = createCatalogClientServiceHttpDispatcher({
+  async getEntry() {
+    return { ok: true, value: { title: "Minutes" } };
+  },
+});
+
+function request(method, path) {
+  return { method, path, query: "", headers: [], body: new Uint8Array() };
+}
+
+function read(answered) {
+  return {
+    status: answered.status,
+    headers: answered.headers,
+    body: JSON.parse(new TextDecoder().decode(answered.body)),
+  };
+}
+
+async function main() {
+  console.log(JSON.stringify({
+    document: read(await dispatch({}, request("GET", "/openapi.json"))),
+    posted: read(await dispatch({}, request("POST", "/openapi.json"))),
+    entry: read(await dispatch({}, request("GET", "/catalog/e-1"))),
+  }));
+}
+main().catch((error) => { console.error(error); process.exit(1); });
+"#;
+
 /// One answer in plain terms, normalized for comparison: headers sorted, so an incidental
 /// ordering difference between the two dispatchers is not mistaken for a disagreement.
 #[derive(Debug, PartialEq, Eq)]
@@ -679,6 +713,44 @@ impl pulse_http_rest_transport::FaultHandler for RecordingFaultHandler {
             vec![("x-fault-kind".to_owned(), format!("{}", fault.kind()))],
             b"handled".to_vec(),
         )
+    }
+}
+
+/// What `get_entry` answers.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct CatalogEntry {
+    pub title: String,
+}
+
+/// The error `get_entry` declares.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case", tag = "errorCode")]
+pub enum CatalogError {
+    NotFound,
+}
+
+/// A service that asks for `openapi`, whose TypeScript server answers its document.
+#[service_schema(transports = ["http_rest"], openapi)]
+pub trait CatalogClientService<Ctx> {
+    #[service_schema_op(http(
+        method = "GET",
+        path = "/catalog/{entry_id}",
+        error_status(NotFound = 404)
+    ))]
+    async fn get_entry(&self, ctx: &Ctx, entry_id: String) -> Result<CatalogEntry, CatalogError>;
+}
+
+/// The Rust implementation the driver's TypeScript one answers as.
+struct CatalogBackEnd;
+
+impl CatalogClientService<()> for CatalogBackEnd {
+    async fn get_entry(&self, _ctx: &(), _entry_id: String) -> Result<CatalogEntry, CatalogError> {
+        ready(()).await;
+        Ok(CatalogEntry {
+            title: "Minutes".to_owned(),
+        })
     }
 }
 
@@ -1993,5 +2065,49 @@ fn a_legal_header_in_value_with_a_space_and_a_quoted_etag_reaches_the_transport_
     assert_eq!(
         range_header[1], "a \"etag\" b",
         "a legal value must reach the transport unchanged. got: {results:#?}"
+    );
+}
+
+fn catalog_emitted() -> String {
+    [
+        "import { z } from \"zod\";".to_owned(),
+        CatalogEntry::ts_definition(),
+        CatalogEntry::zod_schema(),
+        CatalogError::ts_definition(),
+        CatalogError::zod_schema(),
+        CatalogClientServiceSchema::ts_definition(),
+        CatalogClientServiceSchema::ts_service(),
+        CatalogClientServiceSchema::ts_http_service(),
+    ]
+    .join("\n\n")
+}
+
+#[test]
+fn the_typescript_server_answers_get_at_the_document_path_with_the_document() {
+    let module = format!("{}\n\n{CATALOG_DRIVER}", catalog_emitted());
+    let Some(results) = run_or_stand_down("http-service-openapi", "openapi.mts", &module) else {
+        return;
+    };
+    let document = &results["document"];
+    assert_eq!(document["status"], 200_u16, "got: {results:#}");
+    assert_eq!(
+        document["headers"],
+        serde_json::json!([["content-type", "application/json"]]),
+        "got: {results:#}"
+    );
+    assert_eq!(document["body"], CatalogClientServiceSchema::openapi());
+    let posted = &results["posted"];
+    assert_eq!(posted["status"], 404_u16, "got: {results:#}");
+    assert_eq!(
+        posted["body"]["kind"], "unknown-operation",
+        "got: {results:#}"
+    );
+    let entry = &results["entry"];
+    assert_eq!(entry["status"], 200_u16, "got: {results:#}");
+    let answered = poll_once(CatalogBackEnd.get_entry(&(), "e-1".to_owned())).unwrap();
+    assert_eq!(
+        entry["body"],
+        serde_json::to_value(answered.unwrap()).unwrap(),
+        "got: {results:#}"
     );
 }

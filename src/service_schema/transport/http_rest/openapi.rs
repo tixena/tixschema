@@ -12,6 +12,7 @@ use crate::service_schema::parse::{
 use crate::service_schema::support::{fault_fields_typescript_name, module_ident};
 use crate::service_schema::transport::OpenApiArguments;
 use crate::utils::ident_schema_module_name;
+use core::iter;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote, quote_spanned};
 use syn::Type;
@@ -20,6 +21,7 @@ const COMPONENTS_PREFIX: &str = "#/components/schemas/";
 const JSON: &str = "application/json";
 const OCTET_STREAM: &str = "application/octet-stream";
 const MULTIPART: &str = "multipart/form-data";
+const PARTIAL_STATUS: u16 = 206;
 
 /// The statuses `dispatch`'s default `FaultHandler` answers a fault at, each with what it means.
 const FAULTS: [(u16, &str); 3] = [
@@ -426,8 +428,9 @@ fn answers(
             },
         ),
         OperationOutcome::Reply { error, success } => {
-            let success_answer = success_answer(shape, success, subject, named);
-            answered(&mut statuses, shape.ok_status, success_answer);
+            for (status, success_answer) in success_answers(shape, success, subject, named) {
+                answered(&mut statuses, status, success_answer);
+            }
             let head = error_declared_type(shape.error_header_out.len(), error);
             let described = named.described(subject, head);
             error_local = Some(quote! { let error = #described; });
@@ -473,8 +476,15 @@ fn answered(statuses: &mut Vec<(u16, Vec<Answer>)>, status: u16, answer: Answer)
 }
 
 /// The success at `ok_status`: no body for an empty reply, raw bytes for `body = "bytes"` and
-/// `body = "stream"`, and the success type as JSON otherwise, with each `header_out` element.
-fn success_answer(shape: &HttpShape, success: &Type, subject: &str, named: &mut Named) -> Answer {
+/// `body = "stream"`, and the success type as JSON otherwise, with each `header_out` element. A
+/// `body = "stream"` operation also answers `206`, which `StreamedAnswer::Partial` is open to on
+/// every one: the same content and headers, beside a required `content-range`.
+fn success_answers(
+    shape: &HttpShape,
+    success: &Type,
+    subject: &str,
+    named: &mut Named,
+) -> Vec<(u16, Answer)> {
     let (content, first_header) = match shape.body_kind {
         BodyKind::Stream => (Some((OCTET_STREAM, None)), 1),
         BodyKind::Bytes => (Some((OCTET_STREAM, None)), 2),
@@ -502,11 +512,31 @@ fn success_answer(shape: &HttpShape, success: &Type, subject: &str, named: &mut 
     } else {
         "The operation answered, with no body."
     };
-    Answer {
+    let partial = matches!(shape.body_kind, BodyKind::Stream).then(|| {
+        let content_range = Header {
+            name: "content-range".to_owned(),
+            required: true,
+            schema: quote! { serde_json::json!({ "type": "string" }) },
+        };
+        (
+            PARTIAL_STATUS,
+            Answer {
+                content: content.clone(),
+                description: "A partial body: the range the implementation answered.".to_owned(),
+                headers: iter::once(content_range)
+                    .chain(headers.iter().cloned())
+                    .collect(),
+            },
+        )
+    });
+    let whole = Answer {
         content,
         description: description.to_owned(),
         headers,
-    }
+    };
+    iter::once((shape.ok_status, whole))
+        .chain(partial)
+        .collect()
 }
 
 /// The elements of `ty`'s tuple from `first` on: the values its declared headers are written from.

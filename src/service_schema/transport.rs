@@ -144,13 +144,17 @@ fn macro_ident(service: &ServiceDef, transport: Transport, half: &str) -> Ident 
 ///
 /// Each contributes at most once however many times it was named: what it publishes is
 /// `#[macro_export]`ed, and one name at a crate root can be defined once.
-pub fn emit(service: &ServiceDef, asked: &[Transport]) -> TokenStream {
+pub fn emit(
+    service: &ServiceDef,
+    asked: &[Transport],
+    openapi: Option<&OpenApiArguments>,
+) -> TokenStream {
     Transport::KNOWN
         .iter()
         .filter(|known| asked.contains(known))
         .map(|known| match *known {
             Transport::AmqpRpc => amqp_rpc::emit(service, *known),
-            Transport::HttpRest => http_rest::emit(service, *known),
+            Transport::HttpRest => http_rest::emit(service, *known, openapi),
             Transport::WsRpc => ws_rpc::emit(service, *known),
         })
         .collect()

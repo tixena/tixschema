@@ -1298,7 +1298,7 @@ fn http_client_of(source: &str) -> String {
 
 #[cfg(all(feature = "typescript", feature = "zod"))]
 fn http_service_of(source: &str) -> String {
-    http_service::emit(&parsed(source)).join("\n\n")
+    http_service::emit(&parsed(source), None).join("\n\n")
 }
 
 #[cfg(all(feature = "typescript", feature = "zod"))]
@@ -1354,7 +1354,9 @@ fn parsed(source: &str) -> ServiceDef {
 }
 
 fn registration(source: &str) -> String {
-    emit(&parsed(source), false).to_token_stream().to_string()
+    emit(&parsed(source), false, None)
+        .to_token_stream()
+        .to_string()
 }
 
 #[cfg(all(feature = "typescript", feature = "zod"))]
