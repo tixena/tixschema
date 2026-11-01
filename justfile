@@ -239,6 +239,7 @@ check-all:
 # then the every-build validation tests in a few combinations. Not part of `all`.
 check-mix:
     cargo hack check --each-feature
+    cargo hack check --manifest-path bson3/Cargo.toml --each-feature
 
 # Check the library on the minimum supported Rust version.
 check-msrv:
