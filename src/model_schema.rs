@@ -33,7 +33,6 @@ use syn::{Field, Item, ItemType, Meta, Token};
 
 use quote::quote_spanned;
 
-#[cfg(any(feature = "serde", feature = "typescript", feature = "zod"))]
 use syn::spanned::Spanned as _;
 
 use syn::Ident;
@@ -59,11 +58,9 @@ use crate::{
     utils::js_spelling,
 };
 
-#[cfg(any(feature = "serde", feature = "zod"))]
 use crate::bound_message::Bound;
 #[cfg(feature = "serde")]
 use crate::bound_message::VIOLATION_STEMS;
-#[cfg(feature = "serde")]
 use crate::bound_message::rust_violation;
 #[cfg(feature = "zod")]
 use crate::bound_message::zod_error_arg;
@@ -117,13 +114,13 @@ use crate::utils::declared;
 
 #[cfg(feature = "serde")]
 use crate::utils::{
-    Declared, NonObjectWire, SlotBesideTag, TrivialPattern, UnionParameter, WireLeaf, WrittenAs,
-    forget_field_validators, is_recorded_plain_enum, record_declared, record_field_validator,
-    record_flattened_parameters, record_non_object_wire, record_open_map,
-    record_open_map_parameters, record_plain_enum, record_text_key_parameters,
-    record_union_parameters, record_value_parameter, recorded_non_object_wire, trivial_pattern,
-    union_parameters, value_parameter,
+    Declared, NonObjectWire, SlotBesideTag, UnionParameter, WireLeaf, WrittenAs,
+    forget_field_validators, is_recorded_plain_enum, record_declared, record_flattened_parameters,
+    record_non_object_wire, record_open_map, record_open_map_parameters, record_plain_enum,
+    record_text_key_parameters, record_union_parameters, record_value_parameter,
+    recorded_non_object_wire, union_parameters, value_parameter,
 };
+use crate::utils::{TrivialPattern, record_field_validator, trivial_pattern};
 
 #[cfg(any(feature = "typescript", feature = "zod"))]
 use crate::features::serde::brand_slot;
@@ -156,11 +153,13 @@ use crate::features::serde::{
 #[cfg(feature = "zod")]
 use crate::features::js_literal;
 #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
-use crate::features::recovering_decode::{brand_recovering_decode, reading_the_authors_scope};
+use crate::features::recovering_decode::brand_recovering_decode;
+#[cfg(feature = "serde")]
+use crate::features::recovering_decode::reading_the_authors_scope;
 #[cfg(feature = "serde")]
 use crate::features::recovering_decode::{
     enums::{enum_recovering_decode, tag_arm_refusals},
-    struct_recovering_decode, written_as_one_value,
+    placed_in_schema_module, struct_recovering_decode, written_as_one_value,
 };
 // The type is named where a positional slot's own omission is read: the tuple-struct walk, which
 // only a describing build performs, and the variant walk, which every build performs.
@@ -186,8 +185,9 @@ use crate::field_type::{parse_serde_field_attributes, parse_serde_type_attribute
 #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 use crate::field_type::is_a_standard_type_name;
 
+use crate::field_type::is_interior_mutability_wrapper;
 #[cfg(feature = "serde")]
-use crate::field_type::{is_interior_mutability_wrapper, is_refused_sequence_wrapper};
+use crate::field_type::is_refused_sequence_wrapper;
 use crate::field_type::{
     is_map_wrapper, is_ownership_wrapper, is_sequence_wrapper, is_transparent_wrapper,
     written_std_range, written_std_result,
@@ -219,7 +219,6 @@ use crate::features::kotlin::{KotlinArgs, kotlin_refused_width, kotlin_schema_di
 
 #[cfg(any(feature = "typescript", feature = "zod"))]
 use crate::utils::get_enum_docs;
-#[cfg(any(feature = "typescript", feature = "zod"))]
 use crate::utils::get_struct_docs;
 
 use crate::utils::ident_schema_module_name;
@@ -263,7 +262,8 @@ use crate::utils::{
 use crate::utils::record_unit_struct;
 
 #[cfg(feature = "serde")]
-use crate::utils::{forget_checks, names_a_check, record_member_checks, record_own_checks};
+use crate::utils::{forget_checks, record_own_checks};
+use crate::utils::{names_a_check, record_member_checks, record_names_a_check};
 
 #[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
 use crate::rename_rule::RenameRule;
@@ -565,7 +565,6 @@ struct ExampleTest {
 
 /// What a struct's schema methods read of its docs: the text, and the `examples` keyword its
 /// standalone JSON Schema document holds.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 struct SchemaDocs {
     json_examples: Option<TokenStream>,
     text: String,
@@ -664,10 +663,10 @@ enum BasePattern {
 }
 
 /// What a field bottoms out in, under the wrappers it was written beneath.
-#[cfg(feature = "serde")]
 struct ConstrainedShape {
     leaf: ConstraintLeaf,
     /// Every non-`'static` lifetime the field's type spells, deduplicated.
+    #[cfg(feature = "serde")]
     lifetimes: Vec<syn::Lifetime>,
     wraps: Vec<ConstraintWrap>,
 }
@@ -686,7 +685,6 @@ struct ListHookHeader {
 }
 
 /// The value a constrained field ultimately writes, and how it is spelled.
-#[cfg(feature = "serde")]
 enum ConstraintLeaf {
     /// A list, a value of its own: `minLength` and `maxLength` count its items, and the walk goes
     /// no further into it.
@@ -702,7 +700,6 @@ enum ConstraintLeaf {
 }
 
 /// The value a `literal` is compared with, as a field's type reaches it.
-#[cfg(feature = "serde")]
 enum LiteralLeaf {
     Bool,
     /// The bare Rust numeric type, which is the validator's parameter type.
@@ -715,10 +712,10 @@ enum LiteralLeaf {
 /// A field's type read down to the value a `literal` admits, with the wrappers on the way:
 /// `Option`, the transparent wrappers, every reference, and each level of a list, every item of
 /// which the literal admits alone.
-#[cfg(feature = "serde")]
 struct LiteralShape {
     leaf: LiteralLeaf,
     /// Every non-`'static` lifetime the field's type spells, deduplicated.
+    #[cfg(feature = "serde")]
     lifetimes: Vec<syn::Lifetime>,
     wraps: Vec<ConstraintWrap>,
 }
@@ -728,7 +725,6 @@ struct LiteralShape {
 /// Both readings publish the same two helpers into the schema module. What differs is whether the
 /// field itself is hung with the `#[serde(deserialize_with = …)]` that runs the check as the
 /// payload is read.
-#[cfg(feature = "serde")]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ConstraintGate {
     /// The deserializer as well as the validator: on an untagged union's member, whether the member
@@ -741,10 +737,10 @@ enum ConstraintGate {
 
 /// What the end of a constraint walk does with a violation: `validate()` collects every one, a
 /// `Deserializer` fails at the first.
-#[cfg(feature = "serde")]
 #[derive(Clone, Copy)]
 enum CheckSink {
     Collect,
+    #[cfg(feature = "serde")]
     Fail,
 }
 
@@ -766,7 +762,6 @@ pub struct MemberPlace {
 }
 
 /// A constrained member as its helpers are written.
-#[cfg(feature = "serde")]
 struct CheckedMember {
     /// The expression `validate()` reads the member from.
     checked: proc_macro2::TokenStream,
@@ -784,13 +779,14 @@ struct CheckedMember {
 /// validator reaches. A sequence yields each element and a map each entry's value, on the
 /// walk to what a field's own type declares alone: a field's own bound stops at a list and reads
 /// no map.
-#[cfg(feature = "serde")]
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum ConstraintWrap {
     Borrowed,
+    #[cfg(feature = "serde")]
     Map,
     Optional,
     /// A std range, on the walk alone: each bound it holds, under the key serde writes it under.
+    #[cfg(feature = "serde")]
     Range(RangeKind),
     Sequence,
     Transparent,
@@ -856,7 +852,6 @@ impl HeldShape {
     }
 }
 
-#[cfg(feature = "serde")]
 impl LiteralShape {
     /// Whether the literal is held by each item of a list, which the walk names by its index.
     fn reaches_items(&self) -> bool {
@@ -865,20 +860,19 @@ impl LiteralShape {
 }
 
 /// One step of the place a walk holds a value at.
-#[cfg(feature = "serde")]
 #[derive(Clone)]
 enum PlaceStep {
     /// The depth a list level binds its item's index at.
     Index(usize),
     /// The depth a map level binds its entry at, whose key is written as serde writes it, where
     /// serde does.
+    #[cfg(feature = "serde")]
     Key(usize),
     /// A key or a position serde writes, read as the walk is written.
     Written(String),
 }
 
 /// Holds the generated validation code for a single field.
-#[cfg(feature = "serde")]
 struct FieldValidationCode {
     /// Functions to emit into the schema module (static validator + serde deserializer).
     pub module_items: proc_macro2::TokenStream,
@@ -1589,7 +1583,6 @@ struct PlainEnumAdded<'added> {
 }
 
 /// The parts [`assemble_schema_output`] joins.
-#[cfg(any(feature = "zod", feature = "typescript"))]
 struct SchemaOutputParts<'parts, T> {
     delegate_impl_items: &'parts [proc_macro2::TokenStream],
     enable: Enabled,
@@ -1614,7 +1607,6 @@ struct StructContainer<'container> {
     wire: ContainerWire,
 }
 
-#[cfg(any(feature = "zod", feature = "typescript"))]
 impl<'parts, T> SchemaOutputParts<'parts, T> {
     /// These parts around `item`, the item as it is emitted.
     fn of(&self, item: &'parts T) -> Self {
@@ -1633,7 +1625,6 @@ impl<'parts, T> SchemaOutputParts<'parts, T> {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 impl SchemaDocs {
     /// The docs of `item_struct`, named `item_name` where it writes none.
     fn of_struct(item_struct: &syn::ItemStruct, item_name: &str) -> Self {
@@ -3024,7 +3015,6 @@ fn json_schema_delegate(module_ident: &Ident) -> proc_macro2::TokenStream {
 /// The delegates on the type of `item_struct`, with the `schema_examples()` and `schema_example()`
 /// its docs earn it. They sit on the type, not in the schema module, because an example names
 /// types the module may not reach. `republishes` says its schema is a sibling's own binding.
-#[cfg(any(feature = "zod", feature = "typescript"))]
 fn struct_delegate_items(
     module_ident: &Ident,
     item_name: &str,
@@ -3106,7 +3096,6 @@ fn plain_enum_delegate_items(
 /// Builds the delegating impl methods (on the type itself) that forward to its schema module.
 /// `republishes` says its schema is a sibling's own binding, which shows that sibling's examples
 /// where the type writes none.
-#[cfg(any(feature = "zod", feature = "typescript"))]
 fn build_struct_delegate_items(
     module_ident: &Ident,
     item_name: &str,
@@ -3161,9 +3150,9 @@ fn build_struct_delegate_items(
 }
 
 /// Assembles the final macro output for a struct or enum: the item itself, its schema module
-/// (with the per-field validation functions and the items `decode_with` adds), and the type's
-/// `impl`, which holds its delegates and its `validate()` when it has one.
-#[cfg(any(feature = "zod", feature = "typescript"))]
+/// (with `Schema` where a surface or the `"jsonschema"` entry gives it a method, the per-field
+/// validation functions and the items `decode_with` adds), and the type's `impl`, which holds its
+/// delegates and its `validate()` when it has one.
 fn assemble_schema_output<T>(
     parts: &SchemaOutputParts<T>,
     decode_with_items: &TokenStream,
@@ -3184,7 +3173,7 @@ where
         validate_method.is_some(),
         Some(parts.module_ident),
     );
-    let module_items = schema_module_items(
+    let schema = (!schema_impl_items.is_empty()).then(|| {
         quote! {
             #[non_exhaustive]
             pub struct Schema;
@@ -3192,6 +3181,11 @@ where
             impl Schema {
                 #(#schema_impl_items)*
             }
+        }
+    });
+    let module_items = schema_module_items(
+        quote! {
+            #schema
 
             #(#validation_fns)*
         },
@@ -3222,7 +3216,7 @@ where
 
 /// What a schema module holds: `held`, and beside it the items `decode_with` adds. Those items
 /// are named `Issue`, `Path` and so on, which `held` then reads from the author's scope outright.
-#[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
+#[cfg(feature = "serde")]
 fn schema_module_items(held: TokenStream, decode_with_items: &TokenStream) -> TokenStream {
     if decode_with_items.is_empty() {
         return held;
@@ -3235,14 +3229,13 @@ fn schema_module_items(held: TokenStream, decode_with_items: &TokenStream) -> To
 }
 
 /// Without `serde` no item carries anything of `decode_with`'s.
-#[cfg(all(not(feature = "serde"), any(feature = "zod", feature = "typescript")))]
+#[cfg(not(feature = "serde"))]
 const fn schema_module_items(held: TokenStream, _decode_with_items: &TokenStream) -> TokenStream {
     held
 }
 
-/// The type-level `validate()` a struct publishes: the aggregate of its per-field validators, or
-/// `None` where there is nothing to run — no constrained field, or no `serde` to have generated the
-/// validators from.
+/// The type-level `validate()` a struct publishes: the aggregate of its per-field validators and
+/// its checks, or `None` where there is nothing to run.
 ///
 /// It is written in the type's own `impl`, so a type that declares a parameter has it at every
 /// filling. This builds:
@@ -3307,17 +3300,6 @@ const fn schema_module_items(held: TokenStream, _decode_with_items: &TokenStream
 /// 13 |     pub fn validate(&self) -> Result<(), Vec<String>> {
 ///    |     ------------------------------------------------- other definition for `validate`
 /// ```
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
-fn struct_validate_method(
-    validate_bodies: &[proc_macro2::TokenStream],
-    module_ident: &Ident,
-    checks: &checks::ItemChecks<'_>,
-) -> Option<proc_macro2::TokenStream> {
-    validate_method(validate_bodies, Some(module_ident), checks)
-}
-
-/// Without `serde` no bound is held, and `validate()` runs the checks alone.
-#[cfg(all(not(feature = "serde"), any(feature = "typescript", feature = "zod")))]
 fn struct_validate_method(
     validate_bodies: &[proc_macro2::TokenStream],
     module_ident: &Ident,
@@ -3656,7 +3638,6 @@ fn flattened_ts_spelling(fld: &FieldDef) -> String {
 
 /// The schema methods a struct's module publishes — the JSON-schema document, the TypeScript
 /// definition, the Zod schema — each built only where its feature is on.
-#[cfg(any(feature = "zod", feature = "typescript"))]
 fn struct_schema_impl_items(
     field_defs: Vec<FieldDef>,
     flattened_fields: &[FieldDef],
@@ -3845,7 +3826,6 @@ const fn checked_in_slots(_: &mut TupleStructShape, _: &str, _: &[String]) -> St
 
 /// Renders the per-field TypeScript type code, Zod schema code, and JSON-schema fragments for a
 /// struct's (non-flattened) fields. Returns the accumulated code and whether the field set is empty.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn render_struct_field_bodies(
     field_defs: Vec<FieldDef>,
     item_name_opt: Option<&str>,
@@ -5135,11 +5115,7 @@ const fn record_item(_item: &Item) {}
 
 /// Records the checks an item names for the parts of its expansion written apart from the type's
 /// own `validate()`: each bound of it, and its recovering decode.
-#[cfg(feature = "serde")]
 fn record_item_checks(item: &Item, args: &ModelSchemaArgs) {
-    let Some(ident) = item_schema_ident(item) else {
-        return;
-    };
     let members: Vec<&Field> = if let Item::Struct(item_struct) = item {
         item_struct.fields.iter().collect()
     } else if let Item::Enum(item_enum) = item {
@@ -5147,17 +5123,15 @@ fn record_item_checks(item: &Item, args: &ModelSchemaArgs) {
     } else {
         Vec::new()
     };
-    record_own_checks(
-        &ident_schema_module_name(&ident.to_string()),
-        &args.check,
-        checks::ItemChecks::of(&args.check, members.into_iter()).named,
+    record_names_a_check(
+        item_schema_ident(item).is_some()
+            && checks::ItemChecks::of(&args.check, members.into_iter()).named,
     );
+    #[cfg(feature = "serde")]
+    if let Some(ident) = item_schema_ident(item) {
+        record_own_checks(&ident_schema_module_name(&ident.to_string()), &args.check);
+    }
 }
-
-/// Without `serde` no bound is held and no value is read, so nothing reads an item's checks but
-/// its own `validate()`.
-#[cfg(not(feature = "serde"))]
-const fn record_item_checks(_item: &Item, _args: &ModelSchemaArgs) {}
 
 /// Every member of every variant of `item_enum`, in the order declared.
 fn variant_members(item_enum: &syn::ItemEnum) -> impl Iterator<Item = &Field> {
@@ -5610,7 +5584,7 @@ fn unwritable_map_key_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
     errors
 }
 
-/// Without `serde` `validate()` is not written, and no key is named in a message.
+/// Without `serde` no walk reaches a map's entry, and no key is named in a message.
 #[cfg(not(feature = "serde"))]
 const fn unwritable_map_key_errors(_item: &Item) -> Vec<proc_macro2::TokenStream> {
     Vec::new()
@@ -8483,25 +8457,25 @@ fn is_branded_newtype(item_struct: &syn::ItemStruct) -> bool {
     brand_field(item_struct).is_some()
 }
 
-/// Computes the TypeScript name, schema-module name, and module ident for a struct, and registers
-/// it in the alias registry so other types can resolve references to it.
-#[cfg(any(feature = "typescript", feature = "zod"))]
-fn struct_module_idents(
-    name: &syn::Ident,
-    name_override: Option<&str>,
-    surface: Surface,
-) -> (String, String, Ident) {
+/// Computes the TypeScript name, schema-module name, and module ident for a struct.
+fn struct_module_idents(name: &syn::Ident, name_override: Option<&str>) -> (String, String, Ident) {
     let item_name = compute_item_export_name(&name.to_string(), name_override);
     let module_name = ident_schema_module_name(&name.to_string());
     let module_ident = Ident::new(&module_name, name.span());
+    (item_name, module_name, module_ident)
+}
+
+/// Registers a struct in the alias registry under the names [`struct_module_idents`] computed, so
+/// other types can resolve references to it, with the surface it publishes.
+#[cfg(any(feature = "typescript", feature = "zod"))]
+fn register_struct(name: &syn::Ident, item_name: &str, module_name: &str, surface: Surface) {
     register_alias_info(
         &name.to_string(),
-        &item_name,
-        &module_name,
+        item_name,
+        module_name,
         AliasKind::NoEnumMembers,
     );
     surface.record(&name.to_string());
-    (item_name, module_name, module_ident)
 }
 
 /// The enum counterpart of [`struct_module_idents`]. `kind` differs per enum shape: only a plain
@@ -8718,9 +8692,7 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
         return output;
     }
 
-    #[cfg(any(feature = "typescript", feature = "zod"))]
     let name = item_struct.ident.clone();
-    #[cfg(any(feature = "typescript", feature = "zod"))]
     let rust_ident = name.to_string();
 
     #[cfg(feature = "serde")]
@@ -8742,17 +8714,12 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
         return process_tuple_struct(item_struct, rename_all.as_deref(), args);
     }
 
-    // Compute schema-module identifiers and register the struct in the alias registry.
-    #[cfg(any(feature = "typescript", feature = "zod"))]
     let (item_name, module_name, module_ident) =
-        struct_module_idents(&name, args.name_override.as_deref(), Surface::object());
-
-    // `Some(..)` selects schema-module-aware field processing; `None` (no schema output feature)
-    // skips it so generated code never references a module that won't be emitted.
+        struct_module_idents(&name, args.name_override.as_deref());
     #[cfg(any(feature = "typescript", feature = "zod"))]
+    register_struct(&name, &item_name, &module_name, Surface::object());
+
     let module_name_opt = Some(module_name.as_str());
-    #[cfg(not(any(feature = "typescript", feature = "zod")))]
-    let module_name_opt: Option<&str> = None;
 
     // Read before the walk, which takes each member's own attribute off it.
     let item_checks = checks::ItemChecks::of(&args.check, item_struct.fields.iter());
@@ -8786,10 +8753,8 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
     // reads each one through the function serde's derive will call for it.
     let decode_with = struct_decode_with(&item_struct, args);
 
-    #[cfg(any(feature = "typescript", feature = "zod"))]
     let docs = SchemaDocs::of_struct(&item_struct, &item_name);
 
-    #[cfg(any(feature = "zod", feature = "typescript"))]
     let schema_impl_items = struct_schema_impl_items(
         collected.0,
         &collected.1,
@@ -8800,44 +8765,27 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
         &docs,
     );
 
-    #[cfg(any(feature = "typescript", feature = "zod"))]
     let validate_method = struct_validate_method(&collected.3, &module_ident, &item_checks);
 
-    #[cfg(any(feature = "zod", feature = "typescript"))]
     let delegate_impl_items =
         struct_delegate_items(&module_ident, &item_name, &item_struct, false, args);
 
-    #[cfg(any(feature = "zod", feature = "typescript"))]
-    {
-        struct_output_with_unit_impls(
-            &SchemaOutputParts {
-                delegate_impl_items: &delegate_impl_items,
-                enable: args.enable,
-                example_test: ExampleTest::of_struct(&item_struct, args),
-                generics: &item_struct.generics,
-                item: &item_struct,
-                module_ident: &module_ident,
-                name: &name,
-                schema_impl_items: &schema_impl_items,
-                validate_method: &validate_method,
-                validation_fns: &collected.2,
-            },
-            &unit_struct_impls,
-            &decode_with,
-        )
-    }
-
-    #[cfg(not(any(feature = "zod", feature = "typescript")))]
-    {
-        struct_output_with_unit_impls(
-            &item_struct,
-            &unit_struct_impls,
-            &decode_with,
-            &collected.3,
-            &item_checks,
-            ExampleTest::of_struct(&item_struct, args).as_ref(),
-        )
-    }
+    struct_output_with_unit_impls(
+        &SchemaOutputParts {
+            delegate_impl_items: &delegate_impl_items,
+            enable: args.enable,
+            example_test: ExampleTest::of_struct(&item_struct, args),
+            generics: &item_struct.generics,
+            item: &item_struct,
+            module_ident: &module_ident,
+            name: &name,
+            schema_impl_items: &schema_impl_items,
+            validate_method: &validate_method,
+            validation_fns: &collected.2,
+        },
+        &unit_struct_impls,
+        &decode_with,
+    )
 }
 
 /// Records the members of the struct where its `$RawSchema` is one strict object of its named
@@ -8863,7 +8811,6 @@ fn record_object_model(
 
 /// The assembled schema module, with a unit struct's own serde impls and the `impl` `decode_with`
 /// adds appended after it.
-#[cfg(any(feature = "zod", feature = "typescript"))]
 fn struct_output_with_unit_impls(
     parts: &SchemaOutputParts<syn::ItemStruct>,
     unit_struct_impls: &proc_macro2::TokenStream,
@@ -8905,41 +8852,6 @@ fn struct_output_with_unit_impls(
         #decode_with_impl
         #values
     }
-}
-
-/// [`struct_output_with_unit_impls`] where no schema surface is on: the item alone, with a unit
-/// struct's serde impls, the `validate()` its checks earn it and what `decode_with` adds appended.
-#[cfg(not(any(feature = "zod", feature = "typescript")))]
-fn struct_output_with_unit_impls(
-    item_struct: &syn::ItemStruct,
-    unit_struct_impls: &proc_macro2::TokenStream,
-    decode_with: &DecodeWithParts,
-    validate_bodies: &[proc_macro2::TokenStream],
-    item_checks: &checks::ItemChecks<'_>,
-    subject: Option<&ExampleTest>,
-) -> TokenStream {
-    let validate_impl = checks_validate_impl(
-        &item_struct.ident,
-        &item_struct.generics,
-        validate_bodies,
-        item_checks,
-    );
-    let example_test = ExampleTest::written(subject, !validate_impl.is_empty(), None);
-    let mut read = item_struct.clone();
-    let judged = judged_read::of_struct(&mut read, !validate_impl.is_empty());
-    let decode_with_module = &decode_with.schema_module;
-    let decode_with_impl = &decode_with.type_impl;
-    let output = quote! {
-        #read
-        #unit_struct_impls
-        #validate_impl
-        #example_test
-        #judged
-        #decode_with_module
-        #decode_with_impl
-    };
-    log::trace!("{output}");
-    output
 }
 
 /// Records what the item declares for the recovering decodes expanded after it, which walk a
@@ -9018,8 +8930,12 @@ fn enum_decode_with(item_enum: &syn::ItemEnum, args: &ModelSchemaArgs) -> Decode
     }
     let added = enum_recovering_decode(item_enum, args.enable.mongodb());
     let (walkers, checks, probes) = (added.type_impl, added.check_messages, added.probes);
+    let module = Ident::new(
+        &ident_schema_module_name(&item_enum.ident.to_string()),
+        proc_macro2::Span::call_site(),
+    );
     DecodeWithParts {
-        schema_module: added.schema_module,
+        schema_module: placed_in_schema_module(&module, &added.schema_module),
         type_impl: quote! { #walkers #checks #probes },
     }
 }
@@ -9795,9 +9711,12 @@ fn process_tuple_struct(
     args: &ModelSchemaArgs,
 ) -> TokenStream {
     let name = item_struct.ident.clone();
-    let (item_name, module_name, module_ident) = struct_module_idents(
+    let (item_name, module_name, module_ident) =
+        struct_module_idents(&name, args.name_override.as_deref());
+    register_struct(
         &name,
-        args.name_override.as_deref(),
+        &item_name,
+        &module_name,
         tuple_struct_surface(
             &item_struct.fields,
             &type_parameters_in_scope(&item_struct.generics),
@@ -17611,13 +17530,22 @@ fn write_field_type_and_schema(
     }
 }
 
+/// Nothing, where neither TypeScript nor Zod is written.
+#[cfg(not(any(feature = "typescript", feature = "zod")))]
+const fn write_field_type_and_schema(
+    _type_code: &mut String,
+    _fld: &FieldDef,
+    _self_type_name: Option<&str>,
+) -> String {
+    String::new()
+}
+
 /// The binding a walk step introduces, numbered by depth so no two steps of one chain collide.
 fn wrap_binding(depth: usize) -> proc_macro2::Ident {
     proc_macro2::Ident::new(&format!("value_{depth}"), proc_macro2::Span::call_site())
 }
 
 /// The binding a list level of a walk holds its item's index under, numbered as the item is.
-#[cfg(feature = "serde")]
 fn index_binding(depth: usize) -> proc_macro2::Ident {
     proc_macro2::Ident::new(&format!("index_{depth}"), proc_macro2::Span::call_site())
 }
@@ -17681,7 +17609,6 @@ fn slot_access_expr(access: MemberAccess, index: usize) -> proc_macro2::TokenStr
 
 /// Builds the `validate()` contribution for a field, reaching through its wrappers to run the
 /// check on the value the constraint actually describes.
-#[cfg(feature = "serde")]
 fn build_field_validation(
     wraps: &[ConstraintWrap],
     checked: &proc_macro2::TokenStream,
@@ -17711,13 +17638,11 @@ fn build_field_validation(
 
 /// The binding a walk over `wraps` hands its leaf: the head is depth zero and each wrapper
 /// introduces one more, so the last step's binding is named from the count.
-#[cfg(feature = "serde")]
 fn walked_value(wraps: &[ConstraintWrap]) -> proc_macro2::Ident {
     wrap_binding(wraps.len())
 }
 
 /// The constraint check a walk ends on, written for whichever of the two ends takes it.
-#[cfg(feature = "serde")]
 fn constraint_leaf(
     sink: CheckSink,
     value: &proc_macro2::Ident,
@@ -17729,6 +17654,7 @@ fn constraint_leaf(
                 errors.extend(reported);
             }
         },
+        #[cfg(feature = "serde")]
         CheckSink::Fail => quote! {
             #validate_value_fn_ident(#value)?;
         },
@@ -17737,7 +17663,6 @@ fn constraint_leaf(
 
 /// Emits the reach-through for one wrapper and, at the end of the chain, `leaf` — which its caller
 /// wrote against [`walked_value`], the binding the last step introduces.
-#[cfg(feature = "serde")]
 fn walk_wraps(
     wraps: &[ConstraintWrap],
     value: &proc_macro2::Ident,
@@ -17766,6 +17691,7 @@ fn walk_wraps(
             }
         }
         // Reached by the nested walk alone, whose leaf writes each key into its report.
+        #[cfg(feature = "serde")]
         ConstraintWrap::Map => {
             let entry = entry_binding(depth);
             quote! {
@@ -17776,6 +17702,7 @@ fn walk_wraps(
         }
         // Reached by the nested walk alone, whose leaf writes the key of each bound, bound where
         // a list writes an index.
+        #[cfg(feature = "serde")]
         ConstraintWrap::Range(kind) => {
             let index = index_binding(depth);
             let bounds: Vec<proc_macro2::TokenStream> = kind
@@ -17897,16 +17824,16 @@ fn held_walk(
 
 /// `place` with what a walk over `wraps` adds to it, where the first wrapper binds at `depth`: the
 /// index of each list level and the key of each map level.
-#[cfg(feature = "serde")]
 fn held_at(place: &[PlaceStep], wraps: &[ConstraintWrap], depth: usize) -> Vec<PlaceStep> {
     let mut held = place.to_vec();
     for (at, wrap) in wraps.iter().enumerate() {
         let bound_at = depth.saturating_add(at);
         match *wrap {
+            #[cfg(feature = "serde")]
             ConstraintWrap::Map => held.push(PlaceStep::Key(bound_at)),
-            ConstraintWrap::Range(_) | ConstraintWrap::Sequence => {
-                held.push(PlaceStep::Index(bound_at));
-            }
+            #[cfg(feature = "serde")]
+            ConstraintWrap::Range(_) => held.push(PlaceStep::Index(bound_at)),
+            ConstraintWrap::Sequence => held.push(PlaceStep::Index(bound_at)),
             ConstraintWrap::Borrowed | ConstraintWrap::Optional | ConstraintWrap::Transparent => {}
         }
     }
@@ -18022,6 +17949,13 @@ fn named_at(place: &[PlaceStep]) -> Option<proc_macro2::TokenStream> {
     named
 }
 
+/// [`named_at`] where no walk reaches a map's entry, so `place` is one run.
+#[cfg(not(feature = "serde"))]
+fn named_at(place: &[PlaceStep]) -> Option<proc_macro2::TokenStream> {
+    let under = nested_place(place)?;
+    Some(quote! { nested_under(#under, violation) })
+}
+
 /// The violation a name is written into next: the one reported, or what `named` made of it.
 #[cfg(feature = "serde")]
 fn reported_so_far(named: Option<&proc_macro2::TokenStream>) -> proc_macro2::TokenStream {
@@ -18030,13 +17964,13 @@ fn reported_so_far(named: Option<&proc_macro2::TokenStream>) -> proc_macro2::Tok
 
 /// A run of keys, positions and indexes as the `&str` a report is written under, joined by dots, or
 /// `None` for an empty run.
-#[cfg(feature = "serde")]
 fn nested_place(run: &[PlaceStep]) -> Option<proc_macro2::TokenStream> {
     let bound = run.iter().any(|step| matches!(step, PlaceStep::Index(_)));
     let steps: Vec<String> = run
         .iter()
         .filter_map(|step| match step {
             PlaceStep::Index(depth) => Some(format!("{{{}}}", index_binding(*depth))),
+            #[cfg(feature = "serde")]
             PlaceStep::Key(_) => None,
             // A key is text inside a format string, where a brace opens an argument.
             PlaceStep::Written(key) if bound => Some(key.replace('{', "{{").replace('}', "}}")),
@@ -18158,6 +18092,60 @@ fn build_wrapped_deserializer(
     }
 }
 
+/// The `deserialize_{stem}` hook of a string or numeric member: it reads the `owned` value, held
+/// under `binding`, where the member is bare, and the member's declared type where it is wrapped,
+/// and refuses what `validator` refuses. Nothing for a member a reference borrows.
+#[cfg(feature = "serde")]
+fn value_deserializer(
+    member: &CheckedMember,
+    validator: &proc_macro2::Ident,
+    (owned, binding): (&proc_macro2::TokenStream, &proc_macro2::TokenStream),
+    field_ty: &syn::Type,
+    shape: &ConstrainedShape,
+) -> proc_macro2::TokenStream {
+    let wraps: &[ConstraintWrap] = &shape.wraps;
+    let deserialize_fn_ident = proc_macro2::Ident::new(
+        &format!("deserialize_{}", member.stem),
+        proc_macro2::Span::call_site(),
+    );
+    if ends_on_a_borrow(wraps) {
+        quote! {}
+    } else if wraps.is_empty() {
+        let refusal = refusal_from_violations();
+        quote! {
+            pub fn #deserialize_fn_ident<'de, D>(deserializer: D) -> ::core::result::Result<#owned, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                use serde::Deserialize;
+                let #binding = #owned::deserialize(deserializer)?;
+                #validator(&#binding).map_err(#refusal)?;
+                ::core::result::Result::Ok(#binding)
+            }
+        }
+    } else {
+        build_wrapped_deserializer(
+            &deserialize_fn_ident,
+            validator,
+            field_ty,
+            &shape.lifetimes,
+            wraps,
+        )
+    }
+}
+
+/// Nothing, where no `serde` reads a member.
+#[cfg(not(feature = "serde"))]
+fn value_deserializer(
+    _member: &CheckedMember,
+    _validator: &proc_macro2::Ident,
+    _read: (&proc_macro2::TokenStream, &proc_macro2::TokenStream),
+    _field_ty: &syn::Type,
+    _shape: &ConstrainedShape,
+) -> proc_macro2::TokenStream {
+    proc_macro2::TokenStream::new()
+}
+
 /// The closure a recovering read lists a field's broken bound with: `validator` run on every
 /// value the bound reaches inside one of type `ty`, answering each violation without
 /// `field_name`, the name the validator writes, which the issue's path already carries. `None`
@@ -18202,7 +18190,6 @@ pub fn recovering_bound_check(
 /// The stem the per-field helpers are named from: `validate_{stem}_value` and `deserialize_{stem}`.
 /// A field name is unique only within its variant, while one schema module holds every variant's
 /// helpers — so a variant's field carries its variant into the stem to avoid collisions.
-#[cfg(feature = "serde")]
 pub fn helper_name_stem(field_ident: &str, variant_ident: Option<&str>) -> String {
     variant_ident.map_or_else(
         || field_ident.to_owned(),
@@ -18212,7 +18199,6 @@ pub fn helper_name_stem(field_ident: &str, variant_ident: Option<&str>) -> Strin
 
 /// The check a `pattern` constraint holds `value` to, taking `failure` where the value is turned
 /// away.
-#[cfg(feature = "serde")]
 fn pattern_check(pattern: &str, failure: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
     trivial_pattern(pattern).map_or_else(
         || {
@@ -18241,7 +18227,6 @@ fn pattern_check(pattern: &str, failure: &proc_macro2::TokenStream) -> proc_macr
 
 /// The condition under which a trivial pattern turns `value` away — the negation of what it
 /// accepts, which is the form the emitted check reads it in.
-#[cfg(feature = "serde")]
 fn pattern_rejects(trivial: &TrivialPattern) -> proc_macro2::TokenStream {
     match trivial {
         TrivialPattern::IsEmpty => quote! { !value.is_empty() },
@@ -18264,7 +18249,6 @@ fn pattern_rejects(trivial: &TrivialPattern) -> proc_macro2::TokenStream {
 /// A needle in the spelling the `str` pattern methods want it where the call is written into a
 /// crate that denies `clippy::single_char_pattern`: one character as a `char`, anything else as
 /// the string it is. Both name the same pattern to the same method.
-#[cfg(feature = "serde")]
 fn needle_pattern(needle: &str) -> proc_macro2::TokenStream {
     let mut chars = needle.chars();
     if let (Some(only), None) = (chars.next(), chars.next()) {
@@ -18276,7 +18260,6 @@ fn needle_pattern(needle: &str) -> proc_macro2::TokenStream {
 /// The parameter a string validator takes and the rendering its checks read `value` from. A path
 /// is the one leaf that can't be handed as-is: it arrives borrowed and is rendered once through
 /// `to_string_lossy`, the string serde writes for it. Every other leaf already is that string.
-#[cfg(feature = "serde")]
 fn checked_value_parts(
     measures_path: bool,
 ) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
@@ -18295,7 +18278,6 @@ fn checked_value_parts(
 
 /// The parameter a field's string validator takes, the rendering its checks read `value` from, and
 /// the owned form of the leaf, which is what a bare field of it is declared as.
-#[cfg(feature = "serde")]
 fn string_leaf_parts(
     leaf: &ConstraintLeaf,
     field_name: &str,
@@ -18326,7 +18308,6 @@ fn string_leaf_parts(
 /// expansion publishes `model_schema_bound_text` and `model_schema_bound_length`, and an inherent
 /// method is found ahead of a trait's; the traits declared here answer for an alias of a string,
 /// a path or a list, and refuse every other type in the words written on them.
-#[cfg(feature = "serde")]
 fn named_leaf_rendering(
     named: &syn::Type,
     field_name: &str,
@@ -18404,7 +18385,6 @@ fn named_leaf_rendering(
 
 /// [`named_leaf_rendering`] for a leaf whose bounds are lengths alone: what a text or a list of
 /// the leaf's type holds is counted, and nothing else is.
-#[cfg(feature = "serde")]
 fn named_leaf_length_rendering(named: &syn::Type, message: &str) -> proc_macro2::TokenStream {
     let read = proc_macro2::Ident::new(
         "model_schema_bound_length",
@@ -18522,17 +18502,17 @@ fn indexed_set_length(named: &syn::Type) -> proc_macro2::TokenStream {
 }
 
 /// A build with no `IndexSet` support names no `indexmap`.
-#[cfg(all(
+#[cfg(not(all(
     feature = "serde",
-    not(all(feature = "indexmap", any(feature = "typescript", feature = "zod")))
-))]
+    feature = "indexmap",
+    any(feature = "typescript", feature = "zod")
+)))]
 fn indexed_set_length(_named: &syn::Type) -> proc_macro2::TokenStream {
     proc_macro2::TokenStream::new()
 }
 
 /// Whether a named leaf is held to lengths alone, which the type it names answers with the count
 /// of what it holds, a text or a list.
-#[cfg(feature = "serde")]
 fn counts_a_named_length(leaf: &ConstraintLeaf, meta: &ModelSchemaPropMeta) -> bool {
     matches!(leaf, ConstraintLeaf::Named(_)) && meta.patterns().next().is_none()
 }
@@ -18541,7 +18521,6 @@ fn counts_a_named_length(leaf: &ConstraintLeaf, meta: &ModelSchemaPropMeta) -> b
 /// deserializer — written against the constrained value itself when the field is bare, and against
 /// the field's declared type when it is wrapped. A field read through a reference gets the
 /// validator alone.
-#[cfg(feature = "serde")]
 fn generate_string_validation_code(
     member: &CheckedMember,
     meta: &ModelSchemaPropMeta,
@@ -18552,9 +18531,6 @@ fn generate_string_validation_code(
     let validate_value_fn_name = format!("validate_{}_value", member.stem);
     let validate_value_fn_ident =
         proc_macro2::Ident::new(&validate_value_fn_name, proc_macro2::Span::call_site());
-    let deserialize_fn_name = format!("deserialize_{}", member.stem);
-    let deserialize_fn_ident =
-        proc_macro2::Ident::new(&deserialize_fn_name, proc_macro2::Span::call_site());
 
     let named = member.reported.as_deref();
     let (checked_param, rendering, owned) = string_leaf_parts(&shape.leaf, &member.label, meta);
@@ -18589,30 +18565,13 @@ fn generate_string_validation_code(
         checks.push(pattern_check(pattern, &quote! { errors.push(#reported); }));
     }
 
-    let deserializer = if ends_on_a_borrow(wraps) {
-        quote! {}
-    } else if wraps.is_empty() {
-        let refusal = refusal_from_violations();
-        quote! {
-            pub fn #deserialize_fn_ident<'de, D>(deserializer: D) -> ::core::result::Result<#owned, D::Error>
-            where
-                D: serde::Deserializer<'de>,
-            {
-                use serde::Deserialize;
-                let s = #owned::deserialize(deserializer)?;
-                #validate_value_fn_ident(&s).map_err(#refusal)?;
-                ::core::result::Result::Ok(s)
-            }
-        }
-    } else {
-        build_wrapped_deserializer(
-            &deserialize_fn_ident,
-            &validate_value_fn_ident,
-            field_ty,
-            &shape.lifetimes,
-            wraps,
-        )
-    };
+    let deserializer = value_deserializer(
+        member,
+        &validate_value_fn_ident,
+        (&owned, &quote! { s }),
+        field_ty,
+        shape,
+    );
 
     let module_items = quote! {
         pub fn #validate_value_fn_ident(#checked_param) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
@@ -18635,7 +18594,6 @@ fn generate_string_validation_code(
 
 /// Generates the static validator for a numeric field with constraints, plus the serde deserializer
 /// — see `generate_string_validation_code` for how the two spellings differ.
-#[cfg(feature = "serde")]
 fn generate_numeric_validation_code(
     member: &CheckedMember,
     rust_type_str: &str,
@@ -18647,9 +18605,6 @@ fn generate_numeric_validation_code(
     let validate_value_fn_name = format!("validate_{}_value", member.stem);
     let validate_value_fn_ident =
         proc_macro2::Ident::new(&validate_value_fn_name, proc_macro2::Span::call_site());
-    let deserialize_fn_name = format!("deserialize_{}", member.stem);
-    let deserialize_fn_ident =
-        proc_macro2::Ident::new(&deserialize_fn_name, proc_macro2::Span::call_site());
 
     let rust_type_ident: proc_macro2::TokenStream = rust_type_str.parse().unwrap();
     let named = member.reported.as_deref();
@@ -18679,30 +18634,13 @@ fn generate_numeric_validation_code(
         });
     }
 
-    let deserializer = if ends_on_a_borrow(wraps) {
-        quote! {}
-    } else if wraps.is_empty() {
-        let refusal = refusal_from_violations();
-        quote! {
-            pub fn #deserialize_fn_ident<'de, D>(deserializer: D) -> ::core::result::Result<#rust_type_ident, D::Error>
-            where
-                D: serde::Deserializer<'de>,
-            {
-                use serde::Deserialize;
-                let v = #rust_type_ident::deserialize(deserializer)?;
-                #validate_value_fn_ident(&v).map_err(#refusal)?;
-                ::core::result::Result::Ok(v)
-            }
-        }
-    } else {
-        build_wrapped_deserializer(
-            &deserialize_fn_ident,
-            &validate_value_fn_ident,
-            field_ty,
-            &shape.lifetimes,
-            wraps,
-        )
-    };
+    let deserializer = value_deserializer(
+        member,
+        &validate_value_fn_ident,
+        (&rust_type_ident, &quote! { v }),
+        field_ty,
+        shape,
+    );
 
     let module_items = quote! {
         pub fn #validate_value_fn_ident(value: &#rust_type_ident) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
@@ -18725,7 +18663,6 @@ fn generate_numeric_validation_code(
 /// What holds `L` to being a list whose items are counted: every std sequence, an array and a
 /// slice are iterated by reference. `unsized_list` is a list reached through a transparent wrapper.
 /// A bound on the iterator itself is one the compiler cannot infer `L` under.
-#[cfg(feature = "serde")]
 fn counted_list_bounds(unsized_list: bool) -> proc_macro2::TokenStream {
     let relaxed = unsized_list.then(|| quote! { L: ?::core::marker::Sized, });
     quote! {
@@ -18737,7 +18674,6 @@ fn counted_list_bounds(unsized_list: bool) -> proc_macro2::TokenStream {
 /// The validator of a list's item count, under the bounds `minLength` and `maxLength` wrote on it.
 /// It takes the list as any type that is one: no type a list holds is written into the schema
 /// module, where a type parameter of the item's, `Self` and a borrowed lifetime name nothing.
-#[cfg(feature = "serde")]
 fn list_validator(
     validator: &proc_macro2::Ident,
     least: Option<usize>,
@@ -18815,13 +18751,18 @@ fn list_hook_header(wraps: &[ConstraintWrap]) -> Option<ListHookHeader> {
     })
 }
 
-/// The serde hook of a list written under `wraps`, or nothing for one a reference borrows.
+/// The serde hook of a list member written under `wraps`, `deserialize_{stem}`, or nothing for one
+/// a reference borrows.
 #[cfg(feature = "serde")]
 fn list_deserializer(
-    deserializer: &proc_macro2::Ident,
+    member: &CheckedMember,
     validator: &proc_macro2::Ident,
     wraps: &[ConstraintWrap],
 ) -> proc_macro2::TokenStream {
+    let deserializer = proc_macro2::Ident::new(
+        &format!("deserialize_{}", member.stem),
+        proc_macro2::Span::call_site(),
+    );
     let Some(ListHookHeader {
         counted,
         held_to,
@@ -18854,8 +18795,17 @@ fn list_deserializer(
     }
 }
 
+/// Nothing, where no `serde` reads a member.
+#[cfg(not(feature = "serde"))]
+fn list_deserializer(
+    _member: &CheckedMember,
+    _validator: &proc_macro2::Ident,
+    _wraps: &[ConstraintWrap],
+) -> proc_macro2::TokenStream {
+    proc_macro2::TokenStream::new()
+}
+
 /// Generates the static validator of a list field's item count, plus the serde deserializer.
-#[cfg(feature = "serde")]
 fn generate_list_validation_code(
     member: &CheckedMember,
     meta: &ModelSchemaPropMeta,
@@ -18865,17 +18815,13 @@ fn generate_list_validation_code(
         &format!("validate_{}_value", member.stem),
         proc_macro2::Span::call_site(),
     );
-    let deserializer = proc_macro2::Ident::new(
-        &format!("deserialize_{}", member.stem),
-        proc_macro2::Span::call_site(),
-    );
     let validate_fn = list_validator(
         &validator,
         meta.min_length,
         meta.max_length,
         member.reported.as_deref(),
     );
-    let deserialize_fn = list_deserializer(&deserializer, &validator, wraps);
+    let deserialize_fn = list_deserializer(member, &validator, wraps);
     FieldValidationCode {
         module_items: quote! {
             #validate_fn
@@ -18888,9 +18834,9 @@ fn generate_list_validation_code(
 
 /// Reads a field's type down to the value a constraint can land on, collecting the wrappers on the
 /// way. A list is that value itself, whatever it holds.
-#[cfg(feature = "serde")]
 fn constrained_shape(ty: &syn::Type) -> Option<ConstrainedShape> {
     let mut wraps = Vec::new();
+    #[cfg(feature = "serde")]
     let mut lifetimes: Vec<syn::Lifetime> = Vec::new();
     let mut current = ty;
     loop {
@@ -18898,6 +18844,7 @@ fn constrained_shape(ty: &syn::Type) -> Option<ConstrainedShape> {
         if names_a_list(current) {
             return Some(ConstrainedShape {
                 leaf: ConstraintLeaf::List,
+                #[cfg(feature = "serde")]
                 lifetimes,
                 wraps,
             });
@@ -18909,6 +18856,7 @@ fn constrained_shape(ty: &syn::Type) -> Option<ConstrainedShape> {
             let segment = path.path.segments.last()?;
             if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
                 wraps.push(generic_wrap(&segment.ident.to_string())?);
+                #[cfg(feature = "serde")]
                 collect_lifetimes(args, &mut lifetimes);
                 current = sole_type_argument(args)?;
             } else if matches!(segment.arguments, syn::PathArguments::None) {
@@ -18916,6 +18864,7 @@ fn constrained_shape(ty: &syn::Type) -> Option<ConstrainedShape> {
                     .unwrap_or_else(|| ConstraintLeaf::Named(Box::new(current.clone())));
                 return Some(ConstrainedShape {
                     leaf,
+                    #[cfg(feature = "serde")]
                     lifetimes,
                     wraps,
                 });
@@ -19122,7 +19071,6 @@ fn reads_through(ident: &str) -> bool {
 /// The interior-mutability wrapper on a field's constrained path, when there is one.
 /// `constrained_shape` cannot say *why* a shape failed to classify, so this retraces the path to
 /// name the blocker for a diagnostic instead of silently dropping the constraint.
-#[cfg(feature = "serde")]
 fn blocking_interior_mutability_wrapper(ty: &syn::Type) -> Option<String> {
     let mut current = ty;
     loop {
@@ -19222,7 +19170,6 @@ fn collect_lifetimes(
 /// The wrapper a generic type stands for, or `None` if it is not one the constraint reads through.
 /// An interior-mutability wrapper is deliberately absent: it is wire-transparent but does not
 /// implement `Deref`, so the walk has no safe way through it.
-#[cfg(feature = "serde")]
 fn generic_wrap(ident: &str) -> Option<ConstraintWrap> {
     if ident == "Option" {
         Some(ConstraintWrap::Optional)
@@ -19300,7 +19247,6 @@ const fn declared_above(_ident: &str) -> bool {
 /// The leaf a bare type name stands for. `str` is `String`'s borrowed form and answers as one, as
 /// `Path` does for `PathBuf`; the numerics name themselves, since the validator's parameter is
 /// written from the name.
-#[cfg(feature = "serde")]
 fn leaf_for_ident(ident: &str) -> Option<ConstraintLeaf> {
     match ident {
         "String" | "str" | "PathBuf" | "Path" if declared_above(ident) => None,
@@ -20558,11 +20504,7 @@ fn process_field(
     Option<proc_macro2::TokenStream>,
     Vec<proc_macro2::TokenStream>,
 ) {
-    // Only the serde side has anything to hang on a field; every other build holds back nothing.
-    #[cfg(feature = "serde")]
     let mut injected_attrs: Vec<syn::Attribute> = Vec::new();
-    #[cfg(not(feature = "serde"))]
-    let injected_attrs: Vec<syn::Attribute> = Vec::new();
 
     #[cfg(feature = "serde")]
     let serde_field_meta = parse_serde_field_attributes(&field.attrs);
@@ -20582,26 +20524,16 @@ fn process_field(
     let place = member_place(field, index, ctx.variant_ident.is_some(), ctx.steps(index));
 
     // Generate validation code and hold back the serde attribute it hangs on the field
-    #[cfg(feature = "serde")]
-    let (mut validation_fn, validate_body, field_validation_guard_error) =
-        generate_field_validation(
-            ctx,
-            field,
-            index,
-            &model_schema_prop_meta,
-            // A struct's field, or a tagged variant's: the shape of the payload says which type it
-            // is, so a constraint here decides only whether the value is admissible.
-            ConstraintGate::Validator,
-            &mut injected_attrs,
-        );
-
-    #[cfg(not(feature = "serde"))]
-    let (validation_fn, validate_body): (
-        Option<proc_macro2::TokenStream>,
-        Option<proc_macro2::TokenStream>,
-    ) = (None, None);
-    #[cfg(not(feature = "serde"))]
-    let _: &_ = &ctx.schema_module_name;
+    let (bound_fns, validate_body, field_validation_guard_error) = generate_field_validation(
+        ctx,
+        field,
+        index,
+        &model_schema_prop_meta,
+        // A struct's field, or a tagged variant's: the shape of the payload says which type it
+        // is, so a constraint here decides only whether the value is admissible.
+        ConstraintGate::Validator,
+        &mut injected_attrs,
+    );
 
     field.attrs = new_attrs;
 
@@ -20647,7 +20579,7 @@ fn process_field(
         // reader of this flag is the read-hook writer, which this build does not compile.
         let _: bool = ctx.container_read_back;
         let _: ContainerWire = ctx.container_wire;
-        Vec::new()
+        field_validation_guard_error.into_iter().collect()
     };
 
     let guard_errors = collect_field_guard_errors(
@@ -20672,15 +20604,19 @@ fn process_field(
     // The read-time half of the reach `validate()` has below: what the field's own type turns
     // away before `validate()` is ever asked.
     #[cfg(feature = "serde")]
-    if let Some((hook, attrs)) =
-        member_read_hook(ctx, field, &field_def, index, place.reported.as_deref())
-    {
-        validation_fn = Some(match validation_fn {
-            Some(already) => quote! { #already #hook },
-            None => hook,
-        });
-        injected_attrs.extend(attrs);
-    }
+    let validation_fn =
+        match member_read_hook(ctx, field, &field_def, index, place.reported.as_deref()) {
+            Some((hook, attrs)) => {
+                injected_attrs.extend(attrs);
+                Some(match bound_fns {
+                    Some(already) => quote! { #already #hook },
+                    None => hook,
+                })
+            }
+            None => bound_fns,
+        };
+    #[cfg(not(feature = "serde"))]
+    let validation_fn = bound_fns;
 
     #[cfg(feature = "serde")]
     let declared = named_member_validate_body(validate_body, field, &field_def, &place);
@@ -21078,7 +21014,6 @@ fn member_place(field: &Field, index: usize, in_variant: bool, steps: &[String])
 /// How a constrained member's helpers name and reach it. It is reported under `steps`, the ones
 /// serde writes on the way to it, and its helpers keep its Rust name, or a slot's place among the
 /// ones declared.
-#[cfg(feature = "serde")]
 fn checked_member(
     field: &Field,
     index: usize,
@@ -21099,7 +21034,6 @@ fn checked_member(
 }
 
 /// What a member's helpers are named from: its Rust name, or a slot's position.
-#[cfg(feature = "serde")]
 fn declared_as(field: &Field, index: usize) -> String {
     field
         .ident
@@ -21109,9 +21043,9 @@ fn declared_as(field: &Field, index: usize) -> String {
 
 /// Reads a literal field's type down to the value the literal admits, or `None` for a type no
 /// literal sits on.
-#[cfg(feature = "serde")]
 fn literal_shape(ty: &syn::Type) -> Option<LiteralShape> {
     let mut wraps = Vec::new();
+    #[cfg(feature = "serde")]
     let mut lifetimes: Vec<syn::Lifetime> = Vec::new();
     let mut current = ty;
     loop {
@@ -21129,6 +21063,7 @@ fn literal_shape(ty: &syn::Type) -> Option<LiteralShape> {
             let segment = path.path.segments.last()?;
             if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
                 wraps.push(generic_wrap(&segment.ident.to_string())?);
+                #[cfg(feature = "serde")]
                 collect_lifetimes(args, &mut lifetimes);
                 current = sole_type_argument(args)?;
             } else if matches!(segment.arguments, syn::PathArguments::None) {
@@ -21142,6 +21077,7 @@ fn literal_shape(ty: &syn::Type) -> Option<LiteralShape> {
                 };
                 return Some(LiteralShape {
                     leaf,
+                    #[cfg(feature = "serde")]
                     lifetimes,
                     wraps,
                 });
@@ -21156,7 +21092,6 @@ fn literal_shape(ty: &syn::Type) -> Option<LiteralShape> {
 
 /// What a value of `leaf`, read as `value`, is compared with: `None` where the literal is of
 /// another kind, or a number the leaf holds no value of, which a guard refuses.
-#[cfg(feature = "serde")]
 fn literal_broken(leaf: &LiteralLeaf, literal: &LiteralValue) -> Option<proc_macro2::TokenStream> {
     match (leaf, literal) {
         (LiteralLeaf::Bool, LiteralValue::Bool(true)) => Some(quote! { !*value }),
@@ -21259,9 +21194,20 @@ fn literal_hook(
     }
 }
 
+/// Nothing, where no `serde` reads a field.
+#[cfg(not(feature = "serde"))]
+fn literal_hook(
+    _field_ty: &syn::Type,
+    _shape: &LiteralShape,
+    _owned: &proc_macro2::TokenStream,
+    _validator: &proc_macro2::Ident,
+    _deserializer: &proc_macro2::Ident,
+) -> proc_macro2::TokenStream {
+    proc_macro2::TokenStream::new()
+}
+
 /// What a literal field adds to `validate()`: the validator run on the value, or on each item of a
 /// list, whose report is written under the item's index.
-#[cfg(feature = "serde")]
 fn literal_validate_body(
     member: &CheckedMember,
     shape: &LiteralShape,
@@ -21300,7 +21246,6 @@ fn literal_validate_body(
 /// `literal`: the literal is its only rule. Where the literal is held by each item of a list, the
 /// validator names nothing, and `validate()` names each item by its index. `index` is the field's
 /// place among its container's.
-#[cfg(feature = "serde")]
 fn generate_literal_validation(
     ctx: &FieldContext<'_>,
     (field, index): (&Field, usize),
@@ -21376,7 +21321,6 @@ fn generate_literal_validation(
 /// through an interior-mutability wrapper (`RefCell`, `Cell`, `Mutex`, `RwLock`) — unlike
 /// `Box`/`Rc`/`Arc`/`Cow`, these don't implement `Deref`, so the validator has no safe way to reach
 /// the inner value. `literal` says which of the two was written.
-#[cfg(feature = "serde")]
 fn interior_mutability_constraint_guard_error(
     field: &Field,
     raw_field_ident: &str,
@@ -21433,12 +21377,22 @@ fn hang_bound_hook(
     injected_attrs.extend(hung);
 }
 
+/// Nothing, where no `serde` reads a member.
+#[cfg(not(feature = "serde"))]
+const fn hang_bound_hook(
+    _ctx: &FieldContext<'_>,
+    _member: (&Field, usize),
+    _path: &str,
+    _wraps: &[ConstraintWrap],
+    _injected_attrs: &mut Vec<syn::Attribute>,
+) {
+}
+
 /// Generates per-field serde validation code — the static validator and the `deserialize_with`
 /// hook, both published into the schema module either way — and, where `gate` says the read is
 /// also a gate, collects the `#[serde(deserialize_with = ...)]` attribute into `injected_attrs`,
 /// plus the `#[serde(default)]` that keeps an optional key optional under one. Each violation is
 /// reported under the steps serde writes on the way to the field.
-#[cfg(feature = "serde")]
 fn generate_field_validation(
     ctx: &FieldContext<'_>,
     field: &Field,
@@ -21552,7 +21506,6 @@ fn generate_field_validation(
 /// name alone, which `validate()` imports once for them all. Where the item names a check the
 /// bound imports the module for itself instead, so the check is called where no import of the
 /// module is in scope, and its name is the function its author wrote.
-#[cfg(feature = "serde")]
 fn bound_body(body: proc_macro2::TokenStream, module_name: &str) -> proc_macro2::TokenStream {
     if !names_a_check() {
         return body;

@@ -20503,9 +20503,11 @@ fn a_direct_flatten_of_a_nullable_object_registration_stays_admitted() {
 /// name is what a declaration put there rather than a word written by hand.
 #[cfg(all(feature = "serde", feature = "zod"))]
 fn seed_slot_registration(item: &syn::ItemStruct) {
-    let _: (String, String, syn::Ident) = super::struct_module_idents(
+    let (item_name, module_name, _) = super::struct_module_idents(&item.ident, None);
+    super::register_struct(
         &item.ident,
-        None,
+        &item_name,
+        &module_name,
         super::tuple_struct_surface(
             &item.fields,
             &super::type_parameters_in_scope(&item.generics),

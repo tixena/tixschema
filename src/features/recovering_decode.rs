@@ -14,9 +14,7 @@ mod query;
 use core::iter::once;
 use core::mem::take;
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
-use proc_macro2::{Group, Spacing, TokenTree};
-use proc_macro2::{Ident, Literal, Span, TokenStream};
+use proc_macro2::{Group, Ident, Literal, Spacing, Span, TokenStream, TokenTree};
 use quote::{ToTokens as _, format_ident, quote};
 use syn::ext::IdentExt as _;
 use syn::punctuated::Punctuated;
@@ -53,13 +51,12 @@ use crate::utils::{
     ident_schema_module_name, to_snake_case, type_parameters_in_scope, written_names, written_type,
 };
 
-#[cfg(all(any(feature = "typescript", feature = "zod"), not(feature = "mongodb")))]
+#[cfg(not(feature = "mongodb"))]
 const ADDED_TYPE_COUNT: usize = 17;
 
-#[cfg(all(any(feature = "typescript", feature = "zod"), feature = "mongodb"))]
+#[cfg(feature = "mongodb")]
 const ADDED_TYPE_COUNT: usize = 40;
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
     #[cfg(feature = "mongodb")]
     "Arm",
@@ -479,8 +476,7 @@ pub struct RecoveringDecode {
     /// What refuses a crate that has not written the support libraries the type re-exports,
     /// written beside the type.
     pub probes: TokenStream,
-    /// The items added to the `{type}_schema` module a schema surface writes, or that module whole
-    /// in a build where none writes one.
+    /// The items added to the type's `{type}_schema` module.
     pub schema_module: TokenStream,
     /// The `impl` holding the entry points and the walkers, or one per source on a type with a
     /// type parameter, and whatever else is written beside the type.
@@ -2358,7 +2354,6 @@ fn read_whole_items(sources: &[Source]) -> TokenStream {
 ///
 /// A schema module reads the author's scope through `use super::*`, which an item of the same
 /// name beside it shadows. `super::` names the author's one whatever the module holds.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 pub fn reading_the_authors_scope(tokens: TokenStream) -> TokenStream {
     let mut scoped: Vec<TokenTree> = Vec::new();
     for token in tokens {
@@ -2543,7 +2538,7 @@ where
     RecoveringDecode {
         check_messages: checks::type_impl(name, generics, &module, &written.check_messages),
         probes: foundation_probes(written.mongodb),
-        schema_module: placed_in_schema_module(&module, &items),
+        schema_module: items,
         type_impl,
     }
 }
@@ -4079,7 +4074,6 @@ fn hooked_leaf(
 }
 
 /// Whether the next token continues a path: the tokens end on `::`.
-#[cfg(any(feature = "typescript", feature = "zod"))]
 fn follows_a_path_separator(tokens: &[TokenTree]) -> bool {
     let [.., TokenTree::Punct(first), TokenTree::Punct(second)] = tokens else {
         return false;
@@ -4333,15 +4327,17 @@ fn read_as_a_list(ty: &Type) -> Type {
     }
 }
 
-/// `items` as they are emitted: beside what a schema surface writes into `{type}_schema`.
+/// An enum's `items` as they are emitted: beside what a schema surface writes into
+/// `{type}_schema`.
 #[cfg(any(feature = "typescript", feature = "zod"))]
-fn placed_in_schema_module(_module: &Ident, items: &TokenStream) -> TokenStream {
+pub fn placed_in_schema_module(_module: &Ident, items: &TokenStream) -> TokenStream {
     items.clone()
 }
 
-/// `items` in a `{type}_schema` module written here, no schema surface writing one in this build.
+/// An enum's `items` in a `{type}_schema` module written here, no schema surface writing one for
+/// an enum in this build.
 #[cfg(not(any(feature = "typescript", feature = "zod")))]
-fn placed_in_schema_module(module: &Ident, items: &TokenStream) -> TokenStream {
+pub fn placed_in_schema_module(module: &Ident, items: &TokenStream) -> TokenStream {
     let scope = authors_scope();
     quote! {
         pub mod #module {

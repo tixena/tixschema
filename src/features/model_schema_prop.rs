@@ -244,12 +244,6 @@ pub struct ModelSchemaPropMeta {
     pub zod_check_helper: Option<String>,
 }
 
-#[cfg(any(
-    feature = "serde",
-    feature = "zod",
-    feature = "dart",
-    feature = "swift"
-))]
 impl ModelSchemaPropMeta {
     /// Every pattern the value is held to: the field's own, then its enum's where both are written.
     pub fn patterns(&self) -> impl Iterator<Item = &str> {

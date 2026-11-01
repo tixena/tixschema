@@ -5,7 +5,6 @@ use core::cell::RefCell;
 use core::fmt::Write as _;
 use core::mem;
 use core::ops::Range;
-#[cfg(feature = "serde")]
 use core::slice::from_ref;
 use regex_syntax::ast::parse::Parser as PatternParser;
 use regex_syntax::ast::{
@@ -21,12 +20,10 @@ use syn::ext::IdentExt as _;
 use syn::punctuated::Punctuated;
 use syn::{Attribute, Expr, Field, GenericParam, Generics, Lit, LitStr, Meta, Type, Variant};
 
-#[cfg(any(feature = "serde", feature = "zod"))]
 use crate::features::model_schema_prop::FunctionName;
 
 #[cfg(any(feature = "typescript", feature = "zod"))]
 use syn::ItemEnum;
-#[cfg(any(feature = "typescript", feature = "zod"))]
 use syn::ItemStruct;
 
 /// The JavaScript engine generation the emitted Zod regex literals and JSON Schema `pattern`
@@ -154,7 +151,6 @@ pub enum MapKeyWire {
 /// avoidable work for. Each variant carries the needle in the spelling the check takes it — the
 /// literal the pattern's own escapes already resolved to, not the pattern text: `^foo\.bar` starts
 /// with `foo.bar`, five bytes shorter than what was written.
-#[cfg(feature = "serde")]
 #[derive(Debug, PartialEq, Eq)]
 pub enum TrivialPattern {
     /// `abc` -- the value has this string somewhere in it.
@@ -937,18 +933,18 @@ thread_local! {
 
 /// The checks the item being expanded names, as the parts of its expansion that are written apart
 /// read them.
-#[cfg(feature = "serde")]
 #[derive(Default)]
 struct NamedChecks {
     /// Whether the item names a check, on itself or on a member.
     named: bool,
     /// The checks each member names, by schema module and helper stem.
+    #[cfg(feature = "serde")]
     of_members: HashMap<(String, String), Vec<FunctionName>>,
     /// The checks written on the type, by schema module.
+    #[cfg(feature = "serde")]
     own: HashMap<String, Vec<FunctionName>>,
 }
 
-#[cfg(feature = "serde")]
 thread_local! {
     /// The checks of the item being expanded, read by the recovering decode of that same item,
     /// and by each bound of it: where the item names a check, a bound imports the schema module
@@ -963,19 +959,22 @@ pub fn forget_checks() {
 }
 
 /// Whether the item being expanded names a check, on itself or on a member.
-#[cfg(feature = "serde")]
 pub fn names_a_check() -> bool {
     NAMED_CHECKS.with(|held| held.borrow().named)
 }
 
-/// Records the checks written on the type whose schema module is `module`, and whether the type
-/// or a member of it names any.
+/// Records whether the item being expanded names a check, on itself or on a member.
+pub fn record_names_a_check(named: bool) {
+    NAMED_CHECKS.with(|held| held.borrow_mut().named = named);
+}
+
+/// Records the checks written on the type whose schema module is `module`.
 #[cfg(feature = "serde")]
-pub fn record_own_checks(module: &str, checks: &[FunctionName], named: bool) {
+pub fn record_own_checks(module: &str, checks: &[FunctionName]) {
     NAMED_CHECKS.with(|held| {
-        let mut recorded = held.borrow_mut();
-        recorded.named = named;
-        recorded.own.insert(module.to_owned(), checks.to_vec());
+        held.borrow_mut()
+            .own
+            .insert(module.to_owned(), checks.to_vec());
     });
 }
 
@@ -991,6 +990,10 @@ pub fn record_member_checks(module: &str, stem: &str, checks: &[FunctionName]) {
             .insert((module.to_owned(), stem.to_owned()), checks.to_vec());
     });
 }
+
+/// Nothing, where no recovering decode reads a member's checks.
+#[cfg(not(feature = "serde"))]
+pub const fn record_member_checks(_module: &str, _stem: &str, _checks: &[FunctionName]) {}
 
 /// The checks written on the type whose schema module is `module`.
 #[cfg(feature = "serde")]
@@ -1055,6 +1058,16 @@ pub fn record_field_validator(module: &str, stem: &str, named: Option<&str>, ite
             },
         );
     });
+}
+
+/// Nothing, where no recovering decode reads a validator.
+#[cfg(not(feature = "serde"))]
+pub const fn record_field_validator(
+    _module: &str,
+    _stem: &str,
+    _named: Option<&str>,
+    _items: bool,
+) {
 }
 
 /// Forgets every validator recorded: the walker of an item reads only that item's own.
@@ -1920,7 +1933,6 @@ pub fn compute_item_export_name(rust_ident: &str, override_name: Option<&str>) -
     override_name.map_or_else(|| rust_ident.to_owned(), ToOwned::to_owned)
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
 /// Extracts and concatenates documentation comments from a `syn::ItemStruct`.
 pub fn get_struct_docs(item_struct: &ItemStruct) -> Option<Vec<String>> {
     collect_doc_lines(&item_struct.attrs)
@@ -2392,7 +2404,6 @@ fn is_text_anchor(hir: &hir::Hir) -> bool {
 /// What a `pattern` accepts stated without a regex, for exactly the patterns
 /// `clippy::trivial_regex` proves one is unnecessary for -- and `None` for every other pattern,
 /// which keeps its `regex::Regex` and is the only thing that reads a pattern of any real shape.
-#[cfg(feature = "serde")]
 pub fn trivial_pattern(pattern: &str) -> Option<TrivialPattern> {
     let parsed = regex_syntax::ParserBuilder::new()
         .unicode(true)
@@ -2416,7 +2427,6 @@ pub fn trivial_pattern(pattern: &str) -> Option<TrivialPattern> {
 /// lint's order; the fall-through they rely on is unreachable from any of them, since a
 /// concatenation that starts or ends with an anchor is not a literal, ruling out the all-literals
 /// reading before an anchored arm's needle can come back missing.
-#[cfg(feature = "serde")]
 fn trivial_concat(parts: &[hir::Hir]) -> Option<TrivialPattern> {
     let opens_at_text_start = is_anchor(parts.first()?, hir::Look::Start);
     let closes_at_text_end = is_anchor(parts.last()?, hir::Look::End);
@@ -2438,7 +2448,6 @@ fn trivial_concat(parts: &[hir::Hir]) -> Option<TrivialPattern> {
 }
 
 /// Whether one part of a concatenation is the given whole-haystack anchor.
-#[cfg(feature = "serde")]
 fn is_anchor(part: &hir::Hir, anchor: hir::Look) -> bool {
     matches!(*part.kind(), hir::HirKind::Look(look) if look == anchor)
 }
@@ -2447,7 +2456,6 @@ fn is_anchor(part: &hir::Hir, anchor: hir::Look) -> bool {
 /// empty needle would name a check that always passes — a different statement than any of these
 /// variants makes — and bytes that are not UTF-8 name no `str` at all; neither is reachable through
 /// a `pattern` parsed in UTF-8 mode, so both keep the regex rather than guess.
-#[cfg(feature = "serde")]
 fn literal_needle(parts: &[hir::Hir]) -> Option<String> {
     let mut bytes: Vec<u8> = Vec::new();
     for part in parts {
