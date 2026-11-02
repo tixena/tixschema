@@ -166,9 +166,9 @@ impl LiteralValue {
 /// - `ts_optional` — for an `Option<T>` field, emit `field?: T` instead of `field: T | undefined`
 ///   (TypeScript only; a non-`Option` field is a compile error). It decides the key only on a field
 ///   no serde key-omission attribute speaks for, since such an attribute already writes the
-///   optional key off the wire in every build. Under the `serde` feature that field does not
-///   compile — the `Option`-null guard refuses it — so the one shape the flag is live on is a build
-///   with the feature off.
+///   optional key off the wire with the `serde` feature on. Under the `serde` feature that field
+///   does not compile — the `Option`-null guard refuses it — so the one shape the flag is live on
+///   is a build with the feature off.
 ///
 /// ## Preprocessing
 ///
@@ -217,13 +217,6 @@ pub struct ModelSchemaPropMeta {
     pub check: Vec<FunctionName>,
     /// The `pattern` of the enum the field's variant belongs to, where the field writes one of its
     /// own in [`Self::pattern`]: the value is held to both.
-    #[cfg(any(
-        feature = "serde",
-        feature = "zod",
-        feature = "jsonschema",
-        feature = "dart",
-        feature = "swift"
-    ))]
     pub enum_pattern: Option<String>,
     pub literal: Option<LiteralValue>,
     /// `maxLength` written on a list, whose items it counts: moved here from [`Self::max_length`]
@@ -251,12 +244,6 @@ pub struct ModelSchemaPropMeta {
     pub zod_check_helper: Option<String>,
 }
 
-#[cfg(any(
-    feature = "serde",
-    feature = "zod",
-    feature = "dart",
-    feature = "swift"
-))]
 impl ModelSchemaPropMeta {
     /// Every pattern the value is held to: the field's own, then its enum's where both are written.
     pub fn patterns(&self) -> impl Iterator<Item = &str> {

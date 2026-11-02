@@ -27,8 +27,8 @@ fn the_readme_shows_the_declaration_and_the_read_of_the_models() {
     for shown in [
         item("pub fn north_dock()"),
         item(
-            "#[model_schema()]\n#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]\n\
-             pub struct Wharf {",
+            "#[model_schema(enable = [\"jsonschema\"])]\n#[derive(Clone, Debug, Deserialize, \
+             PartialEq, Eq, Serialize)]\npub struct Wharf {",
         ),
     ] {
         assert!(section().contains(shown), "{shown}");
@@ -42,7 +42,7 @@ fn the_readme_shows_the_declaration_and_the_read_of_the_models() {
 }
 
 /// Each line of the section's table is text the surface writes for `Wharf`.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn the_zod_line_of_the_table_is_what_zod_writes() {
     let shown = "dock: z.string().prefault(\"\")";
@@ -50,7 +50,7 @@ fn the_zod_line_of_the_table_is_what_zod_writes() {
     assert!(super::models::Wharf::zod_schema().contains(shown));
 }
 
-#[cfg(feature = "jsonschema")]
+#[cfg(feature = "serde")]
 #[test]
 fn the_json_schema_line_of_the_table_is_what_the_json_schema_writes() {
     assert!(section().contains("`\"default\": \"\"`"));
@@ -60,7 +60,7 @@ fn the_json_schema_line_of_the_table_is_what_the_json_schema_writes() {
     );
 }
 
-#[cfg(feature = "dart")]
+#[cfg(all(feature = "dart", feature = "serde"))]
 #[test]
 fn the_dart_line_of_the_table_is_what_dart_writes() {
     let shown =
@@ -69,7 +69,7 @@ fn the_dart_line_of_the_table_is_what_dart_writes() {
     assert!(super::models::wharf_dart::dart_definition().contains(shown));
 }
 
-#[cfg(feature = "swift")]
+#[cfg(all(feature = "swift", feature = "serde"))]
 #[test]
 fn the_swift_line_of_the_table_is_what_swift_writes() {
     assert!(section().contains("`if container.contains(.dock) { ... } else { ... }`"));
@@ -79,7 +79,7 @@ fn the_swift_line_of_the_table_is_what_swift_writes() {
 }
 
 /// The section's empty collection of a parameter is what the Kotlin client writes for `Basin`.
-#[cfg(feature = "kotlin")]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
 #[test]
 fn the_kotlin_empty_collection_is_what_kotlin_writes() {
     assert!(section().contains("`emptyList()` or `emptyMap()`"));
@@ -89,7 +89,7 @@ fn the_kotlin_empty_collection_is_what_kotlin_writes() {
     );
 }
 
-#[cfg(feature = "kotlin")]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
 #[test]
 fn the_kotlin_line_of_the_table_is_what_kotlin_writes() {
     let shown = "val dock: String = Json.decodeFromString(serializer<String>(), \"\\\"\\\"\")";

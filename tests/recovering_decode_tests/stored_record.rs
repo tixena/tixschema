@@ -10,9 +10,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
-// The JSON schema of a type holding a `Version` names its module from here, beside the type.
-#[cfg(feature = "jsonschema")]
-use super::version_schema;
 use super::{Version, lines};
 
 #[model_schema(enable = ["decode_with"])]

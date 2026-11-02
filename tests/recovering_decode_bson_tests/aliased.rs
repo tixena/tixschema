@@ -16,10 +16,6 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use self::declared::{Counts, Marks, Versions};
-#[cfg(feature = "jsonschema")]
-use self::declared::{counts_schema, marks_schema, versions_schema};
-#[cfg(feature = "jsonschema")]
-use self::properties_data_schema as properties_schema;
 use super::{Told, invalid, string, unknown, written};
 
 /// What `from_bson_with` lists for `$stored`, less each `reason`, read as `$model` by a decider

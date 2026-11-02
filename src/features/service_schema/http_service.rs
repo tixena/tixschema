@@ -19,6 +19,10 @@ use crate::utils::{is_recorded_untagged_enum, ts_quoted};
 use core::fmt::Write as _;
 use syn::Type;
 
+/// The text `ts_http_service()` replaces with the service's `OpenAPI` document, quoted as a string
+/// literal. No other generated text holds it.
+pub const OPENAPI_MARKER: &str = "/*__TIXSCHEMA_OPENAPI__*/";
+
 /// The three facts every dispatcher-building function below reads off the service, bundled so
 /// none of them carries more of its own parameters than a reader can hold at once: the published
 /// name, the camelCase prefix its own helpers are named under, and whether it declares a
@@ -30,13 +34,17 @@ struct DispatcherContext<'ctx> {
     prefix: &'ctx str,
 }
 
-pub fn emit(service: &ServiceDef) -> Vec<String> {
+/// What `ts_http_service()` writes, each item a text of its own. Where `openapi_path` is given,
+/// the dispatcher answers `GET` there with the text of a constant whose value is
+/// [`OPENAPI_MARKER`], which `ts_http_service()` replaces with the document's text at run time.
+pub fn emit(service: &ServiceDef, openapi_path: Option<&str>) -> Vec<String> {
     let named = service.ident.to_string();
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
     let has_stream = service_declares_a_stream(service);
     let has_multipart = service_declares_multipart(service);
-    let mut items = vec![
-        route_type(&named),
+    let mut items = vec![route_type(&named)];
+    items.extend(openapi_path.map(|_| document_const(&prefix)));
+    items.extend([
         route_table(service, &named, &prefix),
         request_type(&named, has_multipart),
         response_type(&named, has_stream),
@@ -50,7 +58,7 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
         percent_decoded_fn(&prefix),
         parse_query_fn(&prefix),
         coerce_number_fn(&prefix),
-    ];
+    ]);
     if service.operations.iter().any(reads_a_bigint_from_text) {
         items.push(coerce_bigint_fn(&prefix));
     }
@@ -58,7 +66,7 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
         items.push(legal_response_header_value_fn(&prefix));
     }
     items.push(replied_header_fn(&prefix));
-    items.push(dispatcher_fn(service, &named, &prefix));
+    items.push(dispatcher_fn(service, &named, &prefix, openapi_path));
     message::without_uncalled(
         items,
         &prefix,
@@ -111,6 +119,10 @@ fn replied_header_fn(prefix: &str) -> String {
          return carried === undefined ? undefined : {prefix}HttpRequestRead(carried);\n\
          }}"
     )
+}
+
+fn document_const(prefix: &str) -> String {
+    format!("const {prefix}OpenApiDocument = {OPENAPI_MARKER};")
 }
 
 fn route_type(named: &str) -> String {
@@ -585,7 +597,21 @@ fn generated_message_build(
     (setup, "message".to_owned())
 }
 
-fn dispatcher_fn(service: &ServiceDef, named: &str, prefix: &str) -> String {
+fn dispatcher_fn(
+    service: &ServiceDef,
+    named: &str,
+    prefix: &str,
+    openapi_path: Option<&str>,
+) -> String {
+    let document_arm = openapi_path.map_or_else(String::new, |served_at| {
+        format!(
+            "    if (method === \"GET\" && path === {}) {{\n      \
+             return {{ status: 200, headers: [[\"content-type\", \"application/json\"]], body: \
+             new TextEncoder().encode({prefix}OpenApiDocument) }};\n    \
+             }}\n",
+            ts_quoted(served_at)
+        )
+    });
     let ctx = DispatcherContext {
         named,
         prefix,
@@ -620,7 +646,7 @@ fn dispatcher_fn(service: &ServiceDef, named: &str, prefix: &str) -> String {
          {answer}  \
          return async (ctx, request) => {{\n    \
          const {{ method, path }} = request;\n\
-{arms}    \
+{document_arm}{arms}    \
          return onFault({prefix}HttpFault(\"unknown-operation\", `${{method}} ${{path}}`, \"the \
          service answers to no route by that method and path\"));\n  \
          }};\n\

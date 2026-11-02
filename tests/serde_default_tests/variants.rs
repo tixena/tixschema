@@ -3,29 +3,29 @@
 //! runs of each client are in the emitted-client groups, and the run of the Zod schemas under node
 //! in `generic_types_tests`.
 
-#[cfg(feature = "kotlin")]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
 use crate::kotlin_numbers::without_number_readers;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 use super::models::Quay;
+#[cfg(feature = "serde")]
+use super::models::variant_report;
 use super::models::{
     AdjacentBerthing, Berthing, ExternalBerthing, UntaggedBerthing, VARIANT_CASES, VARIANT_REPORT,
     north_dock,
 };
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-use super::models::{untagged_berthing_schema, variant_report};
 
 /// The untagged enum under another name.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[model_schema()]
 pub type AliasedBerthing = UntaggedBerthing;
 
 /// An untagged enum one variant of which holds the untagged enum whose members are read as their
 /// defaults.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(untagged)]
@@ -35,7 +35,7 @@ pub enum Anchorage {
 }
 
 /// A struct that flattens the untagged enum that holds the other.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Mooring {
@@ -57,7 +57,7 @@ pub enum OptionalBerth {
 }
 
 /// A struct that flattens the alias of the untagged enum.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Pier {
@@ -102,7 +102,7 @@ pub struct Slipway {
 }
 
 /// An enum none of whose members is read as a default.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind")]
 pub enum Tide {
@@ -111,7 +111,7 @@ pub enum Tide {
 }
 
 /// An enum under no tag attribute with no unit variant, which a struct flattens.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum Towage {
@@ -136,7 +136,7 @@ pub enum TriedThrough {
 }
 
 /// A struct that flattens the enum under no tag attribute.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Wake {
@@ -236,9 +236,8 @@ fn the_variant_table_prints_a_row_for_each_payload() {
     }
 }
 
-/// Every row of the table, as serde reads it where a schema surface is on: a build with none
-/// holds `line` to no bound.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+/// Every row of the table, as serde reads it.
+#[cfg(feature = "serde")]
 #[test]
 fn serde_reads_each_variant_payload_as_the_table_says() {
     assert_eq!(variant_report(), VARIANT_REPORT);
@@ -313,7 +312,7 @@ fn a_struct_that_flattens_the_untagged_enum_reads_the_default_of_its_member() {
 /// The read of each client reads a member of a variant left out from the JSON of its default,
 /// through the read the member has, as it reads a member of a struct: the text each writes for
 /// `Berthing` and for the list of the parameter of `Manifest`.
-#[cfg(feature = "dart")]
+#[cfg(all(feature = "dart", feature = "serde"))]
 #[test]
 fn dart_reads_a_member_of_a_variant_left_out_from_the_json_of_its_default() {
     let written = super::models::berthing_dart::dart_definition();
@@ -335,7 +334,7 @@ fn dart_reads_a_member_of_a_variant_left_out_from_the_json_of_its_default() {
     );
 }
 
-#[cfg(feature = "swift")]
+#[cfg(all(feature = "swift", feature = "serde"))]
 #[test]
 fn swift_reads_a_member_of_a_variant_left_out_from_the_json_of_its_default() {
     let written = super::models::berthing_swift::swift_definition();
@@ -351,7 +350,7 @@ fn swift_reads_a_member_of_a_variant_left_out_from_the_json_of_its_default() {
     );
 }
 
-#[cfg(feature = "kotlin")]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
 #[test]
 fn kotlin_reads_a_member_of_a_variant_left_out_from_the_json_of_its_default() {
     let written = without_number_readers(&super::models::berthing_kotlin::kotlin_definition());
@@ -374,7 +373,7 @@ fn kotlin_reads_a_member_of_a_variant_left_out_from_the_json_of_its_default() {
 /// The Zod schema of each tagging parses a default as it parses a payload: `.prefault` hands the
 /// parse the JSON of the default, which one index across the enum keeps apart from another
 /// variant's member of the same name.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn the_zod_schema_parses_the_default_of_each_member_of_a_variant() {
     let docked = "dock: z.string().prefault(\"\")";
@@ -401,7 +400,7 @@ fn the_zod_schema_parses_the_default_of_each_member_of_a_variant() {
 
 /// The JSON Schema of each tagging leaves each key read as a default out of `required` and states
 /// the default.
-#[cfg(feature = "jsonschema")]
+#[cfg(feature = "serde")]
 #[test]
 fn the_json_schema_states_the_default_of_each_member_of_a_variant() {
     let docked = |object: &serde_json::Value| {
@@ -450,7 +449,7 @@ fn the_json_schema_states_the_default_of_each_member_of_a_variant() {
 /// flattens it, flattens its alias, or flattens a union that holds it, nor of a type that
 /// flattens an enum under no tag attribute: each joins the enum by its binding, or by the members
 /// it publishes.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn no_placeholder_reaches_the_zod_schema_of_another_type() {
     for (schema, binding) in [
@@ -470,7 +469,7 @@ fn no_placeholder_reaches_the_zod_schema_of_another_type() {
 
 /// The text of each surface for a member no refusal reaches is the text it was: no default is
 /// written, and the key the targets read as before keeps its spelling.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn the_zod_schema_of_a_member_no_refusal_reaches_is_as_before() {
     for schema in [
@@ -488,7 +487,7 @@ fn the_zod_schema_of_a_member_no_refusal_reaches_is_as_before() {
 
 /// An enum with no `#[serde(default)]` writes on every surface the text it wrote before a member
 /// of a variant was read as its default: `Tide`, pinned whole.
-#[cfg(all(feature = "typescript", feature = "jsonschema"))]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn an_enum_with_no_default_writes_the_typescript_text_it_wrote() {
     let lines = [
@@ -528,7 +527,7 @@ fn an_enum_with_no_default_writes_the_typescript_text_it_wrote() {
     assert_eq!(Tide::ts_definition(), lines.join("\n"));
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn an_enum_with_no_default_writes_the_zod_text_it_wrote() {
     assert_eq!(
@@ -546,7 +545,7 @@ export const Tide$Schema: ZodType<Tide> = Tide$RawSchema.meta({
     );
 }
 
-#[cfg(feature = "jsonschema")]
+#[cfg(feature = "serde")]
 #[test]
 fn an_enum_with_no_default_writes_the_json_schema_it_wrote() {
     assert_eq!(
@@ -559,7 +558,7 @@ fn an_enum_with_no_default_writes_the_json_schema_it_wrote() {
     );
 }
 
-#[cfg(feature = "dart")]
+#[cfg(all(feature = "dart", feature = "serde"))]
 #[test]
 fn an_enum_with_no_default_writes_the_dart_text_it_wrote() {
     assert_eq!(
@@ -588,7 +587,7 @@ fn an_enum_with_no_default_writes_the_dart_text_it_wrote() {
     );
 }
 
-#[cfg(feature = "swift")]
+#[cfg(all(feature = "swift", feature = "serde"))]
 #[test]
 fn an_enum_with_no_default_writes_the_swift_text_it_wrote() {
     assert_eq!(
@@ -624,7 +623,7 @@ fn an_enum_with_no_default_writes_the_swift_text_it_wrote() {
     );
 }
 
-#[cfg(feature = "kotlin")]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
 #[test]
 fn an_enum_with_no_default_writes_the_kotlin_text_it_wrote() {
     assert_eq!(

@@ -6,7 +6,7 @@ mod on_a_schema_surface {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(tag = "kind")]
     pub struct Tagged {
@@ -115,7 +115,6 @@ mod on_a_schema_surface {
         );
     }
 
-    #[cfg(feature = "jsonschema")]
     #[test]
     fn the_json_schema_requires_the_tag_at_its_one_value() {
         assert_eq!(

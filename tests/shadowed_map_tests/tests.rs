@@ -10,14 +10,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tixschema::model_schema;
 
-#[model_schema(enable = ["decode_with", "mongodb"], default_types(K = String, V = u32))]
+#[model_schema(enable = ["decode_with", "jsonschema", "mongodb"], default_types(K = String, V = u32))]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Map<K, V> {
     pub key: K,
     pub value: V,
 }
 
-#[model_schema(enable = ["decode_with", "mongodb"])]
+#[model_schema(enable = ["decode_with", "jsonschema", "mongodb"])]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Holder {
     pub held: Map<String, u32>,
@@ -69,7 +69,6 @@ fn zod_calls_the_factory_of_the_type_declared_here() {
     assert!(!zod.contains("z.record("), "got: {zod}");
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn the_json_schema_is_the_document_of_the_type_declared_here() {
     let held = &Holder::json_schema()["properties"]["held"];

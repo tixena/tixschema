@@ -1,6 +1,5 @@
 //! The JSON Schema of each model of [`WIRE_FORMS`], held to every payload a client sends.
 
-#[cfg(feature = "jsonschema")]
 use super::documents::admits;
 #[cfg(feature = "mongodb")]
 use super::models::ConveyedObjectId;
@@ -12,7 +11,6 @@ use super::models::{
 };
 
 /// The JSON Schema of each model admits every payload a client sends.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn the_json_schema_admits_every_payload_a_client_sends() {
     for row in WIRE_FORMS {
@@ -33,7 +31,6 @@ fn the_json_schema_admits_every_payload_a_client_sends() {
 /// The JSON Schema refuses a value held in another form than the one serde writes, as serde
 /// refuses it: a date under `as_number` as its text, and a time and a date and time with no zone
 /// with a zone.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn the_json_schema_refuses_a_value_in_another_form_than_serde_writes() {
     for (held_by, payload) in [
@@ -67,7 +64,6 @@ fn the_json_schema_refuses_a_value_in_another_form_than_serde_writes() {
 }
 
 /// The JSON Schema of the model `held_by` names, and `None` where none has that name.
-#[cfg(feature = "jsonschema")]
 fn json_schema_of(held_by: &str) -> Option<serde_json::Value> {
     match held_by {
         "ConveyedFlag" => Some(ConveyedFlag::json_schema()),

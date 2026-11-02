@@ -5,16 +5,7 @@
 /// Two structs written with the same attributes, each beside the brand of one slot over the type of
 /// the field its derive takes: serde writes `Written` as `count`, `text` being skipped when it
 /// serializes, and reads `Received` as `text`, `count` having a `default`.
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
-))]
+#[cfg(feature = "serde")]
 mod by_the_derive {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
@@ -45,12 +36,12 @@ mod by_the_derive {
         ["countAlone", "written"],
     ];
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Serialize)]
     #[serde(transparent)]
     pub struct CountAlone(pub u32);
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq)]
     #[serde(transparent)]
     pub struct Received {
@@ -61,11 +52,11 @@ mod by_the_derive {
     }
 
     #[model_schema()]
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Deserialize, Eq, PartialEq)]
     #[serde(transparent)]
     pub struct TextAlone(pub String);
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Serialize)]
     #[serde(transparent)]
     pub struct Written {
@@ -119,11 +110,19 @@ mod by_the_derive {
             serde_json::to_value(&written).unwrap()
         );
         assert_eq!(
+            serde_json::to_value(CountAlone(7)).unwrap(),
+            serde_json::to_value(&written).unwrap()
+        );
+        assert_eq!(
             serde_json::from_value::<Received>(serde_json::json!("abc")).unwrap(),
             Received {
                 count: 0,
                 text: "abc".to_owned(),
             }
+        );
+        assert_eq!(
+            serde_json::from_value::<TextAlone>(serde_json::json!("abc")).unwrap(),
+            TextAlone("abc".to_owned())
         );
     }
 
@@ -163,7 +162,6 @@ mod by_the_derive {
         );
     }
 
-    #[cfg(feature = "jsonschema")]
     #[test]
     fn json_schema_describes_the_field_the_derive_takes() {
         assert_eq!(Written::json_schema(), CountAlone::json_schema());
@@ -218,7 +216,7 @@ mod by_the_derive {
         );
     }
 
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     #[test]
     fn each_is_displayed_as_the_field_its_derive_takes() {
         let written = Written {

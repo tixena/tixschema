@@ -6,7 +6,7 @@
 //! each flattened member at its place. The reads are run under the Dart SDK in
 //! `tests/service_schema_emitted_client_tests/run_dart_flattened.rs`.
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 use super::flattened_models::limber_dart;
 use super::flattened_models::{
     battening_dart, belaying_dart, bilging_dart, caulking_dart, clamping_dart, doubling_dart,
@@ -297,7 +297,7 @@ fn an_optional_map_is_null_where_an_entry_does_not_read() {
 }
 
 /// An optional map of models is read in the closure, each model with no judgement.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_optional_map_of_models_reads_each_unjudged_in_the_closure() {
     assert_written(

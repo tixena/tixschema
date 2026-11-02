@@ -10,7 +10,7 @@ mod tests;
 
 /// What a JSON Schema document admits.
 #[cfg(test)]
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[cfg(feature = "serde")]
 #[path = "std_range_tests/documents.rs"]
 mod documents;
 

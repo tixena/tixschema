@@ -7,9 +7,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
-// The JSON schema of a type holding a `Version` names its module from here, beside the type.
-#[cfg(feature = "jsonschema")]
-use super::version_schema;
 use super::{Version, lines};
 
 /// What `from_value_with` lists for `$stored`, read as `$model` by a decider that rejects it.
@@ -109,7 +106,7 @@ struct Drawing {
     stroke: Stroke,
 }
 
-/// Untagged, with a member whose own check takes its variant out. Only a schema surface hangs it.
+/// Untagged, with a member whose own check takes its variant out.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
@@ -922,7 +919,6 @@ fn a_no_variant_inside_another_type_sits_at_the_enums_path() {
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn an_untagged_enums_constrained_member_is_read_through_its_hook() {
     let stored = json!({ "address": "ab" });

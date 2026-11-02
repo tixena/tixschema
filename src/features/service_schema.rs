@@ -42,14 +42,20 @@ use crate::service_schema::parse::ServiceDef;
 use crate::service_schema::support::exhaustiveness;
 #[cfg(any(feature = "typescript", feature = "dart"))]
 use crate::service_schema::support::{fault_fields_typescript_name, module_ident};
+use crate::service_schema::transport::OpenApiArguments;
+use crate::service_schema::transport::http_rest::openapi::openapi_method;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
-pub fn emit(service: &ServiceDef, non_exhaustive: bool) -> TokenStream {
+pub fn emit(
+    service: &ServiceDef,
+    non_exhaustive: bool,
+    openapi: Option<&OpenApiArguments>,
+) -> TokenStream {
     let named = service.ident.to_string();
-    let registry = format_ident!("{named}Schema", span = service.ident.span());
+    let registry = registry_ident(service);
     let rustdoc = registry_rustdoc(&named);
-    let ts_seam = ts_seam(service);
+    let ts_seam = ts_seam(service, openapi);
     let dart_seam = dart_seam(service);
     let swift_seam = swift_seam(service);
     let kotlin_seam = kotlin_seam(service);
@@ -71,9 +77,9 @@ pub fn emit(service: &ServiceDef, non_exhaustive: bool) -> TokenStream {
 /// The service's generated TypeScript: `ts_definition()` plus the client and dispatcher artifacts
 /// [`seam`] publishes where `zod` is also on. Published only where the `typescript` feature is on.
 #[cfg(feature = "typescript")]
-fn ts_seam(service: &ServiceDef) -> TokenStream {
+fn ts_seam(service: &ServiceDef, openapi: Option<&OpenApiArguments>) -> TokenStream {
     let published = published(service);
-    let seam = seam(service);
+    let seam = seam(service, openapi);
     quote! {
         #[doc = " Every TypeScript type this service publishes: the messages the macro declared"]
         #[doc = " for it, the fault a caller can receive, and one result type per operation that"]
@@ -87,7 +93,7 @@ fn ts_seam(service: &ServiceDef) -> TokenStream {
 }
 
 #[cfg(not(feature = "typescript"))]
-fn ts_seam(_service: &ServiceDef) -> TokenStream {
+fn ts_seam(_service: &ServiceDef, _openapi: Option<&OpenApiArguments>) -> TokenStream {
     TokenStream::new()
 }
 
@@ -189,11 +195,28 @@ fn kotlin_seam(_service: &ServiceDef) -> TokenStream {
 /// transport, and the dispatcher that checks one before it reaches an implementation. Both parse
 /// against the Zod schema `#[model_schema()]` publishes for the message, so a build without the Zod
 /// surface publishes neither.
+///
+/// For a service that asks for `openapi`, `ts_http_service()` writes the text of `openapi()`, as a
+/// JavaScript string literal, over [`http_service::OPENAPI_MARKER`] at run time: the document is
+/// built from each type's schema in the consuming crate, and the dispatcher answers that text as
+/// it is, so a float written `1.0` or an integer past 2^53 keeps the spelling Rust gave it.
 #[cfg(all(feature = "typescript", feature = "zod"))]
-fn seam(service: &ServiceDef) -> TokenStream {
+fn seam(service: &ServiceDef, openapi: Option<&OpenApiArguments>) -> TokenStream {
     let client = client::emit(service).join("\n\n");
     let http_client = http_client::emit(service).join("\n\n");
-    let http_service = http_service::emit(service).join("\n\n");
+    let served_at = openapi.map(OpenApiArguments::served_at);
+    let http_service = http_service::emit(service, served_at.as_deref()).join("\n\n");
+    let http_service_text = if openapi.is_some() {
+        let marker = http_service::OPENAPI_MARKER;
+        quote! {
+            #http_service.replace(
+                #marker,
+                &serde_json::Value::String(Self::openapi().to_string()).to_string(),
+            )
+        }
+    } else {
+        quote! { #http_service.to_owned() }
+    };
     let service_side = service::emit(service).join("\n\n");
     let ws_client = ws_client::emit(service).join("\n\n");
     let ws_service = ws_service::emit(service).join("\n\n");
@@ -216,7 +239,7 @@ fn seam(service: &ServiceDef) -> TokenStream {
         #[doc = " defaults, and the dispatcher that matches, assembles the message the way the"]
         #[doc = " Rust dispatcher does, and drives `create{Service}Dispatcher`."]
         pub fn ts_http_service() -> ::std::string::String {
-            #http_service.to_owned()
+            #http_service_text
         }
 
         #[doc = " The service's implementable TypeScript interface, the outcome types an"]
@@ -250,7 +273,7 @@ fn seam(service: &ServiceDef) -> TokenStream {
 }
 
 #[cfg(all(feature = "typescript", not(feature = "zod")))]
-fn seam(_service: &ServiceDef) -> TokenStream {
+fn seam(_service: &ServiceDef, _openapi: Option<&OpenApiArguments>) -> TokenStream {
     TokenStream::new()
 }
 
@@ -461,6 +484,22 @@ fn ts_registry_rustdoc(service: &str) -> Vec<String> {
              `swift`, `kotlin`) if a mobile or server target is what this build wants instead."
         ),
     ]
+}
+
+/// `openapi()` on the service's registry, for a service that asked for `openapi`.
+pub fn openapi_seam(service: &ServiceDef, asked: &OpenApiArguments) -> TokenStream {
+    let registry = registry_ident(service);
+    let method = openapi_method(service, asked);
+    quote! {
+        impl #registry {
+            #method
+        }
+    }
+}
+
+/// `<Service>Schema`, the type every surface of the service is published on.
+pub fn registry_ident(service: &ServiceDef) -> syn::Ident {
+    format_ident!("{}Schema", service.ident, span = service.ident.span())
 }
 
 #[cfg(test)]

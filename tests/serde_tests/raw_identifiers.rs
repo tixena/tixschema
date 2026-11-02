@@ -32,7 +32,7 @@ mod on_a_schema_surface {
         pub r#struct: RawKeyed,
     }
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct RawKeyed {
         #[model_schema_prop(minLength = 2)]
@@ -135,7 +135,6 @@ mod on_a_schema_surface {
         );
     }
 
-    #[cfg(feature = "jsonschema")]
     #[test]
     fn the_json_schema_names_the_key_serde_writes() {
         assert_eq!(

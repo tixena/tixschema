@@ -138,13 +138,13 @@ mod listed_maps;
 /// A member serde reads and never writes, in a struct of its own, beside a flattened member and in
 /// an enum's variant under each tagging that writes a variant's named members.
 #[cfg(test)]
-#[cfg(feature = "swift")]
+#[cfg(all(feature = "swift", feature = "serde"))]
 #[path = "service_schema_emitted_client_tests/unwritten_models.rs"]
 mod unwritten_models;
 
 /// What the Swift emitter writes and reads of a member serde never writes.
 #[cfg(test)]
-#[cfg(feature = "swift")]
+#[cfg(all(feature = "swift", feature = "serde"))]
 #[path = "swift_tests/unwritten.rs"]
 mod unwritten;
 
@@ -230,12 +230,12 @@ mod units;
 
 /// A member, and a variant, serde neither writes nor reads, typed with a width no client maps.
 #[cfg(test)]
-#[cfg(feature = "swift")]
+#[cfg(all(feature = "swift", feature = "serde"))]
 #[path = "swift_tests/unwired_models.rs"]
 mod unwired_models;
 
 /// What the Swift emitter declares of a member, and a variant, serde neither writes nor reads.
 #[cfg(test)]
-#[cfg(feature = "swift")]
+#[cfg(all(feature = "swift", feature = "serde"))]
 #[path = "swift_tests/unwired.rs"]
 mod unwired;

@@ -4,8 +4,10 @@
 //! so an assertion compares the text the compiler shows against the text the design specifies,
 //! character for character.
 
-use super::{ServiceArguments, Transport, parse_arguments};
-use proc_macro2::TokenStream;
+use super::{OpenApiArguments, ServiceArguments, Transport, parse_arguments};
+use proc_macro2::{Span, TokenStream};
+use quote::format_ident;
+use syn::LitStr;
 
 /// The transports `args` asks for, named as the service wrote them.
 fn asked_for(args: &str) -> Vec<&'static str> {
@@ -110,12 +112,13 @@ fn a_list_written_without_brackets_says_what_shape_was_expected() {
 }
 
 #[test]
-fn an_unknown_argument_names_both_arguments() {
+fn an_unknown_argument_names_every_argument() {
     assert_eq!(
         refusal(r#"transport = ["amqp_rpc"]"#).to_string(),
         "service_schema: unknown `service_schema` argument\n       \
          the arguments are `transports`, written `transports = [\"amqp_rpc\"]`,\n       \
-         and `non_exhaustive`, written bare"
+         `non_exhaustive`, written bare, and `openapi`, written bare or \
+         `openapi(title = \"...\", path = \"...\")`"
     );
 }
 
@@ -126,6 +129,7 @@ fn the_flag_alone_asks_for_no_transport_and_reads_non_exhaustive() {
         parse_arguments(written("non_exhaustive")).unwrap(),
         ServiceArguments {
             non_exhaustive: true,
+            openapi: None,
             transports: Vec::new(),
         }
     );
@@ -137,6 +141,7 @@ fn the_flag_composes_with_a_transport_list() {
         parse_arguments(written(r#"non_exhaustive, transports = ["amqp_rpc"]"#)).unwrap(),
         ServiceArguments {
             non_exhaustive: true,
+            openapi: None,
             transports: vec![Transport::AmqpRpc],
         }
     );
@@ -167,4 +172,152 @@ fn non_exhaustive_written_with_a_value_is_spanned_on_the_flag() {
         refused.span().source_text().as_deref(),
         Some("non_exhaustive")
     );
+}
+
+#[test]
+fn openapi_written_with_a_value_says_it_takes_none() {
+    for args in [
+        r#"transports = ["http_rest"], openapi = true"#,
+        r#"transports = ["http_rest"], openapi = "/openapi.json""#,
+    ] {
+        assert_eq!(
+            refusal(args).to_string(),
+            "service_schema: `openapi` takes no value\n       \
+             write `openapi`, or `openapi(title = \"...\", path = \"...\")`",
+            "for {args}"
+        );
+    }
+}
+
+#[test]
+fn openapi_written_with_a_value_is_spanned_on_the_argument() {
+    for args in [
+        r#"transports = ["http_rest"], openapi = true"#,
+        r#"transports = ["http_rest"], openapi = "/openapi.json""#,
+    ] {
+        assert_eq!(
+            refusal(args).span().source_text().as_deref(),
+            Some("openapi"),
+            "for {args}"
+        );
+    }
+}
+
+/// What `openapi` reads into, with `path` and `title` as written.
+fn openapi_asked(path: Option<&str>, title: Option<&str>) -> OpenApiArguments {
+    OpenApiArguments {
+        keyword: format_ident!("openapi"),
+        path: path.map(|written| LitStr::new(written, Span::call_site())),
+        title: title.map(str::to_owned),
+    }
+}
+
+fn openapi_read(args: &str) -> Option<OpenApiArguments> {
+    parse_arguments(written(args)).unwrap().openapi
+}
+
+#[test]
+fn bare_openapi_asks_for_the_document_with_neither_key() {
+    assert_eq!(
+        parse_arguments(written(r#"transports = ["http_rest"], openapi"#)).unwrap(),
+        ServiceArguments {
+            non_exhaustive: false,
+            openapi: Some(openapi_asked(None, None)),
+            transports: vec![Transport::HttpRest],
+        }
+    );
+}
+
+#[test]
+fn openapi_reads_a_title() {
+    assert_eq!(
+        openapi_read(r#"openapi(title = "Documents API")"#),
+        Some(openapi_asked(None, Some("Documents API")))
+    );
+}
+
+#[test]
+fn openapi_reads_a_path() {
+    assert_eq!(
+        openapi_read(r#"openapi(path = "/v1/openapi.json")"#),
+        Some(openapi_asked(Some("/v1/openapi.json"), None))
+    );
+}
+
+#[test]
+fn openapi_reads_both_keys_in_either_order() {
+    let both = Some(openapi_asked(
+        Some("/v1/openapi.json"),
+        Some("Documents API"),
+    ));
+    assert_eq!(
+        openapi_read(r#"openapi(title = "Documents API", path = "/v1/openapi.json")"#),
+        both
+    );
+    assert_eq!(
+        openapi_read(r#"openapi(path = "/v1/openapi.json", title = "Documents API")"#),
+        both
+    );
+}
+
+#[test]
+fn openapi_written_before_transports_reads_the_same() {
+    assert_eq!(
+        parse_arguments(written(r#"openapi, transports = ["http_rest"]"#)).unwrap(),
+        parse_arguments(written(r#"transports = ["http_rest"], openapi"#)).unwrap()
+    );
+}
+
+#[test]
+fn the_document_is_served_at_the_path_written_or_at_openapi_json() {
+    let served_at = |args: &str| openapi_read(args).unwrap().served_at();
+    assert_eq!(served_at("openapi"), "/openapi.json");
+    assert_eq!(served_at(r#"openapi(path = "/v1/spec")"#), "/v1/spec");
+}
+
+#[test]
+fn an_openapi_path_without_a_leading_slash_is_refused_on_the_literal() {
+    let refused = refusal(r#"transports = ["http_rest"], openapi(path = "openapi.json")"#);
+    assert_eq!(
+        refused.to_string(),
+        "service_schema: `openapi(path = \"...\")` is a route, so it starts with `/`"
+    );
+    assert_eq!(
+        refused.span().source_text().as_deref(),
+        Some("\"openapi.json\"")
+    );
+}
+
+#[test]
+fn an_unknown_openapi_key_is_refused_on_the_key() {
+    let refused = refusal(r#"transports = ["http_rest"], openapi(version = "1")"#);
+    assert_eq!(
+        refused.to_string(),
+        "service_schema: unknown `openapi` argument\n       \
+         the arguments are `title` and `path`, each written `name = \"...\"`"
+    );
+    assert_eq!(refused.span().source_text().as_deref(), Some("version"));
+}
+
+#[test]
+fn an_openapi_key_written_twice_is_refused_on_the_second() {
+    for (args, key) in [
+        (r#"openapi(title = "A", title = "B")"#, "title"),
+        (r#"openapi(path = "/a", path = "/b")"#, "path"),
+    ] {
+        let refused = refusal(args);
+        assert_eq!(
+            refused.to_string(),
+            format!(
+                "service_schema: `{key}` is written twice in `openapi(...)`\n       \
+                 write it once"
+            ),
+            "for {args}"
+        );
+        assert_eq!(
+            refused.span().source_text().as_deref(),
+            Some(key),
+            "for {args}"
+        );
+    }
 }

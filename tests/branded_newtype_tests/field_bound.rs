@@ -1,27 +1,24 @@
 //! A length or a pattern written on a field typed with a brand over a string holds that field's
 //! value alone: the validator, the Zod schema and the JSON Schema read it, and the brand keeps none.
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 mod bounded_at_the_field {
     use serde::{Deserialize, Serialize};
     use std::path::PathBuf;
     use tixschema::model_schema;
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
     pub struct BoundAbove(pub String);
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     pub type BoundTitle = String;
 
     /// One field per placement: bare, under an `Option` over a brand declared below, over a path
     /// declared below, over an alias of a string, one that writes no bound, and a list of the
     /// brand, whose bound counts the list and reaches no item.
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct BoundHolder {
         #[model_schema_prop(minLength = 2)]
@@ -38,12 +35,12 @@ mod bounded_at_the_field {
         pub titled: BoundTitle,
     }
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
     pub struct BoundBelow(pub String);
 
-    #[model_schema(no_display)]
+    #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
     pub struct BoundDir(pub PathBuf);
@@ -113,7 +110,6 @@ mod bounded_at_the_field {
             serde_json::from_value::<BoundAbove>(serde_json::json!("")).unwrap(),
             BoundAbove(String::new())
         );
-        #[cfg(feature = "jsonschema")]
         assert_eq!(
             BoundAbove::json_schema(),
             serde_json::json!({ "type": "string" })
@@ -143,7 +139,6 @@ mod bounded_at_the_field {
         }
     }
 
-    #[cfg(feature = "jsonschema")]
     #[test]
     fn the_json_schema_narrows_the_brand_at_the_field() {
         let schema = BoundHolder::json_schema();
@@ -172,10 +167,7 @@ mod bounded_at_the_field {
 
 /// A field typed with a brand that declares a bound is held to that bound and to the one the
 /// field writes beside it.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 mod bounded_at_the_type_and_the_field {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
@@ -304,10 +296,7 @@ mod bounded_at_the_type_and_the_field {
 }
 
 /// The Crane of two codes, one with a bound of its own beside its brand's.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 mod bounded_crane {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;

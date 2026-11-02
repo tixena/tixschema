@@ -57,8 +57,7 @@ consumer's view; this is what a change has to keep.
   of the codec's text, in its order: the two reads, and `toJson` as it was before any type had
   `validate()`.
 - **The tests.** `tests/dart_tests/validate.rs` pins the text of each shape and calls no Rust
-  `validate()`, so it holds in a build with no schema surface. `tests/dart_tests/bounded_brands.rs`
-  pins a brand's string check, which such a build refuses.
+  `validate()`. `tests/dart_tests/bounded_brands.rs` pins a brand's string check.
   `tests/service_schema_emitted_client_tests/run_dart_validate.rs` runs the emitted source under
   the Dart SDK: a value under a named field, in a list, in a map and in an optional is compared
   with what Rust's `validate()` answers of it, a slot and a variant's member are written out, and
@@ -342,8 +341,8 @@ consumer's view; this is what a change has to keep.
   `tests/dart_tests/flattened.rs` pins the read of a flattened member at each place, over the
   models of `tests/dart_tests/flattened_models.rs`, which also pin what serde reads of each, and
   `run_dart_flattened.rs` reads and writes each back under the Dart SDK, against serde. A map of
-  models with a rule (`Limber`) is held to serde under a schema surface alone: a build with none
-  holds no bound in Rust, and the Dart read refuses what it breaks in every build.
+  models with a rule (`Limber`) is held to serde in every build with `serde`, and the Dart read
+  refuses what it breaks in every build.
   `tests/dart_tests/aliased.rs` pins the read of a variant and a member under an alias, over the
   models of `tests/kotlin_tests/aliased_models.rs` and of
   `tests/dart_tests/flattened_aliased_models.rs`, which flattens each tagged enum of the first

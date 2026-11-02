@@ -370,6 +370,29 @@ pub struct HttpShape {
 }
 
 impl HttpShape {
+    /// Whether a request at `path` reaches this template, matched the way the `http_rest`
+    /// dispatcher's `match_path` matches it: literals compared as written, each placeholder taking
+    /// one non-empty run of text up to the next `/`.
+    pub fn answers_path(&self, path: &str) -> bool {
+        let mut rest = path;
+        for segment in &self.path {
+            match segment {
+                PathSegment::Literal(text) => match rest.strip_prefix(text.as_str()) {
+                    Some(remainder) => rest = remainder,
+                    None => return false,
+                },
+                PathSegment::Placeholder(_) => {
+                    let end = rest.find('/').unwrap_or(rest.len());
+                    if end == 0 {
+                        return false;
+                    }
+                    rest = &rest[end..];
+                }
+            }
+        }
+        rest.is_empty()
+    }
+
     pub fn of(operation: &OperationDef) -> Self {
         operation.http.as_ref().map_or_else(
             || Self {

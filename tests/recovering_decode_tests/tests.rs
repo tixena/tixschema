@@ -43,7 +43,6 @@ mod method_parameter_names;
 #[cfg(not(any(
     feature = "typescript",
     feature = "zod",
-    feature = "jsonschema",
     feature = "dart",
     feature = "swift",
     feature = "kotlin"
@@ -168,7 +167,7 @@ enum Memo {
 
 /// A slot serde writes wherever a predicate lets it be, and never reads. A schema surface refuses
 /// the declaration.
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[cfg(not(any(feature = "typescript", feature = "zod")))]
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Duo(
@@ -614,34 +613,23 @@ fn a_constraint_on_a_struct_field_is_the_walkers_to_check() {
     let stored = json!({ "code": "AB", "count": "5", "name": "ab", "port": "80" });
     // Serde's own read refuses the value where the type publishes `validate()`.
     let plain = serde_json::from_value::<Hooked>(stored.clone());
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     assert_eq!(
         plain.unwrap_err().to_string(),
         "'name': too short: minimum length is 3, got 2"
     );
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    assert_eq!(plain.unwrap().name, "ab");
     let mut calls = 0_u32;
     let read = Hooked::from_value_with(stored, |_raw, _found| {
         calls += 1;
         hooked_schema::Verdict::Reject
     });
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-    {
-        assert_eq!(
-            lines(&read.unwrap_err()),
-            [
-                "name: invalid: expected String, found String(\"ab\"): too short: minimum length \
-                 is 3, got 2"
-            ]
-        );
-        assert_eq!(calls, 1);
-    }
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    {
-        assert_eq!(read.unwrap().name, "ab");
-        assert_eq!(calls, 0);
-    }
+    assert_eq!(
+        lines(&read.unwrap_err()),
+        [
+            "name: invalid: expected String, found String(\"ab\"): too short: minimum length \
+             is 3, got 2"
+        ]
+    );
+    assert_eq!(calls, 1);
 }
 
 #[cfg(feature = "chrono")]
@@ -886,7 +874,7 @@ fn a_key_of_a_field_the_type_neither_writes_nor_reads_is_unknown() {
     );
 }
 
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[cfg(not(any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_slot_the_type_writes_under_a_predicate_and_does_not_read_is_refused_as_serde_refuses_it() {
     let written = serde_json::to_value(Duo("a".to_owned(), "n".to_owned())).unwrap();

@@ -12,9 +12,6 @@ use bson::{Bson, Document, doc};
 use serde::{Deserialize, Deserializer, Serialize};
 use tixschema::model_schema;
 
-// The JSON schema of a type holding a `Version` names its module from here, beside the type.
-#[cfg(feature = "jsonschema")]
-use super::version_schema;
 use super::{
     Told, Version, invalid, missing, mistyped, oid, serde_reads, string, undescribed, unknown,
     written,

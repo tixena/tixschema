@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 /// An `i64` in each place a member of a struct holds one.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct WideTally {
     pub boxed: Box<i64>,
@@ -157,14 +157,14 @@ pub enum WideChosen<Key> {
 
 /// An `i64` through an alias declared below the type, which the type's expansion does not see:
 /// the alias's own schema describes it.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct WideLater {
     pub revision: WideLaterRevision,
 }
 
 /// An alias of an `i64`, declared below the type that holds it.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 pub type WideLaterRevision = i64;
 
 /// An `i64` held to a bound as an integer, and one read as its default where the key is left out.

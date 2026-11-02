@@ -125,7 +125,6 @@ fn validate_counts_the_bytes_as_it_counts_a_list() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn the_json_schema_describes_the_array_of_bytes() {
     let described = BytesImage::json_schema();

@@ -66,9 +66,10 @@ section is the consumer's view; this is what a change has to keep.
   pattern written, `named_leaf_length_rendering` declares `BoundedLength` (a string, a path, a
   slice, an array, `Vec`, `VecDeque`, `BinaryHeap`, `BTreeSet`, `HashSet`) and `UnbrandedLength`
   beside it, and a brand's inherent `model_schema_bound_length` (`branded_bound_text_method`) is
-  found ahead of them. `AliasInfo::counted` records what a brand or an alias counts, so a brand
-  over a brand forwards (`counted_by`) and the guard (`branded_constraint_inner_error`) lets
-  two lengths through to a name that counts items. A pattern keeps asking for the text.
+  found ahead of them. `record_counted` records what a brand or an alias counts, in every build,
+  so a brand over a brand forwards (`counted_by`) and the guard
+  (`branded_constraint_inner_error`) lets two lengths through to a name that counts items. A
+  pattern keeps asking for the text.
   Zod writes `.check(z.minLength(..))` with `zod_named_error_arg`, whose sentence counts an array
   by its items; the JSON Schema writes `minLength` beside `minItems` (`named_field_json_schema_value`);
   a generic brand whose default is a list counts it at that filling alone, in the Zod default
@@ -243,9 +244,11 @@ what a change has to keep.
   `MemberPlace::reported`, which `member_place` answers for a bound's member as well: the steps
   serde writes on the way to the member, joined by dots, and nothing where it writes none.
   `nested_under` writes the name.
-- **`validate()` in every build.** With `serde` and a schema surface it is the method the bounds
-  are in. Without `serde`, and with `serde` and no surface, `validate_method` and
-  `checks_validate_impl` publish it with the checks alone, and only for an item that names one.
+- **`validate()` in every build.** It holds every bound and every check, whatever the features,
+  and a type that derives `Deserialize` reads through `judged_read` in every build, so its read
+  refuses what `validate()` refuses. `serde` is the one switch: it adds the member hook
+  (`deserialize_with`), through which a member's bound chooses the variant of an untagged enum,
+  and without `serde` a member is reported under its Rust name.
 - **Every shape.** `process_struct`, `process_tuple_struct`, a unit struct, the three tagged enum
   processors and the untagged one (a member's check in its variant's arm, through
   `build_member_check_arms`, and the enum's own after the `match`), a plain enum, and a brand
@@ -270,7 +273,7 @@ what a change has to keep.
   `validate()`" below. The JSON Schema and the TypeScript type write what they wrote, and no
   expected output of a type without the key changes.
 - **The documents' example is a doctest.** `src/check_example.md` is included in
-  `model_schema_prop`'s rustdoc under `serde` and a schema surface, and
+  `model_schema_prop`'s rustdoc under `serde`, and
   `tests/check_tests/readme.rs` holds the README to it. `tests/check_tests/models.rs` is compiled
   by `tests/check_tests.rs` and by `tests/generic_types_tests/declarations.rs`, which parses each
   case under node and compares the two sides as one text. This crate's lints order a struct's
@@ -509,7 +512,10 @@ the path an issue of the Zod schema holds, and the one the recovering decode lis
   consumer writes `K: Serialize` on the type and `#[serde(bound(serialize = ""))]` beside it: the
   derive otherwise writes `K: Serialize` a second time, and clippy's `trait_duplication_in_bounds`
   refuses that. A map of values that are no declared type is not walked and is refused nothing.
-  Nothing here names `serde_json`.
+  Nothing here names `serde_json`. Without `serde`, `written_key_impls` writes no `Display` of
+  `MapKey`'s, and `written_key` answers the key's own `Display` text, so a `String` key reads the
+  same in both builds. A key with no `Display` is answered by `UnwrittenKey`, and no key is
+  refused at expansion.
 - `nested_under` composes: a name is written into a report one run of steps at a time, innermost
   first, which is what lets a key be left out.
 

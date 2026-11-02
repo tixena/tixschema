@@ -7,7 +7,7 @@ use tixschema::model_schema;
 // Import the real MongoDB ObjectId - only available in tests
 use mongodb::bson::oid::ObjectId;
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct RealDocument {
     author_id: ObjectId,
@@ -29,7 +29,7 @@ enum RefSlot {
     Reviewer,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct SlottedRefs {
     by_slot: HashMap<RefSlot, ObjectId>,
@@ -37,7 +37,7 @@ struct SlottedRefs {
 
 // A map value that is itself a map carries the same closed `$oid` object its members would carry
 // one level up.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct NestedRefMaps {
     ids_by_group: HashMap<String, HashMap<String, ObjectId>>,
@@ -46,8 +46,7 @@ struct NestedRefMaps {
 
 // Every position an `ObjectId` can be written in, gathered into one item: a field, an array item, a
 // tuple element, and a member of a map on each key path.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct EveryOidPosition {
     by_name: HashMap<String, ObjectId>,
@@ -59,12 +58,11 @@ struct EveryOidPosition {
 }
 
 // A tuple struct's lone element is a slot, not a field.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct OidSlot(ObjectId);
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct RealUser {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -91,7 +89,7 @@ fn test_real_objectid_basic_types() {
 }
 
 #[test]
-#[cfg(all(feature = "mongodb", feature = "jsonschema", feature = "typescript"))]
+#[cfg(all(feature = "mongodb", feature = "typescript"))]
 fn test_real_objectid_compilation_smoke_test() {
     let user_schema = RealUser::json_schema();
     let _document_schema = RealDocument::json_schema();
@@ -187,7 +185,7 @@ fn test_real_objectid_complex_structures() {
 }
 
 #[test]
-#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
+#[cfg(feature = "mongodb")]
 fn test_real_objectid_json_schema() {
     let schema = RealUser::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -202,7 +200,7 @@ fn test_real_objectid_json_schema() {
 }
 
 #[test]
-#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
+#[cfg(feature = "mongodb")]
 fn test_real_objectid_json_schema_structure() {
     let schema = RealDocument::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -255,7 +253,7 @@ fn test_slotted_refs_constructible() {
 }
 
 #[test]
-#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
+#[cfg(feature = "mongodb")]
 fn test_enum_keyed_objectid_map_json_schema() {
     let schema = SlottedRefs::json_schema();
     let by_slot = &schema["properties"]["by_slot"];
@@ -278,7 +276,7 @@ fn test_enum_keyed_objectid_map_json_schema() {
 }
 
 #[test]
-#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
+#[cfg(feature = "mongodb")]
 fn test_nested_objectid_map_json_schema() {
     let schema = NestedRefMaps::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -315,7 +313,7 @@ fn test_nested_objectid_map_json_schema() {
 /// The one `$oid` object every position spells: closed, because that is the object serde writes and
 /// every other object this crate emits is closed, and carrying the hex pattern, because that is what
 /// the string inside it always holds.
-#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
+#[cfg(feature = "mongodb")]
 fn unified_oid_object() -> serde_json::Value {
     serde_json::json!({
         "type": "object",
@@ -326,7 +324,7 @@ fn unified_oid_object() -> serde_json::Value {
 }
 
 #[test]
-#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
+#[cfg(feature = "mongodb")]
 fn every_position_spells_the_same_oid_object() {
     let unified = unified_oid_object();
     let schema = EveryOidPosition::json_schema();
@@ -356,7 +354,7 @@ fn every_position_spells_the_same_oid_object() {
 }
 
 /// Every object carrying a `$oid` member anywhere in `value`, at any depth.
-#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
+#[cfg(feature = "mongodb")]
 fn collect_oid_objects(value: &serde_json::Value, found: &mut Vec<serde_json::Value>) {
     match value {
         serde_json::Value::Object(members) => {
@@ -380,7 +378,7 @@ fn collect_oid_objects(value: &serde_json::Value, found: &mut Vec<serde_json::Va
 }
 
 #[test]
-#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
+#[cfg(feature = "mongodb")]
 fn every_serde_written_oid_payload_satisfies_the_unified_spelling() {
     let unified = unified_oid_object();
     let hex_pattern =
@@ -448,7 +446,7 @@ fn test_real_objectid_serialization() {
 
 /// The hex a real `ObjectId` round-trips through serde, held to both generated surfaces at once.
 #[test]
-#[cfg(all(feature = "mongodb", feature = "jsonschema", feature = "zod"))]
+#[cfg(all(feature = "mongodb", feature = "zod"))]
 fn a_real_object_id_hex_satisfies_the_zod_literal_and_the_json_schema_pattern_alike() {
     let real_oid = ObjectId::new();
     let user = RealUser {

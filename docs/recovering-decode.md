@@ -109,13 +109,11 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   `validate()` (section 7, "A read refuses what `validate()` refuses"), and a refusal there would
   hide the list. `listed_read` in `judged_read.rs` writes `decode_with_read_unjudged` on every
   flagged type, once, after the first source's methods, and the entry points, `read_whole`,
-  `lone_slot_bound` and the enum walkers read `Self` through it. Where a schema surface is on it
-  calls the type's `model_schema_read_unjudged` behind the `ReadUnjudged` fallback. With none on,
-  a holder that names no check publishes no `validate()` and its own read judges what it holds,
-  so the function is serde's derive on a copy of the item, each model below read through its own
-  `decode_with_read_unjudged`. A generic type's `impl` asks what that read asks beside
-  `Deserialize` of a parameter (`read_under`), at every lifetime, and the function repeats none
-  of it: a bound asked by the `impl` and by the function is one the compiler cannot choose
+  `lone_slot_bound` and the enum walkers read `Self` through it. It calls the type's
+  `model_schema_read_unjudged` behind the `ReadUnjudged` fallback, which answers serde's own read
+  for a type that publishes no `validate()`. A generic type's `impl` asks what that read asks
+  beside `Deserialize` of a parameter (`read_under`), at every lifetime, and the function repeats
+  none of it: a bound asked by the `impl` and by the function is one the compiler cannot choose
   between (E0283). A list held to a count of its own is read whole through `listed_reader`, with
   each model unjudged, as a type declared in the closure and generic over the parameters of the
   item that the model names (`HookScope`, the rules the holder's own hook is written by): the same
@@ -194,8 +192,7 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   `recovering_bound_check` builds the closure from the walk's own type at
   that position. A list is that position: the arm
   that walks its items hands them no validator, and holds the list read whole (`read_as_a_list`)
-  to its count, one `Invalid` at the list. The registry is cleared per item at `exec_model_schema`, and holds nothing in a
-  build with no schema surface, where no validator is published.
+  to its count, one `Invalid` at the list. The registry is cleared per item at `exec_model_schema`.
 - **A check is the read's to list, after serde.** `recovering_decode/checks.rs` emits
   `decode_with_check_messages(&self)` in an `impl` of its own beside the walkers, under the bounds
   the type's author wrote (`RecoveringDecode::check_messages`, `checks::type_impl`): the members'
@@ -287,8 +284,8 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
     and in a bound of the type's own. `mongo_write_{field}` is in the type's own `impl` and
     keeps `Self` as written.
   - `tests/mongodb_query_tests/function_body.rs` declares each shape inside a test function, a
-    holder of a type declared there under `not(feature = "jsonschema")`, whose JSON Schema
-    names the held type's module.
+    holder of a type declared there that lists no `"jsonschema"`, whose JSON Schema would
+    name the held type's module.
 - **A type serde writes as one value is one path.** `written_as_one_value`, recorded as
   `Declared::OneValue`: its `MongoFields<Root, .., Whole>` holds the path at the empty key and
   dereferences to it, the path type being a parameter the type's own `impl` writes, so its module
@@ -377,7 +374,7 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
     The two seams leave a type of the crate's own declared above under a std name to
     `held_model_maps`, the model it is. A member or a variant under `skip`
     (`absent_from_wire`) is read past, and so is a member or a variant written and read by its
-    author's functions (`written_and_read_by_the_author`, in every build: `with`, or
+    author's functions (`written_and_read_by_the_author`, with the `serde` feature: `with`, or
     `serialize_with` with `deserialize_with`), for a map and a held model alike, so an enum whose
     only such map is in such a variant is not recorded as a holder. One under either of the two
     alone is not.
@@ -434,8 +431,8 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
 - **A path is under the name serde writes.** `parse_written_renames` reads `rename`, `rename_all`
   and `rename_all_fields` for their `serialize` side in every build. A list whose two sides differ
   is refused by every build that describes the type, a mobile client included:
-  `rename_direction_guard_errors` runs under `serde` with any of `typescript`, `zod`,
-  `jsonschema`, `dart`, `swift` and `kotlin`, and a build with none of the six takes the list.
+  `rename_direction_guard_errors` runs under `serde` with any of `typescript`, `zod`, `dart`,
+  `swift` and `kotlin`, and a build with none of the five takes the list.
   `the_rename_guard_is_compiled_in_every_build_that_describes_a_type` reads those gates off the
   sources, no local build being of the clients alone.
 - **Two standard traits join filters and updates across modules.** A `Filter<Root>` is

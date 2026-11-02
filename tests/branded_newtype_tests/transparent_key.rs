@@ -2,26 +2,17 @@
 
 /// The same brand declared twice: `transparent` written first, and written after a key that
 /// carries a value. serde writes both the same way, so every surface describes both the same way.
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
-))]
+#[cfg(feature = "serde")]
 mod written_after_a_valued_key {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent, rename = "Brand")]
     pub struct FirstBrand(pub String);
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(rename = "Brand", transparent)]
     pub struct LastBrand(pub String);
@@ -43,7 +34,6 @@ mod written_after_a_valued_key {
         );
     }
 
-    #[cfg(feature = "jsonschema")]
     #[test]
     fn json_schema_describes_both_alike() {
         assert_eq!(

@@ -3,17 +3,11 @@
 //! was asked for.
 
 #[cfg(test)]
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[path = "judged_once_tests/models.rs"]
 mod models;
 
 #[cfg(test)]
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[path = "judged_once_tests/tests.rs"]
 mod tests;

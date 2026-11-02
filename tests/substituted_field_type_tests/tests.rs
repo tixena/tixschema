@@ -4,7 +4,6 @@
 //! field types were spelled, which no surface describes. Every assertion here is the same
 //! assertion: the two describe identically, and neither describes a field as the opaque value.
 
-#[cfg(feature = "jsonschema")]
 mod jsonschema {
     use super::{Substituted, Written};
     #[cfg(feature = "serde")]
@@ -67,10 +66,7 @@ mod typescript {
 
 /// The brand's own validator reads the inner type to decide how the checked value reaches it, so
 /// the substituted brand has to accept and refuse exactly what the written one does.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 mod wire {
     use super::{SubstitutedSlug, WrittenSlug};
 
@@ -121,7 +117,7 @@ use tixschema::model_schema;
 
 macro_rules! declare_holder {
     ($name:ident, $text:ty, $count:ty, $many:ty, $maybe:ty, $keyed:ty, $pair:ty) => {
-        #[model_schema()]
+        #[model_schema(enable = ["jsonschema"])]
         #[derive(Debug, Clone, Serialize, Deserialize)]
         pub struct $name {
             pub count: $count,
@@ -140,7 +136,7 @@ macro_rules! declare_holder {
 #[cfg(feature = "serde")]
 macro_rules! declare_slug {
     ($name:ident, $inner:ty) => {
-        #[model_schema(minLength = 1, maxLength = 8)]
+        #[model_schema(minLength = 1, maxLength = 8, enable = ["jsonschema"])]
         #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
         #[serde(transparent)]
         pub struct $name(pub $inner);
@@ -160,7 +156,7 @@ declare_holder!(
 #[cfg(feature = "serde")]
 declare_slug!(SubstitutedSlug, String);
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Written {
     pub count: u32,
@@ -173,7 +169,7 @@ pub struct Written {
 }
 
 #[cfg(feature = "serde")]
-#[model_schema(minLength = 1, maxLength = 8)]
+#[model_schema(minLength = 1, maxLength = 8, enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct WrittenSlug(pub String);

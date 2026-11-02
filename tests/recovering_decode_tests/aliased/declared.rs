@@ -8,8 +8,6 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::super::Version;
-#[cfg(feature = "jsonschema")]
-use super::super::version_schema;
 
 #[model_schema()]
 pub type Counts = HashMap<String, i32>;

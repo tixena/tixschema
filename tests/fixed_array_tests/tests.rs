@@ -10,7 +10,7 @@ const SLOT_COUNT: usize = 3;
 
 /// Every spelling that mixes a fixed-size array with the wrappers around it, so the bound is read
 /// for the level it was written at rather than for the field it was written on.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 struct FixedArrayFields {
     const_ids: [u32; SLOT_COUNT],
@@ -27,7 +27,7 @@ struct FixedArrayFields {
 
 /// The same array in the slots that cannot be dropped, where the wrapper chain is normalized onto
 /// the element before the slot wraps go on.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 struct FixedArraySlots {
     by_key: HashMap<String, [u32; 3]>,
@@ -36,7 +36,7 @@ struct FixedArraySlots {
 
 /// The member an `Option` field written with a `skip_serializing_if` renders as. The attribute
 /// decides the wire, not the spelling, and none of these fields carries `ts_optional`.
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 fn omitted_member(name: &str, ts_type: &str) -> String {
     format!("{name}: {ts_type} | undefined;")
 }
@@ -89,8 +89,8 @@ fn test_serde_reads_a_fixed_array_back_only_at_the_length_it_writes() {
     }
 }
 
+#[cfg(feature = "serde")]
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_a_fixed_array_describes_its_length_at_the_level_it_bounds() {
     let properties = FixedArrayFields::json_schema()["properties"].clone();
     let three_integers = serde_json::json!({
@@ -159,8 +159,8 @@ fn test_a_fixed_array_describes_its_length_at_the_level_it_bounds() {
 }
 
 /// A slot carries the bound the same way: the array is the value the slot holds, whatever holds it.
+#[cfg(feature = "serde")]
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_a_fixed_array_in_a_slot_describes_its_length() {
     let properties = FixedArraySlots::json_schema()["properties"].clone();
     let three_integers = serde_json::json!({
@@ -175,7 +175,7 @@ fn test_a_fixed_array_in_a_slot_describes_its_length() {
 }
 
 #[test]
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 fn test_a_fixed_array_validates_its_length_in_zod() {
     let zod_schema = FixedArrayFields::zod_schema();
     for spelling in [
@@ -222,7 +222,7 @@ fn test_a_fixed_array_validates_its_length_in_zod() {
 }
 
 #[test]
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 fn test_a_fixed_array_types_as_an_unbounded_array_in_typescript() {
     let ts_definition = FixedArrayFields::ts_definition();
     let optional_ids = omitted_member("optional_ids", "Array<number>");

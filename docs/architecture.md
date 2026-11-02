@@ -16,7 +16,7 @@ How the macros turn a declaration into each surface, the data structures they sh
    - `exec_model_schema()` routes to `process_struct()`, `process_enum()`, `process_type_alias()`, or `process_branded_newtype()`
    - Parses Serde attributes when `serde` feature enabled
    - Extracts example code from doc comments (every ` ```rust example` fence)
-   - Generates methods: `ts_definition()`, optionally `json_schema()`, optionally `schema_examples()` with `schema_example()`, and optionally `validate()`
+   - Generates methods: `ts_definition()`, `json_schema()` for a type that lists `enable = ["jsonschema"]`, optionally `schema_examples()` with `schema_example()`, and optionally `validate()`
    - `process_branded_newtype()`: handles `#[serde(transparent)]` structs serde writes as the value of one field -- a single-slot tuple struct, or a struct with named fields -- generating Zod brand schemas or `unique symbol` branded TypeScript types
 
 3. **Type Analysis** ([field_type.rs](../src/field_type.rs))
@@ -28,7 +28,7 @@ How the macros turn a declaration into each surface, the data structures they sh
 4. **Feature Modules** ([features/](../src/features/))
    - `serde.rs`: Parses Serde attributes (`rename`, `rename_all`, `tag`, etc.), and says what serde writes on the way to a member (`member_steps`, `variant_steps`, over `Tagging`)
    - `zod.rs`: Generates Zod v4 schema strings (`z.string()`, `z.union()`, etc.), embeds examples in `.meta()`
-   - `jsonschema.rs`: Generates JSON schema objects
+   - `jsonschema.rs`: Generates the JSON Schema document of a type that lists `enable = ["jsonschema"]`. The code compiles in every build; `ModelSchemaArgs::enable.jsonschema` decides whether a type's expansion writes it. `json_schema_within` takes the prefix its `$ref` pointers are written under, which `json_schema()` passes as `#/$defs/`, and `Schema::JSON_SCHEMA_NAME` is the key a non-generic type's definition is hoisted under
    - `object_id.rs`: MongoDB ObjectId type detection and schema generation
    - `recovering_decode.rs`: Generates what `#[model_schema(enable = ["decode_with"])]` adds to a type: an `impl` of the crate's `DecodeWith` trait holding `from_value_with` and `from_value_piped`, `from_bson_with` and `from_bson_piped` under `bson`, and the walker of each. It also writes the two support libraries the initializers put at a crate root, `__tixschema_decode_with` (the callback's and the resolvers' types, what one walker hands another, and under `bson` the BSON pieces) and `__tixschema_mongodb` (under `mongodb`, the query types and what the operations answer), and the re-export of both, name by name, in each `{type}_schema`. `recovering_decode/enums.rs` holds the walkers of an enum, and the names its typed paths read a variant by (`written_variants`, `tag_arms`). Under `mongodb` three more files emit, for a type that lists `"mongodb"`: `recovering_decode/query.rs` the query types into the MongoDB library (`Filter`, `ArmFilter`, `Update`, `ArmUpdate`, the path kinds, `nest`), `recovering_decode/fields.rs` the type's own typed paths into its module and onto the type (`MongoFields`, `MONGO_FIELDS`, one function per field, and one per arm of an enum under a tag), and `recovering_decode/operations.rs` the operations onto the type (`find_one`, `find`, `count`, `insert_one`, the updates and the deletes) and `Read` and `OperationError` into the library
    - `model_schema_prop.rs`: Parses field-level customization attributes (`pattern`, `minLength`, `maxLength`, `minimum`, `maximum`, `literal`, `as`, `preprocess`, `check`)
@@ -48,6 +48,7 @@ How the macros turn a declaration into each surface, the data structures they sh
 7. **Service Schema Accessors** ([features/service_schema.rs](../src/features/service_schema.rs))
    - `ts_http_service()`: the TypeScript route table and request dispatcher for `http_rest`, mirroring the Rust `dispatch`/`ROUTES` pair
    - `ts_ws_server()`: the TypeScript connection-accepting WebSocket server for Node, wrapping the existing single-socket dispatcher attachment
+   - `openapi()`, on a service that asks for `openapi`: the OpenAPI 3.1 document, built at run time in the consuming crate by the body `service_schema/transport/http_rest/openapi.rs` writes from each operation's `HttpShape`. Before it describes anything, it reserves the `JSON_SCHEMA_NAME` of every non-generic model type an operation names in `components.schemas`, so `json_schema_within(.., "#/components/schemas/")` writes each such type there once and every reference to it is a `$ref`; a reservation no definition filled is dropped. The Rust `dispatch` answers `GET` at the document's path from `$crate::<Service>Schema::openapi()` ahead of every route; `ts_http_service()` holds `http_service::OPENAPI_MARKER` where the TypeScript dispatcher's document constant goes, and replaces it at run time with the text of `openapi()` quoted as a string literal, which the dispatcher answers as it is
    - `ts_http_client()`'s seam carries `body` as a `Uint8Array`, a JSON body as its UTF-8 text, as
      the Dart, Swift and Kotlin seams carry bytes; a `bytes` reply is answered as the
      `Uint8Array` its result declares, which the transport-agnostic and `ws_rpc` clients parse
@@ -160,11 +161,10 @@ argument — an alias, a branded newtype — calls `with_opaque_type_parameters`
 
 ### Feature Flag System
 
-The crate uses optional features for minimal dependencies:
+The crate uses optional features for minimal dependencies. A feature adds the output of one language or one library. Validation is written in every build, whatever the features: the `{type}_schema` module with each rule's validator, `validate()`, the read of a type that derives `Deserialize` (`judged_read`), which refuses what `validate()` refuses, and every refusal of a rule at expansion.
 
-- `serde`: Enables Serde attribute parsing and field renaming
+- `serde`: Enables Serde attribute parsing and field renaming, the names `validate()` reports included, and hangs the member hook (`deserialize_with`) through which a member's bound chooses the variant of an untagged enum. Without it `validate()` names a member as Rust spells it, and TypeScript and Zod write the member in camelCase. `#[service_schema]` and the recovering decode need it
 - `zod`: Enables Zod schema generation (v4 syntax)
-- `jsonschema`: Enables `json_schema()` method generation
 - `mongodb`: Enables MongoDB ObjectId type support; turns on `bson`. On a type that lists `"mongodb"` in `enable = ["decode_with", "mongodb"]` it also generates the typed field paths (`MONGO_FIELDS`, one function per field, `nest` below a nested type, and `<tag>__<value>()` for each arm of an enum under a tag), the filters and updates they build, and the operations over a `mongodb::Collection<bson::Document>` of the type's rows. A consuming crate that declares such a type lists the `mongodb` driver, built for the major version of `bson` it lists, and writes `tixschema::mongodb_foundation!();` at its root beside `tixschema::decode_with_foundation!();`
 - `bson`: BSON support, turned on by `mongodb`; turns on `serde`. Generates `from_bson_with` and `from_bson_piped`, methods of `DecodeWith`, on every type that lists `"decode_with"`, whether it lists `"mongodb"` or not, and the BSON pieces of the `decode_with` library. A crate that declares a flagged type names `bson`, and lists it, in every build with this feature on; it needs no `mongodb` unless a type lists `"mongodb"`
 - `typescript`: Enables TypeScript type generation
@@ -175,9 +175,11 @@ The crate uses optional features for minimal dependencies:
 - `arky`: turns on `serde`. On a type that lists `"arky"` in its `enable` list it writes `TryFrom<&T> for arky::parser::ast::Value`, through `arky::value::to_value`, and `TryFrom<&arky::parser::ast::Value> for T`, through `arky::value::from_value`, both with `arky::value::ValueError`; a type with parameters bounds each impl on the type itself (`where T<..>: Serialize`, `where T<..>: DeserializeOwned`). `src/features/arky.rs` writes them, and `exec_model_schema` appends them after every shape. The entry is read in every build and adds nothing without the feature; `arky_guard_errors` refuses it on a type alias in every build. The recovering decode reads arky's `Value` through `from_value_with`, after `Into<serde_json::Value>`: the entry adds no source of its own. A consuming crate lists `arky`; tixschema's tests take it as a dev-dependency (`tests/arky_tests.rs`)
 - `kotlin`: Enables Kotlin type generation with `kotlinx.serialization` annotations, a `validate()` on every type that runs the bounds and calls the checks, and a serializer of each type that throws what `validate()` answers of the value it read. A consuming Kotlin build declares two dependencies: the runtime library `org.jetbrains.kotlinx:kotlinx-serialization-json` and the Kotlin Gradle plugin `kotlin("plugin.serialization")`
 
-**Feature sets**: `web` (the default: `serde`, `zod`, `jsonschema`, `typescript`), `mobile` (`serde`, `dart`, `swift`, `kotlin`) and `mongo` (`mongodb`, `chrono`, `indexmap`, `arky`). CI tests the powerset of the sets (`just test-sets`); `just test` runs the powerset of the plain features locally
+**JSON Schema is no feature**: `json_schema()` and `json_schema_within()` are written for a type whose `enable` list holds `"jsonschema"` (`Enabled::jsonschema`), and every model type such a type holds lists the entry too, its document calling each held type's `json_schema_within`. The JSON Schema code compiles in every build. A crate that lists the entry on no type needs no `serde_json` for it.
 
-**Default configuration**: `serde`, `zod`, `jsonschema`, `typescript` (the `mongodb`, `bson`, `chrono`, `indexmap`, `dart`, `swift` and `kotlin` features are opt-in)
+**Feature sets**: `web` (the default: `serde`, `zod`, `typescript`), `mobile` (`serde`, `dart`, `swift`, `kotlin`) and `mongo` (`mongodb`, `chrono`, `indexmap`, `arky`). Every push and pull request to `master` runs the gate, `just all`, with every feature on, then `just check-mix`, which compiles the library with each feature by itself and runs `tests/every_build_validation_tests.rs` in five builds. The scheduled Full Pipeline lints and tests every combination of the sets (`just lint-sets`, `just test-sets`) every third day; `just test` runs the powerset of the plain features locally. [testing.md](testing.md) lists each step
+
+**Default configuration**: `serde`, `zod`, `typescript` (the `mongodb`, `bson`, `chrono`, `indexmap`, `dart`, `swift` and `kotlin` features are opt-in)
 
 ## TypeScript Generation Pattern
 
@@ -355,8 +357,7 @@ tixschema/
 let ts = MyType::ts_definition();
 println!("Generated:\n{}", ts);
 
-// Print JSON schema
-#[cfg(feature = "jsonschema")]
+// Print JSON schema, for a type that lists `enable = ["jsonschema"]`
 println!("{}", serde_json::to_string_pretty(&MyType::json_schema())?);
 
 // Check which features are enabled

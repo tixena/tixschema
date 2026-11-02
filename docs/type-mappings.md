@@ -308,7 +308,13 @@ export const User$Schema = z.strictObject({
 
 ### 6. Serde Attribute Support
 
-The macro respects Serde attributes when the `serde` feature is enabled:
+The macro respects Serde attributes when the `serde` feature is enabled. Without it no
+`#[serde(...)]` attribute is read, on any surface: every walk of `src/features/serde.rs` the
+surfaces ask iterates `serde_attributes`, which yields none, so a member is named as Rust spells it,
+every key and every variant is on the wire, every enum is externally tagged and no struct is a
+brand. The read the macro writes beside serde's derive reads through `derived_serde_attributes`
+instead (`read_hook`, `serde_conversion`, `derived_key_omission`, `read_bounds`), as that derive
+reads every attribute whatever tixschema's features:
 
 ```rust
 #[model_schema()]
@@ -346,8 +352,11 @@ member taken off the wire in both directions is (`push_described_field`). A vari
 the two alone is described as every variant is. `README.md`'s "A Variant Serde Neither Writes Nor
 Reads" section is the consumer's view; this is what a change has to keep.
 
-- **One question, in every build.** `variant_on_the_wire` in `src/features/serde.rs` reads it, as
-  `parse_serde_key_omission` reads a member's.
+- **One question, read with the `serde` feature alone.** `variant_on_the_wire` in
+  `src/features/serde.rs` reads it through `parse_serde_key_omission`, which reads a member's.
+  Both are compiled in every build, and without the feature neither reads an attribute: a member
+  or a variant under `skip`, `skip_serializing`, `skip_serializing_if`, `skip_deserializing` or
+  `default` is described as if the attribute were not written.
 - **The processors walk such a variant and describe nothing of it.** Each still walks its members
   for `validate()` and takes their keys off, and leaves the variant out of what it describes:
   `collect_plain_enum_options`, which `enum_members()` is written from,
@@ -375,9 +384,9 @@ Reads" section is the consumer's view; this is what a change has to keep.
   skipped is described as the externally tagged union of its unit variants.
 - **The clients write from `variants_on_the_wire`**, the item without such a variant, which
   `enum_dart_tokens`, `enum_swift_tokens` and `enum_kotlin_tokens` hand every writer they call.
-- **An enum that declares variants and none on the wire is refused** at `exec_model_schema`, in
-  every build, by `no_variant_on_the_wire_errors`, and so is an enum that declares no variant,
-  under a tag or not, in words of its own (`tests/foundation_refusals/no_variant.rs` and
+- **An enum that declares variants and none on the wire is refused** at `exec_model_schema`, with
+  the `serde` feature, by `no_variant_on_the_wire_errors`, and an enum that declares no variant is
+  refused in every build, under a tag or not, in words of its own (`tests/foundation_refusals/no_variant.rs` and
   `no_variant_tagged.rs`).
 - **The tests.** `tests/skipped_variant_tests/models.rs` holds the models under every tagging and
   `ROWS`, what serde and Zod take of each payload; `tests/skipped_variant_tests/surfaces.rs` pins
@@ -394,6 +403,11 @@ through the same `escape_js_double_quoted`. A name with no `"`, `\` or control c
 as it was. `type_check_a_name_that_holds_a_quote_is_read_under_zod_as_serde_writes_it` in
 `tests/generic_types_tests/declarations.rs` compiles the models of
 `tests/dart_tests/quoted_models.rs` under `tsc --strict` and parses every payload serde writes.
+
+Without the `serde` feature no attribute is read, and these two surfaces alone write a member of a
+struct or of a variant in camelCase: `ts_member_name` turns `user_name` into `userName` before
+`ts_member_key` spells it. Rust, `validate()`'s messages, Dart, Swift, Kotlin and JSON Schema keep
+the Rust name.
 
 A text the TypeScript surfaces write into a comment goes through `ts_commented` in `src/utils.rs`,
 which spells `*/` as `*\/`, so the comment runs on: each line `item_jsdoc_body` writes (an item's
@@ -457,7 +471,7 @@ has to keep.
   `remote`. `serde_attribute_guard_errors` joins them to `rename_direction_guard_errors`, and
   `exec_model_schema` raises the two through one `refused_item_output`, every refusal of the item
   in one expansion, under the rename guard's gate: `serde` with any
-  of `typescript`, `zod`, `jsonschema`, `dart`, `swift` and `kotlin`. An `Option`, a member under
+  of `typescript`, `zod`, `dart`, `swift` and `kotlin`. An `Option`, a member under
   `skip` or `skip_deserializing`, and an enum that derives no `Deserialize` or reads itself
   through `from` or `try_from` are refused nothing: no surface reads them otherwise than serde
   does. A struct is refused none of the four: its key stays as "What has no JSON" says, and it
@@ -518,7 +532,7 @@ change has to keep.
 - **`src/features/text_forms.rs` is the one source of the forms**, under `dart`, `swift` or
   `kotlin`: `TextForm`, its `read`, `sent`, `unsecond` and `unzoned` patterns, the Zod 4.6.5
   patterns `DATE`, `TIME`, `TIME_SENT` and `OFFSET`, and `expected`, the words of a refusal.
-  `DATE` and `TIME_SENT` are compiled under `jsonschema` and `chrono` too: the JSON Schema holds a
+  `DATE` and `TIME_SENT` are compiled under `chrono` too: the JSON Schema holds a
   `NaiveTime` and a `NaiveDateTime` to them (section 4). Each
   client writes them in its own language: Dart inline (`src/features/dart/forms.rs`), Swift as
   private static functions of the type (`src/features/swift/forms.rs`), Kotlin as one serializer

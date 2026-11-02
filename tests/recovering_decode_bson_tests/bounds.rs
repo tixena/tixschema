@@ -1,8 +1,6 @@
 //! A bound written on a field is the recovering read's to list, in a BSON document as in a JSON
 //! value: one issue at the value, its reason each violation in the bound's own words, joined by
 //! `; `.
-//!
-//! A validator is published only where a schema surface is on, so a build with none lists nothing.
 
 use bounded_group_schema::DecodeWith as _;
 use bson::{Bson, Document, doc};
@@ -31,15 +29,7 @@ struct BoundedGroup {
 }
 
 /// A label held to a rule of its own, which is where a rule for each item of a list is written.
-/// A brand's rule is read with its schema surface, so a build with none writes none.
-#[cfg_attr(
-    any(feature = "typescript", feature = "zod", feature = "jsonschema"),
-    model_schema(enable = ["decode_with", "mongodb"], minLength = 2)
-)]
-#[cfg_attr(
-    not(any(feature = "typescript", feature = "zod", feature = "jsonschema")),
-    model_schema(enable = ["decode_with", "mongodb"])
-)]
+#[model_schema(enable = ["decode_with", "mongodb"], minLength = 2)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct BoundedLabel(String);
@@ -164,7 +154,6 @@ fn broken_group() -> BoundedGroup {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_broken_bound_is_listed_once_at_its_value() {
     let mut calls = 0_u32;
@@ -208,48 +197,27 @@ fn the_reason_of_a_renamed_fields_bound_holds_no_name() {
             bounded_dispatch_schema::Verdict::Reject
         },
     );
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-    {
-        assert!(parcel.is_err(), "the callback rejected");
-        assert_eq!(
-            listed,
-            [
-                "Invalid { path: Path([Key(\"fragileItemCodes\")]), expected: Array(String), \
-                 found: Array([]), reason: \"too short: minimum length is 1, got 0\" }",
-                "Invalid { path: Path([Key(\"label\")]), expected: String, found: String(\"\"), \
-                 reason: \"too short: minimum length is 1, got 0\" }",
-            ]
-        );
-        assert!(dispatch.is_err(), "the callback rejected");
-        assert_eq!(
-            in_a_variant,
-            [
-                "Invalid { path: Path([Key(\"flightNumber\")]), expected: String, found: \
-                 String(\"\"), reason: \"too short: minimum length is 1, got 0\" }"
-            ]
-        );
-    }
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    {
-        assert_eq!(
-            parcel,
-            Ok(BoundedParcel {
-                fragile_item_codes: Vec::new(),
-                item_label: String::new(),
-            })
-        );
-        assert_eq!(
-            dispatch,
-            Ok(BoundedDispatch::ByAir {
-                flight_number: String::new()
-            })
-        );
-        assert_eq!((listed, in_a_variant), (Vec::new(), Vec::new()));
-    }
+    assert!(parcel.is_err(), "the callback rejected");
+    assert_eq!(
+        listed,
+        [
+            "Invalid { path: Path([Key(\"fragileItemCodes\")]), expected: Array(String), \
+             found: Array([]), reason: \"too short: minimum length is 1, got 0\" }",
+            "Invalid { path: Path([Key(\"label\")]), expected: String, found: String(\"\"), \
+             reason: \"too short: minimum length is 1, got 0\" }",
+        ]
+    );
+    assert!(dispatch.is_err(), "the callback rejected");
+    assert_eq!(
+        in_a_variant,
+        [
+            "Invalid { path: Path([Key(\"flightNumber\")]), expected: String, found: \
+             String(\"\"), reason: \"too short: minimum length is 1, got 0\" }"
+        ]
+    );
 }
 
 /// A list that breaks its bound is one issue at the list, whatever its items are.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_list_that_breaks_its_bound_is_one_issue_at_the_list() {
     let stored = doc! { "level": 1_i32, "source": "Items", "tags": [], "title": "ok" };
@@ -264,7 +232,6 @@ fn a_list_that_breaks_its_bound_is_one_issue_at_the_list() {
 }
 
 /// A callback puts a list inside its bound at the issue's path, and the read answers it.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_callback_that_sets_a_list_at_its_path_recovers_the_read() {
     use bounded_group_schema::{Issue, Stored as _, Verdict};
@@ -312,60 +279,44 @@ fn a_broken_bound_in_a_tagged_slot_is_listed_at_the_slot() {
         doc! { "data": ["a", 0_i32], "kind": "Pair" },
         |_, _| AdjacentVerdict::Reject,
     );
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-    {
-        assert_eq!(
-            code.unwrap_err().to_string().lines().collect::<Vec<&str>>(),
-            [
-                "Code: invalid: expected String, found String(\"abc\"): does not match pattern \
-                 '^[A-Z]{3}$'"
-            ]
-        );
-        assert_eq!(
-            pair.unwrap_err().to_string().lines().collect::<Vec<&str>>(),
-            [
-                "Pair[0]: invalid: expected String, found String(\"a\"): too short: minimum \
-                 length is 2, got 1",
-                "Pair[1]: invalid: expected I32, found Int32(0): too small: minimum is 1, got 0",
-            ]
-        );
-        assert_eq!(
-            adjacent_code
-                .unwrap_err()
-                .to_string()
-                .lines()
-                .collect::<Vec<&str>>(),
-            [
-                "data: invalid: expected String, found String(\"abc\"): does not match pattern \
-                 '^[A-Z]{3}$'"
-            ]
-        );
-        assert_eq!(
-            adjacent_pair
-                .unwrap_err()
-                .to_string()
-                .lines()
-                .collect::<Vec<&str>>(),
-            [
-                "data[0]: invalid: expected String, found String(\"a\"): too short: minimum \
-                 length is 2, got 1",
-                "data[1]: invalid: expected I32, found Int32(0): too small: minimum is 1, got 0",
-            ]
-        );
-    }
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    {
-        assert_eq!(code, Ok(BoundedSlots::Code("abc".to_owned())));
-        assert_eq!(pair, Ok(BoundedSlots::Pair("a".to_owned(), 0)));
-        assert_eq!(
-            adjacent_code,
-            Ok(BoundedSlotsAdjacent::Code("abc".to_owned()))
-        );
-        assert_eq!(
-            adjacent_pair,
-            Ok(BoundedSlotsAdjacent::Pair("a".to_owned(), 0))
-        );
-    }
+    assert_eq!(
+        code.unwrap_err().to_string().lines().collect::<Vec<&str>>(),
+        [
+            "Code: invalid: expected String, found String(\"abc\"): does not match pattern \
+             '^[A-Z]{3}$'"
+        ]
+    );
+    assert_eq!(
+        pair.unwrap_err().to_string().lines().collect::<Vec<&str>>(),
+        [
+            "Pair[0]: invalid: expected String, found String(\"a\"): too short: minimum \
+             length is 2, got 1",
+            "Pair[1]: invalid: expected I32, found Int32(0): too small: minimum is 1, got 0",
+        ]
+    );
+    assert_eq!(
+        adjacent_code
+            .unwrap_err()
+            .to_string()
+            .lines()
+            .collect::<Vec<&str>>(),
+        [
+            "data: invalid: expected String, found String(\"abc\"): does not match pattern \
+             '^[A-Z]{3}$'"
+        ]
+    );
+    assert_eq!(
+        adjacent_pair
+            .unwrap_err()
+            .to_string()
+            .lines()
+            .collect::<Vec<&str>>(),
+        [
+            "data[0]: invalid: expected String, found String(\"a\"): too short: minimum \
+             length is 2, got 1",
+            "data[1]: invalid: expected I32, found Int32(0): too small: minimum is 1, got 0",
+        ]
+    );
 }
 
 #[test]
@@ -375,18 +326,12 @@ fn a_list_in_a_variants_slot_is_listed_once_at_the_slot() {
     let held = BoundedSlots::from_bson_with(doc! { "Many": ["only"] }, |_, _| Verdict::Reject);
     assert_eq!(held, Ok(BoundedSlots::Many(vec!["only".to_owned()])));
     let many = BoundedSlots::from_bson_with(doc! { "Many": ["a", "b"] }, |_, _| Verdict::Reject);
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     assert_eq!(
         many.unwrap_err().to_string().lines().collect::<Vec<&str>>(),
         [
             "Many: invalid: expected Array(String), found Array([String(\"a\"), String(\"b\")]): \
              too long: maximum length is 1, got 2"
         ]
-    );
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    assert_eq!(
-        many,
-        Ok(BoundedSlots::Many(vec!["a".to_owned(), "b".to_owned()]))
     );
 }
 
@@ -403,18 +348,12 @@ fn an_untagged_list_member_is_read_through_the_hook_that_counts_it() {
     );
     let many =
         BoundedChooser::from_bson_with(doc! { "choice": ["a", "b", "c"] }, |_, _| Verdict::Reject);
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     assert_eq!(
         many.unwrap_err().to_string().lines().collect::<Vec<&str>>(),
         [
             "choice: no variant: found Array([String(\"a\"), String(\"b\"), String(\"c\")]), \
              tried Few, Text"
         ]
-    );
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    assert!(
-        many.is_ok(),
-        "no surface hangs the hook, so the list is read"
     );
 }
 
@@ -438,37 +377,24 @@ fn a_bound_written_on_the_enum_is_listed_at_each_string_it_reaches() {
     let label =
         BoundedByEnum::from_bson_with(doc! { "Label": { "text": "" } }, |_, _| Verdict::Reject);
     let slot = BoundedByEnum::from_bson_with(doc! { "Slot": "abcdef" }, |_, _| Verdict::Reject);
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-    {
-        assert_eq!(
-            label
-                .unwrap_err()
-                .to_string()
-                .lines()
-                .collect::<Vec<&str>>(),
-            [
-                "Label.text: invalid: expected String, found String(\"\"): too short: minimum \
-                 length is 1, got 0"
-            ]
-        );
-        assert_eq!(
-            slot.unwrap_err().to_string().lines().collect::<Vec<&str>>(),
-            [
-                "Slot: invalid: expected String, found String(\"abcdef\"): too long: maximum \
-                 length is 5, got 6"
-            ]
-        );
-    }
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    {
-        assert_eq!(
-            label,
-            Ok(BoundedByEnum::Label {
-                text: String::new()
-            })
-        );
-        assert_eq!(slot, Ok(BoundedByEnum::Slot("abcdef".to_owned())));
-    }
+    assert_eq!(
+        label
+            .unwrap_err()
+            .to_string()
+            .lines()
+            .collect::<Vec<&str>>(),
+        [
+            "Label.text: invalid: expected String, found String(\"\"): too short: minimum \
+             length is 1, got 0"
+        ]
+    );
+    assert_eq!(
+        slot.unwrap_err().to_string().lines().collect::<Vec<&str>>(),
+        [
+            "Slot: invalid: expected String, found String(\"abcdef\"): too long: maximum \
+             length is 5, got 6"
+        ]
+    );
 }
 
 #[test]
@@ -491,7 +417,6 @@ fn a_broken_bound_in_a_tuple_structs_slot_is_listed_at_the_slot() {
         BoundedHolder::from_bson_with(doc! { "lone": "a", "pair": ["a", 0_i32] }, |_, _| {
             Verdict::Reject
         });
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     assert_eq!(
         broken
             .unwrap_err()
@@ -506,18 +431,9 @@ fn a_broken_bound_in_a_tuple_structs_slot_is_listed_at_the_slot() {
             "pair[1]: invalid: expected I32, found Int32(0): too small: minimum is 1, got 0",
         ]
     );
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    assert_eq!(
-        broken,
-        Ok(BoundedHolder {
-            lone: BoundedLone("a".to_owned()),
-            pair: BoundedPair("a".to_owned(), 0),
-        })
-    );
 }
 
 /// A callback sets each slot at its issue's path, and the read answers the repaired struct.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_callback_that_sets_a_tuple_structs_slots_at_their_paths_recovers_the_read() {
     use bounded_holder_schema::{Issue, Stored as _, Verdict};
@@ -555,7 +471,6 @@ fn a_callback_that_sets_a_tuple_structs_slots_at_their_paths_recovers_the_read()
 }
 
 /// The callback drops each value a bound refuses, and the read answers what is left.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_callback_that_removes_what_breaks_a_bound_recovers_the_read() {
     use bounded_group_schema::Stored as _;
@@ -593,7 +508,6 @@ fn a_callback_that_removes_what_breaks_a_bound_recovers_the_read() {
 
 /// A title that breaks two bounds is one issue at its path, its reason both violations joined by
 /// `; `, and one repair of the value settles the read.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_value_that_breaks_two_bounds_is_one_issue_at_its_path() {
     use bounded_group_schema::{Issue, Stored as _, Verdict};
@@ -634,7 +548,6 @@ fn a_value_that_breaks_two_bounds_is_one_issue_at_its_path() {
 
 /// A slot of a tuple variant that breaks two bounds is one issue, so a callback that removes the
 /// value at each issue's path takes that slot out of the array alone.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_slot_that_breaks_two_bounds_is_removed_alone() {
     use bounded_slots_schema::{Issue, Stored as _, Verdict};
@@ -665,27 +578,11 @@ fn a_slot_that_breaks_two_bounds_is_removed_alone() {
     assert_eq!(left, doc! { "Titled": [1_i32] });
 }
 
-/// Serde's own read refuses what breaks a bound, with what `validate()` answers of the value. A
-/// build with no schema surface publishes no `validate()`, and reads it.
+/// Serde's own read refuses what breaks a bound, with what `validate()` answers of the value.
 #[test]
 fn plain_serde_refuses_what_breaks_a_bound() {
     let read = BoundedGroup::deserialize(bson::Deserializer::new(Bson::Document(broken())));
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-    {
-        let refused = read.unwrap_err().to_string();
-        let reported = broken_group().validate().unwrap_err().join("; ");
-        assert!(refused.contains(&reported), "got: {refused}");
-    }
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    {
-        let admitted = read.unwrap();
-        assert_eq!(admitted, broken_group());
-        let mut calls = 0_u32;
-        let walked = BoundedGroup::from_bson_with(broken(), |_raw, _found| {
-            calls += 1;
-            bounded_group_schema::Verdict::Reject
-        });
-        assert_eq!(walked.unwrap(), admitted);
-        assert_eq!(calls, 0);
-    }
+    let refused = read.unwrap_err().to_string();
+    let reported = broken_group().validate().unwrap_err().join("; ");
+    assert!(refused.contains(&reported), "got: {refused}");
 }

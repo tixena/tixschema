@@ -1,7 +1,7 @@
 name: CI Pipeline
 
-# The gate a change is held to: every feature on, one lint and one test run. The feature
-# sets, the emitted clients' own run and the audit are in `full.yml`.
+# The gate a change is held to: every feature on, one lint and one test run, then `just check-mix`.
+# The feature sets, the emitted clients' own run and the audit are in `full.yml`.
 on:
   push:
     branches: [ master ]
@@ -26,10 +26,10 @@ jobs:
         toolchain: stable
         components: clippy, rustfmt
 
-    - name: Install just
+    - name: Install just and cargo-hack
       uses: taiki-e/install-action@v2
       with:
-        tool: just
+        tool: just,cargo-hack
 
     - name: Cache cargo registry
       uses: actions/cache@v3
@@ -83,6 +83,12 @@ jobs:
         echo "🧪 Testing with every feature on..."
         cargo test --all-features
 
+    - name: Check every feature by itself, and the feature mix
+      id: mix
+      run: |
+        echo "🧩 Checking every feature by itself..."
+        just check-mix
+
     - name: Send Discord notification
       if: always()
       # All GitHub context is passed via env, never interpolated into the script body, so a commit
@@ -104,6 +110,7 @@ jobs:
         TIMESTAMP: ${{ github.event.head_commit.timestamp }}
         LINT: ${{ steps.lint.outcome }}
         TEST: ${{ steps.test.outcome }}
+        MIX: ${{ steps.mix.outcome }}
       run: |
         # Validate repository to prevent forks from sending notifications
         if [[ "$REPO" != "eburgos/tixschema" && "$REPO" != "tixena/tixschema" ]]; then
@@ -116,11 +123,12 @@ jobs:
         FAILED_STEP="None"
         if [[ "$LINT" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Lint (cargo clippy --all-features)";
         elif [[ "$TEST" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Tests (cargo test --all-features)";
+        elif [[ "$MIX" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Every feature by itself (just check-mix)";
         fi
 
         icon() { case "$1" in success) printf '✅';; failure) printf '❌';; *) printf '⏭️';; esac; }
-        STATUS_VALUE=$(printf '🧹 Lint: %s\n🧪 Tests: %s' \
-          "$(icon "$LINT")" "$(icon "$TEST")")
+        STATUS_VALUE=$(printf '🧹 Lint: %s\n🧪 Tests: %s\n🧩 Feature mix: %s' \
+          "$(icon "$LINT")" "$(icon "$TEST")" "$(icon "$MIX")")
 
         # Per-event details: commit message / author / PR link
         if [[ "$EVENT_NAME" == "pull_request" ]]; then

@@ -1,20 +1,12 @@
 //! Serde integration feature module: attribute parsing and field name transformation.
 //!
 //! Most of it is gated on the "serde" feature: renaming, tagging, and the guards are all things
-//! the feature buys. The omission walk at the top is not — whether a key reaches the serialized
-//! object is a fact about the wire under every toggle, and every build emits surfaces that claim
-//! to describe that wire.
+//! the feature buys. The walks compiled in every build read through [`serde_attributes`], which
+//! yields no attribute without the feature, except those of the read the macro writes beside
+//! serde's derive, which read through [`derived_serde_attributes`] as that derive does.
 
 pub mod read_bounds;
 
-#[cfg(any(
-    feature = "zod",
-    feature = "jsonschema",
-    feature = "dart",
-    feature = "swift",
-    feature = "kotlin",
-    all(feature = "serde", feature = "typescript")
-))]
 pub mod defaults;
 
 #[cfg(all(
@@ -58,7 +50,7 @@ pub const NAMED_READ_HOOK_PREFIX: &str = "deserialize_named_";
 /// or writes for it.
 const CONVERSION_KEYS: [&str; 4] = ["remote", "from", "try_from", "into"];
 
-/// What a field's serde attributes say about the key it writes. Read in every build, unlike the
+/// What a field's serde attributes say about the key it writes. Compiled in every build, unlike the
 /// rest of this module, since one walk answers all three questions together and the guard that
 /// polices their combination needs them side by side.
 #[derive(Clone, Copy, Debug, Default)]
@@ -119,8 +111,7 @@ pub struct SerdeFieldHooks {
 }
 
 /// Metadata for serde attributes applied to a field. Whether the field's key is omitted is not
-/// here: [`parse_serde_key_omission`] answers that in every build, keeping the surfaces from
-/// disagreeing across the feature toggle.
+/// here: [`parse_serde_key_omission`] answers that for every surface of a build alike.
 #[cfg(feature = "serde")]
 #[derive(Clone, Debug, Default)]
 pub struct SerdeFieldMeta {
@@ -207,16 +198,38 @@ impl Tagging {
     }
 }
 
-/// Walks the serde attributes for exactly the keys [`SerdeKeyOmission`] names, ignoring every
-/// other one. Attributes wrapped in a `cfg_attr` are not reached — a predicate a proc macro cannot
-/// evaluate is not one this walk may guess at.
+/// The `#[serde(...)]` attributes among `attrs` tixschema reads: all of them with the `serde`
+/// feature, none without it.
+pub fn serde_attributes(attrs: &[Attribute]) -> impl Iterator<Item = &Attribute> {
+    attrs
+        .iter()
+        .filter(|attr| cfg!(feature = "serde") && attr.path().is_ident("serde"))
+}
+
+/// Every `#[serde(...)]` attribute among `attrs`, whatever tixschema's features: what serde's derive
+/// reads of the copy the macro writes an item's read on, which the attributes the macro adds to
+/// that copy must agree with.
+pub fn derived_serde_attributes(attrs: &[Attribute]) -> impl Iterator<Item = &Attribute> {
+    attrs.iter().filter(|attr| attr.path().is_ident("serde"))
+}
+
+/// Walks the serde attributes [`serde_attributes`] yields for exactly the keys
+/// [`SerdeKeyOmission`] names, ignoring every other one. Attributes wrapped in a `cfg_attr` are
+/// not reached — a predicate a proc macro cannot evaluate is not one this walk may guess at.
 pub fn parse_serde_key_omission(attrs: &[Attribute]) -> SerdeKeyOmission {
+    key_omission(serde_attributes(attrs))
+}
+
+/// [`parse_serde_key_omission`] as serde's derive reads it, in every build: for the read the macro
+/// writes beside that derive.
+pub fn derived_key_omission(attrs: &[Attribute]) -> SerdeKeyOmission {
+    key_omission(derived_serde_attributes(attrs))
+}
+
+fn key_omission<'attr>(serde_attrs: impl Iterator<Item = &'attr Attribute>) -> SerdeKeyOmission {
     let mut omission = SerdeKeyOmission::default();
 
-    for attr in attrs {
-        if !attr.path().is_ident("serde") {
-            continue;
-        }
+    for attr in serde_attrs {
         attr.parse_nested_meta(|nested| {
             if nested.path.is_ident("skip") {
                 omission.omits_key = true;
@@ -251,14 +264,10 @@ pub fn variant_on_the_wire(variant: &Variant) -> bool {
 }
 
 /// Whether `attrs` carry `#[serde(untagged)]`: serde writes the variant they are written on, or
-/// every variant of the enum, as its content alone, under no name. Read in every build, as
-/// [`parse_serde_key_omission`] is.
+/// every variant of the enum, as its content alone, under no name.
 pub fn carries_untagged(attrs: &[Attribute]) -> bool {
     let mut untagged = false;
-    for attr in attrs {
-        if !attr.path().is_ident("serde") {
-            continue;
-        }
+    for attr in serde_attributes(attrs) {
         attr.parse_nested_meta(|nested| {
             if nested.path.is_ident("untagged") {
                 untagged = true;
@@ -272,8 +281,8 @@ pub fn carries_untagged(attrs: &[Attribute]) -> bool {
     untagged
 }
 
-/// Whether serde's derive reads the members of `variant`: it reads none of a variant under `skip`
-/// or `skip_deserializing`. Read in every build, as [`parse_serde_key_omission`] is.
+/// Whether serde's derive reads the members of `variant`, as the surfaces read its attributes: it
+/// reads none of a variant under `skip` or `skip_deserializing`.
 pub fn variant_members_read(variant: &Variant) -> bool {
     !parse_serde_key_omission(&variant.attrs).skips_deserializing
 }
@@ -320,24 +329,18 @@ where
         nullable_levels: Vec::new(),
         omits_value: false,
         missing_key: MissingKey::Required,
-        #[cfg(any(feature = "zod", feature = "jsonschema"))]
         serde_default: None,
         bytes: false,
         set_levels: Vec::new(),
-        #[cfg(feature = "jsonschema")]
         type_span: Span::call_site(),
     }
 }
 
 /// Whether serde writes and reads the member or the variant through functions of its author's
-/// alone: under `with`, or under both `serialize_with` and `deserialize_with`. Read in every build,
-/// as [`parse_serde_key_omission`] is.
+/// alone: under `with`, or under both `serialize_with` and `deserialize_with`.
 pub fn written_and_read_by_the_author(attrs: &[Attribute]) -> bool {
     let (mut with, mut serialize_with, mut deserialize_with) = (false, false, false);
-    for attr in attrs {
-        if !attr.path().is_ident("serde") {
-            continue;
-        }
+    for attr in serde_attributes(attrs) {
         attr.parse_nested_meta(|nested| {
             if nested.path.is_ident("with") {
                 with = true;
@@ -359,14 +362,10 @@ pub fn written_and_read_by_the_author(attrs: &[Attribute]) -> bool {
 }
 
 /// The key `#[serde(tag = "...")]` names on an enum that is not untagged and names no `content`
-/// key: the tag serde writes a variant's members beside. Read in every build, as
-/// [`parse_serde_key_omission`] is.
+/// key: the tag serde writes a variant's members beside.
 pub fn tag_written_alone(attrs: &[Attribute]) -> Option<String> {
     let (mut tag, mut content, mut untagged) = (None, false, false);
-    for attr in attrs {
-        if !attr.path().is_ident("serde") {
-            continue;
-        }
+    for attr in serde_attributes(attrs) {
         attr.parse_nested_meta(|nested| {
             if nested.path.is_ident("tag") {
                 tag = Some(nested.value()?.parse::<LitStr>()?.value());
@@ -408,6 +407,11 @@ fn consume_unread_value(nested: &ParseNestedMeta<'_>) -> syn::Result<()> {
 /// (`default` and `default = "path"`).
 pub fn has_serde_default(attrs: &[Attribute]) -> bool {
     parse_serde_key_omission(attrs).defaulted
+}
+
+/// [`has_serde_default`] as serde's derive reads it, in every build.
+pub fn derive_reads_a_default(attrs: &[Attribute]) -> bool {
+    derived_key_omission(attrs).defaulted
 }
 
 /// Whether the item is written to be read back at all — whether `Deserialize` is among what it
@@ -459,13 +463,11 @@ fn derives(attrs: &[Attribute], named: &str) -> bool {
 }
 
 /// The conversion of its author's a container reads or writes through, with where it is written:
-/// `remote`, `from`, `try_from` or `into`, the first one written.
+/// `remote`, `from`, `try_from` or `into`, the first one written. Read as serde's derive reads it,
+/// in every build.
 pub fn serde_conversion(attrs: &[Attribute]) -> Option<(&'static str, Span)> {
     let mut found: Option<(&'static str, Span)> = None;
-    for attr in attrs {
-        if !attr.path().is_ident("serde") {
-            continue;
-        }
+    for attr in derived_serde_attributes(attrs) {
         attr.parse_nested_meta(|nested| {
             let written = CONVERSION_KEYS
                 .into_iter()
@@ -490,13 +492,11 @@ pub fn serde_conversion(attrs: &[Attribute]) -> Option<(&'static str, Span)> {
 }
 
 /// The function a field is read through, with the key that names it: `deserialize_with`, or
-/// `with`, which names the module that holds it. Read in every build: a field takes one.
+/// `with`, which names the module that holds it. Read as serde's derive reads it, in every build:
+/// a field takes one.
 pub fn read_hook(attrs: &[Attribute]) -> Option<(&'static str, LitStr)> {
     let mut found: Option<(&'static str, LitStr)> = None;
-    for attr in attrs {
-        if !attr.path().is_ident("serde") {
-            continue;
-        }
+    for attr in derived_serde_attributes(attrs) {
         attr.parse_nested_meta(|nested| {
             let key = ["deserialize_with", "with"]
                 .into_iter()
@@ -523,10 +523,7 @@ pub fn read_hook(attrs: &[Attribute]) -> Option<(&'static str, LitStr)> {
 #[cfg(feature = "serde")]
 pub fn has_serde_read_hook(attrs: &[Attribute]) -> bool {
     let mut found = false;
-    for attr in attrs {
-        if !attr.path().is_ident("serde") {
-            continue;
-        }
+    for attr in serde_attributes(attrs) {
         attr.parse_nested_meta(|nested| {
             if nested.path.is_ident("with") || nested.path.is_ident("deserialize_with") {
                 found = true;
@@ -542,14 +539,10 @@ pub fn has_serde_read_hook(attrs: &[Attribute]) -> bool {
 }
 
 /// Whether serde never writes the field: it is under `skip` or `skip_serializing`. One under
-/// `skip_serializing_if` is written wherever its predicate lets it be. Read in every build, as
-/// [`parse_serde_key_omission`] is: each client and the brand rule read it.
+/// `skip_serializing_if` is written wherever its predicate lets it be.
 pub fn has_serde_skip_serializing(attrs: &[Attribute]) -> bool {
     let mut found = false;
-    for attr in attrs {
-        if !attr.path().is_ident("serde") {
-            continue;
-        }
+    for attr in serde_attributes(attrs) {
         attr.parse_nested_meta(|nested| {
             if nested.path.is_ident("skip") || nested.path.is_ident("skip_serializing") {
                 found = true;
@@ -877,10 +870,7 @@ fn transparent_slot(fields: &Fields, direction: Direction) -> Option<(usize, &Fi
 /// is written.
 pub fn has_serde_transparent(attrs: &[Attribute]) -> bool {
     let mut found = false;
-    for attr in attrs {
-        if !attr.path().is_ident("serde") {
-            continue;
-        }
+    for attr in serde_attributes(attrs) {
         attr.parse_nested_meta(|nested| {
             if nested.path.is_ident("transparent") {
                 found = true;
@@ -900,10 +890,7 @@ pub fn has_serde_transparent(attrs: &[Attribute]) -> bool {
 #[cfg(feature = "serde")]
 pub fn parse_serde_field_hooks(attrs: &[Attribute]) -> SerdeFieldHooks {
     let mut hooks = SerdeFieldHooks::default();
-    for attr in attrs {
-        if !attr.path().is_ident("serde") {
-            continue;
-        }
+    for attr in serde_attributes(attrs) {
         attr.parse_nested_meta(|nested| {
             let slot = if nested.path.is_ident("with") {
                 &mut hooks.with
@@ -1013,10 +1000,7 @@ fn parse_directed_renames(
 ) -> DirectedRenames {
     let mut renames = DirectedRenames::default();
 
-    for attr in attrs {
-        if !attr.path().is_ident("serde") {
-            continue;
-        }
+    for attr in serde_attributes(attrs) {
         attr.parse_nested_meta(|nested| {
             let slot = if nested.path.is_ident("rename") {
                 &mut renames.rename
@@ -1067,7 +1051,6 @@ pub fn parse_written_renames(attrs: &[Attribute]) -> DirectedRenames {
     any(
         feature = "typescript",
         feature = "zod",
-        feature = "jsonschema",
         feature = "dart",
         feature = "swift",
         feature = "kotlin"
@@ -1076,10 +1059,7 @@ pub fn parse_written_renames(attrs: &[Attribute]) -> DirectedRenames {
 pub fn rename_direction_rejection(attrs: &[Attribute]) -> Option<Error> {
     let mut rejection: Option<Error> = None;
 
-    for attr in attrs {
-        if !attr.path().is_ident("serde") {
-            continue;
-        }
+    for attr in serde_attributes(attrs) {
         attr.parse_nested_meta(|nested| {
             let renaming = if nested.path.is_ident("rename") {
                 Some("rename")
@@ -1133,45 +1113,51 @@ fn cfg_attr_serde_rejection(attr: &Attribute) -> Option<Error> {
     None
 }
 
+/// The rejection of the first `cfg_attr` among `attrs` that carries a `serde(...)` attribute.
+#[cfg(feature = "serde")]
+fn cfg_attr_rejection(attrs: &[Attribute]) -> Option<Error> {
+    attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("cfg_attr"))
+        .find_map(cfg_attr_serde_rejection)
+}
+
 /// Parses serde attributes from a struct or enum.
 #[cfg(feature = "serde")]
 pub fn parse_serde_type_attributes(attrs: &[Attribute]) -> SerdeTypeMeta {
-    let mut meta = SerdeTypeMeta::default();
+    let mut meta = SerdeTypeMeta {
+        cfg_attr_rejection: cfg_attr_rejection(attrs),
+        ..SerdeTypeMeta::default()
+    };
 
-    for attr in attrs {
-        if attr.path().is_ident("cfg_attr") && meta.cfg_attr_rejection.is_none() {
-            meta.cfg_attr_rejection = cfg_attr_serde_rejection(attr);
-        } else if attr.path().is_ident("serde") {
-            attr.parse_nested_meta(|nested| {
-                if nested.path.is_ident("tag") {
-                    let value = nested.value()?;
-                    let lit: LitStr = value.parse()?;
-                    meta.tag = Some(lit.value());
-                } else if nested.path.is_ident("content") {
-                    let value = nested.value()?;
-                    let lit: LitStr = value.parse()?;
-                    meta.content = Some(lit.value());
-                }
-                // Handle `rename_all = "value"` and `rename_all(serialize = "...",
-                // deserialize = "...")`
-                else if nested.path.is_ident("rename_all") {
-                    meta.rename_all = read_renaming(&nested, "rename_all")?;
-                } else if nested.path.is_ident("rename_all_fields") {
-                    meta.rename_all_fields = read_renaming(&nested, "rename_all_fields")?;
-                } else if nested.path.is_ident("untagged") {
-                    meta.untagged = true;
-                } else {
-                    // Ignore other serde attributes.
-                }
-                consume_unread_value(&nested)?;
-                Ok(())
-            })
-            .unwrap_or_else(|e| {
-                log::trace!("Failed to parse serde type attribute: {e}");
-            });
-        } else {
-            // Ignore attributes that are neither serde nor a cfg_attr wrapper.
-        }
+    for attr in serde_attributes(attrs) {
+        attr.parse_nested_meta(|nested| {
+            if nested.path.is_ident("tag") {
+                let value = nested.value()?;
+                let lit: LitStr = value.parse()?;
+                meta.tag = Some(lit.value());
+            } else if nested.path.is_ident("content") {
+                let value = nested.value()?;
+                let lit: LitStr = value.parse()?;
+                meta.content = Some(lit.value());
+            }
+            // Handle `rename_all = "value"` and `rename_all(serialize = "...",
+            // deserialize = "...")`
+            else if nested.path.is_ident("rename_all") {
+                meta.rename_all = read_renaming(&nested, "rename_all")?;
+            } else if nested.path.is_ident("rename_all_fields") {
+                meta.rename_all_fields = read_renaming(&nested, "rename_all_fields")?;
+            } else if nested.path.is_ident("untagged") {
+                meta.untagged = true;
+            } else {
+                // Ignore other serde attributes.
+            }
+            consume_unread_value(&nested)?;
+            Ok(())
+        })
+        .unwrap_or_else(|e| {
+            log::trace!("Failed to parse serde type attribute: {e}");
+        });
     }
 
     meta
@@ -1180,42 +1166,39 @@ pub fn parse_serde_type_attributes(attrs: &[Attribute]) -> SerdeTypeMeta {
 /// Parses serde attributes from a field.
 #[cfg(feature = "serde")]
 pub fn parse_serde_field_attributes(attrs: &[Attribute]) -> SerdeFieldMeta {
-    let mut meta = SerdeFieldMeta::default();
+    let mut meta = SerdeFieldMeta {
+        cfg_attr_rejection: cfg_attr_rejection(attrs),
+        ..SerdeFieldMeta::default()
+    };
 
-    for attr in attrs {
-        if attr.path().is_ident("cfg_attr") && meta.cfg_attr_rejection.is_none() {
-            meta.cfg_attr_rejection = cfg_attr_serde_rejection(attr);
-        } else if attr.path().is_ident("serde") {
-            attr.parse_nested_meta(|nested| {
-                // Handle `rename = "value"` and `rename(serialize = "...", deserialize = "...")`
-                if nested.path.is_ident("rename") {
-                    meta.rename = read_renaming(&nested, "rename")?;
-                } else if nested.path.is_ident("skip")
-                    || nested.path.is_ident("skip_serializing")
-                    || nested.path.is_ident("skip_serializing_if")
-                    || nested.path.is_ident("skip_deserializing")
-                {
-                    meta.skip = true;
-                } else if nested.path.is_ident("flatten") {
-                    meta.flatten = true;
-                }
-                // Handle `alias = "value"`, which a field may carry more than once
-                else if nested.path.is_ident("alias") {
-                    let value: LitStr = nested.value()?.parse()?;
-                    meta.aliases.push(value.value());
-                    return Ok(());
-                } else {
-                    // Ignore other serde attributes.
-                }
-                consume_unread_value(&nested)?;
-                Ok(())
-            })
-            .unwrap_or_else(|e| {
-                log::trace!("Failed to parse serde field attribute: {e}");
-            });
-        } else {
-            // Ignore attributes that are neither serde nor a cfg_attr wrapper.
-        }
+    for attr in serde_attributes(attrs) {
+        attr.parse_nested_meta(|nested| {
+            // Handle `rename = "value"` and `rename(serialize = "...", deserialize = "...")`
+            if nested.path.is_ident("rename") {
+                meta.rename = read_renaming(&nested, "rename")?;
+            } else if nested.path.is_ident("skip")
+                || nested.path.is_ident("skip_serializing")
+                || nested.path.is_ident("skip_serializing_if")
+                || nested.path.is_ident("skip_deserializing")
+            {
+                meta.skip = true;
+            } else if nested.path.is_ident("flatten") {
+                meta.flatten = true;
+            }
+            // Handle `alias = "value"`, which a field may carry more than once
+            else if nested.path.is_ident("alias") {
+                let value: LitStr = nested.value()?.parse()?;
+                meta.aliases.push(value.value());
+                return Ok(());
+            } else {
+                // Ignore other serde attributes.
+            }
+            consume_unread_value(&nested)?;
+            Ok(())
+        })
+        .unwrap_or_else(|e| {
+            log::trace!("Failed to parse serde field attribute: {e}");
+        });
     }
 
     meta

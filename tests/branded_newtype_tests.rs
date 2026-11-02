@@ -1,4 +1,7 @@
-//! The test binary of `branded_newtype_tests/`.
+//! The test binary of `branded_newtype_tests/`, built with the `serde` feature: without it no
+//! struct is a brand.
+
+#![cfg(feature = "serde")]
 
 extern crate alloc;
 
@@ -43,6 +46,5 @@ mod tests;
 mod transparent_key;
 
 #[cfg(test)]
-#[cfg(feature = "serde")]
 #[path = "branded_newtype_tests/unit_value.rs"]
 mod unit_value;

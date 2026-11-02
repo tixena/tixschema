@@ -105,8 +105,8 @@ section is the consumer's view; this is what a change has to keep.
   brand's serializer calls it with the default where the serializer handed for the parameter has
   the default's descriptor (`read::judged_counting`). `Carried(emptyList<String>()).validate()`
   called directly answers no message; holders, reads and Rust count it.
-- **The tests.** `tests/kotlin_tests/validate.rs` pins the text in every build with `kotlin`, a
-  build with no schema surface included: Rust holds no bound there and Kotlin holds every one.
+- **The tests.** `tests/kotlin_tests/validate.rs` pins the text in every build with `kotlin`, and
+  holds each row to what Rust's `validate()` answers.
   `tests/service_schema_emitted_client_tests/run_kotlin_validate.rs` compiles the emitted types
   with `-Werror`, runs them, and holds each row to what Rust's `validate()` answers, or, for a
   slot and a variant's member, to the name written in the row. `src/features/kotlin/tests.rs`

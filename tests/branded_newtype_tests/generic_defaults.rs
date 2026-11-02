@@ -1,10 +1,7 @@
 //! A generic brand judges the value it holds where Rust can measure it: at every filling when its
 //! inner names no parameter, and at the declared default when the inner is the parameter.
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 mod a_marker_parameter {
     use core::marker::PhantomData;
     use serde::{Deserialize, Serialize};
@@ -64,10 +61,7 @@ mod a_marker_parameter {
     }
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 mod a_path_default {
     use serde::{Deserialize, Serialize};
     use std::path::PathBuf;
@@ -97,12 +91,9 @@ mod a_path_default {
     }
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod"),
-    not(feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 mod beside_a_type_named_string {
+    use alloc::string::String as StdString;
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
 
@@ -119,9 +110,9 @@ mod beside_a_type_named_string {
             Code("a".to_owned()).validate(),
             Err(vec!["too short: minimum length is 2, got 1".to_owned()])
         );
-        let _shadow = String;
+        let _: String = String;
         assert_eq!(Code(7_u32).validate(), Ok(()));
-        let refused = serde_json::from_str::<Code<::std::string::String>>(r#""a""#).unwrap_err();
+        let refused = serde_json::from_str::<Code<StdString>>(r#""a""#).unwrap_err();
         assert!(
             refused
                 .to_string()

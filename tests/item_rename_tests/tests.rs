@@ -3,30 +3,30 @@
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-#[model_schema(name = "RenamedItem")]
+#[model_schema(name = "RenamedItem", enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ItemUnderRustName {
     pub count: u32,
     pub label: String,
 }
 
-#[model_schema(name = "RenamedPair")]
+#[model_schema(name = "RenamedPair", enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PairUnderRustName(pub String, pub u32);
 
-#[model_schema(name = "RenamedBrand")]
+#[model_schema(name = "RenamedBrand", enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(transparent)]
 pub struct BrandUnderRustName(pub String);
 
-#[model_schema(name = "RenamedSlot")]
+#[model_schema(name = "RenamedSlot", enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SlotUnderRustName {
     Primary,
     Secondary,
 }
 
-#[model_schema(name = "RenamedShape")]
+#[model_schema(name = "RenamedShape", enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ShapeUnderRustName {
     Named { side: u8 },
@@ -35,14 +35,14 @@ pub enum ShapeUnderRustName {
 
 /// A renamed type that names itself: the recursion is what forces the JSON surface to publish a
 /// definition and point at it, which is the only place the definition's name is written out.
-#[model_schema(name = "RenamedTree")]
+#[model_schema(name = "RenamedTree", enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TreeUnderRustName {
     pub children: Vec<Self>,
     pub label: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ReferencesRenamedItems {
     pub brand: BrandUnderRustName,
@@ -57,7 +57,7 @@ pub struct ReferencesRenamedItems {
 /// have not expanded yet, so the module each reference resolves to is derived from the item's
 /// Rust ident alone; [`NamesRenamedItemsDeclaredEarlier`] names the same two once registered.
 /// Both have to reach the same modules.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NamesRenamedItemsDeclaredLater {
     pub gauge: LaterRenamedGauge,
@@ -67,20 +67,20 @@ pub struct NamesRenamedItemsDeclaredLater {
 /// A rename moves what the item is *exported* as. It does not move the module its schema is
 /// published in — an override is not recoverable from the Rust ident, so a module named after the
 /// override would be one no forward reference could ever name.
-#[model_schema(name = "RenamedLaterGauge")]
+#[model_schema(name = "RenamedLaterGauge", enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct LaterRenamedGauge {
     pub reading: u32,
 }
 
-#[model_schema(name = "RenamedLaterGrade")]
+#[model_schema(name = "RenamedLaterGrade", enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LaterRenamedGrade {
     High,
     Low,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NamesRenamedItemsDeclaredEarlier {
     pub gauge: LaterRenamedGauge,
@@ -110,7 +110,7 @@ fn every_renamed_shape_expands_in_this_feature_combination() {
     assert!(value.tree.children.is_empty());
 }
 
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn every_renamed_shape_is_written_under_the_override() {
     for (ts, declared) in [
@@ -139,7 +139,7 @@ fn every_renamed_shape_is_written_under_the_override() {
     }
 }
 
-#[cfg(all(feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 #[test]
 fn a_renamed_brand_is_tagged_by_the_override() {
     let ts = BrandUnderRustName::ts_definition();
@@ -148,7 +148,7 @@ fn a_renamed_brand_is_tagged_by_the_override() {
     assert!(zod.contains(".brand<\"RenamedBrand\">()"), "got: {zod}");
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn every_renamed_shape_publishes_its_zod_schema_under_the_override() {
     for (zod, declared) in [
@@ -177,7 +177,7 @@ fn every_renamed_shape_publishes_its_zod_schema_under_the_override() {
     }
 }
 
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn a_reference_to_a_renamed_item_resolves_the_override() {
     let ts = ReferencesRenamedItems::ts_definition();
@@ -193,7 +193,7 @@ fn a_reference_to_a_renamed_item_resolves_the_override() {
     }
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_zod_reference_to_a_renamed_item_resolves_the_override() {
     let zod = ReferencesRenamedItems::zod_schema();
@@ -209,7 +209,7 @@ fn a_zod_reference_to_a_renamed_item_resolves_the_override() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_reference_to_a_renamed_item_never_carries_its_rust_name() {
     #[cfg(feature = "typescript")]
@@ -228,7 +228,7 @@ fn a_reference_to_a_renamed_item_never_carries_its_rust_name() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
+#[cfg(feature = "serde")]
 #[test]
 fn a_renamed_item_names_its_json_definition_by_the_override() {
     let schema = TreeUnderRustName::json_schema();
@@ -252,7 +252,7 @@ fn a_renamed_item_names_its_json_definition_by_the_override() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
+#[cfg(feature = "serde")]
 #[test]
 fn the_module_a_json_reference_resolves_to_is_the_one_named_for_the_rust_ident() {
     let referencing = ReferencesRenamedItems::json_schema();
@@ -288,7 +288,7 @@ fn renamed_items_declared_under_their_reference_expand_in_this_feature_combinati
     assert_eq!(earlier.grades, vec![LaterRenamedGrade::Low]);
 }
 
-#[cfg(feature = "jsonschema")]
+#[cfg(feature = "serde")]
 #[test]
 fn an_item_reference_describes_the_same_on_either_side_of_the_item() {
     assert_eq!(
@@ -297,7 +297,7 @@ fn an_item_reference_describes_the_same_on_either_side_of_the_item() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
+#[cfg(feature = "serde")]
 #[test]
 fn a_forward_item_reference_carries_what_the_item_publishes() {
     let schema = NamesRenamedItemsDeclaredLater::json_schema();
@@ -314,7 +314,7 @@ fn a_forward_item_reference_carries_what_the_item_publishes() {
     );
 }
 
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn a_forward_referenced_renamed_item_exports_under_the_override() {
     for (ts, declared) in [
@@ -331,7 +331,7 @@ fn a_forward_referenced_renamed_item_exports_under_the_override() {
     }
 }
 
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn every_name_a_forward_item_reference_writes_is_defined_by_the_emission() {
     let forward = NamesRenamedItemsDeclaredLater::ts_definition();
@@ -357,7 +357,7 @@ fn every_name_a_forward_item_reference_writes_is_defined_by_the_emission() {
     }
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn every_schema_a_forward_item_reference_names_is_defined_by_the_emission() {
     let forward = NamesRenamedItemsDeclaredLater::zod_schema();
@@ -389,7 +389,7 @@ fn every_schema_a_forward_item_reference_names_is_defined_by_the_emission() {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 #[test]
 fn an_item_exported_under_its_ident_publishes_no_reexport() {
     #[cfg(feature = "typescript")]
@@ -408,7 +408,7 @@ fn an_item_exported_under_its_ident_publishes_no_reexport() {
     }
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_forward_referenced_renamed_item_publishes_its_zod_schema_under_the_override() {
     for (zod, declared) in [

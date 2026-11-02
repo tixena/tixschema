@@ -364,7 +364,6 @@ fn a_members_check_is_listed_where_serde_writes_the_member_under_each_tagging() 
 }
 
 /// A bound of a member and a check of it are listed at one path, the bound first.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_bound_and_a_check_of_one_value_are_two_issues() {
     let stored = doc! { "label": "", "itemCodeList": ["x", "x"], "fragileItemCodes": ["y"] };

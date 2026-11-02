@@ -46,7 +46,7 @@ struct Lowercase {
     field_two: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 struct OptionalFields {
@@ -91,7 +91,7 @@ enum Status {
     Pending,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 struct UserWithSerde {
@@ -104,7 +104,7 @@ struct UserWithSerde {
     user_id: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum Body {
@@ -154,7 +154,7 @@ struct PlainKeys {
 }
 
 /// The list form of `rename`, with one name in both of serde's directions.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ListFormRename {
     #[serde(rename(serialize = "same_name", deserialize = "same_name"))]
@@ -162,7 +162,7 @@ struct ListFormRename {
 }
 
 /// The list form of `rename_all`, with one rule in both of serde's directions.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
 struct ListFormRenameAll {
@@ -171,7 +171,7 @@ struct ListFormRenameAll {
 
 /// `bound(...)` in both places serde accepts it. It replaces the trait bounds serde's derive
 /// writes on its own impls, which no generated surface describes.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(bound(serialize = "", deserialize = ""))]
 struct BoundCarrying {
@@ -250,7 +250,6 @@ fn test_serde_types_constructible() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_serde_rename_all_camel_case_json_schema() {
     let schema = UserWithSerde::json_schema();
 
@@ -339,7 +338,6 @@ fn test_serde_with_optional_fields_zod() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_serde_with_optional_fields_json_schema() {
     let schema = OptionalFields::json_schema();
 
@@ -596,7 +594,6 @@ fn test_a_renamed_untagged_member_field_is_written_as_a_string_in_zod() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_a_renamed_untagged_member_field_reaches_the_json_schema() {
     let schema = Body::json_schema();
     let any_of = schema["anyOf"].as_array().unwrap();
@@ -620,7 +617,6 @@ fn test_a_renamed_untagged_member_field_reaches_the_json_schema() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_a_renamed_untagged_member_round_trips_through_its_closed_schema() {
     let value = Body::Reply {
         reply_to: "x".to_owned(),
@@ -723,7 +719,6 @@ fn test_a_list_form_rename_reaches_the_zod_schema() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_a_list_form_rename_document_accepts_what_serde_writes() {
     let payload = serde_json::to_value(ListFormRename { value: 5 }).unwrap();
     let schema = ListFormRename::json_schema();
@@ -786,7 +781,6 @@ fn test_a_list_form_rename_all_reaches_the_zod_schema() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_a_list_form_rename_all_document_accepts_what_serde_writes() {
     let payload = serde_json::to_value(ListFormRenameAll { my_field: 5 }).unwrap();
     let schema = ListFormRenameAll::json_schema();
@@ -848,7 +842,6 @@ fn test_a_bound_carrying_member_is_validated_as_its_plain_sibling_is() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_a_bound_carrying_member_is_described_as_its_plain_sibling_is() {
     let schema = BoundCarrying::json_schema();
 

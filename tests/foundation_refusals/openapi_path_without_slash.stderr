@@ -1,0 +1,5 @@
+error: service_schema: `openapi(path = "...")` is a route, so it starts with `/`
+  --> tests/foundation_refusals/openapi_path_without_slash.rs:21:61
+   |
+21 | #[service_schema(transports = ["http_rest"], openapi(path = "openapi.json"))]
+   |                                                             ^^^^^^^^^^^^^^

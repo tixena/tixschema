@@ -1,21 +1,21 @@
-//! `validate()` on every Kotlin type the emitter writes: the text of each shape, which is the
-//! same in a build with a schema surface and in one with none. A test whose fixture writes a
-//! serde attribute the emitter reads is compiled with the `serde` feature alone.
+//! `validate()` on every Kotlin type the emitter writes: the text of each shape, and the messages
+//! Rust's own `validate()` answers of the same values, which hold every rule in every build. A
+//! test whose fixture writes a serde attribute the emitter reads is compiled with the `serde`
+//! feature alone.
 
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 #[cfg(feature = "serde")]
-use super::read::{DECODED, judged};
-use super::read::{judged_over, kept, kept_inline, serializers};
+use super::read::{DECODED, judged, kept_inline};
+use super::read::{judged_over, kept, serializers};
 #[cfg(feature = "serde")]
 use super::tests::{
-    audit_kotlin, date_value_kotlin, dynamic_value_kotlin, external_tagged_kotlin,
-    simple_choice_kotlin, status_kotlin, window_error_kotlin,
+    audit_kotlin, correlation_id_kotlin, date_value_kotlin, dynamic_value_kotlin,
+    external_tagged_kotlin, simple_choice_kotlin, status_kotlin, window_error_kotlin,
 };
 use super::tests::{
-    correlation_id_kotlin, generic_pair_kotlin, holds_tuple_kotlin, ping_kotlin, widget_kotlin,
-    wrapper_kotlin,
+    generic_pair_kotlin, holds_tuple_kotlin, ping_kotlin, widget_kotlin, wrapper_kotlin,
 };
 
 /// What a type with no rule answers.
@@ -26,9 +26,11 @@ const NO_RULE: &str = "fun validate(): List<String> = emptyList()";
 const FALLBACK: &str = "private fun Any?.validate(): List<String> = emptyList()";
 
 /// What a string answers where a declared type is asked for its text.
+#[cfg(feature = "serde")]
 const TEXT: &str = "private fun String.kotlinSchemaText(): String = this";
 
 /// What a string and a collection answer where a declared type is asked for its length.
+#[cfg(feature = "serde")]
 const LENGTH: &str = "private fun String.kotlinSchemaLength(): Int = codePointCount(0, length); \
                       private fun Collection<*>.kotlinSchemaLength(): Int = size";
 
@@ -71,21 +73,25 @@ pub struct Later {
 }
 
 /// A brand over a string, which answers its text.
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct Slug(pub String);
 
 /// A brand over a brand: it answers through the brand it holds.
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct Badge(pub Slug);
 
+#[cfg(feature = "serde")]
 #[model_schema()]
 pub type Title = String;
 
 /// A bound on a brand declared below, on one declared above and on an alias of a string.
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Entry {
@@ -97,6 +103,7 @@ pub struct Entry {
     pub titled: Title,
 }
 
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
@@ -155,6 +162,7 @@ fn parcel() -> Parcel {
 
 /// The statement that holds the text the declared type `read` answers to `least` characters,
 /// under `place`.
+#[cfg(feature = "serde")]
 fn asked_statement(read: &str, place: &str, least: u32) -> String {
     let counted = format!("{read}.kotlinSchemaLength()");
     format!(
@@ -165,6 +173,7 @@ fn asked_statement(read: &str, place: &str, least: u32) -> String {
 
 /// What a member typed with a declared type adds after its own bound: the type's `validate()`,
 /// each message under the member's key.
+#[cfg(feature = "serde")]
 fn held_statement(read: &str) -> String {
     format!("violations.addAll({read}.validate().map {{ kotlinSchemaUnder(\"{read}\", it) }})")
 }
@@ -210,7 +219,9 @@ fn every_fixture_is_written_as_serde_writes_it() {
         serde_json::to_value([Haul::Held, Haul::Split("a".to_owned(), held)]).unwrap()[0],
         serde_json::json!({ "kind": "Held" })
     );
+    #[cfg(feature = "serde")]
     let titled: Title = "t".to_owned();
+    #[cfg(feature = "serde")]
     assert_eq!(
         serde_json::to_value((
             Badge(Slug("b".to_owned())),
@@ -222,6 +233,65 @@ fn every_fixture_is_written_as_serde_writes_it() {
         ))
         .unwrap(),
         serde_json::json!(["b", { "late": "l", "slug": "s", "titled": "t" }])
+    );
+}
+
+/// Rust's `validate()` reports each message the Kotlin `validate()` written for the fixture adds, in
+/// the order it adds them: a member's check, then its bound, then the type's check, a held model's
+/// under the member and a slot's under the variant and its position.
+#[test]
+fn rust_holds_each_fixture_to_every_rule_the_kotlin_validate_holds() {
+    #[cfg(feature = "serde")]
+    let (codes, held_slots) = ("itemCodeList", "held");
+    #[cfg(not(feature = "serde"))]
+    let (codes, held_slots) = ("item_code_list", "Split");
+    let parcel_messages = [
+        format!("'{codes}': duplicate item code x"),
+        "'label': too short: minimum length is 1, got 0".to_owned(),
+        "'fragileItemCodes.0': y is outside of itemCodeList".to_owned(),
+    ];
+    let under = |place: &str| -> Vec<String> {
+        parcel_messages
+            .iter()
+            .map(|message| format!("'{place}.{}", &message[1..]))
+            .collect()
+    };
+    assert_eq!(parcel().validate().unwrap_err(), parcel_messages);
+    assert_eq!(
+        Manifest { parcel: parcel() }.validate().unwrap_err(),
+        under("parcel")
+    );
+    #[cfg(feature = "serde")]
+    assert_eq!(
+        Entry {
+            late: LateSlug("l".to_owned()),
+            slug: Slug("s".to_owned()),
+            titled: "t".to_owned(),
+        }
+        .validate()
+        .unwrap_err(),
+        [
+            "'late': too short: minimum length is 3, got 1",
+            "'slug': too short: minimum length is 3, got 1",
+            "'titled': too short: minimum length is 2, got 1",
+        ]
+    );
+    let split = |place: &str| -> Vec<String> {
+        let mut messages = vec![format!(
+            "'{place}.0': too short: minimum length is 1, got 0"
+        )];
+        messages.extend(under(&format!("{place}.1")));
+        messages
+    };
+    assert_eq!(
+        Freight::Split(String::new(), parcel())
+            .validate()
+            .unwrap_err(),
+        split("Split")
+    );
+    assert_eq!(
+        Haul::Split(String::new(), parcel()).validate().unwrap_err(),
+        split(held_slots)
     );
 }
 
@@ -281,6 +351,7 @@ fn a_holder_of_a_type_declared_below_writes_what_a_type_with_no_validate_answers
 
 /// A brand over a string answers its text with a member, and a brand over a brand through the
 /// brand it holds.
+#[cfg(feature = "serde")]
 #[test]
 fn a_brand_answers_its_text() {
     assert_eq!(
@@ -307,6 +378,7 @@ fn a_brand_answers_its_text() {
 
 /// A holder asks a declared type for its text and answers for a string itself, so a brand
 /// declared above, one declared below and an alias of a string are each measured.
+#[cfg(feature = "serde")]
 #[test]
 fn a_bound_on_a_declared_type_measures_the_text_the_type_answers() {
     assert_eq!(
@@ -361,6 +433,7 @@ fn every_shape_carries_validate() {
                 serializers("Ping")
             ),
         ),
+        #[cfg(feature = "serde")]
         (
             super::tests::renumbered(&correlation_id_kotlin::kotlin_definition()),
             format!(

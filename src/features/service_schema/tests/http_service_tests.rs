@@ -1,10 +1,11 @@
 //! `ts_http_service()`, read off the emitted text.
 
+use super::http_service::{OPENAPI_MARKER, emit};
 use super::{
     BYTES_HTTP_SERVICE, DIGIT_QUERY_HTTP_SERVICE, EMITTED_CLIENT_TEST_SERVICE, MIXED_HTTP_SERVICE,
     MIXED_SERVICE, MULTIPART_HTTP_SERVICE, PATH_BOUND_HTTP_SERVICE, QUERY_HTTP_SERVICE,
     REQUIRED_HEADER_HTTP_SERVICE, RESERVED_WORD_SERVICE, SHADOWED_LOCAL_SERVICE,
-    STREAM_HTTP_SERVICE, TS_UNIT_SUCCESS_SERVICE, http_service_of,
+    STREAM_HTTP_SERVICE, TS_UNIT_SUCCESS_SERVICE, http_service_of, parsed,
 };
 use crate::utils::{record_untagged_enum, record_wire_scalar};
 
@@ -655,4 +656,42 @@ fn a_declared_error_of_one_status_is_answered_at_it_with_no_call() {
         !written.contains("(() =>"),
         "no closure of no parameter is called. Got: {written}"
     );
+}
+
+/// The marker is written once, in the constant the arm answers from, ahead of the route table.
+#[test]
+fn the_document_arm_answers_get_at_its_path_ahead_of_every_route() {
+    let written = emit(&parsed(MIXED_HTTP_SERVICE), Some("/v1/openapi.json")).join("\n\n");
+    assert_eq!(written.matches(OPENAPI_MARKER).count(), 1, "got: {written}");
+    let constant = written
+        .find(&format!(
+            "const documentClientServiceOpenApiDocument = {OPENAPI_MARKER};"
+        ))
+        .unwrap();
+    assert!(
+        constant
+            < written
+                .find("export const documentClientServiceHttpRoutes")
+                .unwrap(),
+        "got: {written}"
+    );
+    let arm = written
+        .find(
+            "    if (method === \"GET\" && path === \"/v1/openapi.json\") {\n      \
+             return { status: 200, headers: [[\"content-type\", \"application/json\"]], body: \
+             new TextEncoder().encode(documentClientServiceOpenApiDocument) };\n    \
+             }\n",
+        )
+        .unwrap();
+    assert!(
+        arm < written.find("// create-document:").unwrap(),
+        "got: {written}"
+    );
+}
+
+#[test]
+fn a_service_without_openapi_holds_neither_the_marker_nor_the_arm() {
+    let written = http_service_of(MIXED_HTTP_SERVICE);
+    assert!(!written.contains(OPENAPI_MARKER), "got: {written}");
+    assert!(!written.contains("OpenApiDocument"), "got: {written}");
 }

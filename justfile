@@ -79,7 +79,6 @@ test-combinations:
     @echo "Testing individual feature combinations..."
     cargo test --no-default-features --features "serde"
     cargo test --no-default-features --features "zod"
-    cargo test --no-default-features --features "jsonschema"
     cargo test --no-default-features --features "mongodb"
     cargo test --no-default-features --features "typescript"
     cargo test --no-default-features --features "serde,zod"
@@ -88,7 +87,6 @@ test-combinations:
     cargo test --no-default-features --features "serde,zod,typescript"
     cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "serde"
     cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "zod"
-    cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "jsonschema"
     cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "mongodb"
     cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "typescript"
     cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "serde,zod"
@@ -236,6 +234,17 @@ check-all:
     cargo hack check --feature-powerset
     cargo hack check --manifest-path bson3/Cargo.toml --feature-powerset
     @echo "✅ All feature combinations check passed!"
+
+# A check of about five minutes, run by the CI on every push: every feature builds by itself,
+# then the every-build validation tests in a few combinations. Not part of `all`.
+check-mix:
+    cargo hack check --each-feature
+    cargo hack check --manifest-path bson3/Cargo.toml --each-feature
+    cargo test --no-default-features --test every_build_validation_tests
+    cargo test --no-default-features --features web --test every_build_validation_tests
+    cargo test --no-default-features --features mobile --test every_build_validation_tests
+    cargo test --no-default-features --features mongo --test every_build_validation_tests
+    cargo test --no-default-features --features mobile,mongo --test every_build_validation_tests
 
 # Check the library on the minimum supported Rust version.
 check-msrv:

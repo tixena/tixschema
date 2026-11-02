@@ -12,9 +12,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
-// The JSON schema of a type holding a `Version` names its module from here, beside the type.
-#[cfg(feature = "jsonschema")]
-use super::version_schema;
 use super::{Version, lines};
 
 /// What `from_value_with` lists for `$stored`, read as `$model` by a decider that rejects it.

@@ -1,30 +1,27 @@
 //! A length or a pattern written on a field typed with a brand over a brand measures the text the
 //! innermost string holds, on every surface.
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 mod measured_through_the_inner_brand {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct Strand(pub String);
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct Braid(pub Strand);
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct Cord(pub Braid);
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct CordHolder {
         #[model_schema_prop(minLength = 3)]
@@ -93,7 +90,6 @@ mod measured_through_the_inner_brand {
         );
     }
 
-    #[cfg(feature = "jsonschema")]
     #[test]
     fn the_json_schema_narrows_the_text_at_the_field() {
         let schema = CordHolder::json_schema();

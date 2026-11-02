@@ -7,10 +7,7 @@
 /// The types live in a module rather than in the test bodies because a reference to a sibling type
 /// is written against that type's schema module, which a type declared inside a `fn` does not
 /// publish anywhere a sibling can name.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 mod a_bound_the_fields_own_type_declares {
     use super::UnpublishedValidate;
     use alloc::borrow::Cow;
@@ -482,10 +479,7 @@ mod a_bound_the_fields_own_type_declares {
 
 /// What a message's own validator does about a bound reached through an `#[serde(untagged)]` enum
 /// — one it holds as a field, and one the message itself is.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 mod a_bound_inside_an_untagged_variant {
     use super::UnpublishedValidate;
     use serde::{Deserialize, Serialize};
@@ -766,10 +760,7 @@ mod a_bound_inside_an_untagged_variant {
 
 /// What a check written on an enum holds: each string the enum carries, where that string's own
 /// check is held, and nothing a list, a named type, a number or a type parameter carries.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 mod a_check_the_enum_declares {
     use alloc::borrow::Cow;
     use alloc::sync::Arc;
@@ -777,12 +768,12 @@ mod a_check_the_enum_declares {
     use std::path::PathBuf;
     use tixschema::model_schema;
 
-    #[model_schema(minLength = 2)]
+    #[model_schema(minLength = 2, enable = ["jsonschema"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
     pub struct Label(pub String);
 
-    #[model_schema(minLength = 1, maxLength = 5)]
+    #[model_schema(minLength = 1, maxLength = 5, enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub enum Held {
         Bare,
@@ -810,7 +801,7 @@ mod a_check_the_enum_declares {
         Slot(String),
     }
 
-    #[model_schema(minLength = 1, maxLength = 5)]
+    #[model_schema(minLength = 1, maxLength = 5, enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(tag = "kind")]
     pub enum HeldInternal {
@@ -824,7 +815,7 @@ mod a_check_the_enum_declares {
         },
     }
 
-    #[model_schema(minLength = 1, maxLength = 5)]
+    #[model_schema(minLength = 1, maxLength = 5, enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(tag = "kind", content = "data")]
     pub enum HeldAdjacent {
@@ -834,7 +825,7 @@ mod a_check_the_enum_declares {
         Slot(String),
     }
 
-    #[model_schema(pattern = "^[a-z]+$")]
+    #[model_schema(pattern = "^[a-z]+$", enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(tag = "kind")]
     pub enum Matched {
@@ -1193,7 +1184,6 @@ mod a_check_the_enum_declares {
         assert!(given.contains("value: carried,"), "Got:\n{given}");
     }
 
-    #[cfg(feature = "jsonschema")]
     #[test]
     fn test_an_enums_check_reaches_the_json_schema_on_each_string_it_carries() {
         let held = serde_json::json!({ "type": "string", "minLength": 1_u32, "maxLength": 5_u32 });
@@ -1255,7 +1245,7 @@ mod a_check_the_enum_declares {
 
     #[test]
     fn test_readme_enum_check_example_prints_what_the_generator_writes() {
-        #[model_schema(minLength = 1, maxLength = 5, pattern = "^[a-z]+$")]
+        #[model_schema(minLength = 1, maxLength = 5, pattern = "^[a-z]+$", enable = ["jsonschema"])]
         #[derive(Debug, Deserialize, Serialize)]
         #[serde(tag = "kind")]
         pub enum Tag {
@@ -1292,7 +1282,6 @@ mod a_check_the_enum_declares {
         .validate()
         .unwrap();
 
-        #[cfg(feature = "jsonschema")]
         assert_eq!(
             Tag::json_schema()["oneOf"][1]["properties"]["word"],
             serde_json::json!({
@@ -1343,34 +1332,19 @@ mod a_check_the_enum_declares {
     }
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 use alloc::borrow::Cow;
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 use alloc::sync::Arc;
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 use tixschema::model_schema;
 
 /// What a type answers when it publishes no inherent `validate()` of its own. An inherent method
 /// takes precedence over a trait's, so reaching this one is what says none was published — the same
 /// question asked of a constraint-free struct, which has never published one either.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 trait UnpublishedValidate {
     fn validate(&self) -> &'static str {
         "no inherent validate()"
@@ -1432,10 +1406,10 @@ fn test_min_and_max_length_zod() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_max_length_json_schema() {
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Serialize, Deserialize)]
     pub struct MaxLengthJsonSchema {
         #[model_schema_prop(maxLength = 50)]
@@ -1450,10 +1424,10 @@ fn test_max_length_json_schema() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_min_and_max_length_json_schema() {
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Serialize, Deserialize)]
     pub struct MinMaxLengthJsonSchema {
         #[model_schema_prop(minLength = 5, maxLength = 50)]
@@ -1472,10 +1446,7 @@ fn test_min_and_max_length_json_schema() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_max_length_rust_valid() {
     #[model_schema()]
@@ -1494,10 +1465,7 @@ fn test_max_length_rust_valid() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_max_length_rust_invalid() {
     #[model_schema()]
@@ -1518,10 +1486,7 @@ fn test_max_length_rust_invalid() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_min_length_rust_valid() {
     #[model_schema()]
@@ -1540,10 +1505,7 @@ fn test_min_length_rust_valid() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_min_length_rust_invalid() {
     #[model_schema()]
@@ -1564,10 +1526,7 @@ fn test_min_length_rust_invalid() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_combined_string_constraints_valid() {
     #[model_schema()]
@@ -1586,10 +1545,7 @@ fn test_combined_string_constraints_valid() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_combined_string_constraints_too_short() {
     #[model_schema()]
@@ -1610,10 +1566,7 @@ fn test_combined_string_constraints_too_short() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_combined_string_constraints_pattern_fail() {
     #[model_schema()]
@@ -1634,10 +1587,7 @@ fn test_combined_string_constraints_pattern_fail() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_validate_method_ok() {
     #[model_schema()]
@@ -1658,10 +1608,7 @@ fn test_validate_method_ok() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_validate_method_err() {
     #[model_schema()]
@@ -1687,10 +1634,7 @@ fn test_validate_method_err() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_validate_method_multiple_errors() {
     #[model_schema()]
@@ -1770,10 +1714,10 @@ fn test_float_minimum_maximum_zod() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_minimum_json_schema() {
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Serialize, Deserialize)]
     pub struct MinimumJsonSchema {
         #[model_schema_prop(minimum = 1)]
@@ -1788,10 +1732,10 @@ fn test_minimum_json_schema() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_maximum_json_schema() {
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Serialize, Deserialize)]
     pub struct MaximumJsonSchema {
         #[model_schema_prop(maximum = 100)]
@@ -1806,10 +1750,7 @@ fn test_maximum_json_schema() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_minimum_rust_valid() {
     #[model_schema()]
@@ -1828,10 +1769,7 @@ fn test_minimum_rust_valid() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_minimum_rust_invalid() {
     #[model_schema()]
@@ -1852,10 +1790,7 @@ fn test_minimum_rust_invalid() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_maximum_rust_valid() {
     #[model_schema()]
@@ -1874,10 +1809,7 @@ fn test_maximum_rust_valid() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_maximum_rust_invalid() {
     #[model_schema()]
@@ -1898,10 +1830,7 @@ fn test_maximum_rust_invalid() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_minimum_at_boundary() {
     #[model_schema()]
@@ -1920,10 +1849,7 @@ fn test_minimum_at_boundary() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_maximum_at_boundary() {
     #[model_schema()]
@@ -1942,10 +1868,7 @@ fn test_maximum_at_boundary() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_validate_method_numeric_ok() {
     #[model_schema()]
@@ -1964,10 +1887,7 @@ fn test_validate_method_numeric_ok() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_validate_method_numeric_err() {
     #[model_schema()]
@@ -1991,10 +1911,7 @@ fn test_validate_method_numeric_err() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_validate_method_pattern_ok() {
     #[model_schema()]
@@ -2015,10 +1932,7 @@ fn test_validate_method_pattern_ok() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_validate_method_pattern_err() {
     #[model_schema()]
@@ -2044,10 +1958,7 @@ fn test_validate_method_pattern_err() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_validate_method_pattern_and_length() {
     #[model_schema()]
@@ -2093,10 +2004,7 @@ fn test_validate_method_pattern_and_length() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_validate_method_max_length_ok() {
     #[model_schema()]
@@ -2117,10 +2025,7 @@ fn test_validate_method_max_length_ok() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_validate_method_max_length_err() {
     #[model_schema()]
@@ -2146,10 +2051,7 @@ fn test_validate_method_max_length_err() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_validate_method_mixed_string_numeric() {
     #[model_schema()]
@@ -2186,10 +2088,7 @@ fn test_validate_method_mixed_string_numeric() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_minimum_float_rust_valid() {
     #[model_schema()]
@@ -2208,10 +2107,7 @@ fn test_minimum_float_rust_valid() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_minimum_float_rust_invalid() {
     #[model_schema()]
@@ -2232,10 +2128,7 @@ fn test_minimum_float_rust_invalid() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_maximum_float_rust_valid() {
     #[model_schema()]
@@ -2254,10 +2147,7 @@ fn test_maximum_float_rust_valid() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_maximum_float_rust_invalid() {
     #[model_schema()]
@@ -2278,10 +2168,7 @@ fn test_maximum_float_rust_invalid() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_validate_method_float_err() {
     #[model_schema()]
@@ -2326,10 +2213,10 @@ fn test_min_max_numeric_zod() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_min_max_numeric_json_schema() {
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Serialize, Deserialize)]
     pub struct MinMaxNumericJsonSchema {
         #[model_schema_prop(minimum = 1, maximum = 100)]
@@ -2403,10 +2290,7 @@ fn test_constraints_dont_affect_typescript() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_boundary_min_length_zero() {
     #[model_schema()]
@@ -2433,10 +2317,7 @@ fn test_boundary_min_length_zero() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_pattern_empty_string_match() {
     #[model_schema()]
@@ -2471,10 +2352,7 @@ fn test_pattern_empty_string_match() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_pattern_anchored_single_character_prefix() {
     #[model_schema()]
@@ -2507,10 +2385,7 @@ fn test_pattern_anchored_single_character_prefix() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_pattern_pinning_both_ends_to_one_position() {
     #[model_schema()]
@@ -2537,10 +2412,7 @@ fn test_pattern_pinning_both_ends_to_one_position() {
 }
 
 /// The rewrite a lone `\b` is refused in favour of.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_pattern_boundary_with_a_word_beside_it() {
     #[model_schema()]
@@ -2566,10 +2438,7 @@ fn test_pattern_boundary_with_a_word_beside_it() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_validate_optional_string_some_too_short() {
     #[model_schema()]
@@ -2596,10 +2465,7 @@ fn test_validate_optional_string_some_too_short() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_validate_optional_string_none_is_ok() {
     #[model_schema()]
@@ -2619,10 +2485,7 @@ fn test_validate_optional_string_none_is_ok() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_validate_boxed_string_too_short() {
     #[model_schema()]
@@ -2646,10 +2509,7 @@ fn test_validate_boxed_string_too_short() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_validate_vec_string_counts_its_items() {
     #[model_schema()]
@@ -2678,10 +2538,7 @@ fn test_validate_vec_string_counts_its_items() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_validate_optional_vec_string() {
     #[model_schema()]
@@ -2713,10 +2570,7 @@ fn test_validate_optional_vec_string() {
     assert!(absent.validate().is_ok(), "A None holds no list to count");
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_validate_nested_vec_counts_the_outer_list() {
     #[model_schema()]
@@ -2745,10 +2599,7 @@ fn test_validate_nested_vec_counts_the_outer_list() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_validate_optional_numeric_minimum() {
     #[model_schema()]
@@ -2773,10 +2624,7 @@ fn test_validate_optional_numeric_minimum() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_validate_arc_slice_mixed_wrappers() {
     #[model_schema()]
@@ -2803,10 +2651,7 @@ fn test_validate_arc_slice_mixed_wrappers() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_validate_boxed_option_string() {
     #[model_schema()]
@@ -2837,10 +2682,7 @@ fn test_validate_boxed_option_string() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_an_optional_string_is_held_to_its_bound_as_it_is_read() {
     #[model_schema()]
@@ -2865,10 +2707,7 @@ fn test_an_optional_string_is_held_to_its_bound_as_it_is_read() {
 }
 
 /// A `None` puts no string on the wire, so neither spelling of its absence has anything to reject.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_deserialize_optional_string_still_admits_an_absent_key() {
     #[model_schema()]
@@ -2896,10 +2735,7 @@ fn test_deserialize_optional_string_still_admits_an_absent_key() {
 }
 
 /// A field that writes its own default keeps it, nothing being injected beside it.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_deserialize_optional_string_keeps_a_written_default() {
     fn preset() -> Option<String> {
@@ -2924,10 +2760,7 @@ fn test_deserialize_optional_string_keeps_a_written_default() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_a_boxed_string_is_held_to_its_bound_as_it_is_read() {
     #[model_schema()]
@@ -2952,10 +2785,7 @@ fn test_a_boxed_string_is_held_to_its_bound_as_it_is_read() {
 }
 
 /// A `Cow` is reached as the `Box` is, its lifetime being no part of what it holds.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_a_cow_string_is_held_to_its_bound_as_it_is_read() {
     #[model_schema()]
@@ -2979,10 +2809,7 @@ fn test_a_cow_string_is_held_to_its_bound_as_it_is_read() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_a_vec_of_strings_is_held_to_its_bound_as_it_is_read() {
     #[model_schema()]
@@ -3015,10 +2842,7 @@ fn test_a_vec_of_strings_is_held_to_its_bound_as_it_is_read() {
 }
 
 /// The wrappers compose in the order they were written, and the walk goes through them in it.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_an_optional_vec_is_held_to_its_bound_as_it_is_read() {
     #[model_schema()]
@@ -3044,10 +2868,7 @@ fn test_an_optional_vec_is_held_to_its_bound_as_it_is_read() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_an_optional_number_is_held_to_its_range_as_it_is_read() {
     #[model_schema()]
@@ -3079,10 +2900,7 @@ fn test_an_optional_number_is_held_to_its_range_as_it_is_read() {
     accepted.validate().unwrap();
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_every_wrapped_shape_is_refused_as_it_is_read() {
     #[model_schema()]
@@ -3133,10 +2951,7 @@ fn test_every_wrapped_shape_is_refused_as_it_is_read() {
     }
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_two_variants_naming_one_field_keep_their_own_constraints() {
     #[model_schema()]
@@ -3184,10 +2999,7 @@ fn test_two_variants_naming_one_field_keep_their_own_constraints() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_tagged_enum_validate_answers_in_the_struct_twins_words() {
     #[model_schema()]
@@ -3231,10 +3043,7 @@ fn test_tagged_enum_validate_answers_in_the_struct_twins_words() {
     .unwrap();
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_every_tagged_flavor_publishes_validate_for_its_constrained_members() {
     #[model_schema()]
@@ -3293,10 +3102,7 @@ fn test_every_tagged_flavor_publishes_validate_for_its_constrained_members() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_enum_validate_runs_only_the_held_variants_checks() {
     #[model_schema()]
@@ -3331,10 +3137,7 @@ fn test_enum_validate_runs_only_the_held_variants_checks() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_enum_validate_collects_every_violation_of_the_held_variant() {
     #[model_schema()]
@@ -3373,10 +3176,7 @@ fn test_enum_validate_collects_every_violation_of_the_held_variant() {
     Mixed::Nothing.validate().unwrap();
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_enum_validate_reaches_through_a_members_wrappers() {
     #[model_schema()]
@@ -3415,10 +3215,7 @@ fn test_enum_validate_reaches_through_a_members_wrappers() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_a_constraint_free_enum_publishes_no_validate_just_as_a_struct_does() {
     #[model_schema()]
@@ -3475,10 +3272,7 @@ fn test_a_constraint_free_enum_publishes_no_validate_just_as_a_struct_does() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_a_member_named_like_the_walks_own_bindings_is_still_checked() {
     #[model_schema()]
@@ -3507,10 +3301,7 @@ fn test_a_member_named_like_the_walks_own_bindings_is_still_checked() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_every_variant_shape_reaches_the_accessor() {
     #[model_schema()]
@@ -3548,10 +3339,7 @@ fn test_every_variant_shape_reaches_the_accessor() {
     EveryShape::Nothing.validate().unwrap();
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_a_tagged_tuple_variants_slot_is_checked_where_serde_writes_it() {
     #[model_schema()]
@@ -3630,10 +3418,7 @@ fn test_a_tagged_tuple_variants_slot_is_checked_where_serde_writes_it() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_a_tagged_tuple_variants_checked_slot_is_written_as_before_and_read_as_validate_judges_it() {
     #[model_schema()]
@@ -3755,10 +3540,10 @@ fn test_a_tagged_tuple_variants_slot_check_reaches_zod() {
     }
 }
 
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_a_tagged_tuple_variants_slot_check_reaches_the_json_schema() {
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Serialize, Deserialize, Debug)]
     pub enum JsonExternal {
         Code(#[model_schema_prop(minLength = 3, maxLength = 3, pattern = "^[A-Z]{3}$")] String),
@@ -3769,7 +3554,7 @@ fn test_a_tagged_tuple_variants_slot_check_reaches_the_json_schema() {
         Tags(#[model_schema_prop(minLength = 2)] Vec<String>),
     }
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Serialize, Deserialize, Debug)]
     #[serde(tag = "kind", content = "data")]
     pub enum JsonAdjacent {
@@ -3809,10 +3594,7 @@ fn test_a_tagged_tuple_variants_slot_check_reaches_the_json_schema() {
     assert_eq!(adjacent["oneOf"][2]["properties"]["data"], tags);
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_a_tagged_slot_is_reached_through_its_wrappers() {
     #[model_schema()]
@@ -3841,10 +3623,7 @@ fn test_a_tagged_slot_is_reached_through_its_wrappers() {
     SlotWrapped::Note(None).validate().unwrap();
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_readme_slot_validate_example_prints_what_the_generator_writes() {
     #[model_schema()]
@@ -3893,10 +3672,7 @@ fn test_readme_slot_validate_example_prints_what_the_generator_writes() {
     entry_schema::validate_pair_1_value(&1).unwrap();
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_readme_struct_validate_example_prints_what_the_generator_writes() {
     // The README declares `username` first; source here is ordered alphabetically, as this crate's
@@ -3934,10 +3710,7 @@ fn test_readme_struct_validate_example_prints_what_the_generator_writes() {
 }
 
 /// The same holding for the branded newtype's `validate()` example.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_readme_branded_validate_example_prints_what_the_generator_writes() {
     #[model_schema(pattern = "^[a-z0-9_]+$", minLength = 3, maxLength = 50)]
@@ -3962,10 +3735,7 @@ fn test_readme_branded_validate_example_prints_what_the_generator_writes() {
     }
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_crate_rustdoc_quotes_the_messages_the_generator_writes() {
     #[model_schema()]

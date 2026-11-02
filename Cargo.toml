@@ -61,6 +61,10 @@ tokio-tungstenite = "0.30.0"
 # Holds each crate of `tests/foundation_refusals/` to the errors rustc prints for it. An exact
 # version, the lock file being untracked: a release at least two weeks old when it was added.
 trybuild = "=1.0.121"
+# Validates each document `tests/openapi_tests.rs` builds against the OpenAPI 3.1 schema vendored
+# beside it, without its default features, which fetch a schema over the network.
+# Pinned at 0.47.0: every later release turns on serde_json's `float_roundtrip` for every test here.
+jsonschema = { version = "=0.47.0", default-features = false }
 # Two crates apart from the test binaries, each writing its own support libraries: one declares a
 # stored type a test binary's type holds, and one, whose types are never stored, lists no
 # `mongodb`.
@@ -96,7 +100,7 @@ default = ["web"]
 
 # Feature sets: the four surfaces a consumer picks from. Every plain feature below belongs to
 # one of them, and CI tests the powerset of the sets rather than of the plain features.
-web = ["serde", "zod", "jsonschema", "typescript"]
+web = ["serde", "zod", "typescript"]
 # `serde` is here because a service's mobile clients need it; the type definitions alone do not.
 mobile = ["serde", "dart", "swift", "kotlin"]
 mongo = ["mongodb", "chrono", "indexmap", "arky"]
@@ -104,7 +108,6 @@ mongo = ["mongodb", "chrono", "indexmap", "arky"]
 # Core features
 serde = [] # Serde integration for attribute parsing and field renaming
 zod = [] # Zod schema generation alongside TypeScript types
-jsonschema = [] # JSON schema generation methods
 mongodb = ["bson"] # MongoDB support: the ObjectId type, and bson
 bson = ["serde"] # BSON support: from_bson_with on types that opt in
 typescript = [] # TypeScript type generation and TypeScript-style Zod schemas

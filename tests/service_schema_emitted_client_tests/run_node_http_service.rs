@@ -1,7 +1,8 @@
 //! The emitted `http_rest` server run under Node: the design's seven requests, the reader
 //! forms, a macro-generated message read off the query and the body, a bound `header_in`
-//! echoed back and compared with the Rust twin, and the three body kinds compared against the
-//! Rust `{service}_http_rest_dispatcher!()` twin for the same request.
+//! echoed back and compared with the Rust twin, the three body kinds compared against the
+//! Rust `{service}_http_rest_dispatcher!()` twin for the same request, and the `OpenAPI` document
+//! a service that asks for `openapi` answers.
 
 use super::content_http_rest_transport;
 use super::echo_http_rest_transport;
@@ -21,10 +22,12 @@ use super::tests::{
 };
 use super::thumbnail_http_rest_transport;
 use super::upload_document_http_rest_transport;
-use core::future::Future;
+use core::future::{Future, ready};
 use core::pin::pin;
 use core::task::{Context as PollContext, Poll, Waker};
+use serde::{Deserialize, Serialize};
 use std::io;
+use tixschema::{model_schema, service_schema};
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
 const RUNTIME_VAR: &str = "TIXSCHEMA_NODE";
@@ -605,6 +608,60 @@ const answered = await client.echoRange("doc-1", "a \"etag\" b");
 console.log(JSON.stringify({ answered, sentHeaders }));
 "#;
 
+/// `GET` and `POST` at the document's path and `GET` at the one route, straight against the
+/// exported dispatcher.
+const CATALOG_DRIVER: &str = r#"
+const dispatch = createCatalogClientServiceHttpDispatcher({
+  async getEntry() {
+    return { ok: true, value: { title: "Minutes" } };
+  },
+});
+
+function request(method, path) {
+  return { method, path, query: "", headers: [], body: new Uint8Array() };
+}
+
+function read(answered) {
+  return {
+    status: answered.status,
+    headers: answered.headers,
+    body: JSON.parse(new TextDecoder().decode(answered.body)),
+  };
+}
+
+async function main() {
+  console.log(JSON.stringify({
+    document: read(await dispatch({}, request("GET", "/openapi.json"))),
+    posted: read(await dispatch({}, request("POST", "/openapi.json"))),
+    entry: read(await dispatch({}, request("GET", "/catalog/e-1"))),
+  }));
+}
+main().catch((error) => { console.error(error); process.exit(1); });
+"#;
+
+/// `GET` at the document's path and at the one route, each body handed back as the text the
+/// dispatcher answered.
+const SCALE_DRIVER: &str = r#"
+const dispatch = createScaleClientServiceHttpDispatcher({
+  async getReading() {
+    return { ok: false, error: { errorCode: "not-found" } };
+  },
+});
+
+async function answered(path) {
+  const reply = await dispatch({}, { method: "GET", path, query: "", headers: [], body: new Uint8Array() });
+  return { status: reply.status, text: new TextDecoder().decode(reply.body) };
+}
+
+async function main() {
+  console.log(JSON.stringify({
+    document: await answered("/openapi.json"),
+    reading: await answered("/readings/r-1"),
+  }));
+}
+main().catch((error) => { console.error(error); process.exit(1); });
+"#;
+
 /// One answer in plain terms, normalized for comparison: headers sorted, so an incidental
 /// ordering difference between the two dispatchers is not mistaken for a disagreement.
 #[derive(Debug, PartialEq, Eq)]
@@ -679,6 +736,89 @@ impl pulse_http_rest_transport::FaultHandler for RecordingFaultHandler {
             vec![("x-fault-kind".to_owned(), format!("{}", fault.kind()))],
             b"handled".to_vec(),
         )
+    }
+}
+
+/// What `get_entry` answers.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct CatalogEntry {
+    pub title: String,
+}
+
+/// The error `get_entry` declares.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case", tag = "errorCode")]
+pub enum CatalogError {
+    NotFound,
+}
+
+/// A service that asks for `openapi`, whose TypeScript server answers its document.
+#[service_schema(transports = ["http_rest"], openapi)]
+pub trait CatalogClientService<Ctx> {
+    #[service_schema_op(http(
+        method = "GET",
+        path = "/catalog/{entry_id}",
+        error_status(NotFound = 404)
+    ))]
+    async fn get_entry(&self, ctx: &Ctx, entry_id: String) -> Result<CatalogEntry, CatalogError>;
+}
+
+/// What `get_reading` answers: a document whose bounds JavaScript reads differently from the
+/// text Rust writes for them.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ScaleReading {
+    #[model_schema_prop(maximum = 9007199254740993)]
+    pub size: i64,
+    #[model_schema_prop(minimum = 1.0)]
+    pub weight: f64,
+}
+
+/// The error `get_reading` declares.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case", tag = "errorCode")]
+pub enum ScaleError {
+    NotFound,
+}
+
+/// A service that asks for `openapi`, whose document holds a float with no fraction and an
+/// integer past 2^53.
+#[service_schema(transports = ["http_rest"], openapi)]
+pub trait ScaleClientService<Ctx> {
+    #[service_schema_op(http(
+        method = "GET",
+        path = "/readings/{reading_id}",
+        error_status(NotFound = 404)
+    ))]
+    async fn get_reading(&self, ctx: &Ctx, reading_id: String) -> Result<ScaleReading, ScaleError>;
+}
+
+/// The Rust implementation the driver's TypeScript one answers as.
+struct ScaleBackEnd;
+
+impl ScaleClientService<()> for ScaleBackEnd {
+    async fn get_reading(
+        &self,
+        _ctx: &(),
+        _reading_id: String,
+    ) -> Result<ScaleReading, ScaleError> {
+        ready(()).await;
+        Err(ScaleError::NotFound)
+    }
+}
+
+/// The Rust implementation the driver's TypeScript one answers as.
+struct CatalogBackEnd;
+
+impl CatalogClientService<()> for CatalogBackEnd {
+    async fn get_entry(&self, _ctx: &(), _entry_id: String) -> Result<CatalogEntry, CatalogError> {
+        ready(()).await;
+        Ok(CatalogEntry {
+            title: "Minutes".to_owned(),
+        })
     }
 }
 
@@ -1993,5 +2133,86 @@ fn a_legal_header_in_value_with_a_space_and_a_quoted_etag_reaches_the_transport_
     assert_eq!(
         range_header[1], "a \"etag\" b",
         "a legal value must reach the transport unchanged. got: {results:#?}"
+    );
+}
+
+fn catalog_emitted() -> String {
+    [
+        "import { z } from \"zod\";".to_owned(),
+        CatalogEntry::ts_definition(),
+        CatalogEntry::zod_schema(),
+        CatalogError::ts_definition(),
+        CatalogError::zod_schema(),
+        CatalogClientServiceSchema::ts_definition(),
+        CatalogClientServiceSchema::ts_service(),
+        CatalogClientServiceSchema::ts_http_service(),
+    ]
+    .join("\n\n")
+}
+
+#[test]
+fn the_typescript_server_answers_get_at_the_document_path_with_the_document() {
+    let module = format!("{}\n\n{CATALOG_DRIVER}", catalog_emitted());
+    let Some(results) = run_or_stand_down("http-service-openapi", "openapi.mts", &module) else {
+        return;
+    };
+    let document = &results["document"];
+    assert_eq!(document["status"], 200_u16, "got: {results:#}");
+    assert_eq!(
+        document["headers"],
+        serde_json::json!([["content-type", "application/json"]]),
+        "got: {results:#}"
+    );
+    assert_eq!(document["body"], CatalogClientServiceSchema::openapi());
+    let posted = &results["posted"];
+    assert_eq!(posted["status"], 404_u16, "got: {results:#}");
+    assert_eq!(
+        posted["body"]["kind"], "unknown-operation",
+        "got: {results:#}"
+    );
+    let entry = &results["entry"];
+    assert_eq!(entry["status"], 200_u16, "got: {results:#}");
+    let answered = poll_once(CatalogBackEnd.get_entry(&(), "e-1".to_owned())).unwrap();
+    assert_eq!(
+        entry["body"],
+        serde_json::to_value(answered.unwrap()).unwrap(),
+        "got: {results:#}"
+    );
+}
+
+fn scale_emitted() -> String {
+    [
+        "import { z } from \"zod\";".to_owned(),
+        ScaleReading::ts_definition(),
+        ScaleReading::zod_schema(),
+        ScaleError::ts_definition(),
+        ScaleError::zod_schema(),
+        ScaleClientServiceSchema::ts_definition(),
+        ScaleClientServiceSchema::ts_service(),
+        ScaleClientServiceSchema::ts_http_service(),
+    ]
+    .join("\n\n")
+}
+
+#[test]
+fn the_typescript_server_answers_the_text_rust_writes_for_a_float_and_an_integer_past_2_53() {
+    let module = format!("{}\n\n{SCALE_DRIVER}", scale_emitted());
+    let Some(results) = run_or_stand_down("http-service-openapi-text", "scale.mts", &module) else {
+        return;
+    };
+    assert_eq!(results["document"]["status"], 200_u16, "got: {results:#}");
+    let text = results["document"]["text"].as_str().unwrap();
+    let document = ScaleClientServiceSchema::openapi();
+    assert_eq!(text, document.to_string());
+    let read: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(read, document);
+    assert_eq!(results["reading"]["status"], 404_u16, "got: {results:#}");
+    let answered = poll_once(ScaleBackEnd.get_reading(&(), "r-1".to_owned())).unwrap();
+    let refused: serde_json::Value =
+        serde_json::from_str(results["reading"]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        refused,
+        serde_json::to_value(answered.unwrap_err()).unwrap(),
+        "got: {results:#}"
     );
 }

@@ -9,7 +9,7 @@ mod declared;
 
 use block_schema::DecodeWith as _;
 use core::any::TypeId;
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[cfg(not(any(feature = "typescript", feature = "zod")))]
 use core::time::Duration;
 use std::collections::HashMap;
 
@@ -18,10 +18,6 @@ use serde_json::json;
 use tixschema::model_schema;
 
 use self::declared::{Counts, Marks, Versions};
-#[cfg(feature = "jsonschema")]
-use self::declared::{counts_schema, marks_schema, versions_schema};
-#[cfg(feature = "jsonschema")]
-use self::properties_data_schema as properties_schema;
 use super::lines;
 
 /// What `from_value_with` lists for `$stored`, read as `$model` by a decider that rejects it.
@@ -111,7 +107,7 @@ struct Tally {
 
 /// A type of another crate. A schema surface refuses the field for a reason of its own, so the
 /// type is declared where the build has none.
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[cfg(not(any(feature = "typescript", feature = "zod")))]
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Timed {
@@ -267,7 +263,7 @@ fn a_type_declared_below_is_walked_by_its_own_walker_or_read_whole() {
 }
 
 /// A type of another crate has no walker either, and is read whole.
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[cfg(not(any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_type_of_another_crate_is_read_whole() {
     let mut calls = 0_u32;

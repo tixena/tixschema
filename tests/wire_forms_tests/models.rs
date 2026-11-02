@@ -487,7 +487,7 @@ struct Clients {
 }
 
 /// A `bool`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedFlag {
     pub keyed: BTreeMap<bool, bool>,
@@ -496,7 +496,7 @@ pub struct ConveyedFlag {
 }
 
 /// A `char`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedLetter {
     pub keyed: BTreeMap<char, bool>,
@@ -505,7 +505,7 @@ pub struct ConveyedLetter {
 }
 
 /// A `String`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedText {
     pub keyed: BTreeMap<String, bool>,
@@ -514,7 +514,7 @@ pub struct ConveyedText {
 }
 
 /// A `u8`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedU8 {
     pub keyed: BTreeMap<u8, bool>,
@@ -523,7 +523,7 @@ pub struct ConveyedU8 {
 }
 
 /// A `u16`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedU16 {
     pub keyed: BTreeMap<u16, bool>,
@@ -532,7 +532,7 @@ pub struct ConveyedU16 {
 }
 
 /// A `u32`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedU32 {
     pub keyed: BTreeMap<u32, bool>,
@@ -541,7 +541,7 @@ pub struct ConveyedU32 {
 }
 
 /// An `i8`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedI8 {
     pub keyed: BTreeMap<i8, bool>,
@@ -550,7 +550,7 @@ pub struct ConveyedI8 {
 }
 
 /// An `i16`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedI16 {
     pub keyed: BTreeMap<i16, bool>,
@@ -559,7 +559,7 @@ pub struct ConveyedI16 {
 }
 
 /// An `i32`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedI32 {
     pub keyed: BTreeMap<i32, bool>,
@@ -568,7 +568,7 @@ pub struct ConveyedI32 {
 }
 
 /// An `i64`, which TypeScript holds as a `bigint`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedI64 {
     pub keyed: BTreeMap<i64, bool>,
@@ -577,7 +577,7 @@ pub struct ConveyedI64 {
 }
 
 /// An `isize`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedIsize {
     pub keyed: BTreeMap<isize, bool>,
@@ -587,21 +587,21 @@ pub struct ConveyedIsize {
 
 /// A `u64`, which Swift and Kotlin refuse in a field: the declared default of the parameter, which
 /// the Zod schema the declared default is read with names.
-#[model_schema(default_types(Number = u64))]
+#[model_schema(default_types(Number = u64), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedU64<Number> {
     pub value: Number,
 }
 
 /// A `usize`, held as [`ConveyedU64`] holds a `u64`.
-#[model_schema(default_types(Number = usize))]
+#[model_schema(default_types(Number = usize), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedUsize<Number> {
     pub value: Number,
 }
 
 /// An `f32`, which keys no map: it is neither `Eq` nor `Ord`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedF32 {
     pub value: f32,
@@ -609,7 +609,7 @@ pub struct ConveyedF32 {
 }
 
 /// An `f64`, which keys no map: it is neither `Eq` nor `Ord`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedF64 {
     pub value: f64,
@@ -617,7 +617,7 @@ pub struct ConveyedF64 {
 }
 
 /// A numeric literal on a `u8`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedLiteralCount {
     #[model_schema_prop(literal = 214)]
@@ -625,7 +625,7 @@ pub struct ConveyedLiteralCount {
 }
 
 /// A boolean literal.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedLiteralFlag {
     #[model_schema_prop(literal = true)]
@@ -633,7 +633,7 @@ pub struct ConveyedLiteralFlag {
 }
 
 /// A string literal.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedLiteralText {
     #[model_schema_prop(literal = "val")]
@@ -641,7 +641,7 @@ pub struct ConveyedLiteralText {
 }
 
 /// A `NaiveDate`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedDay {
     pub keyed: BTreeMap<NaiveDate, bool>,
@@ -650,7 +650,7 @@ pub struct ConveyedDay {
 }
 
 /// A `NaiveTime`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedHour {
     pub keyed: BTreeMap<NaiveTime, bool>,
@@ -659,7 +659,7 @@ pub struct ConveyedHour {
 }
 
 /// A `NaiveDateTime`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedStamp {
     pub keyed: BTreeMap<NaiveDateTime, bool>,
@@ -668,7 +668,7 @@ pub struct ConveyedStamp {
 }
 
 /// A `DateTime<Utc>`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedInstant {
     pub keyed: BTreeMap<DateTime<Utc>, bool>,
@@ -677,7 +677,7 @@ pub struct ConveyedInstant {
 }
 
 /// A `DateTime<Utc>` under `as_number`, which takes no other place.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedMillis {
     #[model_schema_prop(as_number)]
@@ -685,7 +685,7 @@ pub struct ConveyedMillis {
 }
 
 /// A plain enum, which keys a map by the name serde writes for it.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum ConveyedSlot {
     Daily,
@@ -693,7 +693,7 @@ pub enum ConveyedSlot {
 }
 
 /// A plain enum held in each place.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedSlotted {
     pub keyed: BTreeMap<ConveyedSlot, bool>,
@@ -703,7 +703,7 @@ pub struct ConveyedSlotted {
 
 /// An `ObjectId`, which keys no map.
 #[cfg(feature = "mongodb")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedObjectId {
     pub value: ObjectId,

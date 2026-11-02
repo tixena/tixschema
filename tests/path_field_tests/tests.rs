@@ -8,19 +8,13 @@ use std::path::{Path, PathBuf};
 use tixschema::model_schema;
 
 /// A path whose own length a brand holds, which is where a rule for each path of a list goes.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[model_schema(no_display, minLength = 3)]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(transparent)]
 struct BoundedPath(PathBuf);
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ListedPaths {
@@ -29,7 +23,7 @@ struct ListedPaths {
 
 /// `Path` is `PathBuf`'s borrowed form, reachable only behind a wrapper or a reference. Every
 /// spelling below writes the same JSON string the owned form writes.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct PathFields {
     arced: Arc<Path>,
@@ -40,7 +34,7 @@ struct PathFields {
 }
 
 /// The spelling every field above is held against: the owned form written bare.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct PlainPathFields {
     arced: PathBuf,
@@ -89,7 +83,7 @@ fn test_a_borrowed_path_field_round_trips_through_the_owned_wire_form() {
 
 /// The field declarations of a generated `TypeScript` definition, without the `JSDoc` around them
 /// — the struct's own doc comment is the one thing the twins are not meant to share.
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 fn ts_field_declarations(definition: &str) -> Vec<String> {
     definition
         .lines()
@@ -98,7 +92,7 @@ fn ts_field_declarations(definition: &str) -> Vec<String> {
         .collect()
 }
 
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn test_path_fields_render_as_strings_in_typescript() {
     let declarations = ts_field_declarations(&PathFields::ts_definition());
@@ -114,7 +108,7 @@ fn test_path_fields_render_as_strings_in_typescript() {
     }
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn test_path_fields_render_as_strings_in_zod() {
     let schema = PathFields::zod_schema();
@@ -130,7 +124,7 @@ fn test_path_fields_render_as_strings_in_zod() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
+#[cfg(feature = "serde")]
 #[test]
 fn test_path_fields_render_as_strings_in_json_schema() {
     let schema = PathFields::json_schema();
@@ -153,10 +147,7 @@ fn test_path_fields_render_as_strings_in_json_schema() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_a_constrained_path_that_breaks_its_bound_is_refused_as_it_is_read() {
     #[model_schema()]
@@ -198,10 +189,7 @@ fn test_a_constrained_path_that_breaks_its_bound_is_refused_as_it_is_read() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_every_constrained_path_spelling_is_held_to_its_bound() {
     #[model_schema()]
@@ -273,10 +261,7 @@ fn test_every_constrained_path_spelling_is_held_to_its_bound() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_each_path_of_a_list_is_held_by_the_brand_it_is_typed_with() {
     let held = ListedPaths {
@@ -318,11 +303,7 @@ fn test_the_zod_bound_on_a_path_is_the_bound_validate_enforces() {
     );
 }
 
-#[cfg(all(
-    unix,
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(unix, feature = "serde"))]
 #[test]
 fn test_a_path_that_is_not_utf8_is_measured_by_its_lossy_rendering() {
     use std::ffi::OsStr;

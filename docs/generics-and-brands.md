@@ -4,7 +4,13 @@ Branded newtypes, generic types and Zod factories, declared defaults, and the st
 
 ### 8. Branded Newtypes
 
-Single-field tuple structs with `#[serde(transparent)]` are treated as branded/opaque types, and so is any other `#[serde(transparent)]` struct, with named fields or with several slots, over the one field serde writes and reads it as: `brand_field` in `src/features/serde.rs` is the one seam every surface asks, the web three and Dart, Swift and Kotlin alike, and `transparent_field` beside it is the rule of serde's derive in a `Direction` for which field that is. A struct that derives `Serialize` alone is described over the field serde writes (not under `skip` or `skip_serializing`, which `has_serde_skip_serializing` reads, and not `PhantomData`), and any other over the field it reads (not skipped for reading, no `default`, not `PhantomData`). A struct that derives both, whose two derives take two different fields, is refused at `exec_model_schema`, in every build, with a message naming both (`transparent_direction_errors`, which `serde_attribute_guard_errors` joins to the rename guard): one schema cannot describe two wire forms, as with a rename whose two directions differ. A tuple struct of one slot is a brand over that slot whatever its attributes say. `brand_slot` answers the field with its place among the struct's fields, and every reader of the value on the Rust side (`validate()`, `Display`, the text a bound on a holder's field measures) reaches a slot by that place, through `brand_member`, so `struct Tagged(#[serde(skip)] PhantomData<u8>, pub String)` is read at `self.1`. The brand publishes under its Rust ident unless `#[model_schema(name = "...")]` names another, and that name reaches the surface twice: as the exported type and as the brand tag the values carry.
+A brand exists with tixschema's `serde` feature, and its rule then holds whatever the other
+features. Without it `has_serde_transparent` reads no attribute (`serde_attributes`), `brand_slot`
+answers `None` and a `#[serde(transparent)]` struct is a struct like any other: a `pattern`,
+`minLength` or `maxLength` written on it is refused by `string_check_refusal_output`, whose message
+(`no_brand_string_check_refusal`) names the feature.
+
+Single-field tuple structs with `#[serde(transparent)]` are treated as branded/opaque types, and so is any other `#[serde(transparent)]` struct, with named fields or with several slots, over the one field serde writes and reads it as: `brand_field` in `src/features/serde.rs` is the one seam every surface asks, the web three and Dart, Swift and Kotlin alike, and `transparent_field` beside it is the rule of serde's derive in a `Direction` for which field that is. A struct that derives `Serialize` alone is described over the field serde writes (not under `skip` or `skip_serializing`, which `has_serde_skip_serializing` reads, and not `PhantomData`), and any other over the field it reads (not skipped for reading, no `default`, not `PhantomData`). A struct that derives both, whose two derives take two different fields, is refused at `exec_model_schema`, in every build with `serde`, with a message naming both (`transparent_direction_errors`, which `serde_attribute_guard_errors` joins to the rename guard): one schema cannot describe two wire forms, as with a rename whose two directions differ. A tuple struct of one slot is a brand over that slot whatever its attributes say. `brand_slot` answers the field with its place among the struct's fields, and every reader of the value on the Rust side (`validate()`, `Display`, the text a bound on a holder's field measures) reaches a slot by that place, through `brand_member`, so `struct Tagged(#[serde(skip)] PhantomData<u8>, pub String)` is read at `self.1`. The brand publishes under its Rust ident unless `#[model_schema(name = "...")]` names another, and that name reaches the surface twice: as the exported type and as the brand tag the values carry.
 
 A non-generic brand publishes a `$RawSchema`/`$Schema` const pair:
 
@@ -98,13 +104,13 @@ Rules:
 - The slot takes no `#[model_schema_prop(...)]`: a brand publishes its inner's own schema with a
   `.brand()` written onto it, so no key written there reaches any surface, and one written there is
   refused at `exec_model_schema` — the ungated seam, so the verdict is the same in every feature
-  combination — with the item re-emitted stripped of it. The three checks a brand does carry are
+  combination with `serde` — with the item re-emitted stripped of it. The three checks a brand does carry are
   written on the type: `#[model_schema(pattern = "...", minLength = N, maxLength = N)]`. Over a
   list the two lengths count its items and `pattern` is refused (section 7). The
   field a `#[serde(transparent)]` struct with *named* fields or several slots is the value of is
   that slot, and is held to the same. Every other field of such a struct, one serde neither reads
   nor writes (a skipped one, a `PhantomData` marker), is refused a key as well, in every build
-  and with the item re-emitted without it, under a message of its own
+  with `serde` and with the item re-emitted without it, under a message of its own
   (`UNREAD_BRAND_FIELD_PROP_MESSAGE`): `branded_slot_prop_errors` reads every field of a struct
   `brand_field` answers for
 - The three checks are type-level arguments on a brand and on an enum, which hands them to the
@@ -255,13 +261,13 @@ them is split off. It refuses in both directions:
 - an entry naming nothing the item declares — refused in **every** feature configuration, spanned
   on the entry, since a misspelled parameter fills nothing while the one it was meant for keeps no
   default;
-- a type parameter with no entry — refused only under `#[cfg(feature = "jsonschema")]`, spanned on
-  the parameter, because nothing else reads the default;
+- a type parameter with no entry — refused only on a type whose `enable` list holds `"jsonschema"`,
+  spanned on the parameter, because nothing else reads the default;
 - `default_types` on an item with no type parameter, and an empty `default_types()`, both being a
   declaration with nothing to declare;
-- an entry filled at a type the field-definition dispatch has no arm for — refused under
-  `#[cfg(any(feature = "zod", feature = "jsonschema"))]`, the two surfaces that read a declared
-  filling, spanned on the filling. That dispatch takes a name it does not recognise for another
+- an entry filled at a type the field-definition dispatch has no arm for — refused under the `zod`
+  feature and on a type that lists `"jsonschema"` (`zod_or_json_schema`), the two surfaces that read
+  a declared filling, spanned on the filling. That dispatch takes a name it does not recognise for another
   `#[model_schema]` item, which is right for a sibling declared below and gibberish for `i128`: the
   emission names an `i128_schema` module nothing publishes. Tokens cannot separate the two, so
   `is_undescribable_primitive` refuses only what provably cannot become a sibling — the primitive
@@ -269,9 +275,9 @@ them is split off. It refuses in both directions:
   (`i128`, `u128`, `f16`, `f128`). `char` is not among them: it has an arm of its own, and a
   filling at it describes as the one-character string serde writes.
 
-A const parameter earns its own refusal, from `const_parameter_argument_errors` at the same seam
-and compiled in every build that describes a type, the Dart, Swift and Kotlin clients alone
-included: a const handed to a written type as an *argument* stands where a type is read, so the JSON side would call into a module named after it and the TypeScript
+A const parameter earns its own refusal, from `const_parameter_argument_errors` at the same seam,
+wherever the item is described: in every build with a describing feature, the Dart, Swift and
+Kotlin clients alone included, and on a type that lists `"jsonschema"` in every build. A const handed to a written type as an *argument* stands where a type is read, so the JSON side would call into a module named after it and the TypeScript
 side would write a name its declaration binds nothing for. A const written as an array length is
 untouched — that is the one position it renders in, as an unbounded array.
 
@@ -289,8 +295,8 @@ asks of it the same question asked of a concrete argument — string-shaped, the
 the default; not string-shaped, the refusal names the default rather than the parameter, through
 `declared_default_constraint_message`. An entry the declaration left out falls back to `String`,
 the same fallback `schema_example_value_type` uses for the identical gap, so the guard alone
-requires nothing; only `jsonschema`'s own separate requirement (above) forces every parameter to
-declare one.
+requires nothing; only the `"jsonschema"` entry's own separate requirement (above) forces every
+parameter to declare one.
 
 The checks never reach the factory's own parameter — `branded_zod_inner` renders a bare-parameter
 inner with no check appended regardless of genericness, since a caller filling the parameter with
@@ -336,5 +342,4 @@ Any other default is refused at expansion, spanned on the `default_types` entry
 (`branded_unproven_default_errors`): a plain alias, a type of another crate, a type declared
 below the brand, a path that leaves out a lifetime its declaration has (`Tag` for `Tag<'text>`,
 which the message says to write `Tag<'_>`), and an alias that hides a lifetime. A generic brand
-with no string check is refused nothing, and so is a build with no schema surface, where the
-function is not emitted.
+with no string check is refused nothing.

@@ -10,8 +10,7 @@ use serde_json::Value;
 use tixschema::{model_schema, service_schema};
 
 use super::preprocess_models::{
-    Parcel, Pinned, Tagged, or_unnamed, parcel_schema, pinned_schema, tagged_schema, trimmed,
-    unwrapped, with_its_keys,
+    Parcel, Pinned, Tagged, or_unnamed, trimmed, unwrapped, with_its_keys,
 };
 
 thread_local! {

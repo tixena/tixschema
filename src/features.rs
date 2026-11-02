@@ -3,8 +3,8 @@
 //! This module provides compile-time feature detection and utilities for handling
 //! different feature combinations in the macro expansion process.
 
-// Not gated on the `serde` feature: the attributes that decide whether a key reaches the wire are
-// written on the item under every toggle, and the surfaces describe that wire in every build.
+// Not gated on the `serde` feature: every build asks it what serde writes, and without the feature
+// `serde_attributes` yields no attribute.
 pub mod serde;
 
 #[cfg(feature = "serde")]
@@ -16,7 +16,6 @@ pub mod zod;
 #[cfg(feature = "zod")]
 pub mod js_literal;
 
-#[cfg(feature = "jsonschema")]
 pub mod jsonschema;
 
 #[cfg(feature = "mongodb")]
@@ -29,7 +28,7 @@ pub mod chrono;
     feature = "dart",
     feature = "swift",
     feature = "kotlin",
-    all(feature = "jsonschema", feature = "chrono")
+    feature = "chrono"
 ))]
 pub mod text_forms;
 
@@ -72,9 +71,6 @@ impl Features {
         }
         if Self::has_zod() {
             features.push("zod");
-        }
-        if Self::has_jsonschema() {
-            features.push("jsonschema");
         }
         if Self::has_mongodb() {
             features.push("mongodb");
@@ -133,11 +129,6 @@ impl Features {
     /// Check if `indexmap` feature is enabled.
     pub const fn has_indexmap() -> bool {
         cfg!(feature = "indexmap")
-    }
-
-    /// Check if jsonschema feature is enabled.
-    pub const fn has_jsonschema() -> bool {
-        cfg!(feature = "jsonschema")
     }
 
     pub const fn has_kotlin() -> bool {

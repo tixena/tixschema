@@ -169,7 +169,7 @@ fn driver_of(cases: &[Case]) -> String {
 
 /// Every emitted definition the runs read, in the order they are declared.
 pub fn definitions() -> Vec<String> {
-    let mut definitions = vec![
+    vec![
         parcel_swift::swift_definition(),
         manifest_swift::swift_definition(),
         gauge_swift::swift_definition(),
@@ -208,14 +208,13 @@ pub fn definitions() -> Vec<String> {
         lift_swift::swift_definition(),
         tally_swift::swift_definition(),
         berth_swift::swift_definition(),
-    ];
-    #[cfg(feature = "indexmap")]
-    definitions.extend([
+        #[cfg(feature = "indexmap")]
         super::swift_validate_models::queue_swift::swift_definition(),
+        #[cfg(feature = "indexmap")]
         super::swift_validate_models::some_queue_swift::swift_definition(),
+        #[cfg(feature = "indexmap")]
         super::swift_validate_models::lineup_swift::swift_definition(),
-    ]);
-    definitions
+    ]
 }
 
 /// The conformance the harness asks of each type `lines` read, written once per type.

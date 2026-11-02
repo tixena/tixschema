@@ -1,0 +1,5 @@
+error: model_schema: type `Signup`: tixschema: `"jsonschema"` is written twice
+ --> tests/foundation_refusals/repeated_jsonschema_entry.rs:6:40
+  |
+6 | #[model_schema(enable = ["jsonschema", "jsonschema"])]
+  |                                        ^^^^^^^^^^^^

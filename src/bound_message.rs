@@ -7,31 +7,9 @@ use core::fmt::Write as _;
 use crate::features::dart::dart_escaped;
 #[cfg(feature = "kotlin")]
 use crate::features::kotlin::kotlin_template_text;
-#[cfg(any(
-    feature = "serde",
-    feature = "zod",
-    feature = "dart",
-    feature = "kotlin",
-    feature = "swift"
-))]
 use crate::features::model_schema_prop::LiteralValue;
-#[cfg(any(
-    feature = "serde",
-    feature = "zod",
-    feature = "dart",
-    feature = "kotlin",
-    feature = "swift"
-))]
 use crate::field_type::format_number_literal;
-#[cfg(any(
-    feature = "serde",
-    feature = "zod",
-    feature = "dart",
-    feature = "kotlin",
-    feature = "swift"
-))]
 use crate::utils::escape_js_double_quoted;
-#[cfg(feature = "serde")]
 use quote::quote;
 
 /// What every surface but Rust answers for a set whose payload repeats an item: Rust's read keeps
@@ -59,13 +37,6 @@ pub const VIOLATION_STEMS: [&str; 6] = [
 /// A bound a declaration can carry, at the one value it was written with. `MaxItems` and
 /// `MinItems` are `maxLength` and `minLength` written on a list, whose items they count, and
 /// `Literal` is the one value a `literal` admits.
-#[cfg(any(
-    feature = "serde",
-    feature = "zod",
-    feature = "dart",
-    feature = "kotlin",
-    feature = "swift"
-))]
 #[derive(Clone, Copy)]
 pub enum Bound<'written> {
     Literal(&'written LiteralValue),
@@ -79,13 +50,6 @@ pub enum Bound<'written> {
 }
 
 /// How a sentence measures the value that broke the bound, for the bounds that quote one back.
-#[cfg(any(
-    feature = "serde",
-    feature = "zod",
-    feature = "dart",
-    feature = "kotlin",
-    feature = "swift"
-))]
 #[derive(Clone, Copy)]
 enum Observed {
     Count,
@@ -93,13 +57,6 @@ enum Observed {
     Value,
 }
 
-#[cfg(any(
-    feature = "serde",
-    feature = "zod",
-    feature = "dart",
-    feature = "kotlin",
-    feature = "swift"
-))]
 impl Bound<'_> {
     /// What the sentence quotes back, or `None` for a bound whose report names only itself.
     const fn observed(self) -> Option<Observed> {
@@ -156,7 +113,6 @@ impl Bound<'_> {
 /// member of anything — a brand, whose name is written by whatever holds it. `observed` is the
 /// expression the sentence quotes back, read in the validator's own scope: the length of the value
 /// it measured, or the value it compared.
-#[cfg(feature = "serde")]
 pub fn rust_violation(
     bound: Bound<'_>,
     field: Option<&str>,

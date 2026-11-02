@@ -35,10 +35,6 @@ fn a_validate_written_by_hand_builds_beside_a_type_with_no_check() {
         ["a loose parcel is closed"]
     );
     assert_eq!(Loose { open: false }.validate(), Ok(()));
-    #[cfg(all(
-        feature = "serde",
-        any(feature = "typescript", feature = "zod", feature = "jsonschema")
-    ))]
     assert_eq!(
         held.validate().unwrap_err(),
         ["'loose': a loose parcel is closed"]

@@ -2,10 +2,7 @@
 //! member is reported under.
 
 /// A holder runs the `validate()` of what it holds, and with it that type's checks.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 mod held_by_another {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
@@ -116,24 +113,12 @@ mod named_after_a_validator {
         let empty = Tagged {
             label: String::new(),
         };
-        #[cfg(all(
-            feature = "serde",
-            any(feature = "typescript", feature = "zod", feature = "jsonschema")
-        ))]
         assert_eq!(
             empty.validate().unwrap_err(),
             [
                 "'label': too short: minimum length is 1, got 0",
                 "'label': a label is not blank",
             ]
-        );
-        #[cfg(not(all(
-            feature = "serde",
-            any(feature = "typescript", feature = "zod", feature = "jsonschema")
-        )))]
-        assert_eq!(
-            empty.validate().unwrap_err(),
-            ["'label': a label is not blank"]
         );
     }
 }
@@ -173,6 +158,8 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
+
+use super::models::Ledger;
 
 /// A member under each wrapper a check is read through, and one that is a list.
 #[model_schema()]
@@ -262,6 +249,21 @@ pub struct Waybill {
     #[model_schema_prop(check = ["carriedBySomeone"])]
     pub carriage: Carriage,
     pub number: u32,
+}
+
+/// A key with no `Display`, which serde writes as the variant's name.
+#[model_schema()]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+pub enum Bay {
+    North,
+}
+
+/// Two maps of a model with a check: one keyed by text, one by a key with no `Display`.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Depot {
+    pub ledgers: HashMap<String, Ledger<String>>,
+    pub ledgers_by_bay: HashMap<Bay, Ledger<String>>,
 }
 
 fn known_carrier(value: &str) -> Result<(), Vec<String>> {
@@ -534,6 +536,31 @@ fn a_check_is_called_where_the_type_is_declared() {
         [
             "'address': an envelope is addressed",
             "an envelope is sealed"
+        ]
+    );
+}
+
+/// A holder of a map of models names a broken entry by its key: the text serde writes for it, or
+/// the key's `Display` text without `serde`, where a key with no `Display` names no entry.
+#[test]
+fn a_map_of_models_names_a_broken_entry_by_its_key() {
+    let empty = || Ledger {
+        entries: Vec::new(),
+        owner_id: "o".to_owned(),
+    };
+    let held = Depot {
+        ledgers: HashMap::from([("main".to_owned(), empty())]),
+        ledgers_by_bay: HashMap::from([(Bay::North, empty())]),
+    };
+    #[cfg(feature = "serde")]
+    let by_bay = "'ledgers_by_bay.North.entries': a ledger holds at least one entry";
+    #[cfg(not(feature = "serde"))]
+    let by_bay = "'ledgers_by_bay.entries': a ledger holds at least one entry";
+    assert_eq!(
+        held.validate().unwrap_err(),
+        [
+            "'ledgers.main.entries': a ledger holds at least one entry",
+            by_bay
         ]
     );
 }

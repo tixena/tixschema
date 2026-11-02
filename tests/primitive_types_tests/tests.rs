@@ -1,35 +1,16 @@
 //! Tests of the primitive types: integers, floats, `bool`, `char` and `String` on every surface.
 
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
+#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
 use serde::{Deserialize, Serialize};
-#[cfg(all(test, feature = "jsonschema"))]
+#[cfg(all(feature = "serde", test))]
 use serde_json::Value;
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
+#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
 use std::collections::HashMap;
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "serde",
+    not(any(feature = "swift", feature = "kotlin"))
 ))]
 use tixschema::model_schema;
 
@@ -57,10 +38,10 @@ const I64_ZOD: &str = "z.codec(z.union([z.bigint(), z.number().int()]), \
 /// Swift or Kotlin target refuses those widths, rather than swapped to a signed width.
 #[cfg(all(
     test,
-    any(feature = "typescript", feature = "jsonschema", feature = "zod"),
+    any(feature = "typescript", feature = "zod", feature = "serde"),
     not(any(feature = "swift", feature = "kotlin"))
 ))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct LargeNumbers {
     array_of_i64: Vec<i64>,
@@ -74,12 +55,8 @@ struct LargeNumbers {
     optional_large_unsigned: Option<u64>,
 }
 
-#[cfg(all(
-    test,
-    any(feature = "typescript", feature = "jsonschema", feature = "zod"),
-    not(any(feature = "swift", feature = "kotlin"))
-))]
-#[model_schema()]
+#[cfg(not(any(feature = "swift", feature = "kotlin")))]
+#[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 struct MixedIntegers {
@@ -97,10 +74,10 @@ struct MixedIntegers {
 
 #[cfg(all(
     test,
-    any(feature = "typescript", feature = "jsonschema", feature = "zod"),
+    any(feature = "typescript", feature = "zod", feature = "serde"),
     not(any(feature = "swift", feature = "kotlin"))
 ))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct PrimitiveTypesShowcase {
     arch_signed: isize,
@@ -141,16 +118,8 @@ struct PrimitiveTypesShowcase {
 /// `char` in every position it can be written: a field, an array element, an optional field, a map
 /// value, and a tuple slot. Gated on the union of every consuming test's own gate, including the
 /// serde-only round-trip, so every feature combination sees the fixture either used or absent.
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
-#[model_schema()]
+#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct CharTypesShowcase {
     array_of_char: Vec<char>,
@@ -162,7 +131,7 @@ struct CharTypesShowcase {
 }
 
 #[cfg(all(
-    any(feature = "typescript", feature = "jsonschema", feature = "zod"),
+    any(feature = "typescript", feature = "zod"),
     not(any(feature = "swift", feature = "kotlin"))
 ))]
 #[test]
@@ -222,7 +191,7 @@ fn test_primitive_structs_constructible() {
     assert_eq!(showcase.array_f64, Vec::<f64>::new());
 }
 
-#[cfg(any(feature = "typescript", feature = "jsonschema", feature = "zod"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn test_char_struct_constructible() {
     let showcase = CharTypesShowcase {
@@ -256,7 +225,7 @@ fn test_char_serde_roundtrip() {
     assert_eq!(round_tripped, showcase);
 }
 
-#[cfg(all(feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 #[test]
 fn test_char_types_typescript_and_zod() {
     let ts_definition = CharTypesShowcase::ts_definition();
@@ -303,7 +272,7 @@ fn test_char_types_typescript_and_zod() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
+#[cfg(feature = "serde")]
 #[test]
 fn test_char_types_json_schema() {
     let schema = CharTypesShowcase::json_schema();
@@ -340,10 +309,7 @@ fn test_char_types_json_schema() {
     assert!(!required.contains(&Value::String("opt_char".to_owned())));
 }
 
-#[cfg(all(
-    feature = "jsonschema",
-    not(any(feature = "swift", feature = "kotlin"))
-))]
+#[cfg(all(feature = "serde", not(any(feature = "swift", feature = "kotlin"))))]
 fn assert_array_property(
     properties: &serde_json::Map<String, serde_json::Value>,
     field_name: &str,
@@ -354,6 +320,7 @@ fn assert_array_property(
 }
 
 #[cfg(all(
+    feature = "serde",
     feature = "typescript",
     feature = "zod",
     not(any(feature = "swift", feature = "kotlin"))
@@ -366,6 +333,7 @@ fn assert_zod_fields_contain(zod_schema: &str, fields: &[&str], expected_pattern
 }
 
 #[cfg(all(
+    feature = "serde",
     feature = "typescript",
     feature = "zod",
     not(any(feature = "swift", feature = "kotlin"))
@@ -379,12 +347,12 @@ fn assert_ts_fields_contain(ts_definition: &str, fields: &[&str], expected_suffi
 
 /// The member an `Option` field written with a `skip_serializing_if` renders as. The attribute
 /// decides the wire, not the spelling, and none of these fields carries `ts_optional`.
-#[cfg(all(feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 fn omitted_member(name: &str, ts_type: &str) -> String {
     format!("{name}: {ts_type} | undefined;")
 }
 
-#[cfg(all(feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 fn assert_ts_omitted_fields_contain(ts_definition: &str, fields: &[&str], ts_type: &str) {
     for field in fields {
         let expected = omitted_member(field, ts_type);
@@ -395,10 +363,7 @@ fn assert_ts_omitted_fields_contain(ts_definition: &str, fields: &[&str], ts_typ
     }
 }
 
-#[cfg(all(
-    feature = "jsonschema",
-    not(any(feature = "swift", feature = "kotlin"))
-))]
+#[cfg(all(feature = "serde", not(any(feature = "swift", feature = "kotlin"))))]
 fn assert_hashmap_array_property(
     properties: &serde_json::Map<String, serde_json::Value>,
     field_name: &str,
@@ -415,10 +380,7 @@ fn assert_hashmap_array_property(
     );
 }
 
-#[cfg(all(
-    feature = "jsonschema",
-    not(any(feature = "swift", feature = "kotlin"))
-))]
+#[cfg(all(feature = "serde", not(any(feature = "swift", feature = "kotlin"))))]
 fn assert_hashmap_property(
     properties: &serde_json::Map<String, serde_json::Value>,
     field_name: &str,
@@ -431,10 +393,7 @@ fn assert_hashmap_property(
     );
 }
 
-#[cfg(all(
-    feature = "jsonschema",
-    not(any(feature = "swift", feature = "kotlin"))
-))]
+#[cfg(all(feature = "serde", not(any(feature = "swift", feature = "kotlin"))))]
 fn assert_property_type(
     properties: &serde_json::Map<String, serde_json::Value>,
     field_name: &str,
@@ -444,10 +403,7 @@ fn assert_property_type(
 }
 
 #[test]
-#[cfg(all(
-    feature = "jsonschema",
-    not(any(feature = "swift", feature = "kotlin"))
-))]
+#[cfg(all(feature = "serde", not(any(feature = "swift", feature = "kotlin"))))]
 fn test_64bit_integers_json_schema() {
     let schema = LargeNumbers::json_schema();
 
@@ -479,6 +435,7 @@ fn test_64bit_integers_json_schema() {
 
 #[test]
 #[cfg(all(
+    feature = "serde",
     feature = "typescript",
     feature = "zod",
     not(any(feature = "swift", feature = "kotlin"))
@@ -512,10 +469,7 @@ fn test_64bit_integers_ts_definition() {
 }
 
 #[test]
-#[cfg(all(
-    feature = "jsonschema",
-    not(any(feature = "swift", feature = "kotlin"))
-))]
+#[cfg(not(any(feature = "swift", feature = "kotlin")))]
 fn test_mixed_integers_json_schema() {
     let schema = MixedIntegers::json_schema();
 
@@ -541,36 +495,76 @@ fn test_mixed_integers_json_schema() {
 ))]
 fn test_mixed_integers_ts_definition() {
     let ts_definition = MixedIntegers::ts_definition();
-
-    assert!(ts_definition.contains("small_u8: number;"));
-    assert!(ts_definition.contains("small_i8: number;"));
-    assert!(ts_definition.contains("medium_u16: number;"));
-    assert!(ts_definition.contains("medium_i16: number;"));
-    assert!(ts_definition.contains("normal_u32: number;"));
-    assert!(ts_definition.contains("normal_i32: number;"));
-    assert!(ts_definition.contains("large_u64: bigint;"));
-    assert!(ts_definition.contains("large_i64: bigint;"));
-    assert!(ts_definition.contains("size_type: number;"));
-    assert!(ts_definition.contains("isize_type: number;"));
+    #[cfg(feature = "serde")]
+    let members = [
+        "small_u8: number;",
+        "small_i8: number;",
+        "medium_u16: number;",
+        "medium_i16: number;",
+        "normal_u32: number;",
+        "normal_i32: number;",
+        "large_u64: bigint;",
+        "large_i64: bigint;",
+        "size_type: number;",
+        "isize_type: number;",
+    ];
+    #[cfg(not(feature = "serde"))]
+    let members = [
+        "smallU8: number;",
+        "smallI8: number;",
+        "mediumU16: number;",
+        "mediumI16: number;",
+        "normalU32: number;",
+        "normalI32: number;",
+        "largeU64: bigint;",
+        "largeI64: bigint;",
+        "sizeType: number;",
+        "isizeType: number;",
+    ];
+    for member in members {
+        assert!(
+            ts_definition.contains(member),
+            "missing {member}, got: {ts_definition}"
+        );
+    }
 
     let zod_schema = MixedIntegers::zod_schema();
-    assert!(zod_schema.contains("small_u8: z.number().int()"));
-    assert!(zod_schema.contains("small_i8: z.number().int()"));
-    assert!(zod_schema.contains("medium_u16: z.number().int()"));
-    assert!(zod_schema.contains("medium_i16: z.number().int()"));
-    assert!(zod_schema.contains("normal_u32: z.number().int()"));
-    assert!(zod_schema.contains("normal_i32: z.number().int()"));
-    assert!(zod_schema.contains(&format!("large_u64: {U64_ZOD},")));
-    assert!(zod_schema.contains(&format!("large_i64: {I64_ZOD},")));
-    assert!(zod_schema.contains("size_type: z.number().int()"));
-    assert!(zod_schema.contains("isize_type: z.number().int()"));
+    #[cfg(feature = "serde")]
+    let keys = [
+        "small_u8: z.number().int()".to_owned(),
+        "small_i8: z.number().int()".to_owned(),
+        "medium_u16: z.number().int()".to_owned(),
+        "medium_i16: z.number().int()".to_owned(),
+        "normal_u32: z.number().int()".to_owned(),
+        "normal_i32: z.number().int()".to_owned(),
+        format!("large_u64: {U64_ZOD},"),
+        format!("large_i64: {I64_ZOD},"),
+        "size_type: z.number().int()".to_owned(),
+        "isize_type: z.number().int()".to_owned(),
+    ];
+    #[cfg(not(feature = "serde"))]
+    let keys = [
+        "smallU8: z.number().int()".to_owned(),
+        "smallI8: z.number().int()".to_owned(),
+        "mediumU16: z.number().int()".to_owned(),
+        "mediumI16: z.number().int()".to_owned(),
+        "normalU32: z.number().int()".to_owned(),
+        "normalI32: z.number().int()".to_owned(),
+        format!("largeU64: {U64_ZOD},"),
+        format!("largeI64: {I64_ZOD},"),
+        "sizeType: z.number().int()".to_owned(),
+        "isizeType: z.number().int()".to_owned(),
+    ];
+    for key in keys {
+        assert!(
+            zod_schema.contains(&key),
+            "missing {key}, got: {zod_schema}"
+        );
+    }
 }
 
 #[test]
-#[cfg(all(
-    feature = "jsonschema",
-    not(any(feature = "swift", feature = "kotlin"))
-))]
+#[cfg(all(feature = "serde", not(any(feature = "swift", feature = "kotlin"))))]
 fn test_primitive_types_json_schema_details() {
     let schema = PrimitiveTypesShowcase::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -614,6 +608,7 @@ fn test_primitive_types_json_schema_details() {
 
 #[test]
 #[cfg(all(
+    feature = "serde",
     feature = "typescript",
     feature = "zod",
     not(any(feature = "swift", feature = "kotlin"))

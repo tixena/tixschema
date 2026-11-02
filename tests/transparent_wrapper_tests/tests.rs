@@ -11,19 +11,19 @@ use std::sync::{Mutex, RwLock};
 use tixschema::model_schema;
 
 /// The covered wrappers by the name a generated surface could leak.
-#[cfg(any(feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 const TRANSPARENT_WRAPPERS: [&str; 8] = [
     "Arc", "Box", "Cell", "Cow", "Mutex", "Rc", "RefCell", "RwLock",
 ];
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct Tag {
     label: String,
 }
 
 // The spelling every wrapper twin below is held against: the inner types written bare.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct PlainFields {
     count: i64,
@@ -36,7 +36,7 @@ struct PlainFields {
     text: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct BoxedFields {
     count: Box<i64>,
@@ -49,7 +49,7 @@ struct BoxedFields {
     text: Box<str>,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct RcFields {
     count: Rc<i64>,
@@ -62,7 +62,7 @@ struct RcFields {
     text: Rc<str>,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ArcFields {
     count: Arc<i64>,
@@ -75,7 +75,7 @@ struct ArcFields {
     text: Arc<str>,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct CowFields {
     count: Cow<'static, i64>,
@@ -90,7 +90,7 @@ struct CowFields {
 
 // `RefCell::new` takes a `Sized` value, so the owned `Vec<String>` and `String` spellings stand in
 // for `[String]` and `str`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct RefCellFields {
     count: RefCell<i64>,
@@ -105,7 +105,7 @@ struct RefCellFields {
 
 // `Mutex` implements neither `Clone` nor `PartialEq` regardless of what it holds, unlike the other
 // covered wrappers.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug)]
 struct MutexFields {
     count: Mutex<i64>,
@@ -118,7 +118,7 @@ struct MutexFields {
     text: Mutex<String>,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug)]
 struct RwLockFields {
     count: RwLock<i64>,
@@ -133,7 +133,7 @@ struct RwLockFields {
 
 // `Cell<T>` requires `T: Copy` for serde's own `Serialize` impl, so its fixture -- and the plain
 // spelling held against it -- are reduced to the `PlainFields` fields that are `Copy`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct CellFields {
     count: Cell<i64>,
@@ -141,7 +141,7 @@ struct CellFields {
     maybe_count: Cell<Option<i64>>,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct PlainCopyFields {
     count: i64,
@@ -151,7 +151,7 @@ struct PlainCopyFields {
 
 // A wrapper written under something else: inside an `Option`, inside a sequence, in a map's value
 // slot. Each position reads the collapsed field, so none of them sees a wrapper at all.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct WrappedInsideFields {
     counts: HashMap<String, Rc<i64>>,
@@ -160,7 +160,7 @@ struct WrappedInsideFields {
     maybe_tag: Option<Box<Tag>>,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct PlainInsideFields {
     counts: HashMap<String, i64>,
@@ -171,7 +171,7 @@ struct PlainInsideFields {
 
 // One boxed field among unboxed ones: the collapse is the field's own, so its siblings are
 // untouched by it.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct MixedBoxedFields {
     boxed_tag: Box<Tag>,
@@ -179,7 +179,7 @@ struct MixedBoxedFields {
     plain_tag: Tag,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct MixedPlainFields {
     boxed_tag: Tag,
@@ -326,7 +326,7 @@ fn plain_copy_fields() -> PlainCopyFields {
 }
 
 /// The field declarations of a generated `TypeScript` definition, without the `JSDoc` around them.
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 fn ts_field_declarations(definition: &str) -> Vec<String> {
     definition
         .lines()
@@ -351,7 +351,7 @@ fn covered_wrapper_payloads() -> [(&'static str, serde_json::Value); 7] {
 }
 
 /// Every wrapper twin's generated `TypeScript`, under the bare spelling's type name.
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 fn covered_wrapper_ts_definitions() -> [(&'static str, String); 7] {
     [
         (
@@ -386,7 +386,7 @@ fn covered_wrapper_ts_definitions() -> [(&'static str, String); 7] {
 }
 
 /// The same for Zod.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 fn covered_wrapper_zod_schemas() -> [(&'static str, String); 7] {
     [
         (
@@ -420,7 +420,7 @@ fn covered_wrapper_zod_schemas() -> [(&'static str, String); 7] {
     ]
 }
 
-#[cfg(feature = "jsonschema")]
+#[cfg(feature = "serde")]
 fn covered_wrapper_json_schemas() -> [(&'static str, serde_json::Value); 7] {
     [
         ("Box", BoxedFields::json_schema()),
@@ -502,8 +502,8 @@ fn test_a_wrapper_written_inside_another_type_writes_the_inner_value() {
     );
 }
 
+#[cfg(feature = "serde")]
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_every_covered_wrapper_describes_as_the_inner_spelling() {
     let plain_schema = PlainFields::json_schema();
     for (wrapper, schema) in covered_wrapper_json_schemas() {
@@ -520,7 +520,7 @@ fn test_every_covered_wrapper_describes_as_the_inner_spelling() {
 
 /// The same holding on TypeScript, fixture name set aside.
 #[test]
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 fn test_every_covered_wrapper_types_as_the_inner_spelling() {
     let plain_declarations = ts_field_declarations(&PlainFields::ts_definition());
     for (wrapper, definition) in covered_wrapper_ts_definitions() {
@@ -533,7 +533,7 @@ fn test_every_covered_wrapper_types_as_the_inner_spelling() {
 }
 
 #[test]
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 fn test_every_covered_wrapper_validates_as_the_inner_spelling() {
     let plain_schema = PlainFields::zod_schema();
     for (wrapper, schema) in covered_wrapper_zod_schemas() {
@@ -542,7 +542,7 @@ fn test_every_covered_wrapper_validates_as_the_inner_spelling() {
 }
 
 #[test]
-#[cfg(any(feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn test_no_transparent_wrapper_name_survives_into_generated_output() {
     let mut generated: Vec<(&str, String)> = Vec::new();
     #[cfg(feature = "typescript")]
@@ -557,8 +557,8 @@ fn test_no_transparent_wrapper_name_survives_into_generated_output() {
     }
 }
 
+#[cfg(feature = "serde")]
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_wrapped_option_is_required_exactly_as_the_bare_option() {
     let expected = serde_json::json!(["count", "labels", "tag", "text"]);
     assert_eq!(PlainFields::json_schema()["required"], expected);
@@ -567,8 +567,8 @@ fn test_wrapped_option_is_required_exactly_as_the_bare_option() {
     }
 }
 
+#[cfg(feature = "serde")]
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_wrapper_inside_another_type_describes_as_the_inner_spelling() {
     let wrapped = WrappedInsideFields::json_schema();
     let plain = PlainInsideFields::json_schema();
@@ -577,7 +577,7 @@ fn test_wrapper_inside_another_type_describes_as_the_inner_spelling() {
 }
 
 #[test]
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 fn test_wrapper_inside_another_type_types_as_the_inner_spelling() {
     assert_eq!(
         WrappedInsideFields::ts_definition().replace("WrappedInsideFields", "PlainInsideFields"),
@@ -586,7 +586,7 @@ fn test_wrapper_inside_another_type_types_as_the_inner_spelling() {
 }
 
 #[test]
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 fn test_wrapper_inside_another_type_validates_as_the_inner_spelling() {
     assert_eq!(
         WrappedInsideFields::zod_schema().replace("WrappedInsideFields", "PlainInsideFields"),
@@ -595,8 +595,8 @@ fn test_wrapper_inside_another_type_validates_as_the_inner_spelling() {
 }
 
 /// The collapse is one field's, so the fields written beside it render as they always did.
+#[cfg(feature = "serde")]
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_boxed_field_leaves_its_unboxed_siblings_alone() {
     let mixed = MixedBoxedFields::json_schema();
     let plain = MixedPlainFields::json_schema();
@@ -605,7 +605,7 @@ fn test_boxed_field_leaves_its_unboxed_siblings_alone() {
 }
 
 #[test]
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 fn test_boxed_field_types_beside_its_unboxed_siblings() {
     assert_eq!(
         MixedBoxedFields::ts_definition().replace("MixedBoxedFields", "MixedPlainFields"),
@@ -614,7 +614,7 @@ fn test_boxed_field_types_beside_its_unboxed_siblings() {
 }
 
 #[test]
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 fn test_boxed_self_reference_validates_as_the_self_reference() {
     let schema = TreeNode::zod_schema();
     assert!(schema.contains("get next()"), "Got: {schema}");
@@ -632,8 +632,8 @@ fn test_cell_field_writes_its_inner_value() {
     );
 }
 
+#[cfg(feature = "serde")]
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_cell_field_describes_as_the_inner_spelling() {
     let cell_schema = CellFields::json_schema();
     let plain_schema = PlainCopyFields::json_schema();
@@ -642,7 +642,7 @@ fn test_cell_field_describes_as_the_inner_spelling() {
 }
 
 #[test]
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 fn test_cell_field_types_as_the_inner_spelling() {
     assert_eq!(
         CellFields::ts_definition().replace("CellFields", "PlainCopyFields"),
@@ -651,7 +651,7 @@ fn test_cell_field_types_as_the_inner_spelling() {
 }
 
 #[test]
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 fn test_cell_field_validates_as_the_inner_spelling() {
     assert_eq!(
         CellFields::zod_schema().replace("CellFields", "PlainCopyFields"),
@@ -660,7 +660,7 @@ fn test_cell_field_validates_as_the_inner_spelling() {
 }
 
 #[test]
-#[cfg(any(feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 fn test_no_cell_name_survives_into_generated_output() {
     #[cfg(feature = "typescript")]
     {

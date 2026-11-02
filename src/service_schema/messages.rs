@@ -1,8 +1,9 @@
 //! The messages an operation did not name: `<Operation>Request` for the argument-list and
-//! zero-argument shapes, emitted like any other type with its TypeScript, Zod and JSON Schema.
+//! zero-argument shapes, emitted like any other type with its TypeScript and Zod, and with its JSON
+//! Schema where the service asks for `openapi`.
 
 use super::parse::{GeneratedMessage, ServiceDef};
-use super::support::exhaustiveness;
+use super::support::{exhaustiveness, model_schema_attribute};
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::Type;
@@ -70,29 +71,31 @@ use syn::Type;
 ///
 /// `compile_fail` says only that *something* was refused and this toolchain checks no error code a
 /// doctest names, so the pair above was compiled standalone and read. The refusal is a pile rather
-/// than one sentence — eleven errors, the first two naming the message and the module beside it,
+/// than one sentence — thirteen errors, the first five naming the message and its four modules,
 /// the rest following from them — and none of them names the operation or the two services:
 ///
 /// ```text
 /// error[E0428]: the name `sweep_request_schema` is defined multiple times
+/// error[E0428]: the name `sweep_request_dart` is defined multiple times
+/// error[E0428]: the name `sweep_request_swift` is defined multiple times
+/// error[E0428]: the name `sweep_request_kotlin` is defined multiple times
 /// error[E0428]: the name `SweepRequest` is defined multiple times
 /// error[E0119]: conflicting implementations of trait `Deserialize<'_>` for type `SweepRequest`
 /// error[E0119]: conflicting implementations of trait `Serialize` for type `SweepRequest`
-/// error[E0592]: duplicate definitions with name `json_schema`
 /// error[E0592]: duplicate definitions with name `ts_definition`
 /// error[E0592]: duplicate definitions with name `zod_schema`
 /// error[E0034]: multiple applicable items in scope        (×4)
-/// error: could not compile `tixschema` (test "zz_probe") due to 11 previous errors
+/// error: could not compile `emit-record` (test "zz_probe") due to 13 previous errors
 /// ```
 ///
 /// It is a build failure either way, which is what a bundle needs: nothing that reaches TypeScript
 /// can carry the same generated message twice. Whether the macro should say so in one sentence
 /// instead is a separate question and not one this emitter answers today.
-pub fn emit(service: &ServiceDef, non_exhaustive: bool) -> TokenStream {
+pub fn emit(service: &ServiceDef, non_exhaustive: bool, openapi: bool) -> TokenStream {
     let declared = service
         .generated_messages
         .iter()
-        .map(|generated| message(generated, non_exhaustive));
+        .map(|generated| message(generated, non_exhaustive, openapi));
     quote! {
         #(#declared)*
     }
@@ -132,9 +135,10 @@ fn cost_note(operation: &str, empty: bool) -> Vec<String> {
     }
 }
 
-fn message(declared: &GeneratedMessage, non_exhaustive: bool) -> TokenStream {
+fn message(declared: &GeneratedMessage, non_exhaustive: bool, openapi: bool) -> TokenStream {
     let named = &declared.ident;
     let sealed = exhaustiveness(non_exhaustive);
+    let model_schema = model_schema_attribute(openapi);
     let members = declared.fields.iter().map(|(field, carried)| {
         if is_option_type(carried) {
             // `#[model_schema()]` requires an `Option<T>` field to say what an absent value does on
@@ -153,7 +157,7 @@ fn message(declared: &GeneratedMessage, non_exhaustive: bool) -> TokenStream {
     );
     quote! {
         #(#[doc = #rustdoc])*
-        #[::tixschema::model_schema()]
+        #model_schema
         #[derive(::serde::Serialize, ::serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
         #sealed

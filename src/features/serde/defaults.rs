@@ -18,6 +18,7 @@ use {
     super::{
         CONVERSION_KEYS, consume_unread_value, derives_deserialize, derives_serialize,
         parse_serde_field_attributes, parse_serde_field_hooks, parse_serde_key_omission,
+        serde_attributes,
     },
     crate::field_type::{get_field_def, is_map_wrapper, is_sequence_wrapper},
     proc_macro2::TokenTree,
@@ -31,7 +32,16 @@ const FLATTENED: &str = "`#[serde(default)]` on a flattened field is read only b
                          the default, or the flatten.";
 
 /// Why no target but Rust reads the default of a member of an enum whose defaults have no JSON.
-#[cfg(feature = "serde")]
+#[cfg(all(
+    feature = "serde",
+    any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
+))]
 const UNWRITTEN: &str = "`#[serde(default)]` needs the enum to derive `Serialize`, with no `into` \
                          or `remote`, so the default can be written for the other targets.";
 
@@ -69,13 +79,6 @@ type Built = (TokenStream, TokenStream);
 /// and one under the container's default where the struct has a parameter. A list, a set or a map
 /// under the bare `default` is among them whatever its type names: its default is the empty
 /// collection at every filling, `[]` or `{}`.
-#[cfg(any(
-    feature = "zod",
-    feature = "jsonschema",
-    feature = "dart",
-    feature = "swift",
-    feature = "kotlin"
-))]
 pub struct SerdeDefaults {
     container: Option<TokenStream>,
     /// Each member read as its default: the variant it is a member of, `None` for a struct's, the
@@ -84,13 +87,6 @@ pub struct SerdeDefaults {
     members: Vec<(Option<String>, String, TokenStream, TokenStream)>,
 }
 
-#[cfg(any(
-    feature = "zod",
-    feature = "jsonschema",
-    feature = "dart",
-    feature = "swift",
-    feature = "kotlin"
-))]
 impl SerdeDefaults {
     /// The placeholder a client writes for the default of `field` of `variant`, `None` for a
     /// struct's.
@@ -307,10 +303,7 @@ impl EnumRead {
 #[cfg(feature = "serde")]
 fn conversions(attrs: &[Attribute]) -> Vec<&'static str> {
     let mut found = Vec::new();
-    for attr in attrs {
-        if !attr.path().is_ident("serde") {
-            continue;
-        }
+    for attr in serde_attributes(attrs) {
         attr.parse_nested_meta(|nested| {
             found.extend(
                 CONVERSION_KEYS
@@ -348,7 +341,6 @@ fn declared(generics: &Generics) -> Vec<String> {
     any(
         feature = "typescript",
         feature = "zod",
-        feature = "jsonschema",
         feature = "dart",
         feature = "swift",
         feature = "kotlin"
@@ -488,10 +480,7 @@ pub fn holds_a_placeholder(text: &str) -> bool {
 #[cfg(feature = "serde")]
 fn key_left_out_by(attrs: &[Attribute]) -> &'static str {
     let mut found = None;
-    for attr in attrs {
-        if !attr.path().is_ident("serde") {
-            continue;
-        }
+    for attr in serde_attributes(attrs) {
         attr.parse_nested_meta(|nested| {
             for key in ["skip_serializing_if", "skip_serializing"] {
                 if found.is_none() && nested.path.is_ident(key) {
@@ -537,13 +526,6 @@ fn named_reason(named: &str, generics: &Generics) -> String {
 
 /// The text a surface writes where the default of the member `index` goes, replaced by its JSON
 /// when the text is built. Two control characters keep it from meeting anything an author writes.
-#[cfg(any(
-    feature = "zod",
-    feature = "jsonschema",
-    feature = "dart",
-    feature = "swift",
-    feature = "kotlin"
-))]
 pub fn placeholder(index: usize) -> String {
     format!("\u{1}serde-default-{index}\u{1}")
 }
@@ -677,10 +659,7 @@ pub fn zod_substituted(holder: &TokenStream, written: &proc_macro2::Ident) -> To
 #[cfg(feature = "serde")]
 fn written_default(attrs: &[Attribute]) -> Option<Written> {
     let mut found = None;
-    for attr in attrs {
-        if !attr.path().is_ident("serde") {
-            continue;
-        }
+    for attr in serde_attributes(attrs) {
         attr.parse_nested_meta(|nested| {
             if nested.path.is_ident("default") {
                 found = Some(if nested.input.peek(syn::Token![=]) {
@@ -700,14 +679,5 @@ fn written_default(attrs: &[Attribute]) -> Option<Written> {
 }
 
 #[cfg(test)]
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "zod",
-        feature = "jsonschema",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
-))]
+#[cfg(feature = "serde")]
 mod tests;

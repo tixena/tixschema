@@ -6,23 +6,22 @@
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-#[cfg(feature = "jsonschema")]
 use super::documents::admits;
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ProbeBale {
     #[model_schema_prop(minLength = 1)]
     pub label: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ProbeLoose {
     pub label: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum ProbePicker {
@@ -30,11 +29,11 @@ pub enum ProbePicker {
     B(ProbeLoose),
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ProbeCount(#[model_schema_prop(minimum = 1)] pub u32);
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum ProbeChooser {
@@ -79,7 +78,6 @@ fn a_held_models_rule_chooses_no_variant() {
 }
 
 /// The JSON Schema admits by its second branch what serde refuses.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn the_json_schema_admits_by_a_later_branch_what_serde_refuses() {
     let picker = ProbePicker::json_schema();

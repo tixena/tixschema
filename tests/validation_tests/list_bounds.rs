@@ -1,23 +1,20 @@
 //! A key written on a list measures the list: `minLength` and `maxLength` count its items.
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 mod a_key_on_a_list {
     use alloc::collections::{BTreeSet, BinaryHeap, VecDeque};
     use serde::{Deserialize, Serialize};
     use std::collections::HashSet;
     use tixschema::model_schema;
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct Part {
         pub value: String,
     }
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct Document {
@@ -26,7 +23,7 @@ mod a_key_on_a_list {
         pub name_config: Vec<Part>,
     }
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Serialize)]
     pub struct Counted {
         #[model_schema_prop(minLength = 1, maxLength = 3)]
@@ -35,7 +32,7 @@ mod a_key_on_a_list {
         pub strings: Vec<String>,
     }
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Serialize)]
     pub struct EachAlone {
         #[model_schema_prop(minLength = 1)]
@@ -44,7 +41,7 @@ mod a_key_on_a_list {
         pub most: Vec<String>,
     }
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Serialize)]
     pub struct EveryList {
         #[model_schema_prop(minLength = 2)]
@@ -62,7 +59,7 @@ mod a_key_on_a_list {
         pub sliced: Box<[String]>,
     }
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Serialize)]
     pub struct Wrapped {
         #[model_schema_prop(minLength = 1)]
@@ -73,12 +70,12 @@ mod a_key_on_a_list {
     }
 
     /// A tag held to a rule of its own, which is where a rule for each item of a list is written.
-    #[model_schema(minLength = 3)]
+    #[model_schema(minLength = 3, enable = ["jsonschema"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
     pub struct Tag(pub String);
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Serialize)]
     pub struct Tagged {
         #[model_schema_prop(maxLength = 2)]
@@ -574,7 +571,6 @@ mod a_key_on_a_list {
         }
     }
 
-    #[cfg(feature = "jsonschema")]
     #[test]
     fn the_json_schema_writes_the_count_as_min_items_and_max_items() {
         use serde_json::json;
@@ -671,18 +667,15 @@ mod a_key_on_a_list {
 
 /// A key written on a field typed with the alias of a list counts the list, declared above or below
 /// the field's type.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 mod a_key_on_an_alias_of_a_list {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     pub type Captions = Vec<String>;
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Serialize)]
     pub struct Album {
         #[model_schema_prop(minLength = 1, maxLength = 2)]
@@ -728,7 +721,6 @@ mod a_key_on_an_alias_of_a_list {
         );
     }
 
-    #[cfg(feature = "jsonschema")]
     #[test]
     fn the_json_schema_writes_both_keywords_beside_the_name() {
         let document = Album::json_schema();

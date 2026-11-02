@@ -15,10 +15,7 @@ const PAYLOADS: [&str; 6] = [
 ];
 
 /// The payload serde writes for each place that is refused, in the order of `PLACES`.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 const WRITTEN: &str = r#"Package, unlabelled: {"itemLabel":""}
 Docket, empty and numbered zero: ["",0]
 Bundle, unnamed and unlabelled: ["",{"itemLabel":""}]
@@ -66,10 +63,7 @@ fn each_value_is_the_one_its_payload_describes() {
     assert_eq!(written, described);
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn validate_answers_the_shared_table() {
     use super::models::{TABLE, manifest_case};
@@ -79,45 +73,46 @@ fn validate_answers_the_shared_table() {
     assert_eq!(report(&cases), TABLE);
 }
 
-/// With `serde` and no schema surface no bound is held, and a member goes by the key serde
-/// writes.
-#[cfg(all(
-    feature = "serde",
-    not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
-))]
+/// A parcel's bound is held beside its checks, and a member goes by the key serde writes.
+#[cfg(feature = "serde")]
 #[test]
-fn validate_runs_the_checks_alone_where_no_bound_is_published() {
+fn validate_holds_the_bound_beside_the_checks() {
     assert_eq!(
         report(&parcel_cases()),
         "\
 case 1: passes
-case 2: passes
+case 2: refused
+    'label': too short: minimum length is 1, got 0
 case 3: refused
     'itemCodeList': duplicate item code x
 case 4: refused
     'fragileItemCodes.1': y is outside of itemCodeList
 case 5: refused
     'itemCodeList': duplicate item code x
+    'label': too short: minimum length is 1, got 0
     'fragileItemCodes.0': y is outside of itemCodeList
 "
     );
 }
 
-/// Without `serde` no attribute of serde's is read, so a member goes by its own name.
+/// Without `serde` no attribute of serde's is read, so a member goes by its own name, and the
+/// bound is held beside the checks as with it.
 #[cfg(not(feature = "serde"))]
 #[test]
-fn validate_runs_the_checks_alone_without_serde() {
+fn validate_holds_the_bound_beside_the_checks_without_serde() {
     assert_eq!(
         report(&parcel_cases()),
         "\
 case 1: passes
-case 2: passes
+case 2: refused
+    'label': too short: minimum length is 1, got 0
 case 3: refused
     'item_code_list': duplicate item code x
 case 4: refused
     'fragileItemCodes.1': y is outside of itemCodeList
 case 5: refused
     'item_code_list': duplicate item code x
+    'label': too short: minimum length is 1, got 0
     'fragileItemCodes.0': y is outside of itemCodeList
 "
     );
@@ -139,10 +134,7 @@ fn every_shape_runs_its_checks() {
 
 /// A message names a value by the steps serde writes on the way to it: a key, a position among
 /// several slots, the variant's name or the content key, and nothing for the value itself.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn every_place_is_named_as_the_payload_holds_it() {
     use core::fmt::Write as _;

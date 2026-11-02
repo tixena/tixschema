@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tixschema::model_schema;
 
-use super::tuple_variants_models::{Labelling, labelling_schema};
+use super::tuple_variants_models::Labelling;
 
 /// What every holder of a member flattened after or beside another below is read from, but those
 /// named apart.

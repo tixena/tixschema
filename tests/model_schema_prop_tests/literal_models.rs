@@ -2,10 +2,7 @@
 //! each payload reads as. Rust's read, the Zod schema and the read of each client are held to the
 //! one table.
 
-#![cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#![cfg(feature = "serde")]
 
 use core::fmt::Write as _;
 

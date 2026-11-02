@@ -1,14 +1,11 @@
 //! A slot of a tuple struct takes the five constraints, checked where a named field of a struct is.
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 mod a_check_on_a_slot {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Pair(
         #[model_schema_prop(minLength = 1)] pub String,
@@ -25,14 +22,14 @@ mod a_check_on_a_slot {
         #[model_schema_prop(maximum = 2)] pub u32,
     );
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Serialize)]
     pub struct Together(
         #[model_schema_prop(minLength = 2, maxLength = 3, pattern = "^[a-z]+$")] pub String,
         #[model_schema_prop(minimum = 1, maximum = 9)] pub u32,
     );
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Lone(#[model_schema_prop(minLength = 1)] pub String);
 
@@ -43,7 +40,7 @@ mod a_check_on_a_slot {
         pub code: Lone,
     }
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Serialize)]
     pub struct Wrapped(
         #[model_schema_prop(minLength = 2)] pub Option<String>,
@@ -283,7 +280,6 @@ mod a_check_on_a_slot {
         );
     }
 
-    #[cfg(feature = "jsonschema")]
     #[test]
     fn the_json_schema_writes_each_check_on_the_slots_member_of_the_tuple() {
         assert_eq!(

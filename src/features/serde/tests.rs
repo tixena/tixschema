@@ -422,7 +422,6 @@ fn test_list_form_rename_all_reads_the_rule_both_directions_share() {
 #[cfg(any(
     feature = "typescript",
     feature = "zod",
-    feature = "jsonschema",
     feature = "dart",
     feature = "swift",
     feature = "kotlin"
@@ -449,7 +448,6 @@ fn test_list_form_rename_naming_two_keys_is_refused() {
 #[cfg(any(
     feature = "typescript",
     feature = "zod",
-    feature = "jsonschema",
     feature = "dart",
     feature = "swift",
     feature = "kotlin"
@@ -481,7 +479,6 @@ fn test_list_form_rename_all_naming_two_rules_is_refused() {
 #[cfg(any(
     feature = "typescript",
     feature = "zod",
-    feature = "jsonschema",
     feature = "dart",
     feature = "swift",
     feature = "kotlin"
@@ -556,7 +553,6 @@ fn test_rename_all_and_rename_all_fields_are_recorded_apart() {
 #[cfg(any(
     feature = "typescript",
     feature = "zod",
-    feature = "jsonschema",
     feature = "dart",
     feature = "swift",
     feature = "kotlin"
@@ -587,7 +583,6 @@ fn test_list_form_rename_all_fields_naming_two_rules_is_refused() {
 #[cfg(any(
     feature = "typescript",
     feature = "zod",
-    feature = "jsonschema",
     feature = "dart",
     feature = "swift",
     feature = "kotlin"
@@ -614,7 +609,6 @@ fn test_list_form_rename_all_fields_written_for_one_direction_only_is_refused() 
 #[cfg(any(
     feature = "typescript",
     feature = "zod",
-    feature = "jsonschema",
     feature = "dart",
     feature = "swift",
     feature = "kotlin"

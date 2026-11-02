@@ -11,7 +11,6 @@ mod paths;
 #[cfg(not(any(
     feature = "typescript",
     feature = "zod",
-    feature = "jsonschema",
     feature = "dart",
     feature = "swift",
     feature = "kotlin"

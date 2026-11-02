@@ -1,10 +1,7 @@
 //! Tests of the order-keeping map and the list beside it: `IndexMap` and `IndexSet`, each held to
 //! what its std twin gives on every surface.
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 mod list_rule;
 
 #[cfg(feature = "kotlin")]
@@ -20,18 +17,18 @@ use tixschema::model_schema;
 const DOCUMENT: &str = r#"{"data":{"zeta":"1","alpha":"2"},"labels":["b","a"]}"#;
 
 /// [`Document`] as the README declares it, character for character.
-const README_DECLARATION: &str = "#[model_schema()]
+const README_DECLARATION: &str = r#"#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Document {
     pub data: IndexMap<String, String>,
     pub labels: IndexSet<String>,
-}";
+}"#;
 
 const NESTED: &str = r#"{"by_group":{"odd":[3,1]},"hashed":{"zeta":1,"alpha":2},"listed":[{"zeta":1,"alpha":2}],"optional":{"zeta":1,"alpha":2},"tagged":[9,4]}"#;
 
 const SLOTTED: &str = r#"{"counts":{"Opening":2,"Closing":1}}"#;
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Document {
     pub data: IndexMap<String, String>,
@@ -40,7 +37,7 @@ pub struct Document {
 
 // `Document` written with the std types every surface already reads. A `//` comment: a doc
 // comment is written into the outputs the two are compared by.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DocumentTwin {
     pub data: HashMap<String, String>,
@@ -48,7 +45,7 @@ pub struct DocumentTwin {
 }
 
 // Each type under what a field may hold it in, and each written with a hasher of its own.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Nested {
     pub by_group: HashMap<String, IndexSet<u32>>,
@@ -59,7 +56,7 @@ pub struct Nested {
     pub tagged: IndexSet<u32, RandomState>,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NestedTwin {
     pub by_group: HashMap<String, HashSet<u32>>,
@@ -78,13 +75,13 @@ pub enum Slot {
 }
 
 // A map keyed by a plain enum: its members are the object's keys.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Slotted {
     pub counts: IndexMap<Slot, u32>,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SlottedTwin {
     pub counts: HashMap<Slot, u32>,
@@ -212,7 +209,6 @@ fn zod_writes_each_as_its_std_twin() {
     assert_eq!(slotted, under_its_own_name(&SlottedTwin::zod_schema()));
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn the_json_schema_of_each_is_its_std_twins() {
     assert_eq!(Document::json_schema(), DocumentTwin::json_schema());

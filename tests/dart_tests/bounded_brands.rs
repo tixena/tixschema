@@ -1,6 +1,5 @@
 //! What the Dart backend writes for a brand's own string check: in `validate()`, and alone in
-//! `validateBound()`, which chooses a variant of an untagged enum that holds the brand. A build
-//! with no schema surface refuses such a check, so these are declared where one is on.
+//! `validateBound()`, which chooses a variant of an untagged enum that holds the brand.
 
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;

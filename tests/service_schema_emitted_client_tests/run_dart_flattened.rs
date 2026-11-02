@@ -24,7 +24,6 @@ use super::dart_flattened_models::{
     mousing_dart, rigging_dart, scuppering_dart, shoring_dart, spare_dart, steeving_dart,
     ticketing_dart, trimming_dart, twin_dart, warping_dart,
 };
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use super::dart_flattened_models::{LIMBER, Limber, limber_dart, scantling_dart};
 use super::run_dart_validate::{analyzed, dart, module};
 use super::shared_key_models::{
@@ -209,7 +208,6 @@ void main() {
 
 /// What prints the map [`Limber`] read from each of its payloads, and what it writes back, or the
 /// message of the read's refusal.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 const OPTIONAL_MAP_OF_MODELS: &str = "
 void main() {
   for (final payload in LIMBER) {
@@ -658,7 +656,6 @@ fn an_optional_map_reads_in_dart_no_value_where_an_entry_does_not_read() {
 /// An optional map of models is read as `null` where a model does not read, as serde reads it, and
 /// a model that breaks its rule is read with no judgement and refused with its holder, in serde's
 /// words.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn an_optional_map_of_models_reads_in_dart_no_value_where_a_model_does_not_read() {
     let expected = LIMBER.iter().fold(String::new(), |mut acc, payload| {

@@ -27,11 +27,7 @@ mod tests;
 mod held_numbers;
 
 #[cfg(test)]
-#[cfg(all(
-    feature = "dart",
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(all(feature = "dart", feature = "serde"))]
 #[path = "dart_tests/bounded_brands.rs"]
 mod bounded_brands;
 
@@ -53,13 +49,13 @@ mod preprocess;
 /// A member serde reads and never writes, in a struct of its own, beside a flattened member and in
 /// an enum's variant under each tagging that writes a variant's named members.
 #[cfg(test)]
-#[cfg(feature = "dart")]
+#[cfg(all(feature = "dart", feature = "serde"))]
 #[path = "service_schema_emitted_client_tests/unwritten_models.rs"]
 mod unwritten_models;
 
 /// What the Dart emitter writes and reads of a member serde never writes.
 #[cfg(test)]
-#[cfg(feature = "dart")]
+#[cfg(all(feature = "dart", feature = "serde"))]
 #[path = "dart_tests/unwritten.rs"]
 mod unwritten;
 

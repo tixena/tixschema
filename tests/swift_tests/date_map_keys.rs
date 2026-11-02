@@ -23,9 +23,6 @@ use super::date_map_keys_models::{
     timetable_swift, untagged_shift_swift, untagged_watch_swift, watch_swift,
 };
 use super::text_map_keys_models::{almanac_swift, ephemeris_swift, gazetteer_swift};
-// The JSON Schema of `Roll` describes each value of its map keyed by a number by `Sailing`'s own.
-#[cfg(feature = "jsonschema")]
-use super::date_map_keys_models::sailing_schema;
 
 /// The two formatters a wrapper of a date key declares ahead of its coding key: one reads and
 /// writes a fraction of a second, the other reads a date of whole seconds.

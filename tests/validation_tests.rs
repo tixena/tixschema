@@ -23,6 +23,10 @@ mod held_models;
 mod list_bounds;
 
 #[cfg(test)]
+#[path = "validation_tests/members_left_out.rs"]
+mod members_left_out;
+
+#[cfg(test)]
 #[path = "validation_tests/names_in_scope.rs"]
 mod names_in_scope;
 

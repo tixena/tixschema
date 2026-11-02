@@ -82,28 +82,20 @@ where
     }
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 #[test]
 fn the_sample_reads_as_the_documents_say() {
     assert_eq!(sample_report(), super::models::SAMPLE);
 }
 
-/// A build that publishes no validator for `label` reads row 2 with the label its function left.
-#[cfg(not(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-)))]
+/// Row 2 is refused with what `validate()` answers of the parcel its function left.
 #[test]
-fn the_sample_reads_with_no_bound_held_where_none_is_published() {
+fn row_2_is_refused_with_what_validate_answers_of_the_parcel_its_function_left() {
+    let (_, row_2) = SAMPLE_ROWS[1];
     assert_eq!(
-        sample_report(),
-        super::models::SAMPLE.replace(
-            "row 2: refused\n    'label': too short: minimum length is 1, got 0\n",
-            "row 2: read {\"fragileItemCodes\":[\"x\"],\"itemCodeList\":[\"x\"],\"label\":\"\"}\n"
-        )
+        serde_json::from_str::<Parcel>(row_2)
+            .unwrap_err()
+            .to_string(),
+        parcel("", &["x"]).validate().unwrap_err().join("; ")
     );
 }
 

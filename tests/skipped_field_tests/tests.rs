@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 /// The field the surfaces owe nothing for, beside a member serde does write.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct SkippedField {
     id: String,
@@ -25,7 +25,7 @@ struct BothHalvesDropped {
 
 /// Only the write half. The key is never written and a supplied one is still read, so the member
 /// stays — read as its default when the key is missing.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct WriteHalfDropped {
     id: String,
@@ -35,7 +35,7 @@ struct WriteHalfDropped {
 
 /// Only the read half. The key is written in every payload and a supplied one is discarded, so the
 /// member stays under a required key.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ReadHalfDropped {
     id: String,
@@ -44,7 +44,8 @@ struct ReadHalfDropped {
 }
 
 /// The same question asked of a named variant member, whose defs are collected on their own path.
-#[model_schema()]
+#[cfg(feature = "serde")]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "kind")]
 enum SkippedVariantField {
@@ -56,7 +57,8 @@ enum SkippedVariantField {
 }
 
 /// And of an untagged one, collected on a third path again.
-#[model_schema()]
+#[cfg(feature = "serde")]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 enum SkippedUntaggedField {
@@ -215,7 +217,7 @@ fn the_read_half_alone_writes_the_key_in_every_payload() {
 
 /// No member at all — not an optional one.
 #[test]
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 fn typescript_writes_no_member_for_the_field_serde_never_carries() {
     let ts = SkippedField::ts_definition();
 
@@ -225,7 +227,7 @@ fn typescript_writes_no_member_for_the_field_serde_never_carries() {
 
 /// The variant paths answer the same way as the struct one.
 #[test]
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 fn typescript_writes_no_variant_member_for_the_field_serde_never_carries() {
     let tagged = SkippedVariantField::ts_definition();
     assert!(!tagged.contains("internal"), "Got: {tagged}");
@@ -238,7 +240,7 @@ fn typescript_writes_no_variant_member_for_the_field_serde_never_carries() {
 
 /// The two halves written apart are one wire, so they are one emission.
 #[test]
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 fn typescript_answers_the_two_halves_the_way_it_answers_the_word() {
     let ts = BothHalvesDropped::ts_definition();
 
@@ -247,7 +249,7 @@ fn typescript_answers_the_two_halves_the_way_it_answers_the_word() {
 }
 
 #[test]
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 fn typescript_leaves_the_half_dropped_members_as_they_stand() {
     let write_half = WriteHalfDropped::ts_definition();
     assert!(
@@ -264,7 +266,7 @@ fn typescript_leaves_the_half_dropped_members_as_they_stand() {
 }
 
 #[test]
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 fn zod_writes_no_key_for_the_field_serde_never_carries() {
     let zod = SkippedField::zod_schema();
 
@@ -273,7 +275,7 @@ fn zod_writes_no_key_for_the_field_serde_never_carries() {
 }
 
 #[test]
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 fn zod_writes_no_variant_key_for_the_field_serde_never_carries() {
     let tagged = SkippedVariantField::zod_schema();
     assert!(!tagged.contains("internal"), "Got: {tagged}");
@@ -284,7 +286,7 @@ fn zod_writes_no_variant_key_for_the_field_serde_never_carries() {
 
 /// The half-dropped members keep their Zod spellings exactly.
 #[test]
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 fn zod_leaves_the_half_dropped_members_as_they_stand() {
     let write_half = WriteHalfDropped::zod_schema();
     assert!(
@@ -300,8 +302,8 @@ fn zod_leaves_the_half_dropped_members_as_they_stand() {
 }
 
 /// Neither described nor required: `properties` has no such entry to begin with.
+#[cfg(feature = "serde")]
 #[test]
-#[cfg(feature = "jsonschema")]
 fn the_json_schema_neither_describes_nor_requires_the_field_serde_never_carries() {
     let schema = SkippedField::json_schema();
 
@@ -313,8 +315,8 @@ fn the_json_schema_neither_describes_nor_requires_the_field_serde_never_carries(
     );
 }
 
+#[cfg(feature = "serde")]
 #[test]
-#[cfg(feature = "jsonschema")]
 fn the_json_schema_drops_the_variant_member_too() {
     let tagged = SkippedVariantField::json_schema();
     // With `serde`, `kind` is read as the internal tag and the member sits beside it.
@@ -345,8 +347,8 @@ fn the_json_schema_drops_the_variant_member_too() {
 }
 
 /// The half-dropped members stay described, one out of `required` and one in it.
+#[cfg(feature = "serde")]
 #[test]
-#[cfg(feature = "jsonschema")]
 fn the_json_schema_leaves_the_half_dropped_members_as_they_stand() {
     let write_half = WriteHalfDropped::json_schema();
     assert_eq!(

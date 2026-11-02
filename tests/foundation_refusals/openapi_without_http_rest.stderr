@@ -1,0 +1,6 @@
+error: service_schema: `openapi` describes the `http_rest` transport, and this service does not ask for it
+              add "http_rest" to `transports`, or remove `openapi`
+  --> tests/foundation_refusals/openapi_without_http_rest.rs:21:45
+   |
+21 | #[service_schema(transports = ["amqp_rpc"], openapi)]
+   |                                             ^^^^^^^

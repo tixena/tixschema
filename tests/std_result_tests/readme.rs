@@ -8,7 +8,7 @@ use super::validate::MISSIVE_REPORTS;
 const README: &str = include_str!("../../README.md");
 
 /// The declaration the README shows, which `models.rs` compiles.
-const DECLARED: &str = "#[model_schema()]
+const DECLARED: &str = "#[model_schema(enable = [\"jsonschema\"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Reply {
     pub outcome: Result<u32, String>,

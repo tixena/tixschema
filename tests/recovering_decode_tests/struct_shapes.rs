@@ -3,19 +3,16 @@
 //! slots, and a unit struct, and on a tuple wherever a field's type holds one. Each is walked in
 //! the form serde writes it.
 
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[cfg(not(any(feature = "typescript", feature = "zod")))]
 use core::marker::PhantomData;
 use pair_schema::DecodeWith as _;
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[cfg(not(any(feature = "typescript", feature = "zod")))]
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
-// The JSON schema of a type holding a `Version` names its module from here, beside the type.
-#[cfg(feature = "jsonschema")]
-use super::version_schema;
 use super::{Version, lines};
 
 #[model_schema(enable = ["decode_with"])]
@@ -34,7 +31,7 @@ struct Placement {
 }
 
 /// A map of tuples, which no schema surface describes.
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[cfg(not(any(feature = "typescript", feature = "zod")))]
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Keyed {
@@ -114,9 +111,7 @@ struct Duet(String, u32);
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Wrapper(String);
 
-/// A brand whose own reader refuses text shorter than three characters. Only a schema surface
-/// hangs that check, and the declaration is refused in a build with none.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+/// A brand whose own reader refuses text shorter than three characters.
 #[model_schema(enable = ["decode_with"], minLength = 3)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
@@ -145,7 +140,7 @@ struct History(Vec<Version>);
 struct Latest(Option<Version>);
 
 /// A `transparent` struct with a named field: serde writes it as the text the field holds.
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(enable = ["decode_with", "jsonschema"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Slug {
@@ -190,7 +185,7 @@ struct Counted {
 /// The fields serde's derive passes over without a `skip` when it picks the one a `transparent`
 /// struct is written as: one with a `default`, and a `PhantomData`, which no schema surface
 /// describes.
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[cfg(not(any(feature = "typescript", feature = "zod")))]
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
@@ -222,7 +217,7 @@ struct Stamped(Version, #[serde(skip)] u8);
 /// The slots serde's derive passes over without a `skip` when it picks the one a `transparent`
 /// tuple struct is written as: one with a `default`, and a `PhantomData`, which no schema surface
 /// describes.
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[cfg(not(any(feature = "typescript", feature = "zod")))]
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
@@ -487,7 +482,7 @@ fn a_tuple_is_walked_by_position_in_a_field_a_list_and_an_option() {
     );
 }
 
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[cfg(not(any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_tuple_is_walked_by_position_in_a_map() {
     let stored = json!({ "by_name": { "first": ["a", "1"], "second": 7_i32 } });
@@ -741,7 +736,6 @@ fn a_struct_flattening_a_type_serde_cannot_flatten_lists_nothing_for_it_beside_s
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_constrained_brand_is_refused_with_its_own_message() {
     let read = Code::from_value_with(json!("ab"), |_raw, _found| code_schema::Verdict::Reject);
@@ -838,7 +832,6 @@ fn what_serde_wrote_for_a_transparent_struct_is_read_and_the_decider_never_runs(
     assert_eq!(calls, 0);
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn a_transparent_structs_json_schema_admits_what_the_decode_reads() {
     assert_eq!(Slug::json_schema(), json!({ "type": "string" }));
@@ -974,7 +967,7 @@ fn a_decider_repairs_a_transparent_struct_at_the_path_it_is_handed() {
     assert_eq!(read, Ok(titled()));
 }
 
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[cfg(not(any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_transparent_struct_is_walked_as_the_field_serde_reads_past_a_default_and_a_marker() {
     let etched = Etched {
@@ -1139,7 +1132,7 @@ fn a_transparent_tuple_struct_over_a_model_type_walks_as_that_type() {
     );
 }
 
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[cfg(not(any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_transparent_tuple_struct_is_walked_as_the_slot_serde_reads_past_a_default_and_a_marker() {
     let written = serde_json::to_value(Marked::<u8>(PhantomData, "m".to_owned(), 3)).unwrap();

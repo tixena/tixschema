@@ -6,17 +6,17 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 pub type ReferencedDocumentId = String;
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DocumentSlot {
     Primary,
     Secondary,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UsesAliasByValue {
     pub id: ReferencedDocumentId,
@@ -30,57 +30,57 @@ pub struct UsesAliasInCollections {
     pub maybe_id: Option<ReferencedDocumentId>,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UsesAliasAsMapValue {
     pub by_slot: HashMap<DocumentSlot, ReferencedDocumentId>,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 pub type DocumentSlotAlias = DocumentSlot;
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 pub type DocumentSlotAliasChain = DocumentSlotAlias;
 
 /// A map key written as an alias: the generated `enum_members()` call is a *type path*, so it
 /// resolves through every link of the chain back to the enum that has the method.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UsesAliasAsMapKey {
     pub by_chained_slot: HashMap<DocumentSlotAliasChain, ReferencedDocumentId>,
     pub by_slot: HashMap<DocumentSlotAlias, ReferencedDocumentId>,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 pub type ReferencedDocumentIds = Vec<ReferencedDocumentId>;
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 pub type DocumentIdsByName = HashMap<String, ReferencedDocumentId>;
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 pub type DocumentIdsBySlot = HashMap<DocumentSlot, ReferencedDocumentId>;
 
 /// Declaration order, taken both ways round: this struct names aliases that have not expanded
 /// yet, so the module each reference resolves to is derived from the alias's Rust ident alone;
 /// [`NamesAliasesDeclaredEarlier`] names the same two once registered. Both have to reach the
 /// same modules.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NamesAliasesDeclaredLater {
     pub counts: Vec<LaterDeclaredCount>,
     pub ids: HashMap<String, LaterDeclaredId>,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 pub type LaterDeclaredId = String;
 
 /// A rename moves what the alias is *exported* as. It does not move the module its schema is
 /// published in — an override is not recoverable from the Rust ident, so a module named after the
 /// override would be one no forward reference could ever name.
-#[model_schema(name = "RenamedLaterDeclaredCount")]
+#[model_schema(name = "RenamedLaterDeclaredCount", enable = ["jsonschema"])]
 pub type LaterDeclaredCount = i64;
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NamesAliasesDeclaredEarlier {
     pub counts: Vec<LaterDeclaredCount>,
@@ -139,7 +139,7 @@ fn struct_keying_a_map_by_an_alias_of_an_enum_expands_in_this_feature_combinatio
     );
 }
 
-#[cfg(feature = "jsonschema")]
+#[cfg(feature = "serde")]
 #[test]
 fn alias_module_backs_the_reference_emitted_by_the_referencing_struct() {
     let schema = UsesAliasByValue::json_schema();
@@ -151,7 +151,7 @@ fn alias_module_backs_the_reference_emitted_by_the_referencing_struct() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
+#[cfg(feature = "serde")]
 #[test]
 fn alias_module_backs_the_map_value_reference() {
     let schema = UsesAliasAsMapValue::json_schema();
@@ -166,7 +166,7 @@ fn alias_module_backs_the_map_value_reference() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
+#[cfg(feature = "serde")]
 #[test]
 fn alias_keyed_map_enumerates_the_members_of_the_aliased_enum() {
     let schema = UsesAliasAsMapKey::json_schema();
@@ -185,7 +185,6 @@ fn alias_keyed_map_enumerates_the_members_of_the_aliased_enum() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn an_aliased_scalar_publishes_the_targets_schema() {
     assert_eq!(
@@ -194,7 +193,6 @@ fn an_aliased_scalar_publishes_the_targets_schema() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn an_aliased_sibling_publishes_the_siblings_own_schema() {
     assert_eq!(
@@ -203,7 +201,6 @@ fn an_aliased_sibling_publishes_the_siblings_own_schema() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn an_alias_of_an_alias_resolves_to_the_type_at_the_end_of_the_chain() {
     assert_eq!(
@@ -212,7 +209,6 @@ fn an_alias_of_an_alias_resolves_to_the_type_at_the_end_of_the_chain() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn an_aliased_sequence_publishes_the_array_of_its_element() {
     assert_eq!(
@@ -224,7 +220,7 @@ fn an_aliased_sequence_publishes_the_array_of_its_element() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
+#[cfg(feature = "serde")]
 #[test]
 fn an_aliased_map_publishes_the_object_its_key_and_value_describe() {
     let member = referenced_document_id_schema::Schema::json_schema();
@@ -246,7 +242,6 @@ fn an_aliased_map_publishes_the_object_its_key_and_value_describe() {
     assert_eq!(by_slot["additionalProperties"], false, "in: {by_slot}");
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn no_alias_publishes_a_schema_that_validates_nothing() {
     for schema in [
@@ -262,14 +257,14 @@ fn no_alias_publishes_a_schema_that_validates_nothing() {
     }
 }
 
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn alias_reference_uses_the_registered_export_name() {
     let ts = UsesAliasByValue::ts_definition();
     assert!(ts.contains("ReferencedDocumentIdType"), "got: {ts}");
 }
 
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn alias_map_value_uses_the_registered_export_name() {
     let ts = UsesAliasAsMapValue::ts_definition();
@@ -279,7 +274,7 @@ fn alias_map_value_uses_the_registered_export_name() {
     );
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn alias_map_value_zod_schema_name_matches_the_registered_export() {
     let zod = UsesAliasAsMapValue::zod_schema();
@@ -289,7 +284,7 @@ fn alias_map_value_zod_schema_name_matches_the_registered_export() {
     );
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn alias_zod_schema_name_matches_the_reference_emitted_by_the_struct() {
     let alias_zod = referenced_document_id_schema::Schema::zod_schema();
@@ -321,7 +316,7 @@ fn aliases_declared_under_their_reference_expand_in_this_feature_combination() {
     assert_eq!(earlier.counts, vec![10_i64]);
 }
 
-#[cfg(feature = "jsonschema")]
+#[cfg(feature = "serde")]
 #[test]
 fn an_alias_reference_describes_the_same_on_either_side_of_the_alias() {
     assert_eq!(
@@ -330,7 +325,7 @@ fn an_alias_reference_describes_the_same_on_either_side_of_the_alias() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
+#[cfg(feature = "serde")]
 #[test]
 fn a_forward_alias_reference_carries_what_the_alias_publishes() {
     let schema = NamesAliasesDeclaredLater::json_schema();
@@ -358,7 +353,7 @@ fn a_renamed_alias_exports_under_the_override_from_the_module_named_for_its_iden
     assert!(ts.contains("RenamedLaterDeclaredCount"), "got: {ts}");
 }
 
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn every_name_a_forward_alias_reference_writes_is_defined_by_the_emission() {
     let forward = NamesAliasesDeclaredLater::ts_definition();
@@ -387,7 +382,7 @@ fn every_name_a_forward_alias_reference_writes_is_defined_by_the_emission() {
     }
 }
 
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn every_schema_a_forward_alias_reference_names_is_defined_by_the_emission() {
     let forward = NamesAliasesDeclaredLater::zod_schema();
@@ -419,7 +414,7 @@ fn every_schema_a_forward_alias_reference_names_is_defined_by_the_emission() {
     }
 }
 
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn a_backward_alias_reference_still_writes_the_export_name() {
     let ts = NamesAliasesDeclaredEarlier::ts_definition();

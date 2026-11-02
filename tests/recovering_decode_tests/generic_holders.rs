@@ -42,7 +42,6 @@ struct Van {
 }
 
 /// Holds a list of totes under its own type parameter, held to a count of its own.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[model_schema(enable = ["decode_with"], default_types(CodeType = String))]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(bound(deserialize = "CodeType: serde::de::DeserializeOwned"))]
@@ -52,7 +51,6 @@ struct Convoy<CodeType: Display> {
 }
 
 /// [`Convoy`] with a concrete filling.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[model_schema(enable = ["decode_with"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct StringConvoy {
@@ -71,7 +69,6 @@ struct Carton {
 }
 
 /// A model with a parameter whose member carries a bound, which the walk lists.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[model_schema(enable = ["decode_with"], default_types(CodeType = String))]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(bound(deserialize = "CodeType: serde::de::DeserializeOwned"))]
@@ -82,7 +79,6 @@ struct SealedTote<CodeType: Display> {
     seal: String,
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[model_schema(enable = ["decode_with"], default_types(CodeType = String))]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(bound(deserialize = "CodeType: serde::de::DeserializeOwned"))]
@@ -91,7 +87,6 @@ struct SealedTruck<CodeType: Display> {
 }
 
 /// A recursive checked type whose list of itself is held to a count.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[model_schema(enable = ["decode_with"], check = ["withinStack"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -125,7 +120,6 @@ where
     outside(&value.item_code_list, &value.fragile_item_codes)
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn within_stack(value: &Stack) -> Result<(), Vec<String>> {
     outside(&value.item_code_list, &value.fragile_item_codes)
 }
@@ -226,7 +220,6 @@ fn a_check_held_with_a_concrete_filling_is_listed_at_its_path_as_it_was() {
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_bound_held_under_the_holders_type_parameter_is_listed_at_its_path_as_it_was() {
     let mut listed = String::new();
@@ -244,7 +237,6 @@ fn a_bound_held_under_the_holders_type_parameter_is_listed_at_its_path_as_it_was
 }
 
 /// A plain read of the holder names the broken check under the holder's path.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_plain_read_of_the_holder_names_the_check_at_its_full_path() {
     assert_eq!(
@@ -257,13 +249,11 @@ fn a_plain_read_of_the_holder_names_the_check_at_its_full_path() {
 
 /// A payload that holds fewer totes than the list's count asks, the second of which breaks its
 /// check.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn too_few_and_broken() -> Value {
     let sound = json!({ "itemCodeList": ["x"], "fragileItemCodes": ["x"] });
     json!({ "loads": [sound, broken()] })
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_counted_list_held_under_the_holders_type_parameter_lists_the_issues_of_a_concrete_filling() {
     let mut generic = String::new();
@@ -291,7 +281,6 @@ fn a_counted_list_held_under_the_holders_type_parameter_lists_the_issues_of_a_co
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_counted_list_of_self_lists_its_count_and_the_check_of_the_stack_it_holds() {
     let mut inner = broken();

@@ -9,20 +9,20 @@ use walked_schema::DecodeWith as _;
 
 const WRITTEN: &str = r#"{"held":{"key":"k","value":7},"listed":{"only":"x"}}"#;
 
-#[model_schema(enable = ["decode_with", "mongodb"], default_types(K = String, V = u32))]
+#[model_schema(enable = ["decode_with", "jsonschema", "mongodb"], default_types(K = String, V = u32))]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct IndexMap<K, V> {
     pub key: K,
     pub value: V,
 }
 
-#[model_schema(enable = ["decode_with", "mongodb"], default_types(T = String))]
+#[model_schema(enable = ["decode_with", "jsonschema", "mongodb"], default_types(T = String))]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct IndexSet<T> {
     pub only: T,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Holder {
     pub held: IndexMap<String, u32>,
@@ -127,7 +127,6 @@ fn zod_calls_the_factories_of_the_types_declared_here() {
     assert!(!zod.contains("z.array("), "got: {zod}");
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn the_json_schema_is_the_document_of_the_types_declared_here() {
     let properties = &Holder::json_schema()["properties"];

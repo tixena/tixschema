@@ -54,26 +54,26 @@ pub const LEADS: [(&str, &str); 25] = [
 ];
 
 /// An alias of an `Option`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 pub type Plummet = Option<u32>;
 
 /// An alias of an alias of an `Option`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 pub type Relead = Plummet;
 
 /// An alias of an `Option` that declares a parameter.
-#[model_schema(default_types(T = u32))]
+#[model_schema(default_types(T = u32), enable = ["jsonschema"])]
 pub type Haply<T> = Option<T>;
 
 /// A type that holds what fills its parameter under a key serde always writes.
-#[model_schema(default_types(T = u32))]
+#[model_schema(default_types(T = u32), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Swung<T> {
     pub held: T,
 }
 
 /// A field that holds an alias of an `Option`, beside a list of it.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Handlead {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -83,7 +83,7 @@ pub struct Handlead {
 
 /// Every position outside a field that holds an alias of an `Option`, and an `Option` written as a
 /// type argument.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Leadsman {
     pub keyed: BTreeMap<String, Plummet>,
@@ -97,7 +97,7 @@ pub struct Leadsman {
 }
 
 /// A field and a list of an alias of an `Option` that declares a parameter.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Chanced {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -108,7 +108,7 @@ pub struct Chanced {
 /// A field of an alias of an `Option` under `skip_serializing_if` alone: serde reads its absent
 /// key as `None`, as it reads the key of an `Option` written as one. Beside it, a list of an
 /// `Option` of the alias.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Shoaled {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -117,7 +117,7 @@ pub struct Shoaled {
 }
 
 /// A field of an alias of an `Option` under `nullable`, whose `None` serde writes as `null`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Lineman {
     #[model_schema_prop(nullable)]
@@ -125,7 +125,7 @@ pub struct Lineman {
 }
 
 /// A variant's member of an alias of an `Option` under `default` and `skip_serializing_if`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Plumbline {
     Line {
@@ -135,17 +135,17 @@ pub enum Plumbline {
 }
 
 /// A tuple struct whose first slot holds an alias of an `Option`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Reckoned(pub Plummet, pub u32);
 
 /// A struct of one slot over an alias of an `Option`, which serde writes as the slot's value.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Deepsea(pub Plummet);
 
 /// Variants whose slots hold an alias of an `Option`, under no tag attribute.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Sinker {
     Depth(Plummet),
@@ -153,7 +153,7 @@ pub enum Sinker {
 }
 
 /// A variant whose slot holds an alias of an `Option`, under a tag and a content key.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "body")]
 pub enum Heaved {
@@ -161,18 +161,18 @@ pub enum Heaved {
 }
 
 /// The struct the members below flatten.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Seabed {
     pub depth: u32,
 }
 
 /// An alias of an `Option` of [`Seabed`].
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 pub type Bottoming = Option<Seabed>;
 
 /// A flattened `Option` under no attribute that drops a key.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Bottomed {
     pub id: String,
@@ -181,7 +181,7 @@ pub struct Bottomed {
 }
 
 /// A flattened alias of an `Option` under no attribute that drops a key.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Groundage {
     pub id: String,
@@ -190,7 +190,7 @@ pub struct Groundage {
 }
 
 /// A variant's flattened `Option` under no attribute that drops a key.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Grounding {
     Aground {

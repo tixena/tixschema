@@ -294,6 +294,7 @@ fn a_key_of_a_declared_type_is_written_as_its_serializer_writes_it() {
 }
 
 /// Only a brand that holds a string, or a brand or an alias that answers one, answers its text.
+#[cfg(feature = "serde")]
 #[test]
 fn a_brand_over_anything_but_a_text_answers_none() {
     let text: ItemStruct = syn::parse_quote! {
@@ -327,6 +328,7 @@ fn a_brand_over_anything_but_a_text_answers_none() {
 
 /// A brand that holds one of its parameters bare runs its bounds where the value is of the type
 /// declared for the parameter, and writes none where that type is written with arguments.
+#[cfg(feature = "serde")]
 #[test]
 fn a_brand_with_a_parameter_is_bounded_at_its_declared_default() {
     let item: ItemStruct = syn::parse_quote! {
@@ -545,6 +547,7 @@ fn a_holder_reads_each_model_it_walks_with_no_judgement() {
 
 /// A brand's value class keeps the plugin's serializer, and answers what its bounds alone hold
 /// the value to beside `validate()`, which calls its checks as well.
+#[cfg(feature = "serde")]
 #[test]
 fn a_brand_is_judged_by_its_own_serializer_and_answers_its_bounds_alone() {
     let item: ItemStruct = syn::parse_quote! {
@@ -581,6 +584,7 @@ fn a_brand_is_judged_by_its_own_serializer_and_answers_its_bounds_alone() {
 }
 
 /// A brand with a parameter writes its serializers over the parameter's own.
+#[cfg(feature = "serde")]
 #[test]
 fn a_brand_with_a_parameter_takes_the_serializer_of_what_it_holds() {
     let item: ItemStruct = syn::parse_quote! {

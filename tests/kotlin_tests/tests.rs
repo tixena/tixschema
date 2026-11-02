@@ -753,6 +753,7 @@ fn test_object_id_bare() {
     assert!(kotlin.contains("val id: ObjectId"), "got: {kotlin}");
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_branded_newtype() {
     let kotlin = renumbered(&correlation_id_kotlin::kotlin_definition());

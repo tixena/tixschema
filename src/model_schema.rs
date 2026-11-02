@@ -18,7 +18,10 @@ use core::iter;
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use core::ops::Range;
 use core::ptr;
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(any(
+    all(feature = "zod", feature = "typescript"),
+    all(feature = "serde", any(feature = "typescript", feature = "zod"))
+))]
 use core::slice;
 
 use proc_macro2::TokenStream;
@@ -28,31 +31,14 @@ use syn::parse::{Parse, ParseStream, Parser as _};
 use syn::punctuated::Punctuated;
 use syn::{Field, Item, ItemType, Meta, Token};
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use quote::quote_spanned;
 
-#[cfg(any(
-    feature = "serde",
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema"
-))]
 use syn::spanned::Spanned as _;
 
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 use syn::Ident;
 
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use crate::field_type::ZOD_SCHEMA_BOUND;
-#[cfg(any(feature = "serde", feature = "jsonschema"))]
 use crate::field_type::{RESULT_ARMS, RangeKind};
 #[cfg(feature = "zod")]
 use crate::field_type::{zod_check_wrap, zod_check_wrap_handing, zod_preprocess_wrap};
@@ -64,25 +50,21 @@ use crate::{
     utils::{get_field_docs, get_variant_docs, strip_examples_from_docs},
 };
 
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
 use crate::field_type::is_undescribable_primitive;
 
-#[cfg(all(feature = "jsonschema", feature = "chrono"))]
+#[cfg(feature = "chrono")]
 use crate::{
     features::text_forms::{DATE, TIME_SENT},
     utils::js_spelling,
 };
 
-#[cfg(any(feature = "serde", feature = "zod"))]
 use crate::bound_message::Bound;
 #[cfg(feature = "serde")]
 use crate::bound_message::VIOLATION_STEMS;
-#[cfg(feature = "serde")]
 use crate::bound_message::rust_violation;
 #[cfg(feature = "zod")]
 use crate::bound_message::zod_error_arg;
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use crate::utils::asking_more;
 #[cfg(any(feature = "typescript", feature = "zod"))]
 use crate::utils::escape_js_double_quoted;
@@ -109,37 +91,28 @@ use crate::features::arky;
 use crate::features::object_id::get_object_id_zod_schema_with;
 
 // The 24-character hex an `ObjectId`'s `$oid` member holds, as a JSON-schema `pattern`.
-#[cfg(all(feature = "jsonschema", feature = "mongodb"))]
+#[cfg(feature = "mongodb")]
 use crate::features::object_id::OBJECT_ID_HEX_PATTERN;
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use crate::utils::{
-    AliasKind, Counted, MapKeyWire, PublishedShape, ShapeQuestion, lookup_alias_info,
-    record_counted, record_inexact_key, record_key_wire, record_shape_question, record_value_shape,
-    shape_questions_for,
+    AliasKind, Counted, Declared, MapKeyWire, PublishedShape, ShapeQuestion, counted, declared,
+    lookup_alias_info, record_counted, record_declared, record_inexact_key, record_key_wire,
+    record_shape_question, record_value_shape, shape_questions_for,
 };
 
-#[cfg(all(
-    feature = "serde",
-    feature = "indexmap",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "indexmap")]
 use crate::utils::record_indexed_set;
 
 #[cfg(feature = "serde")]
-use crate::utils::declared;
-
-#[cfg(feature = "serde")]
 use crate::utils::{
-    Declared, NonObjectWire, SlotBesideTag, TrivialPattern, UnionParameter, WireLeaf, WrittenAs,
-    forget_field_validators, is_recorded_plain_enum, record_declared, record_field_validator,
-    record_flattened_parameters, record_non_object_wire, record_open_map,
+    NonObjectWire, SlotBesideTag, UnionParameter, WireLeaf, WrittenAs, forget_field_validators,
+    is_recorded_plain_enum, record_flattened_parameters, record_non_object_wire, record_open_map,
     record_open_map_parameters, record_plain_enum, record_text_key_parameters,
-    record_union_parameters, record_value_parameter, recorded_non_object_wire, trivial_pattern,
-    union_parameters, value_parameter,
+    record_union_parameters, record_value_parameter, recorded_non_object_wire, union_parameters,
+    value_parameter,
 };
+use crate::utils::{TrivialPattern, record_field_validator, trivial_pattern};
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use crate::features::serde::brand_slot;
 #[cfg(all(feature = "serde", feature = "chrono"))]
 use crate::features::serde::parse_serde_field_hooks;
@@ -148,7 +121,6 @@ use crate::features::serde::parse_serde_field_hooks;
     any(
         feature = "typescript",
         feature = "zod",
-        feature = "jsonschema",
         feature = "dart",
         feature = "swift",
         feature = "kotlin"
@@ -170,27 +142,21 @@ use crate::features::serde::{
 
 #[cfg(feature = "zod")]
 use crate::features::js_literal;
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
-use crate::features::recovering_decode::{brand_recovering_decode, reading_the_authors_scope};
+#[cfg(feature = "serde")]
+use crate::features::recovering_decode::reading_the_authors_scope;
 #[cfg(feature = "serde")]
 use crate::features::recovering_decode::{
+    brand_recovering_decode,
     enums::{enum_recovering_decode, tag_arm_refusals},
     struct_recovering_decode, written_as_one_value,
 };
-// The type is named where a positional slot's own omission is read: the tuple-struct walk, which
-// only a describing build performs, and the variant walk, which every build performs.
 use crate::features::serde::SerdeKeyOmission;
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
 use crate::features::serde::defaults::SerdeDefaults;
 #[cfg(all(
     feature = "serde",
     any(
         feature = "typescript",
         feature = "zod",
-        feature = "jsonschema",
         feature = "dart",
         feature = "swift",
         feature = "kotlin"
@@ -203,17 +169,12 @@ use crate::features::serde::defaults::{holds_a_placeholder, zod_substituted};
 #[cfg(feature = "serde")]
 use crate::field_type::{parse_serde_field_attributes, parse_serde_type_attributes};
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 use crate::field_type::is_a_standard_type_name;
 
-#[cfg(feature = "serde")]
-use crate::field_type::{is_interior_mutability_wrapper, is_refused_sequence_wrapper};
+use crate::field_type::is_interior_mutability_wrapper;
 use crate::field_type::{
-    is_map_wrapper, is_ownership_wrapper, is_sequence_wrapper, is_transparent_wrapper,
-    written_std_range, written_std_result,
+    is_map_wrapper, is_ownership_wrapper, is_refused_sequence_wrapper, is_sequence_wrapper,
+    is_transparent_wrapper, written_std_range, written_std_result,
 };
 
 use crate::features::model_schema_prop::{
@@ -221,14 +182,13 @@ use crate::features::model_schema_prop::{
     parse_model_schema_prop_attributes,
 };
 
-#[cfg(feature = "jsonschema")]
+use crate::features::jsonschema::in_flight_type;
 use crate::features::jsonschema::{
     MergeDiagnostic, MergedSource, SchemaParameter, UNIT_MEMBER_RECORD,
     generate_plain_enum_json_schema_method as generate_plain_enum_json_schema_method_impl,
-    generate_struct_json_schema_method as generate_struct_json_schema_method_impl, in_flight_type,
+    generate_struct_json_schema_method as generate_struct_json_schema_method_impl,
     json_schema_methods, merged_object_value,
 };
-#[cfg(feature = "jsonschema")]
 use crate::utils::json_argument_binding;
 
 #[cfg(feature = "dart")]
@@ -240,21 +200,10 @@ use crate::features::swift::{SwiftTypeArgs, refuses_swift, swift_schema_dispatch
 #[cfg(feature = "kotlin")]
 use crate::features::kotlin::{KotlinArgs, kotlin_refused_width, kotlin_schema_dispatch};
 
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    all(feature = "serde", feature = "jsonschema")
-))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 use crate::utils::get_enum_docs;
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use crate::utils::get_struct_docs;
 
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    feature = "serde"
-))]
 use crate::utils::ident_schema_module_name;
 
 use crate::utils::{
@@ -274,7 +223,7 @@ use crate::utils::{
     record_zod_discriminated, record_zod_union_members, record_zod_union_publication,
 };
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 use crate::utils::ZodUnionMember;
 
 #[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
@@ -283,7 +232,6 @@ use crate::utils::{FlattenVariant, record_flatten_variants, record_wire_leaves};
 #[cfg(all(feature = "serde", feature = "typescript"))]
 use crate::utils::record_ts_union_members;
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use crate::utils::register_alias_info;
 use crate::utils::{
     bson_refused_holder, forwarded_key_maps, forwarded_key_parameter, is_recorded_bson_refused_key,
@@ -296,9 +244,15 @@ use crate::utils::{
 use crate::utils::record_unit_struct;
 
 #[cfg(feature = "serde")]
-use crate::utils::{forget_checks, names_a_check, record_member_checks, record_own_checks};
+use crate::utils::{forget_checks, record_own_checks};
+use crate::utils::{names_a_check, record_member_checks, record_names_a_check};
 
-#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+#[cfg(any(
+    feature = "dart",
+    feature = "kotlin",
+    feature = "swift",
+    not(feature = "serde")
+))]
 use crate::rename_rule::RenameRule;
 use crate::rename_rule::resolve_rename_rule;
 
@@ -370,15 +324,12 @@ const INTEGER_RANGES: [(&str, i128, i128, &str); 10] = [
 
 /// The text an integer map key is read from, as Zod's record reads it: digits under an optional
 /// sign, then a fraction of zeros at most, which Zod reads as that integer.
-#[cfg(feature = "jsonschema")]
 const INTEGER_KEY_PATTERN: &str = "^-?[0-9]+(\\.0+)?$";
 
 /// The text a floating-point map key is read from, as Zod's record reads it.
-#[cfg(feature = "jsonschema")]
 const NUMBER_KEY_PATTERN: &str = "^-?[0-9]+(\\.[0-9]+)?$";
 
 /// The text a `bool` map key is read from.
-#[cfg(feature = "jsonschema")]
 const BOOLEAN_KEY_PATTERN: &str = "^(true|false)$";
 
 /// What every plain-enum flatten diagnostic says about its own reach, so an author who fixes the
@@ -499,35 +450,8 @@ const GATED_NAMES: &[GatedName] = &[
     },
 ];
 
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 const WRITTEN_AS_ARRAY: &str = "a JSON array";
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 const WRITTEN_AS_NULL: &str = "null";
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 const WRITTEN_AS_OBJECT: &str = "a JSON object";
 
 /// What the object joins in place of a source read as the entries of a map, where serde reads it
@@ -616,9 +540,11 @@ type StructFieldData = (
 );
 
 /// What the test over a type's examples is written from: the type, and the block of each example.
+/// `json_schema` says the type lists `"jsonschema"`, whose document reads the examples.
 #[derive(Clone)]
 struct ExampleTest {
     blocks: Vec<TokenStream>,
+    json_schema: bool,
     module: syn::Ident,
     name: syn::Ident,
     value_ty: TokenStream,
@@ -626,15 +552,12 @@ struct ExampleTest {
 
 /// What a struct's schema methods read of its docs: the text, and the `examples` keyword its
 /// standalone JSON Schema document holds.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 struct SchemaDocs {
-    #[cfg(feature = "jsonschema")]
     json_examples: Option<TokenStream>,
     text: String,
 }
 
 /// Borrowed pieces needed to assemble the final token stream for a branded newtype.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 struct BrandedNewtypeOutput<'parts> {
     /// `model_schema_validate_bound`, where the brand carries a bound.
     bound_alone: &'parts proc_macro2::TokenStream,
@@ -655,7 +578,6 @@ struct BrandedNewtypeOutput<'parts> {
 
 /// What a brand's own bound adds to it: the functions of its schema module, and what holds a
 /// value of the brand to the bound. Nothing for a brand that carries none.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[derive(Default)]
 struct BrandBound {
     /// `model_schema_validate_bound`, the method that answers for the bound alone.
@@ -667,10 +589,6 @@ struct BrandBound {
 
 /// A constrained brand's generated validation: the schema-module functions, and the expression
 /// through which `validate()` reaches the inner value it hands `validator`.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 struct BrandedValidation {
     checked_inner: proc_macro2::TokenStream,
     /// The validator, and beside it what a brand that declares a parameter asks its filling with.
@@ -682,10 +600,6 @@ struct BrandedValidation {
 
 /// A declared default a generic brand's string check reads its value as, and what keeps the
 /// expansion from proving it writes every lifetime it has.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 enum UnprovenDefault {
     /// An alias whose target writes a lifetime, which the alias hides from the cast.
     Hides,
@@ -696,7 +610,6 @@ enum UnprovenDefault {
 }
 
 /// The JSON schema shape a branded newtype's inner field describes.
-#[cfg(feature = "jsonschema")]
 enum BrandedJsonInner {
     /// The string a chrono type writes, held to its form as the field position holds the same
     /// type.
@@ -714,7 +627,7 @@ enum BrandedJsonInner {
 }
 
 /// What the text of a chrono type is held to in a JSON schema, beside `"type": "string"`.
-#[cfg(all(feature = "jsonschema", feature = "chrono"))]
+#[cfg(feature = "chrono")]
 enum ChronoText {
     /// The `"format"` keyword that names its form: a date, and a date and time with its zone.
     Format(&'static str),
@@ -724,7 +637,6 @@ enum ChronoText {
 }
 
 /// Whether the schema a brand narrows already states a `pattern` of its own.
-#[cfg(feature = "jsonschema")]
 #[derive(Clone, Copy)]
 enum BasePattern {
     /// The base states none, so the brand's is the schema's own `pattern` keyword.
@@ -734,10 +646,10 @@ enum BasePattern {
 }
 
 /// What a field bottoms out in, under the wrappers it was written beneath.
-#[cfg(feature = "serde")]
 struct ConstrainedShape {
     leaf: ConstraintLeaf,
     /// Every non-`'static` lifetime the field's type spells, deduplicated.
+    #[cfg(feature = "serde")]
     lifetimes: Vec<syn::Lifetime>,
     wraps: Vec<ConstraintWrap>,
 }
@@ -756,7 +668,6 @@ struct ListHookHeader {
 }
 
 /// The value a constrained field ultimately writes, and how it is spelled.
-#[cfg(feature = "serde")]
 enum ConstraintLeaf {
     /// A list, a value of its own: `minLength` and `maxLength` count its items, and the walk goes
     /// no further into it.
@@ -772,7 +683,6 @@ enum ConstraintLeaf {
 }
 
 /// The value a `literal` is compared with, as a field's type reaches it.
-#[cfg(feature = "serde")]
 enum LiteralLeaf {
     Bool,
     /// The bare Rust numeric type, which is the validator's parameter type.
@@ -785,10 +695,10 @@ enum LiteralLeaf {
 /// A field's type read down to the value a `literal` admits, with the wrappers on the way:
 /// `Option`, the transparent wrappers, every reference, and each level of a list, every item of
 /// which the literal admits alone.
-#[cfg(feature = "serde")]
 struct LiteralShape {
     leaf: LiteralLeaf,
     /// Every non-`'static` lifetime the field's type spells, deduplicated.
+    #[cfg(feature = "serde")]
     lifetimes: Vec<syn::Lifetime>,
     wraps: Vec<ConstraintWrap>,
 }
@@ -798,7 +708,6 @@ struct LiteralShape {
 /// Both readings publish the same two helpers into the schema module. What differs is whether the
 /// field itself is hung with the `#[serde(deserialize_with = …)]` that runs the check as the
 /// payload is read.
-#[cfg(feature = "serde")]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ConstraintGate {
     /// The deserializer as well as the validator: on an untagged union's member, whether the member
@@ -811,10 +720,10 @@ enum ConstraintGate {
 
 /// What the end of a constraint walk does with a violation: `validate()` collects every one, a
 /// `Deserializer` fails at the first.
-#[cfg(feature = "serde")]
 #[derive(Clone, Copy)]
 enum CheckSink {
     Collect,
+    #[cfg(feature = "serde")]
     Fail,
 }
 
@@ -836,7 +745,6 @@ pub struct MemberPlace {
 }
 
 /// A constrained member as its helpers are written.
-#[cfg(feature = "serde")]
 struct CheckedMember {
     /// The expression `validate()` reads the member from.
     checked: proc_macro2::TokenStream,
@@ -854,7 +762,6 @@ struct CheckedMember {
 /// validator reaches. A sequence yields each element and a map each entry's value, on the
 /// walk to what a field's own type declares alone: a field's own bound stops at a list and reads
 /// no map.
-#[cfg(feature = "serde")]
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum ConstraintWrap {
     Borrowed,
@@ -867,7 +774,6 @@ enum ConstraintWrap {
 }
 
 /// What the walk below a member ends on.
-#[cfg(feature = "serde")]
 enum HeldEnd {
     /// A std `Result`: each arm that holds something the walk reaches, by the key serde writes it
     /// under, with the walk below it.
@@ -879,19 +785,15 @@ enum HeldEnd {
 }
 
 /// The walk from a member's value to every value below it whose own type may publish `validate()`.
-#[cfg(feature = "serde")]
 struct HeldShape {
     end: HeldEnd,
     /// The key type of each map in `wraps`, outermost first.
+    #[cfg(feature = "serde")]
     keys: Vec<syn::Type>,
     /// The wrappers the walk reads through to its end, outermost first.
     wraps: Vec<ConstraintWrap>,
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 impl BrandBound {
     fn of(validation: Option<&BrandedValidation>, module_ident: &Ident) -> Self {
         validation.map_or_else(Self::default, |held_to| {
@@ -912,7 +814,6 @@ impl BrandBound {
     }
 }
 
-#[cfg(feature = "serde")]
 impl HeldShape {
     /// Whether the walk reads a map, at any depth.
     fn walks_a_map(&self) -> bool {
@@ -929,7 +830,6 @@ impl HeldShape {
     }
 }
 
-#[cfg(feature = "serde")]
 impl LiteralShape {
     /// Whether the literal is held by each item of a list, which the walk names by its index.
     fn reaches_items(&self) -> bool {
@@ -938,20 +838,18 @@ impl LiteralShape {
 }
 
 /// One step of the place a walk holds a value at.
-#[cfg(feature = "serde")]
 #[derive(Clone)]
 enum PlaceStep {
     /// The depth a list level binds its item's index at.
     Index(usize),
-    /// The depth a map level binds its entry at, whose key is written as serde writes it, where
-    /// serde does.
+    /// The depth a map level binds its entry at, whose key is written as its text, where it has
+    /// one.
     Key(usize),
     /// A key or a position serde writes, read as the walk is written.
     Written(String),
 }
 
 /// Holds the generated validation code for a single field.
-#[cfg(feature = "serde")]
 struct FieldValidationCode {
     /// Functions to emit into the schema module (static validator + serde deserializer).
     pub module_items: proc_macro2::TokenStream,
@@ -962,7 +860,6 @@ struct FieldValidationCode {
 /// A map member's rendering with the slot wraps still to apply: a `json!` literal fragment, which
 /// only a caller writing inside `serde_json::json!` can inline, or a standalone `serde_json::Value`
 /// expression, which either caller can take as it stands.
-#[cfg(feature = "jsonschema")]
 enum MapMemberItem {
     Fragment(proc_macro2::TokenStream),
     Value(proc_macro2::TokenStream),
@@ -973,13 +870,11 @@ enum MapMemberItem {
 /// message needs belongs to the caller rather than to the dispatch, so the reason travels out and
 /// the message is formatted once at the top. The span travels with it because the callers that
 /// format it hold a slice of slots and cannot tell which one the dispatch refused.
-#[cfg(feature = "jsonschema")]
 #[derive(Debug)]
 enum MapMemberRejection {
     Key(MapKeyRejection, proc_macro2::Span),
 }
 
-#[cfg(feature = "jsonschema")]
 impl MapMemberRejection {
     /// The written tokens the diagnostic points at, behind the guards rather than in front of
     /// them: every authoring position a map key is written in is refused upstream by a guard of its
@@ -996,15 +891,6 @@ impl MapMemberRejection {
 /// What a map key opens: an open member set, the members it enumerates, members under the text the
 /// key is written as, or no object at all — read the same way at every position a map is written
 /// in.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 enum MapKeyPath<'key> {
     /// A key named by a type path, whose `enum_members()` become the object's keys.
     Enumerated(&'key str),
@@ -1021,15 +907,6 @@ enum MapKeyPath<'key> {
 /// Why a map key a field reaches has no rendering. Every reason carries the name the author can act
 /// on, and every one stands on every surface, the key being read off the field all three render
 /// from.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 #[derive(Debug)]
 enum MapKeyRejection {
     /// The registry proves the key type carries no `enum_members()`.
@@ -1167,11 +1044,34 @@ pub struct Enabled {
     /// `"arky"`: the conversions to and from arky's frontmatter `Value`, under the `arky`
     /// feature.
     pub arky: bool,
+    /// `"decode_with"`, and `"mongodb"` beside it.
+    pub decoding: Decoding,
+    /// `"jsonschema"`: `json_schema()` and `json_schema_within()`, in every build.
+    pub jsonschema: bool,
+}
+
+/// What `"decode_with"` and `"mongodb"` turn on together, `"mongodb"` being refused alone.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum Decoding {
+    #[default]
+    Off,
+    /// `"decode_with"` alone.
+    Read,
+    /// `"decode_with"` and `"mongodb"`.
+    Stored,
+}
+
+impl Enabled {
     /// `"decode_with"`: `from_value_with`, `from_value_piped` and their walkers, and under the
     /// `bson` feature `from_bson_with`, `from_bson_piped` and theirs.
-    pub decode_with: bool,
+    pub const fn decode_with(self) -> bool {
+        !matches!(self.decoding, Decoding::Off)
+    }
+
     /// `"mongodb"`: the MongoDB operations and the typed paths, under the `mongodb` feature.
-    pub mongodb: bool,
+    pub const fn mongodb(self) -> bool {
+        matches!(self.decoding, Decoding::Stored)
+    }
 }
 
 /// One `default_types(IdType = String)` entry as written: the parameter it names, and the type
@@ -1265,7 +1165,6 @@ impl SourceAbsence {
 
 /// Both answers the registry holds about what a `#[model_schema()]` item publishes, built together
 /// from one reading of the declaration so the two cannot come apart.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 struct Surface {
     shape: PublishedShape,
     #[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
@@ -1379,7 +1278,6 @@ impl NonObject {
 type LeavesOf = fn(&str) -> Option<Vec<WireLeaf>>;
 
 /// What a tuple struct publishes, which is not always the tuple of its declared slots.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 enum TupleStructShape {
     /// The fixed-arity array serde writes for every other declared arity, holding the slots the
     /// wire carries.
@@ -1389,7 +1287,6 @@ enum TupleStructShape {
 }
 
 /// What walking a tuple struct's slots yields.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 struct TupleSlots {
     /// The functions written ahead of a generic tuple struct's builder that run the checks of its
     /// slots.
@@ -1661,9 +1558,9 @@ struct PlainEnumAdded<'added> {
 }
 
 /// The parts [`assemble_schema_output`] joins.
-#[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
 struct SchemaOutputParts<'parts, T> {
     delegate_impl_items: &'parts [proc_macro2::TokenStream],
+    enable: Enabled,
     example_test: Option<ExampleTest>,
     generics: &'parts syn::Generics,
     item: &'parts T,
@@ -1685,12 +1582,12 @@ struct StructContainer<'container> {
     wire: ContainerWire,
 }
 
-#[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
 impl<'parts, T> SchemaOutputParts<'parts, T> {
     /// These parts around `item`, the item as it is emitted.
     fn of(&self, item: &'parts T) -> Self {
         Self {
             delegate_impl_items: self.delegate_impl_items,
+            enable: self.enable,
             example_test: self.example_test.clone(),
             generics: self.generics,
             item,
@@ -1703,12 +1600,10 @@ impl<'parts, T> SchemaOutputParts<'parts, T> {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 impl SchemaDocs {
     /// The docs of `item_struct`, named `item_name` where it writes none.
     fn of_struct(item_struct: &syn::ItemStruct, item_name: &str) -> Self {
         Self {
-            #[cfg(feature = "jsonschema")]
             json_examples: json_schema_examples(&item_struct.attrs),
             text: struct_docs_body(get_struct_docs(item_struct).as_deref(), item_name),
         }
@@ -1718,7 +1613,6 @@ impl SchemaDocs {
 impl ExampleTest {
     /// The values the type's `schema_examples()` builds, handed to its schema module, which cannot
     /// name the type where the type is declared in a function body.
-    #[cfg(feature = "jsonschema")]
     fn bridged(&self, schema_module: &syn::Ident) -> TokenStream {
         let value_ty = &self.value_ty;
         quote! {
@@ -1728,12 +1622,6 @@ impl ExampleTest {
                 }
             }
         }
-    }
-
-    #[cfg(not(feature = "jsonschema"))]
-    fn bridged(&self, schema_module: &syn::Ident) -> TokenStream {
-        let _: &_ = &(&self.value_ty, schema_module);
-        TokenStream::new()
     }
 
     /// The test's subject: a struct or an enum whose docs write `blocks`, if any.
@@ -1748,6 +1636,7 @@ impl ExampleTest {
         }
         Some(Self {
             blocks: blocks.to_vec(),
+            json_schema: args.enable.jsonschema,
             module: syn::Ident::new(
                 &format!("{}_schema_examples", to_snake_case(&name.to_string())),
                 name.span(),
@@ -1790,6 +1679,7 @@ impl ExampleTest {
         schema_module: Option<&syn::Ident>,
     ) -> TokenStream {
         let bridge = subject
+            .filter(|example| example.json_schema)
             .zip(schema_module)
             .map_or_else(TokenStream::new, |(example, module)| {
                 example.bridged(module)
@@ -1799,6 +1689,7 @@ impl ExampleTest {
             module,
             name,
             value_ty,
+            ..
         }) = subject.filter(|_| validates)
         else {
             return bridge;
@@ -1864,7 +1755,6 @@ impl DefaultZodRendering {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 impl MapMemberItem {
     /// The item wrapped for its slot, kept in the form it arrived in.
     fn into_member_schema(self, value: &FieldDef) -> proc_macro2::TokenStream {
@@ -1889,15 +1779,6 @@ impl MapMemberItem {
     }
 }
 
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 impl ModelSchemaArgs {
     const fn has_string_constraints(&self) -> bool {
         self.pattern.is_some() || self.min_length.is_some() || self.max_length.is_some()
@@ -1936,7 +1817,6 @@ impl KeyAsked {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 impl Surface {
     /// The fixed-arity JSON array a tuple struct of every arity but one writes, which takes no
     /// string check and which no object can be merged with.
@@ -2131,7 +2011,7 @@ fn enable_arg(meta: &Meta) -> syn::Result<Enabled> {
             "tixschema: the list is empty; remove `enable`",
         ));
     }
-    let mut enabled = Enabled::default();
+    let (mut arky, mut decode_with, mut jsonschema, mut mongodb) = (false, false, false, false);
     let mut mongodb_entry = None;
     for element in &list.elems {
         let syn::Expr::Lit(expr_lit) = element else {
@@ -2142,18 +2022,19 @@ fn enable_arg(meta: &Meta) -> syn::Result<Enabled> {
         };
         let entry_text = entry.value();
         let turned_on = match entry_text.as_str() {
-            "arky" => &mut enabled.arky,
-            "decode_with" => &mut enabled.decode_with,
+            "arky" => &mut arky,
+            "decode_with" => &mut decode_with,
+            "jsonschema" => &mut jsonschema,
             "mongodb" => {
                 mongodb_entry = Some(entry);
-                &mut enabled.mongodb
+                &mut mongodb
             }
             _ => {
                 return Err(syn::Error::new_spanned(
                     entry,
                     format!(
                         "tixschema: unknown entry `{entry_text:?}`; the entries are \
-                         `\"arky\"`, `\"decode_with\"` and `\"mongodb\"`"
+                         `\"arky\"`, `\"decode_with\"`, `\"jsonschema\"` and `\"mongodb\"`"
                     ),
                 ));
             }
@@ -2167,7 +2048,7 @@ fn enable_arg(meta: &Meta) -> syn::Result<Enabled> {
         *turned_on = true;
     }
     if let Some(entry) = mongodb_entry
-        && !enabled.decode_with
+        && !decode_with
     {
         return Err(syn::Error::new_spanned(
             entry,
@@ -2175,7 +2056,18 @@ fn enable_arg(meta: &Meta) -> syn::Result<Enabled> {
              [\"decode_with\", \"mongodb\"]`",
         ));
     }
-    Ok(enabled)
+    let decoding = if mongodb {
+        Decoding::Stored
+    } else if decode_with {
+        Decoding::Read
+    } else {
+        Decoding::Off
+    };
+    Ok(Enabled {
+        arky,
+        decoding,
+        jsonschema,
+    })
 }
 
 /// The literal an argument's value was written as — every valued `model_schema` argument reaches
@@ -2347,11 +2239,15 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // An argument the parser refused describes a surface no expansion below can honour, so the
     // item is refused before it is dispatched to its shape.
     if let Some(rejection) = parsed_args.arg_rejection.as_ref()
-        && let Some(output) =
-            refused_item_output(&item, &[attr_guard_error(rejection, &item_label(&item))])
+        && let Some(output) = refused_item_output(
+            &item,
+            &[attr_guard_error(rejection, &item_label(&item))],
+            &parsed_args,
+        )
     {
         return output;
     }
+    let refused = |errors: &[TokenStream]| refused_item_output(&item, errors, &parsed_args);
     // An item's read holds the hooks of its own members alone.
     #[cfg(feature = "serde")]
     judged_read::forget_member_hooks();
@@ -2359,24 +2255,22 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // keys of its maps, read it whether or not a surface is on.
     record_wire_form(&item);
     // A member that holds any JSON value is no shape a target can describe, in any build.
-    if let Some(output) = refused_item_output(&item, &any_json_errors(&item, &parsed_args)) {
+    if let Some(output) = refused(&any_json_errors(&item, &parsed_args)) {
         return output;
     }
     // Nor is one that holds a primitive no surface has a type for, which the field walk would
     // otherwise take for a type declared elsewhere.
-    if let Some(output) = refused_item_output(&item, &undescribable_primitive_errors(&item)) {
+    if let Some(output) = refused(&undescribable_primitive_errors(&item)) {
         return output;
     }
     // A `default_types` declaration is read against the item's own parameters, which the parser
     // never sees, so both directions are answered here, ahead of every shape.
-    if let Some(output) =
-        refused_item_output(&item, &default_types_guard_errors(&item, &parsed_args))
-    {
+    if let Some(output) = refused(&default_types_guard_errors(&item, &parsed_args)) {
         return output;
     }
     // A map `validate()` names by its key, keyed by a parameter the item declares no `Serialize`
     // for, could not be written into a message.
-    if let Some(output) = refused_item_output(&item, &unwritable_map_key_errors(&item)) {
+    if let Some(output) = refused(&unwritable_map_key_errors(&item)) {
         return output;
     }
     // A list-form serde rename whose two directions name two keys is refused here, at the one seam
@@ -2384,13 +2278,13 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // whose two derives take two different fields as its value.
     // A default of a variant's member that no target but Rust reads as serde does is refused
     // beside it, every such member of the item at once.
-    if let Some(output) = refused_item_output(&item, &serde_attribute_guard_errors(&item)) {
+    if let Some(output) = refused(&serde_attribute_guard_errors(&item)) {
         return output;
     }
     // serde writes a variant under `#[serde(untagged)]` with no name inside an enum it writes with
     // names, which no surface describes, in any build. Refused ahead of every refusal that reads
     // the variant under its enum's tag.
-    if let Some(output) = refused_item_output(&item, &untagged_variant_errors(&item)) {
+    if let Some(output) = refused(&untagged_variant_errors(&item)) {
         return output;
     }
     // A map flattened beside a member that writes a key, or filling a type parameter flattened
@@ -2398,37 +2292,37 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // serde reads no entry of a map keyed by a number or a `bool` below a flattened member or in an
     // enum it buffers, so both are refused here, in every build with serde.
     #[cfg(feature = "serde")]
-    if let Some(output) = refused_item_output(&item, &flattened_map_errors(&item, &parsed_args)) {
+    if let Some(output) = refused(&flattened_map_errors(&item, &parsed_args)) {
         return output;
     }
     // `Foo()` and `Foo` are two wire shapes to serde and one to every surface, in every feature
     // combination, so it is refused here, ahead of every shape.
-    if let Some(output) = refused_item_output(&item, &empty_tuple_variant_errors(&item)) {
+    if let Some(output) = refused(&empty_tuple_variant_errors(&item)) {
         return output;
     }
     // An enum serde writes and reads no variant of, or that declares none, has no value to
     // describe, in any build.
-    if let Some(output) = refused_item_output(&item, &no_variant_on_the_wire_errors(&item)) {
+    if let Some(output) = refused(&no_variant_on_the_wire_errors(&item)) {
         return output;
     }
     // A doc example is compiled at one instantiation, and a const parameter takes no filling, so an
     // item writing both is refused here, ahead of every shape.
-    if let Some(output) = refused_item_output(&item, &const_parameter_example_errors(&item)) {
+    if let Some(output) = refused(&const_parameter_example_errors(&item, &parsed_args)) {
         return output;
     }
     // A const handed to a written type as an argument stands where a type belongs, and no surface
     // can spell it: refused here, ahead of every shape.
-    if let Some(output) = refused_item_output(&item, &const_parameter_argument_errors(&item)) {
+    if let Some(output) = refused(&const_parameter_argument_errors(&item, &parsed_args)) {
         return output;
     }
     // A name a feature that is off reads is no type this build describes, so it is refused here,
     // ahead of every shape, with the feature named.
-    if let Some(output) = refused_item_output(&item, &gated_name_errors(&item)) {
+    if let Some(output) = refused(&gated_name_errors(&item)) {
         return output;
     }
     // No key written on a brand's slot reaches a surface, so it is refused here, at the seam every
     // build shares. The item is re-emitted with the attribute taken off.
-    if let Some(output) = refused_item_output(&item, &branded_slot_prop_errors(&item)) {
+    if let Some(output) = refused(&branded_slot_prop_errors(&item)) {
         return output;
     }
     // A `preprocess` the read of the item cannot call is refused here, in every build.
@@ -2437,14 +2331,12 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     }
     // `decode_with` generates methods on the type it is written on, and `"arky"` impls for it, so
     // a shape that cannot carry them is refused here rather than left with plain serde.
-    if let Some(output) = refused_item_output(&item, &enable_guard_errors(&item, &parsed_args)) {
+    if let Some(output) = refused(&enable_guard_errors(&item, &parsed_args)) {
         return output;
     }
     // A name another declaration already publishes is refused here, after every guard that refuses
     // the item outright: one that publishes nothing claims nothing.
-    if let Some(output) =
-        refused_item_output(&item, &published_name_collision_errors(&item, &parsed_args))
-    {
+    if let Some(output) = refused(&published_name_collision_errors(&item, &parsed_args)) {
         return output;
     }
     // What an alias of an `Option` names is read by every expansion after it, the alias's own
@@ -2494,8 +2386,8 @@ fn process_shape(item: Item, args: &ModelSchemaArgs) -> TokenStream {
             .unwrap_or_else(|| process_enum(item_enum, args))
     } else if let Item::Type(item_type) = item {
         alias_string_check_refusal_output(&item_type, args)
-            .or_else(|| checks::alias_refusal_output(&item_type, &args.check))
-            .or_else(|| preprocess::alias_refusal_output(&item_type, &args.preprocess))
+            .or_else(|| checks::alias_refusal_output(&item_type, args))
+            .or_else(|| preprocess::alias_refusal_output(&item_type, args))
             .unwrap_or_else(|| process_type_alias(item_type, args))
     } else {
         syn::Error::new_spanned(
@@ -2608,7 +2500,6 @@ fn kotlin_suffix_tokens(_item: &Item, _args: &ModelSchemaArgs) -> TokenStream {
 }
 
 /// Classifies what an alias resolves to, for the registry.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn alias_target_kind(alias_field_def: &FieldDef) -> AliasKind {
     match map_key_path(alias_field_def) {
         MapKeyPath::Open => AliasKind::StringWire,
@@ -2622,16 +2513,35 @@ fn alias_target_kind(alias_field_def: &FieldDef) -> AliasKind {
 
 /// The `compile_error!` tokens an alias whose target reaches a map key with no `enum_members()`
 /// earns, or `None` when it reaches none. Spanned on the target, which is where the key was
-/// written.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
+/// written. A struct declared above is such a key:
+///
+/// ```rust,compile_fail
+/// use std::collections::HashMap;
+///
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema()]
+/// #[derive(Deserialize, Serialize, PartialEq, Eq, Hash)]
+/// pub struct Spot {
+///     pub segments: i32,
+/// }
+///
+/// #[model_schema()]
+/// pub type Visits = HashMap<Spot, u32>;
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: model_schema: type alias `Visits`: a map key must be a plain `#[model_schema()]` enum,
+///        whose members become the object's keys — `Spot` resolves to a type with no
+///        `enum_members()`
+///   --> tests/zz_probe.rs:13:19
+///    |
+/// 13 | pub type Visits = HashMap<Spot, u32>;
+///    |                   ^^^^^^^^^^^^^^^^^^
+/// ```
 fn alias_map_key_guard_error(
     alias: &ItemType,
     alias_field_def: &FieldDef,
@@ -2644,7 +2554,6 @@ fn alias_map_key_guard_error(
 
 /// The `compile_error!` tokens an alias whose target reaches a std type serde has no wire form for
 /// earns, or `None` when it reaches none. Spanned on the target, which is where it was written.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn alias_undescribable_std_error(
     alias: &ItemType,
     alias_field_def: &FieldDef,
@@ -2718,10 +2627,8 @@ fn record_option_alias_item(item: &Item) {
     record_option_alias(&rust_ident, target);
 }
 
-/// The alias schema module is referenced by all three schema features — `typescript` and `zod`
-/// through the export name, `jsonschema` through `#module_ident::Schema::json_schema()` — so the
-/// module and its `register_alias_info` call are gated on the union, not `typescript` alone.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+/// Writes the alias, registers it, and writes its schema module, in every build. The module holds
+/// `Schema` where the build's surfaces or the alias's `enable` list give it a method.
 fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStream {
     let mut alias = item_type;
     alias
@@ -2740,8 +2647,8 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
     let kind = alias_target_kind(&alias_field_def);
     register_alias_info(&rust_ident_str, &export_name, &module_name, kind);
     if names_a_list(&alias.ty) {
-        record_counted(&rust_ident_str, Counted::Items);
-        #[cfg(all(feature = "serde", feature = "indexmap"))]
+        record_counted(&rust_ident_str, Some(Counted::Items));
+        #[cfg(feature = "indexmap")]
         if names_an_indexed_set(&alias.ty) {
             record_indexed_set(&rust_ident_str);
         }
@@ -2779,42 +2686,24 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
 
     // Registered above whatever the outcome, so a type naming a refused alias still resolves to the
     // export name the author wrote and the alias's own diagnostic stays the one they act on.
+    let map_key_error = alias_map_key_guard_error(&alias, &alias_field_def);
     let alias_guard_errors: Vec<proc_macro2::TokenStream> =
         alias_undescribable_std_error(&alias, &alias_field_def)
             .into_iter()
-            .chain(alias_map_key_guard_error(&alias, &alias_field_def))
+            .chain(map_key_error)
             .collect();
-    if let Some(output) = guard_failure_output(&alias, Some(&alias.ident), &alias_guard_errors) {
+    if let Some(output) =
+        guard_failure_output(&alias, Some(&alias.ident), &alias_guard_errors, args)
+    {
         return output;
     }
 
-    let ts_method = generate_alias_ts_definition_method(&alias, &export_name, &alias_field_def);
-    let json_schema_method =
-        generate_alias_json_schema_method(&alias, &export_name, &alias_field_def, args);
-    #[cfg(feature = "jsonschema")]
-    let unit_member = unit_member_record_item(&Item::Type(alias.clone()));
-    #[cfg(not(feature = "jsonschema"))]
-    let unit_member = proc_macro2::TokenStream::new();
-    let zod_method = generate_alias_zod_method(
+    let schema = schema_struct(&alias_schema_items(
         &alias,
         &export_name,
-        &rust_ident_str,
         &alias_field_def,
-        &args.default_types,
-    );
-
-    #[cfg(any(feature = "zod", feature = "jsonschema"))]
-    let example_methods = schema_examples_methods(
-        &extract_examples_tokens(&alias.attrs),
-        &schema_example_value_type(
-            &alias.ident,
-            &type_parameters_in_scope(&alias.generics),
-            &args.default_types,
-        ),
-    )
-    .unwrap_or_default();
-    #[cfg(not(any(feature = "zod", feature = "jsonschema")))]
-    let example_methods = proc_macro2::TokenStream::new();
+        args,
+    ));
 
     quote! {
         #alias
@@ -2822,38 +2711,50 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
         pub mod #module_ident {
             use super::*;
 
-            #[non_exhaustive]
-            pub struct Schema;
-
-            impl Schema {
-                #ts_method
-                #json_schema_method
-                #unit_member
-                #zod_method
-                #example_methods
-            }
+            #schema
         }
     }
 }
 
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-fn process_type_alias(item_type: ItemType, _args: &ModelSchemaArgs) -> TokenStream {
-    let mut alias = item_type;
-    alias
-        .attrs
-        .retain(|attr| !attr.path().is_ident("model_schema"));
-    #[cfg(all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    ))]
-    if let Some(error) = alias_map_key_guard_error(
-        &alias,
-        &get_field_def(&alias.ident.to_string(), &alias.ty, ""),
-    ) && let Some(output) = guard_failure_output(&alias, Some(&alias.ident), &[error])
-    {
-        return output;
+/// The methods an alias's `Schema` holds: those the build's surfaces write, and those its
+/// `enable` list asks for.
+fn alias_schema_items(
+    alias: &ItemType,
+    export_name: &str,
+    alias_field_def: &FieldDef,
+    args: &ModelSchemaArgs,
+) -> Vec<proc_macro2::TokenStream> {
+    let mut items = Vec::new();
+    #[cfg(feature = "typescript")]
+    items.push(generate_alias_ts_definition_method(
+        alias,
+        export_name,
+        alias_field_def,
+    ));
+    items.push(generate_alias_json_schema_method(
+        alias,
+        export_name,
+        alias_field_def,
+        args,
+    ));
+    if args.enable.jsonschema {
+        items.push(unit_member_record_item(&Item::Type(alias.clone())));
     }
-    quote! { #alias }
+    #[cfg(feature = "zod")]
+    items.push(generate_alias_zod_method(
+        alias,
+        export_name,
+        &alias.ident.to_string(),
+        alias_field_def,
+        &args.default_types,
+    ));
+    items.extend(item_schema_example_method(
+        &extract_examples_tokens(&alias.attrs),
+        &alias.ident,
+        &alias.generics,
+        args,
+    ));
+    items
 }
 
 /// Builds the `JSDoc` comment body (lines prefixed with ` * `) for an item, field, or enum
@@ -2871,7 +2772,6 @@ fn build_jsdoc_body(docs_vec: Option<&[String]>, fallback_name: &str) -> String 
 /// The `schema_examples()` and `schema_example()` an enum's type publishes, read off its docs. One
 /// seam for all five enum shapes, which differ in how their variants are written and not in what
 /// the type beside them exposes.
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
 fn enum_schema_example_method(
     attrs: &[syn::Attribute],
     name: &syn::Ident,
@@ -2879,20 +2779,6 @@ fn enum_schema_example_method(
     args: &ModelSchemaArgs,
 ) -> Option<proc_macro2::TokenStream> {
     item_schema_example_method(&extract_examples_tokens(attrs), name, generics, args)
-}
-
-#[cfg(all(
-    not(feature = "zod"),
-    not(feature = "jsonschema"),
-    feature = "typescript"
-))]
-const fn enum_schema_example_method(
-    _attrs: &[syn::Attribute],
-    _name: &syn::Ident,
-    _generics: &syn::Generics,
-    _args: &ModelSchemaArgs,
-) -> Option<proc_macro2::TokenStream> {
-    None
 }
 
 /// The type a doc example's value is annotated with: the item's own name, with every type parameter
@@ -2918,17 +2804,25 @@ fn schema_example_value_type(
     quote! { #name<#(#args),*> }
 }
 
+/// Whether the type is described in Zod or in the document `"jsonschema"` asks for: the two
+/// surfaces that read a ` ```rust example ` block and a declared default type.
+const fn zod_or_json_schema(enable: Enabled) -> bool {
+    cfg!(feature = "zod") || enable.jsonschema
+}
+
 /// The type-level `schema_examples()` a declared item publishes, one value per ` ```rust example `
 /// block and each built in a scope of its own, with `schema_example()` answering the first. `None`
-/// where there is nothing to build one from — no example written, or neither `zod` nor `jsonschema`,
-/// the surfaces that read one.
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
+/// where there is nothing to build one from — no example written, or nothing that reads one
+/// ([`zod_or_json_schema`]).
 fn item_schema_example_method(
     example_tokens: &[proc_macro2::TokenStream],
     name: &syn::Ident,
     generics: &syn::Generics,
     args: &ModelSchemaArgs,
 ) -> Option<proc_macro2::TokenStream> {
+    if !zod_or_json_schema(args.enable) {
+        return None;
+    }
     schema_examples_methods(
         example_tokens,
         &schema_example_value_type(
@@ -2955,7 +2849,7 @@ fn item_schema_example_method(
 /// /// ```rust example
 /// /// "not a sample"
 /// /// ```
-/// #[model_schema()]
+/// #[model_schema(enable = ["jsonschema"])]
 /// #[derive(Deserialize, Serialize)]
 /// pub struct Sample {
 ///     pub value: u32,
@@ -2973,10 +2867,9 @@ fn item_schema_example_method(
 ///  9 | /// "not a sample"
 ///    | ^^^^^^^^^^^^^^^^^^ expected `Sample`, found `&str`
 /// 10 | /// ```
-/// 11 | #[model_schema()]
-///    | ----------------- in this attribute macro expansion
+/// 11 | #[model_schema(enable = ["jsonschema"])]
+///    | ---------------------------------------- in this attribute macro expansion
 /// ```
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
 fn schema_examples_methods(
     example_tokens: &[proc_macro2::TokenStream],
     value_ty: &proc_macro2::TokenStream,
@@ -3034,24 +2927,9 @@ fn schema_examples_methods(
     })
 }
 
-#[cfg(all(
-    not(feature = "zod"),
-    not(feature = "jsonschema"),
-    feature = "typescript"
-))]
-const fn item_schema_example_method(
-    _example_tokens: &[proc_macro2::TokenStream],
-    _name: &syn::Ident,
-    _generics: &syn::Generics,
-    _args: &ModelSchemaArgs,
-) -> Option<proc_macro2::TokenStream> {
-    None
-}
-
 /// The `examples` keyword a type's standalone JSON Schema document holds, as the expression that
 /// answers it where the docs in `attrs` write an example. The values are built beside the type,
 /// where its name is in scope, and reach the schema module through [`ExampleTest::bridged`].
-#[cfg(feature = "jsonschema")]
 fn json_schema_examples(attrs: &[syn::Attribute]) -> Option<proc_macro2::TokenStream> {
     (!extract_examples_tokens(attrs).is_empty()).then(|| {
         quote! {
@@ -3062,7 +2940,6 @@ fn json_schema_examples(attrs: &[syn::Attribute]) -> Option<proc_macro2::TokenSt
 
 /// The `examples` keyword an item that republishes the sibling binding `name` shows: the member
 /// the sibling's own document holds, where it holds one.
-#[cfg(feature = "jsonschema")]
 fn sibling_json_schema_examples(name: &str, span: proc_macro2::Span) -> proc_macro2::TokenStream {
     let module_ident = sibling_schema_module_ident(name, span);
     quote_spanned! {span=>
@@ -3072,7 +2949,6 @@ fn sibling_json_schema_examples(name: &str, span: proc_macro2::Span) -> proc_mac
 
 /// The `examples` keyword the standalone document of a tuple struct holds: its own examples, or
 /// those of the sibling its one slot republishes.
-#[cfg(feature = "jsonschema")]
 fn struct_json_examples(
     item_struct: &syn::ItemStruct,
     shape: &TupleStructShape,
@@ -3082,7 +2958,6 @@ fn struct_json_examples(
 
 /// [`sibling_json_schema_examples`] for a `field` that republishes a sibling's binding, and `None`
 /// for one that does not.
-#[cfg(feature = "jsonschema")]
 fn republished_json_examples(field: &FieldDef) -> Option<proc_macro2::TokenStream> {
     let FieldDefType::SiblingType(name, _) = &field.field_type else {
         return None;
@@ -3092,7 +2967,6 @@ fn republished_json_examples(field: &FieldDef) -> Option<proc_macro2::TokenStrea
 
 /// [`republished_json_examples`] for the slot of a tuple struct, which serde writes as the slot's
 /// value alone.
-#[cfg(feature = "jsonschema")]
 fn republished_slot_json_examples(shape: &TupleStructShape) -> Option<proc_macro2::TokenStream> {
     let TupleStructShape::BareValue(slot) = shape else {
         return None;
@@ -3103,7 +2977,6 @@ fn republished_slot_json_examples(shape: &TupleStructShape) -> Option<proc_macro
 }
 
 /// The type's `json_schema()`: its schema module's document, which holds the `examples` keyword.
-#[cfg(feature = "jsonschema")]
 fn json_schema_delegate(module_ident: &Ident) -> proc_macro2::TokenStream {
     quote! {
         pub fn json_schema() -> serde_json::Value {
@@ -3115,7 +2988,6 @@ fn json_schema_delegate(module_ident: &Ident) -> proc_macro2::TokenStream {
 /// The delegates on the type of `item_struct`, with the `schema_examples()` and `schema_example()`
 /// its docs earn it. They sit on the type, not in the schema module, because an example names
 /// types the module may not reach. `republishes` says its schema is a sibling's own binding.
-#[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
 fn struct_delegate_items(
     module_ident: &Ident,
     item_name: &str,
@@ -3136,13 +3008,13 @@ fn struct_delegate_items(
         )
         .as_ref(),
         republishes,
+        args,
     )
 }
 
 /// The delegates on the type of `item_enum`, with the `schema_examples()` and `schema_example()`
 /// its docs earn it. They sit on the type, not in the schema module, because an example names
 /// types the module may not reach.
-#[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
 fn enum_delegate_items(
     module_ident: &Ident,
     item_name: &str,
@@ -3162,13 +3034,13 @@ fn enum_delegate_items(
         )
         .as_ref(),
         false,
+        args,
     )
 }
 
 /// The delegates on the type of a plain enum, which match the branded ones, with the
 /// `schema_examples()` and `schema_example()` its docs earn it and its `validate()` where it names
 /// a check; and the test over its examples, which that `validate()` earns it.
-#[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
 fn plain_enum_delegate_items(
     module_ident: &Ident,
     item_enum: &syn::ItemEnum,
@@ -3184,7 +3056,7 @@ fn plain_enum_delegate_items(
     );
     let test =
         ExampleTest::written_for_enum(item_enum, args, validate.is_some(), Some(module_ident));
-    let items = build_branded_delegate_items(module_ident, examples.is_some())
+    let items = build_branded_delegate_items(module_ident, examples.is_some(), args)
         .into_iter()
         .chain(examples)
         .chain(validate)
@@ -3195,7 +3067,6 @@ fn plain_enum_delegate_items(
 /// Builds the delegating impl methods (on the type itself) that forward to its schema module.
 /// `republishes` says its schema is a sibling's own binding, which shows that sibling's examples
 /// where the type writes none.
-#[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
 fn build_struct_delegate_items(
     module_ident: &Ident,
     item_name: &str,
@@ -3203,6 +3074,7 @@ fn build_struct_delegate_items(
     parameters: &[String],
     schema_example_method: Option<&proc_macro2::TokenStream>,
     republishes: bool,
+    args: &ModelSchemaArgs,
 ) -> Vec<proc_macro2::TokenStream> {
     // The example methods are emitted iff a block was extracted.
     #[cfg(feature = "zod")]
@@ -3216,8 +3088,9 @@ fn build_struct_delegate_items(
 
     let mut items: Vec<proc_macro2::TokenStream> = Vec::new();
 
-    #[cfg(feature = "jsonschema")]
-    items.push(json_schema_delegate(module_ident));
+    if args.enable.jsonschema {
+        items.push(json_schema_delegate(module_ident));
+    }
 
     #[cfg(feature = "typescript")]
     items.push(quote! {
@@ -3243,15 +3116,14 @@ fn build_struct_delegate_items(
         )
     });
 
-    #[cfg(any(feature = "zod", feature = "jsonschema"))]
     items.extend(schema_example_method.cloned());
     items
 }
 
 /// Assembles the final macro output for a struct or enum: the item itself, its schema module
-/// (with the per-field validation functions and the items `decode_with` adds), and the type's
-/// `impl`, which holds its delegates and its `validate()` when it has one.
-#[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
+/// (with `Schema` where a surface or the `"jsonschema"` entry gives it a method, the per-field
+/// validation functions and the items `decode_with` adds), and the type's `impl`, which holds its
+/// delegates and its `validate()` when it has one.
 fn assemble_schema_output<T>(
     parts: &SchemaOutputParts<T>,
     decode_with_items: &TokenStream,
@@ -3272,14 +3144,10 @@ where
         validate_method.is_some(),
         Some(parts.module_ident),
     );
+    let schema = schema_struct(schema_impl_items);
     let module_items = schema_module_items(
         quote! {
-            #[non_exhaustive]
-            pub struct Schema;
-
-            impl Schema {
-                #(#schema_impl_items)*
-            }
+            #schema
 
             #(#validation_fns)*
         },
@@ -3308,12 +3176,26 @@ where
     output
 }
 
+/// `Schema` and its `impl` of `schema_impl_items`, or `None` where none of them writes a method.
+fn schema_struct(schema_impl_items: &[proc_macro2::TokenStream]) -> Option<TokenStream> {
+    schema_impl_items
+        .iter()
+        .any(|item| !item.is_empty())
+        .then(|| {
+            quote! {
+                #[non_exhaustive]
+                pub struct Schema;
+
+                impl Schema {
+                    #(#schema_impl_items)*
+                }
+            }
+        })
+}
+
 /// What a schema module holds: `held`, and beside it the items `decode_with` adds. Those items
 /// are named `Issue`, `Path` and so on, which `held` then reads from the author's scope outright.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "zod", feature = "typescript", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 fn schema_module_items(held: TokenStream, decode_with_items: &TokenStream) -> TokenStream {
     if decode_with_items.is_empty() {
         return held;
@@ -3326,17 +3208,13 @@ fn schema_module_items(held: TokenStream, decode_with_items: &TokenStream) -> To
 }
 
 /// Without `serde` no item carries anything of `decode_with`'s.
-#[cfg(all(
-    not(feature = "serde"),
-    any(feature = "zod", feature = "typescript", feature = "jsonschema")
-))]
+#[cfg(not(feature = "serde"))]
 const fn schema_module_items(held: TokenStream, _decode_with_items: &TokenStream) -> TokenStream {
     held
 }
 
-/// The type-level `validate()` a struct publishes: the aggregate of its per-field validators, or
-/// `None` where there is nothing to run — no constrained field, or no `serde` to have generated the
-/// validators from.
+/// The type-level `validate()` a struct publishes: the aggregate of its per-field validators and
+/// its checks, or `None` where there is nothing to run.
 ///
 /// It is written in the type's own `impl`, so a type that declares a parameter has it at every
 /// filling. This builds:
@@ -3401,23 +3279,6 @@ const fn schema_module_items(held: TokenStream, _decode_with_items: &TokenStream
 /// 13 |     pub fn validate(&self) -> Result<(), Vec<String>> {
 ///    |     ------------------------------------------------- other definition for `validate`
 /// ```
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
-fn struct_validate_method(
-    validate_bodies: &[proc_macro2::TokenStream],
-    module_ident: &Ident,
-    checks: &checks::ItemChecks<'_>,
-) -> Option<proc_macro2::TokenStream> {
-    validate_method(validate_bodies, Some(module_ident), checks)
-}
-
-/// Without `serde` no bound is held, and `validate()` runs the checks alone.
-#[cfg(all(
-    not(feature = "serde"),
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 fn struct_validate_method(
     validate_bodies: &[proc_macro2::TokenStream],
     module_ident: &Ident,
@@ -3457,30 +3318,6 @@ fn validate_method(
             if errors.is_empty() { ::core::result::Result::Ok(()) } else { ::core::result::Result::Err(errors) }
         }
     })
-}
-
-/// [`validate_method`] in a build with no schema surface, where no bound is held and a type
-/// publishes `validate()` only for the checks it names, on itself or on a member.
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-fn checks_validate_impl(
-    name: &syn::Ident,
-    generics: &syn::Generics,
-    validate_bodies: &[proc_macro2::TokenStream],
-    checks: &checks::ItemChecks<'_>,
-) -> proc_macro2::TokenStream {
-    let method = checks
-        .named
-        .then(|| validate_method(validate_bodies, None, checks))
-        .flatten();
-    let Some(validate) = method else {
-        return proc_macro2::TokenStream::new();
-    };
-    let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
-    quote! {
-        impl #impl_generics #name #type_generics #where_clause {
-            #validate
-        }
-    }
 }
 
 /// The pattern one variant is matched by in the enum-level `validate()`. Only the constrained
@@ -3568,7 +3405,6 @@ fn matched_arms(arms: &[proc_macro2::TokenStream]) -> Vec<proc_macro2::TokenStre
 
 /// Builds the type-level `validate()` method for an enum: the checks of whichever variant the
 /// value holds, then the enum's own, or `None` where there is nothing to run.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn build_enum_validate_method(
     arms: &[proc_macro2::TokenStream],
     module_ident: &Ident,
@@ -3666,13 +3502,13 @@ const fn flattened_name_offers_absence(_fld: &FieldDef) -> bool {
 /// Whether serde reads a flattened source as the entries of a map, as the refusal of a map beside
 /// a member reads it. serde reads an `Option` of it as `None` wherever one entry does not read as
 /// the map, and leaves every entry in the object.
-#[cfg(all(feature = "serde", any(feature = "zod", feature = "jsonschema")))]
+#[cfg(feature = "serde")]
 fn flattened_as_entries(fld: &FieldDef) -> bool {
     ranges::def_writes_a_map(fld)
 }
 
 /// No source is read as entries where nothing reads `#[serde(flatten)]`.
-#[cfg(all(any(feature = "zod", feature = "jsonschema"), not(feature = "serde")))]
+#[cfg(not(feature = "serde"))]
 const fn flattened_as_entries(_fld: &FieldDef) -> bool {
     false
 }
@@ -3756,7 +3592,6 @@ fn flattened_ts_spelling(fld: &FieldDef) -> String {
 
 /// The schema methods a struct's module publishes — the JSON-schema document, the TypeScript
 /// definition, the Zod schema — each built only where its feature is on.
-#[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
 fn struct_schema_impl_items(
     field_defs: Vec<FieldDef>,
     flattened_fields: &[FieldDef],
@@ -3770,8 +3605,6 @@ fn struct_schema_impl_items(
     let _: &str = &docs.text;
     #[cfg(not(any(feature = "typescript", feature = "zod")))]
     let _: &str = rust_ident;
-    #[cfg(not(feature = "jsonschema"))]
-    let _: &_ = &args;
     #[cfg(feature = "typescript")]
     let ts_generics = ts_generic_params(generics);
     #[cfg(feature = "zod")]
@@ -3789,42 +3622,43 @@ fn struct_schema_impl_items(
     // flatten: (ts_types, zod_schemas)
     #[cfg(any(feature = "typescript", feature = "zod"))]
     let flatten = compute_flatten_outputs(flattened_fields, &own_keys);
-    vec![
-        #[cfg(feature = "jsonschema")]
-        generate_json_schema_method(
+    let mut items = Vec::new();
+    if args.enable.jsonschema {
+        items.push(generate_json_schema_method(
             &bodies.2,
             &flatten_merged_sources(flattened_fields),
             item_name,
             &schema_parameters(generics, args),
             docs.json_examples.as_ref(),
-        ),
-        #[cfg(feature = "typescript")]
-        generate_ts_definition_method(
-            &docs.text,
-            item_name,
-            rust_ident,
-            &ts_generics,
-            &bodies.0,
-            &own_keys,
-            &flatten.0,
-        ),
-        #[cfg(feature = "zod")]
-        generate_zod_schema_method(
-            item_name,
-            rust_ident,
-            &type_parameters,
-            args,
-            &StructZod {
-                #[cfg(all(feature = "zod", feature = "typescript"))]
-                checked_ahead: &checked_ahead,
-                #[cfg(not(all(feature = "zod", feature = "typescript")))]
-                checked_ahead: "",
-                schema_code: &bodies.1,
-                show_opts: "",
-            },
-            &flatten.1,
-        ),
-    ]
+        ));
+    }
+    #[cfg(feature = "typescript")]
+    items.push(generate_ts_definition_method(
+        &docs.text,
+        item_name,
+        rust_ident,
+        &ts_generics,
+        &bodies.0,
+        &own_keys,
+        &flatten.0,
+    ));
+    #[cfg(feature = "zod")]
+    items.push(generate_zod_schema_method(
+        item_name,
+        rust_ident,
+        &type_parameters,
+        args,
+        &StructZod {
+            #[cfg(all(feature = "zod", feature = "typescript"))]
+            checked_ahead: &checked_ahead,
+            #[cfg(not(all(feature = "zod", feature = "typescript")))]
+            checked_ahead: "",
+            schema_code: &bodies.1,
+            show_opts: "",
+        },
+        &flatten.1,
+    ));
+    items
 }
 
 /// Each member of a generic struct that names a check and reaches a parameter, set to run its
@@ -3936,17 +3770,13 @@ fn checked_in_slots(
 }
 
 /// Without a TypeScript type to state what a check is handed, no function is written ahead.
-#[cfg(all(
-    any(feature = "typescript", feature = "zod", feature = "jsonschema"),
-    not(all(feature = "zod", feature = "typescript"))
-))]
+#[cfg(not(all(feature = "zod", feature = "typescript")))]
 const fn checked_in_slots(_: &mut TupleStructShape, _: &str, _: &[String]) -> String {
     String::new()
 }
 
 /// Renders the per-field TypeScript type code, Zod schema code, and JSON-schema fragments for a
 /// struct's (non-flattened) fields. Returns the accumulated code and whether the field set is empty.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn render_struct_field_bodies(
     field_defs: Vec<FieldDef>,
     item_name_opt: Option<&str>,
@@ -3954,10 +3784,7 @@ fn render_struct_field_bodies(
     let fields_empty = field_defs.is_empty();
     let mut type_code = String::new();
     let mut schema_code = String::new();
-    #[cfg(feature = "jsonschema")]
     let mut json_schema_fields: Vec<proc_macro2::TokenStream> = Vec::new();
-    #[cfg(not(feature = "jsonschema"))]
-    let json_schema_fields: Vec<proc_macro2::TokenStream> = Vec::new();
 
     for fld in field_defs {
         schema_code.push_str(&write_field_type_and_schema(
@@ -3965,23 +3792,27 @@ fn render_struct_field_bodies(
             &fld,
             item_name_opt,
         ));
-        #[cfg(feature = "jsonschema")]
         json_schema_fields.push(build_field_schema(&fld));
     }
 
     (type_code, schema_code, json_schema_fields, fields_empty)
 }
 
-/// The schema module a refused item publishes in place of the one it has no description for.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-fn refused_item_schema_module(ident: &syn::Ident) -> proc_macro2::TokenStream {
+/// The schema module a refused item publishes in place of the one it has no description for, with
+/// the `json_schema` pair where it lists `"jsonschema"`.
+fn refused_item_schema_module(
+    ident: &syn::Ident,
+    args: &ModelSchemaArgs,
+) -> proc_macro2::TokenStream {
     let module_ident = Ident::new(&ident_schema_module_name(&ident.to_string()), ident.span());
     let refusal = format!("`{ident}`: refused by `#[model_schema()]`, so it describes nothing");
 
-    #[cfg(feature = "jsonschema")]
-    let json_schema_methods = {
+    let json_schema_methods = args.enable.jsonschema.then(|| {
         let in_flight_type = in_flight_type();
+        let named = ident.to_string();
         quote! {
+            pub const JSON_SCHEMA_NAME: &str = #named;
+
             pub fn json_schema() -> serde_json::Value {
                 panic!(#refusal)
             }
@@ -3989,13 +3820,12 @@ fn refused_item_schema_module(ident: &syn::Ident) -> proc_macro2::TokenStream {
             pub fn json_schema_within(
                 _in_flight: &mut #in_flight_type,
                 _hoisted_defs: &mut serde_json::Map<::std::string::String, serde_json::Value>,
+                _pointer_prefix: &str,
             ) -> serde_json::Value {
                 panic!(#refusal)
             }
         }
-    };
-    #[cfg(not(feature = "jsonschema"))]
-    let json_schema_methods = quote! {};
+    });
 
     #[cfg(feature = "typescript")]
     let ts_definition_method = quote! {
@@ -4029,20 +3859,13 @@ fn refused_item_schema_module(ident: &syn::Ident) -> proc_macro2::TokenStream {
     }
 }
 
-/// Nothing, in a build with no schema surface: no reference to a module is ever emitted there, so
-/// a refused item leaves none dangling.
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-fn refused_item_schema_module(ident: &syn::Ident) -> proc_macro2::TokenStream {
-    let _: &syn::Ident = ident;
-    quote! {}
-}
-
 /// Emits the original item followed by the `compile_error!` tokens of every violated field guard,
 /// or `None` when there are none.
 fn guard_failure_output<ItemT>(
     item: &ItemT,
     ident: Option<&syn::Ident>,
     guard_errors: &[proc_macro2::TokenStream],
+    args: &ModelSchemaArgs,
 ) -> Option<TokenStream>
 where
     ItemT: quote::ToTokens,
@@ -4050,7 +3873,7 @@ where
     if guard_errors.is_empty() {
         return None;
     }
-    let absorbing_module = ident.map(refused_item_schema_module);
+    let absorbing_module = ident.map(|named| refused_item_schema_module(named, args));
     let output = quote! {
         #item
         #(#guard_errors)*
@@ -4257,7 +4080,7 @@ fn enable_guard_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_macro2::
 /// type that borrows, and on an enum under a tag two of whose arms would take one name. With
 /// `"mongodb"` listed, also on a map whose key the `bson` library refuses.
 fn decode_with_guard_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_macro2::TokenStream> {
-    if !args.enable.decode_with {
+    if !args.enable.decode_with() {
         return Vec::new();
     }
     let borrowed = item_generics(item).and_then(|generics| generics.lifetimes().next());
@@ -4279,7 +4102,7 @@ fn decode_with_guard_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_mac
         .chain(decode_with_arm_refusals(item))
         .chain(
             args.enable
-                .mongodb
+                .mongodb()
                 .then(|| mongodb_map_key_refusals(item))
                 .into_iter()
                 .flatten(),
@@ -4580,7 +4403,7 @@ fn preprocess_refusal_output(item: &Item, args: &ModelSchemaArgs) -> Option<Toke
         .iter()
         .map(|rejection| attr_guard_error(rejection, &item_label(item)))
         .collect();
-    refused_item_output(item, &refusals)
+    refused_item_output(item, &refusals, args)
 }
 
 /// Records the functions an item names for the parts of its expansion written apart: its checks,
@@ -4718,7 +4541,6 @@ where
 
 /// What an item leaves for the expansions after it, ahead of the shape it is dispatched to: which
 /// Zod binding it publishes, and what it declares.
-#[cfg(any(feature = "serde", feature = "zod"))]
 fn record_item(item: &Item) {
     record_own_zod_binding(item);
     record_declaration(item);
@@ -5225,17 +5047,9 @@ fn flattening_levels(
     }
 }
 
-/// Nothing, in a build that neither publishes a Zod binding nor reads a value.
-#[cfg(not(any(feature = "serde", feature = "zod")))]
-const fn record_item(_item: &Item) {}
-
 /// Records the checks an item names for the parts of its expansion written apart from the type's
 /// own `validate()`: each bound of it, and its recovering decode.
-#[cfg(feature = "serde")]
 fn record_item_checks(item: &Item, args: &ModelSchemaArgs) {
-    let Some(ident) = item_schema_ident(item) else {
-        return;
-    };
     let members: Vec<&Field> = if let Item::Struct(item_struct) = item {
         item_struct.fields.iter().collect()
     } else if let Item::Enum(item_enum) = item {
@@ -5243,17 +5057,15 @@ fn record_item_checks(item: &Item, args: &ModelSchemaArgs) {
     } else {
         Vec::new()
     };
-    record_own_checks(
-        &ident_schema_module_name(&ident.to_string()),
-        &args.check,
-        checks::ItemChecks::of(&args.check, members.into_iter()).named,
+    record_names_a_check(
+        item_schema_ident(item).is_some()
+            && checks::ItemChecks::of(&args.check, members.into_iter()).named,
     );
+    #[cfg(feature = "serde")]
+    if let Some(ident) = item_schema_ident(item) {
+        record_own_checks(&ident_schema_module_name(&ident.to_string()), &args.check);
+    }
 }
-
-/// Without `serde` no bound is held and no value is read, so nothing reads an item's checks but
-/// its own `validate()`.
-#[cfg(not(feature = "serde"))]
-const fn record_item_checks(_item: &Item, _args: &ModelSchemaArgs) {}
 
 /// Every member of every variant of `item_enum`, in the order declared.
 fn variant_members(item_enum: &syn::ItemEnum) -> impl Iterator<Item = &Field> {
@@ -5278,8 +5090,8 @@ fn record_own_zod_binding(item: &Item) {
     );
 }
 
-/// Nothing, in a build that reads a value and publishes no Zod binding.
-#[cfg(all(feature = "serde", not(feature = "zod")))]
+/// Nothing, in a build that publishes no Zod binding.
+#[cfg(not(feature = "zod"))]
 const fn record_own_zod_binding(_item: &Item) {}
 
 /// Records whether the Zod binding `item` publishes calls a `preprocess`: the type names one, or
@@ -5322,7 +5134,6 @@ const fn item_generics(item: &Item) -> Option<&syn::Generics> {
     any(
         feature = "typescript",
         feature = "zod",
-        feature = "jsonschema",
         feature = "dart",
         feature = "swift",
         feature = "kotlin"
@@ -5349,7 +5160,6 @@ fn renamable_attribute_lists(item: &Item) -> Vec<(String, &[syn::Attribute])> {
     any(
         feature = "typescript",
         feature = "zod",
-        feature = "jsonschema",
         feature = "dart",
         feature = "swift",
         feature = "kotlin"
@@ -5375,7 +5185,6 @@ fn field_attribute_lists(fields: &syn::Fields) -> Vec<(String, &[syn::Attribute]
     any(
         feature = "typescript",
         feature = "zod",
-        feature = "jsonschema",
         feature = "dart",
         feature = "swift",
         feature = "kotlin"
@@ -5521,7 +5330,6 @@ fn untagged_variant_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
     any(
         feature = "typescript",
         feature = "zod",
-        feature = "jsonschema",
         feature = "dart",
         feature = "swift",
         feature = "kotlin"
@@ -5544,7 +5352,6 @@ fn rename_direction_guard_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
     any(
         feature = "typescript",
         feature = "zod",
-        feature = "jsonschema",
         feature = "dart",
         feature = "swift",
         feature = "kotlin"
@@ -5598,7 +5405,6 @@ fn transparent_direction_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
     any(
         feature = "typescript",
         feature = "zod",
-        feature = "jsonschema",
         feature = "dart",
         feature = "swift",
         feature = "kotlin"
@@ -5619,7 +5425,6 @@ fn variant_default_refusals(item: &Item) -> Vec<proc_macro2::TokenStream> {
     any(
         feature = "typescript",
         feature = "zod",
-        feature = "jsonschema",
         feature = "dart",
         feature = "swift",
         feature = "kotlin"
@@ -5648,18 +5453,15 @@ fn default_types_guard_errors(
         })
         .collect();
 
-    #[cfg(any(feature = "zod", feature = "jsonschema"))]
     let mut rejections = entries_naming_no_parameter(args, &declared);
-    #[cfg(not(any(feature = "zod", feature = "jsonschema")))]
-    let rejections = entries_naming_no_parameter(args, &declared);
-    #[cfg(feature = "jsonschema")]
-    rejections.extend(parameters_left_without_a_default(args, &declared));
-    #[cfg(any(feature = "zod", feature = "jsonschema"))]
-    rejections.extend(fillings_no_document_can_be_built_from(args));
-    #[cfg(any(feature = "zod", feature = "jsonschema"))]
-    rejections.extend(fillings_reaching_an_undescribable_std_type(args));
-    #[cfg(any(feature = "zod", feature = "jsonschema"))]
-    rejections.extend(fillings_reaching_an_unwritable_map_key(args));
+    if args.enable.jsonschema {
+        rejections.extend(parameters_left_without_a_default(args, &declared));
+    }
+    if zod_or_json_schema(args.enable) {
+        rejections.extend(fillings_no_document_can_be_built_from(args));
+        rejections.extend(fillings_reaching_an_undescribable_std_type(args));
+        rejections.extend(fillings_reaching_an_unwritable_map_key(args));
+    }
 
     rejections
         .iter()
@@ -5716,7 +5518,7 @@ fn unwritable_map_key_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
     errors
 }
 
-/// Without `serde` `validate()` is not written, and no key is named in a message.
+/// Without `serde` a key is named by its `Display` text, and none is refused.
 #[cfg(not(feature = "serde"))]
 const fn unwritable_map_key_errors(_item: &Item) -> Vec<proc_macro2::TokenStream> {
     Vec::new()
@@ -5842,7 +5644,6 @@ fn undeclared_entry_message(name: &syn::Ident, declared: &[&syn::Ident]) -> Stri
 }
 
 /// The refusal every type parameter the declaration left out earns, spanned on the parameter.
-#[cfg(feature = "jsonschema")]
 fn parameters_left_without_a_default(
     args: &ModelSchemaArgs,
     declared: &[&syn::Ident],
@@ -5861,7 +5662,6 @@ fn parameters_left_without_a_default(
 
 /// Why a parameter with no default is refused: what the default is for, what the feature has to do
 /// with it, and the declaration to write for this item's own parameters.
-#[cfg(feature = "jsonschema")]
 fn missing_default_message(name: &syn::Ident, declared: &[&syn::Ident]) -> String {
     let sample = declared
         .iter()
@@ -5873,7 +5673,8 @@ fn missing_default_message(name: &syn::Ident, declared: &[&syn::Ident]) -> Strin
          none. The default type is what the JSON-schema document is generated from: JSON Schema \
          has no type parameters, so without a declared default the macro would have to guess — and \
          a wrong guess produces a document that silently rejects valid payloads. This is required \
-         because the `jsonschema` feature is enabled. Declare one for every parameter of this item, \
+         because the type lists `enable = [\"jsonschema\"]`. Declare one for every parameter of \
+         this item, \
          each with the type its document should be generated from: \
          `#[model_schema(default_types({sample}))]`."
     )
@@ -5881,7 +5682,6 @@ fn missing_default_message(name: &syn::Ident, declared: &[&syn::Ident]) -> Strin
 
 /// The refusal every `default_types` entry earns whose filling names a value neither surface that
 /// reads one can build a schema from, spanned on the filling as written.
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
 fn fillings_no_document_can_be_built_from(args: &ModelSchemaArgs) -> Vec<syn::Error> {
     args.default_types
         .iter()
@@ -5896,7 +5696,6 @@ fn fillings_no_document_can_be_built_from(args: &ModelSchemaArgs) -> Vec<syn::Er
 
 /// The refusal every `default_types` entry earns whose filling reaches a std type serde has no wire
 /// form for, at any depth, spanned on the filling as written.
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
 fn fillings_reaching_an_undescribable_std_type(args: &ModelSchemaArgs) -> Vec<syn::Error> {
     args.default_types
         .iter()
@@ -5913,7 +5712,6 @@ fn fillings_reaching_an_undescribable_std_type(args: &ModelSchemaArgs) -> Vec<sy
 /// The refusal every `default_types` entry earns whose filling reaches a map key no surface can
 /// write, at any depth, spanned on the filling as written. Gated with the two surfaces that read a
 /// declared filling at all.
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
 fn fillings_reaching_an_unwritable_map_key(args: &ModelSchemaArgs) -> Vec<syn::Error> {
     args.default_types
         .iter()
@@ -5930,7 +5728,6 @@ fn fillings_reaching_an_unwritable_map_key(args: &ModelSchemaArgs) -> Vec<syn::E
 /// The name a type is written as when it is written as a bare name and nothing else — no
 /// qualifier, no path, no arguments — or `None` for every other spelling. Only that shape can be
 /// checked against reserved names: `some::path::char` names whatever the path resolves to.
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
 fn bare_type_name(filling: &syn::Type) -> Option<String> {
     let syn::Type::Path(type_path) = filling else {
         return None;
@@ -5946,7 +5743,6 @@ fn bare_type_name(filling: &syn::Type) -> Option<String> {
 
 /// Why a filling the dispatch has no arm for is refused: what the filling is read for, what each
 /// surface would otherwise name, which features read it, and the way out.
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
 fn undescribable_filling_message(name: &syn::Ident, written: &str) -> String {
     format!(
         "`default_types` entry `{name}` is filled at `{written}`, which `#[model_schema]` cannot \
@@ -5955,7 +5751,8 @@ fn undescribable_filling_message(name: &syn::Ident, written: &str) -> String {
          `{written}` and so takes it for another `#[model_schema]` item: the JSON document calls \
          into a `{written}_schema` module that nothing publishes, and the zod `$SchemaDefault` \
          names a `{written}$Schema` binding no generated module exports. This is refused wherever \
-         a filling is read, which is the `zod` and `jsonschema` features. Fill the parameter at a \
+         a filling is read: under the `zod` feature, and on a type that lists \
+         `enable = [\"jsonschema\"]`. Fill the parameter at a \
          type the macro describes — a primitive it maps, or a `#[model_schema]` item — or model \
          `{written}` as a newtype over one that carries what the wire holds."
     )
@@ -6165,9 +5962,14 @@ fn with_prefixed_tokens(expanded: TokenStream, prefix: &[proc_macro2::TokenStrea
 
 /// The `compile_error!` tokens an item earns for carrying a ` ```rust example ` block while
 /// declaring a const parameter — a doc example is annotated at one type instantiation, which a
-/// const cannot fill.
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
-fn const_parameter_example_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
+/// const cannot fill. Nothing where no surface reads an example ([`zod_or_json_schema`]).
+fn const_parameter_example_errors(
+    item: &Item,
+    args: &ModelSchemaArgs,
+) -> Vec<proc_macro2::TokenStream> {
+    if !zod_or_json_schema(args.enable) {
+        return Vec::new();
+    }
     let (generics, attrs) = if let Item::Struct(item_struct) = item {
         (&item_struct.generics, &item_struct.attrs)
     } else if let Item::Enum(item_enum) = item {
@@ -6197,17 +5999,9 @@ fn const_parameter_example_errors(item: &Item) -> Vec<proc_macro2::TokenStream> 
     )]
 }
 
-/// Nothing, in a build that reads no example: the method the refusal is owed for is never built,
-/// so the block sits unread the way it does on every other item here.
-#[cfg(not(any(feature = "zod", feature = "jsonschema")))]
-const fn const_parameter_example_errors(_item: &Item) -> Vec<proc_macro2::TokenStream> {
-    Vec::new()
-}
-
 /// Why a doc example on a const-declaring item is refused: what the example has to be, why the
 /// convention that fills a type parameter reaches no const, what the feature has to do with it, and
 /// the two ways out.
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
 fn const_parameter_example_message(consts: &[&syn::Ident]) -> String {
     let names = consts
         .iter()
@@ -6222,24 +6016,31 @@ fn const_parameter_example_message(consts: &[&syn::Ident]) -> String {
          `String` where it declares none, and a const takes no filling from that convention — both \
          spellings name a type, a const is a value, and no value is the one every \
          const-parameterised example is written at, so one chosen here would render the example at \
-         a length this item's author never wrote. This is refused because the `zod` feature or \
-         the `jsonschema` feature is enabled, each of which reads an example. Remove the ` ```rust \
-         example ` block, or the const parameter, whichever this item can do without."
+         a length this item's author never wrote. This is refused because the `zod` feature is \
+         enabled or the type lists `enable = [\"jsonschema\"]`, each of which reads an example. \
+         Remove the ` ```rust example ` block, or the const parameter, whichever this item can do \
+         without."
     )
 }
 
 /// The `compile_error!` tokens an item earns for handing one of its own const parameters to a
-/// generic type it writes, or none where no type written on it does that.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
-fn const_parameter_argument_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
+/// generic type it writes, or none where no type written on it does that. Judged wherever the item
+/// is described: in a build with a describing feature, and wherever it lists `"jsonschema"`.
+fn const_parameter_argument_errors(
+    item: &Item,
+    args: &ModelSchemaArgs,
+) -> Vec<proc_macro2::TokenStream> {
+    let described = cfg!(any(
+        feature = "typescript",
+        feature = "zod",
+        all(
+            feature = "serde",
+            any(feature = "dart", feature = "swift", feature = "kotlin")
+        )
+    )) || args.enable.jsonschema;
+    if !described {
+        return Vec::new();
+    }
     let Some(generics) = item_generics(item) else {
         return Vec::new();
     };
@@ -6274,18 +6075,6 @@ fn const_parameter_argument_errors(item: &Item) -> Vec<proc_macro2::TokenStream>
 
 /// Every type an item writes out: a struct's field types, an enum's variant field types, an alias's
 /// target. The types whose spelling reaches a surface, which is where an argument is written.
-#[cfg(any(
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "jsonschema",
-        all(
-            feature = "serde",
-            any(feature = "dart", feature = "swift", feature = "kotlin")
-        )
-    ),
-    not(feature = "indexmap")
-))]
 fn item_written_types(item: &Item) -> Vec<&syn::Type> {
     if let Item::Struct(item_struct) = item {
         item_struct.fields.iter().map(|field| &field.ty).collect()
@@ -6304,15 +6093,6 @@ fn item_written_types(item: &Item) -> Vec<&syn::Type> {
 
 /// Every place one of `consts` is handed to a written type as an argument, collected as the ident
 /// it was written at so the refusal points there.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn collect_const_arguments(written: &syn::Type, consts: &[String], found: &mut Vec<syn::Ident>) {
     match written {
         syn::Type::Path(type_path) => {
@@ -6374,15 +6154,6 @@ fn collect_const_arguments(written: &syn::Type, consts: &[String], found: &mut V
 }
 
 /// The ident a type is written as when it is written as a bare name and nothing else, or `None`.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn bare_ident(written: &syn::Type) -> Option<syn::Ident> {
     let syn::Type::Path(type_path) = written else {
         return None;
@@ -6395,15 +6166,6 @@ fn bare_ident(written: &syn::Type) -> Option<syn::Ident> {
 
 /// Why a const handed to a written type as an argument is refused: where the const does render,
 /// where this one stands instead, what each surface would emit, and the way out.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn const_parameter_argument_message(name: &str) -> String {
     format!(
         "`#[model_schema]` cannot render the const parameter `{name}` as a type argument. An \
@@ -6417,20 +6179,6 @@ fn const_parameter_argument_message(name: &str) -> String {
          fill the argument with a type.",
         name.to_lowercase()
     )
-}
-
-/// Nothing, in a build that describes no type.
-#[cfg(not(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-)))]
-const fn const_parameter_argument_errors(_item: &Item) -> Vec<proc_macro2::TokenStream> {
-    Vec::new()
 }
 
 /// The `compile_error!` tokens an item earns for each type it writes under a name a feature that is
@@ -6757,15 +6505,6 @@ fn enum_cfg_attr_guard_errors(
 
 /// The `compile_error!` tokens for a branded newtype whose inner type is `Option`, or `None` for
 /// every other inner type.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn branded_option_inner_error(
     name: &Ident,
     inner_field: &Field,
@@ -6790,15 +6529,6 @@ fn branded_option_inner_error(
 /// The `compile_error!` tokens for a branded newtype that applies `pattern`, `minLength`, or
 /// `maxLength` to an inner type whose schema is not a string, or `None` when the inner can carry
 /// them. A list carries the two lengths, which count its items, and no `pattern`.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn branded_constraint_inner_error(
     generics: &syn::Generics,
     name: &Ident,
@@ -6881,15 +6611,6 @@ fn branded_constraint_inner_error(
 /// The Rust spelling of `parameter`'s declared default, for the refusal that names it — the same
 /// `String` fallback [`declared_default_field`] resolves a `FieldDef` from. Practically
 /// unreachable here, but total anyway rather than leaving a lookup miss unspelled.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn declared_default_type_name(
     parameter: &str,
     default_types: &[(syn::Ident, syn::Type)],
@@ -6903,15 +6624,6 @@ fn declared_default_type_name(
 /// Why a constrained brand's bare-parameter inner is refused when its *declared default* — not the
 /// parameter — turns out not to be string-shaped: the default is what `$SchemaDefault` composes
 /// the checks onto, so a default the checks cannot measure is refused in its place.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn declared_default_constraint_message(name: &Ident, parameter: &str, default_ty: &str) -> String {
     format!(
         "model_schema: branded newtype `{name}` applies string constraints (pattern, minLength, \
@@ -6927,10 +6639,6 @@ fn declared_default_constraint_message(name: &Ident, parameter: &str, default_ty
 /// than spelling one for a diagnostic. Falls back to the standard `String` for an entry left out,
 /// written at its full path, which is the type [`declared_default_type_name`] and
 /// [`declared_default_field`] name for the same gap.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 fn declared_default_syn_type(
     parameter: &str,
     default_types: &[(syn::Ident, syn::Type)],
@@ -6946,7 +6654,6 @@ fn declared_default_syn_type(
 
 /// The consult a constrained brand leaves unanswered, for the expansion that registers the name to
 /// answer, or `None` for every brand the registry could answer at its own expansion.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn deferred_shape_question(
     item_struct: &syn::ItemStruct,
     args: &ModelSchemaArgs,
@@ -6974,7 +6681,6 @@ fn deferred_shape_question(
 /// What a name a brand asked about publishes, once the registration answering it has landed —
 /// `None` where that is a shape a string check lands on, and where the reference wrote no argument
 /// at the position the registration published.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn answered_shape(
     published: PublishedShape,
     argument_shapes: &[Option<&'static str>],
@@ -6986,8 +6692,41 @@ fn answered_shape(
 }
 
 /// The `compile_error!` tokens an item owes the constrained brands that asked about its name before
-/// it existed, spanned on the item's own name — the only tokens this expansion holds.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+/// it existed, spanned on the item's own name — the only tokens this expansion holds. A struct
+/// declared below a brand that measures it is refused, ahead of the `Display` errors the brand's
+/// own expansion draws:
+///
+/// ```rust,compile_fail
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema(minLength = 1)]
+/// #[derive(Deserialize, Serialize)]
+/// #[serde(transparent)]
+/// pub struct Route(pub Spot);
+///
+/// #[model_schema()]
+/// #[derive(Deserialize, Serialize)]
+/// pub struct Spot {
+///     pub segments: i32,
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: model_schema: branded newtype `Route` applies string constraints (pattern, minLength,
+///        maxLength) to `Spot`, which this crate writes as the object value the checks are then
+///        appended to — and that binding carries no string for them to measure: Zod either reads
+///        `.min`/`.max` as a bound on something else or has no such check on it at all, JSON
+///        Schema ignores `minLength`/`maxLength`/`pattern` outside `"type": "string"`, and
+///        `validate()` measures the inner's `Display` rendering — three surfaces, three answers.
+///        Brand a string-typed inner, or drop the constraints.
+///   --> tests/zz_probe.rs:11:12
+///    |
+/// 11 | pub struct Spot {
+///    |            ^^^^
+/// ```
 fn deferred_shape_refusals(registering: Option<&Ident>) -> Vec<proc_macro2::TokenStream> {
     let Some(name) = registering else {
         return Vec::new();
@@ -7018,14 +6757,6 @@ fn deferred_shape_refusals(registering: Option<&Ident>) -> Vec<proc_macro2::Toke
             Some(syn::Error::new_spanned(name, message).to_compile_error())
         })
         .collect()
-}
-
-/// The same, where no surface reads a published shape and so no brand ever asked.
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-const fn deferred_shape_refusals(
-    _registering: Option<&syn::Ident>,
-) -> Vec<proc_macro2::TokenStream> {
-    Vec::new()
 }
 
 /// Every named field, tuple slot and (for an alias) target type an item declares that serde writes
@@ -7151,15 +6882,6 @@ const fn swift_width_refusals(_item: &Item) -> Vec<proc_macro2::TokenStream> {
 
 /// How a constrained brand over a name the registry proves publishes no string is refused, in the
 /// one wording both orders of the two declarations reach it by.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn named_inner_constraint_message(brand: &str, inner: &str, shape: &str) -> String {
     format!(
         "model_schema: branded newtype `{brand}` applies string constraints (pattern, minLength, \
@@ -7174,15 +6896,6 @@ fn named_inner_constraint_message(brand: &str, inner: &str, shape: &str) -> Stri
 
 /// Names the shape an inner type resolves to that has no string for the constraints to measure, or
 /// `None` when it writes exactly one and so can carry them.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn non_string_inner_shape(inner: &FieldDef) -> Option<&'static str> {
     if inner.is_array() || sequence_wrapper_element(inner).is_some() {
         return Some("container");
@@ -7226,25 +6939,11 @@ fn non_string_inner_shape(inner: &FieldDef) -> Option<&'static str> {
 /// What a registered name filled with `arguments` publishes as a value, and `None` for a name the
 /// registry has no answer for — one declared below the type reading it, or one this crate never
 /// expands at all.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn instantiated_value_shape(rust_ident: &str, arguments: &[FieldDef]) -> Option<&'static str> {
     match lookup_alias_info(rust_ident)?.value_shape {
         PublishedShape::Flat(shape) => shape,
         PublishedShape::Parameter(position) => non_string_inner_shape(arguments.get(position)?),
     }
-}
-
-/// A build with no schema surface records no alias, so no name has a shape to answer with.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin"),
-    not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
-))]
-const fn instantiated_value_shape(
-    _rust_ident: &str,
-    _arguments: &[FieldDef],
-) -> Option<&'static str> {
-    None
 }
 
 /// The JSON type keyword a recorded name's wire describes as, when the leaves `leaves_of` reads
@@ -7272,7 +6971,6 @@ fn written_leaves(rust_ident: &str) -> Option<Vec<WireLeaf>> {
 /// The JSON type keyword a value one keyword describes writes, `null` for `()`, and `None` for
 /// every type that writes a document no single keyword names — a composite, a name, an
 /// `ObjectId`'s `$oid` object, an opaque value.
-#[cfg(any(feature = "jsonschema", feature = "serde"))]
 const fn scalar_json_type_keyword(field_type: &FieldDefType) -> Option<&'static str> {
     if let FieldDefType::Tuple(elements) = field_type
         && elements.is_empty()
@@ -7315,7 +7013,6 @@ const fn scalar_json_type_keyword(field_type: &FieldDefType) -> Option<&'static 
 /// What the value surface a `#[model_schema()]` item publishes under a name is, as the
 /// constrained-brand guard reads shapes — the answer [`crate::utils::record_value_shape`] stores
 /// for every name a brand can then reach through.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn published_value_shape(written: &FieldDef, parameters: &[String]) -> PublishedShape {
     let mut target = written.clone();
     target.erase_type_parameters(parameters);
@@ -7330,7 +7027,6 @@ fn published_value_shape(written: &FieldDef, parameters: &[String]) -> Published
 
 /// The position of the item's own parameter a written target *is*, and `None` for every target that
 /// fixes a shape of its own around one.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn published_parameter_position(target: &FieldDef, parameters: &[String]) -> Option<usize> {
     if target.is_array() || sequence_wrapper_element(target).is_some() {
         return None;
@@ -7341,18 +7037,7 @@ fn published_parameter_position(target: &FieldDef, parameters: &[String]) -> Opt
 
 /// The `compile_error!` tokens for every `cfg_attr`-wrapped serde attribute a branded newtype
 /// carries: on the type and on its inner slot, which is positional and so has no name to print.
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "jsonschema",
-        all(
-            feature = "serde",
-            any(feature = "dart", feature = "swift", feature = "kotlin")
-        )
-    )
-))]
+#[cfg(feature = "serde")]
 fn branded_cfg_attr_guard_errors(
     item_struct: &syn::ItemStruct,
     inner_field: &Field,
@@ -7372,18 +7057,7 @@ fn branded_cfg_attr_guard_errors(
         .collect()
 }
 
-#[cfg(all(
-    not(feature = "serde"),
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "jsonschema",
-        all(
-            feature = "serde",
-            any(feature = "dart", feature = "swift", feature = "kotlin")
-        )
-    )
-))]
+#[cfg(not(feature = "serde"))]
 const fn branded_cfg_attr_guard_errors(
     _item_struct: &syn::ItemStruct,
     _inner_field: &Field,
@@ -7395,15 +7069,31 @@ const fn branded_cfg_attr_guard_errors(
 /// when it carries none or it clears them. An enum answers for its own in
 /// [`enum_string_check_refusal_output`]; every other shape is refused the argument before a surface
 /// is built.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
+///
+/// ```rust,compile_fail
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema(pattern = "(")]
+/// #[derive(Deserialize, Serialize)]
+/// #[serde(transparent)]
+/// pub struct Label(pub String);
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: model_schema: type `Label`: `pattern` is not a regex the `regex` crate can parse. The
+///        generated validator builds it with `regex::Regex::new(...).unwrap()`, so accepting it
+///        here would turn the first validated value into a panic. regex parse error:
+///            (
+///            ^
+///        error: unclosed group
+///  --> tests/zz_probe.rs:4:26
+///   |
+/// 4 | #[model_schema(pattern = "(")]
+///   |                          ^^^
+/// ```
 fn branded_pattern_error(name: &Ident, args: &ModelSchemaArgs) -> Option<proc_macro2::TokenStream> {
     args.pattern_rejection
         .as_ref()
@@ -7413,21 +7103,11 @@ fn branded_pattern_error(name: &Ident, args: &ModelSchemaArgs) -> Option<proc_ma
 /// The inner type as the two validating surfaces receive it, with the brand's own type parameters
 /// already classified as parameters. The guard and the registration both read the inner through
 /// this one call, so what a brand is refused for and what it records cannot come apart.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn branded_inner_value_surface(generics: &syn::Generics, inner_field: &Field) -> FieldDef {
     surface_field_def(generics, &get_field_def("_inner", &inner_field.ty, ""))
 }
 
 /// What the registry records for a brand.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn branded_alias_kind(inner_field: &Field) -> AliasKind {
     let inner = get_field_def("", &inner_field.ty, "");
     match map_key_path(&inner) {
@@ -7444,22 +7124,12 @@ fn branded_alias_kind(inner_field: &Field) -> AliasKind {
 
 /// The form a key written under a brand's name renders in, read off the one field it is written
 /// with — the same inner [`branded_alias_kind`] reads.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn branded_key_wire(inner_field: &Field) -> MapKeyWire {
     get_field_def("", &inner_field.ty, "").map_key_wire()
 }
 
 /// The `compile_error!` tokens for a branded newtype whose inner reaches a std type serde has no
 /// wire form for, or `None` when it reaches none. Spanned on the inner as written.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn branded_undescribable_std_error(
     name: &Ident,
     inner_field: &Field,
@@ -7475,15 +7145,6 @@ fn branded_undescribable_std_error(
 
 /// The `compile_error!` tokens for a branded newtype whose inner reaches a map key no surface can
 /// write, or `None` when it reaches none.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn branded_map_key_error(name: &Ident, inner_field: &Field) -> Option<proc_macro2::TokenStream> {
     let inner = get_field_def("", &inner_field.ty, "");
     let rejection = map_key_rejection(&inner)?;
@@ -7496,15 +7157,27 @@ fn branded_map_key_error(name: &Ident, inner_field: &Field) -> Option<proc_macro
 
 /// The refusals for a brand's own `minLength` and `maxLength` that no value meets, or that only
 /// repeat the fixed length of its inner array.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
+///
+/// ```rust,compile_fail
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema(minLength = 5, maxLength = 2)]
+/// #[derive(Deserialize, Serialize)]
+/// #[serde(transparent)]
+/// pub struct Label(pub String);
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: model_schema: branded newtype `Label`: `minLength = 5` is above `maxLength = 2`, so no
+///        value passes
+///  --> tests/zz_probe.rs:7:18
+///   |
+/// 7 | pub struct Label(pub String);
+///   |                  ^^^^^^^^^^
+/// ```
 fn branded_unmeetable_bound_errors(
     name: &Ident,
     inner_field: &Field,
@@ -7526,31 +7199,44 @@ fn branded_unmeetable_bound_errors(
 /// serde attribute on the type or on its inner slot, an `Option` inner type, string constraints
 /// over an inner type that cannot carry them, a `pattern` that is not a regex, a std type the inner
 /// reaches that serde has no wire form for, and a map key the inner reaches that no surface can
-/// write.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
+/// write. A struct declared above holds no string for the constraints:
+///
+/// ```rust,compile_fail
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema()]
+/// #[derive(Deserialize, Serialize)]
+/// pub struct Spot {
+///     pub segments: i32,
+/// }
+///
+/// #[model_schema(minLength = 1)]
+/// #[derive(Deserialize, Serialize)]
+/// #[serde(transparent)]
+/// pub struct Route(pub Spot);
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: model_schema: branded newtype `Route` applies string constraints (pattern, minLength,
+///        maxLength) to `Spot`, which this crate writes as the object value the checks are then
+///        appended to — and that binding carries no string for them to measure: Zod either reads
+///        `.min`/`.max` as a bound on something else or has no such check on it at all, JSON
+///        Schema ignores `minLength`/`maxLength`/`pattern` outside `"type": "string"`, and
+///        `validate()` measures the inner's `Display` rendering — three surfaces, three answers.
+///        Brand a string-typed inner, or drop the constraints.
+///   --> tests/zz_probe.rs:13:18
+///    |
+/// 13 | pub struct Route(pub Spot);
+///    |                  ^^^^^^^^
+/// ```
 fn branded_guard_errors(
     item_struct: &syn::ItemStruct,
     args: &ModelSchemaArgs,
 ) -> Vec<proc_macro2::TokenStream> {
     let inner_field = brand_field(item_struct).unwrap();
-    #[cfg(all(
-        feature = "serde",
-        any(feature = "typescript", feature = "zod", feature = "jsonschema")
-    ))]
-    let unproven_defaults = branded_unproven_default_errors(item_struct, inner_field, args);
-    #[cfg(not(all(
-        feature = "serde",
-        any(feature = "typescript", feature = "zod", feature = "jsonschema")
-    )))]
-    let unproven_defaults: Vec<proc_macro2::TokenStream> = Vec::new();
     branded_cfg_attr_guard_errors(item_struct, inner_field)
         .into_iter()
         .chain(branded_option_inner_error(&item_struct.ident, inner_field))
@@ -7571,17 +7257,17 @@ fn branded_guard_errors(
             inner_field,
         ))
         .chain(branded_map_key_error(&item_struct.ident, inner_field))
-        .chain(unproven_defaults)
+        .chain(branded_unproven_default_errors(
+            item_struct,
+            inner_field,
+            args,
+        ))
         .collect()
 }
 
 /// Why `ty` cannot be proven to write every lifetime it has, or `None` where it can: a standard
 /// type, or a name `#[model_schema]` was written on above that is written with every lifetime it
 /// declares, or an alias of a type that passes and writes no lifetime of its own.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 fn unproven_default(ty: &syn::Type, depth: usize) -> Option<UnprovenDefault> {
     match ty {
         syn::Type::Path(path) if path.qself.is_none() => {
@@ -7596,11 +7282,6 @@ fn unproven_default(ty: &syn::Type, depth: usize) -> Option<UnprovenDefault> {
                 .filter(|argument| matches!(argument, syn::GenericArgument::Lifetime(_)))
                 .count();
             match declared(&name) {
-                Some(Declared::Model(lifetimes) | Declared::OneValue(lifetimes)) => {
-                    if written < lifetimes {
-                        return Some(UnprovenDefault::LeavesOut(name));
-                    }
-                }
                 Some(Declared::Alias(named)) => {
                     let Ok(target) = syn::parse_str::<syn::Type>(&named) else {
                         return Some(UnprovenDefault::Unseen);
@@ -7613,6 +7294,11 @@ fn unproven_default(ty: &syn::Type, depth: usize) -> Option<UnprovenDefault> {
                     }
                     if tokens_write_a_lifetime(&quote! { #target }) {
                         return Some(UnprovenDefault::Hides);
+                    }
+                }
+                Some(model) => {
+                    if written < model.lifetimes() {
+                        return Some(UnprovenDefault::LeavesOut(name));
                     }
                 }
                 None => {
@@ -7654,10 +7340,6 @@ fn unproven_default(ty: &syn::Type, depth: usize) -> Option<UnprovenDefault> {
 }
 
 /// Whether `tokens` write a lifetime or a reference, which carries one.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 fn tokens_write_a_lifetime(tokens: &proc_macro2::TokenStream) -> bool {
     tokens.clone().into_iter().any(|tree| match tree {
         proc_macro2::TokenTree::Punct(mark) => matches!(mark.as_char(), '\'' | '&'),
@@ -7707,10 +7389,6 @@ fn tokens_write_a_lifetime(tokens: &proc_macro2::TokenStream) -> bool {
 /// 18 | #[model_schema(minLength = 2, default_types(Text = Kept))]
 ///    |                                                    ^^^^
 /// ```
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 fn branded_unproven_default_errors(
     item_struct: &syn::ItemStruct,
     inner_field: &Field,
@@ -7835,6 +7513,7 @@ fn without_member_keys(item: &Item) -> Item {
 fn refused_item_output(
     item: &Item,
     guard_errors: &[proc_macro2::TokenStream],
+    args: &ModelSchemaArgs,
 ) -> Option<TokenStream> {
     if guard_errors.is_empty() {
         return None;
@@ -7843,6 +7522,7 @@ fn refused_item_output(
         &without_member_keys(item),
         item_schema_ident(item),
         guard_errors,
+        args,
     )
 }
 
@@ -7933,12 +7613,6 @@ fn flatten_edge_guard_error(
 
 /// `def`, the type of a member written with `attrs`, holding the `as_number` written among them,
 /// which is what says serde writes a `DateTime<Tz>` as the integer of its epoch milliseconds.
-#[cfg(any(
-    feature = "serde",
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema"
-))]
 fn with_as_number(mut def: FieldDef, attrs: &[syn::Attribute]) -> FieldDef {
     if parse_model_schema_prop_attributes(attrs).as_number {
         def.model_schema_prop_meta
@@ -8164,10 +7838,7 @@ fn collect_struct_fields(
             process_field(&ctx, field, index, &mut deferred_attrs);
         let rust_name = field_ident_string(field);
         let serde_default = (container.serde_default)(&rust_name);
-        #[cfg(any(feature = "zod", feature = "jsonschema"))]
         f_def.serde_default.clone_from(&serde_default);
-        #[cfg(not(any(feature = "zod", feature = "jsonschema")))]
-        let _: (&mut FieldDef, Option<usize>) = (&mut f_def, serde_default);
 
         guard_errors.extend(field_guard_errors);
 
@@ -8176,11 +7847,11 @@ fn collect_struct_fields(
             // The walk is rebuilt here, the body above being discarded with the rest of a flattened
             // field's. The hop writes no key of its own.
             let place = member_place(field, index, false, ctx.steps(index));
-            #[cfg(feature = "serde")]
-            if let Some(body) = nested_validate_body(field, &f_def, &place) {
-                validate_bodies.push(body);
-            }
-            validate_bodies.extend(held_member_checks(field, &f_def, &place));
+            let flattened = then_checks(
+                nested_validate_body(field, &f_def, &place),
+                held_member_checks(field, &f_def, &place),
+            );
+            validate_bodies.extend(flattened.map(|checked| under_member_cfgs(field, checked)));
             flattened_fields.push(f_def);
             continue;
         }
@@ -8207,42 +7878,36 @@ fn collect_struct_fields(
     )
 }
 
-/// The refusal of a type-level string check written where nothing enforces it: on a struct that
-/// is no brand, and on a brand in a build with no schema surface, where no reader is generated
-/// for it.
+/// The refusal of a type-level string check written on a struct that is no brand, where nothing
+/// enforces it.
 fn string_check_refusal_output(
     item_struct: &syn::ItemStruct,
     args: &ModelSchemaArgs,
 ) -> Option<TokenStream> {
     let (check, written_at) = args.string_check?;
-    let brand = is_branded_newtype(item_struct);
-    // With a schema surface on, a brand's check is hung on its reader.
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-    if brand {
+    if is_branded_newtype(item_struct) {
         return None;
     }
-    let refusal = if brand {
-        format!(
-            "`{check}` on a brand is enforced by the reader generated with its schema surface, \
-             and this build generates none. Turn on `typescript`, `zod` or `jsonschema`, or \
-             remove the check."
-        )
-    } else {
-        no_brand_string_check_refusal(check)
-    };
+    let refusal = no_brand_string_check_refusal(check);
     let error = syn::Error::new(
         written_at,
         prefixed_guard_message(&format!("type `{}`: {refusal}", item_struct.ident)),
     )
     .to_compile_error();
-    refused_item_output(&Item::Struct(item_struct.clone()), &[error])
+    refused_item_output(&Item::Struct(item_struct.clone()), &[error], args)
 }
 
-/// What a type-level string check is told on a declared type that is no brand.
+/// What a type-level string check is told on a declared type that is no brand. A build without
+/// `serde` has no brand, and the refusal names the feature.
 fn no_brand_string_check_refusal(check: &str) -> String {
+    let feature = if cfg!(feature = "serde") {
+        ""
+    } else {
+        " A branded newtype is read with tixschema's `serde` feature, which this build has off."
+    };
     format!(
         "`{check}` is supported only on a branded newtype: a `#[serde(transparent)]` struct \
-         serde writes as the value of one field. On a field, write it in \
+         serde writes as the value of one field.{feature} On a field, write it in \
          `#[model_schema_prop(...)]`."
     )
 }
@@ -8256,6 +7921,7 @@ fn enum_string_check_refusal_output(
     refused_item_output(
         &Item::Enum(item_enum.clone()),
         &enum_string_check_errors(item_enum, args),
+        args,
     )
 }
 
@@ -8419,7 +8085,7 @@ fn alias_string_check_refusal_output(
     let refusal = format!(
         "`{check}` cannot be written on a type alias: `{name}` is another name for `{target}`, \
          so there is no type of its own for the check to belong to. A branded newtype carries \
-         the check where its inner type's schema is a string and a schema surface is on — \
+         the check where its inner type's schema is a string — \
          `#[model_schema({check} = …)] #[serde(transparent)] pub struct \
          {name}{parameters}({target});` — and a check on one field is written in \
          `#[model_schema_prop(...)]`."
@@ -8429,7 +8095,7 @@ fn alias_string_check_refusal_output(
         prefixed_guard_message(&format!("type `{name}`: {refusal}")),
     )
     .to_compile_error();
-    guard_failure_output(item_type, Some(name), &[error])
+    guard_failure_output(item_type, Some(name), &[error], args)
 }
 
 /// Records what serde writes `item` as, for the expansions after it in every build: a bare wire
@@ -8638,7 +8304,6 @@ fn wire_scalar_candidate(item: &Item) -> Option<(&syn::Ident, &syn::Type)> {
 
 /// How a brand's field is reached on a value of the brand: by its name, or as the slot at
 /// `position` among the struct's slots.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn brand_member(position: usize, field: &Field) -> syn::Member {
     field.ident.clone().map_or_else(
         || syn::Member::Unnamed(syn::Index::from(position)),
@@ -8651,47 +8316,45 @@ fn is_branded_newtype(item_struct: &syn::ItemStruct) -> bool {
     brand_field(item_struct).is_some()
 }
 
-/// Computes the TypeScript name, schema-module name, and module ident for a struct, and registers
-/// it in the alias registry so other types can resolve references to it.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-fn struct_module_idents(
-    name: &syn::Ident,
-    name_override: Option<&str>,
-    surface: Surface,
-) -> (String, String, Ident) {
+/// Computes the TypeScript name, schema-module name, and module ident for a struct.
+fn struct_module_idents(name: &syn::Ident, name_override: Option<&str>) -> (String, String, Ident) {
     let item_name = compute_item_export_name(&name.to_string(), name_override);
     let module_name = ident_schema_module_name(&name.to_string());
     let module_ident = Ident::new(&module_name, name.span());
-    register_alias_info(
-        &name.to_string(),
-        &item_name,
-        &module_name,
-        AliasKind::NoEnumMembers,
-    );
-    surface.record(&name.to_string());
     (item_name, module_name, module_ident)
 }
 
-/// The enum counterpart of [`struct_module_idents`]. `kind` differs per enum shape: only a plain
-/// unit enum gets an `enum_members()` (and is written as `z.enum`); every other shape is a union
-/// of its variants' members.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-fn enum_module_idents(
-    name: &syn::Ident,
-    item_name: &str,
-    kind: AliasKind,
-    surface: Surface,
-) -> (String, Ident) {
+/// Registers a struct in the alias registry under the names [`struct_module_idents`] computed, so
+/// other types can resolve references to it, with the surface it publishes.
+fn register_struct(name: &syn::Ident, item_name: &str, module_name: &str, surface: Surface) {
+    register_alias_info(
+        &name.to_string(),
+        item_name,
+        module_name,
+        AliasKind::NoEnumMembers,
+    );
+    surface.record(&name.to_string());
+}
+
+/// The schema-module name and module ident of an enum.
+fn enum_module_idents(name: &syn::Ident) -> (String, Ident) {
     let module_name = ident_schema_module_name(&name.to_string());
     let module_ident = Ident::new(&module_name, name.span());
+    (module_name, module_ident)
+}
+
+/// Registers an enum in the alias registry under its schema module, so other types can resolve
+/// references to it. `kind` differs per enum shape: only a plain unit enum gets an
+/// `enum_members()` (and is written as `z.enum`); every other shape is a union of its variants'
+/// members.
+fn register_enum(name: &syn::Ident, item_name: &str, kind: AliasKind) {
+    let (module_name, _) = enum_module_idents(name);
     register_alias_info(&name.to_string(), item_name, &module_name, kind);
     // The `z.enum` a plain enum publishes is the one enumeration a key can be written under
     // directly; every other shape reaches one only through a brand or an alias.
     if kind == AliasKind::EnumMembers {
         record_key_wire(&name.to_string(), MapKeyWire::Enumerated);
     }
-    surface.record(&name.to_string());
-    (module_name, module_ident)
 }
 
 /// The output a struct carrying a `cfg_attr`-wrapped serde attribute on the type is refused with,
@@ -8701,18 +8364,24 @@ fn enum_module_idents(
 fn struct_cfg_attr_guard_output(
     item_struct: &syn::ItemStruct,
     rejection: Option<&syn::Error>,
+    args: &ModelSchemaArgs,
 ) -> Option<TokenStream> {
     let ident = &item_struct.ident;
     let error = cfg_attr_guard_error(rejection?, &format!("type `{ident}`"));
-    refused_item_output(&Item::Struct(item_struct.clone()), &[error])
+    refused_item_output(&Item::Struct(item_struct.clone()), &[error], args)
 }
 /// The struct's own `rename_all`, or the `cfg_attr` refusal that pre-empts reading anything.
 #[cfg(feature = "serde")]
-fn struct_rename_all(item_struct: &syn::ItemStruct) -> Result<Option<String>, TokenStream> {
+fn struct_rename_all(
+    item_struct: &syn::ItemStruct,
+    args: &ModelSchemaArgs,
+) -> Result<Option<String>, TokenStream> {
     let serde_type_meta = parse_serde_type_attributes(&item_struct.attrs);
-    if let Some(output) =
-        struct_cfg_attr_guard_output(item_struct, serde_type_meta.cfg_attr_rejection.as_ref())
-    {
+    if let Some(output) = struct_cfg_attr_guard_output(
+        item_struct,
+        serde_type_meta.cfg_attr_rejection.as_ref(),
+        args,
+    ) {
         return Err(output);
     }
     Ok(serde_type_meta.rename_all)
@@ -8724,10 +8393,7 @@ fn struct_docs_body(doc_comment: Option<&[String]>, item_name: &str) -> String {
     build_jsdoc_body(doc_comment, item_name)
 }
 
-#[cfg(all(
-    not(feature = "typescript"),
-    any(feature = "zod", feature = "jsonschema")
-))]
+#[cfg(not(feature = "typescript"))]
 const fn struct_docs_body(_doc_comment: Option<&[String]>, _item_name: &str) -> String {
     String::new()
 }
@@ -8772,14 +8438,9 @@ fn struct_members(
 ) -> StructFieldData {
     // Read before the walk: the attributes it leaves on the item are the ones the read is
     // derived from, which this reads as well.
-    #[cfg(any(feature = "zod", feature = "jsonschema"))]
     let serde_defaults = SerdeDefaults::of(item_struct);
-    #[cfg(any(feature = "zod", feature = "jsonschema"))]
     let serde_default = |field: &str| serde_defaults.index(None, field);
-    #[cfg(not(any(feature = "zod", feature = "jsonschema")))]
-    let serde_default = |_: &str| None;
-    let slot_refusals = tuple_slot_refusals(item_struct);
-    let mut from_fields = collect_struct_fields(
+    let from_fields = collect_struct_fields(
         &mut item_struct.fields,
         rename_all,
         module_name_opt,
@@ -8792,7 +8453,6 @@ fn struct_members(
             serde_default: &serde_default,
         },
     );
-    from_fields.4.splice(0..0, slot_refusals);
     #[cfg(feature = "serde")]
     {
         with_struct_tag(item_struct, from_fields)
@@ -8803,83 +8463,9 @@ fn struct_members(
     }
 }
 
-/// The slot refusals of a tuple struct that no brand stands for, which the schema surfaces
-/// refuse in the same cases.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin"),
-    not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
-))]
-fn tuple_slot_refusals(item_struct: &syn::ItemStruct) -> Vec<proc_macro2::TokenStream> {
-    if !matches!(item_struct.fields, syn::Fields::Unnamed(_)) || is_branded_newtype(item_struct) {
-        return Vec::new();
-    }
-    let declared_slots = item_struct.fields.len();
-    let type_name = item_struct.ident.to_string();
-    item_struct
-        .fields
-        .iter()
-        .enumerate()
-        .filter_map(|(index, field)| {
-            check_slot_wire_is_readable(
-                field,
-                index,
-                declared_slots,
-                &type_name,
-                parse_serde_key_omission(&field.attrs),
-            )
-            .err()
-        })
-        .map(|rejection| rejection.to_compile_error())
-        .collect()
-}
-
-/// Where a schema surface runs the slot refusal itself, there is nothing to add.
-#[cfg(not(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin"),
-    not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
-)))]
-const fn tuple_slot_refusals(_item_struct: &syn::ItemStruct) -> Vec<proc_macro2::TokenStream> {
-    Vec::new()
-}
-
-/// The expansion of a brand, or `None` for a struct that is no brand. Where no schema surface
-/// registers a brand, only the guards it earns for a client are read.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+/// The expansion of a brand, or `None` for a struct that is no brand.
 fn branded_output(item_struct: &syn::ItemStruct, args: &ModelSchemaArgs) -> Option<TokenStream> {
     is_branded_newtype(item_struct).then(|| process_branded_newtype(item_struct.clone(), args))
-}
-
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin"),
-    not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
-))]
-fn branded_output(item_struct: &syn::ItemStruct, args: &ModelSchemaArgs) -> Option<TokenStream> {
-    if !is_branded_newtype(item_struct) {
-        return None;
-    }
-    refused_item_output(
-        &Item::Struct(item_struct.clone()),
-        &branded_guard_errors(item_struct, args),
-    )
-}
-
-#[cfg(not(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-)))]
-const fn branded_output(
-    _item_struct: &syn::ItemStruct,
-    _args: &ModelSchemaArgs,
-) -> Option<TokenStream> {
-    None
 }
 
 fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> TokenStream {
@@ -8887,13 +8473,11 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
         return output;
     }
 
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     let name = item_struct.ident.clone();
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     let rust_ident = name.to_string();
 
     #[cfg(feature = "serde")]
-    let rename_all = match struct_rename_all(&item_struct) {
+    let rename_all = match struct_rename_all(&item_struct, args) {
         Ok(rename_all) => rename_all,
         Err(output) => return output,
     };
@@ -8906,22 +8490,15 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
 
     // A tuple struct's slots have no keys, so the named-field emitters below would render every
     // one of them under the empty ident it carries.
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     if is_tuple_struct(&item_struct) {
         return process_tuple_struct(item_struct, rename_all.as_deref(), args);
     }
 
-    // Compute schema-module identifiers and register the struct in the alias registry.
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     let (item_name, module_name, module_ident) =
-        struct_module_idents(&name, args.name_override.as_deref(), Surface::object());
+        struct_module_idents(&name, args.name_override.as_deref());
+    register_struct(&name, &item_name, &module_name, Surface::object());
 
-    // `Some(..)` selects schema-module-aware field processing; `None` (no schema output feature)
-    // skips it so generated code never references a module that won't be emitted.
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     let module_name_opt = Some(module_name.as_str());
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    let module_name_opt: Option<&str> = None;
 
     // Read before the walk, which takes each member's own attribute off it.
     let item_checks = checks::ItemChecks::of(&args.check, item_struct.fields.iter());
@@ -8936,7 +8513,8 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
 
     // A violated field guard makes the whole contract unsound, so the schema surface is dropped
     // and only the original item plus the errors are emitted.
-    if let Some(output) = guard_failure_output(&item_struct, Some(&item_struct.ident), &collected.4)
+    if let Some(output) =
+        guard_failure_output(&item_struct, Some(&item_struct.ident), &collected.4, args)
     {
         return output;
     }
@@ -8954,10 +8532,8 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
     // reads each one through the function serde's derive will call for it.
     let decode_with = struct_decode_with(&item_struct, args);
 
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     let docs = SchemaDocs::of_struct(&item_struct, &item_name);
 
-    #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
     let schema_impl_items = struct_schema_impl_items(
         collected.0,
         &collected.1,
@@ -8968,43 +8544,27 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
         &docs,
     );
 
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     let validate_method = struct_validate_method(&collected.3, &module_ident, &item_checks);
 
-    #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
     let delegate_impl_items =
         struct_delegate_items(&module_ident, &item_name, &item_struct, false, args);
 
-    #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
-    {
-        struct_output_with_unit_impls(
-            &SchemaOutputParts {
-                delegate_impl_items: &delegate_impl_items,
-                example_test: ExampleTest::of_struct(&item_struct, args),
-                generics: &item_struct.generics,
-                item: &item_struct,
-                module_ident: &module_ident,
-                name: &name,
-                schema_impl_items: &schema_impl_items,
-                validate_method: &validate_method,
-                validation_fns: &collected.2,
-            },
-            &unit_struct_impls,
-            &decode_with,
-        )
-    }
-
-    #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
-    {
-        struct_output_with_unit_impls(
-            &item_struct,
-            &unit_struct_impls,
-            &decode_with,
-            &collected.3,
-            &item_checks,
-            ExampleTest::of_struct(&item_struct, args).as_ref(),
-        )
-    }
+    struct_output_with_unit_impls(
+        &SchemaOutputParts {
+            delegate_impl_items: &delegate_impl_items,
+            enable: args.enable,
+            example_test: ExampleTest::of_struct(&item_struct, args),
+            generics: &item_struct.generics,
+            item: &item_struct,
+            module_ident: &module_ident,
+            name: &name,
+            schema_impl_items: &schema_impl_items,
+            validate_method: &validate_method,
+            validation_fns: &collected.2,
+        },
+        &unit_struct_impls,
+        &decode_with,
+    )
 }
 
 /// Records the members of the struct where its `$RawSchema` is one strict object of its named
@@ -9030,7 +8590,6 @@ fn record_object_model(
 
 /// The assembled schema module, with a unit struct's own serde impls and the `impl` `decode_with`
 /// adds appended after it.
-#[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
 fn struct_output_with_unit_impls(
     parts: &SchemaOutputParts<syn::ItemStruct>,
     unit_struct_impls: &proc_macro2::TokenStream,
@@ -9039,29 +8598,24 @@ fn struct_output_with_unit_impls(
     let mut read = parts.item.clone();
     let judged = judged_read::of_struct(&mut read, parts.validate_method.is_some());
     // The defaults are read off the attributes serde's derive reads, which the walk left on.
-    #[cfg(any(feature = "zod", feature = "jsonschema"))]
     let serde_defaults = SerdeDefaults::of(parts.item);
-    #[cfg(any(feature = "zod", feature = "jsonschema"))]
     let module_items: Vec<proc_macro2::TokenStream> = parts
         .validation_fns
         .iter()
         .cloned()
-        .chain([serde_defaults.holder()])
+        .chain(zod_or_json_schema(parts.enable).then(|| serde_defaults.holder()))
         .collect();
-    #[cfg(any(feature = "zod", feature = "jsonschema"))]
     let values = {
-        let literals = serde_defaults.values_impl(parts.module_ident);
+        let literals = parts
+            .enable
+            .jsonschema
+            .then(|| serde_defaults.values_impl(parts.module_ident));
         #[cfg(feature = "zod")]
         let zod_literals = serde_defaults.zod_values_impl(parts.module_ident);
         #[cfg(not(feature = "zod"))]
         let zod_literals = proc_macro2::TokenStream::new();
         quote! { #literals #zod_literals }
     };
-    #[cfg(not(any(feature = "zod", feature = "jsonschema")))]
-    let (module_items, values) = (
-        parts.validation_fns.to_vec(),
-        proc_macro2::TokenStream::new(),
-    );
     let base = assemble_schema_output(
         &SchemaOutputParts {
             validation_fns: &module_items,
@@ -9079,50 +8633,16 @@ fn struct_output_with_unit_impls(
     }
 }
 
-/// [`struct_output_with_unit_impls`] where no schema surface is on: the item alone, with a unit
-/// struct's serde impls, the `validate()` its checks earn it and what `decode_with` adds appended.
-#[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
-fn struct_output_with_unit_impls(
-    item_struct: &syn::ItemStruct,
-    unit_struct_impls: &proc_macro2::TokenStream,
-    decode_with: &DecodeWithParts,
-    validate_bodies: &[proc_macro2::TokenStream],
-    item_checks: &checks::ItemChecks<'_>,
-    subject: Option<&ExampleTest>,
-) -> TokenStream {
-    let validate_impl = checks_validate_impl(
-        &item_struct.ident,
-        &item_struct.generics,
-        validate_bodies,
-        item_checks,
-    );
-    let example_test = ExampleTest::written(subject, !validate_impl.is_empty(), None);
-    let mut read = item_struct.clone();
-    let judged = judged_read::of_struct(&mut read, !validate_impl.is_empty());
-    let decode_with_module = &decode_with.schema_module;
-    let decode_with_impl = &decode_with.type_impl;
-    let output = quote! {
-        #read
-        #unit_struct_impls
-        #validate_impl
-        #example_test
-        #judged
-        #decode_with_module
-        #decode_with_impl
-    };
-    log::trace!("{output}");
-    output
-}
-
 /// Records what the item declares for the recovering decodes expanded after it, which walk a
 /// field typed with a model type differently from one typed with an alias, and whose typed paths
 /// reach below a model serde writes under keys and stop at one it writes as one value. An alias
 /// that takes a parameter is left out: what it names depends on what fills it.
-#[cfg(feature = "serde")]
 fn record_declaration(item: &Item) {
     // An item's walker reads the validators and the checks of its own fields, recorded as they
     // are expanded.
+    #[cfg(feature = "serde")]
     forget_field_validators();
+    #[cfg(feature = "serde")]
     forget_checks();
     if let Item::Type(alias) = item {
         if alias.generics.params.is_empty() {
@@ -9133,23 +8653,21 @@ fn record_declaration(item: &Item) {
         }
     } else if let Some(ident) = item_schema_ident(item) {
         let lifetimes = item_lifetime_count(item);
+        #[cfg(feature = "serde")]
         let declares = if written_as_one_value(item) {
             Declared::one_value(lifetimes)
         } else {
             Declared::model(lifetimes)
         };
+        #[cfg(not(feature = "serde"))]
+        let declares = Declared::model(lifetimes);
         record_declared(&ident.to_string(), declares);
     } else {
         // `#[model_schema]` is written on nothing else.
     }
 }
 
-/// Without `serde` nothing reads a value, so nothing reads what an item declares.
-#[cfg(all(feature = "zod", not(feature = "serde")))]
-const fn record_declaration(_item: &Item) {}
-
 /// How many lifetime parameters the struct or enum `item` declares.
-#[cfg(feature = "serde")]
 fn item_lifetime_count(item: &Item) -> usize {
     let generics = if let Item::Struct(declared) = item {
         &declared.generics
@@ -9165,10 +8683,10 @@ fn item_lifetime_count(item: &Item) -> usize {
 /// flag.
 #[cfg(feature = "serde")]
 fn struct_decode_with(item_struct: &syn::ItemStruct, args: &ModelSchemaArgs) -> DecodeWithParts {
-    if !args.enable.decode_with {
+    if !args.enable.decode_with() {
         return DecodeWithParts::default();
     }
-    let added = struct_recovering_decode(item_struct, args.enable.mongodb);
+    let added = struct_recovering_decode(item_struct, args.enable.mongodb());
     let (walkers, checks, probes) = (added.type_impl, added.check_messages, added.probes);
     DecodeWithParts {
         schema_module: added.schema_module,
@@ -9185,10 +8703,10 @@ fn struct_decode_with(_item_struct: &syn::ItemStruct, _args: &ModelSchemaArgs) -
 /// What `decode_with` adds to an enum, read off the enum as it is emitted. Empty without the flag.
 #[cfg(feature = "serde")]
 fn enum_decode_with(item_enum: &syn::ItemEnum, args: &ModelSchemaArgs) -> DecodeWithParts {
-    if !args.enable.decode_with {
+    if !args.enable.decode_with() {
         return DecodeWithParts::default();
     }
-    let added = enum_recovering_decode(item_enum, args.enable.mongodb);
+    let added = enum_recovering_decode(item_enum, args.enable.mongodb());
     let (walkers, checks, probes) = (added.type_impl, added.check_messages, added.probes);
     DecodeWithParts {
         schema_module: added.schema_module,
@@ -9203,7 +8721,6 @@ fn enum_decode_with(_item_enum: &syn::ItemEnum, _args: &ModelSchemaArgs) -> Deco
 }
 
 /// An enum's assembled schema module, with the `impl` `decode_with` adds appended after it.
-#[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
 fn enum_output_with_decode(
     parts: &SchemaOutputParts<syn::ItemEnum>,
     decode_with: &DecodeWithParts,
@@ -9211,29 +8728,24 @@ fn enum_output_with_decode(
     let mut read = parts.item.clone();
     let judged = judged_read::of_enum(&mut read, parts.validate_method.is_some());
     // The defaults are read off the attributes serde's derive reads, which the walk left on.
-    #[cfg(any(feature = "zod", feature = "jsonschema"))]
     let serde_defaults = SerdeDefaults::of_enum(parts.item);
-    #[cfg(any(feature = "zod", feature = "jsonschema"))]
     let module_items: Vec<proc_macro2::TokenStream> = parts
         .validation_fns
         .iter()
         .cloned()
-        .chain([serde_defaults.holder()])
+        .chain(zod_or_json_schema(parts.enable).then(|| serde_defaults.holder()))
         .collect();
-    #[cfg(any(feature = "zod", feature = "jsonschema"))]
     let values = {
-        let literals = serde_defaults.values_impl(parts.module_ident);
+        let literals = parts
+            .enable
+            .jsonschema
+            .then(|| serde_defaults.values_impl(parts.module_ident));
         #[cfg(feature = "zod")]
         let zod_literals = serde_defaults.zod_values_impl(parts.module_ident);
         #[cfg(not(feature = "zod"))]
         let zod_literals = proc_macro2::TokenStream::new();
         quote! { #literals #zod_literals }
     };
-    #[cfg(not(any(feature = "zod", feature = "jsonschema")))]
-    let (module_items, values) = (
-        parts.validation_fns.to_vec(),
-        proc_macro2::TokenStream::new(),
-    );
     let base = assemble_schema_output(
         &SchemaOutputParts {
             validation_fns: &module_items,
@@ -9248,40 +8760,6 @@ fn enum_output_with_decode(
         #decode_with_impl
         #values
     }
-}
-
-/// [`enum_output_with_decode`] where no schema surface is on: the item alone, with the
-/// `validate()` its checks earn it and what `decode_with` adds appended. `arms` holds what each
-/// variant's members add to that `validate()`.
-#[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
-fn enum_output_with_decode(
-    item_enum: &syn::ItemEnum,
-    decode_with: &DecodeWithParts,
-    arms: &[proc_macro2::TokenStream],
-    item_checks: &checks::ItemChecks<'_>,
-    subject: Option<&ExampleTest>,
-) -> TokenStream {
-    let validate_impl = checks_validate_impl(
-        &item_enum.ident,
-        &item_enum.generics,
-        &matched_arms(arms),
-        item_checks,
-    );
-    let example_test = ExampleTest::written(subject, !validate_impl.is_empty(), None);
-    let mut read = item_enum.clone();
-    let judged = judged_read::of_enum(&mut read, !validate_impl.is_empty());
-    let decode_with_module = &decode_with.schema_module;
-    let decode_with_impl = &decode_with.type_impl;
-    let output = quote! {
-        #read
-        #validate_impl
-        #example_test
-        #judged
-        #decode_with_module
-        #decode_with_impl
-    };
-    log::trace!("{output}");
-    output
 }
 
 /// Records a unit struct in the registry `is_unit_type` reads, then rewrites its derive.
@@ -9448,37 +8926,18 @@ fn unit_struct_read(name: &syn::Ident, publishes_validate: bool) -> proc_macro2:
 
 /// Returns whether a struct's slots are positional. A branded newtype is one too, and is
 /// dispatched ahead of this question.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 const fn is_tuple_struct(item_struct: &syn::ItemStruct) -> bool {
     matches!(item_struct.fields, syn::Fields::Unnamed(_))
 }
 
 /// Whether the slot at `index` of a tuple struct declaring `declared_slots` slots carries serde
 /// attributes the wire answers for.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 const fn slot_attributes_reach_the_wire(declared_slots: usize) -> bool {
     declared_slots > 1
 }
 
 /// Rejects a tuple-struct slot whose serde attributes drop it out of one of serde's two directions
 /// and not the other.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn check_slot_wire_is_readable(
     field: &Field,
     index: usize,
@@ -9505,7 +8964,6 @@ fn check_slot_wire_is_readable(
 
 /// Walks a tuple struct's slots, and records whether they write a map keyed by a `u64` or an
 /// `i64`.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn collect_tuple_slots(
     fields: &mut syn::Fields,
     rename_all: Option<&str>,
@@ -9560,6 +9018,7 @@ fn collect_tuple_slots(
         apply_deferred_field_attrs(fields.iter_mut(), deferred_attrs);
     }
     let mut shape = tuple_struct_shape(declared_slots, slots);
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     record_inexact_key(type_name, tuple_struct_writes_an_inexact_key(&shape));
     let checked_ahead = checked_in_slots(&mut shape, type_name, &type_parameters);
     #[cfg(not(feature = "zod"))]
@@ -9577,7 +9036,6 @@ fn collect_tuple_slots(
 /// The shape a tuple struct's declared arity and described slots amount to. Keyed on the
 /// *declared* arity, not the described count: a struct declaring two slots with one off the wire
 /// still writes a one-element array, not the bare value.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn tuple_struct_shape(declared_slots: usize, mut slots: Vec<FieldDef>) -> TupleStructShape {
     if declared_slots == 1 && slots.len() == 1 {
         return TupleStructShape::BareValue(Box::new(slots.remove(0)));
@@ -9849,10 +9307,28 @@ fn maps_of_itself_through_the_self_view(
     inside_maps(&arrows_over_maps(zod, &call, &view), &call, &view)
 }
 
+/// The `json_schema()` pair of a tuple struct's schema module and the record a holder that
+/// flattens it reads.
+fn tuple_struct_json_schema_items(
+    item_struct: &syn::ItemStruct,
+    item_name: &str,
+    shape: &TupleStructShape,
+    args: &ModelSchemaArgs,
+) -> [proc_macro2::TokenStream; 2] {
+    [
+        json_schema_methods(
+            item_name,
+            &tuple_struct_json_body(item_name, shape),
+            &schema_parameters(&item_struct.generics, args),
+            struct_json_examples(item_struct, shape).as_ref(),
+        ),
+        unit_member_record_item(&Item::Struct(item_struct.clone())),
+    ]
+}
+
 /// [`tuple_struct_ts_body`] for the JSON-schema surface, as a standalone `serde_json::Value`
 /// expression, or the diagnostic naming the type when a slot holds a value the dispatch cannot
 /// render.
-#[cfg(feature = "jsonschema")]
 fn tuple_struct_json_body(item_name: &str, shape: &TupleStructShape) -> proc_macro2::TokenStream {
     let described = match shape {
         TupleStructShape::Array(slots) => bounded_slots_json_schema(slots),
@@ -9872,7 +9348,7 @@ fn tuple_struct_json_body(item_name: &str, shape: &TupleStructShape) -> proc_mac
 
 /// Whether a slot of `shape` writes a map keyed by a `u64` or an `i64`: the tuple struct carries
 /// the note on itself, a slot having no member of its own to carry it.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn tuple_struct_writes_an_inexact_key(shape: &TupleStructShape) -> bool {
     match shape {
         TupleStructShape::Array(slots) => slots.iter().any(FieldDef::slot_writes_an_inexact_key),
@@ -9933,7 +9409,6 @@ fn build_tuple_struct_zod_schema_method(
 /// What a tuple struct publishes: serde writes one slot as that slot's value alone, so the schema
 /// *is* the slot's schema and carries exactly what it carries; every other arity is the fixed array
 /// `z.tuple` writes, which takes no string check and which no object can be merged with.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn tuple_struct_surface(fields: &syn::Fields, parameters: &[String]) -> Surface {
     let mut slots = fields.iter();
     match (slots.next(), slots.next()) {
@@ -9945,17 +9420,69 @@ fn tuple_struct_surface(fields: &syn::Fields, parameters: &[String]) -> Surface 
     }
 }
 
+/// The schema methods a tuple struct's module publishes: the JSON-schema pair where the struct lists
+/// `"jsonschema"`, the TypeScript definition and the Zod schema, each where its feature is on.
+fn tuple_struct_schema_impl_items(
+    item_struct: &syn::ItemStruct,
+    item_name: &str,
+    slots: &TupleSlots,
+    args: &ModelSchemaArgs,
+) -> Vec<proc_macro2::TokenStream> {
+    let mut items = Vec::new();
+    if args.enable.jsonschema {
+        items.extend(tuple_struct_json_schema_items(
+            item_struct,
+            item_name,
+            &slots.shape,
+            args,
+        ));
+    }
+    #[cfg(feature = "typescript")]
+    items.push(build_tuple_struct_ts_definition_method(
+        &build_jsdoc_body(get_struct_docs(item_struct).as_deref(), item_name),
+        item_name,
+        &item_struct.ident.to_string(),
+        &ts_generic_params(&item_struct.generics),
+        &slots.shape,
+    ));
+    #[cfg(feature = "zod")]
+    items.push(build_tuple_struct_zod_schema_method(
+        &slots.checked_ahead,
+        item_name,
+        &item_struct.ident.to_string(),
+        &type_parameters_in_scope(&item_struct.generics),
+        &PublishedBinding {
+            checks: &args.check,
+            default_types: &args.default_types,
+            preprocess: &args.preprocess,
+            republished: tuple_struct_republishes_slot(&slots.shape),
+        },
+        &tuple_struct_zod_body(
+            &slots.shape,
+            &SlotOwner {
+                item_name,
+                #[cfg(feature = "typescript")]
+                parameters: &type_parameters_in_scope(&item_struct.generics),
+                rust_ident: &item_struct.ident.to_string(),
+            },
+        ),
+    ));
+    items
+}
+
 /// Processes a tuple struct that is not a branded newtype.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn process_tuple_struct(
     mut item_struct: syn::ItemStruct,
     rename_all: Option<&str>,
     args: &ModelSchemaArgs,
 ) -> TokenStream {
     let name = item_struct.ident.clone();
-    let (item_name, module_name, module_ident) = struct_module_idents(
+    let (item_name, module_name, module_ident) =
+        struct_module_idents(&name, args.name_override.as_deref());
+    register_struct(
         &name,
-        args.name_override.as_deref(),
+        &item_name,
+        &module_name,
         tuple_struct_surface(
             &item_struct.fields,
             &type_parameters_in_scope(&item_struct.generics),
@@ -9977,9 +9504,12 @@ fn process_tuple_struct(
 
     // A violated slot guard makes the whole contract unsound, so the schema surface is dropped and
     // only the original item plus the errors are emitted.
-    if let Some(output) =
-        guard_failure_output(&item_struct, Some(&item_struct.ident), &slots.guard_errors)
-    {
+    if let Some(output) = guard_failure_output(
+        &item_struct,
+        Some(&item_struct.ident),
+        &slots.guard_errors,
+        args,
+    ) {
         return output;
     }
     #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
@@ -9987,50 +9517,7 @@ fn process_tuple_struct(
         record_newtype_flatten_variants(&name.to_string(), slot, &item_struct.generics);
     }
 
-    #[cfg(feature = "typescript")]
-    let docs_vec = get_struct_docs(&item_struct);
-
-    let schema_impl_items: Vec<proc_macro2::TokenStream> = vec![
-        #[cfg(feature = "jsonschema")]
-        json_schema_methods(
-            &item_name,
-            &tuple_struct_json_body(&item_name, &slots.shape),
-            &schema_parameters(&item_struct.generics, args),
-            struct_json_examples(&item_struct, &slots.shape).as_ref(),
-        ),
-        #[cfg(feature = "jsonschema")]
-        unit_member_record_item(&Item::Struct(item_struct.clone())),
-        #[cfg(feature = "typescript")]
-        build_tuple_struct_ts_definition_method(
-            &build_jsdoc_body(docs_vec.as_deref(), &item_name),
-            &item_name,
-            &name.to_string(),
-            &ts_generic_params(&item_struct.generics),
-            &slots.shape,
-        ),
-        #[cfg(feature = "zod")]
-        build_tuple_struct_zod_schema_method(
-            &slots.checked_ahead,
-            &item_name,
-            &name.to_string(),
-            &type_parameters_in_scope(&item_struct.generics),
-            &PublishedBinding {
-                checks: &args.check,
-                default_types: &args.default_types,
-                preprocess: &args.preprocess,
-                republished: tuple_struct_republishes_slot(&slots.shape),
-            },
-            &tuple_struct_zod_body(
-                &slots.shape,
-                &SlotOwner {
-                    item_name: &item_name,
-                    #[cfg(feature = "typescript")]
-                    parameters: &type_parameters_in_scope(&item_struct.generics),
-                    rust_ident: &name.to_string(),
-                },
-            ),
-        ),
-    ];
+    let schema_impl_items = tuple_struct_schema_impl_items(&item_struct, &item_name, &slots, args);
 
     let delegate_impl_items = struct_delegate_items(
         &module_ident,
@@ -10046,6 +9533,7 @@ fn process_tuple_struct(
     struct_output_with_unit_impls(
         &SchemaOutputParts {
             delegate_impl_items: &delegate_impl_items,
+            enable: args.enable,
             example_test: ExampleTest::of_struct(&item_struct, args),
             generics: &item_struct.generics,
             item: &item_struct,
@@ -10067,10 +9555,6 @@ fn process_tuple_struct(
 /// Builds the `validate_value` function for a constrained branded newtype, or `None` when it has
 /// no string constraints. A path inner is measured by the string serde writes for it; every other
 /// inner is reached through `ToString`.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 fn build_branded_validation(
     args: &ModelSchemaArgs,
     generic_params: &[String],
@@ -10165,20 +9649,12 @@ fn build_branded_validation(
 }
 
 /// Whether `ty` names one of the brand's type parameters, at any depth.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 fn names_a_parameter(ty: &syn::Type, generic_params: &[String]) -> bool {
     !generic_params.is_empty() && tokens_name_any(&quote! { #ty }, generic_params)
 }
 
 /// Whether a brand's lengths alone are asked of a name an earlier expansion registered as one a
 /// bound counts, which answers for itself and is never rendered through `Display`.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 fn counts_a_named_inner(args: &ModelSchemaArgs, inner_ty: &syn::Type) -> bool {
     args.pattern.is_none()
         && (args.min_length.is_some() || args.max_length.is_some())
@@ -10195,10 +9671,6 @@ fn counts_a_named_inner(args: &ModelSchemaArgs, inner_ty: &syn::Type) -> bool {
 /// of a list, or the characters of a text, as the name answers for itself. The inner is a name an
 /// earlier expansion registered as one a bound counts, or a parameter whose declared default is a
 /// list, which the lengths count at that filling alone.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 fn branded_named_length_validation(
     args: &ModelSchemaArgs,
     generic_params: &[String],
@@ -10287,10 +9759,6 @@ fn branded_named_length_validation(
 
 /// [`build_branded_validation`] for a brand over a list, whose two lengths count its items: the
 /// validator a list field gets, under the brand's own name.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 fn branded_list_validation(
     args: &ModelSchemaArgs,
     inner_field: &Field,
@@ -10311,10 +9779,6 @@ fn branded_list_validation(
 
 // Adapted from `typeid::of` in the typeid crate by David Tolnay (https://github.com/dtolnay/typeid),
 // used under the MIT license; see THIRD-PARTY-NOTICES.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 fn embedded_type_identity() -> proc_macro2::TokenStream {
     quote! {
         fn type_identity<T: ?::core::marker::Sized>() -> ::core::any::TypeId {
@@ -10390,10 +9854,6 @@ fn embedded_type_identity() -> proc_macro2::TokenStream {
 ///    | |_______________________________`held` escapes the function body here
 ///    |                                 argument requires that `'held` must outlive `'static`
 /// ```
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 fn embedded_validate_at_declared_default(
     default_ty: &syn::Type,
     checked: &proc_macro2::TokenStream,
@@ -10418,10 +9878,6 @@ fn embedded_validate_at_declared_default(
 /// `ty` with every lifetime it writes replaced by `lifetime`: a named one, `'static`, `'_`, and the
 /// one a reference leaves out. A lifetime a `for<...>` binds stays as written, and so does one a
 /// function's signature leaves out, which that signature binds.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 fn at_one_lifetime(ty: &syn::Type, lifetime: &syn::Lifetime) -> syn::Type {
     let mut written = ty.clone();
     type_at_one_lifetime(&mut written, lifetime, &[], false);
@@ -10430,10 +9886,6 @@ fn at_one_lifetime(ty: &syn::Type, lifetime: &syn::Lifetime) -> syn::Type {
 
 /// [`at_one_lifetime`] over `ty` in place. `bound` holds what the binders around it declare, and
 /// `signature` says whether it stands in a function's signature.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 fn type_at_one_lifetime(
     ty: &mut syn::Type,
     lifetime: &syn::Lifetime,
@@ -10501,10 +9953,6 @@ fn type_at_one_lifetime(
 }
 
 /// [`at_one_lifetime`] over the arguments of each segment of `path`.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 fn path_at_one_lifetime(
     path: &mut syn::Path,
     lifetime: &syn::Lifetime,
@@ -10525,10 +9973,6 @@ fn path_at_one_lifetime(
 }
 
 /// [`at_one_lifetime`] over each of `arguments`.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 fn arguments_at_one_lifetime(
     arguments: &mut syn::AngleBracketedGenericArguments,
     lifetime: &syn::Lifetime,
@@ -10561,10 +10005,6 @@ fn arguments_at_one_lifetime(
 }
 
 /// [`at_one_lifetime`] over each of `bounds`, a trait's own `for<...>` binding what it declares.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 fn bounds_at_one_lifetime(
     bounds: &mut Punctuated<syn::TypeParamBound, Token![+]>,
     lifetime: &syn::Lifetime,
@@ -10586,10 +10026,6 @@ fn bounds_at_one_lifetime(
 }
 
 /// [`at_one_lifetime`] over what a function takes and answers.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 fn signature_at_one_lifetime(
     inputs: &mut Punctuated<syn::NamedArg, Token![,]>,
     output: &mut syn::ReturnType,
@@ -10605,10 +10041,6 @@ fn signature_at_one_lifetime(
 }
 
 /// Writes `lifetime` over `written`, unless a `for<...>` binds it or a signature left it out.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 fn lifetime_at_one(
     written: &mut syn::Lifetime,
     lifetime: &syn::Lifetime,
@@ -10623,10 +10055,6 @@ fn lifetime_at_one(
 }
 
 /// `bound` with the lifetimes `declared` binds.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 fn bound_with(bound: &[syn::Ident], declared: Option<&syn::BoundLifetimes>) -> Vec<syn::Ident> {
     let mut all = bound.to_vec();
     all.extend(
@@ -10644,10 +10072,6 @@ fn bound_with(bound: &[syn::Ident], declared: Option<&syn::BoundLifetimes>) -> V
 /// Every one of `parameters` found in `ty`, replaced by its `default_types` filling via
 /// [`declared_default_syn_type`]. Recurses through path arguments, references, arrays, slices,
 /// tuples, parens and groups; any other shape comes back unchanged.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 fn substitute_declared_defaults(
     ty: &syn::Type,
     parameters: &[String],
@@ -10720,10 +10144,6 @@ fn substitute_declared_defaults(
 
 /// Whether a brand's constrained checks reach its inner value as a path rather than through
 /// `Display`.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 fn branded_inner_measures_path(inner_ty: &syn::Type) -> bool {
     constrained_shape(inner_ty).is_some_and(|shape| {
         matches!(shape.leaf, ConstraintLeaf::Path)
@@ -10737,10 +10157,6 @@ fn branded_inner_measures_path(inner_ty: &syn::Type) -> bool {
 /// How a constrained brand hands `receiver` to `validate_value`: a path goes borrowed since the
 /// validator renders it itself; every other inner goes through `Display`'s `to_string()`, spanned
 /// so a non-`Display` inner's `E0599` lands beside the field rather than on the attribute.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 fn branded_checked_value(
     measures_path: bool,
     to_string_span: proc_macro2::Span,
@@ -10756,7 +10172,6 @@ fn branded_checked_value(
 /// Builds the schema a branded newtype's constraints are written into: `base_inserts` first — what
 /// the inner type describes as before the brand narrows it — then one insert per constraint the
 /// brand declares.
-#[cfg(feature = "jsonschema")]
 fn branded_schema_obj_over(
     args: &ModelSchemaArgs,
     base_inserts: &proc_macro2::TokenStream,
@@ -10798,7 +10213,6 @@ fn branded_schema_obj_over(
 
 /// Builds the string schema a branded newtype's constraints are written into: `type_name` as the
 /// `"type"`, then one insert per constraint the brand declares.
-#[cfg(feature = "jsonschema")]
 fn branded_constrained_schema_obj(
     args: &ModelSchemaArgs,
     type_name: &str,
@@ -10816,7 +10230,7 @@ fn branded_constrained_schema_obj(
 /// narrowed by the brand's own constraints, which sit beside `type` the way they sit beside `type`
 /// alone. A form held by a pattern is the base's own `pattern`, so the brand's is layered beside
 /// it — see [`BasePattern`].
-#[cfg(all(feature = "jsonschema", feature = "chrono"))]
+#[cfg(feature = "chrono")]
 fn branded_chrono_schema(args: &ModelSchemaArgs, text: &ChronoText) -> proc_macro2::TokenStream {
     let (keyword, value, base_pattern) = match text {
         ChronoText::Format(format) => ("format", *format, BasePattern::Absent),
@@ -10835,7 +10249,7 @@ fn branded_chrono_schema(args: &ModelSchemaArgs, text: &ChronoText) -> proc_macr
 /// The `$oid` member an `ObjectId` brand carries: the hex string the type always holds, narrowed
 /// by the brand's own constraints. The hex is the base's own `pattern`, so the brand's is layered
 /// beside it rather than written over it — see [`BasePattern`].
-#[cfg(all(feature = "jsonschema", feature = "mongodb"))]
+#[cfg(feature = "mongodb")]
 fn branded_object_id_hex_schema(args: &ModelSchemaArgs) -> proc_macro2::TokenStream {
     branded_schema_obj_over(
         args,
@@ -10850,7 +10264,6 @@ fn branded_object_id_hex_schema(args: &ModelSchemaArgs) -> proc_macro2::TokenStr
 /// The description a brand carries for an inner no `"type"` keyword names: the one the slot
 /// dispatch gives that type. An inner the dispatch cannot render replaces the body with the
 /// single diagnostic naming the brand, as an unrenderable slot does elsewhere.
-#[cfg(feature = "jsonschema")]
 fn branded_slot_json_schema(
     args: &ModelSchemaArgs,
     inner: &FieldDef,
@@ -10874,7 +10287,6 @@ fn branded_slot_json_schema(
 
 /// Whether a brand's inner is a name that carries the brand's two lengths itself, as the field
 /// type of a holder carries a length written on the field.
-#[cfg(feature = "jsonschema")]
 fn carries_a_named_count(inner: &FieldDef) -> bool {
     matches!(inner.field_type, FieldDefType::SiblingType(..))
         && inner
@@ -10884,7 +10296,6 @@ fn carries_a_named_count(inner: &FieldDef) -> bool {
 }
 
 /// Whether `inner` is a bare type parameter of the brand whose declared default is a list.
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
 fn parameter_default_is_a_list(args: &ModelSchemaArgs, inner: &FieldDef) -> bool {
     let FieldDefType::TypeParam(parameter) = &inner.field_type else {
         return false;
@@ -10900,7 +10311,6 @@ fn parameter_default_is_a_list(args: &ModelSchemaArgs, inner: &FieldDef) -> bool
 /// `described` narrowed by the brand's own constraints from inside an `allOf`, or `described` alone
 /// when the brand declares none. The two lengths count items where `items` says the brand holds a
 /// list.
-#[cfg(feature = "jsonschema")]
 fn branded_layered_over(
     args: &ModelSchemaArgs,
     described: &proc_macro2::TokenStream,
@@ -10935,7 +10345,6 @@ fn branded_layered_over(
 }
 
 /// Builds the `json_schema()` method for a branded newtype's schema module.
-#[cfg(feature = "jsonschema")]
 fn build_branded_json_schema_method(
     args: &ModelSchemaArgs,
     json_inner: &BrandedJsonInner,
@@ -10958,15 +10367,6 @@ fn build_branded_json_schema_method(
 
 /// The `FieldDef` every surface renders from: the written one with each name that is one of the
 /// enclosing item's own type parameters classified as the parameter it is.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn surface_field_def(generics: &syn::Generics, written: &FieldDef) -> FieldDef {
     let mut erased = written.clone();
     erased.erase_type_parameters(&type_parameters_in_scope(generics));
@@ -10976,7 +10376,6 @@ fn surface_field_def(generics: &syn::Generics, written: &FieldDef) -> FieldDef {
 /// The one def both validating surfaces read a branded newtype's inner off, so neither can render
 /// a type parameter the other has erased — see [`surface_field_def`]. A list takes the brand's
 /// two lengths as the count of its items, which is where a field's own list carries them.
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
 fn branded_value_inner(
     generics: &syn::Generics,
     inner_ty: &syn::Type,
@@ -11034,7 +10433,6 @@ fn branded_ts_type_and_generics(
 
 /// Resolves the JSON schema shape for a branded newtype's inner field, read off the def
 /// [`surface_field_def`] has already erased the brand's own type parameters out of.
-#[cfg(feature = "jsonschema")]
 fn branded_json_inner(inner: &FieldDef) -> BrandedJsonInner {
     #[cfg(feature = "mongodb")]
     if branded_inner_is_object_id(inner) {
@@ -11130,14 +10528,13 @@ fn branded_zod_base_checks(args: &ModelSchemaArgs, items: bool) -> String {
 /// Whether a branded newtype's inner is an `ObjectId` written on its own, reaching the wire as the
 /// `$oid` object rather than any string. An arrayed inner is excluded — it writes the array around
 /// that object, not this shape.
-#[cfg(all(feature = "mongodb", any(feature = "zod", feature = "jsonschema")))]
+#[cfg(feature = "mongodb")]
 const fn branded_inner_is_object_id(inner: &FieldDef) -> bool {
     matches!(inner.field_type, FieldDefType::ObjectId) && !inner.is_array()
 }
 
 /// Whether a branded newtype's inner writes a composite — an array, a map, a tuple, or a value the
 /// parser could not classify at all — rather than a value one `"type"` keyword already names.
-#[cfg(feature = "jsonschema")]
 fn branded_inner_is_composite(inner: &FieldDef) -> bool {
     if inner.is_array() {
         return true;
@@ -11348,10 +10745,10 @@ fn branded_zod_const_block(item_name: &str, expression: &str, reexport: &str) ->
 }
 
 /// Builds the delegate methods (on the newtype impl) that forward to its schema module.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn build_branded_delegate_items(
     module_ident: &Ident,
     has_example: bool,
+    args: &ModelSchemaArgs,
 ) -> Vec<proc_macro2::TokenStream> {
     #[cfg(not(feature = "zod"))]
     let _: &_ = &has_example;
@@ -11387,23 +10784,20 @@ fn build_branded_delegate_items(
         }
     };
 
-    #[cfg(feature = "jsonschema")]
-    let delegate_json_schema = json_schema_delegate(module_ident);
-
-    vec![
-        #[cfg(feature = "jsonschema")]
-        delegate_json_schema,
-        #[cfg(feature = "typescript")]
-        delegate_ts,
-        #[cfg(feature = "zod")]
-        delegate_zod,
-    ]
+    let mut items = Vec::new();
+    if args.enable.jsonschema {
+        items.push(json_schema_delegate(module_ident));
+    }
+    #[cfg(feature = "typescript")]
+    items.push(delegate_ts);
+    #[cfg(feature = "zod")]
+    items.push(delegate_zod);
+    items
 }
 
 /// The `where` clause bounds the inner field's own type, not just the brand's generic params, so
 /// a non-generic brand over a non-`Display` inner raises one `E0277` at the field instead of an
 /// unbounded `E0599` inside the generated impl.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn build_branded_display_impl(
     generics: &syn::Generics,
     name: &Ident,
@@ -11443,7 +10837,6 @@ fn build_branded_display_impl(
 
 /// Builds a branded newtype's `Display` impl together with the static assertion guarding it.
 /// `no_display` drops the impl; it drops the assertion only when nothing else needs `Display`.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn build_branded_display_tokens(
     generics: &syn::Generics,
     name: &Ident,
@@ -11451,8 +10844,6 @@ fn build_branded_display_tokens(
     held: &syn::Member,
     args: &ModelSchemaArgs,
 ) -> proc_macro2::TokenStream {
-    // Only the serde build emits the validation functions that call `to_string()`.
-    #[cfg(feature = "serde")]
     let validation_needs_display = args.has_string_constraints()
         && !branded_inner_measures_path(&substitute_declared_defaults(
             &inner_field.ty,
@@ -11461,8 +10852,6 @@ fn build_branded_display_tokens(
         ))
         && !held_as_a_list(&inner_field.ty)
         && !counts_a_named_inner(args, &inner_field.ty);
-    #[cfg(not(feature = "serde"))]
-    let validation_needs_display = false;
 
     if args.no_display && !validation_needs_display {
         return quote! {};
@@ -11479,7 +10868,6 @@ fn build_branded_display_tokens(
 /// Builds a static assertion that the branded newtype's inner type implements `Display`, spanned
 /// on the inner field so a violation surfaces as an `E0277` naming the trait at the field instead
 /// of one raised deep inside the generated impl.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn build_branded_display_assertion(
     inner_field: &Field,
     generics: &syn::Generics,
@@ -11503,7 +10891,6 @@ fn build_branded_display_assertion(
 }
 
 /// Reports whether `ty` names any of `generics`' parameters (type, lifetime, or const).
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn type_mentions_generic_param(ty: &syn::Type, generics: &syn::Generics) -> bool {
     let param_names: Vec<String> = generics
         .params
@@ -11520,12 +10907,6 @@ fn type_mentions_generic_param(ty: &syn::Type, generics: &syn::Generics) -> bool
 }
 
 /// Reports whether `tokens` contains an identifier from `names` at any nesting depth.
-#[cfg(any(
-    feature = "serde",
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema"
-))]
 fn tokens_name_any(tokens: &proc_macro2::TokenStream, names: &[String]) -> bool {
     tokens.clone().into_iter().any(|tree| match tree {
         proc_macro2::TokenTree::Ident(ident) => names.iter().any(|name| ident == name.as_str()),
@@ -11535,14 +10916,16 @@ fn tokens_name_any(tokens: &proc_macro2::TokenStream, names: &[String]) -> bool 
 }
 
 /// Builds the `schema_examples()` and `schema_example()` methods for a branded newtype from each
-/// extracted example's code.
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
+/// extracted example's code, where a surface reads them ([`zod_or_json_schema`]).
 fn build_branded_schema_example(
     example_tokens: &[proc_macro2::TokenStream],
     name: &Ident,
     generic_params: &[String],
     args: &ModelSchemaArgs,
 ) -> proc_macro2::TokenStream {
+    if !zod_or_json_schema(args.enable) {
+        return proc_macro2::TokenStream::new();
+    }
     schema_examples_methods(
         example_tokens,
         &schema_example_value_type(name, generic_params, &args.default_types),
@@ -11552,10 +10935,6 @@ fn build_branded_schema_example(
 
 /// What a brand's own string checks add to its `validate()`: the validator of its schema module,
 /// run on the value the brand holds.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 fn branded_bound_call(
     validation: &BrandedValidation,
     module_ident: &Ident,
@@ -11570,7 +10949,6 @@ fn branded_bound_call(
 
 /// The `validate()` a brand earns: `bound`, what its own string checks run, then the checks it
 /// names. Nothing for a brand that carries neither.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn with_branded_checks(
     bound: Option<&proc_macro2::TokenStream>,
     named: &[FunctionName],
@@ -11588,7 +10966,6 @@ fn with_branded_checks(
 
 /// A brand's `validate()`: its own string checks, then the checks it names, each on the brand
 /// itself. A brand is the value and no member of anything, so no message here names a path.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn branded_validate_method(
     bound: Option<&proc_macro2::TokenStream>,
     own: &[proc_macro2::TokenStream],
@@ -11604,9 +10981,9 @@ fn branded_validate_method(
 }
 
 /// Assembles the final macro output for a branded newtype: the (possibly attribute-injected)
-/// struct, its `Display` impl, the schema module, and the type's `impl`, which holds its
-/// delegates and its `validate()` when it has one.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+/// struct, its `Display` impl, the schema module, which holds `Schema` where a surface or the
+/// `"jsonschema"` entry gives it a method, and the type's `impl`, which holds its delegates and
+/// its `validate()` when it has one.
 fn assemble_branded_output(parts: &BrandedNewtypeOutput) -> TokenStream {
     let item_struct = parts.item_struct;
     let (impl_generics, type_generics, where_clause) = item_struct.generics.split_for_impl();
@@ -11626,14 +11003,10 @@ fn assemble_branded_output(parts: &BrandedNewtypeOutput) -> TokenStream {
     let bound_alone = parts.bound_alone;
     let bound_text_method = parts.bound_text_method;
 
+    let schema = schema_struct(schema_impl_items);
     let module_items = schema_module_items(
         quote! {
-            #[non_exhaustive]
-            pub struct Schema;
-
-            impl Schema {
-                #(#schema_impl_items)*
-            }
+            #schema
 
             #validation_tokens
         },
@@ -11673,7 +11046,6 @@ fn assemble_branded_output(parts: &BrandedNewtypeOutput) -> TokenStream {
 /// The output a branded newtype its guards refused is replaced by, or `None` when it earns none.
 /// Read before the type is registered: a rejected brand emits no schema, so nothing else should be
 /// able to resolve a reference to one.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn branded_guard_failure_output(
     item_struct: &syn::ItemStruct,
     args: &ModelSchemaArgs,
@@ -11681,13 +11053,13 @@ fn branded_guard_failure_output(
     refused_item_output(
         &Item::Struct(item_struct.clone()),
         &branded_guard_errors(item_struct, args),
+        args,
     )
 }
 
 /// Processes a branded newtype — a `#[serde(transparent)]` struct serde writes as the value of one
 /// field — into the parts [`assemble_branded_output`] joins: the struct itself, the `Display` impl
 /// it earns, its schema module, and the delegate impl forwarding to that module.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn register_branded_newtype(
     item_struct: &syn::ItemStruct,
     rust_ident: &str,
@@ -11725,7 +11097,6 @@ fn register_branded_newtype(
 
 /// Registers the brand, then records the consult question its own registration could not answer —
 /// in that order, so a brand naming itself cannot answer its own.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn register_brand_with_questions(
     item_struct: &syn::ItemStruct,
     args: &ModelSchemaArgs,
@@ -11739,7 +11110,6 @@ fn register_brand_with_questions(
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> TokenStream {
     if let Some(output) = branded_guard_failure_output(&item_struct, args) {
         return output;
@@ -11759,21 +11129,13 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
     #[cfg(feature = "zod")]
     let plain_description = item_description(docs_vec.as_deref(), &item_name);
 
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "serde"))]
     let generic_params = type_parameters_in_scope(&item_struct.generics);
 
     let (position, inner_field) = brand_slot(&item_struct).unwrap();
     let held = brand_member(position, inner_field);
     let inner_ty = &inner_field.ty;
 
-    #[cfg(not(any(feature = "typescript", feature = "zod")))]
-    let _: &_ = &inner_ty;
-
-    #[cfg(any(feature = "zod", feature = "jsonschema"))]
     let value_inner = branded_value_inner(&item_struct.generics, inner_ty, args);
-
-    #[cfg(feature = "jsonschema")]
-    let json_inner = branded_json_inner(&value_inner);
 
     #[cfg(feature = "typescript")]
     let ts_definition_method =
@@ -11789,46 +11151,36 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
         &plain_description,
     );
 
-    #[cfg(feature = "serde")]
     let bound = BrandBound::of(
         build_branded_validation(args, &generic_params, inner_field, &held).as_ref(),
         &module_ident,
     );
-    #[cfg(not(feature = "serde"))]
-    let bound = BrandBound::default();
 
-    #[cfg(feature = "jsonschema")]
-    let json_schema_method = build_branded_json_schema_method(
-        args,
-        &json_inner,
-        &item_name,
-        &schema_parameters(&item_struct.generics, args),
-        json_schema_examples(&item_struct.attrs).as_ref(),
-    );
+    let mut schema_impl_items: Vec<proc_macro2::TokenStream> = Vec::new();
+    if args.enable.jsonschema {
+        schema_impl_items.push(build_branded_json_schema_method(
+            args,
+            &branded_json_inner(&value_inner),
+            &item_name,
+            &schema_parameters(&item_struct.generics, args),
+            json_schema_examples(&item_struct.attrs).as_ref(),
+        ));
+        schema_impl_items.push(unit_member_record_item(&Item::Struct(item_struct.clone())));
+    }
+    #[cfg(feature = "typescript")]
+    schema_impl_items.push(ts_definition_method);
+    #[cfg(feature = "zod")]
+    schema_impl_items.push(zod_schema_method);
 
-    let schema_impl_items: Vec<proc_macro2::TokenStream> = vec![
-        #[cfg(feature = "jsonschema")]
-        json_schema_method,
-        #[cfg(feature = "jsonschema")]
-        unit_member_record_item(&Item::Struct(item_struct.clone())),
-        #[cfg(feature = "typescript")]
-        ts_definition_method,
-        #[cfg(feature = "zod")]
-        zod_schema_method,
-    ];
-
-    #[cfg(any(feature = "zod", feature = "jsonschema"))]
     let schema_example_tokens = build_branded_schema_example(
         &extract_examples_tokens(&item_struct.attrs),
         &name,
         &generic_params,
         args,
     );
-    #[cfg(not(any(feature = "zod", feature = "jsonschema")))]
-    let schema_example_tokens = quote! {};
 
     let delegate_impl_items =
-        build_branded_delegate_items(&module_ident, !schema_example_tokens.is_empty());
+        build_branded_delegate_items(&module_ident, !schema_example_tokens.is_empty(), args);
 
     let display_tokens =
         build_branded_display_tokens(&item_struct.generics, &name, inner_field, &held, args);
@@ -11837,9 +11189,7 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
 
     // The brand as it is emitted keeps no serde attribute where it derives `Deserialize` alone.
     let (bound_text_method, counted_as) = branded_bound_text_method(&item_struct);
-    if let Some(counted) = counted_as {
-        record_counted(&rust_ident, counted);
-    }
+    record_counted(&rust_ident, counted_as);
 
     let (decode_with, read_struct) = branded_read(
         item_struct,
@@ -11870,7 +11220,6 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
 /// names a `preprocess`, each function called on the payload, then the brand's own read, then its
 /// `validate()`. A brand with neither keeps the read serde's derive writes it. `bounded` says
 /// whether the brand carries a bound of its own.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn branded_read(
     mut brand: syn::ItemStruct,
     args: &ModelSchemaArgs,
@@ -11885,19 +11234,16 @@ fn branded_read(
 
 /// [`struct_decode_with`] for a brand. Where the brand is `bounded`, the read its issues are
 /// listed from holds the value to the brand's own bound, which no walk lists.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 fn brand_decode_with(
     brand: &syn::ItemStruct,
     args: &ModelSchemaArgs,
     bounded: bool,
 ) -> DecodeWithParts {
-    if !(bounded && args.enable.decode_with) {
+    if !(bounded && args.enable.decode_with()) {
         return struct_decode_with(brand, args);
     }
-    let added = brand_recovering_decode(brand, args.enable.mongodb);
+    let added = brand_recovering_decode(brand, args.enable.mongodb());
     let (walkers, checks, probes) = (added.type_impl, added.check_messages, added.probes);
     DecodeWithParts {
         schema_module: added.schema_module,
@@ -11906,10 +11252,7 @@ fn brand_decode_with(
 }
 
 /// Nothing, where no `serde` feature reads the attributes a walker is written from.
-#[cfg(all(
-    not(feature = "serde"),
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(not(feature = "serde"))]
 fn brand_decode_with(
     _brand: &syn::ItemStruct,
     _args: &ModelSchemaArgs,
@@ -11923,29 +11266,7 @@ fn brand_decode_with(
 /// that publishes it, so a brand over anything else has none and such a bound is refused where it
 /// was written.
 ///
-/// This builds, and `validate()` holds `latest` to the bound:
-///
-/// ```rust
-/// use serde::{Deserialize, Serialize};
-/// use tixschema::model_schema;
-///
-/// #[model_schema()]
-/// #[derive(Deserialize, Serialize)]
-/// #[serde(transparent)]
-/// pub struct Label(pub String);
-///
-/// #[model_schema()]
-/// #[derive(Deserialize, Serialize)]
-/// pub struct Record {
-///     #[model_schema_prop(minLength = 1)]
-///     pub latest: Label,
-/// }
-///
-/// fn main() {
-///     let empty = Record { latest: Label(String::new()) };
-///     assert!(empty.validate().is_err());
-/// }
-/// ```
+#[cfg_attr(feature = "serde", doc = include_str!("branded_bound_text_example.md"))]
 ///
 /// The run below types the field with a struct instead, and nothing else changed:
 ///
@@ -12026,10 +11347,6 @@ fn brand_decode_with(
 /// help: the trait `BoundedLength` is not implemented for `Badge`
 ///    = note: a length is measured on a `String`, on a path, on a list, or on a `#[serde(transparent)]` brand over one of them that `#[model_schema]` was written on, a brand over a brand needing the inner brand declared above it: declare the field as one of those, or drop the bound
 /// ```
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
 fn branded_bound_text_method(
     item_struct: &syn::ItemStruct,
 ) -> (proc_macro2::TokenStream, Option<Counted>) {
@@ -12105,9 +11422,8 @@ fn branded_bound_text_method(
     )
 }
 
-/// What a bound counts on `ty`, written as a name that an earlier expansion registered as one it
+/// What a bound counts on `ty`, written as a name that an earlier expansion recorded as one it
 /// counts the content of: a brand over a text or a list, and an alias of a list.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn counted_by(ty: &syn::Type) -> Option<Counted> {
     let syn::Type::Path(path) = written_type(ty) else {
         return None;
@@ -12116,28 +11432,7 @@ fn counted_by(ty: &syn::Type) -> Option<Counted> {
     if path.qself.is_some() || !matches!(segment.arguments, syn::PathArguments::None) {
         return None;
     }
-    lookup_alias_info(&segment.ident.to_string())?.counted
-}
-
-/// A build with no schema surface registers no name, so none counts.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin"),
-    not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
-))]
-const fn counted_by(_ty: &syn::Type) -> Option<()> {
-    None
-}
-
-/// Without `serde` no validator is generated, so nothing measures a brand's text.
-#[cfg(all(
-    not(feature = "serde"),
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
-fn branded_bound_text_method(
-    _item_struct: &syn::ItemStruct,
-) -> (proc_macro2::TokenStream, Option<Counted>) {
-    (quote! {}, None)
+    counted(&segment.ident.to_string())
 }
 
 /// Processes an enum item and generates TypeScript and Zod schema definitions for it.
@@ -12151,12 +11446,13 @@ fn process_enum(item_enum: syn::ItemEnum, args: &ModelSchemaArgs) -> TokenStream
     if let Some(output) = refused_item_output(
         &Item::Enum(item_enum.clone()),
         &enum_cfg_attr_guard_errors(&item_enum, &serde_type_meta),
+        args,
     ) {
         return output;
     }
 
-    // Every enum shape below is written under this one name, and `enum_module_idents` registers it,
-    // so the override reaches the shape's own surfaces and every reference to it alike.
+    // Every enum shape below is written under this one name, and `register_enum` registers it, so
+    // the override reaches the shape's own surfaces and every reference to it alike.
     let item_name = compute_item_export_name(&name.to_string(), args.name_override.as_deref());
 
     // A tag names a key serde writes whether or not a variant carries a field. Only a declaration
@@ -12357,6 +11653,16 @@ fn ts_member_key(key: &str) -> String {
         return key.to_owned();
     }
     ts_quoted(key)
+}
+
+/// The name a member is written under in TypeScript and Zod: serde's name with `serde` on, and
+/// the Rust name in camelCase without it.
+fn ts_member_name(name: &str) -> String {
+    #[cfg(feature = "serde")]
+    let written = name.to_owned();
+    #[cfg(not(feature = "serde"))]
+    let written = RenameRule::CamelCase.apply_to_field(name);
+    written
 }
 
 /// The one-line description a set of lines is published as, escaped for the `description: "…"` it
@@ -12669,15 +11975,10 @@ fn process_plain_enum(
     item_name: &str,
     args: &ModelSchemaArgs,
 ) -> TokenStream {
-    // Compute the schema module name and register the enum so other types can find it.
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    let (_, module_ident) = enum_module_idents(name);
     // A plain enum is written as a `z.enum` of its variant names, which takes no string check.
-    let (_, module_ident) = enum_module_idents(
-        name,
-        item_name,
-        AliasKind::EnumMembers,
-        Surface::enumerated(),
-    );
+    register_enum(name, item_name, AliasKind::EnumMembers);
+    Surface::enumerated().record(&name.to_string());
     #[cfg(feature = "zod")]
     let rust_ident = name.to_string();
 
@@ -12704,12 +12005,6 @@ fn process_plain_enum(
     #[cfg(any(feature = "typescript", feature = "zod"))]
     let docs_and_description = build_item_docs_and_description(docs_vec.as_deref(), item_name);
 
-    #[cfg(feature = "jsonschema")]
-    // No slot to fill: Rust refuses an all-unit enum that leaves a type parameter unused, so a
-    // plain enum reaches here declaring none — whatever consts and lifetimes it also binds.
-    let json_schema_method =
-        generate_plain_enum_json_schema_method(&enumerated, item_name, &item_enum.attrs);
-
     #[cfg(feature = "typescript")]
     let ts_definition_method = plain_enum_ts_definition_method(
         &docs_and_description.0,
@@ -12730,20 +12025,16 @@ fn process_plain_enum(
         args,
     );
 
-    #[cfg(not(any(feature = "typescript", feature = "zod")))]
-    let _: &_ = &item_name;
-
-    #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
     let schema_impl_items: Vec<proc_macro2::TokenStream> = vec![
-        #[cfg(feature = "jsonschema")]
-        json_schema_method,
+        // No slot to fill: Rust refuses an all-unit enum that leaves a type parameter unused, so a
+        // plain enum reaches here declaring none — whatever consts and lifetimes it also binds.
+        generate_plain_enum_json_schema_method(&enumerated, item_name, &item_enum.attrs, args),
         #[cfg(feature = "typescript")]
         ts_definition_method,
         #[cfg(feature = "zod")]
         zod_schema_method,
     ];
 
-    #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
     let (delegate_impl_items, example_test) =
         plain_enum_delegate_items(&module_ident, &item_enum, args);
 
@@ -12753,51 +12044,23 @@ fn process_plain_enum(
     let mut read = item_enum.clone();
     let judged = judged_read::of_enum(&mut read, !args.check.is_empty());
 
-    #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
-    {
-        plain_enum_output(
-            &read,
-            name,
-            &module_ident,
-            &schema_impl_items,
-            &delegate_impl_items,
-            &enumerated,
-            &PlainEnumAdded {
-                decode_with: &decode_with,
-                example_test: &example_test,
-                judged: &judged,
-            },
-        )
-    }
-
-    #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
-    {
-        // A plain enum holds no member, so the checks it runs are the ones written on it.
-        let item_checks = checks::ItemChecks::of(&args.check, variant_members(&item_enum));
-        let validate_impl =
-            checks_validate_impl(&item_enum.ident, &item_enum.generics, &[], &item_checks);
-        plain_enum_output(
-            &read,
-            name,
-            &enumerated,
-            &PlainEnumAdded {
-                decode_with: &decode_with,
-                example_test: &ExampleTest::written_for_enum(
-                    &item_enum,
-                    args,
-                    !validate_impl.is_empty(),
-                    None,
-                ),
-                judged: &judged,
-            },
-            &validate_impl,
-        )
-    }
+    plain_enum_output(
+        &read,
+        name,
+        &module_ident,
+        &schema_impl_items,
+        &delegate_impl_items,
+        &enumerated,
+        &PlainEnumAdded {
+            decode_with: &decode_with,
+            example_test: &example_test,
+            judged: &judged,
+        },
+    )
 }
 
 /// A plain enum with its schema module, its delegates, `enum_members()`, and what `decode_with`
-/// adds.
-#[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
+/// adds. The module holds `Schema` where a surface or the `"jsonschema"` entry gives it a method.
 fn plain_enum_output(
     item_enum: &syn::ItemEnum,
     name: &syn::Ident,
@@ -12812,14 +12075,7 @@ fn plain_enum_output(
     // `assemble_schema_output`, so it repeats the declaration's parameters itself.
     let (impl_generics, type_generics, where_clause) = item_enum.generics.split_for_impl();
     let module_items = schema_module_items(
-        quote! {
-            #[non_exhaustive]
-            pub struct Schema;
-
-            impl Schema {
-                #(#schema_impl_items)*
-            }
-        },
+        schema_struct(schema_impl_items).unwrap_or_default(),
         &decode_with.schema_module,
     );
     let decode_with_impl = &decode_with.type_impl;
@@ -12844,41 +12100,6 @@ fn plain_enum_output(
 
         #example_test
         #judged
-        #decode_with_impl
-    };
-    log::trace!("{output}");
-    output
-}
-
-/// [`plain_enum_output`] where no schema surface is on: the item, `enum_members()`, the
-/// `validate()` its checks earn it, and what `decode_with` adds.
-#[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
-fn plain_enum_output(
-    item_enum: &syn::ItemEnum,
-    name: &syn::Ident,
-    enum_values: &[proc_macro2::TokenStream],
-    added: &PlainEnumAdded<'_>,
-    validate_impl: &proc_macro2::TokenStream,
-) -> TokenStream {
-    let (decode_with, example_test, judged) = (added.decode_with, added.example_test, added.judged);
-    let (impl_generics, type_generics, where_clause) = item_enum.generics.split_for_impl();
-    let decode_with_module = &decode_with.schema_module;
-    let decode_with_impl = &decode_with.type_impl;
-    let output = quote! {
-        #item_enum
-
-        impl #impl_generics #name #type_generics #where_clause {
-            pub fn enum_members() -> ::std::vec::Vec<::std::string::String> {
-                [
-                    #(#enum_values),*
-                ].iter().map(|v| v.to_string()).collect::<::std::vec::Vec<_>>()
-            }
-        }
-
-        #validate_impl
-        #example_test
-        #judged
-        #decode_with_module
         #decode_with_impl
     };
     log::trace!("{output}");
@@ -13033,27 +12254,15 @@ fn variant_flatten_guard_errors(
 
 /// Where the default serde reads for the absent key of a member, by variant and member, sits among
 /// those of the variants of `item_enum`, read off its attributes as written.
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
 fn variant_serde_defaults(item_enum: &syn::ItemEnum) -> Box<VariantDefaultAt> {
     let defaults = SerdeDefaults::of_enum(item_enum);
     Box::new(move |variant, field| defaults.index(Some(variant), field))
 }
 
-/// No member is read as its default where no surface writes one.
-#[cfg(not(any(feature = "zod", feature = "jsonschema")))]
-fn variant_serde_defaults(_item_enum: &syn::ItemEnum) -> Box<VariantDefaultAt> {
-    Box::new(|_, _| None)
-}
-
 /// Hands `field_def` where the default serde reads for its absent key sits among its type's.
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
 const fn hand_serde_default(field_def: &mut FieldDef, at: Option<usize>) {
     field_def.serde_default = at;
 }
-
-/// Nothing holds a default where no surface writes one.
-#[cfg(not(any(feature = "zod", feature = "jsonschema")))]
-const fn hand_serde_default(_field_def: &mut FieldDef, _at: Option<usize>) {}
 
 /// Processes each variant of a discriminated enum, returning per-variant field defs, doc strings,
 /// and variant kinds in declaration order, for each variant serde writes or reads, plus the
@@ -13209,7 +12418,6 @@ fn render_discriminated_variants(
 
 /// Builds the JSON-schema `oneOf` object expression for a discriminated enum from its per-variant
 /// JSON-schema fragments.
-#[cfg(feature = "jsonschema")]
 fn discriminated_main_schema_code(
     json_schema_variants: &[proc_macro2::TokenStream],
 ) -> proc_macro2::TokenStream {
@@ -13290,19 +12498,15 @@ fn process_discriminated_enum(
     item_name: &str,
     args: &ModelSchemaArgs,
 ) -> TokenStream {
-    // Compute the schema module name and register the enum so other types can find it.
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    let (module_name, module_ident) = enum_module_idents(name);
     // Every other enum shape is written as a union of what its variants render as.
-    let (module_name, module_ident) =
-        enum_module_idents(name, item_name, AliasKind::NoEnumMembers, Surface::union());
+    register_enum(name, item_name, AliasKind::NoEnumMembers);
+    Surface::union().record(&name.to_string());
 
     #[cfg(feature = "typescript")]
     let docs_vec = get_enum_docs(&item_enum);
 
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     let enum_module_name_opt = Some(module_name.as_str());
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    let enum_module_name_opt = None;
 
     // Read before the walk, which rewrites the very attributes the collapse is read off, and
     // returned before it so no held-back attribute is written onto an item the guard refuses.
@@ -13310,6 +12514,7 @@ fn process_discriminated_enum(
     if let Some(output) = refused_item_output(
         &Item::Enum(item_enum.clone()),
         &adjacent_collapsed_slot_guard_errors(&item_enum, tag_name, content_name),
+        args,
     ) {
         return output;
     }
@@ -13320,16 +12525,13 @@ fn process_discriminated_enum(
     let item_checks = checks::ItemChecks::of(&args.check, variant_members(&item_enum));
     let variants =
         collect_discriminated_variants(&mut item_enum, casing, enum_module_name_opt, args);
-    if let Some(output) = guard_failure_output(&item_enum, Some(&item_enum.ident), &variants.2) {
+    if let Some(output) =
+        guard_failure_output(&item_enum, Some(&item_enum.ident), &variants.2, args)
+    {
         return output;
     }
     let rendered = render_discriminated_variants(tag_name, content_name, item_name, &variants.0);
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    let _: &_ = &(name, &rendered);
     let decode_with = enum_decode_with(&item_enum, args);
-
-    #[cfg(feature = "jsonschema")]
-    let main_schema_code = discriminated_main_schema_code(&rendered.2);
 
     #[cfg(feature = "typescript")]
     let type_code = rendered.0.join(" | ");
@@ -13339,10 +12541,6 @@ fn process_discriminated_enum(
 
     #[cfg(feature = "typescript")]
     let docs = build_jsdoc_body(docs_vec.as_deref(), item_name);
-
-    #[cfg(feature = "jsonschema")]
-    let json_schema_method =
-        enum_json_schema_methods(&main_schema_code, item_name, &item_enum, args);
 
     #[cfg(feature = "typescript")]
     let ts_definition_method =
@@ -13360,13 +12558,13 @@ fn process_discriminated_enum(
         &schema_code,
     );
 
-    #[cfg(not(any(feature = "typescript", feature = "zod")))]
-    let _: &_ = &item_name;
-
-    #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
     let schema_impl_items: Vec<proc_macro2::TokenStream> = vec![
-        #[cfg(feature = "jsonschema")]
-        json_schema_method,
+        enum_json_schema_methods(
+            &discriminated_main_schema_code(&rendered.2),
+            item_name,
+            &item_enum,
+            args,
+        ),
         #[cfg(feature = "typescript")]
         ts_definition_method,
         #[cfg(feature = "zod")]
@@ -13375,48 +12573,29 @@ fn process_discriminated_enum(
 
     // Build delegating impl items; the discriminated-enum delegates match the struct ones (the
     // `zod_schema` example injection uses the same `.meta()`-before-`;` form).
-    #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
     let delegate_impl_items = enum_delegate_items(&module_ident, item_name, &item_enum, args);
 
-    #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
-    {
-        enum_output_with_decode(
-            &SchemaOutputParts {
-                delegate_impl_items: &delegate_impl_items,
-                example_test: ExampleTest::of_enum(&item_enum, args),
-                generics: &item_enum.generics,
-                item: &item_enum,
-                module_ident: &module_ident,
-                name,
-                schema_impl_items: &schema_impl_items,
-                validate_method: &build_enum_validate_method(
-                    &variants.3,
-                    &module_ident,
-                    &item_checks,
-                ),
-                validation_fns: &variants.1,
-            },
-            &decode_with,
-        )
-    }
-
-    #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
-    {
-        enum_output_with_decode(
-            &item_enum,
-            &decode_with,
-            &variants.3,
-            &item_checks,
-            ExampleTest::of_enum(&item_enum, args).as_ref(),
-        )
-    }
+    enum_output_with_decode(
+        &SchemaOutputParts {
+            delegate_impl_items: &delegate_impl_items,
+            enable: args.enable,
+            example_test: ExampleTest::of_enum(&item_enum, args),
+            generics: &item_enum.generics,
+            item: &item_enum,
+            module_ident: &module_ident,
+            name,
+            schema_impl_items: &schema_impl_items,
+            validate_method: &build_enum_validate_method(&variants.3, &module_ident, &item_checks),
+            validation_fns: &variants.1,
+        },
+        &decode_with,
+    )
 }
 
 /// The object schema a struct variant's fields sit in when they are written under a key of their
 /// own rather than beside a discriminator, with the members of every `#[serde(flatten)]` source the
 /// variant carries merged beside them. Used by both the externally tagged form and the adjacently
 /// tagged form's own struct variant.
-#[cfg(feature = "jsonschema")]
 fn named_content_json_value(
     json_fields: &[proc_macro2::TokenStream],
     flattened_fields: &[FieldDef],
@@ -13441,7 +12620,6 @@ fn named_content_json_value(
 
 /// A variant's own object with the members of every `#[serde(flatten)]` source it carries merged
 /// beside them, and the object exactly as it stands where the variant flattens nothing.
-#[cfg(feature = "jsonschema")]
 fn variant_merged_json_value(
     base: &proc_macro2::TokenStream,
     flattened_fields: &[FieldDef],
@@ -13466,7 +12644,7 @@ fn variant_merged_json_value(
 
 /// The diagnostic a variant whose content has no rendering produces, in the value position the
 /// content itself would have occupied.
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[cfg(feature = "serde")]
 fn external_content_rejection_value(
     discriminator_value: &str,
     rejection: &MapMemberRejection,
@@ -13486,8 +12664,6 @@ fn render_external_content(
 ) -> (String, String, proc_macro2::TokenStream) {
     let field_defs = &variant.field_defs;
     let discriminator_value = &variant.discriminator_value;
-    #[cfg(not(feature = "jsonschema"))]
-    let _: &str = discriminator_value;
 
     match &variant.kind {
         VariantKind::Unit => (String::new(), String::new(), quote! {}),
@@ -13500,12 +12676,9 @@ fn render_external_content(
             #[cfg(not(feature = "zod"))]
             let zod = String::new();
 
-            #[cfg(feature = "jsonschema")]
             let json = bounded_slot_json_schema(fld).unwrap_or_else(|rejection| {
                 external_content_rejection_value(discriminator_value, &rejection)
             });
-            #[cfg(not(feature = "jsonschema"))]
-            let json = quote! {};
 
             (fld.typescript_slot_typename(), zod, json)
         }
@@ -13531,12 +12704,9 @@ fn render_external_content(
             #[cfg(not(feature = "zod"))]
             let zod = String::new();
 
-            #[cfg(feature = "jsonschema")]
             let json = bounded_slots_json_schema(field_defs).unwrap_or_else(|rejection| {
                 external_content_rejection_value(discriminator_value, &rejection)
             });
-            #[cfg(not(feature = "jsonschema"))]
-            let json = quote! {};
 
             (ts, zod, json)
         }
@@ -13557,15 +12727,12 @@ fn render_external_content(
             #[cfg(not(feature = "zod"))]
             let zod = String::new();
 
-            #[cfg(feature = "jsonschema")]
             let json = named_content_json_value(
                 &parts.json_fields,
                 &variant.flattened_fields,
                 self_type_name,
                 discriminator_value,
             );
-            #[cfg(not(feature = "jsonschema"))]
-            let json = quote! {};
 
             (
                 format!(
@@ -13594,10 +12761,7 @@ fn render_external_variant(
     let docs = &variant.docs;
 
     if matches!(variant.kind, VariantKind::Unit) {
-        #[cfg(feature = "jsonschema")]
         let json = quote! { serde_json::json!({ "type": "string", "const": #key }) };
-        #[cfg(not(feature = "jsonschema"))]
-        let json = quote! {};
 
         return (
             format!("{}\n  {quoted}", member_jsdoc_block(docs)),
@@ -13631,7 +12795,6 @@ fn render_external_variant(
 
     // Built key by key rather than through `serde_json::json!`: a struct variant's content is a
     // block of statements, which the macro's value position cannot parse.
-    #[cfg(feature = "jsonschema")]
     let json = quote! {
         {
             let mut schema_obj = serde_json::Map::new();
@@ -13655,11 +12818,6 @@ fn render_external_variant(
             );
             serde_json::Value::Object(schema_obj)
         }
-    };
-    #[cfg(not(feature = "jsonschema"))]
-    let json = {
-        let _: &_ = &content_json;
-        quote! {}
     };
 
     // A variant of members notes each member; one of slots notes the key its slots are under.
@@ -13814,12 +12972,11 @@ fn join_external_union(
     variants: &[DiscriminatedVariant],
     members: &[(String, String, proc_macro2::TokenStream)],
 ) -> (proc_macro2::TokenStream, String, String) {
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    #[cfg(not(any(feature = "typescript", feature = "zod")))]
     let _: &_ = &members;
     #[cfg(not(feature = "typescript"))]
     let _: &_ = &variants;
 
-    #[cfg(feature = "jsonschema")]
     let main_schema_code = {
         let json_members = members.iter().map(|(_, _, json)| json);
         quote! {
@@ -13835,8 +12992,6 @@ fn join_external_union(
             serde_json::Value::Object(schema_obj)
         }
     };
-    #[cfg(not(feature = "jsonschema"))]
-    let main_schema_code = quote! {};
 
     #[cfg(feature = "typescript")]
     let type_code = {
@@ -13905,29 +13060,23 @@ fn process_externally_tagged_enum(
     item_name: &str,
     args: &ModelSchemaArgs,
 ) -> TokenStream {
-    // Compute the schema module name and register the enum so other types can find it.
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    let (module_name, module_ident) = enum_module_idents(name);
     // Every other enum shape is written as a union of what its variants render as.
-    let (module_name, module_ident) = enum_module_idents(
-        name,
-        item_name,
-        AliasKind::NoEnumMembers,
-        Surface::externally_tagged(&item_enum.variants),
-    );
+    register_enum(name, item_name, AliasKind::NoEnumMembers);
+    Surface::externally_tagged(&item_enum.variants).record(&name.to_string());
 
     #[cfg(feature = "typescript")]
     let docs_vec = get_enum_docs(&item_enum);
 
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     let enum_module_name_opt = Some(module_name.as_str());
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    let enum_module_name_opt = None;
 
     // Read before the walk, which takes each member's own attribute off it.
     let item_checks = checks::ItemChecks::of(&args.check, variant_members(&item_enum));
     let variants =
         collect_discriminated_variants(&mut item_enum, casing, enum_module_name_opt, args);
-    if let Some(output) = guard_failure_output(&item_enum, Some(&item_enum.ident), &variants.2) {
+    if let Some(output) =
+        guard_failure_output(&item_enum, Some(&item_enum.ident), &variants.2, args)
+    {
         return output;
     }
     let decode_with = enum_decode_with(&item_enum, args);
@@ -13939,21 +13088,13 @@ fn process_externally_tagged_enum(
     );
 
     let (main_schema_code, type_code, schema_code) = join_external_union(&variants.0, &members);
-    #[cfg(not(feature = "jsonschema"))]
-    let _: &_ = &main_schema_code;
     #[cfg(not(feature = "typescript"))]
     let _: &_ = &type_code;
     #[cfg(not(feature = "zod"))]
     let _: &_ = &schema_code;
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    let _: &_ = &name;
 
     #[cfg(feature = "typescript")]
     let docs = build_jsdoc_body(docs_vec.as_deref(), item_name);
-
-    #[cfg(feature = "jsonschema")]
-    let json_schema_method =
-        enum_json_schema_methods(&main_schema_code, item_name, &item_enum, args);
 
     #[cfg(feature = "typescript")]
     let ts_definition_method =
@@ -13969,55 +13110,31 @@ fn process_externally_tagged_enum(
         &schema_code,
     );
 
-    #[cfg(not(any(feature = "typescript", feature = "zod")))]
-    let _: &_ = &item_name;
-
-    #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
     let schema_impl_items: Vec<proc_macro2::TokenStream> = vec![
-        #[cfg(feature = "jsonschema")]
-        json_schema_method,
+        enum_json_schema_methods(&main_schema_code, item_name, &item_enum, args),
         #[cfg(feature = "typescript")]
         ts_definition_method,
         #[cfg(feature = "zod")]
         zod_schema_method,
     ];
 
-    #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
     let delegate_impl_items = enum_delegate_items(&module_ident, item_name, &item_enum, args);
 
-    #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
-    {
-        enum_output_with_decode(
-            &SchemaOutputParts {
-                delegate_impl_items: &delegate_impl_items,
-                example_test: ExampleTest::of_enum(&item_enum, args),
-                generics: &item_enum.generics,
-                item: &item_enum,
-                module_ident: &module_ident,
-                name,
-                schema_impl_items: &schema_impl_items,
-                validate_method: &build_enum_validate_method(
-                    &variants.3,
-                    &module_ident,
-                    &item_checks,
-                ),
-                validation_fns: &variants.1,
-            },
-            &decode_with,
-        )
-    }
-
-    #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
-    {
-        let _: &_ = &variants.1;
-        enum_output_with_decode(
-            &item_enum,
-            &decode_with,
-            &variants.3,
-            &item_checks,
-            ExampleTest::of_enum(&item_enum, args).as_ref(),
-        )
-    }
+    enum_output_with_decode(
+        &SchemaOutputParts {
+            delegate_impl_items: &delegate_impl_items,
+            enable: args.enable,
+            example_test: ExampleTest::of_enum(&item_enum, args),
+            generics: &item_enum.generics,
+            item: &item_enum,
+            module_ident: &module_ident,
+            name,
+            schema_impl_items: &schema_impl_items,
+            validate_method: &build_enum_validate_method(&variants.3, &module_ident, &item_checks),
+            validation_fns: &variants.1,
+        },
+        &decode_with,
+    )
 }
 
 /// How an internally tagged newtype variant's inner value fares beside the tag, `written` being its
@@ -14373,8 +13490,6 @@ fn render_internal_variant(
     self_type_name: &str,
 ) -> (String, String, proc_macro2::TokenStream, bool) {
     // Only the JSON Schema merge names the variant as serde's refusal names it.
-    #[cfg(not(feature = "jsonschema"))]
-    let _: &syn::Ident = variant_ident;
     let mut parts = tagged_variant_parts(tag_name, &variant.discriminator_value, &variant.docs);
     match variant.kind {
         VariantKind::Named => {
@@ -14392,7 +13507,6 @@ fn render_internal_variant(
     parts.type_code.push('}');
     parts.schema_code.push('}');
 
-    #[cfg(feature = "jsonschema")]
     let tag_object =
         tagged_variant_json_object(tag_name, &variant.discriminator_value, &parts.json_fields);
 
@@ -14401,15 +13515,12 @@ fn render_internal_variant(
         .flatten();
 
     let Some(inner) = flattened else {
-        #[cfg(feature = "jsonschema")]
         let json = variant_merged_json_value(
             &tag_object,
             &variant.flattened_fields,
             self_type_name,
             &variant.discriminator_value,
         );
-        #[cfg(not(feature = "jsonschema"))]
-        let json = quote! {};
 
         let own_keys: Vec<String> = iter::once(tag_name.to_owned())
             .chain(member_names(&variant.field_defs))
@@ -14435,7 +13546,6 @@ fn render_internal_variant(
         );
     };
 
-    #[cfg(feature = "jsonschema")]
     let json = {
         let variant_name = &variant.discriminator_value;
         merged_object_value(
@@ -14452,8 +13562,6 @@ fn render_internal_variant(
             },
         )
     };
-    #[cfg(not(feature = "jsonschema"))]
-    let json = quote! {};
 
     if let Some((typescript, zod)) = entries_beside_the_tag(&parts, inner, tag_name) {
         return (typescript, zod, json, true);
@@ -14533,18 +13641,15 @@ fn join_internal_union(
     // Only the Zod surface names the tag: the other two read the members alone.
     #[cfg(not(feature = "zod"))]
     let _: &str = tag_name;
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    #[cfg(not(any(feature = "typescript", feature = "zod")))]
     let _: &_ = &members;
 
-    #[cfg(feature = "jsonschema")]
     let main_schema_code = discriminated_main_schema_code(
         &members
             .iter()
             .map(|(_, _, json, _)| json.clone())
             .collect::<Vec<_>>(),
     );
-    #[cfg(not(feature = "jsonschema"))]
-    let main_schema_code = quote! {};
 
     #[cfg(feature = "typescript")]
     let type_code = members
@@ -14585,22 +13690,20 @@ fn process_internally_tagged_enum(
     item_name: &str,
     args: &ModelSchemaArgs,
 ) -> TokenStream {
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    let (module_name, module_ident) = enum_module_idents(name);
     // Every other enum shape is written as a union of what its variants render as.
-    let (module_name, module_ident) =
-        enum_module_idents(name, item_name, AliasKind::NoEnumMembers, Surface::union());
+    register_enum(name, item_name, AliasKind::NoEnumMembers);
+    Surface::union().record(&name.to_string());
 
     #[cfg(feature = "typescript")]
     let docs_vec = get_enum_docs(&item_enum);
 
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     let enum_module_name_opt = Some(module_name.as_str());
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    let enum_module_name_opt = None;
 
     if let Some(output) = refused_item_output(
         &Item::Enum(item_enum.clone()),
         &internally_tagged_guard_errors(&item_enum, tag_name),
+        args,
     ) {
         return output;
     }
@@ -14609,7 +13712,9 @@ fn process_internally_tagged_enum(
     let item_checks = checks::ItemChecks::of(&args.check, variant_members(&item_enum));
     let variants =
         collect_discriminated_variants(&mut item_enum, casing, enum_module_name_opt, args);
-    if let Some(output) = guard_failure_output(&item_enum, Some(&item_enum.ident), &variants.2) {
+    if let Some(output) =
+        guard_failure_output(&item_enum, Some(&item_enum.ident), &variants.2, args)
+    {
         return output;
     }
     let decode_with = enum_decode_with(&item_enum, args);
@@ -14617,21 +13722,13 @@ fn process_internally_tagged_enum(
     let members = render_internal_variants(&variants.0, &item_enum, tag_name);
 
     let (main_schema_code, type_code, schema_code) = join_internal_union(&members, tag_name);
-    #[cfg(not(feature = "jsonschema"))]
-    let _: &_ = &main_schema_code;
     #[cfg(not(feature = "typescript"))]
     let _: &_ = &type_code;
     #[cfg(not(feature = "zod"))]
     let _: &_ = &schema_code;
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    let _: &_ = &name;
 
     #[cfg(feature = "typescript")]
     let docs = build_jsdoc_body(docs_vec.as_deref(), item_name);
-
-    #[cfg(feature = "jsonschema")]
-    let json_schema_method =
-        enum_json_schema_methods(&main_schema_code, item_name, &item_enum, args);
 
     #[cfg(feature = "typescript")]
     let ts_definition_method =
@@ -14647,55 +13744,31 @@ fn process_internally_tagged_enum(
         &schema_code,
     );
 
-    #[cfg(not(any(feature = "typescript", feature = "zod")))]
-    let _: &_ = &item_name;
-
-    #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
     let schema_impl_items: Vec<proc_macro2::TokenStream> = vec![
-        #[cfg(feature = "jsonschema")]
-        json_schema_method,
+        enum_json_schema_methods(&main_schema_code, item_name, &item_enum, args),
         #[cfg(feature = "typescript")]
         ts_definition_method,
         #[cfg(feature = "zod")]
         zod_schema_method,
     ];
 
-    #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
     let delegate_impl_items = enum_delegate_items(&module_ident, item_name, &item_enum, args);
 
-    #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
-    {
-        enum_output_with_decode(
-            &SchemaOutputParts {
-                delegate_impl_items: &delegate_impl_items,
-                example_test: ExampleTest::of_enum(&item_enum, args),
-                generics: &item_enum.generics,
-                item: &item_enum,
-                module_ident: &module_ident,
-                name,
-                schema_impl_items: &schema_impl_items,
-                validate_method: &build_enum_validate_method(
-                    &variants.3,
-                    &module_ident,
-                    &item_checks,
-                ),
-                validation_fns: &variants.1,
-            },
-            &decode_with,
-        )
-    }
-
-    #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
-    {
-        let _: &_ = &variants.1;
-        enum_output_with_decode(
-            &item_enum,
-            &decode_with,
-            &variants.3,
-            &item_checks,
-            ExampleTest::of_enum(&item_enum, args).as_ref(),
-        )
-    }
+    enum_output_with_decode(
+        &SchemaOutputParts {
+            delegate_impl_items: &delegate_impl_items,
+            enable: args.enable,
+            example_test: ExampleTest::of_enum(&item_enum, args),
+            generics: &item_enum.generics,
+            item: &item_enum,
+            module_ident: &module_ident,
+            name,
+            schema_impl_items: &schema_impl_items,
+            validate_method: &build_enum_validate_method(&variants.3, &module_ident, &item_checks),
+            validation_fns: &variants.1,
+        },
+        &decode_with,
+    )
 }
 
 /// Renders one variant of an untagged enum as a union member.
@@ -14828,10 +13901,7 @@ fn render_untagged_tuple_single(
         String::new()
     };
 
-    #[cfg(feature = "jsonschema")]
     let json_val = nullable_slot_json_schema_value(fld, field_json_schema_value(fld));
-    #[cfg(not(feature = "jsonschema"))]
-    let json_val = quote! {};
 
     (ts, zod, json_val)
 }
@@ -14846,15 +13916,13 @@ fn render_untagged_named(
     variant_name: &str,
 ) -> (String, String, proc_macro2::TokenStream) {
     let field_defs = &members.field_defs;
-    #[cfg(not(feature = "jsonschema"))]
-    let _: &str = variant_name;
 
     let ts_fields = field_defs
         .iter()
         .map(|fld| {
             format!(
                 "{}{}: {}",
-                ts_member_key(&fld.name),
+                ts_member_key(&ts_member_name(&fld.name)),
                 fld.optional_key_marker(),
                 fld.typescript_typename()
             )
@@ -14871,7 +13939,7 @@ fn render_untagged_named(
         let mut body = String::from("z.strictObject({ ");
         for fld in field_defs {
             let zod_field_type = fld.zod_type();
-            let key = ts_member_key(&fld.name);
+            let key = ts_member_key(&ts_member_name(&fld.name));
             if fld.contains_type_reference(self_type_name) {
                 let _ = write!(body, "get {key}() {{ return {zod_field_type}; }}, ");
             } else {
@@ -14887,15 +13955,12 @@ fn render_untagged_named(
         String::new()
     };
 
-    #[cfg(feature = "jsonschema")]
     let json_val = untagged_named_json_value(
         field_defs,
         &members.flattened_fields,
         self_type_name,
         variant_name,
     );
-    #[cfg(not(feature = "jsonschema"))]
-    let json_val = quote! {};
 
     (ts, zod, json_val)
 }
@@ -14930,7 +13995,7 @@ fn close_untagged_flatten_member(member: &str, excluded: &[String]) -> String {
         if !closed.ends_with('{') {
             closed.push(';');
         }
-        let _ = write!(closed, " {}?: never", ts_member_key(key));
+        let _ = write!(closed, " {}?: never", ts_member_key(&ts_member_name(key)));
     }
     closed.push_str(" }");
     closed
@@ -14939,7 +14004,7 @@ fn close_untagged_flatten_member(member: &str, excluded: &[String]) -> String {
 /// Builds the `{ type: object, properties, required, additionalProperties: false }` JSON-schema
 /// value token for a `Named` untagged variant, with the members of every `#[serde(flatten)]` source
 /// the variant carries merged beside its own.
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[cfg(feature = "serde")]
 fn untagged_named_json_value(
     field_defs: &[FieldDef],
     flattened_fields: &[FieldDef],
@@ -14993,7 +14058,6 @@ fn untagged_named_json_value(
 
 /// The `allOf` a string states two patterns in, where its enum's holds beside its own: one
 /// `pattern` keyword states one.
-#[cfg(feature = "jsonschema")]
 fn both_patterns_json(fld: &FieldDef) -> Option<proc_macro2::TokenStream> {
     let meta = fld.model_schema_prop_meta.as_ref()?;
     let (own, held) = (meta.pattern.as_ref()?, meta.enum_pattern.as_ref()?);
@@ -15002,7 +14066,6 @@ fn both_patterns_json(fld: &FieldDef) -> Option<proc_macro2::TokenStream> {
 
 /// Builds the `{ "type": "string", ... }` JSON-schema value token for a `String` field, including
 /// any `pattern` / `minLength` / `maxLength` constraints from its `model_schema_prop` metadata.
-#[cfg(feature = "jsonschema")]
 fn string_field_json_schema_value(fld: &FieldDef) -> proc_macro2::TokenStream {
     let meta = fld.model_schema_prop_meta.as_ref();
     let pattern_insert = both_patterns_json(fld).map_or_else(
@@ -15054,7 +14117,7 @@ fn string_field_json_schema_value(fld: &FieldDef) -> proc_macro2::TokenStream {
 /// Builds a standalone `serde_json::Value` token expression for a single field, with `Vec<T>`
 /// array wrapping; used by untagged enum members where the JSON value is consumed directly (not
 /// inserted under a property name).
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[cfg(feature = "serde")]
 fn field_json_schema_value(fld: &FieldDef) -> proc_macro2::TokenStream {
     // A covered sequence wrapper writes the JSON array of its element, so the member is dispatched
     // as the arrayed element it stands for.
@@ -15140,7 +14203,7 @@ fn field_json_schema_value(fld: &FieldDef) -> proc_macro2::TokenStream {
 /// [`map_member_rejection_error`] for a position that holds a value rather than writing a
 /// statement — an untagged variant's member, whose value is consumed straight into the union's
 /// `anyOf`.
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[cfg(feature = "serde")]
 fn member_rejection_value(
     field_name: &str,
     rejection: &MapMemberRejection,
@@ -15728,44 +14791,22 @@ fn named_wire_leaves(written: &FieldDef, leaves_of: LeavesOf) -> Option<Vec<Wire
 
 /// Builds the schema module's impl items for an untagged enum: its JSON schema, its `TypeScript`
 /// definition, and its Zod schema, in the order the module publishes them.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "zod", feature = "typescript", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 fn build_untagged_schema_impl_items(
     // The declaration itself rather than the pieces read off it: the name and the parameters are
     // read by different surfaces, and the JSON one reads the parameters beside the attribute.
     item_enum: &syn::ItemEnum,
     item_name: &str,
-    docs_vec: Option<&[String]>,
     args: &ModelSchemaArgs,
     ts_parts: &[String],
     zod: (&str, &str),
     json_parts: &[proc_macro2::TokenStream],
 ) -> Vec<proc_macro2::TokenStream> {
-    #[cfg(not(feature = "jsonschema"))]
-    let _: &_ = &args;
     #[cfg(not(feature = "typescript"))]
-    let _: &_ = &(ts_parts, docs_vec);
+    let _: &_ = &ts_parts;
     let (zod_union, zod_members) = zod;
     #[cfg(not(feature = "zod"))]
     let _: &_ = &(zod_union, zod_members);
-    #[cfg(not(feature = "jsonschema"))]
-    let _: &_ = &json_parts;
-
-    #[cfg(feature = "jsonschema")]
-    let main_schema_code = quote! {
-        let mut schema_obj = serde_json::Map::new();
-        schema_obj.insert("anyOf".to_string(), {
-            let result: ::std::vec::Vec<serde_json::Value> = vec![
-                #(#json_parts), *
-            ];
-
-            serde_json::Value::Array(result)
-        });
-
-        serde_json::Value::Object(schema_obj)
-    };
 
     #[cfg(feature = "typescript")]
     let type_code = ts_parts.join(" | ");
@@ -15774,11 +14815,7 @@ fn build_untagged_schema_impl_items(
     let schema_code = zod_union;
 
     #[cfg(feature = "typescript")]
-    let docs = build_jsdoc_body(docs_vec, item_name);
-
-    #[cfg(feature = "jsonschema")]
-    let json_schema_method =
-        enum_json_schema_methods(&main_schema_code, item_name, item_enum, args);
+    let docs = build_jsdoc_body(get_enum_docs(item_enum).as_deref(), item_name);
 
     #[cfg(feature = "typescript")]
     let variant_reader = untagged_enum_variant_reader(item_name);
@@ -15803,19 +14840,33 @@ fn build_untagged_schema_impl_items(
         schema_code,
     );
 
-    #[cfg(feature = "jsonschema")]
-    let unit_member = unit_member_record_item(&Item::Enum(item_enum.clone()));
+    let mut items = Vec::new();
+    if args.enable.jsonschema {
+        let main_schema_code = quote! {
+            let mut schema_obj = serde_json::Map::new();
+            schema_obj.insert("anyOf".to_string(), {
+                let result: ::std::vec::Vec<serde_json::Value> = vec![
+                    #(#json_parts), *
+                ];
 
-    vec![
-        #[cfg(feature = "jsonschema")]
-        json_schema_method,
-        #[cfg(feature = "jsonschema")]
-        unit_member,
-        #[cfg(feature = "typescript")]
-        ts_definition_method,
-        #[cfg(feature = "zod")]
-        zod_schema_method,
-    ]
+                serde_json::Value::Array(result)
+            });
+
+            serde_json::Value::Object(schema_obj)
+        };
+        items.push(enum_json_schema_methods(
+            &main_schema_code,
+            item_name,
+            item_enum,
+            args,
+        ));
+        items.push(unit_member_record_item(&Item::Enum(item_enum.clone())));
+    }
+    #[cfg(feature = "typescript")]
+    items.push(ts_definition_method);
+    #[cfg(feature = "zod")]
+    items.push(zod_schema_method);
+    items
 }
 
 /// Records what an object that flattens the untagged enum `name` reads of its Zod surface, and
@@ -15862,19 +14913,12 @@ fn process_untagged_enum(
     item_name: &str,
     args: &ModelSchemaArgs,
 ) -> TokenStream {
-    // Compute the schema module name and register the enum so other types can find it.
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    let (module_name, module_ident) = enum_module_idents(name);
     // Every other enum shape is written as a union of what its variants render as.
-    let (module_name, module_ident) =
-        enum_module_idents(name, item_name, AliasKind::NoEnumMembers, Surface::union());
+    register_enum(name, item_name, AliasKind::NoEnumMembers);
+    Surface::union().record(&name.to_string());
 
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-    let docs_vec = get_enum_docs(&item_enum);
-
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     let enum_module_name_opt = Some(module_name.as_str());
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    let enum_module_name_opt = None;
 
     // Read before the walk, which takes each member's own attribute off it.
     let item_checks = checks::ItemChecks::of(&args.check, variant_members(&item_enum));
@@ -15895,7 +14939,9 @@ fn process_untagged_enum(
 
     // A violated field guard makes the whole contract unsound, so the schema surface is dropped
     // and only the original item plus the errors are emitted.
-    if let Some(output) = guard_failure_output(&item_enum, Some(&item_enum.ident), &guard_errors) {
+    if let Some(output) =
+        guard_failure_output(&item_enum, Some(&item_enum.ident), &guard_errors, args)
+    {
         return output;
     }
 
@@ -15911,13 +14957,10 @@ fn process_untagged_enum(
         (&zod_merge_parts, &checked_ahead),
     );
     #[cfg(not(feature = "zod"))]
-    #[cfg(any(feature = "typescript", feature = "jsonschema"))]
     let zod_text = (String::new(), String::new());
     #[cfg(feature = "typescript")]
     record_ts_union_members(&name.to_string(), &ts_merge_parts);
 
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    let _: &_ = &(name, item_name, &ts_parts, &json_parts);
     let _: &_ = &(
         &zod_parts,
         &zod_merge_parts,
@@ -15927,11 +14970,9 @@ fn process_untagged_enum(
     );
     let decode_with = enum_decode_with(&item_enum, args);
 
-    #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
     let schema_impl_items = build_untagged_schema_impl_items(
         &item_enum,
         item_name,
-        docs_vec.as_deref(),
         args,
         &ts_parts,
         (&zod_text.0, &zod_text.1),
@@ -15940,43 +14981,26 @@ fn process_untagged_enum(
 
     // The union's own accessor is where a violated member bound is named in Rust: the read hands
     // the bound to serde, which drops the sentence with the candidate it removes.
-    #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
     let validate_method = build_enum_validate_method(&validate_arms, &module_ident, &item_checks);
-    #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
     let delegate_impl_items = enum_delegate_items(&module_ident, item_name, &item_enum, args);
 
-    #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
-    {
-        enum_output_with_decode(
-            &SchemaOutputParts {
-                delegate_impl_items: &delegate_impl_items,
-                example_test: ExampleTest::of_enum(&item_enum, args),
-                generics: &item_enum.generics,
-                item: &item_enum,
-                module_ident: &module_ident,
-                name,
-                schema_impl_items: &schema_impl_items,
-                validate_method: &validate_method,
-                validation_fns: &enum_validation_fns,
-            },
-            &decode_with,
-        )
-    }
-
-    #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
-    {
-        let _: &_ = &enum_validation_fns;
-        enum_output_with_decode(
-            &item_enum,
-            &decode_with,
-            &validate_arms,
-            &item_checks,
-            ExampleTest::of_enum(&item_enum, args).as_ref(),
-        )
-    }
+    enum_output_with_decode(
+        &SchemaOutputParts {
+            delegate_impl_items: &delegate_impl_items,
+            enable: args.enable,
+            example_test: ExampleTest::of_enum(&item_enum, args),
+            generics: &item_enum.generics,
+            item: &item_enum,
+            module_ident: &module_ident,
+            name,
+            schema_impl_items: &schema_impl_items,
+            validate_method: &validate_method,
+            validation_fns: &enum_validation_fns,
+        },
+        &decode_with,
+    )
 }
 
-#[cfg(feature = "jsonschema")]
 fn generate_type_schema(
     fld: &FieldDef,
     field_name_str: &str,
@@ -16014,7 +15038,6 @@ fn tagged_variant_parts(
 /// The closed object a tagged variant describes as, as a `serde_json::Map` expression: the tag
 /// pinned to the variant's discriminator, plus whatever the variant's own fields contributed. A
 /// `Map` rather than a `Value` because the internally tagged form merges further members into it.
-#[cfg(feature = "jsonschema")]
 fn tagged_variant_json_object(
     tag_name: &str,
     discriminator_value: &str,
@@ -16090,14 +15113,10 @@ fn generate_variant_code(
     parts.type_code.push('}');
     parts.schema_code.push('}');
 
-    #[cfg(feature = "jsonschema")]
     let json_schema_variant = {
         let object = tagged_variant_json_object(tag_name, discriminator_value, &parts.json_fields);
         quote! { serde_json::Value::Object(#object) }
     };
-
-    #[cfg(not(feature = "jsonschema"))]
-    let json_schema_variant = quote! {};
 
     (parts.type_code, parts.schema_code, json_schema_variant)
 }
@@ -16140,7 +15159,6 @@ fn write_adjacent_named_variant_fields(
         )
     );
 
-    #[cfg(feature = "jsonschema")]
     push_named_content_json_field(
         &mut parts.json_fields,
         content_name,
@@ -16152,7 +15170,6 @@ fn write_adjacent_named_variant_fields(
 
 /// Pushes the JSON-schema property/required entries for an adjacently tagged struct variant's
 /// content key, mirroring [`push_single_tuple_json_field`] for the tuple-single case.
-#[cfg(feature = "jsonschema")]
 fn push_named_content_json_field(
     json_schema_variant_fields: &mut Vec<proc_macro2::TokenStream>,
     content_name: &str,
@@ -16186,7 +15203,7 @@ fn write_named_variant_fields(
     let variant_schema_code = &mut parts.schema_code;
     let json_schema_variant_fields = &mut parts.json_fields;
     for fld in field_defs {
-        let key = ts_member_key(&fld.name);
+        let key = ts_member_key(&ts_member_name(&fld.name));
 
         let _ = writeln!(
             variant_type_code,
@@ -16217,17 +15234,13 @@ fn write_named_variant_fields(
             let _: &_ = &(&variant_schema_code, self_type_name);
         }
 
-        #[cfg(feature = "jsonschema")]
         if tag_name != Some(fld.name.as_str()) {
             json_schema_variant_fields.push(build_field_schema(fld));
         }
-        #[cfg(not(feature = "jsonschema"))]
-        let _: &_ = &(tag_name, &json_schema_variant_fields);
     }
 }
 
 /// Pushes the JSON-schema property/required entries for a single-element tuple variant value.
-#[cfg(feature = "jsonschema")]
 fn push_single_tuple_json_field(
     json_schema_variant_fields: &mut Vec<proc_macro2::TokenStream>,
     content_name: &str,
@@ -16310,10 +15323,7 @@ fn write_tuple_single_variant_fields(
         let _: &_ = &(&variant_schema_code, self_type_name);
     }
 
-    #[cfg(feature = "jsonschema")]
     push_single_tuple_json_field(json_schema_variant_fields, content_name, fld);
-    #[cfg(not(feature = "jsonschema"))]
-    let _: &_ = &json_schema_variant_fields;
 }
 
 /// Writes the multi-element tuple portion of a discriminated enum variant.
@@ -16377,7 +15387,6 @@ fn write_tuple_multiple_variant_fields(
         let _: &_ = &(&variant_schema_code, self_type_name);
     }
 
-    #[cfg(feature = "jsonschema")]
     {
         let content_name_str = content_name.to_owned();
         match bounded_slots_json_schema(field_defs) {
@@ -16391,13 +15400,10 @@ fn write_tuple_multiple_variant_fields(
             }
         }
     }
-    #[cfg(not(feature = "jsonschema"))]
-    let _: &_ = &&json_schema_variant_fields;
 }
 
 /// Arrays `item_schema` once per array level the field carries, and hands it back untouched when
 /// the field carries none. A level written as a set holds distinct items.
-#[cfg(feature = "jsonschema")]
 fn arrayed_json_schema_value(
     fld: &FieldDef,
     item_schema: proc_macro2::TokenStream,
@@ -16418,7 +15424,6 @@ fn arrayed_json_schema_value(
 
 /// [`arrayed_json_schema_value`] for a caller holding a literal fragment: each wrap nests inside
 /// the one `serde_json::json!` the fragment is written into rather than materializing a value.
-#[cfg(feature = "jsonschema")]
 fn arrayed_json_schema_fragment(
     fld: &FieldDef,
     item_schema: &proc_macro2::TokenStream,
@@ -16441,7 +15446,6 @@ fn arrayed_json_schema_fragment(
 /// tuple pins its own, held at the outermost level to the count the field's own `minLength` and
 /// `maxLength` wrote. Empty where nothing bounds the level; each keyword carries its own leading
 /// comma so emptiness costs the caller nothing.
-#[cfg(feature = "jsonschema")]
 fn array_length_json_schema_bounds(fld: &FieldDef, level: u8) -> proc_macro2::TokenStream {
     let fixed = fld.fixed_length_at(level);
     let counted = fld
@@ -16460,7 +15464,7 @@ fn array_length_json_schema_bounds(fld: &FieldDef, level: u8) -> proc_macro2::To
 
 /// What a chrono type's text is held to in a JSON schema, and `None` for every type that writes no
 /// such text.
-#[cfg(all(feature = "jsonschema", feature = "chrono"))]
+#[cfg(feature = "chrono")]
 fn chrono_json_schema_text(field_type: &FieldDefType) -> Option<ChronoText> {
     match *field_type {
         FieldDefType::NaiveDate => Some(ChronoText::Format("date")),
@@ -16501,7 +15505,7 @@ fn chrono_json_schema_text(field_type: &FieldDefType) -> Option<ChronoText> {
 
 /// The pattern a text of the form `form` matches whole, spelled as every engine reads it: a `\d` as
 /// `[0-9]`, which is all ECMA-262 reads it as.
-#[cfg(all(feature = "jsonschema", feature = "chrono"))]
+#[cfg(feature = "chrono")]
 fn whole_text_pattern(form: &str) -> String {
     // The forms are written in constructs both engines read, which the spelling never refuses.
     js_spelling(&format!("^(?:{form})$")).unwrap()
@@ -16509,7 +15513,7 @@ fn whole_text_pattern(form: &str) -> String {
 
 /// The JSON schema literal the text of a chrono type describes as, the string held to its form,
 /// and `None` for every type that writes no such text.
-#[cfg(all(feature = "jsonschema", feature = "chrono"))]
+#[cfg(feature = "chrono")]
 fn chrono_text_json_schema_item(field_type: &FieldDefType) -> Option<proc_macro2::TokenStream> {
     Some(match chrono_json_schema_text(field_type)? {
         ChronoText::Format(format) => quote! { { "type": "string", "format": #format } },
@@ -16520,7 +15524,7 @@ fn chrono_text_json_schema_item(field_type: &FieldDefType) -> Option<proc_macro2
 /// The JSON schema literal a chrono value describes as: the integer of epoch milliseconds serde
 /// writes for a `DateTime<Tz>` under `as_number`, and the text of every other one. `None` for every
 /// type that writes neither.
-#[cfg(all(feature = "jsonschema", feature = "chrono"))]
+#[cfg(feature = "chrono")]
 fn chrono_json_schema_item(fld: &FieldDef) -> Option<proc_macro2::TokenStream> {
     if matches!(fld.field_type, FieldDefType::DateTime) && fld.has_as_number() {
         return Some(quote! { { "type": "integer" } });
@@ -16532,7 +15536,6 @@ fn chrono_json_schema_item(fld: &FieldDef) -> Option<proc_macro2::TokenStream> {
 /// which a caller writing inside a `serde_json::json!` inlines and one needing a standalone
 /// `serde_json::Value` wraps — or `None` for the composite types (sibling references, maps,
 /// tuples, unknowns) that have no inline rendering.
-#[cfg(feature = "jsonschema")]
 fn scalar_field_json_schema_item(fld: &FieldDef) -> Option<proc_macro2::TokenStream> {
     let item_schema = match &fld.field_type {
         FieldDefType::U64 | FieldDefType::I64 if bigint_literal_const(fld).is_some() => {
@@ -16590,7 +15593,6 @@ fn scalar_field_json_schema_item(fld: &FieldDef) -> Option<proc_macro2::TokenStr
 
 /// Builds the base JSON schema for a tuple element, ignoring `is_optional`, or `None` when the
 /// element holds a value the dispatch cannot render.
-#[cfg(feature = "jsonschema")]
 fn build_tuple_element_base_json_schema(
     fld: &FieldDef,
 ) -> Result<proc_macro2::TokenStream, MapMemberRejection> {
@@ -16602,7 +15604,6 @@ fn build_tuple_element_base_json_schema(
 /// The `anyOf [<base>, null]` form for a value that is an `Option`, or `None` when it is not. A
 /// slot that cannot be dropped needs it since there's no other way to write `None`; an object key
 /// needs it too, since serde reads an explicit `null` into `None` as readily as an absent key.
-#[cfg(feature = "jsonschema")]
 fn nullable_slot_json_schema(
     fld: &FieldDef,
     base: &proc_macro2::TokenStream,
@@ -16613,7 +15614,6 @@ fn nullable_slot_json_schema(
 
 /// [`nullable_slot_json_schema`] for a caller that needs a standalone `serde_json::Value`: the
 /// nullable form is a literal fragment, so it is wrapped, while `base` already is such a value.
-#[cfg(feature = "jsonschema")]
 fn nullable_slot_json_schema_value(
     fld: &FieldDef,
     base: proc_macro2::TokenStream,
@@ -16623,7 +15623,6 @@ fn nullable_slot_json_schema_value(
 }
 
 /// The schema module a sibling type's `Schema::json_schema()` lives in.
-#[cfg(feature = "jsonschema")]
 fn sibling_schema_module_ident(name: &str, span: proc_macro2::Span) -> Ident {
     let module_name = match lookup_alias_info(name) {
         Some(alias) => alias.module_name,
@@ -16634,7 +15633,6 @@ fn sibling_schema_module_ident(name: &str, span: proc_macro2::Span) -> Ident {
 
 /// `described`, a named type's own schema, narrowed from inside an `allOf` by the length and
 /// pattern bounds written on the field holding it, or `described` alone where none was written.
-#[cfg(feature = "jsonschema")]
 fn named_field_json_schema_value(
     fld: &FieldDef,
     described: &proc_macro2::TokenStream,
@@ -16666,16 +15664,15 @@ fn named_field_json_schema_value(
 
 /// A sibling's own schema as a standalone `serde_json::Value` expression: the module the reference
 /// resolves to, asked for the schema it publishes.
-#[cfg(feature = "jsonschema")]
 fn sibling_json_schema_value(
     name: &str,
     arguments: &[FieldDef],
     span: proc_macro2::Span,
 ) -> proc_macro2::TokenStream {
     let module_ident = sibling_schema_module_ident(name, span);
-    // Named where the run declares the two, not on the field's type: a type handed into a
-    // `macro_rules!` body carries its call site's hygiene, under which neither binding is found.
-    let run = quote! { in_flight, hoisted_defs };
+    // Named where the run declares them, not on the field's type: a type handed into a
+    // `macro_rules!` body carries its call site's hygiene, under which no binding is found.
+    let run = quote! { in_flight, hoisted_defs, pointer_prefix };
     if arguments.is_empty() {
         return quote_spanned! {span=> #module_ident::Schema::json_schema_within(#run) };
     }
@@ -16683,7 +15680,7 @@ fn sibling_json_schema_value(
         .iter()
         .map(|argument| argument_json_schema_value(name, argument));
     // Held in a local: an argument that is itself a reference describes through this same call and
-    // borrows the run's two values. Parenthesised for the positions inside a `json!` literal.
+    // borrows the run's values. Parenthesised for the positions inside a `json!` literal.
     quote_spanned! {span=>
         ({
             let arguments = [#(#documents),*];
@@ -16693,7 +15690,6 @@ fn sibling_json_schema_value(
 }
 
 /// One reference-site argument as the document that fills the parameter it stands at.
-#[cfg(feature = "jsonschema")]
 fn argument_json_schema_value(name: &str, argument: &FieldDef) -> proc_macro2::TokenStream {
     build_tuple_element_json_schema(argument).unwrap_or_else(|rejection| {
         let message = prefixed_guard_message(&map_member_rejection_message(
@@ -16704,9 +15700,75 @@ fn argument_json_schema_value(name: &str, argument: &FieldDef) -> proc_macro2::T
     })
 }
 
+/// The JSON Schema a value of `ty` is described by, as an expression read where a run's
+/// `in_flight`, `hoisted_defs` and `pointer_prefix` are bound. `subject` names the value in the
+/// refusal of a type no document describes.
+#[cfg(feature = "serde")]
+pub fn type_json_schema_value(subject: &str, ty: &syn::Type) -> proc_macro2::TokenStream {
+    argument_json_schema_value(subject, &get_field_def(subject, ty, ""))
+}
+
+/// The schema module of each model type `ty` names without type arguments: the type itself, under
+/// an `Option`, a list or a reference, and each type handed to a generic type, a tuple, a map, a
+/// range or a `Result`.
+#[cfg(feature = "serde")]
+pub fn named_json_schema_modules(ty: &syn::Type) -> Vec<Ident> {
+    fn collect(fld: &FieldDef, found: &mut Vec<Ident>) {
+        match &fld.field_type {
+            FieldDefType::SiblingType(name, arguments) => {
+                if arguments.is_empty() {
+                    found.push(sibling_schema_module_ident(name, fld.type_span));
+                }
+                for argument in arguments {
+                    collect(argument, found);
+                }
+            }
+            FieldDefType::Tuple(elements) => {
+                for element in elements {
+                    collect(element, found);
+                }
+            }
+            FieldDefType::Map(first, second) | FieldDefType::Result(first, second) => {
+                collect(first, found);
+                collect(second, found);
+            }
+            FieldDefType::Range(_, bound) => collect(bound, found),
+            FieldDefType::Boolean
+            | FieldDefType::BooleanLiteral(_)
+            | FieldDefType::Char
+            | FieldDefType::F32
+            | FieldDefType::F64
+            | FieldDefType::I16
+            | FieldDefType::I32
+            | FieldDefType::I64
+            | FieldDefType::I8
+            | FieldDefType::Isize
+            | FieldDefType::NumberLiteral(_)
+            | FieldDefType::String
+            | FieldDefType::StringLiteral(_)
+            | FieldDefType::TypeParam(_)
+            | FieldDefType::U16
+            | FieldDefType::U32
+            | FieldDefType::U64
+            | FieldDefType::U8
+            | FieldDefType::Unknown
+            | FieldDefType::Usize => {}
+            #[cfg(feature = "chrono")]
+            FieldDefType::DateTime
+            | FieldDefType::NaiveDate
+            | FieldDefType::NaiveDateTime
+            | FieldDefType::NaiveTime => {}
+            #[cfg(feature = "mongodb")]
+            FieldDefType::ObjectId => {}
+        }
+    }
+    let mut found = Vec::new();
+    collect(&get_field_def("value", ty, ""), &mut found);
+    found
+}
+
 /// The local the enclosing item's document reaches one of its own type parameters through, as the
 /// `serde_json::Value` expression a position holding that parameter is described by.
-#[cfg(feature = "jsonschema")]
 fn json_argument_value(parameter: &str) -> proc_macro2::TokenStream {
     let binding = json_argument_ident(parameter);
     quote! { #binding.clone() }
@@ -16714,7 +15776,6 @@ fn json_argument_value(parameter: &str) -> proc_macro2::TokenStream {
 
 /// The local one type parameter's argument document is bound to, as the ident both ends spell it
 /// with — the binding the module writes and the reads the body makes of it.
-#[cfg(feature = "jsonschema")]
 fn json_argument_ident(parameter: &str) -> Ident {
     Ident::new(
         json_argument_binding(parameter).as_str(),
@@ -16724,7 +15785,6 @@ fn json_argument_ident(parameter: &str) -> Ident {
 
 /// The document a value with no type of its own is described by: the filling of a type parameter,
 /// and the permissive empty schema for a value the expansion cannot name at all.
-#[cfg(feature = "jsonschema")]
 fn opaque_json_schema_value(fld: &FieldDef) -> proc_macro2::TokenStream {
     if let FieldDefType::TypeParam(parameter) = &fld.field_type {
         return json_argument_value(parameter);
@@ -16734,7 +15794,6 @@ fn opaque_json_schema_value(fld: &FieldDef) -> proc_macro2::TokenStream {
 
 /// The argument slots an item's schema module publishes: one per type parameter it declares, in
 /// declaration order, each carrying the document the standalone form fills it with.
-#[cfg(feature = "jsonschema")]
 fn schema_parameters(generics: &syn::Generics, args: &ModelSchemaArgs) -> Vec<SchemaParameter> {
     type_parameters_in_scope(generics)
         .iter()
@@ -16748,7 +15807,6 @@ fn schema_parameters(generics: &syn::Generics, args: &ModelSchemaArgs) -> Vec<Sc
 /// The document a parameter's declared filling describes as, rendered through the dispatch every
 /// other type position is rendered through — so the filling describes exactly as a field written
 /// with that type describes.
-#[cfg(feature = "jsonschema")]
 fn declared_filling_json_schema_value(
     parameter: &str,
     default_types: &[(syn::Ident, syn::Type)],
@@ -16767,7 +15825,6 @@ fn declared_filling_json_schema_value(
 /// Builds JSON schema for a tuple element (used for tuple fields and for tuple variants), or the
 /// rejection when the element holds a value the dispatch cannot render — which the callers turn
 /// into the single diagnostic naming the field.
-#[cfg(feature = "jsonschema")]
 fn build_tuple_element_json_schema(
     fld: &FieldDef,
 ) -> Result<proc_macro2::TokenStream, MapMemberRejection> {
@@ -16779,7 +15836,6 @@ fn build_tuple_element_json_schema(
 
 /// The `"minimum"` and `"maximum"` a number's own `model_schema_prop` writes, each behind the comma
 /// that joins it to the keyword before it, and nothing for any other type.
-#[cfg(feature = "jsonschema")]
 fn numeric_bound_keywords(fld: &FieldDef) -> proc_macro2::TokenStream {
     let meta = fld
         .model_schema_prop_meta
@@ -16796,7 +15852,6 @@ fn numeric_bound_keywords(fld: &FieldDef) -> proc_macro2::TokenStream {
 
 /// The value a slot holds under its wrappers, carrying the bounds written on the slot as a named
 /// member's schema carries them, or `None` for a slot that writes none.
-#[cfg(feature = "jsonschema")]
 fn bounded_slot_item(value: &FieldDef) -> Option<proc_macro2::TokenStream> {
     let meta = value.model_schema_prop_meta.as_ref()?;
     let measured = meta.min_length.is_some() || meta.max_length.is_some() || meta.pattern.is_some();
@@ -16818,7 +15873,6 @@ fn bounded_slot_item(value: &FieldDef) -> Option<proc_macro2::TokenStream> {
 
 /// [`build_tuple_element_json_schema`] for a slot of a tuple variant or of a tuple struct, whose
 /// own bounds reach its value.
-#[cfg(feature = "jsonschema")]
 fn bounded_slot_json_schema(
     fld: &FieldDef,
 ) -> Result<proc_macro2::TokenStream, MapMemberRejection> {
@@ -16834,7 +15888,6 @@ fn bounded_slot_json_schema(
 
 /// The fixed-arity array a tuple describes as — the form serde writes it in — or the rejection when
 /// any element holds a value the dispatch cannot render. `()` is the `null` serde writes for it.
-#[cfg(feature = "jsonschema")]
 fn tuple_json_schema_value(
     elements: &[FieldDef],
 ) -> Result<proc_macro2::TokenStream, MapMemberRejection> {
@@ -16847,7 +15900,6 @@ fn tuple_json_schema_value(
 /// The object a std range describes as, the form serde writes it in: each member it writes,
 /// required, holding the slot its bound fills. The rejection is the bound's, where the dispatch
 /// cannot render it.
-#[cfg(feature = "jsonschema")]
 fn range_json_schema_value(
     kind: RangeKind,
     bound: &FieldDef,
@@ -16867,7 +15919,6 @@ fn range_json_schema_value(
 /// The objects a `Result` describes as, the form serde writes it in: one per arm, whose one key is
 /// the arm's name, required, holding what the arm holds, and `null` for an arm of `()`. The
 /// rejection is an arm's, where the dispatch cannot render it.
-#[cfg(feature = "jsonschema")]
 fn result_json_schema_value(
     ok: &FieldDef,
     err: &FieldDef,
@@ -16891,7 +15942,6 @@ fn result_json_schema_value(
 
 /// [`tuple_json_schema_value`] for the slots of a tuple variant or of a tuple struct, each
 /// carrying its own bounds.
-#[cfg(feature = "jsonschema")]
 fn bounded_slots_json_schema(
     slots: &[FieldDef],
 ) -> Result<proc_macro2::TokenStream, MapMemberRejection> {
@@ -16899,7 +15949,6 @@ fn bounded_slots_json_schema(
 }
 
 /// The fixed-arity array of `elements`, each described by `described`.
-#[cfg(feature = "jsonschema")]
 fn tuple_json_schema_of(
     elements: &[FieldDef],
     described: fn(&FieldDef) -> Result<proc_macro2::TokenStream, MapMemberRejection>,
@@ -16923,15 +15972,6 @@ fn tuple_json_schema_of(
 /// What a sequence-spelled type holds, and `None` for everything else. A `Vec`/`[T; N]` collapses
 /// to array levels; every other sequence wrapper keeps its name, normalized onto its element at
 /// render time — both write the same JSON array.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn sequence_wrapper_element(fld: &FieldDef) -> Option<&FieldDef> {
     let FieldDefType::SiblingType(wrapper_name, wrapper_args) = &fld.field_type else {
         return None;
@@ -16944,13 +15984,11 @@ fn sequence_wrapper_element(fld: &FieldDef) -> Option<&FieldDef> {
 
 /// The field a sequence-spelled type stands for: its element, carrying the array level the wrapper
 /// writes — and `None` for everything else.
-#[cfg(feature = "jsonschema")]
 fn sequence_wrapper_field(fld: &FieldDef) -> Option<FieldDef> {
     sequence_wrapper_element(fld).map(|element| fld.collection_element_field(element))
 }
 
 /// The path a key named by a type path takes, by what the registry holds of the name.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn registered_key_path(key_type_name: &str) -> MapKeyPath<'_> {
     match registered_key_kind(key_type_name) {
         Some(AliasKind::StringWire) => MapKeyPath::Open,
@@ -16959,26 +15997,7 @@ fn registered_key_path(key_type_name: &str) -> MapKeyPath<'_> {
     }
 }
 
-/// A build with no schema surface records no alias kind, so a named key is left to the dispatch.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin"),
-    not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
-))]
-const fn registered_key_path(key_type_name: &str) -> MapKeyPath<'_> {
-    MapKeyPath::Enumerated(key_type_name)
-}
-
 /// The classification every position reads a map key through.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn map_key_path(key: &FieldDef) -> MapKeyPath<'_> {
     if key.array_depth > 0 || sequence_wrapper_element(key).is_some() {
         return MapKeyPath::Refused(MapKeyRejection::Sequenced(map_key_element_name(key)));
@@ -17031,15 +16050,6 @@ fn map_key_path(key: &FieldDef) -> MapKeyPath<'_> {
 
 /// The rejection a key earns for its own wire form, naming the key as written and what serde writes
 /// for it instead.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn unwritable_key(key: &FieldDef, written_as: &'static str) -> MapKeyRejection {
     MapKeyRejection::Unwritable {
         key_name: map_key_element_name(key),
@@ -17050,15 +16060,6 @@ fn unwritable_key(key: &FieldDef, written_as: &'static str) -> MapKeyRejection {
 /// Why this key has no rendering, and `None` for every key that may still have one. A key the
 /// dispatch already refuses is ruled out by its own spelling; otherwise only a target the registry
 /// positively rules out is named — an unregistered or not-yet-expanded name is left alone.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn key_rejection(key: &FieldDef) -> Option<MapKeyRejection> {
     match map_key_path(key) {
         MapKeyPath::Refused(rejection) => Some(rejection),
@@ -17069,15 +16070,6 @@ fn key_rejection(key: &FieldDef) -> Option<MapKeyRejection> {
 }
 
 /// The Rust spelling of what a map key holds, for the diagnostic a key with no rendering earns.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn map_key_element_name(key: &FieldDef) -> String {
     if let Some(element) = sequence_wrapper_element(key) {
         return map_key_element_name(element);
@@ -17124,7 +16116,6 @@ fn map_key_element_name(key: &FieldDef) -> String {
 
 /// Whether the registry rules the named type out as a source of `enum_members()`. `false` covers
 /// both the plain enums that have them and the names this expansion never saw registered.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn proves_no_enum_members(key_type_name: &str) -> bool {
     lookup_alias_info(key_type_name).is_some_and(|key_alias| {
         matches!(
@@ -17134,34 +16125,14 @@ fn proves_no_enum_members(key_type_name: &str) -> bool {
     })
 }
 
-/// A build with no schema surface records no alias kind, so no registered type is ruled out.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin"),
-    not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
-))]
-const fn proves_no_enum_members(_key_type_name: &str) -> bool {
-    false
-}
-
 /// What the registry says serde writes for a key spelled by this name, and `None` for a name it
 /// never saw registered — indistinguishable from a plain enum declared later, which is why the
 /// dispatch above leaves such a key on the enumerating path.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn registered_key_kind(key_type_name: &str) -> Option<AliasKind> {
     lookup_alias_info(key_type_name).map(|key_alias| key_alias.kind)
 }
 
 /// Why the first map key this field reaches, at any depth, has no rendering.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn map_key_rejection(fld: &FieldDef) -> Option<MapKeyRejection> {
     match &fld.field_type {
         FieldDefType::Map(key, value) => key_rejection(key)
@@ -17203,15 +16174,6 @@ fn map_key_rejection(fld: &FieldDef) -> Option<MapKeyRejection> {
 
 /// What a key with no members is reported as. The `subject` names where the map was written — a
 /// field, an alias — which is what the author can act on and all that differs between them.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn non_enum_map_key_message(subject: &str, key_type_name: &str) -> String {
     format!(
         "{subject}: a map key must be a plain `#[model_schema()]` enum, whose members become the object's keys — `{key_type_name}` resolves to a type with no `enum_members()`"
@@ -17220,15 +16182,6 @@ fn non_enum_map_key_message(subject: &str, key_type_name: &str) -> String {
 
 /// What a sequence-wrapped key is reported as, worded like its sibling above and carrying the same
 /// `subject`.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn sequenced_map_key_message(subject: &str, element_name: &str) -> String {
     format!(
         "{subject}: a map key must be a value serde writes as a string, which is what a JSON object key is — this key is a sequence of `{element_name}`, and serde refuses to serialize a map keyed by one at all"
@@ -17237,15 +16190,6 @@ fn sequenced_map_key_message(subject: &str, element_name: &str) -> String {
 
 /// What an `Option`-wrapped key is reported as, worded like its siblings above and carrying the same
 /// `subject`.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn optional_map_key_message(subject: &str, inner_name: &str) -> String {
     format!(
         "{subject}: a map key must be a value serde writes as a string, which is what a JSON object key is — this key is an `Option<{inner_name}>`, whose `Some` serde writes as the bare `{inner_name}` while a `None` has no string form at all and makes serde refuse the whole map; key it by `{inner_name}`"
@@ -17254,15 +16198,6 @@ fn optional_map_key_message(subject: &str, inner_name: &str) -> String {
 
 /// What a key serde writes as neither a string nor anything it stringifies for the author is
 /// reported as, worded like its siblings above and carrying the same `subject`.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn unwritable_map_key_message(subject: &str, key_name: &str, written_as: &str) -> String {
     format!(
         "{subject}: a map key must be a value serde writes as a string, which is what a JSON object key is — serde writes `{key_name}` as {written_as}, and refuses to serialize a map keyed by one at all"
@@ -17270,15 +16205,6 @@ fn unwritable_map_key_message(subject: &str, key_name: &str, written_as: &str) -
 }
 
 /// What a map key with no rendering is reported as, whichever reason it has.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn map_key_rejection_message(subject: &str, rejection: &MapKeyRejection) -> String {
     match rejection {
         MapKeyRejection::NoEnumMembers(key_type_name) => {
@@ -17295,16 +16221,37 @@ fn map_key_rejection_message(subject: &str, rejection: &MapKeyRejection) -> Stri
     }
 }
 
-/// Rejects a field reaching a map key no surface can write.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
+/// Rejects a field reaching a map key no surface can write. A struct declared above is such a key:
+///
+/// ```rust,compile_fail
+/// use std::collections::HashMap;
+///
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema()]
+/// #[derive(Deserialize, Serialize, PartialEq, Eq, Hash)]
+/// pub struct Spot {
+///     pub segments: i32,
+/// }
+///
+/// #[model_schema()]
+/// #[derive(Deserialize, Serialize)]
+/// pub struct Tally {
+///     pub visits: HashMap<Spot, u32>,
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: model_schema: field `visits`: a map key must be a plain `#[model_schema()]` enum, whose
+///        members become the object's keys — `Spot` resolves to a type with no `enum_members()`
+///   --> tests/zz_probe.rs:15:5
+///    |
+/// 15 |     pub visits: HashMap<Spot, u32>,
+///    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/// ```
 fn check_map_key(field: &Field, field_def: &FieldDef, label: &str) -> Result<(), syn::Error> {
     let Some(rejection) = map_key_rejection(field_def) else {
         return Ok(());
@@ -17318,7 +16265,6 @@ fn check_map_key(field: &Field, field_def: &FieldDef, label: &str) -> Result<(),
 /// The object a map whose key serde writes as text of its own describes as, as a standalone
 /// `serde_json::Value` expression, or the rejection when the value type has no rendering here: the
 /// value's rendering for every member, and the keys by [`text_key_names`] where it states them.
-#[cfg(feature = "jsonschema")]
 fn text_key_map_json_schema_value(
     key: &FieldDef,
     value: &FieldDef,
@@ -17344,7 +16290,6 @@ fn text_key_map_json_schema_value(
 
 /// The rendering a map whose value is itself a map carries, dispatched on the inner key exactly as
 /// the field position dispatches on the outer one.
-#[cfg(feature = "jsonschema")]
 fn build_nested_map_member_item(
     inner_key: &FieldDef,
     inner_value: &FieldDef,
@@ -17374,7 +16319,6 @@ fn build_nested_map_member_item(
 
 /// Wraps a member's base schema for the slot it sits in — arrayed once per array level the value
 /// carries, nullable when it is an `Option`.
-#[cfg(feature = "jsonschema")]
 fn map_member_slot_schema(
     value: &FieldDef,
     item_schema: &proc_macro2::TokenStream,
@@ -17386,7 +16330,6 @@ fn map_member_slot_schema(
 /// [`map_member_slot_schema`] for a member already materialized as a `serde_json::Value`: each wrap
 /// materializes a value of its own instead of nesting inside the one `serde_json::json!` a literal
 /// fragment sits in.
-#[cfg(feature = "jsonschema")]
 fn map_member_slot_value(
     value: &FieldDef,
     item_value: proc_macro2::TokenStream,
@@ -17395,7 +16338,6 @@ fn map_member_slot_value(
 }
 
 /// The `FieldDef` a value in a slot — a map member, a tuple element — dispatches as.
-#[cfg(feature = "jsonschema")]
 fn normalized_slot_value(value: &FieldDef) -> FieldDef {
     let mut normalized = value.clone();
     while let Some(element_field) = sequence_wrapper_field(&normalized) {
@@ -17406,7 +16348,6 @@ fn normalized_slot_value(value: &FieldDef) -> FieldDef {
 
 /// The rendering a value in a slot carries, with the slot wraps left to the caller, or the
 /// rejection when the value type has no rendering here.
-#[cfg(feature = "jsonschema")]
 fn build_map_member_item(value: &FieldDef) -> Result<MapMemberItem, MapMemberRejection> {
     Ok(match &value.field_type {
         FieldDefType::Map(inner_key, inner_value) => {
@@ -17468,14 +16409,12 @@ fn build_map_member_item(value: &FieldDef) -> Result<MapMemberItem, MapMemberRej
 
 /// [`scalar_field_json_schema_item`] for a slot, which [`build_map_member_item`] hands only the
 /// types the scalar mapping renders.
-#[cfg(feature = "jsonschema")]
 fn scalar_slot_item(fld: &FieldDef) -> proc_macro2::TokenStream {
     scalar_field_json_schema_item(fld).unwrap()
 }
 
 /// The `additionalProperties` schema every member of a `String`-keyed map carries, or the rejection
 /// when the value type has no rendering here.
-#[cfg(feature = "jsonschema")]
 fn build_map_member_schema(
     value: &FieldDef,
 ) -> Result<proc_macro2::TokenStream, MapMemberRejection> {
@@ -17486,7 +16425,6 @@ fn build_map_member_schema(
 /// What a value the mapping cannot render is reported as. The `subject` names where the value was
 /// written — a field, an alias — which is what the author can act on and all that differs between
 /// those positions, so the reasons are worded once.
-#[cfg(feature = "jsonschema")]
 fn map_member_rejection_message(subject: &str, rejection: &MapMemberRejection) -> String {
     match rejection {
         MapMemberRejection::Key(key_rejection, _) => {
@@ -17497,7 +16435,6 @@ fn map_member_rejection_message(subject: &str, rejection: &MapMemberRejection) -
 
 /// The one diagnostic a slot the mapping cannot render produces — on either key path, at any depth,
 /// and in a tuple slot the value is reached through.
-#[cfg(feature = "jsonschema")]
 fn map_member_rejection_error(
     field_name_str: &str,
     rejection: &MapMemberRejection,
@@ -17512,7 +16449,6 @@ fn map_member_rejection_error(
 /// The object a `String`-keyed map describes as, as a standalone `serde_json::Value` expression, or
 /// the rejection when the value type has no rendering here. A `String` key enumerates nothing, so
 /// one `additionalProperties` schema — the value's own rendering — stands for every member.
-#[cfg(feature = "jsonschema")]
 fn string_key_map_json_schema_value(
     value: &FieldDef,
 ) -> Result<proc_macro2::TokenStream, MapMemberRejection> {
@@ -17529,7 +16465,6 @@ fn string_key_map_json_schema_value(
 /// property per member the key enumerates, each carrying the value type's own rendering, and closed
 /// to every other key. `Err` when the value has no rendering here, or when the registry proves the
 /// key carries no members.
-#[cfg(feature = "jsonschema")]
 fn enum_key_map_json_schema_value(
     key_type_name: &str,
     key_span: proc_macro2::Span,
@@ -17565,7 +16500,6 @@ fn enum_key_map_json_schema_value(
 /// The object a map describes as, as a standalone `serde_json::Value` expression, dispatched on the
 /// classification its key earns — or the rejection when the key has no rendering here, or the value
 /// none the member dispatch can write.
-#[cfg(feature = "jsonschema")]
 fn map_json_schema_value(
     key: &FieldDef,
     value: &FieldDef,
@@ -17581,7 +16515,6 @@ fn map_json_schema_value(
 }
 
 /// The `properties` insertion a map-typed field produces.
-#[cfg(feature = "jsonschema")]
 fn build_map_field_schema(
     fld: &FieldDef,
     key: &FieldDef,
@@ -17603,7 +16536,6 @@ fn build_map_field_schema(
 }
 
 /// Builds the JSON schema for a `String` field, applying any length/pattern constraints.
-#[cfg(feature = "jsonschema")]
 fn build_string_field_schema(fld: &FieldDef, field_name_str: &str) -> proc_macro2::TokenStream {
     let min_len_opt = fld
         .model_schema_prop_meta
@@ -17650,7 +16582,6 @@ fn build_string_field_schema(fld: &FieldDef, field_name_str: &str) -> proc_macro
 }
 
 /// Builds the JSON schema for a string literal field (`const` value).
-#[cfg(feature = "jsonschema")]
 fn build_string_literal_field_schema(
     fld: &FieldDef,
     field_name_str: &str,
@@ -17669,7 +16600,6 @@ fn build_string_literal_field_schema(
 }
 
 /// Builds the JSON schema for a boolean literal field (`const` value).
-#[cfg(feature = "jsonschema")]
 fn build_boolean_literal_field_schema(
     fld: &FieldDef,
     field_name_str: &str,
@@ -17688,7 +16618,6 @@ fn build_boolean_literal_field_schema(
 }
 
 /// Builds the JSON schema for a numeric literal field (`const` value).
-#[cfg(feature = "jsonschema")]
 fn build_number_literal_field_schema(
     fld: &FieldDef,
     field_name_str: &str,
@@ -17707,7 +16636,6 @@ fn build_number_literal_field_schema(
 }
 
 /// Builds the JSON schema for a numeric field (`integer` or `number`), applying min/max constraints.
-#[cfg(feature = "jsonschema")]
 fn build_numeric_field_schema(
     fld: &FieldDef,
     field_name_str: &str,
@@ -17739,7 +16667,6 @@ fn build_numeric_field_schema(
 
 /// Builds the JSON schema for a `u64` or an `i64` field held to a `literal`: the one integer it
 /// admits.
-#[cfg(feature = "jsonschema")]
 fn build_bigint_literal_field_schema(
     fld: &FieldDef,
     field_name_str: &str,
@@ -17754,7 +16681,6 @@ fn build_bigint_literal_field_schema(
 
 /// The integer a `u64` or an `i64` field's `literal` admits, as the typed literal the JSON Schema
 /// writes it from, or `None` for a field held to no literal.
-#[cfg(feature = "jsonschema")]
 fn bigint_literal_const(fld: &FieldDef) -> Option<proc_macro2::TokenStream> {
     let suffix = if matches!(fld.field_type, FieldDefType::U64) {
         "u64"
@@ -17765,7 +16691,6 @@ fn bigint_literal_const(fld: &FieldDef) -> Option<proc_macro2::TokenStream> {
 }
 
 /// Builds the JSON schema for a `bool` field.
-#[cfg(feature = "jsonschema")]
 fn build_boolean_field_schema(fld: &FieldDef, field_name_str: &str) -> proc_macro2::TokenStream {
     let schema = nullable_slot_json_schema_value(
         fld,
@@ -17779,7 +16704,6 @@ fn build_boolean_field_schema(fld: &FieldDef, field_name_str: &str) -> proc_macr
 /// Builds the JSON schema for a `char` field: the one-character string serde writes for it, with
 /// `minLength`/`maxLength` fixed at 1 rather than read from `model_schema_prop` — a `char` field
 /// carries none of those constraints.
-#[cfg(feature = "jsonschema")]
 fn build_char_field_schema(fld: &FieldDef, field_name_str: &str) -> proc_macro2::TokenStream {
     let schema = nullable_slot_json_schema_value(
         fld,
@@ -17794,7 +16718,6 @@ fn build_char_field_schema(fld: &FieldDef, field_name_str: &str) -> proc_macro2:
 }
 
 /// Builds the JSON schema for a `SiblingType` field (references to other generated types).
-#[cfg(feature = "jsonschema")]
 fn build_sibling_type_field_schema(
     fld: &FieldDef,
     field_name_str: &str,
@@ -17819,7 +16742,7 @@ fn build_sibling_type_field_schema(
 
 /// The `json!` literal an `ObjectId` describes as — the closed `$oid` object serde writes — with
 /// `hex_schema` as the schema of the hex string it holds.
-#[cfg(all(feature = "jsonschema", feature = "mongodb"))]
+#[cfg(feature = "mongodb")]
 fn object_id_json_schema_item(hex_schema: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
     quote! { {
         "type": "object",
@@ -17833,20 +16756,20 @@ fn object_id_json_schema_item(hex_schema: &proc_macro2::TokenStream) -> proc_mac
 
 /// [`object_id_json_schema_item`] as a standalone `serde_json::Value` expression, for the positions
 /// that hold the `$oid` object as a value rather than writing it into a literal.
-#[cfg(all(feature = "jsonschema", feature = "mongodb"))]
+#[cfg(feature = "mongodb")]
 fn object_id_json_schema_value(hex_schema: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
     let item = object_id_json_schema_item(hex_schema);
     quote! { serde_json::json!(#item) }
 }
 
 /// The hex string an `ObjectId`'s `$oid` member holds, where no brand narrows it further.
-#[cfg(all(feature = "jsonschema", feature = "mongodb"))]
+#[cfg(feature = "mongodb")]
 fn object_id_hex_json_schema() -> proc_macro2::TokenStream {
     quote! { serde_json::json!({ "type": "string", "pattern": #OBJECT_ID_HEX_PATTERN }) }
 }
 
 /// Builds the JSON schema for a `MongoDB` `ObjectId` field (`{ "$oid": string }`).
-#[cfg(all(feature = "jsonschema", feature = "mongodb"))]
+#[cfg(feature = "mongodb")]
 fn build_object_id_field_schema(fld: &FieldDef, field_name_str: &str) -> proc_macro2::TokenStream {
     let schema = nullable_slot_json_schema_value(
         fld,
@@ -17861,7 +16784,7 @@ fn build_object_id_field_schema(fld: &FieldDef, field_name_str: &str) -> proc_ma
 }
 
 /// Builds the JSON schema for a chrono field: what [`chrono_json_schema_item`] answers for it.
-#[cfg(all(feature = "jsonschema", feature = "chrono"))]
+#[cfg(feature = "chrono")]
 fn build_chrono_field_schema(fld: &FieldDef, field_name_str: &str) -> proc_macro2::TokenStream {
     // The arm calling this has matched exactly the types the mapping answers for.
     let item = chrono_json_schema_item(fld).unwrap();
@@ -17875,7 +16798,6 @@ fn build_chrono_field_schema(fld: &FieldDef, field_name_str: &str) -> proc_macro
 }
 
 /// Builds JSON schema for a tuple struct field.
-#[cfg(feature = "jsonschema")]
 fn build_tuple_field_schema(
     fld: &FieldDef,
     field_name_str: &str,
@@ -17893,7 +16815,6 @@ fn build_tuple_field_schema(
 }
 
 /// Builds the JSON schema for a std range field.
-#[cfg(feature = "jsonschema")]
 fn build_range_field_schema(
     fld: &FieldDef,
     field_name_str: &str,
@@ -17911,7 +16832,6 @@ fn build_range_field_schema(
 }
 
 /// Builds the JSON schema for a std `Result` field.
-#[cfg(feature = "jsonschema")]
 fn build_result_field_schema(
     fld: &FieldDef,
     field_name_str: &str,
@@ -17931,7 +16851,6 @@ fn build_result_field_schema(
 
 /// Builds the JSON schema for a field with no type of its own — one of the enclosing item's type
 /// parameters, or an opaque value: a function pointer, or any other type written as no path.
-#[cfg(feature = "jsonschema")]
 fn build_unknown_field_schema(fld: &FieldDef, field_name_str: &str) -> proc_macro2::TokenStream {
     log::trace!("Unknown => field_name: {field_name_str}, fld: {fld:?}");
 
@@ -17947,7 +16866,6 @@ fn build_unknown_field_schema(fld: &FieldDef, field_name_str: &str) -> proc_macr
 /// The `properties` insertion a field's type produces, without the `required` push. The name is
 /// passed rather than read off `fld`: a collection element is dispatched through here standing in
 /// for the field it is the element of.
-#[cfg(feature = "jsonschema")]
 fn build_field_type_schema(fld: &FieldDef, field_name_str: &str) -> proc_macro2::TokenStream {
     let field_type = &fld.field_type;
 
@@ -18009,7 +16927,6 @@ fn build_field_type_schema(fld: &FieldDef, field_name_str: &str) -> proc_macro2:
 }
 
 /// Builds JSON schema for a field.
-#[cfg(feature = "jsonschema")]
 fn build_field_schema(fld: &FieldDef) -> proc_macro2::TokenStream {
     let field_name_str = fld.name.clone();
     let schema_code = build_field_type_schema(fld, &field_name_str);
@@ -18032,7 +16949,6 @@ fn build_field_schema(fld: &FieldDef) -> proc_macro2::TokenStream {
 
 /// The statements that state, in the member `fld` the local `properties` holds, the default serde
 /// reads for its absent key, and nothing for a member read with no default.
-#[cfg(feature = "jsonschema")]
 fn default_json_insert(fld: &FieldDef) -> Option<proc_macro2::TokenStream> {
     let field_name_str = &fld.name;
     fld.serde_default.map(|at| {
@@ -18053,13 +16969,13 @@ fn default_json_insert(fld: &FieldDef) -> Option<proc_macro2::TokenStream> {
 /// Writes the TypeScript type and conditionally Zod schema for a field to the provided buffers.
 /// `self_type_name` detects recursive type references, which get JavaScript getter syntax to
 /// defer them and avoid "use before declaration" errors.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn write_field_type_and_schema(
     type_code: &mut String,
     fld: &FieldDef,
     self_type_name: Option<&str>,
 ) -> String {
-    let key = ts_member_key(&fld.name);
+    let key = ts_member_key(&ts_member_name(&fld.name));
 
     let _ = writeln!(
         type_code,
@@ -18095,25 +17011,32 @@ fn write_field_type_and_schema(
     }
 }
 
+/// Nothing, where neither TypeScript nor Zod is written.
+#[cfg(not(any(feature = "typescript", feature = "zod")))]
+const fn write_field_type_and_schema(
+    _type_code: &mut String,
+    _fld: &FieldDef,
+    _self_type_name: Option<&str>,
+) -> String {
+    String::new()
+}
+
 /// The binding a walk step introduces, numbered by depth so no two steps of one chain collide.
 fn wrap_binding(depth: usize) -> proc_macro2::Ident {
     proc_macro2::Ident::new(&format!("value_{depth}"), proc_macro2::Span::call_site())
 }
 
 /// The binding a list level of a walk holds its item's index under, numbered as the item is.
-#[cfg(feature = "serde")]
 fn index_binding(depth: usize) -> proc_macro2::Ident {
     proc_macro2::Ident::new(&format!("index_{depth}"), proc_macro2::Span::call_site())
 }
 
 /// The binding a map level of a walk holds its entry's key under, numbered as the value is.
-#[cfg(feature = "serde")]
 fn entry_binding(depth: usize) -> proc_macro2::Ident {
     proc_macro2::Ident::new(&format!("entry_{depth}"), proc_macro2::Span::call_site())
 }
 
-/// The binding the text serde writes for that key is held under, where a report is written.
-#[cfg(feature = "serde")]
+/// The binding the text of that key is held under, where a report is written.
 fn key_binding(depth: usize) -> proc_macro2::Ident {
     proc_macro2::Ident::new(&format!("key_{depth}"), proc_macro2::Span::call_site())
 }
@@ -18165,7 +17088,6 @@ fn slot_access_expr(access: MemberAccess, index: usize) -> proc_macro2::TokenStr
 
 /// Builds the `validate()` contribution for a field, reaching through its wrappers to run the
 /// check on the value the constraint actually describes.
-#[cfg(feature = "serde")]
 fn build_field_validation(
     wraps: &[ConstraintWrap],
     checked: &proc_macro2::TokenStream,
@@ -18195,13 +17117,11 @@ fn build_field_validation(
 
 /// The binding a walk over `wraps` hands its leaf: the head is depth zero and each wrapper
 /// introduces one more, so the last step's binding is named from the count.
-#[cfg(feature = "serde")]
 fn walked_value(wraps: &[ConstraintWrap]) -> proc_macro2::Ident {
     wrap_binding(wraps.len())
 }
 
 /// The constraint check a walk ends on, written for whichever of the two ends takes it.
-#[cfg(feature = "serde")]
 fn constraint_leaf(
     sink: CheckSink,
     value: &proc_macro2::Ident,
@@ -18213,6 +17133,7 @@ fn constraint_leaf(
                 errors.extend(reported);
             }
         },
+        #[cfg(feature = "serde")]
         CheckSink::Fail => quote! {
             #validate_value_fn_ident(#value)?;
         },
@@ -18221,7 +17142,6 @@ fn constraint_leaf(
 
 /// Emits the reach-through for one wrapper and, at the end of the chain, `leaf` — which its caller
 /// wrote against [`walked_value`], the binding the last step introduces.
-#[cfg(feature = "serde")]
 fn walk_wraps(
     wraps: &[ConstraintWrap],
     value: &proc_macro2::Ident,
@@ -18305,7 +17225,6 @@ fn walk_wraps(
 /// The fallback rides inside the block rather than once per validator so that a nested check is the
 /// same tokens wherever it lands: a struct's method body, or one arm of an enum's `match`, where a
 /// once-per-validator item would sit in the wrong scope.
-#[cfg(feature = "serde")]
 fn build_nested_validation(shape: &HeldShape, place: &MemberPlace) -> proc_macro2::TokenStream {
     let head = wrap_binding(0);
     let under: Vec<PlaceStep> = place
@@ -18328,7 +17247,6 @@ fn build_nested_validation(shape: &HeldShape, place: &MemberPlace) -> proc_macro
 }
 
 /// The walk of `shape` from `value`, held at `place`, whose first wrapper binds at `depth`.
-#[cfg(feature = "serde")]
 fn held_walk(
     shape: &HeldShape,
     value: &proc_macro2::Ident,
@@ -18381,7 +17299,6 @@ fn held_walk(
 
 /// `place` with what a walk over `wraps` adds to it, where the first wrapper binds at `depth`: the
 /// index of each list level and the key of each map level.
-#[cfg(feature = "serde")]
 fn held_at(place: &[PlaceStep], wraps: &[ConstraintWrap], depth: usize) -> Vec<PlaceStep> {
     let mut held = place.to_vec();
     for (at, wrap) in wraps.iter().enumerate() {
@@ -18397,30 +17314,18 @@ fn held_at(place: &[PlaceStep], wraps: &[ConstraintWrap], depth: usize) -> Vec<P
     held
 }
 
-/// What the nested walk reads the key of a map's entry with. `written_key` answers the text
-/// serde writes for the key, through serde's serializer for a `Formatter`, and nothing where serde
-/// writes no text. The trait for a reference answers nothing for a key whose type has no
-/// `Serialize` in reach, a type parameter that declares none among them.
-#[cfg(feature = "serde")]
+/// What the nested walk reads the key of a map's entry with. `written_key` answers the key's
+/// text, and the trait for a reference answers nothing for a key whose type has no such text in
+/// reach, a type parameter that declares none among them.
 fn written_key_items() -> proc_macro2::TokenStream {
+    let (shown, written) = written_key_impls();
     quote! {
         struct MapKey<'held, K: ?::core::marker::Sized>(&'held K);
-        impl<K: ?::core::marker::Sized + serde::Serialize> ::core::fmt::Display for MapKey<'_, K> {
-            fn fmt(&self, formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                serde::Serialize::serialize(self.0, formatter)
-            }
-        }
+        #shown
         trait WrittenKey {
             fn written_key(self) -> ::core::option::Option<::std::string::String>;
         }
-        impl<K: ?::core::marker::Sized + serde::Serialize> WrittenKey for MapKey<'_, K> {
-            fn written_key(self) -> ::core::option::Option<::std::string::String> {
-                let mut written = ::std::string::String::new();
-                ::core::fmt::Write::write_fmt(&mut written, format_args!("{self}"))
-                    .ok()
-                    .map(|()| written)
-            }
-        }
+        #written
         trait UnwrittenKey: ::core::marker::Sized {
             fn written_key(self) -> ::core::option::Option<::std::string::String> {
                 ::core::option::Option::None
@@ -18430,8 +17335,45 @@ fn written_key_items() -> proc_macro2::TokenStream {
     }
 }
 
-/// What a field's type answers when it publishes no `validate()` of its own.
+/// The `Display` of `MapKey` and the `WrittenKey` that answers it: the text serde writes for the
+/// key, through serde's serializer for a `Formatter`, and nothing where serde writes no text.
 #[cfg(feature = "serde")]
+fn written_key_impls() -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
+    let shown = quote! {
+        impl<K: ?::core::marker::Sized + serde::Serialize> ::core::fmt::Display for MapKey<'_, K> {
+            fn fmt(&self, formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                serde::Serialize::serialize(self.0, formatter)
+            }
+        }
+    };
+    let written = quote! {
+        impl<K: ?::core::marker::Sized + serde::Serialize> WrittenKey for MapKey<'_, K> {
+            fn written_key(self) -> ::core::option::Option<::std::string::String> {
+                let mut written = ::std::string::String::new();
+                ::core::fmt::Write::write_fmt(&mut written, format_args!("{self}"))
+                    .ok()
+                    .map(|()| written)
+            }
+        }
+    };
+    (shown, written)
+}
+
+/// Without `serde`: no `Display` of `MapKey`'s, and the `WrittenKey` that answers the key's own
+/// `Display` text.
+#[cfg(not(feature = "serde"))]
+fn written_key_impls() -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
+    let written = quote! {
+        impl<K: ?::core::marker::Sized + ::core::fmt::Display> WrittenKey for MapKey<'_, K> {
+            fn written_key(self) -> ::core::option::Option<::std::string::String> {
+                ::core::option::Option::Some(::std::string::ToString::to_string(self.0))
+            }
+        }
+    };
+    (proc_macro2::TokenStream::new(), written)
+}
+
+/// What a field's type answers when it publishes no `validate()` of its own.
 fn unpublished_validate_fallback() -> proc_macro2::TokenStream {
     quote! {
         trait UnpublishedValidate {
@@ -18445,7 +17387,6 @@ fn unpublished_validate_fallback() -> proc_macro2::TokenStream {
 
 /// The nested check a walk ends on: whatever the type of `value` reported, attributed to `place`,
 /// which holds it.
-#[cfg(feature = "serde")]
 fn nested_leaf(value: &proc_macro2::Ident, place: &[PlaceStep]) -> proc_macro2::TokenStream {
     let Some(named) = named_at(place) else {
         return quote! {
@@ -18483,8 +17424,7 @@ fn nested_leaf(value: &proc_macro2::Ident, place: &[PlaceStep]) -> proc_macro2::
 
 /// `violation` as it is reported from `place`, or `None` for a value held at no place. Each run of
 /// keys, positions and indexes is written into it at once, and the key of a map's entry between
-/// two runs on its own, there being none where serde writes none.
-#[cfg(feature = "serde")]
+/// two runs on its own, there being none where the key has no text.
 fn named_at(place: &[PlaceStep]) -> Option<proc_macro2::TokenStream> {
     let mut keys = place.iter().rev().filter_map(|step| match step {
         PlaceStep::Key(depth) => Some(key_binding(*depth)),
@@ -18507,14 +17447,12 @@ fn named_at(place: &[PlaceStep]) -> Option<proc_macro2::TokenStream> {
 }
 
 /// The violation a name is written into next: the one reported, or what `named` made of it.
-#[cfg(feature = "serde")]
 fn reported_so_far(named: Option<&proc_macro2::TokenStream>) -> proc_macro2::TokenStream {
     named.map_or_else(|| quote! { violation }, |written| quote! { &#written })
 }
 
 /// A run of keys, positions and indexes as the `&str` a report is written under, joined by dots, or
 /// `None` for an empty run.
-#[cfg(feature = "serde")]
 fn nested_place(run: &[PlaceStep]) -> Option<proc_macro2::TokenStream> {
     let bound = run.iter().any(|step| matches!(step, PlaceStep::Index(_)));
     let steps: Vec<String> = run
@@ -18538,8 +17476,7 @@ fn nested_place(run: &[PlaceStep]) -> Option<proc_macro2::TokenStream> {
     })
 }
 
-/// `violation` under the key of a map's entry, or as it is where serde writes no text for the key.
-#[cfg(feature = "serde")]
+/// `violation` under the key of a map's entry, or as it is where the key has no text.
 fn keyed_under_fn() -> proc_macro2::TokenStream {
     quote! {
         fn keyed_under(key: ::core::option::Option<&str>, violation: &str) -> ::std::string::String {
@@ -18642,6 +17579,60 @@ fn build_wrapped_deserializer(
     }
 }
 
+/// The `deserialize_{stem}` hook of a string or numeric member: it reads the `owned` value, held
+/// under `binding`, where the member is bare, and the member's declared type where it is wrapped,
+/// and refuses what `validator` refuses. Nothing for a member a reference borrows.
+#[cfg(feature = "serde")]
+fn value_deserializer(
+    member: &CheckedMember,
+    validator: &proc_macro2::Ident,
+    (owned, binding): (&proc_macro2::TokenStream, &proc_macro2::TokenStream),
+    field_ty: &syn::Type,
+    shape: &ConstrainedShape,
+) -> proc_macro2::TokenStream {
+    let wraps: &[ConstraintWrap] = &shape.wraps;
+    let deserialize_fn_ident = proc_macro2::Ident::new(
+        &format!("deserialize_{}", member.stem),
+        proc_macro2::Span::call_site(),
+    );
+    if ends_on_a_borrow(wraps) {
+        quote! {}
+    } else if wraps.is_empty() {
+        let refusal = refusal_from_violations();
+        quote! {
+            pub fn #deserialize_fn_ident<'de, D>(deserializer: D) -> ::core::result::Result<#owned, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                use serde::Deserialize;
+                let #binding = #owned::deserialize(deserializer)?;
+                #validator(&#binding).map_err(#refusal)?;
+                ::core::result::Result::Ok(#binding)
+            }
+        }
+    } else {
+        build_wrapped_deserializer(
+            &deserialize_fn_ident,
+            validator,
+            field_ty,
+            &shape.lifetimes,
+            wraps,
+        )
+    }
+}
+
+/// Nothing, where no `serde` reads a member.
+#[cfg(not(feature = "serde"))]
+fn value_deserializer(
+    _member: &CheckedMember,
+    _validator: &proc_macro2::Ident,
+    _read: (&proc_macro2::TokenStream, &proc_macro2::TokenStream),
+    _field_ty: &syn::Type,
+    _shape: &ConstrainedShape,
+) -> proc_macro2::TokenStream {
+    proc_macro2::TokenStream::new()
+}
+
 /// The closure a recovering read lists a field's broken bound with: `validator` run on every
 /// value the bound reaches inside one of type `ty`, answering each violation without
 /// `field_name`, the name the validator writes, which the issue's path already carries. `None`
@@ -18686,7 +17677,6 @@ pub fn recovering_bound_check(
 /// The stem the per-field helpers are named from: `validate_{stem}_value` and `deserialize_{stem}`.
 /// A field name is unique only within its variant, while one schema module holds every variant's
 /// helpers — so a variant's field carries its variant into the stem to avoid collisions.
-#[cfg(feature = "serde")]
 pub fn helper_name_stem(field_ident: &str, variant_ident: Option<&str>) -> String {
     variant_ident.map_or_else(
         || field_ident.to_owned(),
@@ -18696,7 +17686,6 @@ pub fn helper_name_stem(field_ident: &str, variant_ident: Option<&str>) -> Strin
 
 /// The check a `pattern` constraint holds `value` to, taking `failure` where the value is turned
 /// away.
-#[cfg(feature = "serde")]
 fn pattern_check(pattern: &str, failure: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
     trivial_pattern(pattern).map_or_else(
         || {
@@ -18725,7 +17714,6 @@ fn pattern_check(pattern: &str, failure: &proc_macro2::TokenStream) -> proc_macr
 
 /// The condition under which a trivial pattern turns `value` away — the negation of what it
 /// accepts, which is the form the emitted check reads it in.
-#[cfg(feature = "serde")]
 fn pattern_rejects(trivial: &TrivialPattern) -> proc_macro2::TokenStream {
     match trivial {
         TrivialPattern::IsEmpty => quote! { !value.is_empty() },
@@ -18748,7 +17736,6 @@ fn pattern_rejects(trivial: &TrivialPattern) -> proc_macro2::TokenStream {
 /// A needle in the spelling the `str` pattern methods want it where the call is written into a
 /// crate that denies `clippy::single_char_pattern`: one character as a `char`, anything else as
 /// the string it is. Both name the same pattern to the same method.
-#[cfg(feature = "serde")]
 fn needle_pattern(needle: &str) -> proc_macro2::TokenStream {
     let mut chars = needle.chars();
     if let (Some(only), None) = (chars.next(), chars.next()) {
@@ -18760,7 +17747,6 @@ fn needle_pattern(needle: &str) -> proc_macro2::TokenStream {
 /// The parameter a string validator takes and the rendering its checks read `value` from. A path
 /// is the one leaf that can't be handed as-is: it arrives borrowed and is rendered once through
 /// `to_string_lossy`, the string serde writes for it. Every other leaf already is that string.
-#[cfg(feature = "serde")]
 fn checked_value_parts(
     measures_path: bool,
 ) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
@@ -18779,7 +17765,6 @@ fn checked_value_parts(
 
 /// The parameter a field's string validator takes, the rendering its checks read `value` from, and
 /// the owned form of the leaf, which is what a bare field of it is declared as.
-#[cfg(feature = "serde")]
 fn string_leaf_parts(
     leaf: &ConstraintLeaf,
     field_name: &str,
@@ -18809,8 +17794,40 @@ fn string_leaf_parts(
 /// Reads the text of a named leaf, or its length where no pattern is written. A brand's own
 /// expansion publishes `model_schema_bound_text` and `model_schema_bound_length`, and an inherent
 /// method is found ahead of a trait's; the traits declared here answer for an alias of a string,
-/// a path or a list, and refuse every other type in the words written on them.
-#[cfg(feature = "serde")]
+/// a path or a list, and refuse every other type in the words written on them:
+///
+/// ```rust,compile_fail
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema()]
+/// #[derive(Deserialize, Serialize)]
+/// pub struct Spot {
+///     pub segments: i32,
+/// }
+///
+/// #[model_schema()]
+/// #[derive(Deserialize, Serialize)]
+/// pub struct Visit {
+///     #[model_schema_prop(pattern = "^[a-z]+$")]
+///     pub at: Spot,
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error[E0277]: model_schema: field `at`: `pattern` cannot apply to `Spot`
+///   --> tests/zz_probe.rs:14:13
+///    |
+/// 10 | #[model_schema()]
+///    | ----------------- in this attribute macro expansion
+/// ...
+/// 14 |     pub at: Spot,
+///    |             ^^^^ this type holds no string for the bound to measure
+///    |
+/// help: the trait `BoundedText` is not implemented for `Spot`
+/// ```
 fn named_leaf_rendering(
     named: &syn::Type,
     field_name: &str,
@@ -18888,7 +17905,6 @@ fn named_leaf_rendering(
 
 /// [`named_leaf_rendering`] for a leaf whose bounds are lengths alone: what a text or a list of
 /// the leaf's type holds is counted, and nothing else is.
-#[cfg(feature = "serde")]
 fn named_leaf_length_rendering(named: &syn::Type, message: &str) -> proc_macro2::TokenStream {
     let read = proc_macro2::Ident::new(
         "model_schema_bound_length",
@@ -18981,11 +17997,7 @@ fn named_leaf_length_rendering(named: &syn::Type, message: &str) -> proc_macro2:
 
 /// The length of an `IndexSet`, written only for a name registered as an alias of one: the
 /// consumer's own `indexmap` is named where they use it, and nowhere else.
-#[cfg(all(
-    feature = "serde",
-    feature = "indexmap",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "indexmap")]
 fn indexed_set_length(named: &syn::Type) -> proc_macro2::TokenStream {
     let syn::Type::Path(path) = written_type(named) else {
         return proc_macro2::TokenStream::new();
@@ -19006,20 +18018,13 @@ fn indexed_set_length(named: &syn::Type) -> proc_macro2::TokenStream {
 }
 
 /// A build with no `IndexSet` support names no `indexmap`.
-#[cfg(all(
-    feature = "serde",
-    not(all(
-        feature = "indexmap",
-        any(feature = "typescript", feature = "zod", feature = "jsonschema")
-    ))
-))]
+#[cfg(not(feature = "indexmap"))]
 fn indexed_set_length(_named: &syn::Type) -> proc_macro2::TokenStream {
     proc_macro2::TokenStream::new()
 }
 
 /// Whether a named leaf is held to lengths alone, which the type it names answers with the count
 /// of what it holds, a text or a list.
-#[cfg(feature = "serde")]
 fn counts_a_named_length(leaf: &ConstraintLeaf, meta: &ModelSchemaPropMeta) -> bool {
     matches!(leaf, ConstraintLeaf::Named(_)) && meta.patterns().next().is_none()
 }
@@ -19028,7 +18033,6 @@ fn counts_a_named_length(leaf: &ConstraintLeaf, meta: &ModelSchemaPropMeta) -> b
 /// deserializer — written against the constrained value itself when the field is bare, and against
 /// the field's declared type when it is wrapped. A field read through a reference gets the
 /// validator alone.
-#[cfg(feature = "serde")]
 fn generate_string_validation_code(
     member: &CheckedMember,
     meta: &ModelSchemaPropMeta,
@@ -19039,9 +18043,6 @@ fn generate_string_validation_code(
     let validate_value_fn_name = format!("validate_{}_value", member.stem);
     let validate_value_fn_ident =
         proc_macro2::Ident::new(&validate_value_fn_name, proc_macro2::Span::call_site());
-    let deserialize_fn_name = format!("deserialize_{}", member.stem);
-    let deserialize_fn_ident =
-        proc_macro2::Ident::new(&deserialize_fn_name, proc_macro2::Span::call_site());
 
     let named = member.reported.as_deref();
     let (checked_param, rendering, owned) = string_leaf_parts(&shape.leaf, &member.label, meta);
@@ -19076,30 +18077,13 @@ fn generate_string_validation_code(
         checks.push(pattern_check(pattern, &quote! { errors.push(#reported); }));
     }
 
-    let deserializer = if ends_on_a_borrow(wraps) {
-        quote! {}
-    } else if wraps.is_empty() {
-        let refusal = refusal_from_violations();
-        quote! {
-            pub fn #deserialize_fn_ident<'de, D>(deserializer: D) -> ::core::result::Result<#owned, D::Error>
-            where
-                D: serde::Deserializer<'de>,
-            {
-                use serde::Deserialize;
-                let s = #owned::deserialize(deserializer)?;
-                #validate_value_fn_ident(&s).map_err(#refusal)?;
-                ::core::result::Result::Ok(s)
-            }
-        }
-    } else {
-        build_wrapped_deserializer(
-            &deserialize_fn_ident,
-            &validate_value_fn_ident,
-            field_ty,
-            &shape.lifetimes,
-            wraps,
-        )
-    };
+    let deserializer = value_deserializer(
+        member,
+        &validate_value_fn_ident,
+        (&owned, &quote! { s }),
+        field_ty,
+        shape,
+    );
 
     let module_items = quote! {
         pub fn #validate_value_fn_ident(#checked_param) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
@@ -19122,7 +18106,6 @@ fn generate_string_validation_code(
 
 /// Generates the static validator for a numeric field with constraints, plus the serde deserializer
 /// — see `generate_string_validation_code` for how the two spellings differ.
-#[cfg(feature = "serde")]
 fn generate_numeric_validation_code(
     member: &CheckedMember,
     rust_type_str: &str,
@@ -19134,9 +18117,6 @@ fn generate_numeric_validation_code(
     let validate_value_fn_name = format!("validate_{}_value", member.stem);
     let validate_value_fn_ident =
         proc_macro2::Ident::new(&validate_value_fn_name, proc_macro2::Span::call_site());
-    let deserialize_fn_name = format!("deserialize_{}", member.stem);
-    let deserialize_fn_ident =
-        proc_macro2::Ident::new(&deserialize_fn_name, proc_macro2::Span::call_site());
 
     let rust_type_ident: proc_macro2::TokenStream = rust_type_str.parse().unwrap();
     let named = member.reported.as_deref();
@@ -19166,30 +18146,13 @@ fn generate_numeric_validation_code(
         });
     }
 
-    let deserializer = if ends_on_a_borrow(wraps) {
-        quote! {}
-    } else if wraps.is_empty() {
-        let refusal = refusal_from_violations();
-        quote! {
-            pub fn #deserialize_fn_ident<'de, D>(deserializer: D) -> ::core::result::Result<#rust_type_ident, D::Error>
-            where
-                D: serde::Deserializer<'de>,
-            {
-                use serde::Deserialize;
-                let v = #rust_type_ident::deserialize(deserializer)?;
-                #validate_value_fn_ident(&v).map_err(#refusal)?;
-                ::core::result::Result::Ok(v)
-            }
-        }
-    } else {
-        build_wrapped_deserializer(
-            &deserialize_fn_ident,
-            &validate_value_fn_ident,
-            field_ty,
-            &shape.lifetimes,
-            wraps,
-        )
-    };
+    let deserializer = value_deserializer(
+        member,
+        &validate_value_fn_ident,
+        (&rust_type_ident, &quote! { v }),
+        field_ty,
+        shape,
+    );
 
     let module_items = quote! {
         pub fn #validate_value_fn_ident(value: &#rust_type_ident) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
@@ -19212,7 +18175,6 @@ fn generate_numeric_validation_code(
 /// What holds `L` to being a list whose items are counted: every std sequence, an array and a
 /// slice are iterated by reference. `unsized_list` is a list reached through a transparent wrapper.
 /// A bound on the iterator itself is one the compiler cannot infer `L` under.
-#[cfg(feature = "serde")]
 fn counted_list_bounds(unsized_list: bool) -> proc_macro2::TokenStream {
     let relaxed = unsized_list.then(|| quote! { L: ?::core::marker::Sized, });
     quote! {
@@ -19224,7 +18186,6 @@ fn counted_list_bounds(unsized_list: bool) -> proc_macro2::TokenStream {
 /// The validator of a list's item count, under the bounds `minLength` and `maxLength` wrote on it.
 /// It takes the list as any type that is one: no type a list holds is written into the schema
 /// module, where a type parameter of the item's, `Self` and a borrowed lifetime name nothing.
-#[cfg(feature = "serde")]
 fn list_validator(
     validator: &proc_macro2::Ident,
     least: Option<usize>,
@@ -19302,13 +18263,18 @@ fn list_hook_header(wraps: &[ConstraintWrap]) -> Option<ListHookHeader> {
     })
 }
 
-/// The serde hook of a list written under `wraps`, or nothing for one a reference borrows.
+/// The serde hook of a list member written under `wraps`, `deserialize_{stem}`, or nothing for one
+/// a reference borrows.
 #[cfg(feature = "serde")]
 fn list_deserializer(
-    deserializer: &proc_macro2::Ident,
+    member: &CheckedMember,
     validator: &proc_macro2::Ident,
     wraps: &[ConstraintWrap],
 ) -> proc_macro2::TokenStream {
+    let deserializer = proc_macro2::Ident::new(
+        &format!("deserialize_{}", member.stem),
+        proc_macro2::Span::call_site(),
+    );
     let Some(ListHookHeader {
         counted,
         held_to,
@@ -19341,8 +18307,17 @@ fn list_deserializer(
     }
 }
 
+/// Nothing, where no `serde` reads a member.
+#[cfg(not(feature = "serde"))]
+fn list_deserializer(
+    _member: &CheckedMember,
+    _validator: &proc_macro2::Ident,
+    _wraps: &[ConstraintWrap],
+) -> proc_macro2::TokenStream {
+    proc_macro2::TokenStream::new()
+}
+
 /// Generates the static validator of a list field's item count, plus the serde deserializer.
-#[cfg(feature = "serde")]
 fn generate_list_validation_code(
     member: &CheckedMember,
     meta: &ModelSchemaPropMeta,
@@ -19352,17 +18327,13 @@ fn generate_list_validation_code(
         &format!("validate_{}_value", member.stem),
         proc_macro2::Span::call_site(),
     );
-    let deserializer = proc_macro2::Ident::new(
-        &format!("deserialize_{}", member.stem),
-        proc_macro2::Span::call_site(),
-    );
     let validate_fn = list_validator(
         &validator,
         meta.min_length,
         meta.max_length,
         member.reported.as_deref(),
     );
-    let deserialize_fn = list_deserializer(&deserializer, &validator, wraps);
+    let deserialize_fn = list_deserializer(member, &validator, wraps);
     FieldValidationCode {
         module_items: quote! {
             #validate_fn
@@ -19375,9 +18346,9 @@ fn generate_list_validation_code(
 
 /// Reads a field's type down to the value a constraint can land on, collecting the wrappers on the
 /// way. A list is that value itself, whatever it holds.
-#[cfg(feature = "serde")]
 fn constrained_shape(ty: &syn::Type) -> Option<ConstrainedShape> {
     let mut wraps = Vec::new();
+    #[cfg(feature = "serde")]
     let mut lifetimes: Vec<syn::Lifetime> = Vec::new();
     let mut current = ty;
     loop {
@@ -19385,6 +18356,7 @@ fn constrained_shape(ty: &syn::Type) -> Option<ConstrainedShape> {
         if names_a_list(current) {
             return Some(ConstrainedShape {
                 leaf: ConstraintLeaf::List,
+                #[cfg(feature = "serde")]
                 lifetimes,
                 wraps,
             });
@@ -19396,6 +18368,7 @@ fn constrained_shape(ty: &syn::Type) -> Option<ConstrainedShape> {
             let segment = path.path.segments.last()?;
             if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
                 wraps.push(generic_wrap(&segment.ident.to_string())?);
+                #[cfg(feature = "serde")]
                 collect_lifetimes(args, &mut lifetimes);
                 current = sole_type_argument(args)?;
             } else if matches!(segment.arguments, syn::PathArguments::None) {
@@ -19403,6 +18376,7 @@ fn constrained_shape(ty: &syn::Type) -> Option<ConstrainedShape> {
                     .unwrap_or_else(|| ConstraintLeaf::Named(Box::new(current.clone())));
                 return Some(ConstrainedShape {
                     leaf,
+                    #[cfg(feature = "serde")]
                     lifetimes,
                     wraps,
                 });
@@ -19455,9 +18429,9 @@ fn nested_shape(ty: &syn::Type) -> Option<Vec<ConstraintWrap>> {
 /// Reads a member's type down to every value whose own type would publish the validator, against
 /// what `def` says the type holds: through every reference and each level of a list, to a map's
 /// values and to each position of a tuple. `None` where it holds no declared type.
-#[cfg(feature = "serde")]
 fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
     let mut wraps = Vec::new();
+    #[cfg(feature = "serde")]
     let mut keys: Vec<syn::Type> = Vec::new();
     let mut current = ty;
     let mut held = def;
@@ -19476,17 +18450,10 @@ fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
             let FieldDefType::Tuple(of_positions) = &held.field_type else {
                 return None;
             };
-            let positions: Vec<(usize, HeldShape)> = tuple
-                .elems
-                .iter()
-                .zip(of_positions)
-                .enumerate()
-                .filter_map(|(at, (position, of_position))| {
-                    Some((at, held_shape(position, of_position)?))
-                })
-                .collect();
+            let positions = held_positions(tuple, of_positions);
             return (!positions.is_empty()).then_some(HeldShape {
                 end: HeldEnd::Positions(positions),
+                #[cfg(feature = "serde")]
                 keys,
                 wraps,
             });
@@ -19515,6 +18482,7 @@ fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
                         .collect();
                     return (!arms.is_empty()).then_some(HeldShape {
                         end: HeldEnd::Arms(arms),
+                        #[cfg(feature = "serde")]
                         keys,
                         wraps,
                     });
@@ -19524,6 +18492,7 @@ fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
                         return None;
                     };
                     wraps.push(ConstraintWrap::Map);
+                    #[cfg(feature = "serde")]
                     keys.push(map_key_argument(args)?.clone());
                     current = map_value_argument(args)?;
                     held = of_values;
@@ -19532,6 +18501,7 @@ fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
                 let Some(wrap) = generic_wrap(&ident) else {
                     return (declared && !reads_through(&ident)).then_some(HeldShape {
                         end: HeldEnd::Declared,
+                        #[cfg(feature = "serde")]
                         keys,
                         wraps,
                     });
@@ -19542,6 +18512,7 @@ fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
             } else if matches!(segment.arguments, syn::PathArguments::None) {
                 return declared.then_some(HeldShape {
                     end: HeldEnd::Declared,
+                    #[cfg(feature = "serde")]
                     keys,
                     wraps,
                 });
@@ -19554,9 +18525,20 @@ fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
     }
 }
 
+/// [`held_shape`] of each position of `tuple` that holds a declared type, by its place, against
+/// what `of_positions` says each one holds.
+fn held_positions(tuple: &syn::TypeTuple, of_positions: &[FieldDef]) -> Vec<(usize, HeldShape)> {
+    tuple
+        .elems
+        .iter()
+        .zip(of_positions)
+        .enumerate()
+        .filter_map(|(at, (position, of_position))| Some((at, held_shape(position, of_position)?)))
+        .collect()
+}
+
 /// What `def` says a list written `wrapper` holds. A list other than a `Vec` is described as a type
 /// of its own over its items, and every other wrapper as what it holds.
-#[cfg(feature = "serde")]
 fn list_item_def<'def>(def: &'def FieldDef, wrapper: &str) -> &'def FieldDef {
     if let FieldDefType::SiblingType(named, arguments) = &def.field_type
         && named == wrapper
@@ -19574,13 +18556,11 @@ fn map_key_argument(args: &syn::AngleBracketedGenericArguments) -> Option<&syn::
 }
 
 /// The type of a map's values, its second type argument.
-#[cfg(feature = "serde")]
 fn map_value_argument(args: &syn::AngleBracketedGenericArguments) -> Option<&syn::Type> {
     type_arguments(args).nth(1)
 }
 
 /// The type arguments of an angle-bracketed list, lifetimes and consts left out.
-#[cfg(feature = "serde")]
 fn type_arguments(args: &syn::AngleBracketedGenericArguments) -> impl Iterator<Item = &syn::Type> {
     args.args.iter().filter_map(|arg| {
         if let syn::GenericArgument::Type(ty) = arg {
@@ -19597,7 +18577,6 @@ fn type_arguments(args: &syn::AngleBracketedGenericArguments) -> impl Iterator<I
 /// Consulted only for the names [`generic_wrap`] found no reach through, so half of what it names
 /// is already unreachable from there. Written as the whole set on purpose: narrowing that reach
 /// should turn a container into one this walk stops short of, never into a type it walks into.
-#[cfg(feature = "serde")]
 fn reads_through(ident: &str) -> bool {
     is_transparent_wrapper(ident)
         || is_sequence_wrapper(ident)
@@ -19609,7 +18588,6 @@ fn reads_through(ident: &str) -> bool {
 /// The interior-mutability wrapper on a field's constrained path, when there is one.
 /// `constrained_shape` cannot say *why* a shape failed to classify, so this retraces the path to
 /// name the blocker for a diagnostic instead of silently dropping the constraint.
-#[cfg(feature = "serde")]
 fn blocking_interior_mutability_wrapper(ty: &syn::Type) -> Option<String> {
     let mut current = ty;
     loop {
@@ -19637,12 +18615,6 @@ fn blocking_interior_mutability_wrapper(ty: &syn::Type) -> Option<String> {
 }
 
 /// Whether a type is written as a list: an array, a slice, or one of the std sequences.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    feature = "serde"
-))]
 fn names_a_list(ty: &syn::Type) -> bool {
     let written = written_type(ty);
     if matches!(written, syn::Type::Array(_) | syn::Type::Slice(_)) {
@@ -19659,7 +18631,7 @@ fn names_a_list(ty: &syn::Type) -> bool {
 
 /// Whether a type is written as `IndexSet`, which is a list under the `indexmap` feature unless
 /// the consumer declares a type of that name.
-#[cfg(all(feature = "serde", feature = "indexmap"))]
+#[cfg(feature = "indexmap")]
 fn names_an_indexed_set(ty: &syn::Type) -> bool {
     matches!(
         written_type(ty),
@@ -19670,15 +18642,6 @@ fn names_an_indexed_set(ty: &syn::Type) -> bool {
 /// Whether a brand's inner is written as a list itself, or as one behind `Box`, `Rc`, `Arc` or
 /// `Cow`: the reach `constrained_shape` has through transparent wrappers alone, asked in a build
 /// without `serde`.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
 fn held_as_a_list(ty: &syn::Type) -> bool {
     let mut current = ty;
     loop {
@@ -19724,7 +18687,6 @@ fn collect_lifetimes(
 /// The wrapper a generic type stands for, or `None` if it is not one the constraint reads through.
 /// An interior-mutability wrapper is deliberately absent: it is wire-transparent but does not
 /// implement `Deref`, so the walk has no safe way through it.
-#[cfg(feature = "serde")]
 fn generic_wrap(ident: &str) -> Option<ConstraintWrap> {
     if ident == "Option" {
         Some(ConstraintWrap::Optional)
@@ -19753,8 +18715,8 @@ fn sole_type_argument(args: &syn::AngleBracketedGenericArguments) -> Option<&syn
 
 /// Whether a `#[model_schema]` item of this name was declared above, which the schema surfaces
 /// read as a named type before they read the name as a standard one. Read off the registry every
-/// build that reads a value keeps, with or without a schema surface. A bound written on a field
-/// typed with such a model is refused as on any named type that holds no text:
+/// build keeps. A bound written on a field typed with such a model is refused as on any named type
+/// that holds no text:
 ///
 /// ```rust,compile_fail
 /// use serde::{Deserialize, Serialize};
@@ -19788,21 +18750,13 @@ fn sole_type_argument(args: &syn::AngleBracketedGenericArguments) -> Option<&syn
 ///    |
 /// help: the trait `BoundedLength` is not implemented for `Path`
 /// ```
-#[cfg(feature = "serde")]
 fn declared_above(ident: &str) -> bool {
     declared(ident).is_some()
-}
-
-/// Without `serde` nothing reads a value, so nothing records what an item declares.
-#[cfg(not(feature = "serde"))]
-const fn declared_above(_ident: &str) -> bool {
-    false
 }
 
 /// The leaf a bare type name stands for. `str` is `String`'s borrowed form and answers as one, as
 /// `Path` does for `PathBuf`; the numerics name themselves, since the validator's parameter is
 /// written from the name.
-#[cfg(feature = "serde")]
 fn leaf_for_ident(ident: &str) -> Option<ConstraintLeaf> {
     match ident {
         "String" | "str" | "PathBuf" | "Path" if declared_above(ident) => None,
@@ -20202,28 +19156,9 @@ fn collect_field_guard_errors(
     let label = field_label(raw_field_ident);
     let carried = on_the_wire && !parse_serde_key_omission(&field.attrs).absent_from_wire();
 
-    #[cfg(any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "jsonschema",
-        all(
-            feature = "serde",
-            any(feature = "dart", feature = "swift", feature = "kotlin")
-        )
-    ))]
     let map_key_error = check_map_key(field, field_def, &label)
         .err()
         .map(|err| err.to_compile_error());
-    #[cfg(not(any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "jsonschema",
-        all(
-            feature = "serde",
-            any(feature = "dart", feature = "swift", feature = "kotlin")
-        )
-    )))]
-    let map_key_error: Option<proc_macro2::TokenStream> = None;
 
     #[cfg(feature = "kotlin")]
     let kotlin_width_error = check_kotlin_width_field(field, field_def, &label)
@@ -21041,13 +19976,6 @@ fn member_prop_meta(field: &Field, enum_args: Option<&ModelSchemaArgs>) -> Model
     if meta.pattern.is_none() {
         meta.pattern.clone_from(&args.pattern);
     }
-    #[cfg(any(
-        feature = "serde",
-        feature = "zod",
-        feature = "jsonschema",
-        feature = "dart",
-        feature = "swift"
-    ))]
     if meta.pattern != args.pattern {
         meta.enum_pattern.clone_from(&args.pattern);
     }
@@ -21069,11 +19997,7 @@ fn process_field(
     Option<proc_macro2::TokenStream>,
     Vec<proc_macro2::TokenStream>,
 ) {
-    // Only the serde side has anything to hang on a field; every other build holds back nothing.
-    #[cfg(feature = "serde")]
     let mut injected_attrs: Vec<syn::Attribute> = Vec::new();
-    #[cfg(not(feature = "serde"))]
-    let injected_attrs: Vec<syn::Attribute> = Vec::new();
 
     #[cfg(feature = "serde")]
     let serde_field_meta = parse_serde_field_attributes(&field.attrs);
@@ -21093,26 +20017,16 @@ fn process_field(
     let place = member_place(field, index, ctx.variant_ident.is_some(), ctx.steps(index));
 
     // Generate validation code and hold back the serde attribute it hangs on the field
-    #[cfg(feature = "serde")]
-    let (mut validation_fn, validate_body, field_validation_guard_error) =
-        generate_field_validation(
-            ctx,
-            field,
-            index,
-            &model_schema_prop_meta,
-            // A struct's field, or a tagged variant's: the shape of the payload says which type it
-            // is, so a constraint here decides only whether the value is admissible.
-            ConstraintGate::Validator,
-            &mut injected_attrs,
-        );
-
-    #[cfg(not(feature = "serde"))]
-    let (validation_fn, validate_body): (
-        Option<proc_macro2::TokenStream>,
-        Option<proc_macro2::TokenStream>,
-    ) = (None, None);
-    #[cfg(not(feature = "serde"))]
-    let _: &_ = &ctx.schema_module_name;
+    let (bound_fns, validate_body, field_validation_guard_error) = generate_field_validation(
+        ctx,
+        field,
+        index,
+        &model_schema_prop_meta,
+        // A struct's field, or a tagged variant's: the shape of the payload says which type it
+        // is, so a constraint here decides only whether the value is admissible.
+        ConstraintGate::Validator,
+        &mut injected_attrs,
+    );
 
     field.attrs = new_attrs;
 
@@ -21158,7 +20072,7 @@ fn process_field(
         // reader of this flag is the read-hook writer, which this build does not compile.
         let _: bool = ctx.container_read_back;
         let _: ContainerWire = ctx.container_wire;
-        Vec::new()
+        field_validation_guard_error.into_iter().collect()
     };
 
     let guard_errors = collect_field_guard_errors(
@@ -21183,21 +20097,22 @@ fn process_field(
     // The read-time half of the reach `validate()` has below: what the field's own type turns
     // away before `validate()` is ever asked.
     #[cfg(feature = "serde")]
-    if let Some((hook, attrs)) =
-        member_read_hook(ctx, field, &field_def, index, place.reported.as_deref())
-    {
-        validation_fn = Some(match validation_fn {
-            Some(already) => quote! { #already #hook },
-            None => hook,
-        });
-        injected_attrs.extend(attrs);
-    }
-
-    #[cfg(feature = "serde")]
-    let declared = named_member_validate_body(validate_body, field, &field_def, &place);
+    let validation_fn =
+        match member_read_hook(ctx, field, &field_def, index, place.reported.as_deref()) {
+            Some((hook, attrs)) => {
+                injected_attrs.extend(attrs);
+                Some(match bound_fns {
+                    Some(already) => quote! { #already #hook },
+                    None => hook,
+                })
+            }
+            None => bound_fns,
+        };
     #[cfg(not(feature = "serde"))]
-    let declared = validate_body;
-    let body = then_checks(declared, own_checks);
+    let validation_fn = bound_fns;
+
+    let declared = named_member_validate_body(validate_body, field, &field_def, &place);
+    let body = then_checks(declared, own_checks).map(|checked| under_member_cfgs(field, checked));
 
     #[cfg(feature = "serde")]
     injected_attrs.extend(as_number_serde_hooks(field, &field_def));
@@ -21224,7 +20139,6 @@ fn reachable_nested_shape(field: &Field, field_def: &FieldDef) -> Option<Vec<Con
 }
 
 /// [`held_shape`] of a named member, of a flattened one and of an untagged variant's slot.
-#[cfg(feature = "serde")]
 fn member_held_shape(field: &Field, field_def: &FieldDef) -> Option<HeldShape> {
     held_shape(&field.ty, field_def)
 }
@@ -21233,13 +20147,26 @@ fn member_held_shape(field: &Field, field_def: &FieldDef) -> Option<HeldShape> {
 /// a nested `#[model_schema()]` type, held itself, in a list, as a map's value or in a tuple — or
 /// `None` where there is nothing below it to run. `place` is where the member is read and the name
 /// it is reported under, which is none for a member serde writes as the value of what holds it.
-#[cfg(feature = "serde")]
 fn nested_validate_body(
     field: &Field,
     field_def: &FieldDef,
     place: &MemberPlace,
 ) -> Option<proc_macro2::TokenStream> {
     member_held_shape(field, field_def).map(|shape| build_nested_validation(&shape, place))
+}
+
+/// `checked`, a member's statements in `validate()`, under the member's `#[cfg(...)]` attributes:
+/// a build without the member reads nothing of it.
+fn under_member_cfgs(field: &Field, checked: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+    let cfgs: Vec<&syn::Attribute> = field
+        .attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("cfg"))
+        .collect();
+    if cfgs.is_empty() {
+        return checked;
+    }
+    quote! { #(#cfgs)* { #checked } }
 }
 
 /// The wrappers a named field's own type is reached through, where a refusal it raises as it is
@@ -21423,7 +20350,6 @@ fn names_what_the_module_cannot_repeat(ty: &syn::Type, type_parameters: &[String
 /// What a member contributes to `validate()`: the check its type declares, then its own. A
 /// list's own check counts it, and its items' type holds each item.
 /// `place` is where the member is read and the name it is reported under.
-#[cfg(feature = "serde")]
 fn named_member_validate_body(
     own: Option<proc_macro2::TokenStream>,
     field: &Field,
@@ -21457,10 +20383,7 @@ fn flattened_member_walk(
     checks: &mut Vec<proc_macro2::TokenStream>,
 ) {
     let place = member_place(field, index, true, ctx.steps(index));
-    #[cfg(feature = "serde")]
     let declared = nested_validate_body(field, field_def, &place);
-    #[cfg(not(feature = "serde"))]
-    let declared: Option<proc_macro2::TokenStream> = None;
     let named = held_member_checks(field, field_def, &place);
     if let Some(body) = then_checks(declared, named) {
         bound.push(bound_member(field, index));
@@ -21480,7 +20403,6 @@ fn held_member_checks(
 }
 
 /// What a member's arm runs: the check its type declares, then its own, the order Zod reports.
-#[cfg(feature = "serde")]
 fn slot_validate_body(
     own: Option<proc_macro2::TokenStream>,
     nested: Option<proc_macro2::TokenStream>,
@@ -21589,7 +20511,6 @@ fn member_place(field: &Field, index: usize, in_variant: bool, steps: &[String])
 /// How a constrained member's helpers name and reach it. It is reported under `steps`, the ones
 /// serde writes on the way to it, and its helpers keep its Rust name, or a slot's place among the
 /// ones declared.
-#[cfg(feature = "serde")]
 fn checked_member(
     field: &Field,
     index: usize,
@@ -21610,7 +20531,6 @@ fn checked_member(
 }
 
 /// What a member's helpers are named from: its Rust name, or a slot's position.
-#[cfg(feature = "serde")]
 fn declared_as(field: &Field, index: usize) -> String {
     field
         .ident
@@ -21620,9 +20540,9 @@ fn declared_as(field: &Field, index: usize) -> String {
 
 /// Reads a literal field's type down to the value the literal admits, or `None` for a type no
 /// literal sits on.
-#[cfg(feature = "serde")]
 fn literal_shape(ty: &syn::Type) -> Option<LiteralShape> {
     let mut wraps = Vec::new();
+    #[cfg(feature = "serde")]
     let mut lifetimes: Vec<syn::Lifetime> = Vec::new();
     let mut current = ty;
     loop {
@@ -21640,6 +20560,7 @@ fn literal_shape(ty: &syn::Type) -> Option<LiteralShape> {
             let segment = path.path.segments.last()?;
             if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
                 wraps.push(generic_wrap(&segment.ident.to_string())?);
+                #[cfg(feature = "serde")]
                 collect_lifetimes(args, &mut lifetimes);
                 current = sole_type_argument(args)?;
             } else if matches!(segment.arguments, syn::PathArguments::None) {
@@ -21653,6 +20574,7 @@ fn literal_shape(ty: &syn::Type) -> Option<LiteralShape> {
                 };
                 return Some(LiteralShape {
                     leaf,
+                    #[cfg(feature = "serde")]
                     lifetimes,
                     wraps,
                 });
@@ -21667,7 +20589,6 @@ fn literal_shape(ty: &syn::Type) -> Option<LiteralShape> {
 
 /// What a value of `leaf`, read as `value`, is compared with: `None` where the literal is of
 /// another kind, or a number the leaf holds no value of, which a guard refuses.
-#[cfg(feature = "serde")]
 fn literal_broken(leaf: &LiteralLeaf, literal: &LiteralValue) -> Option<proc_macro2::TokenStream> {
     match (leaf, literal) {
         (LiteralLeaf::Bool, LiteralValue::Bool(true)) => Some(quote! { !*value }),
@@ -21770,9 +20691,20 @@ fn literal_hook(
     }
 }
 
+/// Nothing, where no `serde` reads a field.
+#[cfg(not(feature = "serde"))]
+fn literal_hook(
+    _field_ty: &syn::Type,
+    _shape: &LiteralShape,
+    _owned: &proc_macro2::TokenStream,
+    _validator: &proc_macro2::Ident,
+    _deserializer: &proc_macro2::Ident,
+) -> proc_macro2::TokenStream {
+    proc_macro2::TokenStream::new()
+}
+
 /// What a literal field adds to `validate()`: the validator run on the value, or on each item of a
 /// list, whose report is written under the item's index.
-#[cfg(feature = "serde")]
 fn literal_validate_body(
     member: &CheckedMember,
     shape: &LiteralShape,
@@ -21811,7 +20743,6 @@ fn literal_validate_body(
 /// `literal`: the literal is its only rule. Where the literal is held by each item of a list, the
 /// validator names nothing, and `validate()` names each item by its index. `index` is the field's
 /// place among its container's.
-#[cfg(feature = "serde")]
 fn generate_literal_validation(
     ctx: &FieldContext<'_>,
     (field, index): (&Field, usize),
@@ -21887,7 +20818,6 @@ fn generate_literal_validation(
 /// through an interior-mutability wrapper (`RefCell`, `Cell`, `Mutex`, `RwLock`) — unlike
 /// `Box`/`Rc`/`Arc`/`Cow`, these don't implement `Deref`, so the validator has no safe way to reach
 /// the inner value. `literal` says which of the two was written.
-#[cfg(feature = "serde")]
 fn interior_mutability_constraint_guard_error(
     field: &Field,
     raw_field_ident: &str,
@@ -21944,12 +20874,22 @@ fn hang_bound_hook(
     injected_attrs.extend(hung);
 }
 
+/// Nothing, where no `serde` reads a member.
+#[cfg(not(feature = "serde"))]
+const fn hang_bound_hook(
+    _ctx: &FieldContext<'_>,
+    _member: (&Field, usize),
+    _path: &str,
+    _wraps: &[ConstraintWrap],
+    _injected_attrs: &mut Vec<syn::Attribute>,
+) {
+}
+
 /// Generates per-field serde validation code — the static validator and the `deserialize_with`
 /// hook, both published into the schema module either way — and, where `gate` says the read is
 /// also a gate, collects the `#[serde(deserialize_with = ...)]` attribute into `injected_attrs`,
 /// plus the `#[serde(default)]` that keeps an optional key optional under one. Each violation is
 /// reported under the steps serde writes on the way to the field.
-#[cfg(feature = "serde")]
 fn generate_field_validation(
     ctx: &FieldContext<'_>,
     field: &Field,
@@ -22063,7 +21003,6 @@ fn generate_field_validation(
 /// name alone, which `validate()` imports once for them all. Where the item names a check the
 /// bound imports the module for itself instead, so the check is called where no import of the
 /// module is in scope, and its name is the function its author wrote.
-#[cfg(feature = "serde")]
 fn bound_body(body: proc_macro2::TokenStream, module_name: &str) -> proc_macro2::TokenStream {
     if !names_a_check() {
         return body;
@@ -22183,8 +21122,7 @@ fn get_final_variant_name(
     )
 }
 
-#[cfg(feature = "jsonschema")]
-/// Generates the JSON schema method conditionally based on the jsonschema feature.
+/// The struct's `json_schema()` and `json_schema_within()`.
 fn generate_json_schema_method(
     json_schema_fields: &[proc_macro2::TokenStream],
     flatten_json_schemas: &[MergedSource],
@@ -22202,7 +21140,6 @@ fn generate_json_schema_method(
 }
 
 /// What a struct's `#[serde(flatten)]` fields contribute to the object it writes.
-#[cfg(feature = "jsonschema")]
 fn flatten_merged_sources(flattened_fields: &[FieldDef]) -> Vec<MergedSource> {
     flattened_fields.iter().map(flatten_merged_source).collect()
 }
@@ -22210,7 +21147,6 @@ fn flatten_merged_sources(flattened_fields: &[FieldDef]) -> Vec<MergedSource> {
 /// What a value whose members join the object being written contributes to it, labelled with the
 /// name the author gave it: the type for a named one, the field otherwise — a shape with no name of
 /// its own is only ever pointed at through where it was written.
-#[cfg(feature = "jsonschema")]
 fn flatten_merged_source(fld: &FieldDef) -> MergedSource {
     if let FieldDefType::SiblingType(name, arguments) = &fld.field_type {
         return MergedSource {
@@ -22251,14 +21187,14 @@ fn flatten_merged_source(fld: &FieldDef) -> MergedSource {
 
 /// The `$oid` object a flattened `ObjectId` joins, under an `Option` or not, and `None` for every
 /// other source.
-#[cfg(all(feature = "jsonschema", feature = "mongodb"))]
+#[cfg(feature = "mongodb")]
 fn flattened_object_id(fld: &FieldDef) -> Option<proc_macro2::TokenStream> {
     (matches!(fld.field_type, FieldDefType::ObjectId) && fld.array_depth == 0)
         .then(|| object_id_json_schema_value(&object_id_hex_json_schema()))
 }
 
 /// No source is an `ObjectId` without `mongodb`.
-#[cfg(all(feature = "jsonschema", not(feature = "mongodb")))]
+#[cfg(not(feature = "mongodb"))]
 const fn flattened_object_id(_fld: &FieldDef) -> Option<proc_macro2::TokenStream> {
     None
 }
@@ -22266,7 +21202,6 @@ const fn flattened_object_id(_fld: &FieldDef) -> Option<proc_macro2::TokenStream
 /// Whether the type `name` stands for publishes the record of an untagged enum with a member
 /// serde writes as `()`, read where the merge runs: a type without it answers through the
 /// block-local trait, an inherent const being found ahead of a trait's.
-#[cfg(feature = "jsonschema")]
 fn unit_member_record(name: &str, span: proc_macro2::Span) -> proc_macro2::TokenStream {
     let module_ident = sibling_schema_module_ident(name, span);
     let record = Ident::new(UNIT_MEMBER_RECORD, proc_macro2::Span::call_site());
@@ -22286,7 +21221,7 @@ fn unit_member_record(name: &str, span: proc_macro2::Span) -> proc_macro2::Token
 /// untagged enum with a member serde writes as `()` says so, and an alias, a brand or a struct of
 /// one slot whose value is a name, written bare, answers as that name does. Nothing for any other
 /// item.
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[cfg(feature = "serde")]
 fn unit_member_record_item(item: &Item) -> proc_macro2::TokenStream {
     let record = Ident::new(UNIT_MEMBER_RECORD, proc_macro2::Span::call_site());
     let value = if let Item::Enum(item_enum) = item {
@@ -22339,7 +21274,7 @@ fn unit_member_record_item(item: &Item) -> proc_macro2::TokenStream {
 }
 
 /// Nothing, in a build that reads no `#[serde(flatten)]`.
-#[cfg(all(not(feature = "serde"), feature = "jsonschema"))]
+#[cfg(not(feature = "serde"))]
 fn unit_member_record_item(_item: &Item) -> proc_macro2::TokenStream {
     proc_macro2::TokenStream::new()
 }
@@ -22348,7 +21283,6 @@ fn unit_member_record_item(_item: &Item) -> proc_macro2::TokenStream {
 /// string: a `char` and a chrono date or time by their own descriptions, a number and a `bool` by
 /// the pattern of their text, and a type that writes one by its own description, read as that
 /// text. `None` for every other key.
-#[cfg(feature = "jsonschema")]
 fn text_key_names(key: &FieldDef) -> Option<proc_macro2::TokenStream> {
     if !matches!(map_key_path(key), MapKeyPath::Unnarrowed) {
         return None;
@@ -22404,7 +21338,6 @@ fn text_key_names(key: &FieldDef) -> Option<proc_macro2::TokenStream> {
 /// `described`, the description of a type a map is keyed by, as the text serde writes the key as:
 /// a number's and a `bool`'s by the pattern of that text, any other as it stands. Read where the
 /// description is built, which states what a brand, an alias or a type filled at its arguments is.
-#[cfg(feature = "jsonschema")]
 fn named_key_text(described: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
     let text =
         |pattern: &str| quote! { serde_json::json!({ "type": "string", "pattern": #pattern }) };
@@ -22806,16 +21739,8 @@ fn zod_factory_memoized_binding(item_name: &str, parameters: &[String]) -> Strin
 
 /// The `FieldDef` one `default_types` entry parses as: the declared filling for `parameter`, or —
 /// absent one — `String`, [`schema_example_value_type`]'s own fallback for the identical gap. Only
-/// `jsonschema` requires a declared default; the constrained-brand guard reads this regardless.
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    )
-))]
+/// the `"jsonschema"` entry requires a declared default; the constrained-brand guard reads this
+/// regardless.
 fn declared_default_field(parameter: &str, default_types: &[(syn::Ident, syn::Type)]) -> FieldDef {
     default_types
         .iter()
@@ -23049,7 +21974,6 @@ fn zod_factory_block_around(
 /// `Option`, which renders as a union of its own; either way the schema is newly built and states
 /// the item's own type. This is not [`FieldDef::names_a_sibling_binding`], which walks the whole
 /// tree and answers for a wrapped sibling too.
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
 fn republishes_sibling_binding(field: &FieldDef) -> bool {
     field.array_depth == 0
         && !field.is_optional()
@@ -23071,14 +21995,12 @@ fn tuple_struct_republishes_slot(shape: &TupleStructShape) -> bool {
 
 /// Whether `field` is a sibling model's own binding, shown with the examples that model writes:
 /// [`republishes_sibling_binding`], but for a sequence wrapper, which is no model of its own.
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
 fn shows_sibling_examples(field: &FieldDef) -> bool {
     republishes_sibling_binding(field)
         && matches!(&field.field_type, FieldDefType::SiblingType(name, _) if !is_sequence_wrapper(name))
 }
 
 /// [`shows_sibling_examples`] for the slot of a tuple struct.
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
 fn tuple_struct_shows_sibling_examples(shape: &TupleStructShape) -> bool {
     match shape {
         TupleStructShape::Array(_) => false,
@@ -23086,16 +22008,6 @@ fn tuple_struct_shows_sibling_examples(shape: &TupleStructShape) -> bool {
             shows_sibling_examples(slot) && !slot.stands_for_an_option()
         }
     }
-}
-
-/// Nothing is shown in a build with no Zod or JSON Schema surface.
-#[cfg(all(
-    not(feature = "zod"),
-    not(feature = "jsonschema"),
-    feature = "typescript"
-))]
-const fn tuple_struct_shows_sibling_examples(_shape: &TupleStructShape) -> bool {
-    false
 }
 
 /// The binding a type that declares no parameter publishes: the raw schema, then the exported
@@ -23448,30 +22360,23 @@ fn bind_item_jsdoc_local(docs: &str) -> proc_macro2::TokenStream {
     }
 }
 
-#[cfg(feature = "jsonschema")]
-/// Generates the JSON schema method for plain enums conditionally.
+/// The `json_schema()` pair of a plain enum's schema module, or nothing where the enum does not
+/// list `"jsonschema"`.
 fn generate_plain_enum_json_schema_method(
     enumerated: &[proc_macro2::TokenStream],
     def_name: &str,
     attrs: &[syn::Attribute],
+    args: &ModelSchemaArgs,
 ) -> proc_macro2::TokenStream {
-    #[cfg(feature = "jsonschema")]
-    {
-        generate_plain_enum_json_schema_method_impl(
-            enumerated,
-            def_name,
-            &[],
-            json_schema_examples(attrs).as_ref(),
-        )
+    if !args.enable.jsonschema {
+        return proc_macro2::TokenStream::new();
     }
-
-    #[cfg(not(feature = "jsonschema"))]
-    {
-        let _: &_ = &(enumerated, def_name, attrs);
-        quote::quote! {
-            // No method: the `jsonschema` feature is off.
-        }
-    }
+    generate_plain_enum_json_schema_method_impl(
+        enumerated,
+        def_name,
+        &[],
+        json_schema_examples(attrs).as_ref(),
+    )
 }
 
 #[cfg(feature = "typescript")]
@@ -23560,14 +22465,17 @@ fn generate_plain_enum_zod_schema_method(
     }
 }
 
-#[cfg(feature = "jsonschema")]
-/// Generates the JSON schema method for discriminated enums conditionally.
+/// The `json_schema()` pair of an enum's schema module, or nothing where the enum does not list
+/// `"jsonschema"`.
 fn enum_json_schema_methods(
     main_schema_code: &proc_macro2::TokenStream,
     def_name: &str,
     item_enum: &syn::ItemEnum,
     args: &ModelSchemaArgs,
 ) -> proc_macro2::TokenStream {
+    if !args.enable.jsonschema {
+        return proc_macro2::TokenStream::new();
+    }
     json_schema_methods(
         def_name,
         &quote::quote! { { #main_schema_code } },
@@ -23702,32 +22610,23 @@ fn generate_enum_zod_schema_method_after(
     }
 }
 
-/// Builds the alias module's `ts_definition()`, or nothing when `typescript` is off. The doc
-/// block and the generic parameter list are only meaningful to TypeScript, so they are gathered
-/// inside the gate rather than by the caller.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+/// Builds the alias module's `ts_definition()`, with the doc block and the generic parameter list
+/// only TypeScript reads.
+#[cfg(feature = "typescript")]
 fn generate_alias_ts_definition_method(
     alias: &ItemType,
     export_name: &str,
     field_def: &FieldDef,
 ) -> proc_macro2::TokenStream {
-    #[cfg(feature = "typescript")]
-    {
-        let docs_formatted = alias_jsdoc_body(get_item_docs(&alias.attrs).as_deref(), export_name);
+    let docs_formatted = alias_jsdoc_body(get_item_docs(&alias.attrs).as_deref(), export_name);
 
-        generate_ts_alias_method(
-            &docs_formatted,
-            export_name,
-            &alias.ident.to_string(),
-            &ts_generic_params(&alias.generics),
-            &surface_field_def(&alias.generics, field_def),
-        )
-    }
-    #[cfg(not(feature = "typescript"))]
-    {
-        let _: &_ = &(alias, export_name, field_def);
-        quote! {}
-    }
+    generate_ts_alias_method(
+        &docs_formatted,
+        export_name,
+        &alias.ident.to_string(),
+        &ts_generic_params(&alias.generics),
+        &surface_field_def(&alias.generics, field_def),
+    )
 }
 
 #[cfg(feature = "typescript")]
@@ -23760,7 +22659,6 @@ fn generate_ts_alias_method(
 
 /// The diagnostic an alias whose target the dispatch cannot render emits, in place of the whole
 /// `json_schema()` body. Spanned on the target, which is where the unrenderable value was written.
-#[cfg(feature = "jsonschema")]
 fn alias_json_schema_rejection(
     alias: &ItemType,
     rejection: &MapMemberRejection,
@@ -23770,43 +22668,36 @@ fn alias_json_schema_rejection(
     syn::Error::new_spanned(&alias.ty, message).to_compile_error()
 }
 
-/// Builds the alias module's `json_schema()`, or nothing when `jsonschema` is off.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+/// Builds the alias module's `json_schema()`, or nothing where the alias does not list
+/// `"jsonschema"`.
 fn generate_alias_json_schema_method(
     alias: &ItemType,
     export_name: &str,
     field_def: &FieldDef,
     args: &ModelSchemaArgs,
 ) -> proc_macro2::TokenStream {
-    #[cfg(feature = "jsonschema")]
-    {
-        let body = build_tuple_element_json_schema(&surface_field_def(&alias.generics, field_def))
-            .unwrap_or_else(|rejection| alias_json_schema_rejection(alias, &rejection));
-        let own = (!extract_examples_tokens(&alias.attrs).is_empty()).then(|| {
-            quote! {
-                ::core::option::Option::Some(serde_json::Value::Array(Self::schema_examples()))
-            }
-        });
-        let values = own
-            .or_else(|| republished_json_examples(&surface_field_def(&alias.generics, field_def)));
-        json_schema_methods(
-            export_name,
-            &body,
-            &schema_parameters(&alias.generics, args),
-            values.as_ref(),
-        )
+    if !args.enable.jsonschema {
+        return proc_macro2::TokenStream::new();
     }
-    #[cfg(not(feature = "jsonschema"))]
-    {
-        // Nothing in this build references an alias module's `json_schema()`; the sibling
-        // reference that would (`flatten_field_json_schema_ref`) is itself jsonschema-gated.
-        let _: &_ = &(alias, export_name, field_def, args);
-        quote! {}
-    }
+    let body = build_tuple_element_json_schema(&surface_field_def(&alias.generics, field_def))
+        .unwrap_or_else(|rejection| alias_json_schema_rejection(alias, &rejection));
+    let own = (!extract_examples_tokens(&alias.attrs).is_empty()).then(|| {
+        quote! {
+            ::core::option::Option::Some(serde_json::Value::Array(Self::schema_examples()))
+        }
+    });
+    let values =
+        own.or_else(|| republished_json_examples(&surface_field_def(&alias.generics, field_def)));
+    json_schema_methods(
+        export_name,
+        &body,
+        &schema_parameters(&alias.generics, args),
+        values.as_ref(),
+    )
 }
 
-/// Builds the alias module's `zod_schema()`, or nothing when `zod` is off.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+/// Builds the alias module's `zod_schema()`.
+#[cfg(feature = "zod")]
 fn generate_alias_zod_method(
     alias: &ItemType,
     export_name: &str,
@@ -23814,55 +22705,45 @@ fn generate_alias_zod_method(
     field_def: &FieldDef,
     default_types: &[(syn::Ident, syn::Type)],
 ) -> proc_macro2::TokenStream {
-    #[cfg(feature = "zod")]
-    {
-        // The alias's rendered Zod is its `FieldDef` expression: `z.tuple([...])` for a tuple,
-        // `z.string()` for a scalar, `Name$Schema` for a sibling.
-        let surface = surface_field_def(&alias.generics, field_def);
-        let schema_code = surface.zod_type_deferring_a_later_type();
-        let parameters = type_parameters_in_scope(&alias.generics);
-        let reexport = zod_binding_reexport(rust_ident, export_name, &parameters);
-        let republished = republishes_sibling_binding(&surface);
-        let shows_sibling = shows_sibling_examples(&surface);
-        let body = zod_published_binding(
-            export_name,
-            rust_ident,
-            &parameters,
-            // A check and a `preprocess` on an alias are refused: it has no `impl` to call a
-            // function from, and no read of its own.
-            &PublishedBinding {
-                checks: &[],
-                default_types,
-                preprocess: &[],
-                republished,
-            },
-            "",
-            &schema_code,
-            &reexport,
-        );
-        let has_example = !extract_examples_tokens(&alias.attrs).is_empty();
-        if !has_example && shows_sibling {
-            quote! {
-                pub fn zod_schema() -> ::std::string::String {
-                    #body.to_owned()
-                }
+    // The alias's rendered Zod is its `FieldDef` expression: `z.tuple([...])` for a tuple,
+    // `z.string()` for a scalar, `Name$Schema` for a sibling.
+    let surface = surface_field_def(&alias.generics, field_def);
+    let schema_code = surface.zod_type_deferring_a_later_type();
+    let parameters = type_parameters_in_scope(&alias.generics);
+    let reexport = zod_binding_reexport(rust_ident, export_name, &parameters);
+    let republished = republishes_sibling_binding(&surface);
+    let shows_sibling = shows_sibling_examples(&surface);
+    let body = zod_published_binding(
+        export_name,
+        rust_ident,
+        &parameters,
+        // A check and a `preprocess` on an alias are refused: it has no `impl` to call a
+        // function from, and no read of its own.
+        &PublishedBinding {
+            checks: &[],
+            default_types,
+            preprocess: &[],
+            republished,
+        },
+        "",
+        &schema_code,
+        &reexport,
+    );
+    let has_example = !extract_examples_tokens(&alias.attrs).is_empty();
+    if !has_example && shows_sibling {
+        quote! {
+            pub fn zod_schema() -> ::std::string::String {
+                #body.to_owned()
             }
-        } else {
-            zod_schema_with_examples(
-                &quote! { #body.to_owned() },
-                export_name,
-                &parameters,
-                &reexport,
-                &zod_examples_json(has_example),
-            )
         }
-    }
-    #[cfg(not(feature = "zod"))]
-    {
-        // Without the `zod` feature, `FieldDef::zod_type` does not exist; nothing in
-        // this build has zod enabled, so the schema method would be cfg'd out anyway.
-        let _: &_ = &(alias, export_name, rust_ident, field_def, default_types);
-        quote! {}
+    } else {
+        zod_schema_with_examples(
+            &quote! { #body.to_owned() },
+            export_name,
+            &parameters,
+            &reexport,
+            &zod_examples_json(has_example),
+        )
     }
 }
 

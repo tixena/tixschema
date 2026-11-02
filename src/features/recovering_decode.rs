@@ -14,9 +14,7 @@ mod query;
 use core::iter::once;
 use core::mem::take;
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-use proc_macro2::{Group, Spacing, TokenTree};
-use proc_macro2::{Ident, Literal, Span, TokenStream};
+use proc_macro2::{Group, Ident, Literal, Spacing, Span, TokenStream, TokenTree};
 use quote::{ToTokens as _, format_ident, quote};
 use syn::ext::IdentExt as _;
 use syn::punctuated::Punctuated;
@@ -39,10 +37,8 @@ use crate::field_type::{
     FieldDefType, RESULT_ARMS, get_field_def, is_map_wrapper, is_refused_sequence_wrapper,
     is_sequence_wrapper, is_transparent_wrapper, written_std_result,
 };
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-use crate::model_schema::judged_read::bounded_listed_read;
 use crate::model_schema::judged_read::{
-    HookScope, authored_read_bounds, listed_read, listed_reader,
+    HookScope, authored_read_bounds, bounded_listed_read, listed_read, listed_reader,
 };
 use crate::model_schema::preprocess;
 use crate::model_schema::{helper_name_stem, recovering_bound_check};
@@ -53,19 +49,12 @@ use crate::utils::{
     ident_schema_module_name, to_snake_case, type_parameters_in_scope, written_names, written_type,
 };
 
-#[cfg(all(
-    any(feature = "typescript", feature = "zod", feature = "jsonschema"),
-    not(feature = "mongodb")
-))]
+#[cfg(not(feature = "mongodb"))]
 const ADDED_TYPE_COUNT: usize = 17;
 
-#[cfg(all(
-    any(feature = "typescript", feature = "zod", feature = "jsonschema"),
-    feature = "mongodb"
-))]
+#[cfg(feature = "mongodb")]
 const ADDED_TYPE_COUNT: usize = 40;
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
     #[cfg(feature = "mongodb")]
     "Arm",
@@ -485,8 +474,7 @@ pub struct RecoveringDecode {
     /// What refuses a crate that has not written the support libraries the type re-exports,
     /// written beside the type.
     pub probes: TokenStream,
-    /// The items added to the `{type}_schema` module a schema surface writes, or that module whole
-    /// in a build where none writes one.
+    /// The items added to the type's `{type}_schema` module.
     pub schema_module: TokenStream,
     /// The `impl` holding the entry points and the walkers, or one per source on a type with a
     /// type parameter, and whatever else is written beside the type.
@@ -2364,7 +2352,6 @@ fn read_whole_items(sources: &[Source]) -> TokenStream {
 ///
 /// A schema module reads the author's scope through `use super::*`, which an item of the same
 /// name beside it shadows. `super::` names the author's one whatever the module holds.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 pub fn reading_the_authors_scope(tokens: TokenStream) -> TokenStream {
     let mut scoped: Vec<TokenTree> = Vec::new();
     for token in tokens {
@@ -2402,7 +2389,6 @@ pub fn struct_recovering_decode(item_struct: &ItemStruct, mongodb: bool) -> Reco
 
 /// [`struct_recovering_decode`] of a brand that carries a bound: the read its issues are listed
 /// from refuses a value that breaks the bound.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 pub fn brand_recovering_decode(item_struct: &ItemStruct, mongodb: bool) -> RecoveringDecode {
     listed_from(
         item_struct,
@@ -2549,7 +2535,7 @@ where
     RecoveringDecode {
         check_messages: checks::type_impl(name, generics, &module, &written.check_messages),
         probes: foundation_probes(written.mongodb),
-        schema_module: placed_in_schema_module(&module, &items),
+        schema_module: items,
         type_impl,
     }
 }
@@ -2907,28 +2893,6 @@ fn asked_items() -> TokenStream {
             }
         }
     }
-}
-
-/// What brings the author's scope into a `{type}_schema` module written here: a struct of paths
-/// names the types its author wrote as that author wrote them.
-#[cfg(all(
-    feature = "mongodb",
-    not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
-))]
-fn authors_scope() -> TokenStream {
-    quote! { use super::*; }
-}
-
-/// A build without `mongodb` writes no struct of paths, and its module names nothing of the
-/// author's.
-#[cfg(not(any(
-    feature = "mongodb",
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema"
-)))]
-fn authors_scope() -> TokenStream {
-    TokenStream::new()
 }
 
 /// A loop's binding at `depth`: the plain name at the first level, and a numbered one under it,
@@ -4093,7 +4057,6 @@ fn hooked_leaf(
 }
 
 /// Whether the next token continues a path: the tokens end on `::`.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn follows_a_path_separator(tokens: &[TokenTree]) -> bool {
     let [.., TokenTree::Punct(first), TokenTree::Punct(second)] = tokens else {
         return false;
@@ -4344,24 +4307,6 @@ fn read_as_a_list(ty: &Type) -> Type {
         parse_quote! { ::std::boxed::Box<#ty> }
     } else {
         ty.clone()
-    }
-}
-
-/// `items` as they are emitted: beside what a schema surface writes into `{type}_schema`.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-fn placed_in_schema_module(_module: &Ident, items: &TokenStream) -> TokenStream {
-    items.clone()
-}
-
-/// `items` in a `{type}_schema` module written here, no schema surface writing one in this build.
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-fn placed_in_schema_module(module: &Ident, items: &TokenStream) -> TokenStream {
-    let scope = authors_scope();
-    quote! {
-        pub mod #module {
-            #scope
-            #items
-        }
     }
 }
 

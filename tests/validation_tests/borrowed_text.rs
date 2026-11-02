@@ -1,10 +1,7 @@
 //! A length or a pattern on a borrowed `str` is held by `validate()` as one on a `String` is.
 
 /// One declaration with its string owned and one with it borrowed, under the same bound.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 mod a_bound_on_a_borrowed_str {
     use serde::{Deserialize, Deserializer, Serialize};
     use tixschema::model_schema;
@@ -45,14 +42,14 @@ mod a_bound_on_a_borrowed_str {
         },
     }
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Serialize)]
     pub struct Named<'text> {
         #[model_schema_prop(minLength = 3, maxLength = 8, pattern = "^[a-z]+$")]
         pub name: &'text str,
     }
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Serialize)]
     pub struct NamedOwned {
         #[model_schema_prop(minLength = 3, maxLength = 8, pattern = "^[a-z]+$")]
@@ -191,7 +188,6 @@ mod a_bound_on_a_borrowed_str {
         assert_eq!(NamedOwned::zod_schema().replace("NamedOwned", "Named"), zod);
     }
 
-    #[cfg(feature = "jsonschema")]
     #[test]
     fn the_json_schema_of_a_borrowed_str_is_the_one_a_string_writes() {
         let schema = Named::json_schema();
@@ -281,10 +277,7 @@ mod a_bound_on_a_borrowed_str {
 
 /// An owned member of an untagged enum with a bound and a reader of its author's own: that reader
 /// reads it, and the read holds it to the bound once the value is read, as a borrowed one is.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 mod a_bound_beside_a_reader_of_the_authors_own {
     mod trimmed_text {
         use serde::{Deserializer, Serializer};

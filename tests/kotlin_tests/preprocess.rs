@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
-use super::read::{DECODED, judged, judged_over, kept};
+#[cfg(feature = "serde")]
+use super::read::{DECODED, judged};
+use super::read::{judged_over, kept};
 
 /// The parcel of the documents' sample, under a name of this file's own.
 #[model_schema(preprocess = ["withoutFragile"])]
@@ -102,6 +104,7 @@ fn every_fixture_is_read_through_its_functions_and_written_as_serde_writes_it() 
 /// The type's function is called by `PacketUnjudged`, over the plugin's serializer, and the
 /// label's by `PacketLabelPreprocess`, which the property names and which is written after the
 /// type's two serializers.
+#[cfg(feature = "serde")]
 #[test]
 fn a_type_and_a_member_that_name_a_function_are_read_through_it() {
     assert_eq!(

@@ -1,10 +1,7 @@
 //! A message of `validate()` names a value by its path in the payload: the key serde writes for
 //! each member, the name it writes a variant under, and the index of each item of a list.
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 mod a_message_names_the_path_in_the_payload {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;

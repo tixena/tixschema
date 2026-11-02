@@ -9,7 +9,7 @@ use tixschema::model_schema;
 
 use super::documents::admits;
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Text {
     pub span: Range<usize>,
@@ -17,7 +17,7 @@ pub struct Text {
 }
 
 /// A range of `usize` in an `Option`, a list and a map.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Passages {
     pub keyed: BTreeMap<String, Range<usize>>,

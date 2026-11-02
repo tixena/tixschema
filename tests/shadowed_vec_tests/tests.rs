@@ -20,7 +20,7 @@ pub struct Inner {
     pub number: i32,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Vec {
     pub count: i32,
@@ -52,7 +52,6 @@ fn a_struct_declared_beside_it_builds_reads_and_validates() {
     assert!(Vec::ts_definition().contains("  count: number;"));
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn the_type_itself_is_described() {
     assert_eq!(

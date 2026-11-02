@@ -3,6 +3,6 @@
 //! union enums, TypeScript integration, serde renames, and `ObjectId` support.
 
 #[cfg(test)]
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[path = "zod_tests/tests.rs"]
 mod tests;

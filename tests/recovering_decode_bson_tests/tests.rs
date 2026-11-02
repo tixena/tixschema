@@ -39,7 +39,6 @@ mod generic_holders;
 #[cfg(not(any(
     feature = "typescript",
     feature = "zod",
-    feature = "jsonschema",
     feature = "dart",
     feature = "swift",
     feature = "kotlin"
@@ -354,15 +353,12 @@ struct OwnerId(ObjectId);
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Wrapper(String);
 
-/// A brand whose own reader refuses text shorter than three characters. Only a schema surface
-/// hangs that check, and the declaration is refused in a build with none.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+/// A brand whose own reader refuses text shorter than three characters.
 #[model_schema(enable = ["decode_with", "mongodb"], minLength = 3)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Code(String);
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Coded {
@@ -611,7 +607,7 @@ struct Drawing {
     stroke: Stroke,
 }
 
-/// Untagged, with a member whose own check takes its variant out. Only a schema surface hangs it.
+/// Untagged, with a member whose own check takes its variant out.
 #[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
@@ -1572,26 +1568,18 @@ fn a_constraint_on_a_struct_field_is_the_walkers_to_check() {
         calls += 1;
         hooked_schema::Verdict::Reject
     });
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-    {
-        let refused = read.unwrap_err();
-        assert_eq!(
-            told!(hooked_schema, refused.issues),
-            vec![invalid("name", "String", Bson::String("Lo".to_owned()))]
-        );
-        assert!(
-            refused
-                .to_string()
-                .ends_with("too short: minimum length is 3, got 2"),
-            "got: {refused}"
-        );
-        assert_eq!(calls, 1);
-    }
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    {
-        assert_eq!(read.unwrap().name, "Lo");
-        assert_eq!(calls, 0);
-    }
+    let refused = read.unwrap_err();
+    assert_eq!(
+        told!(hooked_schema, refused.issues),
+        vec![invalid("name", "String", Bson::String("Lo".to_owned()))]
+    );
+    assert!(
+        refused
+            .to_string()
+            .ends_with("too short: minimum length is 3, got 2"),
+        "got: {refused}"
+    );
+    assert_eq!(calls, 1);
 }
 
 #[test]
@@ -2513,7 +2501,6 @@ fn a_transparent_tuple_struct_over_a_model_type_is_read_from_a_document_as_that_
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_constrained_brand_is_refused_with_its_own_message() {
     let read = Coded::from_bson_with(doc! { "code": "ab" }, |_raw, _found| {
@@ -3185,7 +3172,6 @@ fn an_untagged_value_no_variant_reads_is_one_no_variant_with_each_variants_list(
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn an_untagged_enums_constrained_member_is_read_through_its_hook() {
     let stored_row = doc! { "address": "ab" };

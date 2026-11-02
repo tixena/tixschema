@@ -1,35 +1,15 @@
 //! Tests of enums: plain enums and discriminated unions on every surface.
 
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-#[cfg(all(test, feature = "jsonschema", feature = "serde"))]
+#[cfg(all(test, feature = "serde"))]
 use serde_json::Value;
-#[cfg(all(
-    test,
-    any(
-        feature = "typescript",
-        feature = "jsonschema",
-        feature = "zod",
-        feature = "serde"
-    )
-))]
+#[cfg(feature = "serde")]
 use tixschema::model_schema;
 
 // A tagged enum whose tag is written after a serde key this crate has no use for.
-#[cfg(all(
-    test,
-    feature = "serde",
-    any(feature = "typescript", feature = "jsonschema", feature = "zod")
-))]
-#[model_schema()]
+#[cfg(feature = "serde")]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(expecting = "an action", tag = "kind", rename_all = "camelCase")]
 enum ActionTaggedAfterIgnoredKey {
@@ -39,12 +19,8 @@ enum ActionTaggedAfterIgnoredKey {
 
 // The same declaration with nothing for the walk to step over, so the two renderings can be held
 // against each other: an attribute the walk ignores may not change a byte of what is generated.
-#[cfg(all(
-    test,
-    feature = "serde",
-    any(feature = "typescript", feature = "jsonschema", feature = "zod")
-))]
-#[model_schema()]
+#[cfg(feature = "serde")]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 enum ActionTaggedWithNothingIgnored {
@@ -52,7 +28,7 @@ enum ActionTaggedWithNothingIgnored {
     Upload { value: String },
 }
 
-#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "source")]
@@ -63,7 +39,7 @@ enum ActionWithLiteralEnum {
     Upload { value: String },
 }
 
-#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
+#[cfg(feature = "serde")]
 /**
  * Calculated Expression Operator
  *
@@ -99,7 +75,7 @@ pub enum CalculatedExpressionOperator {
     Subtract,
 }
 
-#[cfg(all(test, feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
 pub enum DistributionValidMimeType {
@@ -111,7 +87,7 @@ pub enum DistributionValidMimeType {
     ApplicationPdf,
 }
 
-#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -119,7 +95,7 @@ enum DocumentLiteralValue {
     Document,
 }
 
-#[cfg(all(test, feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MimeType {
@@ -131,11 +107,8 @@ pub enum MimeType {
     ApplicationPdf,
 }
 
-#[cfg(all(
-    test,
-    any(feature = "typescript", feature = "jsonschema", feature = "zod")
-))]
-#[model_schema()]
+#[cfg(feature = "serde")]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "type", rename_all = "camelCase")]
 enum PaymentMethod {
@@ -153,8 +126,8 @@ enum PaymentMethod {
     },
 }
 
-#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
-#[model_schema()]
+#[cfg(feature = "serde")]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
 enum UserStatus {
@@ -164,7 +137,7 @@ enum UserStatus {
     Suspended,
 }
 
-#[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_ts_zod_serde_enums_constructible() {
     let actions = [
@@ -194,7 +167,7 @@ fn test_ts_zod_serde_enums_constructible() {
     assert_eq!(statuses.len(), 4);
 }
 
-#[cfg(all(test, feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_serde_mime_enums_constructible() {
     let distributions = [
@@ -206,10 +179,7 @@ fn test_serde_mime_enums_constructible() {
     assert_eq!(mimes.len(), 2);
 }
 
-#[cfg(all(
-    test,
-    any(feature = "typescript", feature = "jsonschema", feature = "zod")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_payment_method_constructible() {
     let payments = [
@@ -230,7 +200,7 @@ fn test_payment_method_constructible() {
 }
 
 #[test]
-#[cfg(all(feature = "jsonschema", feature = "serde"))]
+#[cfg(feature = "serde")]
 fn test_plain_enum_json_schema() {
     let schema = UserStatus::json_schema();
 
@@ -286,26 +256,7 @@ fn test_plain_enum_variant_reader() {
 }
 
 #[test]
-#[cfg(all(feature = "typescript", not(feature = "serde"), feature = "zod"))]
-fn test_plain_enum_ts_definition_not_serde_style() {
-    let ts_definition = UserStatus::ts_definition();
-
-    assert!(ts_definition.contains("export type UserStatus"));
-    assert!(ts_definition.contains("\"Active\""));
-    assert!(ts_definition.contains("\"Inactive\""));
-    assert!(ts_definition.contains("\"Pending\""));
-    assert!(ts_definition.contains("\"Suspended\""));
-
-    let zod_schema = UserStatus::zod_schema();
-    assert!(zod_schema.contains("export const UserStatus$Schema"));
-    assert!(zod_schema.contains("z.enum([\"Active\", \"Inactive\", \"Pending\", \"Suspended\"])"));
-}
-
-#[test]
-#[cfg(all(
-    any(feature = "typescript", feature = "zod", feature = "jsonschema"),
-    feature = "serde"
-))]
+#[cfg(all(any(feature = "typescript", feature = "zod"), feature = "serde"))]
 fn test_plain_enum_members() {
     let members = UserStatus::enum_members();
     assert_eq!(members.len(), 4);
@@ -315,8 +266,8 @@ fn test_plain_enum_members() {
     assert!(members.contains(&"suspended".to_owned()));
 }
 
+#[cfg(feature = "serde")]
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_discriminated_union_json_schema() {
     let schema = PaymentMethod::json_schema();
 
@@ -334,8 +285,8 @@ fn test_discriminated_union_json_schema() {
     }
 }
 
+#[cfg(feature = "serde")]
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_payment_method_variants_json_schema() {
     let payment_method = PaymentMethod::PayPal {
         email: "test@test.com".to_owned(),
@@ -410,7 +361,7 @@ fn test_tag_written_after_an_ignored_key_reaches_the_zod_schema() {
 }
 
 #[test]
-#[cfg(all(feature = "jsonschema", feature = "serde"))]
+#[cfg(feature = "serde")]
 fn test_tag_written_after_an_ignored_key_reaches_the_json_schema() {
     let schema = ActionTaggedAfterIgnoredKey::json_schema();
     for variant in schema["oneOf"].as_array().unwrap() {

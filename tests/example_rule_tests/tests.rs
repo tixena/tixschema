@@ -48,7 +48,7 @@ use tixschema::model_schema;
 /// use example_rules::Tag;
 /// let _ = Tag { text: "fine".to_string() };
 /// ```
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tag {
     #[model_schema_prop(minLength = 1)]
@@ -89,8 +89,8 @@ fn tested_models(surface: &str, models: &str, case: &str) -> Output {
         .unwrap()
 }
 
-fn assert_the_broken_example_fails_cargo_test(surface: &str) {
-    let run = tested_models(surface, MODELS, "broken");
+fn assert_the_broken_example_fails_cargo_test(surface: &str, models: &str) {
+    let run = tested_models(surface, models, "broken");
     let printed = format!(
         "{}{}",
         String::from_utf8_lossy(&run.stdout),
@@ -115,17 +115,23 @@ fn assert_the_broken_example_fails_cargo_test(surface: &str) {
 
 #[test]
 fn an_example_that_breaks_a_rule_fails_cargo_test_naming_the_type_the_example_and_the_rule() {
-    assert_the_broken_example_fails_cargo_test("zod");
+    assert_the_broken_example_fails_cargo_test("zod", MODELS);
 }
 
 #[test]
-fn the_test_is_written_in_a_build_with_json_schema_and_no_zod() {
-    assert_the_broken_example_fails_cargo_test("jsonschema");
+fn the_test_is_written_for_types_that_list_json_schema_in_a_build_with_no_zod() {
+    assert_the_broken_example_fails_cargo_test(
+        "typescript",
+        &MODELS.replace(
+            "#[model_schema()]",
+            "#[model_schema(enable = [\"jsonschema\"])]",
+        ),
+    );
 }
 
 #[test]
-fn a_build_with_json_schema_and_no_zod_writes_the_examples_keyword_and_the_test() {
-    let run = tested_models("jsonschema", WRITTEN, "written");
+fn a_type_that_lists_json_schema_in_a_build_with_no_zod_writes_the_examples_keyword_and_the_test() {
+    let run = tested_models("typescript", WRITTEN, "written");
     let printed = format!(
         "{}{}",
         String::from_utf8_lossy(&run.stdout),

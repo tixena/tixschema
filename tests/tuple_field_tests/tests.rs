@@ -7,13 +7,13 @@ use tixschema::model_schema;
 
 /// A generated schema module reaches its siblings through the enclosing module, and a function body
 /// is not one, so a type another type references is declared here rather than inside a test.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DocumentId {
     pub id: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct WithSibling {
     pub pair: (DocumentId, String),
@@ -28,7 +28,7 @@ pub enum SlotKind {
 
 /// A map whose key enumerates its members, written in field position and in a tuple slot: the two
 /// hold the same type, so they must describe it the same way.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct EnumKeyedMapSlotRow {
     pub field: HashMap<SlotKind, u32>,
@@ -85,10 +85,9 @@ fn test_string_pair_tuple_field_zod() {
 }
 
 /// JSON Schema renders a fixed-arity array with prefixItems.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_string_pair_tuple_field_json_schema() {
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct Pair {
         pub values: (String, String),
@@ -150,7 +149,6 @@ fn test_sibling_element_tuple_field() {
         "Expected sibling element in TS tuple. Got: {ts}"
     );
 
-    #[cfg(feature = "jsonschema")]
     assert_eq!(
         WithSibling::json_schema()["properties"]["pair"]["prefixItems"][0],
         DocumentId::json_schema()
@@ -256,10 +254,9 @@ fn test_tuple_element_option_null_flavor_zod() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_tuple_element_option_null_flavor_json_schema() {
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct Row {
         pub row: (Option<String>, Vec<isize>, String, Option<String>),
@@ -335,10 +332,9 @@ fn test_tuple_element_option_array_wrap_zod() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_tuple_element_option_array_wrap_json_schema() {
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct Rows {
         pub pair: Vec<(Option<Vec<isize>>, String)>,
@@ -381,10 +377,9 @@ fn test_tuple_element_option_serde_roundtrip() {
     assert_eq!(back, row, "null must deserialize back to None");
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_map_element_tuple_field_json_schema() {
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct MapSlotRow {
         pub counts: HashMap<String, u32>,
@@ -416,7 +411,6 @@ fn test_map_element_tuple_field_json_schema() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_enum_keyed_map_element_tuple_field_json_schema() {
     let schema = EnumKeyedMapSlotRow::json_schema();
@@ -478,10 +472,9 @@ fn test_enum_keyed_map_element_tuple_field_ts_and_zod() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_map_of_siblings_element_tuple_field_json_schema() {
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct SiblingMapSlotRow {
         pub slot: (String, HashMap<String, DocumentId>),
@@ -517,10 +510,9 @@ fn test_map_element_tuple_field_ts_and_zod() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_nested_tuple_element_tuple_field_json_schema() {
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct NestedTupleRow {
         pub inner: (u32, u32),

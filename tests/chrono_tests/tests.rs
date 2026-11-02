@@ -51,21 +51,18 @@ use serde::{Deserialize, Serialize};
 
 use tixschema::model_schema;
 
-#[cfg(feature = "jsonschema")]
 use serde::de::DeserializeOwned;
 
-#[cfg(feature = "jsonschema")]
 use super::documents::admits;
 #[cfg(feature = "serde")]
 use super::untagged_millis_models::{MILLIS_ROWS, MillisNamed, MillisOrFlag, serde_written};
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[cfg(feature = "serde")]
 use super::untagged_millis_models::{MillisLater, MillisMaybe};
 
 /// The epoch milliseconds serde writes for `2024-01-02T03:04:05.678Z` under `as_number`.
-#[cfg(feature = "jsonschema")]
 const MILLIS: i64 = 1_704_164_645_678;
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 struct AllChronoTypes {
@@ -76,7 +73,7 @@ struct AllChronoTypes {
     utc_datetime: DateTime<Utc>,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 struct DateList {
@@ -84,7 +81,7 @@ struct DateList {
     name: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 struct DateMap {
@@ -102,7 +99,7 @@ enum ScheduleSlot {
     Opening,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 struct SlotSchedule {
@@ -112,7 +109,7 @@ struct SlotSchedule {
 
 // A String-keyed map has no key list to enumerate, so one `additionalProperties` schema stands for
 // every member — and it is the value type's own rendering, arrayed and nullable as the value is.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 struct ChronoValueMaps {
@@ -126,7 +123,7 @@ struct ChronoValueMaps {
 
 // A chrono value keeps the rendering it has in field position however deep the map nesting goes:
 // the depth belongs to the map, never to the value type.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 struct NestedChronoMaps {
@@ -135,7 +132,7 @@ struct NestedChronoMaps {
     window_batches: HashMap<String, Vec<HashMap<String, NaiveTime>>>,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 struct EventWithDate {
@@ -145,7 +142,7 @@ struct EventWithDate {
 
 // Test enum with DateTime variant (the original use case!). The content key is named because every
 // variant here wraps a scalar, and serde refuses to write one beside a bare tag.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "type", content = "value")]
 pub enum FixedValue {
@@ -158,7 +155,7 @@ pub enum FixedValue {
     Time(NaiveTime),
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 struct LocalEvent {
@@ -182,7 +179,7 @@ struct OptionalTimestamp {
     updated_at: Option<DateTime<Utc>>,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 struct Schedule {
@@ -190,7 +187,7 @@ struct Schedule {
     task: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 struct TimestampedRecord {
@@ -198,7 +195,7 @@ struct TimestampedRecord {
     id: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Sample {
@@ -208,7 +205,7 @@ struct Sample {
     start_time: NaiveTime,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "type", content = "value")]
 pub enum DynamicValue {
@@ -225,8 +222,7 @@ struct CustomEpochHook {
 }
 
 /// A date under `as_number` in an `Option`, which drops its key, and in a `nullable` one.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 struct HeldMillis {
     #[model_schema_prop(as_number)]
@@ -237,8 +233,7 @@ struct HeldMillis {
 }
 
 /// A date under `as_number` in a named member of a variant.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 enum MillisEvent {
     Logged {
@@ -248,8 +243,7 @@ enum MillisEvent {
 }
 
 /// A date under `as_number` in a slot of a tuple struct.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 struct MillisPair(#[model_schema_prop(as_number)] DateTime<Utc>, u8);
 
@@ -600,7 +594,6 @@ fn test_hashmap_datetime_zod() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_naive_date_json_schema() {
     let schema = EventWithDate::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -610,7 +603,6 @@ fn test_naive_date_json_schema() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_naive_time_json_schema() {
     let schema = Schedule::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -618,7 +610,6 @@ fn test_naive_time_json_schema() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_naive_datetime_json_schema() {
     let schema = LocalEvent::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -626,7 +617,6 @@ fn test_naive_datetime_json_schema() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_datetime_utc_json_schema() {
     let schema = TimestampedRecord::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -636,7 +626,6 @@ fn test_datetime_utc_json_schema() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_vec_date_json_schema() {
     let schema = DateList::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -647,7 +636,6 @@ fn test_vec_date_json_schema() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_enum_keyed_chrono_map_json_schema() {
     let schema = SlotSchedule::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -673,7 +661,6 @@ fn test_enum_keyed_chrono_map_json_schema() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_string_keyed_chrono_map_json_schema() {
     let schema = ChronoValueMaps::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -717,7 +704,6 @@ fn test_string_keyed_chrono_map_json_schema() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_nested_string_keyed_chrono_map_json_schema() {
     let schema = NestedChronoMaps::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -954,7 +940,6 @@ fn as_number_holds_back_where_the_author_wrote_their_own_hook() {
 
 /// The JSON Schema of a `NaiveTime`: the text serde writes, its seconds written, whole. No
 /// `format` names it: RFC 3339's `time` holds a zone, which serde refuses.
-#[cfg(feature = "jsonschema")]
 fn time_schema() -> serde_json::Value {
     serde_json::json!({
         "type": "string",
@@ -964,7 +949,6 @@ fn time_schema() -> serde_json::Value {
 
 /// The JSON Schema of a `NaiveDateTime`: the text serde writes, whole. No `format` names it:
 /// RFC 3339's `date-time` holds a zone, which serde refuses.
-#[cfg(feature = "jsonschema")]
 fn date_time_schema() -> serde_json::Value {
     serde_json::json!({
         "type": "string",
@@ -980,7 +964,6 @@ fn date_time_schema() -> serde_json::Value {
 
 /// The JSON Schema of `T` admits what serde writes of `value`, a date under `as_number` among it,
 /// and refuses the payload with that date's text in place of its number, which serde refuses.
-#[cfg(feature = "jsonschema")]
 fn held_to_the_millis_serde_writes<T>(value: &T, document: &serde_json::Value)
 where
     T: Serialize + DeserializeOwned,
@@ -1006,7 +989,6 @@ where
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn a_date_under_as_number_is_described_as_the_integer_serde_writes() {
     let at = DateTime::from_timestamp_millis(MILLIS).unwrap();
     let start_time = NaiveTime::from_hms_opt(0, 0, 0).unwrap();
@@ -1041,7 +1023,6 @@ fn a_date_under_as_number_is_described_as_the_integer_serde_writes() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn a_date_with_no_as_number_keeps_its_date_time_format() {
     let properties = &Sample::json_schema()["properties"];
     assert_eq!(
@@ -1057,7 +1038,6 @@ fn a_date_with_no_as_number_keeps_its_date_time_format() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn the_json_schema_of_each_chrono_type_admits_what_serde_writes_and_refuses_a_zone_it_refuses() {
     let date = NaiveDate::from_ymd_opt(2024, 1, 5).unwrap();
     let time = NaiveTime::from_hms_milli_opt(10, 20, 30, 125).unwrap();
@@ -1135,7 +1115,7 @@ fn an_untagged_member_under_as_number_crosses_the_wire_as_epoch_milliseconds() {
 
 /// The JSON Schema of each enum of [`MILLIS_ROWS`] admits each payload serde reads, and refuses
 /// each one it refuses.
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[cfg(feature = "serde")]
 #[test]
 fn the_json_schema_of_an_untagged_member_under_as_number_admits_what_serde_reads() {
     for (read_as, json, written, _) in MILLIS_ROWS {

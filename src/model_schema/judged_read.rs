@@ -35,16 +35,11 @@ use crate::features::model_schema_prop::FunctionName;
 use crate::features::serde::NAMED_READ_HOOK_PREFIX;
 #[cfg(feature = "serde")]
 use crate::features::serde::has_serde_read_hook;
-#[cfg(all(
-    feature = "serde",
-    not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
-))]
-use crate::features::serde::has_serde_transparent;
 #[cfg(feature = "serde")]
 use crate::features::serde::parse_serde_key_omission;
 use crate::features::serde::read_bounds::{ReadBounds, read_bounds, written_lifetimes};
 use crate::features::serde::{
-    derives_deserialize, derives_serialize, has_serde_default, read_hook, serde_conversion,
+    derive_reads_a_default, derives_deserialize, derives_serialize, read_hook, serde_conversion,
 };
 use crate::field_type::is_ownership_wrapper;
 #[cfg(feature = "serde")]
@@ -69,7 +64,6 @@ const HELD: &str = "Unjudged";
 /// What a brand's own bound answers of a value, the checks the brand names apart. A member of an
 /// untagged enum that holds the brand is held to it as it is read, so the bound chooses the
 /// variant, and so is the value a recovering read lists the brand from.
-#[cfg(feature = "serde")]
 pub const BOUND_ALONE: &str = "model_schema_validate_bound";
 
 /// The name of the trait that answers [`BOUND_ALONE`] for a type that carries no such bound.
@@ -144,6 +138,9 @@ struct HookLeaf {
 struct MemberHook {
     /// The member's value, built back from `held_0`, what `read_as` was read into.
     back: String,
+    /// The member's `#[cfg(...)]` attributes, written on its hook so a build without the member
+    /// has no hook naming its type.
+    cfgs: String,
     /// Whether the member's read chooses the variant of an untagged enum.
     choosing: bool,
     /// Whether a missing key is read as the member's default, as it is with no hook.
@@ -315,6 +312,7 @@ impl MemberHook {
         scope: &HookScope,
     ) -> Option<TokenStream> {
         let name = corrects.hook_name(&self.name);
+        let cfgs = self.cfgs.parse::<TokenStream>().unwrap_or_default();
         let HookWritten {
             back,
             leaves,
@@ -336,6 +334,7 @@ impl MemberHook {
             .of_member(self.variant.as_deref(), self.index);
         if functions.is_empty() {
             return Some(quote! {
+                #cfgs
                 fn #name<'de, #(#parameters,)* #reader>(deserializer: #reader) -> ::core::result::Result<#ty, #reader::Error>
                 where
                     #reader: serde::Deserializer<'de>,
@@ -351,6 +350,7 @@ impl MemberHook {
         let correction = corrects.statements(functions);
         let told = told_by(reader);
         Some(quote! {
+            #cfgs
             fn #name<'de, #(#parameters,)* #reader>(#deserializer: #reader) -> ::core::result::Result<#ty, #reader::Error>
             where
                 #reader: serde::Deserializer<'de>,
@@ -1284,12 +1284,18 @@ pub(super) fn hook_member(field: &Field, shape: &super::HeldShape, place: &HookP
     // serde reads the absent key of an alias of an `Option` as `None`, where no hook is hung.
     let defaulted = place.written_under_a_key
         && !place.container_defaulted
-        && (needs_injected_default(&shape.wraps, has_serde_default(&field.attrs))
-            || (!has_serde_default(&field.attrs)
+        && (needs_injected_default(&shape.wraps, derive_reads_a_default(&field.attrs))
+            || (!derive_reads_a_default(&field.attrs)
                 && get_field_def("_held", &field.ty, "").stands_for_an_option()));
     MEMBER_HOOKS.with(|held| {
         held.borrow_mut().push(MemberHook {
             back: read.back.to_string(),
+            cfgs: field
+                .attrs
+                .iter()
+                .filter(|attr| attr.path().is_ident("cfg"))
+                .map(|attr| attr.to_token_stream().to_string())
+                .collect(),
             choosing: place.choosing,
             defaulted,
             index: place.index,
@@ -1811,7 +1817,7 @@ fn hooked(
     corrects: &Corrects,
 ) -> Hooked {
     let mut hooked = unjudged_hooks(input, bounds, unjudged, reader, written, corrects);
-    let container_defaulted = has_serde_default(&input.attrs);
+    let container_defaulted = derive_reads_a_default(&input.attrs);
     for (variant, index, field) in members_of(input) {
         let functions = corrects.named.of_member(variant.as_deref(), index);
         let taken = hooked
@@ -1834,7 +1840,7 @@ fn hooked(
         // A hook the copy keeps brings the `default` it was hung with.
         let defaulted = !chained
             && !container_defaulted
-            && !has_serde_default(&field.attrs)
+            && !derive_reads_a_default(&field.attrs)
             && reads_a_missing_key(field);
         hooked.functions.extend(corrected_hook(
             field, &named, functions, reader, written, corrects,
@@ -2110,14 +2116,10 @@ pub fn of_enum(item: &mut ItemEnum, publishes_validate: bool) -> TokenStream {
     }
 }
 
-/// `decode_with_read_unjudged`, the read the recovering decode of `input` lists from, where a
-/// schema surface is on: the type's own unjudged read where it publishes `validate()`, and
-/// serde's where it publishes none. Every holder of a model publishes `validate()` there, so that
-/// read holds nothing judged.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+/// `decode_with_read_unjudged`, the read the recovering decode of `input` lists from: the type's
+/// own unjudged read where it publishes `validate()`, and serde's where it publishes none. Every
+/// holder of a model publishes `validate()`, so that read holds nothing judged.
+#[cfg(feature = "serde")]
 pub fn listed_read(input: &DeriveInput) -> TokenStream {
     delegated_listed_read(input, false)
 }
@@ -2125,49 +2127,9 @@ pub fn listed_read(input: &DeriveInput) -> TokenStream {
 /// [`listed_read`] of a brand that carries a bound, which no walk lists: the brand's unjudged
 /// read, refused where [`BOUND_ALONE`] answers a violation of the value read. The checks the
 /// brand names are listed beside it, from the value this read answers.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 pub fn bounded_listed_read(input: &DeriveInput) -> TokenStream {
     delegated_listed_read(input, true)
-}
-
-/// `decode_with_read_unjudged`, the read the recovering decode of `input` lists from, in a build
-/// with no schema surface. A holder that names no check publishes no `validate()` there, and its
-/// own read judges the models it holds: so the item's members are read here, on a copy of the
-/// item, with every model below read through its own `decode_with_read_unjudged`.
-#[cfg(all(
-    feature = "serde",
-    not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
-))]
-pub fn listed_read(input: &DeriveInput) -> TokenStream {
-    let own_members = deserialize_derive(&input.attrs)
-        .filter(|_| serde_conversion(&input.attrs).is_none() && !is_a_brand(input));
-    let Some(derive) = own_members else {
-        return delegated_listed_read(input, false);
-    };
-    let unjudged = Ident::new(LISTED_READ, Span::call_site());
-    unjudged_read(
-        input,
-        &derive,
-        &unjudged,
-        " The read alone, with every model below read unjudged, for the recovering read to list \
-         from.",
-        // The recovering read's own `impl` asks what serde's derive asks to read the type.
-        true,
-    )
-    .0
-}
-
-/// Whether serde writes the item as the value of one of its fields, which a read of its own
-/// holds to its bound.
-#[cfg(all(
-    feature = "serde",
-    not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
-))]
-fn is_a_brand(input: &DeriveInput) -> bool {
-    has_serde_transparent(&input.attrs)
 }
 
 /// `decode_with_read_unjudged` of a type whose own unjudged read is the one to list from, refused
@@ -2227,14 +2189,10 @@ fn delegated_listed_read(input: &DeriveInput, bounded: bool) -> TokenStream {
 }
 
 /// The name of the read the recovering decode lists from: a type's unjudged read, which reads
-/// what it holds unjudged wherever a schema surface is on.
+/// what it holds unjudged.
 #[cfg(feature = "serde")]
 fn listed() -> Ident {
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-    let named = UNJUDGED_READ;
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    let named = LISTED_READ;
-    Ident::new(named, Span::call_site())
+    Ident::new(UNJUDGED_READ, Span::call_site())
 }
 
 /// A function that reads a `ty` with every model it holds read unjudged, for the recovering

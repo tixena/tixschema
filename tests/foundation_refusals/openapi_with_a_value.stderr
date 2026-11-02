@@ -1,0 +1,13 @@
+error: service_schema: `openapi` takes no value
+              write `openapi`, or `openapi(title = "...", path = "...")`
+  --> tests/foundation_refusals/openapi_with_a_value.rs:21:46
+   |
+21 | #[service_schema(transports = ["http_rest"], openapi = true)]
+   |                                              ^^^^^^^
+
+error: service_schema: `openapi` takes no value
+              write `openapi`, or `openapi(title = "...", path = "...")`
+  --> tests/foundation_refusals/openapi_with_a_value.rs:26:46
+   |
+26 | #[service_schema(transports = ["http_rest"], openapi = "/openapi.json")]
+   |                                              ^^^^^^^

@@ -6,17 +6,17 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 /// The entry's second module as the README writes it.
-const README_DECLARATION: &str = "pub mod record {
+const README_DECLARATION: &str = r#"pub mod record {
     use crate::version::{Version, version_schema};
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Serialize)]
     pub struct Record {
         pub versions: Vec<Version>,
     }
-}";
+}"#;
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Record {
     pub versions: Vec<Version>,

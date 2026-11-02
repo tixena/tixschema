@@ -16,7 +16,7 @@ enum AdjacentBalanceError {
 
 /// The canonical error type of a service: every variant a unit, the whole enum tagged by the key
 /// callers narrow on.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "kebab-case", tag = "errorCode")]
 enum BalanceError {
@@ -26,7 +26,7 @@ enum BalanceError {
 
 /// The same variants with no tagging key named. Serde writes the bare variant name for this one,
 /// which is the string union that stays a string union.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 enum ExternalBalanceError {
@@ -191,7 +191,6 @@ fn an_all_unit_enum_naming_no_tag_still_publishes_a_zod_enum() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn the_json_schema_describes_the_bytes_serde_writes() {
     let schema = BalanceError::json_schema();
@@ -223,7 +222,6 @@ fn the_json_schema_describes_the_bytes_serde_writes() {
     }
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn an_all_unit_enum_naming_no_tag_still_publishes_a_string_schema() {
     let schema = ExternalBalanceError::json_schema();

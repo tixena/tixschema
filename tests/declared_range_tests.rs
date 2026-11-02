@@ -2,12 +2,7 @@
 //! it, keeps its own description on every surface: a field written with the name is that type. A
 //! binary of its own: the name is read off a registry the whole crate shares.
 
-#![cfg(all(
-    feature = "serde",
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema"
-))]
+#![cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 
 #[cfg(test)]
 mod tests {
@@ -18,7 +13,7 @@ mod tests {
     use tixschema::model_schema;
 
     /// The crate's own type named `Range`.
-    #[model_schema(default_types(Bound = u32))]
+    #[model_schema(default_types(Bound = u32), enable = ["jsonschema"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Range<Bound> {
         pub high: Bound,
@@ -26,7 +21,7 @@ mod tests {
     }
 
     /// A field written with the crate's own `Range`.
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Shelved {
         pub span: Range<u32>,

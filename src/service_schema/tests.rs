@@ -7,13 +7,13 @@
 #![cfg(feature = "serde")]
 
 use super::parse::{
-    BodyKind, HttpMethod, OperationDef, OperationInputs, OperationOutcome, PathSegment, ServiceDef,
-    parse_service,
+    BodyKind, HttpMethod, HttpShape, OperationDef, OperationInputs, OperationOutcome, PathSegment,
+    ServiceDef, parse_service,
 };
-use super::transport::Transport;
+use super::transport::{Transport, parse_arguments};
 use super::{
-    emitted_trait, exec_service_schema, multipart_envelope_refusal, reserved_header_out_refusal,
-    stream_envelope_refusal,
+    emitted_trait, exec_service_schema, multipart_envelope_refusal, openapi_path_refusal,
+    openapi_transport_refusal, reserved_header_out_refusal, stream_envelope_refusal,
 };
 use crate::model_schema::exec_model_schema;
 use crate::model_schema::ranges::any_json_check;
@@ -200,6 +200,28 @@ const RESERVED_ERROR_HEADER_SERVICE: &str = r#"
             error_header_out("is_error"),
         ))]
         async fn pong(&self, ctx: &Ctx) -> Result<String, (PongError, bool)>;
+    }
+"#;
+
+/// A service with an operation of its own at `GET /openapi.json`, where `openapi` answers its
+/// document unless `path` names another.
+const GET_AT_OPENAPI_PATH_SERVICE: &str = r#"
+    pub trait CatalogService<Ctx> {
+        #[service_schema_op(http(method = "GET", path = "/openapi.json"))]
+        async fn describe(&self, ctx: &Ctx) -> Result<CatalogDescription, CatalogError>;
+    }
+"#;
+
+/// A service whose one operation answers `GET` at a placeholder directly under the root, which
+/// covers every one-segment path, `/openapi.json` among them.
+const GET_AT_A_ROOT_PLACEHOLDER_SERVICE: &str = r#"
+    pub trait DocumentService<Ctx> {
+        #[service_schema_op(http(method = "GET", path = "/{document_id}"))]
+        async fn get_document(
+            &self,
+            ctx: &Ctx,
+            document_id: String,
+        ) -> Result<Document, DocumentError>;
     }
 "#;
 
@@ -1165,7 +1187,7 @@ fn a_json_value_among_several_arguments_is_refused_by_the_message_declared_from_
     }";
     assert_eq!(spanned_refusals(source), []);
     let mut message: syn::ItemStruct =
-        syn::parse2(super::messages::emit(&service(source), false)).unwrap();
+        syn::parse2(super::messages::emit(&service(source), false, false)).unwrap();
     message.attrs.retain(|attribute| {
         attribute
             .path()
@@ -4016,4 +4038,290 @@ fn a_header_argument_is_held_in_a_local_of_its_own_on_every_transport() {
             "the dispatcher hands the handler its own local. Got: {over}"
         );
     }
+}
+
+/// Attribute arguments carrying file locations, so a refusal's span reads back as the text it
+/// points at.
+fn written_arguments(args: &str) -> TokenStream {
+    syn::parse_str(args).unwrap()
+}
+
+/// What `openapi_path_refusal` answers for `source` declared under `args`.
+fn openapi_path_refused(source: &str, args: &str) -> Option<syn::Error> {
+    let wanted = parse_arguments(written_arguments(args)).unwrap();
+    openapi_path_refusal(&service(source), wanted.openapi.as_ref())
+}
+
+/// Each struct and enum of `items`, inline modules walked into, named beside the `model_schema`
+/// attribute it carries.
+fn model_schema_attributes(items: &[syn::Item]) -> Vec<(String, String)> {
+    items
+        .iter()
+        .flat_map(|item| {
+            let (named, attributes) = if let syn::Item::Struct(declared) = item {
+                (&declared.ident, &declared.attrs)
+            } else if let syn::Item::Enum(declared) = item {
+                (&declared.ident, &declared.attrs)
+            } else if let syn::Item::Mod(module) = item
+                && let Some((_, inner)) = &module.content
+            {
+                return model_schema_attributes(inner);
+            } else {
+                return Vec::new();
+            };
+            attributes
+                .iter()
+                .filter(|attribute| {
+                    attribute
+                        .path()
+                        .segments
+                        .last()
+                        .is_some_and(|last| last.ident == "model_schema")
+                })
+                .map(|attribute| (named.to_string(), attribute.to_token_stream().to_string()))
+                .collect()
+        })
+        .collect()
+}
+
+fn generated_model_schema_attributes(args: TokenStream) -> Vec<(String, String)> {
+    let expansion = exec_service_schema(args, declared(INVOICE_SERVICE).to_token_stream());
+    let file: syn::File = syn::parse2(expansion).unwrap();
+    model_schema_attributes(&file.items)
+}
+
+#[test]
+fn openapi_without_http_rest_names_the_transport_it_describes() {
+    let wanted =
+        parse_arguments(written_arguments(r#"transports = ["amqp_rpc"], openapi"#)).unwrap();
+    let refused = openapi_transport_refusal(&wanted).unwrap();
+    assert_eq!(
+        refused.to_string(),
+        "service_schema: `openapi` describes the `http_rest` transport, and this service does not \
+         ask for it\n       \
+         add \"http_rest\" to `transports`, or remove `openapi`"
+    );
+    assert_eq!(refused.span().source_text().as_deref(), Some("openapi"));
+}
+
+#[test]
+fn openapi_beside_http_rest_is_not_refused_for_its_transport() {
+    for args in [
+        r#"transports = ["http_rest"], openapi"#,
+        r#"openapi, transports = ["amqp_rpc", "http_rest"]"#,
+    ] {
+        let wanted = parse_arguments(written_arguments(args)).unwrap();
+        assert!(openapi_transport_refusal(&wanted).is_none(), "for {args}");
+    }
+}
+
+#[test]
+fn openapi_written_before_transports_is_accepted() {
+    let expanded = exec_service_schema(
+        quote! { openapi, transports = ["http_rest"] },
+        declared(INVOICE_SERVICE).to_token_stream(),
+    )
+    .to_string();
+    assert!(!expanded.contains("compile_error"), "got: {expanded}");
+}
+
+#[test]
+fn a_service_that_does_not_ask_for_openapi_is_not_refused_for_it() {
+    let wanted = parse_arguments(written_arguments(r#"transports = ["amqp_rpc"]"#)).unwrap();
+    assert!(openapi_transport_refusal(&wanted).is_none());
+    assert!(
+        openapi_path_refused(GET_AT_OPENAPI_PATH_SERVICE, r#"transports = ["http_rest"]"#)
+            .is_none()
+    );
+}
+
+#[test]
+fn the_default_openapi_path_an_operation_answers_with_get_is_refused_on_openapi() {
+    let refused = openapi_path_refused(
+        GET_AT_OPENAPI_PATH_SERVICE,
+        r#"transports = ["http_rest"], openapi"#,
+    )
+    .unwrap();
+    assert_eq!(
+        refused.to_string(),
+        "service_schema: operation `describe` already answers `GET /openapi.json`, so the OpenAPI \
+         document cannot be served there\n       \
+         write another `path` in `openapi(...)`"
+    );
+    assert_eq!(refused.span().source_text().as_deref(), Some("openapi"));
+}
+
+/// `GET` at `template`, its placeholders drawn from the optional arguments `id` and `name`, either
+/// of which it may leave unbound.
+fn get_at(template: &str) -> HttpShape {
+    let source = format!(
+        r#"pub trait CatalogService<Ctx> {{
+            #[service_schema_op(http(method = "GET", path = "{template}"))]
+            async fn describe(
+                &self,
+                ctx: &Ctx,
+                id: Option<String>,
+                name: Option<String>,
+            ) -> Result<CatalogDescription, CatalogError>;
+        }}"#
+    );
+    HttpShape::of(&service(&source).operations[0])
+}
+
+#[test]
+fn a_template_answers_a_path_its_literals_and_placeholders_cover() {
+    for (template, path) in [
+        ("/{id}", "/openapi.json"),
+        ("/openapi.json", "/openapi.json"),
+        ("/v1/{name}", "/v1/openapi.json"),
+    ] {
+        assert!(
+            get_at(template).answers_path(path),
+            "`{template}` answers `{path}`"
+        );
+    }
+}
+
+#[test]
+fn a_template_does_not_answer_a_path_a_literal_or_an_empty_capture_refuses() {
+    for (template, path) in [
+        ("/documents/{id}", "/openapi.json"),
+        ("/{id}/raw", "/openapi.json"),
+        ("/{id}", "/"),
+    ] {
+        assert!(
+            !get_at(template).answers_path(path),
+            "`{template}` does not answer `{path}`"
+        );
+    }
+}
+
+#[test]
+fn a_get_placeholder_that_covers_the_default_openapi_path_is_refused_on_openapi() {
+    let refused = openapi_path_refused(
+        GET_AT_A_ROOT_PLACEHOLDER_SERVICE,
+        r#"transports = ["http_rest"], openapi"#,
+    )
+    .unwrap();
+    assert_eq!(
+        refused.to_string(),
+        "service_schema: operation `get_document` already answers `GET /openapi.json`, so the \
+         OpenAPI document cannot be served there\n       \
+         write another `path` in `openapi(...)`"
+    );
+    assert_eq!(refused.span().source_text().as_deref(), Some("openapi"));
+}
+
+#[test]
+fn a_get_placeholder_that_covers_a_written_openapi_path_is_refused_on_the_literal() {
+    let source = GET_AT_A_ROOT_PLACEHOLDER_SERVICE.replace("/{document_id}", "/v1/{document_id}");
+    let refused = openapi_path_refused(
+        &source,
+        r#"transports = ["http_rest"], openapi(path = "/v1/openapi.json")"#,
+    )
+    .unwrap();
+    assert_eq!(
+        refused.to_string(),
+        "service_schema: operation `get_document` already answers `GET /v1/openapi.json`, so the \
+         OpenAPI document cannot be served there\n       \
+         write another `path` in `openapi(...)`"
+    );
+    assert_eq!(
+        refused.span().source_text().as_deref(),
+        Some("\"/v1/openapi.json\"")
+    );
+}
+
+#[test]
+fn a_get_placeholder_under_another_literal_is_accepted() {
+    let source =
+        GET_AT_A_ROOT_PLACEHOLDER_SERVICE.replace("/{document_id}", "/documents/{document_id}");
+    assert!(openapi_path_refused(&source, r#"transports = ["http_rest"], openapi"#).is_none());
+}
+
+#[test]
+fn a_post_at_a_placeholder_that_covers_the_openapi_path_is_accepted() {
+    let source =
+        GET_AT_A_ROOT_PLACEHOLDER_SERVICE.replace(r#"method = "GET""#, r#"method = "POST""#);
+    assert!(openapi_path_refused(&source, r#"transports = ["http_rest"], openapi"#).is_none());
+}
+
+#[test]
+fn a_written_openapi_path_an_operation_answers_with_get_is_refused_on_the_literal() {
+    let source = GET_AT_OPENAPI_PATH_SERVICE.replace("/openapi.json", "/v1/openapi.json");
+    let refused = openapi_path_refused(
+        &source,
+        r#"transports = ["http_rest"], openapi(path = "/v1/openapi.json")"#,
+    )
+    .unwrap();
+    assert_eq!(
+        refused.to_string(),
+        "service_schema: operation `describe` already answers `GET /v1/openapi.json`, so the \
+         OpenAPI document cannot be served there\n       \
+         write another `path` in `openapi(...)`"
+    );
+    assert_eq!(
+        refused.span().source_text().as_deref(),
+        Some("\"/v1/openapi.json\"")
+    );
+}
+
+#[test]
+fn another_openapi_path_than_the_one_an_operation_answers_with_get_is_accepted() {
+    assert!(
+        openapi_path_refused(
+            GET_AT_OPENAPI_PATH_SERVICE,
+            r#"transports = ["http_rest"], openapi(path = "/v1/openapi.json")"#,
+        )
+        .is_none()
+    );
+}
+
+#[test]
+fn a_post_at_the_openapi_path_is_accepted() {
+    let source = GET_AT_OPENAPI_PATH_SERVICE.replace(r#"method = "GET""#, r#"method = "POST""#);
+    assert!(openapi_path_refused(&source, r#"transports = ["http_rest"], openapi"#).is_none());
+}
+
+/// An operation that names no `http(...)` group is answered at `POST /{wire-name}`.
+#[test]
+fn an_operation_at_the_default_route_of_its_name_is_accepted() {
+    let source = "pub trait CatalogService<Ctx> {
+        async fn openapi_json(&self, ctx: &Ctx) -> Result<CatalogDescription, CatalogError>;
+    }";
+    assert!(
+        openapi_path_refused(
+            source,
+            r#"transports = ["http_rest"], openapi(path = "/openapi-json")"#
+        )
+        .is_none()
+    );
+}
+
+#[test]
+fn openapi_gives_every_generated_type_the_jsonschema_entry() {
+    let entry = r#"# [:: tixschema :: model_schema (enable = ["jsonschema"])]"#;
+    assert_eq!(
+        generated_model_schema_attributes(quote! { transports = ["http_rest"], openapi }),
+        [
+            ("VoidInvoiceRequest", entry),
+            ("BillingServiceFaultKind", entry),
+            ("BillingServiceFaultFields", entry),
+        ]
+        .map(|(named, attribute)| (named.to_owned(), attribute.to_owned()))
+    );
+}
+
+#[test]
+fn without_openapi_no_generated_type_lists_an_entry() {
+    let bare = "# [:: tixschema :: model_schema ()]";
+    assert_eq!(
+        generated_model_schema_attributes(quote! { transports = ["http_rest"] }),
+        [
+            ("VoidInvoiceRequest", bare),
+            ("BillingServiceFaultKind", bare),
+            ("BillingServiceFaultFields", bare),
+        ]
+        .map(|(named, attribute)| (named.to_owned(), attribute.to_owned()))
+    );
 }

@@ -7,26 +7,24 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use tixschema::model_schema;
 
-#[cfg(all(feature = "jsonschema", feature = "mongodb"))]
+#[cfg(feature = "mongodb")]
 use mongodb::bson::oid::ObjectId;
 
 /// The members of `StringArrayUnion`, in the order the union declares them.
-#[cfg(feature = "jsonschema")]
 const STRING_ARRAY_MEMBERS: [&str; 3] = ["rows", "slugs", "tags"];
 
 /// The members of `WrappedUnion`, in the order the union declares them.
-#[cfg(any(feature = "jsonschema", feature = "typescript", feature = "zod"))]
 const WRAPPED_MEMBERS: [&str; 3] = ["ids", "ordered", "queued"];
 
 // ISO-8601 date string. Branded newtype carries the regex pattern, written with `\d` and reaching
 // every surface as the members it stands for.
-#[model_schema(pattern = r"^\d{4}-\d{2}-\d{2}$")]
+#[model_schema(pattern = r"^\d{4}-\d{2}-\d{2}$", enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct DateString(pub String);
 
 // The migration target: an entry whose flattened variant carries `Vec<DateValue>`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct DataElementSampleValueEntry {
@@ -35,7 +33,7 @@ struct DataElementSampleValueEntry {
     variant: DataElementSampleValueVariant,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "dataType")]
 enum DataElementSampleValueVariant {
@@ -46,7 +44,7 @@ enum DataElementSampleValueVariant {
 }
 
 // A date sample value: an ISO date string OR an epoch number (TupleSingle members).
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 enum DateValue {
@@ -54,7 +52,7 @@ enum DateValue {
     S(DateString),
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 enum NamedUnion {
@@ -64,7 +62,7 @@ enum NamedUnion {
 
 // A struct variant's own `rename_all` cases its fields — distinct from the enum's own `rename_all`,
 // which cases variant names, never fields.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 enum RenameAllUnion {
@@ -98,7 +96,7 @@ enum RenamedIdentifierUnion {
 
 // Untagged enum whose struct variant carries an `Option` that keeps `None` off the wire, matching
 // the absent form the union member renders.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 enum CompliantUnion {
@@ -125,7 +123,7 @@ enum JsonValueUnion {
 
 // An untagged newtype variant's content has no key to drop: it is the whole serialized value, so
 // a `None` there reaches the wire as a bare `null`. The non-`Option` member beside it carries none.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 enum SlotUnion {
@@ -142,7 +140,7 @@ enum Bucket {
 }
 
 // The map keys a variant's member may carry: one the registry enumerates, one open by nature.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 enum KeyedUnion {
@@ -161,7 +159,7 @@ enum LabelBagUnion {
 }
 
 // A self-naming map member keyed by a type that enumerates its members.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 enum BucketTreeUnion {
@@ -228,7 +226,7 @@ enum BucketBagUnion {
 
 // A tuple written in an untagged member. Serde writes it as the fixed-arity array a tuple field
 // writes, so the member has to describe as that field does.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 enum ShapedUnion {
@@ -237,7 +235,7 @@ enum ShapedUnion {
 
 // The std wrappers serde writes as a JSON array of their element, written in untagged members: each
 // describes as the `Vec` of the same element does, not as a schema module named after the wrapper.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 enum WrappedUnion {
@@ -247,7 +245,7 @@ enum WrappedUnion {
 }
 
 // A `String` under array levels, written in untagged members: bare, bounded, and nested.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 enum StringArrayUnion {
@@ -265,23 +263,20 @@ enum StringArrayUnion {
 
 // The field-position twins: the same members written as struct fields. Field position is the
 // rendering an untagged member is held against, so it is written out rather than restated.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct KeyedFields {
     counts: HashMap<Bucket, u32>,
     labels: HashMap<String, String>,
 }
 
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ShapedFields {
     pair: (isize, String),
 }
 
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct WrappedFields {
     ids: HashSet<String>,
@@ -289,8 +284,7 @@ struct WrappedFields {
     queued: VecDeque<String>,
 }
 
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct StringArrayFields {
     rows: Vec<Vec<String>>,
@@ -301,8 +295,7 @@ struct StringArrayFields {
 
 // An untagged struct variant carrying a constrained member, beside the same member written in a
 // tagged enum. The two must render the same constrained value.
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 enum ConstrainedUnion {
@@ -312,8 +305,7 @@ enum ConstrainedUnion {
     },
 }
 
-#[cfg(any(feature = "zod", feature = "jsonschema"))]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind")]
 enum ConstrainedTagged {
@@ -324,8 +316,7 @@ enum ConstrainedTagged {
 }
 
 // The same pair over a number, whose range is the bound.
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 enum RangedUnion {
@@ -335,8 +326,7 @@ enum RangedUnion {
     },
 }
 
-#[cfg(feature = "jsonschema")]
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind")]
 enum RangedTagged {
@@ -387,14 +377,14 @@ enum CheckedThenLooseUnion {
 
 // A newtype member's slot carries the checks a named member carries: all three on a text arm, each
 // one alone, a range on a number, and a length under an `Option`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 enum KnownMimeType {
     #[serde(rename = "application/pdf")]
     Pdf,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 enum MimeType {
@@ -405,7 +395,7 @@ enum MimeType {
     ),
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 enum MinLengthArm {
@@ -413,7 +403,7 @@ enum MinLengthArm {
     Other(#[model_schema_prop(minLength = 1)] String),
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 enum MaxLengthArm {
@@ -421,7 +411,7 @@ enum MaxLengthArm {
     Other(#[model_schema_prop(maxLength = 3)] String),
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 enum PatternArm {
@@ -429,7 +419,7 @@ enum PatternArm {
     Other(#[model_schema_prop(pattern = "^[a-z]+$")] String),
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 enum CountArm {
@@ -437,7 +427,7 @@ enum CountArm {
     Known(KnownMimeType),
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 enum OptionalArm {
@@ -461,14 +451,14 @@ enum BrandedArm {
 
 // A check written on the enum is the check of every string the enum carries: a free-text arm beside
 // a named one.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 enum KnownKind {
     #[serde(rename = "application/pdf")]
     Pdf,
 }
 
-#[model_schema(minLength = 1, maxLength = 20)]
+#[model_schema(minLength = 1, maxLength = 20, enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 enum ContentKind {
@@ -476,7 +466,7 @@ enum ContentKind {
     Other(String),
 }
 
-#[model_schema(maxLength = 20)]
+#[model_schema(maxLength = 20, enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 enum MaxLengthKind {
@@ -484,7 +474,7 @@ enum MaxLengthKind {
     Other(String),
 }
 
-#[model_schema(pattern = "^[a-z]+/[a-z0-9.+-]+$")]
+#[model_schema(pattern = "^[a-z]+/[a-z0-9.+-]+$", enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 enum PatternKind {
@@ -493,7 +483,7 @@ enum PatternKind {
 }
 
 // The arm writes a pattern of its own under the enum's, and a named member a length of its own.
-#[model_schema(maxLength = 12, pattern = "^[a-z]+/[a-z0-9.+-]+$")]
+#[model_schema(maxLength = 12, pattern = "^[a-z]+/[a-z0-9.+-]+$", enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 enum TextKind {
@@ -507,8 +497,8 @@ enum TextKind {
 
 // An untagged member is written by a dispatch of its own, so it is a position an `ObjectId` can be
 // spelled in.
-#[cfg(all(feature = "jsonschema", feature = "mongodb"))]
-#[model_schema()]
+#[cfg(feature = "mongodb")]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 enum OidUnion {
@@ -533,7 +523,7 @@ pub enum UntaggedUnitWire {
 // A list an untagged member holds, under a bound that counts it: a newtype variant's slot, a named
 // member under an `Option`, and the list read with no bound, which takes what the others refuse.
 // The variants are tried in this order.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 enum CountedUnion {
@@ -856,7 +846,6 @@ fn test_recursive_enum_keyed_map_member_zod_defers_self_reference() {
 
 /// The JSON surface hoists the union into `$defs` and points the member's values back at it.
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_recursive_enum_keyed_map_member_json_schema_refers_to_definition() {
     let schema = BucketTreeUnion::json_schema();
     assert_eq!(schema["$ref"], "#/$defs/BucketTreeUnion");
@@ -967,7 +956,6 @@ fn test_flatten_end_to_end_zod() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_tuple_single_union_json_schema() {
     let schema = DateValue::json_schema();
     let any_of = schema["anyOf"].as_array().unwrap();
@@ -978,7 +966,6 @@ fn test_tuple_single_union_json_schema() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_named_union_json_schema() {
     let schema = NamedUnion::json_schema();
     let any_of = schema["anyOf"].as_array().unwrap();
@@ -992,7 +979,6 @@ fn test_named_union_json_schema() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_rename_all_union_json_schema() {
     let schema = RenameAllUnion::json_schema();
     let any_of = schema["anyOf"].as_array().unwrap();
@@ -1009,7 +995,6 @@ fn test_rename_all_union_json_schema() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_rename_all_union_round_trips_through_its_closed_schema() {
     let value = RenameAllUnion::Reply {
         reply_to: "x".to_owned(),
@@ -1043,7 +1028,6 @@ fn test_rename_all_union_round_trips_through_its_closed_schema() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_compliant_union_json_schema() {
     let schema = CompliantUnion::json_schema();
     let any_of = schema["anyOf"].as_array().unwrap();
@@ -1066,7 +1050,6 @@ fn test_compliant_union_json_schema() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_flatten_end_to_end_json_schema() {
     // A single-variant flattened entry collapses to a flat object (no `oneOf`); the untagged
     // `Vec<DateValue>` still renders its `anyOf` under `sampleValues.items`.
@@ -1166,7 +1149,6 @@ fn test_untagged_newtype_option_content_zod_null_flavor() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_untagged_newtype_option_content_json_schema_null_flavor() {
     let schema = SlotUnion::json_schema();
     let any_of = schema["anyOf"].as_array().unwrap();
@@ -1250,7 +1232,6 @@ fn test_untagged_tuple_member_wire() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_untagged_map_member_keys_json_schema() {
     let schema = KeyedUnion::json_schema();
     let fields = KeyedFields::json_schema();
@@ -1285,7 +1266,6 @@ fn test_untagged_map_member_keys_json_schema() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_untagged_map_member_schema_admits_the_captured_wire() {
     let counts = KeyedUnion::Counts {
         counts: HashMap::from([(Bucket::Large, 1_u32), (Bucket::Small, 2_u32)]),
@@ -1303,7 +1283,6 @@ fn test_untagged_map_member_schema_admits_the_captured_wire() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_untagged_tuple_member_schema_admits_the_captured_wire() {
     let pair = ShapedUnion::Pair {
         pair: (7_isize, "seven".to_owned()),
@@ -1328,7 +1307,6 @@ fn test_untagged_tuple_member_schema_admits_the_captured_wire() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_untagged_tuple_member_json_schema() {
     let schema = ShapedUnion::json_schema();
     let member = &schema["anyOf"][0]["properties"]["pair"];
@@ -1395,7 +1373,6 @@ fn test_untagged_wrapper_member_wire() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_untagged_wrapper_member_json_schema() {
     let schema = WrappedUnion::json_schema();
     let fields = WrappedFields::json_schema();
@@ -1419,7 +1396,6 @@ fn test_untagged_wrapper_member_json_schema() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_untagged_wrapper_member_schema_admits_the_captured_wire() {
     let queued = WrappedUnion::Queued {
         queued: VecDeque::from(["north".to_owned(), "south".to_owned()]),
@@ -1501,7 +1477,6 @@ fn test_untagged_string_array_member_wire() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_untagged_string_array_member_json_schema() {
     let schema = StringArrayUnion::json_schema();
     let fields = StringArrayFields::json_schema();
@@ -1532,7 +1507,6 @@ fn test_untagged_string_array_member_json_schema() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_untagged_string_array_member_keeps_its_bound_on_the_array() {
     let schema = StringArrayUnion::json_schema();
     let slugs = &schema["anyOf"][1]["properties"]["slugs"];
@@ -1554,7 +1528,6 @@ fn test_untagged_string_array_member_keeps_its_bound_on_the_array() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_untagged_wrapper_of_string_describes_as_the_bare_string_array() {
     let wrapped = WrappedUnion::json_schema();
     let arrayed = StringArrayUnion::json_schema();
@@ -1618,7 +1591,6 @@ fn test_untagged_member_constraint_zod() {
 
 /// The same constraint in the JSON schema, keyword for keyword with the tagged twin's.
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_untagged_member_constraint_json_schema() {
     let untagged = ConstrainedUnion::json_schema();
     let member = &untagged["anyOf"][0]["properties"]["slug"];
@@ -1636,7 +1608,6 @@ fn test_untagged_member_constraint_json_schema() {
 
 /// A range in the JSON schema, keyword for keyword with the tagged twin's.
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_untagged_member_range_json_schema() {
     let untagged = RangedUnion::json_schema();
     let member = &untagged["anyOf"][0]["properties"]["size"];
@@ -1692,7 +1663,7 @@ fn test_untagged_member_constraint_leaves_serialization_alone() {
 }
 
 #[test]
-#[cfg(all(feature = "jsonschema", feature = "mongodb"))]
+#[cfg(feature = "mongodb")]
 fn test_untagged_objectid_member_spells_the_one_oid_object() {
     let schema = OidUnion::json_schema();
     assert_eq!(
@@ -1877,7 +1848,6 @@ fn test_untagged_slot_constraint_zod() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_untagged_slot_constraint_json_schema() {
     let schema = MimeType::json_schema();
     assert_eq!(
@@ -1938,7 +1908,6 @@ fn test_each_untagged_slot_check_is_enforced_alone() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_each_untagged_slot_check_reaches_the_json_schema_alone() {
     assert_eq!(
         MinLengthArm::json_schema()["anyOf"][1],
@@ -2005,7 +1974,6 @@ fn test_untagged_numeric_slot_is_held_to_its_range() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_untagged_numeric_slot_json_schema() {
     let schema = CountArm::json_schema();
     assert_eq!(
@@ -2054,7 +2022,6 @@ fn test_untagged_optional_slot_is_checked_inside_its_some() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_untagged_optional_slot_json_schema() {
     let schema = OptionalArm::json_schema();
     assert_eq!(
@@ -2180,7 +2147,6 @@ fn test_an_untagged_enums_own_check_zod() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_an_untagged_enums_own_check_json_schema() {
     let schema = ContentKind::json_schema();
     assert_eq!(
@@ -2236,7 +2202,6 @@ fn test_each_check_of_an_untagged_enum_is_enforced_alone() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_each_check_of_an_untagged_enum_reaches_the_json_schema_alone() {
     assert_eq!(
         MaxLengthKind::json_schema()["anyOf"][1],
@@ -2326,7 +2291,6 @@ fn test_an_untagged_member_is_held_to_its_own_check_and_its_enums() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_two_patterns_on_an_untagged_member_json_schema() {
     let schema = TextKind::json_schema();
     assert_eq!(
@@ -2457,7 +2421,6 @@ fn test_validate_counts_an_untagged_list_member_built_in_rust() {
 }
 
 #[test]
-#[cfg(feature = "jsonschema")]
 fn test_an_untagged_list_member_writes_its_count_in_the_json_schema() {
     let schema = CountedUnion::json_schema();
     assert_eq!(

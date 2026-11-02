@@ -2,17 +2,23 @@
 //! list it cannot read, an initializer written twice or handed an argument, a type that lists
 //! `"mongodb"` with a map keyed by a number, its own or a held model's, a map keyed by a number
 //! or a `bool` under `#[serde(flatten)]` and in an enum serde buffers, untagged or under a tag
-//! alone, an enum that declares no variant, under a tag or not, and a member that holds an
-//! `i128`.
+//! alone, an enum that declares no variant, under a tag or not, a member that holds an `i128`, a
+//! type that does not list `"jsonschema"` asked for its document or held by one that does, and a
+//! service whose `openapi` lacks `http_rest`, is written with a value, names a path that is no
+//! route or that an operation answers with `GET`, writes a key it does not take, or whose
+//! operation names a type that does not list `"jsonschema"`, and, in a build with no feature, a
+//! type that lists `"jsonschema"` handing a const parameter to a written type and a string check
+//! on a `#[serde(transparent)]` struct, which is no brand without the `serde` feature.
 //! Each case in `foundation_refusals/` is a crate of its own, held to the `.stderr` file beside
 //! it; the initializer written twice, in `foundation_refusals/written_twice/`, is held to the code
 //! and the name of each error, which rustc reports differently from one release to the next.
 
-// Every `.stderr` was written with every feature on, the build the gate runs.
+// Every `.stderr` but the ones in `foundation_refusals/const_argument_without_a_feature/` and
+// `foundation_refusals/brand_without_serde/`, whose crates turn no feature on, was written with
+// every feature on, the build the gate runs.
 #![cfg(all(
     feature = "serde",
     feature = "zod",
-    feature = "jsonschema",
     feature = "typescript",
     feature = "dart",
     feature = "swift",
@@ -33,7 +39,7 @@ mod tests {
     use trybuild::TestCases;
 
     /// The features the cases are built with: the ones this file is compiled under.
-    const FEATURES: &str = r#""serde", "zod", "jsonschema", "typescript", "dart", "swift", "kotlin", "mongodb", "chrono", "indexmap""#;
+    const FEATURES: &str = r#""serde", "zod", "typescript", "dart", "swift", "kotlin", "mongodb", "chrono", "indexmap""#;
 
     #[test]
     fn each_case_fails_with_the_errors_written_beside_it() {
@@ -67,28 +73,87 @@ mod tests {
         );
     }
 
-    /// The code and the message of each error rustc reports for the case, read from cargo's JSON
-    /// messages, the closing count apart.
+    #[test]
+    fn a_const_argument_is_refused_in_a_build_with_no_feature() {
+        assert_rendered_with_no_feature(
+            "const_argument_without_a_feature",
+            &format!(
+                "tixschema = {{ path = {:?}, default-features = false }}\nserde_json = \"1\"\n",
+                env!("CARGO_MANIFEST_DIR")
+            ),
+        );
+    }
+
+    #[test]
+    fn a_string_check_on_a_transparent_struct_is_refused_in_a_build_with_no_feature() {
+        assert_rendered_with_no_feature(
+            "brand_without_serde",
+            &format!(
+                "tixschema = {{ path = {:?}, default-features = false }}\n\
+                 serde = {{ version = \"1\", features = [\"derive\"] }}\n\
+                 serde_json = \"1\"\n",
+                env!("CARGO_MANIFEST_DIR")
+            ),
+        );
+    }
+
+    /// Asserts that the errors rustc reports for `case`, built as a crate whose manifest lists
+    /// `dependencies`, render as the `main.stderr` beside it.
+    fn assert_rendered_with_no_feature(case: &str, dependencies: &str) {
+        let rendered: String = errors_of(case, dependencies)
+            .iter()
+            .filter_map(|error| error["rendered"].as_str())
+            .collect();
+        let expected = fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join(format!("tests/foundation_refusals/{case}/main.stderr")),
+        )
+        .unwrap();
+        assert_eq!(rendered.trim_end(), expected.trim_end());
+    }
+
+    /// The code and the message of each error rustc reports for the case, the closing count apart.
     fn errors_of_written_twice() -> Vec<(String, String)> {
-        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let at = Path::new(env!("CARGO_TARGET_TMPDIR")).join("written_twice");
-        fs::create_dir_all(at.join("src")).unwrap();
-        fs::write(
-            at.join("Cargo.toml"),
-            format!(
-                "[package]\nname = \"written_twice\"\nversion = \"0.0.0\"\nedition = \"2024\"\n\
-                 publish = false\n\n[dependencies]\n\
-                 tixschema = {{ path = {:?}, default-features = false, features = [{FEATURES}] }}\n\
+        errors_of(
+            "written_twice",
+            &format!(
+                "tixschema = {{ path = {:?}, default-features = false, features = [{FEATURES}] }}\n\
                  bson2 = {{ package = \"bson\", version = \"2.15\", features = [\"chrono-0_4\"] }}\n\
                  chrono = {{ version = \">=0.4.40\", features = [\"serde\"] }}\n\
                  serde = {{ version = \"1\", features = [\"derive\"] }}\n\
                  serde_json = \"1\"\n",
-                manifest_dir.display().to_string()
+                env!("CARGO_MANIFEST_DIR")
+            ),
+        )
+        .iter()
+        .map(|error| {
+            (
+                error["code"]["code"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_owned(),
+                error["message"].as_str().unwrap_or_default().to_owned(),
+            )
+        })
+        .collect()
+    }
+
+    /// Each error rustc reports for `foundation_refusals/{case}/main.rs`, built as a crate whose
+    /// manifest lists `dependencies`, as cargo's JSON message holds it, the closing count apart.
+    fn errors_of(case: &str, dependencies: &str) -> Vec<Value> {
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let at = Path::new(env!("CARGO_TARGET_TMPDIR")).join(case);
+        fs::create_dir_all(at.join("src")).unwrap();
+        fs::write(
+            at.join("Cargo.toml"),
+            format!(
+                "[package]\nname = \"{case}\"\nversion = \"0.0.0\"\nedition = \"2024\"\n\
+                 publish = false\n\n[dependencies]\n{dependencies}"
             ),
         )
         .unwrap();
         fs::copy(
-            manifest_dir.join("tests/foundation_refusals/written_twice/main.rs"),
+            manifest_dir.join(format!("tests/foundation_refusals/{case}/main.rs")),
             at.join("src/main.rs"),
         )
         .unwrap();
@@ -111,19 +176,13 @@ mod tests {
             .filter(|read| {
                 read["reason"] == "compiler-message" && read["message"]["level"] == "error"
             })
-            .map(|read| {
-                (
-                    read["message"]["code"]["code"]
-                        .as_str()
-                        .unwrap_or_default()
-                        .to_owned(),
-                    read["message"]["message"]
-                        .as_str()
-                        .unwrap_or_default()
-                        .to_owned(),
-                )
+            .map(|read| read["message"].clone())
+            .filter(|error| {
+                !error["message"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .starts_with("aborting due to")
             })
-            .filter(|(_, text)| !text.starts_with("aborting due to"))
             .collect()
     }
 }

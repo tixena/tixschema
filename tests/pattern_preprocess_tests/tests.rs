@@ -1,10 +1,7 @@
 //! Tests of the `pattern` and `preprocess` keys of `#[model_schema_prop]`.
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use serde::{Deserialize, Serialize};
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use serde_json::Value;
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use tixschema::model_schema;
 
 // The Rust side of each function a `preprocess` below names: a read of the type calls it, so it
@@ -25,7 +22,6 @@ const fn c(payload: Value) -> Value {
     payload
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 const fn epoch_to_date(payload: Value) -> Value {
     payload
 }
@@ -57,10 +53,9 @@ fn test_pattern_zod_output() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_pattern_json_schema() {
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Serialize, Deserialize)]
     pub struct PatternTest {
         #[model_schema_prop(pattern = "^[0-9a-fA-F]{24}$")]
@@ -118,10 +113,7 @@ fn test_pattern_enum_variant_field() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_pattern_rust_validation_valid() {
     #[model_schema()]
@@ -139,10 +131,7 @@ fn test_pattern_rust_validation_valid() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_pattern_rust_validation_invalid_is_refused_as_it_is_read() {
     #[model_schema()]
@@ -215,10 +204,9 @@ fn test_preprocess_ts_type_unaffected() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_preprocess_json_schema_unaffected() {
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Serialize, Deserialize)]
     pub struct PreprocessJsonSchema {
         #[model_schema_prop(preprocess = ["epoch_to_date"])]
@@ -297,10 +285,9 @@ fn test_pattern_with_min_max_length_zod() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_pattern_with_min_length_json_schema() {
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Serialize, Deserialize)]
     pub struct PatternMinLenJsonSchema {
         #[model_schema_prop(minLength = 3, pattern = "^[a-z]+$")]
@@ -425,10 +412,7 @@ fn test_pattern_enum_variant_with_min_length() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_pattern_enum_variant_serde_validation() {
     #[model_schema()]
@@ -542,10 +526,9 @@ fn test_a_backslash_escape_before_a_slash_is_read_as_one_unit() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_a_slash_pattern_reaches_json_schema_unescaped() {
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Serialize, Deserialize)]
     pub struct SlashJsonSchema {
         #[model_schema_prop(pattern = "^/[a-z]+$")]
@@ -559,10 +542,7 @@ fn test_a_slash_pattern_reaches_json_schema_unescaped() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_the_escaped_zod_pattern_matches_the_value_set_the_validator_enforces() {
     #[model_schema()]
@@ -703,10 +683,9 @@ fn test_an_authored_newline_escape_is_not_escaped_twice() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_a_raw_newline_pattern_reaches_json_schema_unescaped() {
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Serialize, Deserialize)]
     pub struct NewlineJsonSchema {
         #[model_schema_prop(pattern = "^a\n[a-z]+$")]
@@ -720,10 +699,7 @@ fn test_a_raw_newline_pattern_reaches_json_schema_unescaped() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_the_escaped_newline_literal_matches_the_value_set_the_validator_enforces() {
     #[model_schema()]
@@ -768,10 +744,9 @@ fn test_a_rust_named_group_reaches_the_zod_literal_as_javascript_spells_it() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn test_a_rust_named_group_reaches_the_json_schema_as_ecma_262_spells_it() {
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     #[derive(Serialize, Deserialize)]
     pub struct RustNamedGroupJsonSchema {
         #[model_schema_prop(pattern = "^(?P<word>[a-z]+)$")]
@@ -785,10 +760,7 @@ fn test_a_rust_named_group_reaches_the_json_schema_as_ecma_262_spells_it() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
+#[cfg(feature = "serde")]
 #[test]
 fn test_the_rewritten_named_group_matches_the_value_set_the_validator_enforces() {
     #[model_schema()]

@@ -2,11 +2,6 @@
 //! to say so.
 
 #[cfg(test)]
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    feature = "dart"
-))]
+#[cfg(any(feature = "typescript", feature = "zod", feature = "dart"))]
 #[path = "omitted_key_tests/tests.rs"]
 mod tests;

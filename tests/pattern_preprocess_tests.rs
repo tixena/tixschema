@@ -19,9 +19,11 @@ mod read;
 mod readme;
 
 #[cfg(test)]
+#[cfg(feature = "serde")]
 #[path = "pattern_preprocess_tests/tests.rs"]
 mod tests;
 
 #[cfg(test)]
+#[cfg(feature = "serde")]
 #[path = "pattern_preprocess_tests/zod.rs"]
 mod zod;

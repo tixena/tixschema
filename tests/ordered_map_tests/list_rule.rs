@@ -6,14 +6,14 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use tixschema::model_schema;
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Labelled {
     #[model_schema_prop(minLength = 1)]
     pub labels: IndexSet<String>,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct LabelledTwin {
     #[model_schema_prop(minLength = 1)]
@@ -50,7 +50,6 @@ fn zod_writes_the_count_on_the_array() {
     assert_eq!(labelled, LabelledTwin::zod_schema().replace("Twin", ""));
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn the_json_schema_writes_the_count_as_min_items() {
     let labels = &Labelled::json_schema()["properties"]["labels"];

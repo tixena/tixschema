@@ -258,7 +258,7 @@ mod zod {
 }
 
 /// The documents are pinned byte for byte, and every key in them is the one serde writes.
-#[cfg(all(feature = "jsonschema", feature = "serde"))]
+#[cfg(feature = "serde")]
 mod json_schema {
     use super::{
         ArchiveBranch, ArchiveEntry, ArchiveEvent, ArchiveId, ArchiveNode, ArchiveStamp,
@@ -440,7 +440,7 @@ mod json_schema {
 /// The README's recursive-generic example, held to the two things a pasted example has to be: the
 /// README still declares it exactly as declared here, and the emission shown beside it is what the
 /// generator answers with. Drift on either side fails here rather than in someone's editor.
-#[cfg(all(feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 mod readme {
     use super::Node;
 
@@ -570,14 +570,14 @@ use tixschema::model_schema;
 
 /// A brand over a parameter: the one item shape whose parameter is spent on a single written target
 /// rather than on a list of members, held here so the type below can forward an argument into it.
-#[model_schema(default_types(IdType = String))]
+#[model_schema(default_types(IdType = String), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ArchiveId<IdType>(pub IdType);
 
 /// The level between the brand and the whole type, so the argument the entry supplies is forwarded
 /// twice before it reaches the brand that spends it.
-#[model_schema(default_types(IdType = String))]
+#[model_schema(default_types(IdType = String), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArchiveStamp<IdType> {
@@ -586,13 +586,16 @@ pub struct ArchiveStamp<IdType> {
 
 /// Five parameters, each written under a different shape: made optional by serde, held bare, put in
 /// a map's value position, handed to a sibling, and wrapped in a collection.
-#[model_schema(default_types(
-    IdType = String,
-    DateType = f64,
-    TagType = String,
-    SizeType = u32,
-    OwnerType = String
-))]
+#[model_schema(
+    default_types(
+        IdType = String,
+        DateType = f64,
+        TagType = String,
+        SizeType = u32,
+        OwnerType = String
+    ),
+    enable = ["jsonschema"]
+)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArchiveEntry<IdType, DateType, TagType, SizeType, OwnerType> {
@@ -605,7 +608,7 @@ pub struct ArchiveEntry<IdType, DateType, TagType, SizeType, OwnerType> {
 }
 
 /// A tagged generic enum, whose parameter reaches only one of its variants.
-#[model_schema(default_types(IdType = String))]
+#[model_schema(default_types(IdType = String), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum ArchiveEvent<IdType> {
@@ -615,7 +618,7 @@ pub enum ArchiveEvent<IdType> {
 
 /// The same question for the shape with no tag to join the variants: a bare union, whose members
 /// are told apart by their keys alone.
-#[model_schema(default_types(IdType = String))]
+#[model_schema(default_types(IdType = String), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ArchiveWire<IdType> {
@@ -625,7 +628,7 @@ pub enum ArchiveWire<IdType> {
 
 /// A generic type that reaches itself. Every reference around the cycle carries the same filling,
 /// which is what lets one definition stand for the whole of it.
-#[model_schema(default_types(IdType = String))]
+#[model_schema(default_types(IdType = String), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArchiveNode<IdType> {
@@ -644,7 +647,7 @@ pub struct Node<IdType> {
 
 /// The same, spanning two types rather than one — and declared *above* the type it names, so the
 /// reference that closes the cycle is written forward.
-#[model_schema(default_types(IdType = String))]
+#[model_schema(default_types(IdType = String), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArchiveBranch<IdType> {
@@ -652,7 +655,7 @@ pub struct ArchiveBranch<IdType> {
     pub label: String,
 }
 
-#[model_schema(default_types(IdType = String))]
+#[model_schema(default_types(IdType = String), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArchiveTrunk<IdType> {
@@ -664,16 +667,16 @@ pub struct ArchiveTrunk<IdType> {
 /// than nested, so neither reference is in flight while the other runs. Read by the JSON surface
 /// alone, the one that hoists a recursive type into a `$defs` entry a bare name could collide
 /// under.
-#[cfg(all(feature = "jsonschema", feature = "serde"))]
-#[model_schema(default_types(ValueType = String))]
+#[cfg(feature = "serde")]
+#[model_schema(default_types(ValueType = String), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Looped<ValueType> {
     pub children: Vec<Self>,
     pub value: ValueType,
 }
 
-#[cfg(all(feature = "jsonschema", feature = "serde"))]
-#[model_schema()]
+#[cfg(feature = "serde")]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TwoLoopedFillings {
     pub also_strings: Looped<String>,

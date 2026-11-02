@@ -11,7 +11,7 @@ enum AuthorKind {
     Human,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum CopyKind {
@@ -50,7 +50,7 @@ enum SandboxKind {
 
 // One struct-variant enum per tagged representation: `Unmarked` has no rename of its own, so its
 // fields stay as declared; `Marked` carries its own `rename_all`.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 enum InternallyTaggedRename {
@@ -63,7 +63,7 @@ enum InternallyTaggedRename {
     },
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 enum ExternallyTaggedRename {
@@ -76,7 +76,7 @@ enum ExternallyTaggedRename {
     },
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", content = "data", rename_all = "camelCase")]
 enum AdjacentlyTaggedRename {
@@ -211,7 +211,6 @@ fn lowercase_zod_enum_unchanged() {
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn snake_case_json_schema_matches_serde_wire() {
     let schema = CopyKind::json_schema();
@@ -378,7 +377,6 @@ fn adjacently_tagged_rename_all_zod_matches_serde_wire() {
 /// A closed branch (`additionalProperties: false`) describes exactly the keys serde wrote for
 /// `value`: every key on the wire is named in `properties`, and every `required` key is on the
 /// wire.
-#[cfg(feature = "jsonschema")]
 fn assert_branch_accepts<T>(branch: &serde_json::Value, value: &T)
 where
     T: serde::Serialize,
@@ -399,7 +397,6 @@ where
     );
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn internally_tagged_rename_all_json_schema_matches_serde_wire() {
     let schema = InternallyTaggedRename::json_schema();
@@ -424,7 +421,6 @@ fn internally_tagged_rename_all_json_schema_matches_serde_wire() {
     assert_branch_accepts(marked_branch, &marked);
 }
 
-#[cfg(feature = "jsonschema")]
 #[test]
 fn externally_tagged_rename_all_json_schema_matches_serde_wire() {
     let schema = ExternallyTaggedRename::json_schema();
@@ -473,7 +469,6 @@ fn externally_tagged_rename_all_json_schema_matches_serde_wire() {
 
 // The adjacently-tagged branch reads the field keys under `properties.data`, the object the wire
 // nests them in.
-#[cfg(feature = "jsonschema")]
 #[test]
 fn adjacently_tagged_rename_all_json_schema_matches_serde_wire() {
     let schema = AdjacentlyTaggedRename::json_schema();

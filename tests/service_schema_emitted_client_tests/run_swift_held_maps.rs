@@ -176,7 +176,7 @@ fn judged_rows() -> Vec<Row> {
 
 /// The payloads of each alias, decoded directly and held by a field.
 fn alias_rows() -> Vec<Row> {
-    let mut rows = vec![
+    vec![
         read_row(
             "an alias of a map keyed by a number",
             "Tabulation<String>",
@@ -216,10 +216,9 @@ fn alias_rows() -> Vec<Row> {
                 tabulation: numbered(&text()),
             },
         ),
-    ];
-    #[cfg(feature = "chrono")]
-    rows.push(read_row("an alias of a date", "Moonrise", &at()));
-    rows
+        #[cfg(feature = "chrono")]
+        read_row("an alias of a date", "Moonrise", &at()),
+    ]
 }
 
 /// The text of every model compiles with warnings as errors, and every payload reads and writes in

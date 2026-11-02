@@ -16,10 +16,10 @@ use syn::{Attribute, Field, Item, ItemType};
 use super::checks::located;
 #[cfg(feature = "serde")]
 use super::judged_read::unclaimed_parameter;
-use super::{guard_failure_output, prefixed_guard_message, written_spelling};
+use super::{ModelSchemaArgs, guard_failure_output, prefixed_guard_message, written_spelling};
 use crate::features::model_schema_prop::{FunctionName, parse_model_schema_prop_attributes};
 use crate::features::serde::read_bounds::borrows;
-use crate::features::serde::{derives_deserialize, parse_serde_key_omission, read_hook};
+use crate::features::serde::{derived_key_omission, derives_deserialize, read_hook};
 use crate::utils::to_snake_case;
 
 /// What the item being expanded names: on the type, and on each member serde reads.
@@ -121,7 +121,7 @@ pub fn record(item: &Item, own: &[FunctionName]) {
         Named {
             members: members(item)
                 .into_iter()
-                .filter(|(_, _, field)| !parse_serde_key_omission(&field.attrs).skips_deserializing)
+                .filter(|(_, _, field)| !derived_key_omission(&field.attrs).skips_deserializing)
                 .filter_map(|(variant, index, field)| {
                     let functions = parse_model_schema_prop_attributes(&field.attrs).preprocess;
                     (!functions.is_empty()).then(|| OfMember {
@@ -258,7 +258,7 @@ pub fn refusals(item: &Item, own: &[FunctionName]) -> Vec<syn::Error> {
     }
     let mut refused: Vec<syn::Error> = Vec::new();
     for (variant, index, field) in members(item) {
-        if parse_serde_key_omission(&field.attrs).skips_deserializing {
+        if derived_key_omission(&field.attrs).skips_deserializing {
             continue;
         }
         let label = member_label(variant, index, field);
@@ -294,11 +294,11 @@ pub fn refusals(item: &Item, own: &[FunctionName]) -> Vec<syn::Error> {
 
 /// The refusal of a `preprocess` written on a type alias: an alias is another name for its
 /// target, and has no read of its own to call a function from.
-pub fn alias_refusal_output(
+pub(super) fn alias_refusal_output(
     item_type: &ItemType,
-    functions: &[FunctionName],
+    args: &ModelSchemaArgs,
 ) -> Option<TokenStream> {
-    let first = functions.first()?;
+    let first = args.preprocess.first()?;
     let name = &item_type.ident;
     let target = written_spelling(&item_type.ty);
     let refusal = format!(
@@ -312,7 +312,7 @@ pub fn alias_refusal_output(
         prefixed_guard_message(&format!("type `{name}`: {refusal}")),
     )
     .to_compile_error();
-    guard_failure_output(item_type, Some(name), &[error])
+    guard_failure_output(item_type, Some(name), &[error], args)
 }
 
 #[cfg(test)]

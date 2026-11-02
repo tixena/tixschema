@@ -95,7 +95,8 @@ mod run_node_bytes;
 mod run_node_bigint_literals;
 
 /// The emitted `http_rest` server: the seven design requests, the reader forms, the query-read
-/// message, and the three body kinds compared against the Rust twins above.
+/// message, the three body kinds compared against the Rust twins above, and the `OpenAPI`
+/// document.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_node_http_service.rs"]
 mod run_node_http_service;
@@ -676,7 +677,11 @@ mod run_dart_text_keys;
 mod run_dart_no_needless_casts;
 
 /// The models of the date runs of the emitted Dart, Kotlin and Swift types.
-#[cfg(all(test, feature = "chrono"))]
+#[cfg(all(
+    test,
+    feature = "chrono",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
 #[path = "service_schema_emitted_client_tests/dates_models.rs"]
 mod dates_models;
 
@@ -1435,6 +1440,11 @@ use run_dart_preprocess::{
 };
 #[cfg(all(test, feature = "dart"))]
 use run_dart_read::{ParcelClientService, parcel_client_service_schema};
+#[cfg(test)]
+use run_node_http_service::{
+    CatalogClientService, ScaleClientService, catalog_client_service_schema,
+    scale_client_service_schema,
+};
 #[cfg(test)]
 use run_node_number_brands::{
     WharfClientService, WharfFilingClientService, wharf_client_service_schema,

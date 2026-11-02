@@ -1,14 +1,14 @@
 //! The wire is the arbiter. serde writes two payloads for a field carrying a
 //! `skip_serializing_if` — one with the key, one without — and each surface is held to admitting
 //! exactly those two, asserted first here so the surface expectations below are read off them.
-//! The attribute is on the declaration in every build, so every build owes the same answer.
+//! tixschema reads the attribute with the `serde` feature alone.
 
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 /// One omitted key beside the members that keep theirs: a plain required field and a sequence,
 /// neither of which serde ever drops.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct OmittedKeyFields {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -20,7 +20,7 @@ struct OmittedKeyFields {
 /// The same omission asked of a field that is not an `Option`. A predicate drops the key for a
 /// value that is perfectly present in Rust, so the type under the key is unchanged — only whether
 /// the key is written at all.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct PredicateOmittedKey {
     id: String,
@@ -99,7 +99,7 @@ fn the_predicate_omitted_key_is_absent_from_the_payload_serde_writes() {
 
 /// `age` carries no `ts_optional`, so the attribute that drops its key leaves the spelling alone.
 #[test]
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 fn typescript_writes_the_option_as_undefined_valued() {
     let ts = OmittedKeyFields::ts_definition();
 
@@ -111,7 +111,7 @@ fn typescript_writes_the_option_as_undefined_valued() {
 
 /// The key is optional; the value under it never is.
 #[test]
-#[cfg(feature = "typescript")]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 fn typescript_holds_the_predicate_omitted_key_that_serde_reads_as_its_default() {
     let ts = PredicateOmittedKey::ts_definition();
 
@@ -121,7 +121,7 @@ fn typescript_holds_the_predicate_omitted_key_that_serde_reads_as_its_default() 
 }
 
 #[test]
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 fn zod_keeps_the_undefined_union_that_already_admits_the_absent_key() {
     let zod = OmittedKeyFields::zod_schema();
 
@@ -136,7 +136,7 @@ fn zod_keeps_the_undefined_union_that_already_admits_the_absent_key() {
 }
 
 #[test]
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 fn zod_reads_the_predicate_omitted_key_as_its_default() {
     let zod = PredicateOmittedKey::zod_schema();
 
@@ -148,8 +148,8 @@ fn zod_reads_the_predicate_omitted_key_as_its_default() {
 }
 
 /// The JSON surface says it by leaving the field out of `required` while still describing it.
+#[cfg(feature = "serde")]
 #[test]
-#[cfg(feature = "jsonschema")]
 fn the_json_schema_describes_the_omitted_key_without_requiring_it() {
     let schema = OmittedKeyFields::json_schema();
 
@@ -162,8 +162,8 @@ fn the_json_schema_describes_the_omitted_key_without_requiring_it() {
 }
 
 /// Same for the predicate-dropped key: described, not required.
+#[cfg(feature = "serde")]
 #[test]
-#[cfg(feature = "jsonschema")]
 fn the_json_schema_describes_the_predicate_omitted_key_without_requiring_it() {
     let schema = PredicateOmittedKey::json_schema();
 
@@ -185,7 +185,7 @@ fn the_json_schema_describes_the_predicate_omitted_key_without_requiring_it() {
 }
 
 #[test]
-#[cfg(feature = "dart")]
+#[cfg(all(feature = "dart", feature = "serde"))]
 fn dart_reads_the_predicate_omitted_key_as_its_default() {
     let dart = predicate_omitted_key_dart::dart_definition();
 
@@ -198,7 +198,7 @@ fn dart_reads_the_predicate_omitted_key_as_its_default() {
 
 /// The `Option` carrying the same omission was already nullable, and is pinned here as undisturbed.
 #[test]
-#[cfg(feature = "dart")]
+#[cfg(all(feature = "dart", feature = "serde"))]
 fn dart_leaves_the_optional_field_carrying_the_same_omission_alone() {
     let dart = omitted_key_fields_dart::dart_definition();
 
