@@ -8,4 +8,4 @@ mod tests;
 // The transport reaches what the service declared through `$crate`, which is this binary's root.
 // The gate is the declaration's own.
 #[cfg(all(test, feature = "serde"))]
-use tests::{ProbeService, probe_service_schema};
+use tests::{ProbeService, ProbeServiceSchema, probe_service_schema};

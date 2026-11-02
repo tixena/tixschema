@@ -29,7 +29,7 @@ use quote::quote;
 use syn::ext::IdentExt as _;
 use syn::parse::{Parse, ParseStream, Parser as _};
 use syn::punctuated::Punctuated;
-use syn::{Field, Item, ItemType, Meta, Token};
+use syn::{Field, Item, ItemType, Lit, Meta, Token};
 
 use quote::quote_spanned;
 
@@ -181,7 +181,7 @@ use crate::field_type::{
 
 use crate::features::model_schema_prop::{
     CHECK_TAKES, FunctionName, LiteralValue, ModelSchemaPropMeta, PREPROCESS_TAKES, function_names,
-    parse_model_schema_prop_attributes,
+    limit_number, limit_text, parse_model_schema_prop_attributes,
 };
 
 use crate::features::jsonschema::in_flight_type;
@@ -6172,13 +6172,13 @@ fn const_parameter_argument_message(name: &str) -> String {
         "`#[model_schema]` cannot render the const parameter `{name}` as a type argument. An \
          argument list is read as a list of types — that is what every surface writes one from — so \
          `{name}` standing in one is taken for a type, and no surface can spell it: the JSON \
-         document would call into a `{}_schema` module nothing publishes, the TypeScript \
+         document would call into a `{}` module nothing publishes, the TypeScript \
          declaration would write `{name}` where nothing binds it, a const being dropped from the \
          declaration it was written on, and no Dart, Swift or Kotlin type declares it. This is \
          refused in every build that describes a type. A const does render as an array length — \
          `[T; {name}]`, which describes as an unbounded array — so hold the value that way, or \
          fill the argument with a type.",
-        name.to_lowercase()
+        ident_schema_module_name(name)
     )
 }
 
@@ -15863,12 +15863,30 @@ fn numeric_bound_keywords(fld: &FieldDef) -> proc_macro2::TokenStream {
         .as_ref()
         .filter(|_| fld.field_type.is_numeric());
     let minimum = meta
-        .and_then(|bounds| bounds.minimum)
+        .and_then(|bounds| bounds.minimum.as_ref())
+        .map(limit_json)
         .map(|bound| quote! { , "minimum": #bound });
     let maximum = meta
-        .and_then(|bounds| bounds.maximum)
+        .and_then(|bounds| bounds.maximum.as_ref())
+        .map(limit_json)
         .map(|bound| quote! { , "maximum": #bound });
     quote! { #minimum #maximum }
+}
+
+/// The limit as `serde_json::json!` is handed it. An integer is suffixed, since `json!` reads a
+/// bare one as an `i32`, and one past both suffixes is written as a float is, the `f64` it reads as.
+fn limit_json(limit: &Lit) -> proc_macro2::TokenStream {
+    if matches!(limit, Lit::Int(_)) {
+        let digits = limit_text(limit);
+        if digits.parse::<u64>().is_ok() {
+            return format!("{digits}_u64").parse().unwrap();
+        }
+        if digits.parse::<i64>().is_ok() {
+            return format!("{digits}_i64").parse().unwrap();
+        }
+    }
+    let number = limit_number(limit);
+    quote! { #number }
 }
 
 /// The value a slot holds under its wrappers, carrying the bounds written on the slot as a named
@@ -16662,12 +16680,18 @@ fn build_numeric_field_schema(
     field_name_str: &str,
     json_type: &str,
 ) -> proc_macro2::TokenStream {
-    let minimum_opt = fld.model_schema_prop_meta.as_ref().and_then(|m| m.minimum);
-    let maximum_opt = fld.model_schema_prop_meta.as_ref().and_then(|m| m.maximum);
-    let minimum_insert = minimum_opt.map(|min| {
+    let minimum_opt = fld
+        .model_schema_prop_meta
+        .as_ref()
+        .and_then(|m| m.minimum.as_ref());
+    let maximum_opt = fld
+        .model_schema_prop_meta
+        .as_ref()
+        .and_then(|m| m.maximum.as_ref());
+    let minimum_insert = minimum_opt.map(limit_json).map(|min| {
         quote! { schema_obj.insert("minimum".to_string(), serde_json::json!(#min)); }
     });
-    let maximum_insert = maximum_opt.map(|max| {
+    let maximum_insert = maximum_opt.map(limit_json).map(|max| {
         quote! { schema_obj.insert("maximum".to_string(), serde_json::json!(#max)); }
     });
 
@@ -18145,10 +18169,11 @@ fn generate_numeric_validation_code(
     let measured = quote! { value };
     let mut checks: Vec<proc_macro2::TokenStream> = Vec::new();
 
-    if let Some(minimum) = meta.minimum {
+    if let Some(minimum) = &meta.minimum {
+        let written = limit_text(minimum);
         let min_cast: proc_macro2::TokenStream =
-            format!("{minimum} as {rust_type_str}").parse().unwrap();
-        let reported = rust_violation(Bound::Minimum(minimum), named, &measured);
+            format!("{written} as {rust_type_str}").parse().unwrap();
+        let reported = rust_violation(Bound::Minimum(&written), named, &measured);
         checks.push(quote! {
             if *value < #min_cast {
                 errors.push(#reported);
@@ -18156,10 +18181,11 @@ fn generate_numeric_validation_code(
         });
     }
 
-    if let Some(maximum) = meta.maximum {
+    if let Some(maximum) = &meta.maximum {
+        let written = limit_text(maximum);
         let max_cast: proc_macro2::TokenStream =
-            format!("{maximum} as {rust_type_str}").parse().unwrap();
-        let reported = rust_violation(Bound::Maximum(maximum), named, &measured);
+            format!("{written} as {rust_type_str}").parse().unwrap();
+        let reported = rust_violation(Bound::Maximum(&written), named, &measured);
         checks.push(quote! {
             if *value > #max_cast {
                 errors.push(#reported);
@@ -19460,19 +19486,23 @@ fn check_bound_in_range(
         return Ok(());
     };
     let mut refusals = [
-        ("minimum", prop_meta.minimum),
-        ("maximum", prop_meta.maximum),
+        ("minimum", prop_meta.minimum.as_ref()),
+        ("maximum", prop_meta.maximum.as_ref()),
     ]
     .into_iter()
     .filter_map(|(key, written)| {
-        let number = written?;
-        if number.fract() != 0.0_f64 {
-            return None;
-        }
-        let shown = format_number_literal(number);
-        let held = shown
-            .parse::<i128>()
-            .is_ok_and(|whole| (lowest..=highest).contains(&whole));
+        let limit = written?;
+        let whole = if let Lit::Int(int) = limit {
+            int.base10_parse::<i128>().ok()
+        } else {
+            let number = limit_number(limit);
+            if number.fract() != 0.0_f64 {
+                return None;
+            }
+            format_number_literal(number).parse::<i128>().ok()
+        };
+        let shown = limit_refused(limit);
+        let held = whole.is_some_and(|number| (lowest..=highest).contains(&number));
         (!held).then(|| {
             syn::Error::new_spanned(
                 field,
@@ -19502,12 +19532,32 @@ fn fixed_outer_length(field_def: &FieldDef, ty: &syn::Type) -> Option<(String, u
     Some((written_spelling(ty).replace(" ;", ";"), *length))
 }
 
+/// The limit as a refusal names it: an integer's digits, or a float at the value it holds.
+fn limit_refused(limit: &Lit) -> String {
+    if matches!(limit, Lit::Int(_)) {
+        limit_text(limit)
+    } else {
+        format_number_literal(limit_number(limit))
+    }
+}
+
+/// Whether `least` is above `most`: two integers compared exactly, and any other pair as numbers.
+fn limit_above(least: &Lit, most: &Lit) -> bool {
+    if let (Lit::Int(lower), Lit::Int(upper)) = (least, most)
+        && let (Ok(from), Ok(to)) = (lower.base10_parse::<i128>(), upper.base10_parse::<i128>())
+    {
+        from > to
+    } else {
+        limit_number(least) > limit_number(most)
+    }
+}
+
 /// The refusals for bounds no value meets: a lower bound above its upper bound, and, on a fixed
 /// array, a count its length always breaks or one that only repeats it.
 fn unmeetable_bound_messages(
     subject: &str,
     count: (Option<usize>, Option<usize>),
-    range: (Option<f64>, Option<f64>),
+    range: (Option<&Lit>, Option<&Lit>),
     fixed: Option<(String, usize)>,
 ) -> Vec<String> {
     let mut messages = Vec::new();
@@ -19520,12 +19570,12 @@ fn unmeetable_bound_messages(
         ));
     }
     if let (Some(least), Some(most)) = range
-        && least > most
+        && limit_above(least, most)
     {
         messages.push(format!(
             "model_schema: {subject}: `minimum = {}` is above `maximum = {}`, so no value passes",
-            format_number_literal(least),
-            format_number_literal(most)
+            limit_refused(least),
+            limit_refused(most)
         ));
     }
     if !messages.is_empty() {
@@ -19570,7 +19620,7 @@ fn check_bound_meetable(
     let messages = unmeetable_bound_messages(
         label,
         count,
-        (prop_meta.minimum, prop_meta.maximum),
+        (prop_meta.minimum.as_ref(), prop_meta.maximum.as_ref()),
         fixed_outer_length(field_def, &field.ty),
     );
     let mut errors = messages
@@ -21099,11 +21149,11 @@ fn apply_constraint_docs(field_def: &mut FieldDef, final_name: &str) {
         }
     }
     if !matches!(unmeasured, Some(BoundKind::Range | BoundKind::Scalar)) {
-        if let Some(minimum) = meta.minimum {
-            constraint_docs.push(format!(" * Minimum value: {minimum}"));
+        if let Some(minimum) = &meta.minimum {
+            constraint_docs.push(format!(" * Minimum value: {}", limit_text(minimum)));
         }
-        if let Some(maximum) = meta.maximum {
-            constraint_docs.push(format!(" * Maximum value: {maximum}"));
+        if let Some(maximum) = &meta.maximum {
+            constraint_docs.push(format!(" * Maximum value: {}", limit_text(maximum)));
         }
     }
     if !constraint_docs.is_empty() {

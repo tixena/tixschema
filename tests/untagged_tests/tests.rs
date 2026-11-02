@@ -1613,7 +1613,7 @@ fn test_untagged_member_range_json_schema() {
     let member = &untagged["anyOf"][0]["properties"]["size"];
     assert_eq!(
         *member,
-        serde_json::json!({ "type": "integer", "minimum": 1.0_f64, "maximum": 10.0_f64 }),
+        serde_json::json!({ "type": "integer", "minimum": 1_u32, "maximum": 10_u32 }),
         "Got:\n{untagged}"
     );
     let tagged = RangedTagged::json_schema();
@@ -1978,7 +1978,7 @@ fn test_untagged_numeric_slot_json_schema() {
     let schema = CountArm::json_schema();
     assert_eq!(
         schema["anyOf"][0],
-        serde_json::json!({ "type": "integer", "minimum": 1.0_f64, "maximum": 10.0_f64 }),
+        serde_json::json!({ "type": "integer", "minimum": 1_u32, "maximum": 10_u32 }),
         "Got:\n{schema}"
     );
 }

@@ -458,7 +458,7 @@ fn whole_body_message_stmt(wire: &str, prefix: &str) -> String {
 
 /// The statements that read `request.body` as JSON and answer with an empty base object rather
 /// than a fault where it will not parse or is not itself an object — mirroring the Rust
-/// `object_base` of a bodied method, which the caller then inserts fields onto.
+/// `object_base`, which the caller then inserts fields onto.
 fn parsed_body_base_stmt(prefix: &str) -> String {
     format!(
         "        let message: Record<string, unknown>;\n        \

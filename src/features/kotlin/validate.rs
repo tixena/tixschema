@@ -12,18 +12,25 @@ use core::cell::RefCell;
 use core::mem;
 use std::collections::HashMap;
 
+use syn::Lit;
+
 use super::{
     kotlin_name, kotlin_quoted, kotlin_serializer_expr, kotlin_serializer_param_name,
     kotlin_template_text, kotlin_typename, read, result_class,
 };
 use crate::bound_message::{Bound, kotlin_repeated, kotlin_violation};
-use crate::features::model_schema_prop::{FunctionName, LiteralValue, ModelSchemaPropMeta};
+use crate::features::model_schema_prop::{
+    FunctionName, LiteralValue, ModelSchemaPropMeta, limit_text,
+};
 use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, format_number_literal, is_sequence_wrapper,
 };
 
 /// The list `validate()` collects its messages in.
 const VIOLATIONS: &str = "violations";
+
+/// The least `Long`, whose digits Kotlin refuses as a literal.
+const LONG_LEAST: &str = "-9223372036854775808";
 
 /// The name a brand's value is bound to where its bounds read the value it holds.
 const FILLING: &str = "kotlinSchemaHeld";
@@ -208,13 +215,12 @@ impl Helper {
 }
 
 impl Number {
-    /// The comparison of `read` with `bound` under `operator`, the bound written as a literal of
-    /// the number's own type where it is one, and both compared as doubles where it is not.
-    fn compared(self, read: &str, operator: &str, bound: f64) -> String {
-        let shown = bound.to_string();
-        let whole = !shown.contains('.') && shown.len() < 19;
+    /// The comparison of `read` under `operator` with the number Rust writes as `shown`, written
+    /// as a literal of the number's own type where `whole` says one holds it, and both compared
+    /// as doubles where it does not.
+    fn compared(self, read: &str, operator: &str, shown: &str, whole: bool) -> String {
         let double = if shown.contains('.') {
-            shown.clone()
+            shown.to_owned()
         } else {
             format!("{shown}.0")
         };
@@ -227,6 +233,20 @@ impl Number {
             }
             Self::Signed | Self::Unsigned => format!("{read}.toDouble() {operator} {double}"),
         }
+    }
+
+    /// [`Self::compared`] with a limit: an integer is written as a literal wherever a `Long` holds
+    /// it, and the least `Long` by its name.
+    fn limit_compared(self, read: &str, operator: &str, limit: &Lit) -> String {
+        let shown = limit_text(limit);
+        if !matches!(limit, Lit::Int(_)) {
+            let whole = !shown.contains('.') && shown.len() < 19;
+            return self.compared(read, operator, &shown, whole);
+        }
+        if matches!(self, Self::Signed) && shown == LONG_LEAST {
+            return format!("{read} {operator} Long.MIN_VALUE");
+        }
+        self.compared(read, operator, &shown, shown.parse::<i64>().is_ok())
     }
 
     /// The number a field of this type is held as, or `None` for a type that is no number.
@@ -699,7 +719,7 @@ impl<'item> Rules<'item> {
                     Some(kind @ (Number::Double | Number::Float)) => {
                         self.helpers.insert(Helper::Shown);
                         shown = kind.quoted(read);
-                        kind.compared(read, "!=", number)
+                        kind.compared(read, "!=", &number.to_string(), false)
                     }
                     Some(Number::Unsigned) if matches!(held, FieldDefType::U32) => {
                         format!("{read} != {whole}u")
@@ -798,14 +818,14 @@ impl<'item> Rules<'item> {
     ) -> Vec<String> {
         let quoted = number.quoted(read);
         let mut statements = Vec::new();
-        if let Some(least) = meta.minimum {
-            let reported = kotlin_violation(Bound::Minimum(least), place, &quoted);
-            let broken = number.compared(read, "<", least);
+        if let Some(least) = &meta.minimum {
+            let reported = kotlin_violation(Bound::Minimum(&limit_text(least)), place, &quoted);
+            let broken = number.limit_compared(read, "<", least);
             statements.push(format!("if ({broken}) {VIOLATIONS}.add({reported})"));
         }
-        if let Some(most) = meta.maximum {
-            let reported = kotlin_violation(Bound::Maximum(most), place, &quoted);
-            let broken = number.compared(read, ">", most);
+        if let Some(most) = &meta.maximum {
+            let reported = kotlin_violation(Bound::Maximum(&limit_text(most)), place, &quoted);
+            let broken = number.limit_compared(read, ">", most);
             statements.push(format!("if ({broken}) {VIOLATIONS}.add({reported})"));
         }
         if !statements.is_empty() && matches!(number, Number::Double | Number::Float) {

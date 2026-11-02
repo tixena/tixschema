@@ -1047,6 +1047,31 @@ mod run_swift_units;
 #[path = "service_schema_emitted_client_tests/run_kotlin_units.rs"]
 mod run_kotlin_units;
 
+/// A limit past what an `f64` holds, and in each written form, for each emitted surface.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/integer_limit_models.rs"]
+mod integer_limit_models;
+
+/// The limits, held by the emitted Zod schemas under node.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_integer_limits.rs"]
+mod run_node_integer_limits;
+
+/// The limits, held by the emitted Dart types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_integer_limits.rs"]
+mod run_dart_integer_limits;
+
+/// The limits, held by the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_integer_limits.rs"]
+mod run_swift_integer_limits;
+
+/// The limits, held by the emitted Kotlin types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_integer_limits.rs"]
+mod run_kotlin_integer_limits;
+
 /// An `i64` held in each place a member holds one, written as a JSON number.
 #[cfg(test)]
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
@@ -1454,8 +1479,8 @@ use run_dart_preprocess::{
 use run_dart_read::{ParcelClientService, parcel_client_service_schema};
 #[cfg(test)]
 use run_node_http_service::{
-    CatalogClientService, ScaleClientService, catalog_client_service_schema,
-    scale_client_service_schema,
+    CatalogClientService, CatalogClientServiceSchema, ScaleClientService, ScaleClientServiceSchema,
+    catalog_client_service_schema, scale_client_service_schema,
 };
 #[cfg(test)]
 use run_node_number_brands::{

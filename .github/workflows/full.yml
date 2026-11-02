@@ -164,7 +164,7 @@ jobs:
         elif [[ "$JOB" != "success" ]]; then JOB_STATUS="failure"; FAILED_STEP="A setup step (see the run)";
         fi
 
-        icon() { case "$1" in success) printf '✅';; failure) printf '❌';; *) printf '⏭️';; esac; }
+        icon() { case "$1" in success) printf '✅';; failure) printf '❌';; cancelled) printf '🚫';; *) printf '⏭️';; esac; }
         STATUS_VALUE=$(printf '🔍 Check: %s\n🧹 Lint (all features): %s\n🧪 Basic Tests: %s\n🚀 Extensive Tests: %s\n🔎 Emitted TypeScript: %s\n🌐 Emitted Clients: %s\n🛡️ Audit: %s' \
           "$(icon "$CHK")" "$(icon "$LALL")" "$(icon "$TBASIC")" "$(icon "$TEXT")" "$(icon "$TSC")" "$(icon "$EMIT")" "$(icon "$AUDIT")")
 
@@ -186,6 +186,9 @@ jobs:
           TITLE="✅ Full Pipeline Success"; DESC="All tests passed successfully!"; COLOR=3066993; BTN_STYLE=5; BTN_LABEL="View Build"
         else
           TITLE="❌ Full Pipeline Failed"; DESC="Build or tests failed!"; COLOR=15158332; BTN_STYLE=5; BTN_LABEL="View Failed Build"
+          if [[ "$FAILED_STEP" == "The run was cancelled" ]]; then DESC="The run was cancelled.";
+          elif [[ "$FAILED_STEP" == "A setup step (see the run)" ]]; then DESC="A setup step failed before the checks ran.";
+          fi
         fi
 
         # Assemble the payload with jq (safe escaping of all dynamic strings)
@@ -211,7 +214,7 @@ jobs:
                   + (if $failed != "None" then [ {name: "Failed Step", value: $failed, inline: false} ] else [] end)
                   + [ {name: "Build Status", value: $status, inline: false} ]
                 ),
-                footer: {text: "Core Model Macros CI"}
+                footer: {text: "tixschema CI"}
               } + (if $ts != "" then {timestamp: $ts} else {} end))
             ],
             components: [
@@ -232,7 +235,9 @@ jobs:
         fi
 
         # The webhook's own name and channel, read back without its token.
-        WEBHOOK_INFO=$(curl -s "$DISCORD_WEBHOOK" | jq -c '{webhook_name: .name, webhook_id: .id, channel_id: .channel_id, guild_id: .guild_id}' 2>/dev/null || true)
+        if ! WEBHOOK_INFO=$(curl -s "$DISCORD_WEBHOOK" | jq -c '{webhook_name: .name, webhook_id: .id, channel_id: .channel_id, guild_id: .guild_id}'); then
+          WEBHOOK_INFO=""
+        fi
         echo "Webhook: ${WEBHOOK_INFO:-(could not read the webhook details)}"
 
         # wait=true makes Discord answer with the created message instead of an empty 204.
@@ -243,7 +248,9 @@ jobs:
 
         if [[ $HTTP_STATUS -eq 200 || $HTTP_STATUS -eq 204 ]]; then
           echo "✅ Discord notification sent successfully (HTTP $HTTP_STATUS)"
-          MESSAGE_INFO=$(echo "$BODY" | jq -c '{message_id: .id, channel_id: .channel_id, timestamp: .timestamp, embeds: (.embeds | length)}' 2>/dev/null || true)
+          if ! MESSAGE_INFO=$(echo "$BODY" | jq -c '{message_id: .id, channel_id: .channel_id, timestamp: .timestamp, embeds: (.embeds | length)}'); then
+            MESSAGE_INFO=""
+          fi
           echo "Message: ${MESSAGE_INFO:-(no message body returned)}"
         else
           echo "❌ Discord notification failed (HTTP $HTTP_STATUS)"

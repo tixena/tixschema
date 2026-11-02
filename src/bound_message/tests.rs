@@ -55,7 +55,7 @@ fn a_bound_that_quotes_the_value_back_names_the_field_and_the_measure() {
         r#"format ! ("'{}': {}, got {}" , "customer_id" , "too short: minimum length is 3" , value . len ())"#
     );
     assert_eq!(
-        rendered(Bound::Maximum(120.0), Some("age"), &quote! { value }),
+        rendered(Bound::Maximum("120"), Some("age"), &quote! { value }),
         r#"format ! ("'{}': {}, got {}" , "age" , "too large: maximum is 120" , value)"#
     );
 }
@@ -129,11 +129,11 @@ fn a_bound_on_a_list_is_reported_in_a_strings_words() {
 #[test]
 fn a_numeric_bound_reads_the_value_itself_off_the_issue() {
     assert_eq!(
-        zod_error_arg(Bound::Minimum(0.0)),
+        zod_error_arg(Bound::Minimum("0")),
         "{ error: (issue) => `too small: minimum is 0, got ${String(issue.input)}` }"
     );
     assert_eq!(
-        zod_error_arg(Bound::Maximum(120.0)),
+        zod_error_arg(Bound::Maximum("120")),
         "{ error: (issue) => `too large: maximum is 120, got ${String(issue.input)}` }"
     );
 }
@@ -217,11 +217,11 @@ fn kotlin_reports_each_bound_in_the_sentence_rust_reports_it_in() {
     let written = [
         Bound::MaxItems(3),
         Bound::MaxLength(50),
-        Bound::Maximum(120.0),
-        Bound::Maximum(1.5),
+        Bound::Maximum("120"),
+        Bound::Maximum("1.5"),
         Bound::MinItems(1),
         Bound::MinLength(3),
-        Bound::Minimum(0.0),
+        Bound::Minimum("0"),
         Bound::Pattern("^[a-z]+$"),
         Bound::Pattern(r#"^\x41"x"$"#),
     ];
@@ -248,10 +248,10 @@ fn every_sentence_opens_with_a_stem_the_list_spells_and_no_stem_is_unwritten() {
     let written = [
         Bound::MaxItems(3),
         Bound::MaxLength(50),
-        Bound::Maximum(120.0),
+        Bound::Maximum("120"),
         Bound::MinItems(1),
         Bound::MinLength(3),
-        Bound::Minimum(0.0),
+        Bound::Minimum("0"),
         Bound::Pattern("^[a-z]+$"),
     ];
     let held = literals();
@@ -290,7 +290,7 @@ fn a_dart_string_names_the_place_and_quotes_the_measure_back() {
         r#""'codes': too long: maximum length is 3, got ${codes.length}""#
     );
     assert_eq!(
-        dart_violation(Bound::Maximum(3.0), None, "_number(value)"),
+        dart_violation(Bound::Maximum("3"), None, "_number(value)"),
         r#""too large: maximum is 3, got ${_number(value)}""#,
         "a whole bound is stated without `.0`, and a value at no place opens with no name"
     );
@@ -312,11 +312,11 @@ fn the_three_renderings_of_a_bound_hold_one_sentence() {
     let written = [
         Bound::MaxItems(3),
         Bound::MaxLength(50),
-        Bound::Maximum(120.0),
-        Bound::Maximum(0.5),
+        Bound::Maximum("120"),
+        Bound::Maximum("0.5"),
         Bound::MinItems(1),
         Bound::MinLength(3),
-        Bound::Minimum(0.0),
+        Bound::Minimum("0"),
         Bound::Pattern("^[a-z]+"),
     ];
     // A literal no spelling escapes: a string one is quoted, and each spelling escapes the quotes.
@@ -392,10 +392,10 @@ fn the_swift_sentence_is_the_one_rust_writes_for_each_bound() {
     for bound in [
         Bound::MaxItems(3),
         Bound::MaxLength(50),
-        Bound::Maximum(120.0),
+        Bound::Maximum("120"),
         Bound::MinItems(1),
         Bound::MinLength(3),
-        Bound::Minimum(0.5),
+        Bound::Minimum("0.5"),
         Bound::Pattern("^[a-z]+$"),
         Bound::Pattern("^\"[0-9A-Za-z_]+\\.txt\"$"),
     ]
@@ -423,7 +423,7 @@ fn a_swift_sentence_is_one_string_literal() {
         r#""'label': too short: minimum length is 1, got \(label.unicodeScalars.count)""#
     );
     assert_eq!(
-        swift_violation(Bound::Maximum(120.0), None, "age"),
+        swift_violation(Bound::Maximum("120"), None, "age"),
         r#""too large: maximum is 120, got \(age)""#
     );
     assert_eq!(

@@ -10,10 +10,13 @@ use regex_syntax::ast::parse::Parser as PatternParser;
 use regex_syntax::ast::{
     AssertionKind, Ast, ClassSet, ClassSetItem, Literal, LiteralKind, SpecialLiteralKind,
 };
+use syn::Lit;
 
 use super::{SwiftTypeArgs, keys, result_case, swift_full_real_type};
 use crate::bound_message::{Bound, swift_literal_text, swift_repeated, swift_violation};
-use crate::features::model_schema_prop::{FunctionName, LiteralValue, ModelSchemaPropMeta};
+use crate::features::model_schema_prop::{
+    FunctionName, LiteralValue, ModelSchemaPropMeta, limit_number, limit_text,
+};
 use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, format_number_literal, get_field_def,
     is_sequence_wrapper,
@@ -155,9 +158,9 @@ impl Bindings {
 impl Number {
     /// `minimum` as the literal a value is compared with, or `None` where no value of the type is
     /// below it.
-    fn least(self, minimum: f64) -> Option<String> {
+    fn least(self, minimum: &Lit) -> Option<String> {
         match self {
-            Self::Float => Some(format!("{minimum}")),
+            Self::Float => Some(limit_text(minimum)),
             Self::Whole(lowest, highest) => {
                 let written = whole(minimum)?;
                 (lowest < written && written <= highest).then(|| written.to_string())
@@ -167,9 +170,9 @@ impl Number {
 
     /// `maximum` as the literal a value is compared with, or `None` where no value of the type is
     /// above it.
-    fn most(self, maximum: f64) -> Option<String> {
+    fn most(self, maximum: &Lit) -> Option<String> {
         match self {
-            Self::Float => Some(format!("{maximum}")),
+            Self::Float => Some(limit_text(maximum)),
             Self::Whole(lowest, highest) => {
                 let written = whole(maximum)?;
                 (lowest <= written && written < highest).then(|| written.to_string())
@@ -896,20 +899,20 @@ fn range_checks(
         Number::Whole(_, _) => value.to_owned(),
     };
     let mut checks = Vec::new();
-    if let Some(minimum) = meta.minimum
+    if let Some(minimum) = &meta.minimum
         && let Some(written) = kind.least(minimum)
     {
         checks.push(broken(
             &format!("{value} < {written}"),
-            &swift_violation(Bound::Minimum(minimum), place, &observed),
+            &swift_violation(Bound::Minimum(&limit_text(minimum)), place, &observed),
         ));
     }
-    if let Some(maximum) = meta.maximum
+    if let Some(maximum) = &meta.maximum
         && let Some(written) = kind.most(maximum)
     {
         checks.push(broken(
             &format!("{value} > {written}"),
-            &swift_violation(Bound::Maximum(maximum), place, &observed),
+            &swift_violation(Bound::Maximum(&limit_text(maximum)), place, &observed),
         ));
     }
     checks
@@ -953,9 +956,13 @@ fn number_kind(leaf: &FieldDefType) -> Option<Number> {
     }
 }
 
-/// A bound as the integer Rust compares an integer with: its fraction dropped.
-fn whole(bound: f64) -> Option<i128> {
-    bound.trunc().to_string().parse().ok()
+/// A bound as the integer Rust compares an integer with: a float's fraction dropped.
+fn whole(bound: &Lit) -> Option<i128> {
+    if let Lit::Int(int) = bound {
+        int.base10_parse().ok()
+    } else {
+        limit_number(bound).trunc().to_string().parse().ok()
+    }
 }
 
 /// The calls of the checks a member names, each on the value the member holds under an `Option`,

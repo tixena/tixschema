@@ -288,7 +288,7 @@ mod a_check_on_a_slot {
                 "type": "array",
                 "prefixItems": [
                     { "type": "string", "minLength": 1_u32 },
-                    { "type": "integer", "minimum": 1.0_f64 }
+                    { "type": "integer", "minimum": 1_u32 }
                 ],
                 "items": false,
                 "minItems": 2_u32,
@@ -303,7 +303,7 @@ mod a_check_on_a_slot {
             Together::json_schema()["prefixItems"],
             serde_json::json!([
                 { "type": "string", "minLength": 2_u32, "maxLength": 3_u32, "pattern": "^[a-z]+$" },
-                { "type": "integer", "minimum": 1.0_f64, "maximum": 9.0_f64 }
+                { "type": "integer", "minimum": 1_u32, "maximum": 9_u32 }
             ])
         );
         assert_eq!(

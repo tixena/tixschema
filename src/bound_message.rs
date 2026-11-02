@@ -35,17 +35,18 @@ pub const VIOLATION_STEMS: [&str; 6] = [
 ];
 
 /// A bound a declaration can carry, at the one value it was written with. `MaxItems` and
-/// `MinItems` are `maxLength` and `minLength` written on a list, whose items they count, and
-/// `Literal` is the one value a `literal` admits.
+/// `MinItems` are `maxLength` and `minLength` written on a list, whose items they count, `Literal`
+/// is the one value a `literal` admits, and `Maximum` and `Minimum` hold what
+/// [`limit_text`](crate::features::model_schema_prop::limit_text) writes of a limit.
 #[derive(Clone, Copy)]
 pub enum Bound<'written> {
     Literal(&'written LiteralValue),
     MaxItems(usize),
     MaxLength(usize),
-    Maximum(f64),
+    Maximum(&'written str),
     MinItems(usize),
     MinLength(usize),
-    Minimum(f64),
+    Minimum(&'written str),
     Pattern(&'written str),
 }
 
@@ -69,9 +70,9 @@ impl Bound<'_> {
     }
 
     /// The bound in words, without the value that broke it. Every number here is rendered at
-    /// expansion time, by the same `Display` that writes the bound into the Zod check beside it,
-    /// so the two spell it identically without either having to know how the other did. A literal
-    /// is written as the Zod schema writes it: a string between double quotes.
+    /// expansion time, as the Zod check beside it writes the bound, so the two spell it
+    /// identically without either having to know how the other did. A literal is written as the
+    /// Zod schema writes it: a string between double quotes.
     fn stated(self) -> String {
         let stem = self.stem();
         match self {

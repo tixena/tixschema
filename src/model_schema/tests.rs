@@ -25,7 +25,8 @@ use super::{AliasKind, register_alias_info};
 
 use super::{
     PublishedShape, alias_map_key_guard_error, alias_undescribable_std_error, check_map_key,
-    deferred_shape_question, ident_schema_module_name, record_value_shape,
+    const_parameter_argument_message, deferred_shape_question, ident_schema_module_name,
+    record_value_shape,
 };
 
 #[cfg(all(feature = "serde", feature = "zod"))]
@@ -5273,6 +5274,18 @@ fn a_const_handed_to_a_written_type_is_refused_in_every_build_that_describes_a_t
     );
 }
 
+#[test]
+fn the_const_argument_refusal_names_the_module_the_emitter_would_call() {
+    for (name, module) in [("WIDTH", "w_i_d_t_h_schema"), ("n", "n_schema")] {
+        assert_eq!(ident_schema_module_name(name), module);
+        let message = const_parameter_argument_message(name);
+        assert!(
+            message.contains(&format!("would call into a `{module}` module")),
+            "{message}"
+        );
+    }
+}
+
 /// No local build is of the clients alone, so the gates are read off the sources.
 #[test]
 fn the_map_key_guard_is_compiled_in_every_build_that_describes_a_type() {
@@ -8380,6 +8393,27 @@ fn a_bound_outside_the_range_of_the_integer_type_is_refused_naming_the_field_and
             "-1000000000000000019884624838656",
             "-9223372036854775808 to 9223372036854775807",
         ),
+        (
+            "i64",
+            "maximum",
+            "9223372036854775808",
+            "9223372036854775808",
+            "-9223372036854775808 to 9223372036854775807",
+        ),
+        (
+            "i64",
+            "minimum",
+            "-9223372036854775809",
+            "-9223372036854775809",
+            "-9223372036854775808 to 9223372036854775807",
+        ),
+        (
+            "u64",
+            "maximum",
+            "18446744073709551616",
+            "18446744073709551616",
+            "0 to 18446744073709551615",
+        ),
         ("Option<i8>", "minimum", "-200", "-200", "-128 to 127"),
         ("Box<u8>", "maximum", "256", "256", "0 to 255"),
     ] {
@@ -8410,7 +8444,9 @@ fn a_bound_the_integer_type_holds_is_not_refused() {
         ("u8", "minimum = 0, maximum = 255"),
         ("i8", "minimum = -128, maximum = 127"),
         ("u64", "maximum = 9007199254740992"),
+        ("u64", "maximum = 18446744073709551615"),
         ("i64", "minimum = -9223372036854775808"),
+        ("i64", "maximum = 9223372036854775807"),
         ("u32", "minimum = -0.5"),
         ("u8", "maximum = 300.5"),
         ("f64", "minimum = -1.5"),
@@ -8717,6 +8753,17 @@ fn a_bound_no_value_meets_and_a_count_that_repeats_a_fixed_length_are_refused() 
             quote::quote! { minimum = 5, maximum = 2 },
             quote::quote! { u32 },
             "`minimum = 5` is above `maximum = 2`, so no value passes",
+        ),
+        (
+            quote::quote! { minimum = 9007199254740993, maximum = 9007199254740992 },
+            quote::quote! { i64 },
+            "`minimum = 9007199254740993` is above `maximum = 9007199254740992`, so no value \
+             passes",
+        ),
+        (
+            quote::quote! { minimum = 2.5, maximum = 2 },
+            quote::quote! { f64 },
+            "`minimum = 2.5` is above `maximum = 2`, so no value passes",
         ),
         (
             quote::quote! { maxLength = 1 },
@@ -18662,7 +18709,7 @@ fn a_bare_field_deserializes_the_constrained_value_itself() {
 
     let numeric_ty: syn::Type = syn::parse_str("u32").unwrap();
     let numeric_meta = ModelSchemaPropMeta {
-        minimum: Some(5.0_f64),
+        minimum: Some(syn::parse_quote!(5.0)),
         ..ModelSchemaPropMeta::default()
     };
     let numeric = generate_numeric_validation_code(
@@ -18752,7 +18799,7 @@ fn a_tuple_structs_slot_is_checked_where_a_named_field_of_the_struct_is() {
         ..ModelSchemaPropMeta::default()
     };
     let maximum = ModelSchemaPropMeta {
-        maximum: Some(5.0_f64),
+        maximum: Some(syn::parse_quote!(5.0)),
         ..ModelSchemaPropMeta::default()
     };
     let text: (syn::ItemStruct, syn::ItemStruct) = (
@@ -19082,7 +19129,7 @@ fn a_member_read_through_any_reference_is_hung_with_no_hook() {
         ..ModelSchemaPropMeta::default()
     };
     let minimum = ModelSchemaPropMeta {
-        minimum: Some(5.0_f64),
+        minimum: Some(syn::parse_quote!(5.0)),
         ..ModelSchemaPropMeta::default()
     };
 
@@ -19130,7 +19177,7 @@ fn a_value_read_through_any_reference_publishes_its_validator_and_no_hook() {
     }
 
     let minimum = ModelSchemaPropMeta {
-        minimum: Some(5.0_f64),
+        minimum: Some(syn::parse_quote!(5.0)),
         ..ModelSchemaPropMeta::default()
     };
     for spelling in ["&'a u32", "&'static u32", "&'a Option<u32>"] {
