@@ -25,7 +25,8 @@ use super::{AliasKind, register_alias_info};
 
 use super::{
     PublishedShape, alias_map_key_guard_error, alias_undescribable_std_error, check_map_key,
-    deferred_shape_question, ident_schema_module_name, record_value_shape,
+    const_parameter_argument_message, deferred_shape_question, ident_schema_module_name,
+    record_value_shape,
 };
 
 #[cfg(all(feature = "serde", feature = "zod"))]
@@ -5271,6 +5272,18 @@ fn a_const_handed_to_a_written_type_is_refused_in_every_build_that_describes_a_t
         "pub struct Grid<const N: usize> { pub cells: Cells<N> }",
         "cannot render the const parameter `N` as a type argument",
     );
+}
+
+#[test]
+fn the_const_argument_refusal_names_the_module_the_emitter_would_call() {
+    for (name, module) in [("WIDTH", "w_i_d_t_h_schema"), ("n", "n_schema")] {
+        assert_eq!(ident_schema_module_name(name), module);
+        let message = const_parameter_argument_message(name);
+        assert!(
+            message.contains(&format!("would call into a `{module}` module")),
+            "{message}"
+        );
+    }
 }
 
 /// No local build is of the clients alone, so the gates are read off the sources.

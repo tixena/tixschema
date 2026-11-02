@@ -6171,13 +6171,13 @@ fn const_parameter_argument_message(name: &str) -> String {
         "`#[model_schema]` cannot render the const parameter `{name}` as a type argument. An \
          argument list is read as a list of types — that is what every surface writes one from — so \
          `{name}` standing in one is taken for a type, and no surface can spell it: the JSON \
-         document would call into a `{}_schema` module nothing publishes, the TypeScript \
+         document would call into a `{}` module nothing publishes, the TypeScript \
          declaration would write `{name}` where nothing binds it, a const being dropped from the \
          declaration it was written on, and no Dart, Swift or Kotlin type declares it. This is \
          refused in every build that describes a type. A const does render as an array length — \
          `[T; {name}]`, which describes as an unbounded array — so hold the value that way, or \
          fill the argument with a type.",
-        name.to_lowercase()
+        ident_schema_module_name(name)
     )
 }
 
