@@ -229,7 +229,7 @@ test-mongodb:
 check:
     @echo "Checking code..."
     cargo check
-    cargo check --manifest-path bson3/Cargo.toml
+    cargo check --manifest-path bson3/Cargo.toml --tests
     just lint
     @echo "✅ Code check passed!"
 
