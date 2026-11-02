@@ -1,0 +1,31 @@
+error[E0277]: `LedgerServiceSchema` is not re-exported at the crate root
+  --> tests/foundation_refusals/openapi_schema_not_reexported.rs:22:15
+   |
+21 |     #[service_schema(transports = ["http_rest"], openapi)]
+   |     ------------------------------------------------------ in this attribute macro expansion
+22 |     pub trait LedgerService<Ctx> {
+   |               ^^^^^^^^^^^^^ this service asks for `openapi`, and its dispatcher reads `$crate::LedgerServiceSchema`
+   |
+help: the trait `ReachableAtTheCrateRoot` is not implemented for `ledger_service_schema::_::LedgerServiceSchema`
+  --> tests/foundation_refusals/openapi_schema_not_reexported.rs:22:15
+   |
+21 |     #[service_schema(transports = ["http_rest"], openapi)]
+   |     ------------------------------------------------------ in this attribute macro expansion
+22 |     pub trait LedgerService<Ctx> {
+   |               ^^^^^^^^^^^^^
+   = note: add `pub use` of `LedgerServiceSchema` at the crate root, beside the service's module and trait
+help: the trait `ReachableAtTheCrateRoot` is implemented for `contract::LedgerServiceSchema`
+  --> tests/foundation_refusals/openapi_schema_not_reexported.rs:22:15
+   |
+21 |     #[service_schema(transports = ["http_rest"], openapi)]
+   |     ------------------------------------------------------ in this attribute macro expansion
+22 |     pub trait LedgerService<Ctx> {
+   |               ^^^^^^^^^^^^^
+note: required by a bound in `reachable`
+  --> tests/foundation_refusals/openapi_schema_not_reexported.rs:22:15
+   |
+21 |     #[service_schema(transports = ["http_rest"], openapi)]
+   |     ------------------------------------------------------ in this attribute macro expansion
+22 |     pub trait LedgerService<Ctx> {
+   |               ^^^^^^^^^^^^^ required by this bound in `reachable`
+   = note: this error originates in the attribute macro `service_schema` (in Nightly builds, run with -Z macro-backtrace for more info)

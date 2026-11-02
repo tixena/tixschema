@@ -3603,10 +3603,18 @@ error[E0599]: no associated function or constant named `JSON_SCHEMA_NAME` found 
 
 Both `http_rest` dispatchers, the Rust `dispatch` and the TypeScript `create{Service}HttpDispatcher`, answer `GET` at the document's path with `200`, `content-type: application/json` and the document as the body, ahead of every route. Any other method at that path answers as it would without `openapi`, and so does every request to a service that does not ask for it. `ts_http_service()` writes the text of the document `openapi()` builds into the text it answers, at run time, as a string literal, and the TypeScript dispatcher answers that text as it is: both dispatchers answer the same bytes, so a float written `1.0` and an integer past 2^53 keep the digits Rust wrote.
 
-The Rust dispatcher reads the document from `$crate::<Service>Schema`, so a service that asks for `openapi` and is declared in a submodule re-exports its `<Service>Schema` at the crate root, beside its generated module and its trait. The declaring crate does not check this one at the declaration; the dispatcher macro's invocation fails without it:
+The Rust dispatcher reads the document from `$crate::<Service>Schema`, so a service that asks for `openapi` and is declared in a submodule re-exports its `<Service>Schema` at the crate root, beside its generated module and its trait. The declaration refuses a missing re-export in tixschema's own words, whether or not a dispatcher is placed:
 
 ```text
-error[E0433]: cannot find `DocumentServiceSchema` in `$crate`
+error[E0277]: `DocumentServiceSchema` is not re-exported at the crate root
+  --> src/contract.rs:18:11
+   |
+17 | #[service_schema(transports = ["http_rest"], openapi)]
+   | ------------------------------------------------------ in this attribute macro expansion
+18 | pub trait DocumentService<Ctx> {
+   |           ^^^^^^^^^^^^^^^ this service asks for `openapi`, and its dispatcher reads `$crate::DocumentServiceSchema`
+   ...
+   = note: add `pub use` of `DocumentServiceSchema` at the crate root, beside the service's module and trait
 ```
 
 `openapi` is refused, and the build stops, in six cases.

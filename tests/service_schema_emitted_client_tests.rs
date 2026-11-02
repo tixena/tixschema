@@ -1442,8 +1442,8 @@ use run_dart_preprocess::{
 use run_dart_read::{ParcelClientService, parcel_client_service_schema};
 #[cfg(test)]
 use run_node_http_service::{
-    CatalogClientService, ScaleClientService, catalog_client_service_schema,
-    scale_client_service_schema,
+    CatalogClientService, CatalogClientServiceSchema, ScaleClientService, ScaleClientServiceSchema,
+    catalog_client_service_schema, scale_client_service_schema,
 };
 #[cfg(test)]
 use run_node_number_brands::{

@@ -149,7 +149,7 @@ pub fn emit(
     let message_readers = message_readers(service);
     let validators = message_validators(service);
     let readers = violation_readers();
-    let anchors = root_anchors(service, asked);
+    let anchors = root_anchors(service, asked, openapi);
     let http_completeness = http_error_status_completeness(service);
     let body_source = if service_needs_body_source_seam(service) {
         body_source_trait()
@@ -560,12 +560,16 @@ fn http_binding_summary(binding: &HttpBinding) -> String {
 /// error: could not compile `declaring` (lib) due to 2 previous errors
 /// ```
 ///
-/// The wording is rustc's, and that is a measured limit rather than a choice: nothing can attach a
-/// sentence of ours to a path that does not resolve. An aliased import never prints its alias, and
-/// a const-eval `panic!` that would print one has nothing it can read to tell whether the re-export
-/// is missing. What the change buys is where the error lands, how early, and against which crate —
-/// and the second of the two does name the `pub use` to write.
-fn root_anchors(service: &ServiceDef, asked: &[Transport]) -> TokenStream {
+/// The wording of those two is rustc's, and that is a measured limit rather than a choice: nothing
+/// can attach a sentence of ours to a path that does not resolve. An aliased import never prints
+/// its alias, and a const-eval `panic!` that would print one has nothing it can read to tell
+/// whether the re-export is missing. What the change buys is where the error lands, how early, and
+/// against which crate — and the second of the two does name the `pub use` to write.
+///
+/// A service that asks for `openapi` has a third anchor, `registry_root_anchor`, for the
+/// `<Service>Schema` its dispatcher reads: that name always resolves, so its error is in
+/// tixschema's own words.
+fn root_anchors(service: &ServiceDef, asked: &[Transport], openapi: bool) -> TokenStream {
     if asked.is_empty() {
         return TokenStream::new();
     }
@@ -575,7 +579,10 @@ fn root_anchors(service: &ServiceDef, asked: &[Transport]) -> TokenStream {
     let anchored = contract.span().resolved_at(Span::call_site());
     let module = format_ident!("{}", module_ident(service), span = anchored);
     let bound = format_ident!("{}", contract, span = anchored);
+    let registry = openapi.then(|| registry_root_anchor(service, anchored));
     quote_spanned! { anchored=>
+        #registry
+
         const _: ::core::marker::PhantomData<crate::#module::ServiceFault> =
             ::core::marker::PhantomData;
 
@@ -589,6 +596,39 @@ fn root_anchors(service: &ServiceDef, asked: &[Transport]) -> TokenStream {
             }
 
             const _: RootAnchor<(), ()> = RootAnchor(::core::marker::PhantomData);
+        };
+    }
+}
+
+/// Fails the build at the declaration, in tixschema's own words, where `<Service>Schema` does not
+/// reach the crate root: the name there resolves to the real type, which alone implements the
+/// trait, or past the glob to the private type of the same name beside it.
+fn registry_root_anchor(service: &ServiceDef, anchored: Span) -> TokenStream {
+    let registry = format_ident!("{}Schema", service.ident, span = anchored);
+    let message = format!("`{registry}` is not re-exported at the crate root");
+    let label =
+        format!("this service asks for `openapi`, and its dispatcher reads `$crate::{registry}`");
+    let note = format!(
+        "add `pub use` of `{registry}` at the crate root, beside the service's module and trait"
+    );
+    quote_spanned! { anchored=>
+        const _: () = {
+            struct #registry;
+
+            const _: ::core::marker::PhantomData<#registry> = ::core::marker::PhantomData;
+
+            const _: () = {
+                use crate::*;
+
+                #[diagnostic::on_unimplemented(message = #message, label = #label, note = #note)]
+                trait ReachableAtTheCrateRoot {}
+
+                impl ReachableAtTheCrateRoot for self::#registry {}
+
+                fn reachable<Registry: ReachableAtTheCrateRoot>() {}
+
+                const _: fn() = reachable::<#registry>;
+            };
         };
     }
 }
